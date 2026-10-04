@@ -15,6 +15,7 @@ func TestTargetInfoValidate(t *testing.T) {
 		{"no fields", TargetInfo{Lorebooks: LorebooksNone}, "fields is empty"},
 		{"bad lorebooks", TargetInfo{Fields: []string{"name"}, Lorebooks: "sometimes"}, `lorebooks "sometimes"`},
 		{"missing lorebooks", TargetInfo{Fields: []string{"name"}}, `lorebooks ""`},
+		{"every problem at once", TargetInfo{}, "fields is empty\nlorebooks"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

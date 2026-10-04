@@ -52,7 +52,7 @@ func (t TargetInfo) Validate() error {
 }
 
 // TargetPutParams sends one card. RemoteID is empty for a new card. Avatar
-// is the path of the avatar file in a blob store, or empty.
+// is the absolute path of the avatar file in a blob store, or empty.
 type TargetPutParams struct {
 	Card     json.RawMessage `json:"card"`
 	RemoteID string          `json:"remote_id,omitempty"`

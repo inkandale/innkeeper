@@ -345,13 +345,13 @@ func (s *Server) cardRoutes(api huma.API) {
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			body, ext := []byte(raw), "json"
+			body, ext, typ := []byte(raw), "json", "application/json"
 			if in.Format != "json" {
-				if body, ext, err = s.encode(ctx, c.HeadRevisionID, raw, in.Format); err != nil {
+				if body, ext, typ, err = s.encode(ctx, c.HeadRevisionID, raw, in.Format); err != nil {
 					return nil, s.fail(err)
 				}
 			}
 			return &exportOut{ContentDisposition: fmt.Sprintf(`attachment; filename="%s.%s"`, c.Slug, ext),
-				ContentType: exportType(ext), NoSniff: "nosniff", CSP: "sandbox", Body: body}, nil
+				ContentType: exportType(typ), NoSniff: "nosniff", CSP: "sandbox", Body: body}, nil
 		})
 }

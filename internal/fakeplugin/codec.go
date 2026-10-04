@@ -45,7 +45,13 @@ func codecEncode(blobTmp string, params json.RawMessage, mode string) (any, erro
 			return nil, err
 		}
 	}
-	return protocol.CodecEncodeResult{Path: f.Name(), Extension: "txt"}, nil
+	// A card named Mislabel tests that the core types the file by its
+	// content, not the extension the codec claims.
+	ext := "txt"
+	if c.Data.Name == "Mislabel" {
+		ext = "png"
+	}
+	return protocol.CodecEncodeResult{Path: f.Name(), Extension: ext}, nil
 }
 
 func codecDecode(params json.RawMessage, mode string) (any, error) {

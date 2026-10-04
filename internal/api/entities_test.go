@@ -219,6 +219,13 @@ func TestExportFormats(t *testing.T) {
 	escape := e.createCard(`{"name": "Escape"}`)
 	e.call("GET", fmt.Sprintf("/cards/%d/export?format=fake", escape.ID), nil, 502, nil)
 
+	// The fake names this text file .png. Its type comes from its content.
+	mislabel := e.createCard(`{"name": "Mislabel"}`)
+	r = e.call("GET", fmt.Sprintf("/cards/%d/export?format=fake", mislabel.ID), nil, 200, nil)
+	if r.Header.Get("Content-Type") != "application/octet-stream" {
+		t.Fatalf("mislabeled export Content-Type = %q", r.Header.Get("Content-Type"))
+	}
+
 	e.markBroken(e.loginID, "boom")
 	e.markBroken(e.importID, "boom")
 	e.call("GET", path+"?format=fake", nil, 400, nil)

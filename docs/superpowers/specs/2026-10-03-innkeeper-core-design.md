@@ -285,7 +285,7 @@ actions use the same query object.
   "filter": { "and": [
     { "tag": "fantasy" },
     { "enrichment": "quality", "gte": 4 },
-    { "not": { "target_state": { "instance": "lumiverse", "is": "in_sync" } } }
+    { "not": { "target_state": { "instance": 3, "is": "in_sync" } } }
   ]},
   "sources": ["library", "catalog:chub-archive"],
   "include": ["enrichments", "lorebooks"],
@@ -293,6 +293,8 @@ actions use the same query object.
   "page": { "size": 50, "cursor": null }
 }
 ```
+
+`target_state.instance` is a plugin instance ID, the same key overrides use.
 
 `sources` mixes library results with catalog plugin results. Catalog results
 can be adopted into the library, which records their provenance.

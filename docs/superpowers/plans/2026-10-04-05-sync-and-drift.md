@@ -47,7 +47,7 @@ Constraints this plan leaves for later plans:
 - **Plan 6 (Lumiverse target):**
   - Implement `target.describe`, `target.put`, and `target.get` as `docs/protocol.md` describes. `internal/fakeplugin/target.go` is a working reference.
   - Declare `lorebooks: "embedded"` until standalone lorebook sync exists.
-  - The `avatar` param is a path inside the library's blob store. Read the file; don't move or change it.
+  - The `avatar` param is an absolute path inside the library's blob store. Read the file; don't move or change it.
   - `target.describe` must not contact the app, because the core calls it before every push and check.
 - **Plan 7 (MCP and UI):**
   - MCP `push` is `POST /cards/{id}/push`, `check_drift` is `POST /bindings/{id}/check`, and `adopt` is `POST /bindings/{id}/adopt`.
@@ -60,15 +60,20 @@ Constraints this plan leaves for later plans:
   - `binding_status` joins `card`, so it leaves out lorebook bindings. Add a branch for them.
   - `target.put_lorebook` and `target.get_lorebook` are reserved names. Card pushes will need to pass the lorebooks' remote IDs.
   - `internal/targets/data.go` helpers (`project`, `diff`, `applyChanges`, `overrideChanges`) work on any data object, so lorebooks can reuse them.
+- **Binding a card the app already has (`target.list`):** such a binding has no push row, and `binding_status` inner-joins the last push, so it would vanish from statuses and the filter. Switch to a left join and treat "no push" as ahead.
 
 ## Design notes
+
+Reviews during implementation changed the code after these tasks were written. Where a task's code differs from the branch, the branch is right; the notes below describe the branch.
 
 - **Status.** A binding stores `remote_state`, which is what the last check found in the app: `unknown`, `unchanged`, `changed`, or `missing`. The spec's `binding.state` is this column. Whether the library is ahead is never stored. The `binding_status` view works it out from the last push, so it can't go stale after an edit.
 - **Ahead.** The card is ahead when, compared with the pushed revision, its `content_hash` changed, its avatar changed, its override for this instance changed, or (for targets that embed lorebooks) a linked lorebook's head revision changed. An edit to a field the target doesn't store still counts as ahead. That's harmless except on create-only targets, where the push preview's `new_copy` makes the owner confirm.
 - **Remote changed.** After each push, a target that can pull is read back. The read-back copy, limited to the target's `fields`, becomes `accepted_data`, and its hash is `push.pushed_hash`. Reading back means an app that reformats what it gets doesn't show as changed. A check reads the app's copy again and compares hashes. When they differ, `seen_data` holds the app's copy and the binding's `changes` list the fields that differ. Values compare the way `cardhash.ContentHash` normalizes them, so whitespace and empty values don't count.
-- **Adopt** applies the changed fields to the card's data or to this instance's override, in a revision with source `adopt`, then makes `seen_data` the new `accepted_data`. After adopting into the card, the binding is `ahead`. That's accurate, because the card has a revision the app hasn't been pushed. `ignore` only moves the baseline.
-- **Concurrency.** A push takes a transaction-scoped advisory lock on (instance, card) and holds it across `target.put`, so concurrent first pushes can't make two copies. It renders the card and resolves the plugin instance before taking the lock. That way it holds only one connection, and concurrent pushes can't use up the pool while holding the lock. Checks and adopts hold no lock. They write with an `UPDATE` guarded on `accepted_hash`, so a push that lands in between wins.
-- **Registry.Call** takes a resolved `pluginhost.Instance` instead of an ID, for the same reason: looking up the instance needs a connection.
+- **Adopt** applies the changed fields to the card's data or to this instance's override, in a revision with source `adopt`, then makes `seen_data` the new `accepted_data`. Adopting into the card also removes those fields from this instance's override, which would otherwise undo the adopt at the next push. Adopting into an override builds a real merge patch against the card's data, so keys the app removed inside an object stay removed. After adopting into the card, the binding is `ahead`. That's accurate, because the card has a revision the app hasn't been pushed. `ignore` only moves the baseline. A change to `character_book` alone returns `ErrNoChanges` unless `into` is `ignore`.
+- **Concurrency.** A push takes a transaction-scoped advisory lock on (instance, card) and holds it across `target.put`, so concurrent first pushes can't make two copies. It renders the card and resolves the plugin instance before taking the lock, and inside the lock calls the plugin host directly. That way it holds only one connection, and concurrent pushes can't use up the pool while holding the lock. Checks and adopts hold no lock. Every push and adopt bumps `binding.version`, and checks and adopts write with an `UPDATE` guarded on it. A guard on another table, such as the latest push ID, doesn't work: PostgreSQL re-checks a waiting `UPDATE` against the new row, but not its subqueries.
+- **Job re-runs.** The job queue re-runs a push on shutdown, on a lost lease, and on a retryable error, and creating a card isn't idempotent. So once a push sends `target.put`, it finishes on a context that ignores cancellation. A create that fails with the plugin gone or a timeout returns `ErrUncertain` and fails rather than retrying. A push job records the binding's latest push ID when queued, and skips if another push landed first; that check runs inside the push's lock.
+- **Pool size.** A running job can hold a connection while its lease heartbeat or an import notification needs another, so the worker's pool has at least `2 × concurrency + 2` connections.
+- **Registry.Call** takes a resolved `pluginhost.Instance` instead of an ID, because looking up the instance needs a connection.
 - **The `target_state` filter** takes an instance ID, not the instance name in the spec's example. IDs are what overrides are keyed by.
 - **Errors.** A plugin's JSON-RPC error and a bad reply map to `502`. A plugin that crashed or failed to start maps to `502` without details, which go to the log. A broken instance is `409`.
 

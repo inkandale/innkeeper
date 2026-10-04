@@ -27,8 +27,9 @@ database at startup and stop cleanly on `SIGTERM`.
   `/openapi.json`, and browsable docs at `/docs`. Job progress streams from
   `GET /jobs/{id}/events`, which sends a `: ping` comment every 15 seconds
   while idle.
-- `innkeeper worker` runs jobs: imports, bulk actions, and daily cleanup of
-  unused blobs and of jobs that finished over 30 days ago.
+- `innkeeper worker` runs jobs: imports, bulk actions, pushes, an hourly
+  check of target apps for changes, and daily cleanup of unused blobs and of
+  jobs that finished over 30 days ago.
 
 | Variable | Used by | Meaning |
 |---|---|---|
@@ -82,6 +83,8 @@ innkeeper call <method> <path> [json]           any API call, such as: call GET 
 innkeeper import <instance-id> [params-json]    start an import
 innkeeper export <card-id> [file]               a card as CCv3 JSON
 innkeeper bulk archive|unarchive <query-json>   archive or unarchive the cards a search matches
+innkeeper push <instance-id> <card-id>|<query-json> [--new-copy]
+                                                push one card, or the cards a search matches, to a target
 innkeeper jobs [show|cancel|watch <job-id>]     list or follow jobs
 innkeeper token create <name> | list | revoke <id>
 innkeeper backup <dir>
@@ -91,6 +94,38 @@ innkeeper backup <dir>
 on `archived`. It touches only cards not already in the target state.
 
 `jobs watch` exits non-zero unless the job succeeds.
+
+`push --new-copy` is for apps that can't update a card: pushing there again
+makes another copy, so the push fails without the flag.
+
+## Sync
+
+A card pushed to a target app gets a binding. `GET /cards/{id}/bindings`
+shows its status on each target:
+
+| Status | Meaning |
+|---|---|
+| `in_sync` | Nothing changed on either side since the last push |
+| `ahead` | The card, its avatar, its override for this target, or its embedded lorebooks changed since the last push |
+| `remote_changed` | Someone changed the card in the app |
+| `diverged` | Both of the above |
+| `missing` | The app no longer has the card. The next push makes a new copy |
+| `cant_check` | The app can't be read back, so changes made there are unknown |
+
+When the app's copy changed, the binding lists the changed fields. Take them
+with `POST /bindings/{id}/adopt`, `into` one of:
+
+- `base`: into the card itself. Adopted fields leave this target's override,
+  so the app keeps what it has.
+- `override`: into this target's override, so only this app keeps them
+- `ignore`: leave the library as it is and stop reporting them
+
+Changes to `character_book` can't be adopted; edit the lorebooks instead. To
+throw the app's changes away, push: a push overwrites them.
+
+If a plugin exits or times out while creating a card in an app, the push job
+fails rather than retrying, because the app may already have the card. Check
+the app before pushing again.
 
 ## Backup and restore
 

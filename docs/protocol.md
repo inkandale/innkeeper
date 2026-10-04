@@ -169,6 +169,52 @@ same way and waits a second, so don't add your own delay.
 {"jsonrpc": "2.0", "id": 3, "result": {"subject": "owner"}}
 ```
 
+### `push` and `pull`
+
+A target plugin sends cards to an app (`push`) and reads them back (`pull`).
+Cards cross as CCv3 in both directions; translate to and from the app's own
+format. Put app data that has no CCv3 field under `data.extensions.<plugin>`.
+
+**`target.describe`** takes no params and says what the app stores. The core
+calls it before every push and check, so the answer may depend on the
+instance's config. Don't contact the app to answer it.
+
+| Field | Meaning |
+|---|---|
+| `fields` | The CCv3 `data` keys the app keeps, such as `name`, `description`, `first_mes`. List `character_book` if the app keeps embedded lorebooks |
+| `pull` | `true` if `target.get` works. Needs the `pull` capability |
+| `update` | `true` if a `target.put` with a `remote_id` changes that card. `false` for an app where every put makes a new copy |
+| `delete` | Reserved. The core doesn't delete cards in apps yet |
+| `lorebooks` | `embedded`: linked lorebooks arrive as `data.character_book`. `standalone`: the app keeps lorebooks on their own; `target.put_lorebook` and `target.get_lorebook` are reserved for this, and until they exist the core sends cards without lorebooks. `none`: the app has no lorebooks |
+
+The core compares only `fields` when it looks for changes made in the app, and
+warns the owner before a push that would drop content in other fields.
+
+**`target.put`** creates or updates one card.
+
+| Param | Meaning |
+|---|---|
+| `card` | The CCv3 card, with this instance's override applied |
+| `remote_id` | Your ID for the app's copy. Absent for a new card, or when `update` is `false` |
+| `avatar` | Absolute path to the avatar image in a blob store, or absent. Read it; don't move or change it |
+
+Reply with `remote_id`. If the app no longer has `remote_id`, reply with error
+`-32004`; the core then sends the card again as a new one.
+
+**`target.get`** reads one card back.
+
+| Param | Meaning |
+|---|---|
+| `remote_id` | The ID from `target.put` |
+
+Reply with `card`, the app's copy as a CCv3 card. If the app no longer has
+it, reply with error `-32004`.
+
+```json
+{"jsonrpc": "2.0", "id": 4, "method": "target.put", "params": {"card": {"spec": "chara_card_v3", "spec_version": "3.0", "data": {"name": "Brakka"}}}}
+{"jsonrpc": "2.0", "id": 4, "result": {"remote_id": "42"}}
+```
+
 ## Checking a plugin
 
 ```bash
@@ -179,6 +225,8 @@ It loads the manifest, then checks that:
 
 - the `initialize` reply matches the manifest
 - an unknown method returns `-32601` within 5 seconds
+- a `push` plugin's `target.describe` reply is valid, and claims `pull` only
+  if the manifest declares it
 - `shutdown` gets a reply within 5 seconds
 - the plugin exits after `shutdown`, rather than having exited earlier
 

@@ -22,7 +22,7 @@ const usage = `usage:
 API commands (read INNKEEPER_URL and INNKEEPER_TOKEN):
   innkeeper call <method> <path> [json]
   innkeeper import <instance-id> [params-json]
-  innkeeper export <card-id> [file]
+  innkeeper export <card-id> [file [format]]
   innkeeper bulk archive|unarchive <query-json>
   innkeeper push <instance-id> <card-id>|<query-json> [--new-copy]
   innkeeper jobs [show|cancel|watch <job-id>]

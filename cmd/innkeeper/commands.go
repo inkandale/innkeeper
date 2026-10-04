@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -121,20 +123,28 @@ func pushCmd(args []string) error {
 	return startJob("/cards/"+card+"/push", map[string]any{"instance_id": json.Number(inst), "new_copy": newCopy})
 }
 
-// export runs `innkeeper export CARD_ID [FILE]`.
+// export runs `innkeeper export <card-id> [file [format]]`. A .png file
+// defaults to png, anything else to json.
 func export(args []string) error {
-	if len(args) < 1 || len(args) > 2 {
+	if len(args) < 1 || len(args) > 3 {
 		return errors.New(usage)
 	}
 	id, err := parseID(args[0])
 	if err != nil {
 		return err
 	}
+	format := "json"
+	switch {
+	case len(args) == 3:
+		format = args[2]
+	case len(args) == 2 && strings.EqualFold(filepath.Ext(args[1]), ".png"):
+		format = "png"
+	}
 	c, err := newClient()
 	if err != nil {
 		return err
 	}
-	out, err := c.do(context.Background(), "GET", "/cards/"+id+"/export", nil)
+	out, err := c.do(context.Background(), "GET", "/cards/"+id+"/export?format="+url.QueryEscape(format), nil)
 	if err != nil {
 		return err
 	}

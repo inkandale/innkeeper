@@ -155,7 +155,8 @@ func (r *Registry) CreateInstance(ctx context.Context, n NewInstance) (int64, er
 }
 
 // UpdateInstance applies e and clears the instance's broken state, so the
-// next call starts its plugin with the new settings.
+// next call starts its plugin with the new settings. Changing the owner,
+// config, or secrets also ends the instance's login sessions.
 func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -209,6 +210,11 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 		WHERE id = $1`, id, e.Name, config, sealed, e.OwnerSubject != nil, owner)
 	if err != nil {
 		return writeErr(err)
+	}
+	if e.OwnerSubject != nil || e.Config != nil || e.Secrets != nil {
+		if _, err := tx.Exec(ctx, `DELETE FROM session WHERE instance_id = $1`, id); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }

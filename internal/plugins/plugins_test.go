@@ -228,3 +228,44 @@ func TestDeleteInstance(t *testing.T) {
 		t.Fatalf("second delete: %v", err)
 	}
 }
+
+func TestUpdateInstanceEndsSessions(t *testing.T) {
+	ctx := context.Background()
+	reg, _ := newRegistry(t)
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: "Fake"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessions := func() int {
+		var n int
+		if err := reg.pool.QueryRow(ctx, `SELECT count(*) FROM session WHERE instance_id = $1`, id).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	addSession := func() {
+		if _, err := reg.pool.Exec(ctx, `INSERT INTO session (token_hash, instance_id, subject, expires_at)
+			VALUES ('h', $1, 'owner', now() + interval '1 day') ON CONFLICT DO NOTHING`, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	name, owner, key := "Other", "owner", "k"
+	edits := map[string]InstanceEdit{
+		"owner":   {OwnerSubject: &owner},
+		"config":  {Config: map[string]any{"a": 1}},
+		"secrets": {Secrets: map[string]*string{"api_key": &key}},
+	}
+	addSession()
+	if err := reg.UpdateInstance(ctx, id, InstanceEdit{Name: &name}); err != nil || sessions() != 1 {
+		t.Fatalf("name-only edit: sessions = %d, err = %v", sessions(), err)
+	}
+	for what, e := range edits {
+		addSession()
+		if err := reg.UpdateInstance(ctx, id, e); err != nil {
+			t.Fatal(err)
+		}
+		if n := sessions(); n != 0 {
+			t.Fatalf("%s edit left %d sessions", what, n)
+		}
+	}
+}

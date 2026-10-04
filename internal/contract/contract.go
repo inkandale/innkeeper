@@ -52,8 +52,17 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	// handling it.
 	if errors.Is(err, protocol.ErrClosed) || !p.Alive() {
 		_ = p.Stop()
-		return append(results, Result{"exits after shutdown", errors.New("plugin had already exited before shutdown")}), nil
+		dead := errors.New("plugin had already exited before shutdown")
+		return append(results, Result{"answers shutdown", dead}, Result{"exits after shutdown", dead}), nil
 	}
+
+	callCtx, cancel = context.WithTimeout(ctx, callTimeout)
+	err = p.Call(callCtx, protocol.MethodShutdown, nil, nil)
+	cancel()
+	if errors.Is(err, context.DeadlineExceeded) {
+		err = fmt.Errorf("no response within %s", callTimeout)
+	}
+	results = append(results, Result{"answers shutdown", err})
 	return append(results, Result{"exits after shutdown", p.Stop()}), nil
 }
 

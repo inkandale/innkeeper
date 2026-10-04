@@ -8,13 +8,14 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
 func main() {
-	mode := flag.String("mode", "", "bad-protocol | wrong-caps | bad-errors | silent | crash-unknown | no-shutdown")
+	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | bad-errors | silent | crash-unknown | no-shutdown")
 	flag.Parse()
 
 	var conn *protocol.Conn
@@ -32,6 +33,8 @@ func main() {
 				res.Protocol = 99
 			case "wrong-caps":
 				res.Capabilities = []string{"push"}
+			case "wrong-version":
+				res.Version = "9.9.9"
 			}
 			return res, nil
 		case protocol.MethodShutdown:
@@ -41,6 +44,13 @@ func main() {
 			return nil, nil
 		case "echo":
 			return params, nil
+		case "shout":
+			fmt.Fprintf(os.Stderr, "%s\nafter\n", strings.Repeat("x", 100_000))
+			return nil, nil
+		case "env":
+			var name string
+			_ = json.Unmarshal(params, &name)
+			return os.Getenv(name), nil
 		case "callback":
 			var out string
 			err := conn.Call(ctx, "core.ping", nil, &out)

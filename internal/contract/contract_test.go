@@ -28,8 +28,8 @@ func TestWellBehavedPluginPasses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 3 {
-		t.Fatalf("ran %d checks, want 3", len(results))
+	if len(results) != 4 {
+		t.Fatalf("ran %d checks, want 4", len(results))
 	}
 	if f := failed(results); len(f) > 0 {
 		t.Fatalf("checks failed: %v", f)
@@ -45,6 +45,7 @@ func TestMisbehavingPluginsFail(t *testing.T) {
 		{"silent", "unknown method returns -32601", "no response within"},
 		{"crash-unknown", "unknown method returns -32601", "plugin exited"},
 		{"crash-unknown", "exits after shutdown", "already exited"},
+		{"no-shutdown", "answers shutdown", "no response within"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.mode+"/"+tt.check, func(t *testing.T) {

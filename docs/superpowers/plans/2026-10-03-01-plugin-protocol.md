@@ -30,7 +30,7 @@ Each later plan adds that capability's methods to `docs/protocol.md` and its che
 
 Constraints this plan leaves for later plans:
 
-- **Plan 3:** a plugin crash surfaces to callers as `protocol.ErrClosed`. Treat it as retryable, so the job is re-queued and resumes from its checkpoint. Re-queue with a backoff delay: the Manager restarts a crashed plugin on the next call with no backoff of its own.
+- **Plan 3:** a plugin crash surfaces to callers as `protocol.ErrClosed`. Treat it as retryable, so the job is re-queued and resumes from its checkpoint. Re-queue with a backoff delay: the Manager restarts a crashed plugin on the next call with no backoff of its own. The spec's "a plugin that fails to start or has the wrong protocol version is marked broken" is also unbuilt: `Manager` retries `Start` on every call. Record start failures on the plugin instance and stop calling it until the owner fixes it.
 - **Plan 4 (instance config editing):** a running plugin keeps the config and secrets it was started with. Add `Manager.Stop(id)` on top of `stopWhere` and call it when an instance's config or secrets are saved.
 - **Plans 3 and 5:** notification handlers (such as the core's `emit.card` handler) must not call back into the plugin on the same connection; they run on the reading goroutine.
 - **Container image:** run with an init process (compose `init: true`, or tini as the entrypoint). The host kills plugin process groups, and if `innkeeper` is PID 1 the orphaned grandchildren become zombies it never reaps.
@@ -855,8 +855,9 @@ var Capabilities = []string{"import", "search", "push", "pull", "action", "enric
 
 var enrichmentTypes = []string{"text", "score", "list"}
 
-// Names become PostgreSQL schema names (plugin_<name>, with - as _): 41
-// characters keeps "plugin_" + name under Postgres's 63-byte limit.
+// Names become PostgreSQL schema and role names (plugin_<name>, with - as
+// _). 41 characters makes that 48 bytes, leaving headroom under Postgres's
+// 63-byte limit for suffixes.
 var namePattern = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
 
 const maxNameLen = 41
@@ -928,7 +929,7 @@ func (m *Manifest) Validate() error {
 	if len(m.Command) == 0 || m.Command[0] == "" {
 		errs = append(errs, errors.New("command is required"))
 	} else if m.Dir != "" && !filepath.IsAbs(m.Command[0]) && strings.Contains(m.Command[0], "/") {
-		if rel, err := filepath.Rel(m.Dir, m.CommandPath()); err != nil || strings.HasPrefix(rel, "..") {
+		if rel, err := filepath.Rel(m.Dir, m.CommandPath()); err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
 			errs = append(errs, fmt.Errorf("command %q is outside the plugin folder", m.Command[0]))
 		}
 	}
@@ -1003,7 +1004,7 @@ git commit -m "Add plugin manifest loading and handshake types"
 - Create: `internal/fakeplugin/main.go`
 - Create: `internal/testutil/fakeplugin.go`
 
-The fake plugin is the test double for every host and contract test. It is a real process speaking the real protocol. `-mode` makes it misbehave: `bad-protocol` reports protocol 99, `wrong-caps` reports fewer capabilities than its manifest, `bad-errors` answers unknown methods with success, `silent` never answers them, `crash-unknown` exits on them, `no-shutdown` never exits. A `freeze` notification makes it stop reading stdin, like a hung plugin.
+The fake plugin is the test double for every host and contract test. It is a real process speaking the real protocol. `-mode` makes it misbehave: `bad-protocol` reports protocol 99, `wrong-caps` reports fewer capabilities than its manifest, `wrong-version` reports another version, `bad-errors` answers unknown methods with success, `silent` never answers them, `crash-unknown` exits on them, `no-shutdown` never exits. A `freeze` notification makes it stop reading stdin, like a hung plugin.
 
 - [ ] **Step 1: Write the fake plugin**
 
@@ -1020,13 +1021,14 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
 func main() {
-	mode := flag.String("mode", "", "bad-protocol | wrong-caps | bad-errors | silent | crash-unknown | no-shutdown")
+	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | bad-errors | silent | crash-unknown | no-shutdown")
 	flag.Parse()
 
 	var conn *protocol.Conn
@@ -1044,6 +1046,8 @@ func main() {
 				res.Protocol = 99
 			case "wrong-caps":
 				res.Capabilities = []string{"push"}
+			case "wrong-version":
+				res.Version = "9.9.9"
 			}
 			return res, nil
 		case protocol.MethodShutdown:
@@ -1053,6 +1057,13 @@ func main() {
 			return nil, nil
 		case "echo":
 			return params, nil
+		case "shout":
+			fmt.Fprintf(os.Stderr, "%s\nafter\n", strings.Repeat("x", 100_000))
+			return nil, nil
+		case "env":
+			var name string
+			_ = json.Unmarshal(params, &name)
+			return os.Getenv(name), nil
 		case "callback":
 			var out string
 			err := conn.Call(ctx, "core.ping", nil, &out)
@@ -1169,6 +1180,7 @@ Create `internal/pluginhost/process_test.go`:
 package pluginhost
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -1177,6 +1189,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1237,6 +1250,62 @@ func TestPluginCallsBackIntoCore(t *testing.T) {
 	}
 }
 
+func TestPluginGetsMinimalEnvironment(t *testing.T) {
+	t.Setenv("INNKEEPER_TEST_SECRET", "leak")
+	p, err := start(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]string{"INNKEEPER_TEST_SECRET": "", "PATH": os.Getenv("PATH")} {
+		var got string
+		if err := p.Call(context.Background(), "env", name, &got); err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("plugin sees %s=%q, want %q", name, got, want)
+		}
+	}
+}
+
+func TestStderrLoggedAfterLongLine(t *testing.T) {
+	var buf syncBuffer
+	m, err := protocol.LoadManifest(testutil.FakePlugin(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := Start(context.Background(), m, protocol.InitializeParams{}, core, slog.New(slog.NewTextHandler(&buf, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.Stop() })
+	if err := p.Call(context.Background(), "shout", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(2 * time.Second); !strings.Contains(buf.String(), "msg=after"); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("stderr line after a 100KB line was not logged")
+		}
+	}
+}
+
+// syncBuffer is a bytes.Buffer safe for the logger and the test to share.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
 func TestRetryableErrorReachesCaller(t *testing.T) {
 	p, err := start(t)
 	if err != nil {
@@ -1253,6 +1322,7 @@ func TestStartRejectsMismatchedPlugin(t *testing.T) {
 	tests := []struct{ mode, wantErr string }{
 		{"bad-protocol", "speaks protocol 99"},
 		{"wrong-caps", "reported capabilities [push]"},
+		{"wrong-version", `reported version "9.9.9"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.mode, func(t *testing.T) {
@@ -1393,6 +1463,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -1405,6 +1476,10 @@ const initTimeout = 10 * time.Second
 // stopTimeout is how long a plugin gets to exit after shutdown before it is
 // killed. A variable so tests can shorten it.
 var stopTimeout = 5 * time.Second
+
+// pluginEnv is the environment plugins inherit; nothing else from the core's
+// environment, such as its secrets key or database URL, reaches them.
+var pluginEnv = []string{"PATH", "HOME", "LANG", "TZ", "TMPDIR"}
 
 // Process is one running plugin.
 type Process struct {
@@ -1423,16 +1498,21 @@ type Process struct {
 func Start(ctx context.Context, m *protocol.Manifest, params protocol.InitializeParams, core protocol.Handler, log *slog.Logger) (*Process, error) {
 	cmd := exec.Command(m.CommandPath(), m.Command[1:]...)
 	cmd.Dir = m.Dir
+	cmd.Env = environ()
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
 	}
 	stdout, stdoutW, err := os.Pipe()
 	if err != nil {
+		stdin.Close()
 		return nil, err
 	}
 	stderr, stderrW, err := os.Pipe()
 	if err != nil {
+		stdin.Close()
+		stdout.Close()
+		stdoutW.Close()
 		return nil, err
 	}
 	cmd.Stdout, cmd.Stderr = stdoutW, stderrW
@@ -1462,6 +1542,16 @@ func Start(ctx context.Context, m *protocol.Manifest, params protocol.Initialize
 	initCtx, cancel := context.WithTimeout(ctx, initTimeout)
 	defer cancel()
 	params.Protocol = protocol.Version
+	// Send {} rather than null so plugins can index these without checks.
+	if params.Config == nil {
+		params.Config = map[string]any{}
+	}
+	if params.Secrets == nil {
+		params.Secrets = map[string]string{}
+	}
+	if params.BlobStores == nil {
+		params.BlobStores = map[string]string{}
+	}
 	if err := p.conn.Call(initCtx, protocol.MethodInitialize, params, &p.Info); err != nil {
 		p.kill()
 		return nil, fmt.Errorf("initialize plugin %s: %w", m.Name, err)
@@ -1478,12 +1568,17 @@ func Start(ctx context.Context, m *protocol.Manifest, params protocol.Initialize
 func (p *Process) watch(stdout, stderr *os.File) {
 	var background sync.WaitGroup
 	background.Go(func() {
-		s := bufio.NewScanner(stderr)
-		for s.Scan() {
-			p.log.Info(s.Text(), "stream", "stderr")
+		// Lines longer than the buffer are logged in pieces.
+		r := bufio.NewReaderSize(stderr, 64<<10)
+		for {
+			line, err := r.ReadSlice('\n')
+			if len(line) > 0 {
+				p.log.Info(strings.TrimSuffix(string(line), "\n"), "stream", "stderr")
+			}
+			if err != nil && err != bufio.ErrBufferFull {
+				return
+			}
 		}
-		// Keep draining after an over-long line so the plugin never blocks.
-		_, _ = io.Copy(io.Discard, stderr)
 	})
 
 	background.Go(func() {
@@ -1511,6 +1606,9 @@ func checkInfo(m *protocol.Manifest, info protocol.InitializeResult) error {
 	}
 	if info.Name != m.Name {
 		return fmt.Errorf("plugin %s reported name %q", m.Name, info.Name)
+	}
+	if info.Version != m.Version {
+		return fmt.Errorf("plugin %s reported version %q; manifest declares %q", m.Name, info.Version, m.Version)
 	}
 	got, want := slices.Sorted(slices.Values(info.Capabilities)), slices.Sorted(slices.Values(m.Capabilities))
 	if !slices.Equal(got, want) {
@@ -1562,6 +1660,16 @@ func (p *Process) Stop() error {
 // ponytail: a child that leaves the group (setsid) and keeps stdout open
 // still blocks done; daemons normally point stdio at /dev/null.
 func (p *Process) killGroup() { _ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL) }
+
+func environ() []string {
+	var env []string
+	for _, k := range pluginEnv {
+		if v, ok := os.LookupEnv(k); ok {
+			env = append(env, k+"="+v)
+		}
+	}
+	return env
+}
 
 func (p *Process) kill() {
 	p.killGroup()
@@ -1894,8 +2002,8 @@ func TestWellBehavedPluginPasses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 3 {
-		t.Fatalf("ran %d checks, want 3", len(results))
+	if len(results) != 4 {
+		t.Fatalf("ran %d checks, want 4", len(results))
 	}
 	if f := failed(results); len(f) > 0 {
 		t.Fatalf("checks failed: %v", f)
@@ -1911,6 +2019,7 @@ func TestMisbehavingPluginsFail(t *testing.T) {
 		{"silent", "unknown method returns -32601", "no response within"},
 		{"crash-unknown", "unknown method returns -32601", "plugin exited"},
 		{"crash-unknown", "exits after shutdown", "already exited"},
+		{"no-shutdown", "answers shutdown", "no response within"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.mode+"/"+tt.check, func(t *testing.T) {
@@ -1994,8 +2103,17 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	// handling it.
 	if errors.Is(err, protocol.ErrClosed) || !p.Alive() {
 		_ = p.Stop()
-		return append(results, Result{"exits after shutdown", errors.New("plugin had already exited before shutdown")}), nil
+		dead := errors.New("plugin had already exited before shutdown")
+		return append(results, Result{"answers shutdown", dead}, Result{"exits after shutdown", dead}), nil
 	}
+
+	callCtx, cancel = context.WithTimeout(ctx, callTimeout)
+	err = p.Call(callCtx, protocol.MethodShutdown, nil, nil)
+	cancel()
+	if errors.Is(err, context.DeadlineExceeded) {
+		err = fmt.Errorf("no response within %s", callTimeout)
+	}
+	results = append(results, Result{"answers shutdown", err})
 	return append(results, Result{"exits after shutdown", p.Stop()}), nil
 }
 
@@ -2163,11 +2281,16 @@ Protocol version 1. The design behind it is in
 
 - The core starts the manifest's `command` with the plugin folder as its
   working directory.
+- The plugin's environment holds only `PATH`, `HOME`, `LANG`, `TZ`, and
+  `TMPDIR`. Everything it needs from the core arrives in `initialize`.
 - Messages are JSON-RPC 2.0, one JSON value per line, on stdin and stdout.
-  Write nothing else to stdout.
+  Write nothing else to stdout: invalid JSON there gets the plugin killed.
 - Write logs to stderr. The core logs each line under the plugin's name.
 - Both sides send requests. Answer every request with the same `id`, which
   may be a number or a string.
+- The core may send several requests without waiting for replies, including
+  while the plugin is waiting on its own call to the core. Read stdin
+  continuously and match responses to your requests by `id`.
 - The core handles requests concurrently and notifications in the order they
   arrive, so a plugin can rely on the order of what it sends.
 
@@ -2180,17 +2303,17 @@ Each plugin folder has a `plugin.toml`:
 | `name` | yes | Lowercase words of letters and digits joined by single hyphens, starting with a letter; at most 41 characters |
 | `version` | yes | The plugin's own version |
 | `protocol` | yes | Protocol version; must be `1` |
-| `command` | yes | Program and arguments. A relative path containing `/` is inside the plugin folder and can't leave it; an absolute path is used as-is; a bare name is found on `PATH` |
+| `command` | yes | Program and arguments. Use `./name` for a program in the plugin folder: a relative path containing `/` is inside the folder and can't leave it, an absolute path is used as-is, and a bare name is found on `PATH` |
 | `capabilities` | yes | Any of `import`, `search`, `push`, `pull`, `action`, `enrich`, `codec`, `auth` |
 | `secrets` | no | Names of secrets the owner enters for each instance, in lowercase `snake_case` |
 | `config` | no | JSON Schema for instance settings; the UI renders a form from it |
-| `enrichments` | no | Keys the plugin writes, in lowercase `snake_case`; `type` is `text`, `score` (needs `range = [low, high]`), or `list` |
+| `enrichments` | no | Keys the plugin writes, in lowercase `snake_case`. Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list` |
 
 Unknown keys are errors.
 
 ## Lifecycle
 
-1. **`initialize`**: the core's first request.
+1. **`initialize`**: the core's first request. Answer within 10 seconds.
 
    | Param | Meaning |
    |---|---|
@@ -2212,6 +2335,11 @@ Unknown keys are errors.
 
 3. **`shutdown`**: reply, then exit when stdin closes. The core kills a
    plugin that is still running 5 seconds after `shutdown`.
+
+The plugin runs in its own process group and receives no signals. Exit when
+stdin closes, which also happens when the core itself exits. When the plugin
+exits, closes stdout, or is stopped, the core kills its whole process group,
+including any child processes.
 
 The core starts a plugin on first use, stops it when idle, and starts it
 again after a crash. The API and the worker may each run the same instance,
@@ -2247,6 +2375,7 @@ It loads the manifest, then checks that:
 
 - the `initialize` reply matches the manifest
 - an unknown method returns `-32601` within 5 seconds
+- `shutdown` gets a reply within 5 seconds
 - the plugin exits after `shutdown`, rather than having exited earlier
 
 It exits non-zero if any check fails.

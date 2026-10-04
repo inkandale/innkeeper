@@ -1,6 +1,7 @@
 package pluginhost
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -69,6 +71,62 @@ func TestPluginCallsBackIntoCore(t *testing.T) {
 	}
 }
 
+func TestPluginGetsMinimalEnvironment(t *testing.T) {
+	t.Setenv("INNKEEPER_TEST_SECRET", "leak")
+	p, err := start(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]string{"INNKEEPER_TEST_SECRET": "", "PATH": os.Getenv("PATH")} {
+		var got string
+		if err := p.Call(context.Background(), "env", name, &got); err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("plugin sees %s=%q, want %q", name, got, want)
+		}
+	}
+}
+
+func TestStderrLoggedAfterLongLine(t *testing.T) {
+	var buf syncBuffer
+	m, err := protocol.LoadManifest(testutil.FakePlugin(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := Start(context.Background(), m, protocol.InitializeParams{}, core, slog.New(slog.NewTextHandler(&buf, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.Stop() })
+	if err := p.Call(context.Background(), "shout", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(2 * time.Second); !strings.Contains(buf.String(), "msg=after"); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("stderr line after a 100KB line was not logged")
+		}
+	}
+}
+
+// syncBuffer is a bytes.Buffer safe for the logger and the test to share.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
 func TestRetryableErrorReachesCaller(t *testing.T) {
 	p, err := start(t)
 	if err != nil {
@@ -85,6 +143,7 @@ func TestStartRejectsMismatchedPlugin(t *testing.T) {
 	tests := []struct{ mode, wantErr string }{
 		{"bad-protocol", "speaks protocol 99"},
 		{"wrong-caps", "reported capabilities [push]"},
+		{"wrong-version", `reported version "9.9.9"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.mode, func(t *testing.T) {

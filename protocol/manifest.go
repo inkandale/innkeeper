@@ -16,8 +16,9 @@ var Capabilities = []string{"import", "search", "push", "pull", "action", "enric
 
 var enrichmentTypes = []string{"text", "score", "list"}
 
-// Names become PostgreSQL schema names (plugin_<name>, with - as _): 41
-// characters keeps "plugin_" + name under Postgres's 63-byte limit.
+// Names become PostgreSQL schema and role names (plugin_<name>, with - as
+// _). 41 characters makes that 48 bytes, leaving headroom under Postgres's
+// 63-byte limit for suffixes.
 var namePattern = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
 
 const maxNameLen = 41
@@ -89,7 +90,7 @@ func (m *Manifest) Validate() error {
 	if len(m.Command) == 0 || m.Command[0] == "" {
 		errs = append(errs, errors.New("command is required"))
 	} else if m.Dir != "" && !filepath.IsAbs(m.Command[0]) && strings.Contains(m.Command[0], "/") {
-		if rel, err := filepath.Rel(m.Dir, m.CommandPath()); err != nil || strings.HasPrefix(rel, "..") {
+		if rel, err := filepath.Rel(m.Dir, m.CommandPath()); err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
 			errs = append(errs, fmt.Errorf("command %q is outside the plugin folder", m.Command[0]))
 		}
 	}

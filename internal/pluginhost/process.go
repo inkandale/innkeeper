@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -23,6 +24,10 @@ const initTimeout = 10 * time.Second
 // stopTimeout is how long a plugin gets to exit after shutdown before it is
 // killed. A variable so tests can shorten it.
 var stopTimeout = 5 * time.Second
+
+// pluginEnv is the environment plugins inherit; nothing else from the core's
+// environment, such as its secrets key or database URL, reaches them.
+var pluginEnv = []string{"PATH", "HOME", "LANG", "TZ", "TMPDIR"}
 
 // Process is one running plugin.
 type Process struct {
@@ -41,16 +46,21 @@ type Process struct {
 func Start(ctx context.Context, m *protocol.Manifest, params protocol.InitializeParams, core protocol.Handler, log *slog.Logger) (*Process, error) {
 	cmd := exec.Command(m.CommandPath(), m.Command[1:]...)
 	cmd.Dir = m.Dir
+	cmd.Env = environ()
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
 	}
 	stdout, stdoutW, err := os.Pipe()
 	if err != nil {
+		stdin.Close()
 		return nil, err
 	}
 	stderr, stderrW, err := os.Pipe()
 	if err != nil {
+		stdin.Close()
+		stdout.Close()
+		stdoutW.Close()
 		return nil, err
 	}
 	cmd.Stdout, cmd.Stderr = stdoutW, stderrW
@@ -80,6 +90,16 @@ func Start(ctx context.Context, m *protocol.Manifest, params protocol.Initialize
 	initCtx, cancel := context.WithTimeout(ctx, initTimeout)
 	defer cancel()
 	params.Protocol = protocol.Version
+	// Send {} rather than null so plugins can index these without checks.
+	if params.Config == nil {
+		params.Config = map[string]any{}
+	}
+	if params.Secrets == nil {
+		params.Secrets = map[string]string{}
+	}
+	if params.BlobStores == nil {
+		params.BlobStores = map[string]string{}
+	}
 	if err := p.conn.Call(initCtx, protocol.MethodInitialize, params, &p.Info); err != nil {
 		p.kill()
 		return nil, fmt.Errorf("initialize plugin %s: %w", m.Name, err)
@@ -96,12 +116,17 @@ func Start(ctx context.Context, m *protocol.Manifest, params protocol.Initialize
 func (p *Process) watch(stdout, stderr *os.File) {
 	var background sync.WaitGroup
 	background.Go(func() {
-		s := bufio.NewScanner(stderr)
-		for s.Scan() {
-			p.log.Info(s.Text(), "stream", "stderr")
+		// Lines longer than the buffer are logged in pieces.
+		r := bufio.NewReaderSize(stderr, 64<<10)
+		for {
+			line, err := r.ReadSlice('\n')
+			if len(line) > 0 {
+				p.log.Info(strings.TrimSuffix(string(line), "\n"), "stream", "stderr")
+			}
+			if err != nil && err != bufio.ErrBufferFull {
+				return
+			}
 		}
-		// Keep draining after an over-long line so the plugin never blocks.
-		_, _ = io.Copy(io.Discard, stderr)
 	})
 
 	background.Go(func() {
@@ -129,6 +154,9 @@ func checkInfo(m *protocol.Manifest, info protocol.InitializeResult) error {
 	}
 	if info.Name != m.Name {
 		return fmt.Errorf("plugin %s reported name %q", m.Name, info.Name)
+	}
+	if info.Version != m.Version {
+		return fmt.Errorf("plugin %s reported version %q; manifest declares %q", m.Name, info.Version, m.Version)
 	}
 	got, want := slices.Sorted(slices.Values(info.Capabilities)), slices.Sorted(slices.Values(m.Capabilities))
 	if !slices.Equal(got, want) {
@@ -180,6 +208,16 @@ func (p *Process) Stop() error {
 // ponytail: a child that leaves the group (setsid) and keeps stdout open
 // still blocks done; daemons normally point stdio at /dev/null.
 func (p *Process) killGroup() { _ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL) }
+
+func environ() []string {
+	var env []string
+	for _, k := range pluginEnv {
+		if v, ok := os.LookupEnv(k); ok {
+			env = append(env, k+"="+v)
+		}
+	}
+	return env
+}
 
 func (p *Process) kill() {
 	p.killGroup()

@@ -17,6 +17,7 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
+	"github.com/davidgibbons/innkeeper/internal/secrets"
 	"github.com/davidgibbons/innkeeper/internal/testdb"
 	"github.com/davidgibbons/innkeeper/internal/testutil"
 	"github.com/davidgibbons/innkeeper/protocol"
@@ -45,7 +46,11 @@ func setup(t *testing.T, args ...string) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reg := plugins.New(pool, map[string]*protocol.Manifest{"fake": m}, store)
+	box, err := secrets.New(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := plugins.New(pool, map[string]*protocol.Manifest{"fake": m}, store, box)
 	im := New(lib, reg, quiet)
 	mgr := pluginhost.NewManager(im.Handle, time.Minute, quiet)
 	t.Cleanup(mgr.Close)
@@ -64,7 +69,7 @@ func setup(t *testing.T, args ...string) *env {
 		}
 	})
 
-	inst, err := reg.CreateInstance(ctx, "fake", "Fake", nil)
+	inst, err := reg.CreateInstance(ctx, plugins.NewInstance{Plugin: "fake", Name: "Fake"})
 	if err != nil {
 		t.Fatal(err)
 	}

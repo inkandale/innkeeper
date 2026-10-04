@@ -22,6 +22,7 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
+	"github.com/davidgibbons/innkeeper/internal/secrets"
 )
 
 const blobGCKind = "blob.gc"
@@ -40,6 +41,10 @@ func worker() error {
 			return errors.New("INNKEEPER_WORKER_CONCURRENCY must be a positive number")
 		}
 		concurrency = n
+	}
+	box, err := secrets.FromEnv()
+	if err != nil {
+		return err
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -66,7 +71,7 @@ func worker() error {
 	if err != nil {
 		return err
 	}
-	im := importer.New(lib, plugins.New(pool, manifests, store), log)
+	im := importer.New(lib, plugins.New(pool, manifests, store, box), log)
 	mgr := pluginhost.NewManager(im.Handle, 5*time.Minute, log)
 	defer mgr.Close()
 	im.Plugins = mgr

@@ -12,7 +12,9 @@ import (
 // Instance is a configured plugin: what to run and what to initialize it
 // with.
 type Instance struct {
-	ID       string
+	ID string
+	// Version changes whenever the instance's settings do.
+	Version  string
 	Manifest *protocol.Manifest
 	Params   protocol.InitializeParams
 }

@@ -7,15 +7,20 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
+	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/davidgibbons/innkeeper/internal/blobstore"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
+	"github.com/davidgibbons/innkeeper/internal/secrets"
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
@@ -24,7 +29,9 @@ var (
 	ErrUnknownPlugin = errors.New("plugin is not installed")
 	// ErrBroken means the instance's plugin failed to start. It stays broken
 	// until the owner changes the instance.
-	ErrBroken = errors.New("plugin instance is broken")
+	ErrBroken    = errors.New("plugin instance is broken")
+	ErrInvalid   = errors.New("invalid plugin instance")
+	ErrNameTaken = errors.New("plugin instance name already in use")
 )
 
 // LoadDir loads the manifest in each folder of dir. A folder with an invalid
@@ -59,35 +66,210 @@ type Registry struct {
 	pool      *pgxpool.Pool
 	manifests map[string]*protocol.Manifest
 	blobs     *blobstore.Store
+	box       *secrets.Box
 }
 
 // New returns a Registry for the installed plugins in manifests, whose
-// plugins write new blobs to blobs.
-func New(pool *pgxpool.Pool, manifests map[string]*protocol.Manifest, blobs *blobstore.Store) *Registry {
-	return &Registry{pool: pool, manifests: manifests, blobs: blobs}
+// plugins write new blobs to blobs. box seals instance secrets.
+func New(pool *pgxpool.Pool, manifests map[string]*protocol.Manifest, blobs *blobstore.Store, box *secrets.Box) *Registry {
+	return &Registry{pool: pool, manifests: manifests, blobs: blobs, box: box}
+}
+
+// Manifests returns the installed plugins by name.
+func (r *Registry) Manifests() map[string]*protocol.Manifest { return r.manifests }
+
+// InstanceInfo is an instance as the owner sees it. It names the secrets
+// that are set but never holds their values.
+type InstanceInfo struct {
+	ID           int64          `json:"id"`
+	Plugin       string         `json:"plugin"`
+	Name         string         `json:"name"`
+	Config       map[string]any `json:"config"`
+	Secrets      []string       `json:"secrets"`
+	OwnerSubject *string        `json:"owner_subject,omitempty"`
+	BrokenError  *string        `json:"broken_error,omitempty"`
+	BrokenAt     *time.Time     `json:"broken_at,omitempty"`
+	CreatedAt    time.Time      `json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+}
+
+// NewInstance is a new instance's settings.
+type NewInstance struct {
+	Plugin       string
+	Name         string
+	Config       map[string]any
+	Secrets      map[string]string
+	OwnerSubject *string
+}
+
+// InstanceEdit changes an instance. Nil fields stay as they are. A nil value
+// in Secrets removes that secret, and an empty OwnerSubject clears it.
+type InstanceEdit struct {
+	Name         *string
+	Config       map[string]any
+	Secrets      map[string]*string
+	OwnerSubject *string
+}
+
+func checkSecret(m *protocol.Manifest, name string) error {
+	if !slices.Contains(m.Secrets, name) {
+		return fmt.Errorf("%w: plugin %s has no secret %q", ErrInvalid, m.Name, name)
+	}
+	return nil
+}
+
+// writeErr maps constraint violations on plugin_instance.
+func writeErr(err error) error {
+	var pgErr *pgconn.PgError
+	switch {
+	case errors.As(err, &pgErr) && pgErr.Code == "23505":
+		return ErrNameTaken
+	case errors.As(err, &pgErr) && pgErr.Code == "23514":
+		return fmt.Errorf("%w: %s", ErrInvalid, pgErr.ConstraintName)
+	}
+	return err
 }
 
 // CreateInstance configures a new instance of an installed plugin.
-func (r *Registry) CreateInstance(ctx context.Context, plugin, name string, config map[string]any) (int64, error) {
-	if _, ok := r.manifests[plugin]; !ok {
-		return 0, fmt.Errorf("%w: %s", ErrUnknownPlugin, plugin)
+func (r *Registry) CreateInstance(ctx context.Context, n NewInstance) (int64, error) {
+	m, ok := r.manifests[n.Plugin]
+	if !ok {
+		return 0, fmt.Errorf("%w: %s", ErrUnknownPlugin, n.Plugin)
 	}
-	if config == nil {
-		config = map[string]any{}
+	for name := range n.Secrets {
+		if err := checkSecret(m, name); err != nil {
+			return 0, err
+		}
+	}
+	sealed, err := r.box.Seal(n.Secrets)
+	if err != nil {
+		return 0, err
+	}
+	if n.Config == nil {
+		n.Config = map[string]any{}
 	}
 	var id int64
-	err := r.pool.QueryRow(ctx, `INSERT INTO plugin_instance (plugin, name, config) VALUES ($1, $2, $3) RETURNING id`,
-		plugin, name, config).Scan(&id)
-	return id, err
+	err = r.pool.QueryRow(ctx, `INSERT INTO plugin_instance (plugin, name, config, secrets, owner_subject)
+		VALUES ($1, $2, $3, $4, $5) RETURNING id`, n.Plugin, n.Name, n.Config, sealed, n.OwnerSubject).Scan(&id)
+	return id, writeErr(err)
+}
+
+// UpdateInstance applies e and clears the instance's broken state, so the
+// next call starts its plugin with the new settings.
+func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var plugin string
+	var sealed []byte
+	err = tx.QueryRow(ctx, `SELECT plugin, secrets FROM plugin_instance WHERE id = $1 FOR UPDATE`, id).Scan(&plugin, &sealed)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if e.Secrets != nil {
+		m, ok := r.manifests[plugin]
+		if !ok {
+			return fmt.Errorf("%w: %s", ErrUnknownPlugin, plugin)
+		}
+		current, err := r.box.Open(sealed)
+		if err != nil {
+			return err
+		}
+		for name, v := range e.Secrets {
+			if v == nil {
+				delete(current, name)
+				continue
+			}
+			if err := checkSecret(m, name); err != nil {
+				return err
+			}
+			current[name] = *v
+		}
+		if sealed, err = r.box.Seal(current); err != nil {
+			return err
+		}
+	}
+	// An untyped nil sends SQL NULL, which keeps the current config.
+	var config any
+	if e.Config != nil {
+		config = e.Config
+	}
+	owner := ""
+	if e.OwnerSubject != nil {
+		owner = *e.OwnerSubject
+	}
+	_, err = tx.Exec(ctx, `UPDATE plugin_instance SET name = coalesce($2, name), config = coalesce($3, config),
+			secrets = $4, owner_subject = CASE WHEN $5 THEN nullif($6::text, '') ELSE owner_subject END,
+			broken_error = NULL, broken_at = NULL, updated_at = now()
+		WHERE id = $1`, id, e.Name, config, sealed, e.OwnerSubject != nil, owner)
+	if err != nil {
+		return writeErr(err)
+	}
+	return tx.Commit(ctx)
+}
+
+// DeleteInstance removes an instance. Its jobs stay, without an instance,
+// and logins through it end.
+func (r *Registry) DeleteInstance(ctx context.Context, id int64) error {
+	tag, err := r.pool.Exec(ctx, `DELETE FROM plugin_instance WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+const infoCols = `id, plugin, name, config, secrets, owner_subject, broken_error, broken_at, created_at, updated_at`
+
+func (r *Registry) scanInfo(row pgx.Row) (InstanceInfo, error) {
+	var i InstanceInfo
+	var sealed []byte
+	err := row.Scan(&i.ID, &i.Plugin, &i.Name, &i.Config, &sealed, &i.OwnerSubject,
+		&i.BrokenError, &i.BrokenAt, &i.CreatedAt, &i.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return i, ErrNotFound
+	}
+	if err != nil {
+		return i, err
+	}
+	s, err := r.box.Open(sealed)
+	if err != nil {
+		return i, err
+	}
+	i.Secrets = slices.Sorted(maps.Keys(s))
+	return i, nil
+}
+
+// GetInstance returns one instance's settings, without secret values.
+func (r *Registry) GetInstance(ctx context.Context, id int64) (InstanceInfo, error) {
+	return r.scanInfo(r.pool.QueryRow(ctx, `SELECT `+infoCols+` FROM plugin_instance WHERE id = $1`, id))
+}
+
+// ListInstances returns every instance, oldest first.
+func (r *Registry) ListInstances(ctx context.Context) ([]InstanceInfo, error) {
+	rows, err := r.pool.Query(ctx, `SELECT `+infoCols+` FROM plugin_instance ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (InstanceInfo, error) { return r.scanInfo(row) })
 }
 
 // Instance returns what the plugin host needs to run an instance.
 func (r *Registry) Instance(ctx context.Context, id int64) (pluginhost.Instance, error) {
 	var plugin string
 	var config map[string]any
+	var sealed []byte
 	var broken *string
-	err := r.pool.QueryRow(ctx, `SELECT plugin, config, broken_error FROM plugin_instance WHERE id = $1`, id).
-		Scan(&plugin, &config, &broken)
+	var updated time.Time
+	err := r.pool.QueryRow(ctx, `SELECT plugin, config, secrets, broken_error, updated_at FROM plugin_instance WHERE id = $1`, id).
+		Scan(&plugin, &config, &sealed, &broken, &updated)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return pluginhost.Instance{}, ErrNotFound
 	}
@@ -101,16 +283,21 @@ func (r *Registry) Instance(ctx context.Context, id int64) (pluginhost.Instance,
 	if !ok {
 		return pluginhost.Instance{}, fmt.Errorf("%w: %s", ErrUnknownPlugin, plugin)
 	}
+	secrets, err := r.box.Open(sealed)
+	if err != nil {
+		return pluginhost.Instance{}, err
+	}
 	if err := os.MkdirAll(r.blobs.TmpDir(), 0o755); err != nil {
 		return pluginhost.Instance{}, err
 	}
-	// ponytail: no secrets or plugin database role yet; plan 4 adds
-	// encrypted secrets, and the archive catalog needs the role.
+	// ponytail: no plugin database role yet; the archive catalog needs it.
 	return pluginhost.Instance{
 		ID:       strconv.FormatInt(id, 10),
+		Version:  strconv.FormatInt(updated.UnixMicro(), 10),
 		Manifest: m,
 		Params: protocol.InitializeParams{
 			Config:     config,
+			Secrets:    secrets,
 			BlobStores: map[string]string{r.blobs.Name: r.blobs.Root},
 			BlobTmp:    r.blobs.TmpDir(),
 		},

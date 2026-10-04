@@ -51,6 +51,7 @@ func (l *Library) CardTags(ctx context.Context, cardID int64) ([]string, error) 
 	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
+// Collection is a named group of cards. A card can be in many.
 type Collection struct {
 	ID          int64     `json:"id"`
 	Name        string    `json:"name"`

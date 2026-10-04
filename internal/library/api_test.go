@@ -70,6 +70,19 @@ func TestCollectionManagement(t *testing.T) {
 	if err := lib.AddToCollection(ctx, c.ID, card); err != nil {
 		t.Fatal(err)
 	}
+	other, err := lib.CreateCollection(ctx, "Other", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lib.UpdateCollection(ctx, other.ID, &c.Name, nil); !errors.Is(err, ErrNameTaken) {
+		t.Fatalf("rename to taken name: %v", err)
+	}
+	if _, err := lib.CreateCollection(ctx, "", ""); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("empty name: %v", err)
+	}
+	if err := lib.DeleteCollection(ctx, other.ID); err != nil {
+		t.Fatal(err)
+	}
 	name, desc := "Best", "The best ones"
 	if _, err := lib.UpdateCollection(ctx, c.ID, &name, &desc); err != nil {
 		t.Fatal(err)
@@ -110,6 +123,9 @@ func TestOpenBlob(t *testing.T) {
 	}
 	if _, _, err := lib.OpenBlob(ctx, strings.Repeat("0", 64)); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing blob: %v", err)
+	}
+	if _, _, err := lib.OpenBlob(ctx, "../../etc/passwd"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("traversal: %v", err)
 	}
 }
 

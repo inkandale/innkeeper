@@ -8,17 +8,17 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	"github.com/davidgibbons/innkeeper/internal/contract"
-	"github.com/davidgibbons/innkeeper/internal/db"
 )
 
 const usage = `usage:
   innkeeper plugin check <plugin-dir>
-  innkeeper migrate    (reads INNKEEPER_DATABASE_URL)
-  innkeeper worker     (reads INNKEEPER_DATABASE_URL, INNKEEPER_BLOB_DIR,
-                        INNKEEPER_PLUGINS_DIR, INNKEEPER_WORKER_CONCURRENCY)`
+  innkeeper migrate
+  innkeeper worker
+  innkeeper api
+  innkeeper token create <name> | list | revoke <id>
+
+See README.md for the environment variables each command reads.`
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -28,14 +28,21 @@ func main() {
 }
 
 func run(args []string) error {
-	if len(args) == 3 && args[0] == "plugin" && args[1] == "check" {
-		return pluginCheck(args[2])
+	if len(args) == 0 {
+		return errors.New(usage)
 	}
-	if len(args) == 1 && args[0] == "migrate" {
+	cmd, rest := args[0], args[1:]
+	switch {
+	case cmd == "plugin" && len(rest) == 2 && rest[0] == "check":
+		return pluginCheck(rest[1])
+	case cmd == "migrate" && len(rest) == 0:
 		return migrate()
-	}
-	if len(args) == 1 && args[0] == "worker" {
+	case cmd == "worker" && len(rest) == 0:
 		return worker()
+	case cmd == "api" && len(rest) == 0:
+		return apiServer()
+	case cmd == "token":
+		return token(rest)
 	}
 	return errors.New(usage)
 }
@@ -62,15 +69,10 @@ func pluginCheck(dir string) error {
 }
 
 func migrate() error {
-	url := os.Getenv("INNKEEPER_DATABASE_URL")
-	if url == "" {
-		return errors.New("INNKEEPER_DATABASE_URL is not set")
-	}
-	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, url)
+	pool, err := openDB(context.Background())
 	if err != nil {
 		return err
 	}
-	defer pool.Close()
-	return db.Migrate(ctx, pool)
+	pool.Close()
+	return nil
 }

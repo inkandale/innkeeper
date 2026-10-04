@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -162,9 +161,7 @@ func TestWatchPings(t *testing.T) {
 
 func TestImportBrokenInstance(t *testing.T) {
 	e := newEnv(t)
-	if err := e.s.Registry.MarkBroken(context.Background(), e.importID, errors.New("secret detail")); err != nil {
-		t.Fatal(err)
-	}
+	e.markBroken(e.importID, "secret detail")
 	r := e.call("POST", "/imports", map[string]any{"instance_id": e.importID}, 409, nil)
 	if strings.Contains(string(r.Body), "secret detail") {
 		t.Fatalf("leaked the stored error: %s", r.Body)

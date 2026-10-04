@@ -313,9 +313,14 @@ func (r *Registry) Instance(ctx context.Context, id int64) (pluginhost.Instance,
 }
 
 // MarkBroken records that an instance's plugin failed to start, so nothing
-// starts it again until the owner changes the instance.
-func (r *Registry) MarkBroken(ctx context.Context, id int64, cause error) error {
-	_, err := r.pool.Exec(ctx, `UPDATE plugin_instance SET broken_error = $2, broken_at = now() WHERE id = $1`,
-		id, cause.Error())
+// starts it again until the owner changes the instance. version is the
+// Instance.Version that failed; a later edit makes the call a no-op.
+func (r *Registry) MarkBroken(ctx context.Context, id int64, version string, cause error) error {
+	micros, err := strconv.ParseInt(version, 10, 64)
+	if err != nil {
+		return fmt.Errorf("instance version %q: %w", version, err)
+	}
+	_, err = r.pool.Exec(ctx, `UPDATE plugin_instance SET broken_error = $2, broken_at = now() WHERE id = $1 AND updated_at = $3`,
+		id, cause.Error(), time.UnixMicro(micros))
 	return err
 }

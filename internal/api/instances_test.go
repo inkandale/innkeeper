@@ -1,8 +1,6 @@
 package api
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -30,9 +28,7 @@ func TestInstanceRoutes(t *testing.T) {
 	e.call("POST", "/instances", map[string]any{"plugin": "vault", "name": "Z", "owner_subject": ""}, 400, nil)
 
 	path := fmt.Sprintf("/instances/%d", inst.ID)
-	if err := e.s.Registry.MarkBroken(context.Background(), inst.ID, errors.New("bad key")); err != nil {
-		t.Fatal(err)
-	}
+	e.markBroken(inst.ID, "bad key")
 	r = e.call("PATCH", path, map[string]any{"name": "Vault 2", "secrets": map[string]any{"api_key": nil}}, 200, &inst)
 	if !strings.Contains(string(r.Body), `"secrets":[]`) {
 		t.Fatalf("patched %s", r)

@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -203,9 +202,7 @@ func TestCrossSiteLogout(t *testing.T) {
 
 func TestBrokenLoginProviderHidesError(t *testing.T) {
 	e := newEnv(t)
-	if err := e.s.Registry.MarkBroken(context.Background(), e.loginID, errors.New("fork/exec /secret/path")); err != nil {
-		t.Fatal(err)
-	}
+	e.markBroken(e.loginID, "fork/exec /secret/path")
 	r := e.send("POST", fmt.Sprintf("/auth/%d/begin", e.loginID), nil)
 	if r.Status != http.StatusServiceUnavailable || strings.Contains(string(r.Body), "/secret/path") {
 		t.Fatalf("begin with broken provider: %s", r)

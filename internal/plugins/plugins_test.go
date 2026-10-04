@@ -88,7 +88,7 @@ func TestInstance(t *testing.T) {
 		t.Fatalf("blob tmp folder: %v", err)
 	}
 
-	if err := reg.MarkBroken(ctx, id, errors.New("wrong protocol")); err != nil {
+	if err := reg.MarkBroken(ctx, id, inst.Version, errors.New("wrong protocol")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := reg.Instance(ctx, id); !errors.Is(err, ErrBroken) {
@@ -154,7 +154,7 @@ func TestUpdateInstance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := reg.MarkBroken(ctx, id, errors.New("bad key")); err != nil {
+	if err := reg.MarkBroken(ctx, id, before.Version, errors.New("bad key")); err != nil {
 		t.Fatal(err)
 	}
 	newKey, name, owner := "new", "Renamed", "owner"
@@ -169,6 +169,12 @@ func TestUpdateInstance(t *testing.T) {
 	}
 	if after.Version == before.Version {
 		t.Fatal("version didn't change")
+	}
+	if err := reg.MarkBroken(ctx, id, before.Version, errors.New("stale start failure")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.Instance(ctx, id); err != nil {
+		t.Fatalf("stale MarkBroken broke the edited instance: %v", err)
 	}
 	if after.Params.Secrets["api_key"] != "new" || len(after.Params.Secrets) != 1 || after.Params.Config["path"] != "/a" {
 		t.Fatalf("after edit: %+v", after.Params)

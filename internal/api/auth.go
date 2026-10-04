@@ -113,7 +113,7 @@ func (s *Server) callPlugin(ctx context.Context, id int64, inst pluginhost.Insta
 	err := s.Plugins.Call(ctx, inst, method, params, result)
 	var startErr *pluginhost.StartError
 	if errors.As(err, &startErr) && ctx.Err() == nil {
-		if merr := s.Registry.MarkBroken(context.WithoutCancel(ctx), id, err); merr != nil {
+		if merr := s.Registry.MarkBroken(context.WithoutCancel(ctx), id, inst.Version, err); merr != nil {
 			s.Log.Error("mark plugin instance broken", "instance", id, "err", merr)
 		}
 		return huma.Error503ServiceUnavailable("login provider unavailable")

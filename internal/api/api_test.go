@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -160,4 +161,17 @@ func (e *testEnv) call(method, path string, body any, want int, out any) result 
 		}
 	}
 	return r
+}
+
+// markBroken marks an instance broken at its current version.
+func (e *testEnv) markBroken(id int64, cause string) {
+	e.t.Helper()
+	ctx := context.Background()
+	inst, err := e.s.Registry.Instance(ctx, id)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	if err := e.s.Registry.MarkBroken(ctx, id, inst.Version, errors.New(cause)); err != nil {
+		e.t.Fatal(err)
+	}
 }

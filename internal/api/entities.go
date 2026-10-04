@@ -124,6 +124,8 @@ type exportIn struct {
 type exportOut struct {
 	ContentDisposition string `header:"Content-Disposition"`
 	ContentType        string `header:"Content-Type"`
+	NoSniff            string `header:"X-Content-Type-Options"`
+	CSP                string `header:"Content-Security-Policy"`
 	Body               []byte
 }
 
@@ -345,6 +347,6 @@ func (s *Server) cardRoutes(api huma.API) {
 				}
 			}
 			return &exportOut{ContentDisposition: fmt.Sprintf(`attachment; filename="%s.%s"`, c.Slug, ext),
-				ContentType: exportType(ext), Body: body}, nil
+				ContentType: exportType(ext), NoSniff: "nosniff", CSP: "sandbox", Body: body}, nil
 		})
 }

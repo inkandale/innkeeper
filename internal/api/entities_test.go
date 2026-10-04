@@ -190,7 +190,8 @@ func TestExportFormats(t *testing.T) {
 	r := e.call("GET", path+"?format=fake", nil, 200, nil)
 	if !strings.HasPrefix(string(r.Body), "fake:") || !strings.Contains(string(r.Body), `"Brakka"`) ||
 		!strings.Contains(r.Header.Get("Content-Disposition"), "brakka.txt") ||
-		r.Header.Get("Content-Type") != "application/octet-stream" {
+		r.Header.Get("Content-Type") != "application/octet-stream" ||
+		r.Header.Get("X-Content-Type-Options") != "nosniff" || r.Header.Get("Content-Security-Policy") != "sandbox" {
 		t.Fatalf("fake export: %s %v", r, r.Header)
 	}
 	r = e.call("GET", path, nil, 200, nil)

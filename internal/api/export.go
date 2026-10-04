@@ -44,11 +44,13 @@ func (s *Server) encode(ctx context.Context, revID int64, card json.RawMessage, 
 	// blob, so cleanup removes it after a day.
 	b, err := s.Lib.IngestBlob(ctx, res.Path)
 	if errors.Is(err, blobstore.ErrInvalid) {
-		return nil, "", fmt.Errorf("%w: %w", errBadCodec, err)
+		s.Log.Error("codec wrote a bad file", "format", format, "err", err)
+		return nil, "", fmt.Errorf("%w: it wrote a file outside blob_tmp", errBadCodec)
 	}
 	if err != nil {
 		return nil, "", err
 	}
+	// ponytail: checked after IngestBlob stored the file, so a runaway codec can fill the disk until cleanup; check the size before ingesting if that matters.
 	if b.Size > maxBlobBytes {
 		return nil, "", fmt.Errorf("%w: file is over %d MiB", errBadCodec, maxBlobBytes>>20)
 	}
@@ -65,7 +67,7 @@ func (s *Server) encode(ctx context.Context, revID int64, card json.RawMessage, 
 // SVG keep their type, so an export can't run as a page on this site.
 func exportType(ext string) string {
 	t := mime.TypeByExtension("." + ext)
-	if ext == "json" || strings.HasPrefix(t, "image/") && ext != "svg" {
+	if ext == "json" || strings.HasPrefix(t, "image/") && !strings.HasPrefix(t, "image/svg") {
 		return t
 	}
 	return "application/octet-stream"

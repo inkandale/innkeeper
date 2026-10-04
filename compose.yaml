@@ -1,0 +1,46 @@
+# Local test stack: PostgreSQL, the API on http://localhost:8080 (INNKEEPER_PORT
+# changes it), and the worker.
+# See "Try it with Docker Compose" in README.md.
+
+x-innkeeper: &innkeeper
+  build: .
+  image: innkeeper:dev
+  environment:
+    INNKEEPER_DATABASE_URL: postgres://innkeeper:innkeeper@db:5432/innkeeper?sslmode=disable
+    INNKEEPER_SECRETS_KEY: ${INNKEEPER_SECRETS_KEY:?set INNKEEPER_SECRETS_KEY in .env; see README.md}
+    # Plain http for local testing, so browsers keep the session cookie.
+    INNKEEPER_PUBLIC_URL: http://localhost:${INNKEEPER_PORT:-8080}
+  volumes:
+    - blobs:/data/blobs
+  depends_on:
+    db:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  db:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_USER: innkeeper
+      POSTGRES_PASSWORD: innkeeper
+      POSTGRES_DB: innkeeper
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "innkeeper", "-d", "innkeeper"]
+      interval: 2s
+      retries: 30
+
+  api:
+    <<: *innkeeper
+    command: ["api"]
+    ports:
+      - "127.0.0.1:${INNKEEPER_PORT:-8080}:8080"
+
+  worker:
+    <<: *innkeeper
+    command: ["worker"]
+
+volumes:
+  pgdata:
+  blobs:

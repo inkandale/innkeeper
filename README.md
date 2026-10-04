@@ -41,6 +41,25 @@ database at startup and stop cleanly on `SIGTERM`.
 | `INNKEEPER_WORKER_CONCURRENCY` | `worker` | Jobs run at once; default 4 |
 | `INNKEEPER_URL`, `INNKEEPER_TOKEN` | API commands | API address and token |
 
+## Try it with Docker Compose
+
+`compose.yaml` runs PostgreSQL, the API, and the worker from the local
+source:
+
+```bash
+echo "INNKEEPER_SECRETS_KEY=$(openssl rand -base64 32)" > .env
+docker compose up -d --build
+export INNKEEPER_URL=http://localhost:8080
+export INNKEEPER_TOKEN=$(docker compose exec -T api innkeeper token create admin)
+curl -H "Authorization: Bearer $INNKEEPER_TOKEN" "$INNKEEPER_URL/tags"
+```
+
+If something else already listens on port 8080, set `INNKEEPER_PORT` in
+`.env`. Docker doesn't report the clash; requests just reach the other
+program. No plugins are installed in the image.
+
+`docker compose down -v` deletes the database and blobs.
+
 ## First login
 
 Auth cannot be turned off. No one can log in until a login provider names

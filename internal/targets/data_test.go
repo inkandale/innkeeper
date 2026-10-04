@@ -16,6 +16,9 @@ func TestMergePatch(t *testing.T) {
 		{`{"a":[{"b":"c"}]}`, `{"a":[1]}`, `{"a":[1]}`},
 		{`{"e":null}`, `{"a":1}`, `{"a":1,"e":null}`},
 		{`{"n":12345678901234567890}`, `{}`, `{"n":12345678901234567890}`},
+		{`{"a":"foo"}`, `null`, `null`},
+		{`{"a":"foo"}`, `"bar"`, `"bar"`},
+		{`[1,2]`, `{"a":"b","c":null}`, `{"a":"b"}`},
 	}
 	for _, tt := range tests {
 		got, err := MergePatch(json.RawMessage(tt.doc), json.RawMessage(tt.patch))
@@ -85,7 +88,7 @@ func TestAdoptChanges(t *testing.T) {
 	if string(data) != `{"first_mes":"Well met.","name":"Brakka"}` {
 		t.Fatalf("data = %s", data)
 	}
-	over, changed, err := overrideChanges(json.RawMessage(`{"7": {"name": "Brakka (Fake)"}, "9": {"name": "Other"}}`), "7", changes)
+	over, changed, err := overrideChanges(json.RawMessage(`{"name": "Brakka", "description": "A dwarf.", "first_mes": "Hail."}`), json.RawMessage(`{"7": {"name": "Brakka (Fake)"}, "9": {"name": "Other"}}`), "7", changes)
 	if err != nil || !changed {
 		t.Fatal(changed, err)
 	}
@@ -94,5 +97,42 @@ func TestAdoptChanges(t *testing.T) {
 	}
 	if _, changed, _ := applyChanges(json.RawMessage(`{}`), changes[2:]); changed {
 		t.Fatal("a lorebook-only change was applied")
+	}
+}
+
+func TestDiffIgnoresVolatileFields(t *testing.T) {
+	got, err := diff(json.RawMessage(`{"name": "B", "modification_date": 1}`), json.RawMessage(`{"name": "B", "modification_date": 2}`))
+	if err != nil || len(got) != 0 {
+		t.Fatalf("changes = %+v, err = %v", got, err)
+	}
+	dropped, err := droppedFields(json.RawMessage(`{"name": "B", "creation_date": 1}`), []string{"name"})
+	if err != nil || len(dropped) != 0 {
+		t.Fatalf("dropped = %v, err = %v", dropped, err)
+	}
+}
+
+func TestOverrideChangesRemovesNestedKeys(t *testing.T) {
+	base := json.RawMessage(`{"name":"B","extensions":{"a":1,"b":2}}`)
+	changes := []Change{{Field: "extensions", Before: json.RawMessage(`{"a":1,"b":2}`), After: json.RawMessage(`{"a":1}`)}}
+	over, changed, err := overrideChanges(base, json.RawMessage(`{}`), "7", changes)
+	if err != nil || !changed {
+		t.Fatal(changed, err)
+	}
+	var all map[string]json.RawMessage
+	if err := json.Unmarshal(over, &all); err != nil {
+		t.Fatal(err)
+	}
+	got, err := MergePatch(base, all["7"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != `{"extensions":{"a":1},"name":"B"}` {
+		t.Fatalf("rendered %s", got)
+	}
+}
+
+func TestDecodeRejectsTrailingData(t *testing.T) {
+	if _, err := MergePatch(json.RawMessage(`{} {}`), json.RawMessage(`{}`)); err == nil {
+		t.Fatal("trailing data accepted")
 	}
 }

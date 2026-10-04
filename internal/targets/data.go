@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"slices"
 
@@ -14,9 +15,9 @@ import (
 // Change is one top-level field the app changed.
 type Change struct {
 	Field string `json:"field"`
-	// Before is absent if the field was empty at the last push or adopt.
+	// Before is absent if the field was missing at the last push or adopt.
 	Before json.RawMessage `json:"before,omitempty"`
-	// After is absent if the app cleared the field.
+	// After is absent if the field is missing from the app.
 	After json.RawMessage `json:"after,omitempty"`
 }
 
@@ -58,8 +59,13 @@ func decode(raw json.RawMessage) (any, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
 	var v any
-	err := dec.Decode(&v)
-	return v, err
+	if err := dec.Decode(&v); err != nil {
+		return nil, err
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return nil, errors.New("trailing data after JSON value")
+	}
+	return v, nil
 }
 
 func object(raw json.RawMessage) (map[string]json.RawMessage, error) {
@@ -108,13 +114,14 @@ func project(data json.RawMessage, fields []string) (json.RawMessage, string, er
 	return raw, hash, err
 }
 
-// valueHash hashes one field's value as the content hash normalizes it, so
-// whitespace and empty values compare the way the drift hash does.
-func valueHash(v json.RawMessage) (string, error) {
-	if v == nil {
-		v = json.RawMessage("null")
+// valueHash hashes one field as the content hash normalizes it, so
+// whitespace, empty values, and volatile fields compare the way the drift hash does.
+func valueHash(field string, v json.RawMessage) (string, error) {
+	raw, err := json.Marshal(map[string]json.RawMessage{field: v})
+	if err != nil {
+		return "", err
 	}
-	return cardhash.ContentHash(fmt.Appendf(nil, `{"v": %s}`, v))
+	return cardhash.ContentHash(raw)
 }
 
 // diff lists the top-level fields that differ between two data objects, by
@@ -128,7 +135,7 @@ func diff(before, after json.RawMessage) ([]Change, error) {
 	if err != nil {
 		return nil, err
 	}
-	keys := slices.Sorted(maps.Keys(b))
+	keys := slices.Collect(maps.Keys(b))
 	for k := range a {
 		if _, ok := b[k]; !ok {
 			keys = append(keys, k)
@@ -137,11 +144,11 @@ func diff(before, after json.RawMessage) ([]Change, error) {
 	slices.Sort(keys)
 	var out []Change
 	for _, k := range keys {
-		hb, err := valueHash(b[k])
+		hb, err := valueHash(k, b[k])
 		if err != nil {
 			return nil, err
 		}
-		ha, err := valueHash(a[k])
+		ha, err := valueHash(k, a[k])
 		if err != nil {
 			return nil, err
 		}
@@ -158,16 +165,16 @@ func droppedFields(data json.RawMessage, fields []string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	empty, err := valueHash(nil)
-	if err != nil {
-		return nil, err
-	}
 	out := []string{}
 	for _, k := range slices.Sorted(maps.Keys(all)) {
 		if slices.Contains(fields, k) {
 			continue
 		}
-		if h, err := valueHash(all[k]); err != nil {
+		empty, err := valueHash(k, nil)
+		if err != nil {
+			return nil, err
+		}
+		if h, err := valueHash(k, all[k]); err != nil {
 			return nil, err
 		} else if h != empty {
 			out = append(out, k)
@@ -206,11 +213,16 @@ func applyChanges(data json.RawMessage, changes []Change) (json.RawMessage, bool
 }
 
 // overrideChanges adds the changes to the override for key, so the target
-// gets the app's values while the card's own data stays as it is.
-func overrideChanges(overrides json.RawMessage, key string, changes []Change) (json.RawMessage, bool, error) {
+// gets the app's values while the card's own data stays as it is. data is the
+// card's data before any override.
+func overrideChanges(data, overrides json.RawMessage, key string, changes []Change) (json.RawMessage, bool, error) {
 	changes = adoptable(changes)
 	if len(changes) == 0 {
 		return overrides, false, nil
+	}
+	base, err := object(data)
+	if err != nil {
+		return nil, false, err
 	}
 	all, err := object(overrides)
 	if err != nil {
@@ -223,10 +235,8 @@ func overrideChanges(overrides json.RawMessage, key string, changes []Change) (j
 		}
 	}
 	for _, c := range changes {
-		if c.After == nil {
-			patch[c.Field] = json.RawMessage("null")
-		} else {
-			patch[c.Field] = c.After
+		if patch[c.Field], err = makePatch(base[c.Field], c.After); err != nil {
+			return nil, false, err
 		}
 	}
 	if all[key], err = json.Marshal(patch); err != nil {
@@ -234,4 +244,33 @@ func overrideChanges(overrides json.RawMessage, key string, changes []Change) (j
 	}
 	out, err := json.Marshal(all)
 	return out, true, err
+}
+
+// makePatch returns the merge patch that turns from into to. A merge patch
+// merges objects, so keys missing from to need an explicit null.
+func makePatch(from, to json.RawMessage) (json.RawMessage, error) {
+	if to == nil {
+		return json.RawMessage("null"), nil
+	}
+	f, errF := object(from)
+	t, errT := object(to)
+	if errF != nil || errT != nil {
+		return to, nil
+	}
+	patch := map[string]json.RawMessage{}
+	for k := range f {
+		if _, ok := t[k]; !ok {
+			patch[k] = json.RawMessage("null")
+		}
+	}
+	for k, v := range t {
+		if fv, ok := f[k]; ok {
+			var err error
+			if v, err = makePatch(fv, v); err != nil {
+				return nil, err
+			}
+		}
+		patch[k] = v
+	}
+	return json.Marshal(patch)
 }

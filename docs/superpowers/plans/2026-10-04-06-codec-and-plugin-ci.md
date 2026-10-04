@@ -65,7 +65,7 @@ Constraints this plan leaves for later plans:
 | `protocol/manifest.go` | `formats` key and its validation |
 | `protocol/codec.go` | `codec.*` method names, params, results, `ValidExtension` |
 | `internal/fakeplugin/codec.go` | Fake codec with one format, `fake` |
-| `internal/testutil/testutil.go` | Fake manifests list `formats` when they declare `codec` |
+| `internal/testutil/fakeplugin.go` | Fake manifests list `formats` when they declare `codec` |
 | `internal/contract/contract.go` | Codec checks |
 | `internal/plugins/plugins.go` | `CodecInstance`, `ErrNoCodec` |
 | `internal/api/export.go` | Encoding an export with a codec |
@@ -208,7 +208,7 @@ git commit -m "Add the formats manifest key for codec plugins"
 - Create: `protocol/codec.go`
 - Create: `internal/fakeplugin/codec.go`
 - Modify: `internal/fakeplugin/main.go`
-- Modify: `internal/testutil/testutil.go`
+- Modify: `internal/testutil/fakeplugin.go`
 
 Task 3's contract tests exercise this code.
 
@@ -347,7 +347,7 @@ and add these cases after `case protocol.MethodTargetGet:`:
 
 - [ ] **Step 3: List formats in fake manifests**
 
-In `internal/testutil/testutil.go`, add `"slices"` to the imports, and replace the `if err := os.WriteFile(...)` block at the end of `FakePluginWith` with:
+In `internal/testutil/fakeplugin.go`, add `"slices"` to the imports, and replace the `if err := os.WriteFile(...)` block at the end of `FakePluginWith` with:
 
 ```go
 	if slices.Contains(caps, "codec") {
@@ -366,7 +366,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add protocol/codec.go internal/fakeplugin internal/testutil/testutil.go
+git add protocol/codec.go internal/fakeplugin internal/testutil/fakeplugin.go
 git commit -m "Add the codec.decode and codec.encode messages and a fake codec"
 ```
 

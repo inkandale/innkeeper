@@ -34,6 +34,7 @@ Each plugin folder has a `plugin.toml`:
 | `secrets` | no | Names of secrets the owner enters for each instance, in lowercase `snake_case` |
 | `config` | no | JSON Schema for instance settings; the UI renders a form from it |
 | `enrichments` | no | Keys the plugin writes, in lowercase `snake_case`. Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list` |
+| `formats` | for `codec` | What `codec.encode` writes: lowercase words of letters and digits joined by single hyphens, such as `png`. A codec plugin must list at least one. `json` is taken: the core exports CCv3 JSON itself |
 
 Unknown keys are errors.
 
@@ -215,6 +216,37 @@ it, reply with error `-32004`.
 {"jsonrpc": "2.0", "id": 4, "result": {"remote_id": "42"}}
 ```
 
+### `codec`
+
+A codec reads and writes card files in the formats its manifest lists.
+
+**`codec.decode`** reads one card file.
+
+| Param | Meaning |
+|---|---|
+| `path` | Absolute path of the file. Read it; don't move or change it |
+
+Reply with `card`, a CCv3 card, and optionally `avatar`, the card's image as
+a file you wrote to `blob_tmp`. Reply with error `-32602` if the file isn't a
+card you can read.
+
+**`codec.encode`** writes one card file.
+
+| Param | Meaning |
+|---|---|
+| `card` | The CCv3 card, with linked lorebooks embedded as `data.character_book` |
+| `format` | One of your manifest's `formats` |
+| `avatar` | Absolute path to the avatar image in a blob store, or absent. Read it; don't move or change it |
+
+Reply with `path`, the file you wrote directly inside `blob_tmp`, and
+`extension`, its file name extension without the dot: 1 to 10 lowercase
+letters and digits. The core moves the file, so don't reuse the path.
+
+```json
+{"jsonrpc": "2.0", "id": 5, "method": "codec.encode", "params": {"card": {"spec": "chara_card_v3", "spec_version": "3.0", "data": {"name": "Brakka"}}, "format": "png"}}
+{"jsonrpc": "2.0", "id": 5, "result": {"path": "/blobs/tmp/card-1234.png", "extension": "png"}}
+```
+
 ## Checking a plugin
 
 ```bash
@@ -227,6 +259,8 @@ It loads the manifest, then checks that:
 - an unknown method returns `-32601` within 5 seconds
 - a `push` plugin's `target.describe` reply is valid, and claims `pull` only
   if the manifest declares it
+- a `codec` plugin encodes a sample card in each of its `formats` and decodes
+  it back, and returns an error when asked to decode a file that isn't a card
 - `shutdown` gets a reply within 5 seconds
 - the plugin exits after `shutdown`, rather than having exited earlier
 

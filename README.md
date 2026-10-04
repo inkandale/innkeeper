@@ -81,7 +81,7 @@ says what that is. Changing or clearing it logs that identity out.
 ```text
 innkeeper call <method> <path> [json]           any API call, such as: call GET /jobs
 innkeeper import <instance-id> [params-json]    start an import
-innkeeper export <card-id> [file]               a card as CCv3 JSON
+innkeeper export <card-id> [file [format]]      a card as CCv3 JSON, or in a codec's format; a .png file means png
 innkeeper bulk archive|unarchive <query-json>   archive or unarchive the cards a search matches
 innkeeper push <instance-id> <card-id>|<query-json> [--new-copy]
                                                 push one card, or the cards a search matches, to a target
@@ -97,6 +97,14 @@ on `archived`. It touches only cards not already in the target state.
 
 `push --new-copy` is for apps that can't update a card: pushing there again
 makes another copy, so the push fails without the flag.
+
+Exporting in a format other than `json` needs an instance of a codec plugin
+that writes it. The first one is enough:
+
+```bash
+innkeeper call POST /instances '{"plugin": "card-codec", "name": "Codec"}'
+innkeeper export 12 brakka.png
+```
 
 ## Sync
 

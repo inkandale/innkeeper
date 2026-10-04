@@ -79,6 +79,7 @@ func (s *Server) Handler() http.Handler {
 	s.entityRoutes(api, s.Lib.Lorebooks, "lorebooks", "lorebook", "Lorebooks")
 	s.organizeRoutes(api)
 	s.searchRoutes(api)
+	s.instanceRoutes(api)
 	// Browsers arrive here from a login provider; it isn't part of the API.
 	mux.HandleFunc("GET /auth/{id}/callback", s.callback)
 	return mux

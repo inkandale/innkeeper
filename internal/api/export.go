@@ -45,12 +45,14 @@ func (s *Server) encode(ctx context.Context, revID int64, card json.RawMessage, 
 	b, err := s.Lib.IngestBlob(ctx, res.Path)
 	if errors.Is(err, blobstore.ErrInvalid) {
 		s.Log.Error("codec wrote a bad file", "format", format, "err", err)
-		return nil, "", fmt.Errorf("%w: it wrote a file outside blob_tmp", errBadCodec)
+		return nil, "", fmt.Errorf("%w: it named a file the server can't accept", errBadCodec)
 	}
 	if err != nil {
 		return nil, "", err
 	}
-	// ponytail: checked after IngestBlob stored the file, so a runaway codec can fill the disk until cleanup; check the size before ingesting if that matters.
+	// ponytail: checked after IngestBlob stored the file, so a runaway codec
+	// can fill the disk until cleanup; check the size before ingesting if
+	// that matters.
 	if b.Size > maxBlobBytes {
 		return nil, "", fmt.Errorf("%w: file is over %d MiB", errBadCodec, maxBlobBytes>>20)
 	}

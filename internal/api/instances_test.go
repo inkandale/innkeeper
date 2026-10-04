@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -12,7 +13,8 @@ func TestInstanceRoutes(t *testing.T) {
 	e := newEnv(t)
 	var installed []pluginOut
 	e.call("GET", "/plugins", nil, 200, &installed)
-	if len(installed) != 2 || installed[0].Name != "fake" || installed[1].Name != "vault" || installed[1].Secrets[0] != "api_key" {
+	if len(installed) != 2 || installed[0].Name != "fake" || installed[1].Name != "vault" || installed[1].Secrets[0] != "api_key" ||
+		!slices.Equal(installed[0].Formats, []string{"fake"}) {
 		t.Fatalf("plugins = %+v", installed)
 	}
 

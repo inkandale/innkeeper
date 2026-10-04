@@ -22,6 +22,7 @@ type pluginOut struct {
 	Version      string                   `json:"version"`
 	Capabilities []string                 `json:"capabilities"`
 	Secrets      []string                 `json:"secrets"`
+	Formats      []string                 `json:"formats,omitempty" doc:"File formats a codec plugin reads and writes"`
 	Config       map[string]any           `json:"config,omitempty" doc:"JSON Schema for an instance's config"`
 	Enrichments  map[string]enrichmentOut `json:"enrichments,omitempty"`
 }
@@ -68,7 +69,7 @@ func (s *Server) instanceRoutes(api huma.API) {
 			out := &pluginsOut{Body: []pluginOut{}}
 			for _, m := range s.Registry.Manifests() {
 				p := pluginOut{Name: m.Name, Version: m.Version, Capabilities: m.Capabilities,
-					Secrets: orEmpty(m.Secrets), Config: m.Config}
+					Secrets: orEmpty(m.Secrets), Formats: m.Formats, Config: m.Config}
 				for k, e := range m.Enrichments {
 					if p.Enrichments == nil {
 						p.Enrichments = map[string]enrichmentOut{}

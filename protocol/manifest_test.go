@@ -49,10 +49,24 @@ func TestLoadManifest(t *testing.T) {
 	}
 }
 
-func TestBareCommandUsesPath(t *testing.T) {
-	m := &Manifest{Command: []string{"python3", "main.py"}, Dir: "/plugins/x"}
-	if got := m.CommandPath(); got != "python3" {
-		t.Fatalf("CommandPath = %q, want python3", got)
+func TestCommandPath(t *testing.T) {
+	tests := []struct{ cmd, want string }{
+		{"python3", "python3"},
+		{"./run", "/plugins/x/run"},
+		{"bin/run", "/plugins/x/bin/run"},
+		{"/usr/bin/node", "/usr/bin/node"},
+	}
+	for _, tt := range tests {
+		m := &Manifest{Command: []string{tt.cmd}, Dir: "/plugins/x"}
+		if got := m.CommandPath(); got != tt.want {
+			t.Errorf("CommandPath(%q) = %q, want %q", tt.cmd, got, tt.want)
+		}
+	}
+}
+
+func TestMissingManifest(t *testing.T) {
+	if _, err := LoadManifest(t.TempDir()); err == nil || !strings.Contains(err.Error(), "read manifest") {
+		t.Fatalf("got %v, want read manifest error", err)
 	}
 }
 
@@ -67,6 +81,15 @@ func TestManifestErrors(t *testing.T) {
 		{"score without range", `range = [1, 5], `, ``, "score needs range"},
 		{"bad enrichment type", `type = "text"`, `type = "essay"`, `type "essay"`},
 		{"unknown key", `secrets = ["api_key"]`, `secret = ["api_key"]`, "unknown keys: secret"},
+		{"trailing hyphen", `name = "lumiverse"`, `name = "lumiverse-"`, "name"},
+		{"name too long", `name = "lumiverse"`, `name = "` + strings.Repeat("a", 42) + `"`, "at most 41"},
+		{"missing version", `version = "0.1.0"`, ``, "version is required"},
+		{"empty command", `command = ["./lumiverse-plugin", "--quiet"]`, `command = []`, "command is required"},
+		{"command escapes folder", `"./lumiverse-plugin"`, `"./../../evil"`, "outside the plugin folder"},
+		{"empty secret", `secrets = ["api_key"]`, `secrets = [""]`, `secret name ""`},
+		{"duplicate secret", `secrets = ["api_key"]`, `secrets = ["api_key", "api_key"]`, "listed twice"},
+		{"bad enrichment key", `summary = {`, `"bad key!" = {`, `enrichment key "bad key!"`},
+		{"nan range", `range = [1, 5]`, `range = [nan, nan]`, "score needs range"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

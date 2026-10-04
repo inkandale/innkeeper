@@ -730,10 +730,24 @@ func TestLoadManifest(t *testing.T) {
 	}
 }
 
-func TestBareCommandUsesPath(t *testing.T) {
-	m := &Manifest{Command: []string{"python3", "main.py"}, Dir: "/plugins/x"}
-	if got := m.CommandPath(); got != "python3" {
-		t.Fatalf("CommandPath = %q, want python3", got)
+func TestCommandPath(t *testing.T) {
+	tests := []struct{ cmd, want string }{
+		{"python3", "python3"},
+		{"./run", "/plugins/x/run"},
+		{"bin/run", "/plugins/x/bin/run"},
+		{"/usr/bin/node", "/usr/bin/node"},
+	}
+	for _, tt := range tests {
+		m := &Manifest{Command: []string{tt.cmd}, Dir: "/plugins/x"}
+		if got := m.CommandPath(); got != tt.want {
+			t.Errorf("CommandPath(%q) = %q, want %q", tt.cmd, got, tt.want)
+		}
+	}
+}
+
+func TestMissingManifest(t *testing.T) {
+	if _, err := LoadManifest(t.TempDir()); err == nil || !strings.Contains(err.Error(), "read manifest") {
+		t.Fatalf("got %v, want read manifest error", err)
 	}
 }
 
@@ -748,6 +762,15 @@ func TestManifestErrors(t *testing.T) {
 		{"score without range", `range = [1, 5], `, ``, "score needs range"},
 		{"bad enrichment type", `type = "text"`, `type = "essay"`, `type "essay"`},
 		{"unknown key", `secrets = ["api_key"]`, `secret = ["api_key"]`, "unknown keys: secret"},
+		{"trailing hyphen", `name = "lumiverse"`, `name = "lumiverse-"`, "name"},
+		{"name too long", `name = "lumiverse"`, `name = "` + strings.Repeat("a", 42) + `"`, "at most 41"},
+		{"missing version", `version = "0.1.0"`, ``, "version is required"},
+		{"empty command", `command = ["./lumiverse-plugin", "--quiet"]`, `command = []`, "command is required"},
+		{"command escapes folder", `"./lumiverse-plugin"`, `"./../../evil"`, "outside the plugin folder"},
+		{"empty secret", `secrets = ["api_key"]`, `secrets = [""]`, `secret name ""`},
+		{"duplicate secret", `secrets = ["api_key"]`, `secrets = ["api_key", "api_key"]`, "listed twice"},
+		{"bad enrichment key", `summary = {`, `"bad key!" = {`, `enrichment key "bad key!"`},
+		{"nan range", `range = [1, 5]`, `range = [nan, nan]`, "score needs range"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -830,9 +853,14 @@ var Capabilities = []string{"import", "search", "push", "pull", "action", "enric
 
 var enrichmentTypes = []string{"text", "score", "list"}
 
-// Names become PostgreSQL schema names (plugin_<name>, with - as _), so keep
-// them short and lowercase.
-var namePattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,40}$`)
+// Names become PostgreSQL schema names (plugin_<name>, with - as _): 41
+// characters keeps "plugin_" + name under Postgres's 63-byte limit.
+var namePattern = regexp.MustCompile(`^[a-z][a-z0-9]*(-[a-z0-9]+)*$`)
+
+const maxNameLen = 41
+
+// Secret names and enrichment keys.
+var keyPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 // Manifest is a plugin's plugin.toml.
 type Manifest struct {
@@ -886,8 +914,8 @@ func LoadManifest(dir string) (*Manifest, error) {
 // Validate reports every problem with the manifest at once.
 func (m *Manifest) Validate() error {
 	var errs []error
-	if !namePattern.MatchString(m.Name) {
-		errs = append(errs, fmt.Errorf("name %q must match %s", m.Name, namePattern))
+	if !namePattern.MatchString(m.Name) || len(m.Name) > maxNameLen {
+		errs = append(errs, fmt.Errorf("name %q must match %s and be at most %d characters", m.Name, namePattern, maxNameLen))
 	}
 	if m.Version == "" {
 		errs = append(errs, errors.New("version is required"))
@@ -897,6 +925,10 @@ func (m *Manifest) Validate() error {
 	}
 	if len(m.Command) == 0 || m.Command[0] == "" {
 		errs = append(errs, errors.New("command is required"))
+	} else if m.Dir != "" && !filepath.IsAbs(m.Command[0]) && strings.Contains(m.Command[0], "/") {
+		if rel, err := filepath.Rel(m.Dir, m.CommandPath()); err != nil || strings.HasPrefix(rel, "..") {
+			errs = append(errs, fmt.Errorf("command %q is outside the plugin folder", m.Command[0]))
+		}
 	}
 	if len(m.Capabilities) == 0 {
 		errs = append(errs, errors.New("at least one capability is required"))
@@ -911,22 +943,36 @@ func (m *Manifest) Validate() error {
 		}
 		seen[c] = true
 	}
+	seenSecrets := map[string]bool{}
+	for _, s := range m.Secrets {
+		if !keyPattern.MatchString(s) {
+			errs = append(errs, fmt.Errorf("secret name %q must match %s", s, keyPattern))
+		}
+		if seenSecrets[s] {
+			errs = append(errs, fmt.Errorf("secret %q listed twice", s))
+		}
+		seenSecrets[s] = true
+	}
 	for key, e := range m.Enrichments {
+		if !keyPattern.MatchString(key) {
+			errs = append(errs, fmt.Errorf("enrichment key %q must match %s", key, keyPattern))
+		}
 		if !slices.Contains(enrichmentTypes, e.Type) {
 			errs = append(errs, fmt.Errorf("enrichment %q: type %q must be one of %v", key, e.Type, enrichmentTypes))
 		}
-		if e.Type == "score" && (len(e.Range) != 2 || e.Range[0] >= e.Range[1]) {
+		if e.Type == "score" && (len(e.Range) != 2 || !(e.Range[0] < e.Range[1])) {
 			errs = append(errs, fmt.Errorf("enrichment %q: score needs range = [low, high]", key))
 		}
 	}
 	return errors.Join(errs...)
 }
 
-// CommandPath resolves the executable: paths starting with ./ or ../ are
-// relative to the plugin folder; bare names are looked up on PATH.
+// CommandPath resolves the executable: relative paths containing / are
+// inside the plugin folder, absolute paths are used as-is, and bare names
+// are looked up on PATH.
 func (m *Manifest) CommandPath() string {
 	cmd := m.Command[0]
-	if strings.HasPrefix(cmd, "./") || strings.HasPrefix(cmd, "../") {
+	if !filepath.IsAbs(cmd) && strings.Contains(cmd, "/") {
 		return filepath.Join(m.Dir, cmd)
 	}
 	return cmd

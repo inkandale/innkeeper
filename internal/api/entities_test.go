@@ -68,6 +68,8 @@ func TestCardLifecycle(t *testing.T) {
 		t.Fatalf("restored %+v", restored.Revision)
 	}
 
+	e.call("POST", path+"/restore", map[string]any{"revision_id": first, "base_revision_id": updated.Revision.ID}, 409, nil)
+
 	e.call("PUT", path+"/archived", map[string]bool{"archived": true}, 204, nil)
 	var archived entityResult
 	e.call("GET", path, nil, 200, &archived)
@@ -80,6 +82,7 @@ func TestCardErrors(t *testing.T) {
 	e := newEnv(t)
 	other := e.createCard(`{"name": "Other"}`)
 	e.call("GET", "/cards/999", nil, 404, nil)
+	e.call("GET", "/cards/999/similar", nil, 404, nil)
 	e.call("POST", "/cards", map[string]any{"data": json.RawMessage(`{"name": "A", "character_book": {}}`)}, 400, nil)
 	e.call("POST", "/cards", map[string]any{"slug": "Not A Slug", "data": json.RawMessage(`{"name": "A"}`)}, 422, nil)
 	e.call("POST", "/cards", map[string]any{"slug": "other", "data": json.RawMessage(`{"name": "A"}`)}, 409, nil)
@@ -116,6 +119,16 @@ func TestUpdateKeepsAvatarAndOverrides(t *testing.T) {
 	if c.Revision.Avatar != nil {
 		t.Fatalf("avatar not removed: %+v", c.Revision)
 	}
+	if !strings.Contains(string(c.Revision.Overrides), "Lumiverse") {
+		t.Fatalf("overrides lost: %+v", c.Revision)
+	}
+	e.call("PUT", path, map[string]any{"base_revision_id": c.Revision.ID, "data": json.RawMessage(`{"name": "D2"}`),
+		"overrides": nil}, 200, &c)
+	if !strings.Contains(string(c.Revision.Overrides), "Lumiverse") {
+		t.Fatalf("null overrides not kept: %+v", c.Revision)
+	}
+	e.call("PUT", path, map[string]any{"base_revision_id": c.Revision.ID, "data": json.RawMessage(`{"name": "D3"}`),
+		"avatar": strings.Repeat("a", 64)}, 404, nil)
 	e.call("PUT", path, map[string]any{"base_revision_id": c.Revision.ID, "data": json.RawMessage(`{"name": "E"}`),
 		"overrides": json.RawMessage(`[]`)}, 400, nil)
 }

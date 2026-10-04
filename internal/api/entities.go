@@ -210,7 +210,7 @@ func (s *Server) entityRoutes(api huma.API, ents *library.Entities, plural, sing
 				return nil, s.fail(err)
 			}
 			e := library.Edit{Data: in.Body.Data, Overrides: in.Body.Overrides, Message: in.Body.Message, Source: in.Body.Source}
-			if e.Overrides == nil {
+			if e.Overrides == nil || string(e.Overrides) == "null" {
 				e.Overrides = base.Overrides
 			}
 			if in.Body.Avatar != nil {

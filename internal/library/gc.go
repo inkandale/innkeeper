@@ -2,6 +2,7 @@ package library
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -27,12 +28,15 @@ func (l *Library) CollectGarbage(ctx context.Context, grace time.Duration) (blob
 	if err != nil {
 		return 0, 0, err
 	}
+	// The rows are already gone, so a file skipped here is never retried.
+	var errs []error
 	for _, sha := range shas {
 		if err := l.blobs.Remove(sha); err != nil {
-			return blobs, 0, err
+			errs = append(errs, err)
+			continue
 		}
 		blobs++
 	}
 	leftovers, err = l.blobs.RemoveStale(time.Now().Add(-grace))
-	return blobs, leftovers, err
+	return blobs, leftovers, errors.Join(append(errs, err)...)
 }

@@ -34,6 +34,7 @@ func TestTagsAndCollections(t *testing.T) {
 	if len(list) != 1 || list[0].Cards != 1 || list[0].Name != "Best" {
 		t.Fatalf("collections = %+v", list)
 	}
+	e.call("PUT", fmt.Sprintf("%s/cards/999", path), nil, 404, nil)
 	e.call("DELETE", fmt.Sprintf("%s/cards/%d", path, c.ID), nil, 204, nil)
 	e.call("DELETE", path, nil, 204, nil)
 	e.call("DELETE", path, nil, 404, nil)
@@ -60,6 +61,10 @@ func TestBlobs(t *testing.T) {
 	if r.Header.Get("Content-Type") != "application/octet-stream" {
 		t.Fatalf("html blob served as %q", r.Header.Get("Content-Type"))
 	}
+	if r.Header.Get("X-Content-Type-Options") != "nosniff" || r.Header.Get("Content-Security-Policy") != "sandbox" {
+		t.Fatalf("html blob headers = %v", r.Header)
+	}
+	e.call("POST", "/blobs", []byte{}, 400, nil)
 
 	e.call("GET", "/blobs/"+strings.Repeat("0", 64), nil, 404, nil)
 	e.call("GET", "/blobs/not-a-hash", nil, 422, nil)

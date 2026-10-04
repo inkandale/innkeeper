@@ -286,7 +286,8 @@ func (q *Queue) Cancel(ctx context.Context, id int64) error {
 		return err
 	}
 	if j.ParentID != nil {
-		return q.completeParent(ctx, *j.ParentID)
+		// The cancel is committed; if this fails, the reaper's waiting-parents sweep finishes the parent.
+		_ = q.completeParent(ctx, *j.ParentID)
 	}
 	return nil
 }

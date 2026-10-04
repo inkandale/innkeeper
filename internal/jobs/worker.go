@@ -221,7 +221,7 @@ func (w *Worker) execute(ctx context.Context, j *Job) {
 	beat.Wait()
 
 	if errors.Is(err, ErrLeaseLost) || errors.Is(context.Cause(hctx), ErrLeaseLost) {
-		log.Warn("lost job lease; another worker will run it", "err", err)
+		log.Warn("job lease lost: cancelled or taken by another worker", "err", err)
 		return
 	}
 	o := outcome{status: StatusSucceeded}
@@ -238,6 +238,10 @@ func (w *Worker) execute(ctx context.Context, j *Job) {
 	fctx, fcancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer fcancel()
 	if err := w.Queue.finish(fctx, j, w.id, run.currentProgress(), o); err != nil {
+		if errors.Is(err, ErrLeaseLost) {
+			log.Warn("job lease lost: cancelled or taken by another worker", "err", err)
+			return
+		}
 		log.Error("finish job", "err", err)
 		return
 	}

@@ -237,3 +237,36 @@ func TestBulkParentFinishesWithChildren(t *testing.T) {
 		t.Fatalf("empty bulk = %+v", empty)
 	}
 }
+
+func TestCancelStopsRunningHandler(t *testing.T) {
+	q := newQueue(t)
+	running, returned := make(chan struct{}), make(chan struct{})
+	startWorker(t, &Worker{Queue: q, Lease: 300 * time.Millisecond, Handlers: map[string]Handler{
+		"test": func(ctx context.Context, _ *Run) error {
+			close(running)
+			<-ctx.Done()
+			close(returned)
+			return ctx.Err()
+		},
+	}})
+	j, _ := q.Enqueue(context.Background(), Spec{Kind: "test"})
+	select {
+	case <-running:
+	case <-time.After(10 * time.Second):
+		t.Fatal("job never started")
+	}
+	if err := q.Cancel(context.Background(), j.ID); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-returned:
+	case <-time.After(5 * time.Second):
+		t.Fatal("handler kept running after cancel")
+	}
+	// Give the worker time to attempt its finish, which must not overwrite the cancel.
+	time.Sleep(500 * time.Millisecond)
+	got := waitStatus(t, q, j.ID, StatusFailed)
+	if errText(got) != "cancelled" || got.Attempts != 1 {
+		t.Fatalf("job = %+v, want failed, cancelled, 1 attempt", got)
+	}
+}

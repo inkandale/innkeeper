@@ -34,7 +34,7 @@ CREATE TABLE push (
     -- the target doesn't embed lorebooks.
     lorebook_revision_ids bigint[],
     pushed_hash text NOT NULL,
-    remote_id text NOT NULL,
+    remote_id text NOT NULL CHECK (remote_id <> ''),
     pushed_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX ON push (binding_id, id);

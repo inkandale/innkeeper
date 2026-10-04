@@ -46,20 +46,30 @@ func (c *client) request(ctx context.Context, method, path string, body []byte) 
 		return resp, nil
 	}
 	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	var p struct {
+		Title  string `json:"title"`
 		Detail string `json:"detail"`
 		Errors []struct {
 			Message  string `json:"message"`
 			Location string `json:"location"`
 		} `json:"errors"`
 	}
-	if json.Unmarshal(raw, &p) != nil || p.Detail == "" {
+	var msg string
+	if json.Unmarshal(raw, &p) != nil {
+		msg = strings.TrimSpace(string(raw[:min(len(raw), 200)]))
+	} else if msg = p.Detail; msg == "" {
+		msg = p.Title
+	}
+	if msg == "" {
 		return nil, fmt.Errorf("%s %s: %s", method, path, resp.Status)
 	}
-	msg := p.Detail
 	for _, e := range p.Errors {
-		msg += fmt.Sprintf("; %s: %s", e.Location, e.Message)
+		if e.Location == "" {
+			msg += "; " + e.Message
+		} else {
+			msg += fmt.Sprintf("; %s: %s", e.Location, e.Message)
+		}
 	}
 	return nil, fmt.Errorf("%s %s: %d %s", method, path, resp.StatusCode, msg)
 }
@@ -96,8 +106,9 @@ func (c *client) stream(ctx context.Context, path string, fn func(data []byte) e
 
 // parseID checks that s is a numeric ID before it goes into a URL path.
 func parseID(s string) (string, error) {
-	if _, err := strconv.ParseInt(s, 10, 64); err != nil {
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil || n < 0 {
 		return "", fmt.Errorf("%q is not an ID", s)
 	}
-	return s, nil
+	return strconv.FormatInt(n, 10), nil
 }

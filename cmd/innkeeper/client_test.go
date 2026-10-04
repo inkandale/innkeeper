@@ -63,6 +63,17 @@ func TestParseID(t *testing.T) {
 	if id, err := parseID("12"); err != nil || id != "12" {
 		t.Fatalf("parseID(12) = %q, %v", id, err)
 	}
+	if id, err := parseID("007"); err != nil || id != "7" {
+		t.Fatalf("parseID(007) = %q, %v", id, err)
+	}
+	for _, bad := range []string{"-1", "+5x", ""} {
+		if _, err := parseID(bad); err == nil {
+			t.Fatalf("accepted %q", bad)
+		}
+	}
+	if id, err := parseID("+5"); err != nil || id != "5" {
+		t.Fatalf("parseID(+5) = %q, %v", id, err)
+	}
 }
 
 func TestWatchJob(t *testing.T) {
@@ -80,5 +91,28 @@ func TestWatchJob(t *testing.T) {
 		if tc.want == "" && err != nil || tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)) {
 			t.Fatalf("stream %q: err = %v, want %q", tc.stream, err, tc.want)
 		}
+	}
+}
+
+func TestClientPlainTextError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		fmt.Fprint(w, "  upstream timed out\n")
+	}))
+	defer srv.Close()
+	_, err := (&client{base: srv.URL, token: "tok"}).do(context.Background(), "GET", "/jobs", nil)
+	if err == nil || !strings.Contains(err.Error(), "502 upstream timed out") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestUsageErrorsNeedNoClient(t *testing.T) {
+	t.Setenv("INNKEEPER_URL", "")
+	t.Setenv("INNKEEPER_TOKEN", "")
+	if err := bulkCmd([]string{"archive"}); err == nil || err.Error() != usage {
+		t.Fatalf("bulk err = %v", err)
+	}
+	if err := jobsCmd([]string{"bogus", "1"}); err == nil || err.Error() != usage {
+		t.Fatalf("jobs err = %v", err)
 	}
 }

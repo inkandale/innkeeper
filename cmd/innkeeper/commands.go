@@ -123,6 +123,16 @@ func export(args []string) error {
 
 // jobsCmd runs `innkeeper jobs [show|cancel|watch ID]`.
 func jobsCmd(args []string) error {
+	var id string
+	if len(args) != 0 {
+		if len(args) != 2 || args[0] != "show" && args[0] != "cancel" && args[0] != "watch" {
+			return errors.New(usage)
+		}
+		var err error
+		if id, err = parseID(args[1]); err != nil {
+			return err
+		}
+	}
 	c, err := newClient()
 	if err != nil {
 		return err
@@ -153,13 +163,6 @@ func jobsCmd(args []string) error {
 			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\n", j.ID, j.Kind, j.Status, j.CreatedAt.Local().Format(time.DateTime), e)
 		}
 		return tw.Flush()
-	}
-	if len(args) != 2 {
-		return errors.New(usage)
-	}
-	id, err := parseID(args[1])
-	if err != nil {
-		return err
 	}
 	switch args[0] {
 	case "show", "cancel":

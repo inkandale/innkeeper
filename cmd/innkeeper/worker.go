@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
@@ -52,7 +53,12 @@ func worker() error {
 	if err := db.Migrate(ctx, pool); err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
-	store := &blobstore.Store{Name: "library", Root: cfg["INNKEEPER_BLOB_DIR"]}
+	// Plugins run in their own folder, so a relative blob dir would point elsewhere for them.
+	blobDir, err := filepath.Abs(cfg["INNKEEPER_BLOB_DIR"])
+	if err != nil {
+		return err
+	}
+	store := &blobstore.Store{Name: "library", Root: blobDir}
 	lib := library.New(pool, store)
 	manifests, err := plugins.LoadDir(cfg["INNKEEPER_PLUGINS_DIR"], log)
 	if err != nil {

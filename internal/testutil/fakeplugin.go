@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -41,6 +42,9 @@ protocol = 1
 command = [%s]
 capabilities = [%s]
 `, strings.Join(cmd, ", "), strings.Join(quoted, ", "))
+	if slices.Contains(caps, "codec") {
+		manifest += "formats = [\"fake\"]\n"
+	}
 	if err := os.WriteFile(filepath.Join(dir, "plugin.toml"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}

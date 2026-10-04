@@ -1003,7 +1003,7 @@ git commit -m "Add plugin manifest loading and handshake types"
 - Create: `internal/fakeplugin/main.go`
 - Create: `internal/testutil/fakeplugin.go`
 
-The fake plugin is the test double for every host and contract test. It is a real process speaking the real protocol. `-mode` makes it misbehave: `bad-protocol` reports protocol 99, `wrong-caps` reports fewer capabilities than its manifest, `bad-errors` answers unknown methods with success, `no-shutdown` never exits. A `freeze` notification makes it stop reading stdin, like a hung plugin.
+The fake plugin is the test double for every host and contract test. It is a real process speaking the real protocol. `-mode` makes it misbehave: `bad-protocol` reports protocol 99, `wrong-caps` reports fewer capabilities than its manifest, `bad-errors` answers unknown methods with success, `silent` never answers them, `crash-unknown` exits on them, `no-shutdown` never exits. A `freeze` notification makes it stop reading stdin, like a hung plugin.
 
 - [ ] **Step 1: Write the fake plugin**
 
@@ -1026,7 +1026,7 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "", "bad-protocol | wrong-caps | bad-errors | no-shutdown")
+	mode := flag.String("mode", "", "bad-protocol | wrong-caps | bad-errors | silent | crash-unknown | no-shutdown")
 	flag.Parse()
 
 	var conn *protocol.Conn
@@ -1073,8 +1073,14 @@ func main() {
 			// stops reading stdin, like a hung plugin.
 			time.Sleep(time.Minute)
 		}
-		if *mode == "bad-errors" {
+		switch *mode {
+		case "bad-errors":
 			return nil, nil
+		case "silent":
+			time.Sleep(time.Minute)
+			return nil, nil
+		case "crash-unknown":
+			os.Exit(4)
 		}
 		return nil, protocol.MethodNotFound(method)
 	}
@@ -1864,7 +1870,9 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/davidgibbons/innkeeper/internal/testutil"
 )
@@ -1895,18 +1903,27 @@ func TestWellBehavedPluginPasses(t *testing.T) {
 }
 
 func TestMisbehavingPluginsFail(t *testing.T) {
-	tests := []struct{ mode, check string }{
-		{"wrong-caps", "initialize handshake matches manifest"},
-		{"bad-errors", "unknown method returns -32601"},
+	callTimeout = 300 * time.Millisecond
+	t.Cleanup(func() { callTimeout = 5 * time.Second })
+	tests := []struct{ mode, check, wantErr string }{
+		{"wrong-caps", "initialize handshake matches manifest", "reported capabilities"},
+		{"bad-errors", "unknown method returns -32601", "got success"},
+		{"silent", "unknown method returns -32601", "no response within"},
+		{"crash-unknown", "unknown method returns -32601", "plugin exited"},
+		{"crash-unknown", "exits after shutdown", "already exited"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.mode, func(t *testing.T) {
+		t.Run(tt.mode+"/"+tt.check, func(t *testing.T) {
 			results, err := Check(context.Background(), testutil.FakePlugin(t, "-mode="+tt.mode), quiet)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, ok := failed(results)[tt.check]; !ok {
+			got, ok := failed(results)[tt.check]
+			if !ok {
 				t.Fatalf("check %q passed, want failure; results: %v", tt.check, results)
+			}
+			if !strings.Contains(got.Error(), tt.wantErr) {
+				t.Fatalf("check %q failed with %q, want it to mention %q", tt.check, got, tt.wantErr)
 			}
 		})
 	}
@@ -1934,10 +1951,15 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/protocol"
 )
+
+// callTimeout bounds each check's call so a silent plugin can't hang CI. A
+// variable so tests can shorten it.
+var callTimeout = 5 * time.Second
 
 // Result is the outcome of one check. Err is nil when it passed.
 type Result struct {
@@ -1963,10 +1985,18 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	if err != nil {
 		return results, nil
 	}
-	err = p.Call(ctx, "innkeeper.contract.unknown", nil, nil)
+	callCtx, cancel := context.WithTimeout(ctx, callTimeout)
+	err = p.Call(callCtx, "innkeeper.contract.unknown", nil, nil)
+	cancel()
 	results = append(results, Result{"unknown method returns -32601", expectCode(err, protocol.CodeMethodNotFound)})
-	results = append(results, Result{"exits after shutdown", p.Stop()})
-	return results, nil
+
+	// A plugin that already died would "exit after shutdown" without
+	// handling it.
+	if errors.Is(err, protocol.ErrClosed) || !p.Alive() {
+		_ = p.Stop()
+		return append(results, Result{"exits after shutdown", errors.New("plugin had already exited before shutdown")}), nil
+	}
+	return append(results, Result{"exits after shutdown", p.Stop()}), nil
 }
 
 // noCore answers plugin callbacks during a check, where no library exists.
@@ -1977,6 +2007,12 @@ func noCore(_ context.Context, method string, _ json.RawMessage) (any, error) {
 func expectCode(err error, code int) error {
 	if err == nil {
 		return fmt.Errorf("expected error %d, got success", code)
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("expected error %d, got no response within %s", code, callTimeout)
+	}
+	if errors.Is(err, protocol.ErrClosed) {
+		return fmt.Errorf("expected error %d, but the plugin exited", code)
 	}
 	var rpcErr *protocol.Error
 	if !errors.As(err, &rpcErr) {
@@ -2210,8 +2246,8 @@ innkeeper plugin check path/to/plugin
 It loads the manifest, then checks that:
 
 - the `initialize` reply matches the manifest
-- an unknown method returns `-32601`
-- the plugin exits after `shutdown`
+- an unknown method returns `-32601` within 5 seconds
+- the plugin exits after `shutdown`, rather than having exited earlier
 
 It exits non-zero if any check fails.
 ````

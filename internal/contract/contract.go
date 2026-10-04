@@ -9,10 +9,15 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/protocol"
 )
+
+// callTimeout bounds each check's call so a silent plugin can't hang CI. A
+// variable so tests can shorten it.
+var callTimeout = 5 * time.Second
 
 // Result is the outcome of one check. Err is nil when it passed.
 type Result struct {
@@ -38,10 +43,18 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	if err != nil {
 		return results, nil
 	}
-	err = p.Call(ctx, "innkeeper.contract.unknown", nil, nil)
+	callCtx, cancel := context.WithTimeout(ctx, callTimeout)
+	err = p.Call(callCtx, "innkeeper.contract.unknown", nil, nil)
+	cancel()
 	results = append(results, Result{"unknown method returns -32601", expectCode(err, protocol.CodeMethodNotFound)})
-	results = append(results, Result{"exits after shutdown", p.Stop()})
-	return results, nil
+
+	// A plugin that already died would "exit after shutdown" without
+	// handling it.
+	if errors.Is(err, protocol.ErrClosed) || !p.Alive() {
+		_ = p.Stop()
+		return append(results, Result{"exits after shutdown", errors.New("plugin had already exited before shutdown")}), nil
+	}
+	return append(results, Result{"exits after shutdown", p.Stop()}), nil
 }
 
 // noCore answers plugin callbacks during a check, where no library exists.
@@ -52,6 +65,12 @@ func noCore(_ context.Context, method string, _ json.RawMessage) (any, error) {
 func expectCode(err error, code int) error {
 	if err == nil {
 		return fmt.Errorf("expected error %d, got success", code)
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("expected error %d, got no response within %s", code, callTimeout)
+	}
+	if errors.Is(err, protocol.ErrClosed) {
+		return fmt.Errorf("expected error %d, but the plugin exited", code)
 	}
 	var rpcErr *protocol.Error
 	if !errors.As(err, &rpcErr) {

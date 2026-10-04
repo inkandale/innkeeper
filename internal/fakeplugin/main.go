@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "", "bad-protocol | wrong-caps | bad-errors | no-shutdown")
+	mode := flag.String("mode", "", "bad-protocol | wrong-caps | bad-errors | silent | crash-unknown | no-shutdown")
 	flag.Parse()
 
 	var conn *protocol.Conn
@@ -61,8 +61,14 @@ func main() {
 			// stops reading stdin, like a hung plugin.
 			time.Sleep(time.Minute)
 		}
-		if *mode == "bad-errors" {
+		switch *mode {
+		case "bad-errors":
 			return nil, nil
+		case "silent":
+			time.Sleep(time.Minute)
+			return nil, nil
+		case "crash-unknown":
+			os.Exit(4)
 		}
 		return nil, protocol.MethodNotFound(method)
 	}

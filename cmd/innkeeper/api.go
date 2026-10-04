@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log/slog"
-	"net"
 	"net/http"
 	"os"
 	"time"
@@ -31,14 +30,13 @@ func apiServer() error {
 	defer mgr.Close()
 	go stopIdlePlugins(ctx, mgr)
 
+	stopping := make(chan struct{})
 	s := &api.Server{Lib: svc.lib, Queue: jobs.New(svc.pool), Registry: svc.registry, Auth: auth.New(svc.pool),
-		Plugins: mgr, Log: log, PublicURL: os.Getenv("INNKEEPER_PUBLIC_URL")}
+		Plugins: mgr, Log: log, PublicURL: os.Getenv("INNKEEPER_PUBLIC_URL"), Stopping: stopping}
 	srv := &http.Server{
 		Addr:              listen,
 		Handler:           s.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
-		// Requests end with ctx, so open job streams don't hold up shutdown.
-		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
@@ -48,6 +46,7 @@ func apiServer() error {
 		return err
 	case <-ctx.Done():
 	}
+	close(stopping)
 	sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return srv.Shutdown(sctx)

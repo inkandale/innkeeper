@@ -34,6 +34,9 @@ type Server struct {
 	// https://innkeeper.example.com. Optional. Redirect logins need it, and
 	// an http:// URL sends cookies without Secure.
 	PublicURL string
+	// Stopping closes when the server begins shutting down, which ends job
+	// streams so they don't hold up shutdown. Nil means never.
+	Stopping <-chan struct{}
 
 	// loginSlot lets one login run at a time.
 	loginSlot chan struct{}

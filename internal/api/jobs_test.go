@@ -167,3 +167,34 @@ func TestImportBrokenInstance(t *testing.T) {
 		t.Fatalf("leaked the stored error: %s", r.Body)
 	}
 }
+
+func TestWatchEndsWhenStopping(t *testing.T) {
+	e := newEnv(t)
+	stopping := make(chan struct{})
+	e.s.Stopping = stopping
+	var j jobOut
+	e.call("POST", "/imports", map[string]any{"instance_id": e.importID}, 202, &j)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/jobs/%d/events", e.srv.URL, j.ID), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+e.token)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	sc := bufio.NewScanner(resp.Body)
+	if !sc.Scan() {
+		t.Fatalf("no first event: %v", sc.Err())
+	}
+	close(stopping)
+	for sc.Scan() {
+	}
+	if err := sc.Err(); err != nil {
+		t.Fatalf("stream didn't end when stopping: %v", err)
+	}
+}

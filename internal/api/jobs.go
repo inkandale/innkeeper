@@ -89,7 +89,7 @@ func (s *Server) job(ctx context.Context, id int64) (jobOut, error) {
 }
 
 // watch sends the job as an SSE event each time it changes, until it
-// finishes or the client goes away.
+// finishes, the client goes away, or the server stops.
 //
 // ponytail: polls the database every watchInterval per watcher; use
 // LISTEN/NOTIFY if many clients watch at once.
@@ -132,6 +132,8 @@ func (s *Server) watch(hc huma.Context, j jobOut) {
 		}
 		select {
 		case <-ctx.Done():
+			return
+		case <-s.Stopping:
 			return
 		case <-t.C:
 		}

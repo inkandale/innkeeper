@@ -54,6 +54,9 @@ func Start(ctx context.Context, m *protocol.Manifest, params protocol.Initialize
 		return nil, err
 	}
 	cmd.Stdout, cmd.Stderr = stdoutW, stderrW
+	// Own process group so killGroup reaches the plugin's children. The
+	// plugin no longer gets the core's terminal SIGINT; it exits when stdin
+	// closes instead.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	err = cmd.Start()
 	stdoutW.Close()
@@ -173,6 +176,9 @@ func (p *Process) Stop() error {
 // killGroup kills the plugin and every process it started, which share its
 // process group. Without this, a child holding the pipes open keeps the
 // plugin looking alive after it exits.
+//
+// ponytail: a child that leaves the group (setsid) and keeps stdout open
+// still blocks done; daemons normally point stdio at /dev/null.
 func (p *Process) killGroup() { _ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL) }
 
 func (p *Process) kill() {

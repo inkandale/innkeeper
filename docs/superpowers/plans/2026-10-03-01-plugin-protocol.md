@@ -32,6 +32,7 @@ Constraints this plan leaves for later plans:
 
 - **Plan 3:** a plugin crash surfaces to callers as `protocol.ErrClosed`. Treat it as retryable, so the job is re-queued and resumes from its checkpoint.
 - **Plans 3 and 5:** notification handlers (such as the core's `emit.card` handler) must not call back into the plugin on the same connection; they run on the reading goroutine.
+- **Container image:** run with an init process (compose `init: true`, or tini as the entrypoint). The host kills plugin process groups, and if `innkeeper` is PID 1 the orphaned grandchildren become zombies it never reaps.
 
 ## File structure
 
@@ -1428,6 +1429,9 @@ func Start(ctx context.Context, m *protocol.Manifest, params protocol.Initialize
 		return nil, err
 	}
 	cmd.Stdout, cmd.Stderr = stdoutW, stderrW
+	// Own process group so killGroup reaches the plugin's children. The
+	// plugin no longer gets the core's terminal SIGINT; it exits when stdin
+	// closes instead.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	err = cmd.Start()
 	stdoutW.Close()
@@ -1547,6 +1551,9 @@ func (p *Process) Stop() error {
 // killGroup kills the plugin and every process it started, which share its
 // process group. Without this, a child holding the pipes open keeps the
 // plugin looking alive after it exits.
+//
+// ponytail: a child that leaves the group (setsid) and keeps stdout open
+// still blocks done; daemons normally point stdio at /dev/null.
 func (p *Process) killGroup() { _ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL) }
 
 func (p *Process) kill() {

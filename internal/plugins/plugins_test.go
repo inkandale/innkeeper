@@ -235,6 +235,24 @@ func TestDeleteInstance(t *testing.T) {
 	}
 }
 
+func TestDeleteInstanceWithBindings(t *testing.T) {
+	ctx := context.Background()
+	reg, _ := newRegistry(t)
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: "Fake"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = reg.pool.Exec(ctx, `WITH c AS (INSERT INTO card (slug, provenance) VALUES ('a', 'upload') RETURNING id)
+		INSERT INTO binding (instance_id, card_id, remote_id, remote_state, accepted_data, accepted_hash)
+		SELECT $1, id, 'r1', 'unchanged', '{}', '' FROM c`, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.DeleteInstance(ctx, id); !errors.Is(err, ErrInUse) {
+		t.Fatalf("delete: %v, want ErrInUse", err)
+	}
+}
+
 func TestUpdateInstanceEndsSessions(t *testing.T) {
 	ctx := context.Background()
 	reg, _ := newRegistry(t)

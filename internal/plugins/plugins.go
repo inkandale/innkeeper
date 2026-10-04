@@ -32,6 +32,8 @@ var (
 	ErrBroken    = errors.New("plugin instance is broken")
 	ErrInvalid   = errors.New("invalid plugin instance")
 	ErrNameTaken = errors.New("plugin instance name already in use")
+	// ErrInUse means cards are still bound to the instance.
+	ErrInUse = errors.New("plugin instance has bound cards; unbind them first")
 )
 
 // LoadDir loads the manifest in each folder of dir. A folder with an invalid
@@ -73,6 +75,12 @@ type Registry struct {
 // plugins write new blobs to blobs. box seals instance secrets.
 func New(pool *pgxpool.Pool, manifests map[string]*protocol.Manifest, blobs *blobstore.Store, box *secrets.Box) *Registry {
 	return &Registry{pool: pool, manifests: manifests, blobs: blobs, box: box}
+}
+
+// HasCapability reports whether plugin is installed and declares capability.
+func (r *Registry) HasCapability(plugin, capability string) bool {
+	m, ok := r.manifests[plugin]
+	return ok && slices.Contains(m.Capabilities, capability)
 }
 
 // Manifests returns the installed plugins by name.
@@ -220,9 +228,13 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 }
 
 // DeleteInstance removes an instance. Its jobs stay, without an instance,
-// and logins through it end.
+// and logins through it end. It returns ErrInUse while cards are bound to it.
 func (r *Registry) DeleteInstance(ctx context.Context, id int64) error {
 	tag, err := r.pool.Exec(ctx, `DELETE FROM plugin_instance WHERE id = $1`, id)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+		return ErrInUse
+	}
 	if err != nil {
 		return err
 	}
@@ -323,4 +335,26 @@ func (r *Registry) MarkBroken(ctx context.Context, id int64, version string, cau
 	_, err = r.pool.Exec(ctx, `UPDATE plugin_instance SET broken_error = $2, broken_at = now() WHERE id = $1 AND updated_at = $3`,
 		id, cause.Error(), time.UnixMicro(micros))
 	return err
+}
+
+// Call sends method to inst's plugin through mgr. A plugin that fails to
+// start marks the instance broken.
+func (r *Registry) Call(ctx context.Context, mgr *pluginhost.Manager, inst pluginhost.Instance, method string, params, result any) error {
+	err := mgr.Call(ctx, inst, method, params, result)
+	var startErr *pluginhost.StartError
+	if errors.As(err, &startErr) && ctx.Err() == nil {
+		id, perr := strconv.ParseInt(inst.ID, 10, 64)
+		if perr == nil {
+			perr = r.MarkBroken(context.WithoutCancel(ctx), id, inst.Version, err)
+		}
+		return errors.Join(err, perr)
+	}
+	return err
+}
+
+// Retryable reports whether a failed plugin call may work later: the plugin
+// exited, or it replied with a retryable error.
+func Retryable(err error) bool {
+	var rpcErr *protocol.Error
+	return errors.Is(err, protocol.ErrClosed) || errors.As(err, &rpcErr) && rpcErr.Retryable()
 }

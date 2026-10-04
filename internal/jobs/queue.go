@@ -1,0 +1,249 @@
+// Package jobs is the core's job queue. Jobs are rows in the job table.
+// Workers claim them with FOR UPDATE SKIP LOCKED, hold them with a lease they
+// keep renewing, and wake on LISTEN/NOTIFY.
+package jobs
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+// Job statuses.
+const (
+	StatusQueued    = "queued"
+	StatusRunning   = "running"
+	StatusWaiting   = "waiting"
+	StatusSucceeded = "succeeded"
+	StatusFailed    = "failed"
+)
+
+var (
+	ErrNotFound = errors.New("job not found")
+	// ErrRetry marks a handler error as temporary. Wrap it, as in
+	// fmt.Errorf("%w: %w", jobs.ErrRetry, err), to have the job retried.
+	ErrRetry = errors.New("retryable")
+	// ErrLeaseLost means the job is no longer this worker's: its lease
+	// expired and the reaper re-queued it.
+	ErrLeaseLost = errors.New("job lease lost")
+)
+
+// Job is one row of the job table.
+type Job struct {
+	ID          int64
+	Kind        string
+	InstanceID  *int64
+	Payload     json.RawMessage
+	Status      string
+	Attempts    int
+	MaxAttempts int
+	Progress    json.RawMessage
+	Checkpoint  json.RawMessage
+	RunAfter    time.Time
+	ParentID    *int64
+	Error       *string
+	CreatedAt   time.Time
+	FinishedAt  *time.Time
+}
+
+// Spec describes a job to enqueue.
+type Spec struct {
+	Kind       string
+	InstanceID *int64
+	// Payload is marshalled to JSON. Nil means {}.
+	Payload any
+}
+
+// Queue adds jobs and reads them back.
+type Queue struct{ pool *pgxpool.Pool }
+
+func New(pool *pgxpool.Pool) *Queue { return &Queue{pool: pool} }
+
+const jobCols = `id, kind, instance_id, payload, status, attempts, max_attempts, progress, checkpoint,
+	run_after, parent_id, error, created_at, finished_at`
+
+func scanJob(row pgx.Row) (Job, error) {
+	var j Job
+	err := row.Scan(&j.ID, &j.Kind, &j.InstanceID, &j.Payload, &j.Status, &j.Attempts, &j.MaxAttempts,
+		&j.Progress, &j.Checkpoint, &j.RunAfter, &j.ParentID, &j.Error, &j.CreatedAt, &j.FinishedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Job{}, ErrNotFound
+	}
+	return j, err
+}
+
+type querier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+func insert(ctx context.Context, db querier, s Spec, parent *int64, status string) (Job, error) {
+	payload := []byte(`{}`)
+	if s.Payload != nil {
+		var err error
+		if payload, err = json.Marshal(s.Payload); err != nil {
+			return Job{}, err
+		}
+	}
+	return scanJob(db.QueryRow(ctx, `INSERT INTO job (kind, instance_id, payload, parent_id, status, finished_at)
+		VALUES ($1, $2, $3, $4, $5, CASE WHEN $5 = 'succeeded' THEN now() END) RETURNING `+jobCols,
+		s.Kind, s.InstanceID, payload, parent, status))
+}
+
+// Enqueue adds a job to run as soon as a worker is free.
+func (q *Queue) Enqueue(ctx context.Context, s Spec) (Job, error) {
+	return insert(ctx, q.pool, s, nil, StatusQueued)
+}
+
+// EnqueueBulk adds a parent job with one child job per spec, in one
+// transaction. The parent never runs: it finishes when its last child does,
+// and fails if any child failed.
+func (q *Queue) EnqueueBulk(ctx context.Context, parent Spec, children []Spec) (Job, error) {
+	tx, err := q.pool.Begin(ctx)
+	if err != nil {
+		return Job{}, err
+	}
+	defer tx.Rollback(ctx)
+	status := StatusWaiting
+	if len(children) == 0 {
+		status = StatusSucceeded
+	}
+	p, err := insert(ctx, tx, parent, nil, status)
+	if err != nil {
+		return Job{}, err
+	}
+	// ponytail: one INSERT per child; switch to CopyFrom if bulk actions
+	// over tens of thousands of cards get slow.
+	for _, c := range children {
+		if _, err := insert(ctx, tx, c, &p.ID, StatusQueued); err != nil {
+			return Job{}, err
+		}
+	}
+	return p, tx.Commit(ctx)
+}
+
+// Get returns one job.
+func (q *Queue) Get(ctx context.Context, id int64) (Job, error) {
+	return scanJob(q.pool.QueryRow(ctx, `SELECT `+jobCols+` FROM job WHERE id = $1`, id))
+}
+
+// EnsureScheduled enqueues kind unless a job of that kind is queued or
+// running, or finished less than every ago.
+func (q *Queue) EnsureScheduled(ctx context.Context, kind string, every time.Duration) error {
+	tx, err := q.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	// Every worker checks the schedule; the lock stops two from both enqueueing.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('innkeeper-schedule'))`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO job (kind) SELECT $1::text WHERE NOT EXISTS (
+		SELECT 1 FROM job WHERE kind = $1 AND parent_id IS NULL
+			AND (status IN ('queued', 'running') OR finished_at > now() - make_interval(secs => $2)))`,
+		kind, every.Seconds()); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// claim marks the next due job of one of kinds as running and leases it to
+// worker. It returns nil when no job is due.
+func (q *Queue) claim(ctx context.Context, worker string, kinds []string, lease time.Duration) (*Job, error) {
+	j, err := scanJob(q.pool.QueryRow(ctx, `UPDATE job SET status = 'running', attempts = attempts + 1,
+			locked_by = $1, locked_until = now() + make_interval(secs => $2)
+		WHERE id = (
+			SELECT id FROM job WHERE status = 'queued' AND run_after <= now() AND kind = ANY($3)
+			ORDER BY run_after, id LIMIT 1 FOR UPDATE SKIP LOCKED)
+		RETURNING `+jobCols, worker, lease.Seconds(), kinds))
+	if errors.Is(err, ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &j, nil
+}
+
+// touch renews the lease and saves progress, and the checkpoint unless it is
+// nil.
+func (q *Queue) touch(ctx context.Context, id int64, worker string, lease time.Duration, progress, checkpoint json.RawMessage) error {
+	tag, err := q.pool.Exec(ctx, `UPDATE job SET locked_until = now() + make_interval(secs => $3),
+			progress = coalesce($4::jsonb, progress), checkpoint = coalesce($5::jsonb, checkpoint)
+		WHERE id = $1 AND locked_by = $2 AND status = 'running'`,
+		id, worker, lease.Seconds(), progress, checkpoint)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrLeaseLost
+	}
+	return nil
+}
+
+// outcome is how a run ended.
+type outcome struct {
+	status   string // succeeded, failed, or queued to retry
+	err      string
+	runAfter time.Duration
+	// refund gives the attempt back: the worker stopped, the job didn't fail.
+	refund bool
+}
+
+func (q *Queue) finish(ctx context.Context, j *Job, worker string, progress json.RawMessage, o outcome) error {
+	refund := 0
+	if o.refund {
+		refund = 1
+	}
+	tag, err := q.pool.Exec(ctx, `UPDATE job SET status = $3, error = nullif($4, ''),
+			run_after = now() + make_interval(secs => $5), attempts = attempts - $6,
+			progress = coalesce($7::jsonb, progress), locked_by = NULL, locked_until = NULL,
+			finished_at = CASE WHEN $3 IN ('succeeded', 'failed') THEN now() END
+		WHERE id = $1 AND locked_by = $2 AND status = 'running'`,
+		j.ID, worker, o.status, o.err, o.runAfter.Seconds(), refund, progress)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrLeaseLost
+	}
+	if j.ParentID != nil && o.status != StatusQueued {
+		return q.completeParents(ctx, j.ParentID)
+	}
+	return nil
+}
+
+// completeParents finishes waiting parents whose children have all finished.
+// It runs after the child's update commits, so when two children finish at
+// once, whichever checks second sees both. A nil id checks every parent,
+// which catches a worker that died between the two steps.
+func (q *Queue) completeParents(ctx context.Context, id *int64) error {
+	_, err := q.pool.Exec(ctx, `UPDATE job p SET
+			status = CASE WHEN s.failed > 0 THEN 'failed' ELSE 'succeeded' END,
+			error = CASE WHEN s.failed > 0 THEN s.failed || ' of ' || s.total || ' jobs failed' END,
+			finished_at = now()
+		FROM (SELECT parent_id, count(*) AS total,
+				count(*) FILTER (WHERE status = 'failed') AS failed,
+				count(*) FILTER (WHERE status NOT IN ('succeeded', 'failed')) AS open
+			FROM job WHERE parent_id = coalesce($1, parent_id) GROUP BY parent_id) s
+		WHERE p.id = s.parent_id AND p.status = 'waiting' AND s.open = 0`, id)
+	return err
+}
+
+// reap re-queues jobs whose lease expired because their worker died, or
+// fails them once they are out of attempts.
+func (q *Queue) reap(ctx context.Context) error {
+	if _, err := q.pool.Exec(ctx, `UPDATE job SET
+			status = CASE WHEN attempts >= max_attempts THEN 'failed' ELSE 'queued' END,
+			error = 'worker stopped renewing its lease',
+			finished_at = CASE WHEN attempts >= max_attempts THEN now() END,
+			locked_by = NULL, locked_until = NULL, run_after = now()
+		WHERE status = 'running' AND locked_until < now()`); err != nil {
+		return err
+	}
+	return q.completeParents(ctx, nil)
+}

@@ -16,6 +16,9 @@ import (
 	"time"
 )
 
+// ErrInvalid means Ingest rejected the file itself, not that the store failed.
+var ErrInvalid = errors.New("invalid file")
+
 var shaPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 // Store is one blob directory. Name is recorded on each blob row.
@@ -73,10 +76,10 @@ func (s *Store) Ingest(path string) (sha string, size int64, err error) {
 	}
 	dir, err := filepath.EvalSymlinks(filepath.Dir(path))
 	if err != nil {
-		return "", 0, err
+		return "", 0, fileErr(err)
 	}
 	if dir != tmp {
-		return "", 0, fmt.Errorf("%s is not inside %s", path, s.TmpDir())
+		return "", 0, fmt.Errorf("%w: %s is not inside %s", ErrInvalid, path, s.TmpDir())
 	}
 	// Move it out of the plugin-writable folder before reading it.
 	staged, err := s.stage()
@@ -86,20 +89,20 @@ func (s *Store) Ingest(path string) (sha string, size int64, err error) {
 	staged.Close()
 	defer os.Remove(staged.Name())
 	if err := os.Rename(filepath.Join(dir, filepath.Base(path)), staged.Name()); err != nil {
-		return "", 0, err
+		return "", 0, fileErr(err)
 	}
 	f, err := os.OpenFile(staged.Name(), os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
-		return "", 0, fmt.Errorf("open %s: %w", path, err)
+		return "", 0, fmt.Errorf("open %s: %w", path, fileErr(err))
 	}
 	defer f.Close()
 	if fi, err := f.Stat(); err != nil {
 		return "", 0, err
 	} else if !fi.Mode().IsRegular() {
-		return "", 0, fmt.Errorf("%s is not a regular file", path)
+		return "", 0, fmt.Errorf("%w: %s is not a regular file", ErrInvalid, path)
 	} else if st, ok := fi.Sys().(*syscall.Stat_t); !ok || uint64(st.Nlink) != 1 {
 		// A hard link would let place chmod some other file.
-		return "", 0, fmt.Errorf("%s has other hard links", path)
+		return "", 0, fmt.Errorf("%w: %s has other hard links", ErrInvalid, path)
 	}
 	h := sha256.New()
 	if size, err = io.Copy(h, f); err != nil {
@@ -107,6 +110,15 @@ func (s *Store) Ingest(path string) (sha string, size int64, err error) {
 	}
 	sha = hex.EncodeToString(h.Sum(nil))
 	return sha, size, s.place(staged.Name(), sha)
+}
+
+// fileErr marks errors from a missing path, a directory, or a symlink as
+// ErrInvalid, and leaves others, such as a full disk, as they are.
+func fileErr(err error) error {
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) || errors.Is(err, syscall.ELOOP) {
+		return fmt.Errorf("%w: %w", ErrInvalid, err)
+	}
+	return err
 }
 
 func (s *Store) stage() (*os.File, error) {

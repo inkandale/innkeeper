@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/davidgibbons/innkeeper/internal/blobstore"
 	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/protocol"
 )
@@ -18,9 +19,9 @@ type badItem struct{ err error }
 func (b *badItem) Error() string { return b.err.Error() }
 func (b *badItem) Unwrap() error { return b.err }
 
-// invalid turns the library's validation errors into badItem.
+// invalid turns the library's and blob store's validation errors into badItem.
 func invalid(err error) error {
-	if errors.Is(err, library.ErrInvalid) {
+	if errors.Is(err, library.ErrInvalid) || errors.Is(err, blobstore.ErrInvalid) {
 		return &badItem{err}
 	}
 	return err
@@ -59,7 +60,7 @@ func (im *Importer) ingestCard(ctx context.Context, plugin string, e protocol.Em
 	if e.Avatar != "" {
 		b, err := im.Lib.IngestBlob(ctx, e.Avatar)
 		if err != nil {
-			return false, &badItem{fmt.Errorf("avatar: %w", err)}
+			return false, invalid(fmt.Errorf("avatar: %w", err))
 		}
 		avatar = b.SHA256
 	}

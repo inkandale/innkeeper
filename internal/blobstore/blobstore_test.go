@@ -3,6 +3,7 @@ package blobstore
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -86,9 +87,10 @@ func TestIngestRejectsUntrustedPaths(t *testing.T) {
 		"symlink":     symlink,
 		"hard link":   hardlink,
 		"directory":   nested,
+		"missing":     filepath.Join(s.TmpDir(), "missing"),
 	} {
-		if _, _, err := s.Ingest(path); err == nil {
-			t.Errorf("%s: Ingest accepted %s", name, path)
+		if _, _, err := s.Ingest(path); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: Ingest(%s) = %v, want ErrInvalid", name, path, err)
 		}
 	}
 	if b, err := os.ReadFile(outside); err != nil || string(b) != "secret" {
@@ -96,6 +98,18 @@ func TestIngestRejectsUntrustedPaths(t *testing.T) {
 	}
 	if fi, _ := os.Stat(outside); fi.Mode().Perm() != 0o600 {
 		t.Fatalf("outside file mode changed to %v", fi.Mode().Perm())
+	}
+}
+
+func TestIngestStoreFailureIsNotInvalid(t *testing.T) {
+	s := newStore(t)
+	src := filepath.Join(s.TmpDir(), "card.png")
+	os.WriteFile(src, []byte("png bytes"), 0o644)
+	if err := os.Mkdir(s.stagingDir(), 0o555); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Ingest(src); err == nil || errors.Is(err, ErrInvalid) {
+		t.Fatalf("Ingest with unwritable staging = %v, want a non-ErrInvalid error", err)
 	}
 }
 

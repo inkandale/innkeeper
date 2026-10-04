@@ -227,6 +227,8 @@ func (w *Worker) execute(ctx context.Context, j *Job) {
 	o := outcome{status: StatusSucceeded}
 	switch {
 	case err == nil:
+	case errors.Is(err, ErrFinal):
+		o = outcome{status: StatusFailed, err: err.Error()}
 	case ctx.Err() != nil:
 		o = outcome{status: StatusQueued, err: "worker stopped", refund: true}
 	case errors.Is(err, ErrRetry) && j.Attempts < j.MaxAttempts:

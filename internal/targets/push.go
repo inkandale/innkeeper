@@ -66,8 +66,12 @@ func (s *Service) push(ctx context.Context, instanceID, cardID int64, newCopy bo
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return Binding{}, err
 	}
-	// Pushes are serialized by the lock, so this can't change before the put.
-	if expect != nil && bound && (expect.lastPush == nil || lastPush == nil || *expect.lastPush != *lastPush) {
+	// A job re-run must not create a second copy, so a create skips if a push
+	// landed since the job was queued. An update re-sends the head, which is
+	// safe, so it always goes ahead. Pushes are serialized by the lock, so
+	// this can't change before the put.
+	create := !bound || state == remoteMissing || !info.Update
+	if expect != nil && create && bound && (expect.lastPush == nil || lastPush == nil || *expect.lastPush != *lastPush) {
 		return Binding{}, errAlreadyPushed
 	}
 	put := protocol.TargetPutParams{Card: r.card, Avatar: r.avatar}

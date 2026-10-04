@@ -92,7 +92,10 @@ func (s *Service) RunPush(ctx context.Context, r *jobs.Run) error {
 		}
 		return skipPush(r, id)
 	case err == nil:
-	case errors.Is(err, ErrUncertain), errors.As(err, &startErr):
+	case errors.Is(err, ErrUncertain):
+		// Final even on shutdown: a re-run could make a second copy.
+		return fmt.Errorf("%w: %w", jobs.ErrFinal, err)
+	case errors.As(err, &startErr):
 		return err
 	case plugins.Retryable(err):
 		return fmt.Errorf("%w: %w", jobs.ErrRetry, err)

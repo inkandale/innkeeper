@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/davidgibbons/innkeeper/internal/jobs"
+	"github.com/davidgibbons/innkeeper/internal/library"
 )
 
 func TestJobs(t *testing.T) {
@@ -115,6 +116,26 @@ func TestPushJobSkipsFinishedCopy(t *testing.T) {
 	}
 	if files, _ := os.ReadDir(e.dir); len(files) != 2 {
 		t.Fatalf("the app has %d cards, want 2", len(files))
+	}
+}
+
+// On a target that updates in place, a queued push still runs after another
+// push lands, so an edit made in between reaches the app.
+func TestPushJobUpdatesAfterAnotherPush(t *testing.T) {
+	e := setup(t, nil)
+	q := jobs.New(e.pool)
+	e.push(e.card)
+	j, err := e.s.EnqueuePush(e.ctx, q, e.inst, e.card, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.push(e.card)
+	e.update(e.card, func(ed *library.Edit) { ed.Data = setField(ed.Data, "first_mes", "Well met.") })
+	if got := e.startWorker(q)(j.ID); got.Status != jobs.StatusSucceeded {
+		t.Fatalf("job %s (%v)", got.Status, got.Error)
+	}
+	if got := e.remoteData("r1")["first_mes"]; got != "Well met." || e.status(e.card) != "in_sync" {
+		t.Fatalf("app first_mes = %v, status %s", got, e.status(e.card))
 	}
 }
 

@@ -270,3 +270,27 @@ func TestCancelStopsRunningHandler(t *testing.T) {
 		t.Fatalf("job = %+v, want failed, cancelled, 1 attempt", got)
 	}
 }
+
+func TestFinalErrorFailsEvenOnShutdown(t *testing.T) {
+	q := newQueue(t)
+	started := make(chan struct{})
+	w := &Worker{Queue: q, Log: quiet, Poll: time.Hour, Handlers: map[string]Handler{
+		"test": func(ctx context.Context, _ *Run) error {
+			close(started)
+			<-ctx.Done()
+			return fmt.Errorf("%w: the app may have the card", ErrFinal)
+		},
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error)
+	go func() { done <- w.Run(ctx) }()
+	j, _ := q.Enqueue(context.Background(), Spec{Kind: "test"})
+	<-started
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := q.Get(context.Background(), j.ID); got.Status != StatusFailed {
+		t.Fatalf("job after shutdown = %+v", got)
+	}
+}

@@ -27,6 +27,9 @@ var (
 	// ErrRetry marks a handler error as temporary. Wrap it, as in
 	// fmt.Errorf("%w: %w", jobs.ErrRetry, err), to have the job retried.
 	ErrRetry = errors.New("retryable")
+	// ErrFinal marks a handler error that must fail the job even when the
+	// worker is stopping, because running the job again could do harm.
+	ErrFinal = errors.New("final")
 	// ErrLeaseLost means the job is no longer this worker's: its lease
 	// expired and the reaper re-queued it.
 	ErrLeaseLost = errors.New("job lease lost")

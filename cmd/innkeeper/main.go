@@ -18,6 +18,13 @@ const usage = `usage:
   innkeeper api
   innkeeper token create <name> | list | revoke <id>
 
+API commands (read INNKEEPER_URL and INNKEEPER_TOKEN):
+  innkeeper call <method> <path> [json]
+  innkeeper import <instance-id> [params-json]
+  innkeeper export <card-id> [file]
+  innkeeper bulk archive|unarchive [query-json]
+  innkeeper jobs [show|cancel|watch <job-id>]
+
 See README.md for the environment variables each command reads.`
 
 func main() {
@@ -43,6 +50,16 @@ func run(args []string) error {
 		return apiServer()
 	case cmd == "token":
 		return token(rest)
+	case cmd == "call":
+		return call(rest)
+	case cmd == "import":
+		return importCmd(rest)
+	case cmd == "export":
+		return export(rest)
+	case cmd == "bulk":
+		return bulkCmd(rest)
+	case cmd == "jobs":
+		return jobsCmd(rest)
 	}
 	return errors.New(usage)
 }

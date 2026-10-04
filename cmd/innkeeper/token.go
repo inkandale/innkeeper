@@ -16,7 +16,7 @@ import (
 // the owner can make the first token before anyone can log in.
 func token(args []string) error {
 	ctx := context.Background()
-	pool, err := openDB(ctx)
+	pool, err := openDB(ctx, 0)
 	if err != nil {
 		return err
 	}

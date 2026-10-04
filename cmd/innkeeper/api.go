@@ -21,7 +21,7 @@ func apiServer() error {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	ctx, stop := signalContext()
 	defer stop()
-	svc, err := openServices(ctx, log)
+	svc, err := openServices(ctx, log, 0)
 	if err != nil {
 		return err
 	}

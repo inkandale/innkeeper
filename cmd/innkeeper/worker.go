@@ -13,6 +13,7 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/importer"
 	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
+	"github.com/davidgibbons/innkeeper/internal/targets"
 )
 
 const (
@@ -34,7 +35,8 @@ func worker() error {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	ctx, stop := signalContext()
 	defer stop()
-	svc, err := openServices(ctx, log)
+	// Each running job may hold a connection while a plugin callback needs another.
+	svc, err := openServices(ctx, log, 2*concurrency+2)
 	if err != nil {
 		return err
 	}
@@ -46,6 +48,7 @@ func worker() error {
 	im.Plugins = mgr
 	go stopIdlePlugins(ctx, mgr)
 
+	tg := targets.New(svc.pool, svc.lib, svc.registry, mgr, log)
 	q := jobs.New(svc.pool)
 	w := &jobs.Worker{
 		Queue:       q,
@@ -54,6 +57,8 @@ func worker() error {
 		Handlers: map[string]jobs.Handler{
 			importer.Kind:    im.Run,
 			bulk.ArchiveKind: bulk.Archive(svc.lib),
+			targets.PushKind: tg.RunPush,
+			targets.ScanKind: tg.RunScan,
 			blobGCKind: func(ctx context.Context, r *jobs.Run) error {
 				blobs, leftovers, err := svc.lib.CollectGarbage(ctx, 24*time.Hour)
 				r.SetProgress(fmt.Appendf(nil, `{"blobs": %d, "leftovers": %d}`, blobs, leftovers))
@@ -68,6 +73,7 @@ func worker() error {
 		Schedules: []jobs.Schedule{
 			{Kind: blobGCKind, Every: 24 * time.Hour},
 			{Kind: jobPruneKind, Every: 24 * time.Hour},
+			{Kind: targets.ScanKind, Every: time.Hour},
 		},
 	}
 	log.Info("worker started", "plugins", len(svc.manifests), "concurrency", concurrency)

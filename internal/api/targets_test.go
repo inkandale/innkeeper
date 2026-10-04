@@ -1,0 +1,106 @@
+package api
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/davidgibbons/innkeeper/internal/bulk"
+	"github.com/davidgibbons/innkeeper/internal/plugins"
+	"github.com/davidgibbons/innkeeper/internal/targets"
+)
+
+// target configures a fake target app that keeps its cards in a temp dir,
+// and returns the instance and the dir.
+func (e *testEnv) target() (int64, string) {
+	e.t.Helper()
+	dir := e.t.TempDir()
+	id, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "fake", Name: "Target",
+		Config: map[string]any{"dir": dir}})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return id, dir
+}
+
+func TestPushRoutes(t *testing.T) {
+	e := newEnv(t)
+	inst, dir := e.target()
+	var c entityOut
+	e.call("POST", "/cards", map[string]any{"data": map[string]any{"name": "Brakka", "first_mes": "Hail.", "scenario": "A forge."}}, 201, &c)
+	path := fmt.Sprintf("/cards/%d", c.ID)
+
+	var p targets.Preview
+	e.call("GET", fmt.Sprintf("%s/push-preview?instance_id=%d", path, inst), nil, 200, &p)
+	if len(p.DroppedFields) != 1 || p.DroppedFields[0] != "scenario" || p.NewCopy {
+		t.Fatalf("preview = %+v", p)
+	}
+	e.call("GET", path+"/push-preview", nil, 422, nil)
+
+	var j jobOut
+	e.call("POST", path+"/push", map[string]any{"instance_id": inst}, 202, &j)
+	if j.Kind != targets.PushKind || *j.InstanceID != inst {
+		t.Fatalf("push job = %+v", j)
+	}
+	e.call("POST", path+"/push", map[string]any{"instance_id": e.importID + 1000}, 404, nil)
+	e.call("POST", "/cards/999/push", map[string]any{"instance_id": inst}, 404, nil)
+	e.markBroken(e.importID, "boom")
+	e.call("POST", path+"/push", map[string]any{"instance_id": e.importID}, 409, nil)
+
+	// No worker runs here, so push directly.
+	if _, err := e.s.Targets.Push(context.Background(), inst, c.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	var list []targets.Binding
+	e.call("GET", path+"/bindings", nil, 200, &list)
+	if len(list) != 1 || list[0].Status != "in_sync" || list[0].RemoteID != "r1" {
+		t.Fatalf("bindings = %+v", list)
+	}
+	bpath := fmt.Sprintf("/bindings/%d", list[0].ID)
+
+	// The owner changes the card in the app.
+	if err := os.WriteFile(filepath.Join(dir, "r1.json"), []byte(`{"spec": "chara_card_v3", "data": {"name": "Brakka", "first_mes": "Well met."}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var b targets.Binding
+	e.call("POST", bpath+"/check", nil, 200, &b)
+	if b.Status != "remote_changed" || len(b.Changes) != 1 {
+		t.Fatalf("check = %+v", b)
+	}
+	e.call("POST", bpath+"/adopt", map[string]any{"into": "base", "base_revision_id": c.Revision.ID + 100}, 409, nil)
+	e.call("POST", bpath+"/adopt", map[string]any{"into": "base", "base_revision_id": c.Revision.ID}, 200, &b)
+	if b.Status != "ahead" {
+		t.Fatalf("adopt = %+v", b)
+	}
+	e.call("POST", bpath+"/adopt", map[string]any{"into": "ignore"}, 409, nil)
+	e.call("GET", path, nil, 200, &c)
+	if c.Revision.Source != "adopt" {
+		t.Fatalf("card after adopt = %+v", c.Revision)
+	}
+
+	var pushes []targets.Push
+	e.call("GET", bpath+"/pushes", nil, 200, &pushes)
+	if len(pushes) != 1 {
+		t.Fatalf("pushes = %+v", pushes)
+	}
+	e.call("DELETE", fmt.Sprintf("/instances/%d", inst), nil, 409, nil)
+	e.call("DELETE", bpath, nil, 204, nil)
+	e.call("GET", bpath, nil, 404, nil)
+	e.call("DELETE", fmt.Sprintf("/instances/%d", inst), nil, 204, nil)
+}
+
+func TestBulkPush(t *testing.T) {
+	e := newEnv(t)
+	inst, _ := e.target()
+	for _, name := range []string{"Brakka", "Carrow"} {
+		e.call("POST", "/cards", map[string]any{"data": map[string]any{"name": name}}, 201, nil)
+	}
+	e.call("POST", "/pushes", map[string]any{"instance_id": inst, "query": map[string]any{}}, 400, nil)
+	var j jobOut
+	e.call("POST", "/pushes", map[string]any{"instance_id": inst, "query": map[string]any{"text": "carrow"}}, 202, &j)
+	if j.Kind != bulk.Kind || j.Children["queued"] != 1 {
+		t.Fatalf("bulk push = %+v", j)
+	}
+}

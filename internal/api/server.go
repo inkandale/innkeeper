@@ -17,6 +17,7 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
+	"github.com/davidgibbons/innkeeper/internal/targets"
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
@@ -26,6 +27,8 @@ type Server struct {
 	Queue    *jobs.Queue
 	Registry *plugins.Registry
 	Auth     *auth.Auth
+	// Targets must use Plugins.
+	Targets *targets.Service
 	// Plugins runs plugins for interactive calls, such as logins. Its core
 	// handler should be NoCore.
 	Plugins *pluginhost.Manager
@@ -85,6 +88,7 @@ func (s *Server) Handler() http.Handler {
 	s.searchRoutes(api)
 	s.instanceRoutes(api)
 	s.jobRoutes(api)
+	s.targetRoutes(api)
 	// Browsers arrive here from a login provider; it isn't part of the API.
 	mux.HandleFunc("GET /auth/{id}/callback", s.callback)
 	return mux
@@ -94,19 +98,31 @@ func (s *Server) Handler() http.Handler {
 // hidden from the client. A nil error stays nil.
 func (s *Server) fail(err error) error {
 	var se huma.StatusError
+	var rpcErr *protocol.Error
+	var startErr *pluginhost.StartError
 	switch {
 	case err == nil:
 		return nil
 	case errors.As(err, &se):
 		return se
 	case errors.Is(err, library.ErrNotFound), errors.Is(err, jobs.ErrNotFound),
-		errors.Is(err, plugins.ErrNotFound), errors.Is(err, auth.ErrNotFound):
+		errors.Is(err, plugins.ErrNotFound), errors.Is(err, auth.ErrNotFound), errors.Is(err, targets.ErrNotFound):
 		return huma.Error404NotFound("not found")
 	case errors.Is(err, library.ErrConflict), errors.Is(err, library.ErrSlugTaken), errors.Is(err, library.ErrNameTaken),
-		errors.Is(err, plugins.ErrNameTaken), errors.Is(err, jobs.ErrFinished):
+		errors.Is(err, plugins.ErrNameTaken), errors.Is(err, jobs.ErrFinished), errors.Is(err, plugins.ErrInUse),
+		errors.Is(err, targets.ErrNewCopy), errors.Is(err, targets.ErrNoChanges), errors.Is(err, targets.ErrMoved):
 		return huma.Error409Conflict(err.Error())
-	case errors.Is(err, library.ErrInvalid), errors.Is(err, plugins.ErrInvalid), errors.Is(err, plugins.ErrUnknownPlugin):
+	case errors.Is(err, plugins.ErrBroken):
+		// The stored error can hold paths and plugin output, so it stays out of the response.
+		return huma.Error409Conflict("plugin instance is broken; fix its settings first")
+	case errors.Is(err, library.ErrInvalid), errors.Is(err, plugins.ErrInvalid), errors.Is(err, plugins.ErrUnknownPlugin),
+		errors.Is(err, targets.ErrCannot):
 		return huma.Error400BadRequest(err.Error())
+	case errors.As(err, &rpcErr), errors.Is(err, targets.ErrBadReply):
+		return huma.Error502BadGateway("plugin: " + err.Error())
+	case errors.As(err, &startErr), errors.Is(err, protocol.ErrClosed):
+		s.Log.Error("plugin failed", "err", err)
+		return huma.Error502BadGateway("plugin failed; see the server log")
 	}
 	s.Log.Error("request failed", "err", err)
 	return huma.Error500InternalServerError("internal error")

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"slices"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -15,6 +14,7 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/importer"
 	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/library"
+	"github.com/davidgibbons/innkeeper/internal/plugins"
 )
 
 // watchInterval is how often a job stream checks the job. Tests shorten it.
@@ -71,6 +71,22 @@ type bulkIn struct {
 		Query  library.Query `json:"query" doc:"Selects the cards, as in POST /search. Paging is ignored."`
 		Action string        `json:"action" enum:"archive,unarchive"`
 	}
+}
+
+// usable checks that an instance exists, isn't broken, and its plugin has
+// capability.
+func (s *Server) usable(ctx context.Context, id int64, capability string) error {
+	inst, err := s.Registry.GetInstance(ctx, id)
+	if err != nil {
+		return s.fail(err)
+	}
+	if inst.BrokenError != nil {
+		return s.fail(plugins.ErrBroken)
+	}
+	if !s.Registry.HasCapability(inst.Plugin, capability) {
+		return huma.Error400BadRequest(fmt.Sprintf("plugin %s can't %s", inst.Plugin, capability))
+	}
+	return nil
 }
 
 // job returns a job, with child counts for a bulk job.
@@ -204,16 +220,8 @@ func (s *Server) jobRoutes(api huma.API) {
 		Summary: "Start an import", Description: "Queues an import job for an instance of an import plugin.",
 		Tags: tags, DefaultStatus: http.StatusAccepted},
 		func(ctx context.Context, in *importIn) (*jobResp, error) {
-			inst, err := s.Registry.GetInstance(ctx, in.Body.InstanceID)
-			if err != nil {
-				return nil, s.fail(err)
-			}
-			// The stored error can hold paths and plugin output, so it stays out of the response.
-			if inst.BrokenError != nil {
-				return nil, huma.Error409Conflict("plugin instance is broken; fix its settings first")
-			}
-			if m := s.Registry.Manifests()[inst.Plugin]; m == nil || !slices.Contains(m.Capabilities, "import") {
-				return nil, huma.Error400BadRequest(fmt.Sprintf("plugin %s can't import", inst.Plugin))
+			if err := s.usable(ctx, in.Body.InstanceID, "import"); err != nil {
+				return nil, err
 			}
 			params := in.Body.Params
 			if params == nil {

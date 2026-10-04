@@ -22,6 +22,7 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 	"github.com/davidgibbons/innkeeper/internal/secrets"
+	"github.com/davidgibbons/innkeeper/internal/targets"
 	"github.com/davidgibbons/innkeeper/internal/testdb"
 	"github.com/davidgibbons/innkeeper/internal/testutil"
 	"github.com/davidgibbons/innkeeper/protocol"
@@ -54,7 +55,7 @@ func newEnv(t *testing.T) *testEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fake, err := protocol.LoadManifest(testutil.FakePluginWith(t, []string{"auth", "import"}))
+	fake, err := protocol.LoadManifest(testutil.FakePluginWith(t, []string{"auth", "import", "push", "pull"}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,8 +64,9 @@ func newEnv(t *testing.T) *testEnv {
 	reg := plugins.New(pool, map[string]*protocol.Manifest{"fake": fake, "vault": vault}, store, box)
 	mgr := pluginhost.NewManager(NoCore, time.Minute, quiet)
 	t.Cleanup(mgr.Close)
-	e := &testEnv{t: t, pool: pool, s: &Server{Lib: library.New(pool, store), Queue: jobs.New(pool),
-		Registry: reg, Auth: auth.New(pool), Plugins: mgr, Log: quiet}}
+	lib := library.New(pool, store)
+	e := &testEnv{t: t, pool: pool, s: &Server{Lib: lib, Queue: jobs.New(pool), Registry: reg, Auth: auth.New(pool),
+		Targets: targets.New(pool, lib, reg, mgr, quiet), Plugins: mgr, Log: quiet}}
 	e.srv = httptest.NewServer(e.s.Handler())
 	t.Cleanup(e.srv.Close)
 	if _, e.token, err = e.s.Auth.CreateToken(ctx, "test"); err != nil {

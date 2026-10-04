@@ -45,6 +45,7 @@ type testEnv struct {
 func newEnv(t *testing.T) *testEnv {
 	t.Helper()
 	failedLoginDelay = 0
+	watchInterval = 20 * time.Millisecond
 	ctx := context.Background()
 	pool := testdb.New(t)
 	store := &blobstore.Store{Name: "library", Root: t.TempDir()}

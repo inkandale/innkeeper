@@ -85,6 +85,9 @@ func (s *Service) push(ctx context.Context, instanceID, cardID int64, newCopy bo
 	// The app may finish a put after ctx is cancelled (a shutdown mid-bulk-
 	// push), so let it finish and record the result, or the retry makes a
 	// second copy. The timeout still bounds a hung plugin.
+	//
+	// ponytail: a hard kill between the put and the commit still records
+	// nothing, so the re-run creates again; INN-9 makes creates idempotent.
 	detached := context.WithoutCancel(ctx)
 	putCtx, cancelPut := context.WithTimeout(detached, 2*time.Minute)
 	defer cancelPut()

@@ -69,6 +69,8 @@ const maxErrors = 20
 // report gets the progress after each binding.
 func (s *Service) Scan(ctx context.Context, report func(ScanProgress)) (ScanProgress, error) {
 	var p ScanProgress
+	// ponytail: bindings pushed while their target couldn't pull stay
+	// 'unknown' and unscanned even after it can; INN-10 scans them too.
 	rows, err := s.pool.Query(ctx, `SELECT b.id FROM binding b JOIN plugin_instance i ON i.id = b.instance_id
 		WHERE b.remote_state <> 'unknown' AND i.broken_error IS NULL ORDER BY b.id`)
 	if err != nil {

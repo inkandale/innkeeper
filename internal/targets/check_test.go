@@ -49,3 +49,21 @@ func TestScan(t *testing.T) {
 		t.Fatal("scan didn't record what it found")
 	}
 }
+
+// A push of identical content leaves the accepted hash alone, so a check that
+// read the binding before it must still lose.
+func TestCheckLosesToAPushOfSameContent(t *testing.T) {
+	e := setup(t, nil)
+	b := e.push(e.card)
+	old, err := e.s.stored(e.ctx, b.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.push(e.card)
+	if err := e.s.record(e.ctx, b.ID, old, "missing", nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := e.s.Binding(e.ctx, b.ID); err != nil || got.Status != "in_sync" || got.RemoteState != "unchanged" {
+		t.Fatalf("binding = %+v, %v", got, err)
+	}
+}

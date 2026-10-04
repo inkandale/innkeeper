@@ -34,13 +34,21 @@ func (s *Service) Check(ctx context.Context, id int64) (Binding, error) {
 			state, seen = remoteChanged, data
 		}
 	}
-	_, err = s.pool.Exec(ctx, `UPDATE binding SET remote_state = $3, seen_data = $4,
-		checked_at = CASE WHEN $3 = 'unknown' THEN NULL ELSE now() END
-		WHERE id = $1 AND accepted_hash = $2`, id, b.acceptedHash, state, seen)
-	if err != nil {
+	if err := s.record(ctx, id, b, state, seen); err != nil {
 		return Binding{}, err
 	}
 	return s.Binding(ctx, id)
+}
+
+// record stores what a check found, unless a push landed since b was read.
+// The accepted hash alone isn't enough to tell: a push of identical content
+// leaves it unchanged.
+func (s *Service) record(ctx context.Context, id int64, b stored, state string, seen any) error {
+	_, err := s.pool.Exec(ctx, `UPDATE binding SET remote_state = $3, seen_data = $4,
+		checked_at = CASE WHEN $3 = 'unknown' THEN NULL ELSE now() END
+		WHERE id = $1 AND accepted_hash = $2
+		AND (SELECT max(id) FROM push WHERE binding_id = $1) = $5`, id, b.acceptedHash, state, seen, b.lastPush)
+	return err
 }
 
 // ScanProgress counts what a scan found.

@@ -163,13 +163,17 @@ type stored struct {
 	instanceID, cardID                  int64
 	remoteID, remoteState, acceptedHash string
 	accepted, seen                      []byte
+	// lastPush is the id of the binding's latest push. Writes that must lose
+	// to a push that landed meanwhile guard on it, because a push of
+	// identical content leaves acceptedHash unchanged.
+	lastPush int64
 }
 
 func (s *Service) stored(ctx context.Context, id int64) (stored, error) {
 	var b stored
 	err := s.pool.QueryRow(ctx, `SELECT instance_id, card_id, remote_id, remote_state, accepted_hash, accepted_data,
-		seen_data FROM binding WHERE id = $1`, id).
-		Scan(&b.instanceID, &b.cardID, &b.remoteID, &b.remoteState, &b.acceptedHash, &b.accepted, &b.seen)
+		seen_data, (SELECT max(id) FROM push WHERE binding_id = b.id) FROM binding b WHERE b.id = $1`, id).
+		Scan(&b.instanceID, &b.cardID, &b.remoteID, &b.remoteState, &b.acceptedHash, &b.accepted, &b.seen, &b.lastPush)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return b, ErrNotFound
 	}
@@ -257,10 +261,14 @@ func (s *Service) render(ctx context.Context, instanceID, cardID int64, info pro
 	return r, err
 }
 
-// fetch reads the app's copy, limited to the fields it stores.
+// fetch reads the app's copy, limited to the fields it stores. It calls the
+// plugin host directly, not through the registry, because Push calls it
+// inside a transaction and the registry's start-failure path needs the pool.
+// Callers resolve the instance with describe first, which marks a plugin
+// that won't start as broken.
 func (s *Service) fetch(ctx context.Context, inst pluginhost.Instance, info protocol.TargetInfo, remoteID string) (json.RawMessage, string, error) {
 	var got protocol.TargetGetResult
-	err := s.reg.Call(ctx, s.plugins, inst, protocol.MethodTargetGet, protocol.TargetGetParams{RemoteID: remoteID}, &got)
+	err := s.plugins.Call(ctx, inst, protocol.MethodTargetGet, protocol.TargetGetParams{RemoteID: remoteID}, &got)
 	if err != nil {
 		return nil, "", err
 	}

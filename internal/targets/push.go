@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -25,8 +26,10 @@ func (s *Service) Push(ctx context.Context, instanceID, cardID int64, newCopy bo
 	if err != nil {
 		return Binding{}, err
 	}
-	// Everything from here to the commit uses only tx's connection, so
-	// concurrent pushes can't use up the pool while holding the lock.
+	// Everything from here to the commit uses only tx's connection (plugin
+	// calls go to the host directly, not through the registry, which would
+	// use the pool), so concurrent pushes can't use up the pool while
+	// holding the lock.
 	//
 	// ponytail: holds the transaction across the plugin calls; fine at one
 	// owner's scale.
@@ -54,10 +57,10 @@ func (s *Service) Push(ctx context.Context, instanceID, cardID int64, newCopy bo
 		return Binding{}, ErrNewCopy
 	}
 	var res protocol.TargetPutResult
-	err = s.reg.Call(ctx, s.plugins, inst, protocol.MethodTargetPut, put, &res)
+	err = s.plugins.Call(ctx, inst, protocol.MethodTargetPut, put, &res)
 	if put.RemoteID != "" && remoteNotFound(err) {
 		put.RemoteID = ""
-		err = s.reg.Call(ctx, s.plugins, inst, protocol.MethodTargetPut, put, &res)
+		err = s.plugins.Call(ctx, inst, protocol.MethodTargetPut, put, &res)
 	}
 	if err != nil {
 		return Binding{}, err
@@ -65,6 +68,10 @@ func (s *Service) Push(ctx context.Context, instanceID, cardID int64, newCopy bo
 	if res.RemoteID == "" {
 		return Binding{}, fmt.Errorf("%w: target.put returned no remote_id", ErrBadReply)
 	}
+	// The app has the card now. Record it even if ctx is cancelled (a
+	// shutdown mid-bulk-push), or the retry makes a second copy.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
 	accepted, hash, remoteState, err := s.readBack(ctx, inst, info, res.RemoteID, r.data)
 	if err != nil {
 		return Binding{}, err

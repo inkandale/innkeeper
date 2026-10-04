@@ -30,7 +30,8 @@ Each later plan adds that capability's methods to `docs/protocol.md` and its che
 
 Constraints this plan leaves for later plans:
 
-- **Plan 3:** a plugin crash surfaces to callers as `protocol.ErrClosed`. Treat it as retryable, so the job is re-queued and resumes from its checkpoint.
+- **Plan 3:** a plugin crash surfaces to callers as `protocol.ErrClosed`. Treat it as retryable, so the job is re-queued and resumes from its checkpoint. Re-queue with a backoff delay: the Manager restarts a crashed plugin on the next call with no backoff of its own.
+- **Plan 4 (instance config editing):** a running plugin keeps the config and secrets it was started with. Add `Manager.Stop(id)` on top of `stopWhere` and call it when an instance's config or secrets are saved.
 - **Plans 3 and 5:** notification handlers (such as the core's `emit.card` handler) must not call back into the plugin on the same connection; they run on the reading goroutine.
 - **Container image:** run with an init process (compose `init: true`, or tini as the entrypoint). The host kills plugin process groups, and if `innkeeper` is PID 1 the orphaned grandchildren become zombies it never reaps.
 
@@ -1593,6 +1594,7 @@ package pluginhost
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -1663,6 +1665,17 @@ func TestManagerRestartsAfterCrash(t *testing.T) {
 	}
 }
 
+func TestCallAfterCloseFails(t *testing.T) {
+	mgr, inst := newManager(t, time.Minute)
+	mgr.Close()
+	if err := mgr.Call(context.Background(), inst, "echo", 1, nil); !errors.Is(err, protocol.ErrClosed) {
+		t.Fatalf("got %v, want ErrClosed", err)
+	}
+	if mgr.proc(inst.ID) != nil {
+		t.Fatal("Call after Close started a plugin")
+	}
+}
+
 func TestStopIdleStopsUnusedPlugin(t *testing.T) {
 	mgr, inst := newManager(t, 0)
 	if err := mgr.Call(context.Background(), inst, "echo", 1, nil); err != nil {
@@ -1717,7 +1730,8 @@ type Instance struct {
 }
 
 // Manager runs at most one process per instance, starting it on first use
-// and again after a crash.
+// and again after a crash. The API and the worker each have their own
+// Manager, so an instance can have one process in each.
 type Manager struct {
 	core protocol.Handler
 	idle time.Duration
@@ -1725,6 +1739,7 @@ type Manager struct {
 
 	mu      sync.Mutex
 	running map[string]*entry
+	closed  bool
 }
 
 type entry struct {
@@ -1750,10 +1765,15 @@ func (m *Manager) Call(ctx context.Context, inst Instance, method string, params
 }
 
 func (m *Manager) acquire(ctx context.Context, inst Instance) (*entry, error) {
-	// ponytail: one lock across plugin startup; per-instance locks if a slow
-	// start ever blocks calls to other plugins.
+	// ponytail: one lock across plugin startup, so a slow start (up to the
+	// initialize timeout) also delays other plugins' calls, releases, and
+	// StopIdle, and waiters ignore their ctx. Per-instance locks if that
+	// ever matters.
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.closed {
+		return nil, protocol.ErrClosed
+	}
 	e, ok := m.running[inst.ID]
 	if !ok || !e.proc.Alive() {
 		params := inst.Params
@@ -1785,8 +1805,11 @@ func (m *Manager) StopIdle() {
 	})
 }
 
-// Close stops every plugin.
+// Close stops every plugin. Later calls fail with protocol.ErrClosed.
 func (m *Manager) Close() {
+	m.mu.Lock()
+	m.closed = true
+	m.mu.Unlock()
 	m.stopWhere(func(*entry) bool { return true })
 }
 

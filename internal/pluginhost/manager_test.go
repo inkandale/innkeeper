@@ -2,6 +2,7 @@ package pluginhost
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -69,6 +70,17 @@ func TestManagerRestartsAfterCrash(t *testing.T) {
 	}
 	if out != 7 {
 		t.Fatalf("echo after restart returned %d, want 7", out)
+	}
+}
+
+func TestCallAfterCloseFails(t *testing.T) {
+	mgr, inst := newManager(t, time.Minute)
+	mgr.Close()
+	if err := mgr.Call(context.Background(), inst, "echo", 1, nil); !errors.Is(err, protocol.ErrClosed) {
+		t.Fatalf("got %v, want ErrClosed", err)
+	}
+	if mgr.proc(inst.ID) != nil {
+		t.Fatal("Call after Close started a plugin")
 	}
 }
 

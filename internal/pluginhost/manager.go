@@ -18,7 +18,8 @@ type Instance struct {
 }
 
 // Manager runs at most one process per instance, starting it on first use
-// and again after a crash.
+// and again after a crash. The API and the worker each have their own
+// Manager, so an instance can have one process in each.
 type Manager struct {
 	core protocol.Handler
 	idle time.Duration
@@ -26,6 +27,7 @@ type Manager struct {
 
 	mu      sync.Mutex
 	running map[string]*entry
+	closed  bool
 }
 
 type entry struct {
@@ -51,10 +53,15 @@ func (m *Manager) Call(ctx context.Context, inst Instance, method string, params
 }
 
 func (m *Manager) acquire(ctx context.Context, inst Instance) (*entry, error) {
-	// ponytail: one lock across plugin startup; per-instance locks if a slow
-	// start ever blocks calls to other plugins.
+	// ponytail: one lock across plugin startup, so a slow start (up to the
+	// initialize timeout) also delays other plugins' calls, releases, and
+	// StopIdle, and waiters ignore their ctx. Per-instance locks if that
+	// ever matters.
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.closed {
+		return nil, protocol.ErrClosed
+	}
 	e, ok := m.running[inst.ID]
 	if !ok || !e.proc.Alive() {
 		params := inst.Params
@@ -86,8 +93,11 @@ func (m *Manager) StopIdle() {
 	})
 }
 
-// Close stops every plugin.
+// Close stops every plugin. Later calls fail with protocol.ErrClosed.
 func (m *Manager) Close() {
+	m.mu.Lock()
+	m.closed = true
+	m.mu.Unlock()
 	m.stopWhere(func(*entry) bool { return true })
 }
 

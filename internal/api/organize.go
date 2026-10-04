@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -115,7 +116,7 @@ func (s *Server) organizeRoutes(api huma.API) {
 	tags = []string{"Blobs"}
 	huma.Register(api, huma.Operation{OperationID: "upload-blob", Method: http.MethodPost, Path: "/blobs",
 		Summary: "Upload a file", Description: "Send any file as application/octet-stream. Uploading the same bytes twice returns the same blob.",
-		Tags: tags, DefaultStatus: http.StatusCreated, MaxBodyBytes: maxBlobBytes + 1,
+		Tags: tags, DefaultStatus: http.StatusCreated, MaxBodyBytes: maxBlobBytes + 1, BodyReadTimeout: 2 * time.Minute,
 		RequestBody: &huma.RequestBody{Required: true, Content: map[string]*huma.MediaType{"application/octet-stream": {}}}},
 		func(ctx context.Context, in *uploadIn) (*blobOut, error) {
 			b, err := s.Lib.PutBlob(ctx, bytes.NewReader(in.RawBody))

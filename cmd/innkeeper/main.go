@@ -22,7 +22,7 @@ API commands (read INNKEEPER_URL and INNKEEPER_TOKEN):
   innkeeper call <method> <path> [json]
   innkeeper import <instance-id> [params-json]
   innkeeper export <card-id> [file]
-  innkeeper bulk archive|unarchive [query-json]
+  innkeeper bulk archive|unarchive <query-json>
   innkeeper jobs [show|cancel|watch <job-id>]
 
 See README.md for the environment variables each command reads.`

@@ -64,3 +64,21 @@ func TestParseID(t *testing.T) {
 		t.Fatalf("parseID(12) = %q, %v", id, err)
 	}
 }
+
+func TestWatchJob(t *testing.T) {
+	for _, tc := range []struct{ stream, want string }{
+		{"event: job\ndata: {\"status\": \"running\", \"progress\": {}}\n\n: ping\n\n", "running"},
+		{"event: job\ndata: {\"status\": \"failed\"}\n\n", "job failed"},
+		{"event: job\ndata: {\"status\": \"succeeded\"}\n\n", ""},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/event-stream")
+			fmt.Fprint(w, tc.stream)
+		}))
+		err := watchJob(context.Background(), &client{base: srv.URL, token: "tok"}, "1")
+		srv.Close()
+		if tc.want == "" && err != nil || tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)) {
+			t.Fatalf("stream %q: err = %v, want %q", tc.stream, err, tc.want)
+		}
+	}
+}

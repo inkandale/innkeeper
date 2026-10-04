@@ -85,12 +85,12 @@ func importCmd(args []string) error {
 	return startJob("/imports", map[string]any{"instance_id": json.Number(id), "params": params})
 }
 
-// bulkCmd runs `innkeeper bulk archive|unarchive [QUERY_JSON]`.
+// bulkCmd runs `innkeeper bulk archive|unarchive QUERY_JSON`.
 func bulkCmd(args []string) error {
-	if len(args) < 1 || len(args) > 2 || args[0] != "archive" && args[0] != "unarchive" {
+	if len(args) != 2 || args[0] != "archive" && args[0] != "unarchive" {
 		return errors.New(usage)
 	}
-	query, err := jsonArg(args, 1, `{}`)
+	query, err := jsonArg(args, 1, "")
 	if err != nil {
 		return err
 	}
@@ -179,8 +179,8 @@ func jobsCmd(args []string) error {
 	return errors.New(usage)
 }
 
-// watchJob prints a line each time the job changes, and fails if the job
-// does.
+// watchJob prints a line each time the job changes, and fails unless the job
+// succeeds.
 func watchJob(ctx context.Context, c *client, id string) error {
 	status := ""
 	err := c.stream(ctx, "/jobs/"+id+"/events", func(data []byte) error {
@@ -207,8 +207,13 @@ func watchJob(ctx context.Context, c *client, id string) error {
 	if err != nil {
 		return err
 	}
-	if status == "failed" {
+	switch status {
+	case "succeeded":
+		return nil
+	case "failed":
 		return errors.New("job failed")
+	case "":
+		status = "unknown"
 	}
-	return nil
+	return fmt.Errorf("job stream ended while the job was %s; check it with: innkeeper jobs show %s", status, id)
 }

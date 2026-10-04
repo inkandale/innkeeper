@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"path/filepath"
 
 	"github.com/davidgibbons/innkeeper/protocol"
 )
@@ -22,9 +23,10 @@ func codecEncode(blobTmp string, params json.RawMessage, bad bool) (any, error) 
 	}
 	_ = json.Unmarshal(p.Card, &c)
 	dir := blobTmp
-	// A card named Escape tests that the core refuses paths outside blob_tmp.
+	// The folder holding blob_tmp is outside it. A card named Escape tests
+	// that the core refuses such paths.
 	if bad || c.Data.Name == "Escape" {
-		dir = os.TempDir()
+		dir = filepath.Dir(blobTmp)
 	}
 	f, err := os.CreateTemp(dir, "fake-*.txt")
 	if err != nil {

@@ -75,3 +75,25 @@ func TestDescribePullNeedsCapability(t *testing.T) {
 		t.Fatalf("got %v, want a pull capability error", err)
 	}
 }
+
+func TestCodecChecks(t *testing.T) {
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"codec"}), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 6 {
+		t.Fatalf("ran %d checks, want 6", len(results))
+	}
+	if f := failed(results); len(f) > 0 {
+		t.Fatalf("checks failed: %v", f)
+	}
+
+	results, err = Check(context.Background(), testutil.FakePluginWith(t, []string{"codec"}, "-mode=bad-codec"), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := failed(results)
+	if len(f) != 2 || f[checkRoundTripName] == nil || f[checkRejectsName] == nil {
+		t.Fatalf("failed = %v, want only the two codec checks", f)
+	}
+}

@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"slices"
 	"time"
 
@@ -37,7 +39,13 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	for _, s := range m.Secrets {
 		secrets[s] = "contract-check"
 	}
-	params := protocol.InitializeParams{InstanceID: "contract-check", Config: map[string]any{}, Secrets: secrets}
+	// A codec writes its files here.
+	tmp, err := os.MkdirTemp("", "innkeeper-check-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(tmp)
+	params := protocol.InitializeParams{InstanceID: "contract-check", Config: map[string]any{}, Secrets: secrets, BlobTmp: tmp}
 
 	p, err := pluginhost.Start(ctx, m, params, noCore, log)
 	results := []Result{{"initialize handshake matches manifest", err}}
@@ -65,6 +73,25 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 		}
 	}
 
+	if slices.Contains(m.Capabilities, "codec") {
+		checks := []struct {
+			name string
+			run  func(context.Context) error
+		}{
+			{checkRoundTripName, func(ctx context.Context) error { return checkRoundTrip(ctx, p, m, tmp) }},
+			{checkRejectsName, func(ctx context.Context) error { return checkRejects(ctx, p, tmp) }},
+		}
+		for _, c := range checks {
+			callCtx, cancel = context.WithTimeout(ctx, callTimeout)
+			err := c.run(callCtx)
+			cancel()
+			results = append(results, Result{c.name, callErr(err)})
+			if errors.Is(err, protocol.ErrClosed) || !p.Alive() {
+				return exited(results, p), nil
+			}
+		}
+	}
+
 	callCtx, cancel = context.WithTimeout(ctx, callTimeout)
 	err = p.Call(callCtx, protocol.MethodShutdown, nil, nil)
 	cancel()
@@ -84,14 +111,7 @@ func exited(results []Result, p *pluginhost.Process) []Result {
 
 func checkDescribe(ctx context.Context, p *pluginhost.Process, m *protocol.Manifest) error {
 	var info protocol.TargetInfo
-	err := p.Call(ctx, protocol.MethodTargetDescribe, nil, &info)
-	if errors.Is(err, context.DeadlineExceeded) {
-		return fmt.Errorf("no response within %s", callTimeout)
-	}
-	if errors.Is(err, protocol.ErrClosed) {
-		return fmt.Errorf("plugin exited: %w", err)
-	}
-	if err != nil {
+	if err := callErr(p.Call(ctx, protocol.MethodTargetDescribe, nil, &info)); err != nil {
 		return err
 	}
 	if err := info.Validate(); err != nil {
@@ -101,6 +121,74 @@ func checkDescribe(ctx context.Context, p *pluginhost.Process, m *protocol.Manif
 		return errors.New("pull is true, but the manifest doesn't declare the pull capability")
 	}
 	return nil
+}
+
+// callErr explains a call that timed out or found the plugin gone.
+func callErr(err error) error {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return fmt.Errorf("no response within %s", callTimeout)
+	case errors.Is(err, protocol.ErrClosed):
+		return fmt.Errorf("plugin exited: %w", err)
+	}
+	return err
+}
+
+const (
+	checkRoundTripName = "codec round-trips a card in every format"
+	checkRejectsName   = "codec.decode rejects a file that isn't a card"
+)
+
+var sampleCard = json.RawMessage(`{"spec": "chara_card_v3", "spec_version": "3.0", "data": {"name": "Contract Check", "description": "A card for the codec check.", "first_mes": "Hello."}}`)
+
+// checkRoundTrip encodes the sample card in each format and decodes it back.
+func checkRoundTrip(ctx context.Context, p *pluginhost.Process, m *protocol.Manifest, tmp string) error {
+	for _, format := range m.Formats {
+		var enc protocol.CodecEncodeResult
+		if err := p.Call(ctx, protocol.MethodCodecEncode, protocol.CodecEncodeParams{Card: sampleCard, Format: format}, &enc); err != nil {
+			return fmt.Errorf("encode %s: %w", format, err)
+		}
+		if filepath.Dir(enc.Path) != tmp {
+			return fmt.Errorf("encode %s: path %q is not directly inside blob_tmp", format, enc.Path)
+		}
+		if !protocol.ValidExtension(enc.Extension) {
+			return fmt.Errorf("encode %s: extension %q must be 1 to 10 lowercase letters and digits", format, enc.Extension)
+		}
+		var dec protocol.CodecDecodeResult
+		if err := p.Call(ctx, protocol.MethodCodecDecode, protocol.CodecDecodeParams{Path: enc.Path}, &dec); err != nil {
+			return fmt.Errorf("decode %s: %w", format, err)
+		}
+		var c struct {
+			Spec string `json:"spec"`
+			Data struct {
+				Name string `json:"name"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(dec.Card, &c); err != nil || c.Spec != "chara_card_v3" || c.Data.Name != "Contract Check" {
+			return fmt.Errorf("decode %s: got %s, want a chara_card_v3 card named Contract Check", format, dec.Card)
+		}
+		if dec.Avatar != "" && filepath.Dir(dec.Avatar) != tmp {
+			return fmt.Errorf("decode %s: avatar %q is not directly inside blob_tmp", format, dec.Avatar)
+		}
+	}
+	return nil
+}
+
+// checkRejects expects an error reply, not a card, for a text file.
+func checkRejects(ctx context.Context, p *pluginhost.Process, tmp string) error {
+	path := filepath.Join(tmp, "not-a-card.txt")
+	if err := os.WriteFile(path, []byte("This is not a character card.\n"), 0o644); err != nil {
+		return err
+	}
+	err := p.Call(ctx, protocol.MethodCodecDecode, protocol.CodecDecodeParams{Path: path}, nil)
+	var rpcErr *protocol.Error
+	switch {
+	case err == nil:
+		return errors.New("expected an error, got a card")
+	case errors.As(err, &rpcErr):
+		return nil
+	}
+	return err
 }
 
 // noCore answers plugin callbacks during a check, where no library exists.

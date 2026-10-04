@@ -99,11 +99,11 @@ type revisionRow struct {
 func (s *Entities) prepare(e Edit) (revisionRow, error) {
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal(e.Data, &top); err != nil || top == nil {
-		return revisionRow{}, errors.New("data must be a JSON object")
+		return revisionRow{}, fmt.Errorf("%w: data must be a JSON object", ErrInvalid)
 	}
 	for _, k := range s.k.forbid {
 		if _, ok := top[k]; ok {
-			return revisionRow{}, fmt.Errorf("%s data may not contain %s", s.k.table, k)
+			return revisionRow{}, fmt.Errorf("%w: %s data may not contain %s", ErrInvalid, s.k.table, k)
 		}
 	}
 	r := revisionRow{data: e.Data, overrides: e.Overrides, message: e.Message, source: e.Source}
@@ -115,11 +115,11 @@ func (s *Entities) prepare(e Edit) (revisionRow, error) {
 	}
 	var err error
 	if r.contentHash, err = cardhash.ContentHash(e.Data); err != nil {
-		return revisionRow{}, err
+		return revisionRow{}, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 	h, ok, err := s.k.simhash(e.Data)
 	if err != nil {
-		return revisionRow{}, fmt.Errorf("simhash: %w", err)
+		return revisionRow{}, fmt.Errorf("%w: simhash: %w", ErrInvalid, err)
 	}
 	if ok {
 		r.simhash = &h

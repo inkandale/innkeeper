@@ -18,6 +18,8 @@ var (
 	// ErrConflict means the write's base revision is no longer the head.
 	ErrConflict  = errors.New("base revision is not the head")
 	ErrSlugTaken = errors.New("slug already in use")
+	// ErrInvalid means an edit's data is not a valid card or lorebook.
+	ErrInvalid = errors.New("invalid data")
 )
 
 // Library is the core's card and lorebook store.

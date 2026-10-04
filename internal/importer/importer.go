@@ -113,7 +113,7 @@ func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
 	switch {
 	case err == nil:
 		return nil
-	case errors.As(err, &startErr):
+	case errors.As(err, &startErr) && ctx.Err() == nil:
 		if merr := im.Registry.MarkBroken(context.WithoutCancel(ctx), *r.InstanceID, err); merr != nil {
 			im.Log.Error("mark plugin instance broken", "instance", *r.InstanceID, "err", merr)
 		}

@@ -29,6 +29,7 @@ type env struct {
 	q    *jobs.Queue
 	lib  *library.Library
 	reg  *plugins.Registry
+	im   *Importer
 	inst int64
 }
 
@@ -67,7 +68,7 @@ func setup(t *testing.T, args ...string) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &env{pool: pool, q: q, lib: lib, reg: reg, inst: inst}
+	return &env{pool: pool, q: q, lib: lib, reg: reg, im: im, inst: inst}
 }
 
 // run imports with params and returns the finished job and its progress.
@@ -196,5 +197,18 @@ func TestPluginThatFailsToStartBreaksInstance(t *testing.T) {
 	}
 	if _, err := e.reg.Instance(context.Background(), e.inst); !errors.Is(err, plugins.ErrBroken) {
 		t.Fatalf("instance: %v, want ErrBroken", err)
+	}
+}
+
+func TestCancelledStartLeavesInstanceWorking(t *testing.T) {
+	e := setup(t, "-mode=slow-init")
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	r := &jobs.Run{Job: jobs.Job{ID: 1, Attempts: 1, InstanceID: &e.inst, Payload: json.RawMessage(`{}`)}}
+	if err := e.im.Run(ctx, r); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("run = %v, want deadline exceeded", err)
+	}
+	if _, err := e.reg.Instance(context.Background(), e.inst); err != nil {
+		t.Fatalf("instance: %v", err)
 	}
 }

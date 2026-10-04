@@ -16,7 +16,7 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | bad-errors | silent | crash-unknown | no-shutdown")
+	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown")
 	caps := flag.String("caps", "push,pull", "comma-separated capabilities to report")
 	flag.Parse()
 
@@ -41,6 +41,8 @@ func main() {
 				res.Capabilities = []string{"push"}
 			case "wrong-version":
 				res.Version = "9.9.9"
+			case "slow-init":
+				time.Sleep(time.Minute)
 			}
 			return res, nil
 		case protocol.MethodShutdown:

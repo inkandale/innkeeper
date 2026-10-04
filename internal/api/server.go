@@ -118,11 +118,11 @@ func (s *Server) fail(err error) error {
 	case errors.Is(err, library.ErrInvalid), errors.Is(err, plugins.ErrInvalid), errors.Is(err, plugins.ErrUnknownPlugin),
 		errors.Is(err, targets.ErrCannot):
 		return huma.Error400BadRequest(err.Error())
-	case errors.As(err, &rpcErr), errors.Is(err, targets.ErrBadReply):
-		return huma.Error502BadGateway("plugin: " + err.Error())
 	case errors.As(err, &startErr), errors.Is(err, protocol.ErrClosed):
 		s.Log.Error("plugin failed", "err", err)
 		return huma.Error502BadGateway("plugin failed; see the server log")
+	case errors.As(err, &rpcErr), errors.Is(err, targets.ErrBadReply):
+		return huma.Error502BadGateway("plugin: " + err.Error())
 	}
 	s.Log.Error("request failed", "err", err)
 	return huma.Error500InternalServerError("internal error")

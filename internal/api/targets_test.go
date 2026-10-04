@@ -5,11 +5,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/danielgtaylor/huma/v2"
+
 	"github.com/davidgibbons/innkeeper/internal/bulk"
+	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 	"github.com/davidgibbons/innkeeper/internal/targets"
+	"github.com/davidgibbons/innkeeper/protocol"
 )
 
 // target configures a fake target app that keeps its cards in a temp dir,
@@ -102,5 +107,37 @@ func TestBulkPush(t *testing.T) {
 	e.call("POST", "/pushes", map[string]any{"instance_id": inst, "query": map[string]any{"text": "carrow"}}, 202, &j)
 	if j.Kind != bulk.Kind || j.Children["queued"] != 1 {
 		t.Fatalf("bulk push = %+v", j)
+	}
+}
+
+func TestFailHidesStartError(t *testing.T) {
+	err := &pluginhost.StartError{Err: fmt.Errorf("initialize plugin fake: %w", protocol.NewError(-32000, "cannot open /secret", false))}
+	he := (&Server{Log: quiet}).fail(err).(huma.StatusError)
+	if he.GetStatus() != 502 || strings.Contains(he.Error(), "/secret") {
+		t.Fatalf("fail = %d %q", he.GetStatus(), he.Error())
+	}
+}
+
+func TestBindingRequestChecks(t *testing.T) {
+	e := newEnv(t)
+	inst, _ := e.target()
+	var c entityOut
+	e.call("POST", "/cards", map[string]any{"data": map[string]any{"name": "Brakka"}}, 201, &c)
+	if _, err := e.s.Targets.Push(context.Background(), inst, c.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	var list []targets.Binding
+	e.call("GET", fmt.Sprintf("/cards/%d/bindings", c.ID), nil, 200, &list)
+	bpath := fmt.Sprintf("/bindings/%d", list[0].ID)
+
+	e.call("POST", bpath+"/adopt", map[string]any{"into": "base"}, 400, nil)
+	e.call("POST", "/bindings/9999/check", nil, 404, nil)
+	e.call("POST", "/bindings/9999/adopt", map[string]any{"into": "ignore"}, 404, nil)
+	e.call("GET", "/cards/9999/push-preview?instance_id=1", nil, 404, nil)
+
+	e.markBroken(inst, "leaky-cause-xyz")
+	r := e.call("POST", bpath+"/check", nil, 409, nil)
+	if strings.Contains(string(r.Body), "leaky-cause-xyz") {
+		t.Fatalf("body leaks the cause: %s", r.Body)
 	}
 }

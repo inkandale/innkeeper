@@ -103,6 +103,9 @@ func (s *Server) targetRoutes(api huma.API) {
 		Summary: "Show what a push would send", Tags: tags,
 		Description: "Asks the target plugin what it stores. Lists fields the push would drop, and whether it would make another copy."},
 		func(ctx context.Context, in *previewIn) (*previewOut, error) {
+			if _, err := s.Lib.Cards.Get(ctx, in.ID); err != nil {
+				return nil, s.fail(err)
+			}
 			p, err := s.Targets.Preview(ctx, in.InstanceID, in.ID)
 			if err != nil {
 				return nil, s.fail(err)
@@ -156,6 +159,9 @@ func (s *Server) targetRoutes(api huma.API) {
 		Summary: "Adopt the app's changes", Tags: tags,
 		Description: "Changes to character_book aren't adopted. To discard the app's changes, push instead."},
 		func(ctx context.Context, in *adoptIn) (*bindingOut, error) {
+			if in.Body.Into != "ignore" && in.Body.BaseRevisionID == 0 {
+				return nil, huma.Error400BadRequest("base_revision_id is required unless into is ignore")
+			}
 			return s.binding(s.Targets.Adopt(ctx, in.ID, in.Body.Into, in.Body.BaseRevisionID))
 		})
 }

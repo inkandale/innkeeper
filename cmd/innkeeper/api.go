@@ -33,7 +33,8 @@ func apiServer() error {
 
 	stopping := make(chan struct{})
 	s := &api.Server{Lib: svc.lib, Queue: jobs.New(svc.pool), Registry: svc.registry, Auth: auth.New(svc.pool),
-		Targets: targets.New(svc.pool, svc.lib, svc.registry, mgr, log), Plugins: mgr, Log: log, PublicURL: os.Getenv("INNKEEPER_PUBLIC_URL"), Stopping: stopping}
+		Targets: targets.New(svc.pool, svc.lib, svc.registry, mgr, log), Plugins: mgr, Log: log,
+		PublicURL: os.Getenv("INNKEEPER_PUBLIC_URL"), Stopping: stopping}
 	srv := &http.Server{
 		Addr:              listen,
 		Handler:           s.Handler(),

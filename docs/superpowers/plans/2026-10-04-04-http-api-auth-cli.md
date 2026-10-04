@@ -49,11 +49,16 @@ Constraints this plan leaves for later plans:
   - The local password plugin implements `auth.begin` and `auth.complete` as `docs/protocol.md` describes. It keeps the password hash in an instance secret, and its subject is a fixed string such as `owner`, which the owner sets as the instance's `owner_subject`.
   - Uploads: the client sends the file to `POST /blobs`, then starts an import whose params name the blob's sha256. The importer reads the file at `<blob_stores.library>/ab/cd/<sha256>`. Blob GC keeps unreferenced blobs for 24 hours, so the import must start within that window.
   - When a `codec` plugin exists, `GET /cards/{id}/export` can take a `format`.
+  - `POST /blobs` accepts up to 32 MiB and allows 2 minutes to read the body.
 - **Plan 7:**
   - The web UI is served from the same origin as the API and logs in with cookies. There is no CORS.
   - `GET /jobs/{id}/events` polls the database once a second per watcher.
   - The MCP server authenticates with an API token and sends `source: "mcp"` on writes.
-- **Container image:** include `pg_dump` for `innkeeper backup`, and set `INNKEEPER_SECRETS_KEY` for both services.
+  - With `INNKEEPER_PUBLIC_URL` unset, cookies are `Secure`, so a browser that doesn't treat `http://localhost` as secure drops the session.
+  - Cookie-authenticated changes must come from the same origin. A request from a sibling subdomain gets 401.
+- **Container image:**
+  - Include `pg_dump` for `innkeeper backup`, and set `INNKEEPER_SECRETS_KEY` for both services.
+  - `pg_dump` must be version 18 or newer to dump a PostgreSQL 18 server.
 
 ## Design notes
 

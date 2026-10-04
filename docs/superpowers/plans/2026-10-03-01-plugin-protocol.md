@@ -28,6 +28,11 @@ This is plan 1 of the core. Each plan produces working, tested software.
 
 Each later plan adds that capability's methods to `docs/protocol.md` and its checks to the contract kit.
 
+Constraints this plan leaves for later plans:
+
+- **Plan 3:** a plugin crash surfaces to callers as `protocol.ErrClosed`. Treat it as retryable, so the job is re-queued and resumes from its checkpoint.
+- **Plans 3 and 5:** notification handlers (such as the core's `emit.card` handler) must not call back into the plugin on the same connection; they run on the reading goroutine.
+
 ## File structure
 
 | File | Responsibility |
@@ -76,11 +81,16 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
@@ -111,6 +121,7 @@ Create `protocol/jsonrpc_test.go`:
 package protocol
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -221,16 +232,17 @@ func TestCallbackDuringCall(t *testing.T) {
 }
 
 func TestPendingCallFailsWhenPeerGoesAway(t *testing.T) {
-	release := make(chan struct{})
+	entered, release := make(chan struct{}), make(chan struct{})
 	t.Cleanup(func() { close(release) })
 	block := func(context.Context, string, json.RawMessage) (any, error) {
+		close(entered)
 		<-release
 		return nil, nil
 	}
 	a, _, bw := pair(t, nil, block)
 	errc := make(chan error, 1)
 	go func() { errc <- a.Call(context.Background(), "slow", nil, nil) }()
-	time.Sleep(50 * time.Millisecond)
+	<-entered
 	bw.Close()
 	select {
 	case err := <-errc:
@@ -239,6 +251,112 @@ func TestPendingCallFailsWhenPeerGoesAway(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("call did not fail after peer went away")
+	}
+}
+
+func TestCallAfterCloseFails(t *testing.T) {
+	a, _, bw := pair(t, nil, echo)
+	bw.Close()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		err := a.Call(context.Background(), "echo", 1, nil)
+		if errors.Is(err, ErrClosed) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("got %v, want ErrClosed", err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestCancelledCallForgetsPendingEntry(t *testing.T) {
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	block := func(context.Context, string, json.RawMessage) (any, error) {
+		<-release
+		return nil, nil
+	}
+	a, _, _ := pair(t, nil, block)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if err := a.Call(ctx, "slow", nil, nil); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("got %v, want DeadlineExceeded", err)
+	}
+	a.mu.Lock()
+	n := len(a.pending)
+	a.mu.Unlock()
+	if n != 0 {
+		t.Fatalf("%d pending entries left after cancel", n)
+	}
+}
+
+func TestPanickingHandlerReturnsInternalError(t *testing.T) {
+	panicky := func(context.Context, string, json.RawMessage) (any, error) { panic("oops") }
+	a, _, _ := pair(t, nil, panicky)
+	err := a.Call(context.Background(), "anything", nil, nil)
+	var rpcErr *Error
+	if !errors.As(err, &rpcErr) || rpcErr.Code != CodeInternalError {
+		t.Fatalf("got %v, want internal error", err)
+	}
+}
+
+func TestHandlerContextCancelledWhenPeerGoesAway(t *testing.T) {
+	cancelled := make(chan struct{})
+	wait := func(ctx context.Context, _ string, _ json.RawMessage) (any, error) {
+		<-ctx.Done()
+		close(cancelled)
+		return nil, ctx.Err()
+	}
+	pr, pw := io.Pipe()
+	c := NewConn(pr, io.Discard, wait)
+	go c.Run(context.Background())
+	io.WriteString(pw, `{"jsonrpc":"2.0","id":1,"method":"wait"}`+"\n")
+	pw.Close()
+	select {
+	case <-cancelled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler ctx not cancelled after EOF")
+	}
+}
+
+// TestWireFormat feeds raw JSON lines, as a non-Go plugin would send them.
+func TestWireFormat(t *testing.T) {
+	pr, pw := io.Pipe()
+	out, outW := io.Pipe()
+	c := NewConn(pr, outW, echo)
+	go c.Run(context.Background())
+	t.Cleanup(func() { pw.Close(); outW.Close() })
+	replies := bufio.NewScanner(out)
+
+	errc := make(chan error, 1)
+	go func() { errc <- c.Call(context.Background(), "plugin.method", nil, nil) }()
+	if !replies.Scan() {
+		t.Fatal("no request written")
+	}
+	var req struct {
+		ID json.RawMessage `json:"id"`
+	}
+	if err := json.Unmarshal(replies.Bytes(), &req); err != nil {
+		t.Fatal(err)
+	}
+
+	// A batch is skipped without closing the connection.
+	io.WriteString(pw, `[{"jsonrpc":"2.0","method":"x"}]`+"\n")
+	// error.data may be any JSON value, such as a traceback string.
+	io.WriteString(pw, `{"jsonrpc":"2.0","id":`+string(req.ID)+`,"error":{"code":-32000,"message":"bad","data":"Traceback..."}}`+"\n")
+	var rpcErr *Error
+	if err := <-errc; !errors.As(err, &rpcErr) || rpcErr.Retryable() {
+		t.Fatalf("got %v, want non-retryable error", err)
+	}
+
+	// A request with a string id gets the same id back.
+	io.WriteString(pw, `{"jsonrpc":"2.0","id":"abc","method":"echo","params":{"k":1}}`+"\n")
+	if !replies.Scan() {
+		t.Fatal("no response written")
+	}
+	if got, want := replies.Text(), `{"jsonrpc":"2.0","id":"abc","result":{"k":1}}`; got != want {
+		t.Fatalf("response = %s, want %s", got, want)
 	}
 }
 ```
@@ -280,26 +398,29 @@ const (
 // connection's reader stopped.
 var ErrClosed = errors.New("protocol: connection closed")
 
-// Error is a JSON-RPC error object.
+// Error is a JSON-RPC error object. Data may be any JSON value; Innkeeper
+// reads a "retryable" field from it when it is an object.
 type Error struct {
-	Code    int        `json:"code"`
-	Message string     `json:"message"`
-	Data    *ErrorData `json:"data,omitempty"`
-}
-
-// ErrorData carries Innkeeper's extension to JSON-RPC errors.
-type ErrorData struct {
-	Retryable bool `json:"retryable"`
+	Code    int             `json:"code"`
+	Message string          `json:"message"`
+	Data    json.RawMessage `json:"data,omitempty"`
 }
 
 func (e *Error) Error() string { return fmt.Sprintf("jsonrpc error %d: %s", e.Code, e.Message) }
 
 // Retryable reports whether the caller may retry the same call later.
-func (e *Error) Retryable() bool { return e.Data != nil && e.Data.Retryable }
+func (e *Error) Retryable() bool {
+	var d struct {
+		Retryable bool `json:"retryable"`
+	}
+	_ = json.Unmarshal(e.Data, &d)
+	return d.Retryable
+}
 
 // NewError builds an Error with the retryable flag set.
 func NewError(code int, message string, retryable bool) *Error {
-	return &Error{Code: code, Message: message, Data: &ErrorData{Retryable: retryable}}
+	data, _ := json.Marshal(map[string]bool{"retryable": retryable})
+	return &Error{Code: code, Message: message, Data: data}
 }
 
 // MethodNotFound is the error for a method the receiver doesn't implement.
@@ -308,7 +429,8 @@ func MethodNotFound(method string) *Error {
 }
 
 // Handler answers requests and notifications from the other side. For a
-// notification the result is discarded.
+// notification the result is discarded. Notification handlers run on the
+// reading goroutine, so they must not call Call on the same Conn.
 type Handler func(ctx context.Context, method string, params json.RawMessage) (any, error)
 
 type message struct {
@@ -345,15 +467,24 @@ func NewConn(r io.Reader, w io.Writer, h Handler) *Conn {
 	}
 }
 
-// Run reads messages until r reaches EOF, passing ctx to the handler. It
-// returns nil on EOF. Pending and later calls then fail with ErrClosed.
+// Run reads messages until r reaches EOF. It returns nil on EOF. Pending
+// and later calls then fail with ErrClosed, and the ctx passed to handlers
+// is cancelled.
 func (c *Conn) Run(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	defer c.closePending()
 	for {
 		var m message
 		if err := c.dec.Decode(&m); err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil
+			}
+			// A well-formed JSON value of the wrong shape (a batch, a
+			// non-string method) has been consumed whole; skip it.
+			var typeErr *json.UnmarshalTypeError
+			if errors.As(err, &typeErr) {
+				continue
 			}
 			return fmt.Errorf("protocol: read: %w", err)
 		}
@@ -373,6 +504,10 @@ func (c *Conn) Run(ctx context.Context) error {
 }
 
 // Call sends a request and waits for its response. result may be nil.
+//
+// ponytail: ctx doesn't interrupt a blocked write, so a peer that stops
+// reading blocks callers until its process is killed. The plugin host kills
+// plugins that don't stop in time.
 func (c *Conn) Call(ctx context.Context, method string, params, result any) error {
 	req := &message{JSONRPC: "2.0", Method: method}
 	if params != nil {
@@ -431,11 +566,7 @@ func (c *Conn) Notify(method string, params any) error {
 
 func (c *Conn) serve(ctx context.Context, req message) {
 	resp := &message{JSONRPC: "2.0", ID: req.ID}
-	var result any
-	err := error(MethodNotFound(req.Method))
-	if c.handler != nil {
-		result, err = c.handler(ctx, req.Method, req.Params)
-	}
+	result, err := c.handle(ctx, req)
 	if err == nil {
 		resp.Result, err = json.Marshal(result)
 	}
@@ -447,6 +578,20 @@ func (c *Conn) serve(ctx context.Context, req message) {
 		resp.Result, resp.Error = nil, rpcErr
 	}
 	_ = c.write(resp)
+}
+
+// handle runs the handler for a request, turning a panic into an internal
+// error so a bad request can't crash the process.
+func (c *Conn) handle(ctx context.Context, req message) (result any, err error) {
+	if c.handler == nil {
+		return nil, MethodNotFound(req.Method)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = &Error{Code: CodeInternalError, Message: fmt.Sprintf("handler panicked: %v", r)}
+		}
+	}()
+	return c.handler(ctx, req.Method, req.Params)
 }
 
 func (c *Conn) deliver(m message) {
@@ -792,7 +937,7 @@ git commit -m "Add plugin manifest loading and handshake types"
 - Create: `internal/fakeplugin/main.go`
 - Create: `internal/testutil/fakeplugin.go`
 
-The fake plugin is the test double for every host and contract test. It is a real process speaking the real protocol. `-mode` makes it misbehave: `bad-protocol` reports protocol 99, `wrong-caps` reports fewer capabilities than its manifest, `bad-errors` answers unknown methods with success, `no-shutdown` never exits.
+The fake plugin is the test double for every host and contract test. It is a real process speaking the real protocol. `-mode` makes it misbehave: `bad-protocol` reports protocol 99, `wrong-caps` reports fewer capabilities than its manifest, `bad-errors` answers unknown methods with success, `no-shutdown` never exits. A `freeze` notification makes it stop reading stdin, like a hung plugin.
 
 - [ ] **Step 1: Write the fake plugin**
 
@@ -857,6 +1002,10 @@ func main() {
 			return "slept", nil
 		case "crash":
 			os.Exit(3)
+		case "freeze":
+			// A notification handler blocks the reader, so the plugin
+			// stops reading stdin, like a hung plugin.
+			time.Sleep(time.Hour)
 		}
 		if *mode == "bad-errors" {
 			return nil, nil
@@ -1067,6 +1216,32 @@ func TestStopKillsPluginThatIgnoresShutdown(t *testing.T) {
 	}
 }
 
+func TestStopKillsPluginThatStoppedReading(t *testing.T) {
+	stopTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { stopTimeout = 5 * time.Second })
+	p, err := start(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.conn.Notify("freeze", nil); err != nil {
+		t.Fatal(err)
+	}
+	// Fill the stdin pipe so further writes block.
+	go p.Call(context.Background(), "echo", strings.Repeat("x", 1<<20), nil)
+	time.Sleep(100 * time.Millisecond)
+
+	stopped := make(chan error, 1)
+	go func() { stopped <- p.Stop() }()
+	select {
+	case err := <-stopped:
+		if err == nil || !strings.Contains(err.Error(), "was killed") {
+			t.Fatalf("got %v, want killed error", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Stop hung on a plugin that stopped reading")
+	}
+}
+
 func waitDead(t *testing.T, p *Process) {
 	t.Helper()
 	select {
@@ -1229,14 +1404,19 @@ func (p *Process) Alive() bool {
 // Stop asks the plugin to shut down, closes its stdin, and kills it if it
 // hasn't exited within stopTimeout.
 func (p *Process) Stop() error {
-	ctx, cancel := context.WithTimeout(context.Background(), stopTimeout)
-	defer cancel()
-	_ = p.conn.Call(ctx, protocol.MethodShutdown, nil, nil)
-	_ = p.stdin.Close()
+	timeout := stopTimeout
+	// Shutdown runs separately because a write to a plugin that has stopped
+	// reading blocks until the plugin is killed.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		_ = p.conn.Call(ctx, protocol.MethodShutdown, nil, nil)
+		_ = p.stdin.Close()
+	}()
 	select {
 	case <-p.done:
 		return nil
-	case <-ctx.Done():
+	case <-time.After(timeout):
 		p.kill()
 		return fmt.Errorf("plugin %s did not exit after shutdown and was killed", p.Manifest.Name)
 	}
@@ -1835,8 +2015,9 @@ not in memory.
 
 Use standard JSON-RPC errors. Answer unknown methods with `-32601`.
 
-Set `data.retryable` to `true` when the same call might succeed later, such
-as after a timeout or a rate limit:
+`data` may be any JSON value. When it is an object, set `data.retryable` to
+`true` if the same call might succeed later, such as after a timeout or a
+rate limit:
 
 ```json
 {"jsonrpc": "2.0", "id": 7, "error": {"code": -32000, "message": "rate limited", "data": {"retryable": true}}}

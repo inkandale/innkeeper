@@ -32,7 +32,7 @@ type services struct {
 
 // openServices reads the settings both services need, loads the installed
 // plugins, and connects to and migrates the database.
-func openServices(ctx context.Context, log *slog.Logger, minConns int) (*services, error) {
+func openServices(ctx context.Context, log *slog.Logger, maxConnsAtLeast int) (*services, error) {
 	cfg := map[string]string{}
 	for _, k := range []string{"INNKEEPER_BLOB_DIR", "INNKEEPER_PLUGINS_DIR"} {
 		if cfg[k] = os.Getenv(k); cfg[k] == "" {
@@ -52,7 +52,7 @@ func openServices(ctx context.Context, log *slog.Logger, minConns int) (*service
 	if err != nil {
 		return nil, err
 	}
-	pool, err := openDB(ctx, minConns)
+	pool, err := openDB(ctx, maxConnsAtLeast)
 	if err != nil {
 		return nil, err
 	}
@@ -63,9 +63,9 @@ func openServices(ctx context.Context, log *slog.Logger, minConns int) (*service
 
 func (s *services) close() { s.pool.Close() }
 
-// openDB connects to INNKEEPER_DATABASE_URL and migrates the schema. The pool
-// is raised to at least minConns connections; 0 keeps the URL's setting.
-func openDB(ctx context.Context, minConns int) (*pgxpool.Pool, error) {
+// openDB connects to INNKEEPER_DATABASE_URL and migrates the schema. The pool's
+// MaxConns is raised to at least maxConnsAtLeast; 0 keeps the URL's setting.
+func openDB(ctx context.Context, maxConnsAtLeast int) (*pgxpool.Pool, error) {
 	url := os.Getenv("INNKEEPER_DATABASE_URL")
 	if url == "" {
 		return nil, errors.New("INNKEEPER_DATABASE_URL is not set")
@@ -74,8 +74,8 @@ func openDB(ctx context.Context, minConns int) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, err
 	}
-	if cfg.MaxConns < int32(minConns) {
-		cfg.MaxConns = int32(minConns)
+	if cfg.MaxConns < int32(maxConnsAtLeast) {
+		cfg.MaxConns = int32(maxConnsAtLeast)
 	}
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {

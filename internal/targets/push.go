@@ -56,21 +56,29 @@ func (s *Service) Push(ctx context.Context, instanceID, cardID int64, newCopy bo
 	case !newCopy:
 		return Binding{}, ErrNewCopy
 	}
+	// The app may finish a put after ctx is cancelled (a shutdown mid-bulk-
+	// push), so let it finish and record the result, or the retry makes a
+	// second copy. The timeout still bounds a hung plugin.
+	detached := context.WithoutCancel(ctx)
+	putCtx, cancelPut := context.WithTimeout(detached, 2*time.Minute)
+	defer cancelPut()
 	var res protocol.TargetPutResult
-	err = s.plugins.Call(ctx, inst, protocol.MethodTargetPut, put, &res)
+	err = s.plugins.Call(putCtx, inst, protocol.MethodTargetPut, put, &res)
 	if put.RemoteID != "" && remoteNotFound(err) {
 		put.RemoteID = ""
-		err = s.plugins.Call(ctx, inst, protocol.MethodTargetPut, put, &res)
+		err = s.plugins.Call(putCtx, inst, protocol.MethodTargetPut, put, &res)
 	}
 	if err != nil {
+		if put.RemoteID == "" && errors.Is(err, protocol.ErrClosed) {
+			// The plugin died mid-create; the app may have the card.
+			return Binding{}, fmt.Errorf("%w: %w", ErrUncertain, err)
+		}
 		return Binding{}, err
 	}
 	if res.RemoteID == "" {
 		return Binding{}, fmt.Errorf("%w: target.put returned no remote_id", ErrBadReply)
 	}
-	// The app has the card now. Record it even if ctx is cancelled (a
-	// shutdown mid-bulk-push), or the retry makes a second copy.
-	detached := context.WithoutCancel(ctx)
+	// The app has the card now; record it even if ctx is cancelled.
 	readCtx, cancelRead := context.WithTimeout(detached, 20*time.Second)
 	accepted, hash, remoteState, err := s.readBack(readCtx, inst, info, res.RemoteID, r.data)
 	cancelRead()

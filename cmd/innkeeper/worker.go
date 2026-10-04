@@ -35,7 +35,8 @@ func worker() error {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	ctx, stop := signalContext()
 	defer stop()
-	// Each running job may hold a connection while a plugin callback needs another.
+	// Each running job can hold a connection (a push holds its transaction across
+	// the plugin call) while its lease heartbeat or an import notification needs another.
 	svc, err := openServices(ctx, log, 2*concurrency+2)
 	if err != nil {
 		return err

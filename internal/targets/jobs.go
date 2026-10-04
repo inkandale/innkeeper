@@ -5,9 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/davidgibbons/innkeeper/internal/bulk"
 	"github.com/davidgibbons/innkeeper/internal/jobs"
+	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 )
 
@@ -20,24 +24,58 @@ const (
 type pushPayload struct {
 	CardID  int64 `json:"card_id"`
 	NewCopy bool  `json:"new_copy,omitempty"`
+	// Version is the binding's version when the job was queued; nil if the
+	// card wasn't bound. A run that finds another version knows an earlier
+	// run already pushed.
+	Version *int64 `json:"version,omitempty"`
 }
 
 // EnqueuePush queues a push of one card.
-func EnqueuePush(ctx context.Context, q *jobs.Queue, instanceID, cardID int64, newCopy bool) (jobs.Job, error) {
-	return q.Enqueue(ctx, jobs.Spec{Kind: PushKind, InstanceID: &instanceID, Payload: pushPayload{cardID, newCopy}})
+func (s *Service) EnqueuePush(ctx context.Context, q *jobs.Queue, instanceID, cardID int64, newCopy bool) (jobs.Job, error) {
+	var v *int64
+	err := s.pool.QueryRow(ctx, `SELECT version FROM binding WHERE instance_id = $1 AND card_id = $2`,
+		instanceID, cardID).Scan(&v)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return jobs.Job{}, err
+	}
+	return q.Enqueue(ctx, jobs.Spec{Kind: PushKind, InstanceID: &instanceID, Payload: pushPayload{cardID, newCopy, v}})
 }
 
 // EnqueueBulkPush queues a push of each card, as one bulk job.
-func EnqueueBulkPush(ctx context.Context, q *jobs.Queue, instanceID int64, cardIDs []int64, newCopy bool) (jobs.Job, error) {
+func (s *Service) EnqueueBulkPush(ctx context.Context, q *jobs.Queue, instanceID int64, cardIDs []int64, newCopy bool) (jobs.Job, error) {
+	cardIDs = slices.Clone(cardIDs)
+	slices.Sort(cardIDs)
+	cardIDs = slices.Compact(cardIDs)
+	rows, err := s.pool.Query(ctx, `SELECT card_id, version FROM binding WHERE instance_id = $1 AND card_id = ANY($2)`,
+		instanceID, cardIDs)
+	if err != nil {
+		return jobs.Job{}, err
+	}
+	versions := map[int64]int64{}
+	for rows.Next() {
+		var id, v int64
+		if err := rows.Scan(&id, &v); err != nil {
+			return jobs.Job{}, err
+		}
+		versions[id] = v
+	}
+	if err := rows.Err(); err != nil {
+		return jobs.Job{}, err
+	}
 	children := make([]jobs.Spec, len(cardIDs))
 	for i, id := range cardIDs {
-		children[i] = jobs.Spec{Kind: PushKind, InstanceID: &instanceID, Payload: pushPayload{id, newCopy}}
+		p := pushPayload{CardID: id, NewCopy: newCopy}
+		if v, ok := versions[id]; ok {
+			p.Version = &v
+		}
+		children[i] = jobs.Spec{Kind: PushKind, InstanceID: &instanceID, Payload: p}
 	}
 	return q.EnqueueBulk(ctx, jobs.Spec{Kind: bulk.Kind, InstanceID: &instanceID,
 		Payload: map[string]any{"action": PushKind, "new_copy": newCopy}}, children)
 }
 
-// RunPush is the jobs.Handler for PushKind.
+// RunPush is the jobs.Handler for PushKind. A job can run twice (shutdown,
+// a lost lease, a retry), so it skips a push an earlier run already made.
 func (s *Service) RunPush(ctx context.Context, r *jobs.Run) error {
 	if r.InstanceID == nil {
 		return errors.New("push job has no plugin instance")
@@ -46,16 +84,50 @@ func (s *Service) RunPush(ctx context.Context, r *jobs.Run) error {
 	if err := json.Unmarshal(r.Payload, &p); err != nil {
 		return fmt.Errorf("push payload: %w", err)
 	}
-	b, err := s.Push(ctx, *r.InstanceID, p.CardID, p.NewCopy)
-	if plugins.Retryable(err) {
-		return fmt.Errorf("%w: %w", jobs.ErrRetry, err)
+	var id, version int64
+	err := s.pool.QueryRow(ctx, `SELECT id, version FROM binding WHERE instance_id = $1 AND card_id = $2`,
+		*r.InstanceID, p.CardID).Scan(&id, &version)
+	bound := err == nil
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
 	}
-	if err != nil {
+	if p.NewCopy && bound && (p.Version == nil || *p.Version != version) {
+		return skipPush(r, id)
+	}
+	b, err := s.Push(ctx, *r.InstanceID, p.CardID, p.NewCopy)
+	var startErr *pluginhost.StartError
+	switch {
+	case errors.Is(err, ErrNewCopy) && p.Version == nil:
+		// Bound since the job was queued: an earlier run pushed. Look the
+		// binding up again, as the first lookup found none.
+		if err := s.pool.QueryRow(ctx, `SELECT id FROM binding WHERE instance_id = $1 AND card_id = $2`,
+			*r.InstanceID, p.CardID).Scan(&id); err != nil {
+			return err
+		}
+		return skipPush(r, id)
+	case err == nil:
+	case errors.Is(err, ErrUncertain), errors.As(err, &startErr):
+		return err
+	case plugins.Retryable(err):
+		return fmt.Errorf("%w: %w", jobs.ErrRetry, err)
+	default:
 		return err
 	}
 	raw, err := json.Marshal(map[string]any{"binding_id": b.ID, "remote_id": b.RemoteID})
+	if err != nil {
+		return err
+	}
 	r.SetProgress(raw)
-	return err
+	return nil
+}
+
+func skipPush(r *jobs.Run, bindingID int64) error {
+	raw, err := json.Marshal(map[string]any{"binding_id": bindingID, "skipped": "already pushed"})
+	if err != nil {
+		return err
+	}
+	r.SetProgress(raw)
+	return nil
 }
 
 // RunScan is the jobs.Handler for ScanKind.

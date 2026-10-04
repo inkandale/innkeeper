@@ -31,6 +31,9 @@ var (
 	ErrNoChanges = errors.New("the app's copy has no changes to adopt")
 	// ErrBadReply means the plugin replied with something the core can't use.
 	ErrBadReply = errors.New("plugin sent a bad reply")
+	// ErrUncertain means a create failed in a way that may have made the
+	// card in the app. Pushing again could make a duplicate.
+	ErrUncertain = errors.New("the app may have the card; check it before pushing again")
 )
 
 // Remote states: what the last check found in the app.

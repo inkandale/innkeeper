@@ -16,7 +16,9 @@ import (
 
 const usage = `usage:
   innkeeper plugin check <plugin-dir>
-  innkeeper migrate    (reads INNKEEPER_DATABASE_URL)`
+  innkeeper migrate    (reads INNKEEPER_DATABASE_URL)
+  innkeeper worker     (reads INNKEEPER_DATABASE_URL, INNKEEPER_BLOB_DIR,
+                        INNKEEPER_PLUGINS_DIR, INNKEEPER_WORKER_CONCURRENCY)`
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -31,6 +33,9 @@ func run(args []string) error {
 	}
 	if len(args) == 1 && args[0] == "migrate" {
 		return migrate()
+	}
+	if len(args) == 1 && args[0] == "worker" {
+		return worker()
 	}
 	return errors.New(usage)
 }

@@ -20,3 +20,13 @@ go test -race ./...
 
 `innkeeper migrate` applies the schema to the database in
 `INNKEEPER_DATABASE_URL`.
+
+`innkeeper worker` runs jobs: imports, bulk actions, and daily blob cleanup.
+It migrates the database at startup and stops cleanly on `SIGTERM`.
+
+| Variable | Meaning |
+|---|---|
+| `INNKEEPER_DATABASE_URL` | PostgreSQL URL |
+| `INNKEEPER_BLOB_DIR` | The library's blob store folder |
+| `INNKEEPER_PLUGINS_DIR` | Folder with one subfolder per installed plugin |
+| `INNKEEPER_WORKER_CONCURRENCY` | Jobs run at once; default 4 |

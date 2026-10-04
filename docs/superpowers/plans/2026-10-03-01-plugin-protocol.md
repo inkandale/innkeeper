@@ -301,6 +301,23 @@ func TestPanickingHandlerReturnsInternalError(t *testing.T) {
 	}
 }
 
+func TestPanickingNotificationHandlerKeepsConnection(t *testing.T) {
+	handler := func(_ context.Context, method string, params json.RawMessage) (any, error) {
+		if method == "boom" {
+			panic("oops")
+		}
+		return echo(context.Background(), method, params)
+	}
+	a, _, _ := pair(t, nil, handler)
+	if err := a.Notify("boom", nil); err != nil {
+		t.Fatal(err)
+	}
+	var out int
+	if err := a.Call(context.Background(), "echo", 5, &out); err != nil || out != 5 {
+		t.Fatalf("call after panicking notification: out=%d err=%v", out, err)
+	}
+}
+
 func TestHandlerContextCancelledWhenPeerGoesAway(t *testing.T) {
 	cancelled := make(chan struct{})
 	wait := func(ctx context.Context, _ string, _ json.RawMessage) (any, error) {
@@ -482,6 +499,9 @@ func (c *Conn) Run(ctx context.Context) error {
 			}
 			// A well-formed JSON value of the wrong shape (a batch, a
 			// non-string method) has been consumed whole; skip it.
+			// ponytail: a skipped request or response with an id leaves
+			// its caller waiting until ctx expires; reply -32600 if
+			// misbehaving peers show up.
 			var typeErr *json.UnmarshalTypeError
 			if errors.As(err, &typeErr) {
 				continue
@@ -492,9 +512,7 @@ func (c *Conn) Run(ctx context.Context) error {
 		case m.Method != "" && len(m.ID) == 0:
 			// Handled inline so notifications such as emit.card and
 			// checkpoint are processed in the order they were sent.
-			if c.handler != nil {
-				_, _ = c.handler(ctx, m.Method, m.Params)
-			}
+			_, _ = c.handle(ctx, m)
 		case m.Method != "":
 			go c.serve(ctx, m)
 		default:
@@ -580,8 +598,8 @@ func (c *Conn) serve(ctx context.Context, req message) {
 	_ = c.write(resp)
 }
 
-// handle runs the handler for a request, turning a panic into an internal
-// error so a bad request can't crash the process.
+// handle runs the handler for a message, turning a panic into an internal
+// error so a bad message can't crash the process.
 func (c *Conn) handle(ctx context.Context, req message) (result any, err error) {
 	if c.handler == nil {
 		return nil, MethodNotFound(req.Method)

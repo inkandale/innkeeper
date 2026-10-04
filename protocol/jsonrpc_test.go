@@ -181,6 +181,23 @@ func TestPanickingHandlerReturnsInternalError(t *testing.T) {
 	}
 }
 
+func TestPanickingNotificationHandlerKeepsConnection(t *testing.T) {
+	handler := func(_ context.Context, method string, params json.RawMessage) (any, error) {
+		if method == "boom" {
+			panic("oops")
+		}
+		return echo(context.Background(), method, params)
+	}
+	a, _, _ := pair(t, nil, handler)
+	if err := a.Notify("boom", nil); err != nil {
+		t.Fatal(err)
+	}
+	var out int
+	if err := a.Call(context.Background(), "echo", 5, &out); err != nil || out != 5 {
+		t.Fatalf("call after panicking notification: out=%d err=%v", out, err)
+	}
+}
+
 func TestHandlerContextCancelledWhenPeerGoesAway(t *testing.T) {
 	cancelled := make(chan struct{})
 	wait := func(ctx context.Context, _ string, _ json.RawMessage) (any, error) {

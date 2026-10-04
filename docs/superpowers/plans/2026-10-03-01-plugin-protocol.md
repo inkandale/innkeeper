@@ -1046,7 +1046,7 @@ func main() {
 			return res, nil
 		case protocol.MethodShutdown:
 			if *mode == "no-shutdown" {
-				time.Sleep(time.Hour)
+				time.Sleep(time.Minute)
 			}
 			return nil, nil
 		case "echo":
@@ -1069,7 +1069,7 @@ func main() {
 		case "freeze":
 			// A notification handler blocks the reader, so the plugin
 			// stops reading stdin, like a hung plugin.
-			time.Sleep(time.Hour)
+			time.Sleep(time.Minute)
 		}
 		if *mode == "bad-errors" {
 			return nil, nil
@@ -1083,7 +1083,7 @@ func main() {
 		os.Exit(1)
 	}
 	if *mode == "no-shutdown" {
-		time.Sleep(time.Hour)
+		time.Sleep(time.Minute)
 	}
 }
 ```
@@ -1550,6 +1550,20 @@ func (m *Manager) proc(id string) *Process {
 	return nil
 }
 
+func waitInflight(t *testing.T, m *Manager, id string) {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+		m.mu.Lock()
+		e, ok := m.running[id]
+		busy := ok && e.inflight > 0
+		m.mu.Unlock()
+		if busy {
+			return
+		}
+	}
+	t.Fatal("call never became in flight")
+}
+
 func TestManagerReusesProcess(t *testing.T) {
 	mgr, inst := newManager(t, time.Minute)
 	ctx := context.Background()
@@ -1595,7 +1609,7 @@ func TestStopIdleSparesPluginWithCallInFlight(t *testing.T) {
 	mgr, inst := newManager(t, 0)
 	errc := make(chan error, 1)
 	go func() { errc <- mgr.Call(context.Background(), inst, "sleep", 300, nil) }()
-	time.Sleep(100 * time.Millisecond)
+	waitInflight(t, mgr, inst.ID)
 	mgr.StopIdle()
 	if err := <-errc; err != nil {
 		t.Fatalf("in-flight call failed: %v", err)

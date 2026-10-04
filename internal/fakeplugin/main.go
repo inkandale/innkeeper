@@ -36,7 +36,7 @@ func main() {
 			return res, nil
 		case protocol.MethodShutdown:
 			if *mode == "no-shutdown" {
-				time.Sleep(time.Hour)
+				time.Sleep(time.Minute)
 			}
 			return nil, nil
 		case "echo":
@@ -59,7 +59,7 @@ func main() {
 		case "freeze":
 			// A notification handler blocks the reader, so the plugin
 			// stops reading stdin, like a hung plugin.
-			time.Sleep(time.Hour)
+			time.Sleep(time.Minute)
 		}
 		if *mode == "bad-errors" {
 			return nil, nil
@@ -73,6 +73,6 @@ func main() {
 		os.Exit(1)
 	}
 	if *mode == "no-shutdown" {
-		time.Sleep(time.Hour)
+		time.Sleep(time.Minute)
 	}
 }

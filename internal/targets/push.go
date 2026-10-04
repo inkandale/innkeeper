@@ -18,6 +18,22 @@ import (
 // made in the app. A target that can't update gets another copy, but only
 // when newCopy is set. If the app lost its copy, the push makes a new one.
 func (s *Service) Push(ctx context.Context, instanceID, cardID int64, newCopy bool) (Binding, error) {
+	return s.push(ctx, instanceID, cardID, newCopy, nil)
+}
+
+// pushExpect is what a queued push job saw when it was queued.
+type pushExpect struct {
+	// lastPush is the binding's latest push id; nil if it wasn't bound.
+	lastPush *int64
+}
+
+// errAlreadyPushed means the card's pushes aren't what the job expected, so
+// an earlier run of the job (or another push) already pushed it.
+var errAlreadyPushed = errors.New("already pushed")
+
+// push is Push, except that with expect it gives up with errAlreadyPushed
+// if the card was pushed since expect.
+func (s *Service) push(ctx context.Context, instanceID, cardID int64, newCopy bool, expect *pushExpect) (Binding, error) {
 	inst, info, err := s.describe(ctx, instanceID)
 	if err != nil {
 		return Binding{}, err
@@ -42,11 +58,17 @@ func (s *Service) Push(ctx context.Context, instanceID, cardID int64, newCopy bo
 		return Binding{}, err
 	}
 	var remoteID, state string
-	err = tx.QueryRow(ctx, `SELECT remote_id, remote_state FROM binding WHERE instance_id = $1 AND card_id = $2`,
-		instanceID, cardID).Scan(&remoteID, &state)
+	var lastPush *int64
+	err = tx.QueryRow(ctx, `SELECT remote_id, remote_state, (SELECT max(id) FROM push WHERE binding_id = b.id)
+		FROM binding b WHERE instance_id = $1 AND card_id = $2`,
+		instanceID, cardID).Scan(&remoteID, &state, &lastPush)
 	bound := err == nil
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return Binding{}, err
+	}
+	// Pushes are serialized by the lock, so this can't change before the put.
+	if expect != nil && bound && (expect.lastPush == nil || lastPush == nil || *expect.lastPush != *lastPush) {
+		return Binding{}, errAlreadyPushed
 	}
 	put := protocol.TargetPutParams{Card: r.card, Avatar: r.avatar}
 	switch {
@@ -69,8 +91,8 @@ func (s *Service) Push(ctx context.Context, instanceID, cardID int64, newCopy bo
 		err = s.plugins.Call(putCtx, inst, protocol.MethodTargetPut, put, &res)
 	}
 	if err != nil {
-		if put.RemoteID == "" && errors.Is(err, protocol.ErrClosed) {
-			// The plugin died mid-create; the app may have the card.
+		if put.RemoteID == "" && (errors.Is(err, protocol.ErrClosed) || errors.Is(err, context.DeadlineExceeded)) {
+			// The plugin died or hung mid-create; the app may have the card.
 			return Binding{}, fmt.Errorf("%w: %w", ErrUncertain, err)
 		}
 		return Binding{}, err

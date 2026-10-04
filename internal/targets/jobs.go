@@ -24,18 +24,18 @@ const (
 type pushPayload struct {
 	CardID  int64 `json:"card_id"`
 	NewCopy bool  `json:"new_copy,omitempty"`
-	// Version is the binding's version when the job was queued; nil if the
-	// card wasn't bound. A run that finds another version knows an earlier
-	// run already pushed.
-	Version *int64 `json:"version,omitempty"`
+	// LastPush is the binding's latest push id when the job was queued; nil
+	// if the card wasn't bound. A run that finds another one knows an
+	// earlier run, or another push, already pushed.
+	LastPush *int64 `json:"last_push,omitempty"`
 }
 
 // EnqueuePush queues a push of one card.
 func (s *Service) EnqueuePush(ctx context.Context, q *jobs.Queue, instanceID, cardID int64, newCopy bool) (jobs.Job, error) {
 	var v *int64
-	err := s.pool.QueryRow(ctx, `SELECT version FROM binding WHERE instance_id = $1 AND card_id = $2`,
-		instanceID, cardID).Scan(&v)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	err := s.pool.QueryRow(ctx, `SELECT max(p.id) FROM binding b JOIN push p ON p.binding_id = b.id
+		WHERE b.instance_id = $1 AND b.card_id = $2`, instanceID, cardID).Scan(&v)
+	if err != nil {
 		return jobs.Job{}, err
 	}
 	return q.Enqueue(ctx, jobs.Spec{Kind: PushKind, InstanceID: &instanceID, Payload: pushPayload{cardID, newCopy, v}})
@@ -46,27 +46,24 @@ func (s *Service) EnqueueBulkPush(ctx context.Context, q *jobs.Queue, instanceID
 	cardIDs = slices.Clone(cardIDs)
 	slices.Sort(cardIDs)
 	cardIDs = slices.Compact(cardIDs)
-	rows, err := s.pool.Query(ctx, `SELECT card_id, version FROM binding WHERE instance_id = $1 AND card_id = ANY($2)`,
-		instanceID, cardIDs)
+	rows, err := s.pool.Query(ctx, `SELECT b.card_id, max(p.id) FROM binding b JOIN push p ON p.binding_id = b.id
+		WHERE b.instance_id = $1 AND b.card_id = ANY($2) GROUP BY b.card_id`, instanceID, cardIDs)
 	if err != nil {
 		return jobs.Job{}, err
 	}
-	versions := map[int64]int64{}
-	for rows.Next() {
-		var id, v int64
-		if err := rows.Scan(&id, &v); err != nil {
-			return jobs.Job{}, err
-		}
-		versions[id] = v
-	}
-	if err := rows.Err(); err != nil {
+	lastPush := map[int64]int64{}
+	var card, last int64
+	if _, err := pgx.ForEachRow(rows, []any{&card, &last}, func() error {
+		lastPush[card] = last
+		return nil
+	}); err != nil {
 		return jobs.Job{}, err
 	}
 	children := make([]jobs.Spec, len(cardIDs))
 	for i, id := range cardIDs {
 		p := pushPayload{CardID: id, NewCopy: newCopy}
-		if v, ok := versions[id]; ok {
-			p.Version = &v
+		if v, ok := lastPush[id]; ok {
+			p.LastPush = &v
 		}
 		children[i] = jobs.Spec{Kind: PushKind, InstanceID: &instanceID, Payload: p}
 	}
@@ -84,22 +81,11 @@ func (s *Service) RunPush(ctx context.Context, r *jobs.Run) error {
 	if err := json.Unmarshal(r.Payload, &p); err != nil {
 		return fmt.Errorf("push payload: %w", err)
 	}
-	var id, version int64
-	err := s.pool.QueryRow(ctx, `SELECT id, version FROM binding WHERE instance_id = $1 AND card_id = $2`,
-		*r.InstanceID, p.CardID).Scan(&id, &version)
-	bound := err == nil
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return err
-	}
-	if p.NewCopy && bound && (p.Version == nil || *p.Version != version) {
-		return skipPush(r, id)
-	}
-	b, err := s.Push(ctx, *r.InstanceID, p.CardID, p.NewCopy)
+	b, err := s.push(ctx, *r.InstanceID, p.CardID, p.NewCopy, &pushExpect{p.LastPush})
 	var startErr *pluginhost.StartError
 	switch {
-	case errors.Is(err, ErrNewCopy) && p.Version == nil:
-		// Bound since the job was queued: an earlier run pushed. Look the
-		// binding up again, as the first lookup found none.
+	case errors.Is(err, errAlreadyPushed):
+		var id int64
 		if err := s.pool.QueryRow(ctx, `SELECT id FROM binding WHERE instance_id = $1 AND card_id = $2`,
 			*r.InstanceID, p.CardID).Scan(&id); err != nil {
 			return err

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -81,6 +82,19 @@ func TestPushJobFailures(t *testing.T) {
 				t.Fatalf("status %s (%v), want %s", got.Status, got.Error, want)
 			}
 		})
+	}
+}
+
+func TestPushJobUncertainCreate(t *testing.T) {
+	e := setup(t, map[string]any{"fail_put": "crash"})
+	q := jobs.New(e.pool)
+	j, err := e.s.EnqueuePush(e.ctx, q, e.inst, e.card, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := e.startWorker(q)(j.ID)
+	if got.Status != jobs.StatusFailed || got.Error == nil || !strings.Contains(*got.Error, "may have the card") {
+		t.Fatalf("job %s, error %v", got.Status, got.Error)
 	}
 }
 

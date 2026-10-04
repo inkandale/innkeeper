@@ -21,7 +21,7 @@ type target struct {
 	Pull      *bool    `json:"pull"`
 	Update    *bool    `json:"update"`
 	Lorebooks string   `json:"lorebooks"`
-	// FailPut makes target.put fail: retryable or fatal.
+	// FailPut makes target.put fail: retryable, fatal, or crash (the plugin exits after storing the card).
 	FailPut string `json:"fail_put"`
 }
 
@@ -119,6 +119,9 @@ func (t target) put(params json.RawMessage) (any, error) {
 	}
 	if err := os.Rename(tmp.Name(), t.path(id)); err != nil {
 		return nil, err
+	}
+	if t.FailPut == "crash" {
+		os.Exit(1)
 	}
 	return protocol.TargetPutResult{RemoteID: id}, nil
 }

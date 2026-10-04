@@ -5,12 +5,15 @@ package blobstore
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
 	"syscall"
+	"time"
 )
 
 var shaPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
@@ -127,4 +130,42 @@ func (s *Store) place(staged, sha string) error {
 		return err
 	}
 	return os.Rename(staged, dst)
+}
+
+// Remove deletes a blob's file. A file that is already gone is not an error.
+func (s *Store) Remove(sha string) error {
+	path, err := s.Path(sha)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+// RemoveStale deletes entries in the tmp and staging folders last modified
+// before cutoff: files from plugins and puts that never finished.
+func (s *Store) RemoveStale(cutoff time.Time) (int, error) {
+	n := 0
+	for _, dir := range []string{s.TmpDir(), s.stagingDir()} {
+		entries, err := os.ReadDir(dir)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return n, err
+		}
+		for _, e := range entries {
+			info, err := e.Info()
+			if err != nil || !info.ModTime().Before(cutoff) {
+				continue
+			}
+			if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil {
+				return n, err
+			}
+			n++
+		}
+	}
+	return n, nil
 }

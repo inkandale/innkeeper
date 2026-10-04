@@ -55,7 +55,7 @@ func newEnv(t *testing.T) *testEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fake, err := protocol.LoadManifest(testutil.FakePluginWith(t, []string{"auth", "import", "push", "pull"}))
+	fake, err := protocol.LoadManifest(testutil.FakePluginWith(t, []string{"auth", "import", "push", "pull", "codec"}))
 	if err != nil {
 		t.Fatal(err)
 	}

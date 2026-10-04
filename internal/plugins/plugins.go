@@ -34,6 +34,8 @@ var (
 	ErrNameTaken = errors.New("plugin instance name already in use")
 	// ErrInUse means cards are still bound to the instance.
 	ErrInUse = errors.New("plugin instance has bound cards; unbind them first")
+	// ErrNoCodec means no working codec instance writes a format.
+	ErrNoCodec = errors.New("no codec plugin instance writes this format")
 )
 
 // LoadDir loads the manifest in each folder of dir. A folder with an invalid
@@ -322,6 +324,29 @@ func (r *Registry) Instance(ctx context.Context, id int64) (pluginhost.Instance,
 			BlobTmp:    r.blobs.TmpDir(),
 		},
 	}, nil
+}
+
+// CodecInstance returns the oldest working instance of a codec plugin that
+// lists format.
+func (r *Registry) CodecInstance(ctx context.Context, format string) (pluginhost.Instance, error) {
+	type row struct {
+		ID     int64
+		Plugin string
+	}
+	rows, err := r.pool.Query(ctx, `SELECT id, plugin FROM plugin_instance WHERE broken_error IS NULL ORDER BY id`)
+	if err != nil {
+		return pluginhost.Instance{}, err
+	}
+	all, err := pgx.CollectRows(rows, pgx.RowToStructByPos[row])
+	if err != nil {
+		return pluginhost.Instance{}, err
+	}
+	for _, i := range all {
+		if m, ok := r.manifests[i.Plugin]; ok && slices.Contains(m.Capabilities, "codec") && slices.Contains(m.Formats, format) {
+			return r.Instance(ctx, i.ID)
+		}
+	}
+	return pluginhost.Instance{}, fmt.Errorf("%w: %q; create an instance of a codec plugin that lists it", ErrNoCodec, format)
 }
 
 // MarkBroken records that an instance's plugin failed to start, so nothing

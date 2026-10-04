@@ -116,9 +116,15 @@ type linkIn struct {
 	LorebookID int64 `path:"lorebook_id"`
 }
 
+type exportIn struct {
+	ID     int64  `path:"id"`
+	Format string `query:"format" default:"json" doc:"json for CCv3 JSON, or a format a codec plugin instance writes, such as png"`
+}
+
 type exportOut struct {
 	ContentDisposition string `header:"Content-Disposition"`
-	Body               json.RawMessage
+	ContentType        string `header:"Content-Type"`
+	Body               []byte
 }
 
 // nameOf returns data.name, for making a slug.
@@ -322,8 +328,8 @@ func (s *Server) cardRoutes(api huma.API) {
 		})
 
 	huma.Register(api, huma.Operation{OperationID: "export-card", Method: http.MethodGet, Path: "/cards/{id}/export",
-		Summary: "Export a card as CCv3 JSON", Description: "Linked lorebooks are embedded as data.character_book.", Tags: tags},
-		func(ctx context.Context, in *idIn) (*exportOut, error) {
+		Summary: "Export a card", Description: "Linked lorebooks are embedded as data.character_book. Formats other than json need a codec plugin instance that writes them.", Tags: tags},
+		func(ctx context.Context, in *exportIn) (*exportOut, error) {
 			c, err := s.Lib.Cards.Get(ctx, in.ID)
 			if err != nil {
 				return nil, s.fail(err)
@@ -332,6 +338,13 @@ func (s *Server) cardRoutes(api huma.API) {
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			return &exportOut{ContentDisposition: fmt.Sprintf(`attachment; filename="%s.json"`, c.Slug), Body: raw}, nil
+			body, ext := []byte(raw), "json"
+			if in.Format != "json" {
+				if body, ext, err = s.encode(ctx, c.HeadRevisionID, raw, in.Format); err != nil {
+					return nil, s.fail(err)
+				}
+			}
+			return &exportOut{ContentDisposition: fmt.Sprintf(`attachment; filename="%s.%s"`, c.Slug, ext),
+				ContentType: exportType(ext), Body: body}, nil
 		})
 }

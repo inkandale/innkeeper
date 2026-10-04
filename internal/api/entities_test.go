@@ -180,3 +180,30 @@ func TestCardTagsLinksAndExport(t *testing.T) {
 		t.Fatalf("similar = %+v", matches)
 	}
 }
+
+func TestExportFormats(t *testing.T) {
+	e := newEnv(t)
+	brakka := e.createCard(`{"name": "Brakka"}`)
+	path := fmt.Sprintf("/cards/%d/export", brakka.ID)
+
+	// newEnv's fake instances are codecs that write the format "fake".
+	r := e.call("GET", path+"?format=fake", nil, 200, nil)
+	if !strings.HasPrefix(string(r.Body), "fake:") || !strings.Contains(string(r.Body), `"Brakka"`) ||
+		!strings.Contains(r.Header.Get("Content-Disposition"), "brakka.txt") ||
+		r.Header.Get("Content-Type") != "application/octet-stream" {
+		t.Fatalf("fake export: %s %v", r, r.Header)
+	}
+	r = e.call("GET", path, nil, 200, nil)
+	if r.Header.Get("Content-Type") != "application/json" {
+		t.Fatalf("json export Content-Type = %q", r.Header.Get("Content-Type"))
+	}
+	e.call("GET", path+"?format=nope", nil, 400, nil)
+
+	// The fake writes a card named Escape outside blob_tmp.
+	escape := e.createCard(`{"name": "Escape"}`)
+	e.call("GET", fmt.Sprintf("/cards/%d/export?format=fake", escape.ID), nil, 502, nil)
+
+	e.markBroken(e.loginID, "boom")
+	e.markBroken(e.importID, "boom")
+	e.call("GET", path+"?format=fake", nil, 400, nil)
+}

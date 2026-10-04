@@ -116,12 +116,12 @@ func (s *Server) fail(err error) error {
 		// The stored error can hold paths and plugin output, so it stays out of the response.
 		return huma.Error409Conflict("plugin instance is broken; fix its settings first")
 	case errors.Is(err, library.ErrInvalid), errors.Is(err, plugins.ErrInvalid), errors.Is(err, plugins.ErrUnknownPlugin),
-		errors.Is(err, targets.ErrCannot):
+		errors.Is(err, targets.ErrCannot), errors.Is(err, plugins.ErrNoCodec):
 		return huma.Error400BadRequest(err.Error())
 	case errors.As(err, &startErr), errors.Is(err, protocol.ErrClosed):
 		s.Log.Error("plugin failed", "err", err)
 		return huma.Error502BadGateway("plugin failed; see the server log")
-	case errors.As(err, &rpcErr), errors.Is(err, targets.ErrBadReply):
+	case errors.As(err, &rpcErr), errors.Is(err, targets.ErrBadReply), errors.Is(err, errBadCodec):
 		return huma.Error502BadGateway("plugin: " + err.Error())
 	}
 	s.Log.Error("request failed", "err", err)

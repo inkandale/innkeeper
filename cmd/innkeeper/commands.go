@@ -97,6 +97,30 @@ func bulkCmd(args []string) error {
 	return startJob("/bulk", map[string]any{"query": query, "action": args[0]})
 }
 
+// pushCmd runs `innkeeper push INSTANCE_ID CARD_ID|QUERY_JSON [--new-copy]`.
+func pushCmd(args []string) error {
+	newCopy := len(args) == 3 && args[2] == "--new-copy"
+	if len(args) != 2 && !newCopy {
+		return errors.New(usage)
+	}
+	inst, err := parseID(args[0])
+	if err != nil {
+		return err
+	}
+	if strings.HasPrefix(strings.TrimSpace(args[1]), "{") {
+		query, err := jsonArg(args, 1, "")
+		if err != nil {
+			return err
+		}
+		return startJob("/pushes", map[string]any{"instance_id": json.Number(inst), "query": query, "new_copy": newCopy})
+	}
+	card, err := parseID(args[1])
+	if err != nil {
+		return err
+	}
+	return startJob("/cards/"+card+"/push", map[string]any{"instance_id": json.Number(inst), "new_copy": newCopy})
+}
+
 // export runs `innkeeper export CARD_ID [FILE]`.
 func export(args []string) error {
 	if len(args) < 1 || len(args) > 2 {

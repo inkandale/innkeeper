@@ -249,7 +249,9 @@ func (r *Registry) scanInfo(row pgx.Row) (InstanceInfo, error) {
 	if err != nil {
 		return i, err
 	}
-	i.Secrets = slices.Sorted(maps.Keys(s))
+	// Start non-nil so JSON shows [] rather than null.
+	i.Secrets = slices.AppendSeq([]string{}, maps.Keys(s))
+	slices.Sort(i.Secrets)
 	return i, nil
 }
 

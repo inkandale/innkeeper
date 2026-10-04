@@ -33,7 +33,10 @@ func TestInstanceRoutes(t *testing.T) {
 	if err := e.s.Registry.MarkBroken(context.Background(), inst.ID, errors.New("bad key")); err != nil {
 		t.Fatal(err)
 	}
-	e.call("PATCH", path, map[string]any{"name": "Vault 2", "secrets": map[string]any{"api_key": nil}}, 200, &inst)
+	r = e.call("PATCH", path, map[string]any{"name": "Vault 2", "secrets": map[string]any{"api_key": nil}}, 200, &inst)
+	if !strings.Contains(string(r.Body), `"secrets":[]`) {
+		t.Fatalf("patched %s", r)
+	}
 	if inst.Name != "Vault 2" || len(inst.Secrets) != 0 || inst.BrokenError != nil || inst.Config["url"] != "http://example.com" {
 		t.Fatalf("patched %+v", inst)
 	}

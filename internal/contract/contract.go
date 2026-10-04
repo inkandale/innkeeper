@@ -42,8 +42,8 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	for _, s := range m.Secrets {
 		secrets[s] = "contract-check"
 	}
-	// A codec writes its files to blob_tmp, which is <root>/tmp as in the
-	// real blob store.
+	// root is the blob store; a codec writes its files to blob_tmp, which is
+	// <root>/tmp as in a real store.
 	root, err := os.MkdirTemp("", "innkeeper-check-")
 	if err != nil {
 		return nil, err
@@ -53,7 +53,8 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	if err := os.Mkdir(tmp, 0o700); err != nil {
 		return nil, err
 	}
-	params := protocol.InitializeParams{InstanceID: "contract-check", Config: map[string]any{}, Secrets: secrets, BlobTmp: tmp}
+	params := protocol.InitializeParams{InstanceID: "contract-check", Config: map[string]any{}, Secrets: secrets,
+		BlobStores: map[string]string{"contract-check": root}, BlobTmp: tmp}
 
 	p, err := pluginhost.Start(ctx, m, params, noCore, log)
 	results := []Result{{"initialize handshake matches manifest", err}}

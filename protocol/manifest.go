@@ -26,6 +26,9 @@ const maxNameLen = 41
 // Secret names and enrichment keys.
 var keyPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
+// Codec formats, such as png or json-v2.
+var formatPattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+
 // Manifest is a plugin's plugin.toml.
 type Manifest struct {
 	Name         string                `toml:"name"`
@@ -36,6 +39,9 @@ type Manifest struct {
 	Secrets      []string              `toml:"secrets"`
 	Config       map[string]any        `toml:"config"`
 	Enrichments  map[string]Enrichment `toml:"enrichments"`
+
+	// Formats are what a codec plugin's codec.encode writes.
+	Formats []string `toml:"formats"`
 
 	// Dir is the absolute path of the plugin's folder.
 	Dir string `toml:"-"`
@@ -130,6 +136,26 @@ func (m *Manifest) Validate() error {
 		if e.Type == "score" && (len(e.Range) != 2 || !(e.Range[0] < e.Range[1])) {
 			errs = append(errs, fmt.Errorf("enrichment %q: score needs range = [low, high]", key))
 		}
+	}
+	hasCodec := slices.Contains(m.Capabilities, "codec")
+	if hasCodec && len(m.Formats) == 0 {
+		errs = append(errs, errors.New("a codec plugin must list its formats"))
+	}
+	if !hasCodec && len(m.Formats) > 0 {
+		errs = append(errs, errors.New("formats needs the codec capability"))
+	}
+	seenFormats := map[string]bool{}
+	for _, f := range m.Formats {
+		if !formatPattern.MatchString(f) {
+			errs = append(errs, fmt.Errorf("format %q must match %s", f, formatPattern))
+		}
+		if f == "json" {
+			errs = append(errs, errors.New(`format "json" is the core's own CCv3 export`))
+		}
+		if seenFormats[f] {
+			errs = append(errs, fmt.Errorf("format %q listed twice", f))
+		}
+		seenFormats[f] = true
 	}
 	return errors.Join(errs...)
 }

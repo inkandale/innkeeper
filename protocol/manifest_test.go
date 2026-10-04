@@ -105,3 +105,24 @@ func TestManifestErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestFormats(t *testing.T) {
+	manifest := func(caps []string, formats ...string) *Manifest {
+		return &Manifest{Name: "c", Version: "1", Protocol: Version, Command: []string{"c"}, Capabilities: caps, Formats: formats}
+	}
+	if err := manifest([]string{"codec"}, "png", "json-v2").Validate(); err != nil {
+		t.Fatal(err)
+	}
+	bad := map[string]*Manifest{
+		"codec without formats": manifest([]string{"codec"}),
+		"formats without codec": manifest([]string{"push"}, "png"),
+		"uppercase":             manifest([]string{"codec"}, "PNG"),
+		"json is the core's":    manifest([]string{"codec"}, "json"),
+		"listed twice":          manifest([]string{"codec"}, "png", "png"),
+	}
+	for name, m := range bad {
+		if m.Validate() == nil {
+			t.Errorf("%s: no error", name)
+		}
+	}
+}

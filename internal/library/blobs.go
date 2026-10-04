@@ -113,3 +113,6 @@ func (l *Library) OpenBlob(ctx context.Context, sha string) (Blob, *os.File, err
 	}
 	return b, f, err
 }
+
+// BlobPath returns where a blob's file lives.
+func (l *Library) BlobPath(sha string) (string, error) { return l.blobs.Path(sha) }

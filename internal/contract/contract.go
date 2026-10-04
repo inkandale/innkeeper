@@ -57,9 +57,10 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 
 	if slices.Contains(m.Capabilities, "push") {
 		callCtx, cancel = context.WithTimeout(ctx, callTimeout)
-		results = append(results, Result{"target.describe returns a valid description", checkDescribe(callCtx, p, m)})
+		descErr := checkDescribe(callCtx, p, m)
+		results = append(results, Result{"target.describe returns a valid description", descErr})
 		cancel()
-		if !p.Alive() {
+		if errors.Is(descErr, protocol.ErrClosed) || !p.Alive() {
 			return exited(results, p), nil
 		}
 	}
@@ -88,7 +89,7 @@ func checkDescribe(ctx context.Context, p *pluginhost.Process, m *protocol.Manif
 		return fmt.Errorf("no response within %s", callTimeout)
 	}
 	if errors.Is(err, protocol.ErrClosed) {
-		return errors.New("plugin exited")
+		return fmt.Errorf("plugin exited: %w", err)
 	}
 	if err != nil {
 		return err

@@ -2,7 +2,9 @@ package library
 
 import (
 	"context"
+	"errors"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"strings"
@@ -13,12 +15,12 @@ import (
 
 // Blob is a stored file.
 type Blob struct {
-	SHA256      string
-	Size        int64
-	MIME        string
-	Store       string
-	AvatarPhash *int64
-	CreatedAt   time.Time
+	SHA256      string    `json:"sha256"`
+	Size        int64     `json:"size"`
+	MIME        string    `json:"mime"`
+	Store       string    `json:"store"`
+	AvatarPhash *int64    `json:"avatar_phash,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 const blobCols = `sha256, size, mime, store, avatar_phash, created_at`
@@ -93,4 +95,21 @@ func sniff(path string) (string, error) {
 		return "", err
 	}
 	return http.DetectContentType(head[:n]), nil
+}
+
+// OpenBlob returns a blob's record and its file. The caller closes the file.
+func (l *Library) OpenBlob(ctx context.Context, sha string) (Blob, *os.File, error) {
+	b, err := l.Blob(ctx, sha)
+	if err != nil {
+		return Blob{}, nil, err
+	}
+	path, err := l.blobs.Path(sha)
+	if err != nil {
+		return Blob{}, nil, err
+	}
+	f, err := os.Open(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return Blob{}, nil, ErrNotFound
+	}
+	return b, f, err
 }

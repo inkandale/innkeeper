@@ -72,20 +72,25 @@ func (s *Entities) Import(ctx context.Context, provenance, name string, e Edit) 
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return 0, false, err
 	}
-	// Retried because another import can take the same slug first.
+	ent, _, err := s.CreateFromName(ctx, name, provenance, e)
+	if err != nil {
+		return 0, false, err
+	}
+	return ent.ID, true, nil
+}
+
+// CreateFromName creates an entity with a free slug made from name.
+func (s *Entities) CreateFromName(ctx context.Context, name, provenance string, e Edit) (Entity, Revision, error) {
+	// Retried because another writer can take the same slug first.
 	for range 5 {
 		slug, err := s.freeSlug(ctx, Slugify(name))
 		if err != nil {
-			return 0, false, err
+			return Entity{}, Revision{}, err
 		}
-		ent, _, err := s.Create(ctx, slug, provenance, e)
-		if errors.Is(err, ErrSlugTaken) {
-			continue
+		ent, rev, err := s.Create(ctx, slug, provenance, e)
+		if !errors.Is(err, ErrSlugTaken) {
+			return ent, rev, err
 		}
-		if err != nil {
-			return 0, false, err
-		}
-		return ent.ID, true, nil
 	}
-	return 0, false, ErrSlugTaken
+	return Entity{}, Revision{}, ErrSlugTaken
 }

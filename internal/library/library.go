@@ -20,6 +20,8 @@ var (
 	ErrSlugTaken = errors.New("slug already in use")
 	// ErrInvalid means an edit's data is not a valid card or lorebook.
 	ErrInvalid = errors.New("invalid data")
+	// ErrNameTaken means another collection has this name.
+	ErrNameTaken = errors.New("name already in use")
 )
 
 // Library is the core's card and lorebook store.

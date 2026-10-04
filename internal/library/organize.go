@@ -2,10 +2,13 @@ package library
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // SetCardTags replaces a card's tags. Tag names are trimmed and matched
@@ -48,12 +51,25 @@ func (l *Library) CardTags(ctx context.Context, cardID int64) ([]string, error) 
 	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
-// Collection is a named group of cards. A card can be in many.
 type Collection struct {
-	ID          int64
-	Name        string
-	Description string
-	CreatedAt   time.Time
+	ID          int64     `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+	// Cards is how many cards it has. Only Collections sets it.
+	Cards int `json:"cards"`
+}
+
+// collectionErr maps constraint violations on collection.
+func collectionErr(err error) error {
+	var pgErr *pgconn.PgError
+	switch {
+	case errors.As(err, &pgErr) && pgErr.Code == "23505":
+		return ErrNameTaken
+	case errors.As(err, &pgErr) && pgErr.Code == "23514":
+		return fmt.Errorf("%w: collection name may not be empty", ErrInvalid)
+	}
+	return mapErr(err)
 }
 
 // CreateCollection adds an empty collection.
@@ -62,7 +78,57 @@ func (l *Library) CreateCollection(ctx context.Context, name, description string
 	err := l.pool.QueryRow(ctx, `INSERT INTO collection (name, description) VALUES ($1, $2)
 		RETURNING id, name, description, created_at`, name, description).
 		Scan(&c.ID, &c.Name, &c.Description, &c.CreatedAt)
-	return c, err
+	return c, collectionErr(err)
+}
+
+// UpdateCollection renames a collection or changes its description. Nil
+// leaves a field as it is.
+func (l *Library) UpdateCollection(ctx context.Context, id int64, name, description *string) (Collection, error) {
+	var c Collection
+	err := l.pool.QueryRow(ctx, `UPDATE collection SET name = coalesce($2, name), description = coalesce($3, description)
+		WHERE id = $1 RETURNING id, name, description, created_at`, id, name, description).
+		Scan(&c.ID, &c.Name, &c.Description, &c.CreatedAt)
+	return c, collectionErr(err)
+}
+
+// DeleteCollection removes a collection. Its cards stay in the library.
+func (l *Library) DeleteCollection(ctx context.Context, id int64) error {
+	tag, err := l.pool.Exec(ctx, `DELETE FROM collection WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// Collections returns every collection with its card count, by name.
+func (l *Library) Collections(ctx context.Context) ([]Collection, error) {
+	rows, err := l.pool.Query(ctx, `SELECT c.id, c.name, c.description, c.created_at, count(cc.card_id)::int
+		FROM collection c LEFT JOIN collection_card cc ON cc.collection_id = c.id
+		GROUP BY c.id ORDER BY lower(c.name)`)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[Collection])
+}
+
+// TagCount is a tag and how many cards have it.
+type TagCount struct {
+	Name  string `json:"name"`
+	Cards int    `json:"cards"`
+}
+
+// Tags returns every tag with its card count, alphabetically.
+func (l *Library) Tags(ctx context.Context) ([]TagCount, error) {
+	rows, err := l.pool.Query(ctx, `SELECT t.name, count(ct.card_id)::int
+		FROM tag t LEFT JOIN card_tag ct ON ct.tag_id = t.id
+		GROUP BY t.id ORDER BY lower(t.name)`)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[TagCount])
 }
 
 // AddToCollection adds a card to a collection. Adding it twice is a no-op.

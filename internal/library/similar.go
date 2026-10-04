@@ -8,12 +8,12 @@ import (
 
 // Match is another card that looks like a duplicate.
 type Match struct {
-	CardID int64
+	CardID int64 `json:"card_id"`
 	// Reason is content (same content_hash), text (text_simhash), or avatar
 	// (avatar_phash).
-	Reason string
+	Reason string `json:"reason"`
 	// Distance is the Hamming distance between hashes; 0 for content.
-	Distance int
+	Distance int `json:"distance"`
 }
 
 // SimilarCards compares a card's head revision with every other card's head

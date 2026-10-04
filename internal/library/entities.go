@@ -110,6 +110,10 @@ func (s *Entities) prepare(e Edit) (revisionRow, error) {
 	if r.overrides == nil {
 		r.overrides = []byte(`{}`)
 	}
+	var overrides map[string]json.RawMessage
+	if err := json.Unmarshal(r.overrides, &overrides); err != nil || overrides == nil {
+		return revisionRow{}, fmt.Errorf("%w: overrides must be a JSON object", ErrInvalid)
+	}
 	if e.AvatarBlob != "" {
 		r.avatar = &e.AvatarBlob
 	}

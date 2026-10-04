@@ -200,6 +200,21 @@ func TestExportFormats(t *testing.T) {
 	}
 	e.call("GET", path+"?format=nope", nil, 400, nil)
 
+	// The spec lists the raw file type, not huma's base64 string for []byte.
+	var spec struct {
+		Paths map[string]map[string]struct {
+			Responses map[string]struct {
+				Content map[string]any `json:"content"`
+			} `json:"responses"`
+		} `json:"paths"`
+	}
+	if err := json.Unmarshal(e.send("GET", "/openapi.json", nil).Body, &spec); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := spec.Paths["/cards/{id}/export"]["get"].Responses["200"].Content["application/octet-stream"]; !ok {
+		t.Fatalf("export 200 content = %v", spec.Paths["/cards/{id}/export"]["get"].Responses["200"].Content)
+	}
+
 	// The fake writes a card named Escape outside blob_tmp.
 	escape := e.createCard(`{"name": "Escape"}`)
 	e.call("GET", fmt.Sprintf("/cards/%d/export?format=fake", escape.ID), nil, 502, nil)

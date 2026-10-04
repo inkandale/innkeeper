@@ -330,7 +330,12 @@ func (s *Server) cardRoutes(api huma.API) {
 		})
 
 	huma.Register(api, huma.Operation{OperationID: "export-card", Method: http.MethodGet, Path: "/cards/{id}/export",
-		Summary: "Export a card", Description: "Linked lorebooks are embedded as data.character_book. Formats other than json need a codec plugin instance that writes them.", Tags: tags},
+		Summary: "Export a card", Description: "Linked lorebooks are embedded as data.character_book. Formats other than json need a codec plugin instance that writes them.", Tags: tags,
+		// Body is the raw file, not the base64 string huma assumes for []byte.
+		Responses: map[string]*huma.Response{"200": {Description: "The card file",
+			Content: map[string]*huma.MediaType{
+				"application/json":         {Schema: &huma.Schema{Type: huma.TypeObject, Description: "A CCv3 card"}},
+				"application/octet-stream": {Schema: &huma.Schema{Type: huma.TypeString, Format: "binary"}}}}}},
 		func(ctx context.Context, in *exportIn) (*exportOut, error) {
 			c, err := s.Lib.Cards.Get(ctx, in.ID)
 			if err != nil {

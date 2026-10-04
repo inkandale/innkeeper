@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -16,17 +17,22 @@ import (
 
 func main() {
 	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | bad-errors | silent | crash-unknown | no-shutdown")
+	caps := flag.String("caps", "push,pull", "comma-separated capabilities to report")
 	flag.Parse()
 
 	var conn *protocol.Conn
+	var blobTmp string
 	handler := func(ctx context.Context, method string, params json.RawMessage) (any, error) {
 		switch method {
 		case protocol.MethodInitialize:
+			var init protocol.InitializeParams
+			_ = json.Unmarshal(params, &init)
+			blobTmp = init.BlobTmp
 			res := protocol.InitializeResult{
 				Protocol:     protocol.Version,
 				Name:         "fake",
 				Version:      "0.0.1",
-				Capabilities: []string{"push", "pull"},
+				Capabilities: strings.Split(*caps, ","),
 			}
 			switch *mode {
 			case "bad-protocol":
@@ -66,6 +72,8 @@ func main() {
 			return "slept", nil
 		case "crash":
 			os.Exit(3)
+		case protocol.MethodImportRun:
+			return importRun(conn, blobTmp, params)
 		case "freeze":
 			// A notification handler blocks the reader, so the plugin
 			// stops reading stdin, like a hung plugin.
@@ -91,4 +99,76 @@ func main() {
 	if *mode == "no-shutdown" {
 		time.Sleep(time.Minute)
 	}
+}
+
+// importOptions are the fake importer's params.
+type importOptions struct {
+	Cards int `json:"cards"`
+	// CrashAt exits after emitting this card, before its checkpoint, unless
+	// the run resumed from a checkpoint.
+	CrashAt *int `json:"crash_at"`
+	// Bad emits this card with a spec the core rejects.
+	Bad *int `json:"bad"`
+	// Lorebooks is how many standalone lorebooks to emit before the cards.
+	Lorebooks int    `json:"lorebooks"`
+	Book      bool   `json:"book"`
+	Avatar    bool   `json:"avatar"`
+	Fail      string `json:"fail"` // retryable or fatal
+}
+
+func importRun(conn *protocol.Conn, blobTmp string, params json.RawMessage) (any, error) {
+	var p protocol.ImportRunParams
+	var opts importOptions
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, protocol.NewError(protocol.CodeInvalidParams, err.Error(), false)
+	}
+	if err := json.Unmarshal(p.Params, &opts); err != nil {
+		return nil, protocol.NewError(protocol.CodeInvalidParams, err.Error(), false)
+	}
+	switch opts.Fail {
+	case "retryable":
+		return nil, protocol.NewError(-32000, "source unavailable", true)
+	case "fatal":
+		return nil, protocol.NewError(-32000, "no such folder", false)
+	}
+	var cp struct {
+		Next int `json:"next"`
+	}
+	resumed := len(p.Checkpoint) > 0 && string(p.Checkpoint) != "null"
+	if resumed {
+		_ = json.Unmarshal(p.Checkpoint, &cp)
+	}
+	for i := range opts.Lorebooks {
+		if resumed {
+			break
+		}
+		book, _ := json.Marshal(map[string]any{"name": fmt.Sprintf("World %d", i), "entries": []any{}})
+		_ = conn.Notify(protocol.NotifyEmitLorebook, protocol.EmitLorebook{Run: p.Run, Item: fmt.Sprintf("world-%d", i), Lorebook: book})
+	}
+	for i := cp.Next; i < opts.Cards; i++ {
+		data := map[string]any{"name": fmt.Sprintf("Fake %d", i), "description": fmt.Sprintf("Card number %d.", i)}
+		if opts.Book {
+			data["character_book"] = map[string]any{"name": fmt.Sprintf("Lore %d", i), "entries": []any{}}
+		}
+		card := map[string]any{"spec": "chara_card_v3", "spec_version": "3.0", "data": data}
+		if opts.Bad != nil && *opts.Bad == i {
+			card["spec"] = "chara_card_v2"
+		}
+		raw, _ := json.Marshal(card)
+		e := protocol.EmitCard{Run: p.Run, Item: fmt.Sprintf("card-%d", i), Card: raw}
+		if opts.Avatar {
+			e.Avatar = filepath.Join(blobTmp, fmt.Sprintf("avatar-%d", i))
+			if err := os.WriteFile(e.Avatar, fmt.Appendf(nil, "avatar %d", i), 0o644); err != nil {
+				return nil, err
+			}
+		}
+		_ = conn.Notify(protocol.NotifyEmitCard, e)
+		if opts.CrashAt != nil && *opts.CrashAt == i && !resumed {
+			os.Exit(5)
+		}
+		_ = conn.Notify(protocol.NotifyProgress, protocol.Progress{Run: p.Run, Done: int64(i + 1), Total: int64(opts.Cards)})
+		next, _ := json.Marshal(map[string]int{"next": i + 1})
+		_ = conn.Notify(protocol.NotifyCheckpoint, protocol.Checkpoint{Run: p.Run, Checkpoint: next})
+	}
+	return struct{}{}, nil
 }

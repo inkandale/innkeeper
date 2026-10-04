@@ -1,5 +1,7 @@
 package protocol
 
+import "encoding/json"
+
 // Version is the protocol version this core speaks.
 const Version = 1
 
@@ -26,4 +28,53 @@ type InitializeResult struct {
 	Name         string   `json:"name"`
 	Version      string   `json:"version"`
 	Capabilities []string `json:"capabilities"`
+}
+
+// The import capability. The core calls import.run; until it replies, the
+// plugin sends the notifications below, each carrying the call's Run token.
+const (
+	MethodImportRun    = "import.run"
+	NotifyEmitCard     = "emit.card"
+	NotifyEmitLorebook = "emit.lorebook"
+	NotifyProgress     = "progress"
+	NotifyCheckpoint   = "checkpoint"
+)
+
+// ImportRunParams starts an import. Checkpoint is null on the first run, or
+// the last checkpoint the plugin sent before an interrupted run.
+type ImportRunParams struct {
+	Run        string          `json:"run"`
+	Params     json.RawMessage `json:"params"`
+	Checkpoint json.RawMessage `json:"checkpoint"`
+}
+
+// EmitCard sends one imported card. Item is the plugin's stable ID for the
+// source, Card is a CCv3 card, and Avatar is a file in blob_tmp, or empty.
+type EmitCard struct {
+	Run    string          `json:"run"`
+	Item   string          `json:"item"`
+	Card   json.RawMessage `json:"card"`
+	Avatar string          `json:"avatar,omitempty"`
+}
+
+// EmitLorebook sends one standalone lorebook, a CCv3 character_book.
+type EmitLorebook struct {
+	Run      string          `json:"run"`
+	Item     string          `json:"item"`
+	Lorebook json.RawMessage `json:"lorebook"`
+}
+
+// Progress reports how far the import has got. Total is 0 when unknown.
+type Progress struct {
+	Run     string `json:"run"`
+	Done    int64  `json:"done"`
+	Total   int64  `json:"total,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+// Checkpoint is where to resume if the run is interrupted. The core saves it
+// after handling every notification sent before it.
+type Checkpoint struct {
+	Run        string          `json:"run"`
+	Checkpoint json.RawMessage `json:"checkpoint"`
 }

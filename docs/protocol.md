@@ -91,6 +91,44 @@ The core re-queues jobs that fail with a retryable error and fails the rest.
 Each capability's methods are added here as the core implements them. The
 planned set is in the design spec's "Plugin protocol" section.
 
+### `import`
+
+The core sends `import.run` and waits for the reply. Until it replies, the
+plugin streams what it finds as notifications.
+
+| Param | Meaning |
+|---|---|
+| `run` | Token for this call. Put it in every notification you send for it |
+| `params` | The import's settings, defined by the plugin, such as a folder path |
+| `checkpoint` | `null` on the first run. After an interruption, the last checkpoint you sent |
+
+Reply with `{}` when the import is done, or with an error. A plugin crash or
+a retryable error re-runs the import later from the last checkpoint.
+
+Notifications, each with `run`:
+
+| Method | Params | Meaning |
+|---|---|---|
+| `emit.card` | `item`, `card`, `avatar` | One card. `item` is your stable ID for the source, such as a file path. `card` is a CCv3 card (`spec` must be `chara_card_v3`). `avatar` is optional: a file you wrote to `blob_tmp` |
+| `emit.lorebook` | `item`, `lorebook` | One standalone lorebook, a CCv3 `character_book` |
+| `progress` | `done`, `total`, `message` | How far you've got. `total` and `message` are optional |
+| `checkpoint` | `checkpoint` | Any JSON value that tells you where to resume |
+
+```json
+{"jsonrpc": "2.0", "method": "emit.card", "params": {"run": "12.1", "item": "brakka.png", "card": {"spec": "chara_card_v3", "spec_version": "3.0", "data": {"name": "Brakka"}}, "avatar": "/blobs/tmp/brakka.png"}}
+{"jsonrpc": "2.0", "method": "checkpoint", "params": {"run": "12.1", "checkpoint": {"next": "carrow.png"}}}
+```
+
+- Send a checkpoint after each item, or every few items. The core saves it
+  only after storing everything you sent before it.
+- After a resume you may send items again. The core skips an item whose
+  `item` and content it has imported before, so importing the same source
+  twice adds nothing.
+- An embedded `character_book` becomes a separate lorebook linked to the card.
+- A card the core can't read counts as failed. The import goes on.
+- The core moves each `avatar` file into its blob store, so don't reuse the
+  path.
+
 ## Checking a plugin
 
 ```bash

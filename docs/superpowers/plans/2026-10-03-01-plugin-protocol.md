@@ -2034,14 +2034,14 @@ Each plugin folder has a `plugin.toml`:
 
 | Key | Required | Meaning |
 |---|---|---|
-| `name` | yes | Lowercase letters, digits, and `-`; starts with a letter; at most 41 characters |
+| `name` | yes | Lowercase words of letters and digits joined by single hyphens, starting with a letter; at most 41 characters |
 | `version` | yes | The plugin's own version |
 | `protocol` | yes | Protocol version; must be `1` |
-| `command` | yes | Program and arguments. `./` and `../` paths are relative to the plugin folder; bare names are found on `PATH` |
+| `command` | yes | Program and arguments. A relative path containing `/` is inside the plugin folder and can't leave it; an absolute path is used as-is; a bare name is found on `PATH` |
 | `capabilities` | yes | Any of `import`, `search`, `push`, `pull`, `action`, `enrich`, `codec`, `auth` |
-| `secrets` | no | Names of secrets the owner enters for each instance |
+| `secrets` | no | Names of secrets the owner enters for each instance, in lowercase `snake_case` |
 | `config` | no | JSON Schema for instance settings; the UI renders a form from it |
-| `enrichments` | no | Keys the plugin writes; `type` is `text`, `score` (needs `range = [low, high]`), or `list` |
+| `enrichments` | no | Keys the plugin writes, in lowercase `snake_case`; `type` is `text`, `score` (needs `range = [low, high]`), or `list` |
 
 Unknown keys are errors.
 

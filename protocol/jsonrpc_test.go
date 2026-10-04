@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -111,16 +112,17 @@ func TestCallbackDuringCall(t *testing.T) {
 }
 
 func TestPendingCallFailsWhenPeerGoesAway(t *testing.T) {
-	release := make(chan struct{})
+	entered, release := make(chan struct{}), make(chan struct{})
 	t.Cleanup(func() { close(release) })
 	block := func(context.Context, string, json.RawMessage) (any, error) {
+		close(entered)
 		<-release
 		return nil, nil
 	}
 	a, _, bw := pair(t, nil, block)
 	errc := make(chan error, 1)
 	go func() { errc <- a.Call(context.Background(), "slow", nil, nil) }()
-	time.Sleep(50 * time.Millisecond)
+	<-entered
 	bw.Close()
 	select {
 	case err := <-errc:
@@ -129,5 +131,111 @@ func TestPendingCallFailsWhenPeerGoesAway(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("call did not fail after peer went away")
+	}
+}
+
+func TestCallAfterCloseFails(t *testing.T) {
+	a, _, bw := pair(t, nil, echo)
+	bw.Close()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		err := a.Call(context.Background(), "echo", 1, nil)
+		if errors.Is(err, ErrClosed) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("got %v, want ErrClosed", err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestCancelledCallForgetsPendingEntry(t *testing.T) {
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	block := func(context.Context, string, json.RawMessage) (any, error) {
+		<-release
+		return nil, nil
+	}
+	a, _, _ := pair(t, nil, block)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if err := a.Call(ctx, "slow", nil, nil); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("got %v, want DeadlineExceeded", err)
+	}
+	a.mu.Lock()
+	n := len(a.pending)
+	a.mu.Unlock()
+	if n != 0 {
+		t.Fatalf("%d pending entries left after cancel", n)
+	}
+}
+
+func TestPanickingHandlerReturnsInternalError(t *testing.T) {
+	panicky := func(context.Context, string, json.RawMessage) (any, error) { panic("oops") }
+	a, _, _ := pair(t, nil, panicky)
+	err := a.Call(context.Background(), "anything", nil, nil)
+	var rpcErr *Error
+	if !errors.As(err, &rpcErr) || rpcErr.Code != CodeInternalError {
+		t.Fatalf("got %v, want internal error", err)
+	}
+}
+
+func TestHandlerContextCancelledWhenPeerGoesAway(t *testing.T) {
+	cancelled := make(chan struct{})
+	wait := func(ctx context.Context, _ string, _ json.RawMessage) (any, error) {
+		<-ctx.Done()
+		close(cancelled)
+		return nil, ctx.Err()
+	}
+	pr, pw := io.Pipe()
+	c := NewConn(pr, io.Discard, wait)
+	go c.Run(context.Background())
+	io.WriteString(pw, `{"jsonrpc":"2.0","id":1,"method":"wait"}`+"\n")
+	pw.Close()
+	select {
+	case <-cancelled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler ctx not cancelled after EOF")
+	}
+}
+
+// TestWireFormat feeds raw JSON lines, as a non-Go plugin would send them.
+func TestWireFormat(t *testing.T) {
+	pr, pw := io.Pipe()
+	out, outW := io.Pipe()
+	c := NewConn(pr, outW, echo)
+	go c.Run(context.Background())
+	t.Cleanup(func() { pw.Close(); outW.Close() })
+	replies := bufio.NewScanner(out)
+
+	errc := make(chan error, 1)
+	go func() { errc <- c.Call(context.Background(), "plugin.method", nil, nil) }()
+	if !replies.Scan() {
+		t.Fatal("no request written")
+	}
+	var req struct {
+		ID json.RawMessage `json:"id"`
+	}
+	if err := json.Unmarshal(replies.Bytes(), &req); err != nil {
+		t.Fatal(err)
+	}
+
+	// A batch is skipped without closing the connection.
+	io.WriteString(pw, `[{"jsonrpc":"2.0","method":"x"}]`+"\n")
+	// error.data may be any JSON value, such as a traceback string.
+	io.WriteString(pw, `{"jsonrpc":"2.0","id":`+string(req.ID)+`,"error":{"code":-32000,"message":"bad","data":"Traceback..."}}`+"\n")
+	var rpcErr *Error
+	if err := <-errc; !errors.As(err, &rpcErr) || rpcErr.Retryable() {
+		t.Fatalf("got %v, want non-retryable error", err)
+	}
+
+	// A request with a string id gets the same id back.
+	io.WriteString(pw, `{"jsonrpc":"2.0","id":"abc","method":"echo","params":{"k":1}}`+"\n")
+	if !replies.Scan() {
+		t.Fatal("no response written")
+	}
+	if got, want := replies.Text(), `{"jsonrpc":"2.0","id":"abc","result":{"k":1}}`; got != want {
+		t.Fatalf("response = %s, want %s", got, want)
 	}
 }

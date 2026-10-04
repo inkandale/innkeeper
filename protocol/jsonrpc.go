@@ -25,26 +25,29 @@ const (
 // connection's reader stopped.
 var ErrClosed = errors.New("protocol: connection closed")
 
-// Error is a JSON-RPC error object.
+// Error is a JSON-RPC error object. Data may be any JSON value; Innkeeper
+// reads a "retryable" field from it when it is an object.
 type Error struct {
-	Code    int        `json:"code"`
-	Message string     `json:"message"`
-	Data    *ErrorData `json:"data,omitempty"`
-}
-
-// ErrorData carries Innkeeper's extension to JSON-RPC errors.
-type ErrorData struct {
-	Retryable bool `json:"retryable"`
+	Code    int             `json:"code"`
+	Message string          `json:"message"`
+	Data    json.RawMessage `json:"data,omitempty"`
 }
 
 func (e *Error) Error() string { return fmt.Sprintf("jsonrpc error %d: %s", e.Code, e.Message) }
 
 // Retryable reports whether the caller may retry the same call later.
-func (e *Error) Retryable() bool { return e.Data != nil && e.Data.Retryable }
+func (e *Error) Retryable() bool {
+	var d struct {
+		Retryable bool `json:"retryable"`
+	}
+	_ = json.Unmarshal(e.Data, &d)
+	return d.Retryable
+}
 
 // NewError builds an Error with the retryable flag set.
 func NewError(code int, message string, retryable bool) *Error {
-	return &Error{Code: code, Message: message, Data: &ErrorData{Retryable: retryable}}
+	data, _ := json.Marshal(map[string]bool{"retryable": retryable})
+	return &Error{Code: code, Message: message, Data: data}
 }
 
 // MethodNotFound is the error for a method the receiver doesn't implement.
@@ -53,7 +56,8 @@ func MethodNotFound(method string) *Error {
 }
 
 // Handler answers requests and notifications from the other side. For a
-// notification the result is discarded.
+// notification the result is discarded. Notification handlers run on the
+// reading goroutine, so they must not call Call on the same Conn.
 type Handler func(ctx context.Context, method string, params json.RawMessage) (any, error)
 
 type message struct {
@@ -90,15 +94,24 @@ func NewConn(r io.Reader, w io.Writer, h Handler) *Conn {
 	}
 }
 
-// Run reads messages until r reaches EOF, passing ctx to the handler. It
-// returns nil on EOF. Pending and later calls then fail with ErrClosed.
+// Run reads messages until r reaches EOF. It returns nil on EOF. Pending
+// and later calls then fail with ErrClosed, and the ctx passed to handlers
+// is cancelled.
 func (c *Conn) Run(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	defer c.closePending()
 	for {
 		var m message
 		if err := c.dec.Decode(&m); err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil
+			}
+			// A well-formed JSON value of the wrong shape (a batch, a
+			// non-string method) has been consumed whole; skip it.
+			var typeErr *json.UnmarshalTypeError
+			if errors.As(err, &typeErr) {
+				continue
 			}
 			return fmt.Errorf("protocol: read: %w", err)
 		}
@@ -118,6 +131,10 @@ func (c *Conn) Run(ctx context.Context) error {
 }
 
 // Call sends a request and waits for its response. result may be nil.
+//
+// ponytail: ctx doesn't interrupt a blocked write, so a peer that stops
+// reading blocks callers until its process is killed. The plugin host kills
+// plugins that don't stop in time.
 func (c *Conn) Call(ctx context.Context, method string, params, result any) error {
 	req := &message{JSONRPC: "2.0", Method: method}
 	if params != nil {
@@ -176,11 +193,7 @@ func (c *Conn) Notify(method string, params any) error {
 
 func (c *Conn) serve(ctx context.Context, req message) {
 	resp := &message{JSONRPC: "2.0", ID: req.ID}
-	var result any
-	err := error(MethodNotFound(req.Method))
-	if c.handler != nil {
-		result, err = c.handler(ctx, req.Method, req.Params)
-	}
+	result, err := c.handle(ctx, req)
 	if err == nil {
 		resp.Result, err = json.Marshal(result)
 	}
@@ -192,6 +205,20 @@ func (c *Conn) serve(ctx context.Context, req message) {
 		resp.Result, resp.Error = nil, rpcErr
 	}
 	_ = c.write(resp)
+}
+
+// handle runs the handler for a request, turning a panic into an internal
+// error so a bad request can't crash the process.
+func (c *Conn) handle(ctx context.Context, req message) (result any, err error) {
+	if c.handler == nil {
+		return nil, MethodNotFound(req.Method)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = &Error{Code: CodeInternalError, Message: fmt.Sprintf("handler panicked: %v", r)}
+		}
+	}()
+	return c.handler(ctx, req.Method, req.Params)
 }
 
 func (c *Conn) deliver(m message) {

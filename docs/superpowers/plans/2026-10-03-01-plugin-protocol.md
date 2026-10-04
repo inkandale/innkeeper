@@ -1465,8 +1465,8 @@ func Start(ctx context.Context, m *protocol.Manifest, params protocol.Initialize
 // watch logs the plugin's stderr, serves its stdout, and closes p.done once
 // the process has exited.
 func (p *Process) watch(stdout, stderr *os.File) {
-	var logged sync.WaitGroup
-	logged.Go(func() {
+	var background sync.WaitGroup
+	background.Go(func() {
 		s := bufio.NewScanner(stderr)
 		for s.Scan() {
 			p.log.Info(s.Text(), "stream", "stderr")
@@ -1475,7 +1475,7 @@ func (p *Process) watch(stdout, stderr *os.File) {
 		_, _ = io.Copy(io.Discard, stderr)
 	})
 
-	logged.Go(func() {
+	background.Go(func() {
 		// Once the plugin exits, kill anything it left behind so the pipes reach EOF.
 		if err := p.cmd.Wait(); err != nil {
 			p.log.Warn("plugin exited", "err", err)
@@ -1488,7 +1488,7 @@ func (p *Process) watch(stdout, stderr *os.File) {
 			p.log.Error("plugin sent invalid protocol data; killing it", "err", err)
 		}
 		p.killGroup()
-		logged.Wait()
+		background.Wait()
 		stdout.Close()
 		stderr.Close()
 	}()

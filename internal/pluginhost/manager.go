@@ -68,7 +68,7 @@ func (m *Manager) acquire(ctx context.Context, inst Instance) (*entry, error) {
 		params.InstanceID = inst.ID
 		p, err := Start(ctx, inst.Manifest, params, m.core, m.log)
 		if err != nil {
-			return nil, err
+			return nil, &StartError{Err: err}
 		}
 		e = &entry{proc: p}
 		m.running[inst.ID] = e
@@ -117,3 +117,9 @@ func (m *Manager) stopWhere(match func(*entry) bool) {
 		}
 	}
 }
+
+// StartError means the plugin failed to start or failed its handshake.
+type StartError struct{ Err error }
+
+func (e *StartError) Error() string { return e.Err.Error() }
+func (e *StartError) Unwrap() error { return e.Err }

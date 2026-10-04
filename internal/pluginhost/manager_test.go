@@ -106,3 +106,23 @@ func TestStopIdleSparesPluginWithCallInFlight(t *testing.T) {
 		t.Fatalf("in-flight call failed: %v", err)
 	}
 }
+
+func TestCallReportsStartError(t *testing.T) {
+	m, err := protocol.LoadManifest(testutil.FakePlugin(t, "-mode=wrong-version"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mgr := NewManager(core, time.Minute, quiet)
+	t.Cleanup(mgr.Close)
+	err = mgr.Call(context.Background(), Instance{ID: "fake-1", Manifest: m}, "echo", 1, nil)
+	var se *StartError
+	if !errors.As(err, &se) {
+		t.Fatalf("got %v, want a StartError", err)
+	}
+	// An error from a running plugin is not a StartError.
+	good, inst := newManager(t, time.Minute)
+	err = good.Call(context.Background(), inst, "fail", nil, nil)
+	if errors.As(err, &se) {
+		t.Fatalf("call error %v reported as a StartError", err)
+	}
+}

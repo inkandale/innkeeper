@@ -246,6 +246,41 @@ func overrideChanges(data, overrides json.RawMessage, key string, changes []Chan
 	return out, true, err
 }
 
+// clearOverride removes the changed fields from the override for key, so the
+// card's own data shows through after an adopt into it. It drops the entry
+// once it is empty, and reports whether it removed anything.
+func clearOverride(overrides json.RawMessage, key string, changes []Change) (json.RawMessage, bool, error) {
+	all, err := object(overrides)
+	if err != nil {
+		return nil, false, err
+	}
+	p, ok := all[key]
+	if !ok {
+		return overrides, false, nil
+	}
+	patch, err := object(p)
+	if err != nil {
+		return nil, false, fmt.Errorf("override %s: %w", key, err)
+	}
+	var removed bool
+	for _, c := range adoptable(changes) {
+		if _, ok := patch[c.Field]; ok {
+			delete(patch, c.Field)
+			removed = true
+		}
+	}
+	if !removed {
+		return overrides, false, nil
+	}
+	if len(patch) == 0 {
+		delete(all, key)
+	} else if all[key], err = json.Marshal(patch); err != nil {
+		return nil, false, err
+	}
+	out, err := json.Marshal(all)
+	return out, true, err
+}
+
 // makePatch returns the merge patch that turns from into to. A merge patch
 // merges objects, so keys missing from to need an explicit null.
 func makePatch(from, to json.RawMessage) (json.RawMessage, error) {

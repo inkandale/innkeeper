@@ -20,14 +20,17 @@ const (
 	IntoIgnore = "ignore"
 )
 
-// ErrMoved means a push or check changed the binding while Adopt ran.
+// ErrMoved means a push or check changed the binding while Adopt ran. The
+// adopted revision may already have been written.
 var ErrMoved = errors.New("the binding changed while adopting; look at it again")
 
 // Adopt takes the app's changes into the library and accepts the app's copy
 // as the new baseline for checks. Unless into is IntoIgnore, it adds a
 // revision on top of base, so a stale base returns library.ErrConflict.
-// Changes to character_book are not adopted; edit the lorebooks instead. To
-// discard the app's changes, push: a push overwrites them.
+// Changes to character_book are not adopted; edit the lorebooks instead. If
+// they are the only changes, Adopt into the base or an override returns
+// ErrNoChanges; ignore them, or push to overwrite them. To discard the app's
+// other changes, push: a push overwrites them.
 func (s *Service) Adopt(ctx context.Context, id int64, into string, base int64) (Binding, error) {
 	if into != IntoBase && into != IntoOverride && into != IntoIgnore {
 		return Binding{}, fmt.Errorf("%w: into must be base, override, or ignore", library.ErrInvalid)
@@ -50,23 +53,31 @@ func (s *Service) Adopt(ctx context.Context, id int64, into string, base int64) 
 			return Binding{}, err
 		}
 	}
-	hash, err := cardhash.ContentHash(b.seen)
-	if err != nil {
+	if err := s.accept(ctx, id, b); err != nil {
 		return Binding{}, err
 	}
-	// seen_data is guarded too, because a check can replace it without
-	// bumping the version.
+	return s.Binding(ctx, id)
+}
+
+// accept makes the app's copy the baseline for checks. It guards on b's
+// version, and on seen_data too, because a check can replace it without
+// bumping the version.
+func (s *Service) accept(ctx context.Context, id int64, b stored) error {
+	hash, err := cardhash.ContentHash(b.seen)
+	if err != nil {
+		return err
+	}
 	tag, err := s.pool.Exec(ctx, `UPDATE binding SET accepted_data = seen_data, accepted_hash = $2, seen_data = NULL,
 			remote_state = 'unchanged', version = version + 1
 		WHERE id = $1 AND remote_state = 'changed' AND version = $3 AND seen_data = $4`,
 		id, hash, b.version, b.seen)
 	if err != nil {
-		return Binding{}, err
+		return err
 	}
 	if tag.RowsAffected() == 0 {
-		return Binding{}, ErrMoved
+		return ErrMoved
 	}
-	return s.Binding(ctx, id)
+	return nil
 }
 
 // adopt writes changes into the card's data or the instance's override, in a
@@ -89,12 +100,18 @@ func (s *Service) adopt(ctx context.Context, instanceID, cardID, base int64, int
 	}
 	var changed bool
 	if into == IntoBase {
-		e.Data, changed, err = applyChanges(rev.Data, changes)
+		if e.Data, changed, err = applyChanges(rev.Data, changes); err == nil && changed {
+			// The override would win over the adopted data when rendering.
+			e.Overrides, _, err = clearOverride(rev.Overrides, strconv.FormatInt(instanceID, 10), changes)
+		}
 	} else {
 		e.Overrides, changed, err = overrideChanges(rev.Data, rev.Overrides, strconv.FormatInt(instanceID, 10), changes)
 	}
-	if err != nil || !changed {
+	if err != nil {
 		return err
+	}
+	if !changed {
+		return ErrNoChanges
 	}
 	_, err = s.lib.Cards.Update(ctx, cardID, base, e)
 	return err

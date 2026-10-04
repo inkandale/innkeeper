@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/davidgibbons/innkeeper/internal/library"
 )
@@ -81,5 +82,85 @@ func TestAdoptStaleBase(t *testing.T) {
 	}
 	if _, err := e.s.Adopt(e.ctx, b.ID, "elsewhere", stale); !errors.Is(err, library.ErrInvalid) {
 		t.Fatalf("bad into: %v", err)
+	}
+}
+
+func TestAdoptIntoBaseClearsThisTargetsOverride(t *testing.T) {
+	e := setup(t, nil)
+	e.update(e.card, func(ed *library.Edit) {
+		ed.Overrides = json.RawMessage(`{"` + e.key() + `":{"first_mes":"Override hello."},"99":{"first_mes":"Other"}}`)
+	})
+	b := e.push(e.card)
+	e.editRemote(b.RemoteID, "first_mes", "Well met.")
+	b = e.check(b)
+	if _, err := e.s.Adopt(e.ctx, b.ID, IntoBase, e.head(e.card).ID); err != nil {
+		t.Fatal(err)
+	}
+	var overrides map[string]map[string]any
+	_ = json.Unmarshal(e.head(e.card).Overrides, &overrides)
+	if _, ok := overrides[e.key()]; ok || overrides["99"]["first_mes"] != "Other" {
+		t.Fatalf("overrides = %s", e.head(e.card).Overrides)
+	}
+	b = e.push(e.card)
+	if got := e.remoteData(b.RemoteID); got["first_mes"] != "Well met." {
+		t.Fatalf("app has %v", got)
+	}
+}
+
+func TestAdoptLorebookOnlyChangesAreNotAdoptable(t *testing.T) {
+	e := setup(t, nil)
+	b := e.push(e.card)
+	e.editRemote(b.RemoteID, "character_book", map[string]any{"entries": []any{}, "name": "x"})
+	b = e.check(b)
+	if b.RemoteState != "changed" {
+		t.Fatalf("binding = %+v", b)
+	}
+	for _, into := range []string{IntoBase, IntoOverride} {
+		if _, err := e.s.Adopt(e.ctx, b.ID, into, e.head(e.card).ID); !errors.Is(err, ErrNoChanges) {
+			t.Fatalf("%s: %v", into, err)
+		}
+	}
+	if b, err := e.s.Adopt(e.ctx, b.ID, IntoIgnore, 0); err != nil || b.RemoteState != "unchanged" {
+		t.Fatalf("ignore: %+v, %v", b, err)
+	}
+}
+
+func TestAdoptLosesToAPushInFlight(t *testing.T) {
+	e, b := changed(t)
+	tx, err := e.pool.Begin(e.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(e.ctx)
+	// Stands in for a push's upsert.
+	if _, err := tx.Exec(e.ctx, `UPDATE binding SET version = version + 1 WHERE id = $1`, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := e.s.Adopt(e.ctx, b.ID, IntoIgnore, 0)
+		done <- err
+	}()
+	time.Sleep(200 * time.Millisecond)
+	if err := tx.Commit(e.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; !errors.Is(err, ErrMoved) {
+		t.Fatalf("adopt: %v", err)
+	}
+}
+
+func TestAdoptLosesToACheck(t *testing.T) {
+	e, b := changed(t)
+	old, err := e.s.stored(e.ctx, b.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A check replaces seen_data without bumping the version.
+	if _, err := e.pool.Exec(e.ctx, `UPDATE binding SET seen_data = '{"name":"x"}' WHERE id = $1`, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.s.accept(e.ctx, b.ID, old); !errors.Is(err, ErrMoved) {
+		t.Fatalf("accept: %v", err)
 	}
 }

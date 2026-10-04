@@ -136,3 +136,22 @@ func TestDecodeRejectsTrailingData(t *testing.T) {
 		t.Fatal("trailing data accepted")
 	}
 }
+
+func TestClearOverride(t *testing.T) {
+	over := json.RawMessage(`{"7":{"first_mes":"a","scenario":"b"},"8":{"first_mes":"c"}}`)
+	changes := []Change{{Field: "first_mes"}, {Field: "character_book"}}
+	got, changed, err := clearOverride(over, "7", changes)
+	if err != nil || !changed || string(got) != `{"7":{"scenario":"b"},"8":{"first_mes":"c"}}` {
+		t.Fatalf("got %s, %v, %v", got, changed, err)
+	}
+	got, changed, err = clearOverride(got, "7", []Change{{Field: "scenario"}})
+	if err != nil || !changed || string(got) != `{"8":{"first_mes":"c"}}` {
+		t.Fatalf("emptied: %s, %v, %v", got, changed, err)
+	}
+	if got, changed, err = clearOverride(got, "7", changes); err != nil || changed || string(got) != `{"8":{"first_mes":"c"}}` {
+		t.Fatalf("absent: %s, %v, %v", got, changed, err)
+	}
+	if _, changed, _ := clearOverride(over, "7", []Change{{Field: "character_book"}}); changed {
+		t.Fatal("character_book cleared")
+	}
+}

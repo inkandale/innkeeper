@@ -148,6 +148,9 @@ Reply with one of:
 Add `state` to have it passed back to `auth.complete`, such as an OAuth
 state value. The core keeps it in a cookie for 10 minutes. Keep nothing
 about the login in memory: `auth.complete` may reach a different process.
+The browser can read and change that cookie, so `state` must hold no secrets,
+and a redirect provider must check that the redirect's state parameter matches
+it.
 
 **`auth.complete`** finishes it.
 

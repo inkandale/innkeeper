@@ -1,0 +1,146 @@
+package targets
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+
+	"github.com/jackc/pgx/v5"
+
+	"github.com/davidgibbons/innkeeper/internal/pluginhost"
+	"github.com/davidgibbons/innkeeper/protocol"
+)
+
+// Push sends a card's head revision to a target and records the push. A
+// card pushed there before is updated in place, which overwrites changes
+// made in the app. A target that can't update gets another copy, but only
+// when newCopy is set. If the app lost its copy, the push makes a new one.
+func (s *Service) Push(ctx context.Context, instanceID, cardID int64, newCopy bool) (Binding, error) {
+	inst, info, err := s.describe(ctx, instanceID)
+	if err != nil {
+		return Binding{}, err
+	}
+	r, err := s.render(ctx, instanceID, cardID, info)
+	if err != nil {
+		return Binding{}, err
+	}
+	// Everything from here to the commit uses only tx's connection, so
+	// concurrent pushes can't use up the pool while holding the lock.
+	//
+	// ponytail: holds the transaction across the plugin calls; fine at one
+	// owner's scale.
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Binding{}, err
+	}
+	defer tx.Rollback(ctx)
+	if err := lock(ctx, tx, instanceID, cardID); err != nil {
+		return Binding{}, err
+	}
+	var remoteID, state string
+	err = tx.QueryRow(ctx, `SELECT remote_id, remote_state FROM binding WHERE instance_id = $1 AND card_id = $2`,
+		instanceID, cardID).Scan(&remoteID, &state)
+	bound := err == nil
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return Binding{}, err
+	}
+	put := protocol.TargetPutParams{Card: r.card, Avatar: r.avatar}
+	switch {
+	case !bound || state == remoteMissing:
+	case info.Update:
+		put.RemoteID = remoteID
+	case !newCopy:
+		return Binding{}, ErrNewCopy
+	}
+	var res protocol.TargetPutResult
+	err = s.reg.Call(ctx, s.plugins, inst, protocol.MethodTargetPut, put, &res)
+	if put.RemoteID != "" && remoteNotFound(err) {
+		put.RemoteID = ""
+		err = s.reg.Call(ctx, s.plugins, inst, protocol.MethodTargetPut, put, &res)
+	}
+	if err != nil {
+		return Binding{}, err
+	}
+	if res.RemoteID == "" {
+		return Binding{}, fmt.Errorf("%w: target.put returned no remote_id", ErrBadReply)
+	}
+	accepted, hash, remoteState, err := s.readBack(ctx, inst, info, res.RemoteID, r.data)
+	if err != nil {
+		return Binding{}, err
+	}
+	var id int64
+	err = tx.QueryRow(ctx, `INSERT INTO binding (instance_id, card_id, remote_id, remote_state, accepted_data,
+			accepted_hash, checked_at)
+		VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $4 = 'unknown' THEN NULL ELSE now() END)
+		ON CONFLICT (instance_id, card_id) DO UPDATE SET remote_id = EXCLUDED.remote_id,
+			remote_state = EXCLUDED.remote_state, accepted_data = EXCLUDED.accepted_data,
+			accepted_hash = EXCLUDED.accepted_hash, seen_data = NULL, checked_at = EXCLUDED.checked_at
+		RETURNING id`, instanceID, cardID, res.RemoteID, remoteState, accepted, hash).Scan(&id)
+	if err != nil {
+		return Binding{}, err
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO push (binding_id, revision_id, lorebook_revision_ids, pushed_hash, remote_id)
+		VALUES ($1, $2, $3, $4, $5)`, id, r.revision, r.lorebooks, hash, res.RemoteID)
+	if err != nil {
+		return Binding{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return Binding{}, err
+	}
+	return s.Binding(ctx, id)
+}
+
+// readBack returns what the app holds after a push, its hash, and the
+// remote state. A target that can pull is read back, so an app that
+// reformats what it gets doesn't show as changed.
+func (s *Service) readBack(ctx context.Context, inst pluginhost.Instance, info protocol.TargetInfo, remoteID string, sent json.RawMessage) (json.RawMessage, string, string, error) {
+	if info.Pull {
+		data, hash, err := s.fetch(ctx, inst, info, remoteID)
+		if err == nil {
+			return data, hash, remoteUnchanged, nil
+		}
+		// The push worked, so record it against what was sent instead.
+		s.log.Warn("read back pushed card", "instance", inst.ID, "remote_id", remoteID, "err", err)
+	}
+	data, hash, err := project(sent, info.Fields)
+	state := remoteUnknown
+	if info.Pull {
+		state = remoteUnchanged
+	}
+	return data, hash, state, err
+}
+
+// Preview is what a push would send, for the owner to confirm first.
+type Preview struct {
+	// Card is the CCv3 card the target would get.
+	Card json.RawMessage `json:"card"`
+	// DroppedFields are fields with content that the target doesn't store.
+	DroppedFields []string `json:"dropped_fields"`
+	// NewCopy means the push makes another copy, because the target can't
+	// update the one it has.
+	NewCopy bool `json:"new_copy"`
+}
+
+// Preview renders the card for a target without pushing it.
+func (s *Service) Preview(ctx context.Context, instanceID, cardID int64) (Preview, error) {
+	_, info, err := s.describe(ctx, instanceID)
+	if err != nil {
+		return Preview{}, err
+	}
+	r, err := s.render(ctx, instanceID, cardID, info)
+	if err != nil {
+		return Preview{}, err
+	}
+	dropped, err := droppedFields(r.data, info.Fields)
+	if err != nil {
+		return Preview{}, err
+	}
+	var state string
+	err = s.pool.QueryRow(ctx, `SELECT remote_state FROM binding WHERE instance_id = $1 AND card_id = $2`,
+		instanceID, cardID).Scan(&state)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return Preview{}, err
+	}
+	return Preview{Card: r.card, DroppedFields: dropped, NewCopy: err == nil && state != remoteMissing && !info.Update}, nil
+}

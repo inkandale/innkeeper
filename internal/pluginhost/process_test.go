@@ -6,6 +6,8 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -144,6 +146,50 @@ func TestStopKillsPluginThatStoppedReading(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("Stop hung on a plugin that stopped reading")
 	}
+}
+
+// startWrapped runs the fake plugin through a shell script that first leaves
+// a background child running, as a wrapper script without exec would.
+func startWrapped(t *testing.T) *Process {
+	t.Helper()
+	dir := testutil.FakePlugin(t)
+	script := "#!/bin/sh\nsleep 30 &\nexec ./fakeplugin\n"
+	if err := os.WriteFile(filepath.Join(dir, "run.sh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m, err := protocol.LoadManifest(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Command = []string{"./run.sh"}
+	p, err := Start(context.Background(), m, protocol.InitializeParams{InstanceID: "test"}, core, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.Stop() })
+	return p
+}
+
+func TestStopWithChildProcess(t *testing.T) {
+	p := startWrapped(t)
+	stopped := make(chan error, 1)
+	go func() { stopped <- p.Stop() }()
+	select {
+	case err := <-stopped:
+		if err != nil {
+			t.Fatalf("Stop: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Stop hung on a plugin with a child process")
+	}
+}
+
+func TestCrashWithChildProcessIsNoticed(t *testing.T) {
+	p := startWrapped(t)
+	if err := p.Call(context.Background(), "crash", nil, nil); !errors.Is(err, protocol.ErrClosed) {
+		t.Fatalf("got %v, want ErrClosed", err)
+	}
+	waitDead(t, p)
 }
 
 func waitDead(t *testing.T, p *Process) {

@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"os/exec"
 	"slices"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/davidgibbons/innkeeper/protocol"
@@ -43,15 +45,22 @@ func Start(ctx context.Context, m *protocol.Manifest, params protocol.Initialize
 	if err != nil {
 		return nil, err
 	}
-	stdout, err := cmd.StdoutPipe()
+	stdout, stdoutW, err := os.Pipe()
 	if err != nil {
 		return nil, err
 	}
-	stderr, err := cmd.StderrPipe()
+	stderr, stderrW, err := os.Pipe()
 	if err != nil {
 		return nil, err
 	}
-	if err := cmd.Start(); err != nil {
+	cmd.Stdout, cmd.Stderr = stdoutW, stderrW
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	err = cmd.Start()
+	stdoutW.Close()
+	stderrW.Close()
+	if err != nil {
+		stdout.Close()
+		stderr.Close()
 		return nil, fmt.Errorf("start plugin %s: %w", m.Name, err)
 	}
 
@@ -63,7 +72,7 @@ func Start(ctx context.Context, m *protocol.Manifest, params protocol.Initialize
 		done:     make(chan struct{}),
 		log:      log.With("plugin", m.Name),
 	}
-	p.watch(stderr)
+	p.watch(stdout, stderr)
 
 	initCtx, cancel := context.WithTimeout(ctx, initTimeout)
 	defer cancel()
@@ -81,7 +90,7 @@ func Start(ctx context.Context, m *protocol.Manifest, params protocol.Initialize
 
 // watch logs the plugin's stderr, serves its stdout, and closes p.done once
 // the process has exited.
-func (p *Process) watch(stderr io.Reader) {
+func (p *Process) watch(stdout, stderr *os.File) {
 	var logged sync.WaitGroup
 	logged.Go(func() {
 		s := bufio.NewScanner(stderr)
@@ -92,19 +101,22 @@ func (p *Process) watch(stderr io.Reader) {
 		_, _ = io.Copy(io.Discard, stderr)
 	})
 
-	runCtx, cancel := context.WithCancel(context.Background())
-	go func() {
-		defer close(p.done)
-		defer cancel()
-		if err := p.conn.Run(runCtx); err != nil {
-			p.log.Error("plugin sent invalid protocol data; killing it", "err", err)
-			_ = p.cmd.Process.Kill()
-		}
-		// Wait must follow the last read from stdout and stderr.
-		logged.Wait()
+	logged.Go(func() {
+		// Once the plugin exits, kill anything it left behind so the pipes reach EOF.
 		if err := p.cmd.Wait(); err != nil {
 			p.log.Warn("plugin exited", "err", err)
 		}
+		p.killGroup()
+	})
+	go func() {
+		defer close(p.done)
+		if err := p.conn.Run(context.Background()); err != nil {
+			p.log.Error("plugin sent invalid protocol data; killing it", "err", err)
+		}
+		p.killGroup()
+		logged.Wait()
+		stdout.Close()
+		stderr.Close()
 	}()
 }
 
@@ -158,7 +170,12 @@ func (p *Process) Stop() error {
 	}
 }
 
+// killGroup kills the plugin and every process it started, which share its
+// process group. Without this, a child holding the pipes open keeps the
+// plugin looking alive after it exits.
+func (p *Process) killGroup() { _ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGKILL) }
+
 func (p *Process) kill() {
-	_ = p.cmd.Process.Kill()
+	p.killGroup()
 	<-p.done
 }

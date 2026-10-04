@@ -181,6 +181,23 @@ func TestUpdateInstance(t *testing.T) {
 		t.Fatalf("info = %+v", info)
 	}
 
+	other := "Other"
+	if err := reg.UpdateInstance(ctx, id, InstanceEdit{Name: &other}); err != nil {
+		t.Fatal(err)
+	}
+	if info, _ := reg.GetInstance(ctx, id); info.OwnerSubject == nil || *info.OwnerSubject != "owner" {
+		t.Fatalf("name-only edit changed the owner: %+v", info.OwnerSubject)
+	}
+	if kept, err := reg.Instance(ctx, id); err != nil || kept.Params.Secrets["api_key"] != "new" {
+		t.Fatalf("name-only edit changed secrets: %+v, %v", kept.Params.Secrets, err)
+	}
+	if err := reg.UpdateInstance(ctx, id, InstanceEdit{Config: map[string]any{"path": "/b"}}); err != nil {
+		t.Fatal(err)
+	}
+	if replaced, err := reg.Instance(ctx, id); err != nil || replaced.Params.Config["path"] != "/b" {
+		t.Fatalf("config edit: %+v, %v", replaced.Params.Config, err)
+	}
+
 	empty := ""
 	if err := reg.UpdateInstance(ctx, id, InstanceEdit{OwnerSubject: &empty}); err != nil {
 		t.Fatal(err)

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"sync"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
@@ -36,7 +35,8 @@ type Server struct {
 	// an http:// URL sends cookies without Secure.
 	PublicURL string
 
-	loginMu sync.Mutex
+	// loginSlot lets one login run at a time.
+	loginSlot chan struct{}
 }
 
 // NoCore answers plugin callbacks. The API offers plugins none yet.
@@ -64,6 +64,7 @@ func orEmpty[T any](s []T) []T {
 
 // Handler returns the HTTP handler for every route.
 func (s *Server) Handler() http.Handler {
+	s.loginSlot = make(chan struct{}, 1)
 	mux := http.NewServeMux()
 	cfg := huma.DefaultConfig("Innkeeper", "0.1.0")
 	cfg.Components.SecuritySchemes = map[string]*huma.SecurityScheme{

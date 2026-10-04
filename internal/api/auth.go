@@ -65,11 +65,16 @@ func (s *Server) authorized(ctx huma.Context) (bool, error) {
 	// Browsers attach cookies to requests that other sites start, so only
 	// this site's pages may change things.
 	if m := ctx.Method(); m != http.MethodGet && m != http.MethodHead {
-		if site := ctx.Header("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
+		if crossSite(ctx.Header("Sec-Fetch-Site")) {
 			return false, nil
 		}
 	}
 	return s.Auth.CheckSession(ctx.Context(), c.Value)
+}
+
+// crossSite reports whether a browser says another site started the request.
+func crossSite(secFetchSite string) bool {
+	return secFetchSite != "" && secFetchSite != "same-origin" && secFetchSite != "none"
 }
 
 // cookie returns an HttpOnly cookie for the whole site. A negative maxAge
@@ -90,7 +95,8 @@ func (s *Server) callbackURL(id int64) string {
 func (s *Server) authInstance(ctx context.Context, id int64) (pluginhost.Instance, error) {
 	inst, err := s.Registry.Instance(ctx, id)
 	if errors.Is(err, plugins.ErrBroken) {
-		return inst, huma.Error503ServiceUnavailable(err.Error())
+		s.Log.Warn("login provider is broken", "instance", id, "err", err)
+		return inst, huma.Error503ServiceUnavailable("login provider unavailable")
 	}
 	if err != nil {
 		return inst, s.fail(err)
@@ -110,7 +116,7 @@ func (s *Server) callPlugin(ctx context.Context, id int64, inst pluginhost.Insta
 		if merr := s.Registry.MarkBroken(context.WithoutCancel(ctx), id, err); merr != nil {
 			s.Log.Error("mark plugin instance broken", "instance", id, "err", merr)
 		}
-		return huma.Error503ServiceUnavailable("plugin failed to start: " + err.Error())
+		return huma.Error503ServiceUnavailable("login provider unavailable")
 	}
 	return err
 }
@@ -122,9 +128,13 @@ func (s *Server) login(ctx context.Context, id int64, state string, params map[s
 	if err != nil {
 		return nil, err
 	}
-	// ponytail: one login at a time across all providers; fine for one owner.
-	s.loginMu.Lock()
-	defer s.loginMu.Unlock()
+	// ponytail: logins are serialized, so failures cap guessing at ~1/second; per-provider slots if that's too slow.
+	select {
+	case s.loginSlot <- struct{}{}:
+		defer func() { <-s.loginSlot }()
+	case <-ctx.Done():
+		return nil, huma.Error503ServiceUnavailable("login busy, try again")
+	}
 	decoded, _ := base64.RawURLEncoding.DecodeString(state)
 	var res protocol.AuthCompleteResult
 	err = s.callPlugin(ctx, id, inst, protocol.MethodAuthComplete,
@@ -206,7 +216,8 @@ type cookiesOut struct {
 }
 
 type logoutIn struct {
-	Session string `cookie:"innkeeper_session"`
+	Session      string `cookie:"innkeeper_session"`
+	SecFetchSite string `header:"Sec-Fetch-Site"`
 }
 
 type tokensOut struct{ Body []auth.Token }
@@ -280,6 +291,10 @@ func (s *Server) authRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{OperationID: "logout", Method: http.MethodPost, Path: "/auth/logout",
 		Summary: "Log out", Tags: tags, Metadata: public, Security: noAuth, DefaultStatus: http.StatusNoContent},
 		func(ctx context.Context, in *logoutIn) (*cookiesOut, error) {
+			// Stops other sites from logging the owner out.
+			if crossSite(in.SecFetchSite) {
+				return nil, huma.Error403Forbidden("cross-site logout refused")
+			}
 			if in.Session != "" {
 				if err := s.Auth.DeleteSession(ctx, in.Session); err != nil {
 					return nil, s.fail(err)

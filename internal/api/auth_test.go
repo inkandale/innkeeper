@@ -3,9 +3,11 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -19,30 +21,43 @@ func TestEveryOperationNeedsAuth(t *testing.T) {
 	e := newEnv(t)
 	var spec struct {
 		Paths map[string]map[string]struct {
-			Security *[]map[string][]string `json:"security"`
+			OperationID string                 `json:"operationId"`
+			Security    *[]map[string][]string `json:"security"`
 		} `json:"paths"`
 	}
 	r := e.send("GET", "/openapi.json", nil)
 	if err := json.Unmarshal(r.Body, &spec); err != nil {
 		t.Fatalf("openapi.json: %s: %v", r, err)
 	}
+	session := e.login("letmein").cookie(t, sessionCookie)
+	cookie := sessionCookie + "=" + session.Value
 	param := regexp.MustCompile(`\{[^}]+\}`)
-	checked, public := 0, 0
+	checked := 0
+	var public []string
 	for path, ops := range spec.Paths {
 		for method, op := range ops {
 			if op.Security != nil && len(*op.Security) == 0 {
-				public++
+				public = append(public, op.OperationID)
 				continue
 			}
 			checked++
+			method = strings.ToUpper(method)
 			url := param.ReplaceAllString(path, "1")
-			if r := e.send(strings.ToUpper(method), url, nil); r.Status != http.StatusUnauthorized {
+			if r := e.send(method, url, nil); r.Status != http.StatusUnauthorized {
 				t.Errorf("%s %s without credentials: got %d, want 401", method, path, r.Status)
+			}
+			if method == http.MethodGet || method == http.MethodHead {
+				continue
+			}
+			if r := e.send(method, url, nil, "Cookie", cookie, "Sec-Fetch-Site", "cross-site"); r.Status != http.StatusUnauthorized {
+				t.Errorf("%s %s cross-site with session: got %d, want 401", method, path, r.Status)
 			}
 		}
 	}
-	if checked == 0 || public == 0 {
-		t.Fatalf("checked %d operations and skipped %d public ones", checked, public)
+	slices.Sort(public)
+	want := []string{"begin-login", "complete-login", "list-login-providers", "logout"}
+	if checked == 0 || !slices.Equal(public, want) {
+		t.Fatalf("checked %d operations; public = %v, want %v", checked, public, want)
 	}
 }
 
@@ -171,5 +186,28 @@ func TestLoginOnlyThroughAuthPlugins(t *testing.T) {
 	}
 	if r := e.send("POST", fmt.Sprintf("/auth/%d/begin", id), nil); r.Status != 404 {
 		t.Fatalf("begin through a push plugin: %s", r)
+	}
+}
+
+func TestCrossSiteLogout(t *testing.T) {
+	e := newEnv(t)
+	cookie := sessionCookie + "=" + e.login("letmein").cookie(t, sessionCookie).Value
+	r := e.send("POST", "/auth/logout", nil, "Cookie", cookie, "Sec-Fetch-Site", "cross-site")
+	if r.Status != http.StatusForbidden || len(r.Header.Values("Set-Cookie")) != 0 {
+		t.Fatalf("cross-site logout: %s %v", r, r.Header.Values("Set-Cookie"))
+	}
+	if r := e.send("GET", "/tokens", nil, "Cookie", cookie); r.Status != 200 {
+		t.Fatalf("GET after cross-site logout: %s", r)
+	}
+}
+
+func TestBrokenLoginProviderHidesError(t *testing.T) {
+	e := newEnv(t)
+	if err := e.s.Registry.MarkBroken(context.Background(), e.loginID, errors.New("fork/exec /secret/path")); err != nil {
+		t.Fatal(err)
+	}
+	r := e.send("POST", fmt.Sprintf("/auth/%d/begin", e.loginID), nil)
+	if r.Status != http.StatusServiceUnavailable || strings.Contains(string(r.Body), "/secret/path") {
+		t.Fatalf("begin with broken provider: %s", r)
 	}
 }

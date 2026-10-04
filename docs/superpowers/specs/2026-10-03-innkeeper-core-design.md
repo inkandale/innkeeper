@@ -30,12 +30,13 @@ Innkeeper is split into four sub-projects, each with its own spec:
 | Entities | Cards and lorebooks, both first-class and versioned. Personas are out of scope. |
 | Internal card format | CCv3. V2 is handled by a codec. |
 | Organization | Tags and collections. A card can be in many collections. |
-| Runtime | Two services from one codebase and image: `innkeeper-api` and `innkeeper-worker`. |
+| Runtime | Two services from one Go binary and image: `innkeeper api` and `innkeeper worker`. The same binary is the CLI. |
 | Plugins | Child processes speaking JSON-RPC over stdio. Any language. |
 | Repositories | Core in `innkeeper`. All plugins in `innkeeper-plugins`, listed in an index file. |
 | API | REST described by one OpenAPI spec, plus SSE for streams. No GraphQL. |
 | Interfaces | Web UI, MCP server, CLI, all clients of the HTTP API. |
-| Language | **Open.** Decided before the implementation plan. Python fits charexplorer's data tooling; the existing editor UI is React. |
+| Language | Core in Go. Web UI in React and TypeScript, with a client generated from the OpenAPI spec. Each plugin picks its own: Go for the codec, importer, and Lumiverse target; Python for the archive catalog, AI actions, and enrichers. |
+| Core libraries | `pgx` for PostgreSQL, Huma for the OpenAPI spec, the official MCP Go SDK. River for the job queue if its job metadata supports checkpointing while a job runs; otherwise our own `job` table. |
 
 ## Architecture
 

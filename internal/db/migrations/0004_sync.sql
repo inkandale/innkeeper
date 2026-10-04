@@ -17,6 +17,8 @@ CREATE TABLE binding (
     -- The app's copy at the last check, while it differs from accepted_data.
     seen_data jsonb,
     checked_at timestamptz,
+    -- Bumped by every push and adopt, so a check that read an older version doesn't overwrite them.
+    version bigint NOT NULL DEFAULT 0,
     created_at timestamptz NOT NULL DEFAULT now(),
     CHECK (num_nonnulls(card_id, lorebook_id) = 1),
     UNIQUE (instance_id, card_id),

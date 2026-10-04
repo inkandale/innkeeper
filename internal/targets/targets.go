@@ -163,17 +163,16 @@ type stored struct {
 	instanceID, cardID                  int64
 	remoteID, remoteState, acceptedHash string
 	accepted, seen                      []byte
-	// lastPush is the id of the binding's latest push. Writes that must lose
-	// to a push that landed meanwhile guard on it, because a push of
-	// identical content leaves acceptedHash unchanged.
-	lastPush int64
+	// version is bumped by every push and adopt. Writes that must lose to
+	// one that landed meanwhile guard on it.
+	version int64
 }
 
 func (s *Service) stored(ctx context.Context, id int64) (stored, error) {
 	var b stored
 	err := s.pool.QueryRow(ctx, `SELECT instance_id, card_id, remote_id, remote_state, accepted_hash, accepted_data,
-		seen_data, (SELECT max(id) FROM push WHERE binding_id = b.id) FROM binding b WHERE b.id = $1`, id).
-		Scan(&b.instanceID, &b.cardID, &b.remoteID, &b.remoteState, &b.acceptedHash, &b.accepted, &b.seen, &b.lastPush)
+		seen_data, version FROM binding b WHERE b.id = $1`, id).
+		Scan(&b.instanceID, &b.cardID, &b.remoteID, &b.remoteState, &b.acceptedHash, &b.accepted, &b.seen, &b.version)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return b, ErrNotFound
 	}

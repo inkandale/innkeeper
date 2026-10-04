@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/davidgibbons/innkeeper/internal/library"
 )
@@ -64,6 +65,38 @@ func TestCheckLosesToAPushOfSameContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got, err := e.s.Binding(e.ctx, b.ID); err != nil || got.Status != "in_sync" || got.RemoteState != "unchanged" {
+		t.Fatalf("binding = %+v, %v", got, err)
+	}
+}
+
+// A check's write that waits on a push's row lock must lose too: the guard has
+// to be re-evaluated against the pushed row, not an old snapshot.
+func TestCheckLosesToAPushInFlight(t *testing.T) {
+	e := setup(t, nil)
+	b := e.push(e.card)
+	old, err := e.s.stored(e.ctx, b.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := e.pool.Begin(e.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(e.ctx)
+	// Stands in for a push's upsert.
+	if _, err := tx.Exec(e.ctx, `UPDATE binding SET version = version + 1 WHERE id = $1`, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- e.s.record(e.ctx, b.ID, old, "missing", nil) }()
+	time.Sleep(200 * time.Millisecond)
+	if err := tx.Commit(e.ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if got, err := e.s.Binding(e.ctx, b.ID); err != nil || got.RemoteState != "unchanged" {
 		t.Fatalf("binding = %+v, %v", got, err)
 	}
 }

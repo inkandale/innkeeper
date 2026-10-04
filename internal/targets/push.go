@@ -70,19 +70,24 @@ func (s *Service) Push(ctx context.Context, instanceID, cardID int64, newCopy bo
 	}
 	// The app has the card now. Record it even if ctx is cancelled (a
 	// shutdown mid-bulk-push), or the retry makes a second copy.
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-	defer cancel()
-	accepted, hash, remoteState, err := s.readBack(ctx, inst, info, res.RemoteID, r.data)
+	detached := context.WithoutCancel(ctx)
+	readCtx, cancelRead := context.WithTimeout(detached, 20*time.Second)
+	accepted, hash, remoteState, err := s.readBack(readCtx, inst, info, res.RemoteID, r.data)
+	cancelRead()
 	if err != nil {
 		return Binding{}, err
 	}
+	// A hung read-back can't eat the writes' time.
+	ctx, cancel := context.WithTimeout(detached, 30*time.Second)
+	defer cancel()
 	var id int64
 	err = tx.QueryRow(ctx, `INSERT INTO binding (instance_id, card_id, remote_id, remote_state, accepted_data,
 			accepted_hash, checked_at)
 		VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $4 = 'unknown' THEN NULL ELSE now() END)
 		ON CONFLICT (instance_id, card_id) DO UPDATE SET remote_id = EXCLUDED.remote_id,
 			remote_state = EXCLUDED.remote_state, accepted_data = EXCLUDED.accepted_data,
-			accepted_hash = EXCLUDED.accepted_hash, seen_data = NULL, checked_at = EXCLUDED.checked_at
+			accepted_hash = EXCLUDED.accepted_hash, seen_data = NULL, checked_at = EXCLUDED.checked_at,
+			version = binding.version + 1
 		RETURNING id`, instanceID, cardID, res.RemoteID, remoteState, accepted, hash).Scan(&id)
 	if err != nil {
 		return Binding{}, err

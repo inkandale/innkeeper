@@ -40,14 +40,15 @@ func (s *Service) Check(ctx context.Context, id int64) (Binding, error) {
 	return s.Binding(ctx, id)
 }
 
-// record stores what a check found, unless a push landed since b was read.
-// The accepted hash alone isn't enough to tell: a push of identical content
-// leaves it unchanged.
+// record stores what a check found, unless a push or adopt landed since b
+// was read. It guards on version alone: the accepted hash can't tell, because
+// a push of identical content leaves it unchanged. The guard must be a column
+// of the row, since a subquery would keep the statement's old snapshot when
+// the UPDATE waits on a push's row lock.
 func (s *Service) record(ctx context.Context, id int64, b stored, state string, seen any) error {
-	_, err := s.pool.Exec(ctx, `UPDATE binding SET remote_state = $3, seen_data = $4,
-		checked_at = CASE WHEN $3 = 'unknown' THEN NULL ELSE now() END
-		WHERE id = $1 AND accepted_hash = $2
-		AND (SELECT max(id) FROM push WHERE binding_id = $1) = $5`, id, b.acceptedHash, state, seen, b.lastPush)
+	_, err := s.pool.Exec(ctx, `UPDATE binding SET remote_state = $2, seen_data = $3,
+		checked_at = CASE WHEN $2 = 'unknown' THEN NULL ELSE now() END
+		WHERE id = $1 AND version = $4`, id, state, seen, b.version)
 	return err
 }
 

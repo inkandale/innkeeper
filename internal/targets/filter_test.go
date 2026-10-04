@@ -31,6 +31,10 @@ func TestFilterTargetState(t *testing.T) {
 	if got := search(state("in_sync")); !slices.Equal(got, []int64{e.card}) {
 		t.Fatalf("in_sync = %v", got)
 	}
+	other := library.Filter{TargetState: &library.TargetState{Instance: e.inst + 1000, Is: "in_sync"}}
+	if got := search(other); len(got) != 0 {
+		t.Fatalf("in_sync on another target = %v", got)
+	}
 	notInSync := state("in_sync")
 	if got := search(library.Filter{Not: &notInSync}); !slices.Equal(got, []int64{edited, unpushed}) {
 		t.Fatalf("not in_sync = %v", got)

@@ -96,4 +96,21 @@ func TestCodecChecks(t *testing.T) {
 	if len(f) != 2 || f[checkRoundTripName] == nil || f[checkRejectsName] == nil {
 		t.Fatalf("failed = %v, want only the two codec checks", f)
 	}
+
+	tests := []struct{ mode, check, wantErr string }{
+		{"codec-hard-link", checkRoundTripName, "hard links"},
+		{"codec-no-avatar", checkRoundTripName, "can't embed"},
+		{"codec-wrong-code", checkRejectsName, "reply -32602"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.mode, func(t *testing.T) {
+			results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"codec"}, "-mode="+tt.mode), quiet)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := failed(results)[tt.check]; got == nil || !strings.Contains(got.Error(), tt.wantErr) {
+				t.Fatalf("check %q: got %v, want %q", tt.check, got, tt.wantErr)
+			}
+		})
+	}
 }

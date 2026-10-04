@@ -16,7 +16,7 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-codec")
+	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code")
 	caps := flag.String("caps", "push,pull", "comma-separated capabilities to report")
 	flag.Parse()
 
@@ -87,9 +87,9 @@ func main() {
 		case protocol.MethodTargetGet:
 			return newTarget(config).get(params)
 		case protocol.MethodCodecEncode:
-			return codecEncode(blobTmp, params, *mode == "bad-codec")
+			return codecEncode(blobTmp, params, *mode)
 		case protocol.MethodCodecDecode:
-			return codecDecode(params, *mode == "bad-codec")
+			return codecDecode(params, *mode)
 		case protocol.MethodAuthBegin:
 			return protocol.AuthBeginResult{
 				Form:  json.RawMessage(`{"type": "object", "properties": {"password": {"type": "string"}}, "required": ["password"]}`),

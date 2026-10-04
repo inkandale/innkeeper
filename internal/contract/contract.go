@@ -8,10 +8,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/png"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
+	"syscall"
 	"time"
 
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
@@ -142,6 +145,22 @@ func inside(path, dir string) bool {
 	return err == nil && d == want
 }
 
+// plainFile reports why the core's blob store would refuse the file at path:
+// it takes only regular files with one link.
+func plainFile(path string) error {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !fi.Mode().IsRegular() {
+		return fmt.Errorf("%q is not a regular file", path)
+	}
+	if st, ok := fi.Sys().(*syscall.Stat_t); !ok || uint64(st.Nlink) != 1 {
+		return fmt.Errorf("%q has other hard links", path)
+	}
+	return nil
+}
+
 // callErr explains a call that timed out or found the plugin gone.
 func callErr(err error) error {
 	switch {
@@ -162,13 +181,30 @@ var sampleCard = json.RawMessage(`{"spec": "chara_card_v3", "spec_version": "3.0
 
 // checkRoundTrip encodes the sample card in each format and decodes it back.
 func checkRoundTrip(ctx context.Context, p *pluginhost.Process, m *protocol.Manifest, tmp string) error {
+	// Real exports usually carry an avatar. It sits beside blob_tmp, as the
+	// core's stored blobs do.
+	avatar := filepath.Join(filepath.Dir(tmp), "avatar.png")
+	f, err := os.Create(avatar)
+	if err != nil {
+		return err
+	}
+	err = png.Encode(f, image.NewRGBA(image.Rect(0, 0, 1, 1)))
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return err
+	}
 	for _, format := range m.Formats {
 		var enc protocol.CodecEncodeResult
-		if err := call(ctx, p, protocol.MethodCodecEncode, protocol.CodecEncodeParams{Card: sampleCard, Format: format}, &enc); err != nil {
+		if err := call(ctx, p, protocol.MethodCodecEncode, protocol.CodecEncodeParams{Card: sampleCard, Format: format, Avatar: avatar}, &enc); err != nil {
 			return fmt.Errorf("encode %s: %w", format, err)
 		}
 		if !inside(enc.Path, tmp) {
 			return fmt.Errorf("encode %s: path %q is not directly inside blob_tmp (%s)", format, enc.Path, tmp)
+		}
+		if err := plainFile(enc.Path); err != nil {
+			return fmt.Errorf("encode %s: %w", format, err)
 		}
 		if !protocol.ValidExtension(enc.Extension) {
 			return fmt.Errorf("encode %s: extension %q must be 1 to 10 lowercase letters and digits", format, enc.Extension)
@@ -189,6 +225,11 @@ func checkRoundTrip(ctx context.Context, p *pluginhost.Process, m *protocol.Mani
 		if dec.Avatar != "" && !inside(dec.Avatar, tmp) {
 			return fmt.Errorf("decode %s: avatar %q is not directly inside blob_tmp (%s)", format, dec.Avatar, tmp)
 		}
+		if dec.Avatar != "" {
+			if err := plainFile(dec.Avatar); err != nil {
+				return fmt.Errorf("decode %s: avatar: %w", format, err)
+			}
+		}
 	}
 	return nil
 }
@@ -204,6 +245,8 @@ func checkRejects(ctx context.Context, p *pluginhost.Process, tmp string) error 
 	switch {
 	case err == nil:
 		return errors.New("codec.decode accepted a text file; reply with a JSON-RPC error when the file isn't a card")
+	case errors.As(err, &rpcErr) && rpcErr.Code != protocol.CodeInvalidParams:
+		return fmt.Errorf("codec.decode replied %d; reply -32602 when the file isn't a card", rpcErr.Code)
 	case errors.As(err, &rpcErr):
 		return nil
 	}

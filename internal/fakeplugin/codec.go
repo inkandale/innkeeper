@@ -10,8 +10,9 @@ import (
 )
 
 // The fake codec's one format, "fake", is "fake:" followed by the card JSON.
-// bad makes it write outside blob_tmp and accept any file as a card.
-func codecEncode(blobTmp string, params json.RawMessage, bad bool) (any, error) {
+// bad-codec makes it write outside blob_tmp and accept any file as a card.
+// The other codec- modes each break one rule the contract kit checks.
+func codecEncode(blobTmp string, params json.RawMessage, mode string) (any, error) {
 	var p protocol.CodecEncodeParams
 	if err := json.Unmarshal(params, &p); err != nil || p.Format != "fake" {
 		return nil, protocol.NewError(protocol.CodeInvalidParams, "want format fake", false)
@@ -22,10 +23,13 @@ func codecEncode(blobTmp string, params json.RawMessage, bad bool) (any, error) 
 		} `json:"data"`
 	}
 	_ = json.Unmarshal(p.Card, &c)
+	if mode == "codec-no-avatar" && p.Avatar != "" {
+		return nil, protocol.NewError(protocol.CodeInternalError, "can't embed an avatar", false)
+	}
 	dir := blobTmp
 	// The folder holding blob_tmp is outside it. A card named Escape tests
 	// that the core refuses such paths.
-	if bad || c.Data.Name == "Escape" {
+	if mode == "bad-codec" || c.Data.Name == "Escape" {
 		dir = filepath.Dir(blobTmp)
 	}
 	f, err := os.CreateTemp(dir, "fake-*.txt")
@@ -36,10 +40,15 @@ func codecEncode(blobTmp string, params json.RawMessage, bad bool) (any, error) 
 	if _, err := f.Write(append([]byte("fake:"), p.Card...)); err != nil {
 		return nil, err
 	}
+	if mode == "codec-hard-link" {
+		if err := os.Link(f.Name(), f.Name()+".link"); err != nil {
+			return nil, err
+		}
+	}
 	return protocol.CodecEncodeResult{Path: f.Name(), Extension: "txt"}, nil
 }
 
-func codecDecode(params json.RawMessage, bad bool) (any, error) {
+func codecDecode(params json.RawMessage, mode string) (any, error) {
 	var p protocol.CodecDecodeParams
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, protocol.NewError(protocol.CodeInvalidParams, err.Error(), false)
@@ -50,8 +59,12 @@ func codecDecode(params json.RawMessage, bad bool) (any, error) {
 	}
 	card, ok := bytes.CutPrefix(b, []byte("fake:"))
 	if !ok {
-		if !bad {
-			return nil, protocol.NewError(protocol.CodeInvalidParams, "not a fake card", false)
+		if mode != "bad-codec" {
+			code := protocol.CodeInvalidParams
+			if mode == "codec-wrong-code" {
+				code = protocol.CodeInternalError
+			}
+			return nil, protocol.NewError(code, "not a fake card", false)
 		}
 		card = []byte(`{"spec": "chara_card_v3", "spec_version": "3.0", "data": {"name": "Anything"}}`)
 	}

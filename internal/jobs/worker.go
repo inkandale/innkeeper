@@ -77,7 +77,7 @@ func (r *Run) currentProgress() json.RawMessage {
 // SaveCheckpoint saves where a retry should resume, along with the current
 // progress. The retry finds it in Run.Checkpoint.
 func (r *Run) SaveCheckpoint(ctx context.Context, cp json.RawMessage) error {
-	return r.q.touch(ctx, r.ID, r.worker, r.lease, r.currentProgress(), cp)
+	return r.q.touch(ctx, &r.Job, r.worker, r.lease, r.currentProgress(), cp)
 }
 
 func backoff(attempt int) time.Duration {
@@ -266,7 +266,7 @@ func (w *Worker) heartbeat(ctx context.Context, cancel context.CancelCauseFunc, 
 			return
 		case <-t.C:
 		}
-		err := r.q.touch(ctx, r.ID, r.worker, r.lease, r.currentProgress(), nil)
+		err := r.q.touch(ctx, &r.Job, r.worker, r.lease, r.currentProgress(), nil)
 		if errors.Is(err, ErrLeaseLost) {
 			cancel(ErrLeaseLost)
 			return

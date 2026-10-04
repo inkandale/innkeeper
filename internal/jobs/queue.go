@@ -171,11 +171,11 @@ func (q *Queue) claim(ctx context.Context, worker string, kinds []string, lease 
 
 // touch renews the lease and saves progress, and the checkpoint unless it is
 // nil.
-func (q *Queue) touch(ctx context.Context, id int64, worker string, lease time.Duration, progress, checkpoint json.RawMessage) error {
+func (q *Queue) touch(ctx context.Context, j *Job, worker string, lease time.Duration, progress, checkpoint json.RawMessage) error {
 	tag, err := q.pool.Exec(ctx, `UPDATE job SET locked_until = now() + make_interval(secs => $3),
 			progress = coalesce($4::jsonb, progress), checkpoint = coalesce($5::jsonb, checkpoint)
-		WHERE id = $1 AND locked_by = $2 AND status = 'running'`,
-		id, worker, lease.Seconds(), progress, checkpoint)
+		WHERE id = $1 AND locked_by = $2 AND attempts = $6 AND status = 'running'`,
+		j.ID, worker, lease.Seconds(), progress, checkpoint, j.Attempts)
 	if err != nil {
 		return err
 	}
@@ -203,8 +203,8 @@ func (q *Queue) finish(ctx context.Context, j *Job, worker string, progress json
 			run_after = now() + make_interval(secs => $5), attempts = attempts - $6,
 			progress = coalesce($7::jsonb, progress), locked_by = NULL, locked_until = NULL,
 			finished_at = CASE WHEN $3 IN ('succeeded', 'failed') THEN now() END
-		WHERE id = $1 AND locked_by = $2 AND status = 'running'`,
-		j.ID, worker, o.status, o.err, o.runAfter.Seconds(), refund, progress)
+		WHERE id = $1 AND locked_by = $2 AND attempts = $8 AND status = 'running'`,
+		j.ID, worker, o.status, o.err, o.runAfter.Seconds(), refund, progress, j.Attempts)
 	if err != nil {
 		return err
 	}

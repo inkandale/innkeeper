@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -94,5 +95,28 @@ func TestEnsureScheduled(t *testing.T) {
 	q.EnsureScheduled(ctx, "gc", time.Hour)
 	if n := count(); n != 2 {
 		t.Fatalf("%d gc jobs two hours after the last, want 2", n)
+	}
+}
+
+func TestStaleRunLosesLeaseAfterReclaim(t *testing.T) {
+	q := newQueue(t)
+	ctx := context.Background()
+	q.Enqueue(ctx, Spec{Kind: "test"})
+	old, err := q.claim(ctx, "w1", []string{"test"}, time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	if err := q.reap(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.claim(ctx, "w1", []string{"test"}, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.touch(ctx, old, "w1", time.Minute, nil, nil); !errors.Is(err, ErrLeaseLost) {
+		t.Fatalf("stale touch = %v; want ErrLeaseLost", err)
+	}
+	if err := q.finish(ctx, old, "w1", nil, outcome{status: StatusSucceeded}); !errors.Is(err, ErrLeaseLost) {
+		t.Fatalf("stale finish = %v; want ErrLeaseLost", err)
 	}
 }

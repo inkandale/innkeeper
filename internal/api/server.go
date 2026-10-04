@@ -74,6 +74,9 @@ func (s *Server) Handler() http.Handler {
 	api := humago.New(mux, cfg)
 	api.UseMiddleware(s.authenticate(api))
 	s.authRoutes(api)
+	s.entityRoutes(api, s.Lib.Cards, "cards", "card", "Cards")
+	s.cardRoutes(api)
+	s.entityRoutes(api, s.Lib.Lorebooks, "lorebooks", "lorebook", "Lorebooks")
 	// Browsers arrive here from a login provider; it isn't part of the API.
 	mux.HandleFunc("GET /auth/{id}/callback", s.callback)
 	return mux

@@ -155,3 +155,21 @@ func TestNewVersionStartsNewProcess(t *testing.T) {
 		t.Fatal("StopIdle stopped the current version")
 	}
 }
+
+func TestOlderVersionDoesNotSupersedeNewer(t *testing.T) {
+	mgr, inst := newManager(t, time.Minute)
+	ctx := context.Background()
+	inst.Version = "2"
+	if err := mgr.Call(ctx, inst, "echo", 1, nil); err != nil {
+		t.Fatal(err)
+	}
+	newKey := inst.key()
+	inst.Version = "1"
+	if err := mgr.Call(ctx, inst, "echo", 1, nil); err != nil {
+		t.Fatal(err)
+	}
+	mgr.StopIdle()
+	if mgr.proc(newKey) == nil {
+		t.Fatal("a call with an older version made StopIdle stop the newer process")
+	}
+}

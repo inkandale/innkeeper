@@ -3,6 +3,7 @@ package pluginhost
 import (
 	"context"
 	"log/slog"
+	"strconv"
 	"sync"
 	"time"
 
@@ -13,7 +14,8 @@ import (
 // with.
 type Instance struct {
 	ID string
-	// Version changes whenever the instance's settings do.
+	// Version is a decimal number that grows whenever the instance's
+	// settings change.
 	Version  string
 	Manifest *protocol.Manifest
 	Params   protocol.InitializeParams
@@ -31,14 +33,15 @@ type Manager struct {
 
 	mu      sync.Mutex
 	running map[string]*entry
-	// latest maps an instance ID to the key of its newest version.
-	latest map[string]string
+	// latest maps an instance ID to its newest version seen.
+	latest map[string]int64
 	closed bool
 }
 
 type entry struct {
 	key      string
 	id       string
+	version  int64
 	proc     *Process
 	inflight int
 	lastUsed time.Time
@@ -47,7 +50,7 @@ type entry struct {
 // NewManager returns a Manager whose plugins send their calls to core.
 // StopIdle stops plugins unused for longer than idle.
 func NewManager(core protocol.Handler, idle time.Duration, log *slog.Logger) *Manager {
-	return &Manager{core: core, idle: idle, log: log, running: map[string]*entry{}, latest: map[string]string{}}
+	return &Manager{core: core, idle: idle, log: log, running: map[string]*entry{}, latest: map[string]int64{}}
 }
 
 // Call sends method to the instance's plugin, starting it if needed.
@@ -71,6 +74,8 @@ func (m *Manager) acquire(ctx context.Context, inst Instance) (*entry, error) {
 		return nil, protocol.ErrClosed
 	}
 	key := inst.key()
+	// Unparsable versions count as 0.
+	version, _ := strconv.ParseInt(inst.Version, 10, 64)
 	e, ok := m.running[key]
 	if !ok || !e.proc.Alive() {
 		params := inst.Params
@@ -79,10 +84,13 @@ func (m *Manager) acquire(ctx context.Context, inst Instance) (*entry, error) {
 		if err != nil {
 			return nil, &StartError{Err: err}
 		}
-		e = &entry{key: key, id: inst.ID, proc: p}
+		e = &entry{key: key, id: inst.ID, version: version, proc: p}
 		m.running[key] = e
 	}
-	m.latest[inst.ID] = key
+	// A caller holding a stale Instance must not supersede a newer version.
+	if cur, ok := m.latest[inst.ID]; !ok || version > cur {
+		m.latest[inst.ID] = version
+	}
 	e.inflight++
 	e.lastUsed = time.Now()
 	return e, nil
@@ -103,7 +111,7 @@ func (m *Manager) StopIdle() {
 		if !e.proc.Alive() {
 			return true
 		}
-		return e.inflight == 0 && (time.Since(e.lastUsed) > m.idle || m.latest[e.id] != e.key)
+		return e.inflight == 0 && (time.Since(e.lastUsed) > m.idle || e.version < m.latest[e.id])
 	})
 }
 

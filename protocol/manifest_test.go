@@ -89,6 +89,7 @@ func TestManifestErrors(t *testing.T) {
 		{"empty secret", `secrets = ["api_key"]`, `secrets = [""]`, `secret name ""`},
 		{"duplicate secret", `secrets = ["api_key"]`, `secrets = ["api_key", "api_key"]`, "listed twice"},
 		{"bad enrichment key", `summary = {`, `"bad key!" = {`, `enrichment key "bad key!"`},
+		{"enrichment without label", `, label = "AI summary"`, ``, "label is required"},
 		{"nan range", `range = [1, 5]`, `range = [nan, nan]`, "score needs range"},
 	}
 	for _, tt := range tests {

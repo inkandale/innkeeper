@@ -121,6 +121,9 @@ func (m *Manifest) Validate() error {
 		if !keyPattern.MatchString(key) {
 			errs = append(errs, fmt.Errorf("enrichment key %q must match %s", key, keyPattern))
 		}
+		if e.Label == "" {
+			errs = append(errs, fmt.Errorf("enrichment %q: label is required", key))
+		}
 		if !slices.Contains(enrichmentTypes, e.Type) {
 			errs = append(errs, fmt.Errorf("enrichment %q: type %q must be one of %v", key, e.Type, enrichmentTypes))
 		}

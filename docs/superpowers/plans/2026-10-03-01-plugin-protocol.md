@@ -772,6 +772,7 @@ func TestManifestErrors(t *testing.T) {
 		{"empty secret", `secrets = ["api_key"]`, `secrets = [""]`, `secret name ""`},
 		{"duplicate secret", `secrets = ["api_key"]`, `secrets = ["api_key", "api_key"]`, "listed twice"},
 		{"bad enrichment key", `summary = {`, `"bad key!" = {`, `enrichment key "bad key!"`},
+		{"enrichment without label", `, label = "AI summary"`, ``, "label is required"},
 		{"nan range", `range = [1, 5]`, `range = [nan, nan]`, "score needs range"},
 	}
 	for _, tt := range tests {
@@ -959,6 +960,9 @@ func (m *Manifest) Validate() error {
 	for key, e := range m.Enrichments {
 		if !keyPattern.MatchString(key) {
 			errs = append(errs, fmt.Errorf("enrichment key %q must match %s", key, keyPattern))
+		}
+		if e.Label == "" {
+			errs = append(errs, fmt.Errorf("enrichment %q: label is required", key))
 		}
 		if !slices.Contains(enrichmentTypes, e.Type) {
 			errs = append(errs, fmt.Errorf("enrichment %q: type %q must be one of %v", key, e.Type, enrichmentTypes))

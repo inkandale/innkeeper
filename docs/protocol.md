@@ -34,7 +34,7 @@ Each plugin folder has a `plugin.toml`:
 | `secrets` | no | Names of secrets the owner enters for each instance, in lowercase `snake_case` |
 | `config` | no | JSON Schema for instance settings; the UI renders a form from it |
 | `enrichments` | no | Keys the plugin writes, in lowercase `snake_case`. Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list` |
-| `formats` | for `codec` | What `codec.encode` writes: lowercase words of letters and digits joined by single hyphens, such as `png`. A codec plugin must list at least one. `json` is taken: the core exports CCv3 JSON itself |
+| `formats` | only for `codec` | What `codec.encode` writes, each listed once: lowercase words of letters and digits joined by single hyphens, such as `png`. A codec plugin must list at least one. `json` is taken: the core exports CCv3 JSON itself |
 
 Unknown keys are errors.
 
@@ -259,8 +259,9 @@ It loads the manifest, then checks that:
 - an unknown method returns `-32601` within 5 seconds
 - a `push` plugin's `target.describe` reply is valid, and claims `pull` only
   if the manifest declares it
-- a `codec` plugin encodes a sample card in each of its `formats` and decodes
-  it back, and returns an error when asked to decode a file that isn't a card
+- a `codec` plugin encodes a sample card in each of its `formats` into
+  `blob_tmp` with a valid extension, decodes it back, and returns an error
+  when asked to decode a file that isn't a card
 - `shutdown` gets a reply within 5 seconds
 - the plugin exits after `shutdown`, rather than having exited earlier
 

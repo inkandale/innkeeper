@@ -19,7 +19,9 @@ type Instance struct {
 	Params   protocol.InitializeParams
 }
 
-// Manager runs at most one process per instance, starting it on first use
+func (i Instance) key() string { return i.ID + "@" + i.Version }
+
+// Manager runs at most one process per instance version, starting it on first use
 // and again after a crash. The API and the worker each have their own
 // Manager, so an instance can have one process in each.
 type Manager struct {
@@ -29,10 +31,14 @@ type Manager struct {
 
 	mu      sync.Mutex
 	running map[string]*entry
-	closed  bool
+	// latest maps an instance ID to the key of its newest version.
+	latest map[string]string
+	closed bool
 }
 
 type entry struct {
+	key      string
+	id       string
 	proc     *Process
 	inflight int
 	lastUsed time.Time
@@ -41,7 +47,7 @@ type entry struct {
 // NewManager returns a Manager whose plugins send their calls to core.
 // StopIdle stops plugins unused for longer than idle.
 func NewManager(core protocol.Handler, idle time.Duration, log *slog.Logger) *Manager {
-	return &Manager{core: core, idle: idle, log: log, running: map[string]*entry{}}
+	return &Manager{core: core, idle: idle, log: log, running: map[string]*entry{}, latest: map[string]string{}}
 }
 
 // Call sends method to the instance's plugin, starting it if needed.
@@ -64,7 +70,8 @@ func (m *Manager) acquire(ctx context.Context, inst Instance) (*entry, error) {
 	if m.closed {
 		return nil, protocol.ErrClosed
 	}
-	e, ok := m.running[inst.ID]
+	key := inst.key()
+	e, ok := m.running[key]
 	if !ok || !e.proc.Alive() {
 		params := inst.Params
 		params.InstanceID = inst.ID
@@ -72,9 +79,10 @@ func (m *Manager) acquire(ctx context.Context, inst Instance) (*entry, error) {
 		if err != nil {
 			return nil, &StartError{Err: err}
 		}
-		e = &entry{proc: p}
-		m.running[inst.ID] = e
+		e = &entry{key: key, id: inst.ID, proc: p}
+		m.running[key] = e
 	}
+	m.latest[inst.ID] = key
 	e.inflight++
 	e.lastUsed = time.Now()
 	return e, nil
@@ -87,11 +95,15 @@ func (m *Manager) release(e *entry) {
 	m.mu.Unlock()
 }
 
-// StopIdle stops plugins that have exited or have had no call in flight for
-// longer than the idle timeout. Run it periodically.
+// StopIdle stops plugins that have exited, have had no call in flight for
+// longer than the idle timeout, or run an old version with no call in
+// flight. Run it periodically.
 func (m *Manager) StopIdle() {
 	m.stopWhere(func(e *entry) bool {
-		return !e.proc.Alive() || (e.inflight == 0 && time.Since(e.lastUsed) > m.idle)
+		if !e.proc.Alive() {
+			return true
+		}
+		return e.inflight == 0 && (time.Since(e.lastUsed) > m.idle || m.latest[e.id] != e.key)
 	})
 }
 

@@ -50,11 +50,11 @@ func TestManagerReusesProcess(t *testing.T) {
 	if err := mgr.Call(ctx, inst, "echo", 1, nil); err != nil {
 		t.Fatal(err)
 	}
-	first := mgr.proc(inst.ID)
+	first := mgr.proc(inst.key())
 	if err := mgr.Call(ctx, inst, "echo", 2, nil); err != nil {
 		t.Fatal(err)
 	}
-	if mgr.proc(inst.ID) != first {
+	if mgr.proc(inst.key()) != first {
 		t.Fatal("second call started a new process")
 	}
 }
@@ -63,7 +63,7 @@ func TestManagerRestartsAfterCrash(t *testing.T) {
 	mgr, inst := newManager(t, time.Minute)
 	ctx := context.Background()
 	_ = mgr.Call(ctx, inst, "crash", nil, nil)
-	waitDead(t, mgr.proc(inst.ID))
+	waitDead(t, mgr.proc(inst.key()))
 	var out int
 	if err := mgr.Call(ctx, inst, "echo", 7, &out); err != nil {
 		t.Fatal(err)
@@ -79,7 +79,7 @@ func TestCallAfterCloseFails(t *testing.T) {
 	if err := mgr.Call(context.Background(), inst, "echo", 1, nil); !errors.Is(err, protocol.ErrClosed) {
 		t.Fatalf("got %v, want ErrClosed", err)
 	}
-	if mgr.proc(inst.ID) != nil {
+	if mgr.proc(inst.key()) != nil {
 		t.Fatal("Call after Close started a plugin")
 	}
 }
@@ -89,9 +89,9 @@ func TestStopIdleStopsUnusedPlugin(t *testing.T) {
 	if err := mgr.Call(context.Background(), inst, "echo", 1, nil); err != nil {
 		t.Fatal(err)
 	}
-	p := mgr.proc(inst.ID)
+	p := mgr.proc(inst.key())
 	mgr.StopIdle()
-	if p.Alive() || mgr.proc(inst.ID) != nil {
+	if p.Alive() || mgr.proc(inst.key()) != nil {
 		t.Fatal("idle plugin still running")
 	}
 }
@@ -100,7 +100,7 @@ func TestStopIdleSparesPluginWithCallInFlight(t *testing.T) {
 	mgr, inst := newManager(t, 0)
 	errc := make(chan error, 1)
 	go func() { errc <- mgr.Call(context.Background(), inst, "sleep", 300, nil) }()
-	waitInflight(t, mgr, inst.ID)
+	waitInflight(t, mgr, inst.key())
 	mgr.StopIdle()
 	if err := <-errc; err != nil {
 		t.Fatalf("in-flight call failed: %v", err)
@@ -124,5 +124,34 @@ func TestCallReportsStartError(t *testing.T) {
 	err = good.Call(context.Background(), inst, "fail", nil, nil)
 	if errors.As(err, &se) {
 		t.Fatalf("call error %v reported as a StartError", err)
+	}
+}
+
+func TestNewVersionStartsNewProcess(t *testing.T) {
+	mgr, inst := newManager(t, time.Minute)
+	ctx := context.Background()
+	inst.Version = "1"
+	if err := mgr.Call(ctx, inst, "echo", 1, nil); err != nil {
+		t.Fatal(err)
+	}
+	oldKey := inst.key()
+	old := mgr.proc(oldKey)
+
+	inst.Version = "2"
+	if err := mgr.Call(ctx, inst, "echo", 1, nil); err != nil {
+		t.Fatal(err)
+	}
+	if p := mgr.proc(inst.key()); p == nil || p == old {
+		t.Fatal("new version reused the old process")
+	}
+
+	// The old process is idle and superseded, so it stops long before the
+	// idle timeout.
+	mgr.StopIdle()
+	if mgr.proc(oldKey) != nil {
+		t.Fatal("old version still running after StopIdle")
+	}
+	if mgr.proc(inst.key()) == nil {
+		t.Fatal("StopIdle stopped the current version")
 	}
 }

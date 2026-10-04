@@ -52,15 +52,16 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	// A plugin that already died would "exit after shutdown" without
 	// handling it.
 	if errors.Is(err, protocol.ErrClosed) || !p.Alive() {
-		_ = p.Stop()
-		dead := errors.New("plugin had already exited before shutdown")
-		return append(results, Result{"answers shutdown", dead}, Result{"exits after shutdown", dead}), nil
+		return exited(results, p), nil
 	}
 
 	if slices.Contains(m.Capabilities, "push") {
 		callCtx, cancel = context.WithTimeout(ctx, callTimeout)
 		results = append(results, Result{"target.describe returns a valid description", checkDescribe(callCtx, p, m)})
 		cancel()
+		if !p.Alive() {
+			return exited(results, p), nil
+		}
 	}
 
 	callCtx, cancel = context.WithTimeout(ctx, callTimeout)
@@ -73,9 +74,23 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	return append(results, Result{"exits after shutdown", p.Stop()}), nil
 }
 
+// exited stops a plugin that died mid-check and fails the shutdown checks.
+func exited(results []Result, p *pluginhost.Process) []Result {
+	_ = p.Stop()
+	dead := errors.New("plugin had already exited before shutdown")
+	return append(results, Result{"answers shutdown", dead}, Result{"exits after shutdown", dead})
+}
+
 func checkDescribe(ctx context.Context, p *pluginhost.Process, m *protocol.Manifest) error {
 	var info protocol.TargetInfo
-	if err := p.Call(ctx, protocol.MethodTargetDescribe, nil, &info); err != nil {
+	err := p.Call(ctx, protocol.MethodTargetDescribe, nil, &info)
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("no response within %s", callTimeout)
+	}
+	if errors.Is(err, protocol.ErrClosed) {
+		return errors.New("plugin exited")
+	}
+	if err != nil {
 		return err
 	}
 	if err := info.Validate(); err != nil {

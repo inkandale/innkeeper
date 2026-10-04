@@ -64,25 +64,6 @@ func (t target) put(params json.RawMessage) (any, error) {
 		return nil, protocol.NewError(-32000, "config.dir is not set", false)
 	}
 	info := t.describe()
-	id := p.RemoteID
-	if id != "" && info.Update {
-		if _, err := os.Stat(t.path(id)); err != nil {
-			return nil, protocol.NewError(protocol.CodeRemoteNotFound, "no card "+id, false)
-		}
-	} else {
-		// Concurrent puts each claim their own ID.
-		for n := 1; ; n++ {
-			id = fmt.Sprintf("r%d", n)
-			f, err := os.OpenFile(t.path(id), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
-			if err == nil {
-				f.Close()
-				break
-			}
-			if !errors.Is(err, os.ErrExist) {
-				return nil, err
-			}
-		}
-	}
 	var card struct {
 		Data map[string]json.RawMessage `json:"data"`
 	}
@@ -104,7 +85,39 @@ func (t target) put(params json.RawMessage) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(t.path(id), raw, 0o644); err != nil {
+	id := p.RemoteID
+	if id != "" && info.Update {
+		if _, err := os.Stat(t.path(id)); err != nil {
+			return nil, protocol.NewError(protocol.CodeRemoteNotFound, "no card "+id, false)
+		}
+	} else {
+		// Concurrent puts each claim their own ID.
+		for n := 1; ; n++ {
+			id = fmt.Sprintf("r%d", n)
+			f, err := os.OpenFile(t.path(id), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+			if err == nil {
+				f.Close()
+				break
+			}
+			if !errors.Is(err, os.ErrExist) {
+				return nil, err
+			}
+		}
+	}
+	// Write to a temp file and rename, so a concurrent get never sees a partial card.
+	tmp, err := os.CreateTemp(t.Dir, ".put-*")
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(tmp.Name())
+	_, werr := tmp.Write(raw)
+	if cerr := tmp.Close(); werr == nil {
+		werr = cerr
+	}
+	if werr != nil {
+		return nil, werr
+	}
+	if err := os.Rename(tmp.Name(), t.path(id)); err != nil {
 		return nil, err
 	}
 	return protocol.TargetPutResult{RemoteID: id}, nil

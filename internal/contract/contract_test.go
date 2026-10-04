@@ -64,3 +64,14 @@ func TestMisbehavingPluginsFail(t *testing.T) {
 		})
 	}
 }
+
+func TestDescribePullNeedsCapability(t *testing.T) {
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"push"}), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = failed(results)["target.describe returns a valid description"]
+	if err == nil || !strings.Contains(err.Error(), "pull capability") {
+		t.Fatalf("got %v, want a pull capability error", err)
+	}
+}

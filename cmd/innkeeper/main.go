@@ -17,6 +17,7 @@ const usage = `usage:
   innkeeper worker
   innkeeper api
   innkeeper token create <name> | list | revoke <id>
+  innkeeper backup <dir>
 
 API commands (read INNKEEPER_URL and INNKEEPER_TOKEN):
   innkeeper call <method> <path> [json]
@@ -50,6 +51,8 @@ func run(args []string) error {
 		return apiServer()
 	case cmd == "token":
 		return token(rest)
+	case cmd == "backup":
+		return backup(rest)
 	case cmd == "call":
 		return call(rest)
 	case cmd == "import":

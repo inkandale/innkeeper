@@ -20,6 +20,10 @@ import (
 // watchInterval is how often a job stream checks the job. Tests shorten it.
 var watchInterval = time.Second
 
+// pingInterval is how long a quiet job stream waits before writing a comment,
+// so proxies don't drop it as idle.
+var pingInterval = 15 * time.Second
+
 type jobOut struct {
 	ID          int64           `json:"id"`
 	Kind        string          `json:"kind"`
@@ -34,7 +38,7 @@ type jobOut struct {
 	RunAfter    time.Time       `json:"run_after"`
 	CreatedAt   time.Time       `json:"created_at"`
 	FinishedAt  *time.Time      `json:"finished_at,omitempty"`
-	Children    map[string]int  `json:"children,omitempty" doc:"A bulk job's children, counted by status"`
+	Children    map[string]int  `json:"children,omitempty" doc:"A bulk job's children, counted by status. Only get-job, cancel-job, and watch-job fill it."`
 }
 
 func toJob(j jobs.Job) jobOut {
@@ -93,24 +97,35 @@ func (s *Server) watch(hc huma.Context, j jobOut) {
 	ctx := hc.Context()
 	hc.SetHeader("Content-Type", "text/event-stream")
 	hc.SetHeader("Cache-Control", "no-cache")
+	hc.SetHeader("X-Accel-Buffering", "no")
 	w := hc.BodyWriter()
 	flusher, _ := w.(http.Flusher)
 	t := time.NewTicker(watchInterval)
 	defer t.Stop()
 	var last []byte
+	var wrote time.Time
+	send := func(format string, args ...any) bool {
+		if _, err := fmt.Fprintf(w, format, args...); err != nil {
+			return false
+		}
+		if flusher != nil {
+			flusher.Flush()
+		}
+		wrote = time.Now()
+		return true
+	}
 	for {
 		data, err := json.Marshal(j)
 		if err != nil {
 			return
 		}
 		if !bytes.Equal(data, last) {
-			if _, err := fmt.Fprintf(w, "event: job\ndata: %s\n\n", data); err != nil {
+			if !send("event: job\ndata: %s\n\n", data) {
 				return
 			}
-			if flusher != nil {
-				flusher.Flush()
-			}
 			last = data
+		} else if time.Since(wrote) >= pingInterval && !send(": ping\n\n") {
+			return
 		}
 		if j.Status == jobs.StatusSucceeded || j.Status == jobs.StatusFailed {
 			return
@@ -191,6 +206,10 @@ func (s *Server) jobRoutes(api huma.API) {
 			if err != nil {
 				return nil, s.fail(err)
 			}
+			// The stored error can hold paths and plugin output, so it stays out of the response.
+			if inst.BrokenError != nil {
+				return nil, huma.Error409Conflict("plugin instance is broken; fix its settings first")
+			}
 			if m := s.Registry.Manifests()[inst.Plugin]; m == nil || !slices.Contains(m.Capabilities, "import") {
 				return nil, huma.Error400BadRequest(fmt.Sprintf("plugin %s can't import", inst.Plugin))
 			}
@@ -210,11 +229,23 @@ func (s *Server) jobRoutes(api huma.API) {
 		Summary: "Archive or unarchive many cards", Description: "Queues one child job per card the query matches.",
 		Tags: tags, DefaultStatus: http.StatusAccepted},
 		func(ctx context.Context, in *bulkIn) (*jobResp, error) {
-			ids, err := s.Lib.SearchIDs(ctx, in.Body.Query)
+			q := in.Body.Query
+			if q.Filter == nil && q.Text == "" {
+				return nil, huma.Error400BadRequest("bulk actions need a filter or text; to select every card, filter on archived")
+			}
+			// Select only cards the action changes; search would otherwise hide archived cards from unarchive.
+			archive := in.Body.Action == "archive"
+			wasArchived := !archive
+			state := library.Filter{Archived: &wasArchived}
+			if q.Filter != nil {
+				state = library.Filter{And: []library.Filter{*q.Filter, state}}
+			}
+			q.Filter = &state
+			ids, err := s.Lib.SearchIDs(ctx, q)
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			p, err := bulk.EnqueueArchive(ctx, s.Queue, ids, in.Body.Action == "archive")
+			p, err := bulk.EnqueueArchive(ctx, s.Queue, ids, archive)
 			if err != nil {
 				return nil, s.fail(err)
 			}

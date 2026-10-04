@@ -1,9 +1,12 @@
 package api
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -73,18 +76,9 @@ func TestBulkArchiveAndWatch(t *testing.T) {
 		t.Fatalf("bulk job = %+v", j)
 	}
 
-	// The stream ends when the job finishes; the last event shows how.
-	r := e.call("GET", fmt.Sprintf("/jobs/%d/events", j.ID), nil, 200, nil)
+	last, r := e.watchJob(j.ID)
 	if r.Header.Get("Content-Type") != "text/event-stream" {
 		t.Fatalf("events content type %q", r.Header.Get("Content-Type"))
-	}
-	var last jobOut
-	for _, line := range strings.Split(string(r.Body), "\n") {
-		if data, ok := strings.CutPrefix(line, "data: "); ok {
-			if err := json.Unmarshal([]byte(data), &last); err != nil {
-				t.Fatal(err)
-			}
-		}
 	}
 	if last.Status != "succeeded" || last.Children["succeeded"] != 2 {
 		t.Fatalf("last event = %+v\n%s", last, r.Body)
@@ -99,5 +93,80 @@ func TestBulkArchiveAndWatch(t *testing.T) {
 	e.call("GET", fmt.Sprintf("/jobs?parent=%d", j.ID), nil, 200, &children)
 	if len(children) != 2 {
 		t.Fatalf("children = %+v", children)
+	}
+
+	// Unarchive finds the archived cards without the filter naming archived.
+	j = jobOut{}
+	e.call("POST", "/bulk", map[string]any{"query": map[string]any{"filter": map[string]any{"tag": "old"}}, "action": "unarchive"}, 202, &j)
+	if last, r := e.watchJob(j.ID); last.Status != "succeeded" || last.Children["succeeded"] != 2 {
+		t.Fatalf("unarchive last event = %+v\n%s", last, r.Body)
+	}
+	res = library.Results{}
+	e.call("POST", "/search", map[string]any{}, 200, &res)
+	if len(res.Hits) != 3 {
+		t.Fatalf("cards after unarchive = %+v", res.Hits)
+	}
+
+	e.call("POST", "/bulk", map[string]any{"query": map[string]any{}, "action": "archive"}, 400, nil)
+}
+
+// watchJob reads a job's event stream, which ends when the job finishes, and
+// returns the last event.
+func (e *testEnv) watchJob(id int64) (jobOut, result) {
+	e.t.Helper()
+	r := e.call("GET", fmt.Sprintf("/jobs/%d/events", id), nil, 200, nil)
+	var last jobOut
+	for _, line := range strings.Split(string(r.Body), "\n") {
+		if data, ok := strings.CutPrefix(line, "data: "); ok {
+			last = jobOut{}
+			if err := json.Unmarshal([]byte(data), &last); err != nil {
+				e.t.Fatal(err)
+			}
+		}
+	}
+	return last, r
+}
+
+func TestWatchPings(t *testing.T) {
+	// Restored after newEnv's server closes, so no stream still reads it.
+	old := pingInterval
+	pingInterval = 50 * time.Millisecond
+	t.Cleanup(func() { pingInterval = old })
+	e := newEnv(t)
+	var j jobOut
+	e.call("POST", "/imports", map[string]any{"instance_id": e.importID}, 202, &j)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/jobs/%d/events", e.srv.URL, j.ID), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+e.token)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.Header.Get("X-Accel-Buffering") != "no" {
+		t.Errorf("X-Accel-Buffering = %q", resp.Header.Get("X-Accel-Buffering"))
+	}
+	sc := bufio.NewScanner(resp.Body)
+	for sc.Scan() {
+		if sc.Text() == ": ping" {
+			return
+		}
+	}
+	t.Fatalf("no ping before the stream ended: %v", sc.Err())
+}
+
+func TestImportBrokenInstance(t *testing.T) {
+	e := newEnv(t)
+	if err := e.s.Registry.MarkBroken(context.Background(), e.importID, errors.New("secret detail")); err != nil {
+		t.Fatal(err)
+	}
+	r := e.call("POST", "/imports", map[string]any{"instance_id": e.importID}, 409, nil)
+	if strings.Contains(string(r.Body), "secret detail") {
+		t.Fatalf("leaked the stored error: %s", r.Body)
 	}
 }

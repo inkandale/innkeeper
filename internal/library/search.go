@@ -33,13 +33,23 @@ type Page struct {
 // Filter is one condition on a card. Set exactly one field. Archived cards
 // are left out unless a filter mentions archived.
 type Filter struct {
-	And        []Filter `json:"and,omitempty"`
-	Or         []Filter `json:"or,omitempty"`
-	Not        *Filter  `json:"not,omitempty"`
-	Tag        *string  `json:"tag,omitempty" doc:"Has this tag, in any case."`
-	Collection *int64   `json:"collection,omitempty" doc:"Is in this collection."`
-	Archived   *bool    `json:"archived,omitempty"`
+	And         []Filter     `json:"and,omitempty"`
+	Or          []Filter     `json:"or,omitempty"`
+	Not         *Filter      `json:"not,omitempty"`
+	Tag         *string      `json:"tag,omitempty" doc:"Has this tag, in any case."`
+	Collection  *int64       `json:"collection,omitempty" doc:"Is in this collection."`
+	Archived    *bool        `json:"archived,omitempty"`
+	TargetState *TargetState `json:"target_state,omitempty" doc:"Is pushed to this target and stands this way. A card never pushed there matches no state."`
 }
+
+// TargetState is a card's status on one target, as GET /cards/{id}/bindings
+// shows it.
+type TargetState struct {
+	Instance int64  `json:"instance" doc:"Plugin instance ID"`
+	Is       string `json:"is" enum:"in_sync,ahead,remote_changed,diverged,missing,cant_check"`
+}
+
+var targetStatuses = []string{"in_sync", "ahead", "remote_changed", "diverged", "missing", "cant_check"}
 
 // Hit is one matching card.
 type Hit struct {
@@ -75,7 +85,7 @@ func (w *where) filter(f Filter) (string, error) {
 		return "", fmt.Errorf("%w: filter has more than 200 conditions", ErrInvalid)
 	}
 	set := 0
-	for _, ok := range []bool{f.And != nil, f.Or != nil, f.Not != nil, f.Tag != nil, f.Collection != nil, f.Archived != nil} {
+	for _, ok := range []bool{f.And != nil, f.Or != nil, f.Not != nil, f.Tag != nil, f.Collection != nil, f.Archived != nil, f.TargetState != nil} {
 		if ok {
 			set++
 		}
@@ -97,6 +107,12 @@ func (w *where) filter(f Filter) (string, error) {
 	case f.Collection != nil:
 		return `EXISTS (SELECT 1 FROM collection_card cc
 			WHERE cc.card_id = c.id AND cc.collection_id = ` + w.arg(*f.Collection) + `)`, nil
+	case f.TargetState != nil:
+		if !slices.Contains(targetStatuses, f.TargetState.Is) {
+			return "", fmt.Errorf("%w: target_state.is must be one of %v", ErrInvalid, targetStatuses)
+		}
+		return `EXISTS (SELECT 1 FROM binding_status bs WHERE bs.card_id = c.id
+			AND bs.instance_id = ` + w.arg(f.TargetState.Instance) + ` AND bs.status = ` + w.arg(f.TargetState.Is) + `)`, nil
 	}
 	return `((c.archived_at IS NOT NULL) = ` + w.arg(*f.Archived) + `)`, nil
 }

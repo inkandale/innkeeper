@@ -151,15 +151,16 @@ func TestSearchRejectsBadQueries(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
 	for name, q := range map[string]Query{
-		"two conditions": {Filter: &Filter{Tag: ptr("a"), Archived: ptr(true)}},
-		"no condition":   {Filter: &Filter{Not: &Filter{}}},
-		"semantic":       {Semantic: true},
-		"catalog source": {Sources: []string{"catalog:chub-archive"}},
-		"bad include":    {Include: []string{"enrichments"}},
-		"negative size":  {Page: Page{Size: -1}},
-		"huge size":      {Page: Page{Size: 501}},
-		"huge filter":    {Filter: &Filter{Or: manyTags(201)}},
-		"bad cursor":     {Page: Page{Cursor: ptr("abc")}},
+		"two conditions":   {Filter: &Filter{Tag: ptr("a"), Archived: ptr(true)}},
+		"no condition":     {Filter: &Filter{Not: &Filter{}}},
+		"semantic":         {Semantic: true},
+		"catalog source":   {Sources: []string{"catalog:chub-archive"}},
+		"bad include":      {Include: []string{"enrichments"}},
+		"negative size":    {Page: Page{Size: -1}},
+		"huge size":        {Page: Page{Size: 501}},
+		"huge filter":      {Filter: &Filter{Or: manyTags(201)}},
+		"bad cursor":       {Page: Page{Cursor: ptr("abc")}},
+		"bad target state": {Filter: &Filter{TargetState: &TargetState{Instance: 1, Is: "pushed"}}},
 	} {
 		if _, err := lib.Search(ctx, q); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s: got %v, want ErrInvalid", name, err)

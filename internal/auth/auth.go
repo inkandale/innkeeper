@@ -95,6 +95,9 @@ func (a *Auth) CheckToken(ctx context.Context, secret string) (bool, error) {
 // CreateSession logs in subject, verified by an auth instance, if that
 // instance names subject as the owner. It returns the session's secret.
 func (a *Auth) CreateSession(ctx context.Context, instanceID int64, subject string) (string, error) {
+	if _, err := a.pool.Exec(ctx, `DELETE FROM session WHERE expires_at < now()`); err != nil {
+		return "", err
+	}
 	secret, h := newSecret("")
 	tag, err := a.pool.Exec(ctx, `INSERT INTO session (token_hash, instance_id, subject, expires_at)
 		SELECT $1, id, $3, now() + make_interval(secs => $4) FROM plugin_instance
@@ -104,9 +107,6 @@ func (a *Auth) CreateSession(ctx context.Context, instanceID int64, subject stri
 	}
 	if tag.RowsAffected() == 0 {
 		return "", ErrNotOwner
-	}
-	if _, err := a.pool.Exec(ctx, `DELETE FROM session WHERE expires_at < now()`); err != nil {
-		return "", err
 	}
 	return secret, nil
 }

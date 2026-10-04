@@ -39,12 +39,17 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	for _, s := range m.Secrets {
 		secrets[s] = "contract-check"
 	}
-	// A codec writes its files here.
-	tmp, err := os.MkdirTemp("", "innkeeper-check-")
+	// A codec writes its files to blob_tmp, which is <root>/tmp as in the
+	// real blob store.
+	root, err := os.MkdirTemp("", "innkeeper-check-")
 	if err != nil {
 		return nil, err
 	}
-	defer os.RemoveAll(tmp)
+	defer os.RemoveAll(root)
+	tmp := filepath.Join(root, "tmp")
+	if err := os.Mkdir(tmp, 0o700); err != nil {
+		return nil, err
+	}
 	params := protocol.InitializeParams{InstanceID: "contract-check", Config: map[string]any{}, Secrets: secrets, BlobTmp: tmp}
 
 	p, err := pluginhost.Start(ctx, m, params, noCore, log)
@@ -64,10 +69,8 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	}
 
 	if slices.Contains(m.Capabilities, "push") {
-		callCtx, cancel = context.WithTimeout(ctx, callTimeout)
-		descErr := checkDescribe(callCtx, p, m)
+		descErr := checkDescribe(ctx, p, m)
 		results = append(results, Result{"target.describe returns a valid description", descErr})
-		cancel()
 		if errors.Is(descErr, protocol.ErrClosed) || !p.Alive() {
 			return exited(results, p), nil
 		}
@@ -82,10 +85,8 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 			{checkRejectsName, func(ctx context.Context) error { return checkRejects(ctx, p, tmp) }},
 		}
 		for _, c := range checks {
-			callCtx, cancel = context.WithTimeout(ctx, callTimeout)
-			err := c.run(callCtx)
-			cancel()
-			results = append(results, Result{c.name, callErr(err)})
+			err := c.run(ctx)
+			results = append(results, Result{c.name, err})
 			if errors.Is(err, protocol.ErrClosed) || !p.Alive() {
 				return exited(results, p), nil
 			}
@@ -111,7 +112,7 @@ func exited(results []Result, p *pluginhost.Process) []Result {
 
 func checkDescribe(ctx context.Context, p *pluginhost.Process, m *protocol.Manifest) error {
 	var info protocol.TargetInfo
-	if err := callErr(p.Call(ctx, protocol.MethodTargetDescribe, nil, &info)); err != nil {
+	if err := call(ctx, p, protocol.MethodTargetDescribe, nil, &info); err != nil {
 		return err
 	}
 	if err := info.Validate(); err != nil {
@@ -121,6 +122,24 @@ func checkDescribe(ctx context.Context, p *pluginhost.Process, m *protocol.Manif
 		return errors.New("pull is true, but the manifest doesn't declare the pull capability")
 	}
 	return nil
+}
+
+// call makes one plugin call with its own timeout.
+func call(ctx context.Context, p *pluginhost.Process, method string, params, result any) error {
+	ctx, cancel := context.WithTimeout(ctx, callTimeout)
+	defer cancel()
+	return callErr(p.Call(ctx, method, params, result))
+}
+
+// inside reports whether path is directly in dir, resolving symlinks the way
+// the core does.
+func inside(path, dir string) bool {
+	d, err := filepath.EvalSymlinks(filepath.Dir(path))
+	if err != nil {
+		return false
+	}
+	want, err := filepath.EvalSymlinks(dir)
+	return err == nil && d == want
 }
 
 // callErr explains a call that timed out or found the plugin gone.
@@ -145,17 +164,17 @@ var sampleCard = json.RawMessage(`{"spec": "chara_card_v3", "spec_version": "3.0
 func checkRoundTrip(ctx context.Context, p *pluginhost.Process, m *protocol.Manifest, tmp string) error {
 	for _, format := range m.Formats {
 		var enc protocol.CodecEncodeResult
-		if err := p.Call(ctx, protocol.MethodCodecEncode, protocol.CodecEncodeParams{Card: sampleCard, Format: format}, &enc); err != nil {
+		if err := call(ctx, p, protocol.MethodCodecEncode, protocol.CodecEncodeParams{Card: sampleCard, Format: format}, &enc); err != nil {
 			return fmt.Errorf("encode %s: %w", format, err)
 		}
-		if filepath.Dir(enc.Path) != tmp {
-			return fmt.Errorf("encode %s: path %q is not directly inside blob_tmp", format, enc.Path)
+		if !inside(enc.Path, tmp) {
+			return fmt.Errorf("encode %s: path %q is not directly inside blob_tmp (%s)", format, enc.Path, tmp)
 		}
 		if !protocol.ValidExtension(enc.Extension) {
 			return fmt.Errorf("encode %s: extension %q must be 1 to 10 lowercase letters and digits", format, enc.Extension)
 		}
 		var dec protocol.CodecDecodeResult
-		if err := p.Call(ctx, protocol.MethodCodecDecode, protocol.CodecDecodeParams{Path: enc.Path}, &dec); err != nil {
+		if err := call(ctx, p, protocol.MethodCodecDecode, protocol.CodecDecodeParams{Path: enc.Path}, &dec); err != nil {
 			return fmt.Errorf("decode %s: %w", format, err)
 		}
 		var c struct {
@@ -167,8 +186,8 @@ func checkRoundTrip(ctx context.Context, p *pluginhost.Process, m *protocol.Mani
 		if err := json.Unmarshal(dec.Card, &c); err != nil || c.Spec != "chara_card_v3" || c.Data.Name != "Contract Check" {
 			return fmt.Errorf("decode %s: got %s, want a chara_card_v3 card named Contract Check", format, dec.Card)
 		}
-		if dec.Avatar != "" && filepath.Dir(dec.Avatar) != tmp {
-			return fmt.Errorf("decode %s: avatar %q is not directly inside blob_tmp", format, dec.Avatar)
+		if dec.Avatar != "" && !inside(dec.Avatar, tmp) {
+			return fmt.Errorf("decode %s: avatar %q is not directly inside blob_tmp (%s)", format, dec.Avatar, tmp)
 		}
 	}
 	return nil
@@ -180,11 +199,11 @@ func checkRejects(ctx context.Context, p *pluginhost.Process, tmp string) error 
 	if err := os.WriteFile(path, []byte("This is not a character card.\n"), 0o644); err != nil {
 		return err
 	}
-	err := p.Call(ctx, protocol.MethodCodecDecode, protocol.CodecDecodeParams{Path: path}, nil)
+	err := call(ctx, p, protocol.MethodCodecDecode, protocol.CodecDecodeParams{Path: path}, nil)
 	var rpcErr *protocol.Error
 	switch {
 	case err == nil:
-		return errors.New("expected an error, got a card")
+		return errors.New("codec.decode accepted a text file; reply with a JSON-RPC error when the file isn't a card")
 	case errors.As(err, &rpcErr):
 		return nil
 	}

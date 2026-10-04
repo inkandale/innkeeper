@@ -59,7 +59,10 @@ type Results struct {
 }
 
 // where collects SQL conditions and their arguments.
-type where struct{ args []any }
+type where struct {
+	args []any
+	n    int
+}
 
 func (w *where) arg(v any) string {
 	w.args = append(w.args, v)
@@ -67,6 +70,10 @@ func (w *where) arg(v any) string {
 }
 
 func (w *where) filter(f Filter) (string, error) {
+	// Bounds the SQL size, so a huge filter is a 400 instead of a Postgres error.
+	if w.n++; w.n > 200 {
+		return "", fmt.Errorf("%w: filter has more than 200 conditions", ErrInvalid)
+	}
 	set := 0
 	for _, ok := range []bool{f.And != nil, f.Or != nil, f.Not != nil, f.Tag != nil, f.Collection != nil, f.Archived != nil} {
 		if ok {
@@ -166,6 +173,9 @@ func (l *Library) Search(ctx context.Context, q Query) (Results, error) {
 	if size == 0 {
 		size = 50
 	}
+	if size < 0 || size > 500 {
+		return Results{}, fmt.Errorf("%w: page size must be 0 to 500", ErrInvalid)
+	}
 	offset := 0
 	if q.Page.Cursor != nil {
 		if offset, err = strconv.Atoi(*q.Page.Cursor); err != nil || offset < 0 {
@@ -211,8 +221,11 @@ func (l *Library) Search(ctx context.Context, q Query) (Results, error) {
 			}
 			h.Fields = map[string]any{}
 			for _, f := range fields {
-				if f == "avatar" && avatar != nil {
-					h.Fields[f] = *avatar
+				if f == "avatar" {
+					// The avatar is the blob only, never a same-named data key.
+					if avatar != nil {
+						h.Fields[f] = *avatar
+					}
 				} else if v, ok := all[f]; ok {
 					h.Fields[f] = v
 				}

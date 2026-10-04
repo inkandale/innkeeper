@@ -56,7 +56,9 @@ func TestSearch(t *testing.T) {
 		"archived only":                         {Query{Filter: &Filter{Archived: ptr(true)}}, []int64{s.dellin}},
 		"archived or not": {Query{Text: "blacksmith", Filter: &Filter{Or: []Filter{
 			{Archived: ptr(true)}, {Archived: ptr(false)}}}}, []int64{s.dellin, s.brakka}},
-		"and": {Query{Filter: &Filter{And: []Filter{{Tag: ptr("fantasy")}, {Tag: ptr("pirate")}}}}, []int64{}},
+		"not active": {Query{Filter: &Filter{Not: &Filter{Archived: ptr(false)}}}, []int64{s.dellin}},
+		"or of tags": {Query{Filter: &Filter{Or: []Filter{{Tag: ptr("fantasy")}, {Tag: ptr("pirate")}}}}, []int64{s.carrow, s.brakka}},
+		"and":        {Query{Filter: &Filter{And: []Filter{{Tag: ptr("fantasy")}, {Tag: ptr("pirate")}}}}, []int64{}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			got, err := lib.Search(ctx, tc.q)
@@ -67,6 +69,30 @@ func TestSearch(t *testing.T) {
 				t.Fatalf("hits = %v, want %v", hitIDs(got), tc.want)
 			}
 		})
+	}
+}
+
+func manyTags(n int) []Filter {
+	out := make([]Filter, n)
+	for i := range out {
+		out[i] = Filter{Tag: ptr("t")}
+	}
+	return out
+}
+
+func TestSearchQuotedTagAndBareAvatar(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	id, _ := newCard(t, lib, "obrien", `{"name": "O", "avatar": "from-data"}`)
+	if err := lib.SetCardTags(ctx, id, []string{"o'brien"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := lib.Search(ctx, Query{Filter: &Filter{Tag: ptr("o'brien")}, Fields: []string{"avatar"}})
+	if err != nil || !slices.Equal(hitIDs(got), []int64{id}) {
+		t.Fatalf("hits = %v, %v", hitIDs(got), err)
+	}
+	if _, ok := got.Hits[0].Fields["avatar"]; ok {
+		t.Fatalf("avatar leaked from card data: %v", got.Hits[0].Fields)
 	}
 }
 
@@ -130,6 +156,9 @@ func TestSearchRejectsBadQueries(t *testing.T) {
 		"semantic":       {Semantic: true},
 		"catalog source": {Sources: []string{"catalog:chub-archive"}},
 		"bad include":    {Include: []string{"enrichments"}},
+		"negative size":  {Page: Page{Size: -1}},
+		"huge size":      {Page: Page{Size: 501}},
+		"huge filter":    {Filter: &Filter{Or: manyTags(201)}},
 		"bad cursor":     {Page: Page{Cursor: ptr("abc")}},
 	} {
 		if _, err := lib.Search(ctx, q); !errors.Is(err, ErrInvalid) {

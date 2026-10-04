@@ -51,6 +51,9 @@ func TestEmpty(t *testing.T) {
 	if err != nil || got == nil || len(got) != 0 {
 		t.Fatalf("Open(nil) = %v, %v; want empty map", got, err)
 	}
+	if got, err := b.Open([]byte{}); err != nil || got == nil || len(got) != 0 {
+		t.Fatalf("Open([]byte{}) = %v, %v; want empty map", got, err)
+	}
 }
 
 func TestFromEnv(t *testing.T) {

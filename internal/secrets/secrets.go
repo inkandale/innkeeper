@@ -64,7 +64,7 @@ func (b *Box) Seal(secrets map[string]string) ([]byte, error) {
 // Open decrypts what Seal returned. Nil opens to an empty map.
 func (b *Box) Open(sealed []byte) (map[string]string, error) {
 	out := map[string]string{}
-	if sealed == nil {
+	if len(sealed) == 0 {
 		return out, nil
 	}
 	n := b.aead.NonceSize()

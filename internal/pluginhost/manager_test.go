@@ -151,6 +151,7 @@ func TestNewVersionStartsNewProcess(t *testing.T) {
 	if mgr.proc(oldKey) != nil {
 		t.Fatal("old version still running after StopIdle")
 	}
+	waitDead(t, old)
 	if mgr.proc(inst.key()) == nil {
 		t.Fatal("StopIdle stopped the current version")
 	}

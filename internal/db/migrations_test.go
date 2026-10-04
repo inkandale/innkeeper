@@ -92,4 +92,10 @@ func TestDeletingAuthInstanceEndsSessions(t *testing.T) {
 	if n != 0 {
 		t.Fatalf("%d sessions left, want 0", n)
 	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM api_token`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("%d API tokens left, want 1", n)
+	}
 }

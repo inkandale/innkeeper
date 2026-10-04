@@ -76,6 +76,24 @@ func main() {
 			os.Exit(3)
 		case protocol.MethodImportRun:
 			return importRun(conn, blobTmp, params)
+		case protocol.MethodAuthBegin:
+			return protocol.AuthBeginResult{
+				Form:  json.RawMessage(`{"type": "object", "properties": {"password": {"type": "string"}}, "required": ["password"]}`),
+				State: "fake-state",
+			}, nil
+		case protocol.MethodAuthComplete:
+			var p protocol.AuthCompleteParams
+			_ = json.Unmarshal(params, &p)
+			if p.State != "fake-state" {
+				return nil, protocol.NewError(-32000, "login state doesn't match", false)
+			}
+			switch p.Params["password"] {
+			case "letmein":
+				return protocol.AuthCompleteResult{Subject: "owner", Name: "Owner"}, nil
+			case "stranger":
+				return protocol.AuthCompleteResult{Subject: "someone-else"}, nil
+			}
+			return nil, protocol.NewError(-32000, "wrong password", false)
 		case "freeze":
 			// A notification handler blocks the reader, so the plugin
 			// stops reading stdin, like a hung plugin.

@@ -129,6 +129,43 @@ Notifications, each with `run`:
 - The core moves each `avatar` file into its blob store, so don't reuse the
   path.
 
+### `auth`
+
+A login provider verifies who is logging in. The core decides whether that
+person is the owner: each auth instance names its owner's `subject`.
+
+**`auth.begin`** starts a login.
+
+| Param | Meaning |
+|---|---|
+| `callback_url` | Where a redirect login sends the browser back to. Empty if the core has no public URL |
+
+Reply with one of:
+
+- `form`: a JSON Schema object of the fields to ask for, such as a password.
+- `redirect`: a URL to send the browser to, such as an OAuth provider's.
+
+Add `state` to have it passed back to `auth.complete`, such as an OAuth
+state value. The core keeps it in a cookie for 10 minutes. Keep nothing
+about the login in memory: `auth.complete` may reach a different process.
+
+**`auth.complete`** finishes it.
+
+| Param | Meaning |
+|---|---|
+| `params` | The form's fields, or the query parameters of the redirect back to `callback_url` |
+| `state` | The `state` from `auth.begin` |
+| `callback_url` | As in `auth.begin` |
+
+Reply with `subject`, a stable ID for this person, and optionally `name`.
+Reply with an error if the login failed. The core answers every failure the
+same way and waits a second, so don't add your own delay.
+
+```json
+{"jsonrpc": "2.0", "id": 3, "method": "auth.complete", "params": {"params": {"password": "…"}, "state": "", "callback_url": ""}}
+{"jsonrpc": "2.0", "id": 3, "result": {"subject": "owner"}}
+```
+
 ## Checking a plugin
 
 ```bash

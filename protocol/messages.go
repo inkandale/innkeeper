@@ -78,3 +78,40 @@ type Checkpoint struct {
 	Run        string          `json:"run"`
 	Checkpoint json.RawMessage `json:"checkpoint"`
 }
+
+// The auth capability. A login calls auth.begin, then auth.complete with
+// what the user sent back.
+const (
+	MethodAuthBegin    = "auth.begin"
+	MethodAuthComplete = "auth.complete"
+)
+
+// AuthBeginParams starts a login. CallbackURL is where a redirect login must
+// send the browser back to, or empty if the core has no public URL.
+type AuthBeginParams struct {
+	CallbackURL string `json:"callback_url"`
+}
+
+// AuthBeginResult says how to log in: send the browser to Redirect, or show
+// Form, a JSON Schema of the fields to ask for. State comes back unchanged
+// in auth.complete.
+type AuthBeginResult struct {
+	Redirect string          `json:"redirect,omitempty"`
+	Form     json.RawMessage `json:"form,omitempty"`
+	State    string          `json:"state,omitempty"`
+}
+
+// AuthCompleteParams carries what the user sent back: the form's fields, or
+// the query parameters of the redirect to CallbackURL.
+type AuthCompleteParams struct {
+	Params      map[string]string `json:"params"`
+	State       string            `json:"state"`
+	CallbackURL string            `json:"callback_url"`
+}
+
+// AuthCompleteResult is the verified identity. Subject must be stable for
+// the same person on the same instance.
+type AuthCompleteResult struct {
+	Subject string `json:"subject"`
+	Name    string `json:"name,omitempty"`
+}

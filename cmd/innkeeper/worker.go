@@ -44,6 +44,8 @@ func worker() error {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	// After the first signal, restore default handling so a second one kills a stuck shutdown.
+	go func() { <-ctx.Done(); stop() }()
 
 	pool, err := pgxpool.New(ctx, cfg["INNKEEPER_DATABASE_URL"])
 	if err != nil {

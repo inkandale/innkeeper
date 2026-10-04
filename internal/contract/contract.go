@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
@@ -56,6 +57,12 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 		return append(results, Result{"answers shutdown", dead}, Result{"exits after shutdown", dead}), nil
 	}
 
+	if slices.Contains(m.Capabilities, "push") {
+		callCtx, cancel = context.WithTimeout(ctx, callTimeout)
+		results = append(results, Result{"target.describe returns a valid description", checkDescribe(callCtx, p, m)})
+		cancel()
+	}
+
 	callCtx, cancel = context.WithTimeout(ctx, callTimeout)
 	err = p.Call(callCtx, protocol.MethodShutdown, nil, nil)
 	cancel()
@@ -64,6 +71,20 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	}
 	results = append(results, Result{"answers shutdown", err})
 	return append(results, Result{"exits after shutdown", p.Stop()}), nil
+}
+
+func checkDescribe(ctx context.Context, p *pluginhost.Process, m *protocol.Manifest) error {
+	var info protocol.TargetInfo
+	if err := p.Call(ctx, protocol.MethodTargetDescribe, nil, &info); err != nil {
+		return err
+	}
+	if err := info.Validate(); err != nil {
+		return err
+	}
+	if info.Pull && !slices.Contains(m.Capabilities, "pull") {
+		return errors.New("pull is true, but the manifest doesn't declare the pull capability")
+	}
+	return nil
 }
 
 // noCore answers plugin callbacks during a check, where no library exists.

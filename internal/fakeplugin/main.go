@@ -16,18 +16,19 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown")
+	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe")
 	caps := flag.String("caps", "push,pull", "comma-separated capabilities to report")
 	flag.Parse()
 
 	var conn *protocol.Conn
 	var blobTmp string
+	var config map[string]any
 	handler := func(ctx context.Context, method string, params json.RawMessage) (any, error) {
 		switch method {
 		case protocol.MethodInitialize:
 			var init protocol.InitializeParams
 			_ = json.Unmarshal(params, &init)
-			blobTmp = init.BlobTmp
+			blobTmp, config = init.BlobTmp, init.Config
 			res := protocol.InitializeResult{
 				Protocol:     protocol.Version,
 				Name:         "fake",
@@ -76,6 +77,15 @@ func main() {
 			os.Exit(3)
 		case protocol.MethodImportRun:
 			return importRun(conn, blobTmp, params)
+		case protocol.MethodTargetDescribe:
+			if *mode == "bad-describe" {
+				return protocol.TargetInfo{Lorebooks: "sometimes"}, nil
+			}
+			return newTarget(config).describe(), nil
+		case protocol.MethodTargetPut:
+			return newTarget(config).put(params)
+		case protocol.MethodTargetGet:
+			return newTarget(config).get(params)
 		case protocol.MethodAuthBegin:
 			return protocol.AuthBeginResult{
 				Form:  json.RawMessage(`{"type": "object", "properties": {"password": {"type": "string"}}, "required": ["password"]}`),

@@ -30,6 +30,8 @@ var (
 	// ErrLeaseLost means the job is no longer this worker's: its lease
 	// expired and the reaper re-queued it.
 	ErrLeaseLost = errors.New("job lease lost")
+	// ErrFinished means the job already succeeded or failed.
+	ErrFinished = errors.New("job already finished")
 )
 
 // Job is one row of the job table.
@@ -212,16 +214,27 @@ func (q *Queue) finish(ctx context.Context, j *Job, worker string, progress json
 		return ErrLeaseLost
 	}
 	if j.ParentID != nil && o.status != StatusQueued {
-		return q.completeParents(ctx, j.ParentID)
+		return q.completeParent(ctx, *j.ParentID)
 	}
 	return nil
 }
 
-// completeParents finishes waiting parents whose children have all finished.
-// It runs after the child's update commits, so when two children finish at
-// once, whichever checks second sees both. A nil id checks every parent,
-// which catches a worker that died between the two steps.
-func (q *Queue) completeParents(ctx context.Context, id *int64) error {
+// completeParent finishes a waiting parent whose children have all
+// finished. It runs after the child's update commits, so when two children
+// finish at once, whichever checks second sees both.
+func (q *Queue) completeParent(ctx context.Context, id int64) error {
+	return q.completeParents(ctx, `parent_id = $1`, id)
+}
+
+// completeWaitingParents checks every waiting parent, which catches a worker
+// that died between finishing a child and checking its parent.
+func (q *Queue) completeWaitingParents(ctx context.Context) error {
+	return q.completeParents(ctx, `parent_id IN (SELECT id FROM job WHERE status = 'waiting')`)
+}
+
+// completeParents finishes waiting parents of the children that match where.
+// Each caller passes a fixed condition, so each gets its own query plan.
+func (q *Queue) completeParents(ctx context.Context, where string, args ...any) error {
 	_, err := q.pool.Exec(ctx, `UPDATE job p SET
 			status = CASE WHEN s.failed > 0 THEN 'failed' ELSE 'succeeded' END,
 			error = CASE WHEN s.failed > 0 THEN s.failed || ' of ' || s.total || ' jobs failed' END,
@@ -229,8 +242,8 @@ func (q *Queue) completeParents(ctx context.Context, id *int64) error {
 		FROM (SELECT parent_id, count(*) AS total,
 				count(*) FILTER (WHERE status = 'failed') AS failed,
 				count(*) FILTER (WHERE status NOT IN ('succeeded', 'failed')) AS open
-			FROM job WHERE parent_id = coalesce($1, parent_id) GROUP BY parent_id) s
-		WHERE p.id = s.parent_id AND p.status = 'waiting' AND s.open = 0`, id)
+			FROM job WHERE `+where+` GROUP BY parent_id) s
+		WHERE p.id = s.parent_id AND p.status = 'waiting' AND s.open = 0`, args...)
 	return err
 }
 
@@ -245,5 +258,87 @@ func (q *Queue) reap(ctx context.Context) error {
 		WHERE status = 'running' AND locked_until < now()`); err != nil {
 		return err
 	}
-	return q.completeParents(ctx, nil)
+	return q.completeWaitingParents(ctx)
+}
+
+// Cancel fails a job that hasn't finished, along with its unfinished
+// children. A running job's worker loses its lease at the next renewal,
+// which cancels the handler.
+func (q *Queue) Cancel(ctx context.Context, id int64) error {
+	tx, err := q.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	j, err := scanJob(tx.QueryRow(ctx, `SELECT `+jobCols+` FROM job WHERE id = $1 FOR UPDATE`, id))
+	if err != nil {
+		return err
+	}
+	if j.Status == StatusSucceeded || j.Status == StatusFailed {
+		return ErrFinished
+	}
+	if _, err := tx.Exec(ctx, `UPDATE job SET status = 'failed', error = 'cancelled', finished_at = now(),
+			locked_by = NULL, locked_until = NULL
+		WHERE (id = $1 OR parent_id = $1) AND status IN ('queued', 'running', 'waiting')`, id); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	if j.ParentID != nil {
+		return q.completeParent(ctx, *j.ParentID)
+	}
+	return nil
+}
+
+// ListOptions filters List. Zero values match everything.
+type ListOptions struct {
+	Status string
+	Kind   string
+	// Parent lists that parent's children. Without it, List returns only
+	// top-level jobs.
+	Parent *int64
+	// Before returns only jobs with smaller IDs, for paging.
+	Before int64
+	// Limit defaults to 50.
+	Limit int
+}
+
+// List returns jobs, newest first.
+func (q *Queue) List(ctx context.Context, o ListOptions) ([]Job, error) {
+	if o.Limit <= 0 {
+		o.Limit = 50
+	}
+	rows, err := q.pool.Query(ctx, `SELECT `+jobCols+` FROM job
+		WHERE ($1::text = '' OR status = $1) AND ($2::text = '' OR kind = $2)
+			AND parent_id IS NOT DISTINCT FROM $3::bigint AND ($4::bigint = 0 OR id < $4)
+		ORDER BY id DESC LIMIT $5`, o.Status, o.Kind, o.Parent, o.Before, o.Limit)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Job, error) { return scanJob(row) })
+}
+
+// ChildCounts returns how many of a parent's children have each status.
+func (q *Queue) ChildCounts(ctx context.Context, parent int64) (map[string]int, error) {
+	rows, err := q.pool.Query(ctx, `SELECT status, count(*)::int FROM job WHERE parent_id = $1 GROUP BY status`, parent)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]int{}
+	var status string
+	var n int
+	_, err = pgx.ForEachRow(rows, []any{&status, &n}, func() error {
+		out[status] = n
+		return nil
+	})
+	return out, err
+}
+
+// Prune deletes top-level jobs that finished more than age ago, with their
+// children.
+func (q *Queue) Prune(ctx context.Context, age time.Duration) (int64, error) {
+	tag, err := q.pool.Exec(ctx, `DELETE FROM job WHERE parent_id IS NULL AND status IN ('succeeded', 'failed')
+		AND finished_at < now() - make_interval(secs => $1)`, age.Seconds())
+	return tag.RowsAffected(), err
 }

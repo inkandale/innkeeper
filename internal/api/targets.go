@@ -6,6 +6,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/targets"
 )
@@ -56,22 +57,65 @@ func (s *Server) binding(b targets.Binding, err error) (*bindingOut, error) {
 
 func (s *Server) targetRoutes(api huma.API) {
 	tags := []string{"Sync"}
-	huma.Register(api, huma.Operation{OperationID: "push-card", Method: http.MethodPost, Path: "/cards/{id}/push",
-		Summary: "Push a card to a target", Tags: tags, DefaultStatus: http.StatusAccepted,
-		Description: "Queues a push job. Pushing overwrites changes made in the app; adopt them first to keep them."},
-		func(ctx context.Context, in *pushIn) (*jobResp, error) {
-			if _, err := s.Lib.Cards.Get(ctx, in.ID); err != nil {
-				return nil, s.fail(err)
-			}
-			if err := s.usable(ctx, in.Body.InstanceID, "push"); err != nil {
-				return nil, err
-			}
-			j, err := s.Targets.EnqueuePush(ctx, s.Queue, in.Body.InstanceID, in.ID, in.Body.NewCopy)
-			if err != nil {
-				return nil, s.fail(err)
-			}
-			return &jobResp{Body: toJob(j)}, nil
-		})
+	// Cards and lorebooks have the same push routes, under their own paths.
+	type syncedKind struct {
+		name, plural string
+		get          func(context.Context, int64) (library.Entity, error)
+		enqueue      func(context.Context, *jobs.Queue, int64, int64, bool) (jobs.Job, error)
+		preview      func(context.Context, int64, int64) (targets.Preview, error)
+		bindings     func(context.Context, int64) ([]targets.Binding, error)
+	}
+	for _, k := range []syncedKind{
+		{"card", "cards", s.Lib.Cards.Get, s.Targets.EnqueuePush, s.Targets.Preview, s.Targets.Bindings},
+		{"lorebook", "lorebooks", s.Lib.Lorebooks.Get, s.Targets.EnqueueLorebookPush, s.Targets.PreviewLorebook,
+			s.Targets.LorebookBindings},
+	} {
+		huma.Register(api, huma.Operation{OperationID: "push-" + k.name, Method: http.MethodPost, Path: "/" + k.plural + "/{id}/push",
+			Summary: "Push a " + k.name + " to a target", Tags: tags, DefaultStatus: http.StatusAccepted,
+			Description: "Queues a push job. Pushing overwrites changes made in the app; adopt them first to keep them. " +
+				"A card push creates the card's lorebooks the app doesn't have, on a target that keeps lorebooks on their own."},
+			func(ctx context.Context, in *pushIn) (*jobResp, error) {
+				if _, err := k.get(ctx, in.ID); err != nil {
+					return nil, s.fail(err)
+				}
+				if err := s.usable(ctx, in.Body.InstanceID, "push"); err != nil {
+					return nil, err
+				}
+				j, err := k.enqueue(ctx, s.Queue, in.Body.InstanceID, in.ID, in.Body.NewCopy)
+				if err != nil {
+					return nil, s.fail(err)
+				}
+				return &jobResp{Body: toJob(j)}, nil
+			})
+
+		huma.Register(api, huma.Operation{OperationID: "preview-push-" + k.name, Method: http.MethodGet,
+			Path: "/" + k.plural + "/{id}/push-preview", Summary: "Show what a " + k.name + " push would send and change", Tags: tags,
+			Description: "Reads the app's copy and lists the fields the push would change there, the fields it would drop, " +
+				"and whether it would make another copy."},
+			func(ctx context.Context, in *previewIn) (*previewOut, error) {
+				if _, err := k.get(ctx, in.ID); err != nil {
+					return nil, s.fail(err)
+				}
+				p, err := k.preview(ctx, in.InstanceID, in.ID)
+				if err != nil {
+					return nil, s.fail(err)
+				}
+				return &previewOut{Body: p}, nil
+			})
+
+		huma.Register(api, huma.Operation{OperationID: "list-" + k.name + "-bindings", Method: http.MethodGet,
+			Path: "/" + k.plural + "/{id}/bindings", Summary: "List the targets a " + k.name + " is pushed to", Tags: tags},
+			func(ctx context.Context, in *idIn) (*bindingsOut, error) {
+				if _, err := k.get(ctx, in.ID); err != nil {
+					return nil, s.fail(err)
+				}
+				list, err := k.bindings(ctx, in.ID)
+				if err != nil {
+					return nil, s.fail(err)
+				}
+				return &bindingsOut{Body: orEmpty(list)}, nil
+			})
+	}
 
 	huma.Register(api, huma.Operation{OperationID: "push-cards", Method: http.MethodPost, Path: "/pushes",
 		Summary: "Push many cards to a target", Description: "Queues one child job per card the query matches.",
@@ -99,33 +143,6 @@ func (s *Server) targetRoutes(api huma.API) {
 			return &jobResp{Body: j}, nil
 		})
 
-	huma.Register(api, huma.Operation{OperationID: "preview-push", Method: http.MethodGet, Path: "/cards/{id}/push-preview",
-		Summary: "Show what a push would send", Tags: tags,
-		Description: "Asks the target plugin what it stores. Lists fields the push would drop, and whether it would make another copy."},
-		func(ctx context.Context, in *previewIn) (*previewOut, error) {
-			if _, err := s.Lib.Cards.Get(ctx, in.ID); err != nil {
-				return nil, s.fail(err)
-			}
-			p, err := s.Targets.Preview(ctx, in.InstanceID, in.ID)
-			if err != nil {
-				return nil, s.fail(err)
-			}
-			return &previewOut{Body: p}, nil
-		})
-
-	huma.Register(api, huma.Operation{OperationID: "list-card-bindings", Method: http.MethodGet, Path: "/cards/{id}/bindings",
-		Summary: "List the targets a card is pushed to", Tags: tags},
-		func(ctx context.Context, in *idIn) (*bindingsOut, error) {
-			if _, err := s.Lib.Cards.Get(ctx, in.ID); err != nil {
-				return nil, s.fail(err)
-			}
-			list, err := s.Targets.Bindings(ctx, in.ID)
-			if err != nil {
-				return nil, s.fail(err)
-			}
-			return &bindingsOut{Body: orEmpty(list)}, nil
-		})
-
 	huma.Register(api, huma.Operation{OperationID: "get-binding", Method: http.MethodGet, Path: "/bindings/{id}",
 		Summary: "Get a binding", Tags: tags},
 		func(ctx context.Context, in *idIn) (*bindingOut, error) {
@@ -143,7 +160,7 @@ func (s *Server) targetRoutes(api huma.API) {
 		})
 
 	huma.Register(api, huma.Operation{OperationID: "unbind", Method: http.MethodDelete, Path: "/bindings/{id}",
-		Summary: "Unbind a card from a target", Description: "Forgets the binding and its pushes. The app keeps its copy.",
+		Summary: "Unbind a card or lorebook from a target", Description: "Forgets the binding and its pushes. The app keeps its copy.",
 		Tags: tags, DefaultStatus: http.StatusNoContent},
 		func(ctx context.Context, in *idIn) (*struct{}, error) {
 			return nil, s.fail(s.Targets.Unbind(ctx, in.ID))
@@ -157,7 +174,8 @@ func (s *Server) targetRoutes(api huma.API) {
 
 	huma.Register(api, huma.Operation{OperationID: "adopt", Method: http.MethodPost, Path: "/bindings/{id}/adopt",
 		Summary: "Adopt the app's changes", Tags: tags,
-		Description: "Changes to character_book aren't adopted. To discard the app's changes, push instead."},
+		Description: "Adopts into the card or lorebook the binding is for. A card's changes to character_book aren't adopted. " +
+			"To discard the app's changes, push instead."},
 		func(ctx context.Context, in *adoptIn) (*bindingOut, error) {
 			if in.Body.Into != "ignore" && in.Body.BaseRevisionID == 0 {
 				return nil, huma.Error400BadRequest("base_revision_id is required unless into is ignore")

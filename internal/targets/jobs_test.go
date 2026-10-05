@@ -151,3 +151,19 @@ func TestBulkPushDedupes(t *testing.T) {
 		t.Fatalf("%d children, %v", n, err)
 	}
 }
+
+func TestLorebookPushJob(t *testing.T) {
+	e := setup(t, map[string]any{"lorebooks": "standalone"})
+	lb := e.newLorebook("Forge lore")
+	q := jobs.New(e.pool)
+	j, err := e.s.EnqueueLorebookPush(e.ctx, q, e.inst, lb, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := e.startWorker(q)(j.ID); got.Status != jobs.StatusSucceeded {
+		t.Fatalf("job %s (%v)", got.Status, got.Error)
+	}
+	if s := e.lorebookStatus(lb); s != "in_sync" {
+		t.Fatalf("status %s", s)
+	}
+}

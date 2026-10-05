@@ -141,3 +141,42 @@ func TestBindingRequestChecks(t *testing.T) {
 		t.Fatalf("body leaks the cause: %s", r.Body)
 	}
 }
+
+func TestLorebookPushRoutes(t *testing.T) {
+	e := newEnv(t)
+	dir := t.TempDir()
+	inst, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "fake", Name: "Target",
+		Config: map[string]any{"dir": dir, "lorebooks": "standalone"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lb entityOut
+	e.call("POST", "/lorebooks", map[string]any{"data": map[string]any{"name": "Forge lore", "entries": []any{}}}, 201, &lb)
+	path := fmt.Sprintf("/lorebooks/%d", lb.ID)
+
+	var j jobOut
+	e.call("POST", path+"/push", map[string]any{"instance_id": inst}, 202, &j)
+	if j.Kind != targets.PushKind {
+		t.Fatalf("push job = %+v", j)
+	}
+	e.call("POST", "/lorebooks/999/push", map[string]any{"instance_id": inst}, 404, nil)
+
+	var p targets.Preview
+	e.call("GET", fmt.Sprintf("%s/push-preview?instance_id=%d", path, inst), nil, 200, &p)
+	if p.Lorebook == nil || p.Replaces {
+		t.Fatalf("preview = %+v", p)
+	}
+	// No worker runs here, so push directly.
+	if _, err := e.s.Targets.PushLorebook(context.Background(), inst, lb.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	var list []targets.Binding
+	e.call("GET", path+"/bindings", nil, 200, &list)
+	if len(list) != 1 || list[0].LorebookID != lb.ID || list[0].RemoteID != "l1" || list[0].Status != "in_sync" {
+		t.Fatalf("bindings = %+v", list)
+	}
+	e.call("GET", fmt.Sprintf("%s/push-preview?instance_id=%d", path, inst), nil, 200, &p)
+	if !p.Replaces || len(p.Changes) != 0 {
+		t.Fatalf("preview after push = %+v", p)
+	}
+}

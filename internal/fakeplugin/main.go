@@ -86,6 +86,10 @@ func main() {
 			return newTarget(config).put(params)
 		case protocol.MethodTargetGet:
 			return newTarget(config).get(params)
+		case protocol.MethodTargetPutLorebook:
+			return newTarget(config).putLorebook(params)
+		case protocol.MethodTargetGetLorebook:
+			return newTarget(config).getLorebook(params)
 		case protocol.MethodCodecEncode:
 			return codecEncode(blobTmp, params, *mode)
 		case protocol.MethodCodecDecode:

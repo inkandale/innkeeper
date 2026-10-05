@@ -339,6 +339,24 @@ func (q *Queue) ChildCounts(ctx context.Context, parent int64) (map[string]int, 
 	return out, err
 }
 
+// ChildOutcomes counts a parent's finished children by the outcome in their
+// progress, for children that report one.
+func (q *Queue) ChildOutcomes(ctx context.Context, parent int64) (map[string]int, error) {
+	rows, err := q.pool.Query(ctx, `SELECT progress->>'outcome', count(*)::int FROM job
+		WHERE parent_id = $1 AND progress->>'outcome' IS NOT NULL GROUP BY 1`, parent)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]int{}
+	var outcome string
+	var n int
+	_, err = pgx.ForEachRow(rows, []any{&outcome, &n}, func() error {
+		out[outcome] = n
+		return nil
+	})
+	return out, err
+}
+
 // Prune deletes top-level jobs that finished more than age ago, with their
 // children.
 func (q *Queue) Prune(ctx context.Context, age time.Duration) (int64, error) {

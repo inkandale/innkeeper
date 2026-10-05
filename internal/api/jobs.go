@@ -40,6 +40,7 @@ type jobOut struct {
 	CreatedAt   time.Time       `json:"created_at"`
 	FinishedAt  *time.Time      `json:"finished_at,omitempty"`
 	Children    map[string]int  `json:"children,omitempty" doc:"A bulk job's children, counted by status. Only get-job, cancel-job, and watch-job fill it."`
+	Outcomes    map[string]int  `json:"outcomes,omitempty" doc:"A bulk import's finished children, counted by outcome: created, bound, already_bound, duplicate, or missing. Filled like children."`
 }
 
 func toJob(j jobs.Job) jobOut {
@@ -90,7 +91,7 @@ func (s *Server) usable(ctx context.Context, id int64, capability string) error 
 	return nil
 }
 
-// job returns a job, with child counts for a bulk job.
+// job returns a job, with child counts and outcomes for a bulk job.
 func (s *Server) job(ctx context.Context, id int64) (jobOut, error) {
 	j, err := s.Queue.Get(ctx, id)
 	if err != nil {
@@ -99,6 +100,9 @@ func (s *Server) job(ctx context.Context, id int64) (jobOut, error) {
 	out := toJob(j)
 	if j.Kind == bulk.Kind {
 		if out.Children, err = s.Queue.ChildCounts(ctx, id); err != nil {
+			return jobOut{}, s.fail(err)
+		}
+		if out.Outcomes, err = s.Queue.ChildOutcomes(ctx, id); err != nil {
 			return jobOut{}, s.fail(err)
 		}
 	}

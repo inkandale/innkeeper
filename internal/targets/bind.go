@@ -43,7 +43,8 @@ func (s *Service) items(ctx context.Context, k kind, instanceID int64) ([]Item, 
 	if err := s.reg.Call(ctx, s.plugins, inst, k.list, nil, &res); err != nil {
 		return nil, err
 	}
-	rows, err := s.pool.Query(ctx, `SELECT remote_id, id FROM binding WHERE instance_id = $1 AND `+k.col+` IS NOT NULL`,
+	rows, err := s.pool.Query(ctx, `SELECT remote_id, id FROM binding WHERE instance_id = $1 AND `+k.col+` IS NOT NULL
+		AND remote_state <> 'missing'`,
 		instanceID)
 	if err != nil {
 		return nil, err

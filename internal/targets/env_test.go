@@ -177,12 +177,15 @@ func (e *env) remoteData(id string) map[string]any {
 	return data
 }
 
-// editRemote changes the app's copy as the owner would in the app. A nil
-// value removes the field.
+// editRemote changes the app's copy of a card or lorebook as the owner would
+// in the app. A nil value removes the field.
 func (e *env) editRemote(id, key string, value any) {
 	e.t.Helper()
 	card := e.remote(id)
 	data, _ := card["data"].(map[string]any)
+	if book, ok := card["lorebook"].(map[string]any); ok {
+		data = book
+	}
 	if value == nil {
 		delete(data, key)
 	} else {

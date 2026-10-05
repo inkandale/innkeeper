@@ -98,8 +98,8 @@ Every API token has a tier, and every route needs one:
 | Tier | Allows |
 |---|---|
 | `read` | Anything that changes nothing: lists, search, push previews, drift checks |
-| `write` | Also changes to the library, which revision history can undo: edits, adopts, imports, instance settings |
-| `destructive` | Also what Innkeeper can't undo: pushes, unbinding, deleting instances, setting secrets or an owner, managing tokens |
+| `write` | Also changes to the library, which revision history can undo: edits, adopts, imports |
+| `destructive` | Also what Innkeeper can't undo, or what grants more access: pushes, unbinding, deleting collections, creating or changing plugin instances, managing tokens |
 
 `innkeeper token create <name>` makes a `read` token unless you name a tier.
 A token can't create one with a higher tier. A browser login has every tier.

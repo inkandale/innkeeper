@@ -93,12 +93,9 @@ func (s *Server) instanceRoutes(api huma.API) {
 			return &instancesOut{Body: orEmpty(list)}, nil
 		})
 
-	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "create-instance", Method: http.MethodPost, Path: "/instances",
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "create-instance", Method: http.MethodPost, Path: "/instances",
 		Summary: "Configure a plugin instance", Tags: tags, DefaultStatus: http.StatusCreated},
 		func(ctx context.Context, in *createInstanceIn) (*instanceOut, error) {
-			if err := needsDestructive(ctx, in.Body.Secrets != nil, in.Body.OwnerSubject != nil); err != nil {
-				return nil, err
-			}
 			id, err := s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: in.Body.Plugin, Name: in.Body.Name,
 				Config: in.Body.Config, Secrets: in.Body.Secrets, OwnerSubject: in.Body.OwnerSubject})
 			if err != nil {
@@ -113,12 +110,9 @@ func (s *Server) instanceRoutes(api huma.API) {
 			return s.instance(ctx, in.ID)
 		})
 
-	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "update-instance", Method: http.MethodPatch, Path: "/instances/{id}",
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "update-instance", Method: http.MethodPatch, Path: "/instances/{id}",
 		Summary: "Change a plugin instance", Description: "Clears a broken instance, and its plugin restarts with the new settings.", Tags: tags},
 		func(ctx context.Context, in *updateInstanceIn) (*instanceOut, error) {
-			if err := needsDestructive(ctx, in.Body.Secrets != nil, in.Body.OwnerSubject != nil); err != nil {
-				return nil, err
-			}
 			err := s.Registry.UpdateInstance(ctx, in.ID, plugins.InstanceEdit{Name: in.Body.Name, Config: in.Body.Config,
 				Secrets: in.Body.Secrets, OwnerSubject: in.Body.OwnerSubject})
 			if err != nil {
@@ -132,14 +126,4 @@ func (s *Server) instanceRoutes(api huma.API) {
 		func(ctx context.Context, in *idIn) (*struct{}, error) {
 			return nil, s.fail(s.Registry.DeleteInstance(ctx, in.ID))
 		})
-}
-
-// needsDestructive refuses setting secrets or an owner without the
-// destructive tier: a secret overwrites one that can't be read back, and an
-// owner decides who can log in with every tier.
-func needsDestructive(ctx context.Context, secrets, owner bool) error {
-	if (secrets || owner) && !callerTier(ctx).Allows(tier.Destructive) {
-		return huma.Error403Forbidden("setting secrets or owner_subject needs a destructive token")
-	}
-	return nil
 }

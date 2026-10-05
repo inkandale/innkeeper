@@ -29,8 +29,8 @@ destructive, and the whole API enforces it.
 | Tier | Means | Examples |
 |---|---|---|
 | `read` | Changes nothing | Search, get, history, push previews, drift checks, job and plugin lists |
-| `write` | Changes the library, reversibly through revision history | Create, update, link, adopt, restore, import, cancel a job, instance config |
-| `destructive` | Can't be undone from Innkeeper | Push (overwrites the app's copy), bulk push, unbind, delete an instance, set a secret |
+| `write` | Changes the library, reversibly through revision history | Create, update, link, adopt, restore, import, cancel a job |
+| `destructive` | Can't be undone from Innkeeper, or grants more access | Push (overwrites the app's copy), bulk push, unbind, delete a collection, create, change, or delete a plugin instance, manage tokens |
 
 Tiers are ordered: a `write` grant also allows `read`, and `destructive`
 allows all three.
@@ -39,8 +39,9 @@ allows all three.
   default follows the method: `GET` and `HEAD` are `read`, anything else is
   `write`. Routes override it where the method misleads, such as
   `POST /search` (`read`) or `POST /cards/{id}/push` (`destructive`).
-  `PATCH /instances/{id}` is `destructive` when the body sets `secrets`, and
-  `write` otherwise. The authentication middleware refuses a request above
+  Creating or changing a plugin instance is `destructive`: its config
+  decides where the plugin sends its secrets, which folders it imports, and
+  who a login plugin lets in. The authentication middleware refuses a request above
   the caller's tier with `403`.
 - **Callers.** A browser session is `destructive`: it is the owner, logged
   in. An API token has a tier. Tokens that exist when this ships become
@@ -109,8 +110,8 @@ the API's status and message, such as `409` for a stale base revision.
 | `cancel_job` | write | `POST /jobs/{id}/cancel` |
 | `start_import` | write | `POST /imports`, folder imports only |
 | `list_plugins`, `list_instances` | read | plugins with config schemas; instances with secret names only |
-| `create_instance` | write, or destructive with secrets | `POST /instances` |
-| `update_instance` | write, or destructive with secrets | `PATCH /instances/{id}` |
+| `create_instance` | destructive | `POST /instances` |
+| `update_instance` | destructive | `PATCH /instances/{id}` |
 
 **Push confirmation.** `preview_push` returns `confirm`, a hash of the
 revision it rendered, the app copy it compared against, and its changes.

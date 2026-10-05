@@ -22,6 +22,10 @@
 - **Route table test.** A test walks the OpenAPI document and fails if an operation has no explicit tier where its method would mislead: every non-`GET` operation must declare one. That keeps a new route from silently defaulting to `write` when it should be `destructive`.
 - **Confirm.** `targets.Preview` gains `Confirm`: the hex SHA-256 of the JSON of the preview without `Confirm`. Push routes take an optional `confirm` body field. When present, the handler computes the preview again and refuses with `409` and the new preview if the hashes differ. A push job, once queued, doesn't check again: the preview and the enqueue happen in one request, and the job's own expectations guard re-runs.
 
+## Changes during the build
+
+Review found that instance config at `write` let a `write` token raise its own access: point a target's URL at its own host and trigger a read-tier drift check to receive the plugin's secrets, change a login plugin's trust settings, or move the import folder. Creating and changing instances is `destructive`, with no per-field check. Deleting a collection is `destructive`, since collections have no history.
+
 ## Route tiers
 
 | Tier | Operations |

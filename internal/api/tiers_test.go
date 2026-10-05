@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -23,6 +22,10 @@ var tierExceptions = map[string]tier.Tier{
 	"delete-instance": tier.Destructive,
 	"create-token":    tier.Destructive,
 	"revoke-token":    tier.Destructive,
+	// Instance settings decide what a plugin reaches and who can log in.
+	"create-instance":   tier.Destructive,
+	"update-instance":   tier.Destructive,
+	"delete-collection": tier.Destructive,
 }
 
 func (e *testEnv) tokenWith(t tier.Tier) string {
@@ -87,19 +90,11 @@ func TestTokenTiers(t *testing.T) {
 	}
 	e.call("POST", "/tokens", map[string]any{"name": "full", "tier": "destructive"}, 201, &made)
 
-	// Secrets and owners need destructive; other instance settings need write.
+	// Instance settings decide what a plugin reaches with its secrets, and
+	// who can log in, so they need destructive.
 	body := map[string]any{"plugin": "fake", "name": "T", "config": map[string]any{}}
-	if r := e.send("POST", "/instances", body, "Authorization", "Bearer "+write); r.Status != 201 {
+	if r := e.send("POST", "/instances", body, "Authorization", "Bearer "+write); r.Status != http.StatusForbidden {
 		t.Fatalf("write token creating an instance: %s", r)
-	}
-	for _, extra := range []map[string]any{{"secrets": map[string]any{"k": "v"}}, {"owner_subject": "me"}} {
-		b := map[string]any{"name": "T2"}
-		for k, v := range extra {
-			b[k] = v
-		}
-		if r := e.send("PATCH", fmt.Sprintf("/instances/%d", e.importID), b, "Authorization", "Bearer "+write); r.Status != http.StatusForbidden {
-			t.Fatalf("write token setting %v: %s", extra, r)
-		}
 	}
 }
 

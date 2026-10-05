@@ -96,7 +96,7 @@ func (s *Server) organizeRoutes(api huma.API) {
 			return &collectionOut{Body: c}, nil
 		})
 
-	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "delete-collection", Method: http.MethodDelete, Path: "/collections/{id}",
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "delete-collection", Method: http.MethodDelete, Path: "/collections/{id}",
 		Summary: "Delete a collection", Description: "Its cards stay in the library.", Tags: tags, DefaultStatus: http.StatusNoContent},
 		func(ctx context.Context, in *idIn) (*struct{}, error) {
 			return nil, s.fail(s.Lib.DeleteCollection(ctx, in.ID))

@@ -47,3 +47,21 @@ jobs:
           platforms: linux/amd64
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  chart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@v5
+      # Pushing an existing version replaces it; bump chart/Chart.yaml's
+      # version for any change a deployment should pick up deliberately.
+      - run: |
+          echo "$TOKEN" | helm registry login ghcr.io -u "$ACTOR" --password-stdin
+          helm package chart
+          helm push innkeeper-*.tgz "oci://ghcr.io/$OWNER/charts"
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+          OWNER: ${{ github.repository_owner }}

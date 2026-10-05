@@ -10,13 +10,17 @@ import (
 // The push and pull capabilities. A push target answers target.describe and
 // target.put. One that can pull also answers target.get. A target that keeps
 // lorebooks on their own also answers target.put_lorebook, and
-// target.get_lorebook if it can pull.
+// target.get_lorebook if it can pull. A target that can pull also answers
+// target.list, and target.list_lorebooks, so the owner can bind an item the
+// app already has.
 const (
-	MethodTargetDescribe    = "target.describe"
-	MethodTargetPut         = "target.put"
-	MethodTargetGet         = "target.get"
-	MethodTargetPutLorebook = "target.put_lorebook"
-	MethodTargetGetLorebook = "target.get_lorebook"
+	MethodTargetDescribe      = "target.describe"
+	MethodTargetPut           = "target.put"
+	MethodTargetGet           = "target.get"
+	MethodTargetPutLorebook   = "target.put_lorebook"
+	MethodTargetGetLorebook   = "target.get_lorebook"
+	MethodTargetList          = "target.list"
+	MethodTargetListLorebooks = "target.list_lorebooks"
 )
 
 // CodeRemoteNotFound is the error for a remote_id the app no longer has.
@@ -101,4 +105,17 @@ type TargetGetParams struct {
 // TargetGetResult is the app's copy, as a CCv3 card.
 type TargetGetResult struct {
 	Card json.RawMessage `json:"card"`
+}
+
+// TargetListResult is what the app has, for target.list and
+// target.list_lorebooks. Neither takes params; the plugin pages through the
+// app itself.
+type TargetListResult struct {
+	Items []TargetItem `json:"items"`
+}
+
+// TargetItem is one card or lorebook in the app.
+type TargetItem struct {
+	RemoteID string `json:"remote_id"`
+	Name     string `json:"name"`
 }

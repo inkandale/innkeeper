@@ -214,3 +214,27 @@ func (t target) getLorebook(params json.RawMessage) (any, error) {
 	}
 	return protocol.TargetGetLorebookResult{Lorebook: item.Lorebook}, nil
 }
+
+// list returns the stored items with prefix, named by their name field.
+func (t target) list(prefix string) (any, error) {
+	files, _ := filepath.Glob(filepath.Join(t.Dir, prefix+"*.json"))
+	items := []protocol.TargetItem{}
+	for _, f := range files {
+		raw, err := os.ReadFile(f)
+		if err != nil {
+			return nil, err
+		}
+		var item struct {
+			Data     struct{ Name string } `json:"data"`
+			Lorebook struct{ Name string } `json:"lorebook"`
+		}
+		if err := json.Unmarshal(raw, &item); err != nil {
+			return nil, err
+		}
+		items = append(items, protocol.TargetItem{
+			RemoteID: strings.TrimSuffix(filepath.Base(f), ".json"),
+			Name:     cmp.Or(item.Data.Name, item.Lorebook.Name),
+		})
+	}
+	return protocol.TargetListResult{Items: items}, nil
+}

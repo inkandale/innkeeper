@@ -18,7 +18,7 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-tools | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code | database")
+	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-tools | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code | database | bad-list")
 	caps := flag.String("caps", "push,pull", "comma-separated capabilities to report")
 	flag.Parse()
 
@@ -102,6 +102,15 @@ func main() {
 			return newTarget(config).putLorebook(params)
 		case protocol.MethodTargetGetLorebook:
 			return newTarget(config).getLorebook(params)
+		case protocol.MethodTargetList, protocol.MethodTargetListLorebooks:
+			if *mode == "bad-list" {
+				return protocol.TargetListResult{Items: []protocol.TargetItem{{Name: "No ID"}}}, nil
+			}
+			prefix := "r"
+			if method == protocol.MethodTargetListLorebooks {
+				prefix = "l"
+			}
+			return newTarget(config).list(prefix)
 		case protocol.MethodCodecEncode:
 			return codecEncode(blobTmp, params, *mode)
 		case protocol.MethodCodecDecode:

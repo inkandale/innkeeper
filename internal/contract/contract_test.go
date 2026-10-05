@@ -28,8 +28,8 @@ func TestWellBehavedPluginPasses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 5 {
-		t.Fatalf("ran %d checks, want 5", len(results))
+	if len(results) != 6 {
+		t.Fatalf("ran %d checks, want 6", len(results))
 	}
 	if f := failed(results); len(f) > 0 {
 		t.Fatalf("checks failed: %v", f)
@@ -47,6 +47,7 @@ func TestMisbehavingPluginsFail(t *testing.T) {
 		{"crash-unknown", "exits after shutdown", "already exited"},
 		{"no-shutdown", "answers shutdown", "no response within"},
 		{"bad-describe", "target.describe returns a valid description", "fields is empty"},
+		{"bad-list", "a pull target answers target.list and target.list_lorebooks", "no remote_id"},
 	}
 
 	for _, tt := range tests {

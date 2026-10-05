@@ -227,6 +227,20 @@ it, reply with error `-32004`.
 {"jsonrpc": "2.0", "id": 4, "result": {"remote_id": "42"}}
 ```
 
+**`target.list`** and **`target.list_lorebooks`** take no params and say what
+the app already has, so the owner can link a library item to one instead of
+pushing a copy. Both need the `pull` capability. Page through the app
+yourself and reply with every item:
+
+```json
+{"items": [{"remote_id": "42", "name": "Brakka"}]}
+```
+
+| Field | Meaning |
+|---|---|
+| `remote_id` | The ID `target.get` takes. Not empty |
+| `name` | The name to show the owner |
+
 **`target.put_lorebook`** and **`target.get_lorebook`** work like `target.put`
 and `target.get`, for a target whose `lorebooks` is `standalone`. The core
 pushes a card's lorebooks before the card, so `lorebook_remote_ids` name
@@ -312,6 +326,8 @@ It loads the manifest, then checks that:
 - an unknown method returns `-32601` within 5 seconds
 - a `push` plugin's `target.describe` reply is valid, and claims `pull` only
   if the manifest declares it
+- a `push` plugin that claims `pull` answers `target.list` and
+  `target.list_lorebooks` within 5 seconds, with a `remote_id` on every item
 - a `codec` plugin encodes a sample card in each of its `formats` into
   `blob_tmp` with a valid extension, decodes it back, and returns an error
   when asked to decode a file that isn't a card

@@ -77,10 +77,17 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	}
 
 	if slices.Contains(m.Capabilities, "push") {
-		descErr := checkDescribe(ctx, p, m)
+		info, descErr := checkDescribe(ctx, p, m)
 		results = append(results, Result{"target.describe returns a valid description", descErr})
 		if errors.Is(descErr, protocol.ErrClosed) || !p.Alive() {
 			return exited(results, p), nil
+		}
+		if descErr == nil && info.Pull {
+			listErr := checkLists(ctx, p)
+			results = append(results, Result{"a pull target answers target.list and target.list_lorebooks", listErr})
+			if errors.Is(listErr, protocol.ErrClosed) || !p.Alive() {
+				return exited(results, p), nil
+			}
 		}
 	}
 
@@ -126,16 +133,32 @@ func exited(results []Result, p *pluginhost.Process) []Result {
 	return append(results, Result{"answers shutdown", dead}, Result{"exits after shutdown", dead})
 }
 
-func checkDescribe(ctx context.Context, p *pluginhost.Process, m *protocol.Manifest) error {
+func checkDescribe(ctx context.Context, p *pluginhost.Process, m *protocol.Manifest) (protocol.TargetInfo, error) {
 	var info protocol.TargetInfo
 	if err := call(ctx, p, protocol.MethodTargetDescribe, nil, &info); err != nil {
-		return err
+		return info, err
 	}
 	if err := info.Validate(); err != nil {
-		return err
+		return info, err
 	}
 	if info.Pull && !slices.Contains(m.Capabilities, "pull") {
-		return errors.New("pull is true, but the manifest doesn't declare the pull capability")
+		return info, errors.New("pull is true, but the manifest doesn't declare the pull capability")
+	}
+	return info, nil
+}
+
+// checkLists calls both list methods and wants every item to have a remote_id.
+func checkLists(ctx context.Context, p *pluginhost.Process) error {
+	for _, method := range []string{protocol.MethodTargetList, protocol.MethodTargetListLorebooks} {
+		var res protocol.TargetListResult
+		if err := call(ctx, p, method, nil, &res); err != nil {
+			return fmt.Errorf("%s: %w", method, err)
+		}
+		for _, it := range res.Items {
+			if it.RemoteID == "" {
+				return fmt.Errorf("%s: item %q has no remote_id", method, it.Name)
+			}
+		}
 	}
 	return nil
 }

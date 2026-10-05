@@ -76,14 +76,24 @@ with `docker compose up -d --no-build`.
 
 ## Kubernetes
 
-Every push to `main` publishes `ghcr.io/davidgibbons/innkeeper:main` and
-`:sha-<commit>`, for amd64 only, and the Helm chart in `chart/` to
-`oci://ghcr.io/davidgibbons/charts/innkeeper` at its `Chart.yaml` version.
+Every push to `main` publishes `ghcr.io/davidgibbons/innkeeper:latest` and
+`:sha-<commit>`, for amd64 only. Releases come from release-please: merging
+its release PR tags `v<version>`, publishes the image as `:<version>` and
+`:<major>.<minor>`, and publishes the Helm chart in `chart/` to
+`oci://ghcr.io/davidgibbons/charts/innkeeper`. The chart's `version` and
+`appVersion` both follow the release, and the chart runs the image matching
+its `appVersion` unless `image.tag` says otherwise. For testing, set
+`image.tag=latest` and `image.pullPolicy=Always`, and restart the deployment
+to pick up a new build.
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/):
+`feat:` and `fix:` decide the next version, and `feat!:` marks a breaking change.
+
 The chart runs the API and the worker as two containers in one pod, sharing
 the blob volume. It creates no Secrets; point it at yours:
 
 ```bash
-helm install innkeeper oci://ghcr.io/davidgibbons/charts/innkeeper --version 0.1.0 \
+helm install innkeeper oci://ghcr.io/davidgibbons/charts/innkeeper --version <version> \
   --set database.secretName=innkeeper-db --set database.key=uri \
   --set secretsKey.secretName=innkeeper --set secretsKey.key=INNKEEPER_SECRETS_KEY \
   --set publicUrl=https://innkeeper.example.com \

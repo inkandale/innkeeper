@@ -3,3 +3,4 @@ name: innkeeper
 description: Character card library with sync to chat apps
 type: application
 version: 0.1.0
+appVersion: "0.1.0"

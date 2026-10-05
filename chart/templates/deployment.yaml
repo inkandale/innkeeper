@@ -38,7 +38,7 @@ spec:
       containers:
         {{- range $cmd := list "api" "worker" }}
         - name: {{ $cmd }}
-          image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag }}"
+          image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
           imagePullPolicy: {{ $.Values.image.pullPolicy }}
           args: [{{ $cmd }}]
           env: {{- toYaml $env | nindent 12 }}

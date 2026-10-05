@@ -109,6 +109,9 @@ func (s *Service) bind(ctx context.Context, k kind, instanceID, id int64, remote
 		return Binding{}, err
 	}
 	defer tx.Rollback(ctx)
+	if err := lock(ctx, tx, k, instanceID, id); err != nil {
+		return Binding{}, err
+	}
 	var bindingID int64
 	err = tx.QueryRow(ctx, `INSERT INTO binding (instance_id, `+k.col+`, remote_id, remote_state, accepted_data,
 			accepted_hash)

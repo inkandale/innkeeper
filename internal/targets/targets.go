@@ -172,7 +172,7 @@ func (s *Service) Unbind(ctx context.Context, id int64) error {
 	return nil
 }
 
-// lock serializes pushes of one card or lorebook to one target, so
+// lock serializes pushes and binds of one card or lorebook to one target, so
 // concurrent first pushes can't make two copies. It holds until tx ends.
 func lock(ctx context.Context, tx pgx.Tx, k kind, instanceID, id int64) error {
 	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,

@@ -1,4 +1,4 @@
-name: image
+name: release
 
 on:
   push:
@@ -7,11 +7,27 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
-  push:
+  release-please:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      created: ${{ steps.rp.outputs.release_created }}
+      version: ${{ steps.rp.outputs.version }}
+    steps:
+      - id: rp
+        uses: googleapis/release-please-action@v5
+
+  # Runs here rather than on the tag: a tag pushed with GITHUB_TOKEN starts no workflows.
+  image:
+    needs: release-please
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -27,8 +43,10 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=main
+            type=raw,value=latest
             type=sha,prefix=sha-
+            type=semver,pattern={{version}},value=${{ needs.release-please.outputs.version }},enable=${{ needs.release-please.outputs.created == 'true' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-please.outputs.version }},enable=${{ needs.release-please.outputs.created == 'true' }}
       # The plugins stage clones the private innkeeper-plugins repo with this
       # read-only deploy key.
       - run: |
@@ -49,14 +67,17 @@ jobs:
           cache-to: type=gha,mode=max
 
   chart:
+    needs: release-please
+    if: needs.release-please.outputs.created == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: azure/setup-helm@v5
-      # Pushing an existing version replaces it; bump chart/Chart.yaml's
-      # version for any change a deployment should pick up deliberately.
       - run: |
           echo "$TOKEN" | helm registry login ghcr.io -u "$ACTOR" --password-stdin
           helm package chart

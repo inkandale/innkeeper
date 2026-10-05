@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "784ec2541938ff8bd201e3fcb0c8c56601ff2de1",
+  "include-component-in-tag": false,
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "innkeeper",
+      "extra-files": [
+        {"type": "yaml", "path": "chart/Chart.yaml", "jsonpath": "$.version"},
+        {"type": "yaml", "path": "chart/Chart.yaml", "jsonpath": "$.appVersion"}
+      ]
+    }
+  }
+}

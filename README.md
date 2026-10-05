@@ -147,6 +147,18 @@ innkeeper import <instance-id> '{"blob": "<sha256>", "name": "brakka.png"}'
 
 ## Sync
 
+The image ships a target for [Lumiverse](https://github.com/prolix-oc/Lumiverse).
+Add one per Lumiverse account; its
+[README](https://github.com/davidgibbons/innkeeper-plugins/tree/main/lumiverse)
+covers what it syncs:
+
+```bash
+innkeeper call POST /instances '{"plugin": "lumiverse", "name": "Lumiverse",
+  "config": {"url": "https://lumiverse.example.com", "username": "owner"},
+  "secrets": {"password": "<password>"}}'
+innkeeper call POST /cards/<id>/push '{"instance_id": <instance-id>}'
+```
+
 A card pushed to a target app gets a binding. `GET /cards/{id}/bindings`
 shows its status on each target:
 

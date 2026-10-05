@@ -6,13 +6,16 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/davidgibbons/innkeeper/internal/blobstore"
+	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/secrets"
 	"github.com/davidgibbons/innkeeper/internal/testdb"
+	"github.com/davidgibbons/innkeeper/internal/testutil"
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
@@ -139,5 +142,32 @@ func TestProvisionDatabasesKeyValueURL(t *testing.T) {
 	delete(reg.manifests, "cat-log")
 	if err := reg.ProvisionDatabases(ctx, "host=localhost dbname=innkeeper"); err != nil {
 		t.Errorf("key-value URL without opted-in plugins: %v", err)
+	}
+}
+
+func TestPluginUsesItsDatabase(t *testing.T) {
+	ctx := context.Background()
+	reg, _, dbURL := newDBRegistry(t)
+	m, err := protocol.LoadManifest(testutil.FakePlugin(t, "-mode=database"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg.manifests["fake"] = m
+	if err := reg.ProvisionDatabases(ctx, dbURL); err != nil {
+		t.Fatal(err)
+	}
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: "Fake"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst, err := reg.Instance(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mgr := pluginhost.NewManager(nil, time.Minute, quiet)
+	t.Cleanup(mgr.Close)
+	var got string
+	if err := reg.Call(ctx, mgr, inst, "db", "meow", &got); err != nil || got != "meow" {
+		t.Fatalf("db call: %q, %v", got, err)
 	}
 }

@@ -25,6 +25,10 @@ import (
 // variable so tests can shorten it.
 var callTimeout = 5 * time.Second
 
+// DatabaseURL is sent to the plugin as database_url, for a plugin that
+// declares `database = true`. Empty sends none.
+var DatabaseURL string
+
 // Result is the outcome of one check. Err is nil when it passed.
 type Result struct {
 	Name string
@@ -54,7 +58,7 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 		return nil, err
 	}
 	params := protocol.InitializeParams{InstanceID: "contract-check", Config: map[string]any{}, Secrets: secrets,
-		BlobStores: map[string]string{"contract-check": root}, BlobTmp: tmp}
+		BlobStores: map[string]string{"contract-check": root}, BlobTmp: tmp, DatabaseURL: DatabaseURL}
 
 	p, err := pluginhost.Start(ctx, m, params, noCore, log)
 	results := []Result{{"initialize handshake matches manifest", err}}

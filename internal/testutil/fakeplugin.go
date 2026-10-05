@@ -45,6 +45,9 @@ capabilities = [%s]
 	if slices.Contains(caps, "codec") {
 		manifest += "formats = [\"fake\"]\n"
 	}
+	if slices.Contains(args, "-mode=database") {
+		manifest += "database = true\n"
+	}
 	if err := os.WriteFile(filepath.Join(dir, "plugin.toml"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}

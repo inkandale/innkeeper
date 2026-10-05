@@ -12,23 +12,26 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
 func main() {
-	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-tools | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code")
+	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-tools | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code | database")
 	caps := flag.String("caps", "push,pull", "comma-separated capabilities to report")
 	flag.Parse()
 
 	var conn *protocol.Conn
 	var blobTmp string
 	var config map[string]any
+	var databaseURL string
 	handler := func(ctx context.Context, method string, params json.RawMessage) (any, error) {
 		switch method {
 		case protocol.MethodInitialize:
 			var init protocol.InitializeParams
 			_ = json.Unmarshal(params, &init)
-			blobTmp, config = init.BlobTmp, init.Config
+			blobTmp, config, databaseURL = init.BlobTmp, init.Config, init.DatabaseURL
 			res := protocol.InitializeResult{
 				Protocol:     protocol.Version,
 				Name:         "fake",
@@ -60,6 +63,8 @@ func main() {
 			var name string
 			_ = json.Unmarshal(params, &name)
 			return os.Getenv(name), nil
+		case "db":
+			return dbRoundTrip(ctx, databaseURL, params)
 		case "callback":
 			var out string
 			err := conn.Call(ctx, "core.ping", nil, &out)
@@ -216,4 +221,24 @@ func importRun(conn *protocol.Conn, blobTmp string, params json.RawMessage) (any
 		_ = conn.Notify(protocol.NotifyCheckpoint, protocol.Checkpoint{Run: p.Run, Checkpoint: next})
 	}
 	return struct{}{}, nil
+}
+
+// dbRoundTrip stores the string in params through database_url and reads it
+// back, so a test can tell the plugin reached its own schema.
+func dbRoundTrip(ctx context.Context, url string, params json.RawMessage) (any, error) {
+	var v string
+	if err := json.Unmarshal(params, &v); err != nil {
+		return nil, protocol.NewError(protocol.CodeInvalidParams, err.Error(), false)
+	}
+	conn, err := pgx.Connect(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close(ctx)
+	if _, err := conn.Exec(ctx, `CREATE TABLE IF NOT EXISTS note (v text)`); err != nil {
+		return nil, err
+	}
+	var got string
+	err = conn.QueryRow(ctx, `INSERT INTO note VALUES ($1) RETURNING v`, v).Scan(&got)
+	return got, err
 }

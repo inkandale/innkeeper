@@ -72,6 +72,7 @@ func run(args []string) error {
 
 func pluginCheck(dir string) error {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	contract.DatabaseURL = os.Getenv("INNKEEPER_PLUGIN_DATABASE_URL")
 	results, err := contract.Check(context.Background(), dir, log)
 	if err != nil {
 		return err

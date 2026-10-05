@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/davidgibbons/innkeeper/protocol"
 )
@@ -81,6 +82,12 @@ func (t target) put(params json.RawMessage) (any, error) {
 	if p.Avatar != "" {
 		stored["avatar"] = p.Avatar
 	}
+	if p.Key != "" {
+		if id, ok := t.byKey(p.Key); ok {
+			return protocol.TargetPutResult{RemoteID: id}, nil
+		}
+		stored["key"] = p.Key
+	}
 	raw, err := json.Marshal(stored)
 	if err != nil {
 		return nil, err
@@ -124,6 +131,18 @@ func (t target) put(params json.RawMessage) (any, error) {
 		os.Exit(1)
 	}
 	return protocol.TargetPutResult{RemoteID: id}, nil
+}
+
+// byKey finds the card a put with this key created.
+func (t target) byKey(key string) (string, bool) {
+	files, _ := filepath.Glob(filepath.Join(t.Dir, "*.json"))
+	for _, f := range files {
+		var c struct{ Key string }
+		if raw, err := os.ReadFile(f); err == nil && json.Unmarshal(raw, &c) == nil && c.Key == key {
+			return strings.TrimSuffix(filepath.Base(f), ".json"), true
+		}
+	}
+	return "", false
 }
 
 func (t target) get(params json.RawMessage) (any, error) {

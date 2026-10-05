@@ -198,9 +198,17 @@ warns the owner before a push that would drop content in other fields.
 | `card` | The CCv3 card, with this instance's override applied |
 | `remote_id` | Your ID for the app's copy. Absent for a new card, or when `update` is `false` |
 | `avatar` | Absolute path to the avatar image in a blob store, or absent. Read it; don't move or change it |
+| `key` | Present for a new card. See below |
 
 Reply with `remote_id`. If the app no longer has `remote_id`, reply with error
 `-32004`; the core then sends the card again as a new one.
+
+The core sends the same `key` again when it retries a create, such as after
+it was killed before recording your reply. Make creates idempotent: remember
+which card each `key` created, and if a later put has the same `key` and the
+app still has that card, reply with its `remote_id` without creating another.
+Keep the key with the card in the app where you can, such as in a note or an
+extension field, so it survives your plugin restarting.
 
 **`target.get`** reads one card back.
 
@@ -212,7 +220,7 @@ Reply with `card`, the app's copy as a CCv3 card. If the app no longer has
 it, reply with error `-32004`.
 
 ```json
-{"jsonrpc": "2.0", "id": 4, "method": "target.put", "params": {"card": {"spec": "chara_card_v3", "spec_version": "3.0", "data": {"name": "Brakka"}}}}
+{"jsonrpc": "2.0", "id": 4, "method": "target.put", "params": {"card": {"spec": "chara_card_v3", "spec_version": "3.0", "data": {"name": "Brakka"}}, "key": "3:12:57"}}
 {"jsonrpc": "2.0", "id": 4, "result": {"remote_id": "42"}}
 ```
 

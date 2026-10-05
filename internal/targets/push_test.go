@@ -233,3 +233,22 @@ func TestConcurrentPushesNeedOneConnection(t *testing.T) {
 		}
 	}
 }
+
+// A push killed after the app made the card records nothing, so its job runs
+// again; the put key stops that making a second copy.
+func TestPushRerunAfterCreateReusesCopy(t *testing.T) {
+	e := setup(t, map[string]any{"fail_put": "crash"})
+	if _, err := e.s.push(e.ctx, e.inst, e.card, false, "job-1", nil); !errors.Is(err, ErrUncertain) {
+		t.Fatalf("first run: %v, want ErrUncertain", err)
+	}
+	if err := e.reg.UpdateInstance(e.ctx, e.inst, plugins.InstanceEdit{Config: map[string]any{"dir": e.dir}}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := e.s.push(e.ctx, e.inst, e.card, false, "job-1", nil)
+	if err != nil || b.RemoteID != "r1" {
+		t.Fatalf("re-run: %+v, %v; want remote r1", b, err)
+	}
+	if files, _ := os.ReadDir(e.dir); len(files) != 1 {
+		t.Fatalf("the app has %d cards, want 1", len(files))
+	}
+}

@@ -2,6 +2,7 @@ package targets
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,7 +19,7 @@ import (
 // made in the app. A target that can't update gets another copy, but only
 // when newCopy is set. If the app lost its copy, the push makes a new one.
 func (s *Service) Push(ctx context.Context, instanceID, cardID int64, newCopy bool) (Binding, error) {
-	return s.push(ctx, instanceID, cardID, newCopy, nil)
+	return s.push(ctx, instanceID, cardID, newCopy, rand.Text(), nil)
 }
 
 // pushExpect is what a queued push job saw when it was queued.
@@ -32,8 +33,9 @@ type pushExpect struct {
 var errAlreadyPushed = errors.New("already pushed")
 
 // push is Push, except that with expect it gives up with errAlreadyPushed
-// if the card was pushed since expect.
-func (s *Service) push(ctx context.Context, instanceID, cardID int64, newCopy bool, expect *pushExpect) (Binding, error) {
+// if the card was pushed since expect. key is the target.put key for a
+// create; a re-run of the same push must pass the same key.
+func (s *Service) push(ctx context.Context, instanceID, cardID int64, newCopy bool, key string, expect *pushExpect) (Binding, error) {
 	inst, info, err := s.describe(ctx, instanceID)
 	if err != nil {
 		return Binding{}, err
@@ -74,27 +76,25 @@ func (s *Service) push(ctx context.Context, instanceID, cardID int64, newCopy bo
 	if expect != nil && create && bound && (expect.lastPush == nil || lastPush == nil || *expect.lastPush != *lastPush) {
 		return Binding{}, errAlreadyPushed
 	}
-	put := protocol.TargetPutParams{Card: r.card, Avatar: r.avatar}
+	put := protocol.TargetPutParams{Card: r.card, Avatar: r.avatar, Key: key}
 	switch {
 	case !bound || state == remoteMissing:
 	case info.Update:
-		put.RemoteID = remoteID
+		put.RemoteID, put.Key = remoteID, ""
 	case !newCopy:
 		return Binding{}, ErrNewCopy
 	}
 	// The app may finish a put after ctx is cancelled (a shutdown mid-bulk-
-	// push), so let it finish and record the result, or the retry makes a
-	// second copy. The timeout still bounds a hung plugin.
-	//
-	// ponytail: a hard kill between the put and the commit still records
-	// nothing, so the re-run creates again; INN-9 makes creates idempotent.
+	// push), so let it finish and record the result. The timeout still bounds
+	// a hung plugin. A hard kill before the commit records nothing; the key
+	// stops the re-run creating a second copy.
 	detached := context.WithoutCancel(ctx)
 	putCtx, cancelPut := context.WithTimeout(detached, 2*time.Minute)
 	defer cancelPut()
 	var res protocol.TargetPutResult
 	err = s.plugins.Call(putCtx, inst, protocol.MethodTargetPut, put, &res)
 	if put.RemoteID != "" && remoteNotFound(err) {
-		put.RemoteID = ""
+		put.RemoteID, put.Key = "", key
 		err = s.plugins.Call(putCtx, inst, protocol.MethodTargetPut, put, &res)
 	}
 	if err != nil {

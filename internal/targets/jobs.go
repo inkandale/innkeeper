@@ -81,7 +81,8 @@ func (s *Service) RunPush(ctx context.Context, r *jobs.Run) error {
 	if err := json.Unmarshal(r.Payload, &p); err != nil {
 		return fmt.Errorf("push payload: %w", err)
 	}
-	b, err := s.push(ctx, *r.InstanceID, p.CardID, p.NewCopy, &pushExpect{p.LastPush})
+	key := fmt.Sprintf("%d:%d:%d", *r.InstanceID, p.CardID, r.ID)
+	b, err := s.push(ctx, *r.InstanceID, p.CardID, p.NewCopy, key, &pushExpect{p.LastPush})
 	var startErr *pluginhost.StartError
 	switch {
 	case errors.Is(err, errAlreadyPushed):

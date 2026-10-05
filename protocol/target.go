@@ -52,11 +52,14 @@ func (t TargetInfo) Validate() error {
 }
 
 // TargetPutParams sends one card. RemoteID is empty for a new card. Avatar
-// is the absolute path of the avatar file in a blob store, or empty.
+// is the absolute path of the avatar file in a blob store, or empty. Key is
+// set for a new card: a put with a key already used, whose card the app still
+// has, returns that card's remote_id instead of creating another.
 type TargetPutParams struct {
 	Card     json.RawMessage `json:"card"`
 	RemoteID string          `json:"remote_id,omitempty"`
 	Avatar   string          `json:"avatar,omitempty"`
+	Key      string          `json:"key,omitempty"`
 }
 
 // TargetPutResult names the app's copy of the card.

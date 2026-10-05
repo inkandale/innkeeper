@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"sync"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
@@ -45,6 +46,8 @@ type Server struct {
 
 	// loginSlot lets one login run at a time.
 	loginSlot chan struct{}
+	// tools caches each plugin instance's MCP tools, by instance version.
+	tools sync.Map
 }
 
 // NoCore answers plugin callbacks. The API offers plugins none yet.
@@ -113,6 +116,7 @@ func (s *Server) Handler() http.Handler {
 	s.instanceRoutes(api)
 	s.jobRoutes(api)
 	s.targetRoutes(api)
+	s.toolRoutes(api)
 	// Browsers arrive here from a login provider; it isn't part of the API.
 	mux.HandleFunc("GET /auth/{id}/callback", s.callback)
 	mux.Handle("/mcp", mcp.New(mux, s.Auth))

@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -101,27 +102,33 @@ func annotations(t tier.Tier) *sdk.ToolAnnotations {
 }
 
 // New returns the /mcp handler. api is the API's handler, which tools call.
-// Clients authenticate with an API token; each sees the tools its tier allows.
-func New(api http.Handler, a *iauth.Auth) http.Handler {
-	servers := map[tier.Tier]*sdk.Server{}
-	for _, t := range []tier.Tier{tier.Read, tier.Write, tier.Destructive} {
-		s := sdk.NewServer(&sdk.Implementation{Name: "innkeeper", Version: "0.1.0"}, nil)
+// Clients authenticate with an API token; each sees the built-in and plugin
+// tools its tier allows.
+func New(api http.Handler, a *iauth.Auth, log *slog.Logger) http.Handler {
+	// Stateless servers are built per request; the cache keeps that cheap.
+	cache := sdk.NewSchemaCache()
+	h := sdk.NewStreamableHTTPHandler(func(r *http.Request) *sdk.Server {
+		info := auth.TokenInfoFromContext(r.Context())
+		if info == nil || len(info.Scopes) != 1 {
+			return nil
+		}
+		t, err := tier.Parse(info.Scopes[0])
+		if err != nil {
+			return nil
+		}
+		token, _ := info.Extra["token"].(string)
+		s := sdk.NewServer(&sdk.Implementation{Name: "innkeeper", Version: "0.1.0"}, &sdk.ServerOptions{SchemaCache: cache})
+		taken := map[string]bool{}
 		for _, tl := range tools {
+			taken[tl.meta.Name] = true
 			if t.Allows(tl.tier) {
 				meta := tl.meta
 				meta.Annotations = annotations(tl.tier)
 				tl.add(s, api, &meta)
 			}
 		}
-		servers[t] = s
-	}
-	h := sdk.NewStreamableHTTPHandler(func(r *http.Request) *sdk.Server {
-		info := auth.TokenInfoFromContext(r.Context())
-		if info == nil || len(info.Scopes) != 1 {
-			return nil
-		}
-		t, _ := tier.Parse(info.Scopes[0])
-		return servers[t]
+		addPluginTools(r.Context(), s, caller{api: api, auth: "Bearer " + token}, t, taken, log)
+		return s
 	}, &sdk.StreamableHTTPOptions{Stateless: true, CrossOriginProtection: http.NewCrossOriginProtection()})
 	verify := func(ctx context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
 		t, err := a.CheckToken(ctx, token)

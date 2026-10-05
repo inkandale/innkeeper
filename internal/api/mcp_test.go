@@ -13,6 +13,7 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/davidgibbons/innkeeper/internal/plugins"
 	"github.com/davidgibbons/innkeeper/internal/tier"
 )
 
@@ -80,7 +81,7 @@ func TestMCPToolsByTier(t *testing.T) {
 	}
 	read, write, all := names(tier.Read), names(tier.Write), names(tier.Destructive)
 	if !slices.Contains(read, "search_cards") || slices.Contains(read, "create_card") || slices.Contains(write, "push") ||
-		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || len(all) != 24 {
+		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 24 {
 		t.Fatalf("read %v\nwrite %v\nall %v", read, write, all)
 	}
 }
@@ -194,4 +195,45 @@ func TestMCPLowercaseBearer(t *testing.T) {
 	}
 	defer s.Close()
 	tool(t, s, "list_jobs", map[string]any{}, false)
+}
+
+// builtIn counts names that aren't the test env's plugin tools.
+func builtIn(names []string) int {
+	n := 0
+	for _, name := range names {
+		if !strings.HasPrefix(name, "login_") && !strings.HasPrefix(name, "importer_") {
+			n++
+		}
+	}
+	return n
+}
+
+func TestMCPPluginTools(t *testing.T) {
+	e := newEnv(t)
+	for _, name := range []string{"Twin Peaks!", "twin-peaks"} {
+		if _, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "fake", Name: name}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := e.mcpClient(tier.Read)
+	res, err := s.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, tl := range res.Tools {
+		names = append(names, tl.Name)
+	}
+	twins := 0
+	for _, n := range names {
+		if strings.HasPrefix(n, "twin_peaks_") && strings.HasSuffix(n, "_echo") {
+			twins++
+		}
+	}
+	if !slices.Contains(names, "importer_echo") || slices.Contains(names, "importer_note") || twins != 2 {
+		t.Fatalf("tools = %v", names)
+	}
+	if got := tool(t, s, "importer_echo", map[string]any{"text": "hi"}, false); got != "echo: hi" {
+		t.Fatalf("importer_echo = %q", got)
+	}
 }

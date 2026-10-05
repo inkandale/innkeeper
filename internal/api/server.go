@@ -119,7 +119,7 @@ func (s *Server) Handler() http.Handler {
 	s.toolRoutes(api)
 	// Browsers arrive here from a login provider; it isn't part of the API.
 	mux.HandleFunc("GET /auth/{id}/callback", s.callback)
-	mux.Handle("/mcp", mcp.New(mux, s.Auth))
+	mux.Handle("/mcp", mcp.New(mux, s.Auth, s.Log))
 	return mux
 }
 

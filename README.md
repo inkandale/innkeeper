@@ -120,6 +120,10 @@ always matches a preview Claude has shown you. Tools that need the
 `destructive` tier are marked destructive, so Claude asks before running
 them.
 
+Plugins can add tools too. They show as `<instance>_<tool>`, such as
+`lumiverse_list_untracked`, and each declares its tier; one that declares
+none counts as `destructive`. `GET /plugin-tools` lists them.
+
 ## CLI
 
 ```text

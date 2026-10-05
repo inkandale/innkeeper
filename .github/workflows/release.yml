@@ -48,11 +48,18 @@ jobs:
             type=semver,pattern={{version}},value=${{ needs.release-please.outputs.version }},enable=${{ needs.release-please.outputs.created == 'true' }}
             type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-please.outputs.version }},enable=${{ needs.release-please.outputs.created == 'true' }}
       # The plugins stage clones the private innkeeper-plugins repo with this
-      # read-only deploy key.
-      - run: |
+      # read-only deploy key. Building main's commit rather than "main" keeps
+      # the layer cache from reusing an older clone.
+      - id: plugins
+        run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$KEY" > ~/.ssh/plugins
           chmod 600 ~/.ssh/plugins
+          echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > ~/.ssh/known_hosts
+          ref=$(GIT_SSH_COMMAND="ssh -i ~/.ssh/plugins -o StrictHostKeyChecking=yes" \
+            git ls-remote git@github.com:davidgibbons/innkeeper-plugins.git refs/heads/main | cut -f1)
+          test -n "$ref"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
         env:
           KEY: ${{ secrets.PLUGINS_DEPLOY_KEY }}
       - uses: docker/build-push-action@v7
@@ -60,6 +67,7 @@ jobs:
           context: .
           push: true
           ssh: default=/home/runner/.ssh/plugins
+          build-args: PLUGINS_REF=${{ steps.plugins.outputs.ref }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64

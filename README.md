@@ -65,8 +65,11 @@ If something else already listens on port 8080, set `INNKEEPER_PORT` in
 `.env`. Docker doesn't report the clash; requests just reach the other
 program.
 
-The image includes the plugins from `innkeeper-plugins` at the commit
-`PLUGINS_REF` names in the `Dockerfile`. Building it clones that private
+The image includes the plugins from `innkeeper-plugins` at the branch or
+commit in the `PLUGINS_REF` build argument, `main` by default. A rebuild
+reuses its cached clone of `main`; to bundle newer plugins, pass a commit with
+`--build-arg PLUGINS_REF=<commit>` or build with `--no-cache`. Releases from CI
+always build `main`'s latest commit. Building clones that private
 repo, so it needs an SSH agent holding a key that can read it
 (`ssh-add -l`). For a key that isn't in the agent, build with
 `docker build --ssh default=$HOME/.ssh/<key> -t innkeeper:dev .`, then start

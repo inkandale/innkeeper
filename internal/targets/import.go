@@ -261,6 +261,10 @@ func (s *Service) place(ctx context.Context, k kind, instanceID int64, remoteID 
 		"import "+k.name+" "+hash); err != nil {
 		return ImportResult{}, err
 	}
+	// Another child may have imported this same item while this one waited.
+	if res, ok, err := s.boundItem(ctx, k, instanceID, remoteID); ok || err != nil {
+		return res, err
+	}
 	rows, err := tx.Query(ctx, `SELECT e.id, EXISTS (SELECT 1 FROM binding b WHERE b.instance_id = $2 AND b.`+k.col+` = e.id)
 		FROM `+k.table+` e JOIN `+k.revTable+` r ON r.id = e.head_revision_id
 		WHERE r.content_hash = $1 ORDER BY e.archived_at IS NOT NULL, e.id`, hash, instanceID)

@@ -102,7 +102,8 @@ func TestImportStandalone(t *testing.T) {
 		e.appCard(id, map[string]any{"name": name, "description": "A courier.", "first_mes": "Hi."},
 			map[string]any{"lorebook_remote_ids": []string{"l1"}})
 	}
-	if out := e.runImport(nil); out[OutcomeCreated] != 3 || len(out) != 1 {
+	// A card child may import l1 before l1's own child runs, which then finds it bound.
+	if out := e.runImport(nil); out[OutcomeCreated]+out[OutcomeAlreadyBound] != 3 || out[OutcomeCreated] < 2 {
 		t.Fatalf("outcomes = %v", out)
 	}
 	lb := e.bindingOf("l1")

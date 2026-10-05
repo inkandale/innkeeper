@@ -3,7 +3,10 @@
 # See "Try it with Docker Compose" in README.md.
 
 x-innkeeper: &innkeeper
-  build: .
+  build:
+    context: .
+    # The plugins stage clones the private innkeeper-plugins repo.
+    ssh: [default]
   image: innkeeper:dev
   environment:
     INNKEEPER_DATABASE_URL: postgres://innkeeper:innkeeper@db:5432/innkeeper?sslmode=disable

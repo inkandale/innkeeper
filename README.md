@@ -57,7 +57,14 @@ curl -H "Authorization: Bearer $INNKEEPER_TOKEN" "$INNKEEPER_URL/tags"
 
 If something else already listens on port 8080, set `INNKEEPER_PORT` in
 `.env`. Docker doesn't report the clash; requests just reach the other
-program. No plugins are installed in the image.
+program.
+
+The image includes the plugins from `innkeeper-plugins` at the commit
+`PLUGINS_REF` names in the `Dockerfile`. Building it clones that private
+repo, so it needs an SSH agent holding a key that can read it
+(`ssh-add -l`). For a key that isn't in the agent, build with
+`docker build --ssh default=~/.ssh/<key> -t innkeeper:dev .`, then start
+with `docker compose up -d --no-build`.
 
 `docker compose down -v` deletes the database and blobs.
 

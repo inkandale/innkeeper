@@ -60,7 +60,7 @@ Constraints this plan leaves for later plans:
   - `binding_status` joins `card`, so it leaves out lorebook bindings. Add a branch for them.
   - `target.put_lorebook` and `target.get_lorebook` are reserved names. Card pushes will need to pass the lorebooks' remote IDs.
   - `internal/targets/data.go` helpers (`project`, `diff`, `applyChanges`, `overrideChanges`) work on any data object, so lorebooks can reuse them.
-- **Binding a card the app already has (`target.list`):** such a binding has no push row, and `binding_status` inner-joins the last push, so it would vanish from statuses and the filter. Switch to a left join and treat "no push" as ahead.
+- **Binding a card the app already has (`target.list`):** done in `2026-10-05-09-bind-existing.md`. A bind writes a `push` row with `kind = 'bind'`, so the inner join stays.
 
 ## Design notes
 

@@ -193,12 +193,42 @@ func (t target) read(params json.RawMessage) ([]byte, error) {
 	return raw, err
 }
 
-func (t target) get(params json.RawMessage) (any, error) {
+// get replies with the stored card. With avatar, it copies the stored
+// avatar file into blobTmp, as a real plugin downloads it.
+func (t target) get(params json.RawMessage, blobTmp string) (any, error) {
 	raw, err := t.read(params)
 	if err != nil {
 		return nil, err
 	}
-	return protocol.TargetGetResult{Card: raw}, nil
+	var p protocol.TargetGetParams
+	_ = json.Unmarshal(params, &p)
+	var stored struct {
+		Avatar            string   `json:"avatar"`
+		LorebookRemoteIDs []string `json:"lorebook_remote_ids"`
+	}
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		return nil, err
+	}
+	res := protocol.TargetGetResult{Card: raw, LorebookRemoteIDs: stored.LorebookRemoteIDs}
+	if p.Avatar && stored.Avatar != "" {
+		img, err := os.ReadFile(stored.Avatar)
+		if err != nil {
+			return nil, err
+		}
+		f, err := os.CreateTemp(blobTmp, "avatar-*")
+		if err != nil {
+			return nil, err
+		}
+		_, werr := f.Write(img)
+		if cerr := f.Close(); werr == nil {
+			werr = cerr
+		}
+		if werr != nil {
+			return nil, werr
+		}
+		res.Avatar = f.Name()
+	}
+	return res, nil
 }
 
 func (t target) getLorebook(params json.RawMessage) (any, error) {

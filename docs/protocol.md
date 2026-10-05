@@ -218,9 +218,15 @@ extension field, so it survives your plugin restarting.
 | Param | Meaning |
 |---|---|
 | `remote_id` | The ID from `target.put` |
+| `avatar` | `true` when the core imports the card and wants its image too. Checks don't set it |
 
-Reply with `card`, the app's copy as a CCv3 card. If the app no longer has
-it, reply with error `-32004`.
+| Reply field | Meaning |
+|---|---|
+| `card` | The app's copy as a CCv3 card |
+| `avatar` | Only when asked: the card's image, as a file you wrote to `blob_tmp`, or absent if it has none |
+| `lorebook_remote_ids` | For `standalone` lorebooks: the remote IDs of the lorebooks the app links to the card, or `[]`. Omit it if you can't tell |
+
+If the app no longer has the card, reply with error `-32004`.
 
 ```json
 {"jsonrpc": "2.0", "id": 4, "method": "target.put", "params": {"card": {"spec": "chara_card_v3", "spec_version": "3.0", "data": {"name": "Brakka"}}, "key": "3:12:57"}}

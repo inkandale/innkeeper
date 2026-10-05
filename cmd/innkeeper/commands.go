@@ -225,6 +225,7 @@ func watchJob(ctx context.Context, c *client, id string) error {
 			Status   string          `json:"status"`
 			Progress json.RawMessage `json:"progress"`
 			Children map[string]int  `json:"children"`
+			Outcomes map[string]int  `json:"outcomes"`
 			Error    *string         `json:"error"`
 		}
 		if err := json.Unmarshal(data, &j); err != nil {
@@ -234,6 +235,9 @@ func watchJob(ctx context.Context, c *client, id string) error {
 		line := j.Status + " " + string(j.Progress)
 		if len(j.Children) > 0 {
 			line += fmt.Sprintf(" children %v", j.Children)
+		}
+		if len(j.Outcomes) > 0 {
+			line += fmt.Sprintf(" outcomes %v", j.Outcomes)
 		}
 		if j.Error != nil {
 			line += " error: " + *j.Error

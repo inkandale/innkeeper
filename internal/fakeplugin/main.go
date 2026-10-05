@@ -20,6 +20,7 @@ import (
 func main() {
 	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-tools | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code | database | bad-list")
 	caps := flag.String("caps", "push,pull", "comma-separated capabilities to report")
+	name := flag.String("name", "fake", "the plugin name to report")
 	flag.Parse()
 
 	var conn *protocol.Conn
@@ -34,7 +35,7 @@ func main() {
 			blobTmp, config, databaseURL = init.BlobTmp, init.Config, init.DatabaseURL
 			res := protocol.InitializeResult{
 				Protocol:     protocol.Version,
-				Name:         "fake",
+				Name:         *name,
 				Version:      "0.0.1",
 				Capabilities: strings.Split(*caps, ","),
 			}
@@ -97,7 +98,7 @@ func main() {
 		case protocol.MethodTargetPut:
 			return newTarget(config).put(params)
 		case protocol.MethodTargetGet:
-			return newTarget(config).get(params)
+			return newTarget(config).get(params, blobTmp)
 		case protocol.MethodTargetPutLorebook:
 			return newTarget(config).putLorebook(params)
 		case protocol.MethodTargetGetLorebook:

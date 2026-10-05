@@ -101,10 +101,11 @@ func TestBindCardWithStandaloneLorebooks(t *testing.T) {
 	e := setup(t, map[string]any{"lorebooks": "standalone"})
 	lb := e.newLorebook("Forge lore")
 	e.link(e.card, lb)
-	if b := e.bind(e.card, e.appCopy(e.card)); b.Status != "ahead" || b.RemoteState != "unchanged" {
+	// The app links its copy to the lorebook's bound copy, as the library does.
+	b := e.bind(e.card, e.appCopy(e.card))
+	if b.Status != "in_sync" || len(b.LastPush.LorebookRemoteIDs) != 1 {
 		t.Fatalf("binding = %+v", b)
 	}
-	// The lorebook's binding was left alone, so it binds to its own copy.
 	lorebooks, err := e.s.LorebookBindings(e.ctx, lb)
 	if err != nil {
 		t.Fatal(err)
@@ -112,9 +113,26 @@ func TestBindCardWithStandaloneLorebooks(t *testing.T) {
 	if err := e.s.Unbind(e.ctx, lorebooks[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	b, err := e.s.BindLorebook(e.ctx, e.inst, lb, lorebooks[0].RemoteID)
-	if err != nil || b.Status != "in_sync" || b.LastPush.Kind != "bind" {
-		t.Fatalf("lorebook binding = %+v, %v", b, err)
+	if s := e.status(e.card); s != "ahead" {
+		t.Fatalf("card status after unbinding its lorebook = %s, want ahead", s)
+	}
+	lbb, err := e.s.BindLorebook(e.ctx, e.inst, lb, lorebooks[0].RemoteID)
+	if err != nil || lbb.Status != "in_sync" || lbb.LastPush.Kind != "bind" {
+		t.Fatalf("lorebook binding = %+v, %v", lbb, err)
+	}
+	if s := e.status(e.card); s != "in_sync" {
+		t.Fatalf("card status = %s, want in_sync", s)
+	}
+}
+
+func TestBindCardWithoutReportedLinks(t *testing.T) {
+	e := setup(t, map[string]any{"lorebooks": "standalone"})
+	lb := e.newLorebook("Forge lore")
+	e.link(e.card, lb)
+	remoteID := e.appCopy(e.card)
+	e.forgetLinks(remoteID)
+	if b := e.bind(e.card, remoteID); b.Status != "ahead" || b.RemoteState != "unchanged" {
+		t.Fatalf("binding = %+v", b)
 	}
 }
 

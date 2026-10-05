@@ -97,14 +97,20 @@ type TargetPutResult struct {
 	RemoteID string `json:"remote_id"`
 }
 
-// TargetGetParams asks for the app's copy of one card.
+// TargetGetParams asks for the app's copy of one card. Avatar asks for its
+// image too; only imports set it, so checks don't download every image.
 type TargetGetParams struct {
 	RemoteID string `json:"remote_id"`
+	Avatar   bool   `json:"avatar,omitempty"`
 }
 
-// TargetGetResult is the app's copy, as a CCv3 card.
+// TargetGetResult is the app's copy, as a CCv3 card. Avatar is a file in
+// blob_tmp, or empty. LorebookRemoteIDs are the lorebooks the app links to
+// the card, for a standalone target; nil if the plugin doesn't say.
 type TargetGetResult struct {
-	Card json.RawMessage `json:"card"`
+	Card              json.RawMessage `json:"card"`
+	Avatar            string          `json:"avatar,omitempty"`
+	LorebookRemoteIDs []string        `json:"lorebook_remote_ids,omitempty"`
 }
 
 // TargetListResult is what the app has, for target.list and

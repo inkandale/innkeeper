@@ -8,7 +8,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /innkeeper ./cmd/innkee
 
 # The bundled plugins, built against this core's protocol package.
 FROM golang:1.27-alpine AS plugins
-ARG PLUGINS_REF=0e885421049c93b3574e07f4ebf28c3cee4f62ef
+ARG PLUGINS_REF=a72676bd0cd55f45ef13f45b7bcc4e481d4491ee
 RUN apk add --no-cache git make openssh-client \
     && mkdir -p -m 700 /root/.ssh \
     && echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > /root/.ssh/known_hosts

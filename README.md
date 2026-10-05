@@ -76,12 +76,20 @@ an owner, so start with an API token:
 ```bash
 export INNKEEPER_TOKEN=$(innkeeper token create admin)
 export INNKEEPER_URL=http://localhost:8080
-innkeeper call GET /plugins    # find a plugin with the auth capability
-innkeeper call POST /instances '{"plugin": "<auth plugin>", "name": "Login", "owner_subject": "<your subject>"}'
 ```
 
-`owner_subject` is the identity that provider reports for you; its README
-says what that is. Changing or clearing it logs that identity out.
+The bundled `password-login` plugin logs in with one password, kept as a
+bcrypt hash. Make the hash with the plugin, then create a login instance
+with it:
+
+```bash
+read -rs PW && printf '%s\n' "$PW" | docker compose exec -T api /plugins/password-login/password-login hash; unset PW
+innkeeper call POST /instances '{"plugin": "password-login", "name": "Login", "owner_subject": "owner", "secrets": {"password_hash": "<hash>"}}'
+```
+
+For another login provider, `owner_subject` is the identity it reports for
+you; its README says what that is. Changing or clearing `owner_subject` logs
+that identity out.
 
 ## CLI
 
@@ -111,6 +119,30 @@ that writes it. Export uses the oldest working codec instance for the format:
 ```bash
 innkeeper call POST /instances '{"plugin": "card-codec", "name": "Codec"}'
 innkeeper export 12 brakka.png
+```
+
+## Importing
+
+The bundled `card-import` plugin reads CCv3, V2, and V1 cards as PNG or
+JSON, and lorebooks as CCv3 or SillyTavern world info JSON. Importing the
+same file again adds nothing.
+
+To import a folder, put it under `./import`, or set `INNKEEPER_IMPORT_DIR`
+in `.env`. Compose mounts it read-only at `/import`:
+
+```bash
+innkeeper call POST /instances '{"plugin": "card-import", "name": "Import", "config": {"folder": "/import"}}'
+innkeeper import <instance-id>                         # everything in /import
+innkeeper import <instance-id> '{"path": "fantasy"}'   # only /import/fantasy
+```
+
+To import one file, upload it, then import the `sha256` from the reply
+within 24 hours:
+
+```bash
+curl -sf -H "Authorization: Bearer $INNKEEPER_TOKEN" -H 'Content-Type: application/octet-stream' \
+  --data-binary @brakka.png "$INNKEEPER_URL/blobs"
+innkeeper import <instance-id> '{"blob": "<sha256>", "name": "brakka.png"}'
 ```
 
 ## Sync

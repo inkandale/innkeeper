@@ -8,13 +8,15 @@ import (
 )
 
 // The push and pull capabilities. A push target answers target.describe and
-// target.put. One that can pull also answers target.get. The names
-// target.put_lorebook and target.get_lorebook are reserved for targets that
-// keep lorebooks on their own.
+// target.put. One that can pull also answers target.get. A target that keeps
+// lorebooks on their own also answers target.put_lorebook, and
+// target.get_lorebook if it can pull.
 const (
-	MethodTargetDescribe = "target.describe"
-	MethodTargetPut      = "target.put"
-	MethodTargetGet      = "target.get"
+	MethodTargetDescribe    = "target.describe"
+	MethodTargetPut         = "target.put"
+	MethodTargetGet         = "target.get"
+	MethodTargetPutLorebook = "target.put_lorebook"
+	MethodTargetGetLorebook = "target.get_lorebook"
 )
 
 // CodeRemoteNotFound is the error for a remote_id the app no longer has.
@@ -37,6 +39,9 @@ type TargetInfo struct {
 	// Delete is reserved: the core doesn't delete remote cards yet.
 	Delete    bool   `json:"delete"`
 	Lorebooks string `json:"lorebooks"`
+	// LorebookFields are the character_book keys the app keeps. Required
+	// when Lorebooks is standalone.
+	LorebookFields []string `json:"lorebook_fields,omitempty"`
 }
 
 // Validate reports every problem with the description at once.
@@ -47,6 +52,9 @@ func (t TargetInfo) Validate() error {
 	}
 	if !slices.Contains([]string{LorebooksEmbedded, LorebooksStandalone, LorebooksNone}, t.Lorebooks) {
 		errs = append(errs, fmt.Errorf("lorebooks %q must be embedded, standalone, or none", t.Lorebooks))
+	}
+	if t.Lorebooks == LorebooksStandalone && len(t.LorebookFields) == 0 {
+		errs = append(errs, errors.New("lorebook_fields is empty"))
 	}
 	return errors.Join(errs...)
 }
@@ -60,6 +68,24 @@ type TargetPutParams struct {
 	RemoteID string          `json:"remote_id,omitempty"`
 	Avatar   string          `json:"avatar,omitempty"`
 	Key      string          `json:"key,omitempty"`
+	// LorebookRemoteIDs are the card's lorebooks in the app, sorted, for a
+	// target with standalone lorebooks. The app links the card to exactly these.
+	LorebookRemoteIDs []string `json:"lorebook_remote_ids,omitempty"`
+}
+
+// TargetPutLorebookParams sends one lorebook, a CCv3 character_book.
+// RemoteID and Key work as in TargetPutParams. The reply is a
+// TargetPutResult.
+type TargetPutLorebookParams struct {
+	Lorebook json.RawMessage `json:"lorebook"`
+	RemoteID string          `json:"remote_id,omitempty"`
+	Key      string          `json:"key,omitempty"`
+}
+
+// TargetGetLorebookResult is the app's copy of a lorebook, for a
+// target.get_lorebook with TargetGetParams.
+type TargetGetLorebookResult struct {
+	Lorebook json.RawMessage `json:"lorebook"`
 }
 
 // TargetPutResult names the app's copy of the card.

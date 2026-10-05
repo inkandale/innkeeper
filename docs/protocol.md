@@ -186,7 +186,8 @@ instance's config. Don't contact the app to answer it.
 | `pull` | `true` if `target.get` works. Needs the `pull` capability |
 | `update` | `true` if a `target.put` with a `remote_id` changes that card. `false` for an app where every put makes a new copy |
 | `delete` | Reserved. The core doesn't delete cards in apps yet |
-| `lorebooks` | `embedded`: linked lorebooks arrive as `data.character_book`. `standalone`: the app keeps lorebooks on their own; `target.put_lorebook` and `target.get_lorebook` are reserved for this, and until they exist the core sends cards without lorebooks. `none`: the app has no lorebooks |
+| `lorebooks` | `embedded`: linked lorebooks arrive as `data.character_book`. `standalone`: the app keeps lorebooks on their own, sent with `target.put_lorebook`. `none`: the app has no lorebooks |
+| `lorebook_fields` | For `standalone`: the CCv3 `character_book` keys the app keeps, such as `name`, `description`, `entries` |
 
 The core compares only `fields` when it looks for changes made in the app, and
 warns the owner before a push that would drop content in other fields.
@@ -199,6 +200,7 @@ warns the owner before a push that would drop content in other fields.
 | `remote_id` | Your ID for the app's copy. Absent for a new card, or when `update` is `false` |
 | `avatar` | Absolute path to the avatar image in a blob store, or absent. Read it; don't move or change it |
 | `key` | Present for a new card. See below |
+| `lorebook_remote_ids` | For `standalone` lorebooks: the remote IDs of the card's lorebooks, sorted. Link the card to exactly these, replacing earlier links |
 
 Reply with `remote_id`. If the app no longer has `remote_id`, reply with error
 `-32004`; the core then sends the card again as a new one.
@@ -223,6 +225,21 @@ it, reply with error `-32004`.
 {"jsonrpc": "2.0", "id": 4, "method": "target.put", "params": {"card": {"spec": "chara_card_v3", "spec_version": "3.0", "data": {"name": "Brakka"}}, "key": "3:12:57"}}
 {"jsonrpc": "2.0", "id": 4, "result": {"remote_id": "42"}}
 ```
+
+**`target.put_lorebook`** and **`target.get_lorebook`** work like `target.put`
+and `target.get`, for a target whose `lorebooks` is `standalone`. The core
+pushes a card's lorebooks before the card, so `lorebook_remote_ids` name
+lorebooks you already have. `target.get_lorebook` needs the `pull` capability.
+
+| Param of `target.put_lorebook` | Meaning |
+|---|---|
+| `lorebook` | The CCv3 `character_book` object, with this instance's override applied |
+| `remote_id` | Your ID for the app's copy. Absent for a new lorebook |
+| `key` | Present for a new lorebook. Make creates idempotent, as for cards |
+
+Reply with `remote_id`. `target.get_lorebook` takes `remote_id` and replies
+with `lorebook`, the app's copy as a `character_book` object. Both reply with
+error `-32004` if the app no longer has `remote_id`.
 
 ### `codec`
 

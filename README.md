@@ -104,6 +104,22 @@ Every API token has a tier, and every route needs one:
 `innkeeper token create <name>` makes a `read` token unless you name a tier.
 A token can't create one with a higher tier. A browser login has every tier.
 
+## MCP
+
+The API serves MCP at `/mcp`, so Claude can search and edit the library,
+push to apps, run imports, and set up plugins. Connect Claude Code with an
+API token; its tier decides which tools Claude sees:
+
+```bash
+claude mcp add --transport http innkeeper "$INNKEEPER_URL/mcp" \
+  --header "Authorization: Bearer $(innkeeper token create claude write)"
+```
+
+The `push` tool needs the `confirm` value from `preview_push`, so a push
+always matches a preview Claude has shown you. Tools that need the
+`destructive` tier are marked destructive, so Claude asks before running
+them.
+
 ## CLI
 
 ```text

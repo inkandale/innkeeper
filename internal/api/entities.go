@@ -1,6 +1,7 @@
 package api
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -84,8 +85,9 @@ type revisionResp struct{ Body revisionOut }
 type restoreIn struct {
 	ID   int64 `path:"id"`
 	Body struct {
-		RevisionID     int64 `json:"revision_id" doc:"The old revision to restore"`
-		BaseRevisionID int64 `json:"base_revision_id" doc:"The current head revision"`
+		RevisionID     int64  `json:"revision_id" doc:"The old revision to restore"`
+		BaseRevisionID int64  `json:"base_revision_id" doc:"The current head revision"`
+		Source         string `json:"source,omitempty" enum:"ui,mcp" default:"ui"`
 	}
 }
 
@@ -268,7 +270,7 @@ func (s *Server) entityRoutes(api huma.API, ents *library.Entities, plural, sing
 			if err != nil {
 				return nil, err
 			}
-			e := library.Edit{Data: old.Data, Overrides: old.Overrides, Source: "ui",
+			e := library.Edit{Data: old.Data, Overrides: old.Overrides, Source: cmp.Or(in.Body.Source, "ui"),
 				Message: fmt.Sprintf("Restore revision %d", old.ID)}
 			if old.AvatarBlob != nil {
 				e.AvatarBlob = *old.AvatarBlob

@@ -1,0 +1,274 @@
+package mcp
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/davidgibbons/innkeeper/internal/tier"
+)
+
+type idIn struct {
+	ID int64 `json:"id"`
+}
+
+type entityIn struct {
+	Kind string `json:"kind" jsonschema:"card or lorebook"`
+	ID   int64  `json:"id"`
+}
+
+// plural is the API path segment for kind.
+func plural(kind string) (string, error) {
+	switch kind {
+	case "card":
+		return "cards", nil
+	case "lorebook":
+		return "lorebooks", nil
+	}
+	return "", fmt.Errorf("kind must be card or lorebook, not %q", kind)
+}
+
+type searchIn struct {
+	Query map[string]any `json:"query" jsonschema:"The search query, as the API's POST /search body: text, filter, sources, include, fields, page"`
+}
+
+type createIn struct {
+	Data    map[string]any `json:"data" jsonschema:"The CCv3 data object. A card's may not contain character_book; create a lorebook and link it instead."`
+	Message string         `json:"message,omitempty" jsonschema:"What changed, for the history"`
+}
+
+type updateIn struct {
+	ID             int64          `json:"id"`
+	BaseRevisionID int64          `json:"base_revision_id" jsonschema:"The head revision you read. If it moved, the update fails with 409: read again and redo the edit."`
+	Data           map[string]any `json:"data" jsonschema:"The whole new CCv3 data object"`
+	Overrides      map[string]any `json:"overrides,omitempty" jsonschema:"JSON merge patches by plugin instance ID. Omit to keep them."`
+	Message        string         `json:"message,omitempty" jsonschema:"What changed, for the history"`
+}
+
+type linkIn struct {
+	CardID     int64 `json:"card_id"`
+	LorebookID int64 `json:"lorebook_id"`
+}
+
+type restoreIn struct {
+	Kind           string `json:"kind" jsonschema:"card or lorebook"`
+	ID             int64  `json:"id"`
+	RevisionID     int64  `json:"revision_id" jsonschema:"The old revision to bring back"`
+	BaseRevisionID int64  `json:"base_revision_id" jsonschema:"The current head revision"`
+}
+
+type previewIn struct {
+	Kind       string `json:"kind" jsonschema:"card or lorebook"`
+	ID         int64  `json:"id"`
+	InstanceID int64  `json:"instance_id" jsonschema:"The target plugin instance"`
+}
+
+type pushIn struct {
+	Kind       string `json:"kind" jsonschema:"card or lorebook"`
+	ID         int64  `json:"id"`
+	InstanceID int64  `json:"instance_id" jsonschema:"The target plugin instance"`
+	Confirm    string `json:"confirm" jsonschema:"The confirm value from preview_push. Show the owner the preview's changes first."`
+	NewCopy    bool   `json:"new_copy,omitempty" jsonschema:"Make another copy on a target that can't update"`
+}
+
+type bindingIn struct {
+	BindingID int64 `json:"binding_id"`
+}
+
+type adoptIn struct {
+	BindingID      int64  `json:"binding_id"`
+	Into           string `json:"into" jsonschema:"base: into the card or lorebook. override: into this target's override. ignore: stop reporting these changes."`
+	BaseRevisionID int64  `json:"base_revision_id,omitempty" jsonschema:"The head revision; required unless into is ignore"`
+}
+
+type importIn struct {
+	InstanceID int64  `json:"instance_id" jsonschema:"An import plugin instance"`
+	Path       string `json:"path,omitempty" jsonschema:"A subfolder of the instance's folder; empty for all of it"`
+}
+
+type instanceIn struct {
+	Plugin       string            `json:"plugin"`
+	Name         string            `json:"name"`
+	Config       map[string]any    `json:"config,omitempty"`
+	Secrets      map[string]string `json:"secrets,omitempty" jsonschema:"Write-only; never returned"`
+	OwnerSubject *string           `json:"owner_subject,omitempty" jsonschema:"For login plugins: the identity that logs in as the owner"`
+}
+
+type instanceUpdateIn struct {
+	ID           int64              `json:"id"`
+	Name         *string            `json:"name,omitempty"`
+	Config       map[string]any     `json:"config,omitempty"`
+	Secrets      map[string]*string `json:"secrets,omitempty" jsonschema:"Sets each named secret; null removes one. Write-only."`
+	OwnerSubject *string            `json:"owner_subject,omitempty"`
+}
+
+type none struct{}
+
+// tools are every built-in tool, each the API call it names.
+var tools = []tool{
+	def("search_cards", "Search the library's cards by text and filters. Returns matching cards.", tier.Read,
+		func(ctx context.Context, c caller, in searchIn) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "POST", "/search", in.Query)
+		}),
+	def("get_card", "Get a card: its head revision, tags, linked lorebooks, and its status on each target app.", tier.Read,
+		func(ctx context.Context, c caller, in idIn) (*sdk.CallToolResult, error) {
+			return c.both(ctx, fmt.Sprintf("/cards/%d", in.ID), fmt.Sprintf("/cards/%d/bindings", in.ID))
+		}),
+	def("get_lorebook", "Get a lorebook: its head revision and its status on each target app.", tier.Read,
+		func(ctx context.Context, c caller, in idIn) (*sdk.CallToolResult, error) {
+			return c.both(ctx, fmt.Sprintf("/lorebooks/%d", in.ID), fmt.Sprintf("/lorebooks/%d/bindings", in.ID))
+		}),
+	def("get_history", "List a card's or lorebook's revisions, newest first.", tier.Read,
+		func(ctx context.Context, c caller, in entityIn) (*sdk.CallToolResult, error) {
+			p, err := plural(in.Kind)
+			if err != nil {
+				return nil, err
+			}
+			return c.call(ctx, "GET", fmt.Sprintf("/%s/%d/revisions", p, in.ID), nil)
+		}),
+	def("create_card", "Create a card from a CCv3 data object.", tier.Write,
+		func(ctx context.Context, c caller, in createIn) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "POST", "/cards", map[string]any{"data": in.Data, "message": in.Message, "source": "mcp"})
+		}),
+	def("create_lorebook", "Create a lorebook from a CCv3 character_book object.", tier.Write,
+		func(ctx context.Context, c caller, in createIn) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "POST", "/lorebooks", map[string]any{"data": in.Data, "message": in.Message, "source": "mcp"})
+		}),
+	def("update_card", "Save a new revision of a card. Send the whole data object, based on the head revision you read.", tier.Write,
+		func(ctx context.Context, c caller, in updateIn) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "PUT", fmt.Sprintf("/cards/%d", in.ID), update(in))
+		}),
+	def("update_lorebook", "Save a new revision of a lorebook. Send the whole data object, based on the head revision you read.", tier.Write,
+		func(ctx context.Context, c caller, in updateIn) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "PUT", fmt.Sprintf("/lorebooks/%d", in.ID), update(in))
+		}),
+	def("link_lorebook", "Link a lorebook to a card.", tier.Write,
+		func(ctx context.Context, c caller, in linkIn) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "PUT", fmt.Sprintf("/cards/%d/lorebooks/%d", in.CardID, in.LorebookID), nil)
+		}),
+	def("unlink_lorebook", "Unlink a lorebook from a card.", tier.Write,
+		func(ctx context.Context, c caller, in linkIn) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "DELETE", fmt.Sprintf("/cards/%d/lorebooks/%d", in.CardID, in.LorebookID), nil)
+		}),
+	def("restore_revision", "Bring back an old revision of a card or lorebook as a new revision.", tier.Write,
+		func(ctx context.Context, c caller, in restoreIn) (*sdk.CallToolResult, error) {
+			p, err := plural(in.Kind)
+			if err != nil {
+				return nil, err
+			}
+			return c.call(ctx, "POST", fmt.Sprintf("/%s/%d/restore", p, in.ID),
+				map[string]any{"revision_id": in.RevisionID, "base_revision_id": in.BaseRevisionID, "source": "mcp"})
+		}),
+	def("preview_push", "Show what pushing a card or lorebook to a target app would do: the fields it would change in the app, "+
+		"with the app's value as before and the pushed one as after, fields it would drop, and lorebooks it would create. "+
+		"Show the owner the changes, then pass confirm to push.", tier.Read,
+		func(ctx context.Context, c caller, in previewIn) (*sdk.CallToolResult, error) {
+			p, err := plural(in.Kind)
+			if err != nil {
+				return nil, err
+			}
+			return c.call(ctx, "GET", fmt.Sprintf("/%s/%d/push-preview?instance_id=%d", p, in.ID, in.InstanceID), nil)
+		}),
+	def("push", "Push a card or lorebook to a target app, overwriting the app's copy. Needs confirm from preview_push; "+
+		"if anything changed since, it returns the new preview instead.", tier.Destructive,
+		func(ctx context.Context, c caller, in pushIn) (*sdk.CallToolResult, error) {
+			p, err := plural(in.Kind)
+			if err != nil {
+				return nil, err
+			}
+			if in.Confirm == "" {
+				return nil, fmt.Errorf("confirm is required: call preview_push and show the owner its changes first")
+			}
+			return c.call(ctx, "POST", fmt.Sprintf("/%s/%d/push", p, in.ID),
+				map[string]any{"instance_id": in.InstanceID, "confirm": in.Confirm, "new_copy": in.NewCopy})
+		}),
+	def("check_drift", "Read a bound card or lorebook back from its app now, and report what changed there.", tier.Read,
+		func(ctx context.Context, c caller, in bindingIn) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "POST", fmt.Sprintf("/bindings/%d/check", in.BindingID), nil)
+		}),
+	def("adopt", "Take the changes made in the app into the library, as a new revision.", tier.Write,
+		func(ctx context.Context, c caller, in adoptIn) (*sdk.CallToolResult, error) {
+			body := map[string]any{"into": in.Into}
+			if in.BaseRevisionID != 0 {
+				body["base_revision_id"] = in.BaseRevisionID
+			}
+			return c.call(ctx, "POST", fmt.Sprintf("/bindings/%d/adopt", in.BindingID), body)
+		}),
+	def("list_bindings", "List the target apps a card or lorebook is pushed to, with each one's status.", tier.Read,
+		func(ctx context.Context, c caller, in entityIn) (*sdk.CallToolResult, error) {
+			p, err := plural(in.Kind)
+			if err != nil {
+				return nil, err
+			}
+			return c.call(ctx, "GET", fmt.Sprintf("/%s/%d/bindings", p, in.ID), nil)
+		}),
+	def("list_jobs", "List recent jobs: imports, pushes, scans, bulk actions.", tier.Read,
+		func(ctx context.Context, c caller, _ none) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "GET", "/jobs", nil)
+		}),
+	def("get_job", "Get a job's status and progress.", tier.Read,
+		func(ctx context.Context, c caller, in idIn) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "GET", fmt.Sprintf("/jobs/%d", in.ID), nil)
+		}),
+	def("cancel_job", "Cancel a job that hasn't finished.", tier.Write,
+		func(ctx context.Context, c caller, in idIn) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "POST", fmt.Sprintf("/jobs/%d/cancel", in.ID), nil)
+		}),
+	def("start_import", "Import cards and lorebooks from an import instance's folder, or a subfolder of it.", tier.Write,
+		func(ctx context.Context, c caller, in importIn) (*sdk.CallToolResult, error) {
+			body := map[string]any{"instance_id": in.InstanceID}
+			if in.Path != "" {
+				body["params"] = map[string]any{"path": in.Path}
+			}
+			return c.call(ctx, "POST", "/imports", body)
+		}),
+	def("list_plugins", "List the installed plugins, with each one's capabilities, config schema, and secret names.", tier.Read,
+		func(ctx context.Context, c caller, _ none) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "GET", "/plugins", nil)
+		}),
+	def("list_instances", "List configured plugin instances. Secrets show by name only.", tier.Read,
+		func(ctx context.Context, c caller, _ none) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "GET", "/instances", nil)
+		}),
+	def("create_instance", "Configure a new plugin instance, such as a target app or an importer.", tier.Destructive,
+		func(ctx context.Context, c caller, in instanceIn) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "POST", "/instances", in)
+		}),
+	def("update_instance", "Change a plugin instance's name, config, secrets, or owner. Its plugin restarts with them.", tier.Destructive,
+		func(ctx context.Context, c caller, in instanceUpdateIn) (*sdk.CallToolResult, error) {
+			body := struct {
+				Name         *string            `json:"name,omitempty"`
+				Config       map[string]any     `json:"config,omitempty"`
+				Secrets      map[string]*string `json:"secrets,omitempty"`
+				OwnerSubject *string            `json:"owner_subject,omitempty"`
+			}{in.Name, in.Config, in.Secrets, in.OwnerSubject}
+			return c.call(ctx, "PATCH", fmt.Sprintf("/instances/%d", in.ID), body)
+		}),
+}
+
+func update(in updateIn) map[string]any {
+	body := map[string]any{"base_revision_id": in.BaseRevisionID, "data": in.Data, "message": in.Message, "source": "mcp"}
+	if in.Overrides != nil {
+		body["overrides"] = in.Overrides
+	}
+	return body
+}
+
+// both returns an entity and its bindings as one result.
+func (c caller) both(ctx context.Context, entity, bindings string) (*sdk.CallToolResult, error) {
+	e, err := c.do(ctx, "GET", entity, nil)
+	if err != nil || !e.ok() {
+		return result(e), err
+	}
+	b, err := c.do(ctx, "GET", bindings, nil)
+	if err != nil || !b.ok() {
+		return result(b), err
+	}
+	raw, err := json.Marshal(map[string]json.RawMessage{"entity": e.body, "bindings": b.body})
+	if err != nil {
+		return nil, err
+	}
+	return result(reply{e.status, raw}), nil
+}

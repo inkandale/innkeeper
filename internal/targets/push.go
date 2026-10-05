@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -52,6 +53,11 @@ func (s *Service) push(ctx context.Context, k kind, instanceID, id int64, newCop
 	r, err := s.render(ctx, k, instanceID, id, info)
 	if err != nil {
 		return Binding{}, err
+	}
+	if !k.isLorebook() && info.Lorebooks == protocol.LorebooksStandalone {
+		if r.lorebookRemoteIDs, err = s.pushCardLorebooks(ctx, instanceID, id, key); err != nil {
+			return Binding{}, err
+		}
 	}
 	// Everything from here to the commit uses only tx's connection (plugin
 	// calls go to the host directly, not through the registry, which would
@@ -102,7 +108,8 @@ func (s *Service) push(ctx context.Context, k kind, instanceID, id int64, newCop
 	defer cancelPut()
 	var res protocol.TargetPutResult
 	put := func() error {
-		var params any = protocol.TargetPutParams{Card: r.payload, RemoteID: putRemote, Avatar: r.avatar, Key: putKey}
+		var params any = protocol.TargetPutParams{Card: r.payload, RemoteID: putRemote, Avatar: r.avatar, Key: putKey,
+			LorebookRemoteIDs: r.lorebookRemoteIDs}
 		if k.isLorebook() {
 			params = protocol.TargetPutLorebookParams{Lorebook: r.payload, RemoteID: putRemote, Key: putKey}
 		}
@@ -145,8 +152,9 @@ func (s *Service) push(ctx context.Context, k kind, instanceID, id int64, newCop
 	if err != nil {
 		return Binding{}, err
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO push (binding_id, revision_id, lorebook_revision_ids, pushed_hash, remote_id)
-		VALUES ($1, $2, $3, $4, $5)`, bindingID, r.revision, r.lorebooks, hash, res.RemoteID)
+	_, err = tx.Exec(ctx, `INSERT INTO push (binding_id, revision_id, lorebook_revision_ids, lorebook_remote_ids,
+			pushed_hash, remote_id)
+		VALUES ($1, $2, $3, $4, $5, $6)`, bindingID, r.revision, r.lorebooks, r.lorebookRemoteIDs, hash, res.RemoteID)
 	if err != nil {
 		return Binding{}, err
 	}
@@ -154,6 +162,37 @@ func (s *Service) push(ctx context.Context, k kind, instanceID, id int64, newCop
 		return Binding{}, err
 	}
 	return s.Binding(ctx, bindingID)
+}
+
+// pushCardLorebooks pushes each of the card's lorebooks that the app doesn't
+// have, and returns the remote IDs of all of them, sorted. It doesn't update
+// lorebooks the app has, since the owner sees those changes in their own
+// preview. key is the card push's key.
+func (s *Service) pushCardLorebooks(ctx context.Context, instanceID, cardID int64, key string) ([]string, error) {
+	links, err := s.lib.CardLorebooks(ctx, cardID)
+	if err != nil {
+		return nil, err
+	}
+	// Not nil: a push that sent none must record that, for the ahead check.
+	ids := []string{}
+	for _, lid := range links {
+		var remoteID, state string
+		err := s.pool.QueryRow(ctx, `SELECT remote_id, remote_state FROM binding WHERE instance_id = $1 AND lorebook_id = $2`,
+			instanceID, lid).Scan(&remoteID, &state)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return nil, err
+		}
+		if err != nil || state == remoteMissing {
+			b, err := s.push(ctx, lorebookKind, instanceID, lid, false, fmt.Sprintf("%s:lorebook:%d", key, lid), nil)
+			if err != nil {
+				return nil, fmt.Errorf("lorebook %d: %w", lid, err)
+			}
+			remoteID = b.RemoteID
+		}
+		ids = append(ids, remoteID)
+	}
+	slices.Sort(ids)
+	return ids, nil
 }
 
 // readBack returns what the app holds after a push, its hash, and the

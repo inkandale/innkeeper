@@ -151,7 +151,7 @@ CROSS JOIN LATERAL (
 ) a;
 ```
 
-A linked lorebook bound on another instance doesn't count; one with no binding here drops out of the array, which then differs from what the push sent.
+A linked lorebook with no binding on this instance adds a NULL to the array, which no push sent, so linking a lorebook makes the card ahead. A push that sent no lorebooks records an empty array, not NULL, for the same comparison.
 
 - [ ] **Step 2: Run `go test ./internal/db/ ./internal/targets/ ./internal/library/`**: existing status tests still pass. Commit.
 

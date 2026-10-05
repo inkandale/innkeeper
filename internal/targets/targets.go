@@ -239,6 +239,8 @@ type rendered struct {
 	revision int64
 	// lorebooks is nil unless the target embeds lorebooks.
 	lorebooks []int64
+	// lorebookRemoteIDs is nil unless the target keeps lorebooks on their own.
+	lorebookRemoteIDs []string
 }
 
 // render builds what a target gets: the head revision's data with the

@@ -2,10 +2,14 @@ package targets
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/davidgibbons/innkeeper/internal/library"
+	"github.com/davidgibbons/innkeeper/internal/plugins"
 )
 
 func (e *env) newLorebook(name string) int64 {
@@ -150,4 +154,89 @@ func TestLorebookOverride(t *testing.T) {
 func jsonEqual(raw json.RawMessage, want string) bool {
 	var a, b any
 	return json.Unmarshal(raw, &a) == nil && json.Unmarshal([]byte(want), &b) == nil && fmt.Sprint(a) == fmt.Sprint(b)
+}
+
+func (e *env) link(card, lorebook int64) {
+	e.t.Helper()
+	if err := e.lib.LinkLorebook(e.ctx, card, lorebook); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+func TestCardPushCreatesItsLorebooks(t *testing.T) {
+	e := setup(t, map[string]any{"lorebooks": "standalone"})
+	a, b := e.newLorebook("Forge lore"), e.newLorebook("Mine lore")
+	e.link(e.card, a)
+	e.link(e.card, b)
+	card := e.push(e.card)
+	if e.lorebookStatus(a) != "in_sync" || e.lorebookStatus(b) != "in_sync" {
+		t.Fatal("the card push didn't push its lorebooks")
+	}
+	if got := fmt.Sprint(e.remote(card.RemoteID)["lorebook_remote_ids"]); got != "[l1 l2]" {
+		t.Fatalf("the app linked the card to %s", got)
+	}
+	if got := fmt.Sprint(card.LastPush.LorebookRemoteIDs); got != "[l1 l2]" || card.Status != "in_sync" {
+		t.Fatalf("card binding: %+v", card)
+	}
+	if _, ok := e.remoteData(card.RemoteID)["character_book"]; ok {
+		t.Fatal("a standalone target got an embedded lorebook")
+	}
+}
+
+func TestCardPushLeavesBoundLorebooksAlone(t *testing.T) {
+	e := setup(t, map[string]any{"lorebooks": "standalone"})
+	lb := e.newLorebook("Forge lore")
+	e.link(e.card, lb)
+	e.push(e.card)
+	e.updateLorebook(lb, func(ed *library.Edit) { ed.Data = setField(ed.Data, "description", "Hotter lore.") })
+	e.push(e.card)
+	if e.remoteBook("l1")["description"] != "Forge lore." || e.lorebookStatus(lb) != "ahead" {
+		t.Fatal("a card push updated a bound lorebook")
+	}
+}
+
+func TestCardAheadWhenItsLorebooksChange(t *testing.T) {
+	e := setup(t, map[string]any{"lorebooks": "standalone"})
+	lb := e.newLorebook("Forge lore")
+	e.link(e.card, lb)
+	e.push(e.card)
+	e.link(e.card, e.newLorebook("Mine lore"))
+	if s := e.status(e.card); s != "ahead" {
+		t.Fatalf("after linking a lorebook: %s", s)
+	}
+	e.push(e.card)
+	// The app loses a lorebook; pushing it again gives it a new remote ID.
+	if err := os.Remove(filepath.Join(e.dir, "l1.json")); err != nil {
+		t.Fatal(err)
+	}
+	list, _ := e.s.LorebookBindings(e.ctx, lb)
+	e.check(list[0])
+	e.pushLorebook(e.newLorebook("Other lore")) // takes l1 again
+	if b := e.pushLorebook(lb); b.RemoteID == "l1" {
+		t.Fatalf("re-pushed lorebook kept %s", b.RemoteID)
+	}
+	if s := e.status(e.card); s != "ahead" {
+		t.Fatalf("after its lorebook moved: %s", s)
+	}
+	if e.push(e.card).Status != "in_sync" {
+		t.Fatal("pushing the card again didn't bring it in sync")
+	}
+}
+
+func TestCardPushRerunReusesItsLorebooks(t *testing.T) {
+	e := setup(t, map[string]any{"lorebooks": "standalone", "fail_put": "crash"})
+	e.link(e.card, e.newLorebook("Forge lore"))
+	if _, err := e.s.push(e.ctx, cardKind, e.inst, e.card, false, "job-1", nil); !errors.Is(err, ErrUncertain) {
+		t.Fatalf("first run: %v, want ErrUncertain", err)
+	}
+	if err := e.reg.UpdateInstance(e.ctx, e.inst, plugins.InstanceEdit{
+		Config: map[string]any{"dir": e.dir, "lorebooks": "standalone"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.s.push(e.ctx, cardKind, e.inst, e.card, false, "job-1", nil); err != nil {
+		t.Fatal(err)
+	}
+	if books, _ := filepath.Glob(filepath.Join(e.dir, "l*.json")); len(books) != 1 {
+		t.Fatalf("the app has %d lorebooks, want 1", len(books))
+	}
 }

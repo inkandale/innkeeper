@@ -200,7 +200,7 @@ warns the owner before a push that would drop content in other fields.
 | `remote_id` | Your ID for the app's copy. Absent for a new card, or when `update` is `false` |
 | `avatar` | Absolute path to the avatar image in a blob store, or absent. Read it; don't move or change it |
 | `key` | Present for a new card. See below |
-| `lorebook_remote_ids` | For `standalone` lorebooks: the remote IDs of the card's lorebooks, sorted. Link the card to exactly these, replacing earlier links |
+| `lorebook_remote_ids` | For `standalone` lorebooks: the remote IDs of the card's lorebooks, sorted, or absent when it has none. Link the card to exactly these, replacing earlier links |
 
 Reply with `remote_id`. If the app no longer has `remote_id`, reply with error
 `-32004`; the core then sends the card again as a new one.

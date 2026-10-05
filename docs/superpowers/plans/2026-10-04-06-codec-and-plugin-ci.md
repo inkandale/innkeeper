@@ -56,6 +56,16 @@ Constraints this plan leaves for later plans:
 - **Plugins import the core's `protocol` package.** Both repos are private, so `innkeeper-plugins` CI fetches the core with a read-only deploy key on the core repo, stored as a secret. That follows the "deploy key over a PAT" preference.
 - **The image builds plugins against its own core.** The `plugins` stage replaces the core module with the source being built, so the protocol package in each plugin always matches the core it ships with. It clones `innkeeper-plugins` over SSH, so `docker compose build` needs an SSH agent that can read that repo.
 
+### Changes during the build
+
+Reviews changed the code after these tasks were written. Where a task's code differs from the repos, the repos are right. The main changes:
+
+- The contract kit is as strict as the core: it passes an avatar on encode, requires a plain file directly inside `blob_tmp`, and requires `-32602` for a non-card. Its `blob_tmp` is `<root>/tmp`, with `<root>` declared as a blob store.
+- Exports carry `nosniff` and `Content-Security-Policy: sandbox`, take their type from the sniffed content, and are described in the OpenAPI spec as JSON or `application/octet-stream`. `GET /plugins` lists each plugin's `formats`.
+- `card` caps avatars at 4096×4096 pixels and requires a V1 card to have `name` plus a content field. The golden cards are SillyTavern's Seraphina sample, files derived from it, and a V3 template; `card/testdata/README.md` says which is which.
+- The deploy key secret is also set for Dependabot (`gh secret set --app dependabot`), whose runs can't read Actions secrets. Dependabot covers Actions only, since it can't read the private core.
+- The `plugins` stage doesn't run `go mod tidy`. A key that isn't in the SSH agent can be passed with `docker build --ssh default=$HOME/.ssh/<key>`.
+
 ## File structure
 
 `innkeeper`:

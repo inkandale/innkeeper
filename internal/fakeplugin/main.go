@@ -97,7 +97,7 @@ func main() {
 		case protocol.MethodTargetPut:
 			return newTarget(config).put(params)
 		case protocol.MethodTargetGet:
-			return newTarget(config).get(params)
+			return newTarget(config).get(params, blobTmp)
 		case protocol.MethodTargetPutLorebook:
 			return newTarget(config).putLorebook(params)
 		case protocol.MethodTargetGetLorebook:

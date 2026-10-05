@@ -57,8 +57,12 @@ func openServices(ctx context.Context, log *slog.Logger, maxConnsAtLeast int) (*
 		return nil, err
 	}
 	store := &blobstore.Store{Name: "library", Root: blobDir}
-	return &services{pool: pool, lib: library.New(pool, store),
-		registry: plugins.New(pool, manifests, store, box), manifests: manifests}, nil
+	registry := plugins.New(pool, manifests, store, box)
+	if err := registry.ProvisionDatabases(ctx, os.Getenv("INNKEEPER_DATABASE_URL")); err != nil {
+		pool.Close()
+		return nil, err
+	}
+	return &services{pool: pool, lib: library.New(pool, store), registry: registry, manifests: manifests}, nil
 }
 
 func (s *services) close() { s.pool.Close() }

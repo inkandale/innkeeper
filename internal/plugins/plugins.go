@@ -71,6 +71,7 @@ type Registry struct {
 	manifests map[string]*protocol.Manifest
 	blobs     *blobstore.Store
 	box       *secrets.Box
+	dsns      map[string]string // by plugin, set by ProvisionDatabases
 }
 
 // New returns a Registry for the installed plugins in manifests, whose
@@ -312,16 +313,16 @@ func (r *Registry) Instance(ctx context.Context, id int64) (pluginhost.Instance,
 	if err := os.MkdirAll(r.blobs.TmpDir(), 0o755); err != nil {
 		return pluginhost.Instance{}, err
 	}
-	// ponytail: no plugin database role yet; the archive catalog needs it.
 	return pluginhost.Instance{
 		ID:       strconv.FormatInt(id, 10),
 		Version:  strconv.FormatInt(updated.UnixMicro(), 10),
 		Manifest: m,
 		Params: protocol.InitializeParams{
-			Config:     config,
-			Secrets:    secrets,
-			BlobStores: map[string]string{r.blobs.Name: r.blobs.Root},
-			BlobTmp:    r.blobs.TmpDir(),
+			Config:      config,
+			Secrets:     secrets,
+			BlobStores:  map[string]string{r.blobs.Name: r.blobs.Root},
+			BlobTmp:     r.blobs.TmpDir(),
+			DatabaseURL: r.dsns[plugin],
 		},
 	}, nil
 }

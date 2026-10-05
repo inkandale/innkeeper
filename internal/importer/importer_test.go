@@ -177,7 +177,7 @@ func TestBadCardFailsOnlyThatItem(t *testing.T) {
 	if j.Status != jobs.StatusSucceeded || p.Imported != 2 || p.Failed != 1 {
 		t.Fatalf("job %s, progress %+v", j.Status, p)
 	}
-	if len(p.Errors) != 1 || !strings.HasPrefix(p.Errors[0], `card-1: spec "chara_card_v2"`) {
+	if len(p.Errors) != 1 || !strings.HasPrefix(p.Errors[0], `card-1: invalid data: spec "chara_card_v2"`) {
 		t.Fatalf("errors = %q", p.Errors)
 	}
 }

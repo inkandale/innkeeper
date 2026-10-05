@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 
 	"github.com/davidgibbons/innkeeper/internal/blobstore"
 	"github.com/davidgibbons/innkeeper/internal/library"
@@ -27,68 +26,13 @@ func invalid(err error) error {
 	return err
 }
 
-// ingestCard stores an emitted card. An embedded character_book becomes a
-// linked lorebook. It returns whether the card is new.
+// ingestCard stores an emitted card. It returns whether the card is new.
 func (im *Importer) ingestCard(ctx context.Context, plugin string, e protocol.EmitCard) (bool, error) {
 	if e.Item == "" {
 		return false, &badItem{errors.New("item is empty")}
 	}
-	var card struct {
-		Spec string                     `json:"spec"`
-		Data map[string]json.RawMessage `json:"data"`
-	}
-	if err := json.Unmarshal(e.Card, &card); err != nil {
-		return false, &badItem{err}
-	}
-	if card.Spec != "chara_card_v3" {
-		return false, &badItem{fmt.Errorf("spec %q is not chara_card_v3", card.Spec)}
-	}
-	if card.Data == nil {
-		return false, &badItem{errors.New("card has no data")}
-	}
-	var name string
-	_ = json.Unmarshal(card.Data["name"], &name)
-	book := card.Data["character_book"]
-	delete(card.Data, "character_book")
-	data, err := json.Marshal(card.Data)
-	if err != nil {
-		return false, err
-	}
-	provenance, source := plugin+":"+e.Item, "plugin:"+plugin
-
-	var avatar string
-	if e.Avatar != "" {
-		b, err := im.Lib.IngestBlob(ctx, e.Avatar)
-		if err != nil {
-			return false, invalid(fmt.Errorf("avatar: %w", err))
-		}
-		avatar = b.SHA256
-	}
-	// The lorebook goes first, and linking is idempotent, so a run
-	// interrupted partway leaves nothing a retry can't finish.
-	var lorebookID int64
-	if len(book) > 0 && string(book) != "null" {
-		var meta struct {
-			Name string `json:"name"`
-		}
-		_ = json.Unmarshal(book, &meta)
-		lorebookID, _, err = im.Lib.Lorebooks.Import(ctx, provenance, cmp.Or(meta.Name, name+" lorebook"),
-			library.Edit{Data: book, Source: source, Message: "Split from imported card"})
-		if err != nil {
-			return false, invalid(err)
-		}
-	}
-	cardID, created, err := im.Lib.Cards.Import(ctx, provenance, name,
-		library.Edit{Data: data, AvatarBlob: avatar, Source: source, Message: "Imported"})
-	if err != nil {
-		return false, invalid(err)
-	}
-	if lorebookID != 0 {
-		if err := im.Lib.LinkLorebook(ctx, cardID, lorebookID); err != nil {
-			return false, err
-		}
-	}
-	return created, nil
+	_, created, err := im.Lib.ImportCard(ctx, plugin+":"+e.Item, "plugin:"+plugin, e.Card, e.Avatar)
+	return created, invalid(err)
 }
 
 // ingestLorebook stores an emitted standalone lorebook. It returns whether

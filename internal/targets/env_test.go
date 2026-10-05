@@ -191,8 +191,22 @@ func (e *env) editRemote(id, key string, value any) {
 	} else {
 		data[key] = value
 	}
-	raw, _ := json.Marshal(card)
+	e.writeRemote(id, card)
+}
+
+// writeRemote replaces the whole file the fake app keeps for an item.
+func (e *env) writeRemote(id string, item map[string]any) {
+	e.t.Helper()
+	raw, _ := json.Marshal(item)
 	if err := os.WriteFile(filepath.Join(e.dir, id+".json"), raw, 0o644); err != nil {
 		e.t.Fatal(err)
 	}
+}
+
+// forgetLinks makes the app's copy of a card stop saying which lorebooks it links.
+func (e *env) forgetLinks(id string) {
+	e.t.Helper()
+	card := e.remote(id)
+	delete(card, "lorebook_remote_ids")
+	e.writeRemote(id, card)
 }

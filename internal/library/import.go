@@ -1,7 +1,9 @@
 package library
 
 import (
+	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -120,4 +122,73 @@ func (s *Entities) createFromName(ctx context.Context, tx pgx.Tx, name, provenan
 		}
 	}
 	return Entity{}, Revision{}, ErrSlugTaken
+}
+
+// SplitCard checks that card is a CCv3 card and returns its name, its data
+// without character_book, and the character_book, or nil.
+func SplitCard(card json.RawMessage) (name string, data, book json.RawMessage, err error) {
+	var c struct {
+		Spec string                     `json:"spec"`
+		Data map[string]json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(card, &c); err != nil {
+		return "", nil, nil, fmt.Errorf("%w: %w", ErrInvalid, err)
+	}
+	if c.Spec != "chara_card_v3" {
+		return "", nil, nil, fmt.Errorf("%w: spec %q is not chara_card_v3", ErrInvalid, c.Spec)
+	}
+	if c.Data == nil {
+		return "", nil, nil, fmt.Errorf("%w: card has no data", ErrInvalid)
+	}
+	_ = json.Unmarshal(c.Data["name"], &name)
+	if b := c.Data["character_book"]; len(b) > 0 && string(b) != "null" {
+		book = b
+	}
+	delete(c.Data, "character_book")
+	data, err = json.Marshal(c.Data)
+	return name, data, book, err
+}
+
+// ImportCard adds a CCv3 card from a plugin as Import does, with its
+// character_book as a linked lorebook. avatar is a file in the blob store's
+// tmp folder, or empty; it is moved into the store. It returns the card's ID
+// and whether it created it.
+func (l *Library) ImportCard(ctx context.Context, provenance, source string, card json.RawMessage, avatar string) (int64, bool, error) {
+	name, data, book, err := SplitCard(card)
+	if err != nil {
+		return 0, false, err
+	}
+	var avatarSHA string
+	if avatar != "" {
+		b, err := l.IngestBlob(ctx, avatar)
+		if err != nil {
+			return 0, false, fmt.Errorf("avatar: %w", err)
+		}
+		avatarSHA = b.SHA256
+	}
+	// The lorebook goes first, and linking is idempotent, so a run
+	// interrupted partway leaves nothing a retry can't finish.
+	var lorebookID int64
+	if book != nil {
+		var meta struct {
+			Name string `json:"name"`
+		}
+		_ = json.Unmarshal(book, &meta)
+		lorebookID, _, err = l.Lorebooks.Import(ctx, provenance, cmp.Or(meta.Name, name+" lorebook"),
+			Edit{Data: book, Source: source, Message: "Split from imported card"})
+		if err != nil {
+			return 0, false, err
+		}
+	}
+	cardID, created, err := l.Cards.Import(ctx, provenance, name,
+		Edit{Data: data, AvatarBlob: avatarSHA, Source: source, Message: "Imported"})
+	if err != nil {
+		return 0, false, err
+	}
+	if lorebookID != 0 {
+		if err := l.LinkLorebook(ctx, cardID, lorebookID); err != nil {
+			return 0, false, err
+		}
+	}
+	return cardID, created, nil
 }

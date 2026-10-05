@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -90,15 +91,27 @@ func (s *Service) bind(ctx context.Context, k kind, instanceID, id int64, remote
 	if err != nil {
 		return Binding{}, err
 	}
-	// The core can't see which lorebooks the app links to the character, so
-	// it records none, and a card with lorebooks shows as ahead.
-	if !k.isLorebook() && info.Lorebooks == protocol.LorebooksStandalone {
-		r.lorebookRemoteIDs = []string{}
+	var links []string
+	if k.isLorebook() {
+		_, _, err = s.fetch(ctx, k, inst, info, remoteID)
+	} else {
+		var got protocol.TargetGetResult
+		got, err = s.getCard(ctx, inst, protocol.TargetGetParams{RemoteID: remoteID})
+		links = got.LorebookRemoteIDs
 	}
-	if _, _, err := s.fetch(ctx, k, inst, info, remoteID); remoteNotFound(err) {
+	if remoteNotFound(err) {
 		return Binding{}, fmt.Errorf("%w: the app has no %s %s", library.ErrNotFound, k.name, remoteID)
 	} else if err != nil {
 		return Binding{}, err
+	}
+	// The bind row records the lorebooks the app links to the character, so
+	// the card is ahead only if the library links others. A plugin that can't
+	// tell records none, and a card with lorebooks shows as ahead.
+	if !k.isLorebook() && info.Lorebooks == protocol.LorebooksStandalone {
+		r.lorebookRemoteIDs = slices.Sorted(slices.Values(links))
+		if r.lorebookRemoteIDs == nil {
+			r.lorebookRemoteIDs = []string{}
+		}
 	}
 	accepted, hash, err := project(r.data, k.fields(info))
 	if err != nil {

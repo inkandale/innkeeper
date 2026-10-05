@@ -303,25 +303,40 @@ func (s *Service) render(ctx context.Context, k kind, instanceID, id int64, info
 // Callers resolve the instance with describe first, which marks a plugin
 // that won't start as broken.
 func (s *Service) fetch(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo, remoteID string) (json.RawMessage, string, error) {
-	var got struct {
-		Card     json.RawMessage `json:"card"`
-		Lorebook json.RawMessage `json:"lorebook"`
-	}
-	if err := s.plugins.Call(ctx, inst, k.get, protocol.TargetGetParams{RemoteID: remoteID}, &got); err != nil {
-		return nil, "", err
-	}
 	var data json.RawMessage
 	var err error
 	if k.isLorebook() {
+		var got protocol.TargetGetLorebookResult
+		if err := s.plugins.Call(ctx, inst, k.get, protocol.TargetGetParams{RemoteID: remoteID}, &got); err != nil {
+			return nil, "", err
+		}
 		data = got.Lorebook
-		_, err = object(data)
+		if _, err = object(data); err != nil {
+			err = fmt.Errorf("%w: %s: %w", ErrBadReply, k.get, err)
+		}
 	} else {
+		var got protocol.TargetGetResult
+		if got, err = s.getCard(ctx, inst, protocol.TargetGetParams{RemoteID: remoteID}); err != nil {
+			return nil, "", err
+		}
 		data, err = cardData(got.Card)
 	}
 	if err != nil {
-		return nil, "", fmt.Errorf("%w: %s: %w", ErrBadReply, k.get, err)
+		return nil, "", err
 	}
 	return project(data, k.fields(info))
+}
+
+// getCard calls target.get and checks that the reply has a card.
+func (s *Service) getCard(ctx context.Context, inst pluginhost.Instance, p protocol.TargetGetParams) (protocol.TargetGetResult, error) {
+	var got protocol.TargetGetResult
+	if err := s.plugins.Call(ctx, inst, protocol.MethodTargetGet, p, &got); err != nil {
+		return got, err
+	}
+	if _, err := cardData(got.Card); err != nil {
+		return got, fmt.Errorf("%w: %s: %w", ErrBadReply, protocol.MethodTargetGet, err)
+	}
+	return got, nil
 }
 
 func remoteNotFound(err error) bool {

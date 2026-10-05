@@ -44,6 +44,8 @@ Left out:
 - **Lorebook ahead.** A lorebook binding is ahead when the lorebook's head `content_hash` or its override for the instance differs from the pushed revision's.
 - **Status view.** `binding_status` becomes a `UNION ALL` of a card branch and a lorebook branch, with both `card_id` and `lorebook_id` columns, so the `target_state` filter keeps working.
 - **Preview diff.** `Preview` renders what the push would send, projected to the target's fields, and compares it with the app's copy: read now through `get` when the target can pull, or else `accepted_data` from the last push. `changes` uses the existing `Change` type, with `before` the app's value and `after` the pushed value. `replaces` is true when the push would overwrite a copy in the app. A create, a new copy, and a push after `missing` replace nothing and list no changes. If the read fails, the preview falls back to `accepted_data` and sets `stale: true`.
+- **Concurrent card pushes.** A card push checks its lorebooks' bindings before taking any lock, so two card pushes can both decide to create the same lorebook. Its lorebook pushes are create-only: inside the lorebook's lock, a push that finds the lorebook bound gives up, and the card push uses that binding's remote ID.
+- **Sort order.** Go sorts remote IDs bytewise, so the view sorts them with `COLLATE "C"`. The database's default collation would order `Zed` and `abc` differently, and the card would stay `ahead`.
 - **Keys.** A lorebook push job sends `<instance>:lorebook:<id>:<job id>`. A card push job keeps `<instance>:<card>:<job id>`.
 
 ## File structure

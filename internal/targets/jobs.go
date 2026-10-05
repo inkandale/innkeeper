@@ -101,7 +101,7 @@ func (s *Service) RunPush(ctx context.Context, r *jobs.Run) error {
 	if p.LorebookID != 0 {
 		k, id, key = lorebookKind, p.LorebookID, fmt.Sprintf("%d:lorebook:%d:%d", *r.InstanceID, p.LorebookID, r.ID)
 	}
-	b, err := s.push(ctx, k, *r.InstanceID, id, p.NewCopy, key, &pushExpect{p.LastPush})
+	b, err := s.push(ctx, k, *r.InstanceID, id, p.NewCopy, key, &pushExpect{lastPush: p.LastPush})
 	var startErr *pluginhost.StartError
 	switch {
 	case errors.Is(err, errAlreadyPushed):

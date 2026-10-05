@@ -33,6 +33,8 @@ func (s *Service) PushLorebook(ctx context.Context, instanceID, lorebookID int64
 type pushExpect struct {
 	// lastPush is the binding's latest push id; nil if it wasn't bound.
 	lastPush *int64
+	// createOnly gives up if the app has a copy, so the push never updates.
+	createOnly bool
 }
 
 // errAlreadyPushed means the card's pushes aren't what the job expected, so
@@ -88,6 +90,9 @@ func (s *Service) push(ctx context.Context, k kind, instanceID, id int64, newCop
 	// safe, so it always goes ahead. Pushes are serialized by the lock, so
 	// this can't change before the put.
 	create := !bound || state == remoteMissing || !info.Update
+	if expect != nil && expect.createOnly && bound && state != remoteMissing {
+		return Binding{}, errAlreadyPushed
+	}
 	if expect != nil && create && bound && (expect.lastPush == nil || lastPush == nil || *expect.lastPush != *lastPush) {
 		return Binding{}, errAlreadyPushed
 	}
@@ -183,7 +188,14 @@ func (s *Service) pushCardLorebooks(ctx context.Context, instanceID, cardID int6
 			return nil, err
 		}
 		if err != nil || state == remoteMissing {
-			b, err := s.push(ctx, lorebookKind, instanceID, lid, false, fmt.Sprintf("%s:lorebook:%d", key, lid), nil)
+			// Create only: a concurrent push may bind it first, and its copy
+			// must not be updated without a preview.
+			b, err := s.push(ctx, lorebookKind, instanceID, lid, false, fmt.Sprintf("%s:lorebook:%d", key, lid),
+				&pushExpect{createOnly: true})
+			if errors.Is(err, errAlreadyPushed) {
+				err = s.pool.QueryRow(ctx, `SELECT remote_id FROM binding WHERE instance_id = $1 AND lorebook_id = $2`,
+					instanceID, lid).Scan(&b.RemoteID)
+			}
 			if err != nil {
 				return nil, fmt.Errorf("lorebook %d: %w", lid, err)
 			}

@@ -240,3 +240,16 @@ func TestCardPushRerunReusesItsLorebooks(t *testing.T) {
 		t.Fatalf("the app has %d lorebooks, want 1", len(books))
 	}
 }
+
+// A card push that finds a lorebook bound by a concurrent push uses that copy
+// and never updates it.
+func TestCreateOnlyLorebookPushLeavesABoundLorebook(t *testing.T) {
+	e := setup(t, map[string]any{"lorebooks": "standalone"})
+	lb := e.newLorebook("Forge lore")
+	e.pushLorebook(lb)
+	e.updateLorebook(lb, func(ed *library.Edit) { ed.Data = setField(ed.Data, "description", "Hotter lore.") })
+	_, err := e.s.push(e.ctx, lorebookKind, e.inst, lb, false, "k", &pushExpect{createOnly: true})
+	if !errors.Is(err, errAlreadyPushed) || e.remoteBook("l1")["description"] != "Forge lore." {
+		t.Fatalf("create-only push of a bound lorebook: %v", err)
+	}
+}

@@ -28,7 +28,8 @@ CROSS JOIN LATERAL (
         OR coalesce(p.lorebook_remote_ids <> array(
             SELECT lb.remote_id FROM card_lorebook cl
             LEFT JOIN binding lb ON lb.lorebook_id = cl.lorebook_id AND lb.instance_id = b.instance_id
-            WHERE cl.card_id = b.card_id ORDER BY lb.remote_id), FALSE) AS ahead
+            -- Byte order, as the core sorts them.
+            WHERE cl.card_id = b.card_id ORDER BY lb.remote_id COLLATE "C"), FALSE) AS ahead
     FROM card c JOIN card_revision hr ON hr.id = c.head_revision_id
     JOIN card_revision pr ON pr.id = p.revision_id
     WHERE c.id = b.card_id

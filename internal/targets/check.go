@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Check reads a bound card or lorebook back from its app and records whether the app's
@@ -49,6 +50,11 @@ func (s *Service) record(ctx context.Context, id int64, b stored, state string, 
 	_, err := s.pool.Exec(ctx, `UPDATE binding SET remote_state = $2, seen_data = $3,
 		checked_at = CASE WHEN $2 = 'unknown' THEN NULL ELSE now() END
 		WHERE id = $1 AND version = $4`, id, state, seen, b.version)
+	// Another binding took the ID while this one was missing, so the app's
+	// item there is a different one, and this binding stays missing.
+	if pgErr := (*pgconn.PgError)(nil); errors.As(err, &pgErr) && pgErr.Code == "23505" && b.remoteState == remoteMissing {
+		return nil
+	}
 	return err
 }
 

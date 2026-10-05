@@ -60,10 +60,12 @@ func New(pool *pgxpool.Pool, lib *library.Library, reg *plugins.Registry, mgr *p
 	return &Service{pool: pool, lib: lib, reg: reg, plugins: mgr, log: log}
 }
 
-// Push is one push of a card or lorebook to a target.
+// Push is one push of a card or lorebook to a target, or the bind that
+// linked it to an item the app already had.
 type Push struct {
-	ID         int64 `json:"id"`
-	RevisionID int64 `json:"revision_id"`
+	ID         int64  `json:"id"`
+	Kind       string `json:"kind" enum:"push,bind"`
+	RevisionID int64  `json:"revision_id"`
 	// LorebookRevisionIDs are the embedded lorebooks' revisions; absent when
 	// the target doesn't embed lorebooks.
 	LorebookRevisionIDs []int64 `json:"lorebook_revision_ids,omitempty"`
@@ -95,7 +97,7 @@ type Binding struct {
 }
 
 const bindingQuery = `SELECT b.id, b.instance_id, coalesce(b.card_id, 0), coalesce(b.lorebook_id, 0), b.remote_id,
-		s.status, s.ahead, b.remote_state, b.checked_at, b.created_at, p.id, p.revision_id, p.lorebook_revision_ids,
+		s.status, s.ahead, b.remote_state, b.checked_at, b.created_at, p.id, p.kind, p.revision_id, p.lorebook_revision_ids,
 		p.lorebook_remote_ids, p.pushed_hash, p.remote_id, p.pushed_at, b.accepted_data, b.seen_data
 	FROM binding b JOIN binding_status s ON s.binding_id = b.id
 	JOIN LATERAL (SELECT * FROM push WHERE binding_id = b.id ORDER BY id DESC LIMIT 1) p ON TRUE`
@@ -105,7 +107,7 @@ func scanBinding(row pgx.Row) (Binding, error) {
 	var accepted, seen []byte
 	p := &b.LastPush
 	err := row.Scan(&b.ID, &b.InstanceID, &b.CardID, &b.LorebookID, &b.RemoteID, &b.Status, &b.Ahead, &b.RemoteState,
-		&b.CheckedAt, &b.CreatedAt, &p.ID, &p.RevisionID, &p.LorebookRevisionIDs, &p.LorebookRemoteIDs, &p.PushedHash,
+		&b.CheckedAt, &b.CreatedAt, &p.ID, &p.Kind, &p.RevisionID, &p.LorebookRevisionIDs, &p.LorebookRemoteIDs, &p.PushedHash,
 		&p.RemoteID, &p.PushedAt, &accepted, &seen)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return b, ErrNotFound
@@ -145,14 +147,14 @@ func (s *Service) Pushes(ctx context.Context, bindingID int64) ([]Push, error) {
 	if _, err := s.Binding(ctx, bindingID); err != nil {
 		return nil, err
 	}
-	rows, err := s.pool.Query(ctx, `SELECT id, revision_id, lorebook_revision_ids, lorebook_remote_ids, pushed_hash,
+	rows, err := s.pool.Query(ctx, `SELECT id, kind, revision_id, lorebook_revision_ids, lorebook_remote_ids, pushed_hash,
 		remote_id, pushed_at FROM push WHERE binding_id = $1 ORDER BY id DESC`, bindingID)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Push, error) {
 		var p Push
-		err := row.Scan(&p.ID, &p.RevisionID, &p.LorebookRevisionIDs, &p.LorebookRemoteIDs, &p.PushedHash, &p.RemoteID,
+		err := row.Scan(&p.ID, &p.Kind, &p.RevisionID, &p.LorebookRevisionIDs, &p.LorebookRemoteIDs, &p.PushedHash, &p.RemoteID,
 			&p.PushedAt)
 		return p, err
 	})

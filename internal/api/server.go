@@ -152,7 +152,8 @@ func (s *Server) fail(err error) error {
 		return huma.Error404NotFound("not found")
 	case errors.Is(err, library.ErrConflict), errors.Is(err, library.ErrSlugTaken), errors.Is(err, library.ErrNameTaken),
 		errors.Is(err, plugins.ErrNameTaken), errors.Is(err, jobs.ErrFinished), errors.Is(err, plugins.ErrInUse),
-		errors.Is(err, targets.ErrNewCopy), errors.Is(err, targets.ErrNoChanges), errors.Is(err, targets.ErrMoved):
+		errors.Is(err, targets.ErrNewCopy), errors.Is(err, targets.ErrNoChanges), errors.Is(err, targets.ErrMoved),
+		errors.Is(err, targets.ErrBound):
 		return huma.Error409Conflict(err.Error())
 	case errors.Is(err, plugins.ErrBroken):
 		// The stored error can hold paths and plugin output, so it stays out of the response.

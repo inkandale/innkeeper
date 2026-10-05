@@ -9,16 +9,16 @@ import (
 type kind struct {
 	name string
 	// col is the binding column that holds the entity's ID.
-	col      string
-	entities func(*library.Library) *library.Entities
-	put, get string
+	col            string
+	entities       func(*library.Library) *library.Entities
+	put, get, list string
 }
 
 var (
 	cardKind = kind{"card", "card_id", func(l *library.Library) *library.Entities { return l.Cards },
-		protocol.MethodTargetPut, protocol.MethodTargetGet}
+		protocol.MethodTargetPut, protocol.MethodTargetGet, protocol.MethodTargetList}
 	lorebookKind = kind{"lorebook", "lorebook_id", func(l *library.Library) *library.Entities { return l.Lorebooks },
-		protocol.MethodTargetPutLorebook, protocol.MethodTargetGetLorebook}
+		protocol.MethodTargetPutLorebook, protocol.MethodTargetGetLorebook, protocol.MethodTargetListLorebooks}
 )
 
 func (k kind) isLorebook() bool { return k.name == lorebookKind.name }

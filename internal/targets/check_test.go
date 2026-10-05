@@ -118,3 +118,20 @@ func TestScanChecksBindingsOnceTheirTargetCanPull(t *testing.T) {
 		t.Fatalf("status = %s, want in_sync", s)
 	}
 }
+
+func TestCheckLeavesMissingWhenAnotherBindingTookTheID(t *testing.T) {
+	e := setup(t, nil)
+	a := e.push(e.card)
+	if err := os.Remove(filepath.Join(e.dir, a.RemoteID+".json")); err != nil {
+		t.Fatal(err)
+	}
+	if a = e.check(a); a.Status != "missing" {
+		t.Fatalf("status = %s, want missing", a.Status)
+	}
+	if b := e.push(e.newCard("Durza")); b.RemoteID != a.RemoteID {
+		t.Fatalf("the app gave the new card %s, not %s", b.RemoteID, a.RemoteID)
+	}
+	if a = e.check(a); a.Status != "missing" {
+		t.Fatalf("status = %s, want missing", a.Status)
+	}
+}

@@ -89,19 +89,17 @@ type importIn struct {
 }
 
 type instanceIn struct {
-	Plugin       string            `json:"plugin"`
-	Name         string            `json:"name"`
-	Config       map[string]any    `json:"config,omitempty"`
-	Secrets      map[string]string `json:"secrets,omitempty" jsonschema:"Write-only; never returned"`
-	OwnerSubject *string           `json:"owner_subject,omitempty" jsonschema:"For login plugins: the identity that logs in as the owner"`
+	Plugin  string            `json:"plugin"`
+	Name    string            `json:"name"`
+	Config  map[string]any    `json:"config,omitempty"`
+	Secrets map[string]string `json:"secrets,omitempty" jsonschema:"Write-only; never returned"`
 }
 
 type instanceUpdateIn struct {
-	ID           int64              `json:"id"`
-	Name         *string            `json:"name,omitempty"`
-	Config       map[string]any     `json:"config,omitempty"`
-	Secrets      map[string]*string `json:"secrets,omitempty" jsonschema:"Sets each named secret; null removes one. Write-only."`
-	OwnerSubject *string            `json:"owner_subject,omitempty"`
+	ID      int64              `json:"id"`
+	Name    *string            `json:"name,omitempty"`
+	Config  map[string]any     `json:"config,omitempty"`
+	Secrets map[string]*string `json:"secrets,omitempty" jsonschema:"Sets each named secret; null removes one. Write-only."`
 }
 
 type none struct{}
@@ -232,18 +230,17 @@ var tools = []tool{
 		func(ctx context.Context, c caller, _ none) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "GET", "/instances", nil)
 		}),
-	def("create_instance", "Configure a new plugin instance, such as a target app or an importer.", tier.Destructive,
+	def("create_instance", "Configure a new plugin instance, such as a target app or an importer. Not login providers.", tier.Destructive,
 		func(ctx context.Context, c caller, in instanceIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", "/instances", in)
 		}),
-	def("update_instance", "Change a plugin instance's name, config, secrets, or owner. Its plugin restarts with them.", tier.Destructive,
+	def("update_instance", "Change a plugin instance's name, config, or secrets. Its plugin restarts with them. Login providers can't be changed here.", tier.Destructive,
 		func(ctx context.Context, c caller, in instanceUpdateIn) (*sdk.CallToolResult, error) {
 			body := struct {
-				Name         *string            `json:"name,omitempty"`
-				Config       map[string]any     `json:"config,omitempty"`
-				Secrets      map[string]*string `json:"secrets,omitempty"`
-				OwnerSubject *string            `json:"owner_subject,omitempty"`
-			}{in.Name, in.Config, in.Secrets, in.OwnerSubject}
+				Name    *string            `json:"name,omitempty"`
+				Config  map[string]any     `json:"config,omitempty"`
+				Secrets map[string]*string `json:"secrets,omitempty"`
+			}{in.Name, in.Config, in.Secrets}
 			return c.call(ctx, "PATCH", fmt.Sprintf("/instances/%d", in.ID), body)
 		}),
 }

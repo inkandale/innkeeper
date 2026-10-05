@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/davidgibbons/innkeeper/internal/auth"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 	"github.com/davidgibbons/innkeeper/internal/tier"
 )
@@ -96,6 +97,9 @@ func (s *Server) instanceRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "create-instance", Method: http.MethodPost, Path: "/instances",
 		Summary: "Configure a plugin instance", Tags: tags, DefaultStatus: http.StatusCreated},
 		func(ctx context.Context, in *createInstanceIn) (*instanceOut, error) {
+			if err := s.loginGuard(ctx, in.Body.Plugin, in.Body.OwnerSubject != nil); err != nil {
+				return nil, err
+			}
 			id, err := s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: in.Body.Plugin, Name: in.Body.Name,
 				Config: in.Body.Config, Secrets: in.Body.Secrets, OwnerSubject: in.Body.OwnerSubject})
 			if err != nil {
@@ -113,7 +117,14 @@ func (s *Server) instanceRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "update-instance", Method: http.MethodPatch, Path: "/instances/{id}",
 		Summary: "Change a plugin instance", Description: "Clears a broken instance, and its plugin restarts with the new settings.", Tags: tags},
 		func(ctx context.Context, in *updateInstanceIn) (*instanceOut, error) {
-			err := s.Registry.UpdateInstance(ctx, in.ID, plugins.InstanceEdit{Name: in.Body.Name, Config: in.Body.Config,
+			cur, err := s.Registry.GetInstance(ctx, in.ID)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			if err := s.loginGuard(ctx, cur.Plugin, in.Body.OwnerSubject != nil); err != nil {
+				return nil, err
+			}
+			err = s.Registry.UpdateInstance(ctx, in.ID, plugins.InstanceEdit{Name: in.Body.Name, Config: in.Body.Config,
 				Secrets: in.Body.Secrets, OwnerSubject: in.Body.OwnerSubject})
 			if err != nil {
 				return nil, s.fail(err)
@@ -126,4 +137,14 @@ func (s *Server) instanceRoutes(api huma.API) {
 		func(ctx context.Context, in *idIn) (*struct{}, error) {
 			return nil, s.fail(s.Registry.DeleteInstance(ctx, in.ID))
 		})
+}
+
+// loginGuard keeps MCP clients away from login providers. A provider's
+// owner, config, and secrets decide who logs in with every tier, so a
+// client that could change them could make itself the owner.
+func (s *Server) loginGuard(ctx context.Context, plugin string, owner bool) error {
+	if auth.FromMCP(ctx) && (owner || s.Registry.HasCapability(plugin, "auth")) {
+		return huma.Error403Forbidden("login providers and owners can't be changed through MCP; use the CLI or the API")
+	}
+	return nil
 }

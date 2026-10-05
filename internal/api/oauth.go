@@ -25,6 +25,10 @@ import (
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
+// maxClients caps registered OAuth clients. Unapproved ones are pruned a
+// day after registering.
+const maxClients = 1000
+
 const (
 	// returnCookie holds the authorize request to resume after a login
 	// through a redirect provider.
@@ -90,6 +94,9 @@ func oauthError(w http.ResponseWriter, status int, code, description string) {
 
 // validRedirect accepts https URIs, and http ones on a loopback host.
 func validRedirect(raw string) bool {
+	if len(raw) > 2048 {
+		return false
+	}
 	u, err := url.Parse(raw)
 	if err != nil || u.Fragment != "" || u.Host == "" {
 		return false
@@ -121,8 +128,15 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	if name == "" || len(name) > 100 {
 		name = "Unnamed client"
 	}
-	if err := s.Auth.PruneOAuth(r.Context()); err != nil {
-		s.Log.Warn("prune oauth", "err", err)
+	// Registration is open, so prune at most hourly and cap the clients.
+	if last := s.lastPrune.Load(); time.Since(time.Unix(last, 0)) > time.Hour && s.lastPrune.CompareAndSwap(last, time.Now().Unix()) {
+		if err := s.Auth.PruneOAuth(r.Context()); err != nil {
+			s.Log.Warn("prune oauth", "err", err)
+		}
+	}
+	if n, err := s.Auth.ClientCount(r.Context()); err != nil || n >= maxClients {
+		oauthError(w, http.StatusServiceUnavailable, "temporarily_unavailable", "too many registered clients; try again tomorrow")
+		return
 	}
 	c, err := s.Auth.RegisterClient(r.Context(), name, in.RedirectURIs)
 	if err != nil {
@@ -216,9 +230,8 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request) {
 	csrf := randomString()
 	http.SetCookie(w, &http.Cookie{Name: csrfCookie, Value: csrf, Path: "/oauth/", MaxAge: 600, HttpOnly: true,
 		Secure: s.cookie("", "", 0).Secure, SameSite: http.SameSiteStrictMode})
-	u, _ := url.Parse(req.params.Get("redirect_uri"))
 	s.page(w, http.StatusOK, consentPage, map[string]any{
-		"Client": req.client.Name, "Host": u.Host, "Params": req.params, "CSRF": csrf, "Tiers": tier.Names,
+		"Client": req.client.Name, "Redirect": req.params.Get("redirect_uri"), "Params": req.params, "CSRF": csrf,
 	})
 }
 

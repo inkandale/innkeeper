@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"sync/atomic"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
@@ -48,6 +49,8 @@ type Server struct {
 	loginSlot chan struct{}
 	// tools caches each plugin instance's MCP tools, by instance version.
 	tools sync.Map
+	// lastPrune is when OAuth clients were last pruned, in Unix seconds.
+	lastPrune atomic.Int64
 }
 
 // NoCore answers plugin callbacks. The API offers plugins none yet.

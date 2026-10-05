@@ -113,6 +113,12 @@ the API's status and message, such as `409` for a stale base revision.
 | `create_instance` | destructive | `POST /instances` |
 | `update_instance` | destructive | `PATCH /instances/{id}` |
 
+**Login providers.** No MCP request may create or change an instance of a
+login plugin, or set any instance's `owner_subject`, at any tier. A login
+provider's settings decide who logs in with every tier, so an MCP client
+that could change them could make itself the owner and outlive its grant.
+The CLI, the API with a token, and the browser still can.
+
 **Push confirmation.** `preview_push` returns `confirm`, a hash of the
 revision it rendered, the app copy it compared against, and its changes.
 `push` requires it, and recomputes the preview first. If anything differs,

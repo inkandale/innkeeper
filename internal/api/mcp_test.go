@@ -181,7 +181,15 @@ func TestMCPOtherTools(t *testing.T) {
 	if got := tool(t, s, "list_instances", map[string]any{}, false); strings.Contains(got, "letmein") {
 		t.Fatal("list_instances shows a secret")
 	}
-	tool(t, s, "update_instance", map[string]any{"id": inst, "name": "Renamed"}, false)
+	// The fake plugin can log people in, so MCP can't change it.
+	if got := tool(t, s, "update_instance", map[string]any{"id": inst, "name": "Renamed"}, true); !strings.HasPrefix(got, "403") {
+		t.Fatalf("update_instance on a login provider = %s", got)
+	}
+	vault, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "vault", Name: "Vault"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tool(t, s, "update_instance", map[string]any{"id": vault, "name": "Renamed", "secrets": map[string]any{"api_key": "k"}}, false)
 }
 
 // The SDK takes any case of "Bearer"; tools must still reach the API.

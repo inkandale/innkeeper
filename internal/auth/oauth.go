@@ -18,6 +18,9 @@ const (
 	CodeTTL    = time.Minute
 	AccessTTL  = time.Hour
 	RefreshTTL = 30 * 24 * time.Hour
+	// RefreshGrace is how soon after its use a refresh token's reuse is
+	// taken for a client's retry, refused without revoking the grant.
+	RefreshGrace = 30 * time.Second
 )
 
 var (
@@ -145,24 +148,25 @@ func (a *Auth) Refresh(ctx context.Context, clientID, refresh string) (Tokens, e
 	defer tx.Rollback(ctx)
 	var grant int64
 	var client, tierName string
-	var expired, used bool
-	err = tx.QueryRow(ctx, `SELECT t.grant_id, g.client_id, g.tier, t.expires_at < now(), t.used_at IS NOT NULL
+	var expired, used, justUsed bool
+	err = tx.QueryRow(ctx, `SELECT t.grant_id, g.client_id, g.tier, t.expires_at < now(), t.used_at IS NOT NULL,
+			coalesce(t.used_at > now() - make_interval(secs => $2), false)
 		FROM oauth_token t JOIN oauth_grant g ON g.id = t.grant_id
-		WHERE t.hash = $1 AND t.kind = 'refresh' FOR UPDATE OF t`, hash(refresh)).
-		Scan(&grant, &client, &tierName, &expired, &used)
+		WHERE t.hash = $1 AND t.kind = 'refresh' FOR UPDATE OF t`, hash(refresh), RefreshGrace.Seconds()).
+		Scan(&grant, &client, &tierName, &expired, &used, &justUsed)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Tokens{}, ErrBadGrant
 	}
 	if err != nil {
 		return Tokens{}, err
 	}
-	if used {
+	if used && !justUsed {
 		if _, err := tx.Exec(ctx, `DELETE FROM oauth_grant WHERE id = $1`, grant); err != nil {
 			return Tokens{}, err
 		}
 		return Tokens{}, errors.Join(ErrBadGrant, tx.Commit(ctx))
 	}
-	if expired || client != clientID {
+	if used || expired || client != clientID {
 		return Tokens{}, ErrBadGrant
 	}
 	if _, err := tx.Exec(ctx, `UPDATE oauth_token SET used_at = now() WHERE hash = $1`, hash(refresh)); err != nil {
@@ -256,3 +260,10 @@ func ViaMCP(ctx context.Context) context.Context { return context.WithValue(ctx,
 
 // FromMCP reports whether ctx is marked by ViaMCP.
 func FromMCP(ctx context.Context) bool { return ctx.Value(viaMCPKey{}) == true }
+
+// ClientCount is how many OAuth clients are registered.
+func (a *Auth) ClientCount(ctx context.Context) (int, error) {
+	var n int
+	err := a.pool.QueryRow(ctx, `SELECT count(*) FROM oauth_client`).Scan(&n)
+	return n, err
+}

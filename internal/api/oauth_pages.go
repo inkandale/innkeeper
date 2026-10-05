@@ -13,7 +13,8 @@ h1{font-size:1.4rem;margin:0 0 1rem}
 p,label{color:var(--muted)}
 fieldset{border:1px solid var(--line);border-radius:8px;margin:1rem 0;padding:.5rem 1rem}
 label{display:block;margin:.5rem 0}
-label b{color:var(--fg)}
+label b,p b{color:var(--fg)}
+code{word-break:break-all}
 input[type=text],input[type=password]{width:100%;box-sizing:border-box;padding:.6rem;border:1px solid var(--line);border-radius:6px;background:transparent;color:inherit;font:inherit}
 button,a.button{display:inline-block;padding:.6rem 1.2rem;border-radius:6px;border:1px solid var(--line);background:transparent;color:inherit;font:inherit;text-decoration:none;cursor:pointer;margin:.5rem .5rem 0 0}
 button.primary{background:var(--accent);border-color:var(--accent);color:var(--bg)}
@@ -39,14 +40,15 @@ var (
 
 	consentPage = template.Must(template.New("consent").Parse(pageHead +
 		`<h1>Connect {{.Client}}?</h1>
-<p><b>{{.Client}}</b> wants to use your Innkeeper library. After you approve, you go back to <b>{{.Host}}</b>.</p>
+<p>An app calling itself <b>{{.Client}}</b> wants to use your Innkeeper library. Apps name themselves, so Innkeeper can't vouch for the name. Approve only if you just connected it, and it sends you back to an address you expect:</p>
+<p><code>{{.Redirect}}</code></p>
 <form method="post" action="/oauth/authorize">
 {{range $k, $v := .Params}}<input type="hidden" name="{{$k}}" value="{{index $v 0}}">{{end}}
 <input type="hidden" name="csrf" value="{{.CSRF}}">
 <fieldset><legend>What may it do?</legend>
 <label><input type="radio" name="tier" value="read" checked> <b>Read</b>: search and read cards, lorebooks, and sync status</label>
 <label><input type="radio" name="tier" value="write"> <b>Write</b>: also edit the library, which revision history can undo</label>
-<label><input type="radio" name="tier" value="destructive"> <b>Destructive</b>: also push to apps, overwriting their copies, and change plugin settings</label>
+<label><input type="radio" name="tier" value="destructive"> <b>Destructive</b>: also push to apps, overwriting their copies, and change plugin settings and secrets</label>
 </fieldset>
 <button class="primary" name="decision" value="approve">Approve</button><button name="decision" value="deny">Deny</button>
 </form>` + pageFoot))

@@ -125,6 +125,8 @@ To connect claude.ai, or another client that signs in through OAuth, set
 with no credentials. The client sends you to Innkeeper to log in, then asks
 which tier to grant; read is the default. `innkeeper token list` shows
 approved clients, and `innkeeper token revoke-grant <id>` cuts one off.
+No MCP client can change login providers or who the owner is, whatever its
+tier.
 
 Plugins can add tools too. They show as `<instance>_<tool>`, such as
 `lumiverse_list_untracked`, and each declares its tier; one that declares

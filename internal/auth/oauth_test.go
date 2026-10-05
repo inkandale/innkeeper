@@ -63,9 +63,19 @@ func TestOAuthGrant(t *testing.T) {
 		t.Fatal("an access token works as an API token")
 	}
 
-	// Refresh rotates; reusing the old refresh token revokes the grant.
+	// Refresh rotates. A quick reuse, like a client's retry, is refused but
+	// keeps the grant; a later one revokes it.
 	next, err := a.Refresh(ctx, c.ID, toks.Refresh)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Refresh(ctx, c.ID, toks.Refresh); !errors.Is(err, ErrBadGrant) {
+		t.Fatalf("quick refresh reuse: %v", err)
+	}
+	if got, _, _ := a.CheckAccessToken(ctx, next.Access); got == 0 {
+		t.Fatal("a retried refresh revoked the grant")
+	}
+	if _, err := pool.Exec(ctx, `UPDATE oauth_token SET used_at = now() - interval '1 minute' WHERE used_at IS NOT NULL`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := a.Refresh(ctx, c.ID, toks.Refresh); !errors.Is(err, ErrBadGrant) {

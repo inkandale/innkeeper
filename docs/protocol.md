@@ -35,6 +35,7 @@ Each plugin folder has a `plugin.toml`:
 | `config` | no | JSON Schema for instance settings; the UI renders a form from it |
 | `enrichments` | no | Keys the plugin writes, in lowercase `snake_case`. Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list` |
 | `formats` | only for `codec` | What `codec.encode` writes, each listed once: lowercase words of letters and digits joined by single hyphens, such as `png`. A codec plugin must list at least one. `json` is taken: the core exports CCv3 JSON itself |
+| `database` | no | `true` gives the plugin its own PostgreSQL schema, `plugin_<name>` with `-` as `_`, and a login role limited to it |
 
 Unknown keys are errors.
 
@@ -50,7 +51,7 @@ Unknown keys are errors.
    | `secrets` | Decrypted secrets, by name |
    | `blob_stores` | Blob store paths, by store name |
    | `blob_tmp` | Folder for new blob files |
-   | `database_url` | PostgreSQL DSN for a role limited to the `plugin_<name>` schema |
+   | `database_url` | PostgreSQL URL for the plugin's role, whose `search_path` is its schema. Empty unless the manifest sets `database = true` |
 
    Reply with `protocol`, `name`, `version`, and `capabilities`. These must
    match the manifest, or the core stops the plugin.
@@ -319,4 +320,5 @@ It loads the manifest, then checks that:
 - `shutdown` gets a reply within 5 seconds
 - the plugin exits after `shutdown`, rather than having exited earlier
 
-It exits non-zero if any check fails.
+It exits non-zero if any check fails. For a plugin with `database = true`,
+set `INNKEEPER_PLUGIN_DATABASE_URL` to send a test database as `database_url`.

@@ -42,6 +42,12 @@ database at startup and stop cleanly on `SIGTERM`.
 | `INNKEEPER_WORKER_CONCURRENCY` | `worker` | Jobs run at once; default 4 |
 | `INNKEEPER_URL`, `INNKEEPER_TOKEN` | API commands | API address and token |
 
+If any installed plugin sets `database = true`, the API and worker give it a
+schema and a login role limited to it at startup. That needs PostgreSQL 15 or
+later, where other roles can't create tables in `public`, and a database user
+with `CREATEROLE` and `CREATE` on the database. The Compose stack's user is a
+superuser.
+
 ## Try it with Docker Compose
 
 `compose.yaml` runs PostgreSQL, the API, and the worker from the local
@@ -275,4 +281,14 @@ cp -Rn <dir>/blobs/. "$INNKEEPER_BLOB_DIR"/
 ```
 
 Restore with the same `INNKEEPER_SECRETS_KEY`, or plugin secrets can't be
-read.
+read. The next start gives each plugin's schema back to its role.
+
+Removing a plugin from the image leaves its schema and role. To delete them,
+and the plugin's data with them, run this in the Innkeeper database. It
+can't be undone:
+
+```sql
+DROP SCHEMA plugin_<name> CASCADE;
+DROP OWNED BY <database>_plugin_<name>;
+DROP ROLE <database>_plugin_<name>;
+```

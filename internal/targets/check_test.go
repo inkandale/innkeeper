@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/davidgibbons/innkeeper/internal/library"
+	"github.com/davidgibbons/innkeeper/internal/plugins"
 )
 
 func TestCheck(t *testing.T) {
@@ -98,5 +99,22 @@ func TestCheckLosesToAPushInFlight(t *testing.T) {
 	}
 	if got, err := e.s.Binding(e.ctx, b.ID); err != nil || got.RemoteState != "unchanged" {
 		t.Fatalf("binding = %+v, %v", got, err)
+	}
+}
+
+func TestScanChecksBindingsOnceTheirTargetCanPull(t *testing.T) {
+	e := setup(t, map[string]any{"pull": false})
+	e.push(e.card)
+	if p, err := e.s.Scan(e.ctx, func(ScanProgress) {}); err != nil || p.Checked != 0 {
+		t.Fatalf("scan before pull = %+v, %v", p, err)
+	}
+	if err := e.reg.UpdateInstance(e.ctx, e.inst, plugins.InstanceEdit{Config: map[string]any{"dir": e.dir}}); err != nil {
+		t.Fatal(err)
+	}
+	if p, err := e.s.Scan(e.ctx, func(ScanProgress) {}); err != nil || p.Checked != 1 {
+		t.Fatalf("scan after pull = %+v, %v", p, err)
+	}
+	if s := e.status(e.card); s != "in_sync" {
+		t.Fatalf("status = %s, want in_sync", s)
 	}
 }

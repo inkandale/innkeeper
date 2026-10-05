@@ -93,15 +93,45 @@ func provision(ctx context.Context, tx pgx.Tx, database, schema, role, pw string
 		`GRANT `+r+` TO CURRENT_USER`,
 		`CREATE SCHEMA IF NOT EXISTS `+s,
 		`ALTER SCHEMA `+s+` OWNER TO `+r,
-		// For objects pg_restore made under another owner.
-		`GRANT ALL ON ALL TABLES IN SCHEMA `+s+` TO `+r,
-		`GRANT ALL ON ALL SEQUENCES IN SCHEMA `+s+` TO `+r,
-		`GRANT ALL ON ALL FUNCTIONS IN SCHEMA `+s+` TO `+r,
 		`GRANT CONNECT ON DATABASE `+d+` TO `+r)
 	for _, q := range stmts {
 		if _, err := tx.Exec(ctx, q); err != nil {
 			return err
 		}
 	}
+	// pg_restore into a database with another name leaves the schema's
+	// objects owned by the old role or the core user, so the plugin couldn't
+	// alter them in its own migrations.
+	rows, err := tx.Query(ctx, reownSQL, schema, role)
+	if err != nil {
+		return err
+	}
+	reown, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return err
+	}
+	for _, q := range reown {
+		if _, err := tx.Exec(ctx, q); err != nil {
+			return err
+		}
+	}
 	return nil
 }
+
+// reownSQL lists the statements that give schema $1's objects to role $2.
+// Sequences a table owns, and types a table or range made, follow their owner.
+const reownSQL = `
+SELECT format('ALTER TABLE %s OWNER TO %I', c.oid::regclass, $2::text) FROM pg_class c
+WHERE c.relnamespace = $1::text::regnamespace AND c.relowner <> $2::text::regrole
+	AND c.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
+	AND NOT (c.relkind = 'S' AND EXISTS (SELECT FROM pg_depend d
+		WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype IN ('a', 'i')))
+UNION ALL
+SELECT format('ALTER ROUTINE %s OWNER TO %I', p.oid::regprocedure, $2::text) FROM pg_proc p
+WHERE p.pronamespace = $1::text::regnamespace AND p.proowner <> $2::text::regrole
+UNION ALL
+SELECT format('ALTER %s %s OWNER TO %I', CASE t.typtype WHEN 'd' THEN 'DOMAIN' ELSE 'TYPE' END, t.oid::regtype, $2::text)
+FROM pg_type t
+WHERE t.typnamespace = $1::text::regnamespace AND t.typowner <> $2::text::regrole
+	AND (t.typtype IN ('e', 'd', 'r')
+		OR (t.typtype = 'c' AND (SELECT relkind FROM pg_class WHERE oid = t.typrelid) = 'c'))`

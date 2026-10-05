@@ -302,14 +302,15 @@ cp -Rn <dir>/blobs/. "$INNKEEPER_BLOB_DIR"/
 ```
 
 Restore with the same `INNKEEPER_SECRETS_KEY`, or plugin secrets can't be
-read. The next start gives each plugin's schema back to its role.
+read. The next start gives each plugin's schema, and everything in it, back to
+its role.
 
 Removing a plugin from the image leaves its schema and role. To delete them,
-and the plugin's data with them, run this in the Innkeeper database. It
-can't be undone:
+and the plugin's data with them, run this in the Innkeeper database, with
+`-` in the plugin's name as `_`. It can't be undone:
 
 ```sql
 DROP SCHEMA plugin_<name> CASCADE;
-DROP OWNED BY <database>_plugin_<name>;
-DROP ROLE <database>_plugin_<name>;
+DROP OWNED BY "<database>_plugin_<name>";
+DROP ROLE "<database>_plugin_<name>";
 ```

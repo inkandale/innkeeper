@@ -36,6 +36,9 @@ func newDBRegistry(t *testing.T) (*Registry, *pgxpool.Pool, string) {
 	reg := New(pool, manifests, &blobstore.Store{Name: "library", Root: t.TempDir()}, box)
 	t.Cleanup(func() {
 		ctx := context.Background()
+		if _, err := pool.Exec(ctx, `DROP SCHEMA IF EXISTS plugin_cat_log CASCADE`); err != nil {
+			t.Error(err)
+		}
 		rows, err := pool.Query(ctx, `SELECT rolname FROM pg_roles WHERE rolname LIKE current_database() || '\_%'`)
 		if err != nil {
 			t.Error(err)
@@ -93,9 +96,15 @@ func TestProvisionDatabases(t *testing.T) {
 		t.Error("created a table in public")
 	}
 
-	// A second run is fine, and takes back a schema given to someone else.
+	// A second run is fine, and takes back a schema, and what's in it, given
+	// to someone else, as after a restore into a database with another name.
 	other := pool.Config().ConnConfig.Database + "_other"
-	if _, err := pool.Exec(ctx, `CREATE ROLE `+other+`; ALTER SCHEMA plugin_cat_log OWNER TO `+other); err != nil {
+	if _, err := pool.Exec(ctx, `CREATE ROLE `+other+`; ALTER SCHEMA plugin_cat_log OWNER TO `+other+`;
+		SET ROLE `+other+`; SET search_path = plugin_cat_log;
+		CREATE TABLE restored (id serial PRIMARY KEY); CREATE SEQUENCE loose; CREATE VIEW seen AS SELECT 1;
+		CREATE FUNCTION one() RETURNS int LANGUAGE sql AS 'SELECT 1'; CREATE TYPE mood AS ENUM ('ok');
+		CREATE DOMAIN pos AS int; CREATE TYPE pair AS (a int); CREATE TYPE span AS RANGE (subtype = int);
+		RESET ROLE; RESET search_path`); err != nil {
 		t.Fatal(err)
 	}
 	if err := reg.ProvisionDatabases(ctx, dbURL); err != nil {
@@ -107,6 +116,20 @@ func TestProvisionDatabases(t *testing.T) {
 	}
 	if want := pool.Config().ConnConfig.Database + "_plugin_cat_log"; owner != want {
 		t.Errorf("schema owner %s, want %s", owner, want)
+	}
+	var strays []string
+	rows, err := pool.Query(ctx, `
+		SELECT relname FROM pg_class WHERE relnamespace = 'plugin_cat_log'::regnamespace AND relowner <> $1::regrole
+		UNION ALL SELECT proname FROM pg_proc WHERE pronamespace = 'plugin_cat_log'::regnamespace AND proowner <> $1::regrole
+		UNION ALL SELECT typname FROM pg_type WHERE typnamespace = 'plugin_cat_log'::regnamespace AND typowner <> $1::regrole`, owner)
+	if err == nil {
+		strays, err = pgx.CollectRows(rows, pgx.RowTo[string])
+	}
+	if err != nil || len(strays) > 0 {
+		t.Errorf("not given back: %v, %v", strays, err)
+	}
+	if _, err := conn.Exec(ctx, `ALTER TABLE restored ADD COLUMN note text`); err != nil {
+		t.Errorf("alter a restored table: %v", err)
 	}
 }
 

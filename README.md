@@ -153,7 +153,7 @@ shows its status on each target:
 | Status | Meaning |
 |---|---|
 | `in_sync` | Nothing changed on either side since the last push |
-| `ahead` | The card, its avatar, its override for this target, or its embedded lorebooks changed since the last push |
+| `ahead` | The card, its avatar, its override for this target, or its lorebooks changed since the last push |
 | `remote_changed` | Someone changed the card in the app |
 | `diverged` | Both of the above |
 | `missing` | The app no longer has the card. The next push makes a new copy |
@@ -169,6 +169,34 @@ with `POST /bindings/{id}/adopt`, `into` one of:
 
 Changes to `character_book` can't be adopted; edit the lorebooks instead. To
 throw the app's changes away, push: a push overwrites them.
+
+Before a push, `GET /cards/{id}/push-preview?instance_id=<id>` reads the
+app's copy and shows what the push would do:
+
+- `changes`: the fields it would change in the app, with the app's value as
+  `before` and the pushed value as `after`
+- `replaces`: whether it overwrites a copy the app has
+- `dropped_fields`: fields with content the app doesn't store
+- `new_copy`: whether it makes another copy, on an app that can't update cards
+- `stale`: the app couldn't be read, so `changes` compare against the last push
+
+### Lorebooks in apps that keep them separately
+
+Some apps, such as Lumiverse, keep lorebooks apart from cards. Lorebooks then
+sync on their own, with their own bindings, statuses, checks, and adopts:
+
+```bash
+innkeeper call GET  '/lorebooks/<id>/push-preview?instance_id=<instance-id>'
+innkeeper call POST /lorebooks/<id>/push '{"instance_id": <instance-id>}'
+innkeeper call GET  /lorebooks/<id>/bindings
+```
+
+A card push creates the card's lorebooks that the app doesn't have yet, then
+links the card to them. It never updates a lorebook the app already has, so
+every lorebook change goes through the lorebook's own preview. The card
+preview lists the lorebooks it would create in `create_lorebooks`. A card is
+`ahead` when its linked lorebooks change, or when one of them is pushed again
+under a new ID.
 
 If a plugin exits or times out while creating a card in an app, the push job
 fails rather than retrying, because the app may already have the card. Check

@@ -4,8 +4,11 @@ package secrets
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,7 +19,10 @@ import (
 const EnvVar = "INNKEEPER_SECRETS_KEY"
 
 // Box seals and opens secrets with AES-256-GCM.
-type Box struct{ aead cipher.AEAD }
+type Box struct {
+	aead cipher.AEAD
+	key  []byte
+}
 
 // FromEnv returns a Box with the key in EnvVar.
 func FromEnv() (*Box, error) {
@@ -44,7 +50,7 @@ func New(key []byte) (*Box, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Box{aead: aead}, nil
+	return &Box{aead: aead, key: key}, nil
 }
 
 // Seal encrypts secrets behind a random nonce. No secrets seal to nil.
@@ -76,4 +82,12 @@ func (b *Box) Open(sealed []byte) (map[string]string, error) {
 		return nil, fmt.Errorf("open secrets: wrong key or damaged data: %w", err)
 	}
 	return out, json.Unmarshal(plain, &out)
+}
+
+// Derive returns a stable secret for label, so the API and worker agree on
+// it without storing it. Different labels or keys give different values.
+func (b *Box) Derive(label string) string {
+	h := hmac.New(sha256.New, b.key)
+	h.Write([]byte(label))
+	return hex.EncodeToString(h.Sum(nil))
 }

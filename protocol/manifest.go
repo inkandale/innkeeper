@@ -43,6 +43,10 @@ type Manifest struct {
 	// Formats are what a codec plugin's codec.encode writes.
 	Formats []string `toml:"formats"`
 
+	// Database gives the plugin a schema, plugin_<name>, and a role limited
+	// to it. The URL arrives as initialize's database_url.
+	Database bool `toml:"database"`
+
 	// Dir is the absolute path of the plugin's folder.
 	Dir string `toml:"-"`
 }

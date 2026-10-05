@@ -70,3 +70,14 @@ func TestFromEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestDerive(t *testing.T) {
+	b := box(t, 1)
+	got := b.Derive("a")
+	if got != box(t, 1).Derive("a") {
+		t.Fatal("same key and label gave different values")
+	}
+	if got == b.Derive("b") || got == box(t, 2).Derive("a") {
+		t.Fatal("different label or key gave the same value")
+	}
+}

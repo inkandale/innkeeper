@@ -16,7 +16,7 @@ const usage = `usage:
   innkeeper migrate
   innkeeper worker
   innkeeper api
-  innkeeper token create <name> | list | revoke <id>
+  innkeeper token create <name> [read|write|destructive] | list | revoke <id>
   innkeeper backup <dir>
 
 API commands (read INNKEEPER_URL and INNKEEPER_TOKEN):

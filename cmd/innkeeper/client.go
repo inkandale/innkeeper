@@ -20,7 +20,7 @@ type client struct{ base, token string }
 func newClient() (*client, error) {
 	c := &client{base: strings.TrimSuffix(os.Getenv("INNKEEPER_URL"), "/"), token: os.Getenv("INNKEEPER_TOKEN")}
 	if c.base == "" || c.token == "" {
-		return nil, errors.New("set INNKEEPER_URL and INNKEEPER_TOKEN; make a token with: innkeeper token create <name>")
+		return nil, errors.New("set INNKEEPER_URL and INNKEEPER_TOKEN; make a token with: innkeeper token create <name> [read|write|destructive]")
 	}
 	return c, nil
 }

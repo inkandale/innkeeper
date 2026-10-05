@@ -9,17 +9,18 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/davidgibbons/innkeeper/internal/testdb"
+	"github.com/davidgibbons/innkeeper/internal/tier"
 )
 
 func TestTokens(t *testing.T) {
 	pool := testdb.New(t)
 	a := New(pool)
 	ctx := context.Background()
-	tok, secret, err := a.CreateToken(ctx, "cli")
+	tok, secret, err := a.CreateToken(ctx, "cli", tier.Write)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(secret, "ink_") || tok.Name != "cli" {
+	if !strings.HasPrefix(secret, "ink_") || tok.Name != "cli" || tok.Tier != "write" {
 		t.Fatalf("token = %+v, %q", tok, secret)
 	}
 	var stored string
@@ -31,9 +32,9 @@ func TestTokens(t *testing.T) {
 	}
 
 	for _, s := range []string{secret, "ink_wrong", ""} {
-		ok, err := a.CheckToken(ctx, s)
-		if err != nil || ok != (s == secret) {
-			t.Fatalf("CheckToken(%q) = %v, %v", s, ok, err)
+		got, err := a.CheckToken(ctx, s)
+		if want := map[bool]tier.Tier{true: tier.Write}[s == secret]; err != nil || got != want {
+			t.Fatalf("CheckToken(%q) = %v, %v; want %v", s, got, err, want)
 		}
 	}
 	list, err := a.Tokens(ctx)
@@ -44,7 +45,7 @@ func TestTokens(t *testing.T) {
 	if err := a.RevokeToken(ctx, tok.ID); err != nil {
 		t.Fatal(err)
 	}
-	if ok, _ := a.CheckToken(ctx, secret); ok {
+	if got, _ := a.CheckToken(ctx, secret); got != 0 {
 		t.Fatal("revoked token still works")
 	}
 	if err := a.RevokeToken(ctx, tok.ID); !errors.Is(err, ErrNotFound) {

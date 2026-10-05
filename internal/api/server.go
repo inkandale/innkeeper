@@ -18,6 +18,7 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 	"github.com/davidgibbons/innkeeper/internal/targets"
+	"github.com/davidgibbons/innkeeper/internal/tier"
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
@@ -52,6 +53,28 @@ func NoCore(_ context.Context, method string, _ json.RawMessage) (any, error) {
 
 // public marks an operation that needs no credentials.
 var public = map[string]any{"public": true}
+
+// needs is an operation's tier. Operations without one need read for GET
+// and HEAD, and write for anything else.
+func needs(t tier.Tier) map[string]any { return map[string]any{"tier": t} }
+
+func opTier(op *huma.Operation) tier.Tier {
+	if t, ok := op.Metadata["tier"].(tier.Tier); ok {
+		return t
+	}
+	if op.Method == http.MethodGet || op.Method == http.MethodHead {
+		return tier.Read
+	}
+	return tier.Write
+}
+
+type tierKey struct{}
+
+// callerTier is the tier of the credentials the request came with.
+func callerTier(ctx context.Context) tier.Tier {
+	t, _ := ctx.Value(tierKey{}).(tier.Tier)
+	return t
+}
 
 // noAuth shows a public operation in the spec with no security requirement.
 var noAuth = []map[string][]string{}

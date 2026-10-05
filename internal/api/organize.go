@@ -12,6 +12,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/davidgibbons/innkeeper/internal/library"
+	"github.com/davidgibbons/innkeeper/internal/tier"
 )
 
 // maxBlobBytes caps uploads. Card PNGs are a few MB at most.
@@ -75,7 +76,7 @@ func (s *Server) organizeRoutes(api huma.API) {
 			return &collectionsOut{Body: orEmpty(c)}, nil
 		})
 
-	huma.Register(api, huma.Operation{OperationID: "create-collection", Method: http.MethodPost, Path: "/collections",
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "create-collection", Method: http.MethodPost, Path: "/collections",
 		Summary: "Create a collection", Tags: tags, DefaultStatus: http.StatusCreated},
 		func(ctx context.Context, in *createCollectionIn) (*collectionOut, error) {
 			c, err := s.Lib.CreateCollection(ctx, in.Body.Name, in.Body.Description)
@@ -85,7 +86,7 @@ func (s *Server) organizeRoutes(api huma.API) {
 			return &collectionOut{Body: c}, nil
 		})
 
-	huma.Register(api, huma.Operation{OperationID: "update-collection", Method: http.MethodPatch, Path: "/collections/{id}",
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "update-collection", Method: http.MethodPatch, Path: "/collections/{id}",
 		Summary: "Rename a collection or change its description", Tags: tags},
 		func(ctx context.Context, in *updateCollectionIn) (*collectionOut, error) {
 			c, err := s.Lib.UpdateCollection(ctx, in.ID, in.Body.Name, in.Body.Description)
@@ -95,26 +96,26 @@ func (s *Server) organizeRoutes(api huma.API) {
 			return &collectionOut{Body: c}, nil
 		})
 
-	huma.Register(api, huma.Operation{OperationID: "delete-collection", Method: http.MethodDelete, Path: "/collections/{id}",
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "delete-collection", Method: http.MethodDelete, Path: "/collections/{id}",
 		Summary: "Delete a collection", Description: "Its cards stay in the library.", Tags: tags, DefaultStatus: http.StatusNoContent},
 		func(ctx context.Context, in *idIn) (*struct{}, error) {
 			return nil, s.fail(s.Lib.DeleteCollection(ctx, in.ID))
 		})
 
-	huma.Register(api, huma.Operation{OperationID: "add-to-collection", Method: http.MethodPut,
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "add-to-collection", Method: http.MethodPut,
 		Path: "/collections/{id}/cards/{card_id}", Summary: "Add a card to a collection", Tags: tags, DefaultStatus: http.StatusNoContent},
 		func(ctx context.Context, in *collectionCardIn) (*struct{}, error) {
 			return nil, s.fail(s.Lib.AddToCollection(ctx, in.ID, in.CardID))
 		})
 
-	huma.Register(api, huma.Operation{OperationID: "remove-from-collection", Method: http.MethodDelete,
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "remove-from-collection", Method: http.MethodDelete,
 		Path: "/collections/{id}/cards/{card_id}", Summary: "Remove a card from a collection", Tags: tags, DefaultStatus: http.StatusNoContent},
 		func(ctx context.Context, in *collectionCardIn) (*struct{}, error) {
 			return nil, s.fail(s.Lib.RemoveFromCollection(ctx, in.ID, in.CardID))
 		})
 
 	tags = []string{"Blobs"}
-	huma.Register(api, huma.Operation{OperationID: "upload-blob", Method: http.MethodPost, Path: "/blobs",
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "upload-blob", Method: http.MethodPost, Path: "/blobs",
 		Summary: "Upload a file", Description: "Send any file as application/octet-stream. Uploading the same bytes twice returns the same blob.",
 		Tags: tags, DefaultStatus: http.StatusCreated, MaxBodyBytes: maxBlobBytes + 1, BodyReadTimeout: 2 * time.Minute,
 		RequestBody: &huma.RequestBody{Required: true, Content: map[string]*huma.MediaType{"application/octet-stream": {}}}},

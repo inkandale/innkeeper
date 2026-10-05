@@ -25,6 +25,7 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/targets"
 	"github.com/davidgibbons/innkeeper/internal/testdb"
 	"github.com/davidgibbons/innkeeper/internal/testutil"
+	"github.com/davidgibbons/innkeeper/internal/tier"
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
@@ -69,7 +70,7 @@ func newEnv(t *testing.T) *testEnv {
 		Targets: targets.New(pool, lib, reg, mgr, quiet), Plugins: mgr, Log: quiet}}
 	e.srv = httptest.NewServer(e.s.Handler())
 	t.Cleanup(e.srv.Close)
-	if _, e.token, err = e.s.Auth.CreateToken(ctx, "test"); err != nil {
+	if _, e.token, err = e.s.Auth.CreateToken(ctx, "test", tier.Destructive); err != nil {
 		t.Fatal(err)
 	}
 	owner := "owner"

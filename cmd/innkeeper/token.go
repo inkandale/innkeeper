@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/davidgibbons/innkeeper/internal/auth"
+	"github.com/davidgibbons/innkeeper/internal/tier"
 )
 
 // token runs `innkeeper token create|list|revoke` against the database, so
@@ -23,13 +24,20 @@ func token(args []string) error {
 	defer pool.Close()
 	a := auth.New(pool)
 	switch {
-	case len(args) == 2 && args[0] == "create":
-		t, secret, err := a.CreateToken(ctx, args[1])
+	case (len(args) == 2 || len(args) == 3) && args[0] == "create":
+		// Read-only unless asked, so a token made in passing can't change anything.
+		t := tier.Read
+		if len(args) == 3 {
+			if t, err = tier.Parse(args[2]); err != nil {
+				return err
+			}
+		}
+		tok, secret, err := a.CreateToken(ctx, args[1], t)
 		if err != nil {
 			return err
 		}
 		fmt.Println(secret)
-		fmt.Fprintf(os.Stderr, "created token %d; it is not shown again\n", t.ID)
+		fmt.Fprintf(os.Stderr, "created %s token %d; it is not shown again\n", tok.Tier, tok.ID)
 		return nil
 	case len(args) == 1 && args[0] == "list":
 		list, err := a.Tokens(ctx)
@@ -37,13 +45,13 @@ func token(args []string) error {
 			return err
 		}
 		tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(tw, "ID\tNAME\tCREATED\tLAST USED")
+		fmt.Fprintln(tw, "ID\tNAME\tTIER\tCREATED\tLAST USED")
 		for _, t := range list {
 			used := "never"
 			if t.LastUsedAt != nil {
 				used = t.LastUsedAt.Local().Format(time.DateTime)
 			}
-			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\n", t.ID, t.Name, t.CreatedAt.Local().Format(time.DateTime), used)
+			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\n", t.ID, t.Name, t.Tier, t.CreatedAt.Local().Format(time.DateTime), used)
 		}
 		return tw.Flush()
 	case len(args) == 2 && args[0] == "revoke":

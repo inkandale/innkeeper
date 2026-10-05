@@ -11,6 +11,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/davidgibbons/innkeeper/internal/library"
+	"github.com/davidgibbons/innkeeper/internal/tier"
 )
 
 type revisionOut struct {
@@ -181,7 +182,7 @@ func (s *Server) entityRoutes(api huma.API, ents *library.Entities, plural, sing
 	base := "/" + plural
 	item := base + "/{id}"
 
-	huma.Register(api, huma.Operation{OperationID: "create-" + singular, Method: http.MethodPost, Path: base,
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "create-" + singular, Method: http.MethodPost, Path: base,
 		Summary: "Create a " + singular, Tags: tags, DefaultStatus: http.StatusCreated},
 		func(ctx context.Context, in *createEntityIn) (*entityResp, error) {
 			e := library.Edit{Data: in.Body.Data, AvatarBlob: in.Body.Avatar, Message: in.Body.Message, Source: in.Body.Source}
@@ -204,7 +205,7 @@ func (s *Server) entityRoutes(api huma.API, ents *library.Entities, plural, sing
 			return s.entity(ctx, ents, in.ID)
 		})
 
-	huma.Register(api, huma.Operation{OperationID: "update-" + singular, Method: http.MethodPut, Path: item,
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "update-" + singular, Method: http.MethodPut, Path: item,
 		Summary: "Edit a " + singular, Description: "Adds a revision on top of base_revision_id.", Tags: tags},
 		func(ctx context.Context, in *updateEntityIn) (*entityResp, error) {
 			if _, err := ents.Get(ctx, in.ID); err != nil {
@@ -259,7 +260,7 @@ func (s *Server) entityRoutes(api huma.API, ents *library.Entities, plural, sing
 			return &revisionResp{Body: toRevision(r, true)}, nil
 		})
 
-	huma.Register(api, huma.Operation{OperationID: "restore-" + singular, Method: http.MethodPost,
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "restore-" + singular, Method: http.MethodPost,
 		Path: item + "/restore", Summary: "Restore an old revision",
 		Description: "Adds a revision with the old revision's content on top of base_revision_id.", Tags: tags},
 		func(ctx context.Context, in *restoreIn) (*entityResp, error) {
@@ -278,7 +279,7 @@ func (s *Server) entityRoutes(api huma.API, ents *library.Entities, plural, sing
 			return s.entity(ctx, ents, in.ID)
 		})
 
-	huma.Register(api, huma.Operation{OperationID: "archive-" + singular, Method: http.MethodPut,
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "archive-" + singular, Method: http.MethodPut,
 		Path: item + "/archived", Summary: "Archive or unarchive a " + singular, Tags: tags, DefaultStatus: http.StatusNoContent},
 		func(ctx context.Context, in *archiveIn) (*struct{}, error) {
 			return nil, s.fail(ents.SetArchived(ctx, in.ID, in.Body.Archived))
@@ -288,7 +289,7 @@ func (s *Server) entityRoutes(api huma.API, ents *library.Entities, plural, sing
 // cardRoutes registers the routes only cards have.
 func (s *Server) cardRoutes(api huma.API) {
 	tags := []string{"Cards"}
-	huma.Register(api, huma.Operation{OperationID: "set-card-tags", Method: http.MethodPut, Path: "/cards/{id}/tags",
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "set-card-tags", Method: http.MethodPut, Path: "/cards/{id}/tags",
 		Summary: "Replace a card's tags", Tags: tags},
 		func(ctx context.Context, in *tagsIn) (*tagsOut, error) {
 			if _, err := s.Lib.Cards.Get(ctx, in.ID); err != nil {
@@ -317,13 +318,13 @@ func (s *Server) cardRoutes(api huma.API) {
 			return &matchesOut{Body: orEmpty(m)}, nil
 		})
 
-	huma.Register(api, huma.Operation{OperationID: "link-lorebook", Method: http.MethodPut,
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "link-lorebook", Method: http.MethodPut,
 		Path: "/cards/{id}/lorebooks/{lorebook_id}", Summary: "Link a lorebook to a card", Tags: tags, DefaultStatus: http.StatusNoContent},
 		func(ctx context.Context, in *linkIn) (*struct{}, error) {
 			return nil, s.fail(s.Lib.LinkLorebook(ctx, in.ID, in.LorebookID))
 		})
 
-	huma.Register(api, huma.Operation{OperationID: "unlink-lorebook", Method: http.MethodDelete,
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "unlink-lorebook", Method: http.MethodDelete,
 		Path: "/cards/{id}/lorebooks/{lorebook_id}", Summary: "Unlink a lorebook from a card", Tags: tags, DefaultStatus: http.StatusNoContent},
 		func(ctx context.Context, in *linkIn) (*struct{}, error) {
 			return nil, s.fail(s.Lib.UnlinkLorebook(ctx, in.ID, in.LorebookID))

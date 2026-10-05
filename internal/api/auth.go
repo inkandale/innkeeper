@@ -1,6 +1,7 @@
 package api
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -17,6 +18,7 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/auth"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
+	"github.com/davidgibbons/innkeeper/internal/tier"
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
@@ -28,48 +30,60 @@ const (
 // failedLoginDelay slows password guessing. Tests set it to 0.
 var failedLoginDelay = time.Second
 
-// authenticate lets a request through if it is public or carries a valid API
-// token or session cookie.
+// authenticate lets a request through if it is public, or carries a valid
+// API token or session cookie whose tier allows the operation.
 func (s *Server) authenticate(api huma.API) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
-		if ctx.Operation().Metadata["public"] == true {
+		op := ctx.Operation()
+		if op.Metadata["public"] == true {
 			next(ctx)
 			return
 		}
-		ok, err := s.authorized(ctx)
+		caller, err := s.authorized(ctx)
 		if err != nil {
 			s.Log.Error("check credentials", "err", err)
 			_ = huma.WriteErr(api, ctx, http.StatusInternalServerError, "internal error")
 			return
 		}
-		if !ok {
+		if caller == 0 {
 			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "log in, or send an API token as Authorization: Bearer <token>")
 			return
 		}
-		next(ctx)
+		if need := opTier(op); !caller.Allows(need) {
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden,
+				fmt.Sprintf("this token's tier is %s; %s needs %s", caller, op.OperationID, need))
+			return
+		}
+		next(huma.WithValue(ctx, tierKey{}, caller))
 	}
 }
 
-func (s *Server) authorized(ctx huma.Context) (bool, error) {
+// authorized returns the tier of the request's credentials, or 0 if it has
+// none that are valid. A logged-in browser is the owner, so it has every tier.
+func (s *Server) authorized(ctx huma.Context) (tier.Tier, error) {
 	if h := ctx.Header("Authorization"); h != "" {
 		token, ok := strings.CutPrefix(h, "Bearer ")
 		if !ok {
-			return false, nil
+			return 0, nil
 		}
 		return s.Auth.CheckToken(ctx.Context(), token)
 	}
 	c, err := huma.ReadCookie(ctx, sessionCookie)
 	if err != nil {
-		return false, nil
+		return 0, nil
 	}
 	// Browsers attach cookies to requests that other sites start, so only
 	// this site's pages may change things.
 	if m := ctx.Method(); m != http.MethodGet && m != http.MethodHead {
 		if crossSite(ctx.Header("Sec-Fetch-Site")) {
-			return false, nil
+			return 0, nil
 		}
 	}
-	return s.Auth.CheckSession(ctx.Context(), c.Value)
+	ok, err := s.Auth.CheckSession(ctx.Context(), c.Value)
+	if !ok || err != nil {
+		return 0, err
+	}
+	return tier.Destructive, nil
 }
 
 // crossSite reports whether a browser says another site started the request.
@@ -225,12 +239,14 @@ type tokensOut struct{ Body []auth.Token }
 type createTokenIn struct {
 	Body struct {
 		Name string `json:"name" minLength:"1"`
+		Tier string `json:"tier,omitempty" enum:"read,write,destructive" default:"read" doc:"What the token may do. At most the tier of the credentials creating it."`
 	}
 }
 
 type createdToken struct {
 	ID        int64     `json:"id"`
 	Name      string    `json:"name"`
+	Tier      string    `json:"tier"`
 	CreatedAt time.Time `json:"created_at"`
 	Secret    string    `json:"secret" doc:"Send as Authorization: Bearer <secret>. Shown only once."`
 }
@@ -314,17 +330,24 @@ func (s *Server) authRoutes(api huma.API) {
 			return &tokensOut{Body: orEmpty(list)}, nil
 		})
 
-	huma.Register(api, huma.Operation{OperationID: "create-token", Method: http.MethodPost, Path: "/tokens",
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "create-token", Method: http.MethodPost, Path: "/tokens",
 		Summary: "Create an API token", Tags: tags, DefaultStatus: http.StatusCreated},
 		func(ctx context.Context, in *createTokenIn) (*createTokenOut, error) {
-			t, secret, err := s.Auth.CreateToken(ctx, in.Body.Name)
+			want, err := tier.Parse(cmp.Or(in.Body.Tier, "read"))
+			if err != nil {
+				return nil, huma.Error400BadRequest(err.Error())
+			}
+			if caller := callerTier(ctx); !caller.Allows(want) {
+				return nil, huma.Error403Forbidden(fmt.Sprintf("a %s token can't create a %s token", caller, want))
+			}
+			t, secret, err := s.Auth.CreateToken(ctx, in.Body.Name, want)
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			return &createTokenOut{Body: createdToken{ID: t.ID, Name: t.Name, CreatedAt: t.CreatedAt, Secret: secret}}, nil
+			return &createTokenOut{Body: createdToken{ID: t.ID, Name: t.Name, Tier: t.Tier, CreatedAt: t.CreatedAt, Secret: secret}}, nil
 		})
 
-	huma.Register(api, huma.Operation{OperationID: "revoke-token", Method: http.MethodDelete, Path: "/tokens/{id}",
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "revoke-token", Method: http.MethodDelete, Path: "/tokens/{id}",
 		Summary: "Revoke an API token", Tags: tags, DefaultStatus: http.StatusNoContent},
 		func(ctx context.Context, in *idIn) (*struct{}, error) {
 			return nil, s.fail(s.Auth.RevokeToken(ctx, in.ID))

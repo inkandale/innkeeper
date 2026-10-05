@@ -15,6 +15,7 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
+	"github.com/davidgibbons/innkeeper/internal/tier"
 )
 
 // watchInterval is how often a job stream checks the job. Tests shorten it.
@@ -189,7 +190,7 @@ func (s *Server) jobRoutes(api huma.API) {
 			return &jobResp{Body: j}, nil
 		})
 
-	huma.Register(api, huma.Operation{OperationID: "cancel-job", Method: http.MethodPost, Path: "/jobs/{id}/cancel",
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "cancel-job", Method: http.MethodPost, Path: "/jobs/{id}/cancel",
 		Summary: "Cancel a job", Description: "Fails the job and its unfinished children. A running job stops within seconds.", Tags: tags},
 		func(ctx context.Context, in *idIn) (*jobResp, error) {
 			if err := s.Queue.Cancel(ctx, in.ID); err != nil {
@@ -216,7 +217,7 @@ func (s *Server) jobRoutes(api huma.API) {
 			return &huma.StreamResponse{Body: func(hc huma.Context) { s.watch(hc, first) }}, nil
 		})
 
-	huma.Register(api, huma.Operation{OperationID: "start-import", Method: http.MethodPost, Path: "/imports",
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "start-import", Method: http.MethodPost, Path: "/imports",
 		Summary: "Start an import", Description: "Queues an import job for an instance of an import plugin.",
 		Tags: tags, DefaultStatus: http.StatusAccepted},
 		func(ctx context.Context, in *importIn) (*jobResp, error) {
@@ -235,7 +236,7 @@ func (s *Server) jobRoutes(api huma.API) {
 			return &jobResp{Body: toJob(j)}, nil
 		})
 
-	huma.Register(api, huma.Operation{OperationID: "start-bulk", Method: http.MethodPost, Path: "/bulk",
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "start-bulk", Method: http.MethodPost, Path: "/bulk",
 		Summary: "Archive or unarchive many cards", Description: "Queues one child job per card the query matches.",
 		Tags: tags, DefaultStatus: http.StatusAccepted},
 		func(ctx context.Context, in *bulkIn) (*jobResp, error) {

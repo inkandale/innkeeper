@@ -63,7 +63,7 @@ The image includes the plugins from `innkeeper-plugins` at the commit
 `PLUGINS_REF` names in the `Dockerfile`. Building it clones that private
 repo, so it needs an SSH agent holding a key that can read it
 (`ssh-add -l`). For a key that isn't in the agent, build with
-`docker build --ssh default=~/.ssh/<key> -t innkeeper:dev .`, then start
+`docker build --ssh default=$HOME/.ssh/<key> -t innkeeper:dev .`, then start
 with `docker compose up -d --no-build`.
 
 `docker compose down -v` deletes the database and blobs.

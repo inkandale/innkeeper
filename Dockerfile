@@ -16,6 +16,8 @@ RUN --mount=type=ssh git clone git@github.com:davidgibbons/innkeeper-plugins.git
     && git -C /plugins-src checkout --detach "$PLUGINS_REF"
 COPY . /core
 WORKDIR /plugins-src
+# ponytail: no go mod tidy, so this needs innkeeper-plugins' go.sum to cover
+# everything protocol/ imports; add tidy if a build reports a missing entry.
 RUN go mod edit -replace github.com/davidgibbons/innkeeper=/core \
     && make install DEST=/plugins
 

@@ -214,37 +214,3 @@ func (s *Service) readBack(ctx context.Context, k kind, inst pluginhost.Instance
 	}
 	return data, hash, state, err
 }
-
-// Preview is what a push would send, for the owner to confirm first.
-type Preview struct {
-	// Card is the CCv3 card the target would get.
-	Card json.RawMessage `json:"card"`
-	// DroppedFields are fields with content that the target doesn't store.
-	DroppedFields []string `json:"dropped_fields"`
-	// NewCopy means the push makes another copy, because the target can't
-	// update the one it has.
-	NewCopy bool `json:"new_copy"`
-}
-
-// Preview renders the card for a target without pushing it.
-func (s *Service) Preview(ctx context.Context, instanceID, cardID int64) (Preview, error) {
-	_, info, err := s.describe(ctx, instanceID)
-	if err != nil {
-		return Preview{}, err
-	}
-	r, err := s.render(ctx, cardKind, instanceID, cardID, info)
-	if err != nil {
-		return Preview{}, err
-	}
-	dropped, err := droppedFields(r.data, info.Fields)
-	if err != nil {
-		return Preview{}, err
-	}
-	var state string
-	err = s.pool.QueryRow(ctx, `SELECT remote_state FROM binding WHERE instance_id = $1 AND card_id = $2`,
-		instanceID, cardID).Scan(&state)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return Preview{}, err
-	}
-	return Preview{Card: r.payload, DroppedFields: dropped, NewCopy: err == nil && state != remoteMissing && !info.Update}, nil
-}

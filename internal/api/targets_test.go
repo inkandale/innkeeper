@@ -226,5 +226,5 @@ func TestBindRoutes(t *testing.T) {
 	}
 	e.call("POST", path, bind, 409, nil)
 	e.call("POST", "/cards/999/bind", bind, 404, nil)
-	e.call("POST", "/lorebooks/999/bind", bind, 404, nil)
+	e.call("POST", "/lorebooks/999/bind", bind, 400, nil) // as for lorebook-items
 }

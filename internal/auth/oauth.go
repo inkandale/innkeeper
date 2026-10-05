@@ -246,3 +246,13 @@ func (a *Auth) PruneOAuth(ctx context.Context) error {
 			AND NOT EXISTS (SELECT 1 FROM oauth_grant g WHERE g.client_id = c.id)`)
 	return err
 }
+
+type viaMCPKey struct{}
+
+// ViaMCP marks a request the MCP server makes for a tool. OAuth access
+// tokens are for MCP only, so the API accepts them only on such requests.
+// No HTTP request can carry the mark.
+func ViaMCP(ctx context.Context) context.Context { return context.WithValue(ctx, viaMCPKey{}, true) }
+
+// FromMCP reports whether ctx is marked by ViaMCP.
+func FromMCP(ctx context.Context) bool { return ctx.Value(viaMCPKey{}) == true }

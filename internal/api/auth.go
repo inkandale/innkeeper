@@ -66,7 +66,12 @@ func (s *Server) authorized(ctx huma.Context) (tier.Tier, error) {
 		if !ok {
 			return 0, nil
 		}
-		return s.Auth.CheckToken(ctx.Context(), token)
+		t, err := s.Auth.CheckToken(ctx.Context(), token)
+		if t == 0 && err == nil && auth.FromMCP(ctx.Context()) {
+			// OAuth access tokens are for /mcp, whose tools call the API in process.
+			t, _, err = s.Auth.CheckAccessToken(ctx.Context(), token)
+		}
+		return t, err
 	}
 	c, err := huma.ReadCookie(ctx, sessionCookie)
 	if err != nil {
@@ -198,6 +203,12 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 	for _, c := range cookies {
 		http.SetCookie(w, c)
 	}
+	// A login started by an MCP client's authorization goes back to it.
+	if c, err := r.Cookie(returnCookie); err == nil {
+		http.SetCookie(w, s.cookie(returnCookie, "", -time.Second))
+		resume(w, r, c.Value)
+		return
+	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
@@ -235,6 +246,8 @@ type logoutIn struct {
 }
 
 type tokensOut struct{ Body []auth.Token }
+
+type grantsOut struct{ Body []auth.Grant }
 
 type createTokenIn struct {
 	Body struct {
@@ -351,5 +364,21 @@ func (s *Server) authRoutes(api huma.API) {
 		Summary: "Revoke an API token", Tags: tags, DefaultStatus: http.StatusNoContent},
 		func(ctx context.Context, in *idIn) (*struct{}, error) {
 			return nil, s.fail(s.Auth.RevokeToken(ctx, in.ID))
+		})
+
+	huma.Register(api, huma.Operation{OperationID: "list-grants", Method: http.MethodGet, Path: "/grants",
+		Summary: "List MCP clients approved through OAuth", Tags: tags},
+		func(ctx context.Context, _ *struct{}) (*grantsOut, error) {
+			list, err := s.Auth.Grants(ctx)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			return &grantsOut{Body: orEmpty(list)}, nil
+		})
+
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "revoke-grant", Method: http.MethodDelete,
+		Path: "/grants/{id}", Summary: "Revoke an OAuth client's access", Tags: tags, DefaultStatus: http.StatusNoContent},
+		func(ctx context.Context, in *idIn) (*struct{}, error) {
+			return nil, s.fail(s.Auth.RevokeGrant(ctx, in.ID))
 		})
 }

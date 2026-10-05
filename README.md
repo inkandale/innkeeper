@@ -38,7 +38,7 @@ database at startup and stop cleanly on `SIGTERM`.
 | `INNKEEPER_BLOB_DIR` | `api`, `worker`, `backup` | The library's blob store folder |
 | `INNKEEPER_PLUGINS_DIR` | `api`, `worker` | Folder with one subfolder per installed plugin |
 | `INNKEEPER_LISTEN` | `api` | Listen address; default `:8080` |
-| `INNKEEPER_PUBLIC_URL` | `api` | Where browsers reach the API, such as `https://innkeeper.example.com`. Needed for redirect logins. An `http://` URL sends cookies without `Secure` |
+| `INNKEEPER_PUBLIC_URL` | `api` | Where browsers reach the API, such as `https://innkeeper.example.com`. Needed for redirect logins and for MCP clients that connect through OAuth, such as claude.ai. An `http://` URL sends cookies without `Secure` |
 | `INNKEEPER_WORKER_CONCURRENCY` | `worker` | Jobs run at once; default 4 |
 | `INNKEEPER_URL`, `INNKEEPER_TOKEN` | API commands | API address and token |
 
@@ -120,6 +120,12 @@ always matches a preview Claude has shown you. Tools that need the
 `destructive` tier are marked destructive, so Claude asks before running
 them.
 
+To connect claude.ai, or another client that signs in through OAuth, set
+`INNKEEPER_PUBLIC_URL`, then add `<public URL>/mcp` as a custom connector
+with no credentials. The client sends you to Innkeeper to log in, then asks
+which tier to grant; read is the default. `innkeeper token list` shows
+approved clients, and `innkeeper token revoke-grant <id>` cuts one off.
+
 Plugins can add tools too. They show as `<instance>_<tool>`, such as
 `lumiverse_list_untracked`, and each declares its tier; one that declares
 none counts as `destructive`. `GET /plugin-tools` lists them.
@@ -134,7 +140,7 @@ innkeeper bulk archive|unarchive <query-json>   archive or unarchive the cards a
 innkeeper push <instance-id> <card-id>|<query-json> [--new-copy]
                                                 push one card, or the cards a search matches, to a target
 innkeeper jobs [show|cancel|watch <job-id>]     list or follow jobs
-innkeeper token create <name> [tier] | list | revoke <id>
+innkeeper token create <name> [tier] | list | revoke <id> | revoke-grant <id>
 innkeeper backup <dir>
 ```
 

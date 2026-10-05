@@ -63,7 +63,7 @@ func (c caller) do(ctx context.Context, method, path string, body any) (reply, e
 			return reply{}, err
 		}
 	}
-	req := httptest.NewRequestWithContext(ctx, method, path, bytes.NewReader(b))
+	req := httptest.NewRequestWithContext(iauth.ViaMCP(ctx), method, path, bytes.NewReader(b))
 	req.Header.Set("Authorization", c.auth)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -102,9 +102,10 @@ func annotations(t tier.Tier) *sdk.ToolAnnotations {
 }
 
 // New returns the /mcp handler. api is the API's handler, which tools call.
-// Clients authenticate with an API token; each sees the built-in and plugin
-// tools its tier allows.
-func New(api http.Handler, a *iauth.Auth, log *slog.Logger) http.Handler {
+// Clients authenticate with an API token or an OAuth access token; each sees
+// the built-in and plugin tools its tier allows. resourceMetadata, if set, is
+// named in the 401 so clients can find the OAuth server.
+func New(api http.Handler, a *iauth.Auth, log *slog.Logger, resourceMetadata string) http.Handler {
 	// Stateless servers are built per request; the cache keeps that cheap.
 	cache := sdk.NewSchemaCache()
 	h := sdk.NewStreamableHTTPHandler(func(r *http.Request) *sdk.Server {
@@ -131,14 +132,21 @@ func New(api http.Handler, a *iauth.Auth, log *slog.Logger) http.Handler {
 		return s
 	}, &sdk.StreamableHTTPOptions{Stateless: true, CrossOriginProtection: http.NewCrossOriginProtection()})
 	verify := func(ctx context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
+		info := &auth.TokenInfo{Extra: map[string]any{"token": token}}
 		t, err := a.CheckToken(ctx, token)
+		if err == nil && t == 0 {
+			t, info.Expiration, err = a.CheckAccessToken(ctx, token)
+		}
 		if err != nil {
 			return nil, err
 		}
 		if t == 0 {
 			return nil, auth.ErrInvalidToken
 		}
-		return &auth.TokenInfo{Scopes: []string{t.String()}, Extra: map[string]any{"token": token}}, nil
+		info.Scopes = []string{t.String()}
+		return info, nil
 	}
-	return auth.RequireBearerToken(verify, &auth.RequireBearerTokenOptions{AllowMissingExpiration: true})(h)
+	// API tokens don't expire; OAuth access tokens carry their expiry.
+	return auth.RequireBearerToken(verify, &auth.RequireBearerTokenOptions{AllowMissingExpiration: true,
+		ResourceMetadataURL: resourceMetadata})(h)
 }

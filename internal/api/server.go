@@ -58,6 +58,15 @@ func NoCore(_ context.Context, method string, _ json.RawMessage) (any, error) {
 // public marks an operation that needs no credentials.
 var public = map[string]any{"public": true}
 
+// resourceMetadataURL is where MCP clients learn how to get a token, or
+// empty without a public URL.
+func (s *Server) resourceMetadataURL() string {
+	if s.PublicURL == "" {
+		return ""
+	}
+	return s.public() + "/.well-known/oauth-protected-resource/mcp"
+}
+
 // needs is an operation's tier. Operations without one need read for GET
 // and HEAD, and write for anything else.
 func needs(t tier.Tier) map[string]any { return map[string]any{"tier": t} }
@@ -119,7 +128,8 @@ func (s *Server) Handler() http.Handler {
 	s.toolRoutes(api)
 	// Browsers arrive here from a login provider; it isn't part of the API.
 	mux.HandleFunc("GET /auth/{id}/callback", s.callback)
-	mux.Handle("/mcp", mcp.New(mux, s.Auth, s.Log))
+	s.oauthRoutes(mux)
+	mux.Handle("/mcp", mcp.New(mux, s.Auth, s.Log, s.resourceMetadataURL()))
 	return mux
 }
 

@@ -13,7 +13,7 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/tier"
 )
 
-// token runs `innkeeper token create|list|revoke` against the database, so
+// token runs `innkeeper token create|list|revoke|revoke-grant` against the database, so
 // the owner can make the first token before anyone can log in.
 func token(args []string) error {
 	ctx := context.Background()
@@ -53,11 +53,28 @@ func token(args []string) error {
 			}
 			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\n", t.ID, t.Name, t.Tier, t.CreatedAt.Local().Format(time.DateTime), used)
 		}
+		grants, err := a.Grants(ctx)
+		if err != nil {
+			return err
+		}
+		if len(grants) > 0 {
+			fmt.Fprintln(tw, "\nGRANT\tMCP CLIENT\tTIER\tAPPROVED\tLAST USED")
+		}
+		for _, g := range grants {
+			used := "never"
+			if g.LastUsedAt != nil {
+				used = g.LastUsedAt.Local().Format(time.DateTime)
+			}
+			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\n", g.ID, g.ClientName, g.Tier, g.CreatedAt.Local().Format(time.DateTime), used)
+		}
 		return tw.Flush()
-	case len(args) == 2 && args[0] == "revoke":
+	case len(args) == 2 && (args[0] == "revoke" || args[0] == "revoke-grant"):
 		id, err := strconv.ParseInt(args[1], 10, 64)
 		if err != nil {
-			return fmt.Errorf("token ID %q is not a number", args[1])
+			return fmt.Errorf("ID %q is not a number", args[1])
+		}
+		if args[0] == "revoke-grant" {
+			return a.RevokeGrant(ctx, id)
 		}
 		return a.RevokeToken(ctx, id)
 	}

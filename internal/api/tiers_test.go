@@ -28,6 +28,7 @@ var tierExceptions = map[string]tier.Tier{
 	"delete-collection": tier.Destructive,
 	// Checks the tool's own tier itself.
 	"call-plugin-tool": tier.Read,
+	"revoke-grant":     tier.Destructive,
 }
 
 func (e *testEnv) tokenWith(t tier.Tier) string {

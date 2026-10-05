@@ -126,3 +126,37 @@ func TestFormats(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadManifestNestedConfig(t *testing.T) {
+	dir := t.TempDir()
+	toml := `name = "c"
+version = "1"
+protocol = 1
+command = ["c"]
+capabilities = ["import"]
+
+[config]
+type = "object"
+
+[config.properties.folder]
+type = "string"
+`
+	if err := os.WriteFile(filepath.Join(dir, "plugin.toml"), []byte(toml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := LoadManifest(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	props, _ := m.Config["properties"].(map[string]any)
+	if _, ok := props["folder"]; !ok {
+		t.Fatalf("config = %v; want properties.folder", m.Config)
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, "plugin.toml"), []byte(toml+"\n[extra]\nx = 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadManifest(dir); err == nil {
+		t.Fatal("an unknown top-level table loaded")
+	}
+}

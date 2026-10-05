@@ -67,12 +67,15 @@ func LoadManifest(dir string) (*Manifest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read manifest: %w", err)
 	}
-	if undecoded := md.Undecoded(); len(undecoded) > 0 {
-		keys := make([]string, len(undecoded))
-		for i, k := range undecoded {
-			keys[i] = k.String()
+	var unknown []string
+	for _, k := range md.Undecoded() {
+		// The decoder lists nested config tables as undecoded though they are in the map.
+		if k[0] != "config" {
+			unknown = append(unknown, k.String())
 		}
-		return nil, fmt.Errorf("manifest %s: unknown keys: %s", abs, strings.Join(keys, ", "))
+	}
+	if len(unknown) > 0 {
+		return nil, fmt.Errorf("manifest %s: unknown keys: %s", abs, strings.Join(unknown, ", "))
 	}
 	m.Dir = abs
 	if err := m.Validate(); err != nil {

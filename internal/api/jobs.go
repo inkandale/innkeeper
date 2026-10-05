@@ -64,7 +64,7 @@ type listJobsIn struct {
 type importIn struct {
 	Body struct {
 		InstanceID int64           `json:"instance_id"`
-		Params     json.RawMessage `json:"params,omitempty" doc:"The import plugin's settings, such as a folder path"`
+		Params     json.RawMessage `json:"params,omitempty" doc:"The import plugin's settings, such as a folder path. For a target app: remote_ids, to import only those items."`
 	}
 }
 
@@ -89,6 +89,33 @@ func (s *Server) usable(ctx context.Context, id int64, capability string) error 
 		return huma.Error400BadRequest(fmt.Sprintf("plugin %s can't %s", inst.Plugin, capability))
 	}
 	return nil
+}
+
+// importFromTarget starts a bulk import from a target app. params may name
+// remote_ids to import only those items.
+func (s *Server) importFromTarget(ctx context.Context, instanceID int64, params json.RawMessage) (*jobResp, error) {
+	if err := s.usable(ctx, instanceID, "pull"); err != nil {
+		return nil, err
+	}
+	var p struct {
+		RemoteIDs []string `json:"remote_ids"`
+	}
+	if len(params) > 0 {
+		dec := json.NewDecoder(bytes.NewReader(params))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&p); err != nil {
+			return nil, huma.Error400BadRequest("params: " + err.Error())
+		}
+	}
+	parent, err := s.Targets.EnqueueImport(ctx, s.Queue, instanceID, p.RemoteIDs)
+	if err != nil {
+		return nil, s.fail(err)
+	}
+	j, err := s.job(ctx, parent.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &jobResp{Body: j}, nil
 }
 
 // job returns a job, with child counts and outcomes for a bulk job.
@@ -222,9 +249,19 @@ func (s *Server) jobRoutes(api huma.API) {
 		})
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "start-import", Method: http.MethodPost, Path: "/imports",
-		Summary: "Start an import", Description: "Queues an import job for an instance of an import plugin.",
+		Summary: "Start an import",
+		Description: "Queues an import job for an instance of an import plugin. For a target app, queues a bulk job that " +
+			"takes each character and lorebook not yet bound on the instance into the library and binds it; the payload " +
+			"counts those skipped as already_bound.",
 		Tags: tags, DefaultStatus: http.StatusAccepted},
 		func(ctx context.Context, in *importIn) (*jobResp, error) {
+			inst, err := s.Registry.GetInstance(ctx, in.Body.InstanceID)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			if !s.Registry.HasCapability(inst.Plugin, "import") && s.Registry.HasCapability(inst.Plugin, "push") {
+				return s.importFromTarget(ctx, in.Body.InstanceID, in.Body.Params)
+			}
 			if err := s.usable(ctx, in.Body.InstanceID, "import"); err != nil {
 				return nil, err
 			}

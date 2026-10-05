@@ -62,7 +62,11 @@ func newEnv(t *testing.T) *testEnv {
 	}
 	vault := &protocol.Manifest{Name: "vault", Version: "1.0.0", Protocol: protocol.Version,
 		Command: []string{"./vault"}, Capabilities: []string{"push"}, Secrets: []string{"api_key"}}
-	reg := plugins.New(pool, map[string]*protocol.Manifest{"fake": fake, "vault": vault}, store, box)
+	// target is the fake plugin as a target app only.
+	target := *fake
+	target.Name, target.Capabilities = "target", []string{"push", "pull"}
+	target.Command = []string{fake.Command[0], "-caps=push,pull", "-name=target"}
+	reg := plugins.New(pool, map[string]*protocol.Manifest{"fake": fake, "vault": vault, "target": &target}, store, box)
 	mgr := pluginhost.NewManager(NoCore, time.Minute, quiet)
 	t.Cleanup(mgr.Close)
 	lib := library.New(pool, store)

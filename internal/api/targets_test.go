@@ -11,6 +11,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/davidgibbons/innkeeper/internal/bulk"
+	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 	"github.com/davidgibbons/innkeeper/internal/targets"
@@ -227,4 +228,27 @@ func TestBindRoutes(t *testing.T) {
 	e.call("POST", path, bind, 409, nil)
 	e.call("POST", "/cards/999/bind", bind, 404, nil)
 	e.call("POST", "/lorebooks/999/bind", bind, 400, nil) // as for lorebook-items
+}
+
+func TestImportFromTarget(t *testing.T) {
+	e := newEnv(t)
+	dir := t.TempDir()
+	inst, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "target", Name: "App",
+		Config: map[string]any{"dir": dir}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"r1", "r2"} {
+		card := fmt.Sprintf(`{"spec": "chara_card_v3", "data": {"name": %q}}`, id)
+		if err := os.WriteFile(filepath.Join(dir, id+".json"), []byte(card), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var j jobOut
+	e.call("POST", "/imports", map[string]any{"instance_id": inst, "params": map[string]any{"remote_ids": []string{"r2"}}}, 202, &j)
+	if j.Kind != bulk.Kind || j.Children[jobs.StatusQueued] != 1 {
+		t.Fatalf("import job = %+v", j)
+	}
+	e.call("POST", "/imports", map[string]any{"instance_id": inst, "params": map[string]any{"remote_ids": []string{"r9"}}}, 400, nil)
+	e.call("POST", "/imports", map[string]any{"instance_id": inst, "params": map[string]any{"path": "x"}}, 400, nil)
 }

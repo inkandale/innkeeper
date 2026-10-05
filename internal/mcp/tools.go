@@ -96,8 +96,9 @@ type bindIn struct {
 }
 
 type importIn struct {
-	InstanceID int64  `json:"instance_id" jsonschema:"An import plugin instance"`
-	Path       string `json:"path,omitempty" jsonschema:"A subfolder of the instance's folder; empty for all of it"`
+	InstanceID int64    `json:"instance_id" jsonschema:"An import plugin or target app instance"`
+	Path       string   `json:"path,omitempty" jsonschema:"For an import plugin: a subfolder of the instance's folder; empty for all of it"`
+	RemoteIDs  []string `json:"remote_ids,omitempty" jsonschema:"For a target app: the items to import, from list_app_items; empty for every unbound one"`
 }
 
 type instanceIn struct {
@@ -249,11 +250,15 @@ var tools = []tool{
 		func(ctx context.Context, c caller, in idIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", fmt.Sprintf("/jobs/%d/cancel", in.ID), nil)
 		}),
-	def("start_import", "Import cards and lorebooks from an import instance's folder, or a subfolder of it.", tier.Write,
+	def("start_import", "Import cards and lorebooks from an import instance's folder, or from a target app, binding each "+
+		"to the app item it came from. A card already in the library is bound rather than copied.", tier.Write,
 		func(ctx context.Context, c caller, in importIn) (*sdk.CallToolResult, error) {
 			body := map[string]any{"instance_id": in.InstanceID}
-			if in.Path != "" {
+			switch {
+			case in.Path != "":
 				body["params"] = map[string]any{"path": in.Path}
+			case in.RemoteIDs != nil:
+				body["params"] = map[string]any{"remote_ids": in.RemoteIDs}
 			}
 			return c.call(ctx, "POST", "/imports", body)
 		}),

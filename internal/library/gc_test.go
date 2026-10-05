@@ -64,3 +64,25 @@ func fileExists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
 }
+
+func TestCollectGarbageKeepsReusedBlob(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	b, err := lib.PutBlob(ctx, strings.NewReader("avatar"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lib.pool.Exec(ctx, `UPDATE blob SET created_at = now() - interval '2 days'`); err != nil {
+		t.Fatal(err)
+	}
+	// Stored again by a new import that hasn't referenced it yet.
+	if _, err := lib.PutBlob(ctx, strings.NewReader("avatar")); err != nil {
+		t.Fatal(err)
+	}
+	if n, _, err := lib.CollectGarbage(ctx, 24*time.Hour); err != nil || n != 0 {
+		t.Fatalf("CollectGarbage = %d, %v; want 0", n, err)
+	}
+	if _, err := lib.Blob(ctx, b.SHA256); err != nil {
+		t.Fatalf("reused blob: %v", err)
+	}
+}

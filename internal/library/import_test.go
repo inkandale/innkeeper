@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 	"testing"
 )
 
@@ -63,5 +64,30 @@ func TestImportSkipsContentSeenBefore(t *testing.T) {
 
 	if _, _, err := lib.Cards.Import(ctx, "folder:list.json", "List", Edit{Data: json.RawMessage(`[]`), Source: "plugin:folder"}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("import of a JSON array: %v, want ErrInvalid", err)
+	}
+}
+
+func TestConcurrentImportsOfOneItemMakeOneCard(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	e := Edit{Data: json.RawMessage(`{"name": "Brakka"}`), Source: "plugin:folder"}
+	ids := make(chan int64, 8)
+	var wg sync.WaitGroup
+	for range cap(ids) {
+		wg.Go(func() {
+			id, _, err := lib.Cards.Import(ctx, "folder:brakka.png", "Brakka", e)
+			if err != nil {
+				t.Error(err)
+			}
+			ids <- id
+		})
+	}
+	wg.Wait()
+	close(ids)
+	first := <-ids
+	for id := range ids {
+		if id != first {
+			t.Fatalf("imports made cards %d and %d", first, id)
+		}
 	}
 }

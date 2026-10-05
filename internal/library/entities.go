@@ -156,7 +156,22 @@ func (s *Entities) Create(ctx context.Context, slug, provenance string, e Edit) 
 		return Entity{}, Revision{}, err
 	}
 	defer tx.Rollback(ctx)
-	ent, err := scanEntity(tx.QueryRow(ctx, `INSERT INTO `+s.k.table+` (slug, provenance) VALUES ($1, $2) RETURNING `+entityCols,
+	ent, rev, err := s.create(ctx, tx, slug, provenance, r)
+	if err != nil {
+		return Entity{}, Revision{}, err
+	}
+	return ent, rev, tx.Commit(ctx)
+}
+
+// create inserts the entity inside a savepoint, so a taken slug leaves tx
+// usable for another try.
+func (s *Entities) create(ctx context.Context, tx pgx.Tx, slug, provenance string, r revisionRow) (Entity, Revision, error) {
+	sp, err := tx.Begin(ctx)
+	if err != nil {
+		return Entity{}, Revision{}, err
+	}
+	defer sp.Rollback(ctx)
+	ent, err := scanEntity(sp.QueryRow(ctx, `INSERT INTO `+s.k.table+` (slug, provenance) VALUES ($1, $2) RETURNING `+entityCols,
 		slug, provenance))
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -165,12 +180,12 @@ func (s *Entities) Create(ctx context.Context, slug, provenance string, e Edit) 
 	if err != nil {
 		return Entity{}, Revision{}, err
 	}
-	rev, err := s.insertRevision(ctx, tx, ent.ID, nil, r)
+	rev, err := s.insertRevision(ctx, sp, ent.ID, nil, r)
 	if err != nil {
 		return Entity{}, Revision{}, err
 	}
 	ent.HeadRevisionID = rev.ID
-	return ent, rev, tx.Commit(ctx)
+	return ent, rev, sp.Commit(ctx)
 }
 
 // Update adds a revision on top of base. It returns ErrConflict if base is no

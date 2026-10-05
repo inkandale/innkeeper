@@ -57,9 +57,13 @@ func scanBlob(row interface{ Scan(...any) error }) (Blob, error) {
 
 // record inserts the blob row. Images get an avatar_phash; an image that
 // fails to decode is still stored, just without one.
+//
+// A blob stored again gets a fresh created_at, so garbage collection gives
+// the caller a full grace period to reference it.
 func (l *Library) record(ctx context.Context, sha string, size int64) (Blob, error) {
-	if b, err := l.Blob(ctx, sha); err == nil {
-		return b, nil
+	if b, err := scanBlob(l.pool.QueryRow(ctx, `UPDATE blob SET created_at = now() WHERE sha256 = $1
+		RETURNING `+blobCols, sha)); !errors.Is(err, ErrNotFound) {
+		return b, err
 	}
 	path, err := l.blobs.Path(sha)
 	if err != nil {
@@ -76,7 +80,7 @@ func (l *Library) record(ctx context.Context, sha string, size int64) (Blob, err
 		}
 	}
 	if _, err := l.pool.Exec(ctx, `INSERT INTO blob (sha256, size, mime, store, avatar_phash)
-		VALUES ($1, $2, $3, $4, $5) ON CONFLICT (sha256) DO NOTHING`,
+		VALUES ($1, $2, $3, $4, $5) ON CONFLICT (sha256) DO UPDATE SET created_at = now()`,
 		sha, size, mime, l.blobs.Name, phash); err != nil {
 		return Blob{}, err
 	}

@@ -39,9 +39,9 @@ func Slugify(name string) string {
 
 // freeSlug returns base, or base-N with N one more than the highest suffix
 // in use.
-func (s *Entities) freeSlug(ctx context.Context, base string) (string, error) {
+func (s *Entities) freeSlug(ctx context.Context, tx pgx.Tx, base string) (string, error) {
 	var n int
-	err := s.pool.QueryRow(ctx, `SELECT coalesce(max(CASE WHEN slug = $1 THEN 1
+	err := tx.QueryRow(ctx, `SELECT coalesce(max(CASE WHEN slug = $1 THEN 1
 			ELSE substring(slug from '-([0-9]{1,9})$')::int END), 0)
 		FROM `+s.k.table+` WHERE slug = $1 OR slug ~ ('^' || $1 || '-[0-9]{1,9}$')`, base).Scan(&n)
 	if err != nil || n == 0 {
@@ -62,8 +62,18 @@ func (s *Entities) Import(ctx context.Context, provenance, name string, e Edit) 
 	if err != nil {
 		return 0, false, err
 	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return 0, false, err
+	}
+	defer tx.Rollback(ctx)
+	// Two jobs can import the same item at once; without the lock both would
+	// miss the lookup and create a card each.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, s.k.table+":"+provenance); err != nil {
+		return 0, false, err
+	}
 	var id int64
-	err = s.pool.QueryRow(ctx, `SELECT e.id FROM `+s.k.table+` e WHERE e.provenance = $1 AND EXISTS (
+	err = tx.QueryRow(ctx, `SELECT e.id FROM `+s.k.table+` e WHERE e.provenance = $1 AND EXISTS (
 		SELECT 1 FROM `+s.k.revTable+` r WHERE r.`+s.k.fk+` = e.id AND r.content_hash = $2)
 		ORDER BY e.id LIMIT 1`, provenance, r.contentHash).Scan(&id)
 	if err == nil {
@@ -72,22 +82,39 @@ func (s *Entities) Import(ctx context.Context, provenance, name string, e Edit) 
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return 0, false, err
 	}
-	ent, _, err := s.CreateFromName(ctx, name, provenance, e)
+	ent, _, err := s.createFromName(ctx, tx, name, provenance, r)
 	if err != nil {
 		return 0, false, err
 	}
-	return ent.ID, true, nil
+	return ent.ID, true, tx.Commit(ctx)
 }
 
 // CreateFromName creates an entity with a free slug made from name.
 func (s *Entities) CreateFromName(ctx context.Context, name, provenance string, e Edit) (Entity, Revision, error) {
+	r, err := s.prepare(e)
+	if err != nil {
+		return Entity{}, Revision{}, err
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Entity{}, Revision{}, err
+	}
+	defer tx.Rollback(ctx)
+	ent, rev, err := s.createFromName(ctx, tx, name, provenance, r)
+	if err != nil {
+		return Entity{}, Revision{}, err
+	}
+	return ent, rev, tx.Commit(ctx)
+}
+
+func (s *Entities) createFromName(ctx context.Context, tx pgx.Tx, name, provenance string, r revisionRow) (Entity, Revision, error) {
 	// Retried because another writer can take the same slug first.
 	for range 5 {
-		slug, err := s.freeSlug(ctx, Slugify(name))
+		slug, err := s.freeSlug(ctx, tx, Slugify(name))
 		if err != nil {
 			return Entity{}, Revision{}, err
 		}
-		ent, rev, err := s.Create(ctx, slug, provenance, e)
+		ent, rev, err := s.create(ctx, tx, slug, provenance, r)
 		if !errors.Is(err, ErrSlugTaken) {
 			return ent, rev, err
 		}

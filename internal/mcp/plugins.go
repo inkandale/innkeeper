@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"regexp"
-	"strings"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -21,18 +19,11 @@ type pluginTool struct {
 	Description  string          `json:"description"`
 	InputSchema  json.RawMessage `json:"input_schema"`
 	Tier         string          `json:"tier"`
+	MCPName      string          `json:"mcp_name"`
 }
 
-var nonWord = regexp.MustCompile(`[^a-z0-9]+`)
-
-// prefix is the part of a plugin tool's name that names its instance.
-func prefix(instance string) string {
-	p := strings.Trim(nonWord.ReplaceAllString(strings.ToLower(instance), "_"), "_")
-	return strings.TrimRight(p[:min(len(p), 20)], "_")
-}
-
-// addPluginTools adds the plugin tools caller's tier allows, named
-// <instance>_<tool>, or <instance>_<id>_<tool> where that is taken.
+// addPluginTools adds the plugin tools caller's tier allows, under the names
+// the API gives them. One whose name a built-in tool has is left out.
 func addPluginTools(ctx context.Context, s *sdk.Server, c caller, t tier.Tier, taken map[string]bool, log *slog.Logger) {
 	r, err := c.do(ctx, "GET", "/plugin-tools", nil)
 	var list []pluginTool
@@ -48,10 +39,7 @@ func addPluginTools(ctx context.Context, s *sdk.Server, c caller, t tier.Tier, t
 		if err != nil || !t.Allows(need) {
 			continue
 		}
-		name := prefix(pt.InstanceName) + "_" + pt.Name
-		if taken[name] {
-			name = fmt.Sprintf("%s_%d_%s", prefix(pt.InstanceName), pt.InstanceID, pt.Name)
-		}
+		name := pt.MCPName
 		if taken[name] || len(name) > 64 {
 			log.Warn("skip plugin tool", "instance", pt.InstanceID, "tool", pt.Name, "as", name)
 			continue

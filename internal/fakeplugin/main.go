@@ -83,6 +83,9 @@ func main() {
 			}
 			return newTarget(config).describe(), nil
 		case protocol.MethodMCPTools:
+			if config["hang_tools"] == true {
+				time.Sleep(time.Minute)
+			}
 			return mcpTools(*mode), nil
 		case protocol.MethodMCPCall:
 			return mcpCall(params)

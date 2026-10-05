@@ -328,6 +328,8 @@ It loads the manifest, then checks that:
   if the manifest declares it
 - a `push` plugin that claims `pull` answers `target.list` and
   `target.list_lorebooks` within 5 seconds, with a `remote_id` on every item
+  it returns. The check sends an empty config, so an error other than
+  `-32601` counts as an answer.
 - a `codec` plugin encodes a sample card in each of its `formats` into
   `blob_tmp` with a valid extension, decodes it back, and returns an error
   when asked to decode a file that isn't a card

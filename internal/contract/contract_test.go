@@ -23,6 +23,8 @@ func failed(results []Result) map[string]error {
 	return out
 }
 
+// The check sends no config, so the fake's list methods return an error,
+// which counts as an answer.
 func TestWellBehavedPluginPasses(t *testing.T) {
 	results, err := Check(context.Background(), testutil.FakePlugin(t), quiet)
 	if err != nil {

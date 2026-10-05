@@ -217,6 +217,9 @@ func (t target) getLorebook(params json.RawMessage) (any, error) {
 
 // list returns the stored items with prefix, named by their name field.
 func (t target) list(prefix string) (any, error) {
+	if t.Dir == "" {
+		return nil, protocol.NewError(-32000, "config.dir is not set", false)
+	}
 	files, _ := filepath.Glob(filepath.Join(t.Dir, prefix+"*.json"))
 	items := []protocol.TargetItem{}
 	for _, f := range files {

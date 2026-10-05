@@ -147,11 +147,18 @@ func checkDescribe(ctx context.Context, p *pluginhost.Process, m *protocol.Manif
 	return info, nil
 }
 
-// checkLists calls both list methods and wants every item to have a remote_id.
+// checkLists calls both list methods and wants every item to have a
+// remote_id. The check runs with an empty config, so a target that needs its
+// app may only return an error, which still counts as an answer.
 func checkLists(ctx context.Context, p *pluginhost.Process) error {
 	for _, method := range []string{protocol.MethodTargetList, protocol.MethodTargetListLorebooks} {
 		var res protocol.TargetListResult
-		if err := call(ctx, p, method, nil, &res); err != nil {
+		var rpcErr *protocol.Error
+		err := call(ctx, p, method, nil, &res)
+		if errors.As(err, &rpcErr) && rpcErr.Code != protocol.CodeMethodNotFound {
+			continue
+		}
+		if err != nil {
 			return fmt.Errorf("%s: %w", method, err)
 		}
 		for _, it := range res.Items {

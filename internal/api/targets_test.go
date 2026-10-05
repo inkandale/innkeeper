@@ -202,3 +202,29 @@ func TestPushConfirm(t *testing.T) {
 		t.Fatalf("refusal doesn't carry the new preview: %s", r.Body)
 	}
 }
+
+func TestBindRoutes(t *testing.T) {
+	e := newEnv(t)
+	inst, dir := e.target()
+	if err := os.WriteFile(filepath.Join(dir, "r1.json"), []byte(`{"spec": "chara_card_v3", "data": {"name": "Brakka"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var c entityOut
+	e.call("POST", "/cards", map[string]any{"data": map[string]any{"name": "Brakka"}}, 201, &c)
+	var items []targets.Item
+	e.call("GET", fmt.Sprintf("/instances/%d/items", inst), nil, 200, &items)
+	if len(items) != 1 || items[0].RemoteID != "r1" || items[0].BindingID != nil {
+		t.Fatalf("items = %+v", items)
+	}
+	e.call("GET", fmt.Sprintf("/instances/%d/lorebook-items", inst), nil, 400, nil) // the fake keeps lorebooks inside cards
+	bind := map[string]any{"instance_id": inst, "remote_id": "r1"}
+	path := fmt.Sprintf("/cards/%d/bind", c.ID)
+	var b targets.Binding
+	e.call("POST", path, bind, 200, &b)
+	if b.RemoteID != "r1" || b.Status != "in_sync" {
+		t.Fatalf("bind = %+v", b)
+	}
+	e.call("POST", path, bind, 409, nil)
+	e.call("POST", "/cards/999/bind", bind, 404, nil)
+	e.call("POST", "/lorebooks/999/bind", bind, 404, nil)
+}

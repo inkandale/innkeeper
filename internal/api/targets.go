@@ -40,6 +40,16 @@ type bindingOut struct{ Body targets.Binding }
 
 type bindingsOut struct{ Body []targets.Binding }
 
+type itemsOut struct{ Body []targets.Item }
+
+type bindIn struct {
+	ID   int64 `path:"id"`
+	Body struct {
+		InstanceID int64  `json:"instance_id"`
+		RemoteID   string `json:"remote_id" minLength:"1" doc:"The app's id for the item, from its item list"`
+	}
+}
+
 type pushesOut struct{ Body []targets.Push }
 
 type adoptIn struct {
@@ -61,16 +71,19 @@ func (s *Server) targetRoutes(api huma.API) {
 	tags := []string{"Sync"}
 	// Cards and lorebooks have the same push routes, under their own paths.
 	type syncedKind struct {
-		name, plural string
-		get          func(context.Context, int64) (library.Entity, error)
-		enqueue      func(context.Context, *jobs.Queue, int64, int64, bool) (jobs.Job, error)
-		preview      func(context.Context, int64, int64) (targets.Preview, error)
-		bindings     func(context.Context, int64) ([]targets.Binding, error)
+		name, plural, itemsPath string
+		get                     func(context.Context, int64) (library.Entity, error)
+		enqueue                 func(context.Context, *jobs.Queue, int64, int64, bool) (jobs.Job, error)
+		preview                 func(context.Context, int64, int64) (targets.Preview, error)
+		bindings                func(context.Context, int64) ([]targets.Binding, error)
+		items                   func(context.Context, int64) ([]targets.Item, error)
+		bind                    func(context.Context, int64, int64, string) (targets.Binding, error)
 	}
 	for _, k := range []syncedKind{
-		{"card", "cards", s.Lib.Cards.Get, s.Targets.EnqueuePush, s.Targets.Preview, s.Targets.Bindings},
-		{"lorebook", "lorebooks", s.Lib.Lorebooks.Get, s.Targets.EnqueueLorebookPush, s.Targets.PreviewLorebook,
-			s.Targets.LorebookBindings},
+		{"card", "cards", "items", s.Lib.Cards.Get, s.Targets.EnqueuePush, s.Targets.Preview, s.Targets.Bindings,
+			s.Targets.Items, s.Targets.Bind},
+		{"lorebook", "lorebooks", "lorebook-items", s.Lib.Lorebooks.Get, s.Targets.EnqueueLorebookPush, s.Targets.PreviewLorebook,
+			s.Targets.LorebookBindings, s.Targets.LorebookItems, s.Targets.BindLorebook},
 	} {
 		huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "push-" + k.name, Method: http.MethodPost, Path: "/" + k.plural + "/{id}/push",
 			Summary: "Push a " + k.name + " to a target", Tags: tags, DefaultStatus: http.StatusAccepted,
@@ -126,6 +139,24 @@ func (s *Server) targetRoutes(api huma.API) {
 					return nil, s.fail(err)
 				}
 				return &bindingsOut{Body: orEmpty(list)}, nil
+			})
+
+		huma.Register(api, huma.Operation{OperationID: "list-" + k.name + "-items", Method: http.MethodGet,
+			Path: "/instances/{id}/" + k.itemsPath, Summary: "List the " + k.plural + " a target app has", Tags: tags,
+			Description: "Reads the app. Each item has a binding_id if a binding already uses it."},
+			func(ctx context.Context, in *idIn) (*itemsOut, error) {
+				list, err := k.items(ctx, in.ID)
+				if err != nil {
+					return nil, s.fail(err)
+				}
+				return &itemsOut{Body: orEmpty(list)}, nil
+			})
+
+		huma.Register(api, huma.Operation{OperationID: "bind-" + k.name, Method: http.MethodPost,
+			Path: "/" + k.plural + "/{id}/bind", Summary: "Bind a " + k.name + " to one the app already has", Tags: tags,
+			Description: "Changes nothing in the app or the library. The library's copy becomes the baseline, so the next check shows where the app differs."},
+			func(ctx context.Context, in *bindIn) (*bindingOut, error) {
+				return s.binding(k.bind(ctx, in.Body.InstanceID, in.ID, in.Body.RemoteID))
 			})
 	}
 

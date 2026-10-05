@@ -83,6 +83,18 @@ type adoptIn struct {
 	BaseRevisionID int64  `json:"base_revision_id,omitempty" jsonschema:"The head revision; required unless into is ignore"`
 }
 
+type itemsIn struct {
+	InstanceID int64  `json:"instance_id" jsonschema:"The target plugin instance"`
+	Kind       string `json:"kind,omitempty" jsonschema:"card or lorebook; default card"`
+}
+
+type bindIn struct {
+	CardID     int64  `json:"card_id,omitempty" jsonschema:"The card to bind; give this or lorebook_id"`
+	LorebookID int64  `json:"lorebook_id,omitempty" jsonschema:"The lorebook to bind; give this or card_id"`
+	InstanceID int64  `json:"instance_id" jsonschema:"The target plugin instance"`
+	RemoteID   string `json:"remote_id" jsonschema:"The app item's remote_id, from list_app_items"`
+}
+
 type importIn struct {
 	InstanceID int64  `json:"instance_id" jsonschema:"An import plugin instance"`
 	Path       string `json:"path,omitempty" jsonschema:"A subfolder of the instance's folder; empty for all of it"`
@@ -201,6 +213,29 @@ var tools = []tool{
 				return nil, err
 			}
 			return c.call(ctx, "GET", fmt.Sprintf("/%s/%d/bindings", p, in.ID), nil)
+		}),
+	def("list_app_items", "List the cards or lorebooks a target app already has, with the binding that uses each, if any.", tier.Read,
+		func(ctx context.Context, c caller, in itemsIn) (*sdk.CallToolResult, error) {
+			path := "items"
+			switch in.Kind {
+			case "", "card":
+			case "lorebook":
+				path = "lorebook-items"
+			default:
+				return nil, fmt.Errorf("kind must be card or lorebook, not %q", in.Kind)
+			}
+			return c.call(ctx, "GET", fmt.Sprintf("/instances/%d/%s", in.InstanceID, path), nil)
+		}),
+	def("bind", "Link a card or lorebook to one the app already has. Changes nothing in the app or the library; check_drift then shows where they differ.", tier.Write,
+		func(ctx context.Context, c caller, in bindIn) (*sdk.CallToolResult, error) {
+			if (in.CardID == 0) == (in.LorebookID == 0) {
+				return nil, fmt.Errorf("give exactly one of card_id and lorebook_id")
+			}
+			path := fmt.Sprintf("/cards/%d/bind", in.CardID)
+			if in.LorebookID != 0 {
+				path = fmt.Sprintf("/lorebooks/%d/bind", in.LorebookID)
+			}
+			return c.call(ctx, "POST", path, map[string]any{"instance_id": in.InstanceID, "remote_id": in.RemoteID})
 		}),
 	def("list_jobs", "List recent jobs: imports, pushes, scans, bulk actions.", tier.Read,
 		func(ctx context.Context, c caller, _ none) (*sdk.CallToolResult, error) {

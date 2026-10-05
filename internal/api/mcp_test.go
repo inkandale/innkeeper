@@ -81,7 +81,7 @@ func TestMCPToolsByTier(t *testing.T) {
 	}
 	read, write, all := names(tier.Read), names(tier.Write), names(tier.Destructive)
 	if !slices.Contains(read, "search_cards") || slices.Contains(read, "create_card") || slices.Contains(write, "push") ||
-		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 24 {
+		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 26 {
 		t.Fatalf("read %v\nwrite %v\nall %v", read, write, all)
 	}
 }

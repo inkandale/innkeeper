@@ -1,8 +1,10 @@
-// Package targets syncs library cards with target apps through push and
-// pull plugins: bindings, pushes, drift checks, and adopting app changes.
+// Package targets syncs library cards and lorebooks with target apps through
+// push and pull plugins: bindings, pushes, drift checks, and adopting app
+// changes.
 package targets
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -58,23 +60,28 @@ func New(pool *pgxpool.Pool, lib *library.Library, reg *plugins.Registry, mgr *p
 	return &Service{pool: pool, lib: lib, reg: reg, plugins: mgr, log: log}
 }
 
-// Push is one push of a card to a target.
+// Push is one push of a card or lorebook to a target.
 type Push struct {
 	ID         int64 `json:"id"`
 	RevisionID int64 `json:"revision_id"`
 	// LorebookRevisionIDs are the embedded lorebooks' revisions; absent when
 	// the target doesn't embed lorebooks.
-	LorebookRevisionIDs []int64   `json:"lorebook_revision_ids,omitempty"`
-	PushedHash          string    `json:"pushed_hash"`
-	RemoteID            string    `json:"remote_id"`
-	PushedAt            time.Time `json:"pushed_at"`
+	LorebookRevisionIDs []int64 `json:"lorebook_revision_ids,omitempty"`
+	// LorebookRemoteIDs are the card's lorebooks in the app; absent unless
+	// the target keeps lorebooks on their own.
+	LorebookRemoteIDs []string  `json:"lorebook_remote_ids,omitempty"`
+	PushedHash        string    `json:"pushed_hash"`
+	RemoteID          string    `json:"remote_id"`
+	PushedAt          time.Time `json:"pushed_at"`
 }
 
-// Binding is a card's link to its copy in one target app.
+// Binding is a card's or lorebook's link to its copy in one target app.
+// Exactly one of CardID and LorebookID is set.
 type Binding struct {
 	ID         int64  `json:"id"`
 	InstanceID int64  `json:"instance_id"`
-	CardID     int64  `json:"card_id"`
+	CardID     int64  `json:"card_id,omitempty"`
+	LorebookID int64  `json:"lorebook_id,omitempty"`
 	RemoteID   string `json:"remote_id"`
 	Status     string `json:"status" enum:"in_sync,ahead,remote_changed,diverged,missing,cant_check"`
 	// Ahead means the library changed since the last push.
@@ -87,9 +94,9 @@ type Binding struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-const bindingQuery = `SELECT b.id, b.instance_id, b.card_id, b.remote_id, s.status, s.ahead, b.remote_state,
-		b.checked_at, b.created_at, p.id, p.revision_id, p.lorebook_revision_ids, p.pushed_hash, p.remote_id,
-		p.pushed_at, b.accepted_data, b.seen_data
+const bindingQuery = `SELECT b.id, b.instance_id, coalesce(b.card_id, 0), coalesce(b.lorebook_id, 0), b.remote_id,
+		s.status, s.ahead, b.remote_state, b.checked_at, b.created_at, p.id, p.revision_id, p.lorebook_revision_ids,
+		p.lorebook_remote_ids, p.pushed_hash, p.remote_id, p.pushed_at, b.accepted_data, b.seen_data
 	FROM binding b JOIN binding_status s ON s.binding_id = b.id
 	JOIN LATERAL (SELECT * FROM push WHERE binding_id = b.id ORDER BY id DESC LIMIT 1) p ON TRUE`
 
@@ -97,9 +104,9 @@ func scanBinding(row pgx.Row) (Binding, error) {
 	var b Binding
 	var accepted, seen []byte
 	p := &b.LastPush
-	err := row.Scan(&b.ID, &b.InstanceID, &b.CardID, &b.RemoteID, &b.Status, &b.Ahead, &b.RemoteState,
-		&b.CheckedAt, &b.CreatedAt, &p.ID, &p.RevisionID, &p.LorebookRevisionIDs, &p.PushedHash, &p.RemoteID,
-		&p.PushedAt, &accepted, &seen)
+	err := row.Scan(&b.ID, &b.InstanceID, &b.CardID, &b.LorebookID, &b.RemoteID, &b.Status, &b.Ahead, &b.RemoteState,
+		&b.CheckedAt, &b.CreatedAt, &p.ID, &p.RevisionID, &p.LorebookRevisionIDs, &p.LorebookRemoteIDs, &p.PushedHash,
+		&p.RemoteID, &p.PushedAt, &accepted, &seen)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return b, ErrNotFound
 	}
@@ -117,7 +124,16 @@ func (s *Service) Binding(ctx context.Context, id int64) (Binding, error) {
 
 // Bindings returns a card's bindings, oldest first.
 func (s *Service) Bindings(ctx context.Context, cardID int64) ([]Binding, error) {
-	rows, err := s.pool.Query(ctx, bindingQuery+` WHERE b.card_id = $1 ORDER BY b.id`, cardID)
+	return s.bindings(ctx, cardKind, cardID)
+}
+
+// LorebookBindings returns a lorebook's bindings, oldest first.
+func (s *Service) LorebookBindings(ctx context.Context, lorebookID int64) ([]Binding, error) {
+	return s.bindings(ctx, lorebookKind, lorebookID)
+}
+
+func (s *Service) bindings(ctx context.Context, k kind, id int64) ([]Binding, error) {
+	rows, err := s.pool.Query(ctx, bindingQuery+` WHERE b.`+k.col+` = $1 ORDER BY b.id`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -129,14 +145,15 @@ func (s *Service) Pushes(ctx context.Context, bindingID int64) ([]Push, error) {
 	if _, err := s.Binding(ctx, bindingID); err != nil {
 		return nil, err
 	}
-	rows, err := s.pool.Query(ctx, `SELECT id, revision_id, lorebook_revision_ids, pushed_hash, remote_id, pushed_at
-		FROM push WHERE binding_id = $1 ORDER BY id DESC`, bindingID)
+	rows, err := s.pool.Query(ctx, `SELECT id, revision_id, lorebook_revision_ids, lorebook_remote_ids, pushed_hash,
+		remote_id, pushed_at FROM push WHERE binding_id = $1 ORDER BY id DESC`, bindingID)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Push, error) {
 		var p Push
-		err := row.Scan(&p.ID, &p.RevisionID, &p.LorebookRevisionIDs, &p.PushedHash, &p.RemoteID, &p.PushedAt)
+		err := row.Scan(&p.ID, &p.RevisionID, &p.LorebookRevisionIDs, &p.LorebookRemoteIDs, &p.PushedHash, &p.RemoteID,
+			&p.PushedAt)
 		return p, err
 	})
 }
@@ -153,17 +170,19 @@ func (s *Service) Unbind(ctx context.Context, id int64) error {
 	return nil
 }
 
-// lock serializes pushes of one card to one target, so concurrent first
-// pushes can't make two copies. It holds until tx ends.
-func lock(ctx context.Context, tx pgx.Tx, instanceID, cardID int64) error {
+// lock serializes pushes of one card or lorebook to one target, so
+// concurrent first pushes can't make two copies. It holds until tx ends.
+func lock(ctx context.Context, tx pgx.Tx, k kind, instanceID, id int64) error {
 	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
-		fmt.Sprintf("binding %d card %d", instanceID, cardID))
+		fmt.Sprintf("binding %d %s %d", instanceID, k.name, id))
 	return err
 }
 
 // stored is a binding row as checks and adopts read it.
 type stored struct {
-	instanceID, cardID                  int64
+	k kind
+	// id is the card's or lorebook's ID.
+	instanceID, id                      int64
 	remoteID, remoteState, acceptedHash string
 	accepted, seen                      []byte
 	// version is bumped by every push and adopt. Writes that must lose to
@@ -173,13 +192,21 @@ type stored struct {
 
 func (s *Service) stored(ctx context.Context, id int64) (stored, error) {
 	var b stored
-	err := s.pool.QueryRow(ctx, `SELECT instance_id, card_id, remote_id, remote_state, accepted_hash, accepted_data,
-		seen_data, version FROM binding b WHERE b.id = $1`, id).
-		Scan(&b.instanceID, &b.cardID, &b.remoteID, &b.remoteState, &b.acceptedHash, &b.accepted, &b.seen, &b.version)
+	var card, lorebook *int64
+	err := s.pool.QueryRow(ctx, `SELECT instance_id, card_id, lorebook_id, remote_id, remote_state, accepted_hash,
+		accepted_data, seen_data, version FROM binding b WHERE b.id = $1`, id).
+		Scan(&b.instanceID, &card, &lorebook, &b.remoteID, &b.remoteState, &b.acceptedHash, &b.accepted, &b.seen, &b.version)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return b, ErrNotFound
 	}
-	return b, err
+	if err != nil {
+		return b, err
+	}
+	b.k, b.id = cardKind, *cmp.Or(card, lorebook)
+	if lorebook != nil {
+		b.k = lorebookKind
+	}
+	return b, nil
 }
 
 // describe resolves a push plugin's instance and asks what its app stores.
@@ -203,9 +230,10 @@ func (s *Service) describe(ctx context.Context, instanceID int64) (pluginhost.In
 	return inst, info, nil
 }
 
-// rendered is a card as one target gets it.
+// rendered is a card or lorebook as one target gets it.
 type rendered struct {
-	card     json.RawMessage
+	// payload is the CCv3 card, or the lorebook's character_book.
+	payload  json.RawMessage
 	data     json.RawMessage
 	avatar   string
 	revision int64
@@ -213,18 +241,16 @@ type rendered struct {
 	lorebooks []int64
 }
 
-// render builds the card a target gets: the head revision's data with the
-// instance's override applied, and linked lorebooks embedded if the target
-// takes them that way.
-//
-// ponytail: a target with standalone lorebooks gets cards without them until
-// target.put_lorebook exists.
-func (s *Service) render(ctx context.Context, instanceID, cardID int64, info protocol.TargetInfo) (rendered, error) {
-	c, err := s.lib.Cards.Get(ctx, cardID)
+// render builds what a target gets: the head revision's data with the
+// instance's override applied, and for a card, linked lorebooks embedded if
+// the target takes them that way.
+func (s *Service) render(ctx context.Context, k kind, instanceID, id int64, info protocol.TargetInfo) (rendered, error) {
+	ents := k.entities(s.lib)
+	c, err := ents.Get(ctx, id)
 	if err != nil {
 		return rendered{}, err
 	}
-	rev, err := s.lib.Cards.Revision(ctx, c.HeadRevisionID)
+	rev, err := ents.Revision(ctx, c.HeadRevisionID)
 	if err != nil {
 		return rendered{}, err
 	}
@@ -238,9 +264,13 @@ func (s *Service) render(ctx context.Context, instanceID, cardID int64, info pro
 			return rendered{}, err
 		}
 	}
+	if k.isLorebook() {
+		r.payload = r.data
+		return r, nil
+	}
 	if info.Lorebooks == protocol.LorebooksEmbedded {
 		var book json.RawMessage
-		if book, r.lorebooks, err = s.lib.CardBook(ctx, cardID); err != nil {
+		if book, r.lorebooks, err = s.lib.CardBook(ctx, id); err != nil {
 			return rendered{}, err
 		}
 		if book != nil {
@@ -259,7 +289,7 @@ func (s *Service) render(ctx context.Context, instanceID, cardID int64, info pro
 			return rendered{}, err
 		}
 	}
-	r.card, err = json.Marshal(map[string]any{"spec": "chara_card_v3", "spec_version": "3.0", "data": r.data})
+	r.payload, err = json.Marshal(map[string]any{"spec": "chara_card_v3", "spec_version": "3.0", "data": r.data})
 	return r, err
 }
 
@@ -268,17 +298,26 @@ func (s *Service) render(ctx context.Context, instanceID, cardID int64, info pro
 // inside a transaction and the registry's start-failure path needs the pool.
 // Callers resolve the instance with describe first, which marks a plugin
 // that won't start as broken.
-func (s *Service) fetch(ctx context.Context, inst pluginhost.Instance, info protocol.TargetInfo, remoteID string) (json.RawMessage, string, error) {
-	var got protocol.TargetGetResult
-	err := s.plugins.Call(ctx, inst, protocol.MethodTargetGet, protocol.TargetGetParams{RemoteID: remoteID}, &got)
-	if err != nil {
+func (s *Service) fetch(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo, remoteID string) (json.RawMessage, string, error) {
+	var got struct {
+		Card     json.RawMessage `json:"card"`
+		Lorebook json.RawMessage `json:"lorebook"`
+	}
+	if err := s.plugins.Call(ctx, inst, k.get, protocol.TargetGetParams{RemoteID: remoteID}, &got); err != nil {
 		return nil, "", err
 	}
-	data, err := cardData(got.Card)
-	if err != nil {
-		return nil, "", fmt.Errorf("%w: target.get: %w", ErrBadReply, err)
+	var data json.RawMessage
+	var err error
+	if k.isLorebook() {
+		data = got.Lorebook
+		_, err = object(data)
+	} else {
+		data, err = cardData(got.Card)
 	}
-	return project(data, info.Fields)
+	if err != nil {
+		return nil, "", fmt.Errorf("%w: %s: %w", ErrBadReply, k.get, err)
+	}
+	return project(data, k.fields(info))
 }
 
 func remoteNotFound(err error) bool {

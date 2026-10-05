@@ -21,9 +21,11 @@ const (
 	ScanKind = "target.scan"
 )
 
+// pushPayload names a card or a lorebook.
 type pushPayload struct {
-	CardID  int64 `json:"card_id"`
-	NewCopy bool  `json:"new_copy,omitempty"`
+	CardID     int64 `json:"card_id,omitempty"`
+	LorebookID int64 `json:"lorebook_id,omitempty"`
+	NewCopy    bool  `json:"new_copy,omitempty"`
 	// LastPush is the binding's latest push id when the job was queued; nil
 	// if the card wasn't bound. A run that finds another one knows an
 	// earlier run, or another push, already pushed.
@@ -32,13 +34,27 @@ type pushPayload struct {
 
 // EnqueuePush queues a push of one card.
 func (s *Service) EnqueuePush(ctx context.Context, q *jobs.Queue, instanceID, cardID int64, newCopy bool) (jobs.Job, error) {
-	var v *int64
+	return s.enqueuePush(ctx, q, cardKind, instanceID, cardID, newCopy)
+}
+
+// EnqueueLorebookPush queues a push of one lorebook.
+func (s *Service) EnqueueLorebookPush(ctx context.Context, q *jobs.Queue, instanceID, lorebookID int64, newCopy bool) (jobs.Job, error) {
+	return s.enqueuePush(ctx, q, lorebookKind, instanceID, lorebookID, newCopy)
+}
+
+func (s *Service) enqueuePush(ctx context.Context, q *jobs.Queue, k kind, instanceID, id int64, newCopy bool) (jobs.Job, error) {
+	p := pushPayload{NewCopy: newCopy}
 	err := s.pool.QueryRow(ctx, `SELECT max(p.id) FROM binding b JOIN push p ON p.binding_id = b.id
-		WHERE b.instance_id = $1 AND b.card_id = $2`, instanceID, cardID).Scan(&v)
+		WHERE b.instance_id = $1 AND b.`+k.col+` = $2`, instanceID, id).Scan(&p.LastPush)
 	if err != nil {
 		return jobs.Job{}, err
 	}
-	return q.Enqueue(ctx, jobs.Spec{Kind: PushKind, InstanceID: &instanceID, Payload: pushPayload{cardID, newCopy, v}})
+	if k.isLorebook() {
+		p.LorebookID = id
+	} else {
+		p.CardID = id
+	}
+	return q.Enqueue(ctx, jobs.Spec{Kind: PushKind, InstanceID: &instanceID, Payload: p})
 }
 
 // EnqueueBulkPush queues a push of each card, as one bulk job.
@@ -81,17 +97,20 @@ func (s *Service) RunPush(ctx context.Context, r *jobs.Run) error {
 	if err := json.Unmarshal(r.Payload, &p); err != nil {
 		return fmt.Errorf("push payload: %w", err)
 	}
-	key := fmt.Sprintf("%d:%d:%d", *r.InstanceID, p.CardID, r.ID)
-	b, err := s.push(ctx, *r.InstanceID, p.CardID, p.NewCopy, key, &pushExpect{p.LastPush})
+	k, id, key := cardKind, p.CardID, fmt.Sprintf("%d:%d:%d", *r.InstanceID, p.CardID, r.ID)
+	if p.LorebookID != 0 {
+		k, id, key = lorebookKind, p.LorebookID, fmt.Sprintf("%d:lorebook:%d:%d", *r.InstanceID, p.LorebookID, r.ID)
+	}
+	b, err := s.push(ctx, k, *r.InstanceID, id, p.NewCopy, key, &pushExpect{p.LastPush})
 	var startErr *pluginhost.StartError
 	switch {
 	case errors.Is(err, errAlreadyPushed):
-		var id int64
-		if err := s.pool.QueryRow(ctx, `SELECT id FROM binding WHERE instance_id = $1 AND card_id = $2`,
-			*r.InstanceID, p.CardID).Scan(&id); err != nil {
+		var bindingID int64
+		if err := s.pool.QueryRow(ctx, `SELECT id FROM binding WHERE instance_id = $1 AND `+k.col+` = $2`,
+			*r.InstanceID, id).Scan(&bindingID); err != nil {
 			return err
 		}
-		return skipPush(r, id)
+		return skipPush(r, bindingID)
 	case err == nil:
 	case errors.Is(err, ErrUncertain):
 		// Final even on shutdown: a re-run could make a second copy.

@@ -49,7 +49,7 @@ func (s *Service) Adopt(ctx context.Context, id int64, into string, base int64) 
 	// ponytail: the revision commits before the binding does. If a push or
 	// check lands in between, the revision stays and Adopt returns ErrMoved.
 	if into != IntoIgnore {
-		if err := s.adopt(ctx, b.instanceID, b.cardID, base, into, changes); err != nil {
+		if err := s.adopt(ctx, b.k, b.instanceID, b.id, base, into, changes); err != nil {
 			return Binding{}, err
 		}
 	}
@@ -80,11 +80,12 @@ func (s *Service) accept(ctx context.Context, id int64, b stored) error {
 	return nil
 }
 
-// adopt writes changes into the card's data or the instance's override, in a
-// revision on top of base.
-func (s *Service) adopt(ctx context.Context, instanceID, cardID, base int64, into string, changes []Change) error {
-	rev, err := s.lib.Cards.Revision(ctx, base)
-	if errors.Is(err, library.ErrNotFound) || err == nil && rev.EntityID != cardID {
+// adopt writes changes into the entity's data or the instance's override, in
+// a revision on top of base.
+func (s *Service) adopt(ctx context.Context, k kind, instanceID, id, base int64, into string, changes []Change) error {
+	ents := k.entities(s.lib)
+	rev, err := ents.Revision(ctx, base)
+	if errors.Is(err, library.ErrNotFound) || err == nil && rev.EntityID != id {
 		return library.ErrConflict
 	}
 	if err != nil {
@@ -113,6 +114,6 @@ func (s *Service) adopt(ctx context.Context, instanceID, cardID, base int64, int
 	if !changed {
 		return ErrNoChanges
 	}
-	_, err = s.lib.Cards.Update(ctx, cardID, base, e)
+	_, err = ents.Update(ctx, id, base, e)
 	return err
 }

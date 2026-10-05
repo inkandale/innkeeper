@@ -19,7 +19,13 @@ import (
 // made in the app. A target that can't update gets another copy, but only
 // when newCopy is set. If the app lost its copy, the push makes a new one.
 func (s *Service) Push(ctx context.Context, instanceID, cardID int64, newCopy bool) (Binding, error) {
-	return s.push(ctx, instanceID, cardID, newCopy, rand.Text(), nil)
+	return s.push(ctx, cardKind, instanceID, cardID, newCopy, rand.Text(), nil)
+}
+
+// PushLorebook sends a lorebook to a target that keeps lorebooks on their
+// own, as Push does for cards.
+func (s *Service) PushLorebook(ctx context.Context, instanceID, lorebookID int64, newCopy bool) (Binding, error) {
+	return s.push(ctx, lorebookKind, instanceID, lorebookID, newCopy, rand.Text(), nil)
 }
 
 // pushExpect is what a queued push job saw when it was queued.
@@ -32,15 +38,18 @@ type pushExpect struct {
 // an earlier run of the job (or another push) already pushed it.
 var errAlreadyPushed = errors.New("already pushed")
 
-// push is Push, except that with expect it gives up with errAlreadyPushed
-// if the card was pushed since expect. key is the target.put key for a
-// create; a re-run of the same push must pass the same key.
-func (s *Service) push(ctx context.Context, instanceID, cardID int64, newCopy bool, key string, expect *pushExpect) (Binding, error) {
+// push is Push or PushLorebook, except that with expect it gives up with
+// errAlreadyPushed if the entity was pushed since expect. key is the put key
+// for a create; a re-run of the same push must pass the same key.
+func (s *Service) push(ctx context.Context, k kind, instanceID, id int64, newCopy bool, key string, expect *pushExpect) (Binding, error) {
 	inst, info, err := s.describe(ctx, instanceID)
 	if err != nil {
 		return Binding{}, err
 	}
-	r, err := s.render(ctx, instanceID, cardID, info)
+	if k.isLorebook() && info.Lorebooks != protocol.LorebooksStandalone {
+		return Binding{}, fmt.Errorf("%w: lorebooks for %s", ErrCannot, inst.Manifest.Name)
+	}
+	r, err := s.render(ctx, k, instanceID, id, info)
 	if err != nil {
 		return Binding{}, err
 	}
@@ -56,14 +65,14 @@ func (s *Service) push(ctx context.Context, instanceID, cardID int64, newCopy bo
 		return Binding{}, err
 	}
 	defer tx.Rollback(ctx)
-	if err := lock(ctx, tx, instanceID, cardID); err != nil {
+	if err := lock(ctx, tx, k, instanceID, id); err != nil {
 		return Binding{}, err
 	}
 	var remoteID, state string
 	var lastPush *int64
 	err = tx.QueryRow(ctx, `SELECT remote_id, remote_state, (SELECT max(id) FROM push WHERE binding_id = b.id)
-		FROM binding b WHERE instance_id = $1 AND card_id = $2`,
-		instanceID, cardID).Scan(&remoteID, &state, &lastPush)
+		FROM binding b WHERE instance_id = $1 AND `+k.col+` = $2`,
+		instanceID, id).Scan(&remoteID, &state, &lastPush)
 	bound := err == nil
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return Binding{}, err
@@ -76,11 +85,11 @@ func (s *Service) push(ctx context.Context, instanceID, cardID int64, newCopy bo
 	if expect != nil && create && bound && (expect.lastPush == nil || lastPush == nil || *expect.lastPush != *lastPush) {
 		return Binding{}, errAlreadyPushed
 	}
-	put := protocol.TargetPutParams{Card: r.card, Avatar: r.avatar, Key: key}
+	putRemote, putKey := "", key
 	switch {
 	case !bound || state == remoteMissing:
 	case info.Update:
-		put.RemoteID, put.Key = remoteID, ""
+		putRemote, putKey = remoteID, ""
 	case !newCopy:
 		return Binding{}, ErrNewCopy
 	}
@@ -92,24 +101,31 @@ func (s *Service) push(ctx context.Context, instanceID, cardID int64, newCopy bo
 	putCtx, cancelPut := context.WithTimeout(detached, 2*time.Minute)
 	defer cancelPut()
 	var res protocol.TargetPutResult
-	err = s.plugins.Call(putCtx, inst, protocol.MethodTargetPut, put, &res)
-	if put.RemoteID != "" && remoteNotFound(err) {
-		put.RemoteID, put.Key = "", key
-		err = s.plugins.Call(putCtx, inst, protocol.MethodTargetPut, put, &res)
+	put := func() error {
+		var params any = protocol.TargetPutParams{Card: r.payload, RemoteID: putRemote, Avatar: r.avatar, Key: putKey}
+		if k.isLorebook() {
+			params = protocol.TargetPutLorebookParams{Lorebook: r.payload, RemoteID: putRemote, Key: putKey}
+		}
+		return s.plugins.Call(putCtx, inst, k.put, params, &res)
+	}
+	err = put()
+	if putRemote != "" && remoteNotFound(err) {
+		putRemote, putKey = "", key
+		err = put()
 	}
 	if err != nil {
-		if put.RemoteID == "" && (errors.Is(err, protocol.ErrClosed) || errors.Is(err, context.DeadlineExceeded)) {
+		if putRemote == "" && (errors.Is(err, protocol.ErrClosed) || errors.Is(err, context.DeadlineExceeded)) {
 			// The plugin died or hung mid-create; the app may have the card.
 			return Binding{}, fmt.Errorf("%w: %w", ErrUncertain, err)
 		}
 		return Binding{}, err
 	}
 	if res.RemoteID == "" {
-		return Binding{}, fmt.Errorf("%w: target.put returned no remote_id", ErrBadReply)
+		return Binding{}, fmt.Errorf("%w: %s returned no remote_id", ErrBadReply, k.put)
 	}
 	// The app has the card now; record it even if ctx is cancelled.
 	readCtx, cancelRead := context.WithTimeout(detached, 20*time.Second)
-	accepted, hash, remoteState, err := s.readBack(readCtx, inst, info, res.RemoteID, r.data)
+	accepted, hash, remoteState, err := s.readBack(readCtx, k, inst, info, res.RemoteID, r.data)
 	cancelRead()
 	if err != nil {
 		return Binding{}, err
@@ -117,42 +133,42 @@ func (s *Service) push(ctx context.Context, instanceID, cardID int64, newCopy bo
 	// A hung read-back can't eat the writes' time.
 	ctx, cancel := context.WithTimeout(detached, 30*time.Second)
 	defer cancel()
-	var id int64
-	err = tx.QueryRow(ctx, `INSERT INTO binding (instance_id, card_id, remote_id, remote_state, accepted_data,
+	var bindingID int64
+	err = tx.QueryRow(ctx, `INSERT INTO binding (instance_id, `+k.col+`, remote_id, remote_state, accepted_data,
 			accepted_hash, checked_at)
 		VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $4 = 'unknown' THEN NULL ELSE now() END)
-		ON CONFLICT (instance_id, card_id) DO UPDATE SET remote_id = EXCLUDED.remote_id,
+		ON CONFLICT (instance_id, `+k.col+`) DO UPDATE SET remote_id = EXCLUDED.remote_id,
 			remote_state = EXCLUDED.remote_state, accepted_data = EXCLUDED.accepted_data,
 			accepted_hash = EXCLUDED.accepted_hash, seen_data = NULL, checked_at = EXCLUDED.checked_at,
 			version = binding.version + 1
-		RETURNING id`, instanceID, cardID, res.RemoteID, remoteState, accepted, hash).Scan(&id)
+		RETURNING id`, instanceID, id, res.RemoteID, remoteState, accepted, hash).Scan(&bindingID)
 	if err != nil {
 		return Binding{}, err
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO push (binding_id, revision_id, lorebook_revision_ids, pushed_hash, remote_id)
-		VALUES ($1, $2, $3, $4, $5)`, id, r.revision, r.lorebooks, hash, res.RemoteID)
+		VALUES ($1, $2, $3, $4, $5)`, bindingID, r.revision, r.lorebooks, hash, res.RemoteID)
 	if err != nil {
 		return Binding{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return Binding{}, err
 	}
-	return s.Binding(ctx, id)
+	return s.Binding(ctx, bindingID)
 }
 
 // readBack returns what the app holds after a push, its hash, and the
 // remote state. A target that can pull is read back, so an app that
 // reformats what it gets doesn't show as changed.
-func (s *Service) readBack(ctx context.Context, inst pluginhost.Instance, info protocol.TargetInfo, remoteID string, sent json.RawMessage) (json.RawMessage, string, string, error) {
+func (s *Service) readBack(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo, remoteID string, sent json.RawMessage) (json.RawMessage, string, string, error) {
 	if info.Pull {
-		data, hash, err := s.fetch(ctx, inst, info, remoteID)
+		data, hash, err := s.fetch(ctx, k, inst, info, remoteID)
 		if err == nil {
 			return data, hash, remoteUnchanged, nil
 		}
 		// The push worked, so record it against what was sent instead.
 		s.log.Warn("read back pushed card", "instance", inst.ID, "remote_id", remoteID, "err", err)
 	}
-	data, hash, err := project(sent, info.Fields)
+	data, hash, err := project(sent, k.fields(info))
 	state := remoteUnknown
 	if info.Pull {
 		state = remoteUnchanged
@@ -177,7 +193,7 @@ func (s *Service) Preview(ctx context.Context, instanceID, cardID int64) (Previe
 	if err != nil {
 		return Preview{}, err
 	}
-	r, err := s.render(ctx, instanceID, cardID, info)
+	r, err := s.render(ctx, cardKind, instanceID, cardID, info)
 	if err != nil {
 		return Preview{}, err
 	}
@@ -191,5 +207,5 @@ func (s *Service) Preview(ctx context.Context, instanceID, cardID int64) (Previe
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return Preview{}, err
 	}
-	return Preview{Card: r.card, DroppedFields: dropped, NewCopy: err == nil && state != remoteMissing && !info.Update}, nil
+	return Preview{Card: r.payload, DroppedFields: dropped, NewCopy: err == nil && state != remoteMissing && !info.Update}, nil
 }

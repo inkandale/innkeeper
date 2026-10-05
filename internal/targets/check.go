@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Check reads a bound card back from its app and records whether the app's
+// Check reads a bound card or lorebook back from its app and records whether the app's
 // copy changed since the last push or adopt. If a push or adopt lands while
 // it reads, Check records nothing and returns the binding as they left it.
 func (s *Service) Check(ctx context.Context, id int64) (Binding, error) {
@@ -22,7 +22,7 @@ func (s *Service) Check(ctx context.Context, id int64) (Binding, error) {
 	}
 	state, seen := remoteUnknown, any(nil)
 	if info.Pull {
-		data, hash, err := s.fetch(ctx, inst, info, b.remoteID)
+		data, hash, err := s.fetch(ctx, b.k, inst, info, b.remoteID)
 		switch {
 		case remoteNotFound(err):
 			state = remoteMissing

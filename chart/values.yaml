@@ -1,0 +1,47 @@
+image:
+  repository: ghcr.io/davidgibbons/innkeeper
+  tag: main
+  pullPolicy: IfNotPresent
+
+# Existing Secrets the chart reads; it creates none.
+database:
+  # A postgres:// URL. PostgreSQL 15 or later.
+  secretName: ""
+  key: uri
+secretsKey:
+  # 32 random bytes, base64. Losing it loses every stored plugin secret.
+  secretName: ""
+  key: INNKEEPER_SECRETS_KEY
+
+# Where browsers reach the API, such as https://innkeeper.example.com.
+publicUrl: ""
+
+worker:
+  concurrency: 4
+
+# Blob store, shared by the API and worker containers.
+persistence:
+  size: 5Gi
+  storageClass: ""
+  accessModes: [ReadWriteOncePod]
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: ""
+  tlsSecretName: ""
+
+service:
+  port: 8080
+
+resources:
+  api: {}
+  worker: {}
+
+# Added to both containers.
+extraEnv: []
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []

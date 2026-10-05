@@ -74,6 +74,26 @@ with `docker compose up -d --no-build`.
 
 `docker compose down -v` deletes the database and blobs.
 
+## Kubernetes
+
+Every push to `main` publishes `ghcr.io/davidgibbons/innkeeper:main` and
+`:sha-<commit>`, for amd64 only. The Helm chart in `chart/` runs the API and
+the worker as two containers in one pod, sharing the blob volume. It creates
+no Secrets; point it at yours:
+
+```bash
+helm install innkeeper ./chart \
+  --set database.secretName=innkeeper-db --set database.key=uri \
+  --set secretsKey.secretName=innkeeper --set secretsKey.key=INNKEEPER_SECRETS_KEY \
+  --set publicUrl=https://innkeeper.example.com \
+  --set ingress.enabled=true --set ingress.host=innkeeper.example.com
+```
+
+`values.yaml` lists the rest: storage, resources, `extraEnv`, and pod
+annotations for a backup tool. Back up the blob volume along with the
+database. Create the first token with
+`kubectl exec deploy/innkeeper -c api -- innkeeper token create admin destructive`.
+
 ## First login
 
 Auth cannot be turned off. No one can log in until a login provider names

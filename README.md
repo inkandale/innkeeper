@@ -304,7 +304,35 @@ as `"kind": "bind"`.
 
 For lorebooks in an app that keeps them separately, use
 `/instances/<instance-id>/lorebook-items` and `/lorebooks/<id>/bind`. A bound
-card with lorebooks shows as `ahead` until its next push links them.
+card is `ahead` when the app links it to lorebooks other than the library's
+bound ones, or when the plugin can't tell which it links. The next push links
+the library's.
+
+### Importing what the app already has
+
+To take an app's whole library into Innkeeper, import from its instance:
+
+```bash
+innkeeper import <instance-id>                                  # every unbound character and lorebook
+innkeeper import <instance-id> '{"remote_ids": ["<remote-id>"]}' # only these items
+```
+
+Each item becomes a library card or lorebook bound to the app's copy, so it
+starts `in_sync`. Cards keep the lorebooks the app links them to, and their
+avatars where the plugin supplies them. The job runs one child per item and
+resumes after a restart. `innkeeper jobs show <job-id>` counts the children
+by outcome:
+
+| Outcome | Meaning |
+|---|---|
+| `created` | Added to the library |
+| `bound` | The library already had the same content, so that card or lorebook was bound instead of copied |
+| `already_bound` | Another bind or import bound the item while the job ran |
+| `duplicate` | The library item with this content is already bound to another item in the app, such as a duplicated character. Skipped |
+| `missing` | The app no longer has the item |
+
+Items bound before the import started are skipped and counted in the job's
+`payload` as `already_bound`.
 
 ### Lorebooks in apps that keep them separately
 

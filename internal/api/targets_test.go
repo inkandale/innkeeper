@@ -180,3 +180,25 @@ func TestLorebookPushRoutes(t *testing.T) {
 		t.Fatalf("preview after push = %+v", p)
 	}
 }
+
+func TestPushConfirm(t *testing.T) {
+	e := newEnv(t)
+	inst, _ := e.target()
+	var c entityOut
+	e.call("POST", "/cards", map[string]any{"data": map[string]any{"name": "Brakka", "first_mes": "Hail."}}, 201, &c)
+	path := fmt.Sprintf("/cards/%d", c.ID)
+	var p targets.Preview
+	e.call("GET", fmt.Sprintf("%s/push-preview?instance_id=%d", path, inst), nil, 200, &p)
+	if p.Confirm == "" {
+		t.Fatal("preview has no confirm")
+	}
+	e.call("POST", path+"/push", map[string]any{"instance_id": inst, "confirm": p.Confirm}, 202, nil)
+
+	// The card changes after the preview, so the old confirm is refused.
+	e.call("PUT", path, map[string]any{"base_revision_id": c.Revision.ID,
+		"data": map[string]any{"name": "Brakka", "first_mes": "Well met."}}, 200, nil)
+	r := e.call("POST", path+"/push", map[string]any{"instance_id": inst, "confirm": p.Confirm}, 409, nil)
+	if !strings.Contains(string(r.Body), "Well met.") {
+		t.Fatalf("refusal doesn't carry the new preview: %s", r.Body)
+	}
+}

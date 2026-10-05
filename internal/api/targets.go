@@ -15,8 +15,9 @@ import (
 type pushIn struct {
 	ID   int64 `path:"id"`
 	Body struct {
-		InstanceID int64 `json:"instance_id"`
-		NewCopy    bool  `json:"new_copy,omitempty" doc:"Let a target that can't update cards make another copy"`
+		InstanceID int64  `json:"instance_id"`
+		NewCopy    bool   `json:"new_copy,omitempty" doc:"Let a target that can't update cards make another copy"`
+		Confirm    string `json:"confirm,omitempty" doc:"The confirm value from the push preview. If the preview would differ now, the push is refused with 409 and the new preview."`
 	}
 }
 
@@ -81,6 +82,16 @@ func (s *Server) targetRoutes(api huma.API) {
 				}
 				if err := s.usable(ctx, in.Body.InstanceID, "push"); err != nil {
 					return nil, err
+				}
+				if in.Body.Confirm != "" {
+					p, err := k.preview(ctx, in.Body.InstanceID, in.ID)
+					if err != nil {
+						return nil, s.fail(err)
+					}
+					if p.Confirm != in.Body.Confirm {
+						return nil, huma.Error409Conflict("the push would differ from the preview; review the new preview",
+							&huma.ErrorDetail{Location: "body.confirm", Value: p})
+					}
 				}
 				j, err := k.enqueue(ctx, s.Queue, in.Body.InstanceID, in.ID, in.Body.NewCopy)
 				if err != nil {

@@ -2,6 +2,8 @@ package targets
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -31,6 +33,9 @@ type Preview struct {
 	// CreateLorebooks are the card's lorebooks that the push creates in the
 	// app first, for a target that keeps lorebooks on their own.
 	CreateLorebooks []int64 `json:"create_lorebooks,omitempty"`
+	// Confirm identifies this preview. A push that sends it goes ahead only
+	// if a new preview would be the same, so nothing changes unseen.
+	Confirm string `json:"confirm"`
 }
 
 // Preview renders the card for a target without pushing it, and compares it
@@ -45,6 +50,21 @@ func (s *Service) PreviewLorebook(ctx context.Context, instanceID, lorebookID in
 }
 
 func (s *Service) preview(ctx context.Context, k kind, instanceID, id int64) (Preview, error) {
+	p, err := s.compare(ctx, k, instanceID, id)
+	if err != nil {
+		return Preview{}, err
+	}
+	raw, err := json.Marshal(p)
+	if err != nil {
+		return Preview{}, err
+	}
+	sum := sha256.Sum256(raw)
+	p.Confirm = hex.EncodeToString(sum[:])
+	return p, nil
+}
+
+// compare is preview without Confirm.
+func (s *Service) compare(ctx context.Context, k kind, instanceID, id int64) (Preview, error) {
 	inst, info, err := s.describe(ctx, instanceID)
 	if err != nil {
 		return Preview{}, err
@@ -105,10 +125,13 @@ func (s *Service) preview(ctx context.Context, k kind, instanceID, id int64) (Pr
 	}
 	p.Replaces = true
 	changes, err := diff(app, sent)
+	if err != nil {
+		return Preview{}, err
+	}
 	if changes != nil {
 		p.Changes = changes
 	}
-	return p, err
+	return p, nil
 }
 
 // lorebooksToCreate lists the card's lorebooks that a push to this instance

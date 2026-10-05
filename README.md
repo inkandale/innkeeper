@@ -51,7 +51,7 @@ source:
 echo "INNKEEPER_SECRETS_KEY=$(openssl rand -base64 32)" > .env
 docker compose up -d --build
 export INNKEEPER_URL=http://localhost:8080
-export INNKEEPER_TOKEN=$(docker compose exec -T api innkeeper token create admin)
+export INNKEEPER_TOKEN=$(docker compose exec -T api innkeeper token create admin destructive)
 curl -H "Authorization: Bearer $INNKEEPER_TOKEN" "$INNKEEPER_URL/tags"
 ```
 
@@ -74,7 +74,7 @@ Auth cannot be turned off. No one can log in until a login provider names
 an owner, so start with an API token:
 
 ```bash
-export INNKEEPER_TOKEN=$(innkeeper token create admin)
+export INNKEEPER_TOKEN=$(innkeeper token create admin destructive)
 export INNKEEPER_URL=http://localhost:8080
 ```
 
@@ -91,6 +91,19 @@ For another login provider, `owner_subject` is the identity it reports for
 you; its README says what that is. Changing or clearing `owner_subject` logs
 that identity out.
 
+## Access tiers
+
+Every API token has a tier, and every route needs one:
+
+| Tier | Allows |
+|---|---|
+| `read` | Anything that changes nothing: lists, search, push previews, drift checks |
+| `write` | Also changes to the library, which revision history can undo: edits, adopts, imports, instance settings |
+| `destructive` | Also what Innkeeper can't undo: pushes, unbinding, deleting instances, setting secrets or an owner, managing tokens |
+
+`innkeeper token create <name>` makes a `read` token unless you name a tier.
+A token can't create one with a higher tier. A browser login has every tier.
+
 ## CLI
 
 ```text
@@ -101,7 +114,7 @@ innkeeper bulk archive|unarchive <query-json>   archive or unarchive the cards a
 innkeeper push <instance-id> <card-id>|<query-json> [--new-copy]
                                                 push one card, or the cards a search matches, to a target
 innkeeper jobs [show|cancel|watch <job-id>]     list or follow jobs
-innkeeper token create <name> | list | revoke <id>
+innkeeper token create <name> [tier] | list | revoke <id>
 innkeeper backup <dir>
 ```
 
@@ -191,6 +204,8 @@ app's copy and shows what the push would do:
 - `dropped_fields`: fields with content the app doesn't store
 - `new_copy`: whether it makes another copy, on an app that can't update cards
 - `stale`: the app couldn't be read, so `changes` compare against the last push
+- `confirm`: send it with the push, and the push is refused with `409` and
+  the new preview if anything changed since
 
 ### Lorebooks in apps that keep them separately
 

@@ -272,6 +272,33 @@ letters and digits. The core moves the file, so don't reuse the path.
 {"jsonrpc": "2.0", "id": 5, "result": {"path": "/blobs/tmp/card-1234.png", "extension": "png"}}
 ```
 
+### `mcp`
+
+An `mcp` plugin adds tools to Innkeeper's MCP server. Each tool runs with the
+plugin instance's config and secrets.
+
+**`mcp.tools`** takes no params. Reply with `tools`, each with:
+
+| Field | Meaning |
+|---|---|
+| `name` | 1 to 40 lowercase letters, digits, and underscores, unique within the plugin. Innkeeper shows it as `<instance>_<name>` |
+| `description` | What the tool does, for the model choosing it |
+| `input_schema` | A JSON Schema with `"type": "object"` for the arguments |
+| `tier` | `read` if it changes nothing, `write` if what it changes can be undone, `destructive` otherwise. A missing or unknown tier counts as `destructive` |
+
+The core caches the list for a minute, so keep it fixed for a given version
+and config. Don't contact the app to answer.
+
+**`mcp.call`** takes `name` and `arguments`, the object the model sent.
+Reply with `content`, a list of `{"type": "text", "text": "…"}` items, and
+`is_error: true` for a failure the model should see, such as bad
+arguments. A JSON-RPC error also reaches the model as a tool error.
+
+```json
+{"jsonrpc": "2.0", "id": 6, "method": "mcp.call", "params": {"name": "list_untracked", "arguments": {}}}
+{"jsonrpc": "2.0", "id": 6, "result": {"content": [{"type": "text", "text": "[\"Brakka\"]"}]}}
+```
+
 ## Checking a plugin
 
 ```bash
@@ -287,6 +314,8 @@ It loads the manifest, then checks that:
 - a `codec` plugin encodes a sample card in each of its `formats` into
   `blob_tmp` with a valid extension, decodes it back, and returns an error
   when asked to decode a file that isn't a card
+- an `mcp` plugin's `mcp.tools` reply has valid, unique names, valid input
+  schemas, and comes within 5 seconds
 - `shutdown` gets a reply within 5 seconds
 - the plugin exits after `shutdown`, rather than having exited earlier
 

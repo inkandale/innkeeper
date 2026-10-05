@@ -16,7 +16,7 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code")
+	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-tools | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code")
 	caps := flag.String("caps", "push,pull", "comma-separated capabilities to report")
 	flag.Parse()
 
@@ -82,6 +82,10 @@ func main() {
 				return protocol.TargetInfo{Lorebooks: "sometimes"}, nil
 			}
 			return newTarget(config).describe(), nil
+		case protocol.MethodMCPTools:
+			return mcpTools(*mode), nil
+		case protocol.MethodMCPCall:
+			return mcpCall(params)
 		case protocol.MethodTargetPut:
 			return newTarget(config).put(params)
 		case protocol.MethodTargetGet:

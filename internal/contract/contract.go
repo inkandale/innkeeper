@@ -80,6 +80,14 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 		}
 	}
 
+	if slices.Contains(m.Capabilities, "mcp") {
+		toolsErr := checkTools(ctx, p)
+		results = append(results, Result{"mcp.tools returns valid tools", toolsErr})
+		if errors.Is(toolsErr, protocol.ErrClosed) || !p.Alive() {
+			return exited(results, p), nil
+		}
+	}
+
 	if slices.Contains(m.Capabilities, "codec") {
 		checks := []struct {
 			name string
@@ -126,6 +134,23 @@ func checkDescribe(ctx context.Context, p *pluginhost.Process, m *protocol.Manif
 		return errors.New("pull is true, but the manifest doesn't declare the pull capability")
 	}
 	return nil
+}
+
+func checkTools(ctx context.Context, p *pluginhost.Process) error {
+	var res protocol.MCPToolsResult
+	if err := call(ctx, p, protocol.MethodMCPTools, nil, &res); err != nil {
+		return err
+	}
+	seen := map[string]bool{}
+	var errs []error
+	for _, t := range res.Tools {
+		if seen[t.Name] {
+			errs = append(errs, fmt.Errorf("tool name %q repeats", t.Name))
+		}
+		seen[t.Name] = true
+		errs = append(errs, t.Validate())
+	}
+	return errors.Join(errs...)
 }
 
 // call makes one plugin call with its own timeout.

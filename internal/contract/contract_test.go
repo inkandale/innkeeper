@@ -48,6 +48,7 @@ func TestMisbehavingPluginsFail(t *testing.T) {
 		{"no-shutdown", "answers shutdown", "no response within"},
 		{"bad-describe", "target.describe returns a valid description", "fields is empty"},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.mode+"/"+tt.check, func(t *testing.T) {
 			results, err := Check(context.Background(), testutil.FakePlugin(t, "-mode="+tt.mode), quiet)
@@ -112,5 +113,22 @@ func TestCodecChecks(t *testing.T) {
 				t.Fatalf("check %q: got %v, want %q", tt.check, got, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestToolChecks(t *testing.T) {
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"mcp"}), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err, ok := failed(results)["mcp.tools returns valid tools"]; ok {
+		t.Fatalf("good tools failed: %v", err)
+	}
+	results, err = Check(context.Background(), testutil.FakePluginWith(t, []string{"mcp"}, "-mode=bad-tools"), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := failed(results)["mcp.tools returns valid tools"]; err == nil || !strings.Contains(err.Error(), "lowercase letters") {
+		t.Fatalf("bad tools: %v", err)
 	}
 }

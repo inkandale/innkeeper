@@ -1,6 +1,7 @@
 package api
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -15,11 +16,11 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/tier"
 )
 
-type bearer struct{ token string }
+type bearer struct{ scheme, token string }
 
 func (b bearer) RoundTrip(r *http.Request) (*http.Response, error) {
 	r = r.Clone(r.Context())
-	r.Header.Set("Authorization", "Bearer "+b.token)
+	r.Header.Set("Authorization", cmp.Or(b.scheme, "Bearer")+" "+b.token)
 	return http.DefaultTransport.RoundTrip(r)
 }
 
@@ -28,7 +29,7 @@ func (e *testEnv) mcpClient(t tier.Tier) *sdk.ClientSession {
 	e.t.Helper()
 	c := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "0"}, nil)
 	s, err := c.Connect(context.Background(), &sdk.StreamableClientTransport{Endpoint: e.srv.URL + "/mcp",
-		HTTPClient: &http.Client{Transport: bearer{e.tokenWith(t)}}}, nil)
+		HTTPClient: &http.Client{Transport: bearer{token: e.tokenWith(t)}}}, nil)
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -180,4 +181,17 @@ func TestMCPOtherTools(t *testing.T) {
 		t.Fatal("list_instances shows a secret")
 	}
 	tool(t, s, "update_instance", map[string]any{"id": inst, "name": "Renamed"}, false)
+}
+
+// The SDK takes any case of "Bearer"; tools must still reach the API.
+func TestMCPLowercaseBearer(t *testing.T) {
+	e := newEnv(t)
+	c := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "0"}, nil)
+	s, err := c.Connect(context.Background(), &sdk.StreamableClientTransport{Endpoint: e.srv.URL + "/mcp",
+		HTTPClient: &http.Client{Transport: bearer{"bearer", e.tokenWith(tier.Read)}}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	tool(t, s, "list_jobs", map[string]any{}, false)
 }

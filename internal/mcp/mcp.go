@@ -32,7 +32,9 @@ func def[In any](name, description string, t tier.Tier, run func(ctx context.Con
 	return tool{tier: t, meta: sdk.Tool{Name: name, Description: description},
 		add: func(s *sdk.Server, api http.Handler, meta *sdk.Tool) {
 			sdk.AddTool(s, meta, func(ctx context.Context, req *sdk.CallToolRequest, in In) (*sdk.CallToolResult, any, error) {
-				res, err := run(ctx, caller{api: api, auth: req.Extra.Header.Get("Authorization")}, in)
+				// The token the SDK verified, in the form the API takes.
+				token, _ := req.Extra.TokenInfo.Extra["token"].(string)
+				res, err := run(ctx, caller{api: api, auth: "Bearer " + token}, in)
 				return res, nil, err
 			})
 		}}
@@ -120,7 +122,7 @@ func New(api http.Handler, a *iauth.Auth) http.Handler {
 		}
 		t, _ := tier.Parse(info.Scopes[0])
 		return servers[t]
-	}, &sdk.StreamableHTTPOptions{Stateless: true})
+	}, &sdk.StreamableHTTPOptions{Stateless: true, CrossOriginProtection: http.NewCrossOriginProtection()})
 	verify := func(ctx context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
 		t, err := a.CheckToken(ctx, token)
 		if err != nil {
@@ -129,7 +131,7 @@ func New(api http.Handler, a *iauth.Auth) http.Handler {
 		if t == 0 {
 			return nil, auth.ErrInvalidToken
 		}
-		return &auth.TokenInfo{Scopes: []string{t.String()}}, nil
+		return &auth.TokenInfo{Scopes: []string{t.String()}, Extra: map[string]any{"token": token}}, nil
 	}
 	return auth.RequireBearerToken(verify, &auth.RequireBearerTokenOptions{AllowMissingExpiration: true})(h)
 }

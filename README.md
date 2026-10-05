@@ -227,6 +227,19 @@ innkeeper call POST /instances '{"plugin": "lumiverse", "name": "Lumiverse",
 innkeeper call POST /cards/<id>/push '{"instance_id": <instance-id>}'
 ```
 
+It also ships a target for [SillyTavern](https://github.com/SillyTavern/SillyTavern).
+SillyTavern accepts only localhost by default, so first add Innkeeper's
+address to its whitelist, or turn the whitelist off and use a login; the
+[README](https://github.com/davidgibbons/innkeeper-plugins/tree/main/sillytavern)
+covers that and what it syncs. Set `auth` to `none`, `basic`, or `account` to
+match the server:
+
+```bash
+innkeeper call POST /instances '{"plugin": "sillytavern", "name": "SillyTavern",
+  "config": {"url": "https://sillytavern.example.com", "auth": "basic", "username": "owner"},
+  "secrets": {"password": "<password>"}}'
+```
+
 A card pushed to a target app gets a binding. `GET /cards/{id}/bindings`
 shows its status on each target:
 

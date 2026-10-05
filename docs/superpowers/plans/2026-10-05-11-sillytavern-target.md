@@ -36,7 +36,7 @@ Left out:
 - **Config and secrets.** Config `url` (such as `https://sillytavern.example.com`) and `auth`: `none`, `basic` (the server's `basicAuthMode`), or `account` (`enableUserAccounts`). `username` is required for `basic` and `account`. Secret `password`. SillyTavern has no API keys.
 - **Reaching the server.** `whitelistMode` is on by default and allows only `127.0.0.1` and `::1`, so SillyTavern answers Innkeeper with a `403` HTML page. The README tells the owner to add Innkeeper's address to `whitelist`, or turn whitelist mode off and use `basic` or `account`.
 - **Session.** One `cookiejar` per client. Every call goes through `ensureSession`: for `basic`, send the `Authorization` header on every request and `GET /login` once, which binds the session to the account when accounts are on (`src/users.js:751-773`). For `account`, `POST /api/users/login {handle, password}`. Then `GET /csrf-token` and send its `token` as `X-CSRF-Token` on every `POST`. A `"disabled"` token is sent as is.
-- **Login limits.** SillyTavern allows 5 logins per IP per 60 seconds and counts successful ones (`src/endpoints/users-public.js:12-22`). The client logs in once and reuses the session. On a `403` from an API call, it gets a new session once. A rejected login (`401` or `403` from the login itself) is not retryable, and the plugin refuses to log in again until it restarts, as `lumiverse` does. A `429` is retryable.
+- **Login limits.** SillyTavern allows 5 login attempts per IP per 60 seconds; a successful login resets the count (`src/endpoints/users-public.js:12-22, 94`). The client logs in once and reuses the session. On a `403` from an API call, it gets a new session once. A rejected login (`401` or `403` from the login itself) is not retryable, and the plugin refuses to log in again until it restarts, as `lumiverse` does. A `429` is retryable.
 - **A `403` after a fresh session** is not retryable. Its error says the cause is the whitelist, CSRF, or the account, since SillyTavern returns `403` for all three.
 - **Describe.** `fields`: `name`, `description`, `personality`, `scenario`, `first_mes`, `mes_example`, `creator`, `creator_notes`, `system_prompt`, `post_history_instructions`, `alternate_greetings`, `tags`, `character_version`, `extensions`, plus the V3 fields SillyTavern keeps unchanged: `nickname`, `group_only_greetings`, `creator_notes_multilingual`, `source`, `assets`. `lorebooks: "standalone"`; `lorebook_fields`: `name`, `description`, `scan_depth`, `token_budget`, `recursive_scanning`, `extensions`, `entries`. `pull` and `update` are true.
 - **Remote IDs.** A character's ID is its PNG file name, such as `Brakka.png`. A world file's ID is its `file_id` from `/api/worldinfo/list`. Renaming a character in SillyTavern changes its file name, so the next push gets `-32004` and the core pushes a new copy. The README says so.
@@ -60,8 +60,19 @@ Left out:
   - Back: the reverse, sorted by `displayIndex`, with `id`, `name`, `position`, and `priority` restored from the stash and the stash removed. Book-level fields come back from `extensions.innkeeper`.
   - SillyTavern fills about 30 template fields into an entry when the browser saves it. They come back under `entry.extensions` as the converter writes them, and show as a change once, as Lumiverse's do.
 - **Open browser tabs.** A SillyTavern tab keeps its own copy of the open character and world file, and its next save overwrites a push. Drift checks find this as a remote change. The README says to reload the tab after a push.
-- **Errors.** Network errors, `429`, and `5xx` are retryable, except `/merge-attributes`, which the plugin only calls after `/get` found the card. `4xx` other than `403`, `404`, and `429` are not retryable. A `404` for the remote ID is `-32004`.
+- **Errors.** Network errors, `429`, and `5xx` are retryable. A retried update runs `/get` again, so a character deleted between `/get` and `/merge-attributes` becomes `-32004`. `4xx` other than `403`, `404`, and `429` are not retryable. A `404` for the remote ID is `-32004`.
 - **List.** `target.list`: `/api/characters/all`, `remote_id` = `avatar`, `name` = `name`, sorted by name. `target.list_lorebooks`: `/api/worldinfo/list`, `remote_id` = `file_id`, `name` = `name`.
+
+### Changes during the build
+
+Merged as davidgibbons/innkeeper-plugins PR #5 at `34d5362`. Where these notes differ from the code, the code is right. The main changes:
+
+- **Logins.** Only a `401`, or a `403` from `POST /api/users/login`, stops further logins. A `403` from `/login` or `/csrf-token` is the whitelist: a final error, but the next call tries again. With user accounts on, `basic` also needs SillyTavern's `perUserBasicAuth`.
+- **Redirects.** The client follows a redirect only to the same scheme and host with the same method. Otherwise a proxy's `301` turns a `POST` into a `GET`, SillyTavern answers `404`, and the core would push duplicates.
+- **Card update.** Removed keys are unset at any depth, not only in `extensions`. V3-only fields the card lacks are unset rather than sent empty. SillyTavern's deep merge drops an object sent over a stored non-object, so those paths are unset in a first `/merge-attributes`.
+- **V1 characters.** `get` builds a V1-only character from the V2 conversion in SillyTavern's `/get` reply, since its `json_data` has no `data`.
+- **World files.** The file name follows sanitize-filename 1.6.3 exactly, and a create takes its remote ID from `/list` by `sync_key`. An entry without `enabled` is pushed enabled. `display_index` and `use_regex` round-trip. Entries sort by `uid`.
+- **Live test.** `TestLive` passes against `ghcr.io/sillytavern/sillytavern:1.19.0` with basic auth and with an account.
 
 ## File structure
 
@@ -78,7 +89,7 @@ Left out:
 
 ### Task 1: Fake SillyTavern and client
 
-- [ ] Fake server, each route as the source behaves: whitelist (`403` HTML for a refused address), basic auth, `/login`, `/api/users/login` with the 5-per-minute limit counting successes, `/csrf-token` (token or `"disabled"`), CSRF check on `POST`; characters `/all` (full, and shallow when a flag is set), `/get` (`404`), `/import` (PNG, `Name1` on collision, `200 {error: true}` for a bad file), `/merge-attributes` (deep merge, arrays replaced, `__@@UNSET@@__`, `500` when missing), `/edit-avatar`; world info `/list`, `/get` (`{entries: {}}` when missing), `/edit` (overwrites verbatim).
+- [ ] Fake server, each route as the source behaves: whitelist (`403` HTML for a refused address), basic auth, `/login`, `/api/users/login` with the 5-per-minute limit that a success resets, `/csrf-token` (token or `"disabled"`), CSRF check on `POST`; characters `/all` (full, and shallow when a flag is set), `/get` (`404`), `/import` (PNG, `Name1` on collision, `200 {error: true}` for a bad file), `/merge-attributes` (deep merge, arrays replaced, `__@@UNSET@@__`, `500` when missing), `/edit-avatar`; world info `/list`, `/get` (`{entries: {}}` when missing), `/edit` (overwrites verbatim).
 - [ ] Client tests: logs in once and reuses the session for both `basic` and `account`; sends `X-CSRF-Token` on `POST`; gets a new session once after a `403`; a second `403` is a non-retryable error naming the whitelist; after a rejected login, refuses to try again and sends nothing; `429` and `5xx` are retryable; `404` maps to `-32004`.
 - [ ] Implement `client.go`. Commit.
 

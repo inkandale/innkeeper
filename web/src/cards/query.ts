@@ -4,6 +4,8 @@ type Filter = components["schemas"]["Filter"];
 type Search = components["schemas"]["Query"];
 type TargetIs = components["schemas"]["TargetState"]["is"];
 
+// Typed from the schema so a new state fails the build here.
+const targetStates: TargetIs[] = ["in_sync", "ahead", "remote_changed", "diverged", "missing", "cant_check"];
 const kinds = ["tag", "collection", "source", "target"] as const;
 const sorts = ["relevance", "updated", "name", "created"] as const;
 export const sizes = [24, 48, 96];
@@ -57,12 +59,14 @@ function termFilter(t: Term): Filter | null {
   else if (t.kind === "source") f = { source: t.value };
   else if (t.kind === "collection") {
     const id = Number(t.value);
-    if (!Number.isInteger(id)) return null;
+    if (!t.value || !Number.isInteger(id) || id < 1) return null;
     f = { collection: id };
   } else {
-    const [instance, is] = t.value.split(":");
-    if (!Number.isInteger(Number(instance)) || !is) return null;
-    f = { target_state: { instance: Number(instance), is: is as TargetIs } };
+    const [inst, value] = t.value.split(":");
+    const instance = Number(inst);
+    const is = targetStates.find((s) => s === value);
+    if (!inst || !Number.isInteger(instance) || instance < 1 || !is) return null;
+    f = { target_state: { instance, is } };
   }
   return t.not ? { not: f } : f;
 }

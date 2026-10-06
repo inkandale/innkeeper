@@ -13,11 +13,15 @@ export function Collections() {
   const qc = useQueryClient();
   const list = useQuery({ queryKey: ["collections"], queryFn: async () => must(await api.GET("/collections")) });
   const [renaming, setRenaming] = useState<number | null>(null);
+  const [failed, setFailed] = useState<Error | null>(null);
   const onSuccess = () => qc.invalidateQueries({ queryKey: ["collections"] });
+  // Clear on start so an old failure never outlives a newer action.
+  const track = { onMutate: () => setFailed(null), onError: setFailed };
 
   const create = useMutation({
     mutationFn: async (name: string) => must(await api.POST("/collections", { body: { name } })),
     onSuccess,
+    ...track,
   });
   const rename = useMutation({
     mutationFn: async ({ id, name }: { id: number; name: string }) =>
@@ -26,12 +30,15 @@ export function Collections() {
       setRenaming(null);
       return onSuccess();
     },
+    ...track,
   });
   const remove = useMutation({
     mutationFn: async (id: number) => mustOk(await api.DELETE("/collections/{id}", { params: { path: { id } } })),
     onSuccess,
+    ...track,
   });
-  const failed = create.error ?? rename.error ?? remove.error ?? list.error;
+
+  const shown = failed ?? list.error;
 
   return (
     <section className="page">
@@ -46,7 +53,7 @@ export function Collections() {
         <input className="input" name="name" aria-label="New collection" placeholder="New collection" />
         <button className="button primary">Create</button>
       </form>
-      {failed && <p className="error">{failed.message}</p>}
+      {shown && <p className="error">{shown.message}</p>}
       <div className="collections">
         {(list.data ?? []).map((c) => (
           <article key={c.id} className="collection">
@@ -57,11 +64,24 @@ export function Collections() {
                 )}
               </span>
               <span className="collection-name">{c.name}</span>
-              <span className="collection-count">{c.cards} cards</span>
+              <span className="collection-count">{c.cards} {c.cards === 1 ? "card" : "cards"}</span>
             </Link>
             {renaming === c.id ? (
-              <form onSubmit={(e) => rename.mutate({ id: c.id, name: nameFrom(e) })}>
-                <input className="input" name="name" aria-label="Name" defaultValue={c.name} autoFocus />
+              <form
+                onSubmit={(e) => {
+                  const name = nameFrom(e);
+                  if (name && name !== c.name) rename.mutate({ id: c.id, name });
+                  else setRenaming(null);
+                }}
+              >
+                <input
+                  className="input"
+                  name="name"
+                  aria-label="Name"
+                  defaultValue={c.name}
+                  autoFocus
+                  onKeyDown={(e) => e.key === "Escape" && setRenaming(null)}
+                />
               </form>
             ) : (
               <div className="collection-actions">

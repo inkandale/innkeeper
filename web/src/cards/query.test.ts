@@ -47,6 +47,11 @@ test("toSearch builds the API body", () => {
       { kind: "source", value: "chub", not: false },
       { kind: "target", value: "2:ahead", not: false },
       { kind: "collection", value: "x", not: false },
+      { kind: "collection", value: "", not: false },
+      { kind: "collection", value: "0", not: false },
+      { kind: "target", value: "2:bogus", not: false },
+      { kind: "target", value: ":ahead", not: false },
+      { kind: "target", value: "0:ahead", not: false },
     ],
     page: 2,
   });

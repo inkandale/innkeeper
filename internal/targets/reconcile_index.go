@@ -40,8 +40,9 @@ type indexEntry struct {
 }
 
 type indexBinding struct {
-	id, entityID int64
-	accepted     json.RawMessage
+	id, entityID              int64
+	accepted                  json.RawMessage
+	acceptedHash, remoteState string
 }
 
 func (s *Service) loadIndex(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo) (index, error) {
@@ -53,7 +54,7 @@ func (s *Service) loadIndex(ctx context.Context, k kind, inst pluginhost.Instanc
 	for _, e := range idx.entries {
 		idx.byID[e.id] = e
 	}
-	rows, err := s.pool.Query(ctx, `SELECT id, `+k.col+`, remote_id, accepted_data FROM binding
+	rows, err := s.pool.Query(ctx, `SELECT id, `+k.col+`, remote_id, accepted_data, accepted_hash, remote_state FROM binding
 		WHERE instance_id = $1::bigint AND `+k.col+` IS NOT NULL
 		ORDER BY remote_state <> 'missing', id`, inst.ID)
 	if err != nil {
@@ -61,7 +62,7 @@ func (s *Service) loadIndex(ctx context.Context, k kind, inst pluginhost.Instanc
 	}
 	var b indexBinding
 	var remoteID string
-	_, err = pgx.ForEachRow(rows, []any{&b.id, &b.entityID, &remoteID, &b.accepted}, func() error {
+	_, err = pgx.ForEachRow(rows, []any{&b.id, &b.entityID, &remoteID, &b.accepted, &b.acceptedHash, &b.remoteState}, func() error {
 		idx.byRemote[remoteID] = b
 		idx.remoteOf[b.entityID] = remoteID
 		return nil

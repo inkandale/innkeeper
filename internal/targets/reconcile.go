@@ -508,10 +508,28 @@ func (s *Service) Reconcile(ctx context.Context, p ReconcileParams, progress fun
 		return snap, err
 	}
 	if named.AutoBindExact {
-		s.autoBind(ctx, lorebookKind, p.InstanceID, snap.Lorebooks)
+		s.autoBind(ctx, lorebookKind, p.InstanceID, bookIdx, bookIdx, snap.Lorebooks)
 		// The index was read before these bindings; a bound card isn't unpushed.
-		for id := range s.autoBind(ctx, cardKind, p.InstanceID, snap.Items) {
+		for id := range s.autoBind(ctx, cardKind, p.InstanceID, cardIdx, bookIdx, snap.Items) {
 			cardIdx.remoteOf[id] = ""
+		}
+		// Each world book once, as the verdict totals count them.
+		books := map[string]bool{}
+		for _, it := range snap.Items {
+			if it.AutoBound {
+				snap.Totals["auto_bound"]++
+			}
+			for _, lb := range it.Lorebooks {
+				books[lb.RemoteID] = books[lb.RemoteID] || lb.AutoBound
+			}
+		}
+		for _, lb := range snap.Lorebooks {
+			books[lb.RemoteID] = books[lb.RemoteID] || lb.AutoBound
+		}
+		for _, auto := range books {
+			if auto {
+				snap.Totals["auto_bound"]++
+			}
 		}
 	}
 
@@ -530,42 +548,70 @@ func (s *Service) Reconcile(ctx context.Context, p ReconcileParams, progress fun
 	return snap, nil
 }
 
-// autoBind binds each exact item, keeping the library's copy, when its world
-// books are all exact or already bound, and returns the IDs it bound. It never
-// imports. A failure leaves the item as it was, since the owner can still
-// resolve it.
-func (s *Service) autoBind(ctx context.Context, k kind, instanceID int64, items []ReconcileItem) map[int64]bool {
+// autoBind binds each exact item whose world books are all exact or bound
+// without drift, keeping the library's copy, and returns the IDs it bound. It
+// resolves with the hashes this run read, so an item that changed since is
+// stale and left for the owner, and it never writes a library revision. A
+// failure leaves the item as it was.
+func (s *Service) autoBind(ctx context.Context, k kind, instanceID int64, idx, books index,
+	items []ReconcileItem) map[int64]bool {
 	bound := map[int64]bool{}
-	resolve := s.Resolve
-	if k.isLorebook() {
-		resolve = s.ResolveLorebook
-	}
+	// World books bound earlier in this run, as the next card must name them.
+	nested := map[string]Resolution{}
 items:
 	for i := range items {
 		it := &items[i]
 		if it.Verdict != VerdictExact || it.Suggested == nil || it.Suggested.Action != "bind" {
 			continue
 		}
+		r := Resolution{InstanceID: instanceID, RemoteID: it.RemoteID, AppHash: it.AppHash,
+			BaseRevisionID: idx.byID[it.Suggested.CardID].head, Action: "bind", CardID: it.Suggested.CardID,
+			Default: merge.ChooseLibrary}
 		for _, lb := range it.Lorebooks {
-			if lb.Verdict != VerdictExact && lb.Verdict != VerdictBound {
-				continue items
+			n, ok := nested[lb.RemoteID]
+			if !ok {
+				if n, ok = autoNested(lb, books); !ok {
+					continue items
+				}
 			}
+			r.Lorebooks = append(r.Lorebooks, n)
 		}
-		res, err := func() (ResolveResult, error) {
-			c, err := s.compareItem(ctx, k, instanceID, it.RemoteID, it.Suggested.CardID)
-			if err != nil {
-				return ResolveResult{}, err
-			}
-			return resolve(ctx, Resolution{InstanceID: instanceID, RemoteID: it.RemoteID, AppHash: c.AppHash,
-				BaseRevisionID: c.HeadRevisionID, AcceptedHash: c.AcceptedHash, Action: "bind", CardID: c.CardID,
-				Default: merge.ChooseLibrary})
-		}()
+		res, err := s.resolve(ctx, k, r, true)
 		if err != nil {
 			s.log.Warn("reconcile: auto-bind failed", "remote_id", it.RemoteID, "err", err)
 			continue
 		}
 		it.AutoBound, it.BindingID = true, res.BindingID
 		bound[res.CardID] = true
+		for j, lr := range res.Lorebooks {
+			lb := &it.Lorebooks[j]
+			lb.AutoBound, lb.BindingID = true, lr.BindingID
+			n := r.Lorebooks[j]
+			if err := s.pool.QueryRow(ctx, `SELECT accepted_hash FROM binding WHERE id = $1`, lr.BindingID).
+				Scan(&n.AcceptedHash); err == nil {
+				nested[lb.RemoteID] = n
+			}
+		}
 	}
 	return bound
+}
+
+// autoNested is the resolution auto-bind gives a card's world book: bind to
+// its exact match, or to the lorebook it's bound to when nothing differs.
+func autoNested(lb ReconcileItem, books index) (Resolution, bool) {
+	n := Resolution{RemoteID: lb.RemoteID, AppHash: lb.AppHash, Action: "bind", Default: merge.ChooseLibrary}
+	switch {
+	case lb.Verdict == VerdictExact && lb.Suggested != nil && lb.Suggested.Action == "bind":
+		n.CardID = lb.Suggested.CardID
+	case lb.Verdict == VerdictBound && len(lb.Candidates) == 1 && lb.Candidates[0].DifferingFields == 0:
+		b := books.byRemote[lb.RemoteID]
+		if b.remoteState == remoteMissing {
+			return n, false
+		}
+		n.CardID, n.AcceptedHash = b.entityID, b.acceptedHash
+	default:
+		return n, false
+	}
+	n.BaseRevisionID = books.byID[n.CardID].head
+	return n, true
 }

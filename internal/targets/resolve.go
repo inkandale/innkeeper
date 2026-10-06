@@ -99,21 +99,23 @@ const avatarChoice = "avatar"
 
 // Resolve applies a resolution to an app character.
 func (s *Service) Resolve(ctx context.Context, r Resolution) (ResolveResult, error) {
-	return s.resolve(ctx, cardKind, r)
+	return s.resolve(ctx, cardKind, r, false)
 }
 
 // ResolveLorebook applies a resolution to an app world book.
 func (s *Service) ResolveLorebook(ctx context.Context, r Resolution) (ResolveResult, error) {
-	return s.resolve(ctx, lorebookKind, r)
+	return s.resolve(ctx, lorebookKind, r, false)
 }
 
-func (s *Service) resolve(ctx context.Context, k kind, r Resolution) (ResolveResult, error) {
+// resolve applies r in one transaction. With bindOnly, any write to the
+// library refuses the whole resolve.
+func (s *Service) resolve(ctx context.Context, k kind, r Resolution, bindOnly bool) (ResolveResult, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return ResolveResult{}, err
 	}
 	defer tx.Rollback(ctx)
-	rs := &resolver{s: s, tx: tx, books: map[string]ResolveResult{}, wrote: map[int64]string{}}
+	rs := &resolver{s: s, tx: tx, books: map[string]ResolveResult{}, wrote: map[int64]string{}, bindOnly: bindOnly}
 	res, err := rs.item(ctx, k, r)
 	if st := (*staleItem)(nil); errors.As(err, &st) {
 		// Fresh, so it reads the library without this transaction's writes.
@@ -137,6 +139,8 @@ type resolver struct {
 	index *index
 	// wrote maps each lorebook this call bound or imported to the world book that did it.
 	wrote map[int64]string
+	// bindOnly refuses any library write, for resolutions nobody reviewed.
+	bindOnly bool
 }
 
 // staleItem is a StaleError before its fresh comparison, which is read after
@@ -177,6 +181,9 @@ func (rs *resolver) item(ctx context.Context, k kind, r Resolution) (ResolveResu
 	}
 	if r.Action == "skip" {
 		return res, nil
+	}
+	if rs.bindOnly && r.Action == "import" {
+		return res, errWouldRevise
 	}
 	if done, ok := rs.books[r.RemoteID]; ok && k.isLorebook() {
 		return done, nil
@@ -578,6 +585,9 @@ func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.Targe
 	}
 
 	revisionID := headID
+	if revise && rs.bindOnly {
+		return res, errWouldRevise
+	}
 	if revise {
 		if newOverride == nil {
 			delete(overrides, key)
@@ -731,6 +741,9 @@ func decodeObject(raw json.RawMessage) (map[string]any, error) {
 	}
 	return m, nil
 }
+
+// errWouldRevise means a bind-only resolve would have changed the library.
+var errWouldRevise = errors.New("the resolve would change the library, which only the owner can choose")
 
 // conflictError is a library.ErrConflict that reads as its own explanation.
 type conflictError string

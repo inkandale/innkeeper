@@ -179,9 +179,11 @@ blob GC.
 
 If the app can't be listed, the job fails. If `auto_bind_exact` is on, an
 `exact` item is bound with `default: library` once every item is read, only
-when all its nested world books are `exact` or `bound` too, and the snapshot
-marks it `auto_bound`. An auto-bind that fails leaves the item as reported
-and doesn't fail the run.
+when each nested world book is `exact`, or `bound` with nothing differing.
+The binds use the hashes the run read, so an item that changed since is left
+for the owner, and they never write a library revision. The snapshot marks
+each item `auto_bound` and counts them in `totals.auto_bound`. An auto-bind
+that fails leaves the item as reported and doesn't fail the run.
 
 ## Resolve
 
@@ -251,7 +253,9 @@ the fresh comparison), `conflict`, or `failed`. A failed child doesn't stop
 the others; a plugin error that may pass is retried. Because children don't
 share a transaction, a world book two cards both name explicitly is bound by
 whichever runs first, and the other's resolution goes stale. Leave it out of
-the second card to have it bind as its suggestion instead.
+the second card to have it bind as its suggestion instead. A child retried
+after its resolve already applied reports `stale`, so the client compares
+again.
 
 | Choice | Library card | Next push to this app | Other apps |
 |---|---|---|---|

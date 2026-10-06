@@ -10,6 +10,13 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-05-web-ui-design.md`, "Lorebooks", **Lorebook page**. Build order phase 5, second half, after plan 14e.
 
+## As built
+
+The code differs from the tasks below in these ways:
+
+- The entry editor is `web/src/lorebook/EntryEditor.tsx`, still exporting `Entries`. `Entries.tsx` and `entries.ts` are the same file on a case-insensitive filesystem, and Vite resolved `./Entries` to the helpers.
+- `Lorebook.test.tsx` queries keys and first lines with `selector: "summary …"`, since a closed `<details>` keeps its content in the DOM, and finds the history link directly.
+
 ---
 
 ## Design notes

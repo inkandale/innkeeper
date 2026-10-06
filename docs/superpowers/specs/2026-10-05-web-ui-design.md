@@ -177,8 +177,8 @@ selection bar offers Push and Archive.
 - Right frame: a filter box and one collapsible row per entry. Collapsed, a
   row shows its keys and the first line of content. Expanded, it has keys and
   secondary keys as chip inputs, content, and constant, selective, enabled,
-  order, position, and depth. Entries can be added, deleted, and dragged to
-  reorder.
+  order, position, and depth (`extensions.depth`). Entries can be added,
+  deleted, and reordered by dragging or with Move up and Move down.
 
 Saving and `409` work as on the card page.
 
@@ -258,6 +258,7 @@ Four tabs:
 | `collections` on `GET /api/cards/{id}` | The card page's Collections section |
 | `POST /api/lorebooks/search`: the `/search` query over lorebooks, with a `cards` include and an entry count per hit | Lorebook list |
 | `kind: "lorebook"` on `/bulk` (archive and unarchive) and `/pushes` | Lorebook bulk actions |
+| `cards` on `GET /api/lorebooks/{id}` | The lorebook page's linked cards |
 
 The cursor stays on `/search` for the CLI and MCP.
 

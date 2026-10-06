@@ -10,6 +10,16 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-05-web-ui-design.md`, "Lorebooks". Build order phase 5, first half; plan 14f covers the lorebook page.
 
+## As built
+
+The code differs from the tasks below in these ways:
+
+- `search-lorebooks` is in `tierExceptions` in `internal/api/tiers_test.go`, as a read-only POST like `search-cards`.
+- `internal/db/db_test.go` counts 12 migrations.
+- `POST /pushes` with `kind: "lorebook"` returns 400 when the target keeps lorebooks inside cards, instead of queuing jobs that fail. `push` and the API share the check.
+- Counts of one read "1 card" and "1 lorebook".
+- `App.tsx` lost its placeholder `lorebooks` route.
+
 ---
 
 ## Design notes

@@ -310,3 +310,58 @@ func TestSearchIDsFilter(t *testing.T) {
 		t.Fatalf("empty ids = %v, %v", none, err)
 	}
 }
+
+func TestSearchLorebooks(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	forge, _, err := lib.Lorebooks.Create(ctx, "forge", "upload", edit(`{"name": "Forge", "description": "Smithing lore.",
+		"entries": [{"keys": ["anvil"], "content": "Heavy iron."}, {"keys": ["bellows"], "content": "Pumps air."}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sea, _, err := lib.Lorebooks.Create(ctx, "sea", "upload", edit(`{"name": "Sea", "entries": [{"keys": ["kraken"], "content": "Many arms."}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	card, _ := newCard(t, lib, "brakka", `{"name": "Brakka"}`)
+	if err := lib.LinkLorebook(ctx, card, forge.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// Names, descriptions, entry keys, and entry content all match.
+	for _, text := range []string{"forge", "smithing", "anvil", "iron"} {
+		res, err := lib.SearchLorebooks(ctx, Query{Text: text})
+		if err != nil || len(res.Hits) != 1 || res.Hits[0].ID != forge.ID {
+			t.Fatalf("text %q = %+v, %v", text, res.Hits, err)
+		}
+	}
+
+	res, err := lib.SearchLorebooks(ctx, Query{Include: []string{"cards", "targets"}, Sort: "name", Facets: []string{"targets", "sources"}})
+	if err != nil || res.Total != 2 || res.Hits[0].ID != forge.ID {
+		t.Fatalf("all = %+v, %v", res, err)
+	}
+	if h := res.Hits[0]; !slices.Equal(h.Cards, []int64{card}) || h.Entries == nil || *h.Entries != 2 {
+		t.Fatalf("forge hit = %+v", h)
+	}
+
+	if err := lib.Lorebooks.SetArchived(ctx, sea.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if ids, err := lib.SearchLorebookIDs(ctx, Query{Filter: &Filter{Archived: ptr(true)}}); err != nil || !slices.Equal(ids, []int64{sea.ID}) {
+		t.Fatalf("archived = %v, %v", ids, err)
+	}
+
+	for _, q := range []Query{
+		{Filter: &Filter{Tag: ptr("x")}},
+		{Filter: &Filter{Collection: ptr(int64(1))}},
+		{Facets: []string{"tags"}},
+		{Include: []string{"lorebooks"}},
+	} {
+		if _, err := lib.SearchLorebooks(ctx, q); !errors.Is(err, ErrInvalid) {
+			t.Errorf("lorebooks %+v: got %v, want ErrInvalid", q, err)
+		}
+	}
+	if _, err := lib.Search(ctx, Query{Include: []string{"cards"}}); !errors.Is(err, ErrInvalid) {
+		t.Errorf("cards include cards: got %v, want ErrInvalid", err)
+	}
+}

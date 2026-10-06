@@ -19,10 +19,10 @@ type Query struct {
 	Semantic bool     `json:"semantic,omitempty" doc:"Not available yet: needs an embedding enricher."`
 	Filter   *Filter  `json:"filter,omitempty"`
 	Sources  []string `json:"sources,omitempty" doc:"Only library for now."`
-	Include  []string `json:"include,omitempty" doc:"Extra data per hit: tags, lorebooks, targets."`
+	Include  []string `json:"include,omitempty" doc:"Extra data per hit: tags, lorebooks, targets. Lorebooks take cards and targets."`
 	Fields   []string `json:"fields,omitempty" doc:"Card data keys to return per hit, plus avatar. Default: name."`
 	Sort     string   `json:"sort,omitempty" enum:"relevance,updated,name,created" doc:"Default: relevance with text, newest first without."`
-	Facets   []string `json:"facets,omitempty" doc:"Counts to return over every match: tags, collections, targets, sources."`
+	Facets   []string `json:"facets,omitempty" doc:"Counts to return over every match: tags, collections, targets, sources. Lorebooks take targets and sources."`
 	Page     Page     `json:"page,omitempty"`
 }
 
@@ -66,13 +66,15 @@ type Hit struct {
 	Tags       []string       `json:"tags,omitempty"`
 	Lorebooks  []int64        `json:"lorebooks,omitempty"`
 	Targets    []TargetState  `json:"targets,omitempty" doc:"With include targets: how the card stands on each target it's pushed to."`
+	Cards      []int64        `json:"cards,omitempty" doc:"Lorebooks with include cards: IDs of linked cards."`
+	Entries    *int           `json:"entries,omitempty" doc:"Lorebooks only: how many entries it has."`
 }
 
 // Results is one page of hits.
 type Results struct {
 	Hits       []Hit   `json:"hits"`
 	NextCursor *string `json:"next_cursor,omitempty"`
-	Total      int     `json:"total" doc:"How many cards match."`
+	Total      int     `json:"total" doc:"How many match."`
 	Facets     *Facets `json:"facets,omitempty"`
 }
 
@@ -104,32 +106,57 @@ type SourceCount struct {
 	Cards int    `json:"cards"`
 }
 
-// facetSQL selects each facet's rows for the card IDs in match.
-var facetSQL = map[string]func(match string) string{
-	"tags": func(m string) string {
+// searchKind is what a search runs over: cards or lorebooks. Every query
+// calls the entity c and its head revision r.
+type searchKind struct {
+	name, table, revTable, sourceTable string
+	// col is the entity's ID column in sources and binding_status.
+	col string
+}
+
+var (
+	cardSearch     = searchKind{"card", "card", "card_revision", "card_source", "card_id"}
+	lorebookSearch = searchKind{"lorebook", "lorebook", "lorebook_revision", "lorebook_source", "lorebook_id"}
+)
+
+func (k searchKind) isCard() bool { return k.name == cardSearch.name }
+
+func (k searchKind) from() string {
+	return k.table + ` c JOIN ` + k.revTable + ` r ON r.id = c.head_revision_id`
+}
+
+// cardOnly names the facets and includes that need card tags, collections,
+// or linked lorebooks.
+func cardOnly(name string) bool {
+	return name == "tags" || name == "collections" || name == "lorebooks"
+}
+
+// facetSQL selects each facet's rows for the IDs in match.
+var facetSQL = map[string]func(k searchKind, match string) string{
+	"tags": func(_ searchKind, m string) string {
 		return `SELECT t.name, count(*)::int FROM card_tag ct JOIN tag t ON t.id = ct.tag_id
 			WHERE ct.card_id IN (` + m + `) GROUP BY t.id ORDER BY count(*) DESC, lower(t.name) LIMIT 50`
 	},
-	"collections": func(m string) string {
+	"collections": func(_ searchKind, m string) string {
 		return `SELECT co.id, co.name, count(*)::int FROM collection_card cc JOIN collection co ON co.id = cc.collection_id
 			WHERE cc.card_id IN (` + m + `) GROUP BY co.id ORDER BY lower(co.name)`
 	},
-	"targets": func(m string) string {
+	"targets": func(k searchKind, m string) string {
 		return `SELECT instance_id, status, count(*)::int FROM binding_status
-			WHERE card_id IN (` + m + `) GROUP BY 1, 2 ORDER BY 1, 2`
+			WHERE ` + k.col + ` IN (` + m + `) GROUP BY 1, 2 ORDER BY 1, 2`
 	},
-	"sources": func(m string) string {
-		return `SELECT kind, count(DISTINCT card_id)::int FROM card_source
-			WHERE removed_at IS NULL AND card_id IN (` + m + `) GROUP BY kind ORDER BY kind`
+	"sources": func(k searchKind, m string) string {
+		return `SELECT kind, count(DISTINCT ` + k.col + `)::int FROM ` + k.sourceTable + `
+			WHERE removed_at IS NULL AND ` + k.col + ` IN (` + m + `) GROUP BY kind ORDER BY kind`
 	},
 }
 
-// facets counts the cards matching cond for each facet in names.
-func (l *Library) facets(ctx context.Context, names []string, cond string, args []any) (*Facets, error) {
-	match := `SELECT c.id FROM card c JOIN card_revision r ON r.id = c.head_revision_id WHERE ` + cond
+// facets counts the matches of cond for each facet in names.
+func (l *Library) facets(ctx context.Context, k searchKind, names []string, cond string, args []any) (*Facets, error) {
+	match := `SELECT c.id FROM ` + k.from() + ` WHERE ` + cond
 	f := &Facets{}
 	for _, name := range names {
-		rows, err := l.pool.Query(ctx, facetSQL[name](match), args...)
+		rows, err := l.pool.Query(ctx, facetSQL[name](k, match), args...)
 		if err != nil {
 			return nil, err
 		}
@@ -152,6 +179,7 @@ func (l *Library) facets(ctx context.Context, names []string, cond string, args 
 
 // where collects SQL conditions and their arguments.
 type where struct {
+	k    searchKind
 	args []any
 	n    int
 }
@@ -175,6 +203,9 @@ func (w *where) filter(f Filter) (string, error) {
 	if set != 1 {
 		return "", fmt.Errorf("%w: each filter needs exactly one condition", ErrInvalid)
 	}
+	if !w.k.isCard() && (f.Tag != nil || f.Collection != nil) {
+		return "", fmt.Errorf("%w: lorebooks have no tags or collections", ErrInvalid)
+	}
 	switch {
 	case f.And != nil:
 		return w.join(f.And, " AND ", "TRUE")
@@ -192,13 +223,13 @@ func (w *where) filter(f Filter) (string, error) {
 		return `EXISTS (SELECT 1 FROM collection_card cc
 			WHERE cc.card_id = c.id AND cc.collection_id = ` + w.arg(*f.Collection) + `)`, nil
 	case f.Source != nil:
-		return `EXISTS (SELECT 1 FROM card_source cs
-			WHERE cs.card_id = c.id AND cs.kind = ` + w.arg(*f.Source) + ` AND cs.removed_at IS NULL)`, nil
+		return `EXISTS (SELECT 1 FROM ` + w.k.sourceTable + ` cs
+			WHERE cs.` + w.k.col + ` = c.id AND cs.kind = ` + w.arg(*f.Source) + ` AND cs.removed_at IS NULL)`, nil
 	case f.TargetState != nil:
 		if !slices.Contains(targetStatuses, f.TargetState.Is) {
 			return "", fmt.Errorf("%w: target_state.is must be one of %v", ErrInvalid, targetStatuses)
 		}
-		return `EXISTS (SELECT 1 FROM binding_status bs WHERE bs.card_id = c.id
+		return `EXISTS (SELECT 1 FROM binding_status bs WHERE bs.` + w.k.col + ` = c.id
 			AND bs.instance_id = ` + w.arg(f.TargetState.Instance) + ` AND bs.status = ` + w.arg(f.TargetState.Is) + `)`, nil
 	}
 	return `((c.archived_at IS NOT NULL) = ` + w.arg(*f.Archived) + `)`, nil
@@ -230,9 +261,9 @@ func mentionsArchived(f *Filter) bool {
 		slices.ContainsFunc(f.Or, func(g Filter) bool { return mentionsArchived(&g) })
 }
 
-// compile returns the WHERE condition for q over card c joined to its head
-// revision r, and the placeholder holding the text query, if any.
-func compile(q Query) (string, *where, string, error) {
+// compile returns the WHERE condition for q over k's entity c joined to its
+// head revision r, and the placeholder holding the text query, if any.
+func compile(k searchKind, q Query) (string, *where, string, error) {
 	if q.Semantic {
 		return "", nil, "", fmt.Errorf("%w: semantic search needs an embedding enricher, and none is installed", ErrInvalid)
 	}
@@ -241,7 +272,7 @@ func compile(q Query) (string, *where, string, error) {
 			return "", nil, "", fmt.Errorf("%w: unknown source %q", ErrInvalid, s)
 		}
 	}
-	w := &where{}
+	w := &where{k: k}
 	conds := []string{"TRUE"}
 	if q.Filter != nil {
 		s, err := w.filter(*q.Filter)
@@ -263,12 +294,20 @@ func compile(q Query) (string, *where, string, error) {
 
 // Search returns one page of the library's cards that match q, best match
 // first when q has text, newest first otherwise.
-//
-// ponytail: the cursor is an offset, so a page can repeat or skip a card
+func (l *Library) Search(ctx context.Context, q Query) (Results, error) {
+	return l.search(ctx, cardSearch, q)
+}
+
+// SearchLorebooks is Search over lorebooks.
+func (l *Library) SearchLorebooks(ctx context.Context, q Query) (Results, error) {
+	return l.search(ctx, lorebookSearch, q)
+}
+
+// ponytail: the cursor is an offset, so a page can repeat or skip an item
 // that was added or archived since the last page; switch to keyset paging
 // if that matters.
-func (l *Library) Search(ctx context.Context, q Query) (Results, error) {
-	cond, w, text, err := compile(q)
+func (l *Library) search(ctx context.Context, k searchKind, q Query) (Results, error) {
+	cond, w, text, err := compile(k, q)
 	if err != nil {
 		return Results{}, err
 	}
@@ -296,23 +335,31 @@ func (l *Library) Search(ctx context.Context, q Query) (Results, error) {
 	if len(fields) == 0 {
 		fields = []string{"name"}
 	}
-	tags, books, targets := `NULL::text[]`, `NULL::bigint[]`, `NULL::jsonb`
+	tags, books, targets, cards, entries := `NULL::text[]`, `NULL::bigint[]`, `NULL::jsonb`, `NULL::bigint[]`, `NULL::int`
+	if !k.isCard() {
+		entries = `CASE jsonb_typeof(r.data->'entries') WHEN 'array' THEN jsonb_array_length(r.data->'entries') ELSE 0 END`
+	}
 	for _, inc := range q.Include {
+		if !k.isCard() && cardOnly(inc) || k.isCard() && inc == "cards" {
+			return Results{}, fmt.Errorf("%w: a %s search can't include %q", ErrInvalid, k.name, inc)
+		}
 		switch inc {
 		case "tags":
 			tags = `array(SELECT t.name FROM card_tag ct JOIN tag t ON t.id = ct.tag_id
 				WHERE ct.card_id = c.id ORDER BY lower(t.name))`
 		case "lorebooks":
 			books = `array(SELECT lorebook_id FROM card_lorebook WHERE card_id = c.id ORDER BY lorebook_id)`
+		case "cards":
+			cards = `array(SELECT card_id FROM card_lorebook WHERE lorebook_id = c.id ORDER BY card_id)`
 		case "targets":
 			targets = `(SELECT jsonb_agg(jsonb_build_object('instance', instance_id, 'is', status) ORDER BY instance_id)
-				FROM binding_status WHERE card_id = c.id)`
+				FROM binding_status WHERE ` + k.col + ` = c.id)`
 		default:
 			return Results{}, fmt.Errorf("%w: unknown include %q", ErrInvalid, inc)
 		}
 	}
 	for _, name := range q.Facets {
-		if facetSQL[name] == nil {
+		if facetSQL[name] == nil || !k.isCard() && cardOnly(name) {
 			return Results{}, fmt.Errorf("%w: unknown facet %q", ErrInvalid, name)
 		}
 	}
@@ -331,17 +378,16 @@ func (l *Library) Search(ctx context.Context, q Query) (Results, error) {
 		return Results{}, fmt.Errorf("%w: unknown sort %q", ErrInvalid, q.Sort)
 	}
 	res := Results{Hits: []Hit{}}
-	if err := l.pool.QueryRow(ctx, `SELECT count(*) FROM card c JOIN card_revision r ON r.id = c.head_revision_id
-		WHERE `+cond, w.args...).Scan(&res.Total); err != nil {
+	if err := l.pool.QueryRow(ctx, `SELECT count(*) FROM `+k.from()+` WHERE `+cond, w.args...).Scan(&res.Total); err != nil {
 		return Results{}, err
 	}
 	if len(q.Facets) > 0 {
-		if res.Facets, err = l.facets(ctx, q.Facets, cond, w.args); err != nil {
+		if res.Facets, err = l.facets(ctx, k, q.Facets, cond, w.args); err != nil {
 			return Results{}, err
 		}
 	}
-	sql := `SELECT c.id, c.slug, r.id, c.archived_at, r.data, r.avatar_blob, ` + tags + `, ` + books + `, ` + targets + `
-		FROM card c JOIN card_revision r ON r.id = c.head_revision_id
+	sql := `SELECT c.id, c.slug, r.id, c.archived_at, r.data, r.avatar_blob, ` + tags + `, ` + books + `, ` + targets + `, ` + cards + `, ` + entries + `
+		FROM ` + k.from() + `
 		WHERE ` + cond + ` ORDER BY ` + order + ` LIMIT ` + w.arg(size+1) + ` OFFSET ` + w.arg(offset)
 	rows, err := l.pool.Query(ctx, sql, w.args...)
 	if err != nil {
@@ -350,7 +396,7 @@ func (l *Library) Search(ctx context.Context, q Query) (Results, error) {
 	var h Hit
 	var data []byte
 	var avatar *string
-	_, err = pgx.ForEachRow(rows, []any{&h.ID, &h.Slug, &h.RevisionID, &h.ArchivedAt, &data, &avatar, &h.Tags, &h.Lorebooks, &h.Targets},
+	_, err = pgx.ForEachRow(rows, []any{&h.ID, &h.Slug, &h.RevisionID, &h.ArchivedAt, &data, &avatar, &h.Tags, &h.Lorebooks, &h.Targets, &h.Cards, &h.Entries},
 		func() error {
 			var all map[string]any
 			if err := json.Unmarshal(data, &all); err != nil {
@@ -385,12 +431,20 @@ func (l *Library) Search(ctx context.Context, q Query) (Results, error) {
 // SearchIDs returns the IDs of every card q matches, ignoring its paging and
 // output options.
 func (l *Library) SearchIDs(ctx context.Context, q Query) ([]int64, error) {
-	cond, w, _, err := compile(q)
+	return l.searchIDs(ctx, cardSearch, q)
+}
+
+// SearchLorebookIDs is SearchIDs over lorebooks.
+func (l *Library) SearchLorebookIDs(ctx context.Context, q Query) ([]int64, error) {
+	return l.searchIDs(ctx, lorebookSearch, q)
+}
+
+func (l *Library) searchIDs(ctx context.Context, k searchKind, q Query) ([]int64, error) {
+	cond, w, _, err := compile(k, q)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := l.pool.Query(ctx, `SELECT c.id FROM card c JOIN card_revision r ON r.id = c.head_revision_id
-		WHERE `+cond+` ORDER BY c.id`, w.args...)
+	rows, err := l.pool.Query(ctx, `SELECT c.id FROM `+k.from()+` WHERE `+cond+` ORDER BY c.id`, w.args...)
 	if err != nil {
 		return nil, err
 	}

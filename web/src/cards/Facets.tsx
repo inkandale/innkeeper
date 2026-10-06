@@ -16,10 +16,11 @@ function Section({ title, values, q, onToggle }: { title: string; values: Value[
         return (
           <button
             key={v.term.value}
+            aria-pressed={!!active}
             className={"facet" + (active ? (active.not ? " excluded" : " included") : "")}
             onClick={(e: MouseEvent) => onToggle({ ...v.term, not: e.shiftKey })}
           >
-            <span>{v.label}</span>
+            <span>{active?.not ? "not " : ""}{v.label}</span>
             <span className="count">{v.cards}</span>
           </button>
         );

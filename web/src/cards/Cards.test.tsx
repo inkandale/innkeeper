@@ -50,26 +50,26 @@ afterEach(() => vi.unstubAllGlobals());
 
 function renderCards(entry: string) {
   const router = createMemoryRouter([{ path: "/cards", element: <Cards /> }], { initialEntries: [entry] });
-  render(
+  const { container } = render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
-  return router;
+  return { router, container };
 }
 
 test("the URL becomes the search, and hits become tiles", async () => {
-  renderCards("/cards?f=tag:fantasy&page=2");
+  const { container } = renderCards("/cards?f=tag:fantasy&page=2");
   expect(await screen.findByText("Brakka")).toBeInTheDocument();
   expect(searches[0]).toMatchObject({ filter: { and: [{ tag: "fantasy" }] }, page: { size: 48, number: 2 } });
   expect(screen.getByText("+1")).toBeInTheDocument();
   expect(screen.getByTitle("Lumiverse: ahead")).toBeInTheDocument();
   expect(screen.getByText("49 cards")).toBeInTheDocument();
-  expect(screen.getByRole("img", { name: "Brakka" })).toHaveAttribute("src", `/api/blobs/${"ab".repeat(32)}?w=320`);
+  expect(container.querySelector("img")).toHaveAttribute("src", `/api/blobs/${"ab".repeat(32)}?w=320`);
 });
 
 test("a facet click filters and shift-click excludes", async () => {
-  const router = renderCards("/cards?page=3");
+  const { router } = renderCards("/cards?page=3");
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: /pirate/ }));
   expect(router.state.location.search).toBe("?f=tag%3Apirate");
@@ -80,15 +80,40 @@ test("a facet click filters and shift-click excludes", async () => {
 });
 
 test("a chip removes its filter", async () => {
-  const router = renderCards("/cards?f=tag:fantasy");
+  const { router } = renderCards("/cards?f=tag:fantasy");
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: "Remove tag: fantasy" }));
   expect(router.state.location.search).toBe("");
 });
 
 test("the search box sets the text", async () => {
-  const router = renderCards("/cards");
+  const { router } = renderCards("/cards");
   const user = userEvent.setup();
   await user.type(await screen.findByRole("searchbox"), "dwarf{Enter}");
   expect(router.state.location.search).toBe("?q=dwarf");
+});
+
+test("a new search keeps a chosen sort", async () => {
+  const { router } = renderCards("/cards?sort=name");
+  const user = userEvent.setup();
+  await user.type(await screen.findByRole("searchbox"), "x{Enter}");
+  expect(router.state.location.search).toBe("?q=x&sort=name");
+});
+
+test("a new search from the default sort stays default", async () => {
+  const { router } = renderCards("/cards");
+  const user = userEvent.setup();
+  await user.type(await screen.findByRole("searchbox"), "x{Enter}");
+  expect(router.state.location.search).toBe("?q=x");
+});
+
+test("an active facet is pressed", async () => {
+  renderCards("/cards?f=tag:pirate");
+  expect(await screen.findByRole("button", { name: /^pirate/ })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: /^fantasy/ })).toHaveAttribute("aria-pressed", "false");
+});
+
+test("a page past the end offers the last page", async () => {
+  renderCards("/cards?page=5");
+  expect(await screen.findByRole("button", { name: "Go to page 2" })).toBeInTheDocument();
 });

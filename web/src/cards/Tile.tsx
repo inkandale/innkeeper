@@ -25,6 +25,8 @@ export function Badges({ hit, names }: { hit: Hit; names: Names }) {
         <span
           key={t.instance}
           className={"badge " + badgeClass[t.is]}
+          role="img"
+          aria-label={`${names.instances.get(t.instance) ?? "#" + t.instance}: ${t.is.replace("_", " ")}`}
           title={`${names.instances.get(t.instance) ?? "#" + t.instance}: ${t.is.replace("_", " ")}`}
         />
       ))}
@@ -32,11 +34,12 @@ export function Badges({ hit, names }: { hit: Hit; names: Names }) {
   );
 }
 
+// alt is empty because the name link beside the image already names the card.
 function Avatar({ hit, w }: { hit: Hit; w: 160 | 320 }) {
   const name = str(hit.fields.name);
   const avatar = str(hit.fields.avatar);
   if (!avatar) return <span className="avatar empty">{name.slice(0, 1)}</span>;
-  return <img className="avatar" src={thumb(avatar, w)} alt={name} loading="lazy" />;
+  return <img className="avatar" src={thumb(avatar, w)} alt="" loading="lazy" />;
 }
 
 export function Tile({ hit, names }: { hit: Hit; names: Names }) {
@@ -47,7 +50,9 @@ export function Tile({ hit, names }: { hit: Hit; names: Names }) {
       <Link to={`/cards/${hit.id}`} className="tile-image">
         <Avatar hit={hit} w={320} />
         <Badges hit={hit} names={names} />
-        {books > 0 && <span className="lorebooks" title={`${books} lorebooks`}>📖 {books}</span>}
+        {books > 0 && <span className="lorebooks" role="img" aria-label={`${books} ${books === 1 ? "lorebook" : "lorebooks"}`}>
+            <span aria-hidden="true">📖</span> {books}
+          </span>}
       </Link>
       <Link to={`/cards/${hit.id}`} className="tile-name">
         {str(hit.fields.name)}

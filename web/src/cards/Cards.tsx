@@ -66,7 +66,7 @@ export function Cards() {
           onChange={(e) => go({ ...q, sort: e.target.value as Sort, page: 1 })}
         >
           {(Object.keys(sortLabels) as Sort[])
-            .filter((s) => s !== "relevance" || q.text)
+            .filter((s) => s !== "relevance" || q.text || q.sort === "relevance")
             .map((s) => (
               <option key={s} value={s}>
                 {sortLabels[s]}
@@ -79,7 +79,7 @@ export function Cards() {
         <div className="chips">
           {q.terms.map((t) => (
             <button
-              key={t.kind + t.value}
+              key={`${t.not ? "-" : ""}${t.kind}:${t.value}`}
               className={t.not ? "chip excluded" : "chip"}
               aria-label={`Remove ${termLabel(t, names)}`}
               onClick={() => go(toggleTerm(q, t))}
@@ -92,6 +92,11 @@ export function Cards() {
       <div className="results">
         {res.isError && <p className="error">{res.error.message}</p>}
         {res.data && <p className="total">{total} cards</p>}
+        {res.data && q.page > last && (
+          <p>
+            No cards on this page. <button className="button" onClick={() => go({ ...q, page: last })}>Go to page {last}</button>
+          </p>
+        )}
         {q.view === "grid" ? (
           <div className="grid">
             {hits.map((h) => (
@@ -116,7 +121,10 @@ export function Cards() {
                 key={p}
                 className={p === q.page ? "button primary" : "button"}
                 aria-current={p === q.page ? "page" : undefined}
-                onClick={() => go({ ...q, page: p })}
+                onClick={(e) => {
+                  go({ ...q, page: p });
+                  e.currentTarget.closest(".main")?.scrollTo?.(0, 0);
+                }}
               >
                 {p}
               </button>

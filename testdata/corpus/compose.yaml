@@ -1,0 +1,33 @@
+# Throwaway SillyTavern and Lumiverse servers for capturing the card corpus.
+# Start: docker compose -f testdata/corpus/compose.yaml up -d --wait
+# Stop:  docker compose -f testdata/corpus/compose.yaml down
+# Data lives in tmpfs, so every start is empty. Lumiverse signs in as
+# corpus / corpus-throwaway-password: it stores only a hash, so a generated
+# password can't be read back, and the servers are loopback-only and empty.
+services:
+  sillytavern:
+    image: ghcr.io/sillytavern/sillytavern:1.19.0
+    ports: ["127.0.0.1:18001:8000"]
+    environment:
+      SILLYTAVERN_LISTEN: "true"
+      SILLYTAVERN_WHITELISTMODE: "false"
+      SILLYTAVERN_BASICAUTHMODE: "false"
+      SILLYTAVERN_SECURITYOVERRIDE: "true"  # allows no-auth on a non-loopback listen
+    tmpfs: [/home/node/app/data, /home/node/app/config]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8000/csrf-token').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 3s
+      retries: 40
+  lumiverse:
+    image: ghcr.io/prolix-oc/lumiverse:1.2.0
+    ports: ["127.0.0.1:18002:7860"]
+    environment:
+      PORT: "7860"
+      OWNER_USERNAME: corpus
+      OWNER_PASSWORD: corpus-throwaway-password
+      TRUST_ANY_ORIGIN: "true"
+    tmpfs: ["/app/data:uid=1000,gid=1000"]
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://localhost:7860/').then(r=>process.exit(r.status<500?0:1),()=>process.exit(1))"]
+      interval: 3s
+      retries: 40

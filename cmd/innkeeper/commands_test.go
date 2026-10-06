@@ -10,12 +10,12 @@ import (
 
 func TestPushCmd(t *testing.T) {
 	var got []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.StripPrefix("/api", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		got = append(got, r.URL.Path+" "+string(body))
 		w.WriteHeader(http.StatusAccepted)
 		_, _ = w.Write([]byte(`{"id": 7}`))
-	}))
+	})))
 	defer srv.Close()
 	t.Setenv("INNKEEPER_URL", srv.URL)
 	t.Setenv("INNKEEPER_TOKEN", "tok")
@@ -42,7 +42,7 @@ func TestPushCmd(t *testing.T) {
 
 func TestSourcesCmd(t *testing.T) {
 	var got []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.StripPrefix("/api", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		got = append(got, r.Method+" "+r.URL.Path+" "+string(body))
 		if r.Method == http.MethodGet {
@@ -50,7 +50,7 @@ func TestSourcesCmd(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
-	}))
+	})))
 	defer srv.Close()
 	t.Setenv("INNKEEPER_URL", srv.URL)
 	t.Setenv("INNKEEPER_TOKEN", "tok")

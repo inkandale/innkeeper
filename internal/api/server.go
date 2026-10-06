@@ -1,5 +1,5 @@
 // Package api serves the core's HTTP API, described by one OpenAPI spec at
-// /openapi.json.
+// /api/openapi.json.
 package api
 
 import (

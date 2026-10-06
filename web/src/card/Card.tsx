@@ -34,10 +34,17 @@ function Editor({ id }: { id: number }) {
   const save = useMutation({
     mutationFn: async (d: Draft) =>
       must(await api.PUT("/cards/{id}", { params: { path: { id } }, body: { base_revision_id: d.baseId, data: d.data, source: "ui" } })),
-    onSuccess: (e) => {
+    onSuccess: (e, sent) => {
       qc.setQueryData(["card", id], e);
       void qc.invalidateQueries({ queryKey: ["card", id, "revisions"] });
-      setDraft(null);
+      // Keep edits typed while the save was in flight, on top of the new head.
+      setDraft((cur) => {
+        if (!cur || cur === sent) return null;
+        const next = rebase(cur, e.revision.id, (e.revision.data ?? {}) as Data);
+        return changed(next).size ? next : null;
+      });
+      setStale(false);
+      setComparing(false);
       toast({ text: "Saved" });
     },
     onError: (e) => (e instanceof ApiError && e.status === 409 ? setStale(true) : toast({ text: e.message, error: true })),
@@ -48,10 +55,11 @@ function Editor({ id }: { id: number }) {
   const head = card.data;
   const headData = (head.revision.data ?? {}) as Data;
   const data = draft?.data ?? headData;
-  const edit = (key: string, value: unknown) => {
-    const d = draft ?? { baseId: head.revision.id, base: headData, data: headData };
-    setDraft({ ...d, data: { ...d.data, [key]: value } });
-  };
+  const edit = (key: string, value: unknown) =>
+    setDraft((cur) => {
+      const d = cur ?? { baseId: head.revision.id, base: headData, data: headData };
+      return { ...d, data: { ...d.data, [key]: value } };
+    });
   const reload = () => {
     setDraft(null);
     setStale(false);
@@ -68,11 +76,11 @@ function Editor({ id }: { id: number }) {
     setStale(false);
     setComparing(false);
   };
-  const use = (key: string) => draft && setDraft({ ...draft, data: { ...draft.data, [key]: headData[key] } });
+  const use = (key: string) => setDraft((cur) => cur && { ...cur, data: { ...cur.data, [key]: headData[key] } });
 
   return (
     <div className="card-page">
-      <Panel card={head} data={data} edit={edit} dirty={dirty.size > 0} saving={save.isPending} onSave={() => draft && save.mutate(draft)} />
+      <Panel card={head} data={data} edit={edit} dirty={dirty.size > 0} saving={save.isPending || stale} onSave={() => draft && save.mutate(draft)} />
       <div className="card-main">
         {stale && (
           <div className="banner" role="alert">

@@ -18,7 +18,7 @@ export function Conflict(props: { latest: Data; draft: Draft; onUse: (key: strin
             <h4>Yours</h4>
             <pre>{show(draft.data[k])}</pre>
           </div>
-          <button className="button" onClick={() => onUse(k)}>
+          <button className="button" aria-label={`Use latest ${k}`} onClick={() => onUse(k)}>
             Use latest
           </button>
         </div>

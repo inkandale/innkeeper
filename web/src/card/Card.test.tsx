@@ -18,10 +18,13 @@ const entity = {
 
 let head: typeof entity;
 let conflict: boolean;
+// A save waits on gate when it's set.
+let gate: Promise<void> | undefined;
 let puts: { path: string; body: unknown }[];
 beforeEach(() => {
   head = entity;
   conflict = false;
+  gate = undefined;
   puts = [];
   vi.stubGlobal(
     "fetch",
@@ -32,6 +35,7 @@ beforeEach(() => {
         const body = await req.json().catch(() => null);
         puts.push({ path, body });
         if (path === "/api/cards/7") {
+          await gate;
           if (conflict) {
             // Someone else saved revision 12 first.
             conflict = false;
@@ -125,6 +129,7 @@ test("after a stale save, compare and keep my version", async () => {
   await userEvent.type(await screen.findByLabelText("Description"), " Old.");
   await userEvent.click(screen.getByRole("button", { name: "Save" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("changed elsewhere");
+  expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
   await userEvent.click(screen.getByRole("button", { name: "Compare with the latest" }));
   const changes = await screen.findByRole("region", { name: "Changed elsewhere" });
   expect(within(changes).getByText("A cheerful dwarf.")).toBeInTheDocument();
@@ -160,4 +165,32 @@ test("tags and collections save as they change", async () => {
   await waitFor(() => expect(puts).toContainEqual({ path: "/api/cards/7/tags", body: { tags: ["dwarf", "smith"] } }));
   await userEvent.click(await screen.findByRole("checkbox", { name: "Pirates" }));
   await waitFor(() => expect(puts.map((p) => p.path)).toContain("/api/collections/2/cards/7"));
+});
+
+test("edits typed while a save is in flight stay unsaved", async () => {
+  let release = () => {};
+  gate = new Promise((r) => (release = r));
+  renderAt("/cards/7");
+  await userEvent.type(await screen.findByLabelText("Description"), " Old.");
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  await userEvent.type(screen.getByLabelText("Personality"), "Gruff.");
+  release();
+  expect(await screen.findByText("Saved")).toBeInTheDocument();
+  expect(screen.getByLabelText("Personality")).toHaveValue("Gruff.");
+  expect(screen.getByLabelText("Description")).toHaveValue("A grumpy dwarf. Old.");
+  expect(screen.getAllByText("unsaved")).toHaveLength(1);
+});
+
+test("using the latest value for a clashing field drops my edit to it", async () => {
+  conflict = true;
+  renderAt("/cards/7");
+  await userEvent.type(await screen.findByLabelText("Description"), " Old.");
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Compare with the latest" }));
+  const changes = await screen.findByRole("region", { name: "Changed elsewhere" });
+  await userEvent.click(within(changes).getByRole("button", { name: "Use latest description" }));
+  await userEvent.click(within(changes).getByRole("button", { name: "Keep my version" }));
+  expect(screen.getByLabelText("Description")).toHaveValue("A cheerful dwarf.");
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
 });

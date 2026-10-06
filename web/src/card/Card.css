@@ -216,3 +216,39 @@
   max-width: none;
   user-select: none;
 }
+
+.revision {
+  display: grid;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: calc(var(--radius) * 0.5);
+  padding: calc(var(--space) * 0.5) var(--space);
+  cursor: pointer;
+}
+
+.revision:hover,
+.revision[aria-current="true"] {
+  background: var(--surface-2);
+}
+
+.hunks {
+  white-space: pre-wrap;
+}
+
+del {
+  background: color-mix(in srgb, var(--danger) 30%, transparent);
+}
+
+ins {
+  background: color-mix(in srgb, var(--ok) 30%, transparent);
+  text-decoration: none;
+}
+
+.history-thumb {
+  width: 80px;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: calc(var(--radius) * 0.5);
+}

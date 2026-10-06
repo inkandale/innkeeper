@@ -34,6 +34,8 @@ type indexEntry struct {
 	data           json.RawMessage
 	hash           string
 	simhash, phash *int64
+	// avatar is the avatar blob's sha256, or empty.
+	avatar string
 }
 
 type indexBinding struct {
@@ -43,16 +45,43 @@ type indexBinding struct {
 
 func (s *Service) loadIndex(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo) (index, error) {
 	idx := index{byID: map[int64]indexEntry{}, byRemote: map[string]indexBinding{}, remoteOf: map[int64]string{}}
-	rows, err := s.pool.Query(ctx, `SELECT e.id, r.data, r.overrides -> $1, b.avatar_phash
-		FROM `+k.table+` e JOIN `+k.revTable+` r ON r.id = e.head_revision_id
-		LEFT JOIN blob b ON b.sha256 = r.avatar_blob
-		WHERE e.archived_at IS NULL ORDER BY e.id`, inst.ID)
+	var err error
+	if idx.entries, err = s.loadEntries(ctx, k, inst, info, `e.archived_at IS NULL`); err != nil {
+		return idx, err
+	}
+	for _, e := range idx.entries {
+		idx.byID[e.id] = e
+	}
+	rows, err := s.pool.Query(ctx, `SELECT id, `+k.col+`, remote_id, accepted_data FROM binding
+		WHERE instance_id = $1::bigint AND `+k.col+` IS NOT NULL`, inst.ID)
 	if err != nil {
 		return idx, err
 	}
+	var b indexBinding
+	var remoteID string
+	_, err = pgx.ForEachRow(rows, []any{&b.id, &b.entityID, &remoteID, &b.accepted}, func() error {
+		idx.byRemote[remoteID] = b
+		idx.remoteOf[b.entityID] = remoteID
+		return nil
+	})
+	return idx, err
+}
+
+// loadEntries renders and projects the heads that match where, in ID order.
+// where's parameters start at $2.
+func (s *Service) loadEntries(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo,
+	where string, args ...any) ([]indexEntry, error) {
+	rows, err := s.pool.Query(ctx, `SELECT e.id, r.data, r.overrides -> $1, coalesce(r.avatar_blob, ''), b.avatar_phash
+		FROM `+k.table+` e JOIN `+k.revTable+` r ON r.id = e.head_revision_id
+		LEFT JOIN blob b ON b.sha256 = r.avatar_blob
+		WHERE `+where+` ORDER BY e.id`, append([]any{inst.ID}, args...)...)
+	if err != nil {
+		return nil, err
+	}
+	var out []indexEntry
 	var data, override []byte
 	var ent indexEntry
-	_, err = pgx.ForEachRow(rows, []any{&ent.id, &data, &override, &ent.phash}, func() error {
+	_, err = pgx.ForEachRow(rows, []any{&ent.id, &data, &override, &ent.avatar, &ent.phash}, func() error {
 		d := json.RawMessage(data)
 		if override != nil {
 			if d, err = MergePatch(d, override); err != nil {
@@ -70,26 +99,10 @@ func (s *Service) loadIndex(ctx context.Context, k kind, inst pluginhost.Instanc
 		if ent.simhash, err = textSimhash(k, ent.data); err != nil {
 			return err
 		}
-		idx.entries = append(idx.entries, ent)
-		idx.byID[ent.id] = ent
+		out = append(out, ent)
 		return nil
 	})
-	if err != nil {
-		return idx, err
-	}
-	rows, err = s.pool.Query(ctx, `SELECT id, `+k.col+`, remote_id, accepted_data FROM binding
-		WHERE instance_id = $1::bigint AND `+k.col+` IS NOT NULL`, inst.ID)
-	if err != nil {
-		return idx, err
-	}
-	var b indexBinding
-	var remoteID string
-	_, err = pgx.ForEachRow(rows, []any{&b.id, &b.entityID, &remoteID, &b.accepted}, func() error {
-		idx.byRemote[remoteID] = b
-		idx.remoteOf[b.entityID] = remoteID
-		return nil
-	})
-	return idx, err
+	return out, err
 }
 
 // textSimhash fingerprints projected data, so both sides of a reconcile

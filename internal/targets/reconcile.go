@@ -126,6 +126,8 @@ type appItem struct {
 	raw, data      json.RawMessage
 	name, hash     string
 	simhash, phash *int64
+	// avatar is the avatar blob's sha256, or empty.
+	avatar string
 	// links are a character's world books in the app, for a standalone target.
 	links []string
 }
@@ -154,7 +156,7 @@ func (s *Service) readItem(ctx context.Context, k kind, inst pluginhost.Instance
 			if b, err := s.lib.IngestBlob(ctx, got.Avatar); err != nil {
 				s.log.Warn("reconcile: avatar not stored", "remote_id", remoteID, "err", err)
 			} else {
-				it.phash = b.AvatarPhash
+				it.avatar, it.phash = b.SHA256, b.AvatarPhash
 			}
 		}
 	}
@@ -188,21 +190,14 @@ func (s *Service) reconcileItem(ctx context.Context, k kind, inst pluginhost.Ins
 // suggestion.
 func suggest(k kind, info protocol.TargetInfo, idx index, p ReconcileParams, item ReconcileItem,
 	it appItem) (ReconcileItem, error) {
-	var err error
-	var ancestor json.RawMessage
+	var accepted json.RawMessage
 	if b, ok := idx.byRemote[item.RemoteID]; ok {
-		if ancestor, _, err = Project(b.accepted, k.fields(info)); err != nil {
-			return item, err
-		}
-	}
-	schema := merge.Card
-	if k.isLorebook() {
-		schema = merge.Lorebook
+		accepted = b.accepted
 	}
 	var core []int
 	for i := range item.Candidates {
 		c := &item.Candidates[i]
-		fields, err := merge.Compare(schema, idx.byID[c.CardID].data, it.data, ancestor)
+		fields, err := compare(k, info, idx.byID[c.CardID].data, it.data, accepted)
 		if err != nil {
 			return item, err
 		}
@@ -268,6 +263,23 @@ func suggest(k kind, info protocol.TargetInfo, idx index, p ReconcileParams, ite
 // unbound is the index of the first candidate not bound to another app item, or -1.
 func unbound(cs []Candidate) int {
 	return slices.IndexFunc(cs, func(c Candidate) bool { return c.BoundTo == "" })
+}
+
+// compare diffs a library entry's projected data with the app's, with
+// accepted, the binding's copy, projected the same way as the ancestor.
+func compare(k kind, info protocol.TargetInfo, lib, app, accepted json.RawMessage) ([]merge.Field, error) {
+	var ancestor json.RawMessage
+	if accepted != nil {
+		var err error
+		if ancestor, _, err = Project(accepted, k.fields(info)); err != nil {
+			return nil, err
+		}
+	}
+	schema := merge.Card
+	if k.isLorebook() {
+		schema = merge.Lorebook
+	}
+	return merge.Compare(schema, lib, app, ancestor)
 }
 
 // coreFields decide between binding to a likely match and importing a copy.

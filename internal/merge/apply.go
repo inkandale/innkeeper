@@ -28,6 +28,11 @@ var (
 // auto_* hunks are ignored, since those merge by status. base is the new
 // library data; override is the RFC 7386 merge patch that turns base into
 // what this app should get, or nil when they are equal.
+//
+// keep_in_app is a bad choice on any hunk of a list field or of lorebook
+// entries, since RFC 7386 would store the app's whole array in the override
+// and the app would stop getting library edits to it; both is the list merge.
+// A keep_in_app default takes the library on those hunks instead.
 func Apply(
 	s Schema, library, app, ancestor json.RawMessage, choices map[string]Choice, def Choice,
 ) (base, override json.RawMessage, err error) {

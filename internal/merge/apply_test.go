@@ -71,6 +71,48 @@ func TestApplyKeepInApp(t *testing.T) {
 	}
 }
 
+// keep_in_app inside a list or lorebook entries would pin the whole array in
+// the override, so it is refused there and a keep_in_app default falls back
+// to the library.
+func TestApplyKeepInAppList(t *testing.T) {
+	bookApp := `{"name": "World", "entries": [
+		{"comment": "forge", "keys": ["forge"], "content": "Hot. Quiet."},
+		{"comment": "town", "keys": ["town"], "content": "Small."}
+	]}`
+	tests := []struct {
+		s        Schema
+		lib, app string
+		id       string
+	}{
+		{Card, card, cardApp(), "tags#1"},
+		{Card, `{}`, `{"tags": ["a"]}`, "tags#0"},
+		{Lorebook, book, bookApp, "entries[c:forge].content#1"},
+		{Lorebook, book, bookApp, "entries[c:river]#0"},
+	}
+	for _, tt := range tests {
+		_, _, err := Apply(tt.s, json.RawMessage(tt.lib), json.RawMessage(tt.app), nil,
+			map[string]Choice{tt.id: ChooseKeepInApp}, ChooseLibrary)
+		if !errors.Is(err, ErrBadChoice) || !strings.Contains(fmt.Sprint(err), tt.id) {
+			t.Errorf("%s: err = %v", tt.id, err)
+		}
+	}
+
+	base, over := apply(t, Card, card, cardApp(), "", nil, ChooseKeepInApp)
+	if !strings.Contains(base, `"tags":["a","b"]`) {
+		t.Errorf("base = %s", base)
+	}
+	if want := `{"extensions":{"lumiverse_ui":{"theme":"dark"}},"first_mes":"Hail. The forge is warm. Sit down."}`; over != want {
+		t.Errorf("override = %s, want %s", over, want)
+	}
+
+	// an array under extensions is one json leaf, so keeping it pins only that key
+	base, over = apply(t, Card, `{"extensions": {"x": [1]}}`, `{"extensions": {"x": [2]}}`, "",
+		map[string]Choice{"extensions.x#0": ChooseKeepInApp}, ChooseLibrary)
+	if base != `{"extensions":{"x":[1]}}` || over != `{"extensions":{"x":[2]}}` {
+		t.Errorf("base = %s, override = %s", base, over)
+	}
+}
+
 func TestApplyBoth(t *testing.T) {
 	base, _ := apply(t, Card, card, cardApp(), "", map[string]Choice{"tags#1": ChooseBoth}, ChooseLibrary)
 	if !strings.Contains(base, `"tags":["a","b","c"]`) {

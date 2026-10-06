@@ -105,6 +105,7 @@ type cmp struct {
 	out     []Hunk
 	choices map[string]Choice
 	def     Choice   // "" takes the library
+	inList  bool     // inside a list or entries field, where keep_in_app is refused
 	bad     []string // hunks given a choice their kind can't take
 }
 
@@ -142,7 +143,12 @@ func (c *cmp) add(h Hunk, list bool) (base, app take) {
 	case ChooseApp:
 		return takeApp, takeApp
 	case ChooseKeepInApp:
-		return takeLib, takeApp
+		if !c.inList {
+			return takeLib, takeApp
+		}
+		if ok {
+			c.bad = append(c.bad, h.ID)
+		}
 	case ChooseBoth:
 		if list {
 			return takeLib | takeApp, takeLib | takeApp
@@ -166,6 +172,11 @@ func tokens(t take, lib, app []string) []string {
 // field diffs one value as kind k and returns the kind actually used, since
 // a value of the wrong type falls back to scalar.
 func (c *cmp) field(path string, k Kind, l, a, o any) (Kind, val) {
+	if k == List || k == Entries {
+		// the override would hold the whole array, pinning it for this app
+		defer func(was bool) { c.inList = was }(c.inList)
+		c.inList = true
+	}
 	_, lgone := l.(missing)
 	_, agone := a.(missing)
 	if (k == Prose || k == List) && lgone != agone {

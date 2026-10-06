@@ -197,12 +197,19 @@ is bound or imported is linked to the card; a skipped one is not.
 |---|---|---|---|
 | `library` | unchanged | library value | library value |
 | `app` | takes the app value | app value | app value |
-| `keep_in_app` | unchanged | app value, from this instance's override | library value |
+| `keep_in_app` (not in lists or lorebook entries) | unchanged | app value, from this instance's override | library value |
 | `both` | library then app | both | both |
 
-`both` is allowed only on list hunks. Lorebook entries match by identity, so an entry only one side has is kept (`app` or `library`, whichever has it) or dropped. `keep_in_app` writes
-the existing per-instance JSON merge patch, so the difference is recorded and
-stops showing as drift.
+`keep_in_app` writes the existing per-instance JSON merge patch, so the
+difference is recorded and stops showing as drift. It isn't offered on hunks
+in a list field or in lorebook entries: a merge patch replaces arrays whole,
+so it would pin the app's whole list or book, and that app would stop getting
+library edits to it. A `keep_in_app` default takes `library` on those hunks.
+
+Lists offer `both` as the merge instead; `both` is allowed only on list hunks.
+Lorebook entries match by identity, so an entry only one side has is kept
+(`app` or `library`, whichever has it) or dropped, and a differing field takes
+one side.
 
 Applying a `bind`:
 

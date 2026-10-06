@@ -81,6 +81,7 @@ Where the code differs from the notes above, the code and the spec are right:
 - With an ancestor, a key only one side has can be `auto_*`, or `conflict` when one side deleted what the other changed.
 - `def` can't be `both`; an unrecognized choice is `ErrBadChoice`; choices on `same` and `auto_*` hunks are ignored.
 - `base` is canonical JSON. In the override, arrays are replaced whole and an app-side `null` is lost (RFC 7386).
+- `keep_in_app` is `ErrBadChoice` on a list hunk (including a whole-value `<list>#0`) or any hunk under `entries`, since the override would pin the whole array; a `keep_in_app` default takes `library` there.
 - Task 5 moved to plan 13b, which builds the corpus.
 
 ## Tasks

@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/davidgibbons/innkeeper/internal/library"
+	"github.com/davidgibbons/innkeeper/internal/merge"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/protocol"
 )
@@ -71,18 +72,45 @@ func (s *Service) items(ctx context.Context, k kind, instanceID int64) ([]Item, 
 }
 
 // Bind links a card to a character the app already has, without changing
-// either. The library's copy becomes the baseline, so the first check shows
-// where the app differs.
+// the library: a resolve that keeps the library's copy. The app's copy becomes
+// the accepted one, so the card is ahead where they differ and the next push
+// sends the library's.
 func (s *Service) Bind(ctx context.Context, instanceID, cardID int64, remoteID string) (Binding, error) {
-	return s.bind(ctx, cardKind, instanceID, cardID, remoteID)
+	return s.bindResolved(ctx, cardKind, instanceID, cardID, remoteID)
 }
 
 // BindLorebook links a lorebook to one the app already has, as Bind does for
 // cards.
 func (s *Service) BindLorebook(ctx context.Context, instanceID, lorebookID int64, remoteID string) (Binding, error) {
-	return s.bind(ctx, lorebookKind, instanceID, lorebookID, remoteID)
+	return s.bindResolved(ctx, lorebookKind, instanceID, lorebookID, remoteID)
 }
 
+func (s *Service) bindResolved(ctx context.Context, k kind, instanceID, id int64, remoteID string) (Binding, error) {
+	c, err := s.compareItem(ctx, k, instanceID, remoteID, id)
+	if err != nil {
+		return Binding{}, err
+	}
+	// Bind is for an unbound pair; resolve would also rebind or update one.
+	var bound bool
+	err = s.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM binding WHERE instance_id = $1 AND (`+k.col+` = $2
+		OR remote_id = $3 AND `+k.col+` IS NOT NULL AND remote_state <> 'missing'))`, instanceID, id, remoteID).Scan(&bound)
+	if err != nil {
+		return Binding{}, err
+	}
+	if bound {
+		return Binding{}, ErrBound
+	}
+	res, err := s.resolve(ctx, k, Resolution{InstanceID: instanceID, RemoteID: remoteID, AppHash: c.AppHash,
+		BaseRevisionID: c.HeadRevisionID, AcceptedHash: c.AcceptedHash, Action: "bind", CardID: id,
+		Default: merge.ChooseLibrary}, false)
+	if err != nil {
+		return Binding{}, err
+	}
+	return s.Binding(ctx, res.BindingID)
+}
+
+// bind links an item to a library one whose content matches it exactly, with
+// the library's copy as the baseline, for target import.
 func (s *Service) bind(ctx context.Context, k kind, instanceID, id int64, remoteID string) (Binding, error) {
 	inst, info, err := s.describePull(ctx, k, instanceID)
 	if err != nil {

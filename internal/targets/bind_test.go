@@ -39,32 +39,26 @@ func TestBindMatchingItem(t *testing.T) {
 	}
 }
 
-// boundChanged binds the card to an app copy whose description differs.
+// boundChanged binds the card to an app copy whose description differs. The
+// app's copy is accepted as it is, so the library is ahead.
 func boundChanged(t *testing.T) (*env, Binding) {
 	e := setup(t, nil)
 	remoteID := e.appCopy(e.card)
 	e.editRemote(remoteID, "description", "A tired smith.")
 	b := e.bind(e.card, remoteID)
-	if b.Status != "remote_changed" || len(b.Changes) != 1 || b.Changes[0].Field != "description" ||
-		string(b.Changes[0].After) != `"A tired smith."` {
+	if b.Status != "ahead" || b.RemoteState != "unchanged" || len(b.Changes) != 0 || b.LastPush.Kind != "bind" {
 		t.Fatalf("binding = %+v", b)
 	}
 	return e, b
 }
 
-func TestBindDifferingItemThenAdopt(t *testing.T) {
+func TestBindDifferingItemHasNothingToAdopt(t *testing.T) {
 	e, b := boundChanged(t)
-	b, err := e.s.Adopt(e.ctx, b.ID, IntoBase, e.head(e.card).ID)
-	if err != nil {
-		t.Fatal(err)
+	if _, err := e.s.Adopt(e.ctx, b.ID, IntoBase, e.head(e.card).ID); !errors.Is(err, ErrNoChanges) {
+		t.Fatalf("adopt: %v", err)
 	}
-	if !jsonEqual(e.head(e.card).Data, `{"name": "Brakka", "description": "A tired smith.", "first_mes": "Hail.",
-		"scenario": "A forge."}`) {
+	if field(t, e.head(e.card).Data, "description") != "A dwarf smith." || e.revisions(e.card) != 1 {
 		t.Fatalf("head = %s", e.head(e.card).Data)
-	}
-	// The library changed since the bind; a push would send the same thing.
-	if b.Status != "ahead" {
-		t.Fatalf("status = %s", b.Status)
 	}
 }
 

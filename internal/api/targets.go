@@ -154,7 +154,7 @@ func (s *Server) targetRoutes(api huma.API) {
 
 		huma.Register(api, huma.Operation{OperationID: "bind-" + k.name, Method: http.MethodPost,
 			Path: "/" + k.plural + "/{id}/bind", Summary: "Bind a " + k.name + " to one the app already has", Tags: tags,
-			Description: "Changes nothing in the app or the library. The library's copy becomes the baseline, so the next check shows where the app differs."},
+			Description: "Changes nothing in the app or the library. The app's copy becomes the accepted one, so the binding is ahead where the library differs, and the next push sends the library's."},
 			func(ctx context.Context, in *bindIn) (*bindingOut, error) {
 				return s.binding(k.bind(ctx, in.Body.InstanceID, in.ID, in.Body.RemoteID))
 			})

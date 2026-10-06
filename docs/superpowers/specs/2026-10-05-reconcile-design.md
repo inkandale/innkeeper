@@ -24,7 +24,9 @@ overlapping a library imported from SillyTavern.
 | State | Reconcile is a job whose result is a snapshot. Nothing is stored beyond the job row; a new run always reads fresh. Old snapshots are history only. |
 | Writes | Reconcile only reads, unless the instance sets `auto_bind_exact` (default off), which binds exact matches. Everything else is an explicit resolution. |
 | Merge | Three-way merge with `github.com/devsisters/go-diff3`, over tokens chosen per field kind. With no common ancestor the ancestor is empty, so every difference is a conflict. |
-| Ancestor | A bound item's ancestor is the binding's accepted copy. A first-time match has none. Using a provenance original as ancestor is out of scope. |
+| Ancestor | A bound item's ancestor is the binding's accepted copy. A first-time match whose sides share a source uses the source's content, when a catalog plugin can return it. Otherwise there is none. |
+| Sources | A card or lorebook links to the sites it came from, as a Stash scene links to stash-box IDs. Links are detected from known extensions or added by the owner. A shared source is the strongest match signal. |
+| Manual targets | `bind` takes any library card, not only the listed candidates. |
 | Granularity | The owner decides per hunk, inside an item-level action. |
 | Suggestions | The backend lists every option for an item and marks one as suggested. Clients display them; they don't compute them. A suggestion never removes an option. |
 | Thresholds | Match thresholds are parameters of each run, with defaults. |
@@ -39,6 +41,8 @@ overlapping a library imported from SillyTavern.
   the library and the app copy of a field.
 - **Verdict**: what reconcile concluded about an app item: `bound`, `exact`,
   `likely`, `new`, or `error`.
+- **Source**: a reference to where a card or lorebook was published, such as
+  a chub.ai character, given as a kind and a ref.
 
 ## Work, in order
 
@@ -48,11 +52,41 @@ Each piece is built and tested on its own.
    (`extensions.world_book_ids`), as the SillyTavern plugin does.
 2. **Corpus and capture.** See [Testing](#testing).
 3. **Merge engine**, `internal/merge`. Pure functions, no database.
-4. **Reconcile job**, `target.reconcile`.
-5. **Resolve.**
-6. **Surfaces**: API, CLI, MCP.
+4. **Sources**: the tables, detection, and manual links.
+5. **Reconcile job**, `target.reconcile`.
+6. **Resolve.**
+7. **Surfaces**: API, CLI, MCP.
 
-Lorebooks go through 3 to 6 alongside cards.
+Lorebooks go through 3 to 7 alongside cards.
+
+## Sources
+
+`card_source` and `lorebook_source`: `id`, the entity ID, `kind`, `ref`,
+`external_id`, `url`, `linked_by` (`auto` or `owner`), `created_at`. Unique on
+entity, `kind`, and `ref`. An entity can have several sources. The existing
+`provenance` string stays as the record of how the entity entered the library.
+
+**Detection.** Import, bind, and reconcile read known extension keys from the
+incoming data and record what they find, with `linked_by: auto`. The first is
+`extensions.chub`, which both SillyTavern and Lumiverse write when they import
+from chub.ai (81 of 96 characters on the first Lumiverse server):
+
+```json
+{ "id": 3604386, "full_path": "frerena/the-demon-of-desire-6bf0cd2c0915" }
+```
+
+becomes `kind: chub`, `ref: frerena/the-demon-of-desire-6bf0cd2c0915`,
+`external_id: 3604386`. Each further site is one more detector.
+
+**Manual.** The owner adds a source by kind and ref, or by pasting a URL,
+which a detector parses. The owner can remove any source. Removing an `auto`
+one marks the row removed rather than deleting it, so detection doesn't add
+it back.
+
+**As an ancestor.** When the library card and the app item share a source and
+a catalog plugin answers `catalog.get(kind, ref)`, its content is the ancestor
+for `Compare`. `catalog.get` is defined by the archive catalog sub-project.
+Until a catalog plugin is installed, such matches compare two-way.
 
 ## Merge engine
 
@@ -94,11 +128,11 @@ avatar, and gives it a verdict:
 - `bound`: a binding already names this remote ID. Compared against the
   accepted copy as ancestor.
 - `exact`: a library card has the same `content_hash`.
-- `likely`: candidates matched by normalized name (case-folded, trimmed,
-  spaces collapsed) when `match.name` is on, `text_simhash` within
-  `match.text_distance` bits, or `avatar_phash` within
-  `match.avatar_distance` bits. Ranked by signals matched, then by total
-  distance.
+- `likely`: candidates matched by a shared source, normalized name
+  (case-folded, trimmed, spaces collapsed) when `match.name` is on,
+  `text_simhash` within `match.text_distance` bits, or `avatar_phash` within
+  `match.avatar_distance` bits. A shared source ranks first; the rest rank by
+  signals matched, then by total distance.
 - `new`: no candidate.
 - `error`: this item couldn't be read or parsed. The message is kept and the
   run continues.
@@ -149,6 +183,9 @@ A resolution decides one app item:
   split an item that has diverged into a different character.
 - `skip`: do nothing. The next reconcile reports it again.
 
+`card_id` may be any library card, not only a candidate from the snapshot.
+Clients find one with `POST /search` and check it with `compare`.
+
 `choices` apply only to `bind`, one per hunk. A hunk not named takes `default`.
 
 A card's resolution carries one nested resolution per linked world book, in
@@ -194,8 +231,11 @@ The existing `POST /bindings/{id}/adopt` stays and becomes a resolution with
 | Resolve one item | `POST /instances/{id}/items/{remote_id}/resolve` | `innkeeper resolve <instance> <remote_id> …` | `resolve_item` |
 | Resolve many | `POST /resolutions` → job, per-item results | `innkeeper resolve --suggested <job>` | `resolve_items` |
 | Auto-bind setting | `PATCH /instances/{id} {"auto_bind_exact"}` | `innkeeper call PATCH /instances/<id> …` | none |
+| List, add, remove sources | `GET`, `PUT`, `DELETE /cards/{id}/sources`, and the same under `/lorebooks/{id}` | `innkeeper sources <card> [add <url> \| remove <id>]` | `list_sources`, `add_source`, `remove_source` |
 
-`card_id` is omitted for a bound item. `resolve --suggested <job>` applies
+`card_id` is omitted for a bound item. To start from a library card instead,
+pick the app item from `GET /instances/{id}/items` and resolve it with that
+`card_id`; `POST /cards/{id}/bind` becomes this call with `default: library`. `resolve --suggested <job>` applies
 every suggestion in a snapshot, each re-checked live.
 
 ## Testing
@@ -212,7 +252,11 @@ every suggestion in a snapshot, each re-checked live.
   records that, and adding CharX is a separate ticket.
 - **Normalization.** Every captured variant of a card has the source's
   `content_hash`, and `Compare` between them has only `same` hunks. Each known
-  app difference is a named case.
+  app difference is a named case, including one app's keys carried into
+  another: the first Lumiverse server's characters hold SillyTavern's `fav`
+  (67 of 96) and `world` (38), and an embedded `character_book` (26).
+- **Sources.** Detection from each captured variant, URL parsing, removal
+  that survives re-detection, and a shared source ranking first.
 - **Merge engine.** Table tests per tokenizer: byte-exact round trip, hunk
   statuses with and without an ancestor, stable hunk IDs.
 - **Reconcile.** Integration tests against real PostgreSQL with the fake
@@ -228,6 +272,7 @@ every suggestion in a snapshot, each re-checked live.
 
 ## Out of scope
 
-- An ancestor from provenance, such as the archived chub original.
+- `catalog.get` itself, and checking a source for upstream updates. Both come
+  with the archive catalog.
 - Merging the avatar.
 - The web UI screens. They use the API above.

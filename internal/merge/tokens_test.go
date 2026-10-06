@@ -23,6 +23,8 @@ func TestSentences(t *testing.T) {
 		{"blank line", "A\n\nB", []string{"A\n\n", "B"}},
 		{"curly closers", "He said “no.” Then left.)", []string{"He said “no.” ", "Then left.)"}},
 		{"trailing space", "End. ", []string{"End. "}},
+		{"invalid utf8", "a\xff. b", []string{"a\xff. ", "b"}},
+		{"whitespace only", "   ", []string{"   "}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

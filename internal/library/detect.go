@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // Source is a site an item was published on.
@@ -34,27 +35,44 @@ var chub = detector{
 		ext, _ := data["extensions"].(map[string]any)
 		c, _ := ext["chub"].(map[string]any)
 		path, _ := c["full_path"].(string)
-		if path == "" {
+		s, ok := chubSource(chubDir(lorebook), path)
+		if !ok {
 			return Source{}, false
 		}
-		s := Source{Kind: "chub", Ref: path, URL: "https://chub.ai/" + chubDir(lorebook) + "/" + path}
 		// UseNumber keeps big IDs out of float formatting.
-		if n, ok := c["id"].(json.Number); ok {
-			s.ExternalID = n.String()
+		switch id := c["id"].(type) {
+		case json.Number:
+			s.ExternalID = id.String()
+		case string:
+			s.ExternalID = id
 		}
 		return s, true
 	},
 	fromURL: func(u *url.URL) (Source, bool) {
-		if u.Host != "chub.ai" && u.Host != "www.chub.ai" {
+		if (u.Scheme != "http" && u.Scheme != "https") || !strings.EqualFold(u.Hostname(), "chub.ai") && !strings.EqualFold(u.Hostname(), "www.chub.ai") {
 			return Source{}, false
 		}
-		parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-		if len(parts) != 3 || (parts[0] != "characters" && parts[0] != "lorebooks") || parts[1] == "" || parts[2] == "" {
+		dir, ref, ok := strings.Cut(strings.Trim(u.Path, "/"), "/")
+		if !ok || (dir != "characters" && dir != "lorebooks") {
 			return Source{}, false
 		}
-		ref := parts[1] + "/" + parts[2]
-		return Source{Kind: "chub", Ref: ref, URL: "https://chub.ai/" + parts[0] + "/" + ref}, true
+		return chubSource(dir, ref)
 	},
+}
+
+// chubSource validates ref as exactly <user>/<name> so the stored URL is clean.
+func chubSource(dir, ref string) (Source, bool) {
+	parts := strings.Split(ref, "/")
+	if len(parts) != 2 {
+		return Source{}, false
+	}
+	for i, p := range parts {
+		if p == "" || p == "." || p == ".." || strings.ContainsAny(p, "?#\\") || strings.IndexFunc(p, unicode.IsSpace) >= 0 {
+			return Source{}, false
+		}
+		parts[i] = url.PathEscape(p)
+	}
+	return Source{Kind: "chub", Ref: ref, URL: "https://chub.ai/" + dir + "/" + parts[0] + "/" + parts[1]}, true
 }
 
 func chubDir(lorebook bool) string {

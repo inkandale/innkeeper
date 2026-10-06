@@ -19,6 +19,12 @@ func TestDetect(t *testing.T) {
 		{"empty path", `{"extensions":{"chub":{"id":1,"full_path":""}}}`, false, nil},
 		{"no extensions", `{"name":"x"}`, false, nil},
 		{"chub not object", `{"extensions":{"chub":"x"}}`, false, nil},
+		{"string id", `{"extensions":{"chub":{"id":"42","full_path":"a/b"}}}`, false, &Source{Kind: "chub", Ref: "a/b", ExternalID: "42", URL: "https://chub.ai/characters/a/b"}},
+		{"dotdot", `{"extensions":{"chub":{"full_path":"../b"}}}`, false, nil},
+		{"space", `{"extensions":{"chub":{"full_path":"a/b c"}}}`, false, nil},
+		{"query", `{"extensions":{"chub":{"full_path":"a/b?x=1"}}}`, false, nil},
+		{"three segments", `{"extensions":{"chub":{"full_path":"a/b/c"}}}`, false, nil},
+		{"one segment", `{"extensions":{"chub":{"full_path":"a"}}}`, false, nil},
 		{"not json", `nope`, false, nil},
 	}
 	for _, tt := range tests {
@@ -45,15 +51,27 @@ func TestParseSourceURL(t *testing.T) {
 		"https://chub.ai/characters/" + ref + "/",
 		"https://chub.ai/characters/" + ref + "?tab=chats",
 		"https://chub.ai/lorebooks/" + ref,
+		"http://chub.ai/characters/" + ref,
+		"https://CHUB.AI/characters/" + ref,
+		"https://chub.ai:443/characters/" + ref,
 	} {
 		s, err := ParseSourceURL(u)
 		if err != nil || s.Kind != "chub" || s.Ref != ref {
 			t.Errorf("%s: got %+v, %v", u, s, err)
 		}
 	}
-	for _, u := range []string{"https://example.com/x", "https://chub.ai/characters/onlyone", "https://chub.ai/characters/a/b/c", "not a url"} {
+	for _, u := range []string{"https://example.com/x", "https://chub.ai/characters/onlyone", "https://chub.ai/characters/a/b/c", "not a url",
+		"https://chub.ai.evil.com/characters/a/b", "https://evilchub.ai/characters/a/b", "https://chub.ai@evil.com/characters/a/b",
+		"ftp://chub.ai/characters/a/b", "https://chub.ai/characters/../b", "https://chub.ai/characters/a/%20b", "https://chub.ai/characters/a/b%3Fx", "https://chub.ai/characters/a/%5Cb"} {
 		if _, err := ParseSourceURL(u); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s: got %v, want ErrInvalid", u, err)
 		}
+	}
+}
+
+func TestParseSourceURLLorebook(t *testing.T) {
+	s, err := ParseSourceURL("https://www.chub.ai/lorebooks/a/b?x=1")
+	if err != nil || s.Ref != "a/b" || s.URL != "https://chub.ai/lorebooks/a/b" {
+		t.Fatalf("got %+v, %v", s, err)
 	}
 }

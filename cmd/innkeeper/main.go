@@ -28,6 +28,10 @@ API commands (read INNKEEPER_URL and INNKEEPER_TOKEN):
   innkeeper push <instance-id> <card-id>|<query-json> [--new-copy]
   innkeeper sources <card-id> [add <url> | remove <source-id>]
   innkeeper jobs [show|cancel|watch <job-id>]
+  innkeeper reconcile <instance-id> [params-json] [--json]
+  innkeeper compare <instance-id> <remote-id> [card-id]
+  innkeeper resolve <instance-id> <remote-id> bind|import|skip [card-id] [hunk=choice ...] [--default=choice]
+  innkeeper resolve --suggested <reconcile-job-id> [remote-id ...] [--verdict=exact,likely,new]
 
 See README.md for the environment variables each command reads.`
 
@@ -72,6 +76,12 @@ func run(args []string) error {
 		return sourcesCmd(rest)
 	case cmd == "jobs":
 		return jobsCmd(rest)
+	case cmd == "reconcile":
+		return reconcileCmd(rest)
+	case cmd == "compare":
+		return compareCmd(rest)
+	case cmd == "resolve":
+		return resolveCmd(rest)
 	}
 	return errors.New(usage)
 }

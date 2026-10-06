@@ -20,6 +20,7 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/mcp"
+	"github.com/davidgibbons/innkeeper/internal/merge"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 	"github.com/davidgibbons/innkeeper/internal/targets"
@@ -136,6 +137,7 @@ func (s *Server) routes(api huma.API) {
 	s.instanceRoutes(api)
 	s.jobRoutes(api)
 	s.targetRoutes(api)
+	s.reconcileRoutes(api)
 	s.toolRoutes(api)
 	s.settingsRoutes(api)
 }
@@ -214,6 +216,8 @@ func (s *Server) fail(err error) error {
 	case errors.Is(err, library.ErrInvalid), errors.Is(err, plugins.ErrInvalid), errors.Is(err, plugins.ErrUnknownPlugin),
 		errors.Is(err, targets.ErrCannot), errors.Is(err, plugins.ErrNoCodec):
 		return huma.Error400BadRequest(err.Error())
+	case errors.Is(err, merge.ErrUnknownHunk), errors.Is(err, merge.ErrBadChoice):
+		return huma.Error422UnprocessableEntity(err.Error())
 	case errors.As(err, &startErr), errors.Is(err, protocol.ErrClosed):
 		s.Log.Error("plugin failed", "err", err)
 		return huma.Error502BadGateway("plugin failed; see the server log")

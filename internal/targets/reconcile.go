@@ -25,18 +25,18 @@ const (
 
 // ReconcileMatch says which signals make a library card a likely match.
 type ReconcileMatch struct {
-	Name           *bool `json:"name"`            // default true
-	TextDistance   *int  `json:"text_distance"`   // default 8, 0..32
-	AvatarDistance *int  `json:"avatar_distance"` // default 8, 0..32
+	Name           *bool `json:"name" required:"false"`            // default true
+	TextDistance   *int  `json:"text_distance" required:"false"`   // default 8, 0..32
+	AvatarDistance *int  `json:"avatar_distance" required:"false"` // default 8, 0..32
 }
 
 // ReconcileParams are a reconcile run's settings.
 type ReconcileParams struct {
 	InstanceID int64          `json:"instance_id"`
-	Match      ReconcileMatch `json:"match"`
+	Match      ReconcileMatch `json:"match" required:"false"`
 	// SplitFields is how many core fields must differ before import is
 	// suggested over bind.
-	SplitFields *int `json:"split_fields"` // default 3, 1..4
+	SplitFields *int `json:"split_fields" required:"false"` // default 3, 1..4
 }
 
 // withDefaults fills unset settings and checks their ranges.

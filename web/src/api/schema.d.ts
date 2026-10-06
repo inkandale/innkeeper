@@ -715,6 +715,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/instances/{id}/items/{remote_id}/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare an app character with a library card
+         * @description Reads the app. Resolve with the comparison's app_hash, head_revision_id, and accepted_hash.
+         */
+        get: operations["compare-item"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/instances/{id}/items/{remote_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bind, import, or skip an app item
+         * @description The path sets instance_id and remote_id. Changes the library and the binding, never the app; push afterwards. If the app's copy, the library, or the binding changed since the comparison, returns 409 with a fresh comparison.
+         */
+        post: operations["resolve-item"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/instances/{id}/lorebook-items": {
         parameters: {
             query?: never;
@@ -729,6 +769,46 @@ export interface paths {
         get: operations["list-lorebook-items"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/instances/{id}/lorebook-items/{remote_id}/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare an app world book with a library lorebook
+         * @description Reads the app. Resolve with the comparison's app_hash, head_revision_id, and accepted_hash.
+         */
+        get: operations["compare-lorebook-item"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/instances/{id}/lorebook-items/{remote_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bind, import, or skip an app lorebook-item
+         * @description The path sets instance_id and remote_id. Changes the library and the binding, never the app; push afterwards. If the app's copy, the library, or the binding changed since the comparison, returns 409 with a fresh comparison.
+         */
+        post: operations["resolve-lorebook-item"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1119,6 +1199,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/reconciles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Line up a target app against the library
+         * @description Queues a reconcile job. Read the snapshot from GET /jobs/{id}: its progress is the snapshot once the job finishes.
+         */
+        post: operations["start-reconcile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/resolutions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve many app items
+         * @description Queues one child job per resolution; one that fails doesn't stop the others. Each child's progress has its outcome.
+         */
+        post: operations["resolve-items"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/search": {
         parameters: {
             query?: never;
@@ -1254,6 +1374,12 @@ export interface components {
              */
             readonly $schema?: string;
             archived: boolean;
+        };
+        AvatarDiff: {
+            app?: string;
+            library?: string;
+            /** Format: int64 */
+            phash_distance?: number;
         };
         BeginOutBody: {
             /**
@@ -1398,6 +1524,27 @@ export interface components {
             /** Format: int64 */
             id: number;
             name: string;
+        };
+        Comparison: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/Comparison.json
+             */
+            readonly $schema?: string;
+            accepted_hash: string;
+            app_hash: string;
+            avatar?: components["schemas"]["AvatarDiff"];
+            /** @enum {string} */
+            base: "none" | "accepted";
+            /** Format: int64 */
+            card_id: number;
+            fields: components["schemas"]["Field"][] | null;
+            /** Format: int64 */
+            head_revision_id: number;
+            /** Format: int64 */
+            instance_id: number;
+            remote_id: string;
         };
         CompleteInBody: {
             /**
@@ -1571,6 +1718,11 @@ export interface components {
             tags?: components["schemas"]["TagCount"][] | null;
             targets?: components["schemas"]["TargetCount"][] | null;
         };
+        Field: {
+            hunks: components["schemas"]["Hunk"][] | null;
+            kind: string;
+            path: string;
+        };
         Filter: {
             and?: components["schemas"]["Filter"][] | null;
             archived?: boolean;
@@ -1616,6 +1768,14 @@ export interface components {
             tags?: string[] | null;
             /** @description With include targets: how the card stands on each target it's pushed to. */
             targets?: components["schemas"]["TargetState"][] | null;
+        };
+        Hunk: {
+            app?: unknown;
+            base?: unknown;
+            id: string;
+            library?: unknown;
+            status: string;
+            words?: components["schemas"]["Span"][] | null;
         };
         ImportInBody: {
             /**
@@ -1858,6 +2018,78 @@ export interface components {
             /** @description Words to match in name, description, personality, scenario, creator notes, and first message. Supports "quoted phrases", or, and -excluded words. */
             text?: string;
         };
+        ReconcileMatch: {
+            /** Format: int64 */
+            avatar_distance?: number | null;
+            name?: boolean | null;
+            /** Format: int64 */
+            text_distance?: number | null;
+        };
+        ReconcileParams: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/ReconcileParams.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            instance_id: number;
+            match?: components["schemas"]["ReconcileMatch"];
+            /** Format: int64 */
+            split_fields?: number | null;
+        };
+        Resolution: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/Resolution.json
+             */
+            readonly $schema?: string;
+            accepted_hash?: string;
+            /** @enum {string} */
+            action: "bind" | "import" | "skip";
+            app_hash?: string;
+            /** Format: int64 */
+            base_revision_id?: number;
+            /** Format: int64 */
+            card_id?: number;
+            choices?: {
+                [key: string]: string;
+            };
+            default?: string;
+            /** Format: int64 */
+            instance_id?: number;
+            /** @enum {string} */
+            kind?: "card" | "lorebook";
+            lorebooks?: components["schemas"]["Resolution"][] | null;
+            remote_id?: string;
+        };
+        ResolutionsInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/ResolutionsInBody.json
+             */
+            readonly $schema?: string;
+            resolutions: components["schemas"]["Resolution"][] | null;
+        };
+        ResolveResult: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/ResolveResult.json
+             */
+            readonly $schema?: string;
+            action: string;
+            /** Format: int64 */
+            binding_id?: number;
+            /** Format: int64 */
+            card_id?: number;
+            lorebooks?: components["schemas"]["ResolveResult"][] | null;
+            remote_id: string;
+            /** Format: int64 */
+            revision_id?: number;
+        };
         RestoreInBody: {
             /**
              * Format: uri
@@ -1948,6 +2180,13 @@ export interface components {
             /** Format: int64 */
             cards: number;
             kind: string;
+        };
+        Span: {
+            /** Format: int64 */
+            end: number;
+            side: string;
+            /** Format: int64 */
+            start: number;
         };
         TagCount: {
             /** Format: int64 */
@@ -3560,6 +3799,79 @@ export interface operations {
             };
         };
     };
+    "compare-item": {
+        parameters: {
+            query?: {
+                /** @description The library card to compare with; 0 means the bound one */
+                card_id?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+                /** @description The app's id for the item, path-escaped */
+                remote_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Comparison"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "resolve-item": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                /** @description The app's id for the item, path-escaped */
+                remote_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Resolution"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolveResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "list-lorebook-items": {
         parameters: {
             query?: never;
@@ -3578,6 +3890,79 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Item"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "compare-lorebook-item": {
+        parameters: {
+            query?: {
+                /** @description The library lorebook to compare with; 0 means the bound one */
+                lorebook_id?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+                /** @description The app's id for the world book, path-escaped */
+                remote_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Comparison"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "resolve-lorebook-item": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                /** @description The app's id for the item, path-escaped */
+                remote_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Resolution"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolveResult"];
                 };
             };
             /** @description Error */
@@ -4285,6 +4670,72 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["BulkPushInBody"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "start-reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReconcileParams"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "resolve-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolutionsInBody"];
             };
         };
         responses: {

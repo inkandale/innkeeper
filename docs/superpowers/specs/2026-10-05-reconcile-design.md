@@ -200,7 +200,7 @@ is bound or imported is linked to the card; a skipped one is not.
 | `keep_in_app` | unchanged | app value, from this instance's override | library value |
 | `both` | library then app | both | both |
 
-`both` is allowed only on list and lorebook entry hunks. `keep_in_app` writes
+`both` is allowed only on list hunks. Lorebook entries match by identity, so an entry only one side has is kept (`app` or `library`, whichever has it) or dropped. `keep_in_app` writes
 the existing per-instance JSON merge patch, so the difference is recorded and
 stops showing as drift.
 

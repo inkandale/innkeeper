@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/davidgibbons/innkeeper/internal/backup"
 	"github.com/davidgibbons/innkeeper/internal/blobstore"
 	"github.com/davidgibbons/innkeeper/internal/db"
 	"github.com/davidgibbons/innkeeper/internal/library"
@@ -28,6 +29,9 @@ type services struct {
 	lib       *library.Library
 	registry  *plugins.Registry
 	manifests map[string]*protocol.Manifest
+	store     *blobstore.Store
+	box       *secrets.Box
+	backups   backup.Settings
 }
 
 // openServices reads the settings both services need, loads the installed
@@ -40,6 +44,10 @@ func openServices(ctx context.Context, log *slog.Logger, maxConnsAtLeast int) (*
 		}
 	}
 	box, err := secrets.FromEnv()
+	if err != nil {
+		return nil, err
+	}
+	backups, err := backup.SettingsFromEnv()
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +70,8 @@ func openServices(ctx context.Context, log *slog.Logger, maxConnsAtLeast int) (*
 		pool.Close()
 		return nil, err
 	}
-	return &services{pool: pool, lib: library.New(pool, store), registry: registry, manifests: manifests}, nil
+	return &services{pool: pool, lib: library.New(pool, store), registry: registry, manifests: manifests,
+		store: store, box: box, backups: backups}, nil
 }
 
 func (s *services) close() { s.pool.Close() }

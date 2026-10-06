@@ -60,3 +60,16 @@ export function must<T>(res: { data?: T; error?: unknown; response: Response }):
   }
   return res.data;
 }
+
+/** mustOk throws a failed response's error as an ApiError, for calls with no body, like a 204. */
+export function mustOk(res: { error?: unknown; response: Response }): void {
+  if (res.error !== undefined || !res.response.ok) {
+    const detail = (res.error as { detail?: string } | undefined)?.detail ?? res.response.statusText;
+    throw new ApiError(res.response.status, detail);
+  }
+}
+
+/** thumb is the URL of a blob's image resized to w pixels wide. */
+export function thumb(sha: string, w: 160 | 320 | 640 = 320): string {
+  return `/api/blobs/${sha}?w=${w}`;
+}

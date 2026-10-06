@@ -370,6 +370,15 @@
             "readOnly": true,
             "type": "string"
           },
+          "avatars": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "cards": {
             "format": "int64",
             "type": "integer"
@@ -394,6 +403,28 @@
           "name",
           "description",
           "created_at",
+          "cards"
+        ],
+        "type": "object"
+      },
+      "CollectionCount": {
+        "additionalProperties": false,
+        "properties": {
+          "cards": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
           "cards"
         ],
         "type": "object"
@@ -773,6 +804,49 @@
         },
         "type": "object"
       },
+      "Facets": {
+        "additionalProperties": false,
+        "properties": {
+          "collections": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionCount"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/SourceCount"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "tags": {
+            "description": "The 50 most used.",
+            "items": {
+              "$ref": "#/components/schemas/TagCount"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/TargetCount"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "Filter": {
         "additionalProperties": false,
         "properties": {
@@ -804,6 +878,10 @@
               "array",
               "null"
             ]
+          },
+          "source": {
+            "description": "Has a source of this kind, such as chub.",
+            "type": "string"
           },
           "tag": {
             "description": "Has this tag, in any case.",
@@ -886,6 +964,16 @@
           "tags": {
             "items": {
               "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "targets": {
+            "description": "With include targets: how the card stands on each target it's pushed to.",
+            "items": {
+              "$ref": "#/components/schemas/TargetState"
             },
             "type": [
               "array",
@@ -1205,6 +1293,13 @@
               "null"
             ]
           },
+          "number": {
+            "description": "1-based page number, instead of cursor.",
+            "format": "int64",
+            "maximum": 1000000,
+            "minimum": 0,
+            "type": "integer"
+          },
           "size": {
             "description": "Default 50.",
             "format": "int64",
@@ -1516,6 +1611,16 @@
             "readOnly": true,
             "type": "string"
           },
+          "facets": {
+            "description": "Counts to return over every match: tags, collections, targets, sources.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "fields": {
             "description": "Card data keys to return per hit, plus avatar. Default: name.",
             "items": {
@@ -1530,7 +1635,7 @@
             "$ref": "#/components/schemas/Filter"
           },
           "include": {
-            "description": "Extra data per hit: tags, lorebooks.",
+            "description": "Extra data per hit: tags, lorebooks, targets.",
             "items": {
               "type": "string"
             },
@@ -1545,6 +1650,16 @@
           "semantic": {
             "description": "Not available yet: needs an embedding enricher.",
             "type": "boolean"
+          },
+          "sort": {
+            "description": "Default: relevance with text, newest first without.",
+            "enum": [
+              "relevance",
+              "updated",
+              "name",
+              "created"
+            ],
+            "type": "string"
           },
           "sources": {
             "description": "Only library for now.",
@@ -1612,6 +1727,9 @@
             "readOnly": true,
             "type": "string"
           },
+          "facets": {
+            "$ref": "#/components/schemas/Facets"
+          },
           "hits": {
             "items": {
               "$ref": "#/components/schemas/Hit"
@@ -1623,10 +1741,16 @@
           },
           "next_cursor": {
             "type": "string"
+          },
+          "total": {
+            "description": "How many cards match.",
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
-          "hits"
+          "hits",
+          "total"
         ],
         "type": "object"
       },
@@ -1745,6 +1869,23 @@
         ],
         "type": "object"
       },
+      "SourceCount": {
+        "additionalProperties": false,
+        "properties": {
+          "cards": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "cards"
+        ],
+        "type": "object"
+      },
       "TagCount": {
         "additionalProperties": false,
         "properties": {
@@ -1786,6 +1927,28 @@
         },
         "required": [
           "tags"
+        ],
+        "type": "object"
+      },
+      "TargetCount": {
+        "additionalProperties": false,
+        "properties": {
+          "cards": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "instance": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "is": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "instance",
+          "is",
+          "cards"
         ],
         "type": "object"
       },
@@ -2478,6 +2641,17 @@
             "schema": {
               "pattern": "^[0-9a-f]{64}$",
               "type": "string"
+            }
+          },
+          {
+            "description": "Return a JPEG of an image this many pixels wide: 160, 320, or 640.",
+            "explode": false,
+            "in": "query",
+            "name": "w",
+            "schema": {
+              "description": "Return a JPEG of an image this many pixels wide: 160, 320, or 640.",
+              "format": "int64",
+              "type": "integer"
             }
           }
         ],

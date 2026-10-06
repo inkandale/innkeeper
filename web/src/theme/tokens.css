@@ -21,6 +21,8 @@
 
   --rail-width: 200px;
   --rail-width-collapsed: 56px;
+  --facets-width: 220px;
+  --tile-width: 160px;
   --tile-aspect: 3 / 4;
 
   color-scheme: dark;

@@ -1373,11 +1373,19 @@ export interface components {
              * @example /api/schemas/Collection.json
              */
             readonly $schema?: string;
+            avatars?: string[] | null;
             /** Format: int64 */
             cards: number;
             /** Format: date-time */
             created_at: string;
             description: string;
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
+        CollectionCount: {
+            /** Format: int64 */
+            cards: number;
             /** Format: int64 */
             id: number;
             name: string;
@@ -1547,6 +1555,13 @@ export interface components {
              */
             type: string;
         };
+        Facets: {
+            collections?: components["schemas"]["CollectionCount"][] | null;
+            sources?: components["schemas"]["SourceCount"][] | null;
+            /** @description The 50 most used. */
+            tags?: components["schemas"]["TagCount"][] | null;
+            targets?: components["schemas"]["TargetCount"][] | null;
+        };
         Filter: {
             and?: components["schemas"]["Filter"][] | null;
             archived?: boolean;
@@ -1557,6 +1572,8 @@ export interface components {
             collection?: number;
             not?: components["schemas"]["Filter"];
             or?: components["schemas"]["Filter"][] | null;
+            /** @description Has a source of this kind, such as chub. */
+            source?: string;
             /** @description Has this tag, in any case. */
             tag?: string;
             /** @description Is pushed to this target and stands this way. A card never pushed there matches no state. */
@@ -1586,6 +1603,8 @@ export interface components {
             revision_id: number;
             slug: string;
             tags?: string[] | null;
+            /** @description With include targets: how the card stands on each target it's pushed to. */
+            targets?: components["schemas"]["TargetState"][] | null;
         };
         ImportInBody: {
             /**
@@ -1704,6 +1723,11 @@ export interface components {
             cursor?: string | null;
             /**
              * Format: int64
+             * @description 1-based page number, instead of cursor.
+             */
+            number?: number;
+            /**
+             * Format: int64
              * @description Default 50.
              */
             size?: number;
@@ -1802,14 +1826,21 @@ export interface components {
              * @example /api/schemas/Query.json
              */
             readonly $schema?: string;
+            /** @description Counts to return over every match: tags, collections, targets, sources. */
+            facets?: string[] | null;
             /** @description Card data keys to return per hit, plus avatar. Default: name. */
             fields?: string[] | null;
             filter?: components["schemas"]["Filter"];
-            /** @description Extra data per hit: tags, lorebooks. */
+            /** @description Extra data per hit: tags, lorebooks, targets. */
             include?: string[] | null;
             page?: components["schemas"]["Page"];
             /** @description Not available yet: needs an embedding enricher. */
             semantic?: boolean;
+            /**
+             * @description Default: relevance with text, newest first without.
+             * @enum {string}
+             */
+            sort?: "relevance" | "updated" | "name" | "created";
             /** @description Only library for now. */
             sources?: string[] | null;
             /** @description Words to match in name, description, personality, scenario, creator notes, and first message. Supports "quoted phrases", or, and -excluded words. */
@@ -1845,8 +1876,14 @@ export interface components {
              * @example /api/schemas/Results.json
              */
             readonly $schema?: string;
+            facets?: components["schemas"]["Facets"];
             hits: components["schemas"]["Hit"][] | null;
             next_cursor?: string;
+            /**
+             * Format: int64
+             * @description How many cards match.
+             */
+            total: number;
         };
         RevisionOut: {
             /**
@@ -1895,6 +1932,11 @@ export interface components {
             ref: string;
             url?: string;
         };
+        SourceCount: {
+            /** Format: int64 */
+            cards: number;
+            kind: string;
+        };
         TagCount: {
             /** Format: int64 */
             cards: number;
@@ -1908,6 +1950,13 @@ export interface components {
              */
             readonly $schema?: string;
             tags: string[] | null;
+        };
+        TargetCount: {
+            /** Format: int64 */
+            cards: number;
+            /** Format: int64 */
+            instance: number;
+            is: string;
         };
         TargetState: {
             /**
@@ -2341,7 +2390,10 @@ export interface operations {
     };
     "get-blob": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Return a JPEG of an image this many pixels wide: 160, 320, or 640. */
+                w?: number;
+            };
             header?: never;
             path: {
                 sha256: string;

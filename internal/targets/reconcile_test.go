@@ -38,24 +38,34 @@ func (e *env) libCard(data map[string]any) int64 {
 // reconcile reconciles the app's cards in remoteIDs with params p.
 func (e *env) reconcile(p ReconcileParams, remoteIDs ...string) map[string]ReconcileItem {
 	e.t.Helper()
+	out, err := e.tryReconcile(p, remoteIDs...)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return out
+}
+
+func (e *env) tryReconcile(p ReconcileParams, remoteIDs ...string) (map[string]ReconcileItem, error) {
+	e.t.Helper()
 	p, err := p.withDefaults()
 	if err != nil {
-		e.t.Fatal(err)
+		return nil, err
 	}
-	inst, info, err := e.s.describe(e.ctx, e.inst)
+	inst, info, err := e.s.describeReconcile(e.ctx, cardKind, e.inst)
 	if err != nil {
-		e.t.Fatal(err)
+		return nil, err
 	}
-	info = reconcileInfo(info)
 	idx, err := e.s.loadIndex(e.ctx, cardKind, inst, info)
 	if err != nil {
-		e.t.Fatal(err)
+		return nil, err
 	}
 	out := map[string]ReconcileItem{}
 	for _, id := range remoteIDs {
-		out[id] = e.s.reconcileItem(e.ctx, cardKind, inst, info, idx, p, id)
+		if out[id], err = e.s.reconcileItem(e.ctx, cardKind, inst, info, idx, p, id); err != nil {
+			return nil, err
+		}
 	}
-	return out
+	return out, nil
 }
 
 func ids(cs []Candidate) []int64 {
@@ -288,5 +298,68 @@ func TestReconcileEmptyNames(t *testing.T) {
 		if it.Verdict != VerdictNew {
 			t.Errorf("%s = %+v; card %d has an empty name too", id, it, c.ID)
 		}
+	}
+}
+
+func (e *env) blobCount() int {
+	e.t.Helper()
+	var n int
+	if err := e.pool.QueryRow(e.ctx, `SELECT count(*) FROM blob`).Scan(&n); err != nil {
+		e.t.Fatal(err)
+	}
+	return n
+}
+
+func TestReconcileBoundSkipsAvatar(t *testing.T) {
+	e := setup(t, nil)
+	bound := e.push(e.card)
+	app := e.remote(bound.RemoteID)
+	app["avatar"] = patternPNG(t, func(x, y int) uint8 { return uint8(x * y) })
+	e.writeRemote(bound.RemoteID, app)
+	before := e.blobCount()
+	if it := e.reconcile(ReconcileParams{}, bound.RemoteID)[bound.RemoteID]; it.Verdict != VerdictBound {
+		t.Fatalf("item = %+v", it)
+	}
+	if n := e.blobCount(); n != before {
+		t.Errorf("blobs %d -> %d: a bound item's avatar was fetched", before, n)
+	}
+}
+
+func TestReconcileAvatarIngestFailure(t *testing.T) {
+	e := setup(t, nil)
+	stripes := patternPNG(t, func(x, _ int) uint8 { return uint8(x / 8 % 2 * 255) })
+	e.setAvatar(e.card, stripes)
+	e.appCard("pic", map[string]any{"name": "Brakka", "description": "A pirate queen who never smiles."},
+		map[string]any{"avatar": stripes})
+	// A file where the blob store stages uploads makes every ingest fail.
+	shaPath, err := e.lib.BlobPath(strings.Repeat("0", 64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Dir(filepath.Dir(filepath.Dir(shaPath)))
+	if err := os.RemoveAll(filepath.Join(root, "staging")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "staging"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	it := e.reconcile(ReconcileParams{}, "pic")["pic"]
+	if it.Verdict != VerdictLikely || len(it.Candidates) != 1 {
+		t.Fatalf("item = %+v", it)
+	}
+	if r := it.Candidates[0].Reasons; len(r) != 1 || r["name"] != 0 {
+		t.Errorf("reasons = %v, want name only", r)
+	}
+}
+
+func TestReconcileLibraryErrorFailsRun(t *testing.T) {
+	e := setup(t, nil)
+	e.appCard("src", map[string]any{"name": "Vyr", "description": "A dragon.",
+		"extensions": map[string]any{"chub": map[string]any{"full_path": "someone/vyr"}}}, nil)
+	if _, err := e.pool.Exec(e.ctx, `ALTER TABLE card_source RENAME TO card_source_gone`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.tryReconcile(ReconcileParams{}, "src"); err == nil {
+		t.Fatal("a failed source lookup didn't fail the run")
 	}
 }

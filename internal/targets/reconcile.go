@@ -109,13 +109,15 @@ type Option struct {
 	Why    string `json:"why,omitempty"`
 }
 
-// reconcileInfo is info with character_book left out of the card fields, so
-// a target that embeds lorebooks still matches exactly.
+// describeReconcile resolves an instance that can pull, with character_book
+// left out of the card fields so a target that embeds lorebooks still matches
+// exactly. Reconcile reads info only through here.
 // ponytail: embedded books aren't compared; split them out and reconcile
 // them as lorebook items if that matters.
-func reconcileInfo(info protocol.TargetInfo) protocol.TargetInfo {
+func (s *Service) describeReconcile(ctx context.Context, k kind, instanceID int64) (pluginhost.Instance, protocol.TargetInfo, error) {
+	inst, info, err := s.describePull(ctx, k, instanceID)
 	info.Fields = slices.DeleteFunc(slices.Clone(info.Fields), func(f string) bool { return f == "character_book" })
-	return info
+	return inst, info, err
 }
 
 // appItem is an app item as reconcile reads it.
@@ -125,8 +127,10 @@ type appItem struct {
 	simhash, phash *int64
 }
 
-// readItem reads an app item, its avatar into the blob store for its phash.
-func (s *Service) readItem(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo, remoteID string) (appItem, error) {
+// readItem reads an app item and, with avatar, moves the avatar into the blob
+// store for its phash.
+func (s *Service) readItem(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo, remoteID string,
+	avatar bool) (appItem, error) {
 	var it appItem
 	var err error
 	if k.isLorebook() {
@@ -134,7 +138,7 @@ func (s *Service) readItem(ctx context.Context, k kind, inst pluginhost.Instance
 			return it, err
 		}
 	} else {
-		got, err := s.getCard(ctx, inst, protocol.TargetGetParams{RemoteID: remoteID, Avatar: true})
+		got, err := s.getCard(ctx, inst, protocol.TargetGetParams{RemoteID: remoteID, Avatar: avatar})
 		if err != nil {
 			return it, err
 		}
@@ -142,11 +146,12 @@ func (s *Service) readItem(ctx context.Context, k kind, inst pluginhost.Instance
 			return it, err
 		}
 		if got.Avatar != "" {
-			b, err := s.lib.IngestBlob(ctx, got.Avatar)
-			if err != nil {
-				return it, fmt.Errorf("avatar: %w", err)
+			// One bad image only costs the item its avatar signal.
+			if b, err := s.lib.IngestBlob(ctx, got.Avatar); err != nil {
+				s.log.Warn("reconcile: avatar not stored", "remote_id", remoteID, "err", err)
+			} else {
+				it.phash = b.AvatarPhash
 			}
-			it.phash = b.AvatarPhash
 		}
 	}
 	if it.data, it.hash, err = Project(it.raw, k.fields(info)); err != nil {
@@ -161,16 +166,16 @@ func (s *Service) readItem(ctx context.Context, k kind, inst pluginhost.Instance
 	return it, err
 }
 
-// reconcileItem gives one app item its verdict and candidates. info must
-// come from reconcileInfo, as for the index. Options and the suggestion are
-// left for the caller.
+// reconcileItem gives one app item its verdict and candidates. An item the
+// app can't give back is an error item; a library failure fails the run.
 func (s *Service) reconcileItem(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo,
-	idx index, p ReconcileParams, remoteID string) ReconcileItem {
+	idx index, p ReconcileParams, remoteID string) (ReconcileItem, error) {
 	item := ReconcileItem{RemoteID: remoteID}
-	it, err := s.readItem(ctx, k, inst, info, remoteID)
+	b, bound := idx.byRemote[remoteID]
+	it, err := s.readItem(ctx, k, inst, info, remoteID, !bound)
 	if err != nil {
 		item.Verdict, item.Error = VerdictError, err.Error()
-		return item
+		return item, nil
 	}
 	item.Name, item.AppHash = it.name, it.hash
 	candidate := func(e indexEntry, reasons map[string]int) Candidate {
@@ -180,14 +185,15 @@ func (s *Service) reconcileItem(ctx context.Context, k kind, inst pluginhost.Ins
 		}
 		return c
 	}
-	if b, ok := idx.byRemote[remoteID]; ok {
+	if bound {
 		item.Verdict, item.BindingID = VerdictBound, b.id
+		// An archived bound card isn't in the index, so it gets no candidate.
 		for _, e := range idx.entries {
 			if e.id == b.entityID {
 				item.Candidates = []Candidate{candidate(e, map[string]int{})}
 			}
 		}
-		return item
+		return item, nil
 	}
 	for _, e := range idx.entries {
 		if e.hash == it.hash {
@@ -196,15 +202,14 @@ func (s *Service) reconcileItem(ctx context.Context, k kind, inst pluginhost.Ins
 	}
 	if item.Candidates != nil {
 		item.Verdict = VerdictExact
-		return item
+		return item, nil
 	}
 
 	sourced := map[int64]bool{}
 	for _, src := range library.Detect(it.raw, k.isLorebook()) {
 		ids, err := k.entities(s.lib).BySource(ctx, src.Kind, src.Ref)
 		if err != nil {
-			item.Verdict, item.Error = VerdictError, err.Error()
-			return item
+			return item, err
 		}
 		for _, id := range ids {
 			sourced[id] = true
@@ -235,10 +240,11 @@ func (s *Service) reconcileItem(ctx context.Context, k kind, inst pluginhost.Ins
 	}
 	if item.Candidates == nil {
 		item.Verdict = VerdictNew
-		return item
+		return item, nil
 	}
 	item.Verdict = VerdictLikely
-	slices.SortFunc(item.Candidates, func(a, b Candidate) int {
+	// Stable over the index's ID order, so full ties rank by ID.
+	slices.SortStableFunc(item.Candidates, func(a, b Candidate) int {
 		_, as := a.Reasons["source"]
 		_, bs := b.Reasons["source"]
 		if as != bs {
@@ -247,10 +253,9 @@ func (s *Service) reconcileItem(ctx context.Context, k kind, inst pluginhost.Ins
 			}
 			return 1
 		}
-		return cmp.Or(cmp.Compare(len(b.Reasons), len(a.Reasons)), cmp.Compare(total(a.Reasons), total(b.Reasons)),
-			cmp.Compare(a.CardID, b.CardID))
+		return cmp.Or(cmp.Compare(len(b.Reasons), len(a.Reasons)), cmp.Compare(total(a.Reasons), total(b.Reasons)))
 	})
-	return item
+	return item, nil
 }
 
 func total(reasons map[string]int) int {

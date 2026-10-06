@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router";
-import { api, ApiError, must, thumb } from "../api/client";
+import { api, ApiError, must, route, thumb, type Kind } from "../api/client";
 import type { components } from "../api/schema";
 import { useToast } from "../shell/Toasts";
 import { show } from "./draft";
@@ -27,15 +27,15 @@ export function Hunks({ field }: { field: Field }) {
   );
 }
 
-/** History lists a card's revisions and diffs the chosen one against the one before it or the head. */
-export function History() {
+/** History lists a card's or lorebook's revisions and diffs the chosen one against the one before it or the head. */
+export function History({ kind = "card" }: { kind?: Kind }) {
   const id = Number(useParams().id);
   const [params, setParams] = useSearchParams();
   const qc = useQueryClient();
   const toast = useToast();
   const revs = useQuery({
-    queryKey: ["card", id, "revisions"],
-    queryFn: async () => must(await api.GET("/cards/{id}/revisions", { params: { path: { id } } })),
+    queryKey: [kind, id, "revisions"],
+    queryFn: async () => must(await api.GET(route(kind, "/cards/{id}/revisions"), { params: { path: { id } } })),
   });
   const list = revs.data ?? [];
   // Revisions list newest first, so the head is first.
@@ -46,27 +46,27 @@ export function History() {
   const [from, to] = vsHead ? [rev, head] : [list[at + 1], rev];
 
   const diff = useQuery({
-    queryKey: ["card", id, "compare", from?.id, to?.id],
+    queryKey: [kind, id, "compare", from?.id, to?.id],
     enabled: !!from && !!to && from.id !== to.id,
     queryFn: async () =>
       must(
-        await api.GET("/cards/{id}/revisions/{revision_id}/compare/{other_id}", {
+        await api.GET(route(kind, "/cards/{id}/revisions/{revision_id}/compare/{other_id}"), {
           params: { path: { id, revision_id: from!.id, other_id: to!.id } },
         }),
       ),
   });
   const restore = useMutation({
     mutationFn: async (r: { id: number; base: number }) =>
-      must(await api.POST("/cards/{id}/restore", { params: { path: { id } }, body: { revision_id: r.id, base_revision_id: r.base, source: "ui" } })),
+      must(await api.POST(route(kind, "/cards/{id}/restore"), { params: { path: { id } }, body: { revision_id: r.id, base_revision_id: r.base, source: "ui" } })),
     onSuccess: (_, r) => {
-      void qc.invalidateQueries({ queryKey: ["card", id] });
+      void qc.invalidateQueries({ queryKey: [kind, id] });
       setParams({});
       toast({ text: `Restored revision ${r.id}` });
     },
     onError: (e) => {
-      void qc.invalidateQueries({ queryKey: ["card", id, "revisions"] });
+      void qc.invalidateQueries({ queryKey: [kind, id, "revisions"] });
       const stale = e instanceof ApiError && e.status === 409;
-      toast({ text: stale ? "The card changed since you opened this page. Check the new head, then restore again." : e.message, error: true });
+      toast({ text: stale ? `The ${kind} changed since you opened this page. Check the new head, then restore again.` : e.message, error: true });
     },
   });
 
@@ -77,7 +77,7 @@ export function History() {
   return (
     <div className="history">
       <nav className="card-aside" aria-label="Revisions">
-        <Link to={`/cards/${id}`}>← Back to card</Link>
+        <Link to={`/${kind}s/${id}`}>← Back to {kind}</Link>
         <ol className="plain">
           {list.map((r) => (
             <li key={r.id}>

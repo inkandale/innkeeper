@@ -1,7 +1,7 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
-import { api, must, mustOk, thumb, upload } from "../api/client";
+import { api, must, mustOk, route, thumb, upload, type Kind } from "../api/client";
 import { badgeClass } from "../cards/Tile";
 import { useToast } from "../shell/Toasts";
 import type { Entity } from "./Card";
@@ -39,26 +39,27 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
         <a className="button" href={`/api/cards/${card.id}/export?format=png`} download>
           Export PNG
         </a>
-        <Archive card={card} />
+        <Archive kind="card" entity={card} />
       </div>
-      <Push id={card.id} dirty={dirty} />
+      <Push kind="card" id={card.id} dirty={dirty} />
       <Tags id={card.id} tags={card.tags ?? []} />
       <Collections id={card.id} member={card.collections ?? []} />
-      <Sources id={card.id} />
-      <Sync id={card.id} />
+      <Sources kind="card" id={card.id} />
+      <Sync kind="card" id={card.id} />
       <Lorebooks ids={card.lorebooks ?? []} />
-      <Revisions id={card.id} />
+      <Revisions kind="card" id={card.id} />
     </aside>
   );
 }
 
-function Archive({ card }: { card: Entity }) {
+export function Archive({ kind, entity }: { kind: Kind; entity: Entity }) {
   const qc = useQueryClient();
   const toast = useToast();
-  const archived = !!card.archived_at;
+  const archived = !!entity.archived_at;
   const set = useMutation({
-    mutationFn: async () => mustOk(await api.PUT("/cards/{id}/archived", { params: { path: { id: card.id } }, body: { archived: !archived } })),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["card", card.id] }),
+    mutationFn: async () =>
+      mustOk(await api.PUT(route(kind, "/cards/{id}/archived"), { params: { path: { id: entity.id } }, body: { archived: !archived } })),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: [kind, entity.id] }),
     onError: (e) => toast({ text: e.message, error: true }),
   });
   return (
@@ -69,7 +70,7 @@ function Archive({ card }: { card: Entity }) {
 }
 
 // Push sends the saved head, so it waits for unsaved edits to be saved.
-function Push({ id, dirty }: { id: number; dirty: boolean }) {
+export function Push({ kind, id, dirty }: { kind: Kind; id: number; dirty: boolean }) {
   const toast = useToast();
   const [instance, setInstance] = useState<number>();
   const instances = useQuery({ queryKey: ["instances"], queryFn: async () => must(await api.GET("/instances")) });
@@ -78,7 +79,7 @@ function Push({ id, dirty }: { id: number; dirty: boolean }) {
   const targets = (instances.data ?? []).filter((i) => pushers.has(i.plugin));
   const instanceId = instance ?? targets[0]?.id ?? 0;
   const push = useMutation({
-    mutationFn: async () => must(await api.POST("/cards/{id}/push", { params: { path: { id } }, body: { instance_id: instanceId } })),
+    mutationFn: async () => must(await api.POST(route(kind, "/cards/{id}/push"), { params: { path: { id } }, body: { instance_id: instanceId } })),
     onSuccess: (j) => toast({ text: `Job ${j.id} started`, link: { to: `/settings/jobs/${j.id}`, label: "View job" } }),
     onError: (e) => toast({ text: e.message, error: true }),
   });
@@ -99,10 +100,10 @@ function Push({ id, dirty }: { id: number; dirty: boolean }) {
   );
 }
 
-function Sync({ id }: { id: number }) {
+export function Sync({ kind, id }: { kind: Kind; id: number }) {
   const bindings = useQuery({
-    queryKey: ["card", id, "bindings"],
-    queryFn: async () => must(await api.GET("/cards/{id}/bindings", { params: { path: { id } } })),
+    queryKey: [kind, id, "bindings"],
+    queryFn: async () => must(await api.GET(route(kind, "/cards/{id}/bindings"), { params: { path: { id } } })),
   });
   const instances = useQuery({ queryKey: ["instances"], queryFn: async () => must(await api.GET("/instances")) });
   const name = (n: number) => instances.data?.find((i) => i.id === n)?.name ?? `#${n}`;
@@ -143,10 +144,10 @@ function Lorebooks({ ids }: { ids: number[] }) {
   );
 }
 
-function Revisions({ id }: { id: number }) {
+export function Revisions({ kind, id }: { kind: Kind; id: number }) {
   const revs = useQuery({
-    queryKey: ["card", id, "revisions"],
-    queryFn: async () => must(await api.GET("/cards/{id}/revisions", { params: { path: { id } } })),
+    queryKey: [kind, id, "revisions"],
+    queryFn: async () => must(await api.GET(route(kind, "/cards/{id}/revisions"), { params: { path: { id } } })),
   });
   return (
     <section>
@@ -154,12 +155,12 @@ function Revisions({ id }: { id: number }) {
       <ul className="plain">
         {(revs.data ?? []).slice(0, 5).map((r) => (
           <li key={r.id}>
-            <Link to={`/cards/${id}/history?rev=${r.id}`}>{r.message || `Revision ${r.id}`}</Link>{" "}
+            <Link to={`/${kind}s/${id}/history?rev=${r.id}`}>{r.message || `Revision ${r.id}`}</Link>{" "}
             <span className="muted">{new Date(r.created_at).toLocaleDateString()}</span>
           </li>
         ))}
       </ul>
-      <Link to={`/cards/${id}/history`}>All history</Link>
+      <Link to={`/${kind}s/${id}/history`}>All history</Link>
     </section>
   );
 }

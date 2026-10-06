@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, must, mustOk } from "../api/client";
+import { api, must, mustOk, route, type Kind } from "../api/client";
 import { useToast } from "../shell/Toasts";
 
 // These save on change: tags, collections, and sources aren't part of a revision.
@@ -78,19 +78,19 @@ export function Collections({ id, member }: { id: number; member: number[] }) {
   );
 }
 
-/** Sources lists the sites a card was published on, with remove and add by URL. */
-export function Sources({ id }: { id: number }) {
+/** Sources lists the sites a card or lorebook was published on, with remove and add by URL. */
+export function Sources({ kind, id }: { kind: Kind; id: number }) {
   const qc = useQueryClient();
   const toast = useToast();
   const [url, setUrl] = useState("");
   const list = useQuery({
-    queryKey: ["card", id, "sources"],
-    queryFn: async () => must(await api.GET("/cards/{id}/sources", { params: { path: { id } } })),
+    queryKey: [kind, id, "sources"],
+    queryFn: async () => must(await api.GET(route(kind, "/cards/{id}/sources"), { params: { path: { id } } })),
   });
-  const done = () => void qc.invalidateQueries({ queryKey: ["card", id, "sources"] });
+  const done = () => void qc.invalidateQueries({ queryKey: [kind, id, "sources"] });
   const fail = (e: Error) => toast({ text: e.message, error: true });
   const add = useMutation({
-    mutationFn: async (u: string) => must(await api.PUT("/cards/{id}/sources", { params: { path: { id } }, body: { url: u } })),
+    mutationFn: async (u: string) => must(await api.PUT(route(kind, "/cards/{id}/sources"), { params: { path: { id } }, body: { url: u } })),
     onSuccess: () => {
       setUrl("");
       done();
@@ -99,7 +99,7 @@ export function Sources({ id }: { id: number }) {
   });
   const remove = useMutation({
     mutationFn: async (sourceId: number) =>
-      mustOk(await api.DELETE("/cards/{id}/sources/{source_id}", { params: { path: { id, source_id: sourceId } } })),
+      mustOk(await api.DELETE(route(kind, "/cards/{id}/sources/{source_id}"), { params: { path: { id, source_id: sourceId } } })),
     onSuccess: done,
     onError: fail,
   });

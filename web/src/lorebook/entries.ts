@@ -1,8 +1,10 @@
 export type Entry = Record<string, unknown>;
 
+/** isEntry says whether v is an entry object. */
+export const isEntry = (v: unknown): v is Entry => typeof v === "object" && v !== null && !Array.isArray(v);
+
 /** asEntries returns the entry objects in v, or none. */
-export const asEntries = (v: unknown): Entry[] =>
-  Array.isArray(v) ? v.filter((e): e is Entry => typeof e === "object" && e !== null && !Array.isArray(e)) : [];
+export const asEntries = (v: unknown): Entry[] => (Array.isArray(v) ? v.filter(isEntry) : []);
 
 /** strings returns the strings in v, or none. */
 export const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : []);

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { text, tokens, type Data } from "../card/draft";
 import { ChipInput } from "./ChipInput";
-import { asEntries, blankEntry, firstLine, matches, moved, strings, type Entry } from "./entries";
+import { asEntries, blankEntry, firstLine, isEntry, matches, moved, strings, type Entry } from "./entries";
 
 let lastUid = 0;
 const uid = () => ++lastUid;
@@ -10,7 +10,8 @@ const ext = (e: Entry) => (typeof e.extensions === "object" && e.extensions !== 
 
 /** Entries edits a lorebook's entries: a filter, then one collapsible row per entry. */
 export function Entries({ data, base, edit }: { data: Data; base: Data; edit: (key: string, value: unknown) => void }) {
-  const list = asEntries(data.entries);
+  // Non-object items in imported data aren't shown, but stay in place on save.
+  const list: unknown[] = Array.isArray(data.entries) ? data.entries : [];
   const saved = new Set(asEntries(base.entries).map((e) => JSON.stringify(e)));
   // Client-side IDs follow each entry through moves, so keys and open rows stay with it.
   const [uids, setUids] = useState<number[]>(() => list.map(uid));
@@ -20,11 +21,11 @@ export function Entries({ data, base, edit }: { data: Data; base: Data; edit: (k
   const [opened, setOpened] = useState<number>();
   const [dragging, setDragging] = useState<number>();
 
-  const set = (next: Entry[], nextUids: number[]) => {
+  const set = (next: unknown[], nextUids: number[]) => {
     setUids(nextUids);
     edit("entries", next);
   };
-  const update = (i: number, patch: Entry) => set(list.map((e, j) => (j === i ? { ...e, ...patch } : e)), uids);
+  const update = (i: number, patch: Entry) => set(list.map((e, j) => (j === i && isEntry(e) ? { ...e, ...patch } : e)), uids);
   const move = (from: number, to: number) => set(moved(list, from, to), moved(uids, from, to));
   const remove = (i: number) => set(list.filter((_, j) => j !== i), uids.filter((_, j) => j !== i));
   const add = () => {
@@ -42,7 +43,7 @@ export function Entries({ data, base, edit }: { data: Data; base: Data; edit: (k
         </button>
       </div>
       {list.map((e, i) => {
-        if (!matches(e, filter)) return null;
+        if (!isEntry(e) || !matches(e, filter)) return null;
         const n = i + 1;
         const unsaved = !saved.has(JSON.stringify(e));
         return (
@@ -50,15 +51,15 @@ export function Entries({ data, base, edit }: { data: Data; base: Data; edit: (k
             key={uids[i]}
             className={unsaved ? "field entry dirty" : "field entry"}
             open={uids[i] === opened || undefined}
-            draggable
-            onDragStart={() => setDragging(i)}
             onDragOver={(ev) => ev.preventDefault()}
-            onDrop={() => {
+            onDrop={(ev) => {
+              ev.preventDefault();
               if (dragging !== undefined && dragging !== i) move(dragging, i);
               setDragging(undefined);
             }}
           >
-            <summary>
+            {/* Only the summary drags, so selecting or dragging text in the fields doesn't move the entry. */}
+            <summary draggable onDragStart={() => setDragging(i)} onDragEnd={() => setDragging(undefined)}>
               <strong>{strings(e.keys).join(", ") || "(no keys)"}</strong>
               <span className="muted">{firstLine(e)}</span>
               {unsaved && <span className="unsaved">unsaved</span>}
@@ -90,7 +91,10 @@ export function Entries({ data, base, edit }: { data: Data; base: Data; edit: (k
                 <label>
                   Depth{" "}
                   <input className="input num" type="number" min={0} aria-label={`Entry ${n} depth`} value={num(ext(e).depth)}
-                    onChange={(ev) => update(i, { extensions: { ...ext(e), depth: Number(ev.target.value) } })} />
+                    onChange={(ev) => {
+                      const { depth: _, ...rest } = ext(e);
+                      update(i, { extensions: ev.target.value === "" ? rest : { ...rest, depth: Number(ev.target.value) } });
+                    }} />
                 </label>
               </div>
               <div className="row">

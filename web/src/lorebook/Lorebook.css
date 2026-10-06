@@ -17,7 +17,7 @@
   min-width: 0;
 }
 
-.entry[draggable="true"] summary {
+.entry summary[draggable="true"] {
   cursor: grab;
 }
 

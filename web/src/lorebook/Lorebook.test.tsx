@@ -102,3 +102,19 @@ test("the panel links to history", async () => {
   renderAt("/lorebooks/3");
   expect(await screen.findByRole("link", { name: "All history" })).toHaveAttribute("href", "/lorebooks/3/history");
 });
+
+test("saving keeps entries that aren't objects, and a cleared depth removes the key", async () => {
+  head = { ...entity, revision: { ...entity.revision, data: { ...data, entries: [anvil, bellows, "stray" as never] } } };
+  renderAt("/lorebooks/3");
+  await userEvent.clear(await screen.findByLabelText("Entry 2 depth"));
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(puts).toHaveLength(1));
+  expect(puts[0]?.body.data.entries).toEqual([anvil, { ...bellows, extensions: {} }, "stray"]);
+});
+
+test("only the row's summary starts a drag", async () => {
+  renderAt("/lorebooks/3");
+  const content = await screen.findByLabelText("Entry 1 content");
+  expect(content.closest("[draggable='true']")).toBeNull();
+  expect(document.querySelectorAll("summary[draggable='true']")).toHaveLength(2);
+});

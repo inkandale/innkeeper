@@ -135,6 +135,8 @@ type appItem struct {
 	avatar string
 	// links are a character's world books in the app, for a standalone target.
 	links []string
+	// avatarErr is why the app's avatar couldn't be stored; avatar and phash are then empty.
+	avatarErr error
 }
 
 // readItem reads an app item and, with avatar, moves the avatar into the blob
@@ -157,9 +159,8 @@ func (s *Service) readItem(ctx context.Context, k kind, inst pluginhost.Instance
 		}
 		it.links = got.LorebookRemoteIDs
 		if got.Avatar != "" {
-			// One bad image only costs the item its avatar signal.
 			if b, err := s.lib.IngestBlob(ctx, got.Avatar); err != nil {
-				s.log.Warn("reconcile: avatar not stored", "remote_id", remoteID, "err", err)
+				it.avatarErr = err
 			} else {
 				it.avatar, it.phash = b.SHA256, b.AvatarPhash
 			}
@@ -299,6 +300,10 @@ func (s *Service) verdict(ctx context.Context, k kind, inst pluginhost.Instance,
 	if err != nil {
 		item.Verdict, item.Error = VerdictError, err.Error()
 		return item, it, nil
+	}
+	if it.avatarErr != nil {
+		// One bad image only costs the item its avatar signal.
+		s.log.Warn("reconcile: avatar not stored", "remote_id", remoteID, "err", it.avatarErr)
 	}
 	item.Name, item.AppHash = it.name, it.hash
 	candidate := func(e indexEntry, reasons map[string]int) Candidate {

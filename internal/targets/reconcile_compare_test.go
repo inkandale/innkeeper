@@ -131,3 +131,14 @@ func TestCompareLorebookItem(t *testing.T) {
 		t.Errorf("lorebook hunks = %v", statuses(c.Fields))
 	}
 }
+
+func TestCompareItemAvatarFailure(t *testing.T) {
+	e := setup(t, nil)
+	e.appCard("pic", map[string]any{"name": "Brakka", "description": "A dwarf smith."},
+		map[string]any{"avatar": patternPNG(t, func(x, y int) uint8 { return uint8(x + y) })})
+	e.breakBlobStore()
+	// Resolve trusts this comparison, so an avatar it couldn't read is an error.
+	if _, err := e.s.CompareItem(e.ctx, e.inst, "pic", e.card); err == nil {
+		t.Error("compare ignored a failed avatar ingest")
+	}
+}

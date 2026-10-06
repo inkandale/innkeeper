@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 
@@ -83,6 +84,10 @@ func (s *Service) compareItem(ctx context.Context, k kind, instanceID int64, rem
 	it, err := s.readItem(ctx, k, inst, info, remoteID, true)
 	if err != nil {
 		return c, err
+	}
+	if it.avatarErr != nil {
+		// Resolve trusts this comparison, so a hidden avatar difference is worse than an error.
+		return c, fmt.Errorf("app avatar: %w", it.avatarErr)
 	}
 	c.AppHash = it.hash
 	if c.Fields, err = compare(k, info, lib.data, it.data, accepted); err != nil {

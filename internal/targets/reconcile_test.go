@@ -326,24 +326,30 @@ func TestReconcileBoundSkipsAvatar(t *testing.T) {
 	}
 }
 
+// breakBlobStore puts a file where the blob store stages uploads, so every
+// ingest fails.
+func (e *env) breakBlobStore() {
+	e.t.Helper()
+	shaPath, err := e.lib.BlobPath(strings.Repeat("0", 64))
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	root := filepath.Dir(filepath.Dir(filepath.Dir(shaPath)))
+	if err := os.RemoveAll(filepath.Join(root, "staging")); err != nil {
+		e.t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "staging"), nil, 0o644); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
 func TestReconcileAvatarIngestFailure(t *testing.T) {
 	e := setup(t, nil)
 	stripes := patternPNG(t, func(x, _ int) uint8 { return uint8(x / 8 % 2 * 255) })
 	e.setAvatar(e.card, stripes)
 	e.appCard("pic", map[string]any{"name": "Brakka", "description": "A pirate queen who never smiles."},
 		map[string]any{"avatar": stripes})
-	// A file where the blob store stages uploads makes every ingest fail.
-	shaPath, err := e.lib.BlobPath(strings.Repeat("0", 64))
-	if err != nil {
-		t.Fatal(err)
-	}
-	root := filepath.Dir(filepath.Dir(filepath.Dir(shaPath)))
-	if err := os.RemoveAll(filepath.Join(root, "staging")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "staging"), nil, 0o644); err != nil {
-		t.Fatal(err)
-	}
+	e.breakBlobStore()
 	it := e.reconcile(ReconcileParams{}, "pic")["pic"]
 	if it.Verdict != VerdictLikely || len(it.Candidates) != 1 {
 		t.Fatalf("item = %+v", it)

@@ -49,7 +49,7 @@ var chub = detector{
 		return s, true
 	},
 	fromURL: func(u *url.URL) (Source, bool) {
-		if (u.Scheme != "http" && u.Scheme != "https") || !strings.EqualFold(u.Hostname(), "chub.ai") && !strings.EqualFold(u.Hostname(), "www.chub.ai") {
+		if (u.Scheme != "http" && u.Scheme != "https") || (!strings.EqualFold(u.Hostname(), "chub.ai") && !strings.EqualFold(u.Hostname(), "www.chub.ai")) {
 			return Source{}, false
 		}
 		dir, ref, ok := strings.Cut(strings.Trim(u.Path, "/"), "/")
@@ -67,7 +67,7 @@ func chubSource(dir, ref string) (Source, bool) {
 		return Source{}, false
 	}
 	for i, p := range parts {
-		if p == "" || p == "." || p == ".." || strings.ContainsAny(p, "?#\\") || strings.IndexFunc(p, unicode.IsSpace) >= 0 {
+		if p == "" || p == "." || p == ".." || strings.ContainsAny(p, "?#\\") || strings.IndexFunc(p, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0 {
 			return Source{}, false
 		}
 		parts[i] = url.PathEscape(p)

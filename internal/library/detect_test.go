@@ -25,6 +25,8 @@ func TestDetect(t *testing.T) {
 		{"query", `{"extensions":{"chub":{"full_path":"a/b?x=1"}}}`, false, nil},
 		{"three segments", `{"extensions":{"chub":{"full_path":"a/b/c"}}}`, false, nil},
 		{"one segment", `{"extensions":{"chub":{"full_path":"a"}}}`, false, nil},
+		{"nul", "{\"extensions\":{\"chub\":{\"full_path\":\"a/b\\u0000\"}}}", false, nil},
+		{"nbsp", "{\"extensions\":{\"chub\":{\"full_path\":\"a/b\u00a0c\"}}}", false, nil},
 		{"not json", `nope`, false, nil},
 	}
 	for _, tt := range tests {
@@ -62,7 +64,7 @@ func TestParseSourceURL(t *testing.T) {
 	}
 	for _, u := range []string{"https://example.com/x", "https://chub.ai/characters/onlyone", "https://chub.ai/characters/a/b/c", "not a url",
 		"https://chub.ai.evil.com/characters/a/b", "https://evilchub.ai/characters/a/b", "https://chub.ai@evil.com/characters/a/b",
-		"ftp://chub.ai/characters/a/b", "https://chub.ai/characters/../b", "https://chub.ai/characters/a/%20b", "https://chub.ai/characters/a/b%3Fx", "https://chub.ai/characters/a/%5Cb"} {
+		"ftp://chub.ai/characters/a/b", "https://chub.ai/characters/../b", "https://chub.ai/characters/%2e%2e/b", "https://chub.ai/characters/a%2Fb/c", "https://chub.ai/characters/a/b%00", "https://chub.ai/characters/a/b%C2%A0c", "//chub.ai/characters/a/b", "https://chub.ai/characters/a/%20b", "https://chub.ai/characters/a/b%3Fx", "https://chub.ai/characters/a/%5Cb"} {
 		if _, err := ParseSourceURL(u); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s: got %v, want ErrInvalid", u, err)
 		}

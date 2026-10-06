@@ -30,19 +30,24 @@
   func (s *Service) EnqueueReconcile(ctx, q *jobs.Queue, p ReconcileParams) (jobs.Job, error)
   func (s *Service) RunReconcile(ctx, r *jobs.Run) error
   ```
-  The target must declare `pull`; otherwise `ErrUnsupported`, as import does.
+  The target must declare `pull`; otherwise `ErrCannot`, as import does. `describeReconcile` resolves the instance and drops `character_book` from the card fields; the job and `CompareItem` read the target's fields only through it.
 - **Comparing like with like.** An app stores only some fields, and `Compare` and hashes must see the same fields on both sides. The library side is the head revision rendered for this instance (`render`, override applied) and then projected to the target's fields with `Project`. The app side is `fetch`'s projected data. Exact means equal `cardhash.ContentHash` of those two.
-- **Library index.** Load every unarchived card's head once: ID, name, base data, `text_simhash`, avatar `avatar_phash`, and the instance's bindings. Precompute the projected hash for each. ponytail: in memory and pairwise, as the spec allows at library scale; move the distance search to SQL if a library outgrows it.
+- **Library index.** Load every unarchived card's head once: ID, name, projected data and hash, a text simhash of the projected data, avatar `avatar_phash`, and the instance's bindings. ponytail: in memory and pairwise, as the spec allows at library scale; move the distance search to SQL if a library outgrows it.
+- **Reused remote IDs.** An app can give a missing binding's remote ID to a new item. The live binding owns the ID; the old binding's card is in `missing`.
 - **Per item.**
-  1. `target.get` with `avatar: true`. A read error makes the item `error`, and the run continues.
-  2. Move the avatar into the blob store (`IngestBlob`) to get its phash. Blob GC removes it later if nothing references it.
-  3. `bound` if a binding on this instance has this remote ID: compare against the binding's `accepted_data` as ancestor.
+  1. `bound` if a binding on this instance has this remote ID: read the item without its avatar and compare against the binding's `accepted_data` as ancestor. A bound card that is archived isn't in the index, so it gets no candidate.
+  2. Otherwise `target.get` with `avatar: true`. A read error makes the item `error`, and the run continues.
+  3. Move the avatar into the blob store (`IngestBlob`) to get its phash. Blob GC removes it later if nothing references it. If storing it fails, the item loses only its avatar signal.
   4. Else `exact` for every card with the same projected hash.
-  5. Else `likely` for cards matched by source (`library.Detect` on the app data, then `BySource`), normalized name, `text_simhash` distance, or `avatar_phash` distance, within the run's settings. Sort: shared source first, then number of signals matched, then total distance, then card ID.
+  5. Else `likely` for cards matched by source (`library.Detect` on the app data, then `BySource`), normalized name, text simhash distance, or `avatar_phash` distance, within the run's settings. Sort: shared source first, then number of signals matched, then total distance, then card ID. Keep the top 10. A `BySource` error fails the run.
   6. Else `new`.
   A candidate already bound to another remote ID on this instance is kept, with `bound_to` set, so the owner can see the duplicate.
-- **Suggestion.** For the top `likely` candidate, run `merge.Compare` and count the core fields (`description`, `personality`, `scenario`, `first_mes`) with any non-`same` hunk: without an ancestor, added or removed text is `app_only` or `library_only`, not `conflict`. Fewer than `split_fields`: suggest `bind`; otherwise `import`, with the reason. `exact`: `bind`. `new`: `import`. `bound` with any non-`same` hunk: `bind`, to resolve the drift; `bound` with none: no suggestion.
-- **Lorebooks.** World books are reconciled with the same steps using lorebook data, `LorebookSimhash`, and `merge.Lorebook`, with no avatar signal. A world book in a character's `lorebook_remote_ids` is nested under that character. One linked by no character is a top-level item. Each world book is read once per run.
+- **Suggestion.** Each candidate is compared with `merge.Compare`; a field differs when it has any non-`same` hunk. Without an ancestor, added or removed text is `app_only` or `library_only`, not `conflict`.
+  - `exact`: `bind` to the first match not bound elsewhere; if all are, `skip`, because the app has a duplicate.
+  - `likely`: take the top candidate not bound elsewhere. Fewer than `split_fields` of its core fields (`description`, `personality`, `scenario`, `first_mes`) differ: `bind`; otherwise `import`, with the reason. Every candidate bound elsewhere: `import`.
+  - `new`: `import`.
+  - `bound` with any non-`same` hunk: `bind`, to resolve the drift; `bound` with none: no suggestion.
+- **Lorebooks.** World books are reconciled with the same steps using lorebook data, `LorebookSimhash`, and `merge.Lorebook`, with no avatar signal. A `likely` world book ignores `split_fields` and suggests `bind` to its top unbound candidate. A world book in a character's `lorebook_remote_ids` is nested under that character. One linked by no character is a top-level item. Each world book is read once per run.
 - **Snapshot**, the job's final progress:
   ```go
   type Snapshot struct {
@@ -79,7 +84,7 @@
   	Why    string `json:"why,omitempty"`
   }
   ```
-  While running, progress is `{"done": n, "total": m}`.
+  While running, progress is `{"done": n, "total": m}`; a failed run keeps that, never a partial snapshot. Job lists and the job stream show a finished snapshot as `{"totals": …}`.
 - **Comparing one pair, live.**
   ```go
   type Comparison struct {
@@ -107,39 +112,39 @@
 
 **Files:** `internal/targets/reconcile_index.go`, `internal/targets/reconcile_index_test.go`
 
-- [ ] Test, against the test database: two cards, one bound to the fake instance; the index has both with projected hashes equal to `ContentHash(Project(render(…)))`, the simhash, the phash, and the binding.
-- [ ] Implement `loadIndex(ctx, k kind, inst, info) (index, error)` and the name normalizer (`strings.Fields(strings.ToLower(…))` joined by one space). Commit: `feat(targets): index library heads for reconcile`.
+- [x] Test, against the test database: two cards, one bound to the fake instance; the index has both with projected hashes equal to `ContentHash(Project(render(…)))`, the simhash, the phash, and the binding.
+- [x] Implement `loadIndex(ctx, k kind, inst, info) (index, error)` and the name normalizer (`strings.Fields(strings.ToLower(…))` joined by one space). Commit: `feat(targets): index library heads for reconcile`.
 
 ### Task 2: Verdicts
 
 **Files:** `internal/targets/reconcile.go`, `internal/targets/reconcile_test.go`
 
-- [ ] Tests with the fake plugin, one per verdict: a bound item, an exact copy, a copy with one edited sentence and the same name (`likely`, reason `name`), a copy renamed but with the same text (`likely`, reason `text`), a copy with `extensions.chub` matching a library card's source (`likely`, ranked first), an unrelated card (`new`), an item the fake fails to read (`error`, the run still succeeds).
-- [ ] Test: `match.name: false` moves the name-only item to `new`; `text_distance: 0` moves the text-only item to `new`.
-- [ ] Test: a candidate bound to another remote ID has `bound_to`.
-- [ ] Implement per the design notes. Commit: `feat(targets): give every app item a reconcile verdict`.
+- [x] Tests with the fake plugin, one per verdict: a bound item, an exact copy, a copy with one edited sentence and the same name (`likely`, reason `name`), a copy renamed but with the same text (`likely`, reason `text`), a copy with `extensions.chub` matching a library card's source (`likely`, ranked first), an unrelated card (`new`), an item the fake fails to read (`error`, the run still succeeds).
+- [x] Test: `match.name: false` moves the name-only item to `new`; `text_distance: 0` moves the text-only item to `new`.
+- [x] Test: a candidate bound to another remote ID has `bound_to`.
+- [x] Implement per the design notes. Commit: `feat(targets): give every app item a reconcile verdict`.
 
 ### Task 3: Suggestions and options
 
-- [ ] Tests: an item differing in 1 core field suggests `bind`; one differing in 3 suggests `import` with a `why`, and still lists `bind` to every candidate among its options; `split_fields: 4` turns that one back to `bind`; `exact` suggests `bind`; `new` suggests `import`; every item lists `skip`.
-- [ ] Implement. Commit: `feat(targets): suggest an action for each reconciled item`.
+- [x] Tests: an item differing in 1 core field suggests `bind`; one differing in 3 suggests `import` with a `why`, and still lists `bind` to every candidate among its options; `split_fields: 4` turns that one back to `bind`; `exact` suggests `bind`; `new` suggests `import`; every item lists `skip`.
+- [x] Implement. Commit: `feat(targets): suggest an action for each reconciled item`.
 
 ### Task 4: Lorebooks, missing, unpushed
 
-- [ ] Tests with a standalone-lorebook fake: a character linking two world books has both nested with their own verdicts; a world book linked by two characters is read once (count fake calls) and nested under both; an unlinked world book is top-level; a bound card whose remote ID the app dropped is in `missing`; a never-pushed card is in `unpushed`.
-- [ ] Implement. Commit: `feat(targets): reconcile world books inside the characters that link them`.
+- [x] Tests with a standalone-lorebook fake: a character linking two world books has both nested with their own verdicts; a world book linked by two characters is read once (count fake calls) and nested under both; an unlinked world book is top-level; a bound card whose remote ID the app dropped is in `missing`; a never-pushed card is in `unpushed`.
+- [x] Implement. Commit: `feat(targets): reconcile world books inside the characters that link them`.
 
 ### Task 5: The job
 
-**Files:** `internal/targets/jobs.go`, `cmd/innkeeper/worker.go` (registration), tests
+**Files:** `internal/targets/reconcile_job.go`, `cmd/innkeeper/worker.go` (registration), tests
 
-- [ ] `ReconcileKind = "target.reconcile"`, registered with the worker alongside `ImportKind`.
-- [ ] Test: run the job through the worker; while running, progress has `done` and `total`; when finished, progress is the `Snapshot`, and `Totals` add up to the items.
-- [ ] Test: a target without `pull` is refused at enqueue.
-- [ ] Commit: `feat(targets): run reconcile as a job`.
+- [x] `ReconcileKind = "target.reconcile"`, registered with the worker alongside `ImportKind`.
+- [x] Test: run the job through the worker; while running, progress has `done` and `total`; when finished, progress is the `Snapshot`, and `Totals` add up to the items.
+- [x] Test: a target without `pull` is refused at enqueue.
+- [x] Commit: `feat(targets): run reconcile as a job`.
 
 ### Task 6: CompareItem
 
-- [ ] Tests: an unbound pair gives `base: none` and the expected hunks; a bound pair gives `base: accepted` with `auto_app` hunks for app-only edits; avatars that differ give `AvatarDiff` with a distance; equal avatars give none; `cardID` 0 on an unbound item is `ErrNotFound`.
-- [ ] Implement, sharing the projection and `merge.Compare` call with the job. Commit: `feat(targets): compare one app item with one library card`.
+- [x] Tests: an unbound pair gives `base: none` and the expected hunks; a bound pair gives `base: accepted` with `auto_app` hunks for app-only edits; avatars that differ give `AvatarDiff` with a distance; equal avatars give none; `cardID` 0 on an unbound item is `ErrNotFound`.
+- [x] Implement, sharing the projection and `merge.Compare` call with the job. Commit: `feat(targets): compare one app item with one library card`.
 - [ ] Push, open the PR.

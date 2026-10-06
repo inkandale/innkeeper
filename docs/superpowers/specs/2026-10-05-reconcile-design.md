@@ -124,40 +124,56 @@ Input, with defaults:
 ```
 
 The job lists the app's characters and world books, reads each one with its
-avatar, and gives it a verdict:
+avatar, and gives it a verdict. Both sides are compared as the target sees
+them: the library's head with this instance's override, limited to the fields
+the target stores, and without `character_book`.
 
 - `bound`: a binding already names this remote ID. Compared against the
-  accepted copy as ancestor.
-- `exact`: a library card has the same `content_hash`.
+  accepted copy as ancestor. The avatar isn't read.
+- `exact`: a library card has the same content hash.
 - `likely`: candidates matched by a shared source, normalized name
-  (case-folded, trimmed, spaces collapsed) when `match.name` is on,
-  `text_simhash` within `match.text_distance` bits, or `avatar_phash` within
+  (case-folded, trimmed, spaces collapsed) when `match.name` is on, text
+  simhash within `match.text_distance` bits, or `avatar_phash` within
   `match.avatar_distance` bits. A shared source ranks first; the rest rank by
-  signals matched, then by total distance.
+  signals matched, then by total distance, then by ID. An item keeps its top
+  10 candidates.
 - `new`: no candidate.
 - `error`: this item couldn't be read or parsed. The message is kept and the
   run continues.
 
+An avatar that can't be stored only costs the item its avatar signal. A
+library error, such as a failed source lookup, fails the run.
+
 It also lists `missing` (library cards bound to this instance whose app item
-is gone) and `unpushed` (library cards with no binding to this instance).
+is gone) and `unpushed` (library cards with no binding to this instance). An
+app can reuse a missing item's remote ID: the live binding owns it, and the
+old binding's card is `missing`.
 
 Each item lists its `options`: `bind` to each candidate, `import`, and
-`skip`. One option is marked `suggested`, with a reason:
+`skip`. One option is marked `suggested`, with a reason. A candidate already
+bound to another app item on this instance is marked `bound_to` and passed
+over for the suggestion. Core fields are `description`, `personality`,
+`scenario`, and `first_mes`; a field differs when it has any hunk that isn't
+`same`.
 
 | Verdict | Suggested |
 |---|---|
-| `exact` | `bind` to the match |
-| `likely`, conflicts in fewer than `split_fields` of `description`, `personality`, `scenario`, `first_mes` | `bind` to the top candidate |
-| `likely`, conflicts in `split_fields` or more of them | `import`, because it has diverged |
+| `exact` | `bind` to the first match not bound elsewhere; `skip` if all are, because the app has a duplicate |
+| `likely`, fewer than `split_fields` core fields differ from the top unbound candidate | `bind` to that candidate |
+| `likely`, `split_fields` or more differ | `import`, because it has diverged |
+| `likely`, every candidate bound elsewhere | `import` |
 | `new` | `import` |
-| `bound` with hunks | `bind`, to resolve the drift |
+| `bound` with any hunk that isn't `same` | `bind`, to resolve the drift |
 
 A character's linked world books are listed under it as nested items, each
 with its own verdict, options, and suggestion. A world book no character
 links to is a top-level item. A world book several characters link to is
-nested under each, and resolving it once resolves it for all.
+read once and nested under each, and resolving it once resolves it for all.
+World books have no avatar signal and ignore `split_fields`: a `likely` world
+book suggests `bind` to its top unbound candidate.
 
-The snapshot is the job's result, read with `GET /jobs/{id}`. Avatars read
+The snapshot is the job's result, read with `GET /jobs/{id}`. Job lists and
+the job stream show only its `totals`. Avatars read
 during a run go through the normal blob path; unreferenced ones are removed by
 blob GC.
 

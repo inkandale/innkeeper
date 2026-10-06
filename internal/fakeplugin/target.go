@@ -231,7 +231,15 @@ func (t target) get(params json.RawMessage, blobTmp string) (any, error) {
 	return res, nil
 }
 
+// getLorebook replies with the stored lorebook, and appends its ID to
+// get_lorebook.log so tests can count reads.
 func (t target) getLorebook(params json.RawMessage) (any, error) {
+	var p protocol.TargetGetParams
+	_ = json.Unmarshal(params, &p)
+	if f, err := os.OpenFile(filepath.Join(t.Dir, "get_lorebook.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+		fmt.Fprintln(f, p.RemoteID)
+		f.Close()
+	}
 	raw, err := t.read(params)
 	if err != nil {
 		return nil, err

@@ -280,7 +280,7 @@ var tools = []tool{
 			}
 			return c.call(ctx, "POST", path, map[string]any{"instance_id": in.InstanceID, "remote_id": in.RemoteID})
 		}),
-	def("list_jobs", "List recent jobs: imports, pushes, scans, bulk actions.", tier.Read,
+	def("list_jobs", "List recent jobs: imports, pushes, scans, reconciles, bulk actions. A finished reconcile shows only its totals; get_job returns the whole snapshot.", tier.Read,
 		func(ctx context.Context, c caller, _ none) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "GET", "/jobs", nil)
 		}),

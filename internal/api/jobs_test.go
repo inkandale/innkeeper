@@ -14,6 +14,7 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
+	"github.com/davidgibbons/innkeeper/internal/targets"
 )
 
 func TestImportAndCancel(t *testing.T) {
@@ -196,5 +197,32 @@ func TestWatchEndsWhenStopping(t *testing.T) {
 	}
 	if err := sc.Err(); err != nil {
 		t.Fatalf("stream didn't end when stopping: %v", err)
+	}
+}
+
+func TestReconcileJobSummary(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	j, err := e.s.Queue.Enqueue(ctx, jobs.Spec{Kind: targets.ReconcileKind})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap := `{"items": [{"remote_id": "r1", "verdict": "new"}], "totals": {"new": 1}}`
+	if _, err := e.pool.Exec(ctx, `UPDATE job SET status = 'succeeded', finished_at = now(), progress = $1 WHERE id = $2`,
+		snap, j.ID); err != nil {
+		t.Fatal(err)
+	}
+	var list []jobOut
+	e.call("GET", "/jobs", nil, 200, &list)
+	if len(list) != 1 || string(list[0].Progress) != `{"totals":{"new":1}}` {
+		t.Errorf("listed progress = %s", list[0].Progress)
+	}
+	if last, _ := e.watchJob(j.ID); string(last.Progress) != `{"totals":{"new":1}}` {
+		t.Errorf("watched progress = %s", last.Progress)
+	}
+	var full jobOut
+	e.call("GET", fmt.Sprintf("/jobs/%d", j.ID), nil, 200, &full)
+	if !strings.Contains(string(full.Progress), `"items"`) {
+		t.Errorf("full progress = %s", full.Progress)
 	}
 }

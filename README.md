@@ -227,6 +227,13 @@ innkeeper push <instance-id> <card-id>|<query-json> [--new-copy]
 innkeeper sources <card-id> [add <url> | remove <source-id>]
                                                 list, add, or remove a card's sources
 innkeeper jobs [show|cancel|watch <job-id>]     list or follow jobs
+innkeeper reconcile <instance-id> [params-json] [--json]
+                                                line an app up against the library
+innkeeper compare <instance-id> <remote-id> [card-id]
+                                                show how an app character differs from a card
+innkeeper resolve <instance-id> <remote-id> bind|import|skip [card-id] [hunk=choice ...] [--default=choice]
+innkeeper resolve --suggested <reconcile-job-id> [remote-id ...] [--verdict=v,...]
+                                                bind, import, or skip app items
 innkeeper token create <name> [tier] | list | revoke <id> | revoke-grant <id>
 innkeeper openapi                               print the OpenAPI spec
 innkeeper backup <dir>
@@ -400,6 +407,70 @@ by outcome:
 
 Items bound before the import started are skipped and counted in the job's
 `payload` as `already_bound`.
+
+### Reconciling an app
+
+When the app and the library both have characters, and some are probably the
+same, reconcile lines them up and suggests what to do with each:
+
+```bash
+innkeeper reconcile <instance-id>
+```
+
+It reads the app, changes nothing, and prints one row per app item, with
+each linked world book under its character:
+
+| Verdict | Meaning |
+|---|---|
+| `bound` | Already bound |
+| `exact` | A library card has the same content |
+| `likely` | A library card has the same name, or similar text or avatar |
+| `new` | Nothing in the library matches |
+| `error` | The app item couldn't be read |
+
+Each row has a suggested action: `bind` to a card, `import` as a new card, or
+`skip`. Pass `'{"match": {"name": false}}'` to stop matching by name alone,
+and `--json` for the whole snapshot.
+
+Compare an item with a card before binding them. The output lists each
+hunk, a part of a field, that differs, with changed words marked
+`[-library-]` and `{+app+}`:
+
+```bash
+innkeeper compare <instance-id> <remote-id> <card-id>
+```
+
+Then resolve it, choosing per hunk which side to keep: `library`, `app`,
+`keep_in_app` (the library keeps its text and this app's override keeps the
+app's), or `both` (lists only: the library's entries, then the app's). Hunks
+you don't name take `--default`, or `library`:
+
+```bash
+innkeeper resolve <instance-id> <remote-id> bind <card-id> first_mes#0=app --default=library
+innkeeper resolve <instance-id> <remote-id> skip
+```
+
+Resolving changes the library and the binding, never the app. Keeping the
+library's side of a hunk leaves the binding `ahead`; push to send the result.
+If the app's copy, the card, or the binding changed since the comparison,
+`resolve` is refused with `409`; compare again.
+
+To take every suggestion from a reconcile, or only some verdicts or items,
+as one bulk job:
+
+```bash
+innkeeper resolve --suggested <reconcile-job-id> --verdict=exact
+innkeeper resolve --suggested <reconcile-job-id> <remote-id>   # one new item, imported
+```
+
+A suggested bind keeps the library's side of every hunk. An item with no
+binding or card has nothing to compare with, so import it this way.
+
+For world books in an app that keeps them separately, `compare` and `resolve`
+cover characters only; use `innkeeper call` with
+`/instances/<instance-id>/lorebook-items/<remote-id>/compare?lorebook_id=<id>`
+and `.../resolve`. The MCP tools `start_reconcile`, `compare_item`,
+`resolve_item`, and `resolve_items` cover both.
 
 ### Lorebooks in apps that keep them separately
 

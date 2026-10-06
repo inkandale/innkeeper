@@ -191,15 +191,24 @@ func (s *Entities) create(ctx context.Context, tx pgx.Tx, slug, provenance strin
 // Update adds a revision on top of base. It returns ErrConflict if base is no
 // longer the head.
 func (s *Entities) Update(ctx context.Context, id, base int64, e Edit) (Revision, error) {
-	r, err := s.prepare(e)
-	if err != nil {
-		return Revision{}, err
-	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return Revision{}, err
 	}
 	defer tx.Rollback(ctx)
+	rev, err := s.UpdateTx(ctx, tx, id, base, e)
+	if err != nil {
+		return Revision{}, err
+	}
+	return rev, tx.Commit(ctx)
+}
+
+// UpdateTx is Update inside the caller's transaction, which the caller commits.
+func (s *Entities) UpdateTx(ctx context.Context, tx pgx.Tx, id, base int64, e Edit) (Revision, error) {
+	r, err := s.prepare(e)
+	if err != nil {
+		return Revision{}, err
+	}
 	var head int64
 	if err := tx.QueryRow(ctx, `SELECT head_revision_id FROM `+s.k.table+` WHERE id = $1 FOR UPDATE`, id).Scan(&head); err != nil {
 		return Revision{}, mapErr(err)
@@ -207,11 +216,7 @@ func (s *Entities) Update(ctx context.Context, id, base int64, e Edit) (Revision
 	if head != base {
 		return Revision{}, ErrConflict
 	}
-	rev, err := s.insertRevision(ctx, tx, id, &base, r)
-	if err != nil {
-		return Revision{}, err
-	}
-	return rev, tx.Commit(ctx)
+	return s.insertRevision(ctx, tx, id, &base, r)
 }
 
 // Get returns the entity with this ID.

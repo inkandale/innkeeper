@@ -148,3 +148,24 @@ func TestLorebooks(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestUpdateTxRollbackLeavesHead(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	id, first := newCard(t, lib, "a", `{"name": "A"}`)
+	tx, err := lib.Cards.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rev, err := lib.Cards.UpdateTx(ctx, tx, id, first, edit(`{"name": "B"}`))
+	if err != nil || rev.ID == first {
+		t.Fatalf("UpdateTx = %+v, %v", rev, err)
+	}
+	if err := tx.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	c, err := lib.Cards.Get(ctx, id)
+	if err != nil || c.HeadRevisionID != first {
+		t.Fatalf("head = %d, %v; want %d", c.HeadRevisionID, err, first)
+	}
+}

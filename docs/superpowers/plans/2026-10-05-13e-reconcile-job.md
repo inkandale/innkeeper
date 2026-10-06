@@ -41,7 +41,7 @@
   5. Else `likely` for cards matched by source (`library.Detect` on the app data, then `BySource`), normalized name, `text_simhash` distance, or `avatar_phash` distance, within the run's settings. Sort: shared source first, then number of signals matched, then total distance, then card ID.
   6. Else `new`.
   A candidate already bound to another remote ID on this instance is kept, with `bound_to` set, so the owner can see the duplicate.
-- **Suggestion.** For the top `likely` candidate, run `merge.Compare` and count the core fields (`description`, `personality`, `scenario`, `first_mes`) with a `conflict` hunk. Fewer than `split_fields`: suggest `bind`; otherwise `import`, with the reason. `exact`: `bind`. `new`: `import`. `bound` with any non-`same` hunk: `bind`, to resolve the drift; `bound` with none: no suggestion.
+- **Suggestion.** For the top `likely` candidate, run `merge.Compare` and count the core fields (`description`, `personality`, `scenario`, `first_mes`) with any non-`same` hunk: without an ancestor, added or removed text is `app_only` or `library_only`, not `conflict`. Fewer than `split_fields`: suggest `bind`; otherwise `import`, with the reason. `exact`: `bind`. `new`: `import`. `bound` with any non-`same` hunk: `bind`, to resolve the drift; `bound` with none: no suggestion.
 - **Lorebooks.** World books are reconciled with the same steps using lorebook data, `LorebookSimhash`, and `merge.Lorebook`, with no avatar signal. A world book in a character's `lorebook_remote_ids` is nested under that character. One linked by no character is a top-level item. Each world book is read once per run.
 - **Snapshot**, the job's final progress:
   ```go

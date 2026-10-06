@@ -71,6 +71,18 @@
 - **Hunk IDs.** `<path>#<i>`, `i` counting every hunk of that field from 0, including `same` ones. Deterministic for the same inputs.
 - **Applying choices.** Only `conflict`, `library_only`, and `app_only` hunks take a choice; the others merge by status (`auto_app` takes the app's tokens, and so on). `library` and `app` take that side's tokens; for `*_only` that means keep or drop. `both` takes library then app, and is `ErrBadChoice` on anything but a list hunk. `keep_in_app` takes the library's tokens for `base` and the app's for the app's copy. A choice naming a hunk that doesn't exist is `ErrUnknownHunk`. `override` is the RFC 7386 merge patch from `base` to the app's copy: changed keys get the app's value, removed keys `null`, recursing into objects.
 
+## As built
+
+Where the code differs from the notes above, the code and the spec are right:
+
+- Entry identity is `c:<comment>` when the comment is non-empty and unique on that side, else `k:<sorted keys joined by ,>`; repeats get `~2`, `~3`. `keys` and `secondary_keys` compare as sets.
+- Every key and identity in a path is backslash-escaped for `\ . [ ] # , ~`, so hunk IDs are unique.
+- A prose or list field missing on one side is one whole-value hunk at `<field>#0`, with kind `scalar`. Missing against `""` or `[]` is `same`.
+- With an ancestor, a key only one side has can be `auto_*`, or `conflict` when one side deleted what the other changed.
+- `def` can't be `both`; an unrecognized choice is `ErrBadChoice`; choices on `same` and `auto_*` hunks are ignored.
+- `base` is canonical JSON. In the override, arrays are replaced whole and an app-side `null` is lost (RFC 7386).
+- Task 5 moved to plan 13b, which builds the corpus.
+
 ## Tasks
 
 ### Task 1: Dependency and sentence tokens
@@ -137,5 +149,5 @@
 
 **Files:** `internal/corpus/corpus_test.go`
 
-- [ ] Requires plan 13b. In `TestCorpusHashes`, also assert that `merge.Compare(merge.Card, codecProjected, targetCard, nil)` has only `same` hunks.
+- [ ] Done in plan 13b, Task 4. In `TestCorpusHashes`, also assert that `merge.Compare(merge.Card, codecProjected, targetCard, nil)` has only `same` hunks.
 - [ ] Commit, push, open the PR.

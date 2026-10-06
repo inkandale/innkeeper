@@ -23,7 +23,7 @@ overlapping a library imported from SillyTavern.
 |---|---|
 | State | Reconcile is a job whose result is a snapshot. Nothing is stored beyond the job row; a new run always reads fresh. Old snapshots are history only. |
 | Writes | Reconcile only reads, unless the instance sets `auto_bind_exact` (default off), which binds exact matches. Everything else is an explicit resolution. |
-| Merge | `github.com/devsisters/go-diff3`, over tokens chosen per field kind: `Diff3Merge` with an ancestor, `DiffComm` without one, so every difference is a conflict. An empty ancestor would turn a whole field into one conflict. |
+| Merge | `github.com/devsisters/go-diff3`, over tokens chosen per field kind: `Diff3MergeIndices` with an ancestor, `DiffComm` without one, so every difference is a conflict. An empty ancestor would turn a whole field into one conflict. |
 | Ancestor | A bound item's ancestor is the binding's accepted copy. A first-time match whose sides share a source uses the source's content, when a catalog plugin can return it. Otherwise there is none. |
 | Sources | A card or lorebook links to the sites it came from, as a Stash scene links to stash-box IDs. Links are detected from known extensions or added by the owner. A shared source is the strongest match signal. |
 | Manual targets | `bind` takes any library card, not only the listed candidates. |
@@ -95,12 +95,12 @@ hunks. The field's kind picks the tokenizer:
 
 | Kind | Fields | Token |
 |---|---|---|
-| prose | `description`, `personality`, `scenario`, `first_mes`, `mes_example`, `system_prompt`, `post_history_instructions`, `creator_notes`, lorebook entry `content` | A sentence: text up to and including `.`, `!`, `?`, or `…` followed by whitespace, or a newline. The token keeps its trailing whitespace. |
-| list | `tags`, `alternate_greetings` | One element. A changed greeting is then compared as prose. |
+| prose | `description`, `personality`, `scenario`, `first_mes`, `mes_example`, `system_prompt`, `post_history_instructions`, `creator_notes`, lorebook entry `content` | A sentence: text up to and including `.`, `!`, `?`, or `…`, plus any closing quote, `*`, or `)`, followed by whitespace; or up to a newline. The token keeps its trailing whitespace. |
+| list | `tags`, `alternate_greetings` | One element. |
 | json | `extensions` | One key, recursively. |
 | scalar | `name`, `creator`, `character_version` | The whole value. |
 | blob | avatar | The whole value, with the phash distance. Never merged. |
-| entries | lorebook entries | One entry, matched by `comment` when it is unique in the book, else by its sorted keys. Unmatched entries are `library_only` or `app_only`. |
+| entries | lorebook entries | One entry, matched by `comment` when it is unique on that side (`c:<comment>`), else by its sorted keys (`k:<keys>`); key order is ignored. Unmatched entries are `library_only` or `app_only`. |
 
 Concatenating a field's tokens reproduces it byte for byte. Normalization
 belongs to `content_hash`, never to the merge.
@@ -109,7 +109,7 @@ Hunk statuses: `same`, `auto_library`, `auto_app`, `conflict`,
 `library_only`, `app_only`. The `auto_*` statuses need an ancestor: a hunk
 only one side changed merges to that side.
 
-A hunk's ID is `<field path>#<index>` and is stable for the same three inputs.
+A hunk's ID is `<field path>#<index>`, with `\ . [ ] # , ~` backslash-escaped in each path segment, and is stable for the same three inputs. A prose or list field missing on one side is one whole-value hunk.
 Changed prose hunks carry word-level highlight spans for display only.
 
 ## Reconcile job

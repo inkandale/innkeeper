@@ -76,6 +76,17 @@ func TestUIServesNonAPIPaths(t *testing.T) {
 			t.Errorf("GET %s = %q, want %q", path, body, want)
 		}
 	}
+	// Reserved root paths are never the UI, even when nothing serves them.
+	for _, path := range []string{"/.well-known/oauth-authorization-server", "/oauth/authorize", "/auth/whatever", "/mcp/x"} {
+		resp, err := client.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404", path, resp.StatusCode)
+		}
+	}
 	// The API and the login callback still win.
 	resp, err := client.Get(srv.URL + "/api/cards/12")
 	if err != nil {

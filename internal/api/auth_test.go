@@ -200,6 +200,14 @@ func TestCrossSiteLogout(t *testing.T) {
 	}
 }
 
+func TestBeginLoginClearsOAuthReturn(t *testing.T) {
+	e := newEnv(t)
+	r := e.send("POST", fmt.Sprintf("/auth/%d/begin", e.loginID), nil)
+	if c := r.cookie(t, returnCookie); c.Value != "" || c.MaxAge >= 0 {
+		t.Fatalf("return cookie not expired: %+v", c)
+	}
+}
+
 func TestBrokenLoginProviderHidesError(t *testing.T) {
 	e := newEnv(t)
 	e.markBroken(e.loginID, "fork/exec /secret/path")

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -166,6 +167,13 @@ func (s *Server) Handler() http.Handler {
 	if s.UI != nil {
 		// Not "GET /": that conflicts with the method-less "/api/".
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			// Reserved prefixes that nothing registered are 404s, not the app shell.
+			for _, p := range []string{"/.well-known/", "/oauth/", "/auth/", "/mcp/", "/api/"} {
+				if strings.HasPrefix(r.URL.Path, p) {
+					http.NotFound(w, r)
+					return
+				}
+			}
 			if r.Method != http.MethodGet && r.Method != http.MethodHead {
 				w.Header().Set("Allow", "GET, HEAD")
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

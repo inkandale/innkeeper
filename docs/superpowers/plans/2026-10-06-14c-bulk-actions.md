@@ -23,7 +23,8 @@
 - **"All matching" with no filter or text** sends `{"archived": false}`, because `/bulk` refuses a query with neither.
 - **Action panels, not dialogs.** Each action opens a small form under the selection bar, so there's no dialog library and no `<dialog>`, which jsdom doesn't fully support. Push and Archive need a second click on a button that names the count. The full push preview is phase 7.
 - **Toasts.** A provider in the shell. Info toasts close after 8 seconds; error toasts stay until dismissed. A started job's toast links to `/settings/jobs/{id}`.
-- **Live jobs.** The detail view follows `/api/jobs/{id}/events`. The list polls every 2 seconds while any listed job is unfinished: a stream per row would use up the browser's six connections per host.
+- **Live jobs.** The detail view follows `/api/jobs/{id}/events`. The list polls every 2 seconds while any listed job is unfinished: a stream per row would use up the browser's six connections per host. `GET /jobs` fills `children` for bulk jobs so the list can show their progress, and lists and streams cut an export's `card_ids` to a count.
+- **File names.** The job helpers are `jobUtil.ts`, because `jobs.ts` and `Jobs.tsx` are the same file on a case-insensitive filesystem.
 - **Out of this phase:** the CLI's `bulk` command and MCP keep archive only (the API is enough for now); the push preview (phase 7); the other Settings tabs (phase 6).
 
 ## Files
@@ -42,7 +43,7 @@
 | `web/src/shell/Toasts.tsx`, `Toasts.test.tsx`, `Shell.tsx`, `Shell.css` | New: toasts |
 | `web/src/cards/selection.ts`, `selection.test.ts` | New: selection state |
 | `web/src/cards/SelectionBar.tsx`, `Tile.tsx`, `Cards.tsx`, `Cards.css`, `Cards.test.tsx` | Select boxes and the selection bar |
-| `web/src/settings/jobs.ts`, `jobs.test.ts`, `Settings.tsx`, `Jobs.tsx`, `Job.tsx`, `Settings.css`, `Jobs.test.tsx` | New: Settings → Jobs |
+| `web/src/settings/jobUtil.ts`, `jobUtil.test.ts`, `Settings.tsx`, `Jobs.tsx`, `Job.tsx`, `Settings.css`, `Jobs.test.tsx` | New: Settings → Jobs |
 | `web/src/App.tsx` | Routes |
 
 Go tests need PostgreSQL. Run them with:
@@ -958,9 +959,9 @@ type bulkIn struct {
 	Body struct {
 		Query      library.Query `json:"query" doc:"Selects the cards, as in POST /search. Paging is ignored. To pick cards by ID, filter on ids."`
 		Action     string        `json:"action" enum:"archive,unarchive,tag,untag,collect,uncollect,export"`
-		Tags       []string      `json:"tags,omitempty" doc:"For tag and untag: the tags to add or remove."`
+		Tags       []string      `json:"tags,omitempty" maxItems:"100" maxLength:"100" doc:"For tag and untag: the tags to add or remove."`
 		Collection int64         `json:"collection,omitempty" doc:"For collect and uncollect: the collection."`
-		Format     string        `json:"format,omitempty" default:"json" doc:"For export: json, or a format a codec plugin instance writes, such as png."`
+		Format     string        `json:"format,omitempty" doc:"For export: json (the default), or a format a codec plugin instance writes, such as png."`
 	}
 }
 ```
@@ -992,6 +993,9 @@ Replace the `start-bulk` registration:
 				if len(b.Tags) == 0 {
 					return nil, huma.Error400BadRequest(b.Action + " needs tags")
 				}
+				if slices.ContainsFunc(b.Tags, func(t string) bool { return strings.TrimSpace(t) == "" }) {
+					return nil, huma.Error400BadRequest("tags can't be blank")
+				}
 			case "collect", "uncollect":
 				cols, err := s.Lib.Collections(ctx)
 				if err != nil {
@@ -1001,6 +1005,9 @@ Replace the `start-bulk` registration:
 					return nil, huma.Error404NotFound("collection not found")
 				}
 			case "export":
+				if b.Format == "" {
+					b.Format = "json"
+				}
 				if b.Format != "json" {
 					if _, err := s.Registry.CodecInstance(ctx, b.Format); err != nil {
 						return nil, s.fail(err)
@@ -1780,15 +1787,15 @@ git commit -m "feat(web): select cards and act on them in bulk"
 ### Task 11: Settings → Jobs
 
 **Files:**
-- Create: `web/src/settings/jobs.ts`, `web/src/settings/jobs.test.ts`, `web/src/settings/Settings.tsx`, `web/src/settings/Jobs.tsx`, `web/src/settings/Job.tsx`, `web/src/settings/Settings.css`, `web/src/settings/Jobs.test.tsx`
+- Create: `web/src/settings/jobUtil.ts`, `web/src/settings/jobUtil.test.ts`, `web/src/settings/Settings.tsx`, `web/src/settings/Jobs.tsx`, `web/src/settings/Job.tsx`, `web/src/settings/Settings.css`, `web/src/settings/Jobs.test.tsx`
 - Modify: `web/src/App.tsx`
 
 - [ ] **Step 1: Write the failing helper tests**
 
-Create `web/src/settings/jobs.test.ts`:
+Create `web/src/settings/jobUtil.test.ts`:
 
 ```ts
-import { age, kindLabel, progressText, type Job } from "./jobs";
+import { age, kindLabel, progressText, type Job } from "./jobUtil";
 
 const job = (j: Partial<Job>): Job => ({ id: 1, kind: "bulk", status: "running", payload: {}, progress: {}, attempts: 1, max_attempts: 3, run_after: "", created_at: "", ...j }) as Job;
 
@@ -1814,12 +1821,12 @@ test("age is short", () => {
 
 - [ ] **Step 2: Run it to see it fail**
 
-Run: `cd web && npx vitest run src/settings/jobs.test.ts`
+Run: `cd web && npx vitest run src/settings/jobUtil.test.ts`
 Expected: FAIL, cannot resolve `./jobs`.
 
 - [ ] **Step 3: Implement the helpers**
 
-Create `web/src/settings/jobs.ts`:
+Create `web/src/settings/jobUtil.ts`:
 
 ```ts
 import { useQueryClient } from "@tanstack/react-query";
@@ -1877,7 +1884,7 @@ export function useJobEvents(id: number, live: boolean) {
 }
 ```
 
-Run: `cd web && npx vitest run src/settings/jobs.test.ts`
+Run: `cd web && npx vitest run src/settings/jobUtil.test.ts`
 Expected: PASS.
 
 - [ ] **Step 4: Write the failing page tests**
@@ -2026,7 +2033,7 @@ Create `web/src/settings/Jobs.tsx`:
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router";
 import { api, must } from "../api/client";
-import { age, finished, kindLabel, progressText, type Job } from "./jobs";
+import { age, finished, kindLabel, progressText, type Job } from "./jobUtil";
 
 const states: Job["status"][] = ["queued", "running", "waiting", "succeeded", "failed"];
 
@@ -2094,7 +2101,7 @@ import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { api, must } from "../api/client";
 import { useToast } from "../shell/Toasts";
-import { age, finished, kindLabel, progressText, useJobEvents, type Job as JobT } from "./jobs";
+import { age, finished, kindLabel, progressText, useJobEvents, type Job as JobT } from "./jobUtil";
 
 function Counts({ label, counts }: { label: string; counts?: Record<string, number> }) {
   if (!counts || !Object.keys(counts).length) return null;

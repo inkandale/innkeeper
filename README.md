@@ -233,7 +233,8 @@ innkeeper backup <dir>
 ```
 
 `bulk` needs a query with a `filter` or `text`; to select every card, filter
-on `archived`. It touches only cards not already in the target state.
+on `archived`. It touches only cards not already in the target state. The API's
+`POST /bulk` also tags, collects, and exports; see `/api/docs`.
 
 `jobs watch` exits non-zero unless the job succeeds.
 

@@ -230,7 +230,8 @@ Four tabs:
   - Secrets are write-only and show "set" or "not set".
   - A broken instance shows its error.
 - **Jobs**: a table of kind, state, progress, and age, filtered by state.
-  Running jobs update live from `/api/jobs/{id}/events`. A bulk job opens to
+  The table refreshes every 2 seconds while a job runs, and a job's page
+  updates live from `/api/jobs/{id}/events`. A bulk job opens to
   its children by status and outcome, with Cancel and a link to its result,
   such as an export zip.
 - **Access**: API tokens (create with a tier, shown once, revoke) and OAuth
@@ -246,9 +247,10 @@ Four tabs:
 | `innkeeper openapi` | Client generation |
 | `theme` capability, `stylesheet` manifest key, `GET /api/themes/{name}.css`, theme setting | Themes |
 | `POST /search`: `facets` (tags, collections, targets, sources), `sort`, `page.number`, `total`, `include: ["targets"]`, a `source` filter | Cards page |
-| `GET /api/blobs/{sha256}?w=320`: a resized JPEG, cached as a derived blob, for any blob store | Thumbnails. Card PNGs are often 1–3 MB. |
-| Bulk job kinds `card.tag`, `card.collect`, `card.push`, `card.export`. Export writes one zip blob. | Bulk actions |
-| `/bulk` takes card IDs or a search query | "Select all matching" |
+| `GET /api/blobs/{sha256}?w=320`: a resized JPEG, 160, 320, or 640 wide, cached in the blob store's `thumbs/` folder | Thumbnails. Card PNGs are often 1–3 MB. |
+| `/bulk` actions tag, untag, collect, uncollect, and export, as job kinds `card.tag`, `card.collect`, and `card.export`. Pushes stay on `/pushes`. Export is one job that writes a zip blob, deleted after a day. | Bulk actions |
+| An `ids` search filter, so `/bulk` and `/pushes` take picked cards or a search query | "Select all matching" |
+| `GET /api/jobs` fills `children` for bulk jobs | Settings → Jobs |
 | `GET /api/cards/{id}/revisions/{a}/compare/{b}`, and the same for lorebooks, using `internal/merge` | History |
 
 The cursor stays on `/search` for the CLI and MCP.

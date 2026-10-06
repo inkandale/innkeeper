@@ -136,7 +136,8 @@ into the base card, adopt them into that target's override, or discard them.
 
 - Plugins write `checkpoint` as they go, so long imports resume where they
   stopped.
-- A bulk action is a parent job with one child job per card.
+- A bulk action is a parent job with one child job per card. Export is one
+  job instead, because it writes a single zip.
 
 ### Search and enrichment
 

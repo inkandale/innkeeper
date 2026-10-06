@@ -2,3 +2,6 @@
 /import/
 /internal/fakeplugin/fakeplugin
 /.superpowers/
+/web/dist/*
+!/web/dist/.gitkeep
+/web/node_modules/

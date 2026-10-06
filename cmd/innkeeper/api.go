@@ -12,6 +12,7 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/targets"
+	"github.com/davidgibbons/innkeeper/web"
 )
 
 func apiServer() error {
@@ -34,7 +35,8 @@ func apiServer() error {
 	stopping := make(chan struct{})
 	s := &api.Server{Lib: svc.lib, Queue: jobs.New(svc.pool), Registry: svc.registry, Auth: auth.New(svc.pool),
 		Targets: targets.New(svc.pool, svc.lib, svc.registry, mgr, log), Plugins: mgr, Log: log,
-		PublicURL: os.Getenv("INNKEEPER_PUBLIC_URL"), Stopping: stopping}
+		PublicURL: os.Getenv("INNKEEPER_PUBLIC_URL"), Stopping: stopping,
+		UI: web.Handler(web.Dist())}
 	srv := &http.Server{
 		Addr:              listen,
 		Handler:           s.Handler(),

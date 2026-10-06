@@ -2,7 +2,9 @@ package api
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -55,5 +57,32 @@ func TestSpecNeedsNoServices(t *testing.T) {
 	}
 	if spec.Servers[0].URL != "/api" || spec.Paths["/search"] == nil {
 		t.Fatalf("spec = %s", b[:min(len(b), 300)])
+	}
+}
+
+func TestUIServesNonAPIPaths(t *testing.T) {
+	e := newEnv(t)
+	e.s.UI = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ui")) })
+	srv := httptest.NewServer(e.s.Handler())
+	defer srv.Close()
+	for path, want := range map[string]string{"/cards/12": "ui", "/": "ui", "/login": "ui"} {
+		resp, err := client.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if string(body) != want {
+			t.Errorf("GET %s = %q, want %q", path, body, want)
+		}
+	}
+	// The API and the login callback still win.
+	resp, err := client.Get(srv.URL + "/api/cards/12")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("GET /api/cards/12 = %d, want 401", resp.StatusCode)
 	}
 }

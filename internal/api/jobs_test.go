@@ -292,6 +292,9 @@ func TestBulkTagCollectExport(t *testing.T) {
 	}
 
 	e.call("POST", "/bulk", map[string]any{"query": picked, "action": "tag"}, 400, nil)
+	e.call("POST", "/bulk", map[string]any{"query": picked, "action": "tag", "tags": []string{"elf", "  "}}, 400, nil)
+	e.call("POST", "/bulk", map[string]any{"query": picked, "action": "tag", "tags": []string{strings.Repeat("x", 101)}}, 422, nil)
+	e.call("POST", "/bulk", map[string]any{"query": picked, "action": "tag", "tags": make([]string, 101)}, 422, nil)
 	e.call("POST", "/bulk", map[string]any{"query": picked, "action": "collect", "collection": 99999}, 404, nil)
 	e.call("POST", "/bulk", map[string]any{"query": picked, "action": "export", "format": "nope"}, 400, nil)
 }

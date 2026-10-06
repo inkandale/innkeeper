@@ -304,8 +304,10 @@
           "tags": {
             "description": "For tag and untag: the tags to add or remove.",
             "items": {
+              "maxLength": 100,
               "type": "string"
             },
+            "maxItems": 100,
             "type": [
               "array",
               "null"

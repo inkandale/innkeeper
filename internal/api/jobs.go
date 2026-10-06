@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -98,7 +99,7 @@ type bulkIn struct {
 	Body struct {
 		Query      library.Query `json:"query" doc:"Selects the cards, as in POST /search. Paging is ignored. To pick cards by ID, filter on ids."`
 		Action     string        `json:"action" enum:"archive,unarchive,tag,untag,collect,uncollect,export"`
-		Tags       []string      `json:"tags,omitempty" doc:"For tag and untag: the tags to add or remove."`
+		Tags       []string      `json:"tags,omitempty" maxItems:"100" maxLength:"100" doc:"For tag and untag: the tags to add or remove."`
 		Collection int64         `json:"collection,omitempty" doc:"For collect and uncollect: the collection."`
 		Format     string        `json:"format,omitempty" doc:"For export: json (the default), or a format a codec plugin instance writes, such as png."`
 	}
@@ -342,6 +343,9 @@ func (s *Server) jobRoutes(api huma.API) {
 			case "tag", "untag":
 				if len(b.Tags) == 0 {
 					return nil, huma.Error400BadRequest(b.Action + " needs tags")
+				}
+				if slices.ContainsFunc(b.Tags, func(t string) bool { return strings.TrimSpace(t) == "" }) {
+					return nil, huma.Error400BadRequest("tags can't be blank")
 				}
 			case "collect", "uncollect":
 				cols, err := s.Lib.Collections(ctx)

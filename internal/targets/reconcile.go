@@ -88,6 +88,9 @@ type ReconcileItem struct {
 	Options    []Option        `json:"options"`
 	Suggested  *Option         `json:"suggested,omitempty"`
 	Lorebooks  []ReconcileItem `json:"lorebooks,omitempty"`
+	// AutoBound means the run bound this exact match, because the instance
+	// has auto_bind_exact on.
+	AutoBound bool `json:"auto_bound,omitempty"`
 }
 
 // Candidate is a library card or lorebook an app item may be a copy of.
@@ -500,9 +503,21 @@ func (s *Service) Reconcile(ctx context.Context, p ReconcileParams, progress fun
 		snap.Lorebooks = append(snap.Lorebooks, lb)
 	}
 
+	named, err := s.reg.GetInstance(ctx, p.InstanceID)
+	if err != nil {
+		return snap, err
+	}
+	if named.AutoBindExact {
+		s.autoBind(ctx, lorebookKind, p.InstanceID, snap.Lorebooks)
+		// The index was read before these bindings; a bound card isn't unpushed.
+		for id := range s.autoBind(ctx, cardKind, p.InstanceID, snap.Items) {
+			cardIdx.remoteOf[id] = ""
+		}
+	}
+
 	// A card whose remote ID the app reused for another bound item is gone too.
 	for id, remoteID := range cardIdx.remoteOf {
-		if !listed[remoteID] || cardIdx.byRemote[remoteID].entityID != id {
+		if remoteID != "" && (!listed[remoteID] || cardIdx.byRemote[remoteID].entityID != id) {
 			snap.Missing = append(snap.Missing, id)
 		}
 	}
@@ -513,4 +528,44 @@ func (s *Service) Reconcile(ctx context.Context, p ReconcileParams, progress fun
 		}
 	}
 	return snap, nil
+}
+
+// autoBind binds each exact item, keeping the library's copy, when its world
+// books are all exact or already bound, and returns the IDs it bound. It never
+// imports. A failure leaves the item as it was, since the owner can still
+// resolve it.
+func (s *Service) autoBind(ctx context.Context, k kind, instanceID int64, items []ReconcileItem) map[int64]bool {
+	bound := map[int64]bool{}
+	resolve := s.Resolve
+	if k.isLorebook() {
+		resolve = s.ResolveLorebook
+	}
+items:
+	for i := range items {
+		it := &items[i]
+		if it.Verdict != VerdictExact || it.Suggested == nil || it.Suggested.Action != "bind" {
+			continue
+		}
+		for _, lb := range it.Lorebooks {
+			if lb.Verdict != VerdictExact && lb.Verdict != VerdictBound {
+				continue items
+			}
+		}
+		res, err := func() (ResolveResult, error) {
+			c, err := s.compareItem(ctx, k, instanceID, it.RemoteID, it.Suggested.CardID)
+			if err != nil {
+				return ResolveResult{}, err
+			}
+			return resolve(ctx, Resolution{InstanceID: instanceID, RemoteID: it.RemoteID, AppHash: c.AppHash,
+				BaseRevisionID: c.HeadRevisionID, AcceptedHash: c.AcceptedHash, Action: "bind", CardID: c.CardID,
+				Default: merge.ChooseLibrary})
+		}()
+		if err != nil {
+			s.log.Warn("reconcile: auto-bind failed", "remote_id", it.RemoteID, "err", err)
+			continue
+		}
+		it.AutoBound, it.BindingID = true, res.BindingID
+		bound[res.CardID] = true
+	}
+	return bound
 }

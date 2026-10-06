@@ -39,6 +39,36 @@ type Resolution struct {
 	// Default is the choice for hunks not in Choices; empty means library.
 	Default   merge.Choice `json:"default,omitempty"`
 	Lorebooks []Resolution `json:"lorebooks,omitempty"`
+	// Kind says whether a top-level item in a bulk resolve is a card or a
+	// world book; empty means card. Nested items are world books.
+	Kind string `json:"kind,omitempty" enum:"card,lorebook"`
+}
+
+// validate checks a resolution's shape, and its nested ones', before
+// anything is read.
+func (r Resolution) validate(k kind) error {
+	bad := func(msg string) error { return fmt.Errorf("%w: %s: %s", library.ErrInvalid, r.RemoteID, msg) }
+	switch {
+	case r.RemoteID == "":
+		return fmt.Errorf("%w: remote_id is required", library.ErrInvalid)
+	case r.Kind != "" && r.Kind != k.name:
+		return bad("kind must be " + k.name + " here")
+	case r.Action == "skip":
+	case r.Action != "bind" && r.Action != "import":
+		return bad("action must be bind, import, or skip")
+	case r.AppHash == "":
+		return bad("app_hash is required")
+	case r.Action == "bind" && r.BaseRevisionID == 0:
+		return bad("base_revision_id is required")
+	case k.isLorebook() && len(r.Lorebooks) > 0:
+		return bad("a world book has no nested world books")
+	}
+	for _, n := range r.Lorebooks {
+		if err := n.validate(lorebookKind); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ResolveResult is what a resolution did.
@@ -142,15 +172,11 @@ func (e *staleItem) fresh(ctx context.Context, s *Service) error {
 // item applies one resolution, its world books first.
 func (rs *resolver) item(ctx context.Context, k kind, r Resolution) (ResolveResult, error) {
 	res := ResolveResult{RemoteID: r.RemoteID, Action: r.Action}
-	switch {
-	case r.Action == "skip":
+	if err := r.validate(k); err != nil {
+		return res, err
+	}
+	if r.Action == "skip" {
 		return res, nil
-	case r.Action != "bind" && r.Action != "import":
-		return res, fmt.Errorf("%w: action must be bind, import, or skip", library.ErrInvalid)
-	case r.Action == "bind" && r.BaseRevisionID == 0:
-		return res, fmt.Errorf("%w: base_revision_id is required", library.ErrInvalid)
-	case k.isLorebook() && len(r.Lorebooks) > 0:
-		return res, fmt.Errorf("%w: a world book has no nested world books", library.ErrInvalid)
 	}
 	if done, ok := rs.books[r.RemoteID]; ok && k.isLorebook() {
 		return done, nil

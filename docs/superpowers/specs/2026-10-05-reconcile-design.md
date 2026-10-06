@@ -178,8 +178,10 @@ during a run go through the normal blob path; unreferenced ones are removed by
 blob GC.
 
 If the app can't be listed, the job fails. If `auto_bind_exact` is on, an
-`exact` item is bound with `default: library` as the run goes, only when all
-its nested world books are `exact` or `bound` too, and the snapshot says so.
+`exact` item is bound with `default: library` once every item is read, only
+when all its nested world books are `exact` or `bound` too, and the snapshot
+marks it `auto_bound`. An auto-bind that fails leaves the item as reported
+and doesn't fail the run.
 
 ## Resolve
 
@@ -203,9 +205,10 @@ A resolution decides one app item:
   on this instance becomes `missing` there, as when an app reuses an ID, so
   pushing that card again creates a new copy in the app. What the import
   leaves out of the card, like SillyTavern's favorite star, goes into this
-  instance's override. On a target that keeps world books on their own, the
-  card's embedded `character_book` is ignored; its linked world books are the
-  nested items. Only `app_hash` is needed.
+  instance's override. On a target that keeps world books on their own and
+  doesn't list `character_book` among its fields, the card's embedded
+  `character_book` is ignored; its linked world books are the nested items.
+  Only `app_hash` is needed.
 - `skip`: do nothing, including the nested world books. The next reconcile
   reports it again.
 
@@ -239,6 +242,16 @@ If an earlier world book in the same resolution changed a suggestion's match,
 the resolve fails with `409` naming both world books, and isn't stale: give
 the left-out one an explicit resolution. A stale error names its item, as
 `card:<remote_id>` or `lorebook:<remote_id>`.
+
+A bulk resolve takes a list of resolutions, each with `"kind": "lorebook"`
+for a top-level world book (default `card`). Every resolution's shape is
+checked before the job is queued. Each runs as its own child job in its own
+transaction, and its progress has an `outcome`: the action, or `stale` (with
+the fresh comparison), `conflict`, or `failed`. A failed child doesn't stop
+the others; a plugin error that may pass is retried. Because children don't
+share a transaction, a world book two cards both name explicitly is bound by
+whichever runs first, and the other's resolution goes stale. Leave it out of
+the second card to have it bind as its suggestion instead.
 
 | Choice | Library card | Next push to this app | Other apps |
 |---|---|---|---|

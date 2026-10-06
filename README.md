@@ -181,6 +181,8 @@ innkeeper export <card-id> [file [format]]      a card as CCv3 JSON, or a codec'
 innkeeper bulk archive|unarchive <query-json>   archive or unarchive the cards a search matches
 innkeeper push <instance-id> <card-id>|<query-json> [--new-copy]
                                                 push one card, or the cards a search matches, to a target
+innkeeper sources <card-id> [add <url> | remove <source-id>]
+                                                list, add, or remove a card's sources
 innkeeper jobs [show|cancel|watch <job-id>]     list or follow jobs
 innkeeper token create <name> [tier] | list | revoke <id> | revoke-grant <id>
 innkeeper backup <dir>
@@ -225,6 +227,23 @@ curl -sf -H "Authorization: Bearer $INNKEEPER_TOKEN" -H 'Content-Type: applicati
   --data-binary @brakka.png "$INNKEEPER_URL/blobs"
 innkeeper import <instance-id> '{"blob": "<sha256>", "name": "brakka.png"}'
 ```
+
+## Sources
+
+A source is a site a card or lorebook was published on, such as its chub.ai
+page. Importing from a folder or an app, and binding to an app item, records
+the `extensions.chub` entry that chub.ai imports leave in the data. Currently
+chub.ai is the only site Innkeeper knows.
+
+Add or remove one yourself with the API, MCP tools, or CLI:
+
+```bash
+innkeeper sources 12 add https://chub.ai/characters/user/name
+innkeeper sources 12 remove 3
+innkeeper call GET /lorebooks/5/sources    # lorebooks use the API
+```
+
+A removed source stays removed: detection won't add it back.
 
 ## Sync
 

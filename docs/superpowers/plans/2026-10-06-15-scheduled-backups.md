@@ -19,16 +19,16 @@
   - `config`: `plugin_instance`, `setting`, `binding`, `push`, and every `plugin_%` schema.
   - Never backed up: `job`, `api_token`, `session`, `oauth_*`, `schema_migration`.
 - **Only referenced blobs.** The `blob` copy keeps rows a revision's `avatar_blob` points to. Revisions are never deleted, so those files can't vanish mid-backup, and export zips stay out.
-- **Go, not `pg_dump`, for core tables.** One `REPEATABLE READ READ ONLY` transaction runs `COPY (SELECT <cols> FROM t) TO STDOUT` per table, in text format. The column list skips generated columns (`card_revision.search`) and is saved in the manifest. Restoring with that column list lets an archive from an older schema load into a newer one. Restoring one type into a live database needs per-table control that `pg_restore` can't give inside our transaction.
+- **Go, not `pg_dump`, for core tables.** One `REPEATABLE READ READ ONLY` transaction runs `COPY (SELECT <cols> FROM t) TO STDOUT` per table, in text format. Both ends read the column list from the database, skipping generated columns (`card_revision.search`). Restoring one type into a live database needs per-table control that `pg_restore` can't give inside our transaction.
 - **Plugin schemas use `pg_dump`.** Plugins own their DDL, so a config backup runs `pg_dump --format=plain --inserts --rows-per-insert=1000 --no-owner --no-privileges --schema=plugin_*` with `--snapshot` set to the core transaction's `pg_export_snapshot()`, so it sees the same moment. It runs only when a `plugin_%` schema exists, so most installs never call `pg_dump`. Restore runs the SQL in the same transaction, after stripping the `\restrict`/`\unrestrict` lines pg_dump 18 adds. Restore needs no `pg_restore`.
 - **Layout on disk.**
   - `<dir>/<type>/<type>-<UTC time>/` holds `manifest.json`, `tables/<table>.copy`, and for config `plugins.sql`.
   - `<dir>/assets/blobs/ab/cd/<sha256>` is shared by every assets backup and copied incrementally. Each assets manifest lists its blob hashes.
   - A backup is written as `<name>.part/` and renamed when done. The next backup of that type removes leftover `.part` folders, under a per-type advisory lock, so a manual and a scheduled run can't overlap.
-- **Manifest.** `{"format": 1, "type", "created_at", "schema": "<last schema_migration name>", "tables": {"<t>": {"columns": [...], "rows": n}}, "blobs": [...], "plugin_schemas": [...], "secrets_check": "<box.Derive(\"backup-check\")>"}`. `secrets_check` is set only for config.
+- **Manifest.** `{"format": 1, "type", "created_at", "schema": "<last schema_migration name>", "tables": {"<t>": <rows>}, "blobs": [...], "plugin_schemas": [...], "secrets_check": "<box.Derive(\"backup-check\")>"}`. `secrets_check` is set only for config.
 - **Archive.** A gzip tar holding `manifest.json`, then `blobs/<sha256>`, then `tables/*.copy`, then `plugins.sql`, so restore reads it in one pass. `GET /backups/{name}` and `innkeeper restore <backup-dir>` both build it from a backup folder with `WriteArchive`.
 - **Restore,** on its own connection (plugin SQL changes `search_path` for the session), in one transaction:
-  1. Read the manifest. Refuse an unknown format or type, or a `schema` this database hasn't applied ("made by a newer Innkeeper; upgrade first").
+  1. Read the manifest. Refuse an unknown format or type, or a `schema` other than this database's latest migration ("made by another Innkeeper version"). Before 1.0.0 an archive restores only into the version that wrote it.
   2. Take `pg_advisory_xact_lock(hashtext('innkeeper-restore'))`, then `SET CONSTRAINTS ALL DEFERRED`.
   3. If the type has data (assets: any `card`, `lorebook`, `tag`, or `collection` row; config: any `plugin_instance` or `setting` row), refuse with `ErrHasData` unless `Replace` is set.
   4. With `Replace`, clear the type. For assets: `ALTER TABLE … DISABLE TRIGGER` the two `*_revision_immutable` triggers, delete in reverse load order, then enable them again. For config: delete `push`, `binding`, `setting`, `plugin_instance`, then `DROP SCHEMA … CASCADE` every `plugin_%` schema. The core user is a member of each plugin role, so it may drop them.
@@ -53,7 +53,7 @@
   - `POST /restores`: multipart, with an `archive` file and an optional `replace` field. It checks the manifest first, so a bad archive is a 400 at once. It saves the file to `<dir>/restores/` and returns 202 with the `backup.restore` job.
 - **Health.** `GET /api/health`, public. It returns `{"backups": {"<type>": {"every", "last", "ok"}}}` for each scheduled type. `ok` is a backup younger than twice `EVERY`. Any type not ok makes it 503, so uptime monitors can alert. Backup ages are low-sensitivity, and monitors often can't send tokens. The chart's probes don't use it, because a stale backup mustn't restart the pod.
 - **Volume.** The chart runs the API and worker in one pod. Both containers mount the backup volume, since the API serves downloads and saves uploads. Compose mounts `./backups` into both, commented out with the settings.
-- **CLI.** `innkeeper backup <dir> [assets|config]` writes the new format, both types by default. `innkeeper restore [--replace] <archive-or-backup-dir>...` migrates first, restores in type order, and prints skipped bindings and a key-mismatch warning. Both read `INNKEEPER_DATABASE_URL`, `INNKEEPER_BLOB_DIR`, and `INNKEEPER_SECRETS_KEY`. Old `innkeeper-<time>.dump` files still restore with `pg_restore`, as the README says.
+- **CLI.** `innkeeper backup <dir> [assets|config]` replaces the single `pg_dump`, both types by default. `innkeeper restore [--replace] <archive-or-backup-dir>...` migrates first, restores in type order, and prints skipped bindings and a key-mismatch warning. Both read `INNKEEPER_DATABASE_URL`, `INNKEEPER_BLOB_DIR`, and `INNKEEPER_SECRETS_KEY`.
 - **Not atomic across a failed restore's blobs, nor across two archives.** Each archive restores in its own transaction.
 - **Out of scope:** off-site copies (S3), restoring by backup name over the API, a web UI page, encryption.
 
@@ -213,7 +213,7 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (Result, error)
   - `Replace` on assets swaps the library for the archive's.
   - `Replace` on assets when a binding points at a card missing from the archive fails with the binding message, and the database is unchanged.
   - Another secrets key sets `SecretsKeyMismatch`.
-  - A manifest whose `schema` isn't applied is refused before anything is written.
+  - A manifest whose `schema` differs from the database's is refused before anything is written.
   - Plugin-schema cases skip without `pg_dump`, except in CI.
 - [ ] Commit `feat(backup): restore an archive of one type`.
 
@@ -279,5 +279,5 @@ backup:
 ### Task 10: README
 
 - [ ] Settings table: the five backup variables and the `restore` command.
-- [ ] Rewrite "Backup and restore": what each type holds and what's never backed up; turning on schedules in Compose (with `mkdir backups` and owner `10001` on Linux) and the chart; downloading; restoring with the CLI and API, assets before config; `--replace`; keep `INNKEEPER_SECRETS_KEY` with config backups; make a new token after a restore with `innkeeper token create`; `/api/health` for monitoring; old `.dump` files still restore with `pg_restore`.
+- [ ] Rewrite "Backup and restore": what each type holds and what's never backed up; turning on schedules in Compose (with `mkdir backups` and owner `10001` on Linux) and the chart; downloading; restoring with the CLI and API, assets before config; `--replace`; keep `INNKEEPER_SECRETS_KEY` with config backups; make a new token after a restore with `innkeeper token create`; `/api/health` for monitoring.
 - [ ] Commit `docs: scheduled backups and restore`.

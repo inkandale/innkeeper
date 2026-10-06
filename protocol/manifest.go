@@ -3,6 +3,7 @@ package protocol
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -12,7 +13,7 @@ import (
 )
 
 // Capabilities lists every capability a plugin may declare.
-var Capabilities = []string{"import", "search", "push", "pull", "action", "enrich", "codec", "auth", "mcp"}
+var Capabilities = []string{"import", "search", "push", "pull", "action", "enrich", "codec", "auth", "mcp", "theme"}
 
 var enrichmentTypes = []string{"text", "score", "list"}
 
@@ -46,6 +47,9 @@ type Manifest struct {
 	// Database gives the plugin a schema, plugin_<name>, and a role limited
 	// to it. The URL arrives as initialize's database_url.
 	Database bool `toml:"database"`
+
+	// Stylesheet is a theme plugin's CSS file, inside the plugin folder.
+	Stylesheet string `toml:"stylesheet"`
 
 	// Dir is the absolute path of the plugin's folder.
 	Dir string `toml:"-"`
@@ -85,6 +89,11 @@ func LoadManifest(dir string) (*Manifest, error) {
 	if err := m.Validate(); err != nil {
 		return nil, fmt.Errorf("manifest %s: %w", abs, err)
 	}
+	if m.IsTheme() {
+		if _, err := os.Stat(m.StylesheetPath()); err != nil {
+			return nil, fmt.Errorf("manifest %s: stylesheet: %w", abs, err)
+		}
+	}
 	return &m, nil
 }
 
@@ -100,12 +109,17 @@ func (m *Manifest) Validate() error {
 	if m.Protocol != Version {
 		errs = append(errs, fmt.Errorf("protocol %d is not supported; this core speaks %d", m.Protocol, Version))
 	}
-	if len(m.Command) == 0 || m.Command[0] == "" {
+	if m.IsTheme() {
+		errs = append(errs, m.validateTheme()...)
+	} else if len(m.Command) == 0 || m.Command[0] == "" {
 		errs = append(errs, errors.New("command is required"))
 	} else if m.Dir != "" && !filepath.IsAbs(m.Command[0]) && strings.Contains(m.Command[0], "/") {
-		if rel, err := filepath.Rel(m.Dir, m.CommandPath()); err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
+		if !inside(m.Dir, m.CommandPath()) {
 			errs = append(errs, fmt.Errorf("command %q is outside the plugin folder", m.Command[0]))
 		}
+	}
+	if !m.IsTheme() && m.Stylesheet != "" {
+		errs = append(errs, errors.New("stylesheet needs the theme capability"))
 	}
 	if len(m.Capabilities) == 0 {
 		errs = append(errs, errors.New("at least one capability is required"))
@@ -176,4 +190,35 @@ func (m *Manifest) CommandPath() string {
 		return filepath.Join(m.Dir, cmd)
 	}
 	return cmd
+}
+
+// IsTheme reports whether the plugin is a theme: a stylesheet and no process.
+func (m *Manifest) IsTheme() bool { return slices.Contains(m.Capabilities, "theme") }
+
+// StylesheetPath is the theme's CSS file.
+func (m *Manifest) StylesheetPath() string { return filepath.Join(m.Dir, m.Stylesheet) }
+
+func (m *Manifest) validateTheme() []error {
+	var errs []error
+	if len(m.Capabilities) > 1 {
+		errs = append(errs, errors.New("theme can't be combined with other capabilities"))
+	}
+	if len(m.Command) > 0 {
+		errs = append(errs, errors.New("a theme plugin has no command"))
+	}
+	switch {
+	case m.Stylesheet == "":
+		errs = append(errs, errors.New("a theme plugin needs a stylesheet"))
+	case !strings.HasSuffix(m.Stylesheet, ".css"):
+		errs = append(errs, fmt.Errorf("stylesheet %q must end in .css", m.Stylesheet))
+	case filepath.IsAbs(m.Stylesheet) || (m.Dir != "" && !inside(m.Dir, m.StylesheetPath())):
+		errs = append(errs, fmt.Errorf("stylesheet %q is outside the plugin folder", m.Stylesheet))
+	}
+	return errs
+}
+
+// inside reports whether path is in dir.
+func inside(dir, path string) bool {
+	rel, err := filepath.Rel(dir, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, "../")
 }

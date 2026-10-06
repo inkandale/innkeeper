@@ -160,3 +160,45 @@ type = "string"
 		t.Fatal("an unknown top-level table loaded")
 	}
 }
+
+const themeManifest = `
+name = "dusk"
+version = "1.0.0"
+protocol = 1
+capabilities = ["theme"]
+stylesheet = "theme.css"
+`
+
+func TestThemeManifest(t *testing.T) {
+	dir := writeManifest(t, themeManifest)
+	if err := os.WriteFile(filepath.Join(dir, "theme.css"), []byte(":root{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := LoadManifest(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !m.IsTheme() || m.StylesheetPath() != filepath.Join(m.Dir, "theme.css") {
+		t.Fatalf("manifest = %+v", m)
+	}
+}
+
+func TestThemeManifestErrors(t *testing.T) {
+	tests := []struct{ name, body, want string }{
+		{"missing file", themeManifest, "stylesheet"},
+		{"with command", themeManifest + `command = ["./x"]` + "\n", "a theme plugin has no command"},
+		{"no stylesheet", strings.Replace(themeManifest, `stylesheet = "theme.css"`, "", 1), "a theme plugin needs a stylesheet"},
+		{"outside folder", strings.Replace(themeManifest, `"theme.css"`, `"../theme.css"`, 1), "outside the plugin folder"},
+		{"not css", strings.Replace(themeManifest, `"theme.css"`, `"theme.js"`, 1), "must end in .css"},
+		{"mixed", strings.Replace(themeManifest, `["theme"]`, `["theme", "push"]`, 1), "theme can't be combined"},
+		{"stylesheet without theme", validManifest[:strings.Index(validManifest, "[config]")] + `stylesheet = "a.css"` + "\n", "stylesheet needs the theme capability"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := LoadManifest(writeManifest(t, tt.body))
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("err = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}

@@ -22,7 +22,7 @@ func Handler(fsys fs.FS) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
 		if strings.HasPrefix(name, "assets/") {
-			if _, err := fs.Stat(fsys, name); err != nil {
+			if st, err := fs.Stat(fsys, name); err != nil || st.IsDir() {
 				http.NotFound(w, r)
 				return
 			}

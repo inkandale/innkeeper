@@ -162,7 +162,15 @@ func (s *Server) Handler() http.Handler {
 	s.oauthRoutes(mux)
 	mux.Handle("/mcp", mcp.New(apiMux, s.Auth, s.Log, s.resourceMetadataURL()))
 	if s.UI != nil {
-		mux.Handle("/", s.UI)
+		// Not "GET /": that conflicts with the method-less "/api/".
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet && r.Method != http.MethodHead {
+				w.Header().Set("Allow", "GET, HEAD")
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			s.UI.ServeHTTP(w, r)
+		})
 	}
 	return mux
 }

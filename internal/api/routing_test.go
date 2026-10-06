@@ -85,4 +85,25 @@ func TestUIServesNonAPIPaths(t *testing.T) {
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("GET /api/cards/12 = %d, want 401", resp.StatusCode)
 	}
+	// The UI answers GET only.
+	resp, err = client.Post(srv.URL+"/cards/12", "text/plain", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("POST /cards/12 = %d, want 405", resp.StatusCode)
+	}
+	// Other routes aren't swallowed by the UI.
+	for _, path := range []string{"/auth/1/callback", "/mcp"} {
+		resp, err := client.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if string(body) == "ui" {
+			t.Errorf("GET %s fell through to the UI", path)
+		}
+	}
 }

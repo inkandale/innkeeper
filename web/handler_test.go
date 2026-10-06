@@ -46,6 +46,16 @@ func TestHandler(t *testing.T) {
 	}
 }
 
+func TestHandlerAssetDirectory(t *testing.T) {
+	h := Handler(fstest.MapFS{"assets/sub/x.js": {Data: []byte("x")}})
+	for _, p := range []string{"/assets/sub/", "/assets/sub"} {
+		rec := get(t, h, p)
+		if rec.Code != http.StatusNotFound || rec.Header().Get("Cache-Control") != "" {
+			t.Errorf("%s: %d, Cache-Control %q", p, rec.Code, rec.Header().Get("Cache-Control"))
+		}
+	}
+}
+
 func TestHandlerWithoutBuild(t *testing.T) {
 	rec := get(t, Handler(fstest.MapFS{}), "/")
 	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "npm run build") {

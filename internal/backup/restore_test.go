@@ -1,0 +1,341 @@
+package backup
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/davidgibbons/innkeeper/internal/blobstore"
+	"github.com/davidgibbons/innkeeper/internal/library"
+	"github.com/davidgibbons/innkeeper/internal/secrets"
+)
+
+// needPgDump skips without pg_dump, except in CI, where it fails.
+func needPgDump(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("pg_dump"); err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatal(err)
+		}
+		t.Skip(err)
+	}
+}
+
+func testBox(t *testing.T, b byte) *secrets.Box {
+	t.Helper()
+	box, err := secrets.New(bytes.Repeat([]byte{b}, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return box
+}
+
+// source seeds a database with assets, config, and a plugin schema, and
+// returns an archive of each type.
+func source(t *testing.T) (assets, config []byte, box *secrets.Box) {
+	t.Helper()
+	needPgDump(t)
+	pool, lib, o := setup(t)
+	ctx := context.Background()
+	seed(t, lib)
+	box = testBox(t, 1)
+	o.Box = box
+	sealed, err := box.Seal(map[string]string{"token": "s3cret"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO plugin_instance (plugin, name, secrets) VALUES ('fake', 'fake', $1)`, sealed); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO card_source (card_id, kind, ref, linked_by) SELECT id, 'chub', 'a/brakka', 'owner' FROM card;
+		INSERT INTO setting (key, value) VALUES ('k', 'v');
+		INSERT INTO binding (instance_id, card_id, remote_id, remote_state, accepted_data, accepted_hash)
+			SELECT i.id, c.id, 'r1', 'unchanged', '{}', 'h' FROM plugin_instance i, card c;
+		INSERT INTO push (binding_id, revision_id, pushed_hash, remote_id)
+			SELECT b.id, c.head_revision_id, 'h', 'r1' FROM binding b JOIN card c ON c.id = b.card_id;
+		CREATE SCHEMA plugin_fake;
+		CREATE TABLE plugin_fake.note (body text);
+		INSERT INTO plugin_fake.note VALUES ('remember the forge')`); err != nil {
+		t.Fatal(err)
+	}
+	return archive(t, pool, Assets, o), archive(t, pool, Config, o), box
+}
+
+func archive(t *testing.T, pool *pgxpool.Pool, typ Type, o Options) []byte {
+	t.Helper()
+	info, err := Write(context.Background(), pool, typ, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := WriteArchive(&buf, o.Dir, info.Name); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// target is an empty database to restore into.
+type target struct {
+	pool  *pgxpool.Pool
+	lib   *library.Library
+	store *blobstore.Store
+}
+
+func newTarget(t *testing.T) target {
+	t.Helper()
+	pool, lib, o := setup(t)
+	return target{pool, lib, o.Store}
+}
+
+func (tg target) restore(archive []byte, box *secrets.Box, replace bool) (Result, error) {
+	return Restore(context.Background(), bytes.NewReader(archive),
+		RestoreOptions{Conn: tg.pool.Config().ConnConfig, Store: tg.store, Box: box, Replace: replace})
+}
+
+func (tg target) count(t *testing.T, query string) int {
+	t.Helper()
+	var n int
+	if err := tg.pool.QueryRow(context.Background(), query).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+func (tg target) slugs(t *testing.T) []string {
+	t.Helper()
+	rows, err := tg.pool.Query(context.Background(), `SELECT slug FROM card ORDER BY slug`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for rows.Next() {
+		var s string
+		rows.Scan(&s)
+		out = append(out, s)
+	}
+	return out
+}
+
+func checkAssets(t *testing.T, tg target) {
+	t.Helper()
+	ctx := context.Background()
+	var avatar, name string
+	if err := tg.pool.QueryRow(ctx, `SELECT r.avatar_blob, r.data->>'name' FROM card c
+		JOIN card_revision r ON r.id = c.head_revision_id WHERE c.slug = 'brakka'`).Scan(&avatar, &name); err != nil {
+		t.Fatal(err)
+	}
+	if name != "Brakka" {
+		t.Fatalf("head revision name = %q", name)
+	}
+	p, err := tg.store.Path(avatar)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(p); err != nil || string(b) != "avatar" {
+		t.Fatalf("avatar file: %q, %v", b, err)
+	}
+	for q, want := range map[string]int{
+		`SELECT count(*) FROM card_lorebook`:                                                                      1,
+		`SELECT count(*) FROM card_tag JOIN tag ON tag.id = tag_id WHERE name = 'dwarf'`:                          1,
+		`SELECT count(*) FROM collection_card JOIN collection c ON c.id = collection_id WHERE name = 'Favorites'`: 1,
+		`SELECT count(*) FROM card_source WHERE ref = 'a/brakka'`:                                                 1,
+	} {
+		if got := tg.count(t, q); got != want {
+			t.Errorf("%s = %d, want %d", q, got, want)
+		}
+	}
+}
+
+func TestRestoreAssets(t *testing.T) {
+	assets, _, _ := source(t)
+	tg := newTarget(t)
+	res, err := tg.restore(assets, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Type != Assets || res.Blobs != 1 || res.Rows["card"] != 1 || res.Rows["card_source"] != 1 {
+		t.Fatalf("result = %+v", res)
+	}
+	checkAssets(t, tg)
+	c, _, err := tg.lib.Cards.Create(context.Background(), "new", "upload",
+		library.Edit{Data: json.RawMessage(`{"name": "New"}`), Source: "ui"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if max := tg.count(t, `SELECT max(id) FROM card WHERE slug <> 'new'`); c.ID <= int64(max) {
+		t.Fatalf("new card id %d, restored max %d", c.ID, max)
+	}
+}
+
+func TestRestoreConfig(t *testing.T) {
+	_, config, box := source(t)
+	tg := newTarget(t)
+	res, err := tg.restore(config, box, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.SecretsKeyMismatch || len(res.SkippedBindings) != 1 || res.Rows["binding"] != 0 || res.Rows["push"] != 0 {
+		t.Fatalf("result = %+v", res)
+	}
+	ctx := context.Background()
+	var sealed []byte
+	if err := tg.pool.QueryRow(ctx, `SELECT secrets FROM plugin_instance WHERE name = 'fake'`).Scan(&sealed); err != nil {
+		t.Fatal(err)
+	}
+	if s, err := box.Open(sealed); err != nil || s["token"] != "s3cret" {
+		t.Fatalf("secrets = %v, %v", s, err)
+	}
+	var body string
+	if err := tg.pool.QueryRow(ctx, `SELECT body FROM plugin_fake.note`).Scan(&body); err != nil || body != "remember the forge" {
+		t.Fatalf("plugin row = %q, %v", body, err)
+	}
+}
+
+func TestRestoreBoth(t *testing.T) {
+	assets, config, box := source(t)
+	tg := newTarget(t)
+	if _, err := tg.restore(assets, box, false); err != nil {
+		t.Fatal(err)
+	}
+	res, err := tg.restore(config, box, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.SkippedBindings) != 0 || res.Rows["binding"] != 1 || res.Rows["push"] != 1 {
+		t.Fatalf("result = %+v", res)
+	}
+	if n := tg.count(t, `SELECT count(*) FROM binding_status WHERE status = 'in_sync'`); n != 1 {
+		t.Fatalf("%d in_sync bindings, want 1", n)
+	}
+
+	// Replacing config drops the plugin schemas before plugins.sql recreates them.
+	if _, err := tg.restore(config, box, false); !errors.Is(err, ErrHasData) {
+		t.Fatalf("err = %v, want ErrHasData", err)
+	}
+	if _, err := tg.restore(config, box, true); err != nil {
+		t.Fatal(err)
+	}
+	if n := tg.count(t, `SELECT count(*) FROM plugin_fake.note`) + tg.count(t, `SELECT count(*) FROM binding_status WHERE status = 'in_sync'`); n != 2 {
+		t.Fatalf("after replace: %d plugin rows plus in_sync bindings, want 2", n)
+	}
+}
+
+func TestRestoreRefusesExistingData(t *testing.T) {
+	assets, _, _ := source(t)
+	tg := newTarget(t)
+	if _, err := tg.pool.Exec(context.Background(), `INSERT INTO tag (name) VALUES ('mine')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tg.restore(assets, nil, false); !errors.Is(err, ErrHasData) {
+		t.Fatalf("err = %v, want ErrHasData", err)
+	}
+	if tg.count(t, `SELECT count(*) FROM card`) != 0 || tg.count(t, `SELECT count(*) FROM tag`) != 1 {
+		t.Fatal("restore changed the database")
+	}
+	if es, _ := os.ReadDir(tg.store.Root); len(es) != 0 {
+		t.Fatalf("store has %v", es)
+	}
+}
+
+func TestRestoreReplaceAssets(t *testing.T) {
+	assets, _, _ := source(t)
+	tg := newTarget(t)
+	if _, _, err := tg.lib.Cards.Create(context.Background(), "other", "upload",
+		library.Edit{Data: json.RawMessage(`{"name": "Other"}`), Source: "ui"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tg.restore(assets, nil, true); err != nil {
+		t.Fatal(err)
+	}
+	if s := tg.slugs(t); !slices.Equal(s, []string{"brakka"}) {
+		t.Fatalf("cards = %v", s)
+	}
+	checkAssets(t, tg)
+}
+
+func TestRestoreReplaceKeepsBindingsWhole(t *testing.T) {
+	pool, lib, o := setup(t)
+	ctx := context.Background()
+	seed(t, lib)
+	assets := archive(t, pool, Assets, o)
+	// A second card, absent from the archive, with a binding.
+	c, _, err := lib.Cards.Create(ctx, "later", "upload", library.Edit{Data: json.RawMessage(`{"name": "Later"}`), Source: "ui"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO plugin_instance (plugin, name) VALUES ('fake', 'fake')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO binding (instance_id, card_id, remote_id, remote_state, accepted_data, accepted_hash)
+			SELECT id, $1, 'r1', 'unchanged', '{}', 'h' FROM plugin_instance`, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	tg := target{pool, lib, o.Store}
+	_, err = tg.restore(assets, nil, true)
+	if err == nil || !strings.Contains(err.Error(), "bindings refer to cards or lorebooks") {
+		t.Fatalf("err = %v", err)
+	}
+	if s := tg.slugs(t); !slices.Equal(s, []string{"brakka", "later"}) {
+		t.Fatalf("cards = %v", s)
+	}
+	// The triggers came back with the rollback.
+	if _, err := pool.Exec(ctx, `DELETE FROM card_revision`); err == nil {
+		t.Fatal("card_revision is no longer immutable")
+	}
+}
+
+func TestRestoreSecretsKeyMismatch(t *testing.T) {
+	_, config, _ := source(t)
+	res, err := newTarget(t).restore(config, testBox(t, 2), false)
+	if err != nil || !res.SecretsKeyMismatch {
+		t.Fatalf("result = %+v, %v", res, err)
+	}
+}
+
+func TestRestoreRefusesOtherSchema(t *testing.T) {
+	assets, _, _ := source(t)
+	names, bodies := entries(t, assets)
+	var m Manifest
+	if err := json.Unmarshal([]byte(bodies["manifest.json"]), &m); err != nil {
+		t.Fatal(err)
+	}
+	m.Schema = "9999_future.sql"
+	b, _ := json.Marshal(m)
+	bodies["manifest.json"] = string(b)
+	var files [][2]string
+	for _, n := range names {
+		files = append(files, [2]string{n, bodies[n]})
+	}
+	tg := newTarget(t)
+	_, err := tg.restore(archiveOf(t, files...), nil, false)
+	if err == nil || !strings.Contains(err.Error(), "another Innkeeper version") {
+		t.Fatalf("err = %v", err)
+	}
+	if tg.count(t, `SELECT count(*) FROM card`) != 0 {
+		t.Fatal("restore wrote rows")
+	}
+	if es, _ := os.ReadDir(tg.store.Root); len(es) != 0 {
+		t.Fatalf("store has %v", es)
+	}
+}
+
+func TestValidSHA(t *testing.T) {
+	if !validSHA(sha) {
+		t.Error("rejected a valid hash")
+	}
+	for _, s := range []string{"", "abcd", strings.ToUpper(sha), sha + "0", filepath.Join("ab", sha[3:])} {
+		if validSHA(s) {
+			t.Errorf("accepted %q", s)
+		}
+	}
+}

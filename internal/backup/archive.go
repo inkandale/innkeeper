@@ -48,7 +48,7 @@ func WriteArchive(w io.Writer, dir, name string) error {
 		}
 	}
 	for _, sha := range m.Blobs {
-		if len(sha) < 4 || strings.ContainsAny(sha, `/\.`) {
+		if !validSHA(sha) {
 			return fmt.Errorf("backup %q: manifest lists bad blob hash %q", name, sha)
 		}
 		if err := mustExist(blobPath(dir, sha)); err != nil {

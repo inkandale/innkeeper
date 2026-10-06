@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -203,12 +202,7 @@ func TestWriteConfig(t *testing.T) {
 }
 
 func TestWriteConfigPluginSchemas(t *testing.T) {
-	if _, err := exec.LookPath("pg_dump"); err != nil {
-		if os.Getenv("CI") != "" {
-			t.Fatal(err)
-		}
-		t.Skip(err)
-	}
+	needPgDump(t)
 	pool, _, o := setup(t)
 	ctx := context.Background()
 	if _, err := pool.Exec(ctx, `

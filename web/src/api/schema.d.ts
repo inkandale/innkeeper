@@ -226,7 +226,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Archive, tag, collect, or export many cards
+         * Archive, tag, collect, or export many cards, or archive many lorebooks
          * @description Queues one child job per card the query matches. Export queues one job that writes a zip; its progress names the zip's blob when it's done, and the blob is deleted after a day.
          */
         post: operations["start-bulk"];
@@ -946,6 +946,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/lorebooks/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search the library's lorebooks
+         * @description Takes the same query as POST /search. Text matches names, descriptions, entry keys, and entry content. Lorebooks have no tags or collections. Send {} to list every lorebook that isn't archived, newest first.
+         */
+        post: operations["search-lorebooks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/lorebooks/{id}": {
         parameters: {
             query?: never;
@@ -1223,8 +1243,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Push many cards to a target
-         * @description Queues one child job per card the query matches.
+         * Push many cards or lorebooks to a target
+         * @description Queues one child job per card or lorebook the query matches.
          */
         post: operations["push-cards"];
         delete?: never;
@@ -1500,6 +1520,11 @@ export interface components {
             collection?: number;
             /** @description For export: json (the default), or a format a codec plugin instance writes, such as png. */
             format?: string;
+            /**
+             * @description What the query selects; default card. Lorebooks take archive and unarchive only.
+             * @enum {string}
+             */
+            kind?: "card" | "lorebook";
             /** @description Selects the cards, as in POST /search. Paging is ignored. To pick cards by ID, filter on ids. */
             query: components["schemas"]["Query"];
             /** @description For tag and untag: the tags to add or remove. */
@@ -1514,6 +1539,11 @@ export interface components {
             readonly $schema?: string;
             /** Format: int64 */
             instance_id: number;
+            /**
+             * @description What the query selects; default card.
+             * @enum {string}
+             */
+            kind?: "card" | "lorebook";
             /** @description Let a target that can't update cards make another copy */
             new_copy?: boolean;
             /** @description Selects the cards, as in POST /search. Paging is ignored. */
@@ -1792,6 +1822,13 @@ export interface components {
         Hit: {
             /** Format: date-time */
             archived_at?: string;
+            /** @description Lorebooks with include cards: IDs of linked cards. */
+            cards?: number[] | null;
+            /**
+             * Format: int64
+             * @description Lorebooks only: how many entries it has.
+             */
+            entries?: number;
             fields: {
                 [key: string]: unknown;
             };
@@ -2034,12 +2071,12 @@ export interface components {
              * @example /api/schemas/Query.json
              */
             readonly $schema?: string;
-            /** @description Counts to return over every match: tags, collections, targets, sources. */
+            /** @description Counts to return over every match: tags, collections, targets, sources. Lorebooks take targets and sources. */
             facets?: string[] | null;
             /** @description Card data keys to return per hit, plus avatar. Default: name. */
             fields?: string[] | null;
             filter?: components["schemas"]["Filter"];
-            /** @description Extra data per hit: tags, lorebooks, targets. */
+            /** @description Extra data per hit: tags, lorebooks, targets. Lorebooks take cards and targets. */
             include?: string[] | null;
             page?: components["schemas"]["Page"];
             /** @description Not available yet: needs an embedding enricher. */
@@ -2161,7 +2198,7 @@ export interface components {
             next_cursor?: string;
             /**
              * Format: int64
-             * @description How many cards match.
+             * @description How many match.
              */
             total: number;
         };
@@ -4241,6 +4278,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntityOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "search-lorebooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Query"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Results"];
                 };
             };
             /** @description Error */

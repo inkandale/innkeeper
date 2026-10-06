@@ -98,6 +98,7 @@ type importIn struct {
 type bulkIn struct {
 	Body struct {
 		Query      library.Query `json:"query" doc:"Selects the cards, as in POST /search. Paging is ignored. To pick cards by ID, filter on ids."`
+		Kind       string        `json:"kind,omitempty" enum:"card,lorebook" doc:"What the query selects; default card. Lorebooks take archive and unarchive only."`
 		Action     string        `json:"action" enum:"archive,unarchive,tag,untag,collect,uncollect,export"`
 		Tags       []string      `json:"tags,omitempty" maxItems:"100" maxLength:"100" doc:"For tag and untag: the tags to add or remove."`
 		Collection int64         `json:"collection,omitempty" doc:"For collect and uncollect: the collection."`
@@ -321,7 +322,7 @@ func (s *Server) jobRoutes(api huma.API) {
 		})
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "start-bulk", Method: http.MethodPost, Path: "/bulk",
-		Summary: "Archive, tag, collect, or export many cards",
+		Summary: "Archive, tag, collect, or export many cards, or archive many lorebooks",
 		Description: "Queues one child job per card the query matches. Export queues one job that writes a zip; " +
 			"its progress names the zip's blob when it's done, and the blob is deleted after a day.",
 		Tags: tags, DefaultStatus: http.StatusAccepted},
@@ -330,6 +331,10 @@ func (s *Server) jobRoutes(api huma.API) {
 			q := b.Query
 			if q.Filter == nil && q.Text == "" {
 				return nil, huma.Error400BadRequest("bulk actions need a filter or text; to select every card, filter on archived")
+			}
+			lorebooks := b.Kind == "lorebook"
+			if lorebooks && b.Action != "archive" && b.Action != "unarchive" {
+				return nil, huma.Error400BadRequest("lorebooks can only be archived or unarchived in bulk; push them with POST /pushes")
 			}
 			switch b.Action {
 			case "archive", "unarchive":
@@ -365,14 +370,22 @@ func (s *Server) jobRoutes(api huma.API) {
 					}
 				}
 			}
-			ids, err := s.Lib.SearchIDs(ctx, q)
+			search := s.Lib.SearchIDs
+			if lorebooks {
+				search = s.Lib.SearchLorebookIDs
+			}
+			ids, err := search(ctx, q)
 			if err != nil {
 				return nil, s.fail(err)
 			}
 			var p jobs.Job
 			switch b.Action {
 			case "archive", "unarchive":
-				p, err = bulk.EnqueueArchive(ctx, s.Queue, ids, b.Action == "archive")
+				if lorebooks {
+					p, err = bulk.EnqueueLorebookArchive(ctx, s.Queue, ids, b.Action == "archive")
+				} else {
+					p, err = bulk.EnqueueArchive(ctx, s.Queue, ids, b.Action == "archive")
+				}
 			case "tag":
 				p, err = bulk.EnqueueTag(ctx, s.Queue, ids, b.Tags, nil)
 			case "untag":

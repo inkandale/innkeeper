@@ -298,3 +298,31 @@ func TestBulkTagCollectExport(t *testing.T) {
 	e.call("POST", "/bulk", map[string]any{"query": picked, "action": "collect", "collection": 99999}, 404, nil)
 	e.call("POST", "/bulk", map[string]any{"query": picked, "action": "export", "format": "nope"}, 400, nil)
 }
+
+func TestBulkLorebooks(t *testing.T) {
+	e := newEnv(t)
+	w := &jobs.Worker{Queue: e.s.Queue, Log: quiet, Poll: 50 * time.Millisecond,
+		Handlers: map[string]jobs.Handler{bulk.LorebookArchiveKind: bulk.ArchiveLorebook(e.s.Lib)}}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- w.Run(ctx) }()
+	t.Cleanup(func() { cancel(); <-done })
+
+	var forge entityResult
+	e.call("POST", "/lorebooks", map[string]any{"data": json.RawMessage(`{"name": "Forge", "entries": []}`)}, 201, &forge)
+	pick := map[string]any{"filter": map[string]any{"ids": []int64{forge.ID}}}
+
+	var j jobOut
+	e.call("POST", "/bulk", map[string]any{"kind": "lorebook", "query": pick, "action": "archive"}, 202, &j)
+	if last, _ := e.watchJob(j.ID); last.Status != "succeeded" {
+		t.Fatalf("bulk archive = %+v", last)
+	}
+	var got entityResult
+	e.call("GET", fmt.Sprintf("/lorebooks/%d", forge.ID), nil, 200, &got)
+	if got.ArchivedAt == nil {
+		t.Fatal("lorebook not archived")
+	}
+
+	e.call("POST", "/bulk", map[string]any{"kind": "lorebook", "query": pick, "action": "tag", "tags": []string{"x"}}, 400, nil)
+	e.call("POST", "/bulk", map[string]any{"kind": "spell", "query": pick, "action": "archive"}, 422, nil)
+}

@@ -313,6 +313,14 @@
             "description": "For export: json (the default), or a format a codec plugin instance writes, such as png.",
             "type": "string"
           },
+          "kind": {
+            "description": "What the query selects; default card. Lorebooks take archive and unarchive only.",
+            "enum": [
+              "card",
+              "lorebook"
+            ],
+            "type": "string"
+          },
           "query": {
             "$ref": "#/components/schemas/Query",
             "description": "Selects the cards, as in POST /search. Paging is ignored. To pick cards by ID, filter on ids."
@@ -351,6 +359,14 @@
           "instance_id": {
             "format": "int64",
             "type": "integer"
+          },
+          "kind": {
+            "description": "What the query selects; default card.",
+            "enum": [
+              "card",
+              "lorebook"
+            ],
+            "type": "string"
           },
           "new_copy": {
             "description": "Let a target that can't update cards make another copy",
@@ -1092,6 +1108,22 @@
             "format": "date-time",
             "type": "string"
           },
+          "cards": {
+            "description": "Lorebooks with include cards: IDs of linked cards.",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "entries": {
+            "description": "Lorebooks only: how many entries it has.",
+            "format": "int64",
+            "type": "integer"
+          },
           "fields": {
             "additionalProperties": {},
             "type": "object"
@@ -1800,7 +1832,7 @@
             "type": "string"
           },
           "facets": {
-            "description": "Counts to return over every match: tags, collections, targets, sources.",
+            "description": "Counts to return over every match: tags, collections, targets, sources. Lorebooks take targets and sources.",
             "items": {
               "type": "string"
             },
@@ -1823,7 +1855,7 @@
             "$ref": "#/components/schemas/Filter"
           },
           "include": {
-            "description": "Extra data per hit: tags, lorebooks, targets.",
+            "description": "Extra data per hit: tags, lorebooks, targets. Lorebooks take cards and targets.",
             "items": {
               "type": "string"
             },
@@ -2135,7 +2167,7 @@
             "type": "string"
           },
           "total": {
-            "description": "How many cards match.",
+            "description": "How many match.",
             "format": "int64",
             "type": "integer"
           }
@@ -3158,7 +3190,7 @@
             "description": "Error"
           }
         },
-        "summary": "Archive, tag, collect, or export many cards",
+        "summary": "Archive, tag, collect, or export many cards, or archive many lorebooks",
         "tags": [
           "Jobs"
         ]
@@ -5438,6 +5470,48 @@
         ]
       }
     },
+    "/lorebooks/search": {
+      "post": {
+        "description": "Takes the same query as POST /search. Text matches names, descriptions, entry keys, and entry content. Lorebooks have no tags or collections. Send {} to list every lorebook that isn't archived, newest first.",
+        "operationId": "search-lorebooks",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Query"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Results"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Search the library's lorebooks",
+        "tags": [
+          "Search"
+        ]
+      }
+    },
     "/lorebooks/{id}": {
       "get": {
         "operationId": "get-lorebook",
@@ -6217,7 +6291,7 @@
     },
     "/pushes": {
       "post": {
-        "description": "Queues one child job per card the query matches.",
+        "description": "Queues one child job per card or lorebook the query matches.",
         "operationId": "push-cards",
         "requestBody": {
           "content": {
@@ -6251,7 +6325,7 @@
             "description": "Error"
           }
         },
-        "summary": "Push many cards to a target",
+        "summary": "Push many cards or lorebooks to a target",
         "tags": [
           "Sync"
         ]

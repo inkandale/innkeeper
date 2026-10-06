@@ -185,12 +185,12 @@ func TestSearchSort(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
 	s := seedSearch(t, lib)
-	// Editing Brakka makes it the most recently updated card.
+	// Renaming Brakka makes it the most recently updated card, and first by name.
 	c, err := lib.Cards.Get(ctx, s.brakka)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := lib.Cards.Update(ctx, s.brakka, c.HeadRevisionID, edit(`{"name": "Zed Brakka"}`)); err != nil {
+	if _, err := lib.Cards.Update(ctx, s.brakka, c.HeadRevisionID, edit(`{"name": "Aaron Brakka"}`)); err != nil {
 		t.Fatal(err)
 	}
 	for sort, want := range map[string][]int64{
@@ -198,7 +198,7 @@ func TestSearchSort(t *testing.T) {
 		"relevance": {s.carrow, s.brakka},
 		"created":   {s.carrow, s.brakka},
 		"updated":   {s.brakka, s.carrow},
-		"name":      {s.carrow, s.brakka},
+		"name":      {s.brakka, s.carrow},
 	} {
 		got, err := lib.Search(ctx, Query{Sort: sort})
 		if err != nil || !slices.Equal(hitIDs(got), want) {
@@ -227,6 +227,9 @@ func TestSearchPageNumberAndTotal(t *testing.T) {
 	}
 	if _, err := lib.Search(ctx, Query{Page: Page{Number: -1}}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("negative number: %v", err)
+	}
+	if _, err := lib.Search(ctx, Query{Page: Page{Number: 1 << 40}}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("huge number: %v", err)
 	}
 }
 

@@ -30,7 +30,7 @@ type Query struct {
 type Page struct {
 	Size   int     `json:"size,omitempty" minimum:"0" maximum:"500" doc:"Default 50."`
 	Cursor *string `json:"cursor,omitempty" nullable:"true" doc:"next_cursor from the previous page."`
-	Number int     `json:"number,omitempty" minimum:"0" doc:"1-based page number, instead of cursor."`
+	Number int     `json:"number,omitempty" minimum:"0" maximum:"1000000" doc:"1-based page number, instead of cursor."`
 }
 
 // Filter is one condition on a card. Set exactly one field. Archived cards
@@ -284,8 +284,8 @@ func (l *Library) Search(ctx context.Context, q Query) (Results, error) {
 		if offset, err = strconv.Atoi(*q.Page.Cursor); err != nil || offset < 0 {
 			return Results{}, fmt.Errorf("%w: bad cursor", ErrInvalid)
 		}
-	case q.Page.Number < 0:
-		return Results{}, fmt.Errorf("%w: page number must be 1 or more", ErrInvalid)
+	case q.Page.Number < 0 || q.Page.Number > 1_000_000:
+		return Results{}, fmt.Errorf("%w: page number must be 1 to 1000000", ErrInvalid)
 	case q.Page.Number > 0:
 		offset = (q.Page.Number - 1) * size
 	}

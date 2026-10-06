@@ -65,8 +65,7 @@ const bindable = `(card_id IS NULL OR EXISTS (SELECT FROM public.card WHERE id =
 	AND (lorebook_id IS NULL OR EXISTS (SELECT FROM public.lorebook WHERE id = lorebook_id))`
 
 // Restore loads an archive of one backup type in a single transaction. Blobs
-// are written to the store as they arrive; a failed restore leaves only
-// unreferenced files, which blob cleanup removes.
+// are written to the store as they arrive.
 func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (Result, error) {
 	tr, m, err := openArchive(r)
 	if err != nil {
@@ -258,8 +257,12 @@ func clearType(ctx context.Context, tx pgx.Tx, t Type) error {
 	var stmts []string
 	switch t {
 	case Assets:
+		// Blob rows stay: loadTable skips ones already here, and blob cleanup
+		// removes those no revision references.
 		for _, table := range slices.Backward(tables[Assets]) {
-			stmts = append(stmts, `DELETE FROM `+pgx.Identifier{"public", table}.Sanitize())
+			if table != "blob" {
+				stmts = append(stmts, `DELETE FROM `+pgx.Identifier{"public", table}.Sanitize())
+			}
 		}
 	case Config:
 		stmts = []string{`DELETE FROM public.push`, `DELETE FROM public.binding`, `DELETE FROM public.setting`, `DELETE FROM public.plugin_instance`}

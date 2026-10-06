@@ -314,11 +314,18 @@ func TestRestoreReplaceAssets(t *testing.T) {
 		library.Edit{Data: json.RawMessage(`{"name": "Other"}`), Source: "ui"}); err != nil {
 		t.Fatal(err)
 	}
+	// An upload in flight: its row must survive for the card that will use it.
+	if _, err := tg.lib.PutBlob(context.Background(), strings.NewReader("pending")); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := tg.restore(assets, nil, true); err != nil {
 		t.Fatal(err)
 	}
 	if s := tg.slugs(t); !slices.Equal(s, []string{"brakka"}) {
 		t.Fatalf("cards = %v", s)
+	}
+	if n := tg.count(t, `SELECT count(*) FROM blob`); n != 2 {
+		t.Fatalf("%d blob rows, want the upload's and the avatar's", n)
 	}
 	checkAssets(t, tg)
 }

@@ -6,6 +6,7 @@ import { Facets } from "./Facets";
 import { pageLinks } from "./pages";
 import { defaultSort, parseQuery, sizes, toggleTerm, toParams, toLorebookSearch, toSearch, type CardQuery, type Sort, type Term } from "./query";
 import { emptySelection, pick, target, type Selection } from "./selection";
+import { useJobEvents } from "../settings/jobUtil";
 import { SelectionBar } from "./SelectionBar";
 import { LorebookRow, Row, Tile, type Names } from "./Tile";
 import "./Cards.css";
@@ -34,6 +35,9 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   if (stored.key !== key) setSel(emptySelection(key));
   const sel = stored.key === key ? stored : emptySelection(key);
   const [facetsOpen, setFacetsOpen] = useState(true);
+  // The bar unmounts once its job starts, so the page follows the job and reloads when it ends.
+  const [watching, setWatching] = useState<number>();
+  useJobEvents(watching ?? 0, watching !== undefined);
   const go = (next: CardQuery) => setParams(toParams(next));
 
   const body = kind === "card" ? toSearch(q) : toLorebookSearch(q);
@@ -87,6 +91,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
           query={target(sel, body)}
           onAll={() => setSel({ ...sel, all: true })}
           onClear={() => setSel(emptySelection(key))}
+          onStarted={setWatching}
         />
       ) : (
         <div className="toolbar">

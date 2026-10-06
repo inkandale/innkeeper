@@ -19,9 +19,10 @@ export function SelectionBar(props: {
   query: Search;
   onAll: () => void;
   onClear: () => void;
+  onStarted?: (job: number) => void;
   kind?: "card" | "lorebook";
 }) {
-  const { count, all, total, query, onAll, onClear, kind = "card" } = props;
+  const { count, all, total, query, onAll, onClear, onStarted, kind = "card" } = props;
   const noun = kind === "card" ? "card" : "lorebook";
   const plural = (n: number) => `${n} ${noun}${n === 1 ? "" : "s"}`;
   // Lorebooks have no tags, collections, or bulk export.
@@ -46,6 +47,7 @@ export function SelectionBar(props: {
     mutationFn: (call: () => Promise<Job>) => call(),
     onSuccess: (j) => {
       toast({ text: `Job ${j.id} started`, link: { to: `/settings/jobs/${j.id}`, label: "View job" } });
+      onStarted?.(j.id);
       onClear();
     },
     onError: (e) => toast({ text: e.message, error: true }),

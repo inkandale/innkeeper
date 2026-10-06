@@ -8,12 +8,59 @@ import "./Card.css";
 
 type Field = components["schemas"]["Field"];
 
+type Hunk = components["schemas"]["Hunk"];
+
+const unescape = (s: string) => s.replace(/\\(.)/g, "$1");
+
+/** entryOf splits an entries hunk ID, entries[<entry>].<field>#n, into an entry label and its field. */
+export function entryOf(id: string): { entry: string; field: string } {
+  const m = /^entries\[((?:\\.|[^\]\\])*)\](?:\.(.*))?#\d+$/.exec(id);
+  if (!m) return { entry: id, field: "" };
+  const raw = unescape(m[1] ?? "").replace(/~\d+$/, "");
+  const entry = raw.startsWith("c:") ? raw.slice(2) : raw.slice(2).split(",").join(", ") || "(no keys)";
+  return { entry, field: unescape(m[2] ?? "") };
+}
+
+/** EntryHunks shows an entries field's changes, grouped by entry, each field named. */
+function EntryHunks({ hunks }: { hunks: Hunk[] }) {
+  const entries = new Map<string, Map<string, Hunk[]>>();
+  for (const h of hunks) {
+    const { entry, field } = entryOf(h.id);
+    const fields = entries.get(entry) ?? new Map<string, Hunk[]>();
+    fields.set(field, [...(fields.get(field) ?? []), h]);
+    entries.set(entry, fields);
+  }
+  const changed = (hs: Hunk[]) => hs.some((h) => h.status !== "same");
+  return (
+    <>
+      {[...entries].map(([entry, fields]) =>
+        [...fields.values()].some(changed) ? (
+          <section key={entry} className="entry-hunks">
+            <h3>{entry}</h3>
+            {[...fields].filter(([, hs]) => changed(hs)).map(([field, hs]) => (
+              <div key={field}>
+                {field && <span className="muted">{field}</span>}
+                <HunkList hunks={hs} prose={field === "content"} />
+              </div>
+            ))}
+          </section>
+        ) : null,
+      )}
+    </>
+  );
+}
+
 /** Hunks renders a field's hunks: the first revision's value struck out, the second's marked. */
 export function Hunks({ field }: { field: Field }) {
+  if (field.kind === "entries") return <EntryHunks hunks={field.hunks ?? []} />;
+  return <HunkList hunks={field.hunks ?? []} prose={field.kind === "prose"} />;
+}
+
+function HunkList({ hunks, prose }: { hunks: Hunk[]; prose: boolean }) {
   // Only prose flows inline; list and JSON values print as blocks of JSON.
   return (
-    <p className={field.kind === "prose" ? "hunks" : "hunks blocks"}>
-      {(field.hunks ?? []).map((h) =>
+    <p className={prose ? "hunks" : "hunks blocks"}>
+      {hunks.map((h) =>
         h.status === "same" ? (
           <span key={h.id}>{show(h.library)}</span>
         ) : (

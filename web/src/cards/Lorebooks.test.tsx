@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { Toasts } from "../shell/Toasts";
@@ -15,11 +15,25 @@ const results = {
   facets: { targets: [{ instance: 2, is: "ahead", cards: 1 }], sources: [{ kind: "chub", cards: 1 }] },
 };
 
+class FakeEventSource {
+  static last: FakeEventSource | null = null;
+  listener: ((e: { data: string }) => void) | null = null;
+  constructor(readonly url: string) {
+    FakeEventSource.last = this;
+  }
+  addEventListener(_: string, f: (e: { data: string }) => void) {
+    this.listener = f;
+  }
+  close() {}
+}
+
 let searches: { path: string; body: unknown }[];
 let posts: { path: string; body: unknown }[];
 beforeEach(() => {
   searches = [];
   posts = [];
+  FakeEventSource.last = null;
+  vi.stubGlobal("EventSource", FakeEventSource);
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
@@ -82,4 +96,15 @@ test("bulk archive and push send kind lorebook", async () => {
   await userEvent.click(await screen.findByRole("button", { name: "Push 1 lorebook" }));
   await waitFor(() => expect(posts).toHaveLength(2));
   expect(posts[1]).toMatchObject({ path: "/api/pushes", body: { kind: "lorebook", instance_id: 2 } });
+});
+
+test("the list reloads when a bulk job it started finishes", async () => {
+  renderAt("/lorebooks");
+  await userEvent.click(await screen.findByRole("checkbox", { name: "Select Forge" }));
+  await userEvent.click(screen.getByRole("button", { name: "Archive" }));
+  await userEvent.click(screen.getByRole("button", { name: "Archive 1 lorebook" }));
+  await waitFor(() => expect(FakeEventSource.last?.url).toBe("/api/jobs/5/events"));
+  const before = searches.filter((s) => s.path === "/api/lorebooks/search").length;
+  act(() => FakeEventSource.last?.listener?.({ data: JSON.stringify({ id: 5, kind: "bulk", status: "succeeded" }) }));
+  await waitFor(() => expect(searches.filter((s) => s.path === "/api/lorebooks/search").length).toBeGreaterThan(before));
 });

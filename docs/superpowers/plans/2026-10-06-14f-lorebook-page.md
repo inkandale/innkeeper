@@ -16,6 +16,9 @@ The code differs from the tasks below in these ways:
 
 - The entry editor is `web/src/lorebook/EntryEditor.tsx`, still exporting `Entries`. `Entries.tsx` and `entries.ts` are the same file on a case-insensitive filesystem, and Vite resolved `./Entries` to the helpers.
 - `Lorebook.test.tsx` queries keys and first lines with `selector: "summary …"`, since a closed `<details>` keeps its content in the DOM, and finds the history link directly.
+- Only an entry's `<summary>` is draggable, so selecting or dragging text in its fields doesn't reorder entries. Non-object entries in imported data stay in place on save. Clearing depth removes `extensions.depth`.
+- History groups an entries field's hunks by entry and names each changed field, parsed from the hunk IDs.
+- The Cards and Lorebooks lists follow a bulk job they start and reload their search when it finishes.
 
 ---
 

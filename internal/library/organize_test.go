@@ -152,3 +152,22 @@ func TestCollectionAvatars(t *testing.T) {
 		t.Fatalf("after archive = %+v, %v", list, err)
 	}
 }
+
+func TestEditCardTags(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	id, _ := newCard(t, lib, "brakka", `{"name": "Brakka"}`)
+	if err := lib.SetCardTags(ctx, id, []string{"Dwarf", "smith"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.EditCardTags(ctx, id, []string{" grumpy ", "dwarf"}, []string{"SMITH", "absent"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := lib.CardTags(ctx, id)
+	if err != nil || !slices.Equal(got, []string{"Dwarf", "grumpy"}) {
+		t.Fatalf("tags = %v, %v", got, err)
+	}
+	if err := lib.EditCardTags(ctx, 99999, []string{"x"}, nil); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing card: %v", err)
+	}
+}

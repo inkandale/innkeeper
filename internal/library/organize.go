@@ -11,15 +11,21 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// SetCardTags replaces a card's tags. Tag names are trimmed and matched
-// case-insensitively; new names create tags.
-func (l *Library) SetCardTags(ctx context.Context, cardID int64, names []string) error {
+// cleanTags trims names and drops empty ones.
+func cleanTags(names []string) []string {
 	clean := make([]string, 0, len(names))
 	for _, n := range names {
 		if n = strings.TrimSpace(n); n != "" {
 			clean = append(clean, n)
 		}
 	}
+	return clean
+}
+
+// SetCardTags replaces a card's tags. Tag names are trimmed and matched
+// case-insensitively; new names create tags.
+func (l *Library) SetCardTags(ctx context.Context, cardID int64, names []string) error {
+	clean := cleanTags(names)
 	tx, err := l.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -37,6 +43,33 @@ func (l *Library) SetCardTags(ctx context.Context, cardID int64, names []string)
 		SELECT $1, id FROM tag WHERE lower(name) IN (SELECT lower(n) FROM unnest($2::text[]) n)`,
 		cardID, clean); err != nil {
 		return mapErr(err)
+	}
+	return tx.Commit(ctx)
+}
+
+// EditCardTags adds and removes tags on a card and keeps the rest. Names
+// match as in SetCardTags.
+func (l *Library) EditCardTags(ctx context.Context, cardID int64, add, remove []string) error {
+	add, remove = cleanTags(add), cleanTags(remove)
+	tx, err := l.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `INSERT INTO tag (name)
+		SELECT DISTINCT ON (lower(n)) n FROM unnest($1::text[]) n
+		ON CONFLICT (lower(name)) DO NOTHING`, add); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO card_tag (card_id, tag_id)
+		SELECT $1, id FROM tag WHERE lower(name) IN (SELECT lower(n) FROM unnest($2::text[]) n)
+		ON CONFLICT DO NOTHING`, cardID, add); err != nil {
+		return mapErr(err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM card_tag WHERE card_id = $1 AND tag_id IN
+		(SELECT id FROM tag WHERE lower(name) IN (SELECT lower(n) FROM unnest($2::text[]) n))`,
+		cardID, remove); err != nil {
+		return err
 	}
 	return tx.Commit(ctx)
 }

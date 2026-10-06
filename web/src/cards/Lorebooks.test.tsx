@@ -58,6 +58,7 @@ function renderAt(entry: string) {
 test("lists lorebooks with entries, linked cards, and sync", async () => {
   renderAt("/lorebooks");
   expect(await screen.findByRole("link", { name: "Forge" })).toHaveAttribute("href", "/lorebooks/3");
+  expect(screen.getByText("1 lorebook")).toBeInTheDocument();
   expect(screen.getByText("2 entries")).toBeInTheDocument();
   expect(await screen.findByRole("link", { name: "Brakka" })).toHaveAttribute("href", "/cards/7");
   expect(searches[0]).toMatchObject({ path: "/api/lorebooks/search", body: { include: ["cards", "targets"], facets: ["targets", "sources"] } });

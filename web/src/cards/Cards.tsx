@@ -131,7 +131,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
       )}
       <div className="results">
         {res.isError && <p className="error">{res.error.message}</p>}
-        {res.data && <p className="total">{total} {noun}</p>}
+        {res.data && <p className="total">{total} {total === 1 ? noun.slice(0, -1) : noun}</p>}
         {res.data && q.page > last && (
           <p>
             No {noun} on this page. <button className="button" onClick={() => go({ ...q, page: last })}>Go to page {last}</button>

@@ -60,7 +60,7 @@ export function SelectionBar(props: {
   const toggle = (p: Panel) => setPanel(panel === p ? null : p);
   return (
     <div className="toolbar selection-bar">
-      <strong>{all ? `All ${total} matching ${noun}s` : `${count} selected`}</strong>
+      <strong>{all ? `All ${total} matching ${noun}${total === 1 ? "" : "s"}` : `${count} selected`}</strong>
       {!all && count < total && (
         <button className="button" onClick={onAll}>
           Select all {total} matching

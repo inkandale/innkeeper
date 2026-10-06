@@ -145,8 +145,8 @@ func TestReconcileVerdicts(t *testing.T) {
 	if it := check("dup", VerdictExact, e.card); it.Candidates[0].BoundTo != bound.RemoteID {
 		t.Errorf("dup candidate bound_to = %q", it.Candidates[0].BoundTo)
 	}
-	if it := check("bad", VerdictError); it.Error == "" {
-		t.Error("error item has no message")
+	if it := check("bad", VerdictError); it.Error == "" || !slices.Equal(it.Options, []Option{{Action: "skip"}}) {
+		t.Errorf("error item = %+v", it)
 	}
 
 	off, zero := false, 0
@@ -361,5 +361,101 @@ func TestReconcileLibraryErrorFailsRun(t *testing.T) {
 	}
 	if _, err := e.tryReconcile(ReconcileParams{}, "src"); err == nil {
 		t.Fatal("a failed source lookup didn't fail the run")
+	}
+}
+
+// coreCard is a library card's data with all four core fields.
+var coreCard = map[string]any{"name": "Tamsin", "description": "A hedge witch in the fens.", "personality": "Wry.",
+	"scenario": "A rainy market.", "first_mes": "Buying or browsing?", "mes_example": "<START>"}
+
+// edited returns coreCard with fields changed.
+func edited(fields ...string) map[string]any {
+	out := map[string]any{}
+	for k, v := range coreCard {
+		out[k] = v
+	}
+	for _, f := range fields {
+		out[f] = "Something else entirely, " + f + "."
+	}
+	return out
+}
+
+func hasOption(it ReconcileItem, o Option) bool {
+	for _, got := range it.Options {
+		if got.Action == o.Action && got.CardID == o.CardID {
+			return true
+		}
+	}
+	return false
+}
+
+func TestReconcileSuggestions(t *testing.T) {
+	e := setup(t, map[string]any{"fields": []string{"name", "description", "personality", "scenario", "first_mes",
+		"mes_example"}})
+	tamsin := e.libCard(coreCard)
+	twin := e.libCard(coreCard)
+	other := e.libCard(map[string]any{"name": "Tamsin", "description": "A sailor."})
+	bound := e.push(e.card)
+	taken := e.push(tamsin)
+	e.appCard("one", edited("description"), nil)
+	e.appCard("three", edited("description", "personality", "scenario"), nil)
+	// mes_example isn't a core field, so this is 2 of 4.
+	e.appCard("two", edited("description", "personality", "mes_example"), nil)
+	e.appCard("exact", coreCard, nil)
+	e.appCard("new", map[string]any{"name": "Pell", "description": "A clockwork owl that reads the stars."}, nil)
+	ids := []string{bound.RemoteID, "one", "three", "two", "exact", "new"}
+
+	got := e.reconcile(ReconcileParams{}, ids...)
+	for _, id := range ids {
+		if !hasOption(got[id], Option{Action: "skip"}) {
+			t.Errorf("%s options = %+v", id, got[id].Options)
+		}
+	}
+	suggested := func(id, action string, card int64) ReconcileItem {
+		t.Helper()
+		it := got[id]
+		if it.Suggested == nil || it.Suggested.Action != action || it.Suggested.CardID != card || it.Suggested.Why == "" {
+			t.Fatalf("%s suggested = %+v", id, it.Suggested)
+		}
+		return it
+	}
+	if it := suggested("one", "bind", tamsin); it.Candidates[0].DifferingFields != 1 {
+		t.Errorf("one candidates = %+v", it.Candidates)
+	}
+	it := suggested("three", "import", 0)
+	if it.Candidates[0].CardID != tamsin || it.Candidates[0].DifferingFields != 3 {
+		t.Errorf("three candidates = %+v", it.Candidates)
+	}
+	for _, c := range []int64{tamsin, other} {
+		if !hasOption(it, Option{Action: "bind", CardID: c}) || !hasOption(it, Option{Action: "import"}) {
+			t.Errorf("three options = %+v", it.Options)
+		}
+	}
+	suggested("two", "bind", tamsin)
+	// tamsin is bound to its own app copy, so its exact twin is suggested.
+	if it := suggested("exact", "bind", twin); it.Candidates[0].BoundTo != taken.RemoteID {
+		t.Errorf("exact candidates = %+v", it.Candidates)
+	}
+	suggested("new", "import", 0)
+	if got[bound.RemoteID].Suggested != nil {
+		t.Errorf("in-sync bound item suggests %+v", got[bound.RemoteID].Suggested)
+	}
+
+	four := 4
+	got = e.reconcile(ReconcileParams{SplitFields: &four}, "three")
+	suggested("three", "bind", tamsin)
+
+	// The app's edit to a bound card is drift to resolve.
+	e.editRemote(bound.RemoteID, "description", "A dwarf smith who sings.")
+	got = e.reconcile(ReconcileParams{}, bound.RemoteID)
+	if it := suggested(bound.RemoteID, "bind", e.card); it.Candidates[0].DifferingFields != 1 || it.Candidates[0].Conflicts != 0 {
+		t.Errorf("drifted candidates = %+v", it.Candidates)
+	}
+
+	// The library changed the same sentence too: a conflict.
+	e.update(e.card, func(ed *library.Edit) { ed.Data = setField(ed.Data, "description", "A dwarf smith who drinks.") })
+	got = e.reconcile(ReconcileParams{}, bound.RemoteID)
+	if it := suggested(bound.RemoteID, "bind", e.card); it.Candidates[0].Conflicts != 1 {
+		t.Errorf("conflicting candidates = %+v", it.Candidates)
 	}
 }

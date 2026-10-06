@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams, useSearchParams } from "react-router";
-import { api, must, thumb } from "../api/client";
+import { api, ApiError, must, thumb } from "../api/client";
 import type { components } from "../api/schema";
 import { useToast } from "../shell/Toasts";
 import { show } from "./draft";
@@ -8,10 +8,11 @@ import "./Card.css";
 
 type Field = components["schemas"]["Field"];
 
-/** Hunks renders a field's hunks inline: the first revision's text struck out, the second's marked. */
+/** Hunks renders a field's hunks: the first revision's value struck out, the second's marked. */
 export function Hunks({ field }: { field: Field }) {
+  // Only prose flows inline; list and JSON values print as blocks of JSON.
   return (
-    <p className="hunks">
+    <p className={field.kind === "prose" ? "hunks" : "hunks blocks"}>
       {(field.hunks ?? []).map((h) =>
         h.status === "same" ? (
           <span key={h.id}>{show(h.library)}</span>
@@ -62,7 +63,11 @@ export function History() {
       setParams({});
       toast({ text: `Restored revision ${r.id}` });
     },
-    onError: (e) => toast({ text: e.message, error: true }),
+    onError: (e) => {
+      void qc.invalidateQueries({ queryKey: ["card", id, "revisions"] });
+      const stale = e instanceof ApiError && e.status === 409;
+      toast({ text: stale ? "The card changed since you opened this page. Check the new head, then restore again." : e.message, error: true });
+    },
   });
 
   const set = (next: Record<string, string>) => setParams({ ...Object.fromEntries(params), ...next });
@@ -91,12 +96,14 @@ export function History() {
           <>
             <div className="row">
               <h1>{rev.message || `Revision ${rev.id}`}</h1>
-              <label className="check">
-                <input type="radio" name="against" checked={!vsHead} onChange={() => set({ against: "prev" })} /> Against previous
-              </label>
-              <label className="check">
-                <input type="radio" name="against" checked={vsHead} onChange={() => set({ against: "head" })} /> Against head
-              </label>
+              <span className="row" role="radiogroup" aria-label="Compare against">
+                <label className="check">
+                  <input type="radio" name="against" checked={!vsHead} onChange={() => set({ against: "prev" })} /> Against previous
+                </label>
+                <label className="check">
+                  <input type="radio" name="against" checked={vsHead} onChange={() => set({ against: "head" })} /> Against head
+                </label>
+              </span>
               {head && rev.id !== head.id && (
                 <button className="button primary" disabled={restore.isPending} onClick={() => restore.mutate({ id: rev.id, base: head.id })}>
                   Restore

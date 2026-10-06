@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { useLayoutEffect, useRef, useState, type PointerEvent } from "react";
 import { fit, scale, type Size, type View } from "./crop";
 
 const box: Size = { w: 200, h: 300 };
@@ -24,9 +24,12 @@ export function Crop({
   const [view, setView] = useState<View>({ zoom: 1, dx: 0, dy: 0 });
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
-  // showModal gives Escape, a focus trap, and focus back on close; jsdom lacks it.
-  useEffect(() => {
-    dialog.current?.showModal?.();
+  // showModal gives Escape and a focus trap; closing before unmount hands focus
+  // back to the Crop button. jsdom lacks both.
+  useLayoutEffect(() => {
+    const d = dialog.current;
+    d?.showModal?.();
+    return () => d?.close?.();
   }, []);
   const size = img ? { w: img.naturalWidth, h: img.naturalHeight } : null;
   const set = (v: View) => size && setView(fit(size, box, v).view);

@@ -255,13 +255,18 @@
   white-space: pre-wrap;
 }
 
-del {
+.hunks del {
   background: color-mix(in srgb, var(--danger) 30%, transparent);
 }
 
-ins {
+.hunks ins {
   background: color-mix(in srgb, var(--ok) 30%, transparent);
-  text-decoration: none;
+}
+
+.hunks.blocks > span,
+.hunks.blocks del,
+.hunks.blocks ins {
+  display: block;
 }
 
 .history-thumb {

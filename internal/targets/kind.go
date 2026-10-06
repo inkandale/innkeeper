@@ -2,6 +2,7 @@ package targets
 
 import (
 	"github.com/davidgibbons/innkeeper/internal/library"
+	"github.com/davidgibbons/innkeeper/internal/merge"
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
@@ -31,4 +32,12 @@ func (k kind) fields(info protocol.TargetInfo) []string {
 		return info.LorebookFields
 	}
 	return info.Fields
+}
+
+// schema is how reconcile diffs this kind's data.
+func (k kind) schema() merge.Schema {
+	if k.isLorebook() {
+		return merge.Lorebook
+	}
+	return merge.Card
 }

@@ -122,8 +122,13 @@ func (s *Service) describeReconcile(ctx context.Context, k kind, instanceID int6
 	if err != nil {
 		return inst, info, err
 	}
+	return inst, reconcileInfo(info), nil
+}
+
+// reconcileInfo leaves character_book out of the card fields.
+func reconcileInfo(info protocol.TargetInfo) protocol.TargetInfo {
 	info.Fields = slices.DeleteFunc(slices.Clone(info.Fields), func(f string) bool { return f == "character_book" })
-	return inst, info, nil
+	return info
 }
 
 // appItem is an app item as reconcile reads it.
@@ -281,11 +286,7 @@ func compare(k kind, info protocol.TargetInfo, lib, app, accepted json.RawMessag
 			return nil, err
 		}
 	}
-	schema := merge.Card
-	if k.isLorebook() {
-		schema = merge.Lorebook
-	}
-	return merge.Compare(schema, lib, app, ancestor)
+	return merge.Compare(k.schema(), lib, app, ancestor)
 }
 
 // coreFields decide between binding to a likely match and importing a copy.

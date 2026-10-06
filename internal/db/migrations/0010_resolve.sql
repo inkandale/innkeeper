@@ -41,3 +41,9 @@ CROSS JOIN LATERAL (
     JOIN lorebook_revision pr ON pr.id = p.revision_id
     WHERE l.id = b.lorebook_id
 ) a;
+
+-- A resolve writes revisions with source reconcile.
+ALTER TABLE card_revision DROP CONSTRAINT card_revision_source_check,
+    ADD CONSTRAINT card_revision_source_check CHECK (source ~ '^(ui|mcp|adopt|reconcile|plugin:[a-z][a-z0-9-]*)$');
+ALTER TABLE lorebook_revision DROP CONSTRAINT lorebook_revision_source_check,
+    ADD CONSTRAINT lorebook_revision_source_check CHECK (source ~ '^(ui|mcp|adopt|reconcile|plugin:[a-z][a-z0-9-]*)$');

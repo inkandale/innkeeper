@@ -16,6 +16,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
 	"github.com/davidgibbons/innkeeper/internal/auth"
+	"github.com/davidgibbons/innkeeper/internal/backup"
 	"github.com/davidgibbons/innkeeper/internal/export"
 	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/library"
@@ -50,6 +51,9 @@ type Server struct {
 	// UI serves the web UI for every path the API, OAuth, and MCP don't.
 	// Nil serves none.
 	UI http.Handler
+	// Backups is where backups live and their schedules. Without a Dir, the
+	// backup routes return 409.
+	Backups backup.Settings
 
 	// loginSlot lets one login run at a time.
 	loginSlot chan struct{}
@@ -140,6 +144,7 @@ func (s *Server) routes(api huma.API) {
 	s.reconcileRoutes(api)
 	s.toolRoutes(api)
 	s.settingsRoutes(api)
+	s.backupRoutes(api)
 }
 
 // Spec returns the OpenAPI spec as indented JSON, without a database or

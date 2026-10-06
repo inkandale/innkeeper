@@ -54,7 +54,7 @@ func TestEveryOperationNeedsAuth(t *testing.T) {
 		}
 	}
 	slices.Sort(public)
-	want := []string{"begin-login", "complete-login", "list-login-providers", "logout"}
+	want := []string{"begin-login", "complete-login", "health", "list-login-providers", "logout"}
 	if checked == 0 || !slices.Equal(public, want) {
 		t.Fatalf("checked %d operations; public = %v, want %v", checked, public, want)
 	}

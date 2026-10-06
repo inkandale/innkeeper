@@ -30,6 +30,11 @@ var tierExceptions = map[string]tier.Tier{
 	// Checks the tool's own tier itself.
 	"call-plugin-tool": tier.Read,
 	"revoke-grant":     tier.Destructive,
+	// Backups hold every card and the encrypted secrets.
+	"list-backups":    tier.Destructive,
+	"start-backup":    tier.Destructive,
+	"download-backup": tier.Destructive,
+	"start-restore":   tier.Destructive,
 }
 
 func (e *testEnv) tokenWith(t tier.Tier) string {

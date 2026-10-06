@@ -93,9 +93,9 @@ func cardData(card json.RawMessage) (json.RawMessage, error) {
 	return c.Data, nil
 }
 
-// project keeps only the fields a target stores, and hashes the result, so
+// Project keeps only the fields a target stores, and hashes the result, so
 // fields the app drops never count as changes.
-func project(data json.RawMessage, fields []string) (json.RawMessage, string, error) {
+func Project(data json.RawMessage, fields []string) (json.RawMessage, string, error) {
 	all, err := object(data)
 	if err != nil {
 		return nil, "", err

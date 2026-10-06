@@ -38,36 +38,47 @@
 
 ### Task 1: Pick the cards
 
-- [ ] Browse Character Tavern and RisuRealm for SFW cards that cover the list in the design notes. About 15 cards.
-- [ ] Write `testdata/corpus/README.md`: a table with slug, name, creator, URL, license (or "none stated"), format, and what it covers.
-- [ ] **Stop and show the owner the table.** Download nothing into the repo until they approve.
-- [ ] Download the approved cards to `testdata/corpus/<slug>/source.<ext>`. Commit: `test: add the card corpus sources`.
+- [x] Browse Character Tavern and RisuRealm for SFW cards that cover the list in the design notes. About 15 cards.
+- [x] Write `testdata/corpus/README.md`: a table with slug, name, creator, URL, license (or "none stated"), format, and what it covers.
+- [x] **Stop and show the owner the table.** Download nothing into the repo until they approve.
+- [x] Download the approved cards to `testdata/corpus/<slug>/source.<ext>`. Commit: `test: add the card corpus sources`.
 
 ### Task 2: Compose file
 
-- [ ] Write `testdata/corpus/compose.yaml` per the design notes, with volumes on tmpfs so every run starts empty.
-- [ ] `docker compose -f testdata/corpus/compose.yaml up -d`; `curl -s localhost:18001` and `localhost:18002` answer; the Lumiverse credentials file exists. `down -v`.
-- [ ] Commit: `test: run throwaway SillyTavern and Lumiverse for corpus capture`.
+- [x] Write `testdata/corpus/compose.yaml` per the design notes, with volumes on tmpfs so every run starts empty.
+- [x] `docker compose -f testdata/corpus/compose.yaml up -d`; `curl -s localhost:18001` and `localhost:18002` answer; the Lumiverse credentials file exists. `down -v`.
+- [x] Commit: `test: run throwaway SillyTavern and Lumiverse for corpus capture`.
 
 ### Task 3: Capture
 
 **Files:** `internal/corpus/capture_test.go`, `internal/targets/data.go` (export `Project`)
 
-- [ ] Rename `project` to `Project` in `internal/targets`, updating its callers. `go test ./internal/targets` passes.
-- [ ] `TestCapture` skips unless `INNKEEPER_CORPUS_CAPTURE=1`. It loads manifests from `INNKEEPER_PLUGINS_DIR`, and for each `testdata/corpus/*/source.*` writes `codec.json` or `codec.error`, then `sillytavern.json` and `lumiverse.json`, each with the target's `describe` fields. JSON is indented and keys sorted, so golden diffs are readable.
-- [ ] Build the plugins (`make -C ../innkeeper-plugins install DEST=/tmp/innkeeper-plugins`), start compose, run the capture, stop compose.
-- [ ] Check `git status`: one set of files per card. Commit: `test: capture the corpus through the codec, SillyTavern, and Lumiverse`.
+- [x] Rename `project` to `Project` in `internal/targets`, updating its callers. `go test ./internal/targets` passes.
+- [x] `TestCapture` skips unless `INNKEEPER_CORPUS_CAPTURE=1`. It loads manifests from `INNKEEPER_PLUGINS_DIR`, and for each `testdata/corpus/*/source.*` writes `codec.json` or `codec.error`, then `sillytavern.json` and `lumiverse.json`, each with the target's `describe` fields. JSON is indented and keys sorted, so golden diffs are readable.
+- [x] Build the plugins (`make -C ../innkeeper-plugins install DEST=/tmp/innkeeper-plugins`), start compose, run the capture, stop compose.
+- [x] Check `git status`: one set of files per card. Commit: `test: capture the corpus through the codec, SillyTavern, and Lumiverse`.
 
 ### Task 4: Normalization test
 
 **Files:** `internal/corpus/corpus_test.go`
 
-- [ ] `TestCorpusHashes`, a subtest per card and target, as in the design notes.
-- [ ] Run `go test ./internal/corpus`. Expect failures; each names a field.
-- [ ] For each failure, fix it per "Fixing mismatches", recapture, and rerun. One commit per fix, naming the card and field, such as `fix(lumiverse): drop SillyTavern's fav on read (corpus: <slug>)` in the plugins repo.
-- [ ] When it passes, commit: `test: require every captured variant to hash like the codec's card`.
+- [x] `TestCorpusHashes`, a subtest per card and target, as in the design notes.
+- [x] Run `go test ./internal/corpus`. Expect failures; each names a field.
+- [x] For each failure, fix it per "Fixing mismatches", recapture, and rerun. One commit per fix, naming the card and field, such as `fix(lumiverse): drop SillyTavern's fav on read (corpus: <slug>)` in the plugins repo.
+- [x] When it passes, commit: `test: require every captured variant to hash like the codec's card`.
 
 ### Task 5: Docs
 
-- [ ] `README.md` (core), under development: how to recapture after an app upgrade, and that a golden diff is how an app's format change shows up.
+- [x] `README.md` (core), under development: how to recapture after an app upgrade, and that a golden diff is how an app's format change shows up.
 - [ ] Commit, push, open the PR.
+
+## As built
+
+- Goldens hold each avatar's perceptual hash (`avatar_phash`), not the image;
+  the test allows reconcile's default distance of 8, since SillyTavern
+  re-encodes avatars.
+- `library.SplitCard` strips SillyTavern's `extensions.fav` and
+  `extensions.world` when a card enters the library: they are app state, and
+  no target syncs them.
+- The codec can't read CharX yet, so firebird-ouroboros is skipped; INN-30
+  adds it.

@@ -26,6 +26,15 @@ func TestSearchRoute(t *testing.T) {
 		t.Fatalf("first page = %+v", res)
 	}
 
+	res = library.Results{}
+	e.call("POST", "/search", map[string]any{"sort": "name", "page": map[string]any{"size": 1, "number": 2},
+		"facets": []string{"tags"}}, 200, &res)
+	if len(res.Hits) != 1 || res.Hits[0].Fields["name"] != "Carrow" || res.Total != 2 ||
+		res.Facets == nil || len(res.Facets.Tags) != 1 {
+		t.Fatalf("numbered page = %+v", res)
+	}
+	e.call("POST", "/search", map[string]any{"sort": "size"}, 422, nil)
+
 	e.call("POST", "/search", map[string]any{"semantic": true}, 400, nil)
 	e.call("POST", "/search", map[string]any{"filter": map[string]any{"tag": "a", "archived": true}}, 400, nil)
 	e.call("POST", "/search", map[string]any{"filter": map[string]any{"bogus": 1}}, 422, nil)

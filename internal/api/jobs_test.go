@@ -277,6 +277,19 @@ func TestBulkTagCollectExport(t *testing.T) {
 		t.Fatalf("export job = %+v", last)
 	}
 	e.call("GET", "/blobs/"+p.Blob, nil, 200, nil)
+	if string(last.Payload) != `{"cards":2,"format":"json"}` {
+		t.Errorf("watched export payload = %s", last.Payload)
+	}
+	var list []jobOut
+	e.call("GET", "/jobs?kind="+bulk.ExportKind, nil, 200, &list)
+	if len(list) != 1 || string(list[0].Payload) != `{"cards":2,"format":"json"}` {
+		t.Errorf("listed export = %+v", list)
+	}
+	var full jobOut
+	e.call("GET", fmt.Sprintf("/jobs/%d", j.ID), nil, 200, &full)
+	if !strings.Contains(string(full.Payload), `"card_ids"`) {
+		t.Errorf("full export payload = %s", full.Payload)
+	}
 
 	e.call("POST", "/bulk", map[string]any{"query": picked, "action": "tag"}, 400, nil)
 	e.call("POST", "/bulk", map[string]any{"query": picked, "action": "collect", "collection": 99999}, 404, nil)

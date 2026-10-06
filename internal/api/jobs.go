@@ -52,16 +52,25 @@ func toJob(j jobs.Job) jobOut {
 }
 
 // summary is a job as lists and streams show it: a finished reconcile's
-// snapshot is cut to its totals. Get the job for the whole snapshot.
+// snapshot is cut to its totals, and an export's card IDs to a count. Get the
+// job for the whole of either.
 func summary(j jobOut) jobOut {
-	if j.Kind != targets.ReconcileKind {
-		return j
-	}
-	var snap struct {
-		Totals map[string]int `json:"totals"`
-	}
-	if json.Unmarshal(j.Progress, &snap) == nil && snap.Totals != nil {
-		j.Progress, _ = json.Marshal(map[string]any{"totals": snap.Totals})
+	switch j.Kind {
+	case targets.ReconcileKind:
+		var snap struct {
+			Totals map[string]int `json:"totals"`
+		}
+		if json.Unmarshal(j.Progress, &snap) == nil && snap.Totals != nil {
+			j.Progress, _ = json.Marshal(map[string]any{"totals": snap.Totals})
+		}
+	case bulk.ExportKind:
+		var p struct {
+			CardIDs []int64 `json:"card_ids"`
+			Format  string  `json:"format"`
+		}
+		if json.Unmarshal(j.Payload, &p) == nil {
+			j.Payload, _ = json.Marshal(map[string]any{"format": p.Format, "cards": len(p.CardIDs)})
+		}
 	}
 	return j
 }
@@ -214,7 +223,8 @@ func (s *Server) watch(hc huma.Context, j jobOut) {
 func (s *Server) jobRoutes(api huma.API) {
 	tags := []string{"Jobs"}
 	huma.Register(api, huma.Operation{OperationID: "list-jobs", Method: http.MethodGet, Path: "/jobs",
-		Summary: "List jobs", Description: "Newest first. A finished reconcile's progress is cut to its totals; get the job for the snapshot.", Tags: tags},
+		Summary: "List jobs", Description: "Newest first. A finished reconcile's progress is cut to its totals, and an export's card_ids to a count of cards; " +
+			"get the job for the whole of either.", Tags: tags},
 		func(ctx context.Context, in *listJobsIn) (*jobsOut, error) {
 			o := jobs.ListOptions{Status: in.Status, Kind: in.Kind, Before: in.Before, Limit: in.Limit}
 			if in.Parent != 0 {
@@ -268,7 +278,7 @@ func (s *Server) jobRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{OperationID: "watch-job", Method: http.MethodGet, Path: "/jobs/{id}/events",
 		Summary: "Stream a job's progress",
 		Description: "Server-sent events: a job event with the whole job each time it changes. The stream ends when the job " +
-			"finishes. A finished reconcile's progress is cut to its totals, as in the job list; get the job for the snapshot.",
+			"finishes. A reconcile's progress and an export's card IDs are cut as in the job list; get the job for the whole of either.",
 		Tags: tags,
 		Responses: map[string]*huma.Response{"200": {Description: "A stream of job events",
 			Content: map[string]*huma.MediaType{"text/event-stream": {}}}}},

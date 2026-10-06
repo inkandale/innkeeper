@@ -764,7 +764,7 @@ export interface paths {
         };
         /**
          * List jobs
-         * @description Newest first. A finished reconcile's progress is cut to its totals; get the job for the snapshot.
+         * @description Newest first. A finished reconcile's progress is cut to its totals, and an export's card_ids to a count of cards; get the job for the whole of either.
          */
         get: operations["list-jobs"];
         put?: never;
@@ -821,7 +821,7 @@ export interface paths {
         };
         /**
          * Stream a job's progress
-         * @description Server-sent events: a job event with the whole job each time it changes. The stream ends when the job finishes. A finished reconcile's progress is cut to its totals, as in the job list; get the job for the snapshot.
+         * @description Server-sent events: a job event with the whole job each time it changes. The stream ends when the job finishes. A reconcile's progress and an export's card IDs are cut as in the job list; get the job for the whole of either.
          */
         get: operations["watch-job"];
         put?: never;

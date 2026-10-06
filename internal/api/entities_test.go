@@ -246,3 +246,43 @@ func TestCardCollectionsField(t *testing.T) {
 		t.Fatalf("collections = %v", got.Collections)
 	}
 }
+
+func TestCompareRevisions(t *testing.T) {
+	e := newEnv(t)
+	c := e.createCard(`{"name": "Brakka", "description": "A dwarf. Grumpy."}`)
+	path := fmt.Sprintf("/cards/%d", c.ID)
+	var updated entityResult
+	e.call("PUT", path, map[string]any{"base_revision_id": c.Revision.ID,
+		"data": json.RawMessage(`{"name": "Brakka", "description": "A dwarf. Cheerful."}`)}, 200, &updated)
+
+	var diff struct {
+		Fields []struct {
+			Path  string `json:"path"`
+			Hunks []struct {
+				Status  string `json:"status"`
+				Library string `json:"library"`
+				App     string `json:"app"`
+			} `json:"hunks"`
+		} `json:"fields"`
+	}
+	e.call("GET", fmt.Sprintf("%s/revisions/%d/compare/%d", path, c.Revision.ID, updated.Revision.ID), nil, 200, &diff)
+	if len(diff.Fields) != 2 || diff.Fields[0].Path != "description" || diff.Fields[1].Path != "name" {
+		t.Fatalf("fields = %+v", diff.Fields)
+	}
+	changed := false
+	for _, h := range diff.Fields[0].Hunks {
+		if h.Status != "same" && strings.Contains(h.Library, "Grumpy") && strings.Contains(h.App, "Cheerful") {
+			changed = true
+		}
+	}
+	if !changed || diff.Fields[1].Hunks[0].Status != "same" {
+		t.Fatalf("hunks = %+v", diff.Fields)
+	}
+
+	other := e.createCard(`{"name": "Other"}`)
+	e.call("GET", fmt.Sprintf("%s/revisions/%d/compare/%d", path, c.Revision.ID, other.Revision.ID), nil, 404, nil)
+
+	var book entityResult
+	e.call("POST", "/lorebooks", map[string]any{"data": json.RawMessage(`{"name": "Forge", "entries": []}`)}, 201, &book)
+	e.call("GET", fmt.Sprintf("/lorebooks/%d/revisions/%d/compare/%d", book.ID, book.Revision.ID, book.Revision.ID), nil, 200, nil)
+}

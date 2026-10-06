@@ -781,6 +781,17 @@
             "format": "date-time",
             "type": "string"
           },
+          "collections": {
+            "description": "Cards only: IDs of the collections it's in",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"
@@ -2132,6 +2143,34 @@
         "required": [
           "hits",
           "total"
+        ],
+        "type": "object"
+      },
+      "RevisionDiff": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/RevisionDiff.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "fields": {
+            "description": "Every field, sorted by path. In each hunk, library is revision_id's value and app is other_id's.",
+            "items": {
+              "$ref": "#/components/schemas/Field"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "fields"
         ],
         "type": "object"
       },
@@ -3829,6 +3868,66 @@
           }
         },
         "summary": "Get one revision of a card",
+        "tags": [
+          "Cards"
+        ]
+      }
+    },
+    "/cards/{id}/revisions/{revision_id}/compare/{other_id}": {
+      "get": {
+        "operationId": "compare-card-revisions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "other_id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionDiff"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Compare two revisions of a card",
         "tags": [
           "Cards"
         ]
@@ -5832,6 +5931,66 @@
           }
         },
         "summary": "Get one revision of a lorebook",
+        "tags": [
+          "Lorebooks"
+        ]
+      }
+    },
+    "/lorebooks/{id}/revisions/{revision_id}/compare/{other_id}": {
+      "get": {
+        "operationId": "compare-lorebook-revisions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "other_id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionDiff"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Compare two revisions of a lorebook",
         "tags": [
           "Lorebooks"
         ]

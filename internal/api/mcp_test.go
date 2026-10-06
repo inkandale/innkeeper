@@ -13,7 +13,9 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/davidgibbons/innkeeper/internal/bulk"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
+	"github.com/davidgibbons/innkeeper/internal/targets"
 	"github.com/davidgibbons/innkeeper/internal/tier"
 )
 
@@ -81,7 +83,7 @@ func TestMCPToolsByTier(t *testing.T) {
 	}
 	read, write, all := names(tier.Read), names(tier.Write), names(tier.Destructive)
 	if !slices.Contains(read, "search_cards") || slices.Contains(read, "create_card") || slices.Contains(write, "push") ||
-		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 29 {
+		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 33 {
 		t.Fatalf("read %v\nwrite %v\nall %v", read, write, all)
 	}
 }
@@ -264,5 +266,44 @@ func TestMCPPluginTools(t *testing.T) {
 	}
 	if got := tool(t, s, "importer_echo", map[string]any{"text": "hi"}, false); got != "echo: hi" {
 		t.Fatalf("importer_echo = %q", got)
+	}
+}
+
+func TestMCPReconcile(t *testing.T) {
+	e := newEnv(t)
+	e.work()
+	inst, dir := e.target()
+	var c entityOut
+	e.call("POST", "/cards", map[string]any{"data": map[string]any{"name": "Brakka", "first_mes": "Hail."}}, 201, &c)
+	e.appCard(dir, "rBrakka.png", "Brakka", "Well met.")
+	e.appCard(dir, "rCarrow", "Carrow", "Hello.")
+
+	read := e.mcpClient(tier.Read)
+	var j jobOut
+	if err := json.Unmarshal([]byte(tool(t, read, "start_reconcile", map[string]any{"instance_id": inst}, false)), &j); err != nil {
+		t.Fatal(err)
+	}
+	if last, r := e.watchJob(j.ID); last.Status != "succeeded" {
+		t.Fatalf("reconcile = %+v\n%s", last, r.Body)
+	}
+	var cmp targets.Comparison
+	got := tool(t, read, "compare_item", map[string]any{"instance_id": inst, "remote_id": "rBrakka.png", "id": c.ID}, false)
+	if err := json.Unmarshal([]byte(got), &cmp); err != nil || cmp.AppHash == "" {
+		t.Fatalf("compare_item = %s", got)
+	}
+	if _, err := read.CallTool(context.Background(), &sdk.CallToolParams{Name: "resolve_item", Arguments: map[string]any{}}); err == nil {
+		t.Fatal("a read token called resolve_item")
+	}
+
+	write := e.mcpClient(tier.Write)
+	got = tool(t, write, "resolve_item", map[string]any{"instance_id": inst, "remote_id": "rBrakka.png", "action": "bind", "card_id": c.ID,
+		"app_hash": cmp.AppHash, "base_revision_id": cmp.HeadRevisionID, "default": "app"}, false)
+	if !strings.Contains(got, `"binding_id"`) {
+		t.Fatalf("resolve_item = %s", got)
+	}
+	got = tool(t, write, "resolve_items", map[string]any{"resolutions": []map[string]any{
+		{"instance_id": inst, "remote_id": "rCarrow", "action": "skip"}}}, false)
+	if err := json.Unmarshal([]byte(got), &j); err != nil || j.Kind != bulk.Kind {
+		t.Fatalf("resolve_items = %s", got)
 	}
 }

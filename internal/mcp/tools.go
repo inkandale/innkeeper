@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -131,6 +132,50 @@ type instanceUpdateIn struct {
 	Name    *string            `json:"name,omitempty"`
 	Config  map[string]any     `json:"config,omitempty"`
 	Secrets map[string]*string `json:"secrets,omitempty" jsonschema:"Sets each named secret; null removes one. Write-only."`
+}
+
+type reconcileIn struct {
+	InstanceID  int64          `json:"instance_id" jsonschema:"The target plugin instance"`
+	Match       map[string]any `json:"match,omitempty" jsonschema:"name (bool), text_distance and avatar_distance (0..32); defaults true, 8, 8"`
+	SplitFields *int           `json:"split_fields,omitempty" jsonschema:"How many core fields must differ before import is suggested over bind; default 3"`
+}
+
+type compareIn struct {
+	InstanceID int64  `json:"instance_id" jsonschema:"The target plugin instance"`
+	RemoteID   string `json:"remote_id" jsonschema:"The app item's remote_id, from the reconcile snapshot"`
+	Kind       string `json:"kind,omitempty" jsonschema:"card or lorebook; default card"`
+	ID         int64  `json:"id,omitempty" jsonschema:"The library card or lorebook to compare with; omit for the bound one"`
+}
+
+type resolveIn struct {
+	InstanceID     int64             `json:"instance_id" jsonschema:"The target plugin instance"`
+	RemoteID       string            `json:"remote_id"`
+	Kind           string            `json:"kind,omitempty" jsonschema:"card or lorebook; default card"`
+	Action         string            `json:"action" jsonschema:"bind, import, or skip"`
+	CardID         int64             `json:"card_id,omitempty" jsonschema:"For bind: the card or lorebook compared with"`
+	AppHash        string            `json:"app_hash,omitempty" jsonschema:"From compare_item, or the snapshot for an import; not needed to skip"`
+	BaseRevisionID int64             `json:"base_revision_id,omitempty" jsonschema:"For bind: head_revision_id from compare_item"`
+	AcceptedHash   string            `json:"accepted_hash,omitempty" jsonschema:"accepted_hash from compare_item"`
+	Choices        map[string]string `json:"choices,omitempty" jsonschema:"Hunk ID, or avatar, to library, app, keep_in_app, or both"`
+	Default        string            `json:"default,omitempty" jsonschema:"The choice for hunks not in choices; default library"`
+	Lorebooks      []map[string]any  `json:"lorebooks,omitempty" jsonschema:"Resolutions for the character's linked world books, shaped like this one; left out ones take their suggestion"`
+}
+
+type resolveItemsIn struct {
+	Resolutions []map[string]any `json:"resolutions" jsonschema:"Each shaped like resolve_item's input, with instance_id and kind"`
+}
+
+// itemPath is the API path of an app item, under kind's items.
+func itemPath(instanceID int64, kind, remoteID string) (string, error) {
+	items := "items"
+	switch kind {
+	case "", "card":
+	case "lorebook":
+		items = "lorebook-items"
+	default:
+		return "", fmt.Errorf("kind must be card or lorebook, not %q", kind)
+	}
+	return fmt.Sprintf("/instances/%d/%s/%s", instanceID, items, url.PathEscape(remoteID)), nil
 }
 
 type none struct{}
@@ -303,6 +348,43 @@ var tools = []tool{
 				body["params"] = map[string]any{"remote_ids": in.RemoteIDs}
 			}
 			return c.call(ctx, "POST", "/imports", body)
+		}),
+	def("start_reconcile", "Line a target app up against the library. Starts a job; its finished get_job progress is the snapshot: "+
+		"a verdict, candidates, and a suggested action for each app item. Changes nothing unless the instance has auto_bind_exact.", tier.Read,
+		func(ctx context.Context, c caller, in reconcileIn) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "POST", "/reconciles", in)
+		}),
+	def("compare_item", "Compare an app item with a library card or lorebook, hunk by hunk. resolve_item needs this reply's app_hash, "+
+		"head_revision_id, and accepted_hash. An unbound item needs an id to compare with.", tier.Read,
+		func(ctx context.Context, c caller, in compareIn) (*sdk.CallToolResult, error) {
+			path, err := itemPath(in.InstanceID, in.Kind, in.RemoteID)
+			if err != nil {
+				return nil, err
+			}
+			q := "card_id"
+			if in.Kind == "lorebook" {
+				q = "lorebook_id"
+			}
+			if in.ID != 0 {
+				path += fmt.Sprintf("/compare?%s=%d", q, in.ID)
+			} else {
+				path += "/compare"
+			}
+			return c.call(ctx, "GET", path, nil)
+		}),
+	def("resolve_item", "Bind an app item to a library card with per-hunk choices, import it, or skip it. Show the owner compare_item first. "+
+		"Changes the library and the binding, never the app: push afterwards to send the result. A 409 means something changed; it has a fresh comparison.", tier.Write,
+		func(ctx context.Context, c caller, in resolveIn) (*sdk.CallToolResult, error) {
+			path, err := itemPath(in.InstanceID, in.Kind, in.RemoteID)
+			if err != nil {
+				return nil, err
+			}
+			return c.call(ctx, "POST", path+"/resolve", in)
+		}),
+	def("resolve_items", "Resolve many app items as one bulk job, such as a reconcile's suggestions. One that fails doesn't stop the others; "+
+		"get_job on each child shows its outcome. Pushing is a separate step.", tier.Write,
+		func(ctx context.Context, c caller, in resolveItemsIn) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "POST", "/resolutions", in)
 		}),
 	def("list_plugins", "List the installed plugins, with each one's capabilities, config schema, and secret names.", tier.Read,
 		func(ctx context.Context, c caller, _ none) (*sdk.CallToolResult, error) {

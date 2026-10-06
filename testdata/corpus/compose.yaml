@@ -13,6 +13,7 @@ services:
       SILLYTAVERN_WHITELISTMODE: "false"
       SILLYTAVERN_BASICAUTHMODE: "false"
       SILLYTAVERN_SECURITYOVERRIDE: "true"  # allows no-auth on a non-loopback listen
+      SILLYTAVERN_SKIPCONTENTCHECK: "true"  # no default characters, so the capture guard sees an empty app
     tmpfs: [/home/node/app/data, /home/node/app/config]
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:8000/csrf-token').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]

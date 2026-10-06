@@ -45,7 +45,11 @@ func TestCapture(t *testing.T) {
 	}
 	ctx := context.Background()
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	manifests, err := plugins.LoadDir(os.Getenv("INNKEEPER_PLUGINS_DIR"), log)
+	dir := os.Getenv("INNKEEPER_PLUGINS_DIR")
+	if dir == "" {
+		t.Fatal("INNKEEPER_PLUGINS_DIR is not set")
+	}
+	manifests, err := plugins.LoadDir(dir, log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,6 +75,16 @@ func TestCapture(t *testing.T) {
 	procs := map[string]*pluginhost.Process{}
 	for _, tg := range targets {
 		procs[tg.name] = start(tg.name, tg.config, tg.secrets)
+		// The capture writes into the app, so refuse any server but a fresh one.
+		for _, m := range []string{protocol.MethodTargetList, protocol.MethodTargetListLorebooks} {
+			var list protocol.TargetListResult
+			if err := call(ctx, procs[tg.name], m, nil, &list); err != nil {
+				t.Fatalf("%s %s: %v", tg.name, m, err)
+			}
+			if len(list.Items) > 0 {
+				t.Fatalf("%s already has %d items from %s; capture only into the fresh compose servers", tg.name, len(list.Items), m)
+			}
+		}
 	}
 
 	sources, err := filepath.Glob(filepath.Join(corpusDir, "*", "source.*"))
@@ -101,11 +115,15 @@ func TestCapture(t *testing.T) {
 		// plugins remember that file name.
 		avatar, avatarSHA := "", ""
 		if dec.Avatar != "" {
-			avatarSHA = fileSHA(t, dec.Avatar)
+			if avatarSHA, err = fileSHA(dec.Avatar); err != nil {
+				t.Fatal(err)
+			}
 			avatar = filepath.Join(root, avatarSHA[0:2], avatarSHA[2:4], avatarSHA)
 			if err := os.MkdirAll(filepath.Dir(avatar), 0o700); err != nil {
 				t.Fatal(err)
 			}
+			// The store root and its tmp folder are both under root, so this
+			// never crosses file systems.
 			if err := os.Rename(dec.Avatar, avatar); err != nil {
 				t.Fatal(err)
 			}
@@ -158,8 +176,12 @@ func capture(ctx context.Context, p *pluginhost.Process, slug string, card, book
 	}
 	avatarSHA := ""
 	if got.Avatar != "" {
-		avatarSHA = fileSHA(nil, got.Avatar)
+		var err error
+		avatarSHA, err = fileSHA(got.Avatar)
 		_ = os.Remove(got.Avatar)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	lorebooks := []json.RawMessage{}
 	for i, id := range got.LorebookRemoteIDs {
@@ -186,22 +208,19 @@ func noCore(_ context.Context, method string, _ json.RawMessage) (any, error) {
 	return nil, protocol.MethodNotFound(method)
 }
 
-// fileSHA hashes a file; t may be nil, which panics on error instead. A
-// PNG's text and time chunks are left out: SillyTavern writes the card and a
-// timestamp into them, so only the image itself is compared.
-func fileSHA(t *testing.T, path string) string {
+// fileSHA hashes a file. A PNG's text and time chunks are left out:
+// SillyTavern writes the card and a timestamp into them, so only the image
+// itself is compared.
+func fileSHA(path string) (string, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		if t == nil {
-			panic(err)
-		}
-		t.Fatal(err)
+		return "", err
 	}
 	h := sha256.New()
 	const sig = "\x89PNG\r\n\x1a\n"
 	if !strings.HasPrefix(string(b), sig) {
 		h.Write(b)
-		return hex.EncodeToString(h.Sum(nil))
+		return hex.EncodeToString(h.Sum(nil)), nil
 	}
 	h.Write(b[:len(sig)])
 	// Each chunk is a 4-byte length, a 4-byte type, the data, and a 4-byte CRC.
@@ -217,7 +236,7 @@ func fileSHA(t *testing.T, path string) string {
 		}
 		rest = rest[n:]
 	}
-	return hex.EncodeToString(h.Sum(nil))
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 var uuidPattern = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)

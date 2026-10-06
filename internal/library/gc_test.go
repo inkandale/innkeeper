@@ -2,6 +2,7 @@ package library
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -84,5 +85,27 @@ func TestCollectGarbageKeepsReusedBlob(t *testing.T) {
 	}
 	if _, err := lib.Blob(ctx, b.SHA256); err != nil {
 		t.Fatalf("reused blob: %v", err)
+	}
+}
+
+func TestCollectGarbageWaitsForRestore(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	tx, err := lib.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('innkeeper-restore'))`); err != nil {
+		t.Fatal(err)
+	}
+	short, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
+	defer cancel()
+	if _, _, err := lib.CollectGarbage(short, time.Hour); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want it to wait for the lock", err)
+	}
+	tx.Rollback(ctx)
+	if _, _, err := lib.CollectGarbage(ctx, time.Hour); err != nil {
+		t.Fatal(err)
 	}
 }

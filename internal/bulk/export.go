@@ -43,6 +43,7 @@ func Export(ex *export.Exporter) jobs.Handler {
 		if err := json.Unmarshal(r.Payload, &p); err != nil {
 			return err
 		}
+		// ponytail: system temp dir, maybe tmpfs and not swept by GC; use the blobstore's tmp dir if zips get big.
 		tmp, err := os.CreateTemp("", "innkeeper-export-*.zip")
 		if err != nil {
 			return err

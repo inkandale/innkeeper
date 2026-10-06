@@ -69,7 +69,7 @@
 | `cmd/innkeeper/backup.go`, `backup_test.go` | `backup` and `restore` commands over `internal/backup` |
 | `cmd/innkeeper/main.go` | Usage, `restore` |
 | `cmd/innkeeper/worker.go` | Backup and restore handlers, schedules |
-| `cmd/innkeeper/api.go`, `services.go` | Read `backup.Config`, pass it to the server |
+| `cmd/innkeeper/api.go`, `services.go` | Read `backup.Settings`, pass it to the server |
 | `internal/api/backups.go`, `backups_test.go` | New: `/backups`, `/restores`, `/health` |
 | `internal/api/server.go` | `Backups` field, routes |
 | `web/openapi.json`, `web/src/api/schema.d.ts` | Regenerated |
@@ -116,14 +116,14 @@ END $$;
 - [ ] `internal/backup/backup.go`: `type Type string`, `Assets`, `Config`, `Types = []Type{Assets, Config}`, and:
 
 ```go
-// Config is the backup settings from the environment.
-type Config struct {
+// Settings is the backup settings from the environment.
+type Settings struct {
 	Dir   string
 	Every map[Type]time.Duration // only scheduled types
 	Keep  map[Type]int           // every type with a schedule or a KEEP
 }
 
-func ConfigFromEnv() (Config, error)
+func SettingsFromEnv() (Settings, error)
 ```
 
 - [ ] Table test: nothing set gives an empty config; `EVERY=24h` and `EVERY=7d` parse; `EVERY` without `DIR` fails; `KEEP=0`, `KEEP=x`, and `EVERY=-1h` fail; `KEEP` defaults to 7 when `EVERY` is set.
@@ -226,14 +226,14 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (Result, error)
 
 ### Task 7: Worker jobs and schedules
 
-- [ ] `services.go` reads `backup.ConfigFromEnv()` into `services.backups`, so the API and worker both fail early on bad settings.
-- [ ] `worker.go`: handlers for `backup.assets`, `backup.config`, `backup.restore`, and a `jobs.Schedule` for each type in `Config.Every`. Export the kind names from `internal/backup` (`backup.Kind(t)`, `backup.RestoreKind`).
+- [ ] `services.go` reads `backup.SettingsFromEnv()` into `services.backups`, so the API and worker both fail early on bad settings.
+- [ ] `worker.go`: handlers for `backup.assets`, `backup.config`, `backup.restore`, and a `jobs.Schedule` for each type in `Settings.Every`. Export the kind names from `internal/backup` (`backup.Kind(t)`, `backup.RestoreKind`).
 - [ ] Test in `internal/backup`: `Handler(cfg, …)` writes a backup and prunes to `KEEP`; with no `Dir` it fails with the setting's name.
 - [ ] Commit `feat(worker): run scheduled backups and restores`.
 
 ### Task 8: API
 
-- [ ] `internal/api/backups.go`: the routes from the design notes, with `needs(tier.Destructive)` on all but `/health`, which is `public` with `noAuth` security. Add `Backups backup.Config` to `Server` and register `s.backupRoutes(api)`.
+- [ ] `internal/api/backups.go`: the routes from the design notes, with `needs(tier.Destructive)` on all but `/health`, which is `public` with `noAuth` security. Add `Backups backup.Settings` to `Server` and register `s.backupRoutes(api)`.
 - [ ] `POST /restores` input:
 
 ```go

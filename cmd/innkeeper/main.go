@@ -25,6 +25,7 @@ API commands (read INNKEEPER_URL and INNKEEPER_TOKEN):
   innkeeper export <card-id> [file [format]]
   innkeeper bulk archive|unarchive <query-json>
   innkeeper push <instance-id> <card-id>|<query-json> [--new-copy]
+  innkeeper sources <card-id> [add <url> | remove <source-id>]
   innkeeper jobs [show|cancel|watch <job-id>]
 
 See README.md for the environment variables each command reads.`
@@ -64,6 +65,8 @@ func run(args []string) error {
 		return bulkCmd(rest)
 	case cmd == "push":
 		return pushCmd(rest)
+	case cmd == "sources":
+		return sourcesCmd(rest)
 	case cmd == "jobs":
 		return jobsCmd(rest)
 	}

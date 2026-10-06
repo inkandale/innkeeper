@@ -95,6 +95,24 @@ type bindIn struct {
 	RemoteID   string `json:"remote_id" jsonschema:"The app item's remote_id, from list_app_items"`
 }
 
+type sourceIn struct {
+	CardID     int64  `json:"card_id,omitempty" jsonschema:"The card; give this or lorebook_id"`
+	LorebookID int64  `json:"lorebook_id,omitempty" jsonschema:"The lorebook; give this or card_id"`
+	URL        string `json:"url,omitempty" jsonschema:"A page on a known site, such as a chub.ai character page"`
+	SourceID   int64  `json:"source_id,omitempty" jsonschema:"The source to remove, from list_sources"`
+}
+
+// sourcesPath is the API path of a card's or lorebook's sources.
+func sourcesPath(in sourceIn) (string, error) {
+	switch {
+	case (in.CardID == 0) == (in.LorebookID == 0):
+		return "", fmt.Errorf("give exactly one of card_id and lorebook_id")
+	case in.CardID != 0:
+		return fmt.Sprintf("/cards/%d/sources", in.CardID), nil
+	}
+	return fmt.Sprintf("/lorebooks/%d/sources", in.LorebookID), nil
+}
+
 type importIn struct {
 	InstanceID int64    `json:"instance_id" jsonschema:"An import plugin or target app instance"`
 	Path       string   `json:"path,omitempty" jsonschema:"For an import plugin: a subfolder of the instance's folder; empty for all of it"`
@@ -214,6 +232,30 @@ var tools = []tool{
 				return nil, err
 			}
 			return c.call(ctx, "GET", fmt.Sprintf("/%s/%d/bindings", p, in.ID), nil)
+		}),
+	def("list_sources", "List the sites a card or lorebook was published on.", tier.Read,
+		func(ctx context.Context, c caller, in sourceIn) (*sdk.CallToolResult, error) {
+			path, err := sourcesPath(in)
+			if err != nil {
+				return nil, err
+			}
+			return c.call(ctx, "GET", path, nil)
+		}),
+	def("add_source", "Record that a card or lorebook was published at a URL, such as its chub.ai page.", tier.Write,
+		func(ctx context.Context, c caller, in sourceIn) (*sdk.CallToolResult, error) {
+			path, err := sourcesPath(in)
+			if err != nil {
+				return nil, err
+			}
+			return c.call(ctx, "PUT", path, map[string]any{"url": in.URL})
+		}),
+	def("remove_source", "Remove a source from a card or lorebook, so detection doesn't add it back.", tier.Write,
+		func(ctx context.Context, c caller, in sourceIn) (*sdk.CallToolResult, error) {
+			path, err := sourcesPath(in)
+			if err != nil {
+				return nil, err
+			}
+			return c.call(ctx, "DELETE", fmt.Sprintf("%s/%d", path, in.SourceID), nil)
 		}),
 	def("list_app_items", "List the cards or lorebooks a target app already has, with the binding that uses each, if any.", tier.Read,
 		func(ctx context.Context, c caller, in itemsIn) (*sdk.CallToolResult, error) {

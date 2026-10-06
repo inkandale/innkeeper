@@ -40,3 +40,20 @@ func TestAPIIsUnderPrefix(t *testing.T) {
 		t.Fatalf("GET /openapi.json = %d, want 404 with no UI", resp.StatusCode)
 	}
 }
+
+func TestSpecNeedsNoServices(t *testing.T) {
+	b, err := Spec()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spec struct {
+		Servers []struct{ URL string } `json:"servers"`
+		Paths   map[string]any         `json:"paths"`
+	}
+	if err := json.Unmarshal(b, &spec); err != nil {
+		t.Fatal(err)
+	}
+	if spec.Servers[0].URL != "/api" || spec.Paths["/search"] == nil {
+		t.Fatalf("spec = %s", b[:min(len(b), 300)])
+	}
+}

@@ -137,6 +137,15 @@ func (s *Server) routes(api huma.API) {
 	s.toolRoutes(api)
 }
 
+// Spec returns the OpenAPI spec as indented JSON, without a database or
+// plugins.
+func Spec() ([]byte, error) {
+	api := humago.New(http.NewServeMux(), config())
+	s := &Server{Lib: &library.Library{}}
+	s.routes(api)
+	return json.MarshalIndent(api.OpenAPI(), "", "  ")
+}
+
 // Handler returns the HTTP handler for every route: the API under /api,
 // OAuth and MCP at the root, and UI for everything else.
 func (s *Server) Handler() http.Handler {

@@ -148,6 +148,15 @@ type appItem struct {
 // store for its phash.
 func (s *Service) readItem(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo, remoteID string,
 	avatar bool) (appItem, error) {
+	it, err := s.readItemData(ctx, k, inst, info, remoteID, avatar)
+	if remoteNotFound(err) {
+		err = fmt.Errorf("%w: the app has no %s %s: %w", library.ErrNotFound, k.name, remoteID, err)
+	}
+	return it, err
+}
+
+func (s *Service) readItemData(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo,
+	remoteID string, avatar bool) (appItem, error) {
 	var it appItem
 	var err error
 	if k.isLorebook() {

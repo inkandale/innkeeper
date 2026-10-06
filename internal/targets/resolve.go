@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 
@@ -24,8 +25,11 @@ type Resolution struct {
 	// AppHash is the comparison's app_hash; a different live copy is stale.
 	AppHash string `json:"app_hash"`
 	// BaseRevisionID is the comparison's head_revision_id; a moved head is stale.
-	BaseRevisionID int64  `json:"base_revision_id"`
-	Action         string `json:"action" enum:"bind,import,skip"`
+	BaseRevisionID int64 `json:"base_revision_id"`
+	// AcceptedHash is the comparison's accepted_hash, empty for an item that
+	// wasn't bound to the card; a binding that changed since is stale.
+	AcceptedHash string `json:"accepted_hash"`
+	Action       string `json:"action" enum:"bind,import,skip"`
 	// CardID is any library card or lorebook for bind; 0 means the bound one.
 	CardID int64 `json:"card_id,omitempty"`
 	// Choices maps hunk IDs, and avatar, to a choice.
@@ -46,12 +50,12 @@ type ResolveResult struct {
 	Lorebooks  []ResolveResult `json:"lorebooks,omitempty"`
 }
 
-// StaleError means the app item or the library head changed since the
-// comparison. Comparison is a fresh one to choose from again.
+// StaleError means the app item, the library head, or the binding changed
+// since the comparison. Comparison is a fresh one to choose from again.
 type StaleError struct{ Comparison Comparison }
 
 func (e *StaleError) Error() string {
-	return "the app's copy or the library changed since they were compared; compare them again"
+	return "the app's copy, the library, or the binding changed since the comparison; compare again"
 }
 
 // avatarChoice is the choice key for a card's avatar, which isn't a hunk.
@@ -94,20 +98,17 @@ func (s *Service) resolveBind(ctx context.Context, k kind, r Resolution) (Resolv
 	}
 	id := r.CardID
 	if id == 0 {
-		err := s.pool.QueryRow(ctx, `SELECT `+k.col+` FROM binding
-			WHERE instance_id = $1 AND remote_id = $2 AND `+k.col+` IS NOT NULL
-			ORDER BY remote_state = 'missing', id LIMIT 1`, r.InstanceID, r.RemoteID).Scan(&id)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return res, ErrNotFound
-		} else if err != nil {
+		b, err := itemBinding(ctx, s.pool, k, r.InstanceID, r.RemoteID)
+		if err != nil {
 			return res, err
+		}
+		if id = b.entityID; id == 0 {
+			return res, ErrNotFound
 		}
 	}
 	res.CardID = id
 	it, err := s.readItem(ctx, k, inst, rinfo, r.RemoteID, true)
-	if remoteNotFound(err) {
-		return res, fmt.Errorf("%w: the app has no %s %s", library.ErrNotFound, k.name, r.RemoteID)
-	} else if err != nil {
+	if err != nil {
 		return res, err
 	}
 	if it.avatarErr != nil {
@@ -147,6 +148,11 @@ func (s *Service) resolveBind(ctx context.Context, k kind, r Resolution) (Resolv
 	if err != nil {
 		return res, err
 	}
+	// The app's copy is where the sources are, even if the target drops
+	// extensions. It's idempotent, so it goes first and a failed resolve is harmless.
+	if err := k.entities(s.lib).DetectSources(ctx, id, it.raw); err != nil {
+		return res, err
+	}
 
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -167,8 +173,17 @@ func (s *Service) resolveBind(ctx context.Context, k kind, r Resolution) (Resolv
 	} else if err != nil {
 		return res, err
 	}
-	if headID != r.BaseRevisionID {
-		// Hunk IDs come from the compared head, so choices can't apply to another.
+	item, err := itemBinding(ctx, tx, k, r.InstanceID, r.RemoteID)
+	if err != nil {
+		return res, err
+	}
+	ancestor := item.ancestor(id)
+	ancestorHash := ""
+	if ancestor != nil {
+		ancestorHash = item.acceptedHash
+	}
+	// Hunk IDs and statuses come from the compared head and ancestor, so choices can't apply to others.
+	if headID != r.BaseRevisionID || ancestorHash != r.AcceptedHash {
 		_ = tx.Rollback(ctx)
 		return res, stale()
 	}
@@ -179,17 +194,22 @@ func (s *Service) resolveBind(ctx context.Context, k kind, r Resolution) (Resolv
 	if _, ok := r.Choices[avatarChoice]; ok && avatar == it.avatar {
 		return res, fmt.Errorf("%w: %s", merge.ErrUnknownHunk, avatarChoice)
 	}
-	var bindingID int64
-	var boundRemote string
-	var ancestor json.RawMessage
-	err = tx.QueryRow(ctx, `SELECT id, remote_id, accepted_data FROM binding WHERE instance_id = $1 AND `+k.col+` = $2`,
-		r.InstanceID, id).Scan(&bindingID, &boundRemote, &ancestor)
-	switch {
-	case errors.Is(err, pgx.ErrNoRows):
-		ancestor = nil
-	case err != nil:
+	// An empty app avatar can't clear the library's.
+	if takeAppAvatar && it.avatar == "" {
+		return res, fmt.Errorf("%w: %s: the app has no avatar", merge.ErrBadChoice, avatarChoice)
+	}
+	var cardBinding struct {
+		id                        int64
+		remoteID, state, accepted string
+	}
+	err = tx.QueryRow(ctx, `SELECT id, remote_id, remote_state, accepted_hash FROM binding
+		WHERE instance_id = $1 AND `+k.col+` = $2`, r.InstanceID, id).
+		Scan(&cardBinding.id, &cardBinding.remoteID, &cardBinding.state, &cardBinding.accepted)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return res, err
-	case boundRemote != r.RemoteID:
+	}
+	// A card whose copy went missing can bind to the app's new one.
+	if cardBinding.id != 0 && cardBinding.remoteID != r.RemoteID && cardBinding.state != remoteMissing {
 		return res, ErrBound
 	}
 
@@ -200,8 +220,12 @@ func (s *Service) resolveBind(ctx context.Context, k kind, r Resolution) (Resolv
 	}
 	oldOverride, hadOverride := overrides[key]
 	rendered := headData
+	var pinned map[string]any
 	if hadOverride {
 		if rendered, err = MergePatch(rendered, oldOverride); err != nil {
+			return res, err
+		}
+		if pinned, err = decodeObject(oldOverride); err != nil {
 			return res, err
 		}
 	}
@@ -214,6 +238,9 @@ func (s *Service) resolveBind(ctx context.Context, k kind, r Resolution) (Resolv
 			return res, err
 		}
 	}
+	if choices, err = keepPinnedLists(k, lib, it.data, ancestor, pinned, choices, r.Default); err != nil {
+		return res, err
+	}
 	merged, patch, err := merge.Apply(k.schema(), lib, it.data, ancestor, choices, r.Default)
 	if err != nil {
 		return res, err
@@ -224,13 +251,7 @@ func (s *Service) resolveBind(ctx context.Context, k kind, r Resolution) (Resolv
 			return res, err
 		}
 	}
-	var pinned map[string]json.RawMessage
-	if hadOverride {
-		if pinned, err = object(oldOverride); err != nil {
-			return res, err
-		}
-	}
-	// In a field this instance overrides, choices change the override, never the base.
+	// In a field or setting this instance overrides, choices change the override, never the base.
 	toBase, err := restore(merged, lib, pinned)
 	if err != nil {
 		return res, err
@@ -266,8 +287,37 @@ func (s *Service) resolveBind(ctx context.Context, k kind, r Resolution) (Resolv
 		}
 		overrideChanged = d != nil
 	}
+	_, wantHash, err := Project(appCopy, k.fields(rinfo))
+	if err != nil {
+		return res, err
+	}
+	appBehind := wantHash != it.hash || newAvatar != it.avatar
+	revise := baseChange != nil || overrideChanged || newAvatar != avatar
+
+	if !revise && cardBinding.remoteID == r.RemoteID && cardBinding.state == remoteUnchanged &&
+		cardBinding.accepted == acceptedHash {
+		var last struct {
+			revision int64
+			behind   bool
+			books    []int64
+			links    []string
+		}
+		err := tx.QueryRow(ctx, `SELECT revision_id, app_behind, lorebook_revision_ids, lorebook_remote_ids FROM push
+			WHERE binding_id = $1 ORDER BY id DESC LIMIT 1`, cardBinding.id).
+			Scan(&last.revision, &last.behind, &last.books, &last.links)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return res, err
+		}
+		if err == nil && last.revision == headID && last.behind == appBehind && slices.Equal(last.books, lorebooks) &&
+			slices.Equal(last.links, lorebookRemoteIDs) && (last.links == nil) == (lorebookRemoteIDs == nil) {
+			// Nothing would change, so nothing is written.
+			res.BindingID = cardBinding.id
+			return res, nil
+		}
+	}
+
 	revisionID := headID
-	if baseChange != nil || overrideChanged || newAvatar != avatar {
+	if revise {
 		if newOverride == nil {
 			delete(overrides, key)
 		} else {
@@ -284,16 +334,11 @@ func (s *Service) resolveBind(ctx context.Context, k kind, r Resolution) (Resolv
 		}
 		revisionID, res.RevisionID = rev.ID, rev.ID
 	}
-	_, wantHash, err := Project(appCopy, k.fields(rinfo))
-	if err != nil {
-		return res, err
-	}
-	appBehind := wantHash != it.hash || newAvatar != it.avatar
-
+	bindingID := cardBinding.id
 	if bindingID != 0 {
-		_, err = tx.Exec(ctx, `UPDATE binding SET remote_state = 'unchanged', accepted_data = $2, accepted_hash = $3,
-				seen_data = NULL, checked_at = now(), version = version + 1
-			WHERE id = $1`, bindingID, accepted, acceptedHash)
+		_, err = tx.Exec(ctx, `UPDATE binding SET remote_id = $2, remote_state = 'unchanged', accepted_data = $3,
+				accepted_hash = $4, seen_data = NULL, checked_at = now(), version = version + 1
+			WHERE id = $1`, bindingID, r.RemoteID, accepted, acceptedHash)
 	} else {
 		err = tx.QueryRow(ctx, `INSERT INTO binding (instance_id, `+k.col+`, remote_id, remote_state, accepted_data,
 				accepted_hash, checked_at)
@@ -316,8 +361,7 @@ func (s *Service) resolveBind(ctx context.Context, k kind, r Resolution) (Resolv
 		return res, err
 	}
 	res.BindingID = bindingID
-	// The app's copy is where the sources are, even if the target drops extensions.
-	return res, k.entities(s.lib).DetectSources(ctx, id, it.raw)
+	return res, nil
 }
 
 // splitAvatar takes the avatar choice out of choices, since it isn't a hunk,
@@ -353,26 +397,78 @@ func patched(full, projected, want json.RawMessage) (json.RawMessage, error) {
 	return MergePatch(full, d)
 }
 
-// restore puts back from's value, or its absence, for each top-level key of
-// keys in to.
-func restore(to, from json.RawMessage, keys map[string]json.RawMessage) (json.RawMessage, error) {
-	if len(keys) == 0 {
-		return to, nil
+// restore puts back lib's value, or its absence, in merged at each leaf of
+// the override, so only what the override sets is reverted.
+func restore(merged, lib json.RawMessage, override map[string]any) (json.RawMessage, error) {
+	if len(override) == 0 {
+		return merged, nil
 	}
-	t, err := object(to)
+	m, err := decodeObject(merged)
 	if err != nil {
 		return nil, err
 	}
-	f, err := object(from)
+	l, err := decodeObject(lib)
 	if err != nil {
 		return nil, err
 	}
-	for k := range keys {
-		if v, ok := f[k]; ok {
-			t[k] = v
-		} else {
-			delete(t, k)
+	restoreLeaves(m, l, override)
+	return json.Marshal(m)
+}
+
+func restoreLeaves(to, from, override map[string]any) {
+	for k, v := range override {
+		om, ook := v.(map[string]any)
+		tm, tok := to[k].(map[string]any)
+		fm, fok := from[k].(map[string]any)
+		switch fv, ok := from[k]; {
+		case ook && tok && fok:
+			restoreLeaves(tm, fm, om)
+		case ok:
+			to[k] = fv
+		default:
+			delete(to, k)
 		}
 	}
-	return json.Marshal(t)
+}
+
+// keepPinnedLists turns keep_in_app on a list field this instance overrides
+// into app: the override already holds the whole list, and app on a pinned
+// field changes only the override, so it's the same choice.
+func keepPinnedLists(k kind, lib, app, ancestor json.RawMessage, pinned map[string]any,
+	choices map[string]merge.Choice, def merge.Choice) (map[string]merge.Choice, error) {
+	if len(pinned) == 0 {
+		return choices, nil
+	}
+	fields, err := merge.Compare(k.schema(), lib, app, ancestor)
+	if err != nil {
+		return nil, err
+	}
+	out := maps.Clone(choices)
+	if out == nil {
+		out = map[string]merge.Choice{}
+	}
+	for _, f := range fields {
+		if _, ok := pinned[f.Path]; !ok || f.Kind != merge.List {
+			continue
+		}
+		for _, h := range f.Hunks {
+			if c, ok := out[h.ID]; c == merge.ChooseKeepInApp || !ok && def == merge.ChooseKeepInApp {
+				out[h.ID] = merge.ChooseApp
+			}
+		}
+	}
+	return out, nil
+}
+
+// decodeObject decodes a JSON object, keeping numbers as written.
+func decodeObject(raw json.RawMessage) (map[string]any, error) {
+	v, err := decode(raw)
+	if err != nil {
+		return nil, err
+	}
+	m, ok := v.(map[string]any)
+	if !ok {
+		return nil, errors.New("not a JSON object")
+	}
+	return m, nil
 }

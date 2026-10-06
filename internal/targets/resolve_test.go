@@ -3,6 +3,7 @@ package targets
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -61,7 +62,7 @@ func (e *env) resolve(c Comparison, choices map[string]merge.Choice, def merge.C
 
 func (e *env) tryResolve(c Comparison, choices map[string]merge.Choice, def merge.Choice) (ResolveResult, error) {
 	return e.s.Resolve(e.ctx, Resolution{InstanceID: e.inst, RemoteID: c.RemoteID, AppHash: c.AppHash,
-		BaseRevisionID: c.HeadRevisionID, Action: "bind", CardID: c.CardID, Choices: choices, Default: def})
+		BaseRevisionID: c.HeadRevisionID, AcceptedHash: c.AcceptedHash, Action: "bind", CardID: c.CardID, Choices: choices, Default: def})
 }
 
 func (e *env) revisions(card int64) int {
@@ -188,6 +189,7 @@ func TestResolveAvatar(t *testing.T) {
 	if e.resolve(c, nil, ""); e.status(card) != "ahead" {
 		t.Errorf("status = %s, want ahead", e.status(card))
 	}
+	c = e.compareItem("pic", card)
 	e.resolve(c, map[string]merge.Choice{"avatar": merge.ChooseApp}, "")
 	if a := e.head(card).AvatarBlob; a == nil || *a != c.Avatar.App {
 		t.Errorf("avatar = %v, want %s", a, c.Avatar.App)
@@ -323,5 +325,235 @@ func TestResolveAvatarChoiceNeedsAnAvatarDiff(t *testing.T) {
 	_, err := e.tryResolve(c, map[string]merge.Choice{"avatar": merge.ChooseApp}, "")
 	if !errors.Is(err, merge.ErrUnknownHunk) || e.bindingCount() != 0 {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestResolveWithAnOutdatedBindingIsStale(t *testing.T) {
+	for name, between := range map[string]func(e *env, c Comparison, card int64){
+		"another tab": func(e *env, c Comparison, _ int64) { e.resolve(c, nil, merge.ChooseLibrary) },
+		"same resolve": func(e *env, c Comparison, _ int64) {
+			e.resolve(c, map[string]merge.Choice{hunk(t, c, "first_mes"): merge.ChooseApp}, "")
+		},
+		"old bind": func(e *env, _ Comparison, card int64) { e.bind(card, "lv1") },
+	} {
+		t.Run(name, func(t *testing.T) {
+			e, card := resolveEnv(t)
+			c := e.compareItem("lv1", card)
+			between(e, c, card)
+			revs := e.revisions(card)
+			_, err := e.tryResolve(c, map[string]merge.Choice{hunk(t, c, "first_mes"): merge.ChooseApp}, "")
+			var stale *StaleError
+			if !errors.As(err, &stale) || stale.Comparison.AcceptedHash == "" || e.revisions(card) != revs {
+				t.Fatalf("err = %v, %d revisions", err, e.revisions(card))
+			}
+		})
+	}
+}
+
+func (e *env) version(bindingID int64) int64 {
+	e.t.Helper()
+	var v int64
+	if err := e.pool.QueryRow(e.ctx, `SELECT version FROM binding WHERE id = $1`, bindingID).Scan(&v); err != nil {
+		e.t.Fatal(err)
+	}
+	return v
+}
+
+func TestResolveThatChangesNothingWritesNothing(t *testing.T) {
+	e, card := resolveEnv(t)
+	b := e.push(card)
+	v := e.version(b.ID)
+	res := e.resolve(e.compareItem(b.RemoteID, 0), nil, merge.ChooseLibrary)
+	pushes, err := e.s.Pushes(e.ctx, b.ID)
+	if err != nil || res.BindingID != b.ID || res.RevisionID != 0 || len(pushes) != 1 || e.version(b.ID) != v {
+		t.Fatalf("result = %+v, %d pushes, version %d -> %d, %v", res, len(pushes), v, e.version(b.ID), err)
+	}
+}
+
+func TestResolvePinsOnlyTheOverriddenSetting(t *testing.T) {
+	e, _ := resolveEnv(t)
+	card := e.libCard(map[string]any{"name": "Ula", "description": "A smith.", "extensions": map[string]any{"depth": 2}})
+	e.update(card, func(ed *library.Edit) {
+		ed.Overrides = json.RawMessage(`{"` + e.key() + `": {"extensions": {"lumiverse_ui": "light"}}}`)
+	})
+	e.appCard("lv2", map[string]any{"name": "Ula", "description": "A smith.",
+		"extensions": map[string]any{"depth": 4, "lumiverse_ui": "light"}}, nil)
+	c := e.compareItem("lv2", card)
+	e.resolve(c, map[string]merge.Choice{hunk(t, c, "extensions"): merge.ChooseApp}, "")
+	ext, _ := field(t, e.head(card).Data, "extensions").(map[string]any)
+	if ext["depth"] != float64(4) || string(mustMarshal(e.override(card))) != `{"extensions":{"lumiverse_ui":"light"}}` {
+		t.Fatalf("extensions = %v, override = %v", ext, e.override(card))
+	}
+}
+
+func TestResolveKeepsInAppOnAPinnedList(t *testing.T) {
+	e := setup(t, map[string]any{"fields": []string{"name", "description", "tags"}})
+	for i, explicit := range []bool{true, false} {
+		id := fmt.Sprintf("t%d", i)
+		card := e.libCard(map[string]any{"name": "Vel" + id, "description": "A bard.", "tags": []string{"a", "b"}})
+		e.update(card, func(ed *library.Edit) {
+			ed.Overrides = json.RawMessage(`{"` + e.key() + `": {"tags": ["a", "b", "c"]}}`)
+		})
+		e.appCard(id, map[string]any{"name": "Vel" + id, "description": "A bard.", "tags": []string{"a", "b", "c", "d"}}, nil)
+		c := e.compareItem(id, card)
+		var choices map[string]merge.Choice
+		def := merge.ChooseKeepInApp
+		if explicit {
+			choices, def = map[string]merge.Choice{hunk(t, c, "tags"): merge.ChooseKeepInApp}, ""
+		}
+		if _, err := e.tryResolve(c, choices, def); err != nil {
+			t.Fatalf("explicit %v: %v", explicit, err)
+		}
+		tags := string(mustMarshal(field(t, e.head(card).Data, "tags")))
+		if over := string(mustMarshal(e.override(card)["tags"])); tags != `["a","b"]` || over != `["a","b","c","d"]` {
+			t.Errorf("explicit %v: base tags %s, override tags %s", explicit, tags, over)
+		}
+	}
+}
+
+func TestResolveAppAvatarNeedsOne(t *testing.T) {
+	e, card := resolveEnv(t)
+	e.setAvatar(card, patternPNG(t, func(x, _ int) uint8 { return uint8(x / 8 % 2 * 255) }))
+	c := e.compareItem("lv1", card)
+	if c.Avatar == nil {
+		t.Fatal("avatars don't differ")
+	}
+	if _, err := e.tryResolve(c, map[string]merge.Choice{"avatar": merge.ChooseApp}, ""); !errors.Is(err, merge.ErrBadChoice) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestResolveRebindsACardWhoseCopyWentMissing(t *testing.T) {
+	e, card := resolveEnv(t)
+	b := e.push(card)
+	if _, err := e.pool.Exec(e.ctx, `UPDATE binding SET remote_state = 'missing' WHERE id = $1`, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	res := e.resolve(e.compareItem("lv1", card), nil, merge.ChooseApp)
+	list, err := e.s.Bindings(e.ctx, card)
+	if err != nil || res.BindingID != b.ID || len(list) != 1 || list[0].RemoteID != "lv1" || list[0].Status != "in_sync" {
+		t.Fatalf("result = %+v, bindings = %+v, %v", res, list, err)
+	}
+}
+
+func TestResolveGoneItemIsNotFound(t *testing.T) {
+	e, card := resolveEnv(t)
+	if !errors.Is(ErrNotFound, library.ErrNotFound) {
+		t.Error("targets.ErrNotFound isn't a library.ErrNotFound")
+	}
+	if _, err := e.s.CompareItem(e.ctx, e.inst, "gone", card); !errors.Is(err, library.ErrNotFound) {
+		t.Errorf("compare: %v", err)
+	}
+	c := e.compareItem("lv1", card)
+	c.RemoteID = "gone"
+	if _, err := e.tryResolve(c, nil, ""); !errors.Is(err, library.ErrNotFound) {
+		t.Errorf("resolve: %v", err)
+	}
+}
+
+func TestResolveKeepsOverridesOfUnstoredFields(t *testing.T) {
+	e, card := resolveEnv(t)
+	e.update(card, func(ed *library.Edit) {
+		ed.Overrides = json.RawMessage(`{"` + e.key() + `": {"scenario": "A cold forge."}}`)
+	})
+	c := e.compareItem("lv1", card)
+	if res := e.resolve(c, map[string]merge.Choice{hunk(t, c, "first_mes"): merge.ChooseApp}, ""); res.RevisionID == 0 {
+		t.Fatal("no revision")
+	}
+	if o := e.override(card); o["scenario"] != "A cold forge." {
+		t.Errorf("override = %v", o)
+	}
+}
+
+func TestResolveClearsAChangedBinding(t *testing.T) {
+	e, card := resolveEnv(t)
+	b := e.push(card)
+	e.editRemote(b.RemoteID, "first_mes", appGreeting)
+	if b = e.check(b); b.Status != "remote_changed" {
+		t.Fatalf("status = %s", b.Status)
+	}
+	// The app's edit merges in from the ancestor, so nothing is left to push.
+	e.resolve(e.compareItem(b.RemoteID, 0), nil, merge.ChooseLibrary)
+	b, err := e.s.Binding(e.ctx, b.ID)
+	if err != nil || b.RemoteState != "unchanged" || len(b.Changes) != 0 || b.Status != "in_sync" {
+		t.Fatalf("binding = %+v, %v", b, err)
+	}
+	var seen bool
+	if err := e.pool.QueryRow(e.ctx, `SELECT seen_data IS NOT NULL FROM binding WHERE id = $1`, b.ID).Scan(&seen); err != nil || seen {
+		t.Errorf("seen_data kept: %v", err)
+	}
+}
+
+func TestResolveOntoACardBoundElsewhere(t *testing.T) {
+	e, card := resolveEnv(t)
+	b := e.push(card)
+	v := e.version(b.ID)
+	_, err := e.tryResolve(e.compareItem("lv1", card), nil, merge.ChooseApp)
+	after, berr := e.s.Binding(e.ctx, b.ID)
+	if !errors.Is(err, ErrBound) || berr != nil || after.RemoteID != b.RemoteID || e.version(b.ID) != v || e.revisions(card) != 1 {
+		t.Fatalf("err = %v, binding = %+v, %v", err, after, berr)
+	}
+}
+
+func TestResolveLorebook(t *testing.T) {
+	e := setup(t, map[string]any{"lorebooks": "standalone"})
+	for i, def := range []merge.Choice{merge.ChooseLibrary, merge.ChooseApp, merge.ChooseKeepInApp} {
+		lb := e.newLorebook(fmt.Sprintf("Forge %d", i))
+		id := fmt.Sprintf("l%d", i)
+		e.writeRemote(id, map[string]any{"lorebook": map[string]any{"name": fmt.Sprintf("Forge %d", i),
+			"description": "Old lore.", "entries": []any{map[string]any{"keys": []any{"forge"}, "content": "The forge burns hot."}}}})
+		c, err := e.s.CompareLorebookItem(e.ctx, e.inst, id, lb)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := Resolution{InstanceID: e.inst, RemoteID: id, AppHash: c.AppHash, BaseRevisionID: c.HeadRevisionID,
+			Action: "bind", CardID: lb, Default: def}
+		r.Choices = map[string]merge.Choice{"avatar": merge.ChooseApp}
+		if _, err := e.s.ResolveLorebook(e.ctx, r); !errors.Is(err, merge.ErrUnknownHunk) {
+			t.Errorf("avatar on a lorebook: %v", err)
+		}
+		r.Choices = nil
+		if _, err := e.s.ResolveLorebook(e.ctx, r); err != nil {
+			t.Fatalf("%s: %v", def, err)
+		}
+		head := e.lorebookHead(lb)
+		var over map[string]map[string]any
+		_ = json.Unmarshal(head.Overrides, &over)
+		desc, want, wantOver := field(t, head.Data, "description"), map[merge.Choice]string{merge.ChooseApp: "Old lore."}[def], ""
+		if want == "" {
+			want = "Forge lore."
+		}
+		if def == merge.ChooseKeepInApp {
+			wantOver = "Old lore."
+		}
+		got, _ := over[e.key()]["description"].(string)
+		if desc != want || got != wantOver {
+			t.Errorf("%s: description %v, override %q", def, desc, got)
+		}
+		if s, want := e.lorebookStatus(lb), map[bool]string{true: "ahead", false: "in_sync"}[def == merge.ChooseLibrary]; s != want {
+			t.Errorf("%s: status %s, want %s", def, s, want)
+		}
+	}
+}
+
+func TestResolveRecordsSources(t *testing.T) {
+	e, card := resolveEnv(t)
+	e.appCard("src", map[string]any{"name": "Tova", "description": "A smith.", "first_mes": libGreeting,
+		"extensions": map[string]any{"chub": map[string]any{"full_path": "someone/tova"}}}, nil)
+	e.resolve(e.compareItem("src", card), nil, "")
+	if srcs, err := e.lib.Cards.Sources(e.ctx, card); err != nil || len(srcs) != 1 || srcs[0].Kind != "chub" {
+		t.Fatalf("sources = %+v, %v", srcs, err)
+	}
+}
+
+func TestResolveRecordsTheAppsLorebookLinks(t *testing.T) {
+	e := setup(t, map[string]any{"lorebooks": "standalone"})
+	card := e.libCard(map[string]any{"name": "Tova", "description": "A smith."})
+	e.appCard("lv1", map[string]any{"name": "Tova", "description": "A smith."},
+		map[string]any{"lorebook_remote_ids": []string{"l2", "l1"}})
+	res := e.resolve(e.compareItem("lv1", card), nil, "")
+	b, err := e.s.Binding(e.ctx, res.BindingID)
+	if err != nil || strings.Join(b.LastPush.LorebookRemoteIDs, ",") != "l1,l2" {
+		t.Fatalf("last push = %+v, %v", b.LastPush, err)
 	}
 }

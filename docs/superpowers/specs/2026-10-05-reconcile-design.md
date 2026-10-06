@@ -187,7 +187,7 @@ A resolution decides one app item:
 
 ```json
 { "instance_id": 3, "remote_id": "lv-abc", "app_hash": "…",
-  "base_revision_id": 118,
+  "base_revision_id": 118, "accepted_hash": "",
   "action": "bind",
   "card_id": 42,
   "choices": { "first_mes#1": "app", "extensions.lumiverse_ui#0": "keep_in_app" },
@@ -204,11 +204,17 @@ A resolution decides one app item:
 `card_id` may be any library card, not only a candidate from the snapshot.
 Clients find one with `POST /search` and check it with `compare`.
 
-`app_hash` and `base_revision_id` are the comparison's `app_hash` and
-`head_revision_id`; both are required.
+`app_hash`, `base_revision_id`, and `accepted_hash` come from the comparison.
+`accepted_hash` is empty when the item isn't bound to the card; a missing
+value means empty. `base_revision_id` is required.
 
 `choices` apply only to `bind`, one per hunk. A hunk not named takes `default`.
-In a field this instance overrides, choices change the override, never the base.
+In a field or setting this instance overrides, choices change the override,
+never the base. On a list the override already holds whole, `keep_in_app` is
+allowed.
+
+The `avatar` key takes `library` or `app`, and only when the avatars differ.
+`app` needs an app avatar, so an app without one can't clear the library's.
 
 A card's resolution carries one nested resolution per linked world book, in
 the same shape under `lorebooks`. A nested item left out takes its suggested
@@ -235,13 +241,17 @@ one side.
 
 Applying a `bind`:
 
-1. Read the app item live. If its hash isn't `app_hash`, or the library head
-   isn't `base_revision_id`, return `409` with a fresh comparison.
+1. Read the app item live. If its hash isn't `app_hash`, the library head
+   isn't `base_revision_id`, or the binding's accepted hash isn't
+   `accepted_hash`, return `409` with a fresh comparison. A gone item is `404`.
 2. Refuse a choice that names a hunk not in that comparison with `422`.
 3. In one transaction, for the card and each nested world book: write one
    library revision (source `reconcile`) based on the current head, extend
    the override, and create or update the binding with the app's current copy
-   as accepted. A moved head returns `409`, and nothing is written.
+   as accepted. A moved head returns `409`, and nothing is written. A card
+   bound to another live item is refused; one whose copy went missing is
+   rebound to this item.
+4. If none of that would change anything, nothing is written.
 
 Nothing is pushed during resolve. Hunks resolved to `library` show as the
 library being ahead, and the next push, with its preview, sends them.

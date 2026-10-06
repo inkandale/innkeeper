@@ -26,7 +26,9 @@ overlapping a library imported from SillyTavern.
 | Merge | Three-way merge with `github.com/devsisters/go-diff3`, over tokens chosen per field kind. With no common ancestor the ancestor is empty, so every difference is a conflict. |
 | Ancestor | A bound item's ancestor is the binding's accepted copy. A first-time match has none. Using a provenance original as ancestor is out of scope. |
 | Granularity | The owner decides per hunk, inside an item-level action. |
-| Suggestions | The backend suggests an action for every item. Clients display it; they don't compute it. |
+| Suggestions | The backend lists every option for an item and marks one as suggested. Clients display them; they don't compute them. A suggestion never removes an option. |
+| Thresholds | Match thresholds are parameters of each run, with defaults. |
+| Linked lorebooks | A card's linked lorebooks are resolved inside the card's resolution, as Stash resolves a scene's performers. |
 | Corpus | Real SFW cards from public sites, committed with attribution, plus each app's captured read of them. |
 
 ## Terms
@@ -78,15 +80,25 @@ Changed prose hunks carry word-level highlight spans for display only.
 
 ## Reconcile job
 
-Input: an instance ID. The job lists the app's characters and world books,
-reads each one with its avatar, and gives it a verdict:
+Input, with defaults:
+
+```json
+{ "instance_id": 3,
+  "match": { "name": true, "text_distance": 8, "avatar_distance": 8 },
+  "split_fields": 3 }
+```
+
+The job lists the app's characters and world books, reads each one with its
+avatar, and gives it a verdict:
 
 - `bound`: a binding already names this remote ID. Compared against the
   accepted copy as ancestor.
 - `exact`: a library card has the same `content_hash`.
 - `likely`: candidates matched by normalized name (case-folded, trimmed,
-  spaces collapsed), `text_simhash` within 8 bits, or `avatar_phash` within 8
-  bits. Ranked by signals matched, then by total distance.
+  spaces collapsed) when `match.name` is on, `text_simhash` within
+  `match.text_distance` bits, or `avatar_phash` within
+  `match.avatar_distance` bits. Ranked by signals matched, then by total
+  distance.
 - `new`: no candidate.
 - `error`: this item couldn't be read or parsed. The message is kept and the
   run continues.
@@ -94,23 +106,29 @@ reads each one with its avatar, and gives it a verdict:
 It also lists `missing` (library cards bound to this instance whose app item
 is gone) and `unpushed` (library cards with no binding to this instance).
 
-Each item carries a suggestion, from these rules:
+Each item lists its `options`: `bind` to each candidate, `import`, and
+`skip`. One option is marked `suggested`, with a reason:
 
 | Verdict | Suggested |
 |---|---|
 | `exact` | `bind` to the match |
-| `likely`, conflicts in fewer than 3 of `description`, `personality`, `scenario`, `first_mes` | `bind` to the top candidate |
-| `likely`, conflicts in 3 or more of them | `import`, with the reason |
+| `likely`, conflicts in fewer than `split_fields` of `description`, `personality`, `scenario`, `first_mes` | `bind` to the top candidate |
+| `likely`, conflicts in `split_fields` or more of them | `import`, because it has diverged |
 | `new` | `import` |
-| `bound` with hunks | none; the owner resolves the drift |
+| `bound` with hunks | `bind`, to resolve the drift |
+
+A character's linked world books are listed under it as nested items, each
+with its own verdict, options, and suggestion. A world book no character
+links to is a top-level item. A world book several characters link to is
+nested under each, and resolving it once resolves it for all.
 
 The snapshot is the job's result, read with `GET /jobs/{id}`. Avatars read
 during a run go through the normal blob path; unreferenced ones are removed by
 blob GC.
 
-If the app can't be listed, the job fails. If `auto_bind_exact` is on, `exact`
-items are bound with `default: library` as the run goes, and the snapshot says
-so.
+If the app can't be listed, the job fails. If `auto_bind_exact` is on, an
+`exact` item is bound with `default: library` as the run goes, only when all
+its nested world books are `exact` or `bound` too, and the snapshot says so.
 
 ## Resolve
 
@@ -133,6 +151,11 @@ A resolution decides one app item:
 
 `choices` apply only to `bind`, one per hunk. A hunk not named takes `default`.
 
+A card's resolution carries one nested resolution per linked world book, in
+the same shape under `lorebooks`. A nested item left out takes its suggested
+option. The card's lorebook links are set from the outcome: a world book that
+is bound or imported is linked to the card; a skipped one is not.
+
 | Choice | Library card | Next push to this app | Other apps |
 |---|---|---|---|
 | `library` | unchanged | library value | library value |
@@ -149,9 +172,10 @@ Applying a `bind`:
 1. Read the app item live. If its hash isn't `app_hash`, return `409` with a
    fresh comparison.
 2. Refuse a choice that names a hunk not in that comparison with `422`.
-3. In one transaction: write one library revision (source `reconcile`) based
-   on the current head, extend the override, and create or update the binding
-   with the app's current copy as accepted. A moved head returns `409`.
+3. In one transaction, for the card and each nested world book: write one
+   library revision (source `reconcile`) based on the current head, extend
+   the override, and create or update the binding with the app's current copy
+   as accepted. A moved head returns `409`, and nothing is written.
 
 Nothing is pushed during resolve. Hunks resolved to `library` show as the
 library being ahead, and the next push, with its preview, sends them.
@@ -193,9 +217,12 @@ every suggestion in a snapshot, each re-checked live.
   statuses with and without an ancestor, stable hunk IDs.
 - **Reconcile.** Integration tests against real PostgreSQL with the fake
   plugin, seeded with an exact match, a near match, a split, a new item, a
-  missing card, and an unreadable item. Assert verdicts and suggestions.
-- **Resolve.** Each choice, `409` on a changed app item, `422` on an unknown
-  hunk, rollback when a write fails.
+  missing card, an unreadable item, and a world book shared by two cards.
+  Assert verdicts, options, and suggestions, and that changing the thresholds
+  moves items between `likely` and `new`.
+- **Resolve.** Each choice, nested world books (bound, imported, skipped,
+  shared), `409` on a changed app item, `422` on an unknown hunk, rollback
+  when a write fails.
 - **Live.** Opt-in, never in CI: reconcile the homelab Lumiverse and print
   the verdict counts. Writes nothing unless `auto_bind_exact` is on.
 

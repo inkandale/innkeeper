@@ -16,6 +16,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
 	"github.com/davidgibbons/innkeeper/internal/auth"
+	"github.com/davidgibbons/innkeeper/internal/export"
 	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/mcp"
@@ -216,7 +217,7 @@ func (s *Server) fail(err error) error {
 	case errors.As(err, &startErr), errors.Is(err, protocol.ErrClosed):
 		s.Log.Error("plugin failed", "err", err)
 		return huma.Error502BadGateway("plugin failed; see the server log")
-	case errors.As(err, &rpcErr), errors.Is(err, targets.ErrBadReply), errors.Is(err, errBadCodec):
+	case errors.As(err, &rpcErr), errors.Is(err, targets.ErrBadReply), errors.Is(err, export.ErrBadCodec):
 		return huma.Error502BadGateway("plugin: " + err.Error())
 	}
 	s.Log.Error("request failed", "err", err)

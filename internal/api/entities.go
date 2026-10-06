@@ -407,21 +407,11 @@ func (s *Server) cardRoutes(api huma.API) {
 				"application/json":         {Schema: &huma.Schema{Type: huma.TypeObject, Description: "A CCv3 card"}},
 				"application/octet-stream": {Schema: &huma.Schema{Type: huma.TypeString, Format: "binary"}}}}}},
 		func(ctx context.Context, in *exportIn) (*exportOut, error) {
-			c, err := s.Lib.Cards.Get(ctx, in.ID)
+			f, err := s.exporter().Card(ctx, in.ID, in.Format)
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			raw, err := s.Lib.ExportCard(ctx, in.ID)
-			if err != nil {
-				return nil, s.fail(err)
-			}
-			body, ext, typ := []byte(raw), "json", "application/json"
-			if in.Format != "json" {
-				if body, ext, typ, err = s.encode(ctx, c.HeadRevisionID, raw, in.Format); err != nil {
-					return nil, s.fail(err)
-				}
-			}
-			return &exportOut{ContentDisposition: fmt.Sprintf(`attachment; filename="%s.%s"`, c.Slug, ext),
-				ContentType: exportType(typ), NoSniff: "nosniff", CSP: "sandbox", Body: body}, nil
+			return &exportOut{ContentDisposition: fmt.Sprintf(`attachment; filename="%s"`, f.Name),
+				ContentType: exportType(f.Type), NoSniff: "nosniff", CSP: "sandbox", Body: f.Body}, nil
 		})
 }

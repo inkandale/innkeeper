@@ -23,7 +23,7 @@ overlapping a library imported from SillyTavern.
 |---|---|
 | State | Reconcile is a job whose result is a snapshot. Nothing is stored beyond the job row; a new run always reads fresh. Old snapshots are history only. |
 | Writes | Reconcile only reads, unless the instance sets `auto_bind_exact` (default off), which binds exact matches. Everything else is an explicit resolution. |
-| Merge | Three-way merge with `github.com/devsisters/go-diff3`, over tokens chosen per field kind. With no common ancestor the ancestor is empty, so every difference is a conflict. |
+| Merge | `github.com/devsisters/go-diff3`, over tokens chosen per field kind: `Diff3Merge` with an ancestor, `DiffComm` without one, so every difference is a conflict. An empty ancestor would turn a whole field into one conflict. |
 | Ancestor | A bound item's ancestor is the binding's accepted copy. A first-time match whose sides share a source uses the source's content, when a catalog plugin can return it. Otherwise there is none. |
 | Sources | A card or lorebook links to the sites it came from, as a Stash scene links to stash-box IDs. Links are detected from known extensions or added by the owner. A shared source is the strongest match signal. |
 | Manual targets | `bind` takes any library card, not only the listed candidates. |

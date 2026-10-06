@@ -3,6 +3,9 @@ package api
 import (
 	"bytes"
 	"fmt"
+	"image/jpeg"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -68,4 +71,18 @@ func TestBlobs(t *testing.T) {
 
 	e.call("GET", "/blobs/"+strings.Repeat("0", 64), nil, 404, nil)
 	e.call("GET", "/blobs/not-a-hash", nil, 422, nil)
+
+	avatar, err := os.ReadFile(filepath.Join("..", "cardhash", "testdata", "avatar.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b = library.Blob{}
+	e.call("POST", "/blobs", avatar, 201, &b)
+	r = e.call("GET", "/blobs/"+b.SHA256+"?w=160", nil, 200, nil)
+	cfg, err := jpeg.DecodeConfig(bytes.NewReader(r.Body))
+	if err != nil || cfg.Width != 160 || r.Header.Get("Content-Type") != "image/jpeg" ||
+		r.Header.Get("Cache-Control") != "private, max-age=31536000, immutable" {
+		t.Fatalf("thumb: %v, %v, %v", cfg, err, r.Header)
+	}
+	e.call("GET", "/blobs/"+b.SHA256+"?w=300", nil, 400, nil)
 }

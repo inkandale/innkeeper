@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -52,6 +53,7 @@ type blobOut struct{ Body library.Blob }
 
 type blobIn struct {
 	SHA256 string `path:"sha256" pattern:"^[0-9a-f]{64}$"`
+	W      int    `query:"w" doc:"Return a JPEG of an image this many pixels wide: 160, 320, or 640."`
 }
 
 func (s *Server) organizeRoutes(api huma.API) {
@@ -130,25 +132,39 @@ func (s *Server) organizeRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{OperationID: "get-blob", Method: http.MethodGet, Path: "/blobs/{sha256}",
 		Summary: "Download a file", Tags: tags},
 		func(ctx context.Context, in *blobIn) (*huma.StreamResponse, error) {
-			b, f, err := s.Lib.OpenBlob(ctx, in.SHA256)
+			var f *os.File
+			var mime string
+			var err error
+			if in.W != 0 {
+				f, err = s.Lib.OpenThumb(ctx, in.SHA256, in.W)
+				mime = "image/jpeg"
+			} else {
+				var b library.Blob
+				b, f, err = s.Lib.OpenBlob(ctx, in.SHA256)
+				mime = b.MIME
+			}
 			if err != nil {
+				return nil, s.fail(err)
+			}
+			st, err := f.Stat()
+			if err != nil {
+				f.Close()
 				return nil, s.fail(err)
 			}
 			return &huma.StreamResponse{Body: func(hc huma.Context) {
 				defer f.Close()
 				// Only images display inline. Anything else downloads, so an
 				// uploaded HTML file can't run as this site.
-				mime := b.MIME
 				if !strings.HasPrefix(mime, "image/") {
 					mime = "application/octet-stream"
 				}
 				hc.SetHeader("Content-Type", mime)
-				hc.SetHeader("Content-Length", strconv.FormatInt(b.Size, 10))
+				hc.SetHeader("Content-Length", strconv.FormatInt(st.Size(), 10))
 				hc.SetHeader("X-Content-Type-Options", "nosniff")
 				hc.SetHeader("Content-Security-Policy", "sandbox")
 				hc.SetHeader("Cache-Control", "private, max-age=31536000, immutable")
 				if _, err := io.Copy(hc.BodyWriter(), f); err != nil {
-					s.Log.Warn("send blob", "sha256", b.SHA256, "err", err)
+					s.Log.Warn("send blob", "sha256", in.SHA256, "err", err)
 				}
 			}}, nil
 		})

@@ -100,6 +100,52 @@
         },
         "type": "object"
       },
+      "BackupOut": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          },
+          "job_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "description": "Set once the backup is complete; download it by this name.",
+            "type": "string"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "complete",
+              "queued",
+              "running",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "assets",
+              "config"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "created_at",
+          "status"
+        ],
+        "type": "object"
+      },
       "BeginOutBody": {
         "additionalProperties": false,
         "properties": {
@@ -1071,6 +1117,30 @@
           "client_name",
           "tier",
           "created_at"
+        ],
+        "type": "object"
+      },
+      "Health": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/Health.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "backups": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/TypeHealth"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "backups"
         ],
         "type": "object"
       },
@@ -2289,6 +2359,31 @@
         ],
         "type": "object"
       },
+      "StartBackupInBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/StartBackupInBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "assets",
+              "config"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "type": "object"
+      },
       "TagCount": {
         "additionalProperties": false,
         "properties": {
@@ -2413,6 +2508,30 @@
           "name",
           "tier",
           "created_at"
+        ],
+        "type": "object"
+      },
+      "TypeHealth": {
+        "additionalProperties": false,
+        "properties": {
+          "every": {
+            "type": "string"
+          },
+          "last": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "every",
+          "last",
+          "ok"
         ],
         "type": "object"
       },
@@ -2769,6 +2888,122 @@
         "summary": "Finish a login",
         "tags": [
           "Auth"
+        ]
+      }
+    },
+    "/backups": {
+      "get": {
+        "description": "Newest first: finished backups, plus backup jobs queued, running, or failed since their type's latest backup.",
+        "operationId": "list-backups",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BackupOut"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List backups",
+        "tags": [
+          "Backups"
+        ]
+      },
+      "post": {
+        "description": "Queues a backup job. Its progress names the backup when it's done.",
+        "operationId": "start-backup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartBackupInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Start a backup",
+        "tags": [
+          "Backups"
+        ]
+      }
+    },
+    "/backups/{name}": {
+      "get": {
+        "description": "A gzip tar archive, which POST /restores takes.",
+        "operationId": "download-backup",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/gzip": {}
+            },
+            "description": "The backup archive"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Download a backup",
+        "tags": [
+          "Backups"
         ]
       }
     },
@@ -4416,6 +4651,39 @@
         "summary": "Revoke an OAuth client's access",
         "tags": [
           "Tokens"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Each scheduled backup type is ok when its latest backup is younger than twice its schedule. Any type not ok returns 503.",
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "A scheduled backup is overdue"
+          }
+        },
+        "security": [],
+        "summary": "Check health",
+        "tags": [
+          "Health"
         ]
       }
     },
@@ -6179,6 +6447,71 @@
         "summary": "Resolve many app items",
         "tags": [
           "Sync"
+        ]
+      }
+    },
+    "/restores": {
+      "post": {
+        "description": "Uploads a backup archive and queues a job that restores it. Without replace, the job fails if the database already has data of the archive's type.",
+        "operationId": "start-restore",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "encoding": {
+                "archive": {
+                  "contentType": "application/octet-stream"
+                },
+                "replace": {
+                  "contentType": "text/plain"
+                }
+              },
+              "schema": {
+                "properties": {
+                  "archive": {
+                    "contentEncoding": "binary",
+                    "contentMediaType": "application/octet-stream",
+                    "description": "A backup archive, as GET /backups/{name} returns.",
+                    "format": "binary",
+                    "type": "string"
+                  },
+                  "replace": {
+                    "description": "Replace data of the archive's type instead of refusing when some exists.",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "archive"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Restore a backup",
+        "tags": [
+          "Backups"
         ]
       }
     },

@@ -18,6 +18,26 @@ export INNKEEPER_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:55432/
 go test -race ./...
 ```
 
+### Card corpus
+
+`testdata/corpus` holds real cards and golden files of what the codec,
+SillyTavern and Lumiverse return for each. `TestCorpusHashes` checks that
+every app's copy hashes like the codec's, reading only the goldens. After an
+app or plugin upgrade, recapture them against throwaway servers, from the
+repo root:
+
+```bash
+make -C ../innkeeper-plugins install DEST=/tmp/innkeeper-plugins
+docker compose -f testdata/corpus/compose.yaml up -d --wait
+INNKEEPER_CORPUS_CAPTURE=1 INNKEEPER_PLUGINS_DIR=/tmp/innkeeper-plugins go test ./internal/corpus -run TestCapture -count=1
+docker compose -f testdata/corpus/compose.yaml down -v
+```
+
+The capture refuses to run against a server that already has cards or
+lorebooks, so start the servers fresh each time. The golden diff shows any
+change in an app's format; if `TestCorpusHashes` then fails, fix the cause
+before committing the goldens.
+
 ## Running
 
 One binary runs both services and the CLI. Both services migrate the

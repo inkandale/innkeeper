@@ -29,7 +29,13 @@ func (c *cmp) entries(path string, l, a, o []any) {
 		}
 		om, _ := ov.(map[string]any)
 		for _, k := range keys(lm, am) {
-			c.field(p+"."+k, entry[k], get(lm, k), get(am, k), get(om, k))
+			kl, ka, ko := get(lm, k), get(am, k), get(om, k)
+			if k == "keys" || k == "secondary_keys" {
+				// apps treat key lists as sets, so only membership is a change
+				c.leaf(p+"."+k, c.status(sorted(kl), sorted(ka), sorted(ko)), kl, ka, ko)
+				continue
+			}
+			c.field(p+"."+k, entry[k], kl, ka, ko)
 		}
 	}
 }
@@ -54,6 +60,7 @@ func index(es []any) []ident {
 	for _, e := range es {
 		m, _ := e.(map[string]any)
 		id, _ := m["comment"].(string)
+		// ponytail: comment unique on one side only splits into library_only + app_only; match by comment when unique on either side
 		if id == "" || comments[id] > 1 {
 			ks, _ := m["keys"].([]any)
 			var ss []string
@@ -71,6 +78,17 @@ func index(es []any) []ident {
 		out = append(out, ident{id, e})
 	}
 	return out
+}
+
+// sorted orders an array's elements by their JSON; other values pass through.
+func sorted(v any) any {
+	xs, ok := v.([]any)
+	if !ok {
+		return v
+	}
+	xs = slices.Clone(xs)
+	slices.SortFunc(xs, func(x, y any) int { return strings.Compare(string(enc(x)), string(enc(y))) })
+	return xs
 }
 
 func find(es []ident, id string) any {

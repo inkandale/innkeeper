@@ -187,14 +187,21 @@ func TestCompareDuplicateComments(t *testing.T) {
 	]}`
 	app := `{"entries": [
 		{"comment": "x", "keys": ["c"], "content": "Two."},
-		{"comment": "x", "keys": ["b", "a"], "content": "Uno."}
+		{"comment": "x", "keys": ["a", "b"], "content": "Uno."}
 	]}`
-	c := changed(compare(t, Lorebook, lib, app, ""))
+	fs := compare(t, Lorebook, lib, app, "")
+	c := changed(fs)
 	if len(c) != 1 {
 		t.Fatalf("changed = %v", c)
 	}
 	if h := c["entries[a\x1fb].content#0"]; h.Status != Conflict {
 		t.Errorf("changed = %v", c)
+	}
+	if h := hunk(t, fs, "entries[a\x1fb].keys#0"); h.Status != Same {
+		t.Errorf("reordered keys = %+v", h)
+	} else {
+		jsonEq(t, h.Library, `["b","a"]`)
+		jsonEq(t, h.App, `["a","b"]`)
 	}
 }
 

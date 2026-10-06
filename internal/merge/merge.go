@@ -202,7 +202,11 @@ func (c *cmp) json(path string, l, a, o any) {
 }
 
 func (c *cmp) scalar(path string, l, a, o any) {
-	h := Hunk{ID: path + "#0", Status: c.status(l, a, o)}
+	c.leaf(path, c.status(l, a, o), l, a, o)
+}
+
+func (c *cmp) leaf(path string, st Status, l, a, o any) {
+	h := Hunk{ID: path + "#0", Status: st}
 	if _, gone := l.(missing); !gone {
 		h.Library = enc(l)
 	}

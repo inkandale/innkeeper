@@ -134,11 +134,11 @@ The archive UI itself belongs to the archive catalog's spec.
 **Left panel**, fixed while the right side scrolls:
 
 - Portrait, name, and creator.
-- Save, Push, Export, and a menu with archive and delete.
+- Save, Push, Export, and Archive. The API has no card delete.
 - Image: replace and crop.
 - Tags, collections, and sources. These save on change; they aren't part of
   a revision.
-- Sync per target, each linking to its drift review.
+- Sync per target. Phase 7 links each one to its drift review.
 - Linked lorebooks.
 - The last few revisions, linking to the history view.
 
@@ -151,7 +151,9 @@ creator notes. A last section shows `extensions` as read-only JSON.
 **Saving**: Save writes a revision with its `base_revision`. Sections with
 unsaved edits are marked, and leaving the page asks first. A `409` shows a
 "changed elsewhere" banner with two choices: reload and lose the edits, or
-compare your version with the head.
+compare your version with the head. The comparison lists only the fields
+both sides changed. Keeping your version moves your edits onto the head and
+takes every other field from it.
 
 **History**: a full-screen view with revisions on the left and a
 field-by-field diff on the right, against the previous revision or the head,
@@ -252,6 +254,7 @@ Four tabs:
 | An `ids` search filter, so `/bulk` and `/pushes` take picked cards or a search query | "Select all matching" |
 | `GET /api/jobs` fills `children` for bulk jobs | Settings → Jobs |
 | `GET /api/cards/{id}/revisions/{a}/compare/{b}`, and the same for lorebooks, using `internal/merge` | History |
+| `collections` on `GET /api/cards/{id}` | The card page's Collections section |
 
 The cursor stays on `/search` for the CLI and MCP.
 

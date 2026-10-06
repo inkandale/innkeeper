@@ -12,6 +12,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/davidgibbons/innkeeper/internal/library"
+	"github.com/davidgibbons/innkeeper/internal/merge"
 	"github.com/davidgibbons/innkeeper/internal/tier"
 )
 
@@ -39,14 +40,15 @@ func toRevision(r library.Revision, full bool) revisionOut {
 }
 
 type entityOut struct {
-	ID         int64       `json:"id"`
-	Slug       string      `json:"slug"`
-	Provenance string      `json:"provenance"`
-	ArchivedAt *time.Time  `json:"archived_at,omitempty"`
-	CreatedAt  time.Time   `json:"created_at"`
-	Revision   revisionOut `json:"revision" doc:"The head revision"`
-	Tags       []string    `json:"tags,omitempty" doc:"Cards only"`
-	Lorebooks  []int64     `json:"lorebooks,omitempty" doc:"Cards only: IDs of linked lorebooks"`
+	ID          int64       `json:"id"`
+	Slug        string      `json:"slug"`
+	Provenance  string      `json:"provenance"`
+	ArchivedAt  *time.Time  `json:"archived_at,omitempty"`
+	CreatedAt   time.Time   `json:"created_at"`
+	Revision    revisionOut `json:"revision" doc:"The head revision"`
+	Tags        []string    `json:"tags,omitempty" doc:"Cards only"`
+	Lorebooks   []int64     `json:"lorebooks,omitempty" doc:"Cards only: IDs of linked lorebooks"`
+	Collections []int64     `json:"collections,omitempty" doc:"Cards only: IDs of the collections it's in"`
 }
 
 type entityResp struct{ Body entityOut }
@@ -81,6 +83,18 @@ type revisionIn struct {
 }
 
 type revisionResp struct{ Body revisionOut }
+
+type compareRevisionsIn struct {
+	ID         int64 `path:"id"`
+	RevisionID int64 `path:"revision_id"`
+	OtherID    int64 `path:"other_id"`
+}
+
+type revisionDiff struct {
+	Fields []merge.Field `json:"fields" doc:"Every field, sorted by path. In each hunk, library is revision_id's value and app is other_id's."`
+}
+
+type revisionDiffOut struct{ Body revisionDiff }
 
 type restoreIn struct {
 	ID   int64 `path:"id"`
@@ -178,6 +192,9 @@ func (s *Server) entity(ctx context.Context, ents *library.Entities, id int64) (
 			return nil, s.fail(err)
 		}
 		if out.Body.Lorebooks, err = s.Lib.CardLorebooks(ctx, id); err != nil {
+			return nil, s.fail(err)
+		}
+		if out.Body.Collections, err = s.Lib.CardCollections(ctx, id); err != nil {
 			return nil, s.fail(err)
 		}
 	}
@@ -279,6 +296,28 @@ func (s *Server) entityRoutes(api huma.API, ents *library.Entities, plural, sing
 				return nil, err
 			}
 			return &revisionResp{Body: toRevision(r, true)}, nil
+		})
+
+	schema := merge.Card
+	if ents == s.Lib.Lorebooks {
+		schema = merge.Lorebook
+	}
+	huma.Register(api, huma.Operation{OperationID: "compare-" + singular + "-revisions", Method: http.MethodGet,
+		Path: item + "/revisions/{revision_id}/compare/{other_id}", Summary: "Compare two revisions of a " + singular, Tags: tags},
+		func(ctx context.Context, in *compareRevisionsIn) (*revisionDiffOut, error) {
+			a, err := s.revisionOf(ctx, ents, in.ID, in.RevisionID)
+			if err != nil {
+				return nil, err
+			}
+			b, err := s.revisionOf(ctx, ents, in.ID, in.OtherID)
+			if err != nil {
+				return nil, err
+			}
+			fields, err := merge.Compare(schema, a.Data, b.Data, nil)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			return &revisionDiffOut{Body: revisionDiff{Fields: fields}}, nil
 		})
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "restore-" + singular, Method: http.MethodPost,

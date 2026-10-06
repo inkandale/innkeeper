@@ -9,13 +9,14 @@ import (
 )
 
 type entityResult struct {
-	ID         int64          `json:"id"`
-	Slug       string         `json:"slug"`
-	Provenance string         `json:"provenance"`
-	ArchivedAt *string        `json:"archived_at"`
-	Tags       []string       `json:"tags"`
-	Lorebooks  []int64        `json:"lorebooks"`
-	Revision   revisionResult `json:"revision"`
+	ID          int64          `json:"id"`
+	Slug        string         `json:"slug"`
+	Provenance  string         `json:"provenance"`
+	ArchivedAt  *string        `json:"archived_at"`
+	Tags        []string       `json:"tags"`
+	Lorebooks   []int64        `json:"lorebooks"`
+	Collections []int64        `json:"collections"`
+	Revision    revisionResult `json:"revision"`
 }
 
 type revisionResult struct {
@@ -229,4 +230,76 @@ func TestExportFormats(t *testing.T) {
 	e.markBroken(e.loginID, "boom")
 	e.markBroken(e.importID, "boom")
 	e.call("GET", path+"?format=fake", nil, 400, nil)
+}
+
+func TestCardCollectionsField(t *testing.T) {
+	e := newEnv(t)
+	c := e.createCard(`{"name": "Brakka"}`)
+	var coll struct {
+		ID int64 `json:"id"`
+	}
+	e.call("POST", "/collections", map[string]any{"name": "Favorites"}, 201, &coll)
+	e.call("PUT", fmt.Sprintf("/collections/%d/cards/%d", coll.ID, c.ID), nil, 204, nil)
+	var got entityResult
+	e.call("GET", fmt.Sprintf("/cards/%d", c.ID), nil, 200, &got)
+	if len(got.Collections) != 1 || got.Collections[0] != coll.ID {
+		t.Fatalf("collections = %v", got.Collections)
+	}
+}
+
+func TestCompareRevisions(t *testing.T) {
+	e := newEnv(t)
+	c := e.createCard(`{"name": "Brakka", "description": "A dwarf. Grumpy."}`)
+	path := fmt.Sprintf("/cards/%d", c.ID)
+	var updated entityResult
+	e.call("PUT", path, map[string]any{"base_revision_id": c.Revision.ID,
+		"data": json.RawMessage(`{"name": "Brakka", "description": "A dwarf. Cheerful."}`)}, 200, &updated)
+
+	var diff struct {
+		Fields []struct {
+			Path  string `json:"path"`
+			Hunks []struct {
+				Status  string `json:"status"`
+				Library string `json:"library"`
+				App     string `json:"app"`
+			} `json:"hunks"`
+		} `json:"fields"`
+	}
+	e.call("GET", fmt.Sprintf("%s/revisions/%d/compare/%d", path, c.Revision.ID, updated.Revision.ID), nil, 200, &diff)
+	if len(diff.Fields) != 2 || diff.Fields[0].Path != "description" || diff.Fields[1].Path != "name" {
+		t.Fatalf("fields = %+v", diff.Fields)
+	}
+	changed := false
+	for _, h := range diff.Fields[0].Hunks {
+		if h.Status != "same" && strings.Contains(h.Library, "Grumpy") && strings.Contains(h.App, "Cheerful") {
+			changed = true
+		}
+	}
+	if !changed || diff.Fields[1].Hunks[0].Status != "same" {
+		t.Fatalf("hunks = %+v", diff.Fields)
+	}
+
+	other := e.createCard(`{"name": "Other"}`)
+	e.call("GET", fmt.Sprintf("%s/revisions/%d/compare/%d", path, c.Revision.ID, other.Revision.ID), nil, 404, nil)
+
+	var book entityResult
+	e.call("POST", "/lorebooks", map[string]any{"data": json.RawMessage(`{"name": "Forge", "entries": [{"keys": ["anvil"], "content": "Heavy."}]}`)}, 201, &book)
+	var edited entityResult
+	e.call("PUT", fmt.Sprintf("/lorebooks/%d", book.ID), map[string]any{"base_revision_id": book.Revision.ID,
+		"data": json.RawMessage(`{"name": "Forge", "entries": [{"keys": ["anvil"], "content": "Very heavy."}]}`)}, 200, &edited)
+	var bookDiff struct {
+		Fields []struct {
+			Path string `json:"path"`
+			Kind string `json:"kind"`
+		} `json:"fields"`
+	}
+	e.call("GET", fmt.Sprintf("/lorebooks/%d/revisions/%d/compare/%d", book.ID, book.Revision.ID, edited.Revision.ID), nil, 200, &bookDiff)
+	// Entries diff per entry only with the lorebook schema; the card schema would treat them as one scalar.
+	kinds := map[string]string{}
+	for _, f := range bookDiff.Fields {
+		kinds[f.Path] = f.Kind
+	}
+	if kinds["entries"] != "entries" {
+		t.Fatalf("lorebook fields = %+v", bookDiff.Fields)
+	}
 }

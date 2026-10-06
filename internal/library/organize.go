@@ -197,6 +197,16 @@ func (l *Library) CollectionCards(ctx context.Context, collectionID int64) ([]in
 	return pgx.CollectRows(rows, pgx.RowTo[int64])
 }
 
+// CardCollections returns the IDs of the collections a card is in.
+func (l *Library) CardCollections(ctx context.Context, cardID int64) ([]int64, error) {
+	rows, err := l.pool.Query(ctx, `SELECT collection_id FROM collection_card WHERE card_id = $1
+		ORDER BY collection_id`, cardID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[int64])
+}
+
 // LinkLorebook links a card to a lorebook's head revision. Linking twice is a no-op.
 func (l *Library) LinkLorebook(ctx context.Context, cardID, lorebookID int64) error {
 	_, err := l.pool.Exec(ctx, linkLorebook, cardID, lorebookID)

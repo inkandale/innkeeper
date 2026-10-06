@@ -463,6 +463,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cards/{id}/revisions/{revision_id}/compare/{other_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Compare two revisions of a card */
+        get: operations["compare-card-revisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cards/{id}/similar": {
         parameters: {
             query?: never;
@@ -1101,6 +1118,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/lorebooks/{id}/revisions/{revision_id}/compare/{other_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Compare two revisions of a lorebook */
+        get: operations["compare-lorebook-revisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/lorebooks/{id}/sources": {
         parameters: {
             query?: never;
@@ -1651,6 +1685,8 @@ export interface components {
             readonly $schema?: string;
             /** Format: date-time */
             archived_at?: string;
+            /** @description Cards only: IDs of the collections it's in */
+            collections?: number[] | null;
             /** Format: date-time */
             created_at: string;
             /** Format: int64 */
@@ -2128,6 +2164,16 @@ export interface components {
              * @description How many cards match.
              */
             total: number;
+        };
+        RevisionDiff: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/RevisionDiff.json
+             */
+            readonly $schema?: string;
+            /** @description Every field, sorted by path. In each hunk, library is revision_id's value and app is other_id's. */
+            fields: components["schemas"]["Field"][] | null;
         };
         RevisionOut: {
             /**
@@ -3156,6 +3202,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RevisionOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "compare-card-revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                revision_id: number;
+                other_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionDiff"];
                 };
             };
             /** @description Error */
@@ -4493,6 +4572,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RevisionOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "compare-lorebook-revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                revision_id: number;
+                other_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionDiff"];
                 };
             };
             /** @description Error */

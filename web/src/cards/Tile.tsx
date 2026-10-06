@@ -5,7 +5,7 @@ import type { components } from "../api/schema";
 export type Hit = components["schemas"]["Hit"];
 export type Names = { instances: Map<number, string>; collections: Map<number, string> };
 
-const badgeClass: Record<string, string> = {
+export const badgeClass: Record<string, string> = {
   in_sync: "ok",
   ahead: "ahead",
   remote_changed: "drift",

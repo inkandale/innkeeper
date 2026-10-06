@@ -1,0 +1,249 @@
+.cards {
+  display: grid;
+  grid-template-areas: "facets toolbar" "facets main";
+  grid-template-columns: var(--facets-width) 1fr;
+  grid-template-rows: auto 1fr;
+  min-height: 100%;
+}
+
+.cards.no-facets {
+  grid-template-areas: "toolbar" "main";
+  grid-template-columns: 1fr;
+}
+
+.facets {
+  grid-area: facets;
+  padding: var(--space);
+  border-right: 1px solid var(--border);
+  overflow: auto;
+}
+
+.facet-section h2 {
+  font-size: 0.85em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: calc(var(--space) * 1.5) var(--space) calc(var(--space) * 0.5);
+}
+
+.facet {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: none;
+  border-radius: calc(var(--radius) * 0.5);
+  padding: calc(var(--space) * 0.25 * var(--density)) var(--space);
+  cursor: pointer;
+  text-align: left;
+}
+
+.facet:hover {
+  background: var(--surface-2);
+}
+
+.facet.included {
+  color: var(--accent);
+}
+
+.facet.excluded {
+  color: var(--danger);
+  text-decoration: line-through;
+}
+
+.facet .count {
+  color: var(--text-muted);
+}
+
+.toolbar {
+  grid-area: toolbar;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space);
+  align-items: center;
+  padding: var(--space) calc(var(--space) * 2);
+  border-bottom: 1px solid var(--border);
+}
+
+.toolbar form {
+  flex: 1 1 200px;
+}
+
+.toolbar select {
+  width: auto;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--space) * 0.5);
+  flex-basis: 100%;
+}
+
+.chips:empty {
+  display: none;
+}
+
+.chip {
+  background: var(--surface-2);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 0 var(--space);
+  cursor: pointer;
+}
+
+.chip.excluded {
+  border-color: var(--danger);
+}
+
+.results {
+  grid-area: main;
+  padding: calc(var(--space) * 2);
+}
+
+.total {
+  color: var(--text-muted);
+  margin: 0 0 var(--space);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--tile-width), 1fr));
+  gap: calc(var(--space) * 2);
+}
+
+.tile {
+  min-width: 0;
+}
+
+.tile-image {
+  position: relative;
+  display: block;
+}
+
+.tile .avatar {
+  display: block;
+  width: 100%;
+  aspect-ratio: var(--tile-aspect);
+  object-fit: cover;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.avatar.empty {
+  display: grid;
+  place-items: center;
+  font-size: 2em;
+  color: var(--text-muted);
+}
+
+.badges {
+  position: absolute;
+  top: var(--space);
+  right: var(--space);
+  display: flex;
+  gap: 4px;
+}
+
+.badge {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+.badge.ok { background: var(--ok); }
+.badge.ahead { background: var(--ahead); }
+.badge.drift { background: var(--drift); }
+.badge.unknown { background: var(--unknown); }
+
+.lorebooks {
+  position: absolute;
+  right: var(--space);
+  bottom: var(--space);
+  background: var(--bg);
+  border-radius: calc(var(--radius) * 0.5);
+  padding: 0 4px;
+  font-size: 0.85em;
+}
+
+.tile-name {
+  display: block;
+  margin-top: var(--space);
+  font-weight: 600;
+  text-decoration: none;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tile-description {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 2px 0;
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.tile-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+}
+
+.tag {
+  background: var(--surface-2);
+  border-radius: calc(var(--radius) * 0.5);
+  padding: 0 6px;
+  font-size: 0.8em;
+}
+
+.list {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.list td {
+  padding: calc(var(--space) * 0.5);
+  border-bottom: 1px solid var(--border);
+}
+
+.list .avatar {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.list .badges {
+  position: static;
+}
+
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--space) * 0.5);
+  align-items: center;
+  margin-top: calc(var(--space) * 2);
+}
+
+.pager select {
+  width: auto;
+  margin-left: auto;
+}
+
+@media (max-width: 640px) {
+  .cards {
+    grid-template-areas: "toolbar" "facets" "main";
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr;
+  }
+
+  .facets {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    max-height: 40dvh;
+  }
+}

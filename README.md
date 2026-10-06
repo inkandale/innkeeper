@@ -46,7 +46,7 @@ database at startup and stop cleanly on `SIGTERM`.
 - `innkeeper api` serves the HTTP API under `/api` and the
   [web UI](#web-ui) at the root. The OpenAPI spec is at `/api/openapi.json`,
   and browsable docs at `/api/docs`. Job progress streams from
-  `GET /jobs/{id}/events`, which sends a `: ping` comment every 15 seconds
+  `GET /api/jobs/{id}/events`, which sends a `: ping` comment every 15 seconds
   while idle.
 - `innkeeper worker` runs jobs: imports, bulk actions, pushes, an hourly
   check of target apps for changes, and daily cleanup of unused blobs and of

@@ -16,6 +16,7 @@ test.each([
   ["/\\evil.example", "/"],
   ["/\t/evil.example", "/"],
   ["/\n/evil.example", "/"],
+  ["http://[", "/"],
 ])("safeNext(%s) = %s", (next, want) => {
   expect(safeNext(next)).toBe(want);
 });

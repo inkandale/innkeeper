@@ -43,6 +43,7 @@ export const router = createBrowserRouter([
           { path: "collections", element: <Page title="Collections" /> },
           { path: "sync", element: <Page title="Sync" /> },
           { path: "settings", element: <Page title="Settings" /> },
+          { path: "*", element: <Page title="Not found" /> },
         ],
       },
     ],

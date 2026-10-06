@@ -15,7 +15,10 @@ export function Login() {
   });
   const [chosen, setChosen] = useState<Provider | null>(null);
   const list = providers.data ?? [];
-  const provider = chosen ?? (list.length === 1 ? list[0]! : null);
+  // Skip the choice only after a 401 sent the user here (next is set). After
+  // a logout, auto-redirecting a lone provider would sign them straight back in.
+  const [params] = useSearchParams();
+  const provider = chosen ?? (list.length === 1 && params.has("next") ? list[0]! : null);
 
   let body;
   if (providers.isPending) body = null;

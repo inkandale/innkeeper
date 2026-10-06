@@ -11,8 +11,12 @@ export function loginPath(path: string, search: string): string {
 export function safeNext(next: string | null): string {
   if (!next) return "/";
   // Parse, as the browser will: it strips tabs and newlines, so prefix checks miss "/\t/evil".
-  const u = new URL(next, window.location.origin);
-  return u.origin === window.location.origin ? u.pathname + u.search + u.hash : "/";
+  try {
+    const u = new URL(next, window.location.origin);
+    return u.origin === window.location.origin ? u.pathname + u.search + u.hash : "/";
+  } catch {
+    return "/"; // Unparseable, like "http://[".
+  }
 }
 
 /** nextKey is the sessionStorage key where a redirect login saves where to land. */

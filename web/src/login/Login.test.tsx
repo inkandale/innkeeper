@@ -8,13 +8,13 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
-function renderLogin() {
+function renderLogin(entry = "/login?next=%2Fcards") {
   const router = createMemoryRouter(
     [
       { path: "/login", element: <Login /> },
       { path: "/cards", element: <p>cards page</p> },
     ],
-    { initialEntries: ["/login?next=%2Fcards"] },
+    { initialEntries: [entry] },
   );
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -103,4 +103,20 @@ test("a non-http redirect is refused", async () => {
   renderLogin();
   await new Promise((r) => setTimeout(r, 50));
   expect(assign).not.toHaveBeenCalled();
+});
+
+test("a single redirect provider waits for a click without next", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (req: Request) => {
+      if (req.url.endsWith("/auth/providers")) return json([{ id: 4, name: "SSO", plugin: "oidc" }]);
+      return json({ redirect: "https://idp.example/auth?x=1" });
+    }),
+  );
+  renderLogin("/login");
+  const button = await screen.findByRole("button", { name: "SSO" });
+  await new Promise((r) => setTimeout(r, 50));
+  expect(assign).not.toHaveBeenCalled();
+  await userEvent.click(button);
+  await vi.waitFor(() => expect(assign).toHaveBeenCalledWith("https://idp.example/auth?x=1"));
 });

@@ -84,3 +84,11 @@ export async function upload(file: Blob): Promise<string> {
   });
   return must(res).sha256;
 }
+
+/** Kind is what a library page shows. */
+export type Kind = "card" | "lorebook";
+
+/** route is a card route's path for kind. Lorebook routes have the same shapes, so they keep the card path's types. */
+export function route<P extends `/cards/${string}`>(kind: Kind, path: P): P {
+  return (kind === "card" ? path : path.replace("/cards/", "/lorebooks/")) as P;
+}

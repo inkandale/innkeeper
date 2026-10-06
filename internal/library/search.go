@@ -19,7 +19,7 @@ type Query struct {
 	Semantic bool     `json:"semantic,omitempty" doc:"Not available yet: needs an embedding enricher."`
 	Filter   *Filter  `json:"filter,omitempty"`
 	Sources  []string `json:"sources,omitempty" doc:"Only library for now."`
-	Include  []string `json:"include,omitempty" doc:"Extra data per hit: tags, lorebooks."`
+	Include  []string `json:"include,omitempty" doc:"Extra data per hit: tags, lorebooks, targets."`
 	Fields   []string `json:"fields,omitempty" doc:"Card data keys to return per hit, plus avatar. Default: name."`
 	Sort     string   `json:"sort,omitempty" enum:"relevance,updated,name,created" doc:"Default: relevance with text, newest first without."`
 	Facets   []string `json:"facets,omitempty" doc:"Counts to return over every match: tags, collections, targets, sources."`
@@ -64,6 +64,7 @@ type Hit struct {
 	Fields     map[string]any `json:"fields"`
 	Tags       []string       `json:"tags,omitempty"`
 	Lorebooks  []int64        `json:"lorebooks,omitempty"`
+	Targets    []TargetState  `json:"targets,omitempty" doc:"With include targets: how the card stands on each target it's pushed to."`
 }
 
 // Results is one page of hits.
@@ -292,7 +293,7 @@ func (l *Library) Search(ctx context.Context, q Query) (Results, error) {
 	if len(fields) == 0 {
 		fields = []string{"name"}
 	}
-	tags, books := `NULL::text[]`, `NULL::bigint[]`
+	tags, books, targets := `NULL::text[]`, `NULL::bigint[]`, `NULL::jsonb`
 	for _, inc := range q.Include {
 		switch inc {
 		case "tags":
@@ -300,6 +301,9 @@ func (l *Library) Search(ctx context.Context, q Query) (Results, error) {
 				WHERE ct.card_id = c.id ORDER BY lower(t.name))`
 		case "lorebooks":
 			books = `array(SELECT lorebook_id FROM card_lorebook WHERE card_id = c.id ORDER BY lorebook_id)`
+		case "targets":
+			targets = `(SELECT jsonb_agg(jsonb_build_object('instance', instance_id, 'is', status) ORDER BY instance_id)
+				FROM binding_status WHERE card_id = c.id)`
 		default:
 			return Results{}, fmt.Errorf("%w: unknown include %q", ErrInvalid, inc)
 		}
@@ -333,7 +337,7 @@ func (l *Library) Search(ctx context.Context, q Query) (Results, error) {
 			return Results{}, err
 		}
 	}
-	sql := `SELECT c.id, c.slug, r.id, c.archived_at, r.data, r.avatar_blob, ` + tags + `, ` + books + `
+	sql := `SELECT c.id, c.slug, r.id, c.archived_at, r.data, r.avatar_blob, ` + tags + `, ` + books + `, ` + targets + `
 		FROM card c JOIN card_revision r ON r.id = c.head_revision_id
 		WHERE ` + cond + ` ORDER BY ` + order + ` LIMIT ` + w.arg(size+1) + ` OFFSET ` + w.arg(offset)
 	rows, err := l.pool.Query(ctx, sql, w.args...)
@@ -343,7 +347,7 @@ func (l *Library) Search(ctx context.Context, q Query) (Results, error) {
 	var h Hit
 	var data []byte
 	var avatar *string
-	_, err = pgx.ForEachRow(rows, []any{&h.ID, &h.Slug, &h.RevisionID, &h.ArchivedAt, &data, &avatar, &h.Tags, &h.Lorebooks},
+	_, err = pgx.ForEachRow(rows, []any{&h.ID, &h.Slug, &h.RevisionID, &h.ArchivedAt, &data, &avatar, &h.Tags, &h.Lorebooks, &h.Targets},
 		func() error {
 			var all map[string]any
 			if err := json.Unmarshal(data, &all); err != nil {

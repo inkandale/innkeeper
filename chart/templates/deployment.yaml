@@ -4,6 +4,21 @@
   (dict "name" "INNKEEPER_PUBLIC_URL" "value" .Values.publicUrl)
   (dict "name" "INNKEEPER_WORKER_CONCURRENCY" "value" (toString .Values.worker.concurrency))
 }}
+{{- if .Values.backup.persistence.enabled }}
+{{- $env = append $env (dict "name" "INNKEEPER_BACKUP_DIR" "value" "/backups") }}
+{{- /* Uploaded archives spool on the backup volume, not the node's ephemeral storage. */}}
+{{- $env = append $env (dict "name" "TMPDIR" "value" "/backups") }}
+{{- end }}
+{{- range $type := list "assets" "config" }}
+{{- $b := index $.Values.backup $type }}
+{{- if $b.every }}
+{{- if not $.Values.backup.persistence.enabled }}
+{{- fail (printf "backup.%s.every needs backup.persistence.enabled=true" $type) }}
+{{- end }}
+{{- $env = append $env (dict "name" (printf "INNKEEPER_BACKUP_%s_EVERY" ($type | upper)) "value" $b.every) }}
+{{- $env = append $env (dict "name" (printf "INNKEEPER_BACKUP_%s_KEEP" ($type | upper)) "value" (toString $b.keep)) }}
+{{- end }}
+{{- end }}
 {{- $env = concat $env .Values.extraEnv }}
 apiVersion: apps/v1
 kind: Deployment
@@ -65,6 +80,10 @@ spec:
               mountPath: /data/blobs
             - name: tmp
               mountPath: /tmp
+            {{- if $.Values.backup.persistence.enabled }}
+            - name: backups
+              mountPath: /backups
+            {{- end }}
         {{- end }}
       volumes:
         - name: blobs
@@ -72,3 +91,8 @@ spec:
             claimName: {{ .Release.Name }}-blobs
         - name: tmp
           emptyDir: {}
+        {{- if .Values.backup.persistence.enabled }}
+        - name: backups
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-backups
+        {{- end }}

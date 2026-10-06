@@ -13,10 +13,18 @@ x-innkeeper: &innkeeper
     INNKEEPER_SECRETS_KEY: ${INNKEEPER_SECRETS_KEY:?set INNKEEPER_SECRETS_KEY in .env; see README.md}
     # Plain http for local testing, so browsers keep the session cookie.
     INNKEEPER_PUBLIC_URL: http://localhost:${INNKEEPER_PORT:-8080}
+    # Scheduled backups; see "Backup and restore" in README.md. Both services
+    # mount the folder; on Linux the host folder must be writable by uid 10001.
+    # INNKEEPER_BACKUP_DIR: /backups
+    # INNKEEPER_BACKUP_ASSETS_EVERY: 24h
+    # INNKEEPER_BACKUP_ASSETS_KEEP: 7
+    # INNKEEPER_BACKUP_CONFIG_EVERY: 7d
+    # INNKEEPER_BACKUP_CONFIG_KEEP: 7
   volumes:
     - blobs:/data/blobs
     # Folder imports read from here; see "Importing" in README.md.
     - ${INNKEEPER_IMPORT_DIR:-./import}:/import:ro
+    # - ./backups:/backups
   depends_on:
     db:
       condition: service_healthy

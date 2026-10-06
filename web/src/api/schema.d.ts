@@ -98,6 +98,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List backups
+         * @description Newest first: finished backups, plus backup jobs queued, running, or failed since their type's latest backup.
+         */
+        get: operations["list-backups"];
+        put?: never;
+        /**
+         * Start a backup
+         * @description Queues a backup job. Its progress names the backup when it's done.
+         */
+        post: operations["start-backup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/backups/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a backup
+         * @description A gzip tar archive, which POST /restores takes.
+         */
+        get: operations["download-backup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/bindings/{id}": {
         parameters: {
             query?: never;
@@ -644,6 +688,26 @@ export interface paths {
         post?: never;
         /** Revoke an OAuth client's access */
         delete: operations["revoke-grant"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check health
+         * @description Each scheduled backup type is ok when its latest backup is younger than twice its schedule. Any type not ok returns 503.
+         */
+        get: operations["health"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1293,6 +1357,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/restores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore a backup
+         * @description Uploads a backup archive and queues a job that restores it. Without replace, the job fails if the database already has data of the archive's type.
+         */
+        post: operations["start-restore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/search": {
         parameters: {
             query?: never;
@@ -1434,6 +1518,21 @@ export interface components {
             library?: string;
             /** Format: int64 */
             phash_distance?: number;
+        };
+        BackupOut: {
+            /** Format: date-time */
+            created_at: string;
+            error?: string;
+            /** Format: int64 */
+            job_id?: number;
+            /** @description Set once the backup is complete; download it by this name. */
+            name?: string;
+            /** Format: int64 */
+            size?: number;
+            /** @enum {string} */
+            status: "complete" | "queued" | "running" | "failed";
+            /** @enum {string} */
+            type: "assets" | "config";
         };
         BeginOutBody: {
             /**
@@ -1820,6 +1919,17 @@ export interface components {
             last_used_at?: string;
             /** @enum {string} */
             tier: "read" | "write" | "destructive";
+        };
+        Health: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/Health.json
+             */
+            readonly $schema?: string;
+            backups: {
+                [key: string]: components["schemas"]["TypeHealth"];
+            };
         };
         Hit: {
             /** Format: date-time */
@@ -2273,6 +2383,16 @@ export interface components {
             /** Format: int64 */
             start: number;
         };
+        StartBackupInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/StartBackupInBody.json
+             */
+            readonly $schema?: string;
+            /** @enum {string} */
+            type: "assets" | "config";
+        };
         TagCount: {
             /** Format: int64 */
             cards: number;
@@ -2313,6 +2433,12 @@ export interface components {
             name: string;
             /** @enum {string} */
             tier: "read" | "write" | "destructive";
+        };
+        TypeHealth: {
+            every: string;
+            /** Format: date-time */
+            last: string | null;
+            ok: boolean;
         };
         UpdateCollectionInBody: {
             /**
@@ -2524,6 +2650,99 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupOut"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "start-backup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartBackupInBody"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "download-backup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The backup archive */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/gzip": unknown;
+                };
             };
             /** @description Error */
             default: {
@@ -3692,6 +3911,35 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    health: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Health"];
+                };
+            };
+            /** @description A scheduled backup is overdue */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Health"];
                 };
             };
         };
@@ -4920,6 +5168,47 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ResolutionsInBody"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "start-restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description A backup archive, as GET /backups/{name} returns.
+                     */
+                    archive: string;
+                    /** @description Replace data of the archive's type instead of refusing when some exists. */
+                    replace?: boolean;
+                };
             };
         };
         responses: {

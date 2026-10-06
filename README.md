@@ -49,18 +49,22 @@ database at startup and stop cleanly on `SIGTERM`.
   `GET /api/jobs/{id}/events`, which sends a `: ping` comment every 15 seconds
   while idle.
 - `innkeeper worker` runs jobs: imports, bulk actions, pushes, an hourly
-  check of target apps for changes, and daily cleanup of unused blobs and of
-  jobs that finished over 30 days ago.
+  check of target apps for changes, [scheduled backups](#backup-and-restore),
+  and daily cleanup of unused blobs and of jobs that finished over 30 days
+  ago.
 
 | Variable | Used by | Meaning |
 |---|---|---|
-| `INNKEEPER_DATABASE_URL` | `migrate`, `api`, `worker`, `token`, `backup` | PostgreSQL URL |
-| `INNKEEPER_SECRETS_KEY` | `api`, `worker` | Encrypts plugin secrets. Generate with `openssl rand -base64 32`. Losing it loses every stored secret |
-| `INNKEEPER_BLOB_DIR` | `api`, `worker`, `backup` | The library's blob store folder |
-| `INNKEEPER_PLUGINS_DIR` | `api`, `worker` | Folder with one subfolder per installed plugin |
+| `INNKEEPER_DATABASE_URL` | `migrate`, `api`, `worker`, `token`, `backup`, `restore` | PostgreSQL URL |
+| `INNKEEPER_SECRETS_KEY` | `api`, `worker`, `backup`, `restore` | Encrypts plugin secrets. Generate with `openssl rand -base64 32`. Losing it loses every stored secret |
+| `INNKEEPER_BLOB_DIR` | `api`, `worker`, `backup`, `restore` | The library's blob store folder |
+| `INNKEEPER_PLUGINS_DIR` | `api`, `worker`, `restore` | Folder with one subfolder per installed plugin |
 | `INNKEEPER_LISTEN` | `api` | Listen address; default `:8080` |
 | `INNKEEPER_PUBLIC_URL` | `api` | Where browsers reach the API, such as `https://innkeeper.example.com`. Needed for redirect logins and for MCP clients that connect through OAuth, such as claude.ai. An `http://` URL sends cookies without `Secure` |
 | `INNKEEPER_WORKER_CONCURRENCY` | `worker` | Jobs run at once; default 4 |
+| `INNKEEPER_BACKUP_DIR` | `api`, `worker` | Where backups go. Needed for any backup or restore through the API, and for schedules |
+| `INNKEEPER_BACKUP_ASSETS_EVERY`, `INNKEEPER_BACKUP_CONFIG_EVERY` | `api`, `worker` | How often to back up that type, such as `24h` or `7d`. Unset means no schedule |
+| `INNKEEPER_BACKUP_ASSETS_KEEP`, `INNKEEPER_BACKUP_CONFIG_KEEP` | `api`, `worker` | How many backups of that type to keep; default 7 |
 | `INNKEEPER_URL`, `INNKEEPER_TOKEN` | API commands | The site root, such as `http://localhost:8080`, and a token. The CLI adds `/api` itself |
 
 If any installed plugin sets `database = true`, the API and worker give it a
@@ -124,9 +128,8 @@ helm install innkeeper oci://ghcr.io/davidgibbons/charts/innkeeper --version <ve
   --set ingress.enabled=true --set ingress.host=innkeeper.example.com
 ```
 
-`values.yaml` lists the rest: storage, resources, `extraEnv`, and pod
-annotations for a backup tool. Back up the blob volume along with the
-database. Create the first token with
+`values.yaml` lists the rest: storage, resources, `extraEnv`, pod
+annotations, and [scheduled backups](#backup-and-restore). Create the first token with
 `kubectl exec deploy/innkeeper -c api -- innkeeper token create admin destructive`.
 
 ## First login
@@ -236,7 +239,9 @@ innkeeper resolve --suggested <reconcile-job-id> [remote-id ...] [--verdict=v,..
                                                 bind, import, or skip app items
 innkeeper token create <name> [tier] | list | revoke <id> | revoke-grant <id>
 innkeeper openapi                               print the OpenAPI spec
-innkeeper backup <dir>
+innkeeper backup <dir> [assets|config]          back up both types, or one, into dir
+innkeeper restore [--replace] <archive-or-backup-dir>...
+                                                restore backups, assets first
 ```
 
 `bulk` needs a query with a `filter` or `text`; to select every card, filter
@@ -497,24 +502,85 @@ the app before pushing again.
 
 ## Backup and restore
 
-`innkeeper backup <dir>` writes a `pg_dump` file named
-`innkeeper-<UTC time>.dump` and copies the blob files `<dir>/blobs` doesn't
-have yet. It needs `pg_dump` on the `PATH` and a `postgres://`
-`INNKEEPER_DATABASE_URL`. Run it on a schedule; it never overwrites or
-deletes an earlier dump. A dump still ending in `.part` is unfinished. The
-directory and every file it writes are readable only by their owner.
+Innkeeper backs up two types separately, each with its own schedule and
+retention:
 
-To restore, stop both services, point `INNKEEPER_DATABASE_URL` at a new,
-empty database, then:
+| Type | Holds |
+|---|---|
+| `assets` | Cards, lorebooks, and their revisions; avatars; tags, collections, sources, and lorebook links |
+| `config` | Plugin instances with their settings and encrypted secrets; plugin databases; bindings and push history; core settings |
+
+Jobs, API tokens, logins, and OAuth grants aren't backed up. After a restore,
+make a new token with `innkeeper token create`.
+
+### Scheduled backups
+
+Scheduled backups are off until `INNKEEPER_BACKUP_DIR` and at least one
+`_EVERY` setting are set (see [Running](#running)). The worker writes each
+backup to `<type>/<type>-<UTC time>/` in the backup folder and deletes the
+oldest past `_KEEP`. Assets backups share one copy of each avatar, so each
+backup copies only new ones. The folder and its files are readable only by
+their owner.
+
+- **Compose:** uncomment the backup settings and the `./backups` mount in
+  `compose.yaml`. On Linux, make the folder writable by the container's user
+  first: `mkdir backups && sudo chown 10001 backups`.
+- **Kubernetes:** set `backup.persistence.enabled=true` and
+  `backup.assets.every` or `backup.config.every`. The chart adds a backup
+  volume to the pod.
+
+A failed backup shows as a failed job and in `GET /api/backups`.
+`GET /api/health` needs no token and reports when each scheduled type last
+backed up. It answers 503 once a type's latest backup is older than two
+intervals, for an uptime monitor to watch. Don't use it as a liveness probe:
+a stale backup shouldn't restart the pod.
+
+### Backing up now and downloading
+
+These need a destructive token, since an assets backup holds every card and a
+config backup holds the encrypted secrets:
 
 ```bash
-pg_restore --dbname="$INNKEEPER_DATABASE_URL" <dir>/innkeeper-<time>.dump
-cp -Rn <dir>/blobs/. "$INNKEEPER_BLOB_DIR"/
+innkeeper call POST /backups '{"type": "assets"}'
+innkeeper call GET /backups
+curl -fH "Authorization: Bearer $INNKEEPER_TOKEN" -o assets.tar.gz "$INNKEEPER_URL/api/backups/<name>"
 ```
 
-Restore with the same `INNKEEPER_SECRETS_KEY`, or plugin secrets can't be
-read. The next start gives each plugin's schema, and everything in it, back to
-its role.
+A download is one unencrypted `.tar.gz`. Keep `INNKEEPER_SECRETS_KEY` with
+config backups, stored separately: without it, restored plugin secrets can't
+be read.
+
+`innkeeper backup <dir> [assets|config]` writes the same backups into `<dir>`
+without the API. When a plugin has a database, backing up config needs
+`pg_dump` on the `PATH`; the image includes it.
+
+### Restoring
+
+A restore covers one type and leaves the other alone. It refuses to restore
+over existing data of that type unless told to replace it. Restore assets
+before config: config keeps only bindings whose card or lorebook exists and
+reports the rest.
+
+```bash
+innkeeper restore assets.tar.gz config.tar.gz   # archives or backup folders, in any order
+innkeeper restore --replace assets.tar.gz       # replaces the whole library
+```
+
+Over the API, upload one archive at a time. It restores as a job:
+
+```bash
+curl -fH "Authorization: Bearer $INNKEEPER_TOKEN" -F archive=@assets.tar.gz "$INNKEEPER_URL/api/restores"
+curl -fH "Authorization: Bearer $INNKEEPER_TOKEN" -F archive=@config.tar.gz -F replace=true "$INNKEEPER_URL/api/restores"
+```
+
+The API holds an upload in the system temp folder before copying it into the
+backup folder, so a large archive needs room in both. On Kubernetes, the
+chart points the temp folder at the backup volume, so both copies land there
+rather than on the node's disk.
+
+A backup restores only into the Innkeeper version that made it. A plugin
+database restores only where that plugin is installed with a database; others
+are skipped and reported.
 
 Removing a plugin from the image leaves its schema and role. To delete them,
 and the plugin's data with them, run this in the Innkeeper database, with

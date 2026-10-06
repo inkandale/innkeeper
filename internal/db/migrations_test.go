@@ -200,3 +200,23 @@ func TestBindMigrationRefusesDuplicates(t *testing.T) {
 		t.Fatalf("migrate = %v, want an error naming bindings %d and %d", err, b[0], b[1])
 	}
 }
+
+func TestForeignKeysAreDeferrable(t *testing.T) {
+	pool := testdb.New(t)
+	rows, err := pool.Query(context.Background(), `SELECT conrelid::regclass::text, conname FROM pg_constraint
+		WHERE contype = 'f' AND connamespace = 'public'::regnamespace AND NOT condeferrable`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var tbl, name string
+		if err := rows.Scan(&tbl, &name); err != nil {
+			t.Fatal(err)
+		}
+		t.Errorf("%s.%s is not deferrable; restore defers foreign key checks", tbl, name)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+}

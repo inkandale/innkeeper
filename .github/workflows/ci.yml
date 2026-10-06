@@ -32,6 +32,12 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      # pg_dump must match the pg18 service; the runner ships an older client.
+      - name: Install the PostgreSQL 18 client
+        run: |
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-18
+          echo /usr/lib/postgresql/18/bin >> "$GITHUB_PATH"
       - run: go vet ./...
       - run: go test -race ./...
 
@@ -43,6 +49,7 @@ jobs:
           persist-credentials: false
       - uses: azure/setup-helm@v5
       - run: helm lint chart --strict --set database.secretName=db --set secretsKey.secretName=key --set ingress.enabled=true --set ingress.host=innkeeper.example.com
+      - run: helm lint chart --strict --set database.secretName=db --set secretsKey.secretName=key --set backup.persistence.enabled=true --set backup.assets.every=24h --set backup.config.every=7d
 
   web:
     runs-on: ubuntu-latest

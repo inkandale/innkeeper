@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/davidgibbons/innkeeper/internal/backup"
 	"github.com/davidgibbons/innkeeper/internal/bulk"
 	exporter "github.com/davidgibbons/innkeeper/internal/export"
 	"github.com/davidgibbons/innkeeper/internal/importer"
@@ -53,22 +54,30 @@ func worker() error {
 	tg := targets.New(svc.pool, svc.lib, svc.registry, mgr, log)
 	ex := &exporter.Exporter{Lib: svc.lib, Registry: svc.registry, Plugins: mgr, Log: log}
 	q := jobs.New(svc.pool)
+	dbURL := os.Getenv("INNKEEPER_DATABASE_URL")
+	backupOpts := backup.Options{DatabaseURL: dbURL, Store: svc.store, Box: svc.box}
+	restoreOpts := backup.RestoreOptions{Conn: svc.pool.Config().ConnConfig, Store: svc.store, Box: svc.box}
+	// A restored config brings back plugin instances whose databases must exist.
+	afterConfig := func(ctx context.Context) error { return svc.registry.ProvisionDatabases(ctx, dbURL) }
 	w := &jobs.Worker{
 		Queue:       q,
 		Log:         log,
 		Concurrency: concurrency,
 		Handlers: map[string]jobs.Handler{
-			importer.Kind:            im.Run,
-			bulk.ArchiveKind:         bulk.Archive(svc.lib),
-			bulk.LorebookArchiveKind: bulk.ArchiveLorebook(svc.lib),
-			bulk.TagKind:             bulk.Tag(svc.lib),
-			bulk.CollectKind:         bulk.Collect(svc.lib),
-			bulk.ExportKind:          bulk.Export(ex),
-			targets.PushKind:         tg.RunPush,
-			targets.ScanKind:         tg.RunScan,
-			targets.ImportKind:       tg.RunImport,
-			targets.ReconcileKind:    tg.RunReconcile,
-			targets.ResolveKind:      tg.RunResolve,
+			importer.Kind:              im.Run,
+			bulk.ArchiveKind:           bulk.Archive(svc.lib),
+			bulk.LorebookArchiveKind:   bulk.ArchiveLorebook(svc.lib),
+			bulk.TagKind:               bulk.Tag(svc.lib),
+			bulk.CollectKind:           bulk.Collect(svc.lib),
+			bulk.ExportKind:            bulk.Export(ex),
+			targets.PushKind:           tg.RunPush,
+			targets.ScanKind:           tg.RunScan,
+			targets.ImportKind:         tg.RunImport,
+			targets.ReconcileKind:      tg.RunReconcile,
+			targets.ResolveKind:        tg.RunResolve,
+			backup.Kind(backup.Assets): backup.BackupHandler(svc.backups, svc.pool, backupOpts, backup.Assets),
+			backup.Kind(backup.Config): backup.BackupHandler(svc.backups, svc.pool, backupOpts, backup.Config),
+			backup.RestoreKind:         backup.RestoreHandler(svc.backups, restoreOpts, afterConfig),
 			blobGCKind: func(ctx context.Context, r *jobs.Run) error {
 				blobs, leftovers, err := svc.lib.CollectGarbage(ctx, 24*time.Hour)
 				r.SetProgress(fmt.Appendf(nil, `{"blobs": %d, "leftovers": %d}`, blobs, leftovers))
@@ -85,6 +94,9 @@ func worker() error {
 			{Kind: jobPruneKind, Every: 24 * time.Hour},
 			{Kind: targets.ScanKind, Every: time.Hour},
 		},
+	}
+	for t, every := range svc.backups.Every {
+		w.Schedules = append(w.Schedules, jobs.Schedule{Kind: backup.Kind(t), Every: every})
 	}
 	log.Info("worker started", "plugins", len(svc.manifests), "concurrency", concurrency)
 	return w.Run(ctx)

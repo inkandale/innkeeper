@@ -12,15 +12,21 @@ import (
 
 // Job kinds.
 const (
-	Kind        = "bulk"
-	ArchiveKind = "card.archive"
-	TagKind     = "card.tag"
-	CollectKind = "card.collect"
+	Kind                = "bulk"
+	ArchiveKind         = "card.archive"
+	TagKind             = "card.tag"
+	CollectKind         = "card.collect"
+	LorebookArchiveKind = "lorebook.archive"
 )
 
 type archivePayload struct {
 	CardID   int64 `json:"card_id"`
 	Archived bool  `json:"archived"`
+}
+
+type lorebookArchivePayload struct {
+	LorebookID int64 `json:"lorebook_id"`
+	Archived   bool  `json:"archived"`
 }
 
 type tagPayload struct {
@@ -51,6 +57,13 @@ func EnqueueArchive(ctx context.Context, q *jobs.Queue, cardIDs []int64, archive
 		func(id int64) any { return archivePayload{CardID: id, Archived: archived} })
 }
 
+// EnqueueLorebookArchive archives or unarchives lorebooks, one child job per
+// lorebook.
+func EnqueueLorebookArchive(ctx context.Context, q *jobs.Queue, ids []int64, archived bool) (jobs.Job, error) {
+	return enqueue(ctx, q, LorebookArchiveKind, map[string]any{"archived": archived}, ids,
+		func(id int64) any { return lorebookArchivePayload{LorebookID: id, Archived: archived} })
+}
+
 // EnqueueTag adds and removes tags on cards, one child job per card.
 func EnqueueTag(ctx context.Context, q *jobs.Queue, cardIDs []int64, add, remove []string) (jobs.Job, error) {
 	return enqueue(ctx, q, TagKind, map[string]any{"add": add, "remove": remove}, cardIDs,
@@ -72,6 +85,17 @@ func Archive(lib *library.Library) jobs.Handler {
 			return err
 		}
 		return lib.Cards.SetArchived(ctx, p.CardID, p.Archived)
+	}
+}
+
+// ArchiveLorebook is the jobs.Handler for LorebookArchiveKind.
+func ArchiveLorebook(lib *library.Library) jobs.Handler {
+	return func(ctx context.Context, r *jobs.Run) error {
+		var p lorebookArchivePayload
+		if err := json.Unmarshal(r.Payload, &p); err != nil {
+			return err
+		}
+		return lib.Lorebooks.SetArchived(ctx, p.LorebookID, p.Archived)
 	}
 }
 

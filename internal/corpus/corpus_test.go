@@ -53,6 +53,23 @@ func TestCorpusHashes(t *testing.T) {
 				readJSON(t, filepath.Join(dir, "codec.json"), &codec)
 				readJSON(t, filepath.Join(dir, tg.name+".json"), &app)
 
+				if len(app.Fields) == 0 || len(app.LorebookFields) == 0 {
+					t.Fatalf("golden has fields %v and lorebook_fields %v; recapture", app.Fields, app.LorebookFields)
+				}
+				// SplitCard strips these, so check the app never returns them.
+				var raw struct {
+					Data struct {
+						Extensions map[string]json.RawMessage `json:"extensions"`
+					} `json:"data"`
+				}
+				if err := json.Unmarshal(app.Card, &raw); err != nil {
+					t.Fatal(err)
+				}
+				for _, k := range []string{"fav", "world"} {
+					if v, ok := raw.Data.Extensions[k]; ok {
+						t.Errorf("app card has extensions.%s = %s", k, v)
+					}
+				}
 				_, want, _, err := library.SplitCard(codec.Card)
 				if err != nil {
 					t.Fatal(err)

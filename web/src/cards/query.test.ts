@@ -1,4 +1,4 @@
-import { parseQuery, toParams, toSearch, toggleTerm, type CardQuery } from "./query";
+import { parseQuery, toLorebookSearch, toParams, toSearch, toggleTerm, type CardQuery } from "./query";
 
 const base: CardQuery = { text: "", terms: [], sort: "updated", page: 1, size: 48, view: "grid" };
 
@@ -78,4 +78,17 @@ test("toggleTerm adds, flips, and removes, and resets the page", () => {
   expect(added.page).toBe(1);
   expect(toggleTerm(added, { ...tag, not: true }).terms).toEqual([{ ...tag, not: true }]);
   expect(toggleTerm(added, tag).terms).toEqual([]);
+});
+
+test("toLorebookSearch asks for linked cards, sync, and lorebook facets", () => {
+  const q = parseQuery(new URLSearchParams("q=anvil&f=source:chub&page=2"));
+  expect(toLorebookSearch(q)).toEqual({
+    text: "anvil",
+    filter: { and: [{ source: "chub" }] },
+    sort: "relevance",
+    fields: ["name", "description"],
+    include: ["cards", "targets"],
+    facets: ["targets", "sources"],
+    page: { size: 48, number: 2 },
+  });
 });

@@ -3,6 +3,9 @@ package library
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 )
@@ -95,5 +98,45 @@ func TestLorebookLinks(t *testing.T) {
 	}
 	if err := lib.LinkLorebook(ctx, card, 999); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing lorebook: got %v, want ErrNotFound", err)
+	}
+}
+
+func TestCollectionAvatars(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	png, err := os.Open(filepath.Join("..", "cardhash", "testdata", "avatar.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer png.Close()
+	img, err := lib.PutBlob(ctx, png)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := lib.CreateCollection(ctx, "Crew", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 6 {
+		ed := edit(`{"name": "Sailor"}`)
+		if i > 0 {
+			ed.AvatarBlob = img.SHA256
+		}
+		card, _, err := lib.Cards.Create(ctx, fmt.Sprintf("sailor-%d", i), "upload", ed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := lib.AddToCollection(ctx, c.ID, card.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	list, err := lib.Collections(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The card without an avatar is skipped, and the mosaic stops at four.
+	want := slices.Repeat([]string{img.SHA256}, 4)
+	if len(list) != 1 || list[0].Cards != 6 || !slices.Equal(list[0].Avatars, want) {
+		t.Fatalf("collections = %+v", list)
 	}
 }

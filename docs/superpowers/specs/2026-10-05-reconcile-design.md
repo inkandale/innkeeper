@@ -187,6 +187,7 @@ A resolution decides one app item:
 
 ```json
 { "instance_id": 3, "remote_id": "lv-abc", "app_hash": "…",
+  "base_revision_id": 118,
   "action": "bind",
   "card_id": 42,
   "choices": { "first_mes#1": "app", "extensions.lumiverse_ui#0": "keep_in_app" },
@@ -203,7 +204,11 @@ A resolution decides one app item:
 `card_id` may be any library card, not only a candidate from the snapshot.
 Clients find one with `POST /search` and check it with `compare`.
 
+`app_hash` and `base_revision_id` are the comparison's `app_hash` and
+`head_revision_id`; both are required.
+
 `choices` apply only to `bind`, one per hunk. A hunk not named takes `default`.
+In a field this instance overrides, choices change the override, never the base.
 
 A card's resolution carries one nested resolution per linked world book, in
 the same shape under `lorebooks`. A nested item left out takes its suggested
@@ -230,8 +235,8 @@ one side.
 
 Applying a `bind`:
 
-1. Read the app item live. If its hash isn't `app_hash`, return `409` with a
-   fresh comparison.
+1. Read the app item live. If its hash isn't `app_hash`, or the library head
+   isn't `base_revision_id`, return `409` with a fresh comparison.
 2. Refuse a choice that names a hunk not in that comparison with `422`.
 3. In one transaction, for the card and each nested world book: write one
    library revision (source `reconcile`) based on the current head, extend

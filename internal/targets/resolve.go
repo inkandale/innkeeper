@@ -23,7 +23,9 @@ type Resolution struct {
 	RemoteID   string `json:"remote_id"`
 	// AppHash is the comparison's app_hash; a different live copy is stale.
 	AppHash string `json:"app_hash"`
-	Action  string `json:"action" enum:"bind,import,skip"`
+	// BaseRevisionID is the comparison's head_revision_id; a moved head is stale.
+	BaseRevisionID int64  `json:"base_revision_id"`
+	Action         string `json:"action" enum:"bind,import,skip"`
 	// CardID is any library card or lorebook for bind; 0 means the bound one.
 	CardID int64 `json:"card_id,omitempty"`
 	// Choices maps hunk IDs, and avatar, to a choice.
@@ -44,12 +46,12 @@ type ResolveResult struct {
 	Lorebooks  []ResolveResult `json:"lorebooks,omitempty"`
 }
 
-// StaleError means the app item no longer hashes to the resolution's AppHash.
-// Comparison is a fresh one to choose from again.
+// StaleError means the app item or the library head changed since the
+// comparison. Comparison is a fresh one to choose from again.
 type StaleError struct{ Comparison Comparison }
 
 func (e *StaleError) Error() string {
-	return "the app's copy changed since it was compared; compare it again"
+	return "the app's copy or the library changed since they were compared; compare them again"
 }
 
 // avatarChoice is the choice key for a card's avatar, which isn't a hunk.
@@ -69,6 +71,8 @@ func (s *Service) resolve(ctx context.Context, k kind, r Resolution) (ResolveRes
 	switch {
 	case len(r.Lorebooks) > 0:
 		return ResolveResult{}, fmt.Errorf("%w: nested lorebook resolutions aren't supported yet", library.ErrInvalid)
+	case r.Action == "bind" && r.BaseRevisionID == 0:
+		return ResolveResult{}, fmt.Errorf("%w: base_revision_id is required", library.ErrInvalid)
 	case r.Action == "bind":
 		return s.resolveBind(ctx, k, r)
 	}
@@ -109,12 +113,15 @@ func (s *Service) resolveBind(ctx context.Context, k kind, r Resolution) (Resolv
 	if it.avatarErr != nil {
 		return res, fmt.Errorf("app avatar: %w", it.avatarErr)
 	}
-	if it.hash != r.AppHash {
+	stale := func() error {
 		c, err := s.compareItem(ctx, k, r.InstanceID, r.RemoteID, id)
 		if err != nil {
-			return res, err
+			return err
 		}
-		return res, &StaleError{Comparison: c}
+		return &StaleError{Comparison: c}
+	}
+	if it.hash != r.AppHash {
+		return res, stale()
 	}
 	accepted, acceptedHash, err := Project(it.raw, k.fields(info))
 	if err != nil {
@@ -159,6 +166,18 @@ func (s *Service) resolveBind(ctx context.Context, k kind, r Resolution) (Resolv
 		return res, library.ErrNotFound
 	} else if err != nil {
 		return res, err
+	}
+	if headID != r.BaseRevisionID {
+		// Hunk IDs come from the compared head, so choices can't apply to another.
+		_ = tx.Rollback(ctx)
+		return res, stale()
+	}
+	avatar := ""
+	if headAvatar != nil {
+		avatar = *headAvatar
+	}
+	if _, ok := r.Choices[avatarChoice]; ok && avatar == it.avatar {
+		return res, fmt.Errorf("%w: %s", merge.ErrUnknownHunk, avatarChoice)
 	}
 	var bindingID int64
 	var boundRemote string
@@ -205,9 +224,20 @@ func (s *Service) resolveBind(ctx context.Context, k kind, r Resolution) (Resolv
 			return res, err
 		}
 	}
-	// Only what was taken from the app reaches the base, so this instance's
-	// override and the fields the target doesn't store stay out of it.
-	base, err := patched(headData, lib, merged)
+	var pinned map[string]json.RawMessage
+	if hadOverride {
+		if pinned, err = object(oldOverride); err != nil {
+			return res, err
+		}
+	}
+	// In a field this instance overrides, choices change the override, never the base.
+	toBase, err := restore(merged, lib, pinned)
+	if err != nil {
+		return res, err
+	}
+	// Only what was taken from the app reaches the base, and fields the target
+	// doesn't store stay as they are.
+	base, err := patched(headData, lib, toBase)
 	if err != nil {
 		return res, err
 	}
@@ -219,10 +249,6 @@ func (s *Service) resolveBind(ctx context.Context, k kind, r Resolution) (Resolv
 	newOverride, err := merge.Diff(base, appCopy)
 	if err != nil {
 		return res, err
-	}
-	avatar := ""
-	if headAvatar != nil {
-		avatar = *headAvatar
 	}
 	newAvatar := avatar
 	if takeAppAvatar {
@@ -325,4 +351,28 @@ func patched(full, projected, want json.RawMessage) (json.RawMessage, error) {
 		return full, err
 	}
 	return MergePatch(full, d)
+}
+
+// restore puts back from's value, or its absence, for each top-level key of
+// keys in to.
+func restore(to, from json.RawMessage, keys map[string]json.RawMessage) (json.RawMessage, error) {
+	if len(keys) == 0 {
+		return to, nil
+	}
+	t, err := object(to)
+	if err != nil {
+		return nil, err
+	}
+	f, err := object(from)
+	if err != nil {
+		return nil, err
+	}
+	for k := range keys {
+		if v, ok := f[k]; ok {
+			t[k] = v
+		} else {
+			delete(t, k)
+		}
+	}
+	return json.Marshal(t)
 }

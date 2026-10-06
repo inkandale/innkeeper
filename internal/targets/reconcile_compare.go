@@ -19,6 +19,8 @@ type Comparison struct {
 	InstanceID int64  `json:"instance_id"`
 	RemoteID   string `json:"remote_id"`
 	CardID     int64  `json:"card_id"` // or the lorebook's ID
+	// HeadRevisionID is the library revision compared; a resolution names it.
+	HeadRevisionID int64 `json:"head_revision_id"`
 	// Base is accepted when the pair is bound and the binding's copy is the
 	// ancestor, none otherwise.
 	Base string `json:"base" enum:"none,accepted"`
@@ -81,6 +83,7 @@ func (s *Service) compareItem(ctx context.Context, k kind, instanceID int64, rem
 		return c, library.ErrNotFound
 	}
 	lib := ents[0]
+	c.HeadRevisionID = lib.head
 	it, err := s.readItem(ctx, k, inst, info, remoteID, true)
 	if err != nil {
 		return c, err

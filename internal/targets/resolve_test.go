@@ -60,8 +60,8 @@ func (e *env) resolve(c Comparison, choices map[string]merge.Choice, def merge.C
 }
 
 func (e *env) tryResolve(c Comparison, choices map[string]merge.Choice, def merge.Choice) (ResolveResult, error) {
-	return e.s.Resolve(e.ctx, Resolution{InstanceID: e.inst, RemoteID: c.RemoteID, AppHash: c.AppHash, Action: "bind",
-		CardID: c.CardID, Choices: choices, Default: def})
+	return e.s.Resolve(e.ctx, Resolution{InstanceID: e.inst, RemoteID: c.RemoteID, AppHash: c.AppHash,
+		BaseRevisionID: c.HeadRevisionID, Action: "bind", CardID: c.CardID, Choices: choices, Default: def})
 }
 
 func (e *env) revisions(card int64) int {
@@ -136,6 +136,17 @@ func TestResolveTakesAppHunkAndKeepsInApp(t *testing.T) {
 	}
 }
 
+// otherInstance adds a second fake instance that stores the same fields.
+func (e *env) otherInstance() int64 {
+	e.t.Helper()
+	id, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: "fake", Name: "Other app",
+		Config: map[string]any{"dir": e.t.TempDir(), "fields": []string{"name", "description", "first_mes", "extensions"}}})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return id
+}
+
 func TestResolveKeepInAppIsThisInstanceOnly(t *testing.T) {
 	e, card := resolveEnv(t)
 	c := e.compareItem("lv1", card)
@@ -146,12 +157,7 @@ func TestResolveKeepInAppIsThisInstanceOnly(t *testing.T) {
 	if p := e.preview(card); !strings.Contains(string(p.Card), "lumiverse_ui") {
 		t.Errorf("this instance's preview = %s", p.Card)
 	}
-	other, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: "fake", Name: "Other app",
-		Config: map[string]any{"dir": t.TempDir(), "fields": []string{"name", "description", "first_mes", "extensions"}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	p, err := e.s.Preview(e.ctx, other, card)
+	p, err := e.s.Preview(e.ctx, e.otherInstance(), card)
 	if err != nil || strings.Contains(string(p.Card), "lumiverse_ui") {
 		t.Errorf("other preview = %s, %v", p.Card, err)
 	}
@@ -265,5 +271,57 @@ func TestResolveBoundItemMergesFromAncestor(t *testing.T) {
 	}
 	if s := e.status(card); s != "ahead" {
 		t.Errorf("status = %s, want ahead", s)
+	}
+}
+
+func TestResolveInAPinnedFieldChangesOnlyTheOverride(t *testing.T) {
+	e, card := resolveEnv(t)
+	pinned := "Hail, friend. The forge is hot today. Mind the sparks."
+	e.update(card, func(ed *library.Edit) {
+		ed.Overrides = json.RawMessage(`{"` + e.key() + `": {"first_mes": ` + mustJSON(pinned) + `}}`)
+	})
+	want := "Hail, friend. The forge is cold today. Mind the sparks."
+	e.editRemote("lv1", "first_mes", want)
+	c := e.compareItem("lv1", card)
+	e.resolve(c, map[string]merge.Choice{hunk(t, c, "first_mes"): merge.ChooseApp}, "")
+	head := e.head(card)
+	if field(t, head.Data, "first_mes") != libGreeting || e.override(card)["first_mes"] != want {
+		t.Fatalf("head = %s, override = %v", head.Data, e.override(card))
+	}
+	p, err := e.s.Preview(e.ctx, e.otherInstance(), card)
+	if err != nil || !strings.Contains(string(p.Card), libGreeting) {
+		t.Errorf("other preview = %s, %v", p.Card, err)
+	}
+}
+
+func TestResolveAfterTheHeadMovedIsStale(t *testing.T) {
+	e, card := resolveEnv(t)
+	c := e.compareItem("lv1", card)
+	e.update(card, func(ed *library.Edit) { ed.Data = setField(ed.Data, "description", "A grim smith.") })
+	_, err := e.tryResolve(c, nil, "")
+	var stale *StaleError
+	if !errors.As(err, &stale) || stale.Comparison.HeadRevisionID != e.head(card).ID {
+		t.Fatalf("err = %v", err)
+	}
+	if e.revisions(card) != 2 || e.bindingCount() != 0 {
+		t.Error("a stale resolve wrote something")
+	}
+}
+
+func TestResolveNeedsABaseRevision(t *testing.T) {
+	e, card := resolveEnv(t)
+	c := e.compareItem("lv1", card)
+	c.HeadRevisionID = 0
+	if _, err := e.tryResolve(c, nil, ""); !errors.Is(err, library.ErrInvalid) || e.bindingCount() != 0 {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestResolveAvatarChoiceNeedsAnAvatarDiff(t *testing.T) {
+	e, card := resolveEnv(t)
+	c := e.compareItem("lv1", card)
+	_, err := e.tryResolve(c, map[string]merge.Choice{"avatar": merge.ChooseApp}, "")
+	if !errors.Is(err, merge.ErrUnknownHunk) || e.bindingCount() != 0 {
+		t.Fatalf("err = %v", err)
 	}
 }

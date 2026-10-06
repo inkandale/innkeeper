@@ -43,15 +43,21 @@ var schemaPattern = regexp.MustCompile(`^plugin_[a-z0-9_]+$`)
 
 func validSchema(s string) bool { return schemaPattern.MatchString(s) }
 
+// maxPluginSQL bounds one plugin schema's SQL, which is read into memory.
+const maxPluginSQL = 256 << 20
+
 // unrunnable matches the psql meta-commands pg_dump 18 adds, which the server
 // can't run, and the CREATE SCHEMA that restore runs itself.
 var unrunnable = regexp.MustCompile(`(?m)^(\\(un)?restrict \S+|CREATE SCHEMA \S+;)$`)
 
-// hasData finds rows a restore without replace would collide with.
+// hasData finds rows a restore without replace would collide with or, for a
+// plugin schema the archive lists, destroy. Config's $1 is those schemas.
 var hasData = map[Type]string{
 	Assets: `SELECT EXISTS (SELECT FROM public.card) OR EXISTS (SELECT FROM public.lorebook)
 		OR EXISTS (SELECT FROM public.tag) OR EXISTS (SELECT FROM public.collection)`,
-	Config: `SELECT EXISTS (SELECT FROM public.plugin_instance) OR EXISTS (SELECT FROM public.setting)`,
+	Config: `SELECT EXISTS (SELECT FROM public.plugin_instance) OR EXISTS (SELECT FROM public.setting)
+		OR EXISTS (SELECT FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+			WHERE n.nspname = ANY($1) AND c.relkind IN ('r', 'p'))`,
 }
 
 // bindable keeps bindings whose card or lorebook this database has.
@@ -66,6 +72,10 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (Result, error)
 	if err != nil {
 		return Result{}, err
 	}
+	if (m.Type == Config && len(m.Blobs) > 0) || (m.Type == Assets && len(m.PluginSchemas) > 0) {
+		return Result{}, fmt.Errorf("%s backup lists blobs or plugin schemas of the other type", m.Type)
+	}
+	blobs, schemas, tableSet := setOf(m.Blobs), setOf(m.PluginSchemas), setOf(tables[m.Type])
 	// Its own connection, since plugin SQL changes session settings.
 	conn, err := pgx.ConnectConfig(ctx, o.Conn)
 	if err != nil {
@@ -77,6 +87,11 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (Result, error)
 		return Result{}, err
 	}
 	defer tx.Rollback(context.WithoutCancel(ctx))
+	// Core statements never resolve names in a schema plugin SQL controls.
+	// pg_temp comes last so temp tables can't shadow catalogs.
+	if _, err := tx.Exec(ctx, safePath); err != nil {
+		return Result{}, err
+	}
 
 	var schema string
 	if err := tx.QueryRow(ctx, `SELECT max(name) FROM public.schema_migration`).Scan(&schema); err != nil {
@@ -93,18 +108,25 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (Result, error)
 		return Result{}, err
 	}
 	var exists bool
-	if err := tx.QueryRow(ctx, hasData[m.Type]).Scan(&exists); err != nil {
+	var args []any
+	if m.Type == Config {
+		args = append(args, m.PluginSchemas)
+	}
+	if err := tx.QueryRow(ctx, hasData[m.Type], args...).Scan(&exists); err != nil {
 		return Result{}, err
 	}
 	if exists && !o.Replace {
 		return Result{}, ErrHasData
 	}
-	if err := clearType(ctx, tx, m.Type, exists); err != nil {
-		return Result{}, fmt.Errorf("clear %s: %w", m.Type, err)
+	if exists {
+		if err := clearType(ctx, tx, m.Type); err != nil {
+			return Result{}, fmt.Errorf("clear %s: %w", m.Type, err)
+		}
 	}
 
 	res := Result{Type: m.Type, Rows: map[string]int64{}}
 	seenBlobs, seenSchemas := map[string]bool{}, map[string]bool{}
+	immediate := false
 	for {
 		h, err := tr.Next()
 		if err == io.EOF {
@@ -117,7 +139,7 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (Result, error)
 		switch {
 		case strings.HasPrefix(name, "blobs/"):
 			sha := strings.TrimPrefix(name, "blobs/")
-			if !validSHA(sha) || !slices.Contains(m.Blobs, sha) || seenBlobs[sha] {
+			if m.Type != Assets || !validSHA(sha) || !blobs[sha] || seenBlobs[sha] {
 				return res, fmt.Errorf("unexpected archive entry %q", name)
 			}
 			got, _, err := o.Store.Put(tr)
@@ -131,7 +153,7 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (Result, error)
 		case strings.HasPrefix(name, "tables/") && strings.HasSuffix(name, ".copy"):
 			table := strings.TrimSuffix(strings.TrimPrefix(name, "tables/"), ".copy")
 			_, listed := m.Tables[table]
-			if _, dup := res.Rows[table]; dup || !listed || !slices.Contains(tables[m.Type], table) {
+			if _, dup := res.Rows[table]; dup || !listed || !tableSet[table] {
 				return res, fmt.Errorf("unexpected archive entry %q", name)
 			}
 			if res.Rows[table], err = loadTable(ctx, tx, table, tr, &res); err != nil {
@@ -139,13 +161,24 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (Result, error)
 			}
 		case strings.HasPrefix(name, "plugins/") && strings.HasSuffix(name, ".sql"):
 			schema := strings.TrimSuffix(strings.TrimPrefix(name, "plugins/"), ".sql")
-			if !validSchema(schema) || !slices.Contains(m.PluginSchemas, schema) || seenSchemas[schema] {
+			if m.Type != Config || !validSchema(schema) || !schemas[schema] || seenSchemas[schema] {
 				return res, fmt.Errorf("unexpected archive entry %q", name)
 			}
 			seenSchemas[schema] = true
-			b, err := io.ReadAll(tr)
+			b, err := io.ReadAll(io.LimitReader(tr, maxPluginSQL+1))
 			if err != nil {
 				return res, fmt.Errorf("reading %s: %w", name, err)
+			}
+			if len(b) > maxPluginSQL {
+				return res, fmt.Errorf("%s is too large", name)
+			}
+			if !immediate {
+				// Core's deferred checks fire now, as the core user, so none are
+				// left for plugin SQL to run alongside or after.
+				if _, err := tx.Exec(ctx, `SET CONSTRAINTS ALL IMMEDIATE`); err != nil {
+					return res, fkError(err)
+				}
+				immediate = true
 			}
 			ok, err := loadPlugin(ctx, tx, schema, string(unrunnable.ReplaceAll(b, nil)))
 			if err != nil {
@@ -171,7 +204,6 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (Result, error)
 	}
 	res.Blobs = len(seenBlobs)
 
-	// Plugin SQL empties search_path, so everything from here names public.
 	// Without this, the next insert would reuse a restored ID.
 	rows, _ := tx.Query(ctx, `SELECT table_name::text FROM information_schema.columns
 		WHERE table_schema = 'public' AND column_name = 'id' AND is_identity = 'YES' AND table_name = ANY($1)`, tables[m.Type])
@@ -193,42 +225,44 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (Result, error)
 		res.SecretsKeyMismatch = m.SecretsCheck != "" && o.Box != nil && m.SecretsCheck != o.Box.Derive("backup-check")
 	}
 	if err := tx.Commit(ctx); err != nil {
-		var pe *pgconn.PgError
-		if errors.As(err, &pe) && pe.Code == "23503" {
-			if pe.TableName == "binding" {
-				return res, fmt.Errorf("bindings refer to cards or lorebooks this backup doesn't have; restore a matching config backup or unbind them first: %w", err)
-			}
-			return res, fmt.Errorf("backup refers to rows it doesn't contain: %w", err)
-		}
-		return res, err
+		return res, fkError(err)
 	}
 	return res, nil
 }
 
-// clearType deletes type t's rows when the database has them, leaving the
-// other type's tables alone. Config always drops the plugin schemas, which it
-// owns: a start creates empty ones even without instances.
-func clearType(ctx context.Context, tx pgx.Tx, t Type, exists bool) error {
-	var stmts []string
-	if exists {
-		switch t {
-		case Assets:
-			for _, table := range slices.Backward(tables[Assets]) {
-				stmts = append(stmts, `DELETE FROM `+pgx.Identifier{"public", table}.Sanitize())
-			}
-		case Config:
-			stmts = []string{`DELETE FROM public.push`, `DELETE FROM public.binding`, `DELETE FROM public.setting`, `DELETE FROM public.plugin_instance`}
-		}
+const safePath = `SET LOCAL search_path = pg_catalog, pg_temp`
+
+func setOf(xs []string) map[string]bool {
+	set := make(map[string]bool, len(xs))
+	for _, x := range xs {
+		set[x] = true
 	}
-	if t == Config {
-		rows, _ := tx.Query(ctx, `SELECT nspname::text FROM pg_namespace WHERE nspname LIKE 'plugin\_%'`)
-		schemas, err := pgx.CollectRows(rows, pgx.RowTo[string])
-		if err != nil {
-			return err
+	return set
+}
+
+// fkError explains a deferred foreign key failure.
+func fkError(err error) error {
+	var pe *pgconn.PgError
+	if !errors.As(err, &pe) || pe.Code != "23503" {
+		return err
+	}
+	if pe.TableName == "binding" {
+		return fmt.Errorf("bindings refer to cards or lorebooks this backup doesn't have; restore a matching config backup or unbind them first: %w", err)
+	}
+	return fmt.Errorf("backup refers to rows it doesn't contain: %w", err)
+}
+
+// clearType deletes type t's rows, leaving the other type's tables alone.
+// Plugin schemas are replaced one by one in loadPlugin.
+func clearType(ctx context.Context, tx pgx.Tx, t Type) error {
+	var stmts []string
+	switch t {
+	case Assets:
+		for _, table := range slices.Backward(tables[Assets]) {
+			stmts = append(stmts, `DELETE FROM `+pgx.Identifier{"public", table}.Sanitize())
 		}
-		for _, s := range schemas {
-			stmts = append(stmts, `DROP SCHEMA `+pgx.Identifier{s}.Sanitize()+` CASCADE`)
-		}
+	case Config:
+		stmts = []string{`DELETE FROM public.push`, `DELETE FROM public.binding`, `DELETE FROM public.setting`, `DELETE FROM public.plugin_instance`}
 	}
 	for _, q := range stmts {
 		if _, err := tx.Exec(ctx, q); err != nil {
@@ -242,7 +276,8 @@ func clearType(ctx context.Context, tx pgx.Tx, t Type, exists bool) error {
 // uploaded archive can't touch core tables. It returns false when this
 // database has no such role. A security-definer function runs it because
 // SET ROLE alone can be undone by the SQL with RESET ROLE; inside one,
-// PostgreSQL refuses any role change.
+// PostgreSQL refuses any role change. The function then fires whatever the
+// SQL deferred, so no plugin trigger is left to run as the core user at commit.
 func loadPlugin(ctx context.Context, tx pgx.Tx, schema, sql string) (bool, error) {
 	var role string
 	var member bool
@@ -260,17 +295,23 @@ func loadPlugin(ctx context.Context, tx pgx.Tx, schema, sql string) (bool, error
 		`DROP SCHEMA IF EXISTS ` + s + ` CASCADE`,
 		`CREATE SCHEMA ` + s + ` AUTHORIZATION ` + r,
 		`SET LOCAL ROLE ` + r,
-		`CREATE FUNCTION ` + run + `(q text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$BEGIN EXECUTE q; END$$`,
+		`CREATE FUNCTION ` + run + `(q text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+			AS $$BEGIN EXECUTE q; SET CONSTRAINTS ALL IMMEDIATE; END$$`,
 		`RESET ROLE`,
 	} {
 		if _, err := tx.Exec(ctx, q); err != nil {
 			return false, err
 		}
 	}
-	if _, err := tx.Exec(ctx, `SELECT `+run+`($1)`, sql); err != nil {
+	_, err := tx.Exec(ctx, `SELECT `+run+`($1::pg_catalog.text)`, sql)
+	// The SQL can set search_path for the session; put it back before anything else.
+	if _, perr := tx.Exec(ctx, safePath); err == nil {
+		err = perr
+	}
+	if err != nil {
 		return false, err
 	}
-	_, err := tx.Exec(ctx, `DROP FUNCTION IF EXISTS `+run+`(pg_catalog.text)`)
+	_, err = tx.Exec(ctx, `DROP FUNCTION IF EXISTS `+run+`(pg_catalog.text)`)
 	return true, err
 }
 

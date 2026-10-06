@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/davidgibbons/innkeeper/internal/blobstore"
@@ -115,7 +117,8 @@ func (tg target) pluginRole(t *testing.T) {
 	})
 }
 
-// rebuild returns archive with edit applied to its entries' bodies.
+// rebuild returns archive with edit applied to its entries' bodies. Entries
+// edit adds go last.
 func rebuild(t *testing.T, archive []byte, edit func(bodies map[string]string)) []byte {
 	t.Helper()
 	names, bodies := entries(t, archive)
@@ -123,8 +126,33 @@ func rebuild(t *testing.T, archive []byte, edit func(bodies map[string]string)) 
 	var files [][2]string
 	for _, n := range names {
 		files = append(files, [2]string{n, bodies[n]})
+		delete(bodies, n)
+	}
+	for _, n := range slices.Sorted(maps.Keys(bodies)) {
+		files = append(files, [2]string{n, bodies[n]})
 	}
 	return archiveOf(t, files...)
+}
+
+// editManifest rewrites an archive's manifest.json inside rebuild.
+func editManifest(t *testing.T, bodies map[string]string, edit func(*Manifest)) {
+	t.Helper()
+	var m Manifest
+	if err := json.Unmarshal([]byte(bodies["manifest.json"]), &m); err != nil {
+		t.Fatal(err)
+	}
+	edit(&m)
+	b, _ := json.Marshal(m)
+	bodies["manifest.json"] = string(b)
+}
+
+// wantDenied fails unless err is PostgreSQL refusing the plugin role.
+func wantDenied(t *testing.T, what string, err error) {
+	t.Helper()
+	var pe *pgconn.PgError
+	if !errors.As(err, &pe) || pe.Code != "42501" {
+		t.Fatalf("%s: err = %v, want SQLSTATE 42501", what, err)
+	}
 }
 
 func (tg target) restore(archive []byte, box *secrets.Box, replace bool) (Result, error) {
@@ -337,13 +365,7 @@ func TestRestoreSecretsKeyMismatch(t *testing.T) {
 func TestRestoreRefusesOtherSchema(t *testing.T) {
 	assets, _, _ := source(t)
 	other := rebuild(t, assets, func(bodies map[string]string) {
-		var m Manifest
-		if err := json.Unmarshal([]byte(bodies["manifest.json"]), &m); err != nil {
-			t.Fatal(err)
-		}
-		m.Schema = "9999_future.sql"
-		b, _ := json.Marshal(m)
-		bodies["manifest.json"] = string(b)
+		editManifest(t, bodies, func(m *Manifest) { m.Schema = "9999_future.sql" })
 	})
 	tg := newTarget(t)
 	_, err := tg.restore(other, nil, false)
@@ -368,12 +390,91 @@ func TestRestorePluginSQLRunsAsPluginRole(t *testing.T) {
 		tg := newTarget(t)
 		tg.pluginRole(t)
 		evil := rebuild(t, config, func(bodies map[string]string) { bodies["plugins/plugin_fake.sql"] = hostile })
-		if _, err := tg.restore(evil, box, false); err == nil {
-			t.Fatalf("%s: restore succeeded", hostile)
-		}
+		_, err := tg.restore(evil, box, false)
+		wantDenied(t, hostile, err)
 		if n := tg.count(t, `SELECT count(*) FROM plugin_instance`) + tg.count(t, `SELECT count(*) FROM pg_class WHERE relname = 'evil'`); n != 0 {
 			t.Fatalf("%s: restore changed the database", hostile)
 		}
+	}
+}
+
+func TestRestorePluginCantHijackSearchPath(t *testing.T) {
+	_, config, box := source(t)
+	tg := newTarget(t)
+	tg.pluginRole(t)
+	// Core runs now() and max() after plugin SQL; these must never be the ones it calls.
+	hijack := rebuild(t, config, func(bodies map[string]string) {
+		bodies["plugins/plugin_fake.sql"] = `
+			CREATE FUNCTION plugin_fake.now() RETURNS timestamptz LANGUAGE plpgsql AS $$BEGIN RAISE EXCEPTION 'hijacked'; END$$;
+			CREATE FUNCTION plugin_fake.max(bigint) RETURNS bigint LANGUAGE plpgsql AS $$BEGIN RAISE EXCEPTION 'hijacked'; END$$;
+			SET search_path = plugin_fake, pg_catalog`
+	})
+	if _, err := tg.restore(hijack, box, false); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRestorePluginCantDeferPastItsRole(t *testing.T) {
+	_, config, box := source(t)
+	tg := newTarget(t)
+	tg.pluginRole(t)
+	// It must fire inside the plugin's call. PostgreSQL 18 already runs a
+	// deferred trigger as the role that queued it; older versions use the role at commit.
+	deferred := rebuild(t, config, func(bodies map[string]string) {
+		bodies["plugins/plugin_fake.sql"] = `
+			CREATE TABLE plugin_fake.t (x int);
+			CREATE FUNCTION plugin_fake.f() RETURNS trigger LANGUAGE plpgsql AS
+				$$BEGIN INSERT INTO public.setting VALUES ('evil', 'yes'); RETURN NULL; END$$;
+			CREATE CONSTRAINT TRIGGER g AFTER INSERT ON plugin_fake.t DEFERRABLE INITIALLY DEFERRED
+				FOR EACH ROW EXECUTE FUNCTION plugin_fake.f();
+			INSERT INTO plugin_fake.t VALUES (1) -- trailing comment`
+	})
+	_, err := tg.restore(deferred, box, false)
+	wantDenied(t, "deferred trigger", err)
+	if !strings.Contains(err.Error(), "plugins/plugin_fake.sql") {
+		t.Fatalf("err = %v, want it from the plugin's SQL, not commit", err)
+	}
+	if n := tg.count(t, `SELECT count(*) FROM setting`) + tg.count(t, `SELECT count(*) FROM plugin_instance`); n != 0 {
+		t.Fatal("restore changed the database")
+	}
+}
+
+func TestRestoreRejectsOtherTypesEntries(t *testing.T) {
+	assets, config, box := source(t)
+	tg := newTarget(t)
+	tg.pluginRole(t)
+	for name, archive := range map[string][]byte{
+		"plugin entry in assets": rebuild(t, assets, func(b map[string]string) { b["plugins/plugin_fake.sql"] = "SELECT 1" }),
+		"plugin schema in assets manifest": rebuild(t, assets, func(b map[string]string) {
+			editManifest(t, b, func(m *Manifest) { m.PluginSchemas = []string{"plugin_fake"} })
+			b["plugins/plugin_fake.sql"] = "SELECT 1"
+		}),
+		"blob in config manifest": rebuild(t, config, func(b map[string]string) {
+			editManifest(t, b, func(m *Manifest) { m.Blobs = []string{sha} })
+			b["blobs/"+sha] = "x"
+		}),
+	} {
+		if _, err := tg.restore(archive, box, false); err == nil {
+			t.Errorf("%s: restore succeeded", name)
+		}
+	}
+	if n := tg.count(t, `SELECT count(*) FROM card`) + tg.count(t, `SELECT count(*) FROM plugin_instance`); n != 0 {
+		t.Fatal("restore changed the database")
+	}
+}
+
+func TestRestoreKeepsPluginData(t *testing.T) {
+	_, config, box := source(t)
+	tg := newTarget(t)
+	tg.pluginRole(t)
+	if _, err := tg.pool.Exec(context.Background(), `CREATE SCHEMA plugin_fake; CREATE TABLE plugin_fake.mine (x int)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tg.restore(config, box, false); !errors.Is(err, ErrHasData) {
+		t.Fatalf("err = %v, want ErrHasData", err)
+	}
+	if n := tg.count(t, `SELECT count(*) FROM pg_class WHERE relname = 'mine'`); n != 1 {
+		t.Fatal("restore dropped plugin data")
 	}
 }
 

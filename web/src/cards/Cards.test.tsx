@@ -232,3 +232,13 @@ test("push waits for targets before saying there are none", async () => {
   expect(screen.getByText("Loading…")).toBeInTheDocument();
   expect(screen.queryByText(/No target can take pushes/)).not.toBeInTheDocument();
 });
+
+test("going back to a search doesn't bring its selection back", async () => {
+  renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
+  await user.click(screen.getByRole("button", { name: /pirate/ }));
+  await user.click(screen.getByRole("button", { name: "Remove tag: pirate" }));
+  expect(screen.getByRole("checkbox", { name: "Select Carrow" })).not.toBeChecked();
+  expect(screen.queryByText("1 selected")).not.toBeInTheDocument();
+});

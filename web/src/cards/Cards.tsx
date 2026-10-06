@@ -28,6 +28,8 @@ export function Cards() {
   // The selection belongs to one search: paging keeps it, a new search clears it.
   const key = JSON.stringify([q.text, q.terms]);
   const [stored, setSel] = useState<Selection>(() => emptySelection(key));
+  // Reset rather than hide, so going back to an earlier search doesn't revive its picks.
+  if (stored.key !== key) setSel(emptySelection(key));
   const sel = stored.key === key ? stored : emptySelection(key);
   const [facetsOpen, setFacetsOpen] = useState(true);
   const go = (next: CardQuery) => setParams(toParams(next));

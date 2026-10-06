@@ -119,6 +119,7 @@
 .tile-image {
   position: relative;
   display: block;
+  text-decoration: none;
 }
 
 .tile .avatar {

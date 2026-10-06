@@ -18,7 +18,7 @@
 
 .mosaic {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template: repeat(2, minmax(0, 1fr)) / repeat(2, minmax(0, 1fr));
   gap: 2px;
   aspect-ratio: 1;
   border-radius: var(--radius);

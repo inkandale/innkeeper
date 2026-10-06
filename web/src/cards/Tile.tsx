@@ -42,11 +42,28 @@ function Avatar({ hit, w }: { hit: Hit; w: 160 | 320 }) {
   return <img className="avatar" src={thumb(avatar, w)} alt="" loading="lazy" />;
 }
 
-export function Tile({ hit, names }: { hit: Hit; names: Names }) {
+export type PickProps = { selected: boolean; locked: boolean; onPick: (shift: boolean) => void };
+
+// The change event of a checkbox comes from a click, so it carries the shift key.
+function SelectBox({ hit, pick }: { hit: Hit; pick: PickProps }) {
+  return (
+    <input
+      type="checkbox"
+      className="select"
+      aria-label={`Select ${str(hit.fields.name)}`}
+      checked={pick.selected}
+      disabled={pick.locked}
+      onChange={(e) => pick.onPick((e.nativeEvent as MouseEvent).shiftKey === true)}
+    />
+  );
+}
+
+export function Tile({ hit, names, pick }: { hit: Hit; names: Names; pick: PickProps }) {
   const tags = hit.tags ?? [];
   const books = hit.lorebooks?.length ?? 0;
   return (
-    <article className="tile">
+    <article className={pick.selected ? "tile selected" : "tile"}>
+      <SelectBox hit={hit} pick={pick} />
       <Link to={`/cards/${hit.id}`} className="tile-image">
         <Avatar hit={hit} w={320} />
         <Badges hit={hit} names={names} />
@@ -70,9 +87,12 @@ export function Tile({ hit, names }: { hit: Hit; names: Names }) {
   );
 }
 
-export function Row({ hit, names }: { hit: Hit; names: Names }) {
+export function Row({ hit, names, pick }: { hit: Hit; names: Names; pick: PickProps }) {
   return (
     <tr>
+      <td>
+        <SelectBox hit={hit} pick={pick} />
+      </td>
       <td>
         <Avatar hit={hit} w={160} />
       </td>

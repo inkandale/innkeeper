@@ -96,6 +96,25 @@
   border-color: var(--danger);
 }
 
+.selection-bar .actions {
+  display: flex;
+  gap: var(--space);
+  margin-left: auto;
+}
+
+.bulk-panel {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space);
+}
+
+.button.danger {
+  background: var(--danger);
+  color: var(--accent-text);
+}
+
 .results {
   grid-area: main;
   padding: calc(var(--space) * 2);
@@ -113,7 +132,21 @@
 }
 
 .tile {
+  position: relative;
   min-width: 0;
+}
+
+.tile .select {
+  position: absolute;
+  top: calc(var(--space) * 0.75);
+  left: calc(var(--space) * 0.75);
+  z-index: 1;
+  width: 18px;
+  height: 18px;
+}
+
+.tile.selected .tile-image {
+  outline: 2px solid var(--accent);
 }
 
 .tile-image {

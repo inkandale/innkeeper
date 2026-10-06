@@ -5,6 +5,8 @@ import { api, must } from "../api/client";
 import { Facets } from "./Facets";
 import { pageLinks } from "./pages";
 import { defaultSort, parseQuery, sizes, toggleTerm, toParams, toSearch, type CardQuery, type Sort, type Term } from "./query";
+import { emptySelection, pick, target, type Selection } from "./selection";
+import { SelectionBar } from "./SelectionBar";
 import { Row, Tile, type Names } from "./Tile";
 import "./Cards.css";
 
@@ -23,6 +25,10 @@ function termLabel(t: Term, names: Names): string {
 export function Cards() {
   const [params, setParams] = useSearchParams();
   const q = parseQuery(params);
+  // The selection belongs to one search: paging keeps it, a new search clears it.
+  const key = JSON.stringify([q.text, q.terms]);
+  const [stored, setSel] = useState<Selection>(() => emptySelection(key));
+  const sel = stored.key === key ? stored : emptySelection(key);
   const [facetsOpen, setFacetsOpen] = useState(true);
   const go = (next: CardQuery) => setParams(toParams(next));
 
@@ -48,47 +54,65 @@ export function Cards() {
   const total = res.data?.total ?? 0;
   const last = Math.max(1, Math.ceil(total / q.size));
   const hits = res.data?.hits ?? [];
+  const pageIds = hits.map((h) => h.id);
+  const pickFor = (id: number) => ({
+    selected: sel.all || sel.ids.includes(id),
+    locked: sel.all,
+    onPick: (shift: boolean) => setSel(pick(sel, id, shift, pageIds)),
+  });
+  const picking = sel.all || sel.ids.length > 0;
 
   return (
     <div className={facetsOpen ? "cards" : "cards no-facets"}>
       {facetsOpen && <Facets facets={res.data?.facets} names={names} q={q} onToggle={(t) => go(toggleTerm(q, t))} />}
-      <div className="toolbar">
-        <button className="button" onClick={() => setFacetsOpen(!facetsOpen)} aria-expanded={facetsOpen}>
-          Filters
-        </button>
-        <form role="search" onSubmit={search}>
-          <input key={q.text} className="input" type="search" name="q" defaultValue={q.text} placeholder="Search cards" />
-        </form>
-        <select
-          className="input"
-          aria-label="Sort"
-          value={q.sort}
-          onChange={(e) => go({ ...q, sort: e.target.value as Sort, page: 1 })}
-        >
-          {(Object.keys(sortLabels) as Sort[])
-            .filter((s) => s !== "relevance" || q.text || q.sort === "relevance")
-            .map((s) => (
-              <option key={s} value={s}>
-                {sortLabels[s]}
-              </option>
+      {picking ? (
+        <SelectionBar
+          count={sel.ids.length}
+          all={sel.all}
+          total={total}
+          query={target(sel, body)}
+          onAll={() => setSel({ ...sel, all: true })}
+          onClear={() => setSel(emptySelection(key))}
+        />
+      ) : (
+        <div className="toolbar">
+          <button className="button" onClick={() => setFacetsOpen(!facetsOpen)} aria-expanded={facetsOpen}>
+            Filters
+          </button>
+          <form role="search" onSubmit={search}>
+            <input key={q.text} className="input" type="search" name="q" defaultValue={q.text} placeholder="Search cards" />
+          </form>
+          <select
+            className="input"
+            aria-label="Sort"
+            value={q.sort}
+            onChange={(e) => go({ ...q, sort: e.target.value as Sort, page: 1 })}
+          >
+            {(Object.keys(sortLabels) as Sort[])
+              .filter((s) => s !== "relevance" || q.text || q.sort === "relevance")
+              .map((s) => (
+                <option key={s} value={s}>
+                  {sortLabels[s]}
+                </option>
+              ))}
+          </select>
+          <button className="button" onClick={() => go({ ...q, view: q.view === "grid" ? "list" : "grid" })}>
+            {q.view === "grid" ? "List view" : "Grid view"}
+          </button>
+          <div className="chips">
+            {q.terms.map((t) => (
+              <button
+                key={`${t.not ? "-" : ""}${t.kind}:${t.value}`}
+                className={t.not ? "chip excluded" : "chip"}
+                aria-label={`Remove ${termLabel(t, names)}`}
+                onClick={() => go(toggleTerm(q, t))}
+              >
+                {termLabel(t, names)} ×
+              </button>
             ))}
-        </select>
-        <button className="button" onClick={() => go({ ...q, view: q.view === "grid" ? "list" : "grid" })}>
-          {q.view === "grid" ? "List view" : "Grid view"}
-        </button>
-        <div className="chips">
-          {q.terms.map((t) => (
-            <button
-              key={`${t.not ? "-" : ""}${t.kind}:${t.value}`}
-              className={t.not ? "chip excluded" : "chip"}
-              aria-label={`Remove ${termLabel(t, names)}`}
-              onClick={() => go(toggleTerm(q, t))}
-            >
-              {termLabel(t, names)} ×
-            </button>
-          ))}
+          </div>
         </div>
-      </div>
+      )}
       <div className="results">
         {res.isError && <p className="error">{res.error.message}</p>}
         {res.data && <p className="total">{total} cards</p>}
@@ -100,14 +124,14 @@ export function Cards() {
         {q.view === "grid" ? (
           <div className="grid">
             {hits.map((h) => (
-              <Tile key={h.id} hit={h} names={names} />
+              <Tile key={h.id} hit={h} names={names} pick={pickFor(h.id)} />
             ))}
           </div>
         ) : (
           <table className="list">
             <tbody>
               {hits.map((h) => (
-                <Row key={h.id} hit={h} names={names} />
+                <Row key={h.id} hit={h} names={names} pick={pickFor(h.id)} />
               ))}
             </tbody>
           </table>

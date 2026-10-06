@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
+import { Toasts } from "../shell/Toasts";
 import { Cards } from "./Cards";
 
 function json(body: unknown) {
@@ -20,6 +21,8 @@ const results = {
       lorebooks: [3],
       targets: [{ instance: 2, is: "ahead" }],
     },
+    { id: 8, slug: "carrow", revision_id: 1, fields: { name: "Carrow" } },
+    { id: 9, slug: "dellin", revision_id: 1, fields: { name: "Dellin" } },
   ],
   facets: {
     tags: [
@@ -31,8 +34,10 @@ const results = {
 };
 
 let searches: unknown[];
+let posts: { path: string; body: unknown }[];
 beforeEach(() => {
   searches = [];
+  posts = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
@@ -41,7 +46,21 @@ beforeEach(() => {
         searches.push(await req.json());
         return json(results);
       }
-      if (path === "/api/instances") return json([{ id: 2, name: "Lumiverse", plugin: "lumiverse" }]);
+      if (path === "/api/bulk" || path === "/api/pushes") {
+        posts.push({ path, body: await req.json() });
+        return json({ id: 5, kind: "bulk", status: "waiting" });
+      }
+      if (path === "/api/instances")
+        return json([
+          { id: 2, name: "Lumiverse", plugin: "lumiverse" },
+          { id: 3, name: "Cards folder", plugin: "folder" },
+        ]);
+      if (path === "/api/plugins")
+        return json([
+          { name: "lumiverse", capabilities: ["push", "pull"] },
+          { name: "folder", capabilities: ["import"] },
+        ]);
+      if (path === "/api/collections") return json([{ id: 4, name: "Elves", cards: 0 }]);
       return json([]);
     }),
   );
@@ -49,7 +68,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 function renderCards(entry: string) {
-  const router = createMemoryRouter([{ path: "/cards", element: <Cards /> }], { initialEntries: [entry] });
+  const router = createMemoryRouter([{ path: "/cards", element: <Toasts><Cards /></Toasts> }], { initialEntries: [entry] });
   const { container } = render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <RouterProvider router={router} />
@@ -116,4 +135,57 @@ test("an active facet is pressed", async () => {
 test("a page past the end offers the last page", async () => {
   renderCards("/cards?page=5");
   expect(await screen.findByRole("button", { name: "Go to page 2" })).toBeInTheDocument();
+});
+
+test("shift-click selects a range and tags it", async () => {
+  renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Brakka" }));
+  await user.keyboard("{Shift>}");
+  await user.click(screen.getByRole("checkbox", { name: "Select Dellin" }));
+  await user.keyboard("{/Shift}");
+  expect(screen.getByText("3 selected")).toBeInTheDocument();
+  expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Tag" }));
+  await user.type(screen.getByRole("textbox", { name: "Tags" }), "elf, sage");
+  await user.click(screen.getByRole("button", { name: "Add tags" }));
+  expect(posts).toEqual([{ path: "/api/bulk", body: { query: { filter: { ids: [7, 8, 9] } }, action: "tag", tags: ["elf", "sage"] } }]);
+  expect(await screen.findByRole("link", { name: "View job" })).toHaveAttribute("href", "/settings/jobs/5");
+  expect(screen.getByRole("searchbox")).toBeInTheDocument();
+});
+
+test("select all matching archives the search", async () => {
+  renderCards("/cards?f=tag:fantasy");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
+  await user.click(screen.getByRole("button", { name: "Select all 49 matching" }));
+  expect(screen.getByText("All 49 matching cards")).toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "Select Brakka" })).toBeChecked();
+  await user.click(screen.getByRole("button", { name: "Archive" }));
+  await user.click(screen.getByRole("button", { name: "Archive 49 cards" }));
+  expect(posts[0]).toEqual({ path: "/api/bulk", body: { query: { filter: { and: [{ tag: "fantasy" }] } }, action: "archive" } });
+});
+
+test("push offers only targets that push", async () => {
+  renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
+  await user.click(screen.getByRole("button", { name: "Push" }));
+  const target = await screen.findByRole("combobox", { name: "Target" });
+  expect(Array.from((target as HTMLSelectElement).options).map((o) => o.text)).toEqual(["Lumiverse"]);
+  await user.click(screen.getByRole("button", { name: "Push 1 card" }));
+  expect(posts[0]).toEqual({ path: "/api/pushes", body: { instance_id: 2, query: { filter: { ids: [8] } } } });
+});
+
+test("a facet click clears the selection, and paging keeps it", async () => {
+  const { router } = renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
+  await user.click(screen.getByRole("button", { name: "2" }));
+  expect(router.state.location.search).toBe("?page=2");
+  expect(screen.getByText("1 selected")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: /pirate/ }));
+  expect(screen.getByRole("searchbox")).toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "Select Carrow" })).not.toBeChecked();
 });

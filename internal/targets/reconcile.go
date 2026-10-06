@@ -183,10 +183,6 @@ func (s *Service) reconcileItem(ctx context.Context, k kind, inst pluginhost.Ins
 			return item, err
 		}
 	}
-	data := map[int64]json.RawMessage{}
-	for _, e := range idx.entries {
-		data[e.id] = e.data
-	}
 	schema := merge.Card
 	if k.isLorebook() {
 		schema = merge.Lorebook
@@ -194,7 +190,7 @@ func (s *Service) reconcileItem(ctx context.Context, k kind, inst pluginhost.Ins
 	var core []int
 	for i := range item.Candidates {
 		c := &item.Candidates[i]
-		fields, err := merge.Compare(schema, data[c.CardID], it.data, ancestor)
+		fields, err := merge.Compare(schema, idx.byID[c.CardID].data, it.data, ancestor)
 		if err != nil {
 			return item, err
 		}
@@ -225,25 +221,41 @@ func (s *Service) reconcileItem(ctx context.Context, k kind, inst pluginhost.Ins
 			bind(item.Candidates[0], "the app and the library differ; bind to resolve the drift")
 		}
 	case VerdictExact:
-		item.Suggested = &Option{Action: "import", Why: "every library card with this content is bound to another app item"}
-		for _, c := range item.Candidates {
-			if c.BoundTo == "" {
-				bind(c, fmt.Sprintf("same content as #%d %s", c.CardID, c.Name))
-				break
-			}
+		if i := unbound(item.Candidates); i >= 0 {
+			c := item.Candidates[i]
+			bind(c, fmt.Sprintf("same content as #%d %s", c.CardID, c.Name))
+		} else {
+			c := item.Candidates[0]
+			item.Suggested = &Option{Action: "skip", Why: fmt.Sprintf(
+				"same as #%d %s, already bound to %s: the app has a duplicate", c.CardID, c.Name, c.BoundTo)}
 		}
 	case VerdictLikely:
-		top := item.Candidates[0]
-		why := fmt.Sprintf("%d of %d core fields differ from #%d %s", core[0], len(coreFields), top.CardID, top.Name)
-		if core[0] < *p.SplitFields {
-			bind(top, why)
-		} else {
-			item.Suggested = &Option{Action: "import", Why: why}
+		i := unbound(item.Candidates)
+		switch {
+		case i < 0:
+			item.Suggested = &Option{Action: "import", Why: "every likely match is already bound to another app item"}
+		case k.isLorebook():
+			// split_fields is for cards; a world book binds to its best unbound match.
+			c := item.Candidates[i]
+			bind(c, fmt.Sprintf("likely the same as #%d %s", c.CardID, c.Name))
+		default:
+			c := item.Candidates[i]
+			why := fmt.Sprintf("%d of %d core fields differ from #%d %s", core[i], len(coreFields), c.CardID, c.Name)
+			if core[i] < *p.SplitFields {
+				bind(c, why)
+			} else {
+				item.Suggested = &Option{Action: "import", Why: why}
+			}
 		}
 	case VerdictNew:
 		item.Suggested = &Option{Action: "import", Why: "no library card matches"}
 	}
 	return item, nil
+}
+
+// unbound is the index of the first candidate not bound to another app item, or -1.
+func unbound(cs []Candidate) int {
+	return slices.IndexFunc(cs, func(c Candidate) bool { return c.BoundTo == "" })
 }
 
 // coreFields decide between binding to a likely match and importing a copy.
@@ -270,10 +282,8 @@ func (s *Service) verdict(ctx context.Context, k kind, inst pluginhost.Instance,
 	if bound {
 		item.Verdict, item.BindingID = VerdictBound, b.id
 		// An archived bound card isn't in the index, so it gets no candidate.
-		for _, e := range idx.entries {
-			if e.id == b.entityID {
-				item.Candidates = []Candidate{candidate(e, map[string]int{})}
-			}
+		if e, ok := idx.byID[b.entityID]; ok {
+			item.Candidates = []Candidate{candidate(e, map[string]int{})}
 		}
 		return item, it, nil
 	}

@@ -20,6 +20,7 @@ import (
 // library outgrows it.
 type index struct {
 	entries []indexEntry
+	byID    map[int64]indexEntry
 	// byRemote maps the instance's bound remote IDs to their bindings.
 	byRemote map[string]indexBinding
 	// remoteOf maps bound card or lorebook IDs to their remote IDs.
@@ -41,7 +42,7 @@ type indexBinding struct {
 }
 
 func (s *Service) loadIndex(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo) (index, error) {
-	idx := index{byRemote: map[string]indexBinding{}, remoteOf: map[int64]string{}}
+	idx := index{byID: map[int64]indexEntry{}, byRemote: map[string]indexBinding{}, remoteOf: map[int64]string{}}
 	rows, err := s.pool.Query(ctx, `SELECT e.id, r.data, r.overrides -> $1, b.avatar_phash
 		FROM `+k.table+` e JOIN `+k.revTable+` r ON r.id = e.head_revision_id
 		LEFT JOIN blob b ON b.sha256 = r.avatar_blob
@@ -70,6 +71,7 @@ func (s *Service) loadIndex(ctx context.Context, k kind, inst pluginhost.Instanc
 			return err
 		}
 		idx.entries = append(idx.entries, ent)
+		idx.byID[ent.id] = ent
 		return nil
 	})
 	if err != nil {

@@ -403,7 +403,12 @@ func TestReconcileSuggestions(t *testing.T) {
 	e.appCard("two", edited("description", "personality", "mes_example"), nil)
 	e.appCard("exact", coreCard, nil)
 	e.appCard("new", map[string]any{"name": "Pell", "description": "A clockwork owl that reads the stars."}, nil)
-	ids := []string{bound.RemoteID, "one", "three", "two", "exact", "new"}
+	// A second app copy of e.card, which is already bound.
+	e.writeRemote("dupe", e.remote(bound.RemoteID))
+	quill := e.libCard(map[string]any{"name": "Quill", "description": "A scribe."})
+	quillBinding := e.push(quill)
+	e.appCard("quill", map[string]any{"name": "Quill", "description": "A sword swallower."}, nil)
+	ids := []string{bound.RemoteID, "one", "three", "two", "exact", "new", "dupe", "quill"}
 
 	got := e.reconcile(ReconcileParams{}, ids...)
 	for _, id := range ids {
@@ -419,7 +424,8 @@ func TestReconcileSuggestions(t *testing.T) {
 		}
 		return it
 	}
-	if it := suggested("one", "bind", tamsin); it.Candidates[0].DifferingFields != 1 {
+	// tamsin ties with twin and ranks first, but it's bound to another app item.
+	if it := suggested("one", "bind", twin); it.Candidates[0].CardID != tamsin || it.Candidates[0].DifferingFields != 1 {
 		t.Errorf("one candidates = %+v", it.Candidates)
 	}
 	it := suggested("three", "import", 0)
@@ -431,19 +437,26 @@ func TestReconcileSuggestions(t *testing.T) {
 			t.Errorf("three options = %+v", it.Options)
 		}
 	}
-	suggested("two", "bind", tamsin)
+	suggested("two", "bind", twin)
 	// tamsin is bound to its own app copy, so its exact twin is suggested.
 	if it := suggested("exact", "bind", twin); it.Candidates[0].BoundTo != taken.RemoteID {
 		t.Errorf("exact candidates = %+v", it.Candidates)
 	}
 	suggested("new", "import", 0)
+	if it := suggested("dupe", "skip", 0); !strings.Contains(it.Suggested.Why, bound.RemoteID) {
+		t.Errorf("dupe why = %q", it.Suggested.Why)
+	}
+	if it := suggested("quill", "import", 0); !hasOption(it, Option{Action: "bind", CardID: quill}) ||
+		it.Candidates[0].BoundTo != quillBinding.RemoteID {
+		t.Errorf("quill = %+v", it)
+	}
 	if got[bound.RemoteID].Suggested != nil {
 		t.Errorf("in-sync bound item suggests %+v", got[bound.RemoteID].Suggested)
 	}
 
 	four := 4
 	got = e.reconcile(ReconcileParams{SplitFields: &four}, "three")
-	suggested("three", "bind", tamsin)
+	suggested("three", "bind", twin)
 
 	// The app's edit to a bound card is drift to resolve.
 	e.editRemote(bound.RemoteID, "description", "A dwarf smith who sings.")

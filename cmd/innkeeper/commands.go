@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -211,14 +212,14 @@ func jobsCmd(args []string) error {
 		fmt.Println(strings.TrimSuffix(string(out), "\n"))
 		return nil
 	case "watch":
-		return watchJob(ctx, c, id)
+		return watchJob(ctx, c, id, os.Stdout)
 	}
 	return errors.New(usage)
 }
 
 // watchJob prints a line each time the job changes, and fails unless the job
 // succeeds.
-func watchJob(ctx context.Context, c *client, id string) error {
+func watchJob(ctx context.Context, c *client, id string, w io.Writer) error {
 	status := ""
 	err := c.stream(ctx, "/jobs/"+id+"/events", func(data []byte) error {
 		var j struct {
@@ -242,7 +243,7 @@ func watchJob(ctx context.Context, c *client, id string) error {
 		if j.Error != nil {
 			line += " error: " + *j.Error
 		}
-		fmt.Println(line)
+		fmt.Fprintln(w, line)
 		return nil
 	})
 	if err != nil {

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -86,7 +87,7 @@ func TestWatchJob(t *testing.T) {
 			w.Header().Set("Content-Type", "text/event-stream")
 			fmt.Fprint(w, tc.stream)
 		}))
-		err := watchJob(context.Background(), &client{base: srv.URL, token: "tok"}, "1")
+		err := watchJob(context.Background(), &client{base: srv.URL, token: "tok"}, "1", io.Discard)
 		srv.Close()
 		if tc.want == "" && err != nil || tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)) {
 			t.Fatalf("stream %q: err = %v, want %q", tc.stream, err, tc.want)

@@ -1,6 +1,7 @@
 package targets
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/merge"
+	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
@@ -72,33 +74,92 @@ func (s *Service) ResolveLorebook(ctx context.Context, r Resolution) (ResolveRes
 }
 
 func (s *Service) resolve(ctx context.Context, k kind, r Resolution) (ResolveResult, error) {
-	switch {
-	case len(r.Lorebooks) > 0:
-		return ResolveResult{}, fmt.Errorf("%w: nested lorebook resolutions aren't supported yet", library.ErrInvalid)
-	case r.Action == "bind" && r.BaseRevisionID == 0:
-		return ResolveResult{}, fmt.Errorf("%w: base_revision_id is required", library.ErrInvalid)
-	case r.Action == "bind":
-		return s.resolveBind(ctx, k, r)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return ResolveResult{}, err
 	}
-	return ResolveResult{}, fmt.Errorf("%w: action must be bind", library.ErrInvalid)
+	defer tx.Rollback(ctx)
+	rs := &resolver{s: s, tx: tx, books: map[string]ResolveResult{}}
+	res, err := rs.item(ctx, k, r)
+	if st := (*staleItem)(nil); errors.As(err, &st) {
+		// Fresh, so it reads the library without this transaction's writes.
+		_ = tx.Rollback(ctx)
+		return res, st.fresh(ctx, s)
+	}
+	if err != nil {
+		return res, err
+	}
+	return res, tx.Commit(ctx)
 }
 
-// resolveBind binds the app item to the card, taking each hunk from the side
-// its choice names, in one transaction.
-func (s *Service) resolveBind(ctx context.Context, k kind, r Resolution) (ResolveResult, error) {
+// resolver applies one call's resolutions in one transaction.
+type resolver struct {
+	s  *Service
+	tx pgx.Tx
+	// books are the world books resolved so far, by remote ID, so one that
+	// several cards link is resolved once.
+	books map[string]ResolveResult
+	// index is the instance's lorebook index, loaded for the first left-out world book.
+	index *index
+}
+
+// staleItem is a StaleError before its fresh comparison, which is read after
+// the transaction rolls back.
+type staleItem struct {
+	k          kind
+	instanceID int64
+	remoteID   string
+	id         int64
+}
+
+func (e *staleItem) Error() string { return (&StaleError{}).Error() }
+
+func (e *staleItem) fresh(ctx context.Context, s *Service) error {
+	c, err := s.compareItem(ctx, e.k, e.instanceID, e.remoteID, e.id)
+	if errors.Is(err, ErrNotFound) && e.id == 0 {
+		// An import of an unbound item has no card to compare with.
+		inst, info, err := s.describeReconcile(ctx, e.k, e.instanceID)
+		if err != nil {
+			return err
+		}
+		it, err := s.readItem(ctx, e.k, inst, info, e.remoteID, false)
+		if err != nil {
+			return err
+		}
+		c = Comparison{InstanceID: e.instanceID, RemoteID: e.remoteID, Base: "none", AppHash: it.hash}
+	} else if err != nil {
+		return err
+	}
+	return &StaleError{Comparison: c}
+}
+
+// item applies one resolution, its world books first.
+func (rs *resolver) item(ctx context.Context, k kind, r Resolution) (ResolveResult, error) {
 	res := ResolveResult{RemoteID: r.RemoteID, Action: r.Action}
+	switch {
+	case r.Action == "skip":
+		return res, nil
+	case r.Action != "bind" && r.Action != "import":
+		return res, fmt.Errorf("%w: action must be bind, import, or skip", library.ErrInvalid)
+	case r.Action == "bind" && r.BaseRevisionID == 0:
+		return res, fmt.Errorf("%w: base_revision_id is required", library.ErrInvalid)
+	case k.isLorebook() && len(r.Lorebooks) > 0:
+		return res, fmt.Errorf("%w: a world book has no nested world books", library.ErrInvalid)
+	}
+	if done, ok := rs.books[r.RemoteID]; ok && k.isLorebook() {
+		return done, nil
+	}
+	s := rs.s
 	inst, info, err := s.describePull(ctx, k, r.InstanceID)
 	if err != nil {
 		return res, err
 	}
 	rinfo := reconcileInfo(info)
-	choices, takeAppAvatar, err := splitAvatar(k, r.Choices)
-	if err != nil {
-		return res, err
-	}
 	id := r.CardID
-	if id == 0 {
-		b, err := itemBinding(ctx, s.pool, k, r.InstanceID, r.RemoteID)
+	if r.Action == "import" {
+		id = 0
+	} else if id == 0 {
+		b, err := itemBinding(ctx, rs.tx, k, r.InstanceID, r.RemoteID)
 		if err != nil {
 			return res, err
 		}
@@ -106,7 +167,7 @@ func (s *Service) resolveBind(ctx context.Context, k kind, r Resolution) (Resolv
 			return res, ErrNotFound
 		}
 	}
-	res.CardID = id
+	stale := &staleItem{k: k, instanceID: r.InstanceID, remoteID: r.RemoteID, id: id}
 	it, err := s.readItem(ctx, k, inst, rinfo, r.RemoteID, true)
 	if err != nil {
 		return res, err
@@ -114,18 +175,168 @@ func (s *Service) resolveBind(ctx context.Context, k kind, r Resolution) (Resolv
 	if it.avatarErr != nil {
 		return res, fmt.Errorf("app avatar: %w", it.avatarErr)
 	}
-	stale := func() error {
-		c, err := s.compareItem(ctx, k, r.InstanceID, r.RemoteID, id)
-		if err != nil {
-			return err
-		}
-		return &StaleError{Comparison: c}
-	}
 	if it.hash != r.AppHash {
-		return res, stale()
+		return res, stale
+	}
+	var linked []int64
+	if !k.isLorebook() {
+		if res.Lorebooks, linked, err = rs.lorebooks(ctx, inst, rinfo, r, it.links); err != nil {
+			return res, err
+		}
+	}
+	if r.Action == "import" {
+		if id, r.BaseRevisionID, err = rs.importItem(ctx, k, inst, r.InstanceID, r.RemoteID, it); err != nil {
+			return res, err
+		}
+		res.RevisionID = r.BaseRevisionID
+		// The new copy came from the app, so only what import left out differs,
+		// like SillyTavern's favorite star: app state this app keeps.
+		r.Choices, r.Default, r.AcceptedHash = nil, merge.ChooseKeepInApp, ""
+	}
+	bound, err := rs.bind(ctx, k, info, rinfo, it, r, id)
+	if err != nil {
+		return res, err
+	}
+	res.CardID, res.BindingID = bound.CardID, bound.BindingID
+	if bound.RevisionID != 0 {
+		res.RevisionID = bound.RevisionID
+	}
+	for _, lb := range linked {
+		if err := s.lib.LinkLorebookTx(ctx, rs.tx, id, lb); err != nil {
+			return res, err
+		}
+	}
+	if k.isLorebook() {
+		rs.books[r.RemoteID] = res
+	}
+	return res, nil
+}
+
+// lorebooks resolves a card's world books: the nested resolutions, then each
+// world book the app links to the card that the owner left out, by its
+// suggestion. It returns the lorebooks to link to the card.
+func (rs *resolver) lorebooks(ctx context.Context, inst pluginhost.Instance, info protocol.TargetInfo, r Resolution,
+	links []string) ([]ResolveResult, []int64, error) {
+	todo := slices.Clone(r.Lorebooks)
+	given := map[string]bool{}
+	for _, n := range r.Lorebooks {
+		given[n.RemoteID] = true
+	}
+	if info.Lorebooks == protocol.LorebooksStandalone {
+		for _, id := range links {
+			if given[id] {
+				continue
+			}
+			given[id] = true
+			n, err := rs.suggested(ctx, inst, info, r.InstanceID, id)
+			if err != nil {
+				return nil, nil, fmt.Errorf("world book %s: %w", id, err)
+			}
+			todo = append(todo, n)
+		}
+	}
+	var out []ResolveResult
+	var linked []int64
+	for _, n := range todo {
+		n.InstanceID = r.InstanceID
+		res, err := rs.item(ctx, lorebookKind, n)
+		if err != nil {
+			return nil, nil, fmt.Errorf("world book %s: %w", n.RemoteID, err)
+		}
+		out = append(out, res)
+		if res.Action != "skip" {
+			linked = append(linked, res.CardID)
+		}
+	}
+	return out, linked, nil
+}
+
+// suggested is the resolution Reconcile would suggest for a world book, read
+// fresh. A bound one with no drift binds again, which changes nothing.
+func (rs *resolver) suggested(ctx context.Context, inst pluginhost.Instance, info protocol.TargetInfo, instanceID int64,
+	remoteID string) (Resolution, error) {
+	s := rs.s
+	if rs.index == nil {
+		idx, err := s.loadIndex(ctx, lorebookKind, inst, info)
+		if err != nil {
+			return Resolution{}, err
+		}
+		rs.index = &idx
+	}
+	p, err := ReconcileParams{InstanceID: instanceID}.withDefaults()
+	if err != nil {
+		return Resolution{}, err
+	}
+	item, _, err := s.reconcileItem(ctx, lorebookKind, inst, info, *rs.index, p, remoteID)
+	if err != nil {
+		return Resolution{}, err
+	}
+	opt := item.Suggested
+	if opt == nil {
+		opt = &Option{Action: "skip"}
+		// An item the app can't give back gets only skip, as in Reconcile.
+		if b, ok := rs.index.byRemote[remoteID]; ok && item.Verdict != VerdictError {
+			opt = &Option{Action: "bind", CardID: b.entityID}
+		}
+	}
+	n := Resolution{RemoteID: remoteID, Action: opt.Action, AppHash: item.AppHash}
+	if opt.Action == "bind" {
+		c, err := s.compareItem(ctx, lorebookKind, instanceID, remoteID, opt.CardID)
+		if err != nil {
+			return Resolution{}, err
+		}
+		n.CardID, n.AppHash, n.BaseRevisionID, n.AcceptedHash = c.CardID, c.AppHash, c.HeadRevisionID, c.AcceptedHash
+	}
+	return n, nil
+}
+
+// importItem adds the app item to the library as a new card or lorebook and
+// returns it with its head revision. A card it was bound to on this instance
+// counts as missing from now on, as when an app reuses an ID.
+func (rs *resolver) importItem(ctx context.Context, k kind, inst pluginhost.Instance, instanceID int64, remoteID string,
+	it appItem) (int64, int64, error) {
+	s := rs.s
+	_, err := rs.tx.Exec(ctx, `UPDATE binding SET remote_state = 'missing', seen_data = NULL, version = version + 1
+		WHERE instance_id = $1 AND remote_id = $2 AND `+k.col+` IS NOT NULL AND remote_state <> 'missing'`,
+		instanceID, remoteID)
+	if err != nil {
+		return 0, 0, err
+	}
+	plugin := inst.Manifest.Name
+	provenance, source := plugin+":"+remoteID, "plugin:"+plugin
+	if !k.isLorebook() {
+		card, err := json.Marshal(map[string]any{"spec": "chara_card_v3", "spec_version": "3.0", "data": it.raw})
+		if err != nil {
+			return 0, 0, err
+		}
+		rev, err := s.lib.ImportCardTx(ctx, rs.tx, provenance, source, card, it.avatar)
+		return rev.EntityID, rev.ID, err
+	}
+	_, rev, err := s.lib.Lorebooks.CreateFromNameTx(ctx, rs.tx, cmp.Or(it.name, "lorebook"), provenance,
+		library.Edit{Data: it.raw, Source: source, Message: "Imported"})
+	return rev.EntityID, rev.ID, err
+}
+
+// bind binds the app item to the card, taking each hunk from the side its
+// choice names.
+func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.TargetInfo, it appItem, r Resolution,
+	id int64) (ResolveResult, error) {
+	s, tx := rs.s, rs.tx
+	res := ResolveResult{RemoteID: r.RemoteID, Action: r.Action, CardID: id}
+	stale := &staleItem{k: k, instanceID: r.InstanceID, remoteID: r.RemoteID, id: id}
+	choices, takeAppAvatar, err := splitAvatar(k, r.Choices)
+	if err != nil {
+		return res, err
 	}
 	accepted, acceptedHash, err := Project(it.raw, k.fields(info))
 	if err != nil {
+		return res, err
+	}
+	named, err := s.reg.GetInstance(ctx, r.InstanceID)
+	if err != nil {
+		return res, err
+	}
+	if err := lock(ctx, tx, k, r.InstanceID, id); err != nil {
 		return res, err
 	}
 	// Lorebook columns as bind writes them.
@@ -134,7 +345,11 @@ func (s *Service) resolveBind(ctx context.Context, k kind, r Resolution) (Resolv
 	if !k.isLorebook() {
 		switch info.Lorebooks {
 		case protocol.LorebooksEmbedded:
-			if _, lorebooks, err = s.lib.CardBook(ctx, id); err != nil {
+			// In the transaction, so an import's split lorebook counts.
+			err := tx.QueryRow(ctx, `SELECT array(SELECT l.head_revision_id FROM card_lorebook cl
+				JOIN lorebook l ON l.id = cl.lorebook_id WHERE cl.card_id = $1 ORDER BY l.head_revision_id)`, id).
+				Scan(&lorebooks)
+			if err != nil {
 				return res, err
 			}
 		case protocol.LorebooksStandalone:
@@ -143,18 +358,6 @@ func (s *Service) resolveBind(ctx context.Context, k kind, r Resolution) (Resolv
 				lorebookRemoteIDs = []string{}
 			}
 		}
-	}
-	named, err := s.reg.GetInstance(ctx, r.InstanceID)
-	if err != nil {
-		return res, err
-	}
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return res, err
-	}
-	defer tx.Rollback(ctx)
-	if err := lock(ctx, tx, k, r.InstanceID, id); err != nil {
-		return res, err
 	}
 	var headID int64
 	var headData, headOverrides json.RawMessage
@@ -178,8 +381,7 @@ func (s *Service) resolveBind(ctx context.Context, k kind, r Resolution) (Resolv
 	}
 	// Hunk IDs and statuses come from the compared head and ancestor, so choices can't apply to others.
 	if headID != r.BaseRevisionID || ancestorHash != r.AcceptedHash {
-		_ = tx.Rollback(ctx)
-		return res, stale()
+		return res, stale
 	}
 	avatar := ""
 	if headAvatar != nil {
@@ -353,9 +555,6 @@ func (s *Service) resolveBind(ctx context.Context, k kind, r Resolution) (Resolv
 		VALUES ($1, 'bind', $2, $3, $4, $5, $6, $7)`,
 		bindingID, revisionID, lorebooks, lorebookRemoteIDs, acceptedHash, r.RemoteID, appBehind)
 	if err != nil {
-		return res, err
-	}
-	if err := tx.Commit(ctx); err != nil {
 		return res, err
 	}
 	res.BindingID = bindingID

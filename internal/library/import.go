@@ -113,6 +113,15 @@ func (s *Entities) CreateFromName(ctx context.Context, name, provenance string, 
 	return ent, rev, tx.Commit(ctx)
 }
 
+// CreateFromNameTx is CreateFromName inside the caller's transaction.
+func (s *Entities) CreateFromNameTx(ctx context.Context, tx pgx.Tx, name, provenance string, e Edit) (Entity, Revision, error) {
+	r, err := s.prepare(e)
+	if err != nil {
+		return Entity{}, Revision{}, err
+	}
+	return s.createFromName(ctx, tx, name, provenance, r)
+}
+
 func (s *Entities) createFromName(ctx context.Context, tx pgx.Tx, name, provenance string, r revisionRow) (Entity, Revision, error) {
 	// Retried because another writer can take the same slug first.
 	for range 5 {
@@ -208,4 +217,35 @@ func (l *Library) ImportCard(ctx context.Context, provenance, source string, car
 		}
 	}
 	return cardID, created, nil
+}
+
+// ImportCardTx adds a CCv3 card as a new card inside the caller's
+// transaction, with its character_book as a new linked lorebook. Unlike
+// ImportCard it always creates, since the caller asked for a new copy and its
+// transaction makes a retry unnecessary. avatar is a blob's sha256, or empty.
+// It returns the card's head revision.
+func (l *Library) ImportCardTx(ctx context.Context, tx pgx.Tx, provenance, source string, card json.RawMessage,
+	avatar string) (Revision, error) {
+	name, data, book, err := SplitCard(card)
+	if err != nil {
+		return Revision{}, err
+	}
+	_, rev, err := l.Cards.CreateFromNameTx(ctx, tx, name, provenance,
+		Edit{Data: data, AvatarBlob: avatar, Source: source, Message: "Imported"})
+	if err != nil || book == nil {
+		return rev, err
+	}
+	var meta struct {
+		Name string `json:"name"`
+	}
+	_ = json.Unmarshal(book, &meta)
+	lb, _, err := l.Lorebooks.CreateFromNameTx(ctx, tx, cmp.Or(meta.Name, name+" lorebook"), provenance,
+		Edit{Data: book, Source: source, Message: "Split from imported card"})
+	if err != nil {
+		return Revision{}, err
+	}
+	if err := l.Lorebooks.DetectSourcesTx(ctx, tx, lb.ID, book); err != nil {
+		return Revision{}, err
+	}
+	return rev, l.LinkLorebookTx(ctx, tx, rev.EntityID, lb.ID)
 }

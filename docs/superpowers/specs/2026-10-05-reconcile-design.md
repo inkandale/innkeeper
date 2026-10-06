@@ -198,8 +198,13 @@ A resolution decides one app item:
 
 - `bind`: the app item and the library card are the same card.
 - `import`: make a new library card from the app item and bind it. Use this to
-  split an item that has diverged into a different character.
-- `skip`: do nothing. The next reconcile reports it again.
+  split an item that has diverged into a different character. It always makes
+  a new card, even when one matches exactly. A card already bound to the item
+  on this instance becomes `missing` there, as when an app reuses an ID.
+  What the import leaves out of the card, like SillyTavern's favorite star,
+  goes into this instance's override. Only `app_hash` is needed.
+- `skip`: do nothing, including the nested world books. The next reconcile
+  reports it again.
 
 `card_id` may be any library card, not only a candidate from the snapshot.
 Clients find one with `POST /search` and check it with `compare`.
@@ -218,8 +223,12 @@ The `avatar` key takes `library` or `app`, and only when the avatars differ.
 
 A card's resolution carries one nested resolution per linked world book, in
 the same shape under `lorebooks`. A nested item left out takes its suggested
-option. The card's lorebook links are set from the outcome: a world book that
-is bound or imported is linked to the card; a skipped one is not.
+option, from a fresh read; one the app can't give back is skipped, and a bound
+one with no drift binds again, which changes nothing. The card's lorebook links
+are set from the outcome: a world book that is bound or imported is linked to
+the card; a skipped one is not. A world book listed twice in one resolution is
+resolved once. The card and its world books resolve in one transaction, so one
+failure writes nothing.
 
 | Choice | Library card | Next push to this app | Other apps |
 |---|---|---|---|

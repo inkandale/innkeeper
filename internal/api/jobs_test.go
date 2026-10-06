@@ -137,7 +137,7 @@ func TestWatchPings(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/jobs/%d/events", e.srv.URL, j.ID), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/api/jobs/%d/events", e.srv.URL, j.ID), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +177,7 @@ func TestWatchEndsWhenStopping(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/jobs/%d/events", e.srv.URL, j.ID), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/api/jobs/%d/events", e.srv.URL, j.ID), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

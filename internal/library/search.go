@@ -22,6 +22,7 @@ type Query struct {
 	Include  []string `json:"include,omitempty" doc:"Extra data per hit: tags, lorebooks."`
 	Fields   []string `json:"fields,omitempty" doc:"Card data keys to return per hit, plus avatar. Default: name."`
 	Sort     string   `json:"sort,omitempty" enum:"relevance,updated,name,created" doc:"Default: relevance with text, newest first without."`
+	Facets   []string `json:"facets,omitempty" doc:"Counts to return over every match: tags, collections, targets, sources."`
 	Page     Page     `json:"page,omitempty"`
 }
 
@@ -40,6 +41,7 @@ type Filter struct {
 	Not         *Filter      `json:"not,omitempty"`
 	Tag         *string      `json:"tag,omitempty" doc:"Has this tag, in any case."`
 	Collection  *int64       `json:"collection,omitempty" doc:"Is in this collection."`
+	Source      *string      `json:"source,omitempty" doc:"Has a source of this kind, such as chub."`
 	Archived    *bool        `json:"archived,omitempty"`
 	TargetState *TargetState `json:"target_state,omitempty" doc:"Is pushed to this target and stands this way. A card never pushed there matches no state."`
 }
@@ -69,6 +71,81 @@ type Results struct {
 	Hits       []Hit   `json:"hits"`
 	NextCursor *string `json:"next_cursor,omitempty"`
 	Total      int     `json:"total" doc:"How many cards match."`
+	Facets     *Facets `json:"facets,omitempty"`
+}
+
+// Facets counts the matching cards per value. Only the facets asked for are set.
+type Facets struct {
+	Tags        []TagCount        `json:"tags,omitempty" doc:"The 50 most used."`
+	Collections []CollectionCount `json:"collections,omitempty"`
+	Targets     []TargetCount     `json:"targets,omitempty"`
+	Sources     []SourceCount     `json:"sources,omitempty"`
+}
+
+// CollectionCount is a collection and how many matching cards it has.
+type CollectionCount struct {
+	ID    int64  `json:"id"`
+	Name  string `json:"name"`
+	Cards int    `json:"cards"`
+}
+
+// TargetCount is how many matching cards stand one way on one target.
+type TargetCount struct {
+	Instance int64  `json:"instance"`
+	Is       string `json:"is"`
+	Cards    int    `json:"cards"`
+}
+
+// SourceCount is a source kind and how many matching cards have it.
+type SourceCount struct {
+	Kind  string `json:"kind"`
+	Cards int    `json:"cards"`
+}
+
+// facetSQL selects each facet's rows for the card IDs in match.
+var facetSQL = map[string]func(match string) string{
+	"tags": func(m string) string {
+		return `SELECT t.name, count(*)::int FROM card_tag ct JOIN tag t ON t.id = ct.tag_id
+			WHERE ct.card_id IN (` + m + `) GROUP BY t.id ORDER BY count(*) DESC, lower(t.name) LIMIT 50`
+	},
+	"collections": func(m string) string {
+		return `SELECT co.id, co.name, count(*)::int FROM collection_card cc JOIN collection co ON co.id = cc.collection_id
+			WHERE cc.card_id IN (` + m + `) GROUP BY co.id ORDER BY lower(co.name)`
+	},
+	"targets": func(m string) string {
+		return `SELECT instance_id, status, count(*)::int FROM binding_status
+			WHERE card_id IN (` + m + `) GROUP BY 1, 2 ORDER BY 1, 2`
+	},
+	"sources": func(m string) string {
+		return `SELECT kind, count(DISTINCT card_id)::int FROM card_source
+			WHERE removed_at IS NULL AND card_id IN (` + m + `) GROUP BY kind ORDER BY kind`
+	},
+}
+
+// facets counts the cards matching cond for each facet in names.
+func (l *Library) facets(ctx context.Context, names []string, cond string, args []any) (*Facets, error) {
+	match := `SELECT c.id FROM card c JOIN card_revision r ON r.id = c.head_revision_id WHERE ` + cond
+	f := &Facets{}
+	for _, name := range names {
+		rows, err := l.pool.Query(ctx, facetSQL[name](match), args...)
+		if err != nil {
+			return nil, err
+		}
+		switch name {
+		case "tags":
+			f.Tags, err = pgx.CollectRows(rows, pgx.RowToStructByPos[TagCount])
+		case "collections":
+			f.Collections, err = pgx.CollectRows(rows, pgx.RowToStructByPos[CollectionCount])
+		case "targets":
+			f.Targets, err = pgx.CollectRows(rows, pgx.RowToStructByPos[TargetCount])
+		case "sources":
+			f.Sources, err = pgx.CollectRows(rows, pgx.RowToStructByPos[SourceCount])
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	return f, nil
 }
 
 // where collects SQL conditions and their arguments.
@@ -88,7 +165,7 @@ func (w *where) filter(f Filter) (string, error) {
 		return "", fmt.Errorf("%w: filter has more than 200 conditions", ErrInvalid)
 	}
 	set := 0
-	for _, ok := range []bool{f.And != nil, f.Or != nil, f.Not != nil, f.Tag != nil, f.Collection != nil, f.Archived != nil, f.TargetState != nil} {
+	for _, ok := range []bool{f.And != nil, f.Or != nil, f.Not != nil, f.Tag != nil, f.Collection != nil, f.Source != nil, f.Archived != nil, f.TargetState != nil} {
 		if ok {
 			set++
 		}
@@ -110,6 +187,9 @@ func (w *where) filter(f Filter) (string, error) {
 	case f.Collection != nil:
 		return `EXISTS (SELECT 1 FROM collection_card cc
 			WHERE cc.card_id = c.id AND cc.collection_id = ` + w.arg(*f.Collection) + `)`, nil
+	case f.Source != nil:
+		return `EXISTS (SELECT 1 FROM card_source cs
+			WHERE cs.card_id = c.id AND cs.kind = ` + w.arg(*f.Source) + ` AND cs.removed_at IS NULL)`, nil
 	case f.TargetState != nil:
 		if !slices.Contains(targetStatuses, f.TargetState.Is) {
 			return "", fmt.Errorf("%w: target_state.is must be one of %v", ErrInvalid, targetStatuses)
@@ -224,6 +304,11 @@ func (l *Library) Search(ctx context.Context, q Query) (Results, error) {
 			return Results{}, fmt.Errorf("%w: unknown include %q", ErrInvalid, inc)
 		}
 	}
+	for _, name := range q.Facets {
+		if facetSQL[name] == nil {
+			return Results{}, fmt.Errorf("%w: unknown facet %q", ErrInvalid, name)
+		}
+	}
 	order := "c.id DESC"
 	switch q.Sort {
 	case "", "relevance":
@@ -242,6 +327,11 @@ func (l *Library) Search(ctx context.Context, q Query) (Results, error) {
 	if err := l.pool.QueryRow(ctx, `SELECT count(*) FROM card c JOIN card_revision r ON r.id = c.head_revision_id
 		WHERE `+cond, w.args...).Scan(&res.Total); err != nil {
 		return Results{}, err
+	}
+	if len(q.Facets) > 0 {
+		if res.Facets, err = l.facets(ctx, q.Facets, cond, w.args); err != nil {
+			return Results{}, err
+		}
 	}
 	sql := `SELECT c.id, c.slug, r.id, c.archived_at, r.data, r.avatar_blob, ` + tags + `, ` + books + `
 		FROM card c JOIN card_revision r ON r.id = c.head_revision_id

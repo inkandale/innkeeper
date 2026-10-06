@@ -229,3 +229,62 @@ func TestSearchPageNumberAndTotal(t *testing.T) {
 		t.Fatalf("negative number: %v", err)
 	}
 }
+
+func TestSearchSourceFilter(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	s := seedSearch(t, lib)
+	if _, err := lib.Cards.AddSource(ctx, s.carrow, Source{Kind: "chub", Ref: "carrow"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := lib.Search(ctx, Query{Filter: &Filter{Source: ptr("chub")}})
+	if err != nil || !slices.Equal(hitIDs(got), []int64{s.carrow}) {
+		t.Fatalf("hits = %v, %v", hitIDs(got), err)
+	}
+}
+
+func TestSearchFacets(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	s := seedSearch(t, lib)
+	if err := lib.SetCardTags(ctx, s.carrow, []string{"pirate", "fantasy"}); err != nil {
+		t.Fatal(err)
+	}
+	crew, err := lib.CreateCollection(ctx, "Crew", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.AddToCollection(ctx, crew.ID, s.carrow); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lib.Cards.AddSource(ctx, s.brakka, Source{Kind: "chub", Ref: "brakka"}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := lib.Search(ctx, Query{Facets: []string{"tags", "collections", "targets", "sources"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := got.Facets
+	if f == nil ||
+		!slices.Equal(f.Tags, []TagCount{{"fantasy", 2}, {"pirate", 1}}) ||
+		!slices.Equal(f.Collections, []CollectionCount{{crew.ID, "Crew", 1}}) ||
+		!slices.Equal(f.Sources, []SourceCount{{"chub", 1}}) ||
+		len(f.Targets) != 0 {
+		t.Fatalf("facets = %+v", f)
+	}
+
+	// Counts follow the query: only Brakka is tagged fantasy and not pirate.
+	got, err = lib.Search(ctx, Query{Facets: []string{"tags"},
+		Filter: &Filter{Not: &Filter{Tag: ptr("pirate")}}})
+	if err != nil || !slices.Equal(got.Facets.Tags, []TagCount{{"fantasy", 1}}) {
+		t.Fatalf("filtered facets = %+v, %v", got.Facets, err)
+	}
+
+	if plain, _ := lib.Search(ctx, Query{}); plain.Facets != nil {
+		t.Fatalf("facets without asking: %+v", plain.Facets)
+	}
+	if _, err := lib.Search(ctx, Query{Facets: []string{"colors"}}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("bad facet: %v", err)
+	}
+}

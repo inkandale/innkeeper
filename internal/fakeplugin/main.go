@@ -104,6 +104,9 @@ func main() {
 		case protocol.MethodTargetGetLorebook:
 			return newTarget(config).getLorebook(params)
 		case protocol.MethodTargetList, protocol.MethodTargetListLorebooks:
+			if config["fail_list"] == "retryable" {
+				return nil, protocol.NewError(-32000, "app unavailable", true)
+			}
 			if *mode == "bad-list" {
 				return protocol.TargetListResult{Items: []protocol.TargetItem{{Name: "No ID"}}}, nil
 			}

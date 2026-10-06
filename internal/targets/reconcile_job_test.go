@@ -75,3 +75,16 @@ func TestEnqueueReconcileRefuses(t *testing.T) {
 		t.Errorf("%d jobs queued, %v", n, err)
 	}
 }
+
+func TestReconcileJobRetries(t *testing.T) {
+	e := setup(t, map[string]any{"fail_list": "retryable"})
+	q := jobs.New(e.pool)
+	wait := e.startWorker(q)
+	j, err := e.s.EnqueueReconcile(e.ctx, q, ReconcileParams{InstanceID: e.inst})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j = wait(j.ID); j.Status != jobs.StatusQueued || j.Attempts != 1 {
+		t.Errorf("job = %s after %d attempts: %v", j.Status, j.Attempts, j.Error)
+	}
+}

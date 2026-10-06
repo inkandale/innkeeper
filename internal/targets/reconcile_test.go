@@ -564,8 +564,10 @@ func TestReconcileInstance(t *testing.T) {
 	if sum != 7 || snap.Totals[VerdictBound] != 1 || snap.Totals[VerdictNew] != 4 || snap.Totals[VerdictExact] != 1 || snap.Totals[VerdictLikely] != 1 {
 		t.Errorf("totals = %v", snap.Totals)
 	}
-	if last := progress[len(progress)-1]; last != [2]int{7, 7} {
-		t.Errorf("progress = %v", progress)
+	for i, p := range progress {
+		if p != [2]int{i + 1, 7} || len(progress) != 7 {
+			t.Fatalf("progress = %v", progress)
+		}
 	}
 }
 
@@ -622,5 +624,78 @@ func TestReconcileCapsCandidates(t *testing.T) {
 	it := e.reconcile(ReconcileParams{}, "guard")["guard"]
 	if !slices.Equal(ids(it.Candidates), want[:10]) {
 		t.Errorf("candidates = %v", ids(it.Candidates))
+	}
+}
+
+func TestReconcileUnlistedLinkGrowsTotal(t *testing.T) {
+	e := setup(t, map[string]any{"lorebooks": "standalone"})
+	// The fake lists only l*.json, so x1 is linked but never listed.
+	e.writeRemote("x1", map[string]any{"lorebook": map[string]any{"name": "Hidden",
+		"entries": []any{map[string]any{"keys": []any{"k"}, "content": "Unlisted."}}}})
+	e.appCard("r5", map[string]any{"name": "Pell", "description": "An owl."},
+		map[string]any{"lorebook_remote_ids": []string{"x1"}})
+	var progress [][2]int
+	snap, err := e.s.Reconcile(e.ctx, ReconcileParams{InstanceID: e.inst}, func(done, total int) {
+		progress = append(progress, [2]int{done, total})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(progress, [][2]int{{1, 1}, {2, 2}}) || len(snap.Items) != 1 || len(snap.Items[0].Lorebooks) != 1 {
+		t.Errorf("progress = %v, snapshot = %+v", progress, snap)
+	}
+}
+
+func TestReconcileLorebookIgnoresSplit(t *testing.T) {
+	e := setup(t, map[string]any{"lorebooks": "standalone"})
+	sea, _, err := e.lib.Lorebooks.CreateFromName(e.ctx, "Sea lore", "upload", library.Edit{Source: "ui",
+		Data: json.RawMessage(`{"name": "Sea lore", "description": "Old tales.",
+			"entries": [{"keys": ["tide"], "content": "Tides rise twice a day."}]}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// name, description, and entries all differ; a card would be imported.
+	e.writeRemote("l1", map[string]any{"lorebook": map[string]any{"name": "SEA LORE", "description": "New tales.",
+		"entries": []any{map[string]any{"keys": []any{"tide"}, "content": "A kraken sleeps below the reef."}}}})
+	one := 1
+	snap, err := e.s.Reconcile(e.ctx, ReconcileParams{InstanceID: e.inst, SplitFields: &one}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Lorebooks) != 1 {
+		t.Fatalf("lorebooks = %+v", snap.Lorebooks)
+	}
+	lb := snap.Lorebooks[0]
+	if lb.Verdict != VerdictLikely || lb.Candidates[0].DifferingFields != 3 || lb.Suggested == nil ||
+		lb.Suggested.Action != "bind" || lb.Suggested.CardID != sea.ID {
+		t.Errorf("l1 = %+v, suggested %+v", lb, lb.Suggested)
+	}
+}
+
+func TestReconcileSplitUsesUnboundCandidate(t *testing.T) {
+	e := setup(t, map[string]any{"fields": []string{"name", "description", "personality", "scenario", "first_mes",
+		"mes_example"}})
+	taken := e.libCard(coreCard)
+	if _, err := e.lib.Cards.AddSource(e.ctx, taken, library.Source{Kind: "chub", Ref: "someone/tamsin"}); err != nil {
+		t.Fatal(err)
+	}
+	e.push(taken)
+	free := e.libCard(edited("description", "personality", "scenario"))
+	chub := map[string]any{"chub": map[string]any{"full_path": "someone/tamsin"}}
+	// Both rank the bound card first by source; the free card decides.
+	near := edited("mes_example")
+	near["extensions"] = chub
+	far := edited("description", "personality", "scenario", "mes_example")
+	far["extensions"] = chub
+	e.appCard("like-taken", near, nil)
+	e.appCard("like-free", far, nil)
+
+	got := e.reconcile(ReconcileParams{}, "like-taken", "like-free")
+	for id, want := range map[string]Option{"like-taken": {Action: "import"}, "like-free": {Action: "bind", CardID: free}} {
+		it := got[id]
+		if ids(it.Candidates)[0] != taken || it.Suggested == nil || it.Suggested.Action != want.Action ||
+			it.Suggested.CardID != want.CardID {
+			t.Errorf("%s = %+v, suggested %+v", id, ids(it.Candidates), it.Suggested)
+		}
 	}
 }

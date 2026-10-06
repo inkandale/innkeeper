@@ -87,17 +87,23 @@ func (s *Service) BindLorebook(ctx context.Context, instanceID, lorebookID int64
 
 func (s *Service) bindResolved(ctx context.Context, k kind, instanceID, id int64, remoteID string) (Binding, error) {
 	// Bind is for an unbound pair; resolve would also rebind or update one.
-	var bound bool
-	err := s.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM binding WHERE instance_id = $1 AND (`+k.col+` = $2
-		OR remote_id = $3 AND `+k.col+` IS NOT NULL AND remote_state <> 'missing'))`, instanceID, id, remoteID).Scan(&bound)
-	if err != nil {
-		return Binding{}, err
+	bound := func(where string, args ...any) error {
+		var b bool
+		err := s.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM binding WHERE instance_id = $1 AND `+where+`)`,
+			append([]any{instanceID}, args...)...).Scan(&b)
+		if err == nil && b {
+			err = ErrBound
+		}
+		return err
 	}
-	if bound {
-		return Binding{}, ErrBound
+	if err := bound(k.col+` = $2`, id); err != nil {
+		return Binding{}, err
 	}
 	c, err := s.compareItem(ctx, k, instanceID, remoteID, id)
 	if err != nil {
+		return Binding{}, err
+	}
+	if err := bound(`remote_id = $2 AND `+k.col+` IS NOT NULL AND remote_state <> 'missing'`, remoteID); err != nil {
 		return Binding{}, err
 	}
 	// The app's linked world books are left for reconcile, so bind changes nothing in the library.

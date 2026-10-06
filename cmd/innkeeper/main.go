@@ -18,7 +18,8 @@ const usage = `usage:
   innkeeper api
   innkeeper openapi
   innkeeper token create <name> [read|write|destructive] | list | revoke <id> | revoke-grant <id>
-  innkeeper backup <dir>
+  innkeeper backup <dir> [assets|config]
+  innkeeper restore [--replace] <archive-or-backup-dir>...
 
 API commands (read INNKEEPER_URL and INNKEEPER_TOKEN):
   innkeeper call <method> <path> [json]
@@ -61,7 +62,9 @@ func run(args []string) error {
 	case cmd == "token":
 		return token(rest)
 	case cmd == "backup":
-		return backup(rest)
+		return backupCmd(rest)
+	case cmd == "restore":
+		return restoreCmd(rest)
 	case cmd == "call":
 		return call(rest)
 	case cmd == "import":

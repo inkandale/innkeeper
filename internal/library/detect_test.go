@@ -77,3 +77,15 @@ func TestParseSourceURLLorebook(t *testing.T) {
 		t.Fatalf("got %+v, %v", s, err)
 	}
 }
+
+func TestValidateSource(t *testing.T) {
+	got, err := ValidateSource(Source{Kind: "chub", Ref: "a/b", ExternalID: "5", URL: "https://evil.example"}, true)
+	if err != nil || got.URL != "https://chub.ai/lorebooks/a/b" || got.ExternalID != "5" {
+		t.Fatalf("got %+v, %v", got, err)
+	}
+	for _, s := range []Source{{Kind: "chub", Ref: "a"}, {Kind: "chub", Ref: "../b"}, {Kind: "chub", Ref: "a/b c"}, {Kind: "other", Ref: "a/b"}, {}} {
+		if _, err := ValidateSource(s, false); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%+v: got %v, want ErrInvalid", s, err)
+		}
+	}
+}

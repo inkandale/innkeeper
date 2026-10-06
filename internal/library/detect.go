@@ -25,6 +25,7 @@ type detector struct {
 	kind     string
 	fromData func(data map[string]any, lorebook bool) (Source, bool)
 	fromURL  func(u *url.URL) (Source, bool)
+	fromRef  func(ref string, lorebook bool) (Source, bool)
 }
 
 var detectors = []detector{chub}
@@ -48,6 +49,7 @@ var chub = detector{
 		}
 		return s, true
 	},
+	fromRef: func(ref string, lorebook bool) (Source, bool) { return chubSource(chubDir(lorebook), ref) },
 	fromURL: func(u *url.URL) (Source, bool) {
 		if (u.Scheme != "http" && u.Scheme != "https") || (!strings.EqualFold(u.Hostname(), "chub.ai") && !strings.EqualFold(u.Hostname(), "www.chub.ai")) {
 			return Source{}, false
@@ -109,4 +111,20 @@ func ParseSourceURL(raw string) (Source, error) {
 		}
 	}
 	return Source{}, fmt.Errorf("%w: no known site matches that URL", ErrInvalid)
+}
+
+// ValidateSource checks a kind and ref the same way detection and URL parsing
+// do, and returns the source with its canonical URL. ExternalID is kept.
+func ValidateSource(src Source, lorebook bool) (Source, error) {
+	for _, d := range detectors {
+		if d.kind != src.Kind {
+			continue
+		}
+		if got, ok := d.fromRef(src.Ref, lorebook); ok {
+			got.ExternalID = src.ExternalID
+			return got, nil
+		}
+		return Source{}, fmt.Errorf("%w: %q is not a valid %s ref", ErrInvalid, src.Ref, src.Kind)
+	}
+	return Source{}, fmt.Errorf("%w: unknown source kind %q", ErrInvalid, src.Kind)
 }

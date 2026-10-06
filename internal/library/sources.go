@@ -65,6 +65,7 @@ func (s *Entities) RemoveSource(ctx context.Context, id, sourceID int64) error {
 
 // DetectSources records the sources data names as auto-linked; removed and owner rows stay as they are.
 func (s *Entities) DetectSources(ctx context.Context, id int64, data json.RawMessage) error {
+	// An existing row is left as is on purpose, so detection never overwrites what the owner set.
 	for _, src := range Detect(data, s.k.table == "lorebook") {
 		_, err := s.pool.Exec(ctx, `INSERT INTO `+s.k.table+`_source (`+s.k.fk+`, kind, ref, external_id, url, linked_by)
 			VALUES ($1, $2, $3, nullif($4, ''), nullif($5, ''), 'auto') ON CONFLICT DO NOTHING`,

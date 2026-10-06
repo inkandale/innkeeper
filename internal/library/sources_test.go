@@ -48,7 +48,7 @@ func TestSourcesLifecycle(t *testing.T) {
 	if ids, _ := s.BySource(ctx, "chub", "u/a"); len(ids) != 0 {
 		t.Fatalf("BySource saw a removed row: %v", ids)
 	}
-	if err := s.RemoveSource(ctx, id, got0(t, s, id)); !errors.Is(err, ErrNotFound) {
+	if err := s.RemoveSource(ctx, id, sourceID(t, s, id)); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("remove twice: %v", err)
 	}
 
@@ -75,6 +75,28 @@ func TestSourcesLifecycle(t *testing.T) {
 		t.Fatalf("other card's source: %v", err)
 	}
 
+	// An empty external_id and url keep what is stored.
+	kept, err := s.AddSource(ctx, id, Source{Kind: "site", Ref: "x", ExternalID: "9", URL: "https://site.example/x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := s.AddSource(ctx, id, Source{Kind: "site", Ref: "x"})
+	if err != nil || again.ID != kept.ID || again.ExternalID != "9" || again.URL != "https://site.example/x" {
+		t.Fatalf("re-add with empty fields: %+v, %v", again, err)
+	}
+	// Detection never refreshes an owner row.
+	if _, err := s.AddSource(ctx, id, Source{Kind: "chub", Ref: "u/a", ExternalID: "1", URL: "https://example.org/mine"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DetectSources(ctx, id, []byte(chubCard)); err != nil {
+		t.Fatal(err)
+	}
+	for _, src := range mustSources(t, s, id) {
+		if src.Ref == "u/a" && (src.LinkedBy != "owner" || src.ExternalID != "1" || src.URL != "https://example.org/mine") {
+			t.Fatalf("detect changed an owner row: %+v", src)
+		}
+	}
+
 	for _, bad := range []Source{{Ref: "x"}, {Kind: "chub"}, {Kind: "Chub", Ref: "x"}} {
 		if _, err := s.AddSource(ctx, id, bad); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("%+v: got %v, want ErrInvalid", bad, err)
@@ -85,7 +107,16 @@ func TestSourcesLifecycle(t *testing.T) {
 	}
 }
 
-func got0(t *testing.T, s *Entities, id int64) int64 {
+func mustSources(t *testing.T, s *Entities, id int64) []Source {
+	t.Helper()
+	got, err := s.Sources(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+func sourceID(t *testing.T, s *Entities, id int64) int64 {
 	t.Helper()
 	var sid int64
 	if err := s.pool.QueryRow(context.Background(), `SELECT id FROM `+s.k.table+`_source WHERE `+s.k.fk+` = $1`, id).Scan(&sid); err != nil {

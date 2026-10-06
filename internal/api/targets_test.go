@@ -183,6 +183,31 @@ func TestLorebookPushRoutes(t *testing.T) {
 	}
 }
 
+func TestBulkLorebookPush(t *testing.T) {
+	e := newEnv(t)
+	var lb entityOut
+	e.call("POST", "/lorebooks", map[string]any{"data": map[string]any{"name": "Forge lore", "entries": []any{}}}, 201, &lb)
+	body := func(inst int64) map[string]any {
+		return map[string]any{"instance_id": inst, "kind": "lorebook", "query": map[string]any{"text": "forge"}}
+	}
+
+	embedded, _ := e.target() // the fake keeps lorebooks inside cards
+	e.call("POST", "/pushes", body(embedded), 400, nil)
+
+	standalone, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "fake", Name: "Standalone",
+		Config: map[string]any{"dir": t.TempDir(), "lorebooks": "standalone"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var j jobOut
+	e.call("POST", "/pushes", body(standalone), 202, &j)
+	var children []jobOut
+	e.call("GET", fmt.Sprintf("/jobs?parent=%d", j.ID), nil, 200, &children)
+	if len(children) != 1 || !strings.Contains(string(children[0].Payload), fmt.Sprintf(`"lorebook_id":%d`, lb.ID)) {
+		t.Fatalf("children = %+v", children)
+	}
+}
+
 func TestPushConfirm(t *testing.T) {
 	e := newEnv(t)
 	inst, _ := e.target()

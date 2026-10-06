@@ -175,6 +175,10 @@ func (s *Server) targetRoutes(api huma.API) {
 			search, enqueue := s.Lib.SearchIDs, s.Targets.EnqueueBulkPush
 			if in.Body.Kind == "lorebook" {
 				search, enqueue = s.Lib.SearchLorebookIDs, s.Targets.EnqueueBulkLorebookPush
+				// Fail now; otherwise every child job fails (and retries) on the same reason.
+				if err := s.Targets.CheckLorebookPush(ctx, in.Body.InstanceID); err != nil {
+					return nil, s.fail(err)
+				}
 			}
 			ids, err := search(ctx, q)
 			if err != nil {

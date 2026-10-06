@@ -49,8 +49,8 @@ func (s *Service) push(ctx context.Context, k kind, instanceID, id int64, newCop
 	if err != nil {
 		return Binding{}, err
 	}
-	if k.isLorebook() && info.Lorebooks != protocol.LorebooksStandalone {
-		return Binding{}, fmt.Errorf("%w: lorebooks for %s", ErrCannot, inst.Manifest.Name)
+	if err := lorebookCheck(k, inst, info); err != nil {
+		return Binding{}, err
 	}
 	r, err := s.render(ctx, k, instanceID, id, info)
 	if err != nil {

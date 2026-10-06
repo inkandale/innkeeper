@@ -79,8 +79,10 @@ func RestoreHandler(s Settings, o RestoreOptions, afterConfig func(context.Conte
 		defer f.Close()
 		o.Replace = p.Replace
 		res, err := Restore(ctx, f, o)
-		if b, merr := json.Marshal(res); merr == nil {
-			r.SetProgress(b)
+		if res.Type != "" {
+			if b, merr := json.Marshal(res); merr == nil {
+				r.SetProgress(b)
+			}
 		}
 		if err != nil {
 			if ctx.Err() != nil {

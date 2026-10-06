@@ -43,6 +43,16 @@ func TestSourcesAPI(t *testing.T) {
 				t.Fatalf("sources = %+v", list)
 			}
 
+			// A pasted URL is stored with its entity type's directory.
+			other := map[string]string{"cards": "lorebooks", "lorebooks": "characters"}[plural]
+			var swapped library.Source
+			e.call("PUT", path, map[string]any{"url": "https://chub.ai/" + other + "/u/c"}, 200, &swapped)
+			if swapped.URL != "https://chub.ai/"+dir+"/u/c" {
+				t.Fatalf("swapped = %+v", swapped)
+			}
+			e.call("PUT", path, map[string]any{"url": "https://chub.ai/" + dir + "/u/a", "kind": "chub", "ref": "u/a"}, 422, nil)
+			e.call("DELETE", fmt.Sprintf("%s/%d", path, swapped.ID), nil, 204, nil)
+
 			for _, bad := range []map[string]any{
 				{"url": "https://example.com/x"}, {"url": "not a url"},
 				{"kind": "chub", "ref": "../b"}, {"kind": "chub", "ref": "onlyone"}, {"kind": "nope", "ref": "a/b"}, {},

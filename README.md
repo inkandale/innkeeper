@@ -240,7 +240,7 @@ Add or remove one yourself with the API, MCP tools, or CLI:
 ```bash
 innkeeper sources 12 add https://chub.ai/characters/user/name
 innkeeper sources 12 remove 3
-innkeeper call GET /lorebooks/5/sources    # lorebooks use the API
+innkeeper call GET /lorebooks/5/sources    # the CLI covers cards; use the API or MCP for lorebooks
 ```
 
 A removed source stays removed: detection won't add it back.

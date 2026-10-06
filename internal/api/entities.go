@@ -317,13 +317,20 @@ func (s *Server) entityRoutes(api huma.API, ents *library.Entities, plural, sing
 		Path: item + "/sources", Summary: "Link a " + singular + " to a site",
 		Description: "Takes a url, or a kind and ref. Restores a source that was removed.", Tags: tags},
 		func(ctx context.Context, in *addSourceIn) (*sourceResp, error) {
-			var src library.Source
-			var err error
-			if in.Body.URL != "" {
-				src, err = library.ParseSourceURL(in.Body.URL)
-			} else {
-				src, err = library.ValidateSource(library.Source{Kind: in.Body.Kind, Ref: in.Body.Ref, ExternalID: in.Body.ExternalID}, ents == s.Lib.Lorebooks)
+			b := in.Body
+			if b.URL != "" && (b.Kind != "" || b.Ref != "" || b.ExternalID != "") {
+				return nil, huma.Error422UnprocessableEntity("give a url, or a kind and ref, not both")
 			}
+			lorebook := ents == s.Lib.Lorebooks
+			src := library.Source{Kind: b.Kind, Ref: b.Ref, ExternalID: b.ExternalID}
+			if b.URL != "" {
+				var err error
+				if src, err = library.ParseSourceURL(b.URL); err != nil {
+					return nil, huma.Error422UnprocessableEntity(err.Error())
+				}
+			}
+			// Rebuilt so the stored URL always matches the entity type.
+			src, err := library.ValidateSource(src, lorebook)
 			if err != nil {
 				return nil, huma.Error422UnprocessableEntity(err.Error())
 			}

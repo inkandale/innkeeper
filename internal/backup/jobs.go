@@ -25,11 +25,15 @@ var errNoDir = errors.New("INNKEEPER_BACKUP_DIR isn't set on the worker")
 func BackupHandler(s Settings, pool *pgxpool.Pool, o Options, t Type) jobs.Handler {
 	return func(ctx context.Context, r *jobs.Run) error {
 		if s.Dir == "" {
-			return errNoDir
+			return fmt.Errorf("%w: %w", jobs.ErrFinal, errNoDir)
 		}
 		o.Dir, o.Keep = s.Dir, s.Keep[t]
 		info, err := Write(ctx, pool, t, o)
-		// A prune error still leaves the backup it came after.
+		if info.Name == "" && err != nil {
+			return fmt.Errorf("%w: %w", jobs.ErrRetry, err)
+		}
+		// A prune error still leaves the backup it came after, so a retry
+		// would only add another.
 		if info.Name != "" {
 			r.SetProgress(fmt.Appendf(nil, `{"name": %q, "size": %d}`, info.Name, info.Size))
 		}

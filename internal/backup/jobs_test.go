@@ -3,6 +3,7 @@ package backup
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -73,8 +74,20 @@ func TestBackupHandlerPrunesToKeep(t *testing.T) {
 func TestBackupHandlerNeedsDir(t *testing.T) {
 	pool, _, o := setup(t)
 	j := runJob(t, pool, Kind(Assets), BackupHandler(Settings{}, pool, o, Assets), nil)
-	if j.Status != jobs.StatusFailed || !strings.Contains(jobError(j), "INNKEEPER_BACKUP_DIR") {
-		t.Fatalf("job %s: %q", j.Status, jobError(j))
+	if j.Status != jobs.StatusFailed || !strings.Contains(jobError(j), "INNKEEPER_BACKUP_DIR") || j.Attempts != 1 {
+		t.Fatalf("job %s after %d attempts: %q", j.Status, j.Attempts, jobError(j))
+	}
+}
+
+func TestBackupHandlerRetriesFailedWrite(t *testing.T) {
+	pool, _, o := setup(t)
+	notDir := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(notDir, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := BackupHandler(Settings{Dir: notDir}, pool, o, Assets)(context.Background(), &jobs.Run{})
+	if !errors.Is(err, jobs.ErrRetry) {
+		t.Fatalf("err = %v, want ErrRetry", err)
 	}
 }
 

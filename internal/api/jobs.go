@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -86,8 +87,11 @@ type importIn struct {
 
 type bulkIn struct {
 	Body struct {
-		Query  library.Query `json:"query" doc:"Selects the cards, as in POST /search. Paging is ignored."`
-		Action string        `json:"action" enum:"archive,unarchive"`
+		Query      library.Query `json:"query" doc:"Selects the cards, as in POST /search. Paging is ignored. To pick cards by ID, filter on ids."`
+		Action     string        `json:"action" enum:"archive,unarchive,tag,untag,collect,uncollect,export"`
+		Tags       []string      `json:"tags,omitempty" doc:"For tag and untag: the tags to add or remove."`
+		Collection int64         `json:"collection,omitempty" doc:"For collect and uncollect: the collection."`
+		Format     string        `json:"format,omitempty" default:"json" doc:"For export: json, or a format a codec plugin instance writes, such as png."`
 	}
 }
 
@@ -295,26 +299,61 @@ func (s *Server) jobRoutes(api huma.API) {
 		})
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "start-bulk", Method: http.MethodPost, Path: "/bulk",
-		Summary: "Archive or unarchive many cards", Description: "Queues one child job per card the query matches.",
+		Summary: "Archive, tag, collect, or export many cards",
+		Description: "Queues one child job per card the query matches. Export queues one job that writes a zip; " +
+			"its progress names the zip's blob when it's done, and the blob is deleted after a day.",
 		Tags: tags, DefaultStatus: http.StatusAccepted},
 		func(ctx context.Context, in *bulkIn) (*jobResp, error) {
-			q := in.Body.Query
+			b := in.Body
+			q := b.Query
 			if q.Filter == nil && q.Text == "" {
 				return nil, huma.Error400BadRequest("bulk actions need a filter or text; to select every card, filter on archived")
 			}
-			// Select only cards the action changes; search would otherwise hide archived cards from unarchive.
-			archive := in.Body.Action == "archive"
-			wasArchived := !archive
-			state := library.Filter{Archived: &wasArchived}
-			if q.Filter != nil {
-				state = library.Filter{And: []library.Filter{*q.Filter, state}}
+			switch b.Action {
+			case "archive", "unarchive":
+				// Select only cards the action changes; search would otherwise hide archived cards from unarchive.
+				wasArchived := b.Action == "unarchive"
+				state := library.Filter{Archived: &wasArchived}
+				if q.Filter != nil {
+					state = library.Filter{And: []library.Filter{*q.Filter, state}}
+				}
+				q.Filter = &state
+			case "tag", "untag":
+				if len(b.Tags) == 0 {
+					return nil, huma.Error400BadRequest(b.Action + " needs tags")
+				}
+			case "collect", "uncollect":
+				cols, err := s.Lib.Collections(ctx)
+				if err != nil {
+					return nil, s.fail(err)
+				}
+				if !slices.ContainsFunc(cols, func(c library.Collection) bool { return c.ID == b.Collection }) {
+					return nil, huma.Error404NotFound("collection not found")
+				}
+			case "export":
+				if b.Format != "json" {
+					if _, err := s.Registry.CodecInstance(ctx, b.Format); err != nil {
+						return nil, s.fail(err)
+					}
+				}
 			}
-			q.Filter = &state
 			ids, err := s.Lib.SearchIDs(ctx, q)
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			p, err := bulk.EnqueueArchive(ctx, s.Queue, ids, archive)
+			var p jobs.Job
+			switch b.Action {
+			case "archive", "unarchive":
+				p, err = bulk.EnqueueArchive(ctx, s.Queue, ids, b.Action == "archive")
+			case "tag":
+				p, err = bulk.EnqueueTag(ctx, s.Queue, ids, b.Tags, nil)
+			case "untag":
+				p, err = bulk.EnqueueTag(ctx, s.Queue, ids, nil, b.Tags)
+			case "collect", "uncollect":
+				p, err = bulk.EnqueueCollect(ctx, s.Queue, ids, b.Collection, b.Action == "uncollect")
+			case "export":
+				p, err = bulk.EnqueueExport(ctx, s.Queue, ids, b.Format)
+			}
 			if err != nil {
 				return nil, s.fail(err)
 			}

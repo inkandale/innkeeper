@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/davidgibbons/innkeeper/internal/bulk"
+	exporter "github.com/davidgibbons/innkeeper/internal/export"
 	"github.com/davidgibbons/innkeeper/internal/importer"
 	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
@@ -50,6 +51,7 @@ func worker() error {
 	go stopIdlePlugins(ctx, mgr)
 
 	tg := targets.New(svc.pool, svc.lib, svc.registry, mgr, log)
+	ex := &exporter.Exporter{Lib: svc.lib, Registry: svc.registry, Plugins: mgr, Log: log}
 	q := jobs.New(svc.pool)
 	w := &jobs.Worker{
 		Queue:       q,
@@ -58,6 +60,9 @@ func worker() error {
 		Handlers: map[string]jobs.Handler{
 			importer.Kind:         im.Run,
 			bulk.ArchiveKind:      bulk.Archive(svc.lib),
+			bulk.TagKind:          bulk.Tag(svc.lib),
+			bulk.CollectKind:      bulk.Collect(svc.lib),
+			bulk.ExportKind:       bulk.Export(ex),
 			targets.PushKind:      tg.RunPush,
 			targets.ScanKind:      tg.RunScan,
 			targets.ImportKind:    tg.RunImport,

@@ -226,3 +226,54 @@ func TestReconcileJobSummary(t *testing.T) {
 		t.Errorf("full progress = %s", full.Progress)
 	}
 }
+
+func TestBulkTagCollectExport(t *testing.T) {
+	e := newEnv(t)
+	a := e.createCard(`{"name": "A"}`)
+	b := e.createCard(`{"name": "B"}`)
+	e.createCard(`{"name": "C"}`)
+	w := &jobs.Worker{Queue: e.s.Queue, Log: quiet, Poll: 50 * time.Millisecond,
+		Handlers: map[string]jobs.Handler{bulk.TagKind: bulk.Tag(e.s.Lib), bulk.CollectKind: bulk.Collect(e.s.Lib),
+			bulk.ExportKind: bulk.Export(e.s.exporter())}}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- w.Run(ctx) }()
+	t.Cleanup(func() { cancel(); <-done })
+	picked := map[string]any{"filter": map[string]any{"ids": []int64{a.ID, b.ID}}}
+
+	var j jobOut
+	e.call("POST", "/bulk", map[string]any{"query": picked, "action": "tag", "tags": []string{"elf"}}, 202, &j)
+	if last, r := e.watchJob(j.ID); last.Status != "succeeded" || last.Children["succeeded"] != 2 {
+		t.Fatalf("tag job = %+v\n%s", last, r.Body)
+	}
+	var res library.Results
+	e.call("POST", "/search", map[string]any{"filter": map[string]any{"tag": "elf"}}, 200, &res)
+	if res.Total != 2 {
+		t.Fatalf("tagged = %+v", res.Hits)
+	}
+
+	var col struct{ ID int64 }
+	e.call("POST", "/collections", map[string]any{"name": "Elves"}, 201, &col)
+	j = jobOut{}
+	e.call("POST", "/bulk", map[string]any{"query": picked, "action": "collect", "collection": col.ID}, 202, &j)
+	if last, _ := e.watchJob(j.ID); last.Status != "succeeded" {
+		t.Fatalf("collect job = %+v", last)
+	}
+	e.call("POST", "/search", map[string]any{"filter": map[string]any{"collection": col.ID}}, 200, &res)
+	if res.Total != 2 {
+		t.Fatalf("collected = %+v", res.Hits)
+	}
+
+	j = jobOut{}
+	e.call("POST", "/bulk", map[string]any{"query": picked, "action": "export"}, 202, &j)
+	last, _ := e.watchJob(j.ID)
+	var p bulk.ExportProgress
+	if last.Kind != bulk.ExportKind || last.Status != "succeeded" || json.Unmarshal(last.Progress, &p) != nil || p.Blob == "" {
+		t.Fatalf("export job = %+v", last)
+	}
+	e.call("GET", "/blobs/"+p.Blob, nil, 200, nil)
+
+	e.call("POST", "/bulk", map[string]any{"query": picked, "action": "tag"}, 400, nil)
+	e.call("POST", "/bulk", map[string]any{"query": picked, "action": "collect", "collection": 99999}, 404, nil)
+	e.call("POST", "/bulk", map[string]any{"query": picked, "action": "export", "format": "nope"}, 400, nil)
+}

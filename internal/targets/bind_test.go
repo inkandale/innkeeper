@@ -2,6 +2,7 @@ package targets
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/davidgibbons/innkeeper/internal/library"
@@ -204,5 +205,51 @@ func TestBindLorebookDetectsSources(t *testing.T) {
 	got, err := e.lib.Lorebooks.Sources(e.ctx, lb)
 	if err != nil || len(got) != 1 || got[0].URL != "https://chub.ai/lorebooks/u/forge" {
 		t.Fatalf("sources = %+v, %v", got, err)
+	}
+}
+
+func (e *env) lorebookCount() int {
+	e.t.Helper()
+	var n int
+	if err := e.pool.QueryRow(e.ctx, `SELECT count(*) FROM lorebook`).Scan(&n); err != nil {
+		e.t.Fatal(err)
+	}
+	return n
+}
+
+func TestBindLeavesTheAppsWorldBooksAlone(t *testing.T) {
+	e, card, forge := worldBooks(t)
+	b := e.bind(card, "c1")
+	if e.lorebookCount() != 1 || e.revisions(card) != 1 || len(e.links(card)) != 0 {
+		t.Fatalf("%d lorebooks, %d revisions, links %v", e.lorebookCount(), e.revisions(card), e.links(card))
+	}
+	if lbs, err := e.s.LorebookBindings(e.ctx, forge); err != nil || len(lbs) != 0 {
+		t.Fatalf("forge bindings = %+v, %v", lbs, err)
+	}
+	// The app links world books the library card doesn't.
+	if b.Status != "ahead" || strings.Join(b.LastPush.LorebookRemoteIDs, ",") != "l1,l2" {
+		t.Fatalf("binding = %+v", b)
+	}
+}
+
+func TestBindLeavesADriftedWorldBookAlone(t *testing.T) {
+	e, card, forge := worldBooks(t)
+	lb := e.pushLorebook(forge)
+	e.editRemote(lb.RemoteID, "description", "APP EDIT.")
+	e.link(card, forge)
+	e.appCard("c2", map[string]any{"name": "Tova", "description": "A smith."},
+		map[string]any{"lorebook_remote_ids": []string{lb.RemoteID}})
+	e.bind(card, "c2")
+	if h, err := e.lib.Lorebooks.History(e.ctx, forge); err != nil || len(h) != 1 {
+		t.Fatalf("Forge has %d revisions, %v", len(h), err)
+	}
+}
+
+func TestBindChecksTheCardFirst(t *testing.T) {
+	e := setup(t, nil)
+	e.push(e.card)
+	// The item doesn't exist, so a compare would fail with not found.
+	if _, err := e.s.Bind(e.ctx, e.inst, e.card, "gone"); !errors.Is(err, ErrBound) {
+		t.Fatalf("err = %v", err)
 	}
 }

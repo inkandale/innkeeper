@@ -576,7 +576,7 @@ items:
 			}
 			r.Lorebooks = append(r.Lorebooks, n)
 		}
-		res, err := s.resolve(ctx, k, r, true)
+		res, err := s.resolve(ctx, k, r, resolveOpts{bindOnly: true})
 		if err != nil {
 			s.log.Warn("reconcile: auto-bind failed", "remote_id", it.RemoteID, "err", err)
 			continue

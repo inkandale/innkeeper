@@ -263,11 +263,11 @@ func TestBindOnlyResolveRefusesLibraryWrites(t *testing.T) {
 	c := e.compareItem("lv1", card)
 	r := Resolution{InstanceID: e.inst, RemoteID: "lv1", AppHash: c.AppHash, BaseRevisionID: c.HeadRevisionID,
 		Action: "bind", CardID: card, Default: merge.ChooseApp}
-	if _, err := e.s.resolve(e.ctx, cardKind, r, true); !errors.Is(err, errWouldRevise) {
+	if _, err := e.s.resolve(e.ctx, cardKind, r, resolveOpts{bindOnly: true}); !errors.Is(err, errWouldRevise) {
 		t.Errorf("bind taking the app: %v", err)
 	}
 	r.Action = "import"
-	if _, err := e.s.resolve(e.ctx, cardKind, r, true); !errors.Is(err, errWouldRevise) {
+	if _, err := e.s.resolve(e.ctx, cardKind, r, resolveOpts{bindOnly: true}); !errors.Is(err, errWouldRevise) {
 		t.Errorf("import: %v", err)
 	}
 	if e.revisions(card) != 1 || e.bindingCount() != 0 {

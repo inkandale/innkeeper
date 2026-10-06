@@ -99,23 +99,31 @@ const avatarChoice = "avatar"
 
 // Resolve applies a resolution to an app character.
 func (s *Service) Resolve(ctx context.Context, r Resolution) (ResolveResult, error) {
-	return s.resolve(ctx, cardKind, r, false)
+	return s.resolve(ctx, cardKind, r, resolveOpts{})
 }
 
 // ResolveLorebook applies a resolution to an app world book.
 func (s *Service) ResolveLorebook(ctx context.Context, r Resolution) (ResolveResult, error) {
-	return s.resolve(ctx, lorebookKind, r, false)
+	return s.resolve(ctx, lorebookKind, r, resolveOpts{})
 }
 
-// resolve applies r in one transaction. With bindOnly, any write to the
-// library refuses the whole resolve.
-func (s *Service) resolve(ctx context.Context, k kind, r Resolution, bindOnly bool) (ResolveResult, error) {
+// resolveOpts limit a resolve nobody reviewed hunk by hunk.
+type resolveOpts struct {
+	// bindOnly refuses the whole resolve if it would write to the library.
+	bindOnly bool
+	// skipLeftOut skips the app's linked world books the resolution leaves
+	// out, instead of taking their suggestions.
+	skipLeftOut bool
+}
+
+// resolve applies r in one transaction.
+func (s *Service) resolve(ctx context.Context, k kind, r Resolution, o resolveOpts) (ResolveResult, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return ResolveResult{}, err
 	}
 	defer tx.Rollback(ctx)
-	rs := &resolver{s: s, tx: tx, books: map[string]ResolveResult{}, wrote: map[int64]string{}, bindOnly: bindOnly}
+	rs := &resolver{s: s, tx: tx, books: map[string]ResolveResult{}, wrote: map[int64]string{}, resolveOpts: o}
 	res, err := rs.item(ctx, k, r)
 	if st := (*staleItem)(nil); errors.As(err, &st) {
 		// Fresh, so it reads the library without this transaction's writes.
@@ -139,8 +147,7 @@ type resolver struct {
 	index *index
 	// wrote maps each lorebook this call bound or imported to the world book that did it.
 	wrote map[int64]string
-	// bindOnly refuses any library write, for resolutions nobody reviewed.
-	bindOnly bool
+	resolveOpts
 }
 
 // staleItem is a StaleError before its fresh comparison, which is read after
@@ -270,6 +277,10 @@ func (rs *resolver) lorebooks(ctx context.Context, inst pluginhost.Instance, inf
 				continue
 			}
 			given[id] = true
+			if rs.skipLeftOut {
+				todo = append(todo, Resolution{RemoteID: id, Action: "skip"})
+				continue
+			}
 			n, err := rs.suggested(ctx, inst, info, r.InstanceID, id)
 			if err != nil {
 				return nil, nil, fmt.Errorf("world book %s: %w", id, err)

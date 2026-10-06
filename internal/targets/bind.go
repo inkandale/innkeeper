@@ -72,9 +72,9 @@ func (s *Service) items(ctx context.Context, k kind, instanceID int64) ([]Item, 
 }
 
 // Bind links a card to a character the app already has, without changing
-// the library: a resolve that keeps the library's copy. The app's copy becomes
-// the accepted one, so the card is ahead where they differ and the next push
-// sends the library's.
+// the library: a resolve that keeps the library's copy and skips the app's
+// linked world books. The app's copy becomes the accepted one, so the card is
+// ahead where they differ and the next push sends the library's.
 func (s *Service) Bind(ctx context.Context, instanceID, cardID int64, remoteID string) (Binding, error) {
 	return s.bindResolved(ctx, cardKind, instanceID, cardID, remoteID)
 }
@@ -86,13 +86,9 @@ func (s *Service) BindLorebook(ctx context.Context, instanceID, lorebookID int64
 }
 
 func (s *Service) bindResolved(ctx context.Context, k kind, instanceID, id int64, remoteID string) (Binding, error) {
-	c, err := s.compareItem(ctx, k, instanceID, remoteID, id)
-	if err != nil {
-		return Binding{}, err
-	}
 	// Bind is for an unbound pair; resolve would also rebind or update one.
 	var bound bool
-	err = s.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM binding WHERE instance_id = $1 AND (`+k.col+` = $2
+	err := s.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM binding WHERE instance_id = $1 AND (`+k.col+` = $2
 		OR remote_id = $3 AND `+k.col+` IS NOT NULL AND remote_state <> 'missing'))`, instanceID, id, remoteID).Scan(&bound)
 	if err != nil {
 		return Binding{}, err
@@ -100,9 +96,14 @@ func (s *Service) bindResolved(ctx context.Context, k kind, instanceID, id int64
 	if bound {
 		return Binding{}, ErrBound
 	}
+	c, err := s.compareItem(ctx, k, instanceID, remoteID, id)
+	if err != nil {
+		return Binding{}, err
+	}
+	// The app's linked world books are left for reconcile, so bind changes nothing in the library.
 	res, err := s.resolve(ctx, k, Resolution{InstanceID: instanceID, RemoteID: remoteID, AppHash: c.AppHash,
 		BaseRevisionID: c.HeadRevisionID, AcceptedHash: c.AcceptedHash, Action: "bind", CardID: id,
-		Default: merge.ChooseLibrary}, false)
+		Default: merge.ChooseLibrary}, resolveOpts{bindOnly: true, skipLeftOut: true})
 	if err != nil {
 		return Binding{}, err
 	}

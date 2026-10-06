@@ -301,7 +301,9 @@ edit since the last push merges on its own, so adopt's `override` and
 
 `POST /cards/{id}/bind` is a resolve: `{action: bind, card_id, default:
 library}` with a fresh comparison's hashes. The app's copy becomes the
-accepted one, and the card is `ahead` where it differs.
+accepted one, and the card is `ahead` where it differs. Its linked world books
+are skipped and the bind refuses any library write, so it changes nothing in
+the library; reconcile resolves the world books.
 
 ## Surfaces
 

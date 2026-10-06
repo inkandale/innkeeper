@@ -345,10 +345,11 @@ again is refused with `409`, as is a bind whose app copy or card changed
 while it ran. In the push history, a bind shows as `"kind": "bind"`.
 
 For lorebooks in an app that keeps them separately, use
-`/instances/<instance-id>/lorebook-items` and `/lorebooks/<id>/bind`. A bound
-card is `ahead` when the app links it to lorebooks other than the library's
-bound ones, or when the plugin can't tell which it links. The next push links
-the library's.
+`/instances/<instance-id>/lorebook-items` and `/lorebooks/<id>/bind`. Binding
+a card leaves the app's linked world books for reconcile: none are imported,
+bound, or changed. A bound card is `ahead` when the app links it to lorebooks
+other than the library's bound ones, or when the plugin can't tell which it
+links. The next push links the library's.
 
 ### Importing what the app already has
 

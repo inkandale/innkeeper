@@ -57,7 +57,7 @@ type Collection struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	CreatedAt   time.Time `json:"created_at"`
-	// Cards is how many cards it has. Only Collections sets it.
+	// Cards is how many unarchived cards it has. Only Collections sets it.
 	Cards int `json:"cards"`
 	// Avatars are the first four members' avatar blobs, for a mosaic. Only
 	// Collections sets it.
@@ -107,14 +107,15 @@ func (l *Library) DeleteCollection(ctx context.Context, id int64) error {
 	return nil
 }
 
-// Collections returns every collection with its card count and mosaic avatars, by name.
+// Collections returns every collection with its unarchived card count and mosaic avatars, by name.
 func (l *Library) Collections(ctx context.Context) ([]Collection, error) {
-	rows, err := l.pool.Query(ctx, `SELECT c.id, c.name, c.description, c.created_at, count(cc.card_id)::int,
+	rows, err := l.pool.Query(ctx, `SELECT c.id, c.name, c.description, c.created_at, count(cc.card_id) FILTER (WHERE k.archived_at IS NULL)::int,
 			array(SELECT r.avatar_blob FROM collection_card m
 				JOIN card k ON k.id = m.card_id JOIN card_revision r ON r.id = k.head_revision_id
 				WHERE m.collection_id = c.id AND r.avatar_blob IS NOT NULL AND k.archived_at IS NULL
 				ORDER BY m.added_at, m.card_id LIMIT 4)
 		FROM collection c LEFT JOIN collection_card cc ON cc.collection_id = c.id
+		LEFT JOIN card k ON k.id = cc.card_id
 		GROUP BY c.id ORDER BY lower(c.name)`)
 	if err != nil {
 		return nil, err

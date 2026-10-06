@@ -117,6 +117,7 @@ func TestCollectionAvatars(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var archived int64
 	for i := range 6 {
 		ed := edit(`{"name": "Sailor"}`)
 		if i > 0 {
@@ -129,6 +130,9 @@ func TestCollectionAvatars(t *testing.T) {
 		if err := lib.AddToCollection(ctx, c.ID, card.ID); err != nil {
 			t.Fatal(err)
 		}
+		if i == 5 {
+			archived = card.ID
+		}
 	}
 	list, err := lib.Collections(ctx)
 	if err != nil {
@@ -138,5 +142,13 @@ func TestCollectionAvatars(t *testing.T) {
 	want := slices.Repeat([]string{img.SHA256}, 4)
 	if len(list) != 1 || list[0].Cards != 6 || !slices.Equal(list[0].Avatars, want) {
 		t.Fatalf("collections = %+v", list)
+	}
+	// The Cards page hides archived cards, so the count must too.
+	if err := lib.Cards.SetArchived(ctx, archived, true); err != nil {
+		t.Fatal(err)
+	}
+	list, err = lib.Collections(ctx)
+	if err != nil || list[0].Cards != 5 {
+		t.Fatalf("after archive = %+v, %v", list, err)
 	}
 }

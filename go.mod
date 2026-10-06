@@ -5,6 +5,7 @@ go 1.27
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/danielgtaylor/huma/v2 v2.39.1
+	github.com/devsisters/go-diff3 v0.0.0-20250819115249-1cdef3ea7ce0
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	golang.org/x/image v0.46.0

@@ -96,9 +96,11 @@ type Candidate struct {
 	Name   string `json:"name"`
 	// Reasons are the signals that matched: source, name, and content with
 	// 0; text and avatar with their distance.
-	Reasons         map[string]int `json:"reasons"`
-	DifferingFields int            `json:"differing_fields"`
-	Conflicts       int            `json:"conflicts"`
+	Reasons map[string]int `json:"reasons"`
+	// DifferingFields counts every field with a change, not only the core
+	// fields that decide the suggestion.
+	DifferingFields int `json:"differing_fields"`
+	Conflicts       int `json:"conflicts"`
 	// BoundTo is the remote ID this card is already bound to on the instance.
 	BoundTo string `json:"bound_to,omitempty"`
 }
@@ -117,8 +119,11 @@ type Option struct {
 // them as lorebook items if that matters.
 func (s *Service) describeReconcile(ctx context.Context, k kind, instanceID int64) (pluginhost.Instance, protocol.TargetInfo, error) {
 	inst, info, err := s.describePull(ctx, k, instanceID)
+	if err != nil {
+		return inst, info, err
+	}
 	info.Fields = slices.DeleteFunc(slices.Clone(info.Fields), func(f string) bool { return f == "character_book" })
-	return inst, info, err
+	return inst, info, nil
 }
 
 // appItem is an app item as reconcile reads it.

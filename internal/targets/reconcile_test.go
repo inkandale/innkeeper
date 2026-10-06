@@ -399,6 +399,7 @@ func TestReconcileSuggestions(t *testing.T) {
 	taken := e.push(tamsin)
 	e.appCard("one", edited("description"), nil)
 	e.appCard("three", edited("description", "personality", "scenario"), nil)
+	e.appCard("greeting", edited("description", "personality", "first_mes"), nil)
 	// mes_example isn't a core field, so this is 2 of 4.
 	e.appCard("two", edited("description", "personality", "mes_example"), nil)
 	e.appCard("exact", coreCard, nil)
@@ -408,7 +409,7 @@ func TestReconcileSuggestions(t *testing.T) {
 	quill := e.libCard(map[string]any{"name": "Quill", "description": "A scribe."})
 	quillBinding := e.push(quill)
 	e.appCard("quill", map[string]any{"name": "Quill", "description": "A sword swallower."}, nil)
-	ids := []string{bound.RemoteID, "one", "three", "two", "exact", "new", "dupe", "quill"}
+	ids := []string{bound.RemoteID, "one", "three", "greeting", "two", "exact", "new", "dupe", "quill"}
 
 	got := e.reconcile(ReconcileParams{}, ids...)
 	for _, id := range ids {
@@ -438,6 +439,13 @@ func TestReconcileSuggestions(t *testing.T) {
 		}
 	}
 	suggested("two", "bind", twin)
+	suggested("greeting", "import", 0)
+	// bind to each candidate in rank order, then import, then skip.
+	want := []Option{{Action: "bind", CardID: tamsin}, {Action: "bind", CardID: twin}, {Action: "bind", CardID: other},
+		{Action: "import"}, {Action: "skip"}}
+	if !slices.Equal(got["three"].Options, want) {
+		t.Errorf("three options = %+v", got["three"].Options)
+	}
 	// tamsin is bound to its own app copy, so its exact twin is suggested.
 	if it := suggested("exact", "bind", twin); it.Candidates[0].BoundTo != taken.RemoteID {
 		t.Errorf("exact candidates = %+v", it.Candidates)
@@ -557,5 +565,18 @@ func TestReconcileInstance(t *testing.T) {
 	}
 	if last := progress[len(progress)-1]; last != [2]int{7, 7} {
 		t.Errorf("progress = %v", progress)
+	}
+}
+
+func TestReconcileBoundArchived(t *testing.T) {
+	e := setup(t, nil)
+	bound := e.push(e.card)
+	if err := e.lib.Cards.SetArchived(e.ctx, e.card, true); err != nil {
+		t.Fatal(err)
+	}
+	it := e.reconcile(ReconcileParams{}, bound.RemoteID)[bound.RemoteID]
+	if it.Verdict != VerdictBound || it.BindingID != bound.ID || len(it.Candidates) != 0 || it.Suggested != nil ||
+		!slices.Equal(it.Options, []Option{{Action: "import"}, {Action: "skip"}}) {
+		t.Errorf("item = %+v", it)
 	}
 }

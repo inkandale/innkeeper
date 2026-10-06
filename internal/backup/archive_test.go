@@ -77,7 +77,7 @@ const sha = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
 func TestWriteArchiveAssets(t *testing.T) {
 	dir := t.TempDir()
 	name := "assets-20260101T000000.000000Z"
-	m := Manifest{Format: 1, Type: Assets, Blobs: []string{sha}}
+	m := Manifest{Format: 1, Type: Assets, Blobs: []string{sha}, Tables: map[string]int64{"blob": 1, "card": 1}}
 	fakeBackup(t, dir, name, m, map[string]string{"tables/blob.copy": "b", "tables/card.copy": "c"})
 	bp := blobPath(dir, sha)
 	os.MkdirAll(filepath.Dir(bp), 0o700)
@@ -104,7 +104,7 @@ func TestWriteArchiveAssets(t *testing.T) {
 func TestWriteArchiveConfigPlugins(t *testing.T) {
 	dir := t.TempDir()
 	name := "config-20260101T000000.000000Z"
-	fakeBackup(t, dir, name, Manifest{Format: 1, Type: Config}, map[string]string{
+	fakeBackup(t, dir, name, Manifest{Format: 1, Type: Config, Tables: map[string]int64{"setting": 1, "plugin_instance": 1}}, map[string]string{
 		"tables/setting.copy": "s", "tables/plugin_instance.copy": "p", "plugins.sql": "SELECT 1;",
 	})
 	var buf bytes.Buffer
@@ -151,5 +151,22 @@ func TestWriteArchiveRejects(t *testing.T) {
 	os.Rename(filepath.Join(dir, "config", "assets-1"), filepath.Join(dir, "assets", "assets-1"))
 	if err := WriteArchive(io.Discard, dir, "assets-1"); err == nil {
 		t.Error("type mismatch: want error")
+	}
+}
+
+func TestWriteArchiveRejectsDamaged(t *testing.T) {
+	dir := t.TempDir()
+	// Table listed but its file is absent.
+	fakeBackup(t, dir, "config-1", Manifest{Format: 1, Type: Config, Tables: map[string]int64{"setting": 1}}, map[string]string{})
+	// Blob listed but absent from the store.
+	fakeBackup(t, dir, "assets-1", Manifest{Format: 1, Type: Assets, Blobs: []string{sha}}, map[string]string{})
+	for _, name := range []string{"config-1", "assets-1"} {
+		var buf bytes.Buffer
+		if err := WriteArchive(&buf, dir, name); err == nil || errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("%s: err = %v, want a damaged-backup error", name, err)
+		}
+		if buf.Len() != 0 {
+			t.Errorf("%s: wrote %d bytes", name, buf.Len())
+		}
 	}
 }

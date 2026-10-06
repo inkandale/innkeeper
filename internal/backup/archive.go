@@ -37,25 +37,40 @@ func WriteArchive(w io.Writer, dir, name string) error {
 		return fmt.Errorf("backup %q: manifest type is %q", name, m.Type)
 	}
 
+	// Checked before the first byte so a damaged backup fails cleanly instead
+	// of streaming a truncated archive.
+	for table := range m.Tables {
+		if !slices.Contains(tables[t], table) {
+			return fmt.Errorf("backup %q: manifest lists unknown table %q", name, table)
+		}
+		if err := mustExist(filepath.Join(folder, "tables", table+".copy")); err != nil {
+			return fmt.Errorf("backup %q: %w", name, err)
+		}
+	}
+	for _, sha := range m.Blobs {
+		if len(sha) < 4 || strings.ContainsAny(sha, `/\.`) {
+			return fmt.Errorf("backup %q: manifest lists bad blob hash %q", name, sha)
+		}
+		if err := mustExist(blobPath(dir, sha)); err != nil {
+			return fmt.Errorf("backup %q: %w", name, err)
+		}
+	}
+
 	gz := gzip.NewWriter(w)
 	tw := tar.NewWriter(gz)
 	if err := addFile(tw, "manifest.json", filepath.Join(folder, "manifest.json")); err != nil {
 		return err
 	}
 	for _, sha := range m.Blobs {
-		if len(sha) < 4 || strings.ContainsAny(sha, `/\.`) {
-			return fmt.Errorf("manifest lists bad blob hash %q", sha)
-		}
 		if err := addFile(tw, "blobs/"+sha, blobPath(dir, sha)); err != nil {
 			return err
 		}
 	}
 	for _, table := range tables[t] {
-		src := filepath.Join(folder, "tables", table+".copy")
-		if _, err := os.Stat(src); errors.Is(err, fs.ErrNotExist) {
+		if _, ok := m.Tables[table]; !ok {
 			continue
 		}
-		if err := addFile(tw, "tables/"+table+".copy", src); err != nil {
+		if err := addFile(tw, "tables/"+table+".copy", filepath.Join(folder, "tables", table+".copy")); err != nil {
 			return err
 		}
 	}
@@ -68,6 +83,13 @@ func WriteArchive(w io.Writer, dir, name string) error {
 		return err
 	}
 	return gz.Close()
+}
+
+func mustExist(path string) error {
+	if _, err := os.Stat(path); err != nil {
+		return fmt.Errorf("missing %s", path)
+	}
+	return nil
 }
 
 func addFile(tw *tar.Writer, name, path string) error {

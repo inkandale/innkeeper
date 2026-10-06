@@ -10,6 +10,8 @@
 
 **Spec:** `2026-10-05-reconcile-design.md`, step 1.
 
+**Kaneo:** INN-23, part of INN-22.
+
 ---
 
 ## Design notes

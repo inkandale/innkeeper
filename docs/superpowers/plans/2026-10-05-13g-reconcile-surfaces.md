@@ -10,6 +10,8 @@
 
 **Spec:** `2026-10-05-reconcile-design.md`, Surfaces.
 
+**Kaneo:** INN-29, part of INN-22.
+
 ---
 
 ## Design notes

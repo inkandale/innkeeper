@@ -10,6 +10,8 @@
 
 **Spec:** `2026-10-05-reconcile-design.md`, Reconcile job.
 
+**Kaneo:** INN-27, part of INN-22.
+
 ---
 
 ## Design notes

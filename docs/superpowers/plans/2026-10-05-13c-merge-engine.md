@@ -10,6 +10,8 @@
 
 **Spec:** `2026-10-05-reconcile-design.md`, Merge engine and Resolve.
 
+**Kaneo:** INN-25, part of INN-22.
+
 ---
 
 ## Design notes

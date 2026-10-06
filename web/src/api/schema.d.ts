@@ -1715,6 +1715,8 @@ export interface components {
             readonly $schema?: string;
             /** Format: date-time */
             archived_at?: string;
+            /** @description Lorebooks only: IDs of linked cards */
+            cards?: number[] | null;
             /** @description Cards only: IDs of the collections it's in */
             collections?: number[] | null;
             /** Format: date-time */

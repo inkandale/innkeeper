@@ -797,6 +797,17 @@
             "format": "date-time",
             "type": "string"
           },
+          "cards": {
+            "description": "Lorebooks only: IDs of linked cards",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "collections": {
             "description": "Cards only: IDs of the collections it's in",
             "items": {

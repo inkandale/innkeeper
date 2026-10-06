@@ -228,6 +228,16 @@ func (l *Library) UnlinkLorebook(ctx context.Context, cardID, lorebookID int64) 
 	return err
 }
 
+// LorebookCards returns the IDs of the cards a lorebook is linked to.
+func (l *Library) LorebookCards(ctx context.Context, lorebookID int64) ([]int64, error) {
+	rows, err := l.pool.Query(ctx, `SELECT card_id FROM card_lorebook WHERE lorebook_id = $1
+		ORDER BY card_id`, lorebookID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[int64])
+}
+
 // CardLorebooks returns the IDs of the lorebooks linked to a card.
 func (l *Library) CardLorebooks(ctx context.Context, cardID int64) ([]int64, error) {
 	rows, err := l.pool.Query(ctx, `SELECT lorebook_id FROM card_lorebook WHERE card_id = $1

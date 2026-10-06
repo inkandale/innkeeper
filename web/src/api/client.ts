@@ -9,9 +9,14 @@ export function loginPath(path: string, search: string): string {
 
 /** safeNext returns next if it's a path on this site, or "/". */
 export function safeNext(next: string | null): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\")) return "/";
-  return next;
+  if (!next) return "/";
+  // Parse, as the browser will: it strips tabs and newlines, so prefix checks miss "/\t/evil".
+  const u = new URL(next, window.location.origin);
+  return u.origin === window.location.origin ? u.pathname + u.search + u.hash : "/";
 }
+
+/** nextKey is the sessionStorage key where a redirect login saves where to land. */
+export const nextKey = "innkeeper.next";
 
 // Any 401 means the session is gone, so go log in and come back. A failed
 // login is also a 401, so login calls are left to the login page.

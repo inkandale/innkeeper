@@ -48,6 +48,10 @@
   display: none;
 }
 
+.page {
+  padding: calc(var(--space) * 2);
+}
+
 .main {
   grid-area: main;
   overflow: auto;
@@ -71,7 +75,7 @@
 
   .rail-brand,
   .rail-label,
-  .rail-bottom {
+  .rail-collapse {
     display: none;
   }
 }

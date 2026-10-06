@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import { api, must, safeNext } from "../api/client";
+import { api, must, nextKey, safeNext } from "../api/client";
+import type { components } from "../api/schema";
 import { formFields, type Field } from "./fields";
 import "./Login.css";
 
-type Provider = { id: number; name: string; plugin: string };
+type Provider = components["schemas"]["Provider"];
 
 export function Login() {
   const providers = useQuery({
@@ -47,12 +48,23 @@ function ProviderLogin({ provider }: { provider: Provider }) {
     staleTime: Infinity,
   });
 
+  const redirect = begin.data?.redirect;
+  const next = params.get("next");
+  useEffect(() => {
+    // Only http(s): a provider's redirect must not be a javascript: URL.
+    if (!redirect || !/^https?:/i.test(redirect)) return;
+    try {
+      // The callback lands on "/", so keep next for the index route.
+      sessionStorage.setItem(nextKey, safeNext(next));
+    } catch {
+      // Storage is blocked: the user lands on the default page.
+    }
+    window.location.assign(redirect);
+  }, [redirect, next]);
+
   if (begin.isPending) return null;
   if (begin.isError) return <p className="error">{begin.error.message}</p>;
-  if (begin.data.redirect) {
-    window.location.assign(begin.data.redirect);
-    return null;
-  }
+  if (redirect) return null;
   const fields: Field[] = formFields(begin.data.form);
 
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -72,7 +84,7 @@ function ProviderLogin({ provider }: { provider: Provider }) {
   }
 
   return (
-    <form onSubmit={submit} className="login" style={{ margin: 0, padding: 0, border: "none" }}>
+    <form onSubmit={submit} className="login-form">
       {fields.map((f) => (
         <label key={f.name}>
           {f.label}
@@ -81,7 +93,7 @@ function ProviderLogin({ provider }: { provider: Provider }) {
             name={f.name}
             type={f.type}
             required={f.required}
-            autoComplete={f.type === "password" ? "current-password" : "username"}
+            autoComplete={f.autoComplete}
           />
         </label>
       ))}

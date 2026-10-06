@@ -12,8 +12,13 @@ const sections = [
 ];
 
 async function logout() {
-  await api.POST("/auth/logout");
-  window.location.assign("/login");
+  try {
+    await api.POST("/auth/logout");
+  } catch {
+    // Offline or failed: the login page is still the right place to go.
+  } finally {
+    window.location.assign("/login");
+  }
 }
 
 export function Shell() {
@@ -29,14 +34,18 @@ export function Shell() {
           </NavLink>
         ))}
         <div className="rail-bottom">
-          <button className="button" onClick={() => setCollapsed(!collapsed)} aria-label="Collapse menu">
+          <button
+            className="button rail-collapse"
+            onClick={() => setCollapsed(!collapsed)}
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? "Expand menu" : "Collapse menu"}
+          >
             {collapsed ? "»" : "«"}
           </button>{" "}
-          {!collapsed && (
-            <button className="button" onClick={logout}>
-              Log out
-            </button>
-          )}
+          <button className="button" onClick={logout} aria-label="Log out">
+            <span aria-hidden="true">⏻</span>
+            <span className="rail-label"> Log out</span>
+          </button>
         </div>
       </nav>
       <main className="main">

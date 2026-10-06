@@ -1,6 +1,6 @@
 export function Page({ title }: { title: string }) {
   return (
-    <section style={{ padding: "calc(var(--space) * 2)" }}>
+    <section className="page">
       <h1>{title}</h1>
     </section>
   );

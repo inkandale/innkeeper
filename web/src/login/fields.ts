@@ -1,4 +1,4 @@
-export type Field = { name: string; label: string; type: "text" | "password"; required: boolean };
+export type Field = { name: string; label: string; type: "text" | "password"; required: boolean; autoComplete: string };
 
 type Schema = {
   properties?: Record<string, { title?: string; format?: string; writeOnly?: boolean }>;
@@ -13,5 +13,7 @@ export function formFields(schema: unknown): Field[] {
     label: p.title ?? name,
     type: p.format === "password" || p.writeOnly || name === "password" ? "password" : "text",
     required: s.required?.includes(name) ?? false,
+    autoComplete:
+      p.format === "password" || name === "password" ? "current-password" : p.writeOnly ? "one-time-code" : "username",
   }));
 }

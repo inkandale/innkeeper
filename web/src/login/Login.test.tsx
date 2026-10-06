@@ -23,7 +23,15 @@ function renderLogin() {
   );
 }
 
-afterEach(() => vi.unstubAllGlobals());
+let assign: ReturnType<typeof vi.fn>;
+beforeEach(() => {
+  assign = vi.fn();
+  vi.stubGlobal("location", { ...window.location, origin: window.location.origin, assign });
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  sessionStorage.clear();
+});
 
 test("a form login completes and goes to next", async () => {
   const calls: string[] = [];
@@ -62,10 +70,37 @@ test("a failed login shows the error", async () => {
   await userEvent.type(await screen.findByLabelText("password"), "wrong");
   await userEvent.click(screen.getByRole("button", { name: "Log in" }));
   expect(await screen.findByText("login failed")).toBeInTheDocument();
+  expect(assign).not.toHaveBeenCalled();
 });
 
 test("no providers explains what to do", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => json([])));
   renderLogin();
   expect(await screen.findByText(/No login provider is set up/)).toBeInTheDocument();
+});
+
+test("a redirect provider saves next and sends the browser away", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (req: Request) => {
+      if (req.url.endsWith("/auth/providers")) return json([{ id: 4, name: "SSO", plugin: "oidc" }]);
+      return json({ redirect: "https://idp.example/auth?x=1" });
+    }),
+  );
+  renderLogin();
+  await vi.waitFor(() => expect(assign).toHaveBeenCalledWith("https://idp.example/auth?x=1"));
+  expect(sessionStorage.getItem("innkeeper.next")).toBe("/cards");
+});
+
+test("a non-http redirect is refused", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (req: Request) => {
+      if (req.url.endsWith("/auth/providers")) return json([{ id: 4, name: "SSO", plugin: "oidc" }]);
+      return json({ redirect: "javascript:alert(1)" });
+    }),
+  );
+  renderLogin();
+  await new Promise((r) => setTimeout(r, 50));
+  expect(assign).not.toHaveBeenCalled();
 });

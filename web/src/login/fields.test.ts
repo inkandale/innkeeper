@@ -11,9 +11,9 @@ test("formFields lists each property, in order, with its input type", () => {
     required: ["password"],
   };
   expect(formFields(schema)).toEqual([
-    { name: "username", label: "User name", type: "text", required: false },
-    { name: "password", label: "password", type: "password", required: true },
-    { name: "code", label: "code", type: "password", required: false },
+    { name: "username", label: "User name", type: "text", required: false, autoComplete: "username" },
+    { name: "password", label: "password", type: "password", required: true, autoComplete: "current-password" },
+    { name: "code", label: "code", type: "password", required: false, autoComplete: "one-time-code" },
   ]);
 });
 

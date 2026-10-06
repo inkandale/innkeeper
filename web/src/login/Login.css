@@ -10,6 +10,12 @@
   gap: calc(var(--space) * 1.5);
 }
 
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 1.5);
+}
+
 .login h1 {
   margin: 0;
   font-size: 1.4em;

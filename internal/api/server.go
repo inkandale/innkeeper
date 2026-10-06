@@ -135,6 +135,7 @@ func (s *Server) routes(api huma.API) {
 	s.jobRoutes(api)
 	s.targetRoutes(api)
 	s.toolRoutes(api)
+	s.settingsRoutes(api)
 }
 
 // Spec returns the OpenAPI spec as indented JSON, without a database or
@@ -154,8 +155,9 @@ func (s *Server) Handler() http.Handler {
 	api := humago.New(apiMux, config())
 	api.UseMiddleware(s.authenticate(api))
 	s.routes(api)
+	s.themeRoutes(apiMux)
 
-	mux := http.NewServeMux()
+	mux :=http.NewServeMux()
 	mux.Handle("/api/", http.StripPrefix("/api", apiMux))
 	// Browsers arrive here from a login provider; it isn't part of the API.
 	mux.HandleFunc("GET /auth/{id}/callback", s.callback)

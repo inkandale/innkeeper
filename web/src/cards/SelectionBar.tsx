@@ -10,7 +10,6 @@ type Job = components["schemas"]["JobOut"];
 type Panel = "tag" | "collection" | "push" | "archive" | "export" | null;
 
 const labels = { tag: "Tag", collection: "Collection", push: "Push", archive: "Archive", export: "Export" };
-const plural = (n: number) => `${n} ${n === 1 ? "card" : "cards"}`;
 
 /** SelectionBar replaces the toolbar while cards are picked, and starts bulk jobs on them. */
 export function SelectionBar(props: {
@@ -20,8 +19,15 @@ export function SelectionBar(props: {
   query: Search;
   onAll: () => void;
   onClear: () => void;
+  kind?: "card" | "lorebook";
 }) {
-  const { count, all, total, query, onAll, onClear } = props;
+  const { count, all, total, query, onAll, onClear, kind = "card" } = props;
+  const noun = kind === "card" ? "card" : "lorebook";
+  const plural = (n: number) => `${n} ${noun}${n === 1 ? "" : "s"}`;
+  // Lorebooks have no tags, collections, or bulk export.
+  const actions = kind === "card" ? (["tag", "collection", "push", "archive", "export"] as const) : (["push", "archive"] as const);
+  // Card calls leave kind out, as they did before it existed.
+  const kindField = kind === "lorebook" ? { kind } : {};
   const [panel, setPanel] = useState<Panel>(null);
   const [tags, setTags] = useState("");
   const [collection, setCollection] = useState<number>();
@@ -46,7 +52,7 @@ export function SelectionBar(props: {
   });
   const busy = start.isPending;
   const bulk = (body: Omit<Bulk, "query">) =>
-    start.mutate(async () => must(await api.POST("/bulk", { body: { query, ...body } })));
+    start.mutate(async () => must(await api.POST("/bulk", { body: { query, ...kindField, ...body } })));
   const collectionId = collection ?? collections.data?.[0]?.id ?? 0;
   const instanceId = instance ?? targets[0]?.id ?? 0;
   const tagList = () => tags.split(",").map((t) => t.trim()).filter(Boolean);
@@ -54,7 +60,7 @@ export function SelectionBar(props: {
   const toggle = (p: Panel) => setPanel(panel === p ? null : p);
   return (
     <div className="toolbar selection-bar">
-      <strong>{all ? `All ${total} matching cards` : `${count} selected`}</strong>
+      <strong>{all ? `All ${total} matching ${noun}s` : `${count} selected`}</strong>
       {!all && count < total && (
         <button className="button" onClick={onAll}>
           Select all {total} matching
@@ -64,7 +70,7 @@ export function SelectionBar(props: {
         Clear
       </button>
       <span className="actions">
-        {(["tag", "collection", "push", "archive", "export"] as const).map((p) => (
+        {actions.map((p) => (
           <button key={p} className={panel === p ? "button primary" : "button"} aria-expanded={panel === p} onClick={() => toggle(p)}>
             {labels[p]}
           </button>
@@ -117,7 +123,7 @@ export function SelectionBar(props: {
                   disabled={busy}
                   onClick={() =>
                     start.mutate(async () =>
-                      must(await api.POST("/pushes", { body: { instance_id: instanceId, query } })),
+                      must(await api.POST("/pushes", { body: { instance_id: instanceId, query, ...kindField } })),
                     )
                   }
                 >

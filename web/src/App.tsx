@@ -45,10 +45,10 @@ export const router = createBrowserRouter([
         element: <Shell />,
         children: [
           { index: true, element: <Home /> },
-          { path: "cards", element: <Cards /> },
+          { path: "cards", element: <Cards key="cards" /> },
+          { path: "lorebooks", element: <Cards key="lorebooks" kind="lorebook" /> },
           { path: "cards/:id", element: <Card /> },
           { path: "cards/:id/history", element: <History /> },
-          { path: "lorebooks", element: <Page title="Lorebooks" /> },
           { path: "collections", element: <Collections /> },
           { path: "sync", element: <Page title="Sync" /> },
           {

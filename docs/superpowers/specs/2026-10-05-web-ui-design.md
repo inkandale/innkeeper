@@ -165,9 +165,10 @@ so the original stays in history.
 
 ## Lorebooks
 
-**List**: lorebooks have no image, so it's a table of name, entry count,
-linked cards as small avatars, tags, and sync badges. It has the same facets,
-filters, paging, and selection as Cards.
+**List**: lorebooks have no image, tags, or collections, so it's a table of
+name, entry count, linked cards as small avatars, and sync badges. It has the
+same search, facets (sync and sources), paging, and selection as Cards. The
+selection bar offers Push and Archive.
 
 **Lorebook page**: the same split as the card page.
 
@@ -255,6 +256,8 @@ Four tabs:
 | `GET /api/jobs` fills `children` for bulk jobs | Settings → Jobs |
 | `GET /api/cards/{id}/revisions/{a}/compare/{b}`, and the same for lorebooks, using `internal/merge` | History |
 | `collections` on `GET /api/cards/{id}` | The card page's Collections section |
+| `POST /api/lorebooks/search`: the `/search` query over lorebooks, with a `cards` include and an entry count per hit | Lorebook list |
+| `kind: "lorebook"` on `/bulk` (archive and unarchive) and `/pushes` | Lorebook bulk actions |
 
 The cursor stays on `/search` for the CLI and MCP.
 

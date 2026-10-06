@@ -62,7 +62,7 @@ Lorebooks go through 3 to 7 alongside cards.
 ## Sources
 
 `card_source` and `lorebook_source`: `id`, the entity ID, `kind`, `ref`,
-`external_id`, `url`, `linked_by` (`auto` or `owner`), `created_at`. Unique on
+`external_id`, `url`, `linked_by` (`auto` or `owner`), `removed_at`, `created_at`. Unique on
 entity, `kind`, and `ref`. An entity can have several sources. The existing
 `provenance` string stays as the record of how the entity entered the library.
 
@@ -79,9 +79,10 @@ becomes `kind: chub`, `ref: frerena/the-demon-of-desire-6bf0cd2c0915`,
 `external_id: 3604386`. Each further site is one more detector.
 
 **Manual.** The owner adds a source by kind and ref, or by pasting a URL,
-which a detector parses. The owner can remove any source. Removing an `auto`
-one marks the row removed rather than deleting it, so detection doesn't add
-it back.
+which a detector parses. The owner can remove any source. Removal marks the
+row removed rather than deleting it, whether it is `auto` or `owner`, so
+detection never adds it back. Adding the same kind and ref again restores it
+as `owner`.
 
 **As an ancestor.** When the library card and the app item share a source and
 a catalog plugin answers `catalog.get(kind, ref)`, its content is the ancestor

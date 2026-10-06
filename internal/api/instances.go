@@ -48,10 +48,11 @@ type createInstanceIn struct {
 type updateInstanceIn struct {
 	ID   int64 `path:"id"`
 	Body struct {
-		Name         *string            `json:"name,omitempty" minLength:"1"`
-		Config       map[string]any     `json:"config,omitempty" doc:"Replaces the whole config."`
-		Secrets      map[string]*string `json:"secrets,omitempty" doc:"Sets each secret named; null removes it. Secrets not named stay."`
-		OwnerSubject *string            `json:"owner_subject,omitempty" doc:"Empty clears it, which logs the owner out of this provider."`
+		Name          *string            `json:"name,omitempty" minLength:"1"`
+		Config        map[string]any     `json:"config,omitempty" doc:"Replaces the whole config."`
+		Secrets       map[string]*string `json:"secrets,omitempty" doc:"Sets each secret named; null removes it. Secrets not named stay."`
+		OwnerSubject  *string            `json:"owner_subject,omitempty" doc:"Empty clears it, which logs the owner out of this provider."`
+		AutoBindExact *bool              `json:"auto_bind_exact,omitempty" doc:"Reconcile binds each exact match it finds, keeping the library's copy."`
 	}
 }
 
@@ -125,7 +126,7 @@ func (s *Server) instanceRoutes(api huma.API) {
 				return nil, err
 			}
 			err = s.Registry.UpdateInstance(ctx, in.ID, plugins.InstanceEdit{Name: in.Body.Name, Config: in.Body.Config,
-				Secrets: in.Body.Secrets, OwnerSubject: in.Body.OwnerSubject})
+				Secrets: in.Body.Secrets, OwnerSubject: in.Body.OwnerSubject, AutoBindExact: in.Body.AutoBindExact})
 			if err != nil {
 				return nil, s.fail(err)
 			}

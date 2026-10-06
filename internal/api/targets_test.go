@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -251,4 +252,13 @@ func TestImportFromTarget(t *testing.T) {
 	}
 	e.call("POST", "/imports", map[string]any{"instance_id": inst, "params": map[string]any{"remote_ids": []string{"r9"}}}, 400, nil)
 	e.call("POST", "/imports", map[string]any{"instance_id": inst, "params": map[string]any{"path": "x"}}, 400, nil)
+}
+
+func TestFailCarriesTheFreshComparison(t *testing.T) {
+	stale := &targets.StaleError{Item: "card:r1", Comparison: targets.Comparison{RemoteID: "r1", AppHash: "fresh"}}
+	he := (&Server{Log: quiet}).fail(fmt.Errorf("resolve: %w", stale)).(huma.StatusError)
+	raw, _ := json.Marshal(he)
+	if he.GetStatus() != 409 || !strings.Contains(string(raw), `"app_hash":"fresh"`) || !strings.Contains(string(raw), "card:r1") {
+		t.Fatalf("fail = %d %s", he.GetStatus(), raw)
+	}
 }

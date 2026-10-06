@@ -302,7 +302,7 @@ export interface paths {
         put?: never;
         /**
          * Bind a card to one the app already has
-         * @description Changes nothing in the app or the library. The library's copy becomes the baseline, so the next check shows where the app differs.
+         * @description Changes nothing in the app or the library. The app's copy becomes the accepted one, so the binding is ahead where the library differs, and the next push sends the library's. The app's linked world books are left for reconcile.
          */
         post: operations["bind-card"];
         delete?: never;
@@ -898,7 +898,7 @@ export interface paths {
         put?: never;
         /**
          * Bind a lorebook to one the app already has
-         * @description Changes nothing in the app or the library. The library's copy becomes the baseline, so the next check shows where the app differs.
+         * @description Changes nothing in the app or the library. The app's copy becomes the accepted one, so the binding is ahead where the library differs, and the next push sends the library's. The app's linked world books are left for reconcile.
          */
         post: operations["bind-lorebook"];
         delete?: never;
@@ -1606,6 +1606,7 @@ export interface components {
              * @example /api/schemas/InstanceInfo.json
              */
             readonly $schema?: string;
+            auto_bind_exact: boolean;
             /** Format: date-time */
             broken_at?: string;
             broken_error?: string;
@@ -1970,6 +1971,8 @@ export interface components {
              * @example /api/schemas/UpdateInstanceInBody.json
              */
             readonly $schema?: string;
+            /** @description Reconcile binds each exact match it finds, keeping the library's copy. */
+            auto_bind_exact?: boolean;
             /** @description Replaces the whole config. */
             config?: {
                 [key: string]: unknown;

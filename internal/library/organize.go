@@ -158,10 +158,17 @@ func (l *Library) CollectionCards(ctx context.Context, collectionID int64) ([]in
 
 // LinkLorebook links a card to a lorebook's head revision. Linking twice is a no-op.
 func (l *Library) LinkLorebook(ctx context.Context, cardID, lorebookID int64) error {
-	_, err := l.pool.Exec(ctx, `INSERT INTO card_lorebook (card_id, lorebook_id) VALUES ($1, $2)
-		ON CONFLICT DO NOTHING`, cardID, lorebookID)
+	_, err := l.pool.Exec(ctx, linkLorebook, cardID, lorebookID)
 	return mapErr(err)
 }
+
+// LinkLorebookTx is LinkLorebook inside the caller's transaction.
+func (l *Library) LinkLorebookTx(ctx context.Context, tx pgx.Tx, cardID, lorebookID int64) error {
+	_, err := tx.Exec(ctx, linkLorebook, cardID, lorebookID)
+	return mapErr(err)
+}
+
+const linkLorebook = `INSERT INTO card_lorebook (card_id, lorebook_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`
 
 // UnlinkLorebook removes a link between a card and a lorebook.
 func (l *Library) UnlinkLorebook(ctx context.Context, cardID, lorebookID int64) error {

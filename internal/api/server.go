@@ -191,11 +191,14 @@ func (s *Server) fail(err error) error {
 	var se huma.StatusError
 	var rpcErr *protocol.Error
 	var startErr *pluginhost.StartError
+	var stale *targets.StaleError
 	switch {
 	case err == nil:
 		return nil
 	case errors.As(err, &se):
 		return se
+	case errors.As(err, &stale):
+		return huma.Error409Conflict(stale.Error(), &huma.ErrorDetail{Location: "body", Value: stale})
 	case errors.Is(err, library.ErrNotFound), errors.Is(err, jobs.ErrNotFound),
 		errors.Is(err, plugins.ErrNotFound), errors.Is(err, auth.ErrNotFound), errors.Is(err, targets.ErrNotFound):
 		return huma.Error404NotFound("not found")

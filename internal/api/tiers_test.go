@@ -13,16 +13,17 @@ import (
 
 // Operations whose tier isn't what their method suggests.
 var tierExceptions = map[string]tier.Tier{
-	"search-cards":    tier.Read,
-	"check-binding":   tier.Read,
-	"start-reconcile": tier.Read,
-	"push-card":       tier.Destructive,
-	"push-lorebook":   tier.Destructive,
-	"push-cards":      tier.Destructive,
-	"unbind":          tier.Destructive,
-	"delete-instance": tier.Destructive,
-	"create-token":    tier.Destructive,
-	"revoke-token":    tier.Destructive,
+	"search-cards":     tier.Read,
+	"search-lorebooks": tier.Read,
+	"check-binding":    tier.Read,
+	"start-reconcile":  tier.Read,
+	"push-card":        tier.Destructive,
+	"push-lorebook":    tier.Destructive,
+	"push-cards":       tier.Destructive,
+	"unbind":           tier.Destructive,
+	"delete-instance":  tier.Destructive,
+	"create-token":     tier.Destructive,
+	"revoke-token":     tier.Destructive,
 	// Instance settings decide what a plugin reaches and who can log in.
 	"create-instance":   tier.Destructive,
 	"update-instance":   tier.Destructive,

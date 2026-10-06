@@ -20,25 +20,25 @@
   - Never backed up: `job`, `api_token`, `session`, `oauth_*`, `schema_migration`.
 - **Only referenced blobs.** The `blob` copy keeps rows a revision's `avatar_blob` points to. Revisions are never deleted, so those files can't vanish mid-backup, and export zips stay out.
 - **Go, not `pg_dump`, for core tables.** One `REPEATABLE READ READ ONLY` transaction runs `COPY (SELECT <cols> FROM t) TO STDOUT` per table, in text format. Both ends read the column list from the database, skipping generated columns (`card_revision.search`). Restoring one type into a live database needs per-table control that `pg_restore` can't give inside our transaction.
-- **Plugin schemas use `pg_dump`.** Plugins own their DDL, so a config backup runs `pg_dump --format=plain --inserts --rows-per-insert=1000 --no-owner --no-privileges --schema=plugin_*` with `--snapshot` set to the core transaction's `pg_export_snapshot()`, so it sees the same moment. It runs only when a `plugin_%` schema exists, so most installs never call `pg_dump`. Restore runs the SQL in the same transaction, after stripping the `\restrict`/`\unrestrict` lines pg_dump 18 adds. Restore needs no `pg_restore`.
+- **Plugin schemas use `pg_dump`.** Plugins own their DDL, so a config backup runs `pg_dump --format=plain --inserts --rows-per-insert=1000 --no-owner --no-privileges --schema=<schema>` once per `plugin_%` schema, into `plugins/<schema>.sql`, with `--snapshot` set to the core transaction's `pg_export_snapshot()`, so it sees the same moment. Most installs have no plugin schemas and never call `pg_dump`. Restore runs each file as that plugin's role, so an uploaded archive can't run SQL as the core user. Restore needs no `pg_restore`.
 - **Layout on disk.**
-  - `<dir>/<type>/<type>-<UTC time>/` holds `manifest.json`, `tables/<table>.copy`, and for config `plugins.sql`.
+  - `<dir>/<type>/<type>-<UTC time>/` holds `manifest.json`, `tables/<table>.copy`, and for config `plugins/<schema>.sql`.
   - `<dir>/assets/blobs/ab/cd/<sha256>` is shared by every assets backup and copied incrementally. Each assets manifest lists its blob hashes.
   - A backup is written as `<name>.part/` and renamed when done. The next backup of that type removes leftover `.part` folders, under a per-type advisory lock, so a manual and a scheduled run can't overlap.
 - **Manifest.** `{"format": 1, "type", "created_at", "schema": "<last schema_migration name>", "tables": {"<t>": <rows>}, "blobs": [...], "plugin_schemas": [...], "secrets_check": "<box.Derive(\"backup-check\")>"}`. `secrets_check` is set only for config.
-- **Archive.** A gzip tar holding `manifest.json`, then `blobs/<sha256>`, then `tables/*.copy`, then `plugins.sql`, so restore reads it in one pass. `GET /backups/{name}` and `innkeeper restore <backup-dir>` both build it from a backup folder with `WriteArchive`.
+- **Archive.** A gzip tar holding `manifest.json`, then `blobs/<sha256>`, then `tables/*.copy`, then `plugins/*.sql`, so restore reads it in one pass. `GET /backups/{name}` and `innkeeper restore <backup-dir>` both build it from a backup folder with `WriteArchive`.
 - **Restore,** on its own connection (plugin SQL changes `search_path` for the session), in one transaction:
   1. Read the manifest. Refuse an unknown format or type, or a `schema` other than this database's latest migration ("made by another Innkeeper version"). Before 1.0.0 an archive restores only into the version that wrote it.
   2. Take `pg_advisory_xact_lock(hashtext('innkeeper-restore'))`, then `SET CONSTRAINTS ALL DEFERRED`.
   3. If the type has data (assets: any `card`, `lorebook`, `tag`, or `collection` row; config: any `plugin_instance` or `setting` row), refuse with `ErrHasData` unless `Replace` is set.
-  4. With `Replace`, clear the type. For assets: `ALTER TABLE … DISABLE TRIGGER` the two `*_revision_immutable` triggers, delete in reverse load order, then enable them again. For config: delete `push`, `binding`, `setting`, `plugin_instance`, then `DROP SCHEMA … CASCADE` every `plugin_%` schema. The core user is a member of each plugin role, so it may drop them.
+  4. With `Replace`, clear the type. For assets: `SET LOCAL innkeeper.restore = 'on'`, which the revision immutability trigger allows, then delete in reverse load order. For config: delete `push`, `binding`, `setting`, `plugin_instance`. A config restore always drops every `plugin_%` schema; the core user is a member of each plugin role, so it may.
   5. Write each blob with `Store.Put` and check that the hash matches its name. Blobs land outside the transaction; a failed restore leaves only unreferenced files, which blob cleanup removes.
-  6. `COPY t (<cols>) FROM STDIN` per table. `binding` and `push` go into temp tables first, and only bindings whose card or lorebook exists are inserted (`OVERRIDING SYSTEM VALUE`). Pushes follow their bindings. The skipped binding IDs go in the result.
-  7. Run `plugins.sql`.
+  6. `COPY t (<cols>) FROM STDIN` per table. `blob` goes through a temp table with `ON CONFLICT DO NOTHING`, so leftover rows don't collide. `binding` and `push` go into temp tables first, and only bindings whose card or lorebook exists are inserted (`OVERRIDING SYSTEM VALUE`). Pushes follow their bindings. The skipped binding IDs go in the result.
+  7. For each `plugins/<schema>.sql`: if the plugin's role exists and the core user is a member, recreate the schema owned by that role and run the file through a `SECURITY DEFINER` function the role owns, which can't switch back to the core user. Otherwise skip it and report it in the result.
   8. Move each restored table's identity sequence past its largest `id`.
   9. For config, bump `plugin_instance.updated_at` so running plugin processes restart with the restored settings. Report `SecretsKeyMismatch` when `secrets_check` differs from this key's.
-  10. Commit. A deferred foreign key failure (`23503`) becomes: "bindings refer to cards or lorebooks this backup doesn't have; restore a matching config backup or unbind them first".
-- **Deferrable foreign keys.** Migration `0012_backup.sql` makes every foreign key in `public` `DEFERRABLE INITIALLY IMMEDIATE`. Normal writes behave as before. Restore defers the checks, which `card` ↔ `card_revision` needs (they reference each other), as does replacing assets while bindings point at cards.
+  10. Commit. A deferred foreign key failure (`23503`) on `binding` becomes: "bindings refer to cards or lorebooks this backup doesn't have; restore a matching config backup or unbind them first".
+- **Deferrable foreign keys.** Migration `0012_backup.sql` makes every foreign key in `public` `DEFERRABLE INITIALLY IMMEDIATE`. Normal writes behave as before. Restore defers the checks, which `card` ↔ `card_revision` needs (they reference each other), as does replacing assets while bindings point at cards. It also lets the revision immutability trigger allow changes when `innkeeper.restore` is `on`.
 - **Order.** Restore assets before config, or config keeps no bindings. `innkeeper restore` sorts its arguments by type. The README says so for the API.
 - **Settings.** `INNKEEPER_BACKUP_DIR`, `INNKEEPER_BACKUP_ASSETS_EVERY`, `INNKEEPER_BACKUP_ASSETS_KEEP`, `INNKEEPER_BACKUP_CONFIG_EVERY`, `INNKEEPER_BACKUP_CONFIG_KEEP`.
   - `EVERY` takes a Go duration or whole days (`7d`).
@@ -61,7 +61,7 @@
 
 | File | Change |
 |---|---|
-| `internal/db/migrations/0012_backup.sql` | Deferrable foreign keys |
+| `internal/db/migrations/0012_backup.sql` | Deferrable foreign keys; revision trigger allows restore |
 | `internal/backup/backup.go`, `backup_test.go` | New: types, `Config`, `Write`, `List`, `Prune` |
 | `internal/backup/pgdump.go`, `pgdump_test.go` | Moved from `cmd/innkeeper/backup.go`: `pgDumpCommand`, now taking schemas and a snapshot |
 | `internal/backup/archive.go`, `archive_test.go` | New: `WriteArchive`, `ReadManifest` |
@@ -158,7 +158,7 @@ func Prune(dir string, t Type, keep int) (int, error)  // removed count; then un
 - [ ] `Write` follows the design notes: per-type advisory lock in the snapshot transaction, remove stale `.part` folders, `COPY` each table, copy listed blobs into the shared store (skipping ones already there), run `pg_dump` with `--snapshot` when plugin schemas exist, write the manifest last, then rename. Files `0600`, folders `0700`.
 - [ ] Tests (`testdb`):
   - An assets backup of a seeded library has the manifest, one `.copy` per table with the right row counts, and the avatar under `assets/blobs`. A second backup copies no new blobs.
-  - A config backup has no `blobs/` and sets `secrets_check`. With a `plugin_fake` schema holding a table and a row, `plugins.sql` creates and fills it (needs `pg_dump`).
+  - A config backup has no `blobs/` and sets `secrets_check`. With a `plugin_fake` schema holding a table and a row, `plugins/plugin_fake.sql` creates and fills it (needs `pg_dump`).
   - A failing `pg_dump` (`PATH` pointed at an empty folder) leaves only the `.part` folder, which the next run removes.
   - `List` skips `.part` folders and sorts newest first. `Prune(dir, Assets, 1)` keeps the newest and removes blobs only older backups listed.
 - [ ] Commit `feat(backup): write, list, and prune backups by type`.
@@ -169,7 +169,7 @@ func Prune(dir string, t Type, keep int) (int, error)  // removed count; then un
 
 ```go
 // WriteArchive streams backup name in dir as a gzip tar: manifest.json,
-// blobs/, tables/, then plugins.sql.
+// blobs/, tables/, then plugins/.
 func WriteArchive(w io.Writer, dir, name string) error
 
 // ReadManifest reads an archive's first entry, which must be manifest.json.

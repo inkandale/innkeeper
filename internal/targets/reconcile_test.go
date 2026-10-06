@@ -1,10 +1,15 @@
 package targets
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -160,4 +165,128 @@ func TestReconcileParams(t *testing.T) {
 func mustJSON(s string) string {
 	raw, _ := json.Marshal(s)
 	return string(raw)
+}
+
+// patternPNG writes a 64×64 grayscale image whose pixels come from f.
+func patternPNG(t *testing.T, f func(x, y int) uint8) string {
+	t.Helper()
+	img := image.NewGray(image.Rect(0, 0, 64, 64))
+	for y := range 64 {
+		for x := range 64 {
+			img.SetGray(x, y, color.Gray{Y: f(x, y)})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "avatar.png")
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func (e *env) setAvatar(card int64, path string) *int64 {
+	e.t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	defer f.Close()
+	b, err := e.lib.PutBlob(e.ctx, f)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	e.update(card, func(ed *library.Edit) { ed.AvatarBlob = b.SHA256 })
+	return b.AvatarPhash
+}
+
+func TestReconcileAvatarSignal(t *testing.T) {
+	e := setup(t, nil)
+	stripes := patternPNG(t, func(x, _ int) uint8 { return uint8(x / 8 % 2 * 255) })
+	rings := patternPNG(t, func(x, y int) uint8 { return uint8((x-32)*(x-32)+(y-32)*(y-32)) / 128 * 255 })
+	pa := e.setAvatar(e.card, stripes)
+	pb, err := cardhash.ImagePhash(rings)
+	if err != nil || pa == nil || cardhash.Distance(*pa, pb) <= 8 {
+		t.Fatalf("pick images further apart: %v, %v", pa, err)
+	}
+	// Only the avatar matches: a new name and new text. The fake sends the
+	// avatar only when target.get asks for it.
+	e.appCard("same", map[string]any{"name": "Grumbleforge", "description": "A pirate queen who never smiles."},
+		map[string]any{"avatar": stripes})
+	e.appCard("far", map[string]any{"name": "Grumbleforge", "description": "A pirate queen who never smiles."},
+		map[string]any{"avatar": rings})
+
+	got := e.reconcile(ReconcileParams{}, "same", "far")
+	it := got["same"]
+	if it.Verdict != VerdictLikely || len(it.Candidates) != 1 || it.Candidates[0].CardID != e.card {
+		t.Fatalf("same = %+v", it)
+	}
+	if r := it.Candidates[0].Reasons; len(r) != 1 || r["avatar"] != 0 {
+		t.Errorf("reasons = %v", r)
+	}
+	if it := got["far"]; it.Verdict != VerdictNew {
+		t.Errorf("far = %+v", it)
+	}
+}
+
+// miraEdit returns miraText with one word replaced, and that text's simhash
+// distance from the app item below.
+func miraEdit(from, to string) (string, int) {
+	text := strings.Replace(miraText, from, to, 1)
+	h := func(s string) int64 {
+		x, _, _ := cardhash.CardSimhash([]byte(`{"description": ` + mustJSON(s) + `, "first_mes": "Who goes there?"}`))
+		return x
+	}
+	return text, cardhash.Distance(h(miraText), h(text))
+}
+
+func TestReconcileRanking(t *testing.T) {
+	e := setup(t, nil)
+	near, dNear := miraEdit("leather", "red")
+	far, dFar := miraEdit("black", "grey")
+	if dNear == 0 || dNear >= dFar || dFar > 8 {
+		t.Fatalf("distances %d, %d; pick other edits", dNear, dFar)
+	}
+	// Created in the order that ranking must undo.
+	nameOnly := e.libCard(map[string]any{"name": "Ranko", "description": "A goatherd on a windy hill."})
+	nameText := e.libCard(map[string]any{"name": "Ranko", "description": far, "first_mes": "Who goes there?"})
+	textFar := e.libCard(map[string]any{"name": "Fen", "description": far, "first_mes": "Who goes there?"})
+	textNear := e.libCard(map[string]any{"name": "Moss", "description": near, "first_mes": "Who goes there?"})
+	twinA := e.libCard(map[string]any{"name": "Twin", "description": "A juggler with seven knives."})
+	twinB := e.libCard(map[string]any{"name": "Twin", "description": "A potter who sings to clay."})
+	e.appCard("counts", map[string]any{"name": "Ranko", "description": miraText, "first_mes": "Who goes there?"}, nil)
+	e.appCard("dist", map[string]any{"name": "Keeper", "description": miraText, "first_mes": "Who goes there?"}, nil)
+	e.appCard("tie", map[string]any{"name": "twin", "description": "A dancer made of smoke."}, nil)
+
+	got := e.reconcile(ReconcileParams{}, "counts", "dist", "tie")
+	want := map[string][]int64{
+		// Two signals beat one; then the smaller total distance.
+		"counts": {nameText, nameOnly, textNear, textFar},
+		// Equal counts: the nearer text first; equal distances by ID.
+		"dist": {textNear, nameText, textFar},
+		"tie":  {twinA, twinB},
+	}
+	for id, w := range want {
+		if c := ids(got[id].Candidates); !slices.Equal(c, w) {
+			t.Errorf("%s candidates = %v, want %v", id, c, w)
+		}
+	}
+}
+
+func TestReconcileEmptyNames(t *testing.T) {
+	e := setup(t, nil)
+	c, _, err := e.lib.Cards.CreateFromName(e.ctx, "Nameless", "upload",
+		library.Edit{Data: json.RawMessage(`{"name": "", "description": "A shadow at the edge of the map."}`), Source: "ui"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.appCard("blank", map[string]any{"name": "   ", "description": "A brass band that marches in the rain."}, nil)
+	e.appCard("empty", map[string]any{"name": "", "description": "A brass band that marches in the rain."}, nil)
+	for id, it := range e.reconcile(ReconcileParams{}, "blank", "empty") {
+		if it.Verdict != VerdictNew {
+			t.Errorf("%s = %+v; card %d has an empty name too", id, it, c.ID)
+		}
+	}
 }

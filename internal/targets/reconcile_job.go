@@ -1,0 +1,63 @@
+package targets
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+
+	"github.com/davidgibbons/innkeeper/internal/jobs"
+	"github.com/davidgibbons/innkeeper/internal/pluginhost"
+	"github.com/davidgibbons/innkeeper/internal/plugins"
+)
+
+// ReconcileKind is the job kind that lines an app up against the library.
+// Its final progress is the Snapshot; while it runs, {"done", "total"}.
+const ReconcileKind = "target.reconcile"
+
+// EnqueueReconcile queues a reconcile run. Bad params and a target that
+// can't pull are refused here, so no job is queued for them.
+func (s *Service) EnqueueReconcile(ctx context.Context, q *jobs.Queue, p ReconcileParams) (jobs.Job, error) {
+	p, err := p.withDefaults()
+	if err != nil {
+		return jobs.Job{}, err
+	}
+	if _, _, err := s.describeReconcile(ctx, cardKind, p.InstanceID); err != nil {
+		return jobs.Job{}, err
+	}
+	return q.Enqueue(ctx, jobs.Spec{Kind: ReconcileKind, InstanceID: &p.InstanceID, Payload: p})
+}
+
+// RunReconcile is the jobs.Handler for ReconcileKind. It only reads, so a
+// retry starts over. A failed run keeps its last count, never a partial
+// snapshot.
+func (s *Service) RunReconcile(ctx context.Context, r *jobs.Run) error {
+	if r.InstanceID == nil {
+		return errors.New("reconcile job has no plugin instance")
+	}
+	var p ReconcileParams
+	if err := json.Unmarshal(r.Payload, &p); err != nil {
+		return fmt.Errorf("reconcile payload: %w", err)
+	}
+	p.InstanceID = *r.InstanceID
+	snap, err := s.Reconcile(ctx, p, func(done, total int) {
+		raw, _ := json.Marshal(map[string]int{"done": done, "total": total})
+		r.SetProgress(raw)
+	})
+	var startErr *pluginhost.StartError
+	switch {
+	case err == nil:
+	case errors.As(err, &startErr):
+		return err
+	case plugins.Retryable(err):
+		return fmt.Errorf("%w: %w", jobs.ErrRetry, err)
+	default:
+		return err
+	}
+	raw, err := json.Marshal(snap)
+	if err != nil {
+		return err
+	}
+	r.SetProgress(raw)
+	return nil
+}

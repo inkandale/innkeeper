@@ -56,11 +56,12 @@ func worker() error {
 		Log:         log,
 		Concurrency: concurrency,
 		Handlers: map[string]jobs.Handler{
-			importer.Kind:      im.Run,
-			bulk.ArchiveKind:   bulk.Archive(svc.lib),
-			targets.PushKind:   tg.RunPush,
-			targets.ScanKind:   tg.RunScan,
-			targets.ImportKind: tg.RunImport,
+			importer.Kind:         im.Run,
+			bulk.ArchiveKind:      bulk.Archive(svc.lib),
+			targets.PushKind:      tg.RunPush,
+			targets.ScanKind:      tg.RunScan,
+			targets.ImportKind:    tg.RunImport,
+			targets.ReconcileKind: tg.RunReconcile,
 			blobGCKind: func(ctx context.Context, r *jobs.Run) error {
 				blobs, leftovers, err := svc.lib.CollectGarbage(ctx, 24*time.Hour)
 				r.SetProgress(fmt.Appendf(nil, `{"blobs": %d, "leftovers": %d}`, blobs, leftovers))

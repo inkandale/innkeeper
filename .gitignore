@@ -1,3 +1,4 @@
 .env
 /import/
 /internal/fakeplugin/fakeplugin
+/.superpowers/

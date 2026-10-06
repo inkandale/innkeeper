@@ -124,8 +124,12 @@ func (s *Entities) createFromName(ctx context.Context, tx pgx.Tx, name, provenan
 	return Entity{}, Revision{}, ErrSlugTaken
 }
 
+// appLocalKeys are extensions that hold SillyTavern's favorite star and world
+// link: app state, not card content.
+var appLocalKeys = []string{"fav", "world"}
+
 // SplitCard checks that card is a CCv3 card and returns its name, its data
-// without character_book, and the character_book, or nil.
+// without character_book or appLocalKeys, and the character_book, or nil.
 func SplitCard(card json.RawMessage) (name string, data, book json.RawMessage, err error) {
 	var c struct {
 		Spec string                     `json:"spec"`
@@ -145,6 +149,15 @@ func SplitCard(card json.RawMessage) (name string, data, book json.RawMessage, e
 		book = b
 	}
 	delete(c.Data, "character_book")
+	var ext map[string]json.RawMessage
+	if json.Unmarshal(c.Data["extensions"], &ext) == nil && ext != nil {
+		for _, k := range appLocalKeys {
+			delete(ext, k)
+		}
+		if c.Data["extensions"], err = json.Marshal(ext); err != nil {
+			return "", nil, nil, err
+		}
+	}
 	data, err = json.Marshal(c.Data)
 	return name, data, book, err
 }

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"sync"
 	"testing"
+
+	"github.com/davidgibbons/innkeeper/internal/cardhash"
 )
 
 func TestSlugify(t *testing.T) {
@@ -89,5 +91,30 @@ func TestConcurrentImportsOfOneItemMakeOneCard(t *testing.T) {
 		if id != first {
 			t.Fatalf("imports made cards %d and %d", first, id)
 		}
+	}
+}
+
+func TestSplitCardDropsAppLocalExtensions(t *testing.T) {
+	split := func(ext string) map[string]any {
+		t.Helper()
+		_, data, _, err := SplitCard(json.RawMessage(`{"spec":"chara_card_v3","data":{"name":"Piko","extensions":` + ext + `}}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var d map[string]any
+		_ = json.Unmarshal(data, &d)
+		return d
+	}
+	d := split(`{"fav":true,"world":"Dwarves","depth_prompt":{"depth":4},"talkativeness":"0.5"}`)
+	if ext, _ := json.Marshal(d["extensions"]); string(ext) != `{"depth_prompt":{"depth":4},"talkativeness":"0.5"}` {
+		t.Fatalf("extensions = %s", ext)
+	}
+	// Only app-local keys leave {}, which hashes like no extensions at all.
+	only, _ := json.Marshal(split(`{"fav":false,"world":""}`))
+	none, _ := json.Marshal(map[string]any{"name": "Piko"})
+	h1, err1 := cardhash.ContentHash(only)
+	h2, err2 := cardhash.ContentHash(none)
+	if err := errors.Join(err1, err2); err != nil || h1 != h2 {
+		t.Fatalf("%s hashes %s, want %s (%v)", only, h1, h2, err)
 	}
 }

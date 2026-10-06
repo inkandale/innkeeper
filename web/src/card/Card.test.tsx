@@ -118,3 +118,29 @@ test("leaving with unsaved edits asks first", async () => {
   expect(router.state.location.pathname).toBe("/cards/7");
   ask.mockRestore();
 });
+
+test("after a stale save, compare and keep my version", async () => {
+  conflict = true;
+  renderAt("/cards/7");
+  await userEvent.type(await screen.findByLabelText("Description"), " Old.");
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("changed elsewhere");
+  await userEvent.click(screen.getByRole("button", { name: "Compare with the latest" }));
+  const changes = await screen.findByRole("region", { name: "Changed elsewhere" });
+  expect(within(changes).getByText("A cheerful dwarf.")).toBeInTheDocument();
+  expect(within(changes).getByText("A grumpy dwarf. Old.")).toBeInTheDocument();
+  await userEvent.click(within(changes).getByRole("button", { name: "Keep my version" }));
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(puts).toHaveLength(2));
+  expect(puts[1]).toMatchObject({ body: { base_revision_id: 12, data: { description: "A grumpy dwarf. Old." } } });
+});
+
+test("after a stale save, reload drops my edits", async () => {
+  conflict = true;
+  renderAt("/cards/7");
+  await userEvent.type(await screen.findByLabelText("Description"), " Old.");
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Reload and lose my edits" }));
+  await waitFor(() => expect(screen.getByLabelText("Description")).toHaveValue("A cheerful dwarf."));
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});

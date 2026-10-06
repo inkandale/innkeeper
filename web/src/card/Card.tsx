@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useBlocker, useParams } from "react-router";
-import { api, must } from "../api/client";
+import { api, ApiError, must } from "../api/client";
 import type { components } from "../api/schema";
 import { useToast } from "../shell/Toasts";
-import { changed, type Data, type Draft } from "./draft";
+import { changed, rebase, type Data, type Draft } from "./draft";
+import { Conflict } from "./Conflict";
 import { Fields } from "./Fields";
 import { Panel } from "./Panel";
 import "./Card.css";
@@ -25,6 +26,8 @@ function Editor({ id }: { id: number }) {
     queryFn: async () => must(await api.GET("/cards/{id}", { params: { path: { id } } })),
   });
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [stale, setStale] = useState(false);
+  const [comparing, setComparing] = useState(false);
   const dirty = changed(draft);
   useLeaveGuard(dirty.size > 0);
 
@@ -37,7 +40,7 @@ function Editor({ id }: { id: number }) {
       setDraft(null);
       toast({ text: "Saved" });
     },
-    onError: (e) => toast({ text: e.message, error: true }),
+    onError: (e) => (e instanceof ApiError && e.status === 409 ? setStale(true) : toast({ text: e.message, error: true })),
   });
 
   if (card.isPending) return null;
@@ -49,11 +52,40 @@ function Editor({ id }: { id: number }) {
     const d = draft ?? { baseId: head.revision.id, base: headData, data: headData };
     setDraft({ ...d, data: { ...d.data, [key]: value } });
   };
+  const reload = () => {
+    setDraft(null);
+    setStale(false);
+    setComparing(false);
+    void card.refetch();
+  };
+  const compare = async () => {
+    await card.refetch();
+    setComparing(true);
+  };
+  // Keep moves the draft onto the head that beat it, so Save can go ahead.
+  const keep = () => {
+    if (draft) setDraft(rebase(draft, head.revision.id, headData));
+    setStale(false);
+    setComparing(false);
+  };
+  const use = (key: string) => draft && setDraft({ ...draft, data: { ...draft.data, [key]: headData[key] } });
 
   return (
     <div className="card-page">
       <Panel card={head} data={data} edit={edit} dirty={dirty.size > 0} saving={save.isPending} onSave={() => draft && save.mutate(draft)} />
       <div className="card-main">
+        {stale && (
+          <div className="banner" role="alert">
+            <span>This card changed elsewhere since you started editing.</span>
+            <button className="button" onClick={reload}>
+              Reload and lose my edits
+            </button>
+            <button className="button" onClick={() => void compare()}>
+              Compare with the latest
+            </button>
+          </div>
+        )}
+        {stale && comparing && draft && <Conflict latest={headData} draft={draft} onUse={use} onKeep={keep} />}
         <Fields data={data} dirty={dirty} edit={edit} />
       </div>
     </div>

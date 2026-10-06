@@ -132,3 +132,30 @@
     max-height: none;
   }
 }
+
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space);
+  align-items: center;
+  padding: var(--space);
+  margin-bottom: var(--space);
+  border: 1px solid var(--drift);
+  border-radius: var(--radius);
+}
+
+.conflict {
+  margin-bottom: calc(var(--space) * 2);
+}
+
+.conflict-field {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space);
+  margin-bottom: var(--space);
+}
+
+.conflict-field h3 {
+  grid-column: 1 / -1;
+  margin: 0;
+}

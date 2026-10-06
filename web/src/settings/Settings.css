@@ -1,0 +1,47 @@
+.settings {
+  padding: calc(var(--space) * 2);
+}
+
+.tabs {
+  display: flex;
+  gap: calc(var(--space) * 2);
+  margin-bottom: calc(var(--space) * 2);
+  border-bottom: 1px solid var(--border);
+}
+
+.tabs a {
+  padding: var(--space) 0;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.tabs a.active {
+  color: var(--text);
+  border-bottom: 2px solid var(--accent);
+}
+
+.jobs {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.jobs th,
+.jobs td {
+  padding: calc(var(--space) * 0.75);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.state.succeeded { color: var(--ok); }
+.state.failed { color: var(--danger); }
+.state.running { color: var(--ahead); }
+
+.job dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: calc(var(--space) * 0.5) calc(var(--space) * 2);
+}
+
+.job dd {
+  margin: 0;
+}

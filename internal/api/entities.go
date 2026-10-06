@@ -107,6 +107,25 @@ type tagsIn struct {
 
 type tagsOut struct{ Body []string }
 
+type sourcesOut struct{ Body []library.Source }
+
+type sourceResp struct{ Body library.Source }
+
+type addSourceIn struct {
+	ID   int64 `path:"id"`
+	Body struct {
+		URL        string `json:"url,omitempty" doc:"A page on a known site. Use this, or kind and ref."`
+		Kind       string `json:"kind,omitempty" doc:"The site, such as chub"`
+		Ref        string `json:"ref,omitempty" doc:"The item's reference on that site, such as user/name"`
+		ExternalID string `json:"external_id,omitempty"`
+	}
+}
+
+type removeSourceIn struct {
+	ID       int64 `path:"id"`
+	SourceID int64 `path:"source_id"`
+}
+
 type similarIn struct {
 	ID          int64 `path:"id"`
 	MaxDistance int   `query:"max_distance" default:"8" minimum:"0" maximum:"32" doc:"Most differing hash bits to count as similar"`
@@ -279,6 +298,54 @@ func (s *Server) entityRoutes(api huma.API, ents *library.Entities, plural, sing
 				return nil, s.fail(err)
 			}
 			return s.entity(ctx, ents, in.ID)
+		})
+
+	huma.Register(api, huma.Operation{OperationID: "list-" + singular + "-sources", Method: http.MethodGet,
+		Path: item + "/sources", Summary: "List the sites a " + singular + " was published on", Tags: tags},
+		func(ctx context.Context, in *idIn) (*sourcesOut, error) {
+			if _, err := ents.Get(ctx, in.ID); err != nil {
+				return nil, s.fail(err)
+			}
+			src, err := ents.Sources(ctx, in.ID)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			return &sourcesOut{Body: orEmpty(src)}, nil
+		})
+
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "add-" + singular + "-source", Method: http.MethodPut,
+		Path: item + "/sources", Summary: "Link a " + singular + " to a site",
+		Description: "Takes a url, or a kind and ref. Restores a source that was removed.", Tags: tags},
+		func(ctx context.Context, in *addSourceIn) (*sourceResp, error) {
+			b := in.Body
+			if b.URL != "" && (b.Kind != "" || b.Ref != "" || b.ExternalID != "") {
+				return nil, huma.Error422UnprocessableEntity("give a url, or a kind and ref, not both")
+			}
+			lorebook := ents == s.Lib.Lorebooks
+			src := library.Source{Kind: b.Kind, Ref: b.Ref, ExternalID: b.ExternalID}
+			if b.URL != "" {
+				var err error
+				if src, err = library.ParseSourceURL(b.URL); err != nil {
+					return nil, huma.Error422UnprocessableEntity(err.Error())
+				}
+			}
+			// Rebuilt so the stored URL always matches the entity type.
+			src, err := library.ValidateSource(src, lorebook)
+			if err != nil {
+				return nil, huma.Error422UnprocessableEntity(err.Error())
+			}
+			got, err := ents.AddSource(ctx, in.ID, src)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			return &sourceResp{Body: got}, nil
+		})
+
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "remove-" + singular + "-source", Method: http.MethodDelete,
+		Path: item + "/sources/{source_id}", Summary: "Remove a " + singular + "'s source",
+		Description: "Detection won't add it back.", Tags: tags, DefaultStatus: http.StatusNoContent},
+		func(ctx context.Context, in *removeSourceIn) (*struct{}, error) {
+			return nil, s.fail(ents.RemoveSource(ctx, in.ID, in.SourceID))
 		})
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "archive-" + singular, Method: http.MethodPut,

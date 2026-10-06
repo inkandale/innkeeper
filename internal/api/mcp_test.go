@@ -81,7 +81,7 @@ func TestMCPToolsByTier(t *testing.T) {
 	}
 	read, write, all := names(tier.Read), names(tier.Write), names(tier.Destructive)
 	if !slices.Contains(read, "search_cards") || slices.Contains(read, "create_card") || slices.Contains(write, "push") ||
-		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 26 {
+		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 29 {
 		t.Fatalf("read %v\nwrite %v\nall %v", read, write, all)
 	}
 }
@@ -111,6 +111,27 @@ func TestMCPCards(t *testing.T) {
 	tool(t, s, "get_history", map[string]any{"kind": "card", "id": c.ID}, false)
 	tool(t, s, "restore_revision", map[string]any{"kind": "card", "id": c.ID, "revision_id": c.Revision.ID,
 		"base_revision_id": c.Revision.ID + 1}, false)
+}
+
+func TestMCPSources(t *testing.T) {
+	e := newEnv(t)
+	s := e.mcpClient(tier.Write)
+	var c entityOut
+	_ = json.Unmarshal([]byte(tool(t, s, "create_card", map[string]any{"data": map[string]any{"name": "Brakka"}}, false)), &c)
+	if got := tool(t, s, "add_source", map[string]any{"card_id": c.ID, "url": "https://chub.ai/characters/u/a"}, false); !strings.Contains(got, `"u/a"`) {
+		t.Fatalf("add_source = %s", got)
+	}
+	var list []struct{ ID int64 }
+	_ = json.Unmarshal([]byte(tool(t, s, "list_sources", map[string]any{"card_id": c.ID}, false)), &list)
+	if len(list) != 1 {
+		t.Fatalf("sources = %v", list)
+	}
+	tool(t, s, "remove_source", map[string]any{"card_id": c.ID, "source_id": list[0].ID}, false)
+	if got := tool(t, s, "list_sources", map[string]any{"card_id": c.ID}, false); !strings.Contains(got, "[]") {
+		t.Fatalf("after remove = %s", got)
+	}
+	tool(t, s, "add_source", map[string]any{"card_id": c.ID, "url": "https://example.com/x"}, true)
+	tool(t, s, "list_sources", map[string]any{}, true)
 }
 
 func TestMCPPush(t *testing.T) {

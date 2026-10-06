@@ -2,6 +2,7 @@ package targets
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -92,16 +93,24 @@ func (s *Service) bind(ctx context.Context, k kind, instanceID, id int64, remote
 		return Binding{}, err
 	}
 	var links []string
+	var appData json.RawMessage
 	if k.isLorebook() {
-		_, _, err = s.fetch(ctx, k, inst, info, remoteID)
+		appData, err = s.fetchRaw(ctx, k, inst, remoteID)
 	} else {
 		var got protocol.TargetGetResult
 		got, err = s.getCard(ctx, inst, protocol.TargetGetParams{RemoteID: remoteID})
 		links = got.LorebookRemoteIDs
+		if err == nil {
+			appData, err = cardData(got.Card)
+		}
 	}
 	if remoteNotFound(err) {
 		return Binding{}, fmt.Errorf("%w: the app has no %s %s", library.ErrNotFound, k.name, remoteID)
 	} else if err != nil {
+		return Binding{}, err
+	}
+	// The app's copy is where the sources are, even if the target drops extensions.
+	if err := k.entities(s.lib).DetectSources(ctx, id, appData); err != nil {
 		return Binding{}, err
 	}
 	// The bind row records the lorebooks the app links to the character, so

@@ -79,7 +79,8 @@ func (s *Entities) Import(ctx context.Context, provenance, name string, e Edit) 
 		SELECT 1 FROM `+s.k.revTable+` r WHERE r.`+s.k.fk+` = e.id AND r.content_hash = $2)
 		ORDER BY e.id LIMIT 1`, provenance, r.contentHash).Scan(&id)
 	if err == nil {
-		return id, false, nil
+		// Also on a repeat, so a run that stopped before detecting finishes.
+		return id, false, s.DetectSources(ctx, id, e.Data)
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return 0, false, err
@@ -88,7 +89,10 @@ func (s *Entities) Import(ctx context.Context, provenance, name string, e Edit) 
 	if err != nil {
 		return 0, false, err
 	}
-	return ent.ID, true, tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return 0, false, err
+	}
+	return ent.ID, true, s.DetectSources(ctx, ent.ID, e.Data)
 }
 
 // CreateFromName creates an entity with a free slug made from name.

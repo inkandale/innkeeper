@@ -258,3 +258,56 @@ func watchJob(ctx context.Context, c *client, id string) error {
 	}
 	return fmt.Errorf("job stream ended while the job was %s; check it with: innkeeper jobs show %s", status, id)
 }
+
+// sourcesCmd runs `innkeeper sources <card-id> [add <url> | remove <source-id>]`.
+func sourcesCmd(args []string) error {
+	if len(args) != 1 && len(args) != 3 || len(args) == 3 && args[1] != "add" && args[1] != "remove" {
+		return errors.New(usage)
+	}
+	id, err := parseID(args[0])
+	if err != nil {
+		return err
+	}
+	c, err := newClient()
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	path := "/cards/" + id + "/sources"
+	switch {
+	case len(args) == 3 && args[1] == "add":
+		body, err := json.Marshal(map[string]string{"url": args[2]})
+		if err != nil {
+			return err
+		}
+		_, err = c.do(ctx, "PUT", path, body)
+		return err
+	case len(args) == 3:
+		sid, err := parseID(args[2])
+		if err != nil {
+			return err
+		}
+		_, err = c.do(ctx, "DELETE", path+"/"+sid, nil)
+		return err
+	}
+	out, err := c.do(ctx, "GET", path, nil)
+	if err != nil {
+		return err
+	}
+	var list []struct {
+		ID       int64  `json:"id"`
+		Kind     string `json:"kind"`
+		Ref      string `json:"ref"`
+		LinkedBy string `json:"linked_by"`
+		URL      string `json:"url"`
+	}
+	if err := json.Unmarshal(out, &list); err != nil {
+		return err
+	}
+	tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "ID\tKIND\tREF\tLINKED BY\tURL")
+	for _, s := range list {
+		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\n", s.ID, s.Kind, s.Ref, s.LinkedBy, s.URL)
+	}
+	return tw.Flush()
+}

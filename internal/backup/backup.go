@@ -127,6 +127,7 @@ type Options struct {
 	DatabaseURL string // for pg_dump of plugin schemas
 	Store       *blobstore.Store
 	Box         *secrets.Box // nil skips secrets_check
+	Keep        int          // backups of the type to keep; 0 doesn't prune
 }
 
 // Info describes one finished backup.
@@ -137,21 +138,31 @@ type Info struct {
 	Size      int64     `json:"size"` // folder plus the shared blobs it lists
 }
 
-// Write writes a backup of type t to <Dir>/<t>/<t>-<time>/. A failed write
-// leaves a .part folder, which the next write of that type removes.
+// Write writes a backup of type t to <Dir>/<t>/<t>-<time>/, then prunes that
+// type to Keep. A failed write leaves a .part folder, which the next write of
+// that type removes.
 func Write(ctx context.Context, pool *pgxpool.Pool, t Type, o Options) (Info, error) {
 	if _, ok := tables[t]; !ok {
 		return Info{}, fmt.Errorf("unknown backup type %q", t)
 	}
-	tx, err := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return Info{}, err
+	}
+	defer conn.Release()
+	// Keeps a manual and a scheduled run of one type from overlapping, and
+	// prune from racing a write. Taken before the snapshot, so a run that
+	// waited still sees the latest data.
+	lock := `hashtext('innkeeper-backup-' || $1)`
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock(`+lock+`)`, string(t)); err != nil {
+		return Info{}, err
+	}
+	defer conn.Exec(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock(`+lock+`)`, string(t))
+	tx, err := conn.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return Info{}, err
 	}
 	defer tx.Rollback(ctx)
-	// Keeps a manual and a scheduled run of one type from overlapping.
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('innkeeper-backup-' || $1))`, string(t)); err != nil {
-		return Info{}, err
-	}
 	typeDir := filepath.Join(o.Dir, string(t))
 	if err := os.MkdirAll(typeDir, 0o700); err != nil {
 		return Info{}, err
@@ -234,7 +245,13 @@ func Write(ctx context.Context, pool *pgxpool.Pool, t Type, o Options) (Info, er
 		return Info{}, err
 	}
 	size, err := backupSize(o.Dir, final, m)
-	return Info{Name: name, Type: t, CreatedAt: m.CreatedAt, Size: size}, err
+	info := Info{Name: name, Type: t, CreatedAt: m.CreatedAt, Size: size}
+	if err == nil && o.Keep > 0 {
+		if _, err = prune(o.Dir, t, o.Keep); err != nil {
+			err = fmt.Errorf("prune: %w", err)
+		}
+	}
+	return info, err
 }
 
 // Columns returns table's stored columns in order. Generated columns are left
@@ -378,7 +395,7 @@ func backups(dir string, t Type) ([]Info, []Manifest, error) {
 		folder := filepath.Join(dir, string(t), name)
 		m, err := readManifest(folder)
 		if err != nil {
-			return nil, nil, fmt.Errorf("%s: %w", name, err)
+			continue // not a backup this package can read
 		}
 		size, err := backupSize(dir, folder, m)
 		if err != nil {
@@ -407,10 +424,10 @@ func List(dir string) ([]Info, error) {
 	return all, nil
 }
 
-// Prune removes the backups of type t past the newest keep and returns how
+// prune removes the backups of type t past the newest keep and returns how
 // many it removed. For assets it then removes shared blobs no remaining
-// backup lists.
-func Prune(dir string, t Type, keep int) (int, error) {
+// backup lists. Callers hold the backup lock, so no write is copying blobs.
+func prune(dir string, t Type, keep int) (int, error) {
 	infos, ms, err := backups(dir, t)
 	if err != nil {
 		return 0, err
@@ -432,9 +449,6 @@ func Prune(dir string, t Type, keep int) (int, error) {
 	if t != Assets {
 		return n, nil
 	}
-	// ponytail: an assets Write running now could lose blobs it copied or
-	// reused; callers run Prune after Write, never beside it. Take the backup
-	// lock here if that changes.
 	blobs := filepath.Join(dir, string(Assets), "blobs")
 	err = filepath.WalkDir(blobs, func(path string, d fs.DirEntry, err error) error {
 		if errors.Is(err, fs.ErrNotExist) && path == blobs {

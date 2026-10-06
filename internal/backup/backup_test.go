@@ -347,6 +347,10 @@ func TestListAndPrune(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(o.Dir, "assets", "assets-20000101T000000.000000Z.part"), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	// A folder without a manifest is skipped, not an error.
+	if err := os.Mkdir(filepath.Join(o.Dir, "assets", "assets-20000101T000000.000000Z"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 
 	// Make the older backup list a blob the newer one doesn't.
 	gone := strings.Repeat("e", 64)
@@ -379,8 +383,10 @@ func TestListAndPrune(t *testing.T) {
 		t.Fatalf("List = %+v; the older backup lists one more blob", list)
 	}
 
-	if n, err := Prune(o.Dir, Assets, 1); err != nil || n != 1 {
-		t.Fatalf("Prune = %d, %v; want 1", n, err)
+	o.Keep = 2
+	newest, err := Write(ctx, pool, Assets, o)
+	if err != nil {
+		t.Fatal(err)
 	}
 	if _, err := os.Stat(oldFolder); err == nil {
 		t.Fatal("older backup still there")
@@ -391,8 +397,9 @@ func TestListAndPrune(t *testing.T) {
 	if _, err := os.Stat(blobFile(o.Dir, avatar)); err != nil {
 		t.Fatalf("shared blob removed: %v", err)
 	}
-	if list, _ := List(o.Dir); len(list) != 2 {
-		t.Fatalf("after prune: %+v", list)
+	list, err = List(o.Dir)
+	if err != nil || len(list) != 3 || list[0].Name != newest.Name || list[1].Name != newer.Name {
+		t.Fatalf("after prune: %+v, %v", list, err)
 	}
 }
 

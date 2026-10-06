@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { createBrowserRouter, Navigate, Outlet } from "react-router";
 import { api, ApiError, must, nextKey, safeNext } from "./api/client";
+import { Card } from "./card/Card";
 import { Cards } from "./cards/Cards";
 import { Collections } from "./collections/Collections";
 import { Login } from "./login/Login";
@@ -44,7 +45,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <Home /> },
           { path: "cards", element: <Cards /> },
-          { path: "cards/:id", element: <Page title="Card" /> },
+          { path: "cards/:id", element: <Card /> },
           { path: "lorebooks", element: <Page title="Lorebooks" /> },
           { path: "collections", element: <Collections /> },
           { path: "sync", element: <Page title="Sync" /> },

@@ -1,0 +1,78 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useBlocker, useParams } from "react-router";
+import { api, must } from "../api/client";
+import type { components } from "../api/schema";
+import { useToast } from "../shell/Toasts";
+import { changed, type Data, type Draft } from "./draft";
+import { Fields } from "./Fields";
+import { Panel } from "./Panel";
+import "./Card.css";
+
+export type Entity = components["schemas"]["EntityOut"];
+
+/** Card is the card page. It's keyed by ID so another card starts with no draft. */
+export function Card() {
+  const { id } = useParams();
+  return <Editor key={id} id={Number(id)} />;
+}
+
+function Editor({ id }: { id: number }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const card = useQuery({
+    queryKey: ["card", id],
+    queryFn: async () => must(await api.GET("/cards/{id}", { params: { path: { id } } })),
+  });
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const dirty = changed(draft);
+  useLeaveGuard(dirty.size > 0);
+
+  const save = useMutation({
+    mutationFn: async (d: Draft) =>
+      must(await api.PUT("/cards/{id}", { params: { path: { id } }, body: { base_revision_id: d.baseId, data: d.data, source: "ui" } })),
+    onSuccess: (e) => {
+      qc.setQueryData(["card", id], e);
+      void qc.invalidateQueries({ queryKey: ["card", id, "revisions"] });
+      setDraft(null);
+      toast({ text: "Saved" });
+    },
+    onError: (e) => toast({ text: e.message, error: true }),
+  });
+
+  if (card.isPending) return null;
+  if (card.isError) return <p className="error page">{card.error.message}</p>;
+  const head = card.data;
+  const headData = (head.revision.data ?? {}) as Data;
+  const data = draft?.data ?? headData;
+  const edit = (key: string, value: unknown) => {
+    const d = draft ?? { baseId: head.revision.id, base: headData, data: headData };
+    setDraft({ ...d, data: { ...d.data, [key]: value } });
+  };
+
+  return (
+    <div className="card-page">
+      <Panel card={head} data={data} edit={edit} dirty={dirty.size > 0} saving={save.isPending} onSave={() => draft && save.mutate(draft)} />
+      <div className="card-main">
+        <Fields data={data} dirty={dirty} edit={edit} />
+      </div>
+    </div>
+  );
+}
+
+// useLeaveGuard asks before leaving the page while on is true: in the app
+// through the router, and on reload or close through the browser.
+function useLeaveGuard(on: boolean) {
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => on && currentLocation.pathname !== nextLocation.pathname);
+  useEffect(() => {
+    if (blocker.state !== "blocked") return;
+    if (window.confirm("Leave without saving your edits?")) blocker.proceed();
+    else blocker.reset();
+  }, [blocker]);
+  useEffect(() => {
+    if (!on) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [on]);
+}

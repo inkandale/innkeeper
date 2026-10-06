@@ -1,0 +1,134 @@
+.card-page,
+.history {
+  display: grid;
+  grid-template-areas: "aside main";
+  grid-template-columns: minmax(240px, 300px) 1fr;
+  gap: calc(var(--space) * 2);
+  padding: calc(var(--space) * 2);
+  align-items: start;
+}
+
+.card-aside {
+  grid-area: aside;
+  position: sticky;
+  top: 0;
+  max-height: 100vh;
+  overflow: auto;
+  display: grid;
+  gap: var(--space);
+}
+
+.card-aside h2 {
+  font-size: 0.85em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: var(--space) 0 calc(var(--space) * 0.5);
+}
+
+.card-main {
+  grid-area: main;
+  min-width: 0;
+}
+
+.portrait {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.input.name {
+  font-size: 1.3em;
+  font-weight: 600;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--space) * 0.5);
+  align-items: center;
+}
+
+.plain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+.field {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  margin-bottom: var(--space);
+}
+
+.field summary {
+  display: flex;
+  gap: var(--space);
+  align-items: baseline;
+  padding: var(--space);
+  cursor: pointer;
+}
+
+.field.dirty {
+  border-left: 3px solid var(--accent);
+}
+
+.unsaved {
+  color: var(--accent);
+  font-size: 0.85em;
+}
+
+.tokens {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+.field > .grow,
+.field > .greeting,
+.field > .button,
+.field > pre {
+  display: flex;
+  width: calc(100% - var(--space) * 2);
+  margin: 0 var(--space) var(--space);
+}
+
+.grow {
+  field-sizing: content;
+  min-height: 4lh;
+  resize: vertical;
+}
+
+.greeting {
+  gap: calc(var(--space) * 0.5);
+  align-items: start;
+}
+
+.extensions,
+.conflict pre {
+  white-space: pre-wrap;
+  overflow: auto;
+  background: var(--bg);
+  border-radius: calc(var(--radius) * 0.75);
+  padding: var(--space);
+}
+
+@media (max-width: 720px) {
+  .card-page,
+  .history {
+    grid-template-areas: "aside" "main";
+    grid-template-columns: 1fr;
+  }
+
+  .card-aside {
+    position: static;
+    max-height: none;
+  }
+}

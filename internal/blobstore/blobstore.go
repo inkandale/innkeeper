@@ -50,12 +50,15 @@ func (s *Store) ThumbPath(sha string, w int) (string, error) {
 }
 
 // WriteThumb writes a thumbnail to dst, a ThumbPath, all at once, so a
-// concurrent reader never sees half a file.
+// concurrent reader never sees half a file. It writes in TmpDir, so
+// RemoveStale sweeps up a crashed write.
 func (s *Store) WriteThumb(dst string, write func(io.Writer) error) error {
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return err
+	for _, dir := range []string{filepath.Dir(dst), s.TmpDir()} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
 	}
-	f, err := os.CreateTemp(filepath.Dir(dst), ".tmp-*")
+	f, err := os.CreateTemp(s.TmpDir(), "thumb-*")
 	if err != nil {
 		return err
 	}
@@ -181,9 +184,15 @@ func (s *Store) Remove(sha string) error {
 	if err != nil {
 		return err
 	}
-	// Glob only fails on a bad pattern, and sha already matched shaPattern.
-	thumbs, _ := filepath.Glob(filepath.Join(s.Root, "thumbs", "*", sha[0:2], sha+".jpg"))
-	for _, p := range append(thumbs, path) {
+	paths := []string{path}
+	widths, err := os.ReadDir(filepath.Join(s.Root, "thumbs"))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	for _, w := range widths {
+		paths = append(paths, filepath.Join(s.Root, "thumbs", w.Name(), sha[0:2], sha+".jpg"))
+	}
+	for _, p := range paths {
 		if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}

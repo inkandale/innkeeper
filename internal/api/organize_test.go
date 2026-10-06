@@ -81,6 +81,7 @@ func TestBlobs(t *testing.T) {
 	r = e.call("GET", "/blobs/"+b.SHA256+"?w=160", nil, 200, nil)
 	cfg, err := jpeg.DecodeConfig(bytes.NewReader(r.Body))
 	if err != nil || cfg.Width != 160 || r.Header.Get("Content-Type") != "image/jpeg" ||
+		r.Header.Get("X-Content-Type-Options") != "nosniff" || r.Header.Get("Content-Security-Policy") != "sandbox" ||
 		r.Header.Get("Cache-Control") != "private, max-age=31536000, immutable" {
 		t.Fatalf("thumb: %v, %v, %v", cfg, err, r.Header)
 	}

@@ -113,7 +113,8 @@ func copyBlobs(src, dst string) (int, error) {
 			return err
 		}
 		if d.IsDir() {
-			if rel == "tmp" || rel == "staging" {
+			// Thumbnails are rebuilt on demand.
+			if rel == "tmp" || rel == "staging" || rel == "thumbs" {
 				return filepath.SkipDir
 			}
 			return nil

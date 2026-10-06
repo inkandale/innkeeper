@@ -49,10 +49,9 @@ func (l *Library) OpenThumb(ctx context.Context, sha string, w int) (*os.File, e
 		return nil, fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
 	r := img.Bounds()
-	tw, th := r.Dx(), r.Dy()
-	if tw > w {
-		tw, th = w, max(1, th*w/tw)
-	}
+	// Fit in w × 4w, never upscaling: JPEG can't encode a side of 65536 or more.
+	scale := min(1, float64(w)/float64(r.Dx()), float64(4*w)/float64(r.Dy()))
+	tw, th := max(1, int(float64(r.Dx())*scale)), max(1, int(float64(r.Dy())*scale))
 	// JPEG has no alpha, so transparent pixels land on white.
 	out := image.NewRGBA(image.Rect(0, 0, tw, th))
 	draw.Draw(out, out.Bounds(), image.NewUniform(color.White), image.Point{}, draw.Src)

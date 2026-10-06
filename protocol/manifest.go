@@ -90,8 +90,14 @@ func LoadManifest(dir string) (*Manifest, error) {
 		return nil, fmt.Errorf("manifest %s: %w", abs, err)
 	}
 	if m.IsTheme() {
-		if _, err := os.Stat(m.StylesheetPath()); err != nil {
+		// OpenInRoot refuses a symlink that leaves the folder.
+		f, err := os.OpenInRoot(m.Dir, m.Stylesheet)
+		if err != nil {
 			return nil, fmt.Errorf("manifest %s: stylesheet: %w", abs, err)
+		}
+		defer f.Close()
+		if st, err := f.Stat(); err != nil || !st.Mode().IsRegular() {
+			return nil, fmt.Errorf("manifest %s: stylesheet %q is not a regular file", abs, m.Stylesheet)
 		}
 	}
 	return &m, nil
@@ -205,6 +211,12 @@ func (m *Manifest) validateTheme() []error {
 	}
 	if len(m.Command) > 0 {
 		errs = append(errs, errors.New("a theme plugin has no command"))
+	}
+	for key, set := range map[string]bool{"database": m.Database, "secrets": len(m.Secrets) > 0,
+		"config": len(m.Config) > 0, "enrichments": len(m.Enrichments) > 0} {
+		if set {
+			errs = append(errs, fmt.Errorf("a theme plugin has no %s", key))
+		}
 	}
 	switch {
 	case m.Stylesheet == "":

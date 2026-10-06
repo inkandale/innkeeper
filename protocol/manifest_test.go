@@ -191,6 +191,10 @@ func TestThemeManifestErrors(t *testing.T) {
 		{"outside folder", strings.Replace(themeManifest, `"theme.css"`, `"../theme.css"`, 1), "outside the plugin folder"},
 		{"not css", strings.Replace(themeManifest, `"theme.css"`, `"theme.js"`, 1), "must end in .css"},
 		{"mixed", strings.Replace(themeManifest, `["theme"]`, `["theme", "push"]`, 1), "theme can't be combined"},
+		{"database", themeManifest + "database = true\n", "a theme plugin has no database"},
+		{"secrets", themeManifest + `secrets = ["k"]` + "\n", "a theme plugin has no secrets"},
+		{"config", themeManifest + "[config]\nk = \"v\"\n", "a theme plugin has no config"},
+		{"enrichments", themeManifest + "[enrichments.x]\n", "a theme plugin has no enrichments"},
 		{"stylesheet without theme", validManifest[:strings.Index(validManifest, "[config]")] + `stylesheet = "a.css"` + "\n", "stylesheet needs the theme capability"},
 	}
 	for _, tt := range tests {
@@ -198,6 +202,27 @@ func TestThemeManifestErrors(t *testing.T) {
 			_, err := LoadManifest(writeManifest(t, tt.body))
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("err = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestThemeStylesheetConfined(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "secret.css")
+	if err := os.WriteFile(outside, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for name, setup := range map[string]func(css string) error{
+		"symlink":   func(css string) error { return os.Symlink(outside, css) },
+		"directory": func(css string) error { return os.Mkdir(css, 0o755) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := writeManifest(t, themeManifest)
+			if err := setup(filepath.Join(dir, "theme.css")); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadManifest(dir); err == nil || !strings.Contains(err.Error(), "stylesheet") {
+				t.Fatalf("err = %v, want a stylesheet error", err)
 			}
 		})
 	}

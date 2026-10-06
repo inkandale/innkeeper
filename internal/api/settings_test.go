@@ -67,3 +67,37 @@ func TestAuthMe(t *testing.T) {
 		t.Fatalf("anonymous /auth/me = %s", r)
 	}
 }
+
+func TestThemeSymlinkEscape(t *testing.T) {
+	e := newEnv(t)
+	e.addTheme("dusk", "")
+	outside := filepath.Join(t.TempDir(), "secret.css")
+	if err := os.WriteFile(outside, []byte("secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	css := filepath.Join(e.s.Registry.Manifests()["dusk"].Dir, "theme.css")
+	if err := os.Remove(css); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, css); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.send("GET", "/themes/dusk.css", nil); r.Status != 404 {
+		t.Fatalf("symlinked stylesheet = %s, want 404", r)
+	}
+}
+
+func TestUninstalledTheme(t *testing.T) {
+	e := newEnv(t)
+	e.addTheme("dusk", ":root{}")
+	e.call("PATCH", "/settings", map[string]any{"theme": "dusk"}, 200, nil)
+	delete(e.s.Registry.Manifests(), "dusk")
+	var settings struct{ Theme string }
+	e.call("GET", "/settings", nil, 200, &settings)
+	if settings.Theme != "" {
+		t.Fatalf("settings = %+v", settings)
+	}
+	if r := e.send("GET", "/theme.css", nil); r.Status != 200 || len(r.Body) != 0 {
+		t.Fatalf("theme.css = %s", r)
+	}
+}

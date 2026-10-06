@@ -36,6 +36,10 @@ func (s *Server) settings(ctx context.Context) (*settingsOut, error) {
 	if err != nil {
 		return nil, s.fail(err)
 	}
+	// A theme that's been uninstalled counts as the default.
+	if m := s.Registry.Manifests()[name]; m == nil || !m.IsTheme() {
+		name = ""
+	}
 	return &settingsOut{Body: settings{Theme: name}}, nil
 }
 
@@ -105,20 +109,21 @@ func (s *Server) serveTheme(w http.ResponseWriter, r *http.Request, name string,
 	if name == "" {
 		return
 	}
-	f, err := os.Open(m.StylesheetPath())
-	if errors.Is(err, fs.ErrNotExist) {
-		http.NotFound(w, r)
-		return
-	}
+	// OpenInRoot keeps a symlink from serving files outside the plugin folder.
+	f, err := os.OpenInRoot(m.Dir, m.Stylesheet)
 	if err != nil {
-		s.Log.Error("open theme", "theme", name, "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		if !errors.Is(err, fs.ErrNotExist) {
+			s.Log.Error("open theme", "theme", name, "err", err)
+		}
+		if strict {
+			http.NotFound(w, r)
+		}
 		return
 	}
 	defer f.Close()
 	st, err := f.Stat()
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+	if err != nil || !st.Mode().IsRegular() {
+		http.NotFound(w, r)
 		return
 	}
 	http.ServeContent(w, r, "", st.ModTime(), f)

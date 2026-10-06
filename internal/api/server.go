@@ -157,7 +157,7 @@ func (s *Server) Handler() http.Handler {
 	s.routes(api)
 	s.themeRoutes(apiMux)
 
-	mux :=http.NewServeMux()
+	mux := http.NewServeMux()
 	mux.Handle("/api/", http.StripPrefix("/api", apiMux))
 	// Browsers arrive here from a login provider; it isn't part of the API.
 	mux.HandleFunc("GET /auth/{id}/callback", s.callback)

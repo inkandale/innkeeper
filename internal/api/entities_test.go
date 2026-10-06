@@ -283,6 +283,23 @@ func TestCompareRevisions(t *testing.T) {
 	e.call("GET", fmt.Sprintf("%s/revisions/%d/compare/%d", path, c.Revision.ID, other.Revision.ID), nil, 404, nil)
 
 	var book entityResult
-	e.call("POST", "/lorebooks", map[string]any{"data": json.RawMessage(`{"name": "Forge", "entries": []}`)}, 201, &book)
-	e.call("GET", fmt.Sprintf("/lorebooks/%d/revisions/%d/compare/%d", book.ID, book.Revision.ID, book.Revision.ID), nil, 200, nil)
+	e.call("POST", "/lorebooks", map[string]any{"data": json.RawMessage(`{"name": "Forge", "entries": [{"keys": ["anvil"], "content": "Heavy."}]}`)}, 201, &book)
+	var edited entityResult
+	e.call("PUT", fmt.Sprintf("/lorebooks/%d", book.ID), map[string]any{"base_revision_id": book.Revision.ID,
+		"data": json.RawMessage(`{"name": "Forge", "entries": [{"keys": ["anvil"], "content": "Very heavy."}]}`)}, 200, &edited)
+	var bookDiff struct {
+		Fields []struct {
+			Path string `json:"path"`
+			Kind string `json:"kind"`
+		} `json:"fields"`
+	}
+	e.call("GET", fmt.Sprintf("/lorebooks/%d/revisions/%d/compare/%d", book.ID, book.Revision.ID, edited.Revision.ID), nil, 200, &bookDiff)
+	// Entries diff per entry only with the lorebook schema; the card schema would treat them as one scalar.
+	kinds := map[string]string{}
+	for _, f := range bookDiff.Fields {
+		kinds[f.Path] = f.Kind
+	}
+	if kinds["entries"] != "entries" {
+		t.Fatalf("lorebook fields = %+v", bookDiff.Fields)
+	}
 }

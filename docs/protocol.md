@@ -29,15 +29,32 @@ Each plugin folder has a `plugin.toml`:
 | `name` | yes | Lowercase words of letters and digits joined by single hyphens, starting with a letter; at most 41 characters |
 | `version` | yes | The plugin's own version |
 | `protocol` | yes | Protocol version; must be `1` |
-| `command` | yes | Program and arguments. Use `./name` for a program in the plugin folder: a relative path containing `/` is inside the folder and can't leave it, an absolute path is used as-is, and a bare name is found on `PATH` |
-| `capabilities` | yes | Any of `import`, `search`, `push`, `pull`, `action`, `enrich`, `codec`, `auth`, `mcp` |
+| `command` | yes, except for themes | Program and arguments. Use `./name` for a program in the plugin folder: a relative path containing `/` is inside the folder and can't leave it, an absolute path is used as-is, and a bare name is found on `PATH` |
+| `capabilities` | yes | Any of `import`, `search`, `push`, `pull`, `action`, `enrich`, `codec`, `auth`, `mcp`, or `theme`. A theme lists no other capability |
 | `secrets` | no | Names of secrets the owner enters for each instance, in lowercase `snake_case` |
 | `config` | no | JSON Schema for instance settings; the UI renders a form from it |
 | `enrichments` | no | Keys the plugin writes, in lowercase `snake_case`. Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list` |
 | `formats` | only for `codec` | What `codec.encode` writes, each listed once: lowercase words of letters and digits joined by single hyphens, such as `png`. A codec plugin must list at least one. `json` is taken: the core exports CCv3 JSON itself |
+| `stylesheet` | only for `theme` | The theme's CSS file: a regular file inside the plugin folder, named `*.css`. A symlink that leaves the folder is rejected |
 | `database` | no | `true` gives the plugin its own PostgreSQL schema, `plugin_<name>` with `-` as `_`, and a login role limited to it |
 
 Unknown keys are errors.
+
+### Themes
+
+A theme plugin is a stylesheet with no process. Its manifest lists only the
+`theme` capability, sets `stylesheet`, and has no `command`, `database`,
+`secrets`, `config`, or `enrichments`. A theme gets no instance.
+
+The owner selects a theme with `PATCH /api/settings {"theme": "<name>"}`; an
+empty name selects the default. The core serves the selected theme at
+`/api/theme.css` and any installed theme at `/api/themes/<name>.css`, both
+without login. The UI loads the selected theme after its own CSS, so the theme
+can override any custom property the UI defines on `:root` and any page's
+`grid-template-areas`.
+
+Themes can't run script: the UI's CSP is `script-src 'self'`. Their CSS still
+runs on the UI's origin, so install only themes you trust.
 
 ## Lifecycle
 

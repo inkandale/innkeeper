@@ -21,13 +21,15 @@ type Query struct {
 	Sources  []string `json:"sources,omitempty" doc:"Only library for now."`
 	Include  []string `json:"include,omitempty" doc:"Extra data per hit: tags, lorebooks."`
 	Fields   []string `json:"fields,omitempty" doc:"Card data keys to return per hit, plus avatar. Default: name."`
+	Sort     string   `json:"sort,omitempty" enum:"relevance,updated,name,created" doc:"Default: relevance with text, newest first without."`
 	Page     Page     `json:"page,omitempty"`
 }
 
-// Page selects one page of results.
+// Page selects one page of results, by cursor or by number.
 type Page struct {
 	Size   int     `json:"size,omitempty" minimum:"0" maximum:"500" doc:"Default 50."`
 	Cursor *string `json:"cursor,omitempty" nullable:"true" doc:"next_cursor from the previous page."`
+	Number int     `json:"number,omitempty" minimum:"0" doc:"1-based page number, instead of cursor."`
 }
 
 // Filter is one condition on a card. Set exactly one field. Archived cards
@@ -66,6 +68,7 @@ type Hit struct {
 type Results struct {
 	Hits       []Hit   `json:"hits"`
 	NextCursor *string `json:"next_cursor,omitempty"`
+	Total      int     `json:"total" doc:"How many cards match."`
 }
 
 // where collects SQL conditions and their arguments.
@@ -193,10 +196,17 @@ func (l *Library) Search(ctx context.Context, q Query) (Results, error) {
 		return Results{}, fmt.Errorf("%w: page size must be 0 to 500", ErrInvalid)
 	}
 	offset := 0
-	if q.Page.Cursor != nil {
+	switch {
+	case q.Page.Cursor != nil && q.Page.Number != 0:
+		return Results{}, fmt.Errorf("%w: send a page cursor or a page number, not both", ErrInvalid)
+	case q.Page.Cursor != nil:
 		if offset, err = strconv.Atoi(*q.Page.Cursor); err != nil || offset < 0 {
 			return Results{}, fmt.Errorf("%w: bad cursor", ErrInvalid)
 		}
+	case q.Page.Number < 0:
+		return Results{}, fmt.Errorf("%w: page number must be 1 or more", ErrInvalid)
+	case q.Page.Number > 0:
+		offset = (q.Page.Number - 1) * size
 	}
 	fields := q.Fields
 	if len(fields) == 0 {
@@ -215,8 +225,23 @@ func (l *Library) Search(ctx context.Context, q Query) (Results, error) {
 		}
 	}
 	order := "c.id DESC"
-	if text != "" {
-		order = "ts_rank(r.search, websearch_to_tsquery('english', " + text + ")) DESC, c.id DESC"
+	switch q.Sort {
+	case "", "relevance":
+		if text != "" {
+			order = "ts_rank(r.search, websearch_to_tsquery('english', " + text + ")) DESC, c.id DESC"
+		}
+	case "updated":
+		order = "c.head_revision_id DESC, c.id DESC"
+	case "name":
+		order = "lower(r.data->>'name'), c.id"
+	case "created":
+	default:
+		return Results{}, fmt.Errorf("%w: unknown sort %q", ErrInvalid, q.Sort)
+	}
+	res := Results{Hits: []Hit{}}
+	if err := l.pool.QueryRow(ctx, `SELECT count(*) FROM card c JOIN card_revision r ON r.id = c.head_revision_id
+		WHERE `+cond, w.args...).Scan(&res.Total); err != nil {
+		return Results{}, err
 	}
 	sql := `SELECT c.id, c.slug, r.id, c.archived_at, r.data, r.avatar_blob, ` + tags + `, ` + books + `
 		FROM card c JOIN card_revision r ON r.id = c.head_revision_id
@@ -225,7 +250,6 @@ func (l *Library) Search(ctx context.Context, q Query) (Results, error) {
 	if err != nil {
 		return Results{}, err
 	}
-	res := Results{Hits: []Hit{}}
 	var h Hit
 	var data []byte
 	var avatar *string

@@ -91,3 +91,32 @@ func TestConcurrentImportsOfOneItemMakeOneCard(t *testing.T) {
 		}
 	}
 }
+
+func TestImportCardRecordsSources(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	card := `{"spec":"chara_card_v3","spec_version":"3.0","data":{"name":"A","extensions":{"chub":{"id":7,"full_path":"u/a"}},
+		"character_book":{"name":"L","entries":[],"extensions":{"chub":{"id":8,"full_path":"u/l"}}}}}`
+	for range 2 {
+		id, _, err := lib.ImportCard(ctx, "plugin:x:1", "plugin:x", []byte(card), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := lib.Cards.Sources(ctx, id)
+		if err != nil || len(got) != 1 || got[0].Ref != "u/a" || got[0].LinkedBy != "auto" {
+			t.Fatalf("card sources: %+v, %v", got, err)
+		}
+	}
+	ids, err := lib.Lorebooks.BySource(ctx, "chub", "u/l")
+	if err != nil || len(ids) != 1 {
+		t.Fatalf("lorebook sources: %v, %v", ids, err)
+	}
+	// A standalone lorebook import records its source too.
+	id, _, err := lib.Lorebooks.Import(ctx, "plugin:x:2", "M", Edit{Data: []byte(`{"name":"M","entries":[],"extensions":{"chub":{"full_path":"u/m"}}}`), Source: "plugin:x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := lib.Lorebooks.Sources(ctx, id); len(got) != 1 || got[0].URL != "https://chub.ai/lorebooks/u/m" {
+		t.Fatalf("standalone lorebook sources: %+v", got)
+	}
+}

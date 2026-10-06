@@ -184,3 +184,14 @@ func TestItems(t *testing.T) {
 		}
 	}
 }
+
+func TestBindDetectsSources(t *testing.T) {
+	e := setup(t, nil)
+	remoteID := e.appCopy(e.card)
+	e.editRemote(remoteID, "extensions", map[string]any{"chub": map[string]any{"id": 7, "full_path": "u/a"}})
+	e.bind(e.card, remoteID)
+	got, err := e.lib.Cards.Sources(e.ctx, e.card)
+	if err != nil || len(got) != 1 || got[0].Ref != "u/a" || got[0].ExternalID != "7" {
+		t.Fatalf("sources = %+v, %v", got, err)
+	}
+}

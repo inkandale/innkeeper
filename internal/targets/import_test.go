@@ -157,3 +157,17 @@ func TestImportRemoteIDs(t *testing.T) {
 		t.Fatalf("unknown remote ID: %v", err)
 	}
 }
+
+func TestImportDetectsSources(t *testing.T) {
+	e := setup(t, nil)
+	e.appCard("r1", map[string]any{"name": "Iko", "description": "A courier.", "first_mes": "Package!",
+		"extensions": map[string]any{"chub": map[string]any{"id": 9, "full_path": "u/iko"}}}, nil)
+	if out := e.runImport(nil); out[OutcomeCreated] != 1 {
+		t.Fatalf("outcomes = %v", out)
+	}
+	b := e.bindingOf("r1")
+	got, err := e.lib.Cards.Sources(e.ctx, b.CardID)
+	if err != nil || len(got) != 1 || got[0].Ref != "u/iko" {
+		t.Fatalf("sources = %+v, %v", got, err)
+	}
+}

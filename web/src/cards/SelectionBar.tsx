@@ -44,6 +44,7 @@ export function SelectionBar(props: {
     },
     onError: (e) => toast({ text: e.message, error: true }),
   });
+  const busy = start.isPending;
   const bulk = (body: Omit<Bulk, "query">) =>
     start.mutate(async () => must(await api.POST("/bulk", { body: { query, ...body } })));
   const collectionId = collection ?? collections.data?.[0]?.id ?? 0;
@@ -74,10 +75,10 @@ export function SelectionBar(props: {
           {panel === "tag" && (
             <>
               <input className="input" aria-label="Tags" placeholder="Tags, comma separated" value={tags} onChange={(e) => setTags(e.target.value)} />
-              <button className="button primary" disabled={!tagList().length} onClick={() => bulk({ action: "tag", tags: tagList() })}>
+              <button className="button primary" disabled={busy || !tagList().length} onClick={() => bulk({ action: "tag", tags: tagList() })}>
                 Add tags
               </button>
-              <button className="button" disabled={!tagList().length} onClick={() => bulk({ action: "untag", tags: tagList() })}>
+              <button className="button" disabled={busy || !tagList().length} onClick={() => bulk({ action: "untag", tags: tagList() })}>
                 Remove tags
               </button>
             </>
@@ -91,10 +92,10 @@ export function SelectionBar(props: {
                   </option>
                 ))}
               </select>
-              <button className="button primary" onClick={() => bulk({ action: "collect", collection: collectionId })}>
+              <button className="button primary" disabled={busy} onClick={() => bulk({ action: "collect", collection: collectionId })}>
                 Add to collection
               </button>
-              <button className="button" onClick={() => bulk({ action: "uncollect", collection: collectionId })}>
+              <button className="button" disabled={busy} onClick={() => bulk({ action: "uncollect", collection: collectionId })}>
                 Remove from collection
               </button>
             </>
@@ -111,6 +112,7 @@ export function SelectionBar(props: {
                 </select>
                 <button
                   className="button primary"
+                  disabled={busy}
                   onClick={() =>
                     start.mutate(async () =>
                       must(await api.POST("/pushes", { body: { instance_id: instanceId, query } })),
@@ -124,7 +126,7 @@ export function SelectionBar(props: {
               <span>No target can take pushes. Add one in Settings.</span>
             ))}
           {panel === "archive" && (
-            <button className="button danger" onClick={() => bulk({ action: "archive" })}>
+            <button className="button danger" disabled={busy} onClick={() => bulk({ action: "archive" })}>
               Archive {plural(n)}
             </button>
           )}
@@ -134,7 +136,7 @@ export function SelectionBar(props: {
                 <option value="json">JSON</option>
                 <option value="png">PNG</option>
               </select>
-              <button className="button primary" onClick={() => bulk({ action: "export", format })}>
+              <button className="button primary" disabled={busy} onClick={() => bulk({ action: "export", format })}>
                 Export {plural(n)}
               </button>
             </>

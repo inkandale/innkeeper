@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { Toasts } from "../shell/Toasts";
@@ -176,6 +176,27 @@ test("push offers only targets that push", async () => {
   expect(Array.from((target as HTMLSelectElement).options).map((o) => o.text)).toEqual(["Lumiverse"]);
   await user.click(screen.getByRole("button", { name: "Push 1 card" }));
   expect(posts[0]).toEqual({ path: "/api/pushes", body: { instance_id: 2, query: { filter: { ids: [8] } } } });
+});
+
+test("a second click while the job starts sends nothing more", async () => {
+  const answer = fetch;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (req: Request) => {
+      if (new URL(req.url).pathname !== "/api/bulk") return answer(req);
+      posts.push({ path: "/api/bulk", body: await req.json() });
+      return new Promise<Response>(() => {});
+    }),
+  );
+  renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
+  await user.click(screen.getByRole("button", { name: "Archive" }));
+  await user.click(screen.getByRole("button", { name: "Archive 1 card" }));
+  await waitFor(() => expect(posts).toHaveLength(1));
+  await user.click(screen.getByRole("button", { name: "Archive 1 card" }));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(posts).toHaveLength(1);
 });
 
 test("a facet click clears the selection, and paging keeps it", async () => {

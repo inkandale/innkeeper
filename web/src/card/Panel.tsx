@@ -113,7 +113,7 @@ function Sync({ id }: { id: number }) {
       <ul className="plain">
         {bindings.data.map((b) => (
           <li key={b.id}>
-            <span className={"badge " + badgeClass[b.status]} aria-hidden="true" /> {name(b.instance_id)}: {b.status.replace("_", " ")}
+            <span className={"badge " + (badgeClass[b.status] ?? "unknown")} aria-hidden="true" /> {name(b.instance_id)}: {b.status.replaceAll("_", " ")}
           </li>
         ))}
       </ul>

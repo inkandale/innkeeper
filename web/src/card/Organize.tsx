@@ -12,9 +12,10 @@ export function Tags({ id, tags }: { id: number; tags: string[] }) {
   const [name, setName] = useState("");
   const put = useMutation({
     mutationFn: async (next: string[]) => must(await api.PUT("/cards/{id}/tags", { params: { path: { id } }, body: { tags: next } })),
+    // Pending lasts until the card refetches, so the next change builds on fresh tags.
     onSuccess: () => {
       setName("");
-      void qc.invalidateQueries({ queryKey: ["card", id] });
+      return qc.invalidateQueries({ queryKey: ["card", id] });
     },
     onError: (e) => toast({ text: e.message, error: true }),
   });
@@ -35,7 +36,7 @@ export function Tags({ id, tags }: { id: number; tags: string[] }) {
         onSubmit={(e) => {
           e.preventDefault();
           const t = name.trim();
-          if (t && !tags.includes(t)) put.mutate([...tags, t]);
+          if (t && !tags.includes(t) && !put.isPending) put.mutate([...tags, t]);
         }}
       >
         <input className="input" aria-label="Add tag" placeholder="Add tag" value={name} onChange={(e) => setName(e.target.value)} />
@@ -54,10 +55,8 @@ export function Collections({ id, member }: { id: number; member: number[] }) {
       const opts = { params: { path: { id: collection, card_id: id } } };
       mustOk(on ? await api.PUT("/collections/{id}/cards/{card_id}", opts) : await api.DELETE("/collections/{id}/cards/{card_id}", opts));
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["card", id] });
-      void qc.invalidateQueries({ queryKey: ["collections"] });
-    },
+    onSuccess: () =>
+      Promise.all([qc.invalidateQueries({ queryKey: ["card", id] }), qc.invalidateQueries({ queryKey: ["collections"] })]),
     onError: (e) => toast({ text: e.message, error: true }),
   });
   if (!all.data?.length) return null;

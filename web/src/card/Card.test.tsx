@@ -55,7 +55,8 @@ beforeEach(() => {
       if (path === "/api/cards/7/bindings")
         return json([{ id: 1, instance_id: 2, remote_id: "r", status: "ahead", ahead: true, remote_state: "unchanged" }]);
       if (path === "/api/cards/7/sources")
-        return json([{ id: 4, kind: "chub", ref: "dg/brakka", url: "https://chub.ai/characters/dg/brakka", linked_by: "user", created_at: now }]);
+        return json([{ id: 4, kind: "chub", ref: "dg/brakka", url: "https://chub.ai/characters/dg/brakka", linked_by: "user", created_at: now },
+          { id: 5, kind: "chub", ref: "dg/evil", url: "javascript:alert(1)", linked_by: "user", created_at: now }]);
       if (path === "/api/instances") return json([{ id: 2, name: "Lumiverse", plugin: "lumiverse" }]);
       if (path === "/api/plugins") return json([{ name: "lumiverse", capabilities: ["push"] }]);
       if (path === "/api/collections")
@@ -157,6 +158,8 @@ test("the panel shows sync, lorebooks, collections, and sources", async () => {
   expect(await screen.findByRole("checkbox", { name: "Favorites" })).toBeChecked();
   expect(screen.getByRole("checkbox", { name: "Pirates" })).not.toBeChecked();
   expect(await screen.findByRole("link", { name: "chub: dg/brakka" })).toHaveAttribute("href", "https://chub.ai/characters/dg/brakka");
+  expect(screen.getByText("chub: dg/evil")).not.toHaveAttribute("href");
+  expect(screen.queryByRole("link", { name: "chub: dg/evil" })).not.toBeInTheDocument();
 });
 
 test("tags and collections save as they change", async () => {

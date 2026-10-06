@@ -97,6 +97,15 @@ test("a bulk job shows its children, follows events, and cancels", async () => {
   await user.click(screen.getByRole("button", { name: "Cancel" }));
   expect(requests).toContain("POST /api/jobs/5/cancel");
   expect(await screen.findByText("failed", { selector: "dd" })).toBeInTheDocument();
+  expect(FakeEventSource.last!.closed).toBe(true);
+});
+
+test("a finished event closes the stream", async () => {
+  renderAt("/settings/jobs/5");
+  await screen.findByText("1 of 2");
+  const es = FakeEventSource.last!;
+  act(() => es.listener!({ data: JSON.stringify({ ...bulkJob, status: "succeeded", children: { succeeded: 2 } }) }));
+  expect(es.closed).toBe(true);
 });
 
 test("a finished export links to its zip and opens no stream", async () => {

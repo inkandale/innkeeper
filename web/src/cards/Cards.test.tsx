@@ -150,7 +150,7 @@ test("shift-click selects a range and tags it", async () => {
   await user.click(screen.getByRole("button", { name: "Tag" }));
   await user.type(screen.getByRole("textbox", { name: "Tags" }), "elf, sage");
   await user.click(screen.getByRole("button", { name: "Add tags" }));
-  expect(posts).toEqual([{ path: "/api/bulk", body: { query: { filter: { ids: [7, 8, 9] } }, action: "tag", tags: ["elf", "sage"] } }]);
+  await waitFor(() => expect(posts).toEqual([{ path: "/api/bulk", body: { query: { filter: { ids: [7, 8, 9] } }, action: "tag", tags: ["elf", "sage"] } }]));
   expect(await screen.findByRole("link", { name: "View job" })).toHaveAttribute("href", "/settings/jobs/5");
   expect(screen.getByRole("searchbox")).toBeInTheDocument();
 });
@@ -164,7 +164,7 @@ test("select all matching archives the search", async () => {
   expect(screen.getByRole("checkbox", { name: "Select Brakka" })).toBeChecked();
   await user.click(screen.getByRole("button", { name: "Archive" }));
   await user.click(screen.getByRole("button", { name: "Archive 49 cards" }));
-  expect(posts[0]).toEqual({ path: "/api/bulk", body: { query: { filter: { and: [{ tag: "fantasy" }] } }, action: "archive" } });
+  await waitFor(() => expect(posts[0]).toEqual({ path: "/api/bulk", body: { query: { filter: { and: [{ tag: "fantasy" }] } }, action: "archive" } }));
 });
 
 test("push offers only targets that push", async () => {
@@ -175,7 +175,7 @@ test("push offers only targets that push", async () => {
   const target = await screen.findByRole("combobox", { name: "Target" });
   expect(Array.from((target as HTMLSelectElement).options).map((o) => o.text)).toEqual(["Lumiverse"]);
   await user.click(screen.getByRole("button", { name: "Push 1 card" }));
-  expect(posts[0]).toEqual({ path: "/api/pushes", body: { instance_id: 2, query: { filter: { ids: [8] } } } });
+  await waitFor(() => expect(posts[0]).toEqual({ path: "/api/pushes", body: { instance_id: 2, query: { filter: { ids: [8] } } } }));
 });
 
 // answer replaces the fake response for one path.

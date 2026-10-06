@@ -33,14 +33,14 @@ func TestMergePatch(t *testing.T) {
 
 func TestProject(t *testing.T) {
 	data := json.RawMessage(`{"name": "Brakka", "scenario": "A forge.", "first_mes": "Hail."}`)
-	got, hash, err := project(data, []string{"name", "first_mes", "description"})
+	got, hash, err := Project(data, []string{"name", "first_mes", "description"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(got) != `{"first_mes":"Hail.","name":"Brakka"}` {
 		t.Fatalf("projected %s", got)
 	}
-	_, same, _ := project(json.RawMessage(`{"name": " Brakka\r\n", "first_mes": "Hail.", "description": ""}`), []string{"name", "first_mes", "description"})
+	_, same, _ := Project(json.RawMessage(`{"name": " Brakka\r\n", "first_mes": "Hail.", "description": ""}`), []string{"name", "first_mes", "description"})
 	if same != hash {
 		t.Fatal("whitespace and empty fields changed the hash")
 	}

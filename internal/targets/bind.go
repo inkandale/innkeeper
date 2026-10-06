@@ -113,7 +113,7 @@ func (s *Service) bind(ctx context.Context, k kind, instanceID, id int64, remote
 			r.lorebookRemoteIDs = []string{}
 		}
 	}
-	accepted, hash, err := project(r.data, k.fields(info))
+	accepted, hash, err := Project(r.data, k.fields(info))
 	if err != nil {
 		return Binding{}, err
 	}

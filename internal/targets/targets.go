@@ -324,7 +324,7 @@ func (s *Service) fetch(ctx context.Context, k kind, inst pluginhost.Instance, i
 	if err != nil {
 		return nil, "", err
 	}
-	return project(data, k.fields(info))
+	return Project(data, k.fields(info))
 }
 
 // getCard calls target.get and checks that the reply has a card.

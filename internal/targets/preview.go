@@ -119,7 +119,7 @@ func (s *Service) compare(ctx context.Context, k kind, instanceID, id int64) (Pr
 			p.Stale = true
 		}
 	}
-	sent, _, err := project(r.data, k.fields(info))
+	sent, _, err := Project(r.data, k.fields(info))
 	if err != nil {
 		return Preview{}, err
 	}

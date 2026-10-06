@@ -219,7 +219,7 @@ func (s *Service) readBack(ctx context.Context, k kind, inst pluginhost.Instance
 		// The push worked, so record it against what was sent instead.
 		s.log.Warn("read back pushed card", "instance", inst.ID, "remote_id", remoteID, "err", err)
 	}
-	data, hash, err := project(sent, k.fields(info))
+	data, hash, err := Project(sent, k.fields(info))
 	state := remoteUnknown
 	if info.Pull {
 		state = remoteUnchanged

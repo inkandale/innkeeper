@@ -291,3 +291,22 @@ func TestSearchFacets(t *testing.T) {
 		t.Fatalf("bad facet: %v", err)
 	}
 }
+
+func TestSearchIDsFilter(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	s := seedSearch(t, lib)
+	// Dellin is archived, so an ids filter alone still hides it.
+	got, err := lib.Search(ctx, Query{Filter: &Filter{IDs: []int64{s.carrow, s.dellin}}})
+	if err != nil || !slices.Equal(hitIDs(got), []int64{s.carrow}) {
+		t.Fatalf("ids = %v, %v", hitIDs(got), err)
+	}
+	ids, err := lib.SearchIDs(ctx, Query{Filter: &Filter{Or: []Filter{{IDs: []int64{s.brakka}}, {Tag: ptr("pirate")}}}})
+	if err != nil || !slices.Equal(ids, []int64{s.brakka, s.carrow}) {
+		t.Fatalf("ids or tag = %v, %v", ids, err)
+	}
+	none, err := lib.SearchIDs(ctx, Query{Filter: &Filter{IDs: []int64{}}})
+	if err != nil || len(none) != 0 {
+		t.Fatalf("empty ids = %v, %v", none, err)
+	}
+}

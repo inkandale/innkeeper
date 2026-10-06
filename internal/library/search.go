@@ -39,6 +39,7 @@ type Filter struct {
 	And         []Filter     `json:"and,omitempty"`
 	Or          []Filter     `json:"or,omitempty"`
 	Not         *Filter      `json:"not,omitempty"`
+	IDs         []int64      `json:"ids,omitempty" maxItems:"10000" doc:"Is one of these cards."`
 	Tag         *string      `json:"tag,omitempty" doc:"Has this tag, in any case."`
 	Collection  *int64       `json:"collection,omitempty" doc:"Is in this collection."`
 	Source      *string      `json:"source,omitempty" doc:"Has a source of this kind, such as chub."`
@@ -166,7 +167,7 @@ func (w *where) filter(f Filter) (string, error) {
 		return "", fmt.Errorf("%w: filter has more than 200 conditions", ErrInvalid)
 	}
 	set := 0
-	for _, ok := range []bool{f.And != nil, f.Or != nil, f.Not != nil, f.Tag != nil, f.Collection != nil, f.Source != nil, f.Archived != nil, f.TargetState != nil} {
+	for _, ok := range []bool{f.And != nil, f.Or != nil, f.Not != nil, f.IDs != nil, f.Tag != nil, f.Collection != nil, f.Source != nil, f.Archived != nil, f.TargetState != nil} {
 		if ok {
 			set++
 		}
@@ -182,6 +183,8 @@ func (w *where) filter(f Filter) (string, error) {
 	case f.Not != nil:
 		s, err := w.filter(*f.Not)
 		return "NOT (" + s + ")", err
+	case f.IDs != nil:
+		return `c.id = ANY(` + w.arg(f.IDs) + `)`, nil
 	case f.Tag != nil:
 		return `EXISTS (SELECT 1 FROM card_tag ct JOIN tag t ON t.id = ct.tag_id
 			WHERE ct.card_id = c.id AND lower(t.name) = lower(` + w.arg(*f.Tag) + `))`, nil

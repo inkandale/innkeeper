@@ -311,3 +311,40 @@ func TestBulkResolveReportsAConflict(t *testing.T) {
 		t.Fatalf("outcomes %v", out)
 	}
 }
+
+func TestAutoBindRefusesAMissingNestedBinding(t *testing.T) {
+	e, _, forge := worldBooks(t)
+	lb := e.pushLorebook(forge)
+	if _, err := e.pool.Exec(e.ctx, `UPDATE binding SET remote_state = 'missing' WHERE id = $1`, lb.ID); err != nil {
+		t.Fatal(err)
+	}
+	e.appCard("r1", map[string]any{"name": "Tova", "description": "A smith."},
+		map[string]any{"lorebook_remote_ids": []string{lb.RemoteID}})
+	if it := item(e.autoReconcile(nil), "r1"); it.AutoBound || len(it.Lorebooks) != 1 || it.Lorebooks[0].Verdict != VerdictBound {
+		t.Fatalf("r1 = %+v", it)
+	}
+}
+
+func TestAutoBindNeedsABindSuggestionForEachExactWorldBook(t *testing.T) {
+	e, _, forge := worldBooks(t)
+	e.pushLorebook(forge) // Forge is bound to another app world book, so l1 suggests skip.
+	e.appCard("r1", map[string]any{"name": "Tova", "description": "A smith."},
+		map[string]any{"lorebook_remote_ids": []string{"l1"}})
+	it := item(e.autoReconcile(nil), "r1")
+	if it.AutoBound || len(it.Lorebooks) != 1 || it.Lorebooks[0].Verdict != VerdictExact ||
+		it.Lorebooks[0].Suggested == nil || it.Lorebooks[0].Suggested.Action != "skip" {
+		t.Fatalf("r1 = %+v", it)
+	}
+}
+
+func TestAutoBindSharesAWorldBookAcrossCards(t *testing.T) {
+	e, _, forge := worldBooks(t)
+	e.libCard(map[string]any{"name": "Dain", "description": "A miner."})
+	links := map[string]any{"lorebook_remote_ids": []string{"l1"}}
+	e.appCard("r1", map[string]any{"name": "Tova", "description": "A smith."}, links)
+	e.appCard("r2", map[string]any{"name": "Dain", "description": "A miner."}, links)
+	snap := e.autoReconcile(nil)
+	if !item(snap, "r1").AutoBound || !item(snap, "r2").AutoBound || e.lorebookStatus(forge) != "in_sync" {
+		t.Fatalf("r1 = %+v, r2 = %+v", item(snap, "r1"), item(snap, "r2"))
+	}
+}

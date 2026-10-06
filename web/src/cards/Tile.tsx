@@ -107,3 +107,35 @@ export function Row({ hit, names, pick }: { hit: Hit; names: Names; pick: PickPr
     </tr>
   );
 }
+
+/** LorebookRow is one lorebook in the lorebook list. cards maps linked card IDs to their hits. */
+export function LorebookRow({ hit, names, cards, pick }: { hit: Hit; names: Names; cards: Map<number, Hit>; pick: PickProps }) {
+  const entries = hit.entries ?? 0;
+  return (
+    <tr>
+      <td>
+        <SelectBox hit={hit} pick={pick} />
+      </td>
+      <td>
+        <Link to={`/lorebooks/${hit.id}`}>{str(hit.fields.name)}</Link>
+      </td>
+      <td>
+        {entries} {entries === 1 ? "entry" : "entries"}
+      </td>
+      <td className="linked">
+        {(hit.cards ?? []).map((id) => {
+          const card = cards.get(id);
+          const name = card ? str(card.fields.name) : `Card ${id}`;
+          return (
+            <Link key={id} to={`/cards/${id}`} aria-label={name} title={name}>
+              {card ? <Avatar hit={card} w={160} /> : <span className="avatar empty">#</span>}
+            </Link>
+          );
+        })}
+      </td>
+      <td>
+        <Badges hit={hit} names={names} />
+      </td>
+    </tr>
+  );
+}

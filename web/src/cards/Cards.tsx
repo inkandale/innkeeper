@@ -4,10 +4,11 @@ import { useSearchParams } from "react-router";
 import { api, must } from "../api/client";
 import { Facets } from "./Facets";
 import { pageLinks } from "./pages";
-import { defaultSort, parseQuery, sizes, toggleTerm, toParams, toSearch, type CardQuery, type Sort, type Term } from "./query";
+import { defaultSort, parseQuery, sizes, toggleTerm, toParams, toLorebookSearch, toSearch, type CardQuery, type Sort, type Term } from "./query";
 import { emptySelection, pick, target, type Selection } from "./selection";
+import { useJobEvents } from "../settings/jobUtil";
 import { SelectionBar } from "./SelectionBar";
-import { Row, Tile, type Names } from "./Tile";
+import { LorebookRow, Row, Tile, type Names } from "./Tile";
 import "./Cards.css";
 
 const sortLabels: Record<Sort, string> = { relevance: "Best match", updated: "Updated", name: "Name", created: "Created" };
@@ -22,7 +23,9 @@ function termLabel(t: Term, names: Names): string {
   return `${t.not ? "not " : ""}${t.kind}: ${value}`;
 }
 
-export function Cards() {
+export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
+  const noun = kind === "card" ? "cards" : "lorebooks";
+  const Noun = kind === "card" ? "Cards" : "Lorebooks";
   const [params, setParams] = useSearchParams();
   const q = parseQuery(params);
   // The selection belongs to one search: paging keeps it, a new search clears it.
@@ -32,12 +35,15 @@ export function Cards() {
   if (stored.key !== key) setSel(emptySelection(key));
   const sel = stored.key === key ? stored : emptySelection(key);
   const [facetsOpen, setFacetsOpen] = useState(true);
+  // The bar unmounts once its job starts, so the page follows the job and reloads when it ends.
+  const [watching, setWatching] = useState<number>();
+  useJobEvents(watching ?? 0, watching !== undefined);
   const go = (next: CardQuery) => setParams(toParams(next));
 
-  const body = toSearch(q);
+  const body = kind === "card" ? toSearch(q) : toLorebookSearch(q);
   const res = useQuery({
-    queryKey: ["search", body],
-    queryFn: async () => must(await api.POST("/search", { body })),
+    queryKey: ["search", kind, body],
+    queryFn: async () => must(kind === "card" ? await api.POST("/search", { body }) : await api.POST("/lorebooks/search", { body })),
     placeholderData: keepPreviousData,
   });
   const instances = useQuery({ queryKey: ["instances"], queryFn: async () => must(await api.GET("/instances")) });
@@ -56,6 +62,15 @@ export function Cards() {
   const total = res.data?.total ?? 0;
   const last = Math.max(1, Math.ceil(total / q.size));
   const hits = res.data?.hits ?? [];
+  // Linked cards' names and avatars for the lorebook rows, in one search.
+  const linkedIds = kind === "lorebook" ? [...new Set(hits.flatMap((h) => h.cards ?? []))].slice(0, 500) : [];
+  const linkedBody = { filter: { ids: linkedIds }, fields: ["name", "avatar"], page: { size: 500 } };
+  const linked = useQuery({
+    queryKey: ["search", "card", linkedBody],
+    enabled: linkedIds.length > 0,
+    queryFn: async () => must(await api.POST("/search", { body: linkedBody })),
+  });
+  const linkedCards = new Map((linked.data?.hits ?? []).map((h) => [h.id, h]));
   const pageIds = hits.map((h) => h.id);
   const pickFor = (id: number) => ({
     selected: sel.all || sel.ids.includes(id),
@@ -72,9 +87,11 @@ export function Cards() {
           count={sel.ids.length}
           all={sel.all}
           total={total}
+          kind={kind}
           query={target(sel, body)}
           onAll={() => setSel({ ...sel, all: true })}
           onClear={() => setSel(emptySelection(key))}
+          onStarted={setWatching}
         />
       ) : (
         <div className="toolbar">
@@ -82,7 +99,7 @@ export function Cards() {
             Filters
           </button>
           <form role="search" onSubmit={search}>
-            <input key={q.text} className="input" type="search" name="q" defaultValue={q.text} placeholder="Search cards" />
+            <input key={q.text} className="input" type="search" name="q" defaultValue={q.text} placeholder={`Search ${noun}`} />
           </form>
           <select
             className="input"
@@ -98,9 +115,11 @@ export function Cards() {
                 </option>
               ))}
           </select>
-          <button className="button" onClick={() => go({ ...q, view: q.view === "grid" ? "list" : "grid" })}>
-            {q.view === "grid" ? "List view" : "Grid view"}
-          </button>
+          {kind === "card" && (
+            <button className="button" onClick={() => go({ ...q, view: q.view === "grid" ? "list" : "grid" })}>
+              {q.view === "grid" ? "List view" : "Grid view"}
+            </button>
+          )}
           <div className="chips">
             {q.terms.map((t) => (
               <button
@@ -117,13 +136,21 @@ export function Cards() {
       )}
       <div className="results">
         {res.isError && <p className="error">{res.error.message}</p>}
-        {res.data && <p className="total">{total} cards</p>}
+        {res.data && <p className="total">{total} {total === 1 ? noun.slice(0, -1) : noun}</p>}
         {res.data && q.page > last && (
           <p>
-            No cards on this page. <button className="button" onClick={() => go({ ...q, page: last })}>Go to page {last}</button>
+            No {noun} on this page. <button className="button" onClick={() => go({ ...q, page: last })}>Go to page {last}</button>
           </p>
         )}
-        {q.view === "grid" ? (
+        {kind === "lorebook" ? (
+          <table className="list">
+            <tbody>
+              {hits.map((h) => (
+                <LorebookRow key={h.id} hit={h} names={names} cards={linkedCards} pick={pickFor(h.id)} />
+              ))}
+            </tbody>
+          </table>
+        ) : q.view === "grid" ? (
           <div className="grid">
             {hits.map((h) => (
               <Tile key={h.id} hit={h} names={names} pick={pickFor(h.id)} />
@@ -158,7 +185,7 @@ export function Cards() {
           )}
           <select
             className="input"
-            aria-label="Cards per page"
+            aria-label={`${Noun} per page`}
             value={q.size}
             onChange={(e) => go({ ...q, size: Number(e.target.value), page: 1 })}
           >

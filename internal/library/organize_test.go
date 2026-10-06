@@ -196,3 +196,22 @@ func TestCardCollections(t *testing.T) {
 		t.Fatalf("after = %v, %v", got, err)
 	}
 }
+
+func TestLorebookCards(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	a, _ := newCard(t, lib, "a", `{"name": "A"}`)
+	b, _ := newCard(t, lib, "b", `{"name": "B"}`)
+	lb := newLorebook(t, lib, "forge")
+	if got, err := lib.LorebookCards(ctx, lb); err != nil || len(got) != 0 {
+		t.Fatalf("before = %v, %v", got, err)
+	}
+	for _, c := range []int64{b, a} {
+		if err := lib.LinkLorebook(ctx, c, lb); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, err := lib.LorebookCards(ctx, lb); err != nil || !slices.Equal(got, []int64{a, b}) {
+		t.Fatalf("after = %v, %v", got, err)
+	}
+}

@@ -282,3 +282,15 @@
     max-height: 40dvh;
   }
 }
+
+.list .linked a {
+  display: inline-block;
+  margin-right: calc(var(--space) * -0.5);
+}
+
+.list .linked .avatar {
+  width: 24px;
+  height: 36px;
+  border-radius: calc(var(--radius) * 0.5);
+  border: 1px solid var(--bg);
+}

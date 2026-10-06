@@ -16,6 +16,7 @@ type entityResult struct {
 	Tags        []string       `json:"tags"`
 	Lorebooks   []int64        `json:"lorebooks"`
 	Collections []int64        `json:"collections"`
+	Cards       []int64        `json:"cards"`
 	Revision    revisionResult `json:"revision"`
 }
 
@@ -301,5 +302,23 @@ func TestCompareRevisions(t *testing.T) {
 	}
 	if kinds["entries"] != "entries" {
 		t.Fatalf("lorebook fields = %+v", bookDiff.Fields)
+	}
+}
+
+func TestLorebookCardsField(t *testing.T) {
+	e := newEnv(t)
+	c := e.createCard(`{"name": "Brakka"}`)
+	var book entityResult
+	e.call("POST", "/lorebooks", map[string]any{"data": json.RawMessage(`{"name": "Forge", "entries": []}`)}, 201, &book)
+	e.call("PUT", fmt.Sprintf("/cards/%d/lorebooks/%d", c.ID, book.ID), nil, 204, nil)
+	var got entityResult
+	e.call("GET", fmt.Sprintf("/lorebooks/%d", book.ID), nil, 200, &got)
+	if len(got.Cards) != 1 || got.Cards[0] != c.ID {
+		t.Fatalf("cards = %v", got.Cards)
+	}
+	var card entityResult
+	e.call("GET", fmt.Sprintf("/cards/%d", c.ID), nil, 200, &card)
+	if card.Cards != nil {
+		t.Fatalf("a card lists cards: %v", card.Cards)
 	}
 }

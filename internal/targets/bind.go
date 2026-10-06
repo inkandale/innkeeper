@@ -199,8 +199,25 @@ func (s *Service) describePull(ctx context.Context, k kind, instanceID int64) (p
 	case err != nil:
 	case !info.Pull:
 		err = fmt.Errorf("%w: %s can't read the app", ErrCannot, inst.Manifest.Name)
-	case k.isLorebook() && info.Lorebooks != protocol.LorebooksStandalone:
-		err = fmt.Errorf("%w: lorebooks for %s", ErrCannot, inst.Manifest.Name)
+	default:
+		err = lorebookCheck(k, inst, info)
 	}
 	return inst, info, err
+}
+
+// lorebookCheck refuses a lorebook for a target that keeps them inside cards.
+func lorebookCheck(k kind, inst pluginhost.Instance, info protocol.TargetInfo) error {
+	if k.isLorebook() && info.Lorebooks != protocol.LorebooksStandalone {
+		return fmt.Errorf("%w: lorebooks for %s", ErrCannot, inst.Manifest.Name)
+	}
+	return nil
+}
+
+// CheckLorebookPush fails with ErrCannot if the target can't take lorebooks on their own.
+func (s *Service) CheckLorebookPush(ctx context.Context, instanceID int64) error {
+	inst, info, err := s.describe(ctx, instanceID)
+	if err != nil {
+		return err
+	}
+	return lorebookCheck(lorebookKind, inst, info)
 }

@@ -59,25 +59,39 @@ func (s *Service) enqueuePush(ctx context.Context, q *jobs.Queue, k kind, instan
 
 // EnqueueBulkPush queues a push of each card, as one bulk job.
 func (s *Service) EnqueueBulkPush(ctx context.Context, q *jobs.Queue, instanceID int64, cardIDs []int64, newCopy bool) (jobs.Job, error) {
-	cardIDs = slices.Clone(cardIDs)
-	slices.Sort(cardIDs)
-	cardIDs = slices.Compact(cardIDs)
-	rows, err := s.pool.Query(ctx, `SELECT b.card_id, max(p.id) FROM binding b JOIN push p ON p.binding_id = b.id
-		WHERE b.instance_id = $1 AND b.card_id = ANY($2) GROUP BY b.card_id`, instanceID, cardIDs)
+	return s.enqueueBulkPush(ctx, q, cardKind, instanceID, cardIDs, newCopy)
+}
+
+// EnqueueBulkLorebookPush queues a push of each lorebook, as one bulk job.
+func (s *Service) EnqueueBulkLorebookPush(ctx context.Context, q *jobs.Queue, instanceID int64, lorebookIDs []int64, newCopy bool) (jobs.Job, error) {
+	return s.enqueueBulkPush(ctx, q, lorebookKind, instanceID, lorebookIDs, newCopy)
+}
+
+func (s *Service) enqueueBulkPush(ctx context.Context, q *jobs.Queue, k kind, instanceID int64, ids []int64, newCopy bool) (jobs.Job, error) {
+	ids = slices.Clone(ids)
+	slices.Sort(ids)
+	ids = slices.Compact(ids)
+	rows, err := s.pool.Query(ctx, `SELECT b.`+k.col+`, max(p.id) FROM binding b JOIN push p ON p.binding_id = b.id
+		WHERE b.instance_id = $1 AND b.`+k.col+` = ANY($2) GROUP BY b.`+k.col, instanceID, ids)
 	if err != nil {
 		return jobs.Job{}, err
 	}
 	lastPush := map[int64]int64{}
-	var card, last int64
-	if _, err := pgx.ForEachRow(rows, []any{&card, &last}, func() error {
-		lastPush[card] = last
+	var id, last int64
+	if _, err := pgx.ForEachRow(rows, []any{&id, &last}, func() error {
+		lastPush[id] = last
 		return nil
 	}); err != nil {
 		return jobs.Job{}, err
 	}
-	children := make([]jobs.Spec, len(cardIDs))
-	for i, id := range cardIDs {
-		p := pushPayload{CardID: id, NewCopy: newCopy}
+	children := make([]jobs.Spec, len(ids))
+	for i, id := range ids {
+		p := pushPayload{NewCopy: newCopy}
+		if k.isLorebook() {
+			p.LorebookID = id
+		} else {
+			p.CardID = id
+		}
 		if v, ok := lastPush[id]; ok {
 			p.LastPush = &v
 		}

@@ -49,6 +49,7 @@ type entityOut struct {
 	Tags        []string    `json:"tags,omitempty" doc:"Cards only"`
 	Lorebooks   []int64     `json:"lorebooks,omitempty" doc:"Cards only: IDs of linked lorebooks"`
 	Collections []int64     `json:"collections,omitempty" doc:"Cards only: IDs of the collections it's in"`
+	Cards       []int64     `json:"cards,omitempty" doc:"Lorebooks only: IDs of linked cards"`
 }
 
 type entityResp struct{ Body entityOut }
@@ -195,6 +196,11 @@ func (s *Server) entity(ctx context.Context, ents *library.Entities, id int64) (
 			return nil, s.fail(err)
 		}
 		if out.Body.Collections, err = s.Lib.CardCollections(ctx, id); err != nil {
+			return nil, s.fail(err)
+		}
+	}
+	if ents == s.Lib.Lorebooks {
+		if out.Body.Cards, err = s.Lib.LorebookCards(ctx, id); err != nil {
 			return nil, s.fail(err)
 		}
 	}

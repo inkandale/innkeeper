@@ -25,6 +25,16 @@ const diff = {
       ],
     },
     { path: "alternate_greetings", kind: "list", hunks: [{ id: "alternate_greetings#0", status: "app_only", app: ["Hail."] }] },
+    {
+      path: "entries",
+      kind: "entries",
+      hunks: [
+        { id: "entries[k:anvil].content#0", status: "same", library: "Heavy ", app: "Heavy " },
+        { id: "entries[k:anvil].content#1", status: "conflict", library: "iron.", app: "steel." },
+        { id: "entries[k:anvil].enabled#0", status: "same", library: true, app: true },
+        { id: "entries[c:Sea\\.lore]#0", status: "app_only", app: { keys: ["kraken"], content: "Arms." } },
+      ],
+    },
     { path: "name", kind: "scalar", hunks: [{ id: "name#0", status: "same", library: "Brakka", app: "Brakka" }] },
   ],
 };
@@ -99,4 +109,15 @@ test("list hunks render as blocks", async () => {
   await screen.findByText("grumpy dwarf.");
   expect(screen.getByRole("heading", { name: "alternate_greetings" }).nextElementSibling).toHaveClass("blocks");
   expect(screen.getByRole("heading", { name: "description" }).nextElementSibling).not.toHaveClass("blocks");
+});
+
+test("entry hunks group by entry and name each changed field", async () => {
+  renderAt("/cards/7/history");
+  const anvil = await screen.findByRole("heading", { name: "anvil" });
+  expect(screen.getByRole("heading", { name: "Sea.lore" })).toBeInTheDocument();
+  const group = anvil.closest("section")!;
+  expect(group).toHaveTextContent("content");
+  expect(group).not.toHaveTextContent("enabled");
+  expect(screen.getByText("iron.").tagName).toBe("DEL");
+  expect(screen.getByText("steel.").tagName).toBe("INS");
 });

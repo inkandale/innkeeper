@@ -58,16 +58,17 @@ func worker() error {
 		Log:         log,
 		Concurrency: concurrency,
 		Handlers: map[string]jobs.Handler{
-			importer.Kind:         im.Run,
-			bulk.ArchiveKind:      bulk.Archive(svc.lib),
-			bulk.TagKind:          bulk.Tag(svc.lib),
-			bulk.CollectKind:      bulk.Collect(svc.lib),
-			bulk.ExportKind:       bulk.Export(ex),
-			targets.PushKind:      tg.RunPush,
-			targets.ScanKind:      tg.RunScan,
-			targets.ImportKind:    tg.RunImport,
-			targets.ReconcileKind: tg.RunReconcile,
-			targets.ResolveKind:   tg.RunResolve,
+			importer.Kind:            im.Run,
+			bulk.ArchiveKind:         bulk.Archive(svc.lib),
+			bulk.LorebookArchiveKind: bulk.ArchiveLorebook(svc.lib),
+			bulk.TagKind:             bulk.Tag(svc.lib),
+			bulk.CollectKind:         bulk.Collect(svc.lib),
+			bulk.ExportKind:          bulk.Export(ex),
+			targets.PushKind:         tg.RunPush,
+			targets.ScanKind:         tg.RunScan,
+			targets.ImportKind:       tg.RunImport,
+			targets.ReconcileKind:    tg.RunReconcile,
+			targets.ResolveKind:      tg.RunResolve,
 			blobGCKind: func(ctx context.Context, r *jobs.Run) error {
 				blobs, leftovers, err := svc.lib.CollectGarbage(ctx, 24*time.Hour)
 				r.SetProgress(fmt.Appendf(nil, `{"blobs": %d, "leftovers": %d}`, blobs, leftovers))

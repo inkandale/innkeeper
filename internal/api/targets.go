@@ -25,6 +25,7 @@ type bulkPushIn struct {
 	Body struct {
 		InstanceID int64         `json:"instance_id"`
 		Query      library.Query `json:"query" doc:"Selects the cards, as in POST /search. Paging is ignored."`
+		Kind       string        `json:"kind,omitempty" enum:"card,lorebook" doc:"What the query selects; default card."`
 		NewCopy    bool          `json:"new_copy,omitempty" doc:"Let a target that can't update cards make another copy"`
 	}
 }
@@ -161,7 +162,7 @@ func (s *Server) targetRoutes(api huma.API) {
 	}
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "push-cards", Method: http.MethodPost, Path: "/pushes",
-		Summary: "Push many cards to a target", Description: "Queues one child job per card the query matches.",
+		Summary: "Push many cards or lorebooks to a target", Description: "Queues one child job per card or lorebook the query matches.",
 		Tags: tags, DefaultStatus: http.StatusAccepted},
 		func(ctx context.Context, in *bulkPushIn) (*jobResp, error) {
 			q := in.Body.Query
@@ -171,11 +172,19 @@ func (s *Server) targetRoutes(api huma.API) {
 			if err := s.usable(ctx, in.Body.InstanceID, "push"); err != nil {
 				return nil, err
 			}
-			ids, err := s.Lib.SearchIDs(ctx, q)
+			search, enqueue := s.Lib.SearchIDs, s.Targets.EnqueueBulkPush
+			if in.Body.Kind == "lorebook" {
+				search, enqueue = s.Lib.SearchLorebookIDs, s.Targets.EnqueueBulkLorebookPush
+				// Fail now; otherwise every child job fails (and retries) on the same reason.
+				if err := s.Targets.CheckLorebookPush(ctx, in.Body.InstanceID); err != nil {
+					return nil, s.fail(err)
+				}
+			}
+			ids, err := search(ctx, q)
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			p, err := s.Targets.EnqueueBulkPush(ctx, s.Queue, in.Body.InstanceID, ids, in.Body.NewCopy)
+			p, err := enqueue(ctx, s.Queue, in.Body.InstanceID, ids, in.Body.NewCopy)
 			if err != nil {
 				return nil, s.fail(err)
 			}

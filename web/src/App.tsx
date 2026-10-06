@@ -6,6 +6,7 @@ import { History } from "./card/History";
 import { Cards } from "./cards/Cards";
 import { Collections } from "./collections/Collections";
 import { Login } from "./login/Login";
+import { Lorebook } from "./lorebook/Lorebook";
 import { Page } from "./shell/Page";
 import { Shell } from "./shell/Shell";
 import { Job } from "./settings/Job";
@@ -45,10 +46,12 @@ export const router = createBrowserRouter([
         element: <Shell />,
         children: [
           { index: true, element: <Home /> },
-          { path: "cards", element: <Cards /> },
+          { path: "cards", element: <Cards key="cards" /> },
+          { path: "lorebooks", element: <Cards key="lorebooks" kind="lorebook" /> },
+          { path: "lorebooks/:id", element: <Lorebook /> },
+          { path: "lorebooks/:id/history", element: <History kind="lorebook" /> },
           { path: "cards/:id", element: <Card /> },
           { path: "cards/:id/history", element: <History /> },
-          { path: "lorebooks", element: <Page title="Lorebooks" /> },
           { path: "collections", element: <Collections /> },
           { path: "sync", element: <Page title="Sync" /> },
           {

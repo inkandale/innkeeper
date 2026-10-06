@@ -25,4 +25,16 @@ func (s *Server) searchRoutes(api huma.API) {
 			}
 			return &searchOut{Body: res}, nil
 		})
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Read), OperationID: "search-lorebooks", Method: http.MethodPost, Path: "/lorebooks/search",
+		Summary: "Search the library's lorebooks",
+		Description: "Takes the same query as POST /search. Text matches names, descriptions, entry keys, and entry content. " +
+			"Lorebooks have no tags or collections. Send {} to list every lorebook that isn't archived, newest first.",
+		Tags: []string{"Search"}},
+		func(ctx context.Context, in *searchIn) (*searchOut, error) {
+			res, err := s.Lib.SearchLorebooks(ctx, in.Body)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			return &searchOut{Body: res}, nil
+		})
 }

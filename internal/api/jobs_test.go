@@ -115,6 +115,32 @@ func TestBulkArchiveAndWatch(t *testing.T) {
 	e.call("POST", "/bulk", map[string]any{"query": map[string]any{}, "action": "archive"}, 400, nil)
 }
 
+func TestBulkUnarchiveLorebooks(t *testing.T) {
+	e := newEnv(t)
+	var lb entityOut
+	e.call("POST", "/lorebooks", map[string]any{"data": map[string]any{"name": "Old lore", "entries": []any{}}}, 201, &lb)
+	path := fmt.Sprintf("/lorebooks/%d", lb.ID)
+	e.call("PUT", path+"/archived", map[string]any{"archived": true}, 204, nil)
+
+	w := &jobs.Worker{Queue: e.s.Queue, Log: quiet, Poll: 50 * time.Millisecond,
+		Handlers: map[string]jobs.Handler{bulk.LorebookArchiveKind: bulk.ArchiveLorebook(e.s.Lib)}}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- w.Run(ctx) }()
+	t.Cleanup(func() { cancel(); <-done })
+
+	var j jobOut
+	e.call("POST", "/bulk", map[string]any{"kind": "lorebook", "query": map[string]any{"text": "old"}, "action": "unarchive"}, 202, &j)
+	if last, r := e.watchJob(j.ID); last.Status != "succeeded" || last.Children["succeeded"] != 1 {
+		t.Fatalf("unarchive last event = %+v\n%s", last, r.Body)
+	}
+	var got entityOut
+	e.call("GET", path, nil, 200, &got)
+	if got.ArchivedAt != nil {
+		t.Fatalf("lorebook still archived: %+v", got)
+	}
+}
+
 // watchJob reads a job's event stream, which ends when the job finishes, and
 // returns the last event.
 func (e *testEnv) watchJob(id int64) (jobOut, result) {
@@ -297,4 +323,32 @@ func TestBulkTagCollectExport(t *testing.T) {
 	e.call("POST", "/bulk", map[string]any{"query": picked, "action": "tag", "tags": make([]string, 101)}, 422, nil)
 	e.call("POST", "/bulk", map[string]any{"query": picked, "action": "collect", "collection": 99999}, 404, nil)
 	e.call("POST", "/bulk", map[string]any{"query": picked, "action": "export", "format": "nope"}, 400, nil)
+}
+
+func TestBulkLorebooks(t *testing.T) {
+	e := newEnv(t)
+	w := &jobs.Worker{Queue: e.s.Queue, Log: quiet, Poll: 50 * time.Millisecond,
+		Handlers: map[string]jobs.Handler{bulk.LorebookArchiveKind: bulk.ArchiveLorebook(e.s.Lib)}}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- w.Run(ctx) }()
+	t.Cleanup(func() { cancel(); <-done })
+
+	var forge entityResult
+	e.call("POST", "/lorebooks", map[string]any{"data": json.RawMessage(`{"name": "Forge", "entries": []}`)}, 201, &forge)
+	pick := map[string]any{"filter": map[string]any{"ids": []int64{forge.ID}}}
+
+	var j jobOut
+	e.call("POST", "/bulk", map[string]any{"kind": "lorebook", "query": pick, "action": "archive"}, 202, &j)
+	if last, _ := e.watchJob(j.ID); last.Status != "succeeded" {
+		t.Fatalf("bulk archive = %+v", last)
+	}
+	var got entityResult
+	e.call("GET", fmt.Sprintf("/lorebooks/%d", forge.ID), nil, 200, &got)
+	if got.ArchivedAt == nil {
+		t.Fatal("lorebook not archived")
+	}
+
+	e.call("POST", "/bulk", map[string]any{"kind": "lorebook", "query": pick, "action": "tag", "tags": []string{"x"}}, 400, nil)
+	e.call("POST", "/bulk", map[string]any{"kind": "spell", "query": pick, "action": "archive"}, 422, nil)
 }

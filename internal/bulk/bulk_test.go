@@ -115,3 +115,28 @@ func TestTagAndCollect(t *testing.T) {
 		t.Fatalf("after uncollect = %v", got)
 	}
 }
+
+func TestArchiveLorebooks(t *testing.T) {
+	ctx := context.Background()
+	lib, q, _ := setup(t, func(lib *library.Library) map[string]jobs.Handler {
+		return map[string]jobs.Handler{LorebookArchiveKind: ArchiveLorebook(lib)}
+	})
+	var ids []int64
+	for _, slug := range []string{"a", "b"} {
+		l, _, err := lib.Lorebooks.Create(ctx, slug, "upload", library.Edit{Data: []byte(`{"name": "x", "entries": []}`), Source: "ui"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, l.ID)
+	}
+	parent, err := EnqueueLorebookArchive(ctx, q, ids, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wait(t, q, parent.ID)
+	for _, id := range ids {
+		if l, _ := lib.Lorebooks.Get(ctx, id); l.ArchivedAt == nil {
+			t.Errorf("lorebook %d not archived", id)
+		}
+	}
+}

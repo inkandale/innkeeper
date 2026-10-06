@@ -92,3 +92,8 @@ export function toggleTerm(q: CardQuery, t: Term): CardQuery {
   if (i < 0 || q.terms[i]?.not !== t.not) terms.push(t);
   return { ...q, terms, page: 1 };
 }
+
+/** toLorebookSearch is the POST /api/lorebooks/search body for the state. */
+export function toLorebookSearch(q: CardQuery): Search {
+  return { ...toSearch(q), fields: ["name", "description"], include: ["cards", "targets"], facets: ["targets", "sources"] };
+}

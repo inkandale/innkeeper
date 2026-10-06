@@ -168,3 +168,19 @@ func TestLorebookPushJob(t *testing.T) {
 		t.Fatalf("status %s", s)
 	}
 }
+
+func TestBulkLorebookPush(t *testing.T) {
+	e := setup(t, map[string]any{"lorebooks": "standalone"})
+	a, b := e.newLorebook("Forge lore"), e.newLorebook("Sea lore")
+	q := jobs.New(e.pool)
+	parent, err := e.s.EnqueueBulkLorebookPush(e.ctx, q, e.inst, []int64{a, b, a}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j := e.startWorker(q)(parent.ID); j.Status != jobs.StatusSucceeded {
+		t.Fatalf("bulk push %s: %v", j.Status, j.Error)
+	}
+	if e.lorebookStatus(a) != "in_sync" || e.lorebookStatus(b) != "in_sync" {
+		t.Fatal("bulk push didn't push both lorebooks")
+	}
+}

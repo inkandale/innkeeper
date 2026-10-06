@@ -165,6 +165,7 @@ test("select all matching archives the search", async () => {
   await user.click(screen.getByRole("button", { name: "Archive" }));
   await user.click(screen.getByRole("button", { name: "Archive 49 cards" }));
   await waitFor(() => expect(posts[0]).toEqual({ path: "/api/bulk", body: { query: { filter: { and: [{ tag: "fantasy" }] } }, action: "archive" } }));
+  expect(posts[0]!.body).not.toHaveProperty("kind");
 });
 
 test("push offers only targets that push", async () => {
@@ -176,6 +177,7 @@ test("push offers only targets that push", async () => {
   expect(Array.from((target as HTMLSelectElement).options).map((o) => o.text)).toEqual(["Lumiverse"]);
   await user.click(screen.getByRole("button", { name: "Push 1 card" }));
   await waitFor(() => expect(posts[0]).toEqual({ path: "/api/pushes", body: { instance_id: 2, query: { filter: { ids: [8] } } } }));
+  expect(posts[0]!.body).not.toHaveProperty("kind");
 });
 
 // answer replaces the fake response for one path.

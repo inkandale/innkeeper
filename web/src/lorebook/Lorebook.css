@@ -1,0 +1,45 @@
+.entries-toolbar {
+  margin-bottom: var(--space);
+}
+
+.entries-toolbar .input[type="search"] {
+  flex: 1;
+}
+
+.entry summary strong {
+  white-space: nowrap;
+}
+
+.entry summary .muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.entry summary[draggable="true"] {
+  cursor: grab;
+}
+
+.entry-body {
+  display: grid;
+  gap: var(--space);
+  padding: 0 var(--space) var(--space);
+}
+
+.chip-input {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--space) * 0.5);
+  align-items: center;
+}
+
+.chip-input .input {
+  flex: 1;
+  min-width: 8em;
+  width: auto;
+}
+
+.input.num {
+  width: 6em;
+}

@@ -1,4 +1,4 @@
-import { ApiError, loginPath, mustOk, safeNext, thumb, upload } from "./client";
+import { ApiError, loginPath, mustOk, route, safeNext, thumb, upload } from "./client";
 
 test("loginPath keeps where the user was", () => {
   expect(loginPath("/cards", "?tag=elf")).toBe("/login?next=%2Fcards%3Ftag%3Delf");
@@ -47,4 +47,9 @@ test("upload sends the raw file and returns its sha256", async () => {
   expect(await upload(new Blob(["png bytes"]))).toBe("ab".repeat(32));
   expect(sent).toEqual({ type: "application/octet-stream", body: "png bytes" });
   vi.unstubAllGlobals();
+});
+
+test("route swaps a card path for a lorebook one", () => {
+  expect(route("card", "/cards/{id}/revisions")).toBe("/cards/{id}/revisions");
+  expect(route("lorebook", "/cards/{id}/revisions")).toBe("/lorebooks/{id}/revisions");
 });

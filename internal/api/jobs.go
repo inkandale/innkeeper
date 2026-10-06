@@ -91,7 +91,7 @@ type bulkIn struct {
 		Action     string        `json:"action" enum:"archive,unarchive,tag,untag,collect,uncollect,export"`
 		Tags       []string      `json:"tags,omitempty" doc:"For tag and untag: the tags to add or remove."`
 		Collection int64         `json:"collection,omitempty" doc:"For collect and uncollect: the collection."`
-		Format     string        `json:"format,omitempty" default:"json" doc:"For export: json, or a format a codec plugin instance writes, such as png."`
+		Format     string        `json:"format,omitempty" doc:"For export: json (the default), or a format a codec plugin instance writes, such as png."`
 	}
 }
 
@@ -331,6 +331,9 @@ func (s *Server) jobRoutes(api huma.API) {
 					return nil, huma.Error404NotFound("collection not found")
 				}
 			case "export":
+				if b.Format == "" {
+					b.Format = "json"
+				}
 				if b.Format != "json" {
 					if _, err := s.Registry.CodecInstance(ctx, b.Format); err != nil {
 						return nil, s.fail(err)

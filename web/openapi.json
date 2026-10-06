@@ -294,8 +294,7 @@
             "type": "integer"
           },
           "format": {
-            "default": "json",
-            "description": "For export: json, or a format a codec plugin instance writes, such as png.",
+            "description": "For export: json (the default), or a format a codec plugin instance writes, such as png.",
             "type": "string"
           },
           "query": {

@@ -1338,11 +1338,8 @@ export interface components {
              * @description For collect and uncollect: the collection.
              */
             collection?: number;
-            /**
-             * @description For export: json, or a format a codec plugin instance writes, such as png.
-             * @default json
-             */
-            format: string;
+            /** @description For export: json (the default), or a format a codec plugin instance writes, such as png. */
+            format?: string;
             /** @description Selects the cards, as in POST /search. Paging is ignored. To pick cards by ID, filter on ids. */
             query: components["schemas"]["Query"];
             /** @description For tag and untag: the tags to add or remove. */

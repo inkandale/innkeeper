@@ -194,3 +194,11 @@ test("using the latest value for a clashing field drops my edit to it", async ()
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
 });
+
+test("replacing the image saves a revision with the new avatar", async () => {
+  renderAt("/cards/7");
+  const file = new File(["png"], "new.png", { type: "image/png" });
+  await userEvent.upload(await screen.findByLabelText("Replace image"), file);
+  await waitFor(() => expect(puts).toHaveLength(1));
+  expect(puts[0]).toMatchObject({ path: "/api/cards/7", body: { base_revision_id: 11, avatar: "cd".repeat(32), data } });
+});

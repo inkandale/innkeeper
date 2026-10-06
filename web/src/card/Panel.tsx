@@ -1,10 +1,11 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
-import { api, must, mustOk, thumb } from "../api/client";
+import { api, must, mustOk, thumb, upload } from "../api/client";
 import { badgeClass } from "../cards/Tile";
 import { useToast } from "../shell/Toasts";
 import type { Entity } from "./Card";
+import { Crop } from "./CropDialog";
 import { text, type Data } from "./draft";
 import { Collections, Sources, Tags } from "./Organize";
 
@@ -15,14 +16,17 @@ export type PanelProps = {
   dirty: boolean;
   saving: boolean;
   onSave: () => void;
+  onAvatar: (sha: string) => void;
+  avatarBusy: boolean;
 };
 
 /** Panel is the card page's left side. */
-export function Panel({ card, data, edit, dirty, saving, onSave }: PanelProps) {
+export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avatarBusy }: PanelProps) {
   const avatar = card.revision.avatar;
   return (
     <aside className="card-aside">
       {avatar ? <img className="portrait" src={thumb(avatar, 640)} alt="" /> : <div className="portrait" />}
+      <Image sha={avatar} busy={avatarBusy} onAvatar={onAvatar} />
       <input className="input name" aria-label="Name" value={text(data.name)} onChange={(e) => edit("name", e.target.value)} />
       <input className="input" aria-label="Creator" placeholder="Creator" value={text(data.creator)} onChange={(e) => edit("creator", e.target.value)} />
       <div className="row">
@@ -157,5 +161,43 @@ function Revisions({ id }: { id: number }) {
       </ul>
       <Link to={`/cards/${id}/history`}>All history</Link>
     </section>
+  );
+}
+
+function Image({ sha, busy, onAvatar }: { sha?: string; busy: boolean; onAvatar: (sha: string) => void }) {
+  const toast = useToast();
+  const [cropping, setCropping] = useState(false);
+  const up = useMutation({
+    mutationFn: upload,
+    onSuccess: (s) => {
+      setCropping(false);
+      onAvatar(s);
+    },
+    onError: (e) => toast({ text: e.message, error: true }),
+  });
+  const off = busy || up.isPending;
+  return (
+    <div className="row">
+      <label className="button">
+        Replace image
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          hidden
+          disabled={off}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = "";
+            if (f) up.mutate(f);
+          }}
+        />
+      </label>
+      {sha && (
+        <button className="button" disabled={off} onClick={() => setCropping(true)}>
+          Crop
+        </button>
+      )}
+      {cropping && sha && <Crop src={`/api/blobs/${sha}`} onDone={(png) => up.mutate(png)} onCancel={() => setCropping(false)} />}
+    </div>
   );
 }

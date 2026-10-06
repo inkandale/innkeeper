@@ -50,6 +50,24 @@ function Editor({ id }: { id: number }) {
     onError: (e) => (e instanceof ApiError && e.status === 409 ? setStale(true) : toast({ text: e.message, error: true })),
   });
 
+  // An image change saves at once, on the head. A draft started from that
+  // head moves onto the new revision, since its data didn't change.
+  const avatar = useMutation({
+    mutationFn: async ({ sha, base }: { sha: string; base: Entity["revision"] }) =>
+      must(
+        await api.PUT("/cards/{id}", {
+          params: { path: { id } },
+          body: { base_revision_id: base.id, data: base.data, avatar: sha, message: "Replace image", source: "ui" },
+        }),
+      ),
+    onSuccess: (e, { base }) => {
+      qc.setQueryData(["card", id], e);
+      void qc.invalidateQueries({ queryKey: ["card", id, "revisions"] });
+      setDraft((d) => (d && d.baseId === base.id ? { ...d, baseId: e.revision.id } : d));
+    },
+    onError: (e) => toast({ text: e.message, error: true }),
+  });
+
   if (card.isPending) return null;
   if (card.isError) return <p className="error page">{card.error.message}</p>;
   const head = card.data;
@@ -80,7 +98,10 @@ function Editor({ id }: { id: number }) {
 
   return (
     <div className="card-page">
-      <Panel card={head} data={data} edit={edit} dirty={dirty.size > 0} saving={save.isPending || stale} onSave={() => draft && save.mutate(draft)} />
+      <Panel card={head} data={data} edit={edit} dirty={dirty.size > 0} saving={save.isPending || stale} onSave={() => draft && save.mutate(draft)}
+        onAvatar={(sha) => avatar.mutate({ sha, base: head.revision })}
+        avatarBusy={avatar.isPending}
+      />
       <div className="card-main">
         {stale && (
           <div className="banner" role="alert">

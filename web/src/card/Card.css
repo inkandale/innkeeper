@@ -183,3 +183,36 @@
   display: inline-block;
   position: static;
 }
+
+.crop-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 0.6);
+}
+
+.crop {
+  display: grid;
+  gap: var(--space);
+  padding: calc(var(--space) * 2);
+  background: var(--surface);
+  border-radius: var(--radius);
+}
+
+.crop-box {
+  position: relative;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  background: var(--bg);
+}
+
+.crop-box img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  max-width: none;
+  user-select: none;
+}

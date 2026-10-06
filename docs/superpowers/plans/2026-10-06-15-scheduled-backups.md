@@ -38,7 +38,7 @@
   8. Move each restored table's identity sequence past its largest `id`.
   9. For config, bump `plugin_instance.updated_at` so running plugin processes restart with the restored settings. Report `SecretsKeyMismatch` when `secrets_check` differs from this key's.
   10. Commit. A deferred foreign key failure (`23503`) on `binding` becomes: "bindings refer to cards or lorebooks this backup doesn't have; restore a matching config backup or unbind them first".
-- **Deferrable foreign keys.** Migration `0012_backup.sql` makes every foreign key in `public` `DEFERRABLE INITIALLY IMMEDIATE`. Normal writes behave as before. Restore defers the checks, which `card` ↔ `card_revision` needs (they reference each other), as does replacing assets while bindings point at cards. It also lets the revision immutability trigger allow changes when `innkeeper.restore` is `on`.
+- **Deferrable foreign keys.** Migration `0013_backup.sql` makes every foreign key in `public` `DEFERRABLE INITIALLY IMMEDIATE`. Normal writes behave as before. Restore defers the checks, which `card` ↔ `card_revision` needs (they reference each other), as does replacing assets while bindings point at cards. It also lets the revision immutability trigger allow changes when `innkeeper.restore` is `on`.
 - **Order.** Restore assets before config, or config keeps no bindings. `innkeeper restore` sorts its arguments by type. The README says so for the API.
 - **Settings.** `INNKEEPER_BACKUP_DIR`, `INNKEEPER_BACKUP_ASSETS_EVERY`, `INNKEEPER_BACKUP_ASSETS_KEEP`, `INNKEEPER_BACKUP_CONFIG_EVERY`, `INNKEEPER_BACKUP_CONFIG_KEEP`.
   - `EVERY` takes a Go duration or whole days (`7d`).
@@ -61,7 +61,7 @@
 
 | File | Change |
 |---|---|
-| `internal/db/migrations/0012_backup.sql` | Deferrable foreign keys; revision trigger allows restore |
+| `internal/db/migrations/0013_backup.sql` | Deferrable foreign keys; revision trigger allows restore |
 | `internal/backup/backup.go`, `backup_test.go` | New: types, `Config`, `Write`, `List`, `Prune` |
 | `internal/backup/pgdump.go`, `pgdump_test.go` | Moved from `cmd/innkeeper/backup.go`: `pgDumpCommand`, now taking schemas and a snapshot |
 | `internal/backup/archive.go`, `archive_test.go` | New: `WriteArchive`, `ReadManifest` |
@@ -91,7 +91,7 @@ The plugin-schema tests also need `pg_dump` 18 on the `PATH`. They skip without 
 ### Task 1: Deferrable foreign keys
 
 - [ ] Test in `internal/db/migrations_test.go`: after `Migrate`, no foreign key in `public` has `condeferrable = false`.
-- [ ] `0012_backup.sql`:
+- [ ] `0013_backup.sql`:
 
 ```sql
 -- Restore defers foreign key checks: card and card_revision reference each

@@ -167,10 +167,10 @@ func TestCompareLorebook(t *testing.T) {
 	if len(c) != 2 {
 		t.Fatalf("changed = %v", c)
 	}
-	if h := c["entries[forge].content#1"]; h.Status != Conflict {
+	if h := c["entries[c:forge].content#1"]; h.Status != Conflict {
 		t.Errorf("forge content = %+v", h)
 	}
-	h := c["entries[town]#0"]
+	h := c["entries[c:town]#0"]
 	if h.Status != LibraryOnly {
 		t.Errorf("town = %+v", h)
 	}
@@ -194,10 +194,10 @@ func TestCompareDuplicateComments(t *testing.T) {
 	if len(c) != 1 {
 		t.Fatalf("changed = %v", c)
 	}
-	if h := c["entries[a\x1fb].content#0"]; h.Status != Conflict {
+	if h := c["entries[k:a,b].content#0"]; h.Status != Conflict {
 		t.Errorf("changed = %v", c)
 	}
-	if h := hunk(t, fs, "entries[a\x1fb].keys#0"); h.Status != Same {
+	if h := hunk(t, fs, "entries[k:a,b].keys#0"); h.Status != Same {
 		t.Errorf("reordered keys = %+v", h)
 	} else {
 		jsonEq(t, h.Library, `["b","a"]`)
@@ -232,7 +232,7 @@ func TestCompareDeterministic(t *testing.T) {
 	]}`
 	a := compare(t, Lorebook, book, app, "")
 	b := compare(t, Lorebook, book, app, "")
-	if h := hunk(t, a, "entries[new]#0"); h.Status != AppOnly {
+	if h := hunk(t, a, "entries[c:new]#0"); h.Status != AppOnly {
 		t.Errorf("new entry = %+v", h)
 	}
 	if !reflect.DeepEqual(a, b) {
@@ -259,5 +259,68 @@ func TestCompareInvalid(t *testing.T) {
 		if _, err := Compare(Card, json.RawMessage(in), json.RawMessage(`{}`), nil); err == nil {
 			t.Errorf("Compare(%s) succeeded", in)
 		}
+	}
+}
+
+func TestCompareEscapedIDs(t *testing.T) {
+	lib := `{"extensions": {"a.b": 1, "a": {"b": 2}}, "entries": [
+		{"comment": "a].content#x", "keys": ["q"], "content": "Old."}
+	]}`
+	app := strings.Replace(lib, "Old.", "New.", 1)
+	fs := compare(t, Lorebook, lib, app, "")
+	hunk(t, fs, `extensions.a\.b#0`)
+	hunk(t, fs, "extensions.a.b#0")
+	if h := hunk(t, fs, `entries[c:a\]\.content\#x].content#0`); h.Status != Conflict {
+		t.Errorf("content = %+v", h)
+	}
+}
+
+func TestCompareMissingVsEmpty(t *testing.T) {
+	tests := []struct {
+		lib, app string
+		want     Status
+	}{
+		{`{"description": ""}`, `{}`, Same},
+		{`{}`, `{"tags": []}`, Same},
+		{`{"description": "Hi."}`, `{}`, LibraryOnly},
+		{`{}`, `{"tags": ["a"]}`, AppOnly},
+	}
+	for _, tt := range tests {
+		fs := compare(t, Card, tt.lib, tt.app, "")
+		if len(fs) != 1 || fs[0].Kind != Scalar || len(fs[0].Hunks) != 1 {
+			t.Fatalf("%s vs %s: %+v", tt.lib, tt.app, fs)
+		}
+		h := fs[0].Hunks[0]
+		if h.ID != fs[0].Path+"#0" || h.Status != tt.want {
+			t.Errorf("%s vs %s: %+v", tt.lib, tt.app, h)
+		}
+	}
+	// the library's representation survives on a same hunk
+	h := compare(t, Card, `{"description": ""}`, `{}`, "")[0].Hunks[0]
+	jsonEq(t, h.Library, `""`)
+	if h.App != nil {
+		t.Errorf("app = %s, want absent", h.App)
+	}
+}
+
+func TestCompareIdentityNamespaces(t *testing.T) {
+	lib := `{"entries": [{"comment": "k", "keys": ["z"]}, {"keys": ["k"], "content": "A."}]}`
+	app := `{"entries": [{"keys": ["k"], "content": "A."}]}`
+	c := changed(compare(t, Lorebook, lib, app, ""))
+	if len(c) != 1 || c["entries[c:k]#0"].Status != LibraryOnly {
+		t.Errorf("changed = %v", c)
+	}
+}
+
+func TestCompareDeleteVsModify(t *testing.T) {
+	anc := `{"name": "A"}`
+	if h := compare(t, Card, `{}`, `{"name": "B"}`, anc)[0].Hunks[0]; h.Status != Conflict {
+		t.Errorf("deleted vs changed = %+v", h)
+	}
+	if h := compare(t, Card, `{}`, `{"name": "A"}`, anc)[0].Hunks[0]; h.Status != AutoLibrary {
+		t.Errorf("deleted vs unchanged = %+v", h)
+	}
+	if h := compare(t, Card, `{"name": "B"}`, `{}`, anc)[0].Hunks[0]; h.Status != Conflict {
+		t.Errorf("changed vs deleted = %+v", h)
 	}
 }

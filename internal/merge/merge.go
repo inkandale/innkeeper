@@ -54,13 +54,24 @@ func Compare(s Schema, library, app, ancestor json.RawMessage) ([]Field, error) 
 		}
 	}
 	var out []Field
+	seen := map[string]bool{}
 	for _, k := range keys(lib, ap) {
 		c := cmp{hasAnc: anc != nil, out: []Hunk{}}
-		kind := c.field(k, s[k], get(lib, k), get(ap, k), get(anc, k))
-		out = append(out, Field{Path: k, Kind: kind, Hunks: c.out})
+		kind := c.field(esc(k), s[k], get(lib, k), get(ap, k), get(anc, k))
+		for _, h := range c.out {
+			if seen[h.ID] {
+				return nil, fmt.Errorf("duplicate hunk ID %q", h.ID)
+			}
+			seen[h.ID] = true
+		}
+		out = append(out, Field{Path: esc(k), Kind: kind, Hunks: c.out})
 	}
 	return out, nil
 }
+
+// esc backslash-escapes the characters that structure a hunk ID, so any key
+// or identity yields a unique path.
+var esc = strings.NewReplacer(`\`, `\\`, `.`, `\.`, `[`, `\[`, `]`, `\]`, `#`, `\#`, `,`, `\,`, `~`, `\~`).Replace
 
 func decode(raw json.RawMessage) (map[string]any, error) {
 	d := json.NewDecoder(bytes.NewReader(raw))
@@ -87,6 +98,17 @@ type cmp struct {
 // field diffs one value as kind k and returns the kind actually used, since
 // a value of the wrong type falls back to scalar.
 func (c *cmp) field(path string, k Kind, l, a, o any) Kind {
+	_, lgone := l.(missing)
+	_, agone := a.(missing)
+	if (k == Prose || k == List) && lgone != agone {
+		// a whole-value hunk keeps "absent" distinct from "empty" for Apply
+		if empty(l) && empty(a) {
+			c.leaf(path, Same, l, a, o)
+		} else {
+			c.scalar(path, l, a, o)
+		}
+		return Scalar
+	}
 	switch k {
 	case Prose:
 		if ls, ok := str(l); ok {
@@ -197,7 +219,7 @@ func (c *cmp) json(path string, l, a, o any) {
 	}
 	om, _ := o.(map[string]any)
 	for _, k := range keys(lm, am) {
-		c.json(path+"."+k, get(lm, k), get(am, k), get(om, k))
+		c.json(path+"."+esc(k), get(lm, k), get(am, k), get(om, k))
 	}
 }
 
@@ -228,10 +250,15 @@ func (c *cmp) status(l, a, o any) Status {
 	case c.hasAnc && same(l, o):
 		return AutoApp
 	}
-	if _, gone := a.(missing); gone {
-		return LibraryOnly
+	_, lgone := l.(missing)
+	_, agone := a.(missing)
+	if _, ogone := o.(missing); c.hasAnc && !ogone && (lgone || agone) {
+		return Conflict // one side deleted what the other changed
 	}
-	if _, gone := l.(missing); gone {
+	switch {
+	case agone:
+		return LibraryOnly
+	case lgone:
 		return AppOnly
 	}
 	return Conflict
@@ -272,6 +299,19 @@ func keys(a, b map[string]any) []string {
 	}
 	slices.Sort(ks)
 	return ks
+}
+
+// empty reports a missing value, "" or [].
+func empty(v any) bool {
+	switch x := v.(type) {
+	case missing:
+		return true
+	case string:
+		return x == ""
+	case []any:
+		return len(x) == 0
+	}
+	return false
 }
 
 // str and arr read a value as that type, with missing as the empty value.

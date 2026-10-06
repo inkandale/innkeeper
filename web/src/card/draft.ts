@@ -23,9 +23,9 @@ export function rebase(d: Draft, baseId: number, base: Data): Draft {
   return { baseId, base, data };
 }
 
-/** clashes lists the fields the draft changed that differ in latest too. */
+/** clashes lists the fields both the draft and latest changed, to different values. */
 export function clashes(d: Draft, latest: Data): string[] {
-  return [...changed(d)].filter((k) => !same(latest[k], d.data[k])).sort();
+  return [...changed(d)].filter((k) => !same(latest[k], d.base[k]) && !same(latest[k], d.data[k])).sort();
 }
 
 /** tokens estimates a text's token count. The UI labels it with "~". */

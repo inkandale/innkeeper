@@ -18,6 +18,8 @@ test("rebase keeps the draft's changes on top of a newer revision", () => {
 test("clashes lists fields both sides changed differently", () => {
   expect(clashes(draft, { a: "z", b: "z", list: ["1"] })).toEqual(["a"]);
   expect(clashes(draft, { a: "y", b: "z", list: ["1"] })).toEqual([]);
+  // latest left a at its base value, so keeping the draft loses nothing.
+  expect(clashes(draft, { a: "x", b: "z", list: ["1"] })).toEqual([]);
 });
 
 test("tokens estimates a quarter of the characters", () => {

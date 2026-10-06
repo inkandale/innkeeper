@@ -15,6 +15,7 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
+	"github.com/davidgibbons/innkeeper/internal/targets"
 	"github.com/davidgibbons/innkeeper/internal/tier"
 )
 
@@ -47,6 +48,21 @@ func toJob(j jobs.Job) jobOut {
 	return jobOut{ID: j.ID, Kind: j.Kind, InstanceID: j.InstanceID, Payload: j.Payload, Status: j.Status,
 		Attempts: j.Attempts, MaxAttempts: j.MaxAttempts, Progress: j.Progress, ParentID: j.ParentID, Error: j.Error,
 		RunAfter: j.RunAfter, CreatedAt: j.CreatedAt, FinishedAt: j.FinishedAt}
+}
+
+// summary is a job as lists and streams show it: a finished reconcile's
+// snapshot is cut to its totals. Get the job for the whole snapshot.
+func summary(j jobOut) jobOut {
+	if j.Kind != targets.ReconcileKind {
+		return j
+	}
+	var snap struct {
+		Totals map[string]int `json:"totals"`
+	}
+	if json.Unmarshal(j.Progress, &snap) == nil && snap.Totals != nil {
+		j.Progress, _ = json.Marshal(map[string]any{"totals": snap.Totals})
+	}
+	return j
 }
 
 type jobResp struct{ Body jobOut }
@@ -163,7 +179,7 @@ func (s *Server) watch(hc huma.Context, j jobOut) {
 		return true
 	}
 	for {
-		data, err := json.Marshal(j)
+		data, err := json.Marshal(summary(j))
 		if err != nil {
 			return
 		}
@@ -194,7 +210,7 @@ func (s *Server) watch(hc huma.Context, j jobOut) {
 func (s *Server) jobRoutes(api huma.API) {
 	tags := []string{"Jobs"}
 	huma.Register(api, huma.Operation{OperationID: "list-jobs", Method: http.MethodGet, Path: "/jobs",
-		Summary: "List jobs", Description: "Newest first.", Tags: tags},
+		Summary: "List jobs", Description: "Newest first. A finished reconcile's progress is cut to its totals; get the job for the snapshot.", Tags: tags},
 		func(ctx context.Context, in *listJobsIn) (*jobsOut, error) {
 			o := jobs.ListOptions{Status: in.Status, Kind: in.Kind, Before: in.Before, Limit: in.Limit}
 			if in.Parent != 0 {
@@ -206,7 +222,7 @@ func (s *Server) jobRoutes(api huma.API) {
 			}
 			out := &jobsOut{Body: make([]jobOut, len(list))}
 			for i, j := range list {
-				out.Body[i] = toJob(j)
+				out.Body[i] = summary(toJob(j))
 			}
 			return out, nil
 		})
@@ -235,9 +251,10 @@ func (s *Server) jobRoutes(api huma.API) {
 		})
 
 	huma.Register(api, huma.Operation{OperationID: "watch-job", Method: http.MethodGet, Path: "/jobs/{id}/events",
-		Summary:     "Stream a job's progress",
-		Description: "Server-sent events: a job event with the whole job each time it changes. The stream ends when the job finishes.",
-		Tags:        tags,
+		Summary: "Stream a job's progress",
+		Description: "Server-sent events: a job event with the whole job each time it changes. The stream ends when the job " +
+			"finishes. A finished reconcile's progress is cut to its totals, as in the job list; get the job for the snapshot.",
+		Tags: tags,
 		Responses: map[string]*huma.Response{"200": {Description: "A stream of job events",
 			Content: map[string]*huma.MediaType{"text/event-stream": {}}}}},
 		func(ctx context.Context, in *idIn) (*huma.StreamResponse, error) {

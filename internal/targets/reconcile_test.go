@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -608,5 +609,18 @@ func TestReconcileReusedRemoteID(t *testing.T) {
 	c, err := e.s.CompareItem(e.ctx, e.inst, live.RemoteID, 0)
 	if err != nil || c.CardID != e.card || c.Base != "accepted" {
 		t.Errorf("compare = %+v, %v", c, err)
+	}
+}
+
+func TestReconcileCapsCandidates(t *testing.T) {
+	e := setup(t, nil)
+	var want []int64
+	for i := range 11 {
+		want = append(want, e.libCard(map[string]any{"name": "Guard", "description": fmt.Sprintf("Guard number %d.", i)}))
+	}
+	e.appCard("guard", map[string]any{"name": "Guard", "description": "A tired guard at the gate."}, nil)
+	it := e.reconcile(ReconcileParams{}, "guard")["guard"]
+	if !slices.Equal(ids(it.Candidates), want[:10]) {
+		t.Errorf("candidates = %v", ids(it.Candidates))
 	}
 }

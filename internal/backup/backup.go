@@ -175,12 +175,13 @@ func snapshot(ctx context.Context, conn *pgxpool.Conn, t Type, o Options, part s
 		m.Blobs, err = pgx.CollectRows(rows, pgx.RowTo[string])
 		return err
 	case Config:
-		rows, _ := tx.Query(ctx, `SELECT nspname::text FROM pg_namespace WHERE nspname LIKE 'plugin\_%' ORDER BY 1`)
+		// Only names restore accepts; a plugin's schema always matches.
+		rows, _ := tx.Query(ctx, `SELECT nspname::text FROM pg_namespace WHERE nspname ~ $1 ORDER BY 1`, schemaPattern.String())
 		if m.PluginSchemas, err = pgx.CollectRows(rows, pgx.RowTo[string]); err != nil {
 			return err
 		}
 		if len(m.PluginSchemas) > 0 {
-			if err := dumpPlugins(ctx, tx, o.DatabaseURL, m.PluginSchemas, filepath.Join(part, "plugins.sql")); err != nil {
+			if err := dumpPlugins(ctx, tx, o.DatabaseURL, m.PluginSchemas, filepath.Join(part, "plugins")); err != nil {
 				return err
 			}
 		}
@@ -234,25 +235,32 @@ func copyTable(ctx context.Context, tx pgx.Tx, table, where, path string) (int64
 	return n, err
 }
 
-// dumpPlugins runs pg_dump on the plugin schemas in tx's snapshot, so they
-// match the core tables.
-func dumpPlugins(ctx context.Context, tx pgx.Tx, dbURL string, schemas []string, path string) error {
+// dumpPlugins runs pg_dump on each plugin schema in tx's snapshot, so they
+// match the core tables. Each schema gets its own file, which restore runs
+// as that plugin's role.
+func dumpPlugins(ctx context.Context, tx pgx.Tx, dbURL string, schemas []string, dir string) error {
 	var snapshot string
 	if err := tx.QueryRow(ctx, `SELECT pg_export_snapshot()`).Scan(&snapshot); err != nil {
 		return err
 	}
-	args := []string{"--format=plain", "--inserts", "--rows-per-insert=1000", "--no-owner", "--no-privileges", "--snapshot=" + snapshot}
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		return err
+	}
 	for _, s := range schemas {
 		// Quoted, since pg_dump reads --schema as a pattern.
-		args = append(args, `--schema="`+strings.ReplaceAll(s, `"`, `""`)+`"`)
-	}
-	return writeFile(path, func(f *os.File) error {
-		cmd, err := pgDumpCommand(ctx, dbURL, f, args...)
-		if err != nil {
-			return err
+		args := []string{"--format=plain", "--inserts", "--rows-per-insert=1000", "--no-owner", "--no-privileges",
+			"--snapshot=" + snapshot, `--schema="` + s + `"`}
+		if err := writeFile(filepath.Join(dir, s+".sql"), func(f *os.File) error {
+			cmd, err := pgDumpCommand(ctx, dbURL, f, args...)
+			if err != nil {
+				return err
+			}
+			return runPgDump(cmd)
+		}); err != nil {
+			return fmt.Errorf("%s: %w", s, err)
 		}
-		return runPgDump(cmd)
-	})
+	}
+	return nil
 }
 
 // writeFile creates path, has write fill it, and syncs it, so a finished

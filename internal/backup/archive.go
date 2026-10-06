@@ -18,7 +18,7 @@ import (
 const maxManifest = 64 << 20
 
 // WriteArchive streams backup name in dir as a gzip tar: manifest.json,
-// blobs/, tables/, then plugins.sql.
+// blobs/, tables/, then plugins/.
 func WriteArchive(w io.Writer, dir, name string) error {
 	t := Type(strings.SplitN(name, "-", 2)[0])
 	// name becomes a path, so it must be a plain finished-backup folder name.
@@ -56,6 +56,15 @@ func WriteArchive(w io.Writer, dir, name string) error {
 		}
 	}
 
+	for _, schema := range m.PluginSchemas {
+		if !validSchema(schema) {
+			return fmt.Errorf("backup %q: manifest lists bad plugin schema %q", name, schema)
+		}
+		if err := mustExist(filepath.Join(folder, "plugins", schema+".sql")); err != nil {
+			return fmt.Errorf("backup %q: %w", name, err)
+		}
+	}
+
 	gz := gzip.NewWriter(w)
 	tw := tar.NewWriter(gz)
 	if err := addFile(tw, "manifest.json", filepath.Join(folder, "manifest.json")); err != nil {
@@ -74,8 +83,8 @@ func WriteArchive(w io.Writer, dir, name string) error {
 			return err
 		}
 	}
-	if _, err := os.Stat(filepath.Join(folder, "plugins.sql")); err == nil {
-		if err := addFile(tw, "plugins.sql", filepath.Join(folder, "plugins.sql")); err != nil {
+	for _, schema := range m.PluginSchemas {
+		if err := addFile(tw, "plugins/"+schema+".sql", filepath.Join(folder, "plugins", schema+".sql")); err != nil {
 			return err
 		}
 	}

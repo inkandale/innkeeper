@@ -193,8 +193,8 @@ func TestWriteConfig(t *testing.T) {
 			t.Errorf("%s: %d rows", table, m.Tables[table])
 		}
 	}
-	if _, err := os.Stat(filepath.Join(folder, "plugins.sql")); err == nil {
-		t.Fatal("plugins.sql without plugin schemas")
+	if _, err := os.Stat(filepath.Join(folder, "plugins")); err == nil {
+		t.Fatal("plugins folder without plugin schemas")
 	}
 	if _, err := os.Stat(filepath.Join(o.Dir, "assets")); err == nil {
 		t.Fatal("config backup touched assets")
@@ -219,9 +219,9 @@ func TestWriteConfigPluginSchemas(t *testing.T) {
 	if m := mustManifest(t, folder); !slices.Equal(m.PluginSchemas, []string{"plugin_fake"}) || m.SecretsCheck != "" {
 		t.Fatalf("manifest = %+v", m)
 	}
-	b, err := os.ReadFile(filepath.Join(folder, "plugins.sql"))
+	b, err := os.ReadFile(filepath.Join(folder, "plugins", "plugin_fake.sql"))
 	if err != nil || !strings.Contains(string(b), "remember the forge") {
-		t.Fatalf("plugins.sql: %v\n%s", err, b)
+		t.Fatalf("plugins/plugin_fake.sql: %v\n%s", err, b)
 	}
 }
 

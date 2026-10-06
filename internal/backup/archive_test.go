@@ -104,8 +104,10 @@ func TestWriteArchiveAssets(t *testing.T) {
 func TestWriteArchiveConfigPlugins(t *testing.T) {
 	dir := t.TempDir()
 	name := "config-20260101T000000.000000Z"
-	fakeBackup(t, dir, name, Manifest{Format: 1, Type: Config, Tables: map[string]int64{"setting": 1, "plugin_instance": 1}}, map[string]string{
-		"tables/setting.copy": "s", "tables/plugin_instance.copy": "p", "plugins.sql": "SELECT 1;",
+	fakeBackup(t, dir, name, Manifest{Format: 1, Type: Config, Tables: map[string]int64{"setting": 1, "plugin_instance": 1},
+		PluginSchemas: []string{"plugin_a", "plugin_b"}}, map[string]string{
+		"tables/setting.copy": "s", "tables/plugin_instance.copy": "p",
+		"plugins/plugin_a.sql": "SELECT 1;", "plugins/plugin_b.sql": "SELECT 2;",
 	})
 	var buf bytes.Buffer
 	if err := WriteArchive(&buf, dir, name); err != nil {
@@ -113,7 +115,7 @@ func TestWriteArchiveConfigPlugins(t *testing.T) {
 	}
 	names, _ := entries(t, buf.Bytes())
 	// Load order: plugin_instance before setting; tables absent from the folder are skipped.
-	want := []string{"manifest.json", "tables/plugin_instance.copy", "tables/setting.copy", "plugins.sql"}
+	want := []string{"manifest.json", "tables/plugin_instance.copy", "tables/setting.copy", "plugins/plugin_a.sql", "plugins/plugin_b.sql"}
 	if !slices.Equal(names, want) {
 		t.Fatalf("entries %v, want %v", names, want)
 	}
@@ -160,7 +162,10 @@ func TestWriteArchiveRejectsDamaged(t *testing.T) {
 	fakeBackup(t, dir, "config-1", Manifest{Format: 1, Type: Config, Tables: map[string]int64{"setting": 1}}, map[string]string{})
 	// Blob listed but absent from the store.
 	fakeBackup(t, dir, "assets-1", Manifest{Format: 1, Type: Assets, Blobs: []string{sha}}, map[string]string{})
-	for _, name := range []string{"config-1", "assets-1"} {
+	// Plugin schema listed but its file is absent, or its name is unsafe.
+	fakeBackup(t, dir, "config-2", Manifest{Format: 1, Type: Config, PluginSchemas: []string{"plugin_a"}}, map[string]string{})
+	fakeBackup(t, dir, "config-3", Manifest{Format: 1, Type: Config, PluginSchemas: []string{"../x"}}, map[string]string{"x.sql": ""})
+	for _, name := range []string{"config-1", "assets-1", "config-2", "config-3"} {
 		var buf bytes.Buffer
 		if err := WriteArchive(&buf, dir, name); err == nil || errors.Is(err, fs.ErrNotExist) {
 			t.Errorf("%s: err = %v, want a damaged-backup error", name, err)

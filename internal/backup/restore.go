@@ -26,20 +26,26 @@ type RestoreOptions struct {
 }
 
 type Result struct {
-	Type               Type             `json:"type"`
-	Rows               map[string]int64 `json:"rows"`
-	Blobs              int              `json:"blobs"`
-	SkippedBindings    []int64          `json:"skipped_bindings,omitempty"`
-	SecretsKeyMismatch bool             `json:"secrets_key_mismatch,omitempty"`
+	Type            Type             `json:"type"`
+	Rows            map[string]int64 `json:"rows"`
+	Blobs           int              `json:"blobs"`
+	SkippedBindings []int64          `json:"skipped_bindings,omitempty"`
+	// Schemas whose plugin has no database role here, so nothing could own them.
+	SkippedPluginSchemas []string `json:"skipped_plugin_schemas,omitempty"`
+	SecretsKeyMismatch   bool     `json:"secrets_key_mismatch,omitempty"`
 }
 
 var shaPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 func validSHA(s string) bool { return shaPattern.MatchString(s) }
 
-// restrictLine matches the psql meta-commands pg_dump 18 adds, which the
-// server can't run.
-var restrictLine = regexp.MustCompile(`(?m)^\\(un)?restrict \S+$`)
+var schemaPattern = regexp.MustCompile(`^plugin_[a-z0-9_]+$`)
+
+func validSchema(s string) bool { return schemaPattern.MatchString(s) }
+
+// unrunnable matches the psql meta-commands pg_dump 18 adds, which the server
+// can't run, and the CREATE SCHEMA that restore runs itself.
+var unrunnable = regexp.MustCompile(`(?m)^(\\(un)?restrict \S+|CREATE SCHEMA \S+;)$`)
 
 // hasData finds rows a restore without replace would collide with.
 var hasData = map[Type]string{
@@ -60,7 +66,7 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (Result, error)
 	if err != nil {
 		return Result{}, err
 	}
-	// Its own connection, since plugins.sql changes session settings.
+	// Its own connection, since plugin SQL changes session settings.
 	conn, err := pgx.ConnectConfig(ctx, o.Conn)
 	if err != nil {
 		return Result{}, err
@@ -80,8 +86,10 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (Result, error)
 		return Result{}, fmt.Errorf("backup was made by another Innkeeper version (schema %s, this database %s)", m.Schema, schema)
 	}
 	// Deferred: card and card_revision reference each other, and a replace
-	// briefly removes rows the other type's tables point to.
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('innkeeper-restore')); SET CONSTRAINTS ALL DEFERRED`); err != nil {
+	// briefly removes rows the other type's tables point to. innkeeper.restore
+	// lets a replace delete revisions.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('innkeeper-restore'));
+		SET CONSTRAINTS ALL DEFERRED; SET LOCAL innkeeper.restore = 'on'`); err != nil {
 		return Result{}, err
 	}
 	var exists bool
@@ -91,15 +99,12 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (Result, error)
 	if exists && !o.Replace {
 		return Result{}, ErrHasData
 	}
-	if exists {
-		if err := clearType(ctx, tx, m.Type); err != nil {
-			return Result{}, fmt.Errorf("clear %s: %w", m.Type, err)
-		}
+	if err := clearType(ctx, tx, m.Type, exists); err != nil {
+		return Result{}, fmt.Errorf("clear %s: %w", m.Type, err)
 	}
 
 	res := Result{Type: m.Type, Rows: map[string]int64{}}
-	seenBlobs := map[string]bool{}
-	plugins := false
+	seenBlobs, seenSchemas := map[string]bool{}, map[string]bool{}
 	for {
 		h, err := tr.Next()
 		if err == io.EOF {
@@ -132,16 +137,23 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (Result, error)
 			if res.Rows[table], err = loadTable(ctx, tx, table, tr, &res); err != nil {
 				return res, fmt.Errorf("%s: %w", table, err)
 			}
-		case name == "plugins.sql" && m.Type == Config && len(m.PluginSchemas) > 0 && !plugins:
+		case strings.HasPrefix(name, "plugins/") && strings.HasSuffix(name, ".sql"):
+			schema := strings.TrimSuffix(strings.TrimPrefix(name, "plugins/"), ".sql")
+			if !validSchema(schema) || !slices.Contains(m.PluginSchemas, schema) || seenSchemas[schema] {
+				return res, fmt.Errorf("unexpected archive entry %q", name)
+			}
+			seenSchemas[schema] = true
 			b, err := io.ReadAll(tr)
 			if err != nil {
-				return res, fmt.Errorf("reading plugins.sql: %w", err)
+				return res, fmt.Errorf("reading %s: %w", name, err)
 			}
-			// No arguments, so pgx sends it as one multi-statement query.
-			if _, err := tx.Exec(ctx, string(restrictLine.ReplaceAll(b, nil))); err != nil {
-				return res, fmt.Errorf("plugins.sql: %w", err)
+			ok, err := loadPlugin(ctx, tx, schema, string(unrunnable.ReplaceAll(b, nil)))
+			if err != nil {
+				return res, fmt.Errorf("%s: %w", name, err)
 			}
-			plugins = true
+			if !ok {
+				res.SkippedPluginSchemas = append(res.SkippedPluginSchemas, schema)
+			}
 		default:
 			return res, fmt.Errorf("unexpected archive entry %q", name)
 		}
@@ -154,12 +166,12 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (Result, error)
 	if len(seenBlobs) != len(m.Blobs) {
 		return res, fmt.Errorf("archive has %d of the %d blobs its manifest lists", len(seenBlobs), len(m.Blobs))
 	}
-	if len(m.PluginSchemas) > 0 && !plugins {
-		return res, errors.New("archive is missing plugins.sql")
+	if len(seenSchemas) != len(m.PluginSchemas) {
+		return res, fmt.Errorf("archive has %d of the %d plugin schemas its manifest lists", len(seenSchemas), len(m.PluginSchemas))
 	}
 	res.Blobs = len(seenBlobs)
 
-	// plugins.sql empties search_path, so everything from here names public.
+	// Plugin SQL empties search_path, so everything from here names public.
 	// Without this, the next insert would reuse a restored ID.
 	rows, _ := tx.Query(ctx, `SELECT table_name::text FROM information_schema.columns
 		WHERE table_schema = 'public' AND column_name = 'id' AND is_identity = 'YES' AND table_name = ANY($1)`, tables[m.Type])
@@ -183,41 +195,32 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (Result, error)
 	if err := tx.Commit(ctx); err != nil {
 		var pe *pgconn.PgError
 		if errors.As(err, &pe) && pe.Code == "23503" {
-			return res, fmt.Errorf("bindings refer to cards or lorebooks this backup doesn't have; restore a matching config backup or unbind them first: %w", err)
+			if pe.TableName == "binding" {
+				return res, fmt.Errorf("bindings refer to cards or lorebooks this backup doesn't have; restore a matching config backup or unbind them first: %w", err)
+			}
+			return res, fmt.Errorf("backup refers to rows it doesn't contain: %w", err)
 		}
 		return res, err
 	}
 	return res, nil
 }
 
-// clearType deletes type t's rows, leaving the other type's tables alone.
-func clearType(ctx context.Context, tx pgx.Tx, t Type) error {
+// clearType deletes type t's rows when the database has them, leaving the
+// other type's tables alone. Config always drops the plugin schemas, which it
+// owns: a start creates empty ones even without instances.
+func clearType(ctx context.Context, tx pgx.Tx, t Type, exists bool) error {
 	var stmts []string
-	switch t {
-	case Assets:
-		// PostgreSQL won't re-enable a trigger on a table with pending deferred
-		// checks, so foreign keys into the revision tables are checked
-		// immediately, after the cards and lorebooks pointing at them are gone.
-		var immediate string
-		if err := tx.QueryRow(ctx, `SELECT 'SET CONSTRAINTS ' || string_agg(format('public.%I', conname), ', ') || ' IMMEDIATE'
-			FROM pg_constraint WHERE contype = 'f' AND confrelid IN ('public.card_revision'::regclass, 'public.lorebook_revision'::regclass)`).Scan(&immediate); err != nil {
-			return err
+	if exists {
+		switch t {
+		case Assets:
+			for _, table := range slices.Backward(tables[Assets]) {
+				stmts = append(stmts, `DELETE FROM `+pgx.Identifier{"public", table}.Sanitize())
+			}
+		case Config:
+			stmts = []string{`DELETE FROM public.push`, `DELETE FROM public.binding`, `DELETE FROM public.setting`, `DELETE FROM public.plugin_instance`}
 		}
-		stmts = []string{
-			`ALTER TABLE public.card_revision DISABLE TRIGGER card_revision_immutable`,
-			`ALTER TABLE public.lorebook_revision DISABLE TRIGGER lorebook_revision_immutable`,
-			`DELETE FROM public.lorebook_source`, `DELETE FROM public.card_source`, `DELETE FROM public.collection_card`,
-			`DELETE FROM public.collection`, `DELETE FROM public.card_tag`, `DELETE FROM public.tag`,
-			`DELETE FROM public.card_lorebook`, `DELETE FROM public.lorebook`, `DELETE FROM public.card`,
-			immediate,
-			`DELETE FROM public.lorebook_revision`, `DELETE FROM public.card_revision`,
-			`ALTER TABLE public.card_revision ENABLE TRIGGER card_revision_immutable`,
-			`ALTER TABLE public.lorebook_revision ENABLE TRIGGER lorebook_revision_immutable`,
-			`SET CONSTRAINTS ALL DEFERRED`,
-			`DELETE FROM public.blob`,
-		}
-	case Config:
-		stmts = []string{`DELETE FROM public.push`, `DELETE FROM public.binding`, `DELETE FROM public.setting`, `DELETE FROM public.plugin_instance`}
+	}
+	if t == Config {
 		rows, _ := tx.Query(ctx, `SELECT nspname::text FROM pg_namespace WHERE nspname LIKE 'plugin\_%'`)
 		schemas, err := pgx.CollectRows(rows, pgx.RowTo[string])
 		if err != nil {
@@ -235,8 +238,45 @@ func clearType(ctx context.Context, tx pgx.Tx, t Type) error {
 	return nil
 }
 
+// loadPlugin runs a plugin schema's SQL as the plugin's own role, so an
+// uploaded archive can't touch core tables. It returns false when this
+// database has no such role. A security-definer function runs it because
+// SET ROLE alone can be undone by the SQL with RESET ROLE; inside one,
+// PostgreSQL refuses any role change.
+func loadPlugin(ctx context.Context, tx pgx.Tx, schema, sql string) (bool, error) {
+	var role string
+	var member bool
+	if err := tx.QueryRow(ctx, `SELECT current_database() || '_' || $1::text,
+		coalesce((SELECT pg_has_role(current_user, oid, 'MEMBER') FROM pg_roles WHERE rolname = current_database() || '_' || $1::text), false)`,
+		schema).Scan(&role, &member); err != nil {
+		return false, err
+	}
+	if !member {
+		return false, nil
+	}
+	s, r := pgx.Identifier{schema}.Sanitize(), pgx.Identifier{role}.Sanitize()
+	run := pgx.Identifier{schema, "innkeeper_restore"}.Sanitize()
+	for _, q := range []string{
+		`DROP SCHEMA IF EXISTS ` + s + ` CASCADE`,
+		`CREATE SCHEMA ` + s + ` AUTHORIZATION ` + r,
+		`SET LOCAL ROLE ` + r,
+		`CREATE FUNCTION ` + run + `(q text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$BEGIN EXECUTE q; END$$`,
+		`RESET ROLE`,
+	} {
+		if _, err := tx.Exec(ctx, q); err != nil {
+			return false, err
+		}
+	}
+	if _, err := tx.Exec(ctx, `SELECT `+run+`($1)`, sql); err != nil {
+		return false, err
+	}
+	_, err := tx.Exec(ctx, `DROP FUNCTION IF EXISTS `+run+`(pg_catalog.text)`)
+	return true, err
+}
+
 // loadTable copies one table's rows from r. Bindings and pushes go through
-// temp tables so ones for cards or lorebooks this database lacks are skipped.
+// temp tables so ones for cards or lorebooks this database lacks are skipped;
+// blobs do so that rows awaiting cleanup don't collide.
 func loadTable(ctx context.Context, tx pgx.Tx, table string, r io.Reader, res *Result) (int64, error) {
 	cols, err := Columns(ctx, tx, table)
 	if err != nil {
@@ -247,8 +287,8 @@ func loadTable(ctx context.Context, tx pgx.Tx, table string, r io.Reader, res *R
 	}
 	list := strings.Join(cols, ", ")
 	dst := pgx.Identifier{"public", table}.Sanitize()
-	if table == "binding" || table == "push" {
-		dst = pgx.Identifier{"restore_" + table}.Sanitize()
+	if table == "binding" || table == "push" || table == "blob" {
+		dst = pgx.Identifier{"pg_temp", "restore_" + table}.Sanitize()
 		if _, err := tx.Exec(ctx, `CREATE TEMP TABLE `+dst+` (LIKE `+pgx.Identifier{"public", table}.Sanitize()+`) ON COMMIT DROP`); err != nil {
 			return 0, err
 		}
@@ -258,16 +298,18 @@ func loadTable(ctx context.Context, tx pgx.Tx, table string, r io.Reader, res *R
 		return 0, err
 	}
 	switch table {
+	case "blob":
+		tag, err = tx.Exec(ctx, `INSERT INTO public.blob (`+list+`) SELECT `+list+` FROM pg_temp.restore_blob ON CONFLICT (sha256) DO NOTHING`)
 	case "binding":
-		rows, _ := tx.Query(ctx, `SELECT id FROM restore_binding WHERE NOT (`+bindable+`) ORDER BY id`)
+		rows, _ := tx.Query(ctx, `SELECT id FROM pg_temp.restore_binding WHERE NOT (`+bindable+`) ORDER BY id`)
 		if res.SkippedBindings, err = pgx.CollectRows(rows, pgx.RowTo[int64]); err != nil {
 			return 0, err
 		}
 		tag, err = tx.Exec(ctx, `INSERT INTO public.binding (`+list+`) OVERRIDING SYSTEM VALUE
-			SELECT `+list+` FROM restore_binding WHERE `+bindable)
+			SELECT `+list+` FROM pg_temp.restore_binding WHERE `+bindable)
 	case "push":
 		tag, err = tx.Exec(ctx, `INSERT INTO public.push (`+list+`) OVERRIDING SYSTEM VALUE
-			SELECT `+list+` FROM restore_push WHERE binding_id IN (SELECT id FROM restore_binding WHERE `+bindable+`)`)
+			SELECT `+list+` FROM pg_temp.restore_push WHERE binding_id IN (SELECT id FROM pg_temp.restore_binding WHERE `+bindable+`)`)
 	}
 	return tag.RowsAffected(), err
 }

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/davidgibbons/innkeeper/internal/blobstore"
@@ -97,6 +98,35 @@ func newTarget(t *testing.T) target {
 	return target{pool, lib, o.Store}
 }
 
+// pluginRole creates plugin_fake's role the way ProvisionDatabases does.
+// Roles are cluster-wide, so the name comes from the test database.
+func (tg target) pluginRole(t *testing.T) {
+	t.Helper()
+	ctx := context.Background()
+	role := pgx.Identifier{tg.pool.Config().ConnConfig.Database + "_plugin_fake"}.Sanitize()
+	if _, err := tg.pool.Exec(ctx, `CREATE ROLE `+role+` NOINHERIT; GRANT `+role+` TO CURRENT_USER`); err != nil {
+		t.Fatal(err)
+	}
+	// Runs before testdb drops the database, so DROP OWNED reaches its objects.
+	t.Cleanup(func() {
+		if _, err := tg.pool.Exec(ctx, `DROP OWNED BY `+role+`; DROP ROLE `+role); err != nil {
+			t.Errorf("drop role: %v", err)
+		}
+	})
+}
+
+// rebuild returns archive with edit applied to its entries' bodies.
+func rebuild(t *testing.T, archive []byte, edit func(bodies map[string]string)) []byte {
+	t.Helper()
+	names, bodies := entries(t, archive)
+	edit(bodies)
+	var files [][2]string
+	for _, n := range names {
+		files = append(files, [2]string{n, bodies[n]})
+	}
+	return archiveOf(t, files...)
+}
+
 func (tg target) restore(archive []byte, box *secrets.Box, replace bool) (Result, error) {
 	return Restore(context.Background(), bytes.NewReader(archive),
 		RestoreOptions{Conn: tg.pool.Config().ConnConfig, Store: tg.store, Box: box, Replace: replace})
@@ -180,11 +210,12 @@ func TestRestoreAssets(t *testing.T) {
 func TestRestoreConfig(t *testing.T) {
 	_, config, box := source(t)
 	tg := newTarget(t)
+	tg.pluginRole(t)
 	res, err := tg.restore(config, box, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.SecretsKeyMismatch || len(res.SkippedBindings) != 1 || res.Rows["binding"] != 0 || res.Rows["push"] != 0 {
+	if res.SecretsKeyMismatch || len(res.SkippedBindings) != 1 || res.Rows["binding"] != 0 || res.Rows["push"] != 0 || len(res.SkippedPluginSchemas) != 0 {
 		t.Fatalf("result = %+v", res)
 	}
 	ctx := context.Background()
@@ -204,6 +235,7 @@ func TestRestoreConfig(t *testing.T) {
 func TestRestoreBoth(t *testing.T) {
 	assets, config, box := source(t)
 	tg := newTarget(t)
+	tg.pluginRole(t)
 	if _, err := tg.restore(assets, box, false); err != nil {
 		t.Fatal(err)
 	}
@@ -304,20 +336,17 @@ func TestRestoreSecretsKeyMismatch(t *testing.T) {
 
 func TestRestoreRefusesOtherSchema(t *testing.T) {
 	assets, _, _ := source(t)
-	names, bodies := entries(t, assets)
-	var m Manifest
-	if err := json.Unmarshal([]byte(bodies["manifest.json"]), &m); err != nil {
-		t.Fatal(err)
-	}
-	m.Schema = "9999_future.sql"
-	b, _ := json.Marshal(m)
-	bodies["manifest.json"] = string(b)
-	var files [][2]string
-	for _, n := range names {
-		files = append(files, [2]string{n, bodies[n]})
-	}
+	other := rebuild(t, assets, func(bodies map[string]string) {
+		var m Manifest
+		if err := json.Unmarshal([]byte(bodies["manifest.json"]), &m); err != nil {
+			t.Fatal(err)
+		}
+		m.Schema = "9999_future.sql"
+		b, _ := json.Marshal(m)
+		bodies["manifest.json"] = string(b)
+	})
 	tg := newTarget(t)
-	_, err := tg.restore(archiveOf(t, files...), nil, false)
+	_, err := tg.restore(other, nil, false)
 	if err == nil || !strings.Contains(err.Error(), "another Innkeeper version") {
 		t.Fatalf("err = %v", err)
 	}
@@ -327,6 +356,57 @@ func TestRestoreRefusesOtherSchema(t *testing.T) {
 	if es, _ := os.ReadDir(tg.store.Root); len(es) != 0 {
 		t.Fatalf("store has %v", es)
 	}
+}
+
+func TestRestorePluginSQLRunsAsPluginRole(t *testing.T) {
+	_, config, box := source(t)
+	for _, hostile := range []string{
+		`SELECT * FROM public.card`,
+		`CREATE TABLE public.evil ()`,
+		`RESET ROLE; CREATE TABLE public.evil ()`,
+	} {
+		tg := newTarget(t)
+		tg.pluginRole(t)
+		evil := rebuild(t, config, func(bodies map[string]string) { bodies["plugins/plugin_fake.sql"] = hostile })
+		if _, err := tg.restore(evil, box, false); err == nil {
+			t.Fatalf("%s: restore succeeded", hostile)
+		}
+		if n := tg.count(t, `SELECT count(*) FROM plugin_instance`) + tg.count(t, `SELECT count(*) FROM pg_class WHERE relname = 'evil'`); n != 0 {
+			t.Fatalf("%s: restore changed the database", hostile)
+		}
+	}
+}
+
+func TestRestoreSkipsPluginWithoutRole(t *testing.T) {
+	_, config, box := source(t)
+	tg := newTarget(t)
+	res, err := tg.restore(config, box, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(res.SkippedPluginSchemas, []string{"plugin_fake"}) || res.Rows["plugin_instance"] != 1 {
+		t.Fatalf("result = %+v", res)
+	}
+	if n := tg.count(t, `SELECT count(*) FROM pg_namespace WHERE nspname = 'plugin_fake'`); n != 0 {
+		t.Fatal("restored a schema no role can own")
+	}
+}
+
+func TestRestoreKeepsLeftoverBlobRows(t *testing.T) {
+	assets, _, _ := source(t)
+	tg := newTarget(t)
+	// The avatar's row, left by an upload no card uses yet.
+	if _, err := tg.lib.PutBlob(context.Background(), strings.NewReader("avatar")); err != nil {
+		t.Fatal(err)
+	}
+	res, err := tg.restore(assets, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Rows["blob"] != 0 || tg.count(t, `SELECT count(*) FROM blob`) != 1 {
+		t.Fatalf("result = %+v", res)
+	}
+	checkAssets(t, tg)
 }
 
 func TestValidSHA(t *testing.T) {

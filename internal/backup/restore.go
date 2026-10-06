@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -65,8 +68,9 @@ const bindable = `(card_id IS NULL OR EXISTS (SELECT FROM public.card WHERE id =
 	AND (lorebook_id IS NULL OR EXISTS (SELECT FROM public.lorebook WHERE id = lorebook_id))`
 
 // Restore loads an archive of one backup type in a single transaction. Blobs
-// are written to the store as they arrive.
-func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (Result, error) {
+// are written to the store as they arrive; if the restore fails, it removes
+// the new files that no blob row claims.
+func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (res Result, err error) {
 	tr, m, err := openArchive(r)
 	if err != nil {
 		return Result{}, err
@@ -75,6 +79,12 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (Result, error)
 		return Result{}, fmt.Errorf("%s backup lists blobs or plugin schemas of the other type", m.Type)
 	}
 	blobs, schemas, tableSet := setOf(m.Blobs), setOf(m.PluginSchemas), setOf(tables[m.Type])
+	var written []string // blob files this restore created
+	defer func() {
+		if err != nil && len(written) > 0 {
+			removeUnclaimed(o, written)
+		}
+	}()
 	// Its own connection, since plugin SQL changes session settings.
 	conn, err := pgx.ConnectConfig(ctx, o.Conn)
 	if err != nil {
@@ -123,7 +133,7 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (Result, error)
 		}
 	}
 
-	res := Result{Type: m.Type, Rows: map[string]int64{}}
+	res = Result{Type: m.Type, Rows: map[string]int64{}}
 	seenBlobs, seenSchemas := map[string]bool{}, map[string]bool{}
 	immediate := false
 	for {
@@ -141,9 +151,17 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (Result, error)
 			if m.Type != Assets || !validSHA(sha) || !blobs[sha] || seenBlobs[sha] {
 				return res, fmt.Errorf("unexpected archive entry %q", name)
 			}
+			path, err := o.Store.Path(sha)
+			if err != nil {
+				return res, err
+			}
+			_, statErr := os.Lstat(path)
 			got, _, err := o.Store.Put(tr)
 			if err != nil {
 				return res, fmt.Errorf("%s: %w", name, err)
+			}
+			if errors.Is(statErr, fs.ErrNotExist) {
+				written = append(written, got)
 			}
 			if got != sha {
 				return res, fmt.Errorf("%s: content hashes to %s", name, got)
@@ -230,6 +248,28 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (Result, error)
 }
 
 const safePath = `SET LOCAL search_path = pg_catalog, pg_temp`
+
+// removeUnclaimed deletes the blob files in shas that have no blob row, once
+// a failed restore has rolled back. It opens a new connection because the
+// restore's may be what failed.
+func removeUnclaimed(o RestoreOptions, shas []string) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	conn, err := pgx.ConnectConfig(ctx, o.Conn)
+	if err != nil {
+		return
+	}
+	defer conn.Close(ctx)
+	rows, _ := conn.Query(ctx, `SELECT s FROM unnest($1::text[]) s
+		WHERE NOT EXISTS (SELECT FROM public.blob WHERE sha256 = s)`, shas)
+	unclaimed, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return
+	}
+	for _, sha := range unclaimed {
+		o.Store.Remove(sha)
+	}
+}
 
 func setOf(xs []string) map[string]bool {
 	set := make(map[string]bool, len(xs))

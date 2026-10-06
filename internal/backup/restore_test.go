@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"maps"
 	"os"
 	"os/exec"
@@ -515,6 +516,30 @@ func TestRestoreKeepsLeftoverBlobRows(t *testing.T) {
 		t.Fatalf("result = %+v", res)
 	}
 	checkAssets(t, tg)
+}
+
+func TestFailedRestoreRemovesItsBlobFiles(t *testing.T) {
+	assets, _, _ := source(t)
+	tg := newTarget(t)
+	// Written after the blobs and tables, so the restore fails having put both.
+	bad := rebuild(t, assets, func(b map[string]string) { b["zzz"] = "x" })
+	kept, _, err := tg.store.Put(strings.NewReader("here before"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tg.restore(bad, nil, false); err == nil || !strings.Contains(err.Error(), "zzz") {
+		t.Fatalf("err = %v, want the bad entry", err)
+	}
+	var shas []string
+	filepath.WalkDir(tg.store.Root, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && validSHA(d.Name()) {
+			shas = append(shas, d.Name())
+		}
+		return nil
+	})
+	if !slices.Equal(shas, []string{kept}) {
+		t.Fatalf("store has %v, want only %s", shas, kept)
+	}
 }
 
 func TestValidSHA(t *testing.T) {

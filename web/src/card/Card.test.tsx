@@ -144,3 +144,20 @@ test("after a stale save, reload drops my edits", async () => {
   await waitFor(() => expect(screen.getByLabelText("Description")).toHaveValue("A cheerful dwarf."));
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
+
+test("the panel shows sync, lorebooks, collections, and sources", async () => {
+  renderAt("/cards/7");
+  expect(await screen.findByText("Lumiverse: ahead")).toBeInTheDocument();
+  expect(await screen.findByRole("link", { name: "Forge" })).toHaveAttribute("href", "/lorebooks/3");
+  expect(await screen.findByRole("checkbox", { name: "Favorites" })).toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "Pirates" })).not.toBeChecked();
+  expect(await screen.findByRole("link", { name: "chub: dg/brakka" })).toHaveAttribute("href", "https://chub.ai/characters/dg/brakka");
+});
+
+test("tags and collections save as they change", async () => {
+  renderAt("/cards/7");
+  await userEvent.type(await screen.findByLabelText("Add tag"), "smith{Enter}");
+  await waitFor(() => expect(puts).toContainEqual({ path: "/api/cards/7/tags", body: { tags: ["dwarf", "smith"] } }));
+  await userEvent.click(await screen.findByRole("checkbox", { name: "Pirates" }));
+  await waitFor(() => expect(puts.map((p) => p.path)).toContain("/api/collections/2/cards/7"));
+});

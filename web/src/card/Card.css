@@ -159,3 +159,27 @@
   grid-column: 1 / -1;
   margin: 0;
 }
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--space) * 0.5);
+  margin: 0 0 calc(var(--space) * 0.5);
+}
+
+.chip-x {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 calc(var(--space) * 0.5);
+}
+
+.check {
+  display: block;
+}
+
+.card-aside .badge {
+  display: inline-block;
+  position: static;
+}

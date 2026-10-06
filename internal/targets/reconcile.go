@@ -73,7 +73,7 @@ type Snapshot struct {
 	Lorebooks []ReconcileItem `json:"lorebooks"` // world books no character links to
 	Missing   []int64         `json:"missing"`   // card IDs bound here whose app item is gone
 	Unpushed  []int64         `json:"unpushed"`  // card IDs with no binding here
-	Totals    map[string]int  `json:"totals"`    // by verdict
+	Totals    map[string]int  `json:"totals"`    // by verdict, each world book once
 }
 
 // ReconcileItem is one app item and how it lines up with the library.
@@ -126,6 +126,8 @@ type appItem struct {
 	raw, data      json.RawMessage
 	name, hash     string
 	simhash, phash *int64
+	// links are a character's world books in the app, for a standalone target.
+	links []string
 }
 
 // readItem reads an app item and, with avatar, moves the avatar into the blob
@@ -146,6 +148,7 @@ func (s *Service) readItem(ctx context.Context, k kind, inst pluginhost.Instance
 		if it.raw, err = cardData(got.Card); err != nil {
 			return it, err
 		}
+		it.links = got.LorebookRemoteIDs
 		if got.Avatar != "" {
 			// One bad image only costs the item its avatar signal.
 			if b, err := s.lib.IngestBlob(ctx, got.Avatar); err != nil {
@@ -168,17 +171,26 @@ func (s *Service) readItem(ctx context.Context, k kind, inst pluginhost.Instance
 }
 
 // reconcileItem gives one app item its verdict, candidates, options, and
-// suggestion. An item the app can't give back is an error item; a library
-// failure fails the run.
+// suggestion, and returns the world books the app links to it. An item the
+// app can't give back is an error item; a library failure fails the run.
 func (s *Service) reconcileItem(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo,
-	idx index, p ReconcileParams, remoteID string) (ReconcileItem, error) {
+	idx index, p ReconcileParams, remoteID string) (ReconcileItem, []string, error) {
 	item, it, err := s.verdict(ctx, k, inst, info, idx, p, remoteID)
 	if err != nil || item.Verdict == VerdictError {
 		item.Options = []Option{{Action: "skip"}}
-		return item, err
+		return item, nil, err
 	}
+	item, err = suggest(k, info, idx, p, item, it)
+	return item, it.links, err
+}
+
+// suggest compares an item with its candidates and fills its options and
+// suggestion.
+func suggest(k kind, info protocol.TargetInfo, idx index, p ReconcileParams, item ReconcileItem,
+	it appItem) (ReconcileItem, error) {
+	var err error
 	var ancestor json.RawMessage
-	if b, ok := idx.byRemote[remoteID]; ok {
+	if b, ok := idx.byRemote[item.RemoteID]; ok {
 		if ancestor, _, err = Project(b.accepted, k.fields(info)); err != nil {
 			return item, err
 		}
@@ -356,4 +368,110 @@ func total(reasons map[string]int) int {
 		n += d
 	}
 	return n
+}
+
+// Reconcile lines every item in an instance's app up against the library.
+// progress, if set, hears after each item read.
+func (s *Service) Reconcile(ctx context.Context, p ReconcileParams, progress func(done, total int)) (Snapshot, error) {
+	p, err := p.withDefaults()
+	if err != nil {
+		return Snapshot{}, err
+	}
+	snap := Snapshot{Params: p, Items: []ReconcileItem{}, Lorebooks: []ReconcileItem{}, Missing: []int64{},
+		Unpushed: []int64{}, Totals: map[string]int{}}
+	inst, info, err := s.describeReconcile(ctx, cardKind, p.InstanceID)
+	if err != nil {
+		return snap, err
+	}
+	list := func(k kind) ([]protocol.TargetItem, error) {
+		var res protocol.TargetListResult
+		err := s.reg.Call(ctx, s.plugins, inst, k.list, nil, &res)
+		return res.Items, err
+	}
+	cards, err := list(cardKind)
+	if err != nil {
+		return snap, err
+	}
+	var books []protocol.TargetItem
+	standalone := info.Lorebooks == protocol.LorebooksStandalone
+	if standalone {
+		if books, err = list(lorebookKind); err != nil {
+			return snap, err
+		}
+	}
+	cardIdx, err := s.loadIndex(ctx, cardKind, inst, info)
+	if err != nil {
+		return snap, err
+	}
+	var bookIdx index
+	if standalone {
+		if bookIdx, err = s.loadIndex(ctx, lorebookKind, inst, info); err != nil {
+			return snap, err
+		}
+	}
+
+	done, total := 0, len(cards)+len(books)
+	step := func(it ReconcileItem) {
+		snap.Totals[it.Verdict]++
+		done++
+		if progress != nil {
+			progress(done, max(done, total))
+		}
+	}
+	// Each world book is read once, however many characters link it.
+	read := map[string]ReconcileItem{}
+	book := func(id string) (ReconcileItem, error) {
+		if it, ok := read[id]; ok {
+			return it, nil
+		}
+		it, _, err := s.reconcileItem(ctx, lorebookKind, inst, info, bookIdx, p, id)
+		if err == nil {
+			read[id] = it
+			step(it)
+		}
+		return it, err
+	}
+	listed := map[string]bool{}
+	for _, c := range cards {
+		listed[c.RemoteID] = true
+		item, links, err := s.reconcileItem(ctx, cardKind, inst, info, cardIdx, p, c.RemoteID)
+		if err != nil {
+			return snap, err
+		}
+		step(item)
+		for _, id := range links {
+			if !standalone {
+				break
+			}
+			lb, err := book(id)
+			if err != nil {
+				return snap, err
+			}
+			item.Lorebooks = append(item.Lorebooks, lb)
+		}
+		snap.Items = append(snap.Items, item)
+	}
+	for _, b := range books {
+		if _, linked := read[b.RemoteID]; linked {
+			continue
+		}
+		lb, err := book(b.RemoteID)
+		if err != nil {
+			return snap, err
+		}
+		snap.Lorebooks = append(snap.Lorebooks, lb)
+	}
+
+	for remoteID, b := range cardIdx.byRemote {
+		if !listed[remoteID] {
+			snap.Missing = append(snap.Missing, b.entityID)
+		}
+	}
+	slices.Sort(snap.Missing)
+	for _, e := range cardIdx.entries {
+		if _, ok := cardIdx.remoteOf[e.id]; !ok {
+			snap.Unpushed = append(snap.Unpushed, e.id)
+		}
+	}
+	return snap, nil
 }

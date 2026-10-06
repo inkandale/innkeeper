@@ -61,7 +61,7 @@ func (e *env) tryReconcile(p ReconcileParams, remoteIDs ...string) (map[string]R
 	}
 	out := map[string]ReconcileItem{}
 	for _, id := range remoteIDs {
-		if out[id], err = e.s.reconcileItem(e.ctx, cardKind, inst, info, idx, p, id); err != nil {
+		if out[id], _, err = e.s.reconcileItem(e.ctx, cardKind, inst, info, idx, p, id); err != nil {
 			return nil, err
 		}
 	}
@@ -470,5 +470,92 @@ func TestReconcileSuggestions(t *testing.T) {
 	got = e.reconcile(ReconcileParams{}, bound.RemoteID)
 	if it := suggested(bound.RemoteID, "bind", e.card); it.Candidates[0].Conflicts != 1 {
 		t.Errorf("conflicting candidates = %+v", it.Candidates)
+	}
+}
+
+func TestReconcileInstance(t *testing.T) {
+	e := setup(t, map[string]any{"lorebooks": "standalone"})
+	gone := e.push(e.card)
+	kept := e.push(e.newCard("Oskar"))
+	if err := os.Remove(filepath.Join(e.dir, gone.RemoteID+".json")); err != nil {
+		t.Fatal(err)
+	}
+	iko := e.newCard("Iko")
+	forge := e.newLorebook("Forge lore")
+	sea, _, err := e.lib.Lorebooks.CreateFromName(e.ctx, "Sea lore", "upload", library.Edit{Source: "ui",
+		Data: json.RawMessage(`{"name": "Sea lore", "entries": [{"keys": ["tide"], "content": "Tides rise twice a day."}]}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var forgeData map[string]any
+	_ = json.Unmarshal(e.lorebookHead(forge).Data, &forgeData)
+	e.writeRemote("l1", map[string]any{"lorebook": forgeData})
+	e.writeRemote("l2", map[string]any{"lorebook": map[string]any{"name": "Star charts",
+		"entries": []any{map[string]any{"keys": []any{"star"}, "content": "The north star never moves."}}}})
+	e.writeRemote("l3", map[string]any{"lorebook": map[string]any{"name": "Cave maps",
+		"entries": []any{map[string]any{"keys": []any{"cave"}, "content": "Bats nest in the deep tunnels."}}}})
+	e.writeRemote("l4", map[string]any{"lorebook": map[string]any{"name": "sea lore",
+		"entries": []any{map[string]any{"keys": []any{"tide"}, "content": "A kraken sleeps below the reef."}}}})
+	e.appCard("r10", map[string]any{"name": "Pell", "description": "A clockwork owl that reads the stars."},
+		map[string]any{"lorebook_remote_ids": []string{"l1", "l2"}})
+	e.appCard("r11", map[string]any{"name": "Wren", "description": "A navigator who never looks down."},
+		map[string]any{"lorebook_remote_ids": []string{"l2"}})
+
+	var progress [][2]int
+	snap, err := e.s.Reconcile(e.ctx, ReconcileParams{InstanceID: e.inst}, func(done, total int) {
+		progress = append(progress, [2]int{done, total})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := map[string]ReconcileItem{}
+	for _, it := range snap.Items {
+		items[it.RemoteID] = it
+	}
+	verdicts := func(its []ReconcileItem) map[string]string {
+		out := map[string]string{}
+		for _, it := range its {
+			out[it.RemoteID] = it.Verdict
+		}
+		return out
+	}
+	if items[kept.RemoteID].Verdict != VerdictBound {
+		t.Errorf("kept = %+v", items[kept.RemoteID])
+	}
+	if got := verdicts(items["r10"].Lorebooks); len(got) != 2 || got["l1"] != VerdictExact || got["l2"] != VerdictNew {
+		t.Errorf("r10 lorebooks = %v", got)
+	}
+	if got := verdicts(items["r11"].Lorebooks); len(got) != 1 || got["l2"] != VerdictNew {
+		t.Errorf("r11 lorebooks = %v", got)
+	}
+	if got := verdicts(snap.Lorebooks); len(got) != 2 || got["l3"] != VerdictNew || got["l4"] != VerdictLikely {
+		t.Errorf("top-level lorebooks = %v", got)
+	}
+	for _, lb := range snap.Lorebooks {
+		if lb.RemoteID == "l4" && (lb.Suggested == nil || lb.Suggested.Action != "bind" || lb.Suggested.CardID != sea.ID) {
+			t.Errorf("l4 suggested = %+v", lb.Suggested)
+		}
+	}
+	log, _ := os.ReadFile(filepath.Join(e.dir, "get_lorebook.log"))
+	if n := strings.Count(string(log), "l2\n"); n != 1 {
+		t.Errorf("l2 read %d times", n)
+	}
+	if !slices.Equal(snap.Missing, []int64{e.card}) {
+		t.Errorf("missing = %v", snap.Missing)
+	}
+	if !slices.Equal(snap.Unpushed, []int64{iko}) {
+		t.Errorf("unpushed = %v", snap.Unpushed)
+	}
+	// Totals count each character and each world book once.
+	sum := 0
+	for _, n := range snap.Totals {
+		sum += n
+	}
+	if sum != 7 || snap.Totals[VerdictBound] != 1 || snap.Totals[VerdictNew] != 4 || snap.Totals[VerdictExact] != 1 || snap.Totals[VerdictLikely] != 1 {
+		t.Errorf("totals = %v", snap.Totals)
+	}
+	if last := progress[len(progress)-1]; last != [2]int{7, 7} {
+		t.Errorf("progress = %v", progress)
 	}
 }

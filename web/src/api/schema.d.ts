@@ -764,7 +764,7 @@ export interface paths {
         };
         /**
          * List jobs
-         * @description Newest first.
+         * @description Newest first. A finished reconcile's progress is cut to its totals; get the job for the snapshot.
          */
         get: operations["list-jobs"];
         put?: never;
@@ -821,7 +821,7 @@ export interface paths {
         };
         /**
          * Stream a job's progress
-         * @description Server-sent events: a job event with the whole job each time it changes. The stream ends when the job finishes.
+         * @description Server-sent events: a job event with the whole job each time it changes. The stream ends when the job finishes. A finished reconcile's progress is cut to its totals, as in the job list; get the job for the snapshot.
          */
         get: operations["watch-job"];
         put?: never;
@@ -1661,7 +1661,7 @@ export interface components {
             /** Format: int64 */
             parent_id?: number;
             payload: unknown;
-            /** @description An import's has done, total, message, imported, skipped, failed, and errors. */
+            /** @description An import's has done, total, message, imported, skipped, failed, and errors. A running reconcile's has done and total; a finished one's is the snapshot, cut to totals in job lists and streams. */
             progress: unknown;
             /** Format: date-time */
             run_after: string;

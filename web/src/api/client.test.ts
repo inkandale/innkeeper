@@ -1,4 +1,4 @@
-import { ApiError, loginPath, mustOk, safeNext, thumb } from "./client";
+import { ApiError, loginPath, mustOk, safeNext, thumb, upload } from "./client";
 
 test("loginPath keeps where the user was", () => {
   expect(loginPath("/cards", "?tag=elf")).toBe("/login?next=%2Fcards%3Ftag%3Delf");
@@ -30,4 +30,21 @@ test("mustOk throws the problem detail on an error status", () => {
   expect(() => mustOk(ok)).not.toThrow();
   const bad = { error: { detail: "nope" }, response: new Response(null, { status: 409 }) };
   expect(() => mustOk(bad)).toThrow(new ApiError(409, "nope"));
+});
+
+test("upload sends the raw file and returns its sha256", async () => {
+  let sent: { type: string | null; body: string } | undefined;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (req: Request) => {
+      sent = { type: req.headers.get("Content-Type"), body: await req.text() };
+      return new Response(JSON.stringify({ sha256: "ab".repeat(32) }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      });
+    }),
+  );
+  expect(await upload(new Blob(["png bytes"]))).toBe("ab".repeat(32));
+  expect(sent).toEqual({ type: "application/octet-stream", body: "png bytes" });
+  vi.unstubAllGlobals();
 });

@@ -73,3 +73,14 @@ export function mustOk(res: { error?: unknown; response: Response }): void {
 export function thumb(sha: string, w: 160 | 320 | 640 = 320): string {
   return `/api/blobs/${sha}?w=${w}`;
 }
+
+/** upload stores a file as a blob and returns its sha256. */
+export async function upload(file: Blob): Promise<string> {
+  const res = await api.POST("/blobs", {
+    // The schema types a binary body as string; send the bytes as they are.
+    body: file as unknown as string,
+    bodySerializer: (b) => b,
+    headers: { "Content-Type": "application/octet-stream" },
+  });
+  return must(res).sha256;
+}

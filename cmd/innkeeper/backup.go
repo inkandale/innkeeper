@@ -143,7 +143,7 @@ func restoreCmd(args []string) error {
 			return nil
 		})
 		if errors.Is(err, backup.ErrHasData) {
-			err = fmt.Errorf("%w (pass --replace to overwrite it)", err)
+			err = fmt.Errorf("%w; pass --replace to overwrite it", err)
 		}
 		if err != nil {
 			return fmt.Errorf("restore %s: %w", it.path, err)

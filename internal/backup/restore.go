@@ -16,7 +16,7 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/secrets"
 )
 
-var ErrHasData = errors.New("this database already has data of that type; restore with replace to overwrite it")
+var ErrHasData = errors.New("this database already has data of that type")
 
 type RestoreOptions struct {
 	Conn    *pgx.ConnConfig // restore opens its own connection

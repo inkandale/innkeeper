@@ -58,7 +58,7 @@ database at startup and stop cleanly on `SIGTERM`.
 | `INNKEEPER_DATABASE_URL` | `migrate`, `api`, `worker`, `token`, `backup`, `restore` | PostgreSQL URL |
 | `INNKEEPER_SECRETS_KEY` | `api`, `worker`, `backup`, `restore` | Encrypts plugin secrets. Generate with `openssl rand -base64 32`. Losing it loses every stored secret |
 | `INNKEEPER_BLOB_DIR` | `api`, `worker`, `backup`, `restore` | The library's blob store folder |
-| `INNKEEPER_PLUGINS_DIR` | `api`, `worker` | Folder with one subfolder per installed plugin |
+| `INNKEEPER_PLUGINS_DIR` | `api`, `worker`, `restore` | Folder with one subfolder per installed plugin |
 | `INNKEEPER_LISTEN` | `api` | Listen address; default `:8080` |
 | `INNKEEPER_PUBLIC_URL` | `api` | Where browsers reach the API, such as `https://innkeeper.example.com`. Needed for redirect logins and for MCP clients that connect through OAuth, such as claude.ai. An `http://` URL sends cookies without `Secure` |
 | `INNKEEPER_WORKER_CONCURRENCY` | `worker` | Jobs run at once; default 4 |
@@ -578,8 +578,7 @@ folder, so a large archive needs room in both.
 
 A backup restores only into the Innkeeper version that made it. A plugin
 database restores only where that plugin is installed with a database; others
-are skipped and reported. After restoring config with the CLI, restart the
-API and worker.
+are skipped and reported.
 
 Removing a plugin from the image leaves its schema and role. To delete them,
 and the plugin's data with them, run this in the Innkeeper database, with

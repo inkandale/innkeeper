@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -15,7 +16,7 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/secrets"
 )
 
-// backupEnv reads what both backup and restore need from the environment.
+// backupEnv reads what backup needs from the environment.
 func backupEnv() (dbURL string, store *blobstore.Store, box *secrets.Box, err error) {
 	dbURL, blobDir := os.Getenv("INNKEEPER_DATABASE_URL"), os.Getenv("INNKEEPER_BLOB_DIR")
 	if dbURL == "" || blobDir == "" {
@@ -104,20 +105,18 @@ func restoreCmd(args []string) error {
 		}
 		items[i] = restoreItem{p, t}
 	}
-	_, store, box, err := backupEnv()
-	if err != nil {
-		return err
-	}
 	ctx := context.Background()
-	pool, err := openDB(ctx, 0)
+	// Provisions the installed plugins' roles, which own the plugin schemas a
+	// config backup restores.
+	svc, err := openServices(ctx, slog.New(slog.NewTextHandler(os.Stderr, nil)), 0)
 	if err != nil {
 		return err
 	}
-	defer pool.Close()
+	defer svc.close()
 	config := false
 	for _, it := range restoreOrder(items) {
 		err := withArchive(it.path, func(r io.Reader) error {
-			res, err := backup.Restore(ctx, r, backup.RestoreOptions{Conn: pool.Config().ConnConfig, Store: store, Box: box, Replace: replace})
+			res, err := backup.Restore(ctx, r, backup.RestoreOptions{Conn: svc.pool.Config().ConnConfig, Store: svc.store, Box: svc.box, Replace: replace})
 			if err != nil {
 				return err
 			}
@@ -150,7 +149,8 @@ func restoreCmd(args []string) error {
 		}
 	}
 	if config {
-		fmt.Println("restart the api and worker so they repair plugin schemas")
+		// Restored plugin instances may name plugins whose databases need repair.
+		return svc.registry.ProvisionDatabases(ctx, os.Getenv("INNKEEPER_DATABASE_URL"))
 	}
 	return nil
 }

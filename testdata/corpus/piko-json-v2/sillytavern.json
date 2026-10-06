@@ -1,5 +1,6 @@
 {
-  "avatar_sha256": "f681e138bb4911fda74315c05c2b6e937cf60e3d8e62d1ededb9aefa27e952fe",
+  "avatar_phash": "",
+  "avatar_sha256": "",
   "card": {
     "data": {
       "alternate_greetings": [
@@ -69,6 +70,15 @@
     "creator_notes_multilingual",
     "source",
     "assets"
+  ],
+  "lorebook_fields": [
+    "name",
+    "description",
+    "scan_depth",
+    "token_budget",
+    "recursive_scanning",
+    "extensions",
+    "entries"
   ],
   "lorebook_remote_ids": null,
   "lorebooks": []

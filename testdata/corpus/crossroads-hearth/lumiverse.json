@@ -1,4 +1,5 @@
 {
+  "avatar_phash": "",
   "avatar_sha256": "",
   "card": {
     "data": {
@@ -93,12 +94,20 @@
     "character_version",
     "extensions"
   ],
+  "lorebook_fields": [
+    "name",
+    "description",
+    "scan_depth",
+    "token_budget",
+    "recursive_scanning",
+    "extensions",
+    "entries"
+  ],
   "lorebook_remote_ids": [
     "<lorebook-id-0>"
   ],
   "lorebooks": [
     {
-      "description": "",
       "entries": [
         {
           "case_sensitive": false,
@@ -133,8 +142,7 @@
       ],
       "extensions": {
         "risu_fullWordMatching": false
-      },
-      "name": "Lorebook"
+      }
     }
   ]
 }

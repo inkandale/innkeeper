@@ -1,4 +1,5 @@
 {
+  "avatar_phash": "d1d12f2e5ad0a50f",
   "avatar_sha256": "e6d9ab3a42bd35bb08fe2fbcd2d5f491a47d5b10f1a1370645b71027c51bef6e",
   "card": {
     "data": {
@@ -101,7 +102,7 @@
       "group_only_greetings": [],
       "mes_example": "",
       "modification_date": 1768118959,
-      "name": "UKCATUCAT Practice (verbal reasoning)",
+      "name": "UKCAT/UCAT Practice (verbal reasoning)",
       "nickname": "",
       "personality": "",
       "post_history_instructions": "",
@@ -139,6 +140,15 @@
     "source",
     "assets"
   ],
+  "lorebook_fields": [
+    "name",
+    "description",
+    "scan_depth",
+    "token_budget",
+    "recursive_scanning",
+    "extensions",
+    "entries"
+  ],
   "lorebook_remote_ids": [
     "Lorebook 5"
   ],
@@ -156,8 +166,8 @@
           "keys": [
             ""
           ],
+          "mode": "normal",
           "name": "examplary questions",
-          "secondary_keys": [],
           "selective": false,
           "use_regex": false
         },
@@ -172,8 +182,8 @@
           "keys": [
             "/Topic"
           ],
+          "mode": "normal",
           "name": "New Lore 2",
-          "secondary_keys": [],
           "selective": false,
           "use_regex": false
         },
@@ -188,8 +198,8 @@
           "keys": [
             "/Random"
           ],
+          "mode": "normal",
           "name": "New Lore 3",
-          "secondary_keys": [],
           "selective": false,
           "use_regex": false
         },
@@ -204,8 +214,8 @@
           "keys": [
             "/Help"
           ],
+          "mode": "normal",
           "name": "New Lore 4",
-          "secondary_keys": [],
           "selective": false,
           "use_regex": false
         },
@@ -220,8 +230,8 @@
           "keys": [
             "/reset"
           ],
+          "mode": "normal",
           "name": "New Lore 5",
-          "secondary_keys": [],
           "selective": false,
           "use_regex": false
         },
@@ -236,8 +246,8 @@
           "keys": [
             ""
           ],
+          "mode": "normal",
           "name": "Display",
-          "secondary_keys": [],
           "selective": false,
           "use_regex": false
         },
@@ -252,16 +262,15 @@
           "keys": [
             "/home"
           ],
+          "mode": "normal",
           "name": "New Lore 7",
-          "secondary_keys": [],
           "selective": false,
           "use_regex": false
         }
       ],
       "extensions": {
         "risu_fullWordMatching": false
-      },
-      "name": "Lorebook 5"
+      }
     }
   ]
 }

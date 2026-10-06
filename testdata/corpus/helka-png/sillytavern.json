@@ -1,4 +1,5 @@
 {
+  "avatar_phash": "b9944911467b9d7c",
   "avatar_sha256": "5a879190ed81005e36bda87f5fc7fb375641abd82c04df00aa31bb1e6f084f2f",
   "card": {
     "data": {
@@ -69,6 +70,15 @@
     "creator_notes_multilingual",
     "source",
     "assets"
+  ],
+  "lorebook_fields": [
+    "name",
+    "description",
+    "scan_depth",
+    "token_budget",
+    "recursive_scanning",
+    "extensions",
+    "entries"
   ],
   "lorebook_remote_ids": null,
   "lorebooks": []

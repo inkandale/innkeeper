@@ -1,4 +1,5 @@
 {
+  "avatar_phash": "",
   "avatar_sha256": "",
   "card": {
     "data": {
@@ -63,6 +64,15 @@
     "tags",
     "character_version",
     "extensions"
+  ],
+  "lorebook_fields": [
+    "name",
+    "description",
+    "scan_depth",
+    "token_budget",
+    "recursive_scanning",
+    "extensions",
+    "entries"
   ],
   "lorebook_remote_ids": null,
   "lorebooks": []

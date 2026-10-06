@@ -3,6 +3,7 @@ package merge
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/rand"
 	"slices"
 	"strings"
@@ -60,7 +61,8 @@ func TestApplyKeepInApp(t *testing.T) {
 		t.Errorf("override = %s, want %s", over, want)
 	}
 
-	base, over = apply(t, Card, card, app, "", map[string]Choice{"extensions.lumiverse_ui#0": ChooseKeepInApp}, ChooseLibrary)
+	ch := map[string]Choice{"extensions.lumiverse_ui#0": ChooseKeepInApp}
+	base, over = apply(t, Card, card, app, "", ch, ChooseLibrary)
 	if strings.Contains(base, "lumiverse_ui") {
 		t.Errorf("base = %s", base)
 	}
@@ -75,11 +77,13 @@ func TestApplyBoth(t *testing.T) {
 		t.Errorf("base = %s", base)
 	}
 	for _, ch := range []map[string]Choice{{"first_mes#1": ChooseBoth}, {"tags#1": "nonsense"}} {
-		if _, _, err := Apply(Card, json.RawMessage(card), json.RawMessage(cardApp()), nil, ch, ChooseLibrary); !errors.Is(err, ErrBadChoice) {
+		_, _, err := Apply(Card, json.RawMessage(card), json.RawMessage(cardApp()), nil, ch, ChooseLibrary)
+		if !errors.Is(err, ErrBadChoice) {
 			t.Errorf("%v: err = %v", ch, err)
 		}
 	}
-	if _, _, err := Apply(Card, json.RawMessage(card), json.RawMessage(card), nil, nil, ChooseBoth); !errors.Is(err, ErrBadChoice) {
+	_, _, err := Apply(Card, json.RawMessage(card), json.RawMessage(card), nil, nil, ChooseBoth)
+	if !errors.Is(err, ErrBadChoice) {
 		t.Errorf("def both: err = %v", err)
 	}
 }
@@ -87,7 +91,8 @@ func TestApplyBoth(t *testing.T) {
 func TestApplyUnknownHunk(t *testing.T) {
 	_, _, err := Apply(Card, json.RawMessage(card), json.RawMessage(cardApp()), nil,
 		map[string]Choice{"nope#0": ChooseApp, "zip#3": ChooseApp, "tags#1": ChooseApp}, ChooseLibrary)
-	if !errors.Is(err, ErrUnknownHunk) || !strings.Contains(err.Error(), "nope#0") || !strings.Contains(err.Error(), "zip#3") {
+	msg := fmt.Sprint(err)
+	if !errors.Is(err, ErrUnknownHunk) || !strings.Contains(msg, "nope#0") || !strings.Contains(msg, "zip#3") {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -124,11 +129,12 @@ func TestApplyMissingSide(t *testing.T) {
 }
 
 func TestApplyDeleteVsModify(t *testing.T) {
-	base, over := apply(t, Card, `{"name": "B"}`, `{}`, `{"name": "A"}`, map[string]Choice{"name#0": ChooseApp}, ChooseLibrary)
+	lib, anc := `{"name": "B"}`, `{"name": "A"}`
+	base, over := apply(t, Card, lib, `{}`, anc, map[string]Choice{"name#0": ChooseApp}, ChooseLibrary)
 	if base != `{}` || over != "" {
 		t.Errorf("base = %s, override = %s", base, over)
 	}
-	base, over = apply(t, Card, `{"name": "B"}`, `{}`, `{"name": "A"}`, map[string]Choice{"name#0": ChooseKeepInApp}, ChooseLibrary)
+	base, over = apply(t, Card, lib, `{}`, anc, map[string]Choice{"name#0": ChooseKeepInApp}, ChooseLibrary)
 	if base != `{"name":"B"}` || over != `{"name":null}` {
 		t.Errorf("base = %s, override = %s", base, over)
 	}
@@ -158,7 +164,8 @@ func TestApplyLorebook(t *testing.T) {
 	if base != `{"name":"World"}` {
 		t.Errorf("base = %s", base)
 	}
-	base, _ = apply(t, Lorebook, `{"entries": [{"comment": "a"}]}`, `{"entries": [{"comment": "b"}]}`, "", nil, ChooseKeepInApp)
+	a, b := `{"entries": [{"comment": "a"}]}`, `{"entries": [{"comment": "b"}]}`
+	base, _ = apply(t, Lorebook, a, b, "", nil, ChooseKeepInApp)
 	if base != `{"entries":[{"comment":"a"}]}` {
 		t.Errorf("base = %s", base)
 	}

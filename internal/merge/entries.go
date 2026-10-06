@@ -59,7 +59,7 @@ func emptied(v, l, a any) any {
 	}
 	_, lgone := l.(missing)
 	_, agone := a.(missing)
-	if lgone || agone && !empty(l) {
+	if lgone || (agone && !empty(l)) {
 		return missing{}
 	}
 	return v

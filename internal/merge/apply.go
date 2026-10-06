@@ -28,7 +28,9 @@ var (
 // auto_* hunks are ignored, since those merge by status. base is the new
 // library data; override is the RFC 7386 merge patch that turns base into
 // what this app should get, or nil when they are equal.
-func Apply(s Schema, library, app, ancestor json.RawMessage, choices map[string]Choice, def Choice) (base, override json.RawMessage, err error) {
+func Apply(
+	s Schema, library, app, ancestor json.RawMessage, choices map[string]Choice, def Choice,
+) (base, override json.RawMessage, err error) {
 	switch def {
 	case "":
 		def = ChooseLibrary
@@ -75,7 +77,8 @@ func listed(err error, ids []string) error {
 }
 
 // patch is the merge patch turning from into to, or nil when they are equal.
-// ponytail: RFC 7386 reads null as delete, so an app-side null value is lost; needs a richer patch format
+// ponytail: RFC 7386 reads null as delete, so an app-side null value is lost;
+// needs a richer patch format
 func patch(from, to map[string]any) map[string]any {
 	p := map[string]any{}
 	for k := range to {

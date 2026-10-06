@@ -365,3 +365,32 @@ func TestSearchLorebooks(t *testing.T) {
 		t.Errorf("cards include cards: got %v, want ErrInvalid", err)
 	}
 }
+
+func TestSearchLorebookSourcesAndBareEntries(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	sourced, _, err := lib.Lorebooks.Create(ctx, "sourced", "upload", edit(`{"name": "Sourced", "entries": []}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Missing entries count as none, and searching them doesn't fail.
+	bare, _, err := lib.Lorebooks.Create(ctx, "bare", "upload", edit(`{"name": "Bare"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lib.Lorebooks.AddSource(ctx, sourced.ID, Source{Kind: "chub", Ref: "u/sourced"}); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := lib.SearchLorebooks(ctx, Query{Filter: &Filter{Source: ptr("chub")}, Facets: []string{"sources"}})
+	if err != nil || res.Total != 1 || res.Hits[0].ID != sourced.ID {
+		t.Fatalf("source filter = %+v, %v", res, err)
+	}
+	if f := res.Facets.Sources; len(f) != 1 || f[0].Kind != "chub" || f[0].Cards != 1 {
+		t.Fatalf("sources facet = %+v", f)
+	}
+	res, err = lib.SearchLorebooks(ctx, Query{Text: "bare"})
+	if err != nil || len(res.Hits) != 1 || res.Hits[0].ID != bare.ID || res.Hits[0].Entries == nil || *res.Hits[0].Entries != 0 {
+		t.Fatalf("bare = %+v, %v", res.Hits, err)
+	}
+}

@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/davidgibbons/innkeeper/internal/cardhash"
 	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
@@ -27,7 +28,7 @@ import (
 const corpusDir = "../../testdata/corpus"
 
 // The servers testdata/corpus/compose.yaml runs.
-var targets = []struct {
+var servers = []struct {
 	name    string
 	config  map[string]any
 	secrets map[string]string
@@ -73,7 +74,7 @@ func TestCapture(t *testing.T) {
 	}
 	codec := start("card-codec", map[string]any{}, nil)
 	procs := map[string]*pluginhost.Process{}
-	for _, tg := range targets {
+	for _, tg := range servers {
 		procs[tg.name] = start(tg.name, tg.config, tg.secrets)
 		// The capture writes into the app, so refuse any server but a fresh one.
 		for _, m := range []string{protocol.MethodTargetList, protocol.MethodTargetListLorebooks} {
@@ -113,9 +114,9 @@ func TestCapture(t *testing.T) {
 		}
 		// The core keeps the avatar in its blob store under its hash, and the
 		// plugins remember that file name.
-		avatar, avatarSHA := "", ""
+		avatar, avatarSHA, avatarPhash := "", "", ""
 		if dec.Avatar != "" {
-			if avatarSHA, err = fileSHA(dec.Avatar); err != nil {
+			if avatarSHA, avatarPhash, err = imageHashes(dec.Avatar); err != nil {
 				t.Fatal(err)
 			}
 			avatar = filepath.Join(root, avatarSHA[0:2], avatarSHA[2:4], avatarSHA)
@@ -128,13 +129,14 @@ func TestCapture(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		writeJSON(t, filepath.Join(dir, "codec.json"), map[string]any{"card": dec.Card, "lorebook": book, "avatar_sha256": avatarSHA}, nil)
+		writeJSON(t, filepath.Join(dir, "codec.json"), map[string]any{"card": dec.Card, "lorebook": book, "avatar_sha256": avatarSHA,
+			"avatar_phash": avatarPhash}, nil)
 
 		card, err := json.Marshal(map[string]any{"spec": "chara_card_v3", "spec_version": "3.0", "data": data})
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, tg := range targets {
+		for _, tg := range servers {
 			out, ids, err := capture(ctx, procs[tg.name], slug, card, book, avatar)
 			if err != nil {
 				writeError(t, filepath.Join(dir, tg.name+".error"), err)
@@ -174,10 +176,10 @@ func capture(ctx context.Context, p *pluginhost.Process, slug string, card, book
 	if err := call(ctx, p, protocol.MethodTargetGet, protocol.TargetGetParams{RemoteID: put.RemoteID, Avatar: true}, &got); err != nil {
 		return nil, nil, fmt.Errorf("get: %w", err)
 	}
-	avatarSHA := ""
+	avatarSHA, avatarPhash := "", ""
 	if got.Avatar != "" {
 		var err error
-		avatarSHA, err = fileSHA(got.Avatar)
+		avatarSHA, avatarPhash, err = imageHashes(got.Avatar)
 		_ = os.Remove(got.Avatar)
 		if err != nil {
 			return nil, nil, err
@@ -194,8 +196,8 @@ func capture(ctx context.Context, p *pluginhost.Process, slug string, card, book
 		}
 		lorebooks = append(lorebooks, lb.Lorebook)
 	}
-	return map[string]any{"fields": info.Fields, "card": got.Card, "lorebook_remote_ids": got.LorebookRemoteIDs,
-		"lorebooks": lorebooks, "avatar_sha256": avatarSHA}, ids, nil
+	return map[string]any{"fields": info.Fields, "lorebook_fields": info.LorebookFields, "card": got.Card, "lorebook_remote_ids": got.LorebookRemoteIDs,
+		"lorebooks": lorebooks, "avatar_sha256": avatarSHA, "avatar_phash": avatarPhash}, ids, nil
 }
 
 func call(ctx context.Context, p *pluginhost.Process, method string, params, result any) error {
@@ -206,6 +208,19 @@ func call(ctx context.Context, p *pluginhost.Process, method string, params, res
 
 func noCore(_ context.Context, method string, _ json.RawMessage) (any, error) {
 	return nil, protocol.MethodNotFound(method)
+}
+
+// imageHashes returns an image's SHA-256 and its perceptual hash in hex.
+// SillyTavern re-encodes avatars, so the corpus test compares the phash.
+func imageHashes(path string) (sha, phash string, err error) {
+	if sha, err = fileSHA(path); err != nil {
+		return "", "", err
+	}
+	p, err := cardhash.ImagePhash(path)
+	if err != nil {
+		return "", "", fmt.Errorf("phash %s: %w", path, err)
+	}
+	return sha, fmt.Sprintf("%016x", uint64(p)), nil
 }
 
 // fileSHA hashes a file. A PNG's text and time chunks are left out:

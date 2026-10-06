@@ -279,13 +279,38 @@
           "action": {
             "enum": [
               "archive",
-              "unarchive"
+              "unarchive",
+              "tag",
+              "untag",
+              "collect",
+              "uncollect",
+              "export"
             ],
+            "type": "string"
+          },
+          "collection": {
+            "description": "For collect and uncollect: the collection.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "format": {
+            "default": "json",
+            "description": "For export: json, or a format a codec plugin instance writes, such as png.",
             "type": "string"
           },
           "query": {
             "$ref": "#/components/schemas/Query",
-            "description": "Selects the cards, as in POST /search. Paging is ignored."
+            "description": "Selects the cards, as in POST /search. Paging is ignored. To pick cards by ID, filter on ids."
+          },
+          "tags": {
+            "description": "For tag and untag: the tags to add or remove.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           }
         },
         "required": [
@@ -866,6 +891,18 @@
             "description": "Is in this collection.",
             "format": "int64",
             "type": "integer"
+          },
+          "ids": {
+            "description": "Is one of these cards.",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "maxItems": 10000,
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "not": {
             "$ref": "#/components/schemas/Filter"
@@ -2686,7 +2723,7 @@
     },
     "/bulk": {
       "post": {
-        "description": "Queues one child job per card the query matches.",
+        "description": "Queues one child job per card the query matches. Export queues one job that writes a zip; its progress names the zip's blob when it's done, and the blob is deleted after a day.",
         "operationId": "start-bulk",
         "requestBody": {
           "content": {
@@ -2720,7 +2757,7 @@
             "description": "Error"
           }
         },
-        "summary": "Archive or unarchive many cards",
+        "summary": "Archive, tag, collect, or export many cards",
         "tags": [
           "Jobs"
         ]

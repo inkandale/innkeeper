@@ -226,8 +226,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Archive or unarchive many cards
-         * @description Queues one child job per card the query matches.
+         * Archive, tag, collect, or export many cards
+         * @description Queues one child job per card the query matches. Export queues one job that writes a zip; its progress names the zip's blob when it's done, and the blob is deleted after a day.
          */
         post: operations["start-bulk"];
         delete?: never;
@@ -1332,9 +1332,21 @@ export interface components {
              */
             readonly $schema?: string;
             /** @enum {string} */
-            action: "archive" | "unarchive";
-            /** @description Selects the cards, as in POST /search. Paging is ignored. */
+            action: "archive" | "unarchive" | "tag" | "untag" | "collect" | "uncollect" | "export";
+            /**
+             * Format: int64
+             * @description For collect and uncollect: the collection.
+             */
+            collection?: number;
+            /**
+             * @description For export: json, or a format a codec plugin instance writes, such as png.
+             * @default json
+             */
+            format: string;
+            /** @description Selects the cards, as in POST /search. Paging is ignored. To pick cards by ID, filter on ids. */
             query: components["schemas"]["Query"];
+            /** @description For tag and untag: the tags to add or remove. */
+            tags?: string[] | null;
         };
         BulkPushInBody: {
             /**
@@ -1570,6 +1582,8 @@ export interface components {
              * @description Is in this collection.
              */
             collection?: number;
+            /** @description Is one of these cards. */
+            ids?: number[] | null;
             not?: components["schemas"]["Filter"];
             or?: components["schemas"]["Filter"][] | null;
             /** @description Has a source of this kind, such as chub. */

@@ -98,6 +98,9 @@ func main() {
 		case protocol.MethodTargetPut:
 			return newTarget(config).put(params)
 		case protocol.MethodTargetGet:
+			if config["fail_get"] == "retryable" {
+				return nil, protocol.NewError(-32000, "app unavailable", true)
+			}
 			return newTarget(config).get(params, blobTmp)
 		case protocol.MethodTargetPutLorebook:
 			return newTarget(config).putLorebook(params)

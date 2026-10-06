@@ -178,8 +178,12 @@ during a run go through the normal blob path; unreferenced ones are removed by
 blob GC.
 
 If the app can't be listed, the job fails. If `auto_bind_exact` is on, an
-`exact` item is bound with `default: library` as the run goes, only when all
-its nested world books are `exact` or `bound` too, and the snapshot says so.
+`exact` item is bound with `default: library` once every item is read, only
+when each nested world book is `exact`, or `bound` with nothing differing.
+The binds use the hashes the run read, so an item that changed since is left
+for the owner, and they never write a library revision. The snapshot marks
+each item `auto_bound` and counts them in `totals.auto_bound`. An auto-bind
+that fails leaves the item as reported and doesn't fail the run.
 
 ## Resolve
 
@@ -187,6 +191,7 @@ A resolution decides one app item:
 
 ```json
 { "instance_id": 3, "remote_id": "lv-abc", "app_hash": "…",
+  "base_revision_id": 118, "accepted_hash": "",
   "action": "bind",
   "card_id": 42,
   "choices": { "first_mes#1": "app", "extensions.lumiverse_ui#0": "keep_in_app" },
@@ -197,18 +202,60 @@ A resolution decides one app item:
 
 - `bind`: the app item and the library card are the same card.
 - `import`: make a new library card from the app item and bind it. Use this to
-  split an item that has diverged into a different character.
-- `skip`: do nothing. The next reconcile reports it again.
+  split an item that has diverged into a different character. It always makes
+  a new card, even when one matches exactly. A card already bound to the item
+  on this instance becomes `missing` there, as when an app reuses an ID, so
+  pushing that card again creates a new copy in the app. What the import
+  leaves out of the card, like SillyTavern's favorite star, goes into this
+  instance's override. On a target that keeps world books on their own and
+  doesn't list `character_book` among its fields, the card's embedded
+  `character_book` is ignored; its linked world books are the nested items.
+  Only `app_hash` is needed.
+- `skip`: do nothing, including the nested world books. The next reconcile
+  reports it again.
 
 `card_id` may be any library card, not only a candidate from the snapshot.
 Clients find one with `POST /search` and check it with `compare`.
 
+`app_hash`, `base_revision_id`, and `accepted_hash` come from the comparison.
+`accepted_hash` is empty when the item isn't bound to the card; a missing
+value means empty. `base_revision_id` is required.
+
 `choices` apply only to `bind`, one per hunk. A hunk not named takes `default`.
+In a field or setting this instance overrides, choices change the override,
+never the base. On a list the override already holds whole, `keep_in_app` is
+allowed.
+
+The `avatar` key takes `library` or `app`, and only when the avatars differ.
+`app` needs an app avatar, so an app without one can't clear the library's.
 
 A card's resolution carries one nested resolution per linked world book, in
 the same shape under `lorebooks`. A nested item left out takes its suggested
-option. The card's lorebook links are set from the outcome: a world book that
-is bound or imported is linked to the card; a skipped one is not.
+option, from a fresh read; one the app can't give back is skipped, and a bound
+one with no drift binds again, which changes nothing. The card's lorebook links
+are set from the outcome: a world book that is bound or imported is linked to
+the card; a skipped one is not. On a target that keeps world books on their
+own, skipping one the app links means the next push removes that link in the
+app. A world book listed twice in one resolution is resolved once. The card and
+its world books resolve in one transaction, so one failure writes nothing.
+
+Suggestions for left-out world books are all read before anything is written.
+If an earlier world book in the same resolution changed a suggestion's match,
+the resolve fails with `409` naming both world books, and isn't stale: give
+the left-out one an explicit resolution. A stale error names its item, as
+`card:<remote_id>` or `lorebook:<remote_id>`.
+
+A bulk resolve takes a list of resolutions, each with `"kind": "lorebook"`
+for a top-level world book (default `card`). Every resolution's shape is
+checked before the job is queued. Each runs as its own child job in its own
+transaction, and its progress has an `outcome`: the action, or `stale` (with
+the fresh comparison), `conflict`, or `failed`. A failed child doesn't stop
+the others; a plugin error that may pass is retried. Because children don't
+share a transaction, a world book two cards both name explicitly is bound by
+whichever runs first, and the other's resolution goes stale. Leave it out of
+the second card to have it bind as its suggestion instead. A child retried
+after its resolve already applied reports `stale`, so the client compares
+again.
 
 | Choice | Library card | Next push to this app | Other apps |
 |---|---|---|---|
@@ -230,20 +277,33 @@ one side.
 
 Applying a `bind`:
 
-1. Read the app item live. If its hash isn't `app_hash`, return `409` with a
-   fresh comparison.
+1. Read the app item live. If its hash isn't `app_hash`, the library head
+   isn't `base_revision_id`, or the binding's accepted hash isn't
+   `accepted_hash`, return `409` with a fresh comparison. A gone item is `404`.
 2. Refuse a choice that names a hunk not in that comparison with `422`.
 3. In one transaction, for the card and each nested world book: write one
    library revision (source `reconcile`) based on the current head, extend
    the override, and create or update the binding with the app's current copy
-   as accepted. A moved head returns `409`, and nothing is written.
+   as accepted. A moved head returns `409`, and nothing is written. A card
+   bound to another live item is refused; one whose copy went missing is
+   rebound to this item.
+4. If none of that would change anything, nothing is written.
 
 Nothing is pushed during resolve. Hunks resolved to `library` show as the
 library being ahead, and the next push, with its preview, sends them.
 
-The existing `POST /bindings/{id}/adopt` stays and becomes a resolution with
-`default` set to `app` (into `base`), `keep_in_app` (into `override`), or
-`library` (`ignore`).
+Both stay available. `POST /bindings/{id}/adopt` stays its own path for drift
+on a bound item: it takes the app's changes since the last push into the
+card, into this target's override, or nowhere, for the whole card. Resolve is
+for reconciling an item with per-hunk choices. Under three-way merge an app
+edit since the last push merges on its own, so adopt's `override` and
+`ignore` can't be expressed as a resolve default.
+
+`POST /cards/{id}/bind` is a resolve: `{action: bind, card_id, default:
+library}` with a fresh comparison's hashes. The app's copy becomes the
+accepted one, and the card is `ahead` where it differs. Its linked world books
+are skipped and the bind refuses any library write, so it changes nothing in
+the library; reconcile resolves the world books.
 
 ## Surfaces
 

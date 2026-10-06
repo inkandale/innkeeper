@@ -23,7 +23,8 @@ import (
 )
 
 var (
-	ErrNotFound = errors.New("binding not found")
+	// ErrNotFound is a library.ErrNotFound, so callers map both the same way.
+	ErrNotFound = fmt.Errorf("binding %w", library.ErrNotFound)
 	// ErrCannot means the instance's plugin lacks the capability.
 	ErrCannot = errors.New("plugin can't push")
 	// ErrNewCopy means the target can't update its copy, so pushing again

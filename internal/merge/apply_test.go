@@ -306,3 +306,13 @@ func normal(t *testing.T, s Schema, raw string) string {
 	}
 	return string(enc(m))
 }
+
+func TestDiff(t *testing.T) {
+	p, err := Diff(json.RawMessage(`{"a": 1, "b": {"c": 2, "d": 3}, "e": 4}`), json.RawMessage(`{"a": 1, "b": {"c": 5, "d": 3}}`))
+	if err != nil || string(p) != `{"b":{"c":5},"e":null}` {
+		t.Errorf("Diff = %s, %v", p, err)
+	}
+	if p, err := Diff(json.RawMessage(`{"a": [1]}`), json.RawMessage(`{"a": [1]}`)); err != nil || p != nil {
+		t.Errorf("equal Diff = %s, %v", p, err)
+	}
+}

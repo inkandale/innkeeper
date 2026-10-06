@@ -2,6 +2,7 @@ package targets
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/davidgibbons/innkeeper/internal/library"
@@ -39,32 +40,26 @@ func TestBindMatchingItem(t *testing.T) {
 	}
 }
 
-// boundChanged binds the card to an app copy whose description differs.
+// boundChanged binds the card to an app copy whose description differs. The
+// app's copy is accepted as it is, so the library is ahead.
 func boundChanged(t *testing.T) (*env, Binding) {
 	e := setup(t, nil)
 	remoteID := e.appCopy(e.card)
 	e.editRemote(remoteID, "description", "A tired smith.")
 	b := e.bind(e.card, remoteID)
-	if b.Status != "remote_changed" || len(b.Changes) != 1 || b.Changes[0].Field != "description" ||
-		string(b.Changes[0].After) != `"A tired smith."` {
+	if b.Status != "ahead" || b.RemoteState != "unchanged" || len(b.Changes) != 0 || b.LastPush.Kind != "bind" {
 		t.Fatalf("binding = %+v", b)
 	}
 	return e, b
 }
 
-func TestBindDifferingItemThenAdopt(t *testing.T) {
+func TestBindDifferingItemHasNothingToAdopt(t *testing.T) {
 	e, b := boundChanged(t)
-	b, err := e.s.Adopt(e.ctx, b.ID, IntoBase, e.head(e.card).ID)
-	if err != nil {
-		t.Fatal(err)
+	if _, err := e.s.Adopt(e.ctx, b.ID, IntoBase, e.head(e.card).ID); !errors.Is(err, ErrNoChanges) {
+		t.Fatalf("adopt: %v", err)
 	}
-	if !jsonEqual(e.head(e.card).Data, `{"name": "Brakka", "description": "A tired smith.", "first_mes": "Hail.",
-		"scenario": "A forge."}`) {
+	if field(t, e.head(e.card).Data, "description") != "A dwarf smith." || e.revisions(e.card) != 1 {
 		t.Fatalf("head = %s", e.head(e.card).Data)
-	}
-	// The library changed since the bind; a push would send the same thing.
-	if b.Status != "ahead" {
-		t.Fatalf("status = %s", b.Status)
 	}
 }
 
@@ -210,5 +205,51 @@ func TestBindLorebookDetectsSources(t *testing.T) {
 	got, err := e.lib.Lorebooks.Sources(e.ctx, lb)
 	if err != nil || len(got) != 1 || got[0].URL != "https://chub.ai/lorebooks/u/forge" {
 		t.Fatalf("sources = %+v, %v", got, err)
+	}
+}
+
+func (e *env) lorebookCount() int {
+	e.t.Helper()
+	var n int
+	if err := e.pool.QueryRow(e.ctx, `SELECT count(*) FROM lorebook`).Scan(&n); err != nil {
+		e.t.Fatal(err)
+	}
+	return n
+}
+
+func TestBindLeavesTheAppsWorldBooksAlone(t *testing.T) {
+	e, card, forge := worldBooks(t)
+	b := e.bind(card, "c1")
+	if e.lorebookCount() != 1 || e.revisions(card) != 1 || len(e.links(card)) != 0 {
+		t.Fatalf("%d lorebooks, %d revisions, links %v", e.lorebookCount(), e.revisions(card), e.links(card))
+	}
+	if lbs, err := e.s.LorebookBindings(e.ctx, forge); err != nil || len(lbs) != 0 {
+		t.Fatalf("forge bindings = %+v, %v", lbs, err)
+	}
+	// The app links world books the library card doesn't.
+	if b.Status != "ahead" || strings.Join(b.LastPush.LorebookRemoteIDs, ",") != "l1,l2" {
+		t.Fatalf("binding = %+v", b)
+	}
+}
+
+func TestBindLeavesADriftedWorldBookAlone(t *testing.T) {
+	e, card, forge := worldBooks(t)
+	lb := e.pushLorebook(forge)
+	e.editRemote(lb.RemoteID, "description", "APP EDIT.")
+	e.link(card, forge)
+	e.appCard("c2", map[string]any{"name": "Tova", "description": "A smith."},
+		map[string]any{"lorebook_remote_ids": []string{lb.RemoteID}})
+	e.bind(card, "c2")
+	if h, err := e.lib.Lorebooks.History(e.ctx, forge); err != nil || len(h) != 1 {
+		t.Fatalf("Forge has %d revisions, %v", len(h), err)
+	}
+}
+
+func TestBindChecksTheCardFirst(t *testing.T) {
+	e := setup(t, nil)
+	e.push(e.card)
+	// The item doesn't exist, so a compare would fail with not found.
+	if _, err := e.s.Bind(e.ctx, e.inst, e.card, "gone"); !errors.Is(err, ErrBound) {
+		t.Fatalf("err = %v", err)
 	}
 }

@@ -19,8 +19,8 @@ func TestMigrateTwice(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migration`).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
-	if n != 10 {
-		t.Fatalf("schema_migration has %d rows, want 10", n)
+	if n != 11 {
+		t.Fatalf("schema_migration has %d rows, want 11", n)
 	}
 }
 

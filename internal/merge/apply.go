@@ -81,6 +81,23 @@ func listed(err error, ids []string) error {
 	return fmt.Errorf("%w: %s", err, strings.Join(slices.Compact(ids), ", "))
 }
 
+// Diff is the RFC 7386 merge patch turning one JSON object into another, or
+// nil when they are equal.
+func Diff(from, to json.RawMessage) (json.RawMessage, error) {
+	f, err := decode(from)
+	if err != nil {
+		return nil, fmt.Errorf("from: %w", err)
+	}
+	t, err := decode(to)
+	if err != nil {
+		return nil, fmt.Errorf("to: %w", err)
+	}
+	if p := patch(f, t); p != nil {
+		return enc(p), nil
+	}
+	return nil, nil
+}
+
 // patch is the merge patch turning from into to, or nil when they are equal.
 // ponytail: RFC 7386 reads null as delete, so an app-side null value is lost;
 // needs a richer patch format

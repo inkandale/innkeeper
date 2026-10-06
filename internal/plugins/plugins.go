@@ -100,8 +100,10 @@ type InstanceInfo struct {
 	OwnerSubject *string        `json:"owner_subject,omitempty"`
 	BrokenError  *string        `json:"broken_error,omitempty"`
 	BrokenAt     *time.Time     `json:"broken_at,omitempty"`
-	CreatedAt    time.Time      `json:"created_at"`
-	UpdatedAt    time.Time      `json:"updated_at"`
+	// AutoBindExact makes reconcile bind each exact match it finds.
+	AutoBindExact bool      `json:"auto_bind_exact"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // NewInstance is a new instance's settings.
@@ -116,10 +118,11 @@ type NewInstance struct {
 // InstanceEdit changes an instance. Nil fields stay as they are. A nil value
 // in Secrets removes that secret, and an empty OwnerSubject clears it.
 type InstanceEdit struct {
-	Name         *string
-	Config       map[string]any
-	Secrets      map[string]*string
-	OwnerSubject *string
+	Name          *string
+	Config        map[string]any
+	Secrets       map[string]*string
+	OwnerSubject  *string
+	AutoBindExact *bool
 }
 
 func checkSecret(m *protocol.Manifest, name string) error {
@@ -220,8 +223,9 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 	}
 	_, err = tx.Exec(ctx, `UPDATE plugin_instance SET name = coalesce($2, name), config = coalesce($3, config),
 			secrets = $4, owner_subject = CASE WHEN $5 THEN nullif($6::text, '') ELSE owner_subject END,
+			auto_bind_exact = coalesce($7, auto_bind_exact),
 			broken_error = NULL, broken_at = NULL, updated_at = now()
-		WHERE id = $1`, id, e.Name, config, sealed, e.OwnerSubject != nil, owner)
+		WHERE id = $1`, id, e.Name, config, sealed, e.OwnerSubject != nil, owner, e.AutoBindExact)
 	if err != nil {
 		return writeErr(err)
 	}
@@ -250,13 +254,14 @@ func (r *Registry) DeleteInstance(ctx context.Context, id int64) error {
 	return nil
 }
 
-const infoCols = `id, plugin, name, config, secrets, owner_subject, broken_error, broken_at, created_at, updated_at`
+const infoCols = `id, plugin, name, config, secrets, owner_subject, broken_error, broken_at, auto_bind_exact, created_at,
+	updated_at`
 
 func (r *Registry) scanInfo(row pgx.Row) (InstanceInfo, error) {
 	var i InstanceInfo
 	var sealed []byte
 	err := row.Scan(&i.ID, &i.Plugin, &i.Name, &i.Config, &sealed, &i.OwnerSubject,
-		&i.BrokenError, &i.BrokenAt, &i.CreatedAt, &i.UpdatedAt)
+		&i.BrokenError, &i.BrokenAt, &i.AutoBindExact, &i.CreatedAt, &i.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return i, ErrNotFound
 	}

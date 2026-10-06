@@ -1026,6 +1026,9 @@
             "readOnly": true,
             "type": "string"
           },
+          "auto_bind_exact": {
+            "type": "boolean"
+          },
           "broken_at": {
             "format": "date-time",
             "type": "string"
@@ -1074,6 +1077,7 @@
           "name",
           "config",
           "secrets",
+          "auto_bind_exact",
           "created_at",
           "updated_at"
         ],
@@ -2090,6 +2094,10 @@
             "readOnly": true,
             "type": "string"
           },
+          "auto_bind_exact": {
+            "description": "Reconcile binds each exact match it finds, keeping the library's copy.",
+            "type": "boolean"
+          },
           "config": {
             "additionalProperties": {},
             "description": "Replaces the whole config.",
@@ -2899,7 +2907,7 @@
     },
     "/cards/{id}/bind": {
       "post": {
-        "description": "Changes nothing in the app or the library. The library's copy becomes the baseline, so the next check shows where the app differs.",
+        "description": "Changes nothing in the app or the library. The app's copy becomes the accepted one, so the binding is ahead where the library differs, and the next push sends the library's. The app's linked world books are left for reconcile.",
         "operationId": "bind-card",
         "parameters": [
           {
@@ -4818,7 +4826,7 @@
     },
     "/lorebooks/{id}/bind": {
       "post": {
-        "description": "Changes nothing in the app or the library. The library's copy becomes the baseline, so the next check shows where the app differs.",
+        "description": "Changes nothing in the app or the library. The app's copy becomes the accepted one, so the binding is ahead where the library differs, and the next push sends the library's. The app's linked world books are left for reconcile.",
         "operationId": "bind-lorebook",
         "parameters": [
           {

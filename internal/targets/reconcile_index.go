@@ -29,7 +29,7 @@ type index struct {
 }
 
 type indexEntry struct {
-	id         int64
+	id, head   int64
 	name, norm string
 	// data leaves a card's lorebooks out: reconcile matches them as items of their own.
 	data           json.RawMessage
@@ -40,8 +40,9 @@ type indexEntry struct {
 }
 
 type indexBinding struct {
-	id, entityID int64
-	accepted     json.RawMessage
+	id, entityID              int64
+	accepted                  json.RawMessage
+	acceptedHash, remoteState string
 }
 
 func (s *Service) loadIndex(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo) (index, error) {
@@ -53,7 +54,7 @@ func (s *Service) loadIndex(ctx context.Context, k kind, inst pluginhost.Instanc
 	for _, e := range idx.entries {
 		idx.byID[e.id] = e
 	}
-	rows, err := s.pool.Query(ctx, `SELECT id, `+k.col+`, remote_id, accepted_data FROM binding
+	rows, err := s.pool.Query(ctx, `SELECT id, `+k.col+`, remote_id, accepted_data, accepted_hash, remote_state FROM binding
 		WHERE instance_id = $1::bigint AND `+k.col+` IS NOT NULL
 		ORDER BY remote_state <> 'missing', id`, inst.ID)
 	if err != nil {
@@ -61,7 +62,7 @@ func (s *Service) loadIndex(ctx context.Context, k kind, inst pluginhost.Instanc
 	}
 	var b indexBinding
 	var remoteID string
-	_, err = pgx.ForEachRow(rows, []any{&b.id, &b.entityID, &remoteID, &b.accepted}, func() error {
+	_, err = pgx.ForEachRow(rows, []any{&b.id, &b.entityID, &remoteID, &b.accepted, &b.acceptedHash, &b.remoteState}, func() error {
 		idx.byRemote[remoteID] = b
 		idx.remoteOf[b.entityID] = remoteID
 		return nil
@@ -73,7 +74,7 @@ func (s *Service) loadIndex(ctx context.Context, k kind, inst pluginhost.Instanc
 // where's parameters start at $2.
 func (s *Service) loadEntries(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo,
 	where string, args ...any) ([]indexEntry, error) {
-	rows, err := s.pool.Query(ctx, `SELECT e.id, r.data, r.overrides -> $1, coalesce(r.avatar_blob, ''), b.avatar_phash
+	rows, err := s.pool.Query(ctx, `SELECT e.id, r.id, r.data, r.overrides -> $1, coalesce(r.avatar_blob, ''), b.avatar_phash
 		FROM `+k.table+` e JOIN `+k.revTable+` r ON r.id = e.head_revision_id
 		LEFT JOIN blob b ON b.sha256 = r.avatar_blob
 		WHERE `+where+` ORDER BY e.id`, append([]any{inst.ID}, args...)...)
@@ -83,7 +84,7 @@ func (s *Service) loadEntries(ctx context.Context, k kind, inst pluginhost.Insta
 	var out []indexEntry
 	var data, override []byte
 	var ent indexEntry
-	_, err = pgx.ForEachRow(rows, []any{&ent.id, &data, &override, &ent.avatar, &ent.phash}, func() error {
+	_, err = pgx.ForEachRow(rows, []any{&ent.id, &ent.head, &data, &override, &ent.avatar, &ent.phash}, func() error {
 		d := json.RawMessage(data)
 		if override != nil {
 			if d, err = MergePatch(d, override); err != nil {

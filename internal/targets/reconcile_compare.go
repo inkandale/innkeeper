@@ -19,6 +19,11 @@ type Comparison struct {
 	InstanceID int64  `json:"instance_id"`
 	RemoteID   string `json:"remote_id"`
 	CardID     int64  `json:"card_id"` // or the lorebook's ID
+	// HeadRevisionID is the library revision compared; a resolution names it.
+	HeadRevisionID int64 `json:"head_revision_id"`
+	// AcceptedHash is the ancestor binding's accepted_hash, empty when Base
+	// is none; a resolution names it.
+	AcceptedHash string `json:"accepted_hash"`
 	// Base is accepted when the pair is bound and the binding's copy is the
 	// ancestor, none otherwise.
 	Base string `json:"base" enum:"none,accepted"`
@@ -54,24 +59,19 @@ func (s *Service) compareItem(ctx context.Context, k kind, instanceID int64, rem
 	if err != nil {
 		return c, err
 	}
-	var boundID int64
-	var accepted json.RawMessage
-	err = s.pool.QueryRow(ctx, `SELECT `+k.col+`, accepted_data FROM binding
-		WHERE instance_id = $1 AND remote_id = $2 AND `+k.col+` IS NOT NULL
-		ORDER BY remote_state = 'missing', id LIMIT 1`, instanceID, remoteID).Scan(&boundID, &accepted)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	b, err := itemBinding(ctx, s.pool, k, instanceID, remoteID)
+	if err != nil {
 		return c, err
 	}
 	if c.CardID == 0 {
-		if boundID == 0 {
+		if b.entityID == 0 {
 			return c, ErrNotFound
 		}
-		c.CardID = boundID
+		c.CardID = b.entityID
 	}
-	if boundID == c.CardID {
-		c.Base = "accepted"
-	} else {
-		accepted = nil
+	accepted := b.ancestor(c.CardID)
+	if accepted != nil {
+		c.Base, c.AcceptedHash = "accepted", b.acceptedHash
 	}
 	ents, err := s.loadEntries(ctx, k, inst, info, `e.id = $2`, c.CardID)
 	if err != nil {
@@ -81,6 +81,7 @@ func (s *Service) compareItem(ctx context.Context, k kind, instanceID int64, rem
 		return c, library.ErrNotFound
 	}
 	lib := ents[0]
+	c.HeadRevisionID = lib.head
 	it, err := s.readItem(ctx, k, inst, info, remoteID, true)
 	if err != nil {
 		return c, err
@@ -101,4 +102,38 @@ func (s *Service) compareItem(ctx context.Context, k kind, instanceID int64, rem
 		}
 	}
 	return c, nil
+}
+
+// boundItem is the binding an app item has on an instance, or the zero value.
+type boundItem struct {
+	id, entityID              int64
+	acceptedHash, remoteState string
+	accepted                  json.RawMessage
+}
+
+type queryRower interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+// itemBinding finds the app item's binding: the live one, else a missing one,
+// since an app can reuse a missing binding's ID.
+func itemBinding(ctx context.Context, q queryRower, k kind, instanceID int64, remoteID string) (boundItem, error) {
+	var b boundItem
+	err := q.QueryRow(ctx, `SELECT id, `+k.col+`, accepted_hash, remote_state, accepted_data FROM binding
+		WHERE instance_id = $1 AND remote_id = $2 AND `+k.col+` IS NOT NULL
+		ORDER BY remote_state = 'missing', id LIMIT 1`, instanceID, remoteID).
+		Scan(&b.id, &b.entityID, &b.acceptedHash, &b.remoteState, &b.accepted)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return boundItem{}, nil
+	}
+	return b, err
+}
+
+// ancestor is the accepted copy when the item is bound to entity id, else
+// nil. A missing binding's copy may be another character under a reused ID.
+func (b boundItem) ancestor(id int64) json.RawMessage {
+	if b.entityID != id || b.remoteState == remoteMissing {
+		return nil
+	}
+	return b.accepted
 }

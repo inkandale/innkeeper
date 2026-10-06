@@ -269,7 +269,7 @@ var tools = []tool{
 			}
 			return c.call(ctx, "GET", fmt.Sprintf("/instances/%d/%s", in.InstanceID, path), nil)
 		}),
-	def("bind", "Link a card or lorebook to one the app already has. Changes nothing in the app or the library; check_drift then shows where they differ.", tier.Write,
+	def("bind", "Link a card or lorebook to one the app already has. Changes nothing in the app or the library; the binding shows ahead until the next push where they differ. The app's linked world books are left for reconcile.", tier.Write,
 		func(ctx context.Context, c caller, in bindIn) (*sdk.CallToolResult, error) {
 			if (in.CardID == 0) == (in.LorebookID == 0) {
 				return nil, fmt.Errorf("give exactly one of card_id and lorebook_id")

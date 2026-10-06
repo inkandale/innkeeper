@@ -361,18 +361,19 @@ innkeeper call GET  /instances/<instance-id>/items
 innkeeper call POST /cards/<id>/bind '{"instance_id": <instance-id>, "remote_id": "<remote-id>"}'
 ```
 
-Binding changes nothing in the app or the library. The library's card
-becomes what the app is compared against, so the binding is `in_sync` if the
-app's copy matches and `remote_changed` if it doesn't. Adopt the changes or
-push over them as above. An item already bound shows its `binding_id`, and
-binding it again is refused with `409`. In the push history, a bind shows
-as `"kind": "bind"`.
+Binding changes nothing in the app or the library. The app's copy is
+accepted as it is, so the binding is `in_sync` if it matches the library and
+`ahead` if it doesn't; the next push, with its preview, sends the library's
+card. An item already bound shows its `binding_id`, and binding it
+again is refused with `409`, as is a bind whose app copy or card changed
+while it ran. In the push history, a bind shows as `"kind": "bind"`.
 
 For lorebooks in an app that keeps them separately, use
-`/instances/<instance-id>/lorebook-items` and `/lorebooks/<id>/bind`. A bound
-card is `ahead` when the app links it to lorebooks other than the library's
-bound ones, or when the plugin can't tell which it links. The next push links
-the library's.
+`/instances/<instance-id>/lorebook-items` and `/lorebooks/<id>/bind`. Binding
+a card leaves the app's linked world books for reconcile: none are imported,
+bound, or changed. A bound card is `ahead` when the app links it to lorebooks
+other than the library's bound ones, or when the plugin can't tell which it
+links. The next push links the library's.
 
 ### Importing what the app already has
 

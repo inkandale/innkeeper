@@ -14,7 +14,7 @@ const defaultKeep = 7
 type Settings struct {
 	Dir   string
 	Every map[Type]time.Duration // only scheduled types
-	Keep  map[Type]int           // every type with a schedule or a KEEP
+	Keep  map[Type]int           // every type
 }
 
 // SettingsFromEnv reads INNKEEPER_BACKUP_DIR and the per-type _EVERY and _KEEP
@@ -36,8 +36,8 @@ func SettingsFromEnv() (Settings, error) {
 				return Settings{}, fmt.Errorf("%s_EVERY is set but INNKEEPER_BACKUP_DIR is not", name)
 			}
 			c.Every[t] = d
-			c.Keep[t] = defaultKeep
 		}
+		c.Keep[t] = defaultKeep
 		if v := os.Getenv(name + "_KEEP"); v != "" {
 			n, err := strconv.Atoi(v)
 			if err != nil || n < 1 {

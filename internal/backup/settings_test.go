@@ -16,33 +16,33 @@ func TestSettingsFromEnv(t *testing.T) {
 		wantKeep  map[Type]int
 		wantErr   string // substring naming the variable
 	}{
-		{name: "nothing set", wantEvery: map[Type]time.Duration{}, wantKeep: map[Type]int{}},
+		{name: "nothing set", wantEvery: map[Type]time.Duration{}, wantKeep: map[Type]int{Assets: 7, Config: 7}},
 		{
 			name:      "assets every with default keep",
 			env:       map[string]string{"INNKEEPER_BACKUP_DIR": "/b", "INNKEEPER_BACKUP_ASSETS_EVERY": "24h"},
 			wantDir:   "/b",
 			wantEvery: map[Type]time.Duration{Assets: 24 * time.Hour},
-			wantKeep:  map[Type]int{Assets: 7},
+			wantKeep:  map[Type]int{Assets: 7, Config: 7},
 		},
 		{
 			name:      "config every in days",
 			env:       map[string]string{"INNKEEPER_BACKUP_DIR": "/b", "INNKEEPER_BACKUP_CONFIG_EVERY": "7d"},
 			wantDir:   "/b",
 			wantEvery: map[Type]time.Duration{Config: 168 * time.Hour},
-			wantKeep:  map[Type]int{Config: 7},
+			wantKeep:  map[Type]int{Assets: 7, Config: 7},
 		},
 		{
 			name:      "explicit keep",
 			env:       map[string]string{"INNKEEPER_BACKUP_DIR": "/b", "INNKEEPER_BACKUP_ASSETS_EVERY": "90m", "INNKEEPER_BACKUP_ASSETS_KEEP": "3"},
 			wantDir:   "/b",
 			wantEvery: map[Type]time.Duration{Assets: 90 * time.Minute},
-			wantKeep:  map[Type]int{Assets: 3},
+			wantKeep:  map[Type]int{Assets: 3, Config: 7},
 		},
 		{
 			name:      "keep without every",
 			env:       map[string]string{"INNKEEPER_BACKUP_CONFIG_KEEP": "2"},
 			wantEvery: map[Type]time.Duration{},
-			wantKeep:  map[Type]int{Config: 2},
+			wantKeep:  map[Type]int{Assets: 7, Config: 2},
 		},
 		{name: "every without dir", env: map[string]string{"INNKEEPER_BACKUP_ASSETS_EVERY": "24h"}, wantErr: "INNKEEPER_BACKUP_DIR"},
 		{name: "keep zero", env: map[string]string{"INNKEEPER_BACKUP_ASSETS_KEEP": "0"}, wantErr: "INNKEEPER_BACKUP_ASSETS_KEEP"},

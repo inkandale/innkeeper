@@ -67,6 +67,11 @@ textarea {
   color: var(--accent-text);
 }
 
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .input {
   width: 100%;
   background: var(--bg);

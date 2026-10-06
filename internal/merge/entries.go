@@ -7,7 +7,7 @@ import (
 )
 
 // entries matches lorebook entries by identity so reordering is not a change.
-func (c *cmp) entries(path string, l, a, o []any) {
+func (c *cmp) entries(path string, l, a, o []any) val {
 	libIDs, lib := index(l)
 	appIDs, app := index(a)
 	_, anc := index(o)
@@ -17,26 +17,52 @@ func (c *cmp) entries(path string, l, a, o []any) {
 			ids = append(ids, id)
 		}
 	}
+	base, forApp := []any{}, []any{}
 	for _, id := range ids {
 		p := fmt.Sprintf("%s[%s]", path, id)
 		lv, av, ov := get(lib, id), get(app, id), get(anc, id)
 		lm, lok := lv.(map[string]any)
 		am, aok := av.(map[string]any)
+		v := val{map[string]any{}, map[string]any{}}
 		if !lok || !aok {
-			c.scalar(p, lv, av, ov)
-			continue
-		}
-		om, _ := ov.(map[string]any)
-		for _, k := range keys(lm, am) {
-			kp, kl, ka, ko := p+"."+esc(k), get(lm, k), get(am, k), get(om, k)
-			if k == "keys" || k == "secondary_keys" {
-				// apps treat key lists as sets, so only membership is a change
-				c.leaf(kp, c.status(sorted(kl), sorted(ka), sorted(ko)), kl, ka, ko)
-				continue
+			v = c.scalar(p, lv, av, ov)
+		} else {
+			om, _ := ov.(map[string]any)
+			for _, k := range keys(lm, am) {
+				kp, kl, ka, ko := p+"."+esc(k), get(lm, k), get(am, k), get(om, k)
+				var kv val
+				if k == "keys" || k == "secondary_keys" {
+					// apps treat key lists as sets, so only membership is a change
+					kv = c.leaf(kp, c.status(sorted(kl), sorted(ka), sorted(ko)), kl, ka, ko)
+				} else {
+					_, kv = c.field(kp, entry[k], kl, ka, ko)
+				}
+				put(v.base.(map[string]any), k, kv.base)
+				put(v.app.(map[string]any), k, kv.app)
 			}
-			c.field(kp, entry[k], kl, ka, ko)
+		}
+		if _, gone := v.base.(missing); !gone {
+			base = append(base, v.base)
+		}
+		if _, gone := v.app.(missing); !gone {
+			forApp = append(forApp, v.app)
 		}
 	}
+	return val{base, forApp}
+}
+
+// emptied drops an emptied entries list where one side lacked the key, unless
+// the library had it empty (no change, so the library's form stays).
+func emptied(v, l, a any) any {
+	if len(v.([]any)) > 0 {
+		return v
+	}
+	_, lgone := l.(missing)
+	_, agone := a.(missing)
+	if lgone || agone && !empty(l) {
+		return missing{}
+	}
+	return v
 }
 
 // index names each entry c:<comment> when the comment is unique on this side,
@@ -73,6 +99,7 @@ func index(es []any) ([]string, map[string]any) {
 			if _, dup := byID[id]; !dup {
 				break
 			}
+			// ponytail: reordered same-identity entries show as content conflicts; pair them by best content match
 			id = fmt.Sprintf("%s~%d", base, n)
 		}
 		ids = append(ids, id)

@@ -580,3 +580,33 @@ func TestReconcileBoundArchived(t *testing.T) {
 		t.Errorf("item = %+v", it)
 	}
 }
+
+func TestReconcileReusedRemoteID(t *testing.T) {
+	e := setup(t, nil)
+	live := e.push(e.card)
+	deadCard := e.newCard("Iko")
+	dead := e.push(deadCard)
+	// The app lost the dead card's item and gave its ID to the live one.
+	if _, err := e.pool.Exec(e.ctx, `UPDATE binding SET remote_state = 'missing', remote_id = $1 WHERE id = $2`,
+		live.RemoteID, dead.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(e.dir, dead.RemoteID+".json")); err != nil {
+		t.Fatal(err)
+	}
+
+	snap, err := e.s.Reconcile(e.ctx, ReconcileParams{InstanceID: e.inst}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Items) != 1 || snap.Items[0].BindingID != live.ID || snap.Items[0].Candidates[0].CardID != e.card {
+		t.Errorf("items = %+v", snap.Items)
+	}
+	if !slices.Equal(snap.Missing, []int64{deadCard}) {
+		t.Errorf("missing = %v", snap.Missing)
+	}
+	c, err := e.s.CompareItem(e.ctx, e.inst, live.RemoteID, 0)
+	if err != nil || c.CardID != e.card || c.Base != "accepted" {
+		t.Errorf("compare = %+v, %v", c, err)
+	}
+}

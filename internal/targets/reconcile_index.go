@@ -21,7 +21,8 @@ import (
 type index struct {
 	entries []indexEntry
 	byID    map[int64]indexEntry
-	// byRemote maps the instance's bound remote IDs to their bindings.
+	// byRemote maps the instance's bound remote IDs to their bindings. An
+	// app can reuse a missing binding's ID; the live binding wins.
 	byRemote map[string]indexBinding
 	// remoteOf maps bound card or lorebook IDs to their remote IDs.
 	remoteOf map[int64]string
@@ -53,7 +54,8 @@ func (s *Service) loadIndex(ctx context.Context, k kind, inst pluginhost.Instanc
 		idx.byID[e.id] = e
 	}
 	rows, err := s.pool.Query(ctx, `SELECT id, `+k.col+`, remote_id, accepted_data FROM binding
-		WHERE instance_id = $1::bigint AND `+k.col+` IS NOT NULL`, inst.ID)
+		WHERE instance_id = $1::bigint AND `+k.col+` IS NOT NULL
+		ORDER BY remote_state <> 'missing', id`, inst.ID)
 	if err != nil {
 		return idx, err
 	}

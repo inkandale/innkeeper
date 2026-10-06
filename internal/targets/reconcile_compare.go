@@ -56,7 +56,8 @@ func (s *Service) compareItem(ctx context.Context, k kind, instanceID int64, rem
 	var boundID int64
 	var accepted json.RawMessage
 	err = s.pool.QueryRow(ctx, `SELECT `+k.col+`, accepted_data FROM binding
-		WHERE instance_id = $1 AND remote_id = $2 AND `+k.col+` IS NOT NULL`, instanceID, remoteID).Scan(&boundID, &accepted)
+		WHERE instance_id = $1 AND remote_id = $2 AND `+k.col+` IS NOT NULL
+		ORDER BY remote_state = 'missing', id LIMIT 1`, instanceID, remoteID).Scan(&boundID, &accepted)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return c, err
 	}

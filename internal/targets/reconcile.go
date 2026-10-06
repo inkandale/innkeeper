@@ -479,9 +479,10 @@ func (s *Service) Reconcile(ctx context.Context, p ReconcileParams, progress fun
 		snap.Lorebooks = append(snap.Lorebooks, lb)
 	}
 
-	for remoteID, b := range cardIdx.byRemote {
-		if !listed[remoteID] {
-			snap.Missing = append(snap.Missing, b.entityID)
+	// A card whose remote ID the app reused for another bound item is gone too.
+	for id, remoteID := range cardIdx.remoteOf {
+		if !listed[remoteID] || cardIdx.byRemote[remoteID].entityID != id {
+			snap.Missing = append(snap.Missing, id)
 		}
 	}
 	slices.Sort(snap.Missing)

@@ -768,7 +768,8 @@ func TestResolveSkipWritesNothing(t *testing.T) {
 // Forge, and an app card c1 linking world books: l1, a copy of Forge, and l2,
 // a new one.
 func worldBooks(t *testing.T) (e *env, card, forge int64) {
-	e = setup(t, map[string]any{"lorebooks": "standalone"})
+	// Like the real plugins, a standalone target doesn't list character_book.
+	e = setup(t, map[string]any{"lorebooks": "standalone", "fields": []string{"name", "description", "first_mes"}})
 	card = e.libCard(map[string]any{"name": "Tova", "description": "A smith."})
 	forge = e.newLorebook("Forge")
 	entries := []any{map[string]any{"keys": []any{"forge"}, "content": "The forge burns hot."}}
@@ -1025,5 +1026,59 @@ func TestResolveImportedWorldBookKeepsItsName(t *testing.T) {
 	lb, err := e.lib.Lorebooks.Get(e.ctx, res.Lorebooks[1].CardID)
 	if err != nil || lb.Slug != "mines" {
 		t.Fatalf("lorebook = %+v, %v", lb, err)
+	}
+}
+
+func TestResolveImportKeepsTheBookOnAStandaloneTargetThatListsIt(t *testing.T) {
+	e := setup(t, map[string]any{"lorebooks": "standalone"})
+	e.appCard("c9", map[string]any{"name": "Dain", "description": "A miner.", "character_book": map[string]any{
+		"name": "Mines", "entries": []any{map[string]any{"keys": []any{"mine"}, "content": "ONLY COPY."}}}}, nil)
+	c, err := e.s.CompareItem(e.ctx, e.inst, "c9", e.card)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := e.s.Resolve(e.ctx, Resolution{InstanceID: e.inst, RemoteID: "c9", AppHash: c.AppHash, Action: "import"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := e.links(res.CardID)
+	if len(l) != 1 || !strings.Contains(string(e.lorebookHead(l[0]).Data), "ONLY COPY.") {
+		t.Fatalf("links = %v", l)
+	}
+}
+
+func TestResolveTwoExplicitWorldBooksOnOneLorebook(t *testing.T) {
+	e, card, forge := worldBooks(t)
+	e.writeRemote("l2", map[string]any{"lorebook": map[string]any{"name": "Forge", "description": "Forge lore.",
+		"entries": []any{map[string]any{"keys": []any{"forge"}, "content": "The forge burns hot."}}}})
+	r := e.bindTo(false, "c1", card)
+	r.Lorebooks = []Resolution{e.bindTo(true, "l1", forge), e.bindTo(true, "l2", forge)}
+	_, err := e.s.Resolve(e.ctx, r)
+	if !errors.Is(err, ErrBound) || errors.Is(err, library.ErrConflict) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestResolveSuggestionConflictReadsCleanly(t *testing.T) {
+	err := error(conflictError("world book l3's suggested match #1 Forge was changed by world book l1 in this request"))
+	if !errors.Is(err, library.ErrConflict) || strings.Contains(err.Error(), library.ErrConflict.Error()) {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestResolveImportSplitLeavesAWorldBookWithTheSameID(t *testing.T) {
+	e, _ := resolveEnv(t)
+	lb := e.newLorebook("Forge")
+	if _, err := e.pool.Exec(e.ctx, `INSERT INTO binding (instance_id, lorebook_id, remote_id, remote_state, accepted_data,
+		accepted_hash) VALUES ($1, $2, 'lv1', 'unchanged', '{}', 'h')`, e.inst, lb); err != nil {
+		t.Fatal(err)
+	}
+	c := e.compareItem("lv1", e.card)
+	if _, err := e.s.Resolve(e.ctx, Resolution{InstanceID: e.inst, RemoteID: "lv1", AppHash: c.AppHash, Action: "import"}); err != nil {
+		t.Fatal(err)
+	}
+	var state string
+	if err := e.pool.QueryRow(e.ctx, `SELECT remote_state FROM binding WHERE lorebook_id = $1`, lb).Scan(&state); err != nil || state != "unchanged" {
+		t.Errorf("world book binding = %s, %v", state, err)
 	}
 }

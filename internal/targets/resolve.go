@@ -252,8 +252,9 @@ func (rs *resolver) lorebooks(ctx context.Context, inst pluginhost.Instance, inf
 		res, err := rs.item(ctx, lorebookKind, n)
 		if by, ok := rs.wrote[n.CardID]; ok && suggested[n.RemoteID] && (errors.As(err, new(*staleItem)) || errors.Is(err, ErrBound)) {
 			// A fresh read can't see this call's writes, so a retry would suggest the same.
-			return nil, nil, fmt.Errorf("%w: world book %s's suggested match #%d %s was changed by world book %s in this request; choose %s explicitly",
-				library.ErrConflict, n.RemoteID, n.CardID, rs.index.byID[n.CardID].name, by, n.RemoteID)
+			return nil, nil, conflictError(fmt.Sprintf(
+				"world book %s's suggested match #%d %s was changed by world book %s in this request; choose %s explicitly",
+				n.RemoteID, n.CardID, rs.index.byID[n.CardID].name, by, n.RemoteID))
 		}
 		if err != nil {
 			return nil, nil, fmt.Errorf("world book %s: %w", n.RemoteID, err)
@@ -332,7 +333,7 @@ func (rs *resolver) importItem(ctx context.Context, k kind, inst pluginhost.Inst
 	provenance, source := plugin+":"+remoteID, "plugin:"+plugin
 	if !k.isLorebook() {
 		data := it.raw
-		if info.Lorebooks == protocol.LorebooksStandalone {
+		if info.Lorebooks == protocol.LorebooksStandalone && !slices.Contains(info.Fields, "character_book") {
 			// The app's linked world books are the card's lorebooks there, resolved as nested items.
 			if data, err = MergePatch(data, json.RawMessage(`{"character_book": null}`)); err != nil {
 				return 0, 0, err
@@ -704,3 +705,9 @@ func decodeObject(raw json.RawMessage) (map[string]any, error) {
 	}
 	return m, nil
 }
+
+// conflictError is a library.ErrConflict that reads as its own explanation.
+type conflictError string
+
+func (e conflictError) Error() string { return string(e) }
+func (e conflictError) Unwrap() error { return library.ErrConflict }

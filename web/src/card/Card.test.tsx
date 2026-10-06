@@ -18,12 +18,17 @@ const entity = {
 
 let head: typeof entity;
 let conflict: boolean;
+// The next avatar PUT gets a 409.
+let avatarConflict: boolean;
+let cardGets: number;
 // A save waits on gate when it's set.
 let gate: Promise<void> | undefined;
 let puts: { path: string; body: unknown }[];
 beforeEach(() => {
   head = entity;
   conflict = false;
+  avatarConflict = false;
+  cardGets = 0;
   gate = undefined;
   puts = [];
   vi.stubGlobal(
@@ -36,6 +41,7 @@ beforeEach(() => {
         puts.push({ path, body });
         if (path === "/api/cards/7") {
           await gate;
+          if (avatarConflict && body.avatar) return json({ detail: "the card changed" }, 409);
           if (conflict) {
             // Someone else saved revision 12 first.
             conflict = false;
@@ -50,7 +56,10 @@ beforeEach(() => {
         return new Response(null, { status: 204 });
       }
       if (path === "/api/blobs") return json({ sha256: "cd".repeat(32), mime: "image/png", size: 3, store: "local", created_at: now }, 201);
-      if (path === "/api/cards/7") return json(head);
+      if (path === "/api/cards/7") {
+        cardGets++;
+        return json(head);
+      }
       if (path === "/api/cards/7/revisions") return json([head.revision]);
       if (path === "/api/cards/7/bindings")
         return json([{ id: 1, instance_id: 2, remote_id: "r", status: "ahead", ahead: true, remote_state: "unchanged" }]);
@@ -204,4 +213,23 @@ test("replacing the image saves a revision with the new avatar", async () => {
   await userEvent.upload(await screen.findByLabelText("Replace image"), file);
   await waitFor(() => expect(puts).toHaveLength(1));
   expect(puts[0]).toMatchObject({ path: "/api/cards/7", body: { base_revision_id: 11, avatar: "cd".repeat(32), data } });
+});
+
+test("saving after an image change goes on the avatar revision", async () => {
+  renderAt("/cards/7");
+  await userEvent.type(await screen.findByLabelText("Description"), " Old.");
+  await userEvent.upload(screen.getByLabelText("Replace image"), new File(["png"], "new.png", { type: "image/png" }));
+  await waitFor(() => expect(puts).toHaveLength(1));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(puts).toHaveLength(2));
+  expect(puts[1]).toMatchObject({ body: { base_revision_id: 12, data: { description: "A grumpy dwarf. Old." } } });
+});
+
+test("an image change that hits a conflict says so and refetches the card", async () => {
+  avatarConflict = true;
+  renderAt("/cards/7");
+  await userEvent.upload(await screen.findByLabelText("Replace image"), new File(["png"], "new.png", { type: "image/png" }));
+  expect(await screen.findByText("This card changed elsewhere. Try again.")).toBeInTheDocument();
+  await waitFor(() => expect(cardGets).toBe(2));
 });

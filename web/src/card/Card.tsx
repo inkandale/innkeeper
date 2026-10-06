@@ -65,7 +65,13 @@ function Editor({ id }: { id: number }) {
       void qc.invalidateQueries({ queryKey: ["card", id, "revisions"] });
       setDraft((d) => (d && d.baseId === base.id ? { ...d, baseId: e.revision.id } : d));
     },
-    onError: (e) => toast({ text: e.message, error: true }),
+    onError: (e) => {
+      if (e instanceof ApiError && e.status === 409) {
+        // The head moved on, so the button's base is stale; refetch it.
+        void qc.invalidateQueries({ queryKey: ["card", id] });
+        toast({ text: "This card changed elsewhere. Try again.", error: true });
+      } else toast({ text: e.message, error: true });
+    },
   });
 
   if (card.isPending) return null;
@@ -98,9 +104,9 @@ function Editor({ id }: { id: number }) {
 
   return (
     <div className="card-page">
-      <Panel card={head} data={data} edit={edit} dirty={dirty.size > 0} saving={save.isPending || stale} onSave={() => draft && save.mutate(draft)}
+      <Panel card={head} data={data} edit={edit} dirty={dirty.size > 0} saving={save.isPending || stale || avatar.isPending} onSave={() => draft && save.mutate(draft)}
         onAvatar={(sha) => avatar.mutate({ sha, base: head.revision })}
-        avatarBusy={avatar.isPending}
+        avatarBusy={avatar.isPending || save.isPending}
       />
       <div className="card-main">
         {stale && (

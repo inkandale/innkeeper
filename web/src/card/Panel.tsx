@@ -178,12 +178,12 @@ function Image({ sha, busy, onAvatar }: { sha?: string; busy: boolean; onAvatar:
   const off = busy || up.isPending;
   return (
     <div className="row">
-      <label className="button">
+      <label className="button file-button">
         Replace image
         <input
           type="file"
           accept="image/png,image/jpeg,image/webp"
-          hidden
+          className="visually-hidden"
           disabled={off}
           onChange={(e) => {
             const f = e.target.files?.[0];
@@ -197,7 +197,15 @@ function Image({ sha, busy, onAvatar }: { sha?: string; busy: boolean; onAvatar:
           Crop
         </button>
       )}
-      {cropping && sha && <Crop src={`/api/blobs/${sha}`} onDone={(png) => up.mutate(png)} onCancel={() => setCropping(false)} />}
+      {cropping && sha && (
+        <Crop
+          src={`/api/blobs/${sha}`}
+          busy={up.isPending}
+          onDone={(png) => up.mutate(png)}
+          onError={(text) => toast({ text, error: true })}
+          onCancel={() => setCropping(false)}
+        />
+      )}
     </div>
   );
 }

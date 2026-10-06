@@ -34,7 +34,7 @@ type jobOut struct {
 	Status      string          `json:"status" enum:"queued,running,waiting,succeeded,failed"`
 	Attempts    int             `json:"attempts"`
 	MaxAttempts int             `json:"max_attempts"`
-	Progress    json.RawMessage `json:"progress" doc:"An import's has done, total, message, imported, skipped, failed, and errors."`
+	Progress    json.RawMessage `json:"progress" doc:"An import's has done, total, message, imported, skipped, failed, and errors. A running reconcile's has done and total; a finished one's is the snapshot, cut to totals in job lists and streams."`
 	ParentID    *int64          `json:"parent_id,omitempty"`
 	Error       *string         `json:"error,omitempty"`
 	RunAfter    time.Time       `json:"run_after"`

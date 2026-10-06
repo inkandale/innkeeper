@@ -97,8 +97,8 @@ type Candidate struct {
 	// Reasons are the signals that matched: source, name, and content with
 	// 0; text and avatar with their distance.
 	Reasons map[string]int `json:"reasons"`
-	// DifferingFields counts every field with a change, not only the core
-	// fields that decide the suggestion.
+	// DifferingFields counts every field with any non-same hunk, not only the
+	// core fields that decide the suggestion.
 	DifferingFields int `json:"differing_fields"`
 	Conflicts       int `json:"conflicts"`
 	// BoundTo is the remote ID this card is already bound to on the instance.

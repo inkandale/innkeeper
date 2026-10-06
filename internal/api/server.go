@@ -1,5 +1,5 @@
 // Package api serves the core's HTTP API, described by one OpenAPI spec at
-// /openapi.json.
+// /api/openapi.json.
 package api
 
 import (
@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -44,6 +45,9 @@ type Server struct {
 	// Stopping closes when the server begins shutting down, which ends job
 	// streams so they don't hold up shutdown. Nil means never.
 	Stopping <-chan struct{}
+	// UI serves the web UI for every path the API, OAuth, and MCP don't.
+	// Nil serves none.
+	UI http.Handler
 
 	// loginSlot lets one login run at a time.
 	loginSlot chan struct{}
@@ -107,18 +111,21 @@ func orEmpty[T any](s []T) []T {
 	return s
 }
 
-// Handler returns the HTTP handler for every route.
-func (s *Server) Handler() http.Handler {
-	s.loginSlot = make(chan struct{}, 1)
-	mux := http.NewServeMux()
+// config is the API's Huma config. Its server URL makes the docs page load
+// the spec from under /api.
+func config() huma.Config {
 	cfg := huma.DefaultConfig("Innkeeper", "0.1.0")
+	cfg.Servers = []*huma.Server{{URL: "/api"}}
 	cfg.Components.SecuritySchemes = map[string]*huma.SecurityScheme{
 		"token":   {Type: "http", Scheme: "bearer"},
 		"session": {Type: "apiKey", In: "cookie", Name: sessionCookie},
 	}
 	cfg.Security = []map[string][]string{{"token": {}}, {"session": {}}}
-	api := humago.New(mux, cfg)
-	api.UseMiddleware(s.authenticate(api))
+	return cfg
+}
+
+// routes registers every API operation.
+func (s *Server) routes(api huma.API) {
 	s.authRoutes(api)
 	s.entityRoutes(api, s.Lib.Cards, "cards", "card", "Cards")
 	s.cardRoutes(api)
@@ -129,10 +136,52 @@ func (s *Server) Handler() http.Handler {
 	s.jobRoutes(api)
 	s.targetRoutes(api)
 	s.toolRoutes(api)
+	s.settingsRoutes(api)
+}
+
+// Spec returns the OpenAPI spec as indented JSON, without a database or
+// plugins.
+func Spec() ([]byte, error) {
+	api := humago.New(http.NewServeMux(), config())
+	s := &Server{Lib: &library.Library{}}
+	s.routes(api)
+	return json.MarshalIndent(api.OpenAPI(), "", "  ")
+}
+
+// Handler returns the HTTP handler for every route: the API under /api,
+// OAuth and MCP at the root, and UI for everything else.
+func (s *Server) Handler() http.Handler {
+	s.loginSlot = make(chan struct{}, 1)
+	apiMux := http.NewServeMux()
+	api := humago.New(apiMux, config())
+	api.UseMiddleware(s.authenticate(api))
+	s.routes(api)
+	s.themeRoutes(apiMux)
+
+	mux := http.NewServeMux()
+	mux.Handle("/api/", http.StripPrefix("/api", apiMux))
 	// Browsers arrive here from a login provider; it isn't part of the API.
 	mux.HandleFunc("GET /auth/{id}/callback", s.callback)
 	s.oauthRoutes(mux)
-	mux.Handle("/mcp", mcp.New(mux, s.Auth, s.Log, s.resourceMetadataURL()))
+	mux.Handle("/mcp", mcp.New(apiMux, s.Auth, s.Log, s.resourceMetadataURL()))
+	if s.UI != nil {
+		// Not "GET /": that conflicts with the method-less "/api/".
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			// Reserved prefixes that nothing registered are 404s, not the app shell.
+			for _, p := range []string{"/.well-known/", "/oauth/", "/auth/", "/mcp/", "/api/"} {
+				if strings.HasPrefix(r.URL.Path, p) {
+					http.NotFound(w, r)
+					return
+				}
+			}
+			if r.Method != http.MethodGet && r.Method != http.MethodHead {
+				w.Header().Set("Allow", "GET, HEAD")
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			s.UI.ServeHTTP(w, r)
+		})
+	}
 	return mux
 }
 

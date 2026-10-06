@@ -1,9 +1,18 @@
 # syntax=docker/dockerfile:1
+FROM node:24-alpine AS web
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+# CI type-checks, so skip the tsc step that `npm run build` adds.
+RUN npx vite build
+
 FROM golang:1.27-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
+COPY --from=web /web/dist ./web/dist
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /innkeeper ./cmd/innkeeper
 
 # The bundled plugins, built against this core's protocol package.

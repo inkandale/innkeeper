@@ -16,6 +16,7 @@ const usage = `usage:
   innkeeper migrate
   innkeeper worker
   innkeeper api
+  innkeeper openapi
   innkeeper token create <name> [read|write|destructive] | list | revoke <id> | revoke-grant <id>
   innkeeper backup <dir>
 
@@ -51,6 +52,8 @@ func run(args []string) error {
 		return worker()
 	case cmd == "api" && len(rest) == 0:
 		return apiServer()
+	case cmd == "openapi" && len(rest) == 0:
+		return openapi()
 	case cmd == "token":
 		return token(rest)
 	case cmd == "backup":

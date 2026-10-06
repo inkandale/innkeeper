@@ -301,7 +301,11 @@ func (s *Server) authRoutes(api huma.API) {
 			}
 			// Encoded because plugins may use characters cookies can't hold.
 			state := base64.RawURLEncoding.EncodeToString([]byte(res.State))
-			out := &beginOut{SetCookie: []*http.Cookie{s.cookie(stateCookie, state, 10*time.Minute)}}
+			// This is the UI's login; drop a return left by an abandoned MCP login.
+			out := &beginOut{SetCookie: []*http.Cookie{
+				s.cookie(stateCookie, state, 10*time.Minute),
+				s.cookie(returnCookie, "", -time.Second),
+			}}
 			out.Body.Redirect, out.Body.Form = res.Redirect, res.Form
 			return out, nil
 		})

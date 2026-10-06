@@ -43,3 +43,27 @@ jobs:
           persist-credentials: false
       - uses: azure/setup-helm@v5
       - run: helm lint chart --strict --set database.secretName=db --set secretsKey.secretName=key --set ingress.enabled=true --set ingress.host=innkeeper.example.com
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      # The generated client must match the API.
+      - run: npm run gen && git diff --exit-code -- openapi.json src/api/schema.d.ts
+      - run: npm run typecheck
+      - run: npm test
+      - run: npx vite build

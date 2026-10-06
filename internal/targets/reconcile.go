@@ -129,9 +129,7 @@ type appItem struct {
 func (s *Service) readItem(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo, remoteID string) (appItem, error) {
 	var it appItem
 	var err error
-	simhash := cardhash.CardSimhash
 	if k.isLorebook() {
-		simhash = cardhash.LorebookSimhash
 		if it.raw, err = s.fetchRaw(ctx, k, inst, remoteID); err != nil {
 			return it, err
 		}
@@ -159,12 +157,8 @@ func (s *Service) readItem(ctx context.Context, k kind, inst pluginhost.Instance
 		return it, err
 	}
 	it.name = named.Name
-	if h, ok, err := simhash(it.data); err != nil {
-		return it, err
-	} else if ok {
-		it.simhash = &h
-	}
-	return it, nil
+	it.simhash, err = textSimhash(k, it.data)
+	return it, err
 }
 
 // reconcileItem gives one app item its verdict and candidates. info must

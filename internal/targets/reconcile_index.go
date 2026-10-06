@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/davidgibbons/innkeeper/internal/cardhash"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/protocol"
 )
@@ -41,7 +42,7 @@ type indexBinding struct {
 
 func (s *Service) loadIndex(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo) (index, error) {
 	idx := index{byRemote: map[string]indexBinding{}, remoteOf: map[int64]string{}}
-	rows, err := s.pool.Query(ctx, `SELECT e.id, r.data, r.overrides -> $1, r.text_simhash, b.avatar_phash
+	rows, err := s.pool.Query(ctx, `SELECT e.id, r.data, r.overrides -> $1, b.avatar_phash
 		FROM `+k.table+` e JOIN `+k.revTable+` r ON r.id = e.head_revision_id
 		LEFT JOIN blob b ON b.sha256 = r.avatar_blob
 		WHERE e.archived_at IS NULL ORDER BY e.id`, inst.ID)
@@ -50,7 +51,7 @@ func (s *Service) loadIndex(ctx context.Context, k kind, inst pluginhost.Instanc
 	}
 	var data, override []byte
 	var ent indexEntry
-	_, err = pgx.ForEachRow(rows, []any{&ent.id, &data, &override, &ent.simhash, &ent.phash}, func() error {
+	_, err = pgx.ForEachRow(rows, []any{&ent.id, &data, &override, &ent.phash}, func() error {
 		d := json.RawMessage(data)
 		if override != nil {
 			if d, err = MergePatch(d, override); err != nil {
@@ -63,6 +64,9 @@ func (s *Service) loadIndex(ctx context.Context, k kind, inst pluginhost.Instanc
 		}
 		ent.name, ent.norm = named.Name, normName(named.Name)
 		if ent.data, ent.hash, err = Project(d, k.fields(info)); err != nil {
+			return err
+		}
+		if ent.simhash, err = textSimhash(k, ent.data); err != nil {
 			return err
 		}
 		idx.entries = append(idx.entries, ent)
@@ -84,6 +88,20 @@ func (s *Service) loadIndex(ctx context.Context, k kind, inst pluginhost.Instanc
 		return nil
 	})
 	return idx, err
+}
+
+// textSimhash fingerprints projected data, so both sides of a reconcile
+// match on the same fields; nil when the text has no words.
+func textSimhash(k kind, data json.RawMessage) (*int64, error) {
+	simhash := cardhash.CardSimhash
+	if k.isLorebook() {
+		simhash = cardhash.LorebookSimhash
+	}
+	h, ok, err := simhash(data)
+	if !ok || err != nil {
+		return nil, err
+	}
+	return &h, nil
 }
 
 // normName case-folds a name and collapses its whitespace.

@@ -4,6 +4,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/davidgibbons/innkeeper/internal/cardhash"
 	"github.com/davidgibbons/innkeeper/internal/library"
 )
 
@@ -41,15 +42,15 @@ func TestLoadIndex(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, hash, err := Project(r.data, info.Fields)
+		projected, hash, err := Project(r.data, info.Fields)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if ent.hash != hash {
 			t.Errorf("card %d hash = %s, want %s", ent.id, ent.hash, hash)
 		}
-		if ent.simhash == nil || *ent.simhash != *e.head(ent.id).TextSimhash {
-			t.Errorf("card %d simhash = %v", ent.id, ent.simhash)
+		if sim, _, _ := cardhash.CardSimhash(projected); ent.simhash == nil || *ent.simhash != sim {
+			t.Errorf("card %d simhash = %v, want %d", ent.id, ent.simhash, sim)
 		}
 		if ent.id == other {
 			if ent.phash == nil || avatar.AvatarPhash == nil || *ent.phash != *avatar.AvatarPhash {
@@ -61,6 +62,9 @@ func TestLoadIndex(t *testing.T) {
 			// The override reaches the projected hash.
 			if _, base, _ := Project(e.head(other).Data, info.Fields); ent.hash == base {
 				t.Error("hash ignores the override")
+			}
+			if *ent.simhash == *e.head(other).TextSimhash {
+				t.Error("simhash ignores the override")
 			}
 		} else if ent.phash != nil {
 			t.Errorf("card %d phash = %v", ent.id, *ent.phash)

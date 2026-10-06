@@ -92,16 +92,18 @@ export function SelectionBar(props: {
                   </option>
                 ))}
               </select>
-              <button className="button primary" disabled={busy} onClick={() => bulk({ action: "collect", collection: collectionId })}>
+              <button className="button primary" disabled={busy || !collectionId} onClick={() => bulk({ action: "collect", collection: collectionId })}>
                 Add to collection
               </button>
-              <button className="button" disabled={busy} onClick={() => bulk({ action: "uncollect", collection: collectionId })}>
+              <button className="button" disabled={busy || !collectionId} onClick={() => bulk({ action: "uncollect", collection: collectionId })}>
                 Remove from collection
               </button>
             </>
           )}
           {panel === "push" &&
-            (targets.length ? (
+            (!instances.data || !plugins.data ? (
+              <span>Loading…</span>
+            ) : targets.length ? (
               <>
                 <select className="input" aria-label="Target" value={instanceId} onChange={(e) => setInstance(Number(e.target.value))}>
                   {targets.map((i) => (

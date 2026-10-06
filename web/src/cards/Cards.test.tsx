@@ -178,16 +178,18 @@ test("push offers only targets that push", async () => {
   expect(posts[0]).toEqual({ path: "/api/pushes", body: { instance_id: 2, query: { filter: { ids: [8] } } } });
 });
 
+// answer replaces the fake response for one path.
+function answer(path: string, f: (req: Request) => Promise<Response>) {
+  const rest = fetch;
+  vi.stubGlobal("fetch", vi.fn(async (req: Request) => (new URL(req.url).pathname === path ? f(req) : rest(req))));
+}
+const never = () => new Promise<Response>(() => {});
+
 test("a second click while the job starts sends nothing more", async () => {
-  const answer = fetch;
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (req: Request) => {
-      if (new URL(req.url).pathname !== "/api/bulk") return answer(req);
-      posts.push({ path: "/api/bulk", body: await req.json() });
-      return new Promise<Response>(() => {});
-    }),
-  );
+  answer("/api/bulk", async (req) => {
+    posts.push({ path: "/api/bulk", body: await req.json() });
+    return never();
+  });
   renderCards("/cards");
   const user = userEvent.setup();
   await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
@@ -209,4 +211,24 @@ test("a facet click clears the selection, and paging keeps it", async () => {
   await user.click(screen.getByRole("button", { name: /pirate/ }));
   expect(screen.getByRole("searchbox")).toBeInTheDocument();
   expect(screen.getByRole("checkbox", { name: "Select Carrow" })).not.toBeChecked();
+});
+
+test("collection actions wait for a collection", async () => {
+  answer("/api/collections", async () => json([]));
+  renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
+  await user.click(screen.getByRole("button", { name: "Collection" }));
+  expect(screen.getByRole("button", { name: "Add to collection" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Remove from collection" })).toBeDisabled();
+});
+
+test("push waits for targets before saying there are none", async () => {
+  answer("/api/plugins", never);
+  renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
+  await user.click(screen.getByRole("button", { name: "Push" }));
+  expect(screen.getByText("Loading…")).toBeInTheDocument();
+  expect(screen.queryByText(/No target can take pushes/)).not.toBeInTheDocument();
 });

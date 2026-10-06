@@ -557,3 +557,162 @@ func TestResolveRecordsTheAppsLorebookLinks(t *testing.T) {
 		t.Fatalf("last push = %+v, %v", b.LastPush, err)
 	}
 }
+
+func TestResolveKeepsInAppOnAListTheOverrideDeletes(t *testing.T) {
+	e := setup(t, map[string]any{"fields": []string{"name", "description", "tags"}})
+	card := e.libCard(map[string]any{"name": "Vel", "description": "A bard.", "tags": []string{"a", "b"}})
+	e.update(card, func(ed *library.Edit) { ed.Overrides = json.RawMessage(`{"` + e.key() + `": {"tags": null}}`) })
+	e.appCard("t", map[string]any{"name": "Vel", "description": "A bard.", "tags": []string{"a", "b", "c"}}, nil)
+	c := e.compareItem("t", card)
+	if _, err := e.tryResolve(c, map[string]merge.Choice{hunk(t, c, "tags"): merge.ChooseKeepInApp}, ""); err != nil {
+		t.Fatal(err)
+	}
+	tags := string(mustMarshal(field(t, e.head(card).Data, "tags")))
+	if over := string(mustMarshal(e.override(card)["tags"])); tags != `["a","b"]` || over != `["a","b","c"]` {
+		t.Errorf("base tags %s, override tags %s", tags, over)
+	}
+}
+
+func TestResolveLeavesUnpinnedListsAlone(t *testing.T) {
+	e := setup(t, map[string]any{"fields": []string{"name", "description", "tags"}})
+	card := e.libCard(map[string]any{"name": "Vel", "description": "A bard.", "tags": []string{"a", "b"}})
+	e.update(card, func(ed *library.Edit) {
+		ed.Overrides = json.RawMessage(`{"` + e.key() + `": {"description": "A loud bard."}}`)
+	})
+	e.appCard("t", map[string]any{"name": "Vel", "description": "A loud bard.", "tags": []string{"a", "b", "c"}}, nil)
+	c := e.compareItem("t", card)
+	if _, err := e.tryResolve(c, map[string]merge.Choice{hunk(t, c, "tags"): merge.ChooseKeepInApp}, ""); !errors.Is(err, merge.ErrBadChoice) {
+		t.Errorf("explicit keep_in_app: %v", err)
+	}
+	e.resolve(c, nil, merge.ChooseKeepInApp)
+	if tags := string(mustMarshal(field(t, e.head(card).Data, "tags"))); tags != `["a","b"]` || e.override(card)["tags"] != nil {
+		t.Errorf("base tags %s, override %v", tags, e.override(card))
+	}
+}
+
+func TestResolveRestoresAKeyTheOverrideDeletes(t *testing.T) {
+	e, _ := resolveEnv(t)
+	card := e.libCard(map[string]any{"name": "Ula", "description": "A smith.", "extensions": map[string]any{"x": 1, "depth": 2}})
+	e.update(card, func(ed *library.Edit) {
+		ed.Overrides = json.RawMessage(`{"` + e.key() + `": {"extensions": {"x": null}}}`)
+	})
+	e.appCard("lv2", map[string]any{"name": "Ula", "description": "A smith.", "extensions": map[string]any{"x": 5, "depth": 2}}, nil)
+	c := e.compareItem("lv2", card)
+	e.resolve(c, map[string]merge.Choice{hunk(t, c, "extensions"): merge.ChooseApp}, "")
+	ext, _ := field(t, e.head(card).Data, "extensions").(map[string]any)
+	over := string(mustMarshal(e.override(card)))
+	if ext["x"] != float64(1) || over != `{"extensions":{"x":5}}` {
+		t.Errorf("base extensions %v, override %s", ext, over)
+	}
+}
+
+func TestResolveRefusedRecordsNoSources(t *testing.T) {
+	e, card := resolveEnv(t)
+	e.appCard("src", map[string]any{"name": "Tova", "description": "A smith.", "first_mes": libGreeting,
+		"extensions": map[string]any{"chub": map[string]any{"full_path": "someone/tova"}}}, nil)
+	c := e.compareItem("src", card)
+	if _, err := e.tryResolve(c, map[string]merge.Choice{"nope#0": merge.ChooseApp}, ""); !errors.Is(err, merge.ErrUnknownHunk) {
+		t.Fatalf("unknown hunk: %v", err)
+	}
+	e.update(card, func(ed *library.Edit) { ed.Data = setField(ed.Data, "description", "A grim smith.") })
+	var stale *StaleError
+	if _, err := e.tryResolve(c, nil, ""); !errors.As(err, &stale) {
+		t.Fatalf("moved head: %v", err)
+	}
+	if srcs, err := e.lib.Cards.Sources(e.ctx, card); err != nil || len(srcs) != 0 {
+		t.Errorf("sources = %+v, %v", srcs, err)
+	}
+}
+
+func TestCompareIgnoresAMissingBindingsCopy(t *testing.T) {
+	e, card := resolveEnv(t)
+	b := e.push(card)
+	if _, err := e.pool.Exec(e.ctx, `UPDATE binding SET remote_state = 'missing' WHERE id = $1`, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	// The app gave the ID to another character, which happens to share the greeting's edit.
+	e.appCard(b.RemoteID, map[string]any{"name": "Pell", "description": "A clockwork owl.", "first_mes": libGreeting}, nil)
+	c := e.compareItem(b.RemoteID, card)
+	for _, st := range statuses(c.Fields) {
+		for _, s := range st {
+			if s == merge.AutoApp || s == merge.AutoLibrary {
+				t.Fatalf("hunks against the old copy: %v", statuses(c.Fields))
+			}
+		}
+	}
+	if c.Base != "none" || c.AcceptedHash != "" {
+		t.Fatalf("comparison = %+v", c)
+	}
+	e.resolve(c, nil, merge.ChooseLibrary)
+}
+
+func (e *env) pushCount(bindingID int64) int {
+	e.t.Helper()
+	p, err := e.s.Pushes(e.ctx, bindingID)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return len(p)
+}
+
+// Each case leaves a bound card where a resolve needs no revision, but one
+// thing the no-op check guards differs, so the resolve still writes.
+func TestResolveWritesWhenOnlyTheBindingIsBehind(t *testing.T) {
+	cases := map[string]struct {
+		config map[string]any
+		change func(e *env, card int64, b Binding)
+		check  func(e *env, b Binding) bool
+	}{
+		// A field the target doesn't store, so the app isn't behind.
+		"head moved since the push": {change: func(e *env, card int64, _ Binding) {
+			e.update(card, func(ed *library.Edit) { ed.Data = setField(ed.Data, "scenario", "A cold forge.") })
+		}, check: func(e *env, b Binding) bool {
+			return b.LastPush.RevisionID == e.head(b.CardID).ID && b.Status == "in_sync"
+		}},
+		"app_behind flips": {change: func(e *env, _ int64, _ Binding) { e.markBehind() },
+			check: func(_ *env, b Binding) bool { return b.Status == "in_sync" }},
+		"a link changed": {config: map[string]any{"lorebooks": "standalone"},
+			change: func(e *env, _ int64, b Binding) {
+				item := e.remote(b.RemoteID)
+				item["lorebook_remote_ids"] = []string{"l1"}
+				e.writeRemote(b.RemoteID, item)
+			}, check: func(_ *env, b Binding) bool { return strings.Join(b.LastPush.LorebookRemoteIDs, ",") == "l1" }},
+		"remote_state changed": {change: func(e *env, _ int64, b Binding) {
+			e.editRemote(b.RemoteID, "first_mes", "Go away.")
+			e.check(b)
+			e.editRemote(b.RemoteID, "first_mes", libGreeting)
+		}, check: func(_ *env, b Binding) bool { return b.RemoteState == "unchanged" }},
+		"app changed a field resolve doesn't compare": {change: func(e *env, _ int64, b Binding) {
+			e.editRemote(b.RemoteID, "character_book", map[string]any{"entries": []any{
+				map[string]any{"keys": []any{"forge"}, "content": "The forge is cold."}}})
+		}, check: func(e *env, b Binding) bool { return e.accepted(b.CardID)["character_book"] != nil }},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			e := setup(t, tc.config)
+			card := e.libCard(map[string]any{"name": "Tova", "description": "A smith.", "first_mes": libGreeting})
+			b := e.push(card)
+			tc.change(e, card, b)
+			res := e.resolve(e.compareItem(b.RemoteID, 0), nil, merge.ChooseLibrary)
+			after, err := e.s.Binding(e.ctx, b.ID)
+			if err != nil || res.RevisionID != 0 || e.pushCount(b.ID) != 2 || !tc.check(e, after) {
+				t.Fatalf("result = %+v, %d pushes, binding = %+v, %v", res, e.pushCount(b.ID), after, err)
+			}
+		})
+	}
+}
+
+// An avatar taken from the app on an item already accepted at the app's copy
+// still writes a revision.
+func TestResolveAvatarOnAnAcceptedItem(t *testing.T) {
+	e, card := resolveEnv(t)
+	e.setAvatar(card, patternPNG(t, func(x, _ int) uint8 { return uint8(x / 8 % 2 * 255) }))
+	e.appCard("pic", map[string]any{"name": "Tova", "description": "A smith.", "first_mes": appGreeting},
+		map[string]any{"avatar": patternPNG(t, func(x, y int) uint8 { return uint8(x + y) })})
+	e.resolve(e.compareItem("pic", card), nil, merge.ChooseLibrary)
+	c := e.compareItem("pic", card)
+	res := e.resolve(c, map[string]merge.Choice{"avatar": merge.ChooseApp}, "")
+	if a := e.head(card).AvatarBlob; res.RevisionID == 0 || a == nil || *a != c.Avatar.App {
+		t.Fatalf("result = %+v, avatar = %v", res, a)
+	}
+}

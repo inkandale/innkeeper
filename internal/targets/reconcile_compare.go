@@ -129,9 +129,10 @@ func itemBinding(ctx context.Context, q queryRower, k kind, instanceID int64, re
 	return b, err
 }
 
-// ancestor is the accepted copy when the item is bound to entity id, else nil.
+// ancestor is the accepted copy when the item is bound to entity id, else
+// nil. A missing binding's copy may be another character under a reused ID.
 func (b boundItem) ancestor(id int64) json.RawMessage {
-	if b.entityID != id {
+	if b.entityID != id || b.remoteState == remoteMissing {
 		return nil
 	}
 	return b.accepted

@@ -148,12 +148,6 @@ func (s *Service) resolveBind(ctx context.Context, k kind, r Resolution) (Resolv
 	if err != nil {
 		return res, err
 	}
-	// The app's copy is where the sources are, even if the target drops
-	// extensions. It's idempotent, so it goes first and a failed resolve is harmless.
-	if err := k.entities(s.lib).DetectSources(ctx, id, it.raw); err != nil {
-		return res, err
-	}
-
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return res, err
@@ -316,6 +310,10 @@ func (s *Service) resolveBind(ctx context.Context, k kind, r Resolution) (Resolv
 		}
 	}
 
+	// The app's copy is where the sources are, even if the target drops extensions.
+	if err := k.entities(s.lib).DetectSourcesTx(ctx, tx, id, it.raw); err != nil {
+		return res, err
+	}
 	revisionID := headID
 	if revise {
 		if newOverride == nil {
@@ -448,7 +446,8 @@ func keepPinnedLists(k kind, lib, app, ancestor json.RawMessage, pinned map[stri
 		out = map[string]merge.Choice{}
 	}
 	for _, f := range fields {
-		if _, ok := pinned[f.Path]; !ok || f.Kind != merge.List {
+		// By schema, since a list the override deletes compares as a scalar.
+		if _, ok := pinned[f.Path]; !ok || k.schema()[f.Path] != merge.List {
 			continue
 		}
 		for _, h := range f.Hunks {

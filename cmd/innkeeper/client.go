@@ -14,12 +14,13 @@ import (
 	"strings"
 )
 
-// client calls the HTTP API at INNKEEPER_URL with INNKEEPER_TOKEN.
+// client calls the HTTP API under INNKEEPER_URL/api with INNKEEPER_TOKEN.
 type client struct{ base, token string }
 
 func newClient() (*client, error) {
-	c := &client{base: strings.TrimSuffix(os.Getenv("INNKEEPER_URL"), "/"), token: os.Getenv("INNKEEPER_TOKEN")}
-	if c.base == "" || c.token == "" {
+	root := strings.TrimSuffix(os.Getenv("INNKEEPER_URL"), "/")
+	c := &client{base: root + "/api", token: os.Getenv("INNKEEPER_TOKEN")}
+	if root == "" || c.token == "" {
 		return nil, errors.New("set INNKEEPER_URL and INNKEEPER_TOKEN; make a token with: innkeeper token create <name> [read|write|destructive]")
 	}
 	return c, nil

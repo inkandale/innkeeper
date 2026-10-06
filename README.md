@@ -43,9 +43,10 @@ before committing the goldens.
 One binary runs both services and the CLI. Both services migrate the
 database at startup and stop cleanly on `SIGTERM`.
 
-- `innkeeper api` serves the HTTP API. The OpenAPI spec is at
-  `/openapi.json`, and browsable docs at `/docs`. Job progress streams from
-  `GET /jobs/{id}/events`, which sends a `: ping` comment every 15 seconds
+- `innkeeper api` serves the HTTP API under `/api` and the
+  [web UI](#web-ui) at the root. The OpenAPI spec is at `/api/openapi.json`,
+  and browsable docs at `/api/docs`. Job progress streams from
+  `GET /api/jobs/{id}/events`, which sends a `: ping` comment every 15 seconds
   while idle.
 - `innkeeper worker` runs jobs: imports, bulk actions, pushes, an hourly
   check of target apps for changes, and daily cleanup of unused blobs and of
@@ -60,7 +61,7 @@ database at startup and stop cleanly on `SIGTERM`.
 | `INNKEEPER_LISTEN` | `api` | Listen address; default `:8080` |
 | `INNKEEPER_PUBLIC_URL` | `api` | Where browsers reach the API, such as `https://innkeeper.example.com`. Needed for redirect logins and for MCP clients that connect through OAuth, such as claude.ai. An `http://` URL sends cookies without `Secure` |
 | `INNKEEPER_WORKER_CONCURRENCY` | `worker` | Jobs run at once; default 4 |
-| `INNKEEPER_URL`, `INNKEEPER_TOKEN` | API commands | API address and token |
+| `INNKEEPER_URL`, `INNKEEPER_TOKEN` | API commands | The site root, such as `http://localhost:8080`, and a token. The CLI adds `/api` itself |
 
 If any installed plugin sets `database = true`, the API and worker give it a
 schema and a login role limited to it at startup. That needs PostgreSQL 15 or
@@ -78,7 +79,7 @@ echo "INNKEEPER_SECRETS_KEY=$(openssl rand -base64 32)" > .env
 docker compose up -d --build
 export INNKEEPER_URL=http://localhost:8080
 export INNKEEPER_TOKEN=$(docker compose exec -T api innkeeper token create admin destructive)
-curl -H "Authorization: Bearer $INNKEEPER_TOKEN" "$INNKEEPER_URL/tags"
+curl -H "Authorization: Bearer $INNKEEPER_TOKEN" "$INNKEEPER_URL/api/tags"
 ```
 
 If something else already listens on port 8080, set `INNKEEPER_PORT` in
@@ -151,6 +152,28 @@ For another login provider, `owner_subject` is the identity it reports for
 you; its README says what that is. Changing or clearing `owner_subject` logs
 that identity out.
 
+## Web UI
+
+`innkeeper api` serves the web UI at its root, for example
+`http://localhost:8080/`. Log in with any login provider (see
+[First login](#first-login)).
+
+To work on the UI, run `innkeeper api` and then, in `web/`:
+
+```bash
+npm install
+npm run dev
+```
+
+Vite serves the UI with hot reload and proxies `/api`, `/auth`, and `/oauth`
+to `INNKEEPER_URL`, which defaults to `http://localhost:8080`. After changing
+the API, run `npm run gen` to regenerate the client; it needs Go.
+
+To restyle the UI, install a [theme plugin](docs/protocol.md#themes) and
+select it with `innkeeper call PATCH /settings '{"theme": "<name>"}'`; an
+empty name restores the default. A theme's CSS runs on the UI's origin, so
+install only themes you trust.
+
 ## Access tiers
 
 Every API token has a tier, and every route needs one:
@@ -205,6 +228,7 @@ innkeeper sources <card-id> [add <url> | remove <source-id>]
                                                 list, add, or remove a card's sources
 innkeeper jobs [show|cancel|watch <job-id>]     list or follow jobs
 innkeeper token create <name> [tier] | list | revoke <id> | revoke-grant <id>
+innkeeper openapi                               print the OpenAPI spec
 innkeeper backup <dir>
 ```
 
@@ -244,7 +268,7 @@ within 24 hours:
 
 ```bash
 curl -sf -H "Authorization: Bearer $INNKEEPER_TOKEN" -H 'Content-Type: application/octet-stream' \
-  --data-binary @brakka.png "$INNKEEPER_URL/blobs"
+  --data-binary @brakka.png "$INNKEEPER_URL/api/blobs"
 innkeeper import <instance-id> '{"blob": "<sha256>", "name": "brakka.png"}'
 ```
 

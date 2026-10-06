@@ -61,7 +61,8 @@ func newRegistry(t *testing.T) (*Registry, *blobstore.Store) {
 		t.Fatal(err)
 	}
 	m := &protocol.Manifest{Name: "fake", Version: "0.0.1", Secrets: []string{"api_key", "region"}}
-	return New(testdb.New(t), map[string]*protocol.Manifest{"fake": m}, store, box), store
+	dusk := &protocol.Manifest{Name: "dusk", Version: "1.0.0", Capabilities: []string{"theme"}, Stylesheet: "theme.css"}
+	return New(testdb.New(t), map[string]*protocol.Manifest{"fake": m, "dusk": dusk}, store, box), store
 }
 
 func TestInstance(t *testing.T) {
@@ -291,5 +292,33 @@ func TestUpdateInstanceEndsSessions(t *testing.T) {
 		if n := sessions(); n != 0 {
 			t.Fatalf("%s edit left %d sessions", what, n)
 		}
+	}
+}
+
+func TestTheme(t *testing.T) {
+	ctx := context.Background()
+	reg, _ := newRegistry(t)
+	if name, err := reg.Theme(ctx); err != nil || name != "" {
+		t.Fatalf("default theme = %q, %v", name, err)
+	}
+	if err := reg.SetTheme(ctx, "dusk"); err != nil {
+		t.Fatal(err)
+	}
+	if name, _ := reg.Theme(ctx); name != "dusk" {
+		t.Fatalf("theme = %q, want dusk", name)
+	}
+	for _, bad := range []string{"fake", "missing"} {
+		if err := reg.SetTheme(ctx, bad); !errors.Is(err, ErrInvalid) {
+			t.Errorf("SetTheme(%q) = %v, want ErrInvalid", bad, err)
+		}
+	}
+	if err := reg.SetTheme(ctx, ""); err != nil {
+		t.Fatal(err)
+	}
+	if name, _ := reg.Theme(ctx); name != "" {
+		t.Fatalf("theme after reset = %q", name)
+	}
+	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "dusk", Name: "Dusk"}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("theme instance: %v", err)
 	}
 }

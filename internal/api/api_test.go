@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -114,6 +115,20 @@ var client = &http.Client{
 	CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 }
 
+// apiPath adds /api to a path the Huma API serves. OAuth, MCP, and login
+// callbacks stay at the root.
+func apiPath(p string) string {
+	for _, root := range []string{"/oauth/", "/.well-known/", "/mcp"} {
+		if strings.HasPrefix(p, root) {
+			return p
+		}
+	}
+	if strings.HasPrefix(p, "/auth/") && strings.Contains(p, "/callback") {
+		return p
+	}
+	return "/api" + p
+}
+
 // send makes a request without credentials. A []byte body is sent as
 // application/octet-stream, anything else as JSON. headers are name, value
 // pairs.
@@ -132,7 +147,7 @@ func (e *testEnv) send(method, path string, body any, headers ...string) result 
 		}
 		r = bytes.NewReader(raw)
 	}
-	req, err := http.NewRequest(method, e.srv.URL+path, r)
+	req, err := http.NewRequest(method, e.srv.URL+apiPath(path), r)
 	if err != nil {
 		e.t.Fatal(err)
 	}

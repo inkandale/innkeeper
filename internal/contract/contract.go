@@ -42,6 +42,10 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	if err != nil {
 		return nil, err
 	}
+	// A theme has no process; loading the manifest checked its stylesheet.
+	if m.IsTheme() {
+		return []Result{{"theme stylesheet is readable", nil}}, nil
+	}
 	secrets := map[string]string{}
 	for _, s := range m.Secrets {
 		secrets[s] = "contract-check"

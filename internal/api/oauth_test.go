@@ -190,7 +190,7 @@ func TestOAuthFlow(t *testing.T) {
 	if res, err := s.CallTool(context.Background(), &sdk.CallToolParams{Name: "push", Arguments: map[string]any{}}); err == nil && !res.IsError {
 		t.Fatal("a write grant pushed")
 	}
-	req, _ := http.NewRequest("GET", o.url+"/jobs", nil)
+	req, _ := http.NewRequest("GET", o.url+"/api/jobs", nil)
 	req.Header.Set("Authorization", "Bearer "+toks.Access)
 	if r, _ := http.DefaultClient.Do(req); r.StatusCode != 401 {
 		t.Fatalf("access token on the API: %d", r.StatusCode)

@@ -1,0 +1,29 @@
+.login {
+  max-width: 360px;
+  margin: 15vh auto 0;
+  padding: calc(var(--space) * 3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 1.5);
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 1.5);
+}
+
+.login h1 {
+  margin: 0;
+  font-size: 1.4em;
+}
+
+.login label {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space) * 0.5);
+  color: var(--text-muted);
+}

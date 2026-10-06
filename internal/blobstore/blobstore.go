@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"syscall"
 	"time"
 )
@@ -38,6 +39,35 @@ func (s *Store) Path(sha string) (string, error) {
 		return "", fmt.Errorf("invalid blob hash %q", sha)
 	}
 	return filepath.Join(s.Root, sha[0:2], sha[2:4], sha), nil
+}
+
+// ThumbPath returns where the w-pixel-wide thumbnail of a blob is cached.
+func (s *Store) ThumbPath(sha string, w int) (string, error) {
+	if !shaPattern.MatchString(sha) {
+		return "", fmt.Errorf("invalid blob hash %q", sha)
+	}
+	return filepath.Join(s.Root, "thumbs", strconv.Itoa(w), sha[0:2], sha+".jpg"), nil
+}
+
+// WriteThumb writes a thumbnail to dst, a ThumbPath, all at once, so a
+// concurrent reader never sees half a file.
+func (s *Store) WriteThumb(dst string, write func(io.Writer) error) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(filepath.Dir(dst), ".tmp-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	err = write(f)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), dst)
 }
 
 // Put copies r into the store and returns the blob's hash and size.
@@ -144,14 +174,19 @@ func (s *Store) place(staged, sha string) error {
 	return os.Rename(staged, dst)
 }
 
-// Remove deletes a blob's file. A file that is already gone is not an error.
+// Remove deletes a blob's file and its thumbnails. A file that is already
+// gone is not an error.
 func (s *Store) Remove(sha string) error {
 	path, err := s.Path(sha)
 	if err != nil {
 		return err
 	}
-	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return err
+	// Glob only fails on a bad pattern, and sha already matched shaPattern.
+	thumbs, _ := filepath.Glob(filepath.Join(s.Root, "thumbs", "*", sha[0:2], sha+".jpg"))
+	for _, p := range append(thumbs, path) {
+		if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
 	}
 	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -119,5 +120,32 @@ func TestPathRejectsBadHash(t *testing.T) {
 		if _, err := s.Path(sha); err == nil {
 			t.Errorf("Path(%q) accepted", sha)
 		}
+	}
+}
+
+func TestThumbs(t *testing.T) {
+	s := &Store{Name: "library", Root: t.TempDir()}
+	sha, _, err := s.Put(strings.NewReader("image bytes"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst, err := s.ThumbPath(sha, 320)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.WriteThumb(dst, func(w io.Writer) error { _, err := io.WriteString(w, "jpeg"); return err }); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(dst); err != nil || string(b) != "jpeg" {
+		t.Fatalf("thumb = %q, %v", b, err)
+	}
+	if err := s.Remove(sha); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(dst); !os.IsNotExist(err) {
+		t.Fatalf("thumb outlived its blob: %v", err)
+	}
+	if _, err := s.ThumbPath("../etc", 320); err == nil {
+		t.Fatal("bad hash accepted")
 	}
 }

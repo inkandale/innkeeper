@@ -17,6 +17,28 @@ import (
 // Images are untrusted; refuse ones whose decoded size could exhaust memory.
 const maxPixels = 64 << 20
 
+// DecodeImage decodes the image at path, refusing one whose decoded size
+// could exhaust memory.
+func DecodeImage(path string) (image.Image, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	cfg, _, err := image.DecodeConfig(f)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.Width*cfg.Height > maxPixels {
+		return nil, fmt.Errorf("image is %d×%d, over the %d pixel limit", cfg.Width, cfg.Height, maxPixels)
+	}
+	if _, err := f.Seek(0, 0); err != nil {
+		return nil, err
+	}
+	img, _, err := image.Decode(f)
+	return img, err
+}
+
 // ImagePhash returns the 64-bit DCT perceptual hash of the image at path. It
 // follows imagehash.phash from Python: grayscale, resize to 32×32, 2D DCT-II,
 // keep the top-left 8×8 block, and set a bit (row-major, first is the high
@@ -25,22 +47,7 @@ const maxPixels = 64 << 20
 // ponytail: resampling differs from PIL's, so on some images a Python port
 // lands a few bits away; the Hamming threshold absorbs it.
 func ImagePhash(path string) (int64, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return 0, err
-	}
-	defer f.Close()
-	cfg, _, err := image.DecodeConfig(f)
-	if err != nil {
-		return 0, err
-	}
-	if cfg.Width*cfg.Height > maxPixels {
-		return 0, fmt.Errorf("image is %d×%d, over the %d pixel limit", cfg.Width, cfg.Height, maxPixels)
-	}
-	if _, err := f.Seek(0, 0); err != nil {
-		return 0, err
-	}
-	img, _, err := image.Decode(f)
+	img, err := DecodeImage(path)
 	if err != nil {
 		return 0, err
 	}

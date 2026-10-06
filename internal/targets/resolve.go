@@ -54,7 +54,11 @@ type ResolveResult struct {
 
 // StaleError means the app item, the library head, or the binding changed
 // since the comparison. Comparison is a fresh one to choose from again.
-type StaleError struct{ Comparison Comparison }
+type StaleError struct {
+	// Item is the item that went stale, as card:<remote_id> or lorebook:<remote_id>.
+	Item       string     `json:"item"`
+	Comparison Comparison `json:"comparison"`
+}
 
 func (e *StaleError) Error() string {
 	return "the app's copy, the library, or the binding changed since the comparison; compare again"
@@ -79,7 +83,7 @@ func (s *Service) resolve(ctx context.Context, k kind, r Resolution) (ResolveRes
 		return ResolveResult{}, err
 	}
 	defer tx.Rollback(ctx)
-	rs := &resolver{s: s, tx: tx, books: map[string]ResolveResult{}}
+	rs := &resolver{s: s, tx: tx, books: map[string]ResolveResult{}, wrote: map[int64]string{}}
 	res, err := rs.item(ctx, k, r)
 	if st := (*staleItem)(nil); errors.As(err, &st) {
 		// Fresh, so it reads the library without this transaction's writes.
@@ -101,6 +105,8 @@ type resolver struct {
 	books map[string]ResolveResult
 	// index is the instance's lorebook index, loaded for the first left-out world book.
 	index *index
+	// wrote maps each lorebook this call bound or imported to the world book that did it.
+	wrote map[int64]string
 }
 
 // staleItem is a StaleError before its fresh comparison, which is read after
@@ -130,7 +136,7 @@ func (e *staleItem) fresh(ctx context.Context, s *Service) error {
 	} else if err != nil {
 		return err
 	}
-	return &StaleError{Comparison: c}
+	return &StaleError{Item: e.k.name + ":" + e.remoteID, Comparison: c}
 }
 
 // item applies one resolution, its world books first.
@@ -185,7 +191,7 @@ func (rs *resolver) item(ctx context.Context, k kind, r Resolution) (ResolveResu
 		}
 	}
 	if r.Action == "import" {
-		if id, r.BaseRevisionID, err = rs.importItem(ctx, k, inst, r.InstanceID, r.RemoteID, it); err != nil {
+		if id, r.BaseRevisionID, err = rs.importItem(ctx, k, inst, info, r.InstanceID, r.RemoteID, it); err != nil {
 			return res, err
 		}
 		res.RevisionID = r.BaseRevisionID
@@ -208,6 +214,7 @@ func (rs *resolver) item(ctx context.Context, k kind, r Resolution) (ResolveResu
 	}
 	if k.isLorebook() {
 		rs.books[r.RemoteID] = res
+		rs.wrote[res.CardID] = r.RemoteID
 	}
 	return res, nil
 }
@@ -218,6 +225,8 @@ func (rs *resolver) item(ctx context.Context, k kind, r Resolution) (ResolveResu
 func (rs *resolver) lorebooks(ctx context.Context, inst pluginhost.Instance, info protocol.TargetInfo, r Resolution,
 	links []string) ([]ResolveResult, []int64, error) {
 	todo := slices.Clone(r.Lorebooks)
+	// Suggestions are all read before any world book is written.
+	suggested := map[string]bool{}
 	given := map[string]bool{}
 	for _, n := range r.Lorebooks {
 		given[n.RemoteID] = true
@@ -233,6 +242,7 @@ func (rs *resolver) lorebooks(ctx context.Context, inst pluginhost.Instance, inf
 				return nil, nil, fmt.Errorf("world book %s: %w", id, err)
 			}
 			todo = append(todo, n)
+			suggested[id] = true
 		}
 	}
 	var out []ResolveResult
@@ -240,6 +250,11 @@ func (rs *resolver) lorebooks(ctx context.Context, inst pluginhost.Instance, inf
 	for _, n := range todo {
 		n.InstanceID = r.InstanceID
 		res, err := rs.item(ctx, lorebookKind, n)
+		if by, ok := rs.wrote[n.CardID]; ok && suggested[n.RemoteID] && (errors.As(err, new(*staleItem)) || errors.Is(err, ErrBound)) {
+			// A fresh read can't see this call's writes, so a retry would suggest the same.
+			return nil, nil, fmt.Errorf("%w: world book %s's suggested match #%d %s was changed by world book %s in this request; choose %s explicitly",
+				library.ErrConflict, n.RemoteID, n.CardID, rs.index.byID[n.CardID].name, by, n.RemoteID)
+		}
 		if err != nil {
 			return nil, nil, fmt.Errorf("world book %s: %w", n.RemoteID, err)
 		}
@@ -293,19 +308,37 @@ func (rs *resolver) suggested(ctx context.Context, inst pluginhost.Instance, inf
 // importItem adds the app item to the library as a new card or lorebook and
 // returns it with its head revision. A card it was bound to on this instance
 // counts as missing from now on, as when an app reuses an ID.
-func (rs *resolver) importItem(ctx context.Context, k kind, inst pluginhost.Instance, instanceID int64, remoteID string,
-	it appItem) (int64, int64, error) {
+func (rs *resolver) importItem(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo,
+	instanceID int64, remoteID string, it appItem) (int64, int64, error) {
 	s := rs.s
-	_, err := rs.tx.Exec(ctx, `UPDATE binding SET remote_state = 'missing', seen_data = NULL, version = version + 1
-		WHERE instance_id = $1 AND remote_id = $2 AND `+k.col+` IS NOT NULL AND remote_state <> 'missing'`,
-		instanceID, remoteID)
-	if err != nil {
+	var old int64
+	err := rs.tx.QueryRow(ctx, `SELECT `+k.col+` FROM binding WHERE instance_id = $1 AND remote_id = $2
+		AND `+k.col+` IS NOT NULL AND remote_state <> 'missing'`, instanceID, remoteID).Scan(&old)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return 0, 0, err
+	}
+	if old != 0 {
+		// As a push of the old card would, so the two don't interleave.
+		if err := lock(ctx, rs.tx, k, instanceID, old); err != nil {
+			return 0, 0, err
+		}
+		_, err := rs.tx.Exec(ctx, `UPDATE binding SET remote_state = 'missing', seen_data = NULL, version = version + 1
+			WHERE instance_id = $1 AND `+k.col+` = $2`, instanceID, old)
+		if err != nil {
+			return 0, 0, err
+		}
 	}
 	plugin := inst.Manifest.Name
 	provenance, source := plugin+":"+remoteID, "plugin:"+plugin
 	if !k.isLorebook() {
-		card, err := json.Marshal(map[string]any{"spec": "chara_card_v3", "spec_version": "3.0", "data": it.raw})
+		data := it.raw
+		if info.Lorebooks == protocol.LorebooksStandalone {
+			// The app's linked world books are the card's lorebooks there, resolved as nested items.
+			if data, err = MergePatch(data, json.RawMessage(`{"character_book": null}`)); err != nil {
+				return 0, 0, err
+			}
+		}
+		card, err := json.Marshal(map[string]any{"spec": "chara_card_v3", "spec_version": "3.0", "data": data})
 		if err != nil {
 			return 0, 0, err
 		}
@@ -490,6 +523,11 @@ func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.Targe
 	appBehind := wantHash != it.hash || newAvatar != it.avatar
 	revise := baseChange != nil || overrideChanged || newAvatar != avatar
 
+	// The app's copy is where the sources are, even if the target drops extensions,
+	// and they are facts about the item, so a no-op records them too.
+	if err := k.entities(s.lib).DetectSourcesTx(ctx, tx, id, it.raw); err != nil {
+		return res, err
+	}
 	if !revise && cardBinding.remoteID == r.RemoteID && cardBinding.state == remoteUnchanged &&
 		cardBinding.accepted == acceptedHash {
 		var last struct {
@@ -512,10 +550,6 @@ func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.Targe
 		}
 	}
 
-	// The app's copy is where the sources are, even if the target drops extensions.
-	if err := k.entities(s.lib).DetectSourcesTx(ctx, tx, id, it.raw); err != nil {
-		return res, err
-	}
 	revisionID := headID
 	if revise {
 		if newOverride == nil {

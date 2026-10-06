@@ -200,9 +200,12 @@ A resolution decides one app item:
 - `import`: make a new library card from the app item and bind it. Use this to
   split an item that has diverged into a different character. It always makes
   a new card, even when one matches exactly. A card already bound to the item
-  on this instance becomes `missing` there, as when an app reuses an ID.
-  What the import leaves out of the card, like SillyTavern's favorite star,
-  goes into this instance's override. Only `app_hash` is needed.
+  on this instance becomes `missing` there, as when an app reuses an ID, so
+  pushing that card again creates a new copy in the app. What the import
+  leaves out of the card, like SillyTavern's favorite star, goes into this
+  instance's override. On a target that keeps world books on their own, the
+  card's embedded `character_book` is ignored; its linked world books are the
+  nested items. Only `app_hash` is needed.
 - `skip`: do nothing, including the nested world books. The next reconcile
   reports it again.
 
@@ -226,9 +229,16 @@ the same shape under `lorebooks`. A nested item left out takes its suggested
 option, from a fresh read; one the app can't give back is skipped, and a bound
 one with no drift binds again, which changes nothing. The card's lorebook links
 are set from the outcome: a world book that is bound or imported is linked to
-the card; a skipped one is not. A world book listed twice in one resolution is
-resolved once. The card and its world books resolve in one transaction, so one
-failure writes nothing.
+the card; a skipped one is not. On a target that keeps world books on their
+own, skipping one the app links means the next push removes that link in the
+app. A world book listed twice in one resolution is resolved once. The card and
+its world books resolve in one transaction, so one failure writes nothing.
+
+Suggestions for left-out world books are all read before anything is written.
+If an earlier world book in the same resolution changed a suggestion's match,
+the resolve fails with `409` naming both world books, and isn't stale: give
+the left-out one an explicit resolution. A stale error names its item, as
+`card:<remote_id>` or `lorebook:<remote_id>`.
 
 | Choice | Library card | Next push to this app | Other apps |
 |---|---|---|---|

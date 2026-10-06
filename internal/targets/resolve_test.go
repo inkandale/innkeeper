@@ -905,3 +905,125 @@ func TestResolveImportSplitsTheCharacterBook(t *testing.T) {
 		t.Errorf("status = %s", s)
 	}
 }
+
+func TestResolveImportOnAStandaloneTargetIgnoresTheEmbeddedBook(t *testing.T) {
+	e, _, _ := worldBooks(t)
+	e.appCard("c9", map[string]any{"name": "Dain", "description": "A miner.",
+		"character_book": map[string]any{"name": "Mines", "entries": []any{map[string]any{"keys": []any{"mine"}, "content": "Dark."}}}},
+		map[string]any{"lorebook_remote_ids": []string{"l2"}})
+	it, err := e.s.CompareItem(e.ctx, e.inst, "c9", e.card)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := e.s.Resolve(e.ctx, Resolution{InstanceID: e.inst, RemoteID: "c9", AppHash: it.AppHash, Action: "import"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mines int
+	if err := e.pool.QueryRow(e.ctx, `SELECT count(*) FROM lorebook l JOIN lorebook_revision r ON r.id = l.head_revision_id
+		WHERE r.data ->> 'name' = 'Mines'`).Scan(&mines); err != nil {
+		t.Fatal(err)
+	}
+	if l := e.links(res.CardID); mines != 1 || len(l) != 1 || e.status(res.CardID) != "in_sync" {
+		t.Errorf("%d Mines lorebooks, links %v, status %s", mines, l, e.status(res.CardID))
+	}
+}
+
+func TestResolveSuggestionChangedEarlierInTheCallIsAConflict(t *testing.T) {
+	forgeBook := func(desc string) map[string]any {
+		return map[string]any{"lorebook": map[string]any{"name": "Forge", "description": desc,
+			"entries": []any{map[string]any{"keys": []any{"forge"}, "content": "The forge burns hot."}}}}
+	}
+	for name, l1 := range map[string]struct {
+		desc string
+		def  merge.Choice
+	}{
+		"bound without a revision": {"Forge lore.", ""},
+		"head moved":               {"Old lore.", merge.ChooseApp},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := setup(t, map[string]any{"lorebooks": "standalone"})
+			card := e.libCard(map[string]any{"name": "Tova", "description": "A smith."})
+			forge := e.newLorebook("Forge")
+			e.writeRemote("l1", forgeBook(l1.desc))
+			e.writeRemote("l3", forgeBook("Forge lore."))
+			e.appCard("c1", map[string]any{"name": "Tova", "description": "A smith."},
+				map[string]any{"lorebook_remote_ids": []string{"l1", "l3"}})
+			r := e.bindTo(false, "c1", card)
+			first := e.bindTo(true, "l1", forge)
+			first.Default = l1.def
+			r.Lorebooks = []Resolution{first}
+			_, err := e.s.Resolve(e.ctx, r)
+			var stale *StaleError
+			if !errors.Is(err, library.ErrConflict) || errors.As(err, &stale) ||
+				!strings.Contains(err.Error(), "world book l3") || !strings.Contains(err.Error(), "world book l1") {
+				t.Fatalf("err = %v", err)
+			}
+			// An explicit choice for l3 goes through.
+			r.Lorebooks = append(r.Lorebooks, Resolution{RemoteID: "l3", Action: "skip"})
+			if _, err := e.s.Resolve(e.ctx, r); err != nil {
+				t.Fatalf("with l3 chosen: %v", err)
+			}
+		})
+	}
+}
+
+func TestResolveStaleErrorNamesTheItem(t *testing.T) {
+	e, card, forge := worldBooks(t)
+	r := e.bindTo(false, "c1", card)
+	r.Lorebooks = []Resolution{e.bindTo(true, "l1", forge), {RemoteID: "l2", Action: "import", AppHash: "old"}}
+	var se *StaleError
+	if _, err := e.s.Resolve(e.ctx, r); !errors.As(err, &se) || se.Item != "lorebook:l2" {
+		t.Fatalf("err = %v", err)
+	}
+	r.Lorebooks, r.AppHash = nil, "old"
+	if _, err := e.s.Resolve(e.ctx, r); !errors.As(err, &se) || se.Item != "card:c1" {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestResolveNoOpRecordsSources(t *testing.T) {
+	e := setup(t, map[string]any{"fields": []string{"name", "description", "extensions"}})
+	card := e.libCard(map[string]any{"name": "Tova", "description": "A smith.",
+		"extensions": map[string]any{"chub": map[string]any{"full_path": "someone/tova"}}})
+	b := e.push(card)
+	res := e.resolve(e.compareItem(b.RemoteID, 0), nil, "")
+	srcs, err := e.lib.Cards.Sources(e.ctx, card)
+	if err != nil || res.RevisionID != 0 || e.pushCount(b.ID) != 1 || len(srcs) != 1 {
+		t.Fatalf("result = %+v, %d pushes, sources %+v, %v", res, e.pushCount(b.ID), srcs, err)
+	}
+}
+
+func TestResolveLeftOutBoundWorldBook(t *testing.T) {
+	for _, drift := range []bool{true, false} {
+		e := setup(t, map[string]any{"lorebooks": "standalone"})
+		card := e.libCard(map[string]any{"name": "Tova", "description": "A smith."})
+		forge := e.newLorebook("Forge")
+		lb := e.pushLorebook(forge)
+		if drift {
+			e.editRemote(lb.RemoteID, "description", "Hotter lore.")
+		}
+		e.appCard("c1", map[string]any{"name": "Tova", "description": "A smith."},
+			map[string]any{"lorebook_remote_ids": []string{lb.RemoteID}})
+		res, err := e.s.Resolve(e.ctx, e.bindTo(false, "c1", card))
+		if err != nil || len(res.Lorebooks) != 1 || res.Lorebooks[0].Action != "bind" || res.Lorebooks[0].CardID != forge {
+			t.Fatalf("drift %v: result = %+v, %v", drift, res, err)
+		}
+		want := map[bool]string{true: "Hotter lore.", false: "Forge lore."}[drift]
+		if d := field(t, e.lorebookHead(forge).Data, "description"); d != want || len(e.links(card)) != 1 {
+			t.Errorf("drift %v: description %v, links %v", drift, d, e.links(card))
+		}
+	}
+}
+
+func TestResolveImportedWorldBookKeepsItsName(t *testing.T) {
+	e, card, _ := worldBooks(t)
+	res, err := e.s.Resolve(e.ctx, e.bindTo(false, "c1", card))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lb, err := e.lib.Lorebooks.Get(e.ctx, res.Lorebooks[1].CardID)
+	if err != nil || lb.Slug != "mines" {
+		t.Fatalf("lorebook = %+v, %v", lb, err)
+	}
+}

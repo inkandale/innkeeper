@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 )
 
 func readManifest(folder string) (Manifest, error) {
@@ -129,4 +130,31 @@ func prune(dir string, t Type, keep int) error {
 		}
 		return os.Remove(path)
 	})
+}
+
+// Latest returns when each type's newest finished backup was made, read from
+// folder names alone so it stays cheap enough for a health check.
+func Latest(dir string) (map[Type]time.Time, error) {
+	latest := map[Type]time.Time{}
+	for _, t := range Types {
+		es, err := os.ReadDir(filepath.Join(dir, string(t)))
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range es {
+			stamp, ok := strings.CutPrefix(e.Name(), string(t)+"-")
+			if !e.IsDir() || !ok {
+				continue
+			}
+			// .part folders and stray names fail to parse.
+			at, err := time.Parse(timeFormat, stamp)
+			if err == nil && at.After(latest[t]) {
+				latest[t] = at
+			}
+		}
+	}
+	return latest, nil
 }

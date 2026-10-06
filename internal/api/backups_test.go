@@ -152,6 +152,17 @@ func TestBackups(t *testing.T) {
 		t.Fatalf("downloaded manifest %+v, %v", m, err)
 	}
 
+	// A listed table file gone fails before the first byte, so nothing partial goes out.
+	damaged := writeBackup(t, dir, backup.Config, created.Add(-2*time.Hour))
+	mpath := filepath.Join(dir, "config", damaged, "manifest.json")
+	if err := os.WriteFile(mpath, []byte(`{"format":1,"type":"config","tables":{"setting":1}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if d := e.call("GET", "/backups/"+damaged, nil, 500, nil); d.Header.Get("Content-Type") == "application/gzip" ||
+		!strings.Contains(string(d.Body), "damaged") {
+		t.Errorf("damaged download: %s %v", d, d.Header)
+	}
+
 	if r := e.upload([]byte("not an archive"), ""); r.Status != 400 {
 		t.Errorf("restore of junk: %s", r)
 	}
@@ -201,4 +212,7 @@ func TestHealth(t *testing.T) {
 	if h := out.Backups[backup.Assets]; !h.OK || h.Last == nil {
 		t.Errorf("fresh: %+v", out)
 	}
+	// A schedule without a dir can't have backups.
+	e.s.Backups.Dir = ""
+	check(503)
 }

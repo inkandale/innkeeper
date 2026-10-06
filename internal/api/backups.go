@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"errors"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"reflect"
@@ -185,14 +187,7 @@ func (s *Server) backupRoutes(api huma.API) {
 			if err != nil {
 				return nil, err
 			}
-			infos, err := backup.List(dir)
-			if err != nil {
-				return nil, s.fail(err)
-			}
-			// Only listed names reach the filesystem, which rules out paths.
-			if !slices.ContainsFunc(infos, func(i backup.Info) bool { return i.Name == in.Name }) {
-				return nil, huma.Error404NotFound("not found")
-			}
+			// WriteArchive rejects names that aren't plain backup folders before touching the filesystem.
 			return &huma.StreamResponse{Body: func(hc huma.Context) {
 				w := &lazyWriter{hc: hc, start: func() {
 					hc.SetHeader("Content-Type", "application/gzip")
@@ -203,6 +198,10 @@ func (s *Server) backupRoutes(api huma.API) {
 				case err == nil:
 				case w.started:
 					s.Log.Warn("send backup", "name", in.Name, "err", err)
+					// Aborting breaks the transfer, so the client can't mistake a truncated archive for a whole one.
+					panic(http.ErrAbortHandler)
+				case errors.Is(err, fs.ErrNotExist):
+					huma.WriteErr(api, hc, http.StatusNotFound, "not found")
 				default:
 					s.Log.Error("backup is damaged", "name", in.Name, "err", err)
 					huma.WriteErr(api, hc, http.StatusInternalServerError, "backup is damaged; see the server log")
@@ -255,16 +254,18 @@ func (s *Server) backupRoutes(api huma.API) {
 			if len(s.Backups.Every) == 0 {
 				return out, nil
 			}
-			infos, err := backup.List(s.Backups.Dir)
-			if err != nil {
-				return nil, s.fail(err)
+			latest := map[backup.Type]time.Time{}
+			if s.Backups.Dir != "" {
+				var err error
+				if latest, err = backup.Latest(s.Backups.Dir); err != nil {
+					return nil, s.fail(err)
+				}
 			}
 			for t, every := range s.Backups.Every {
 				h := typeHealth{Every: every.String()}
-				// infos is newest first.
-				if i := slices.IndexFunc(infos, func(i backup.Info) bool { return i.Type == t }); i >= 0 {
-					h.Last = &infos[i].CreatedAt
-					h.OK = time.Since(infos[i].CreatedAt) < 2*every
+				if at, ok := latest[t]; ok {
+					h.Last = &at
+					h.OK = time.Since(at) < 2*every
 				}
 				if !h.OK {
 					out.Status = http.StatusServiceUnavailable

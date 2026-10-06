@@ -79,3 +79,27 @@
     display: none;
   }
 }
+
+.toasts {
+  position: fixed;
+  right: calc(var(--space) * 2);
+  bottom: calc(var(--space) * 2);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space);
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space);
+  padding: var(--space) calc(var(--space) * 1.5);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.toast.error {
+  border-color: var(--danger);
+}

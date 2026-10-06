@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router";
 import { api } from "../api/client";
+import { Toasts } from "./Toasts";
 import "./Shell.css";
 
 const sections = [
@@ -49,7 +50,9 @@ export function Shell() {
         </div>
       </nav>
       <main className="main">
-        <Outlet />
+        <Toasts>
+          <Outlet />
+        </Toasts>
       </main>
     </div>
   );

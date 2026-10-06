@@ -292,9 +292,16 @@ Applying a `bind`:
 Nothing is pushed during resolve. Hunks resolved to `library` show as the
 library being ahead, and the next push, with its preview, sends them.
 
-The existing `POST /bindings/{id}/adopt` stays and becomes a resolution with
-`default` set to `app` (into `base`), `keep_in_app` (into `override`), or
-`library` (`ignore`).
+Both stay available. `POST /bindings/{id}/adopt` stays its own path for drift
+on a bound item: it takes the app's changes since the last push into the
+card, into this target's override, or nowhere, for the whole card. Resolve is
+for reconciling an item with per-hunk choices. Under three-way merge an app
+edit since the last push merges on its own, so adopt's `override` and
+`ignore` can't be expressed as a resolve default.
+
+`POST /cards/{id}/bind` is a resolve: `{action: bind, card_id, default:
+library}` with a fresh comparison's hashes. The app's copy becomes the
+accepted one, and the card is `ahead` where it differs.
 
 ## Surfaces
 

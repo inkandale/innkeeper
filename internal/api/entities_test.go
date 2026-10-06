@@ -9,13 +9,14 @@ import (
 )
 
 type entityResult struct {
-	ID         int64          `json:"id"`
-	Slug       string         `json:"slug"`
-	Provenance string         `json:"provenance"`
-	ArchivedAt *string        `json:"archived_at"`
-	Tags       []string       `json:"tags"`
-	Lorebooks  []int64        `json:"lorebooks"`
-	Revision   revisionResult `json:"revision"`
+	ID          int64          `json:"id"`
+	Slug        string         `json:"slug"`
+	Provenance  string         `json:"provenance"`
+	ArchivedAt  *string        `json:"archived_at"`
+	Tags        []string       `json:"tags"`
+	Lorebooks   []int64        `json:"lorebooks"`
+	Collections []int64        `json:"collections"`
+	Revision    revisionResult `json:"revision"`
 }
 
 type revisionResult struct {
@@ -229,4 +230,19 @@ func TestExportFormats(t *testing.T) {
 	e.markBroken(e.loginID, "boom")
 	e.markBroken(e.importID, "boom")
 	e.call("GET", path+"?format=fake", nil, 400, nil)
+}
+
+func TestCardCollectionsField(t *testing.T) {
+	e := newEnv(t)
+	c := e.createCard(`{"name": "Brakka"}`)
+	var coll struct {
+		ID int64 `json:"id"`
+	}
+	e.call("POST", "/collections", map[string]any{"name": "Favorites"}, 201, &coll)
+	e.call("PUT", fmt.Sprintf("/collections/%d/cards/%d", coll.ID, c.ID), nil, 204, nil)
+	var got entityResult
+	e.call("GET", fmt.Sprintf("/cards/%d", c.ID), nil, 200, &got)
+	if len(got.Collections) != 1 || got.Collections[0] != coll.ID {
+		t.Fatalf("collections = %v", got.Collections)
+	}
 }

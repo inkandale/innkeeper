@@ -171,3 +171,28 @@ func TestEditCardTags(t *testing.T) {
 		t.Fatalf("missing card: %v", err)
 	}
 }
+
+func TestCardCollections(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	a, _ := newCard(t, lib, "a", `{"name": "A"}`)
+	fav, err := lib.CreateCollection(ctx, "Favorites", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := lib.CreateCollection(ctx, "Other", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := lib.CardCollections(ctx, a); err != nil || len(got) != 0 {
+		t.Fatalf("before = %v, %v", got, err)
+	}
+	for _, c := range []int64{other.ID, fav.ID} {
+		if err := lib.AddToCollection(ctx, c, a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, err := lib.CardCollections(ctx, a); err != nil || !slices.Equal(got, []int64{fav.ID, other.ID}) {
+		t.Fatalf("after = %v, %v", got, err)
+	}
+}

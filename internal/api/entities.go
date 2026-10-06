@@ -39,14 +39,15 @@ func toRevision(r library.Revision, full bool) revisionOut {
 }
 
 type entityOut struct {
-	ID         int64       `json:"id"`
-	Slug       string      `json:"slug"`
-	Provenance string      `json:"provenance"`
-	ArchivedAt *time.Time  `json:"archived_at,omitempty"`
-	CreatedAt  time.Time   `json:"created_at"`
-	Revision   revisionOut `json:"revision" doc:"The head revision"`
-	Tags       []string    `json:"tags,omitempty" doc:"Cards only"`
-	Lorebooks  []int64     `json:"lorebooks,omitempty" doc:"Cards only: IDs of linked lorebooks"`
+	ID          int64       `json:"id"`
+	Slug        string      `json:"slug"`
+	Provenance  string      `json:"provenance"`
+	ArchivedAt  *time.Time  `json:"archived_at,omitempty"`
+	CreatedAt   time.Time   `json:"created_at"`
+	Revision    revisionOut `json:"revision" doc:"The head revision"`
+	Tags        []string    `json:"tags,omitempty" doc:"Cards only"`
+	Lorebooks   []int64     `json:"lorebooks,omitempty" doc:"Cards only: IDs of linked lorebooks"`
+	Collections []int64     `json:"collections,omitempty" doc:"Cards only: IDs of the collections it's in"`
 }
 
 type entityResp struct{ Body entityOut }
@@ -178,6 +179,9 @@ func (s *Server) entity(ctx context.Context, ents *library.Entities, id int64) (
 			return nil, s.fail(err)
 		}
 		if out.Body.Lorebooks, err = s.Lib.CardLorebooks(ctx, id); err != nil {
+			return nil, s.fail(err)
+		}
+		if out.Body.Collections, err = s.Lib.CardCollections(ctx, id); err != nil {
 			return nil, s.fail(err)
 		}
 	}

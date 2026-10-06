@@ -76,6 +76,7 @@ function renderAt(entry: string) {
 test("the list shows jobs and filters by state", async () => {
   const router = renderAt("/settings/jobs");
   expect(await screen.findByText("bulk card.tag")).toBeInTheDocument();
+  expect(screen.getByText("1 of 2")).toBeInTheDocument();
   expect(screen.getByText("card.export")).toBeInTheDocument();
   const user = userEvent.setup();
   await user.selectOptions(screen.getByRole("combobox", { name: "State" }), "failed");

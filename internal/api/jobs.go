@@ -41,8 +41,8 @@ type jobOut struct {
 	RunAfter    time.Time       `json:"run_after"`
 	CreatedAt   time.Time       `json:"created_at"`
 	FinishedAt  *time.Time      `json:"finished_at,omitempty"`
-	Children    map[string]int  `json:"children,omitempty" doc:"A bulk job's children, counted by status. Only get-job, cancel-job, and watch-job fill it."`
-	Outcomes    map[string]int  `json:"outcomes,omitempty" doc:"A bulk import's finished children, counted by outcome: created, bound, already_bound, duplicate, or missing. Filled like children."`
+	Children    map[string]int  `json:"children,omitempty" doc:"A bulk job's children, counted by status. Get-job, cancel-job, watch-job, and list-jobs fill it."`
+	Outcomes    map[string]int  `json:"outcomes,omitempty" doc:"A bulk import's finished children, counted by outcome: created, bound, already_bound, duplicate, or missing. Only get-job, cancel-job, and watch-job fill it."`
 }
 
 func toJob(j jobs.Job) jobOut {
@@ -224,9 +224,20 @@ func (s *Server) jobRoutes(api huma.API) {
 			if err != nil {
 				return nil, s.fail(err)
 			}
+			var parents []int64
+			for _, j := range list {
+				if j.Kind == bulk.Kind {
+					parents = append(parents, j.ID)
+				}
+			}
+			counts, err := s.Queue.ChildCountsFor(ctx, parents)
+			if err != nil {
+				return nil, s.fail(err)
+			}
 			out := &jobsOut{Body: make([]jobOut, len(list))}
 			for i, j := range list {
 				out.Body[i] = summary(toJob(j))
+				out.Body[i].Children = counts[j.ID]
 			}
 			return out, nil
 		})

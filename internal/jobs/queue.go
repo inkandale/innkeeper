@@ -339,6 +339,28 @@ func (q *Queue) ChildCounts(ctx context.Context, parent int64) (map[string]int, 
 	return out, err
 }
 
+// ChildCountsFor is ChildCounts for many parents in one query. Parents
+// without children are left out.
+func (q *Queue) ChildCountsFor(ctx context.Context, parents []int64) (map[int64]map[string]int, error) {
+	rows, err := q.pool.Query(ctx, `SELECT parent_id, status, count(*)::int FROM job
+		WHERE parent_id = ANY($1) GROUP BY parent_id, status`, parents)
+	if err != nil {
+		return nil, err
+	}
+	out := map[int64]map[string]int{}
+	var parent int64
+	var status string
+	var n int
+	_, err = pgx.ForEachRow(rows, []any{&parent, &status, &n}, func() error {
+		if out[parent] == nil {
+			out[parent] = map[string]int{}
+		}
+		out[parent][status] = n
+		return nil
+	})
+	return out, err
+}
+
 // ChildOutcomes counts a parent's finished children by the outcome in their
 // progress, for children that report one.
 func (q *Queue) ChildOutcomes(ctx context.Context, parent int64) (map[string]int, error) {

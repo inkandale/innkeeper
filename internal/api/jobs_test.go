@@ -94,6 +94,11 @@ func TestBulkArchiveAndWatch(t *testing.T) {
 	if len(children) != 2 {
 		t.Fatalf("children = %+v", children)
 	}
+	var list []jobOut
+	e.call("GET", "/jobs", nil, 200, &list)
+	if len(list) != 1 || list[0].Children["succeeded"] != 2 {
+		t.Fatalf("listed bulk job = %+v", list)
+	}
 
 	// Unarchive finds the archived cards without the filter naming archived.
 	j = jobOut{}

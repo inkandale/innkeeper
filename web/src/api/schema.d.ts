@@ -1669,7 +1669,7 @@ export interface components {
             readonly $schema?: string;
             /** Format: int64 */
             attempts: number;
-            /** @description A bulk job's children, counted by status. Only get-job, cancel-job, and watch-job fill it. */
+            /** @description A bulk job's children, counted by status. Get-job, cancel-job, watch-job, and list-jobs fill it. */
             children?: {
                 [key: string]: number;
             };
@@ -1685,7 +1685,7 @@ export interface components {
             kind: string;
             /** Format: int64 */
             max_attempts: number;
-            /** @description A bulk import's finished children, counted by outcome: created, bound, already_bound, duplicate, or missing. Filled like children. */
+            /** @description A bulk import's finished children, counted by outcome: created, bound, already_bound, duplicate, or missing. Only get-job, cancel-job, and watch-job fill it. */
             outcomes?: {
                 [key: string]: number;
             };

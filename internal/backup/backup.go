@@ -5,14 +5,10 @@ package backup
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -32,69 +28,6 @@ const (
 )
 
 var Types = []Type{Assets, Config}
-
-const defaultKeep = 7
-
-// Settings is the backup settings from the environment.
-type Settings struct {
-	Dir   string
-	Every map[Type]time.Duration // only scheduled types
-	Keep  map[Type]int           // every type with a schedule or a KEEP
-}
-
-// SettingsFromEnv reads INNKEEPER_BACKUP_DIR and the per-type _EVERY and _KEEP
-// variables. Errors name the variable at fault.
-func SettingsFromEnv() (Settings, error) {
-	c := Settings{
-		Dir:   os.Getenv("INNKEEPER_BACKUP_DIR"),
-		Every: map[Type]time.Duration{},
-		Keep:  map[Type]int{},
-	}
-	for _, t := range Types {
-		name := "INNKEEPER_BACKUP_" + strings.ToUpper(string(t))
-		if v := os.Getenv(name + "_EVERY"); v != "" {
-			d, err := parseEvery(v)
-			if err != nil {
-				return Settings{}, fmt.Errorf("%s_EVERY: %w", name, err)
-			}
-			if c.Dir == "" {
-				return Settings{}, fmt.Errorf("%s_EVERY is set but INNKEEPER_BACKUP_DIR is not", name)
-			}
-			c.Every[t] = d
-			c.Keep[t] = defaultKeep
-		}
-		if v := os.Getenv(name + "_KEEP"); v != "" {
-			n, err := strconv.Atoi(v)
-			if err != nil || n < 1 {
-				return Settings{}, fmt.Errorf("%s_KEEP: %q is not an integer of at least 1", name, v)
-			}
-			c.Keep[t] = n
-		}
-	}
-	return c, nil
-}
-
-// parseEvery accepts a Go duration or whole days ("7d"), which
-// time.ParseDuration lacks.
-func parseEvery(s string) (time.Duration, error) {
-	var d time.Duration
-	if days, ok := strings.CutSuffix(s, "d"); ok {
-		n, err := strconv.Atoi(days)
-		if err != nil {
-			return 0, fmt.Errorf("%q is not a duration like 24h or 7d", s)
-		}
-		d = time.Duration(n) * 24 * time.Hour
-	} else {
-		var err error
-		if d, err = time.ParseDuration(s); err != nil {
-			return 0, fmt.Errorf("%q is not a duration like 24h or 7d", s)
-		}
-	}
-	if d <= 0 {
-		return 0, fmt.Errorf("%q must be positive", s)
-	}
-	return d, nil
-}
 
 // tables lists each type's tables in load order. Jobs, tokens, sessions and
 // OAuth grants are never backed up.
@@ -158,25 +91,14 @@ func Write(ctx context.Context, pool *pgxpool.Pool, t Type, o Options) (Info, er
 		return Info{}, err
 	}
 	defer conn.Exec(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock(`+lock+`)`, string(t))
-	tx, err := conn.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
-	if err != nil {
-		return Info{}, err
-	}
-	defer tx.Rollback(ctx)
+
 	typeDir := filepath.Join(o.Dir, string(t))
 	if err := os.MkdirAll(typeDir, 0o700); err != nil {
 		return Info{}, err
 	}
-	parts, err := filepath.Glob(filepath.Join(typeDir, "*.part"))
-	if err != nil {
+	if err := removeParts(typeDir); err != nil {
 		return Info{}, err
 	}
-	for _, p := range parts {
-		if err := os.RemoveAll(p); err != nil {
-			return Info{}, err
-		}
-	}
-
 	m := Manifest{Format: 1, Type: t, CreatedAt: time.Now().UTC(), Tables: map[string]int64{}}
 	name := string(t) + "-" + m.CreatedAt.Format(timeFormat)
 	final := filepath.Join(typeDir, name)
@@ -187,58 +109,31 @@ func Write(ctx context.Context, pool *pgxpool.Pool, t Type, o Options) (Info, er
 	if err := os.Mkdir(filepath.Join(part, "tables"), 0o700); err != nil {
 		return Info{}, err
 	}
-	if err := tx.QueryRow(ctx, `SELECT max(name) FROM schema_migration`).Scan(&m.Schema); err != nil {
+	if err := snapshot(ctx, conn, t, o, part, &m); err != nil {
 		return Info{}, err
 	}
-	for _, table := range tables[t] {
-		where := ""
-		if table == "blob" {
-			where = " WHERE " + referencedBlobs
-		}
-		if m.Tables[table], err = copyTable(ctx, tx, table, where, filepath.Join(part, "tables", table+".copy")); err != nil {
-			return Info{}, fmt.Errorf("%s: %w", table, err)
-		}
-	}
-
-	switch t {
-	case Assets:
-		rows, _ := tx.Query(ctx, `SELECT sha256 FROM blob WHERE `+referencedBlobs+` ORDER BY sha256`)
-		if m.Blobs, err = pgx.CollectRows(rows, pgx.RowTo[string]); err != nil {
+	// After the snapshot ends: revisions are immutable, so listed blobs stay.
+	for _, sha := range m.Blobs {
+		src, err := o.Store.Path(sha)
+		if err != nil {
 			return Info{}, err
 		}
-		for _, sha := range m.Blobs {
-			src, err := o.Store.Path(sha)
-			if err != nil {
-				return Info{}, err
-			}
-			dst := blobPath(o.Dir, sha)
-			if _, err := os.Stat(dst); err == nil {
-				continue
-			}
-			if err := copyFile(src, dst); err != nil {
-				return Info{}, err
-			}
+		dst := blobPath(o.Dir, sha)
+		if _, err := os.Stat(dst); err == nil {
+			continue
 		}
-	case Config:
-		rows, _ := tx.Query(ctx, `SELECT nspname::text FROM pg_namespace WHERE nspname LIKE 'plugin\_%' ORDER BY 1`)
-		if m.PluginSchemas, err = pgx.CollectRows(rows, pgx.RowTo[string]); err != nil {
+		if err := copyFile(src, dst); err != nil {
 			return Info{}, err
 		}
-		if len(m.PluginSchemas) > 0 {
-			if err := dumpPlugins(ctx, tx, o.DatabaseURL, m.PluginSchemas, filepath.Join(part, "plugins.sql")); err != nil {
-				return Info{}, err
-			}
-		}
-		if o.Box != nil {
-			m.SecretsCheck = o.Box.Derive("backup-check")
-		}
 	}
-
 	b, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return Info{}, err
 	}
-	if err := os.WriteFile(filepath.Join(part, "manifest.json"), b, 0o600); err != nil {
+	if err := writeFile(filepath.Join(part, "manifest.json"), func(f *os.File) error {
+		_, err := f.Write(b)
+		return err
+	}); err != nil {
 		return Info{}, err
 	}
 	if err := os.Rename(part, final); err != nil {
@@ -247,11 +142,67 @@ func Write(ctx context.Context, pool *pgxpool.Pool, t Type, o Options) (Info, er
 	size, err := backupSize(o.Dir, final, m)
 	info := Info{Name: name, Type: t, CreatedAt: m.CreatedAt, Size: size}
 	if err == nil && o.Keep > 0 {
-		if _, err = prune(o.Dir, t, o.Keep); err != nil {
+		if err = prune(o.Dir, t, o.Keep); err != nil {
 			err = fmt.Errorf("prune: %w", err)
 		}
 	}
 	return info, err
+}
+
+// snapshot fills part and m from one read-only snapshot: the tables, the
+// blob list, and the plugin schemas.
+func snapshot(ctx context.Context, conn *pgxpool.Conn, t Type, o Options, part string, m *Manifest) error {
+	tx, err := conn.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err := tx.QueryRow(ctx, `SELECT max(name) FROM schema_migration`).Scan(&m.Schema); err != nil {
+		return err
+	}
+	for _, table := range tables[t] {
+		where := ""
+		if table == "blob" {
+			where = " WHERE " + referencedBlobs
+		}
+		if m.Tables[table], err = copyTable(ctx, tx, table, where, filepath.Join(part, "tables", table+".copy")); err != nil {
+			return fmt.Errorf("%s: %w", table, err)
+		}
+	}
+	switch t {
+	case Assets:
+		rows, _ := tx.Query(ctx, `SELECT sha256 FROM blob WHERE `+referencedBlobs+` ORDER BY sha256`)
+		m.Blobs, err = pgx.CollectRows(rows, pgx.RowTo[string])
+		return err
+	case Config:
+		rows, _ := tx.Query(ctx, `SELECT nspname::text FROM pg_namespace WHERE nspname LIKE 'plugin\_%' ORDER BY 1`)
+		if m.PluginSchemas, err = pgx.CollectRows(rows, pgx.RowTo[string]); err != nil {
+			return err
+		}
+		if len(m.PluginSchemas) > 0 {
+			if err := dumpPlugins(ctx, tx, o.DatabaseURL, m.PluginSchemas, filepath.Join(part, "plugins.sql")); err != nil {
+				return err
+			}
+		}
+		if o.Box != nil {
+			m.SecretsCheck = o.Box.Derive("backup-check")
+		}
+	}
+	return nil
+}
+
+// removeParts removes unfinished backups and interrupted prunes in dir.
+func removeParts(dir string) error {
+	parts, err := filepath.Glob(filepath.Join(dir, "*.part"))
+	if err != nil {
+		return err
+	}
+	for _, p := range parts {
+		if err := os.RemoveAll(p); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Columns returns table's stored columns in order. Generated columns are left
@@ -273,16 +224,14 @@ func copyTable(ctx context.Context, tx pgx.Tx, table, where, path string) (int64
 	for i, c := range cols {
 		cols[i] = pgx.Identifier{c}.Sanitize()
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
-		return 0, err
-	}
-	sql := fmt.Sprintf("COPY (SELECT %s FROM %s%s) TO STDOUT", strings.Join(cols, ", "), pgx.Identifier{table}.Sanitize(), where)
-	tag, err := tx.Conn().PgConn().CopyTo(ctx, f, sql)
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	return tag.RowsAffected(), err
+	sql := fmt.Sprintf("COPY (SELECT %s FROM %s%s) TO STDOUT", strings.Join(cols, ", "), pgx.Identifier{"public", table}.Sanitize(), where)
+	var n int64
+	err = writeFile(path, func(f *os.File) error {
+		tag, err := tx.Conn().PgConn().CopyTo(ctx, f, sql)
+		n = tag.RowsAffected()
+		return err
+	})
+	return n, err
 }
 
 // dumpPlugins runs pg_dump on the plugin schemas in tx's snapshot, so they
@@ -294,21 +243,33 @@ func dumpPlugins(ctx context.Context, tx pgx.Tx, dbURL string, schemas []string,
 	}
 	args := []string{"--format=plain", "--inserts", "--rows-per-insert=1000", "--no-owner", "--no-privileges", "--snapshot=" + snapshot}
 	for _, s := range schemas {
-		args = append(args, "--schema="+s)
+		// Quoted, since pg_dump reads --schema as a pattern.
+		args = append(args, `--schema="`+strings.ReplaceAll(s, `"`, `""`)+`"`)
 	}
+	return writeFile(path, func(f *os.File) error {
+		cmd, err := pgDumpCommand(ctx, dbURL, f, args...)
+		if err != nil {
+			return err
+		}
+		return runPgDump(cmd)
+	})
+}
+
+// writeFile creates path, has write fill it, and syncs it, so a finished
+// backup never holds a file the disk lost.
+func writeFile(path string, write func(*os.File) error) error {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	cmd, err := pgDumpCommand(dbURL, f, args...)
-	if err != nil {
-		return err
+	err = write(f)
+	if err == nil {
+		err = f.Sync()
 	}
-	if err := runPgDump(cmd); err != nil {
-		return err
+	if cerr := f.Close(); err == nil {
+		err = cerr
 	}
-	return f.Close()
+	return err
 }
 
 func blobPath(dir, sha string) string {
@@ -345,119 +306,4 @@ func copyFile(src, dst string) error {
 		os.Remove(part)
 	}
 	return err
-}
-
-func readManifest(folder string) (Manifest, error) {
-	var m Manifest
-	b, err := os.ReadFile(filepath.Join(folder, "manifest.json"))
-	if err == nil {
-		err = json.Unmarshal(b, &m)
-	}
-	return m, err
-}
-
-// backupSize adds up folder's files and the shared blobs m lists.
-func backupSize(dir, folder string, m Manifest) (int64, error) {
-	var size int64
-	err := filepath.WalkDir(folder, func(_ string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
-		}
-		fi, err := d.Info()
-		size += fi.Size()
-		return err
-	})
-	for _, sha := range m.Blobs {
-		if fi, serr := os.Stat(blobPath(dir, sha)); serr == nil {
-			size += fi.Size()
-		}
-	}
-	return size, err
-}
-
-// backups returns the finished backups of type t, newest first, with their
-// manifests.
-func backups(dir string, t Type) ([]Info, []Manifest, error) {
-	es, err := os.ReadDir(filepath.Join(dir, string(t)))
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil, nil
-	}
-	if err != nil {
-		return nil, nil, err
-	}
-	var infos []Info
-	var ms []Manifest
-	for _, e := range es {
-		name := e.Name()
-		if !e.IsDir() || !strings.HasPrefix(name, string(t)+"-") || strings.HasSuffix(name, ".part") {
-			continue
-		}
-		folder := filepath.Join(dir, string(t), name)
-		m, err := readManifest(folder)
-		if err != nil {
-			continue // not a backup this package can read
-		}
-		size, err := backupSize(dir, folder, m)
-		if err != nil {
-			return nil, nil, err
-		}
-		infos = append(infos, Info{Name: name, Type: t, CreatedAt: m.CreatedAt, Size: size})
-		ms = append(ms, m)
-	}
-	// Folder names sort by time.
-	slices.Reverse(infos)
-	slices.Reverse(ms)
-	return infos, ms, nil
-}
-
-// List returns every finished backup, newest first.
-func List(dir string) ([]Info, error) {
-	var all []Info
-	for _, t := range Types {
-		infos, _, err := backups(dir, t)
-		if err != nil {
-			return nil, err
-		}
-		all = append(all, infos...)
-	}
-	slices.SortFunc(all, func(a, b Info) int { return b.CreatedAt.Compare(a.CreatedAt) })
-	return all, nil
-}
-
-// prune removes the backups of type t past the newest keep and returns how
-// many it removed. For assets it then removes shared blobs no remaining
-// backup lists. Callers hold the backup lock, so no write is copying blobs.
-func prune(dir string, t Type, keep int) (int, error) {
-	infos, ms, err := backups(dir, t)
-	if err != nil {
-		return 0, err
-	}
-	n := 0
-	listed := map[string]bool{}
-	for i := range infos {
-		if i < keep {
-			for _, sha := range ms[i].Blobs {
-				listed[sha] = true
-			}
-			continue
-		}
-		if err := os.RemoveAll(filepath.Join(dir, string(t), infos[i].Name)); err != nil {
-			return n, err
-		}
-		n++
-	}
-	if t != Assets {
-		return n, nil
-	}
-	blobs := filepath.Join(dir, string(Assets), "blobs")
-	err = filepath.WalkDir(blobs, func(path string, d fs.DirEntry, err error) error {
-		if errors.Is(err, fs.ErrNotExist) && path == blobs {
-			return fs.SkipAll
-		}
-		if err != nil || d.IsDir() || listed[d.Name()] {
-			return err
-		}
-		return os.Remove(path)
-	})
-	return n, err
 }

@@ -2,6 +2,7 @@ package backup
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -13,7 +14,7 @@ import (
 
 // pgDumpCommand runs pg_dump on dbURL with args, writing to out. The password
 // goes in the environment, since other users can see a process's arguments.
-func pgDumpCommand(dbURL string, out io.Writer, args ...string) (*exec.Cmd, error) {
+func pgDumpCommand(ctx context.Context, dbURL string, out io.Writer, args ...string) (*exec.Cmd, error) {
 	u, err := url.Parse(dbURL)
 	if err != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") {
 		return nil, errors.New("backup needs INNKEEPER_DATABASE_URL as a postgres:// URL")
@@ -32,7 +33,7 @@ func pgDumpCommand(dbURL string, out io.Writer, args ...string) (*exec.Cmd, erro
 	if ok {
 		env = append(env, "PGPASSWORD="+pw)
 	}
-	cmd := exec.Command("pg_dump", append([]string{"--dbname=" + u.String()}, args...)...)
+	cmd := exec.CommandContext(ctx, "pg_dump", append([]string{"--dbname=" + u.String()}, args...)...)
 	cmd.Env, cmd.Stdout = env, out
 	return cmd, nil
 }

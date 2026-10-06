@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"context"
 	"io"
 	"slices"
 	"strings"
@@ -12,7 +13,7 @@ func TestPgDumpKeepsPasswordOffCommandLine(t *testing.T) {
 		"postgres://app:s3cret@db:5432/innkeeper?sslmode=disable",
 		"postgresql://app@db:5432/innkeeper?sslmode=disable&password=s3cret",
 	} {
-		cmd, err := pgDumpCommand(u, io.Discard, "--format=plain")
+		cmd, err := pgDumpCommand(context.Background(), u, io.Discard, "--format=plain")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -34,14 +35,14 @@ func TestPgDumpKeepsPasswordOffCommandLine(t *testing.T) {
 
 func TestPgDumpRejectsNonURL(t *testing.T) {
 	for _, u := range []string{"host=db password=s3cret dbname=x", "mysql://a@b/c"} {
-		if _, err := pgDumpCommand(u, io.Discard); err == nil || strings.Contains(err.Error(), "s3cret") {
+		if _, err := pgDumpCommand(context.Background(), u, io.Discard); err == nil || strings.Contains(err.Error(), "s3cret") {
 			t.Fatalf("%q: err = %v", u, err)
 		}
 	}
 }
 
 func TestRunPgDumpReportsStderr(t *testing.T) {
-	cmd, err := pgDumpCommand("postgres://app@127.0.0.1:1/x", io.Discard, "--no-such-flag")
+	cmd, err := pgDumpCommand(context.Background(), "postgres://app@127.0.0.1:1/x", io.Discard, "--no-such-flag")
 	if err != nil {
 		t.Fatal(err)
 	}

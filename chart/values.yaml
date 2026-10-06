@@ -26,6 +26,21 @@ persistence:
   storageClass: ""
   accessModes: [ReadWriteOncePod]
 
+# Scheduled backups; see "Backup and restore" in the README. An empty
+# `every` turns that type's schedule off.
+backup:
+  assets:
+    every: ""
+    keep: 7
+  config:
+    every: ""
+    keep: 7
+  persistence:
+    enabled: false
+    size: 10Gi
+    storageClass: ""
+    accessModes: [ReadWriteOncePod]
+
 ingress:
   enabled: false
   className: ""

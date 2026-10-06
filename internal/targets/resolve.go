@@ -22,15 +22,17 @@ import (
 // Resolution decides one app item: bind it to a library card, import it, or
 // skip it.
 type Resolution struct {
-	InstanceID int64  `json:"instance_id"`
-	RemoteID   string `json:"remote_id"`
+	// InstanceID and RemoteID come from the path on the single-item routes,
+	// and nested world books take their parent's instance.
+	InstanceID int64  `json:"instance_id" required:"false"`
+	RemoteID   string `json:"remote_id" required:"false"`
 	// AppHash is the comparison's app_hash; a different live copy is stale.
-	AppHash string `json:"app_hash"`
+	AppHash string `json:"app_hash" required:"false"`
 	// BaseRevisionID is the comparison's head_revision_id; a moved head is stale.
-	BaseRevisionID int64 `json:"base_revision_id"`
+	BaseRevisionID int64 `json:"base_revision_id" required:"false"`
 	// AcceptedHash is the comparison's accepted_hash, empty for an item that
 	// wasn't bound to the card; a binding that changed since is stale.
-	AcceptedHash string `json:"accepted_hash"`
+	AcceptedHash string `json:"accepted_hash" required:"false"`
 	Action       string `json:"action" enum:"bind,import,skip"`
 	// CardID is any library card or lorebook for bind; 0 means the bound one.
 	CardID int64 `json:"card_id,omitempty"`

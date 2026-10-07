@@ -22,12 +22,13 @@ const snap: Snapshot = {
       lorebooks: [{ remote_id: "w1", name: "Ann's world", app_hash: "h1", verdict: "new", options: [{ action: "import" }, { action: "skip" }], suggested: { action: "import" } }],
     },
     { remote_id: "b", name: "Bo", app_hash: "hb", verdict: "new", options: [{ action: "import" }, { action: "skip" }], suggested: { action: "import" } },
-    { remote_id: "c", name: "", app_hash: "", verdict: "error", error: "bad JSON", options: null },
+    { remote_id: "c", name: "", app_hash: "", verdict: "error", error: "bad JSON", options: [{ action: "skip" }] },
+    { remote_id: "d", name: "Di", app_hash: "hd", verdict: "bound", options: [{ action: "skip" }], suggested: { action: "skip" } },
   ],
   lorebooks: [{ remote_id: "w", name: "World", app_hash: "hw", verdict: "likely", options: [{ action: "bind", card_id: 9 }, { action: "skip" }], suggested: { action: "bind", card_id: 9 } }],
   missing: [4],
   unpushed: [5, 6],
-  totals: { exact: 1, new: 2, error: 1, likely: 1 },
+  totals: { exact: 1, new: 2, error: 1, likely: 1, bound: 1 },
 };
 const job = { id: 5, kind: "target.reconcile", status: "succeeded", instance_id: 3, created_at: now, payload: {}, progress: snap, attempts: 1, max_attempts: 3, run_after: now };
 const cmp = { instance_id: 3, remote_id: "a", card_id: 1, head_revision_id: 118, accepted_hash: "", base: "none", app_hash: "ha", fields: [] };
@@ -77,7 +78,9 @@ test("lists each app item with its match and suggestion", async () => {
 test("verdict chips filter the rows", async () => {
   renderQueue();
   await userEvent.click(await screen.findByRole("button", { name: "new 2" }));
-  expect(screen.queryByRole("link", { name: "Ann" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "World" })).not.toBeInTheDocument();
+  // Ann stays: her nested world book is new.
+  expect(screen.getByRole("link", { name: "Ann" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Bo" })).toBeInTheDocument();
 });
 
@@ -94,6 +97,7 @@ test("Apply sends the checked rows as picked, comparing each bind", async () => 
     ]),
   );
   expect(await screen.findByText(/Job 9 started/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Applied" })).toBeDisabled();
 });
 
 test("a running reconcile shows its progress", async () => {
@@ -101,4 +105,14 @@ test("a running reconcile shows its progress", async () => {
   renderQueue();
   expect(await screen.findByText(/2 of 9/)).toBeInTheDocument();
   expect(within(document.body).queryByRole("table")).not.toBeInTheDocument();
+});
+
+test("bound and error rows start unchecked; picking an action checks the row", async () => {
+  renderQueue();
+  const user = userEvent.setup();
+  expect(await screen.findByRole("checkbox", { name: "Apply Di" })).not.toBeChecked();
+  const bad = screen.getByRole("checkbox", { name: "Apply c" });
+  expect(bad).toBeDisabled();
+  await user.selectOptions(screen.getByRole("combobox", { name: "Action for c" }), "skip");
+  expect(bad).toBeChecked();
 });

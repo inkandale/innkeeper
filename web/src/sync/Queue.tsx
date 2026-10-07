@@ -61,15 +61,23 @@ export function Queue() {
     const key = picks[rowKey(r)] ?? (r.item.suggested && optionKey(r.item.suggested));
     return (r.item.options ?? []).find((o) => optionKey(o) === key);
   };
-  const isChecked = (r: Row) => !!pickOf(r) && (checked[rowKey(r)] ?? (!!r.item.suggested && !r.item.auto_bound));
-  const chosen = all.filter(isChecked);
-  const shown = all.filter((r) => !verdict || r.item.verdict === verdict || (verdict === "auto_bound" && r.item.auto_bound));
+  const isChecked = (r: Row) => !!pickOf(r) && (checked[rowKey(r)] ?? (!!r.item.suggested && !r.item.auto_bound && r.item.verdict !== "bound"));
+  const shown = all.filter(
+    (r) =>
+      !verdict ||
+      r.item.verdict === verdict ||
+      (verdict === "auto_bound" && r.item.auto_bound) ||
+      r.item.lorebooks?.some((lb) => lb.verdict === verdict),
+  );
+  const chosen = shown.filter(isChecked);
   const instance = snap?.params.instance_id ?? 0;
 
   const apply = useMutation({
     mutationFn: async () => {
       const resolutions = await bulkResolutions(instance, chosen, (r) => pickOf(r)!, (r, card) =>
-        compareItem(instance, r.kind, r.item.remote_id, card),
+        compareItem(instance, r.kind, r.item.remote_id, card).catch((e: Error) => {
+          throw new Error(`${r.item.name || r.item.remote_id}: ${e.message}`);
+        }),
       );
       return must(await api.POST("/resolutions", { body: { resolutions } }));
     },
@@ -154,12 +162,18 @@ export function Queue() {
                       </td>
                       <td>
                         {!!it.options?.length && (
+                          <>
                           <OptionSelect
                             item={it}
                             value={pickOf(r)}
                             label={`Action for ${name}`}
-                            onChange={(key) => setPicks({ ...picks, [rowKey(r)]: key })}
+                            onChange={(key) => {
+                              setPicks({ ...picks, [rowKey(r)]: key });
+                              setChecked({ ...checked, [rowKey(r)]: true });
+                            }}
                           />
+                          {it.suggested?.why && <div className="muted">{it.suggested.why}</div>}
+                          </>
                         )}
                       </td>
                     </tr>
@@ -177,8 +191,8 @@ export function Queue() {
               })}
             </tbody>
           </table>
-          <button className="button primary" disabled={!chosen.length || apply.isPending} onClick={() => apply.mutate()}>
-            Apply {chosen.length} suggested
+          <button className="button primary" disabled={!chosen.length || apply.isPending || apply.isSuccess} onClick={() => apply.mutate()}>
+            {apply.isSuccess ? "Applied" : `Apply ${chosen.length} suggested`}
           </button>
           <p className="muted">World books under a character take their suggestion. Open a character to choose for them.</p>
         </>

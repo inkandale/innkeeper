@@ -30,7 +30,7 @@ beforeEach(() => {
       if (u.pathname === "/api/search")
         return json({
           hits: [], total: 10,
-          facets: { targets: [{ instance: 2, is: "in_sync", cards: 5 }, { instance: 2, is: "ahead", cards: 3 }, { instance: 2, is: "diverged", cards: 1 }] },
+          facets: { targets: [{ instance: 2, is: "in_sync", cards: 5 }, { instance: 2, is: "ahead", cards: 3 }, { instance: 2, is: "diverged", cards: 1 }, { instance: 2, is: "missing", cards: 2 }, { instance: 2, is: "cant_check", cards: 4 }] },
         });
       if (u.pathname === "/api/jobs" && u.searchParams.get("kind") === "target.reconcile")
         return json([{ id: 5, instance_id: 2, kind: "target.reconcile", status: "succeeded", created_at: now, payload: {}, progress: {} }]);
@@ -62,7 +62,7 @@ function renderSync() {
 test("lists target apps with their counts and last reconcile", async () => {
   renderSync();
   const row = await screen.findByRole("row", { name: /Lumiverse/ });
-  expect(within(row).getAllByRole("cell").map((c) => c.textContent).slice(0, 5)).toEqual(["Lumiverse", "lumiverse", "5", "3", "1"]);
+  expect(within(row).getAllByRole("cell").map((c) => c.textContent).slice(0, 6)).toEqual(["Lumiverse", "lumiverse", "5", "3", "3", "4"]);
   expect(within(row).getByRole("link", { name: /ago/ })).toHaveAttribute("href", "/sync/reconciles/5");
   expect(screen.queryByText("Cards folder")).not.toBeInTheDocument();
 });
@@ -75,6 +75,7 @@ test("Push all ahead asks again with the count", async () => {
   await waitFor(() =>
     expect(posts).toEqual([{ path: "/api/pushes", body: { instance_id: 2, query: { filter: { target_state: { instance: 2, is: "ahead" } } } } }]),
   );
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Push all ahead" })).not.toBeInTheDocument());
 });
 
 test("Reconcile starts a run and opens its queue", async () => {

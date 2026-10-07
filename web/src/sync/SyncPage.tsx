@@ -13,6 +13,8 @@ export function Sync() {
   const toast = useToast();
   // The instance whose Push all ahead waits for a second click.
   const [arming, setArming] = useState<number>();
+  // Instances already pushed this visit; counts take a while to refresh.
+  const [pushed, setPushed] = useState<number[]>([]);
   const instances = useQuery({ queryKey: ["instances"], queryFn: async () => must(await api.GET("/instances")) });
   const plugins = useQuery({ queryKey: ["plugins"], queryFn: async () => must(await api.GET("/plugins")) });
   const facets = useQuery({
@@ -35,8 +37,9 @@ export function Sync() {
   const pushAhead = useMutation({
     mutationFn: async (instance: number) =>
       must(await api.POST("/pushes", { body: { instance_id: instance, query: { filter: { target_state: { instance, is: "ahead" } } } } })),
-    onSuccess: (j) => {
+    onSuccess: (j, instance) => {
       setArming(undefined);
+      setPushed((p) => [...p, instance]);
       toast({ text: `Job ${j.id} started`, link: { to: `/settings/jobs/${j.id}`, label: "View job" } });
     },
     onError: (e) => toast({ text: e.message, error: true }),
@@ -51,6 +54,7 @@ export function Sync() {
           No target apps yet. Add one in <Link to="/settings/plugins">Settings</Link>.
         </p>
       )}
+      {[facets, runs].map((q, n) => q.isError && <p key={n} className="error">{q.error.message}</p>)}
       {!!targets.length && (
         <table>
           <thead>
@@ -71,20 +75,23 @@ export function Sync() {
             {targets.map((i) => {
               const c = stateCounts(facets.data?.facets?.targets, i.id);
               const last = runs.data?.find((j) => j.instance_id === i.id);
+              const wait = facets.isPending;
               const can = caps.get(i.plugin) ?? [];
               return (
                 <tr key={i.id}>
                   <td>{i.name}</td>
                   <td>{i.plugin}</td>
-                  <td>{c.in_sync}</td>
-                  <td>{c.ahead}</td>
-                  <td>{c.drifted + c.missing}</td>
-                  <td>{c.cant_check}</td>
+                  <td>{wait ? "…" : c.in_sync}</td>
+                  <td>{wait ? "…" : c.ahead}</td>
+                  <td>{wait ? "…" : c.drifted + c.missing}</td>
+                  <td>{wait ? "…" : c.cant_check}</td>
                   <td>
                     {last ? (
                       <Link to={`/sync/reconciles/${last.id}`}>
                         {age(last.created_at)} ago{last.status !== "succeeded" && ` (${last.status})`}
                       </Link>
+                    ) : runs.isPending ? (
+                      "…"
                     ) : (
                       "Never"
                     )}
@@ -95,10 +102,10 @@ export function Sync() {
                         Reconcile
                       </button>
                     )}
-                    {can.includes("push") && c.ahead > 0 &&
+                    {can.includes("push") && c.ahead > 0 && !pushed.includes(i.id) &&
                       (arming === i.id ? (
                         <>
-                          <button className="button primary" disabled={pushAhead.isPending} onClick={() => pushAhead.mutate(i.id)}>
+                          <button className="button primary" autoFocus disabled={pushAhead.isPending} onClick={() => pushAhead.mutate(i.id)}>
                             Push {c.ahead} ahead card{c.ahead === 1 ? "" : "s"}
                           </button>
                           <button className="button" onClick={() => setArming(undefined)}>

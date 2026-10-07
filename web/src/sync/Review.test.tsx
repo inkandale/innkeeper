@@ -50,10 +50,12 @@ const bookCmp = {
   fields: [{ path: "description", kind: "prose", hunks: [{ id: "description#0", status: "conflict", library: "x", app: "y" }] }],
 };
 
+let progress: Snapshot;
 let compares: string[];
 let resolved: unknown[];
 let stale: boolean;
 beforeEach(() => {
+  progress = snap;
   compares = [];
   resolved = [];
   stale = false;
@@ -61,7 +63,7 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (req: Request) => {
       const u = new URL(req.url);
-      if (u.pathname === "/api/jobs/5") return json(job);
+      if (u.pathname === "/api/jobs/5") return json({ ...job, progress });
       if (u.pathname === "/api/instances/3/items/a/compare") {
         compares.push(u.searchParams.get("card_id")!);
         return json({ ...cardCmp, card_id: Number(u.searchParams.get("card_id")) });
@@ -147,4 +149,42 @@ test("a drift review compares with the named card", async () => {
   renderReview("/sync/3/items/a?card=1");
   expect(await screen.findByRole("region", { name: "a" })).toBeInTheDocument();
   await waitFor(() => expect(compares).toEqual(["1"]));
+});
+
+test("an error item can only be skipped", async () => {
+  progress = { ...snap, items: [{ remote_id: "a", name: "Ann", app_hash: "ha", verdict: "error", error: "boom", options: [{ action: "skip" }] }] };
+  renderReview();
+  const actions = await screen.findByRole("radiogroup", { name: "Action" });
+  expect(within(actions).getAllByRole("radio")).toHaveLength(1);
+  expect(within(actions).getByLabelText("Skip")).toBeChecked();
+});
+
+test("a bound item with no suggestion defaults to Bind", async () => {
+  const { suggested: _, lorebooks: __, ...ann } = snap.items![0]!;
+  progress = { ...snap, items: [{ ...ann, verdict: "bound" }] };
+  renderReview();
+  expect(within(await screen.findByRole("radiogroup", { name: "Action" })).getByLabelText("Bind")).toBeChecked();
+});
+
+test("Skip sends no choices and no world books", async () => {
+  renderReview();
+  const user = userEvent.setup();
+  await screen.findByRole("radiogroup", { name: "Keep for description#1" });
+  await user.click(within(screen.getByRole("radiogroup", { name: "Action" })).getByLabelText("Skip"));
+  await user.click(screen.getByRole("button", { name: "Resolve" }));
+  await screen.findByText("Queue page");
+  expect(resolved).toEqual([{ remote_id: "a", app_hash: "h2", action: "skip" }]);
+});
+
+test("Other match then Resolve binds to the found card", async () => {
+  renderReview();
+  const user = userEvent.setup();
+  await user.type(await screen.findByRole("textbox", { name: "Other match" }), "Bel");
+  await user.click(screen.getByRole("button", { name: "Search" }));
+  await user.click(await screen.findByRole("button", { name: "Belle" }));
+  const resolve = screen.getByRole("button", { name: "Resolve" });
+  await waitFor(() => expect(resolve).toBeEnabled());
+  await user.click(resolve);
+  await screen.findByText("Queue page");
+  expect(resolved).toEqual([expect.objectContaining({ action: "bind", card_id: 77 })]);
 });

@@ -1,6 +1,6 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, ApiError, must, thumb } from "../api/client";
 import type { components } from "../api/schema";
 import { show } from "../card/draft";
@@ -169,6 +169,7 @@ export function Review() {
   const [search, setSearch] = useSearchParams();
   const jobId = Number(search.get("job")) || 0;
   const navigate = useNavigate();
+  const location = useLocation();
   const qc = useQueryClient();
   const toast = useToast();
 
@@ -184,7 +185,10 @@ export function Review() {
     Number(search.get("card")) || (suggested?.action === "bind" ? suggested.card_id : item?.candidates?.[0]?.card_id) || 0;
 
   const [action, setAction] = useState<Option["action"]>();
-  const act = action ?? (!item || suggested?.action === "bind" ? "bind" : (suggested?.action ?? "import"));
+  // Only the snapshot's options are offered: an error item can only be skipped, and a bound one shouldn't default to a duplicate import.
+  const actions = (["bind", "import", "skip"] as const).filter((a) => !item || (item.options ?? []).some((o) => o.action === a));
+  const act =
+    action ?? suggested?.action ?? (!item || item.verdict === "bound" ? "bind" : (actions[0] ?? "skip"));
   const [choices, setChoices] = useState<Choices>({});
   const nested = kind === "items" ? (item?.lorebooks ?? []) : [];
   const [nestedPicks, setNestedPicks] = useState<Record<string, string>>({});
@@ -220,12 +224,13 @@ export function Review() {
       },
       { replace: true },
     );
+    setAction("bind");
     setChoices({});
   };
 
   const resolve = useMutation({
     mutationFn: async () => {
-      const body = resolution(remoteId, item?.app_hash ?? cmp.data?.app_hash ?? "", act, cmp.data, choices);
+      const body = resolution(remoteId, cmp.data?.app_hash ?? item?.app_hash ?? "", act, cmp.data, choices);
       const books = nested.flatMap((lb, i) => {
         const o = nestedPick(lb);
         return o ? [resolution(lb.remote_id, lb.app_hash, o.action, nestedCmps[i]?.data, nestedChoices[lb.remote_id])] : [];
@@ -237,6 +242,8 @@ export function Review() {
       void qc.invalidateQueries({ queryKey: ["search"] });
       toast({ text: `Resolved ${item?.name || remoteId}. Push to send the library's side to the app.` });
       if (jobId) navigate(`/sync/reconciles/${jobId}`);
+      // Opened directly, there's no history entry to go back to.
+      else if (location.key === "default") navigate("/sync");
       else navigate(-1);
     },
     onError: (e) => {
@@ -246,14 +253,17 @@ export function Review() {
         setNestedChoices({});
         void qc.invalidateQueries({ queryKey: ["compare", instance] });
       }
-      toast({ text: e.message, error: true });
+      // Nested world book imports carry the snapshot's hash, which only a new reconcile refreshes.
+      const more = e instanceof ApiError && e.status === 409 ? " If this keeps happening, run Reconcile again." : "";
+      toast({ text: e.message + more, error: true });
     },
   });
 
   const ready =
-    (act !== "bind" || !!cmp.data) &&
-    (!!item || !!cmp.data) &&
-    nested.every((lb, i) => nestedPick(lb)?.action !== "bind" || !!nestedCmps[i]?.data);
+    act === "skip" ||
+    ((act !== "bind" || !!cmp.data) &&
+      (!!item || !!cmp.data) &&
+      nested.every((lb, i) => nestedPick(lb)?.action !== "bind" || !!nestedCmps[i]?.data));
   const name = item?.name || remoteId;
 
   if (jobId && job.isPending) return <p className="page">Loading…</p>;
@@ -266,7 +276,7 @@ export function Review() {
           <h1>{name}</h1>
           {item && <span className="muted">{item.verdict}</span>}
           <span className="row" role="radiogroup" aria-label="Action">
-            {(["bind", "import", "skip"] as const).map((a) => (
+            {actions.map((a) => (
               <label key={a} className="check">
                 <input type="radio" name="action" checked={act === a} onChange={() => setAction(a)} />{" "}
                 {a === "bind" ? "Bind" : a === "import" ? "Import as new" : "Skip"}
@@ -305,7 +315,7 @@ export function Review() {
         ) : !cmp.data ? (
           <p>Comparing…</p>
         ) : (
-          act === "bind" && <Diff scope={remoteId} cmp={cmp.data} choices={choices} onChoose={(id, c) => setChoices({ ...choices, [id]: c })} />
+          act === "bind" && <Diff scope={`${kind === "items" ? "card" : "book"}:${remoteId}`} cmp={cmp.data} choices={choices} onChoose={(id, c) => setChoices({ ...choices, [id]: c })} />
         )}
       </section>
       {act !== "skip" &&
@@ -339,7 +349,7 @@ export function Review() {
               {o?.action === "bind" &&
                 (q?.data ? (
                   <Diff
-                    scope={lb.remote_id}
+                    scope={`book:${lb.remote_id}`}
                     cmp={q.data}
                     choices={own}
                     onChoose={(id, c) => setNestedChoices({ ...nestedChoices, [lb.remote_id]: { ...own, [id]: c } })}

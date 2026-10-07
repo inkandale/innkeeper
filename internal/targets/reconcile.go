@@ -23,24 +23,8 @@ const (
 	VerdictError  = "error"
 )
 
-// ReconcileMatch says which signals make a library card a likely match.
-type ReconcileMatch struct {
-	Name           *bool `json:"name" required:"false"`            // default true
-	TextDistance   *int  `json:"text_distance" required:"false"`   // default 8, 0..32
-	AvatarDistance *int  `json:"avatar_distance" required:"false"` // default 8, 0..32
-}
-
-// ReconcileParams are a reconcile run's settings.
-type ReconcileParams struct {
-	InstanceID int64          `json:"instance_id"`
-	Match      ReconcileMatch `json:"match" required:"false"`
-	// SplitFields is how many core fields must differ before import is
-	// suggested over bind.
-	SplitFields *int `json:"split_fields" required:"false"` // default 3, 1..4
-}
-
 // withDefaults fills unset settings and checks their ranges.
-func (p ReconcileParams) withDefaults() (ReconcileParams, error) {
+func withDefaults(p ReconcileParams) (ReconcileParams, error) {
 	def := func(v *int, d int) *int {
 		if v == nil {
 			return &d
@@ -64,55 +48,6 @@ func (p ReconcileParams) withDefaults() (ReconcileParams, error) {
 		return p, fmt.Errorf("%w: split_fields must be 1 to 4", library.ErrInvalid)
 	}
 	return p, nil
-}
-
-// Snapshot is a finished reconcile run.
-type Snapshot struct {
-	Params    ReconcileParams `json:"params"`
-	Items     []ReconcileItem `json:"items"`     // characters
-	Lorebooks []ReconcileItem `json:"lorebooks"` // world books no character links to
-	Missing   []int64         `json:"missing"`   // card IDs bound here whose app item is gone
-	Unpushed  []int64         `json:"unpushed"`  // card IDs with no binding here
-	Totals    map[string]int  `json:"totals"`    // by verdict, each world book once
-}
-
-// ReconcileItem is one app item and how it lines up with the library.
-type ReconcileItem struct {
-	RemoteID   string          `json:"remote_id"`
-	Name       string          `json:"name"`
-	AppHash    string          `json:"app_hash"`
-	Verdict    string          `json:"verdict" enum:"bound,exact,likely,new,error"`
-	Error      string          `json:"error,omitempty"`
-	BindingID  int64           `json:"binding_id,omitempty"`
-	Candidates []Candidate     `json:"candidates,omitempty"`
-	Options    []Option        `json:"options"`
-	Suggested  *Option         `json:"suggested,omitempty"`
-	Lorebooks  []ReconcileItem `json:"lorebooks,omitempty"`
-	// AutoBound means the run bound this exact match, because the instance
-	// has auto_bind_exact on.
-	AutoBound bool `json:"auto_bound,omitempty"`
-}
-
-// Candidate is a library card or lorebook an app item may be a copy of.
-type Candidate struct {
-	CardID int64  `json:"card_id"` // or the lorebook's ID
-	Name   string `json:"name"`
-	// Reasons are the signals that matched: source, name, and content with
-	// 0; text and avatar with their distance.
-	Reasons map[string]int `json:"reasons"`
-	// DifferingFields counts every field with any non-same hunk, not only the
-	// core fields that decide the suggestion.
-	DifferingFields int `json:"differing_fields"`
-	Conflicts       int `json:"conflicts"`
-	// BoundTo is the remote ID this card is already bound to on the instance.
-	BoundTo string `json:"bound_to,omitempty"`
-}
-
-// Option is one way to resolve an item.
-type Option struct {
-	Action string `json:"action" enum:"bind,import,skip"`
-	CardID int64  `json:"card_id,omitempty"`
-	Why    string `json:"why,omitempty"`
 }
 
 // describeReconcile resolves an instance that can pull, with character_book
@@ -414,7 +349,7 @@ func total(reasons map[string]int) int {
 // Reconcile lines every item in an instance's app up against the library.
 // progress, if set, hears after each item read.
 func (s *Service) Reconcile(ctx context.Context, p ReconcileParams, progress func(done, total int)) (Snapshot, error) {
-	p, err := p.withDefaults()
+	p, err := withDefaults(p)
 	if err != nil {
 		return Snapshot{}, err
 	}

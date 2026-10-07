@@ -38,7 +38,7 @@ func (s *Service) EnqueueResolve(ctx context.Context, q *jobs.Queue, rs []Resolu
 		if r.InstanceID == 0 {
 			return jobs.Job{}, fmt.Errorf("%w: resolution %d: instance_id is required", library.ErrInvalid, i)
 		}
-		if err := r.validate(k); err != nil {
+		if err := validateResolution(r, k); err != nil {
 			return jobs.Job{}, fmt.Errorf("resolution %d: %w", i, err)
 		}
 		children[i] = jobs.Spec{Kind: ResolveKind, InstanceID: &r.InstanceID, Payload: r}

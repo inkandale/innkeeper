@@ -19,36 +19,9 @@ import (
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
-// Resolution decides one app item: bind it to a library card, import it, or
-// skip it.
-type Resolution struct {
-	// InstanceID and RemoteID come from the path on the single-item routes,
-	// and nested world books take their parent's instance.
-	InstanceID int64  `json:"instance_id" required:"false"`
-	RemoteID   string `json:"remote_id" required:"false"`
-	// AppHash is the comparison's app_hash; a different live copy is stale.
-	AppHash string `json:"app_hash" required:"false"`
-	// BaseRevisionID is the comparison's head_revision_id; a moved head is stale.
-	BaseRevisionID int64 `json:"base_revision_id" required:"false"`
-	// AcceptedHash is the comparison's accepted_hash, empty for an item that
-	// wasn't bound to the card; a binding that changed since is stale.
-	AcceptedHash string `json:"accepted_hash" required:"false"`
-	Action       string `json:"action" enum:"bind,import,skip"`
-	// CardID is any library card or lorebook for bind; 0 means the bound one.
-	CardID int64 `json:"card_id,omitempty"`
-	// Choices maps hunk IDs, and avatar, to a choice.
-	Choices map[string]merge.Choice `json:"choices,omitempty"`
-	// Default is the choice for hunks not in Choices; empty means library.
-	Default   merge.Choice `json:"default,omitempty"`
-	Lorebooks []Resolution `json:"lorebooks,omitempty"`
-	// Kind says whether a top-level item in a bulk resolve is a card or a
-	// world book; empty means card. Nested items are world books.
-	Kind string `json:"kind,omitempty" enum:"card,lorebook"`
-}
-
 // validate checks a resolution's shape, and its nested ones', before
 // anything is read.
-func (r Resolution) validate(k kind) error {
+func validateResolution(r Resolution, k kind) error {
 	bad := func(msg string) error { return fmt.Errorf("%w: %s: %s", library.ErrInvalid, r.RemoteID, msg) }
 	switch {
 	case r.RemoteID == "":
@@ -66,7 +39,7 @@ func (r Resolution) validate(k kind) error {
 		return bad("a world book has no nested world books")
 	}
 	for _, n := range r.Lorebooks {
-		if err := n.validate(lorebookKind); err != nil {
+		if err := validateResolution(n, lorebookKind); err != nil {
 			return err
 		}
 	}
@@ -185,7 +158,7 @@ func (e *staleItem) fresh(ctx context.Context, s *Service) error {
 // item applies one resolution, its world books first.
 func (rs *resolver) item(ctx context.Context, k kind, r Resolution) (ResolveResult, error) {
 	res := ResolveResult{RemoteID: r.RemoteID, Action: r.Action}
-	if err := r.validate(k); err != nil {
+	if err := validateResolution(r, k); err != nil {
 		return res, err
 	}
 	if r.Action == "skip" {
@@ -325,7 +298,7 @@ func (rs *resolver) suggested(ctx context.Context, inst pluginhost.Instance, inf
 		}
 		rs.index = &idx
 	}
-	p, err := ReconcileParams{InstanceID: instanceID}.withDefaults()
+	p, err := withDefaults(ReconcileParams{InstanceID: instanceID})
 	if err != nil {
 		return Resolution{}, err
 	}

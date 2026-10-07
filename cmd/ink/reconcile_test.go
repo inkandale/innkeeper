@@ -79,6 +79,16 @@ func TestResolveCmd(t *testing.T) {
 	}
 }
 
+func TestResolveRemoteIDWithEquals(t *testing.T) {
+	got := stubAPI(t, nil)
+	if _, err := runInk(t, "sync", "resolve", "3", "a=b.png", "skip"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix((*got)[0], "POST /instances/3/items/a=b.png/resolve ") {
+		t.Fatalf("request = %q", (*got)[0])
+	}
+}
+
 func TestSyncApply(t *testing.T) {
 	snap, _ := json.Marshal(wire.Snapshot{Params: wire.ReconcileParams{InstanceID: 3}, Items: []wire.ReconcileItem{
 		{RemoteID: "r1", AppHash: "h1", Verdict: "exact", Suggested: &wire.Option{Action: "bind", CardID: 12}},

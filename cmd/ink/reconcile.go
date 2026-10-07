@@ -125,8 +125,9 @@ keep_in_app, and both (list hunks only).`,
 		Args:    cobra.MinimumNArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			r := wire.Resolution{Choices: map[string]merge.Choice{}, Default: merge.Choice(def)}
-			var pos []string
-			for _, a := range args {
+			// The first three are always positional, so a remote ID may contain "=".
+			pos := slices.Clone(args[:3])
+			for _, a := range args[3:] {
 				if hunk, choice, ok := strings.Cut(a, "="); ok {
 					r.Choices[hunk] = merge.Choice(choice)
 				} else {

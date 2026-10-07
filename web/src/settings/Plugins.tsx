@@ -19,7 +19,8 @@ export function Plugins() {
   const failed = remove.error ?? plugins.error ?? instances.error;
   const all = instances.data ?? [];
   const names = new Set((plugins.data ?? []).map((p) => p.name));
-  const orphans = all.filter((i) => !names.has(i.plugin));
+  // Until the plugins load, every instance would look orphaned.
+  const orphans = plugins.data ? all.filter((i) => !names.has(i.plugin)) : [];
 
   const table = (list: InstanceInfo[]) =>
     list.length > 0 && (
@@ -43,7 +44,7 @@ export function Plugins() {
                 <button
                   className="button"
                   aria-label={`Delete ${i.name}`}
-                  onClick={() => confirm(`Delete ${i.name}? Its jobs stay.`) && remove.mutate(i.id)}
+                  onClick={() => confirm(`Delete ${i.name}? Its jobs stay, and logins through it end.`) && remove.mutate(i.id)}
                 >
                   Delete
                 </button>

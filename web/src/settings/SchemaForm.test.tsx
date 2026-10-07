@@ -47,7 +47,7 @@ test("clearing a field removes its key", async () => {
   render(<Harness schema={schema} initial={{ url: "x", port: 1 }} />);
   await user.clear(screen.getByLabelText("Server URL"));
   await user.clear(screen.getByLabelText("Port"));
-  expect(value()).toEqual({});
+  expect(value()).toBeNull();
 });
 
 test("bad JSON keeps the last good value and blocks the submit", () => {
@@ -61,4 +61,18 @@ test("bad JSON keeps the last good value and blocks the submit", () => {
 test("a value of the wrong type is shown as JSON", () => {
   render(<Harness schema={schema} initial={{ port: "eighty" }} />);
   expect(screen.getByLabelText("Port")).toHaveValue('"eighty"');
+});
+
+test("a decimal in an integer field keeps the number input", async () => {
+  const user = userEvent.setup();
+  render(<Harness schema={schema} initial={{}} />);
+  await user.type(screen.getByLabelText("Port"), "1.5");
+  expect(screen.getByLabelText("Port")).toHaveAttribute("type", "number");
+});
+
+test("clearing a nested object's last field removes the object", async () => {
+  const user = userEvent.setup();
+  render(<Harness schema={schema} initial={{ limits: { rate: 2 } }} />);
+  await user.clear(screen.getByLabelText("Rate"));
+  expect(value()).toBeNull();
 });

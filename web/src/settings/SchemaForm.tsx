@@ -36,7 +36,9 @@ export function SchemaForm({ schema, label, value, onChange, required }: Props) 
   const t = schema.type ?? "";
   // A stored value of another type is shown as JSON rather than lost.
   const fit = fits[t];
-  const known = fit !== undefined && (value === undefined || fit(value));
+  // Decided once, so a field doesn't swap kinds mid-typing, as 1.5 in an integer field would.
+  const [fitsAtMount] = useState(() => value === undefined || fit?.(value) === true);
+  const known = fit !== undefined && fitsAtMount;
 
   if (known && t === "object" && schema.properties) {
     const obj = (value ?? {}) as Record<string, unknown>;
@@ -53,7 +55,9 @@ export function SchemaForm({ schema, label, value, onChange, required }: Props) 
             required={schema.required?.includes(k)}
             onChange={(v) => {
               const { [k]: _, ...rest } = obj;
-              onChange(v === undefined ? rest : { ...rest, [k]: v });
+              const next = v === undefined ? rest : { ...rest, [k]: v };
+              // An emptied object is absent, so clearing its fields isn't a config change.
+              onChange(Object.keys(next).length > 0 ? next : undefined);
             }}
           />
         ))}

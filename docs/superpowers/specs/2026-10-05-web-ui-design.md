@@ -219,7 +219,12 @@ reconcile's options and `?card=` for the library side.
   hunks the owner saw.
 - "Other match…" searches the library to bind any card.
 - Resolve calls `POST /api/instances/{id}/items/{remote_id}/resolve`. On a
-  `409`, the app item changed, and the editor reloads it.
+  `409`, the app item or its binding changed, and the editor reloads the
+  comparison.
+- An import sends the snapshot's `binding_id`, since a comparison reopened
+  after an import already names the new binding. After a `409` it sends the
+  reloaded comparison's. A nested world book's import sends the snapshot's
+  until a new reconcile.
 
 A card's drift review opens the same editor for its bound item through the
 compare endpoint.

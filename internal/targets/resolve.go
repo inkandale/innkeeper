@@ -19,7 +19,7 @@ import (
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
-// validate checks a resolution's shape, and its nested ones', before
+// validateResolution checks a resolution's shape, and its nested ones', before
 // anything is read.
 func validateResolution(r Resolution, k kind) error {
 	bad := func(msg string) error { return fmt.Errorf("%w: %s: %s", library.ErrInvalid, r.RemoteID, msg) }

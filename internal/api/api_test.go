@@ -38,6 +38,8 @@ type testEnv struct {
 	srv   *httptest.Server
 	pool  *pgxpool.Pool
 	token string
+	// manifests is the registry's own map, so tests can add plugins to it.
+	manifests map[string]*protocol.Manifest
 	// loginID is a fake login provider whose owner subject is "owner".
 	loginID int64
 	// importID is a fake plugin instance that can import.
@@ -67,11 +69,12 @@ func newEnv(t *testing.T) *testEnv {
 	target := *fake
 	target.Name, target.Capabilities = "target", []string{"push", "pull"}
 	target.Command = []string{fake.Command[0], "-caps=push,pull", "-name=target"}
-	reg := plugins.New(pool, map[string]*protocol.Manifest{"fake": fake, "vault": vault, "target": &target}, store, box)
+	manifests := map[string]*protocol.Manifest{"fake": fake, "vault": vault, "target": &target}
+	reg := plugins.New(pool, manifests, store, box)
 	mgr := pluginhost.NewManager(NoCore, time.Minute, quiet)
 	t.Cleanup(mgr.Close)
 	lib := library.New(pool, store)
-	e := &testEnv{t: t, pool: pool, s: &Server{Lib: lib, Queue: jobs.New(pool), Registry: reg, Auth: auth.New(pool),
+	e := &testEnv{t: t, pool: pool, manifests: manifests, s: &Server{Lib: lib, Queue: jobs.New(pool), Registry: reg, Auth: auth.New(pool),
 		Targets: targets.New(pool, lib, reg, mgr, quiet), Plugins: mgr, Log: quiet}}
 	e.srv = httptest.NewServer(e.s.Handler())
 	t.Cleanup(e.srv.Close)

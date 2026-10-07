@@ -16,7 +16,7 @@ func (e *testEnv) addTheme(name, css string) {
 	if err := os.WriteFile(filepath.Join(dir, "theme.css"), []byte(css), 0o644); err != nil {
 		e.t.Fatal(err)
 	}
-	e.s.Registry.Manifests()[name] = &protocol.Manifest{Name: name, Version: "1.0.0", Protocol: protocol.Version,
+	e.manifests[name] = &protocol.Manifest{Name: name, Version: "1.0.0", Protocol: protocol.Version,
 		Capabilities: []string{"theme"}, Stylesheet: "theme.css", Dir: dir}
 }
 
@@ -91,7 +91,7 @@ func TestUninstalledTheme(t *testing.T) {
 	e := newEnv(t)
 	e.addTheme("dusk", ":root{}")
 	e.call("PATCH", "/settings", map[string]any{"theme": "dusk"}, 200, nil)
-	delete(e.s.Registry.Manifests(), "dusk")
+	delete(e.manifests, "dusk")
 	var settings struct{ Theme string }
 	e.call("GET", "/settings", nil, 200, &settings)
 	if settings.Theme != "" {

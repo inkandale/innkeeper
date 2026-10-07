@@ -15,7 +15,7 @@ import (
 // idempotent and runs at each start, which also repairs a restored database.
 func (r *Registry) ProvisionDatabases(ctx context.Context, dbURL string) error {
 	var names []string
-	for name, m := range r.manifests {
+	for name, m := range r.Manifests() {
 		if m.Database {
 			names = append(names, name)
 		}
@@ -51,9 +51,7 @@ func (r *Registry) ProvisionDatabases(ctx context.Context, dbURL string) error {
 	}
 	dsns := map[string]string{}
 	for _, name := range names {
-		schema := "plugin_" + strings.ReplaceAll(name, "-", "_")
-		// Roles are cluster-wide, so two databases on one server must not share one.
-		role := database + "_" + schema
+		schema, role := dbNames(database, name)
 		if len(role) > 63 {
 			return fmt.Errorf("plugin %s: role name %s is longer than PostgreSQL's 63 bytes", name, role)
 		}
@@ -68,7 +66,9 @@ func (r *Registry) ProvisionDatabases(ctx context.Context, dbURL string) error {
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
+	r.mu.Lock()
 	r.dsns = dsns
+	r.mu.Unlock()
 	return nil
 }
 
@@ -135,3 +135,10 @@ FROM pg_type t
 WHERE t.typnamespace = $1::text::regnamespace AND t.typowner <> $2::text::regrole
 	AND (t.typtype IN ('e', 'd', 'r')
 		OR (t.typtype = 'c' AND (SELECT relkind FROM pg_class WHERE oid = t.typrelid) = 'c'))`
+
+// dbNames returns plugin's schema and login role in database. Roles are
+// cluster-wide, so two databases on one server must not share one.
+func dbNames(database, plugin string) (schema, role string) {
+	schema = "plugin_" + strings.ReplaceAll(plugin, "-", "_")
+	return schema, database + "_" + schema
+}

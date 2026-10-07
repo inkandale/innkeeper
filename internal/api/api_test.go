@@ -76,6 +76,10 @@ func newEnv(t *testing.T) *testEnv {
 	lib := library.New(pool, store)
 	e := &testEnv{t: t, pool: pool, manifests: manifests, s: &Server{Lib: lib, Queue: jobs.New(pool), Registry: reg, Auth: auth.New(pool),
 		Targets: targets.New(pool, lib, reg, mgr, quiet), Plugins: mgr, Log: quiet}}
+	// Keeps tests offline: the default source is on GitHub.
+	if _, err := pool.Exec(ctx, `DELETE FROM plugin_source`); err != nil {
+		t.Fatal(err)
+	}
 	e.srv = httptest.NewServer(e.s.Handler())
 	t.Cleanup(e.srv.Close)
 	if _, e.token, err = e.s.Auth.CreateToken(ctx, "test", tier.Destructive); err != nil {

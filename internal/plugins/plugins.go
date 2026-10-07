@@ -136,18 +136,7 @@ type Dirs struct {
 // don't install. blobs is where plugins write new blobs; box seals instance
 // secrets.
 func New(pool *pgxpool.Pool, manifests map[string]*protocol.Manifest, blobs *blobstore.Store, box *secrets.Box) *Registry {
-	return &Registry{pool: pool, manifests: manifests, blobs: blobs, box: box, gen: -1}
-}
-
-// Open loads the plugins in dirs and provisions their databases. dbURL is the
-// core's database URL, which provisioning needs.
-func Open(ctx context.Context, pool *pgxpool.Pool, dirs Dirs, blobs *blobstore.Store, box *secrets.Box, dbURL string, log *slog.Logger) (*Registry, error) {
-	if err := os.MkdirAll(dirs.Installed, 0o755); err != nil {
-		return nil, err
-	}
-	r := New(pool, nil, blobs, box)
-	r.dirs, r.dbURL, r.log = dirs, dbURL, log
-	r.client = &http.Client{
+	return &Registry{pool: pool, manifests: manifests, blobs: blobs, box: box, gen: -1, client: &http.Client{
 		Timeout: 5 * time.Minute,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if req.URL.Scheme != "https" {
@@ -158,7 +147,17 @@ func Open(ctx context.Context, pool *pgxpool.Pool, dirs Dirs, blobs *blobstore.S
 			}
 			return nil
 		},
+	}}
+}
+
+// Open loads the plugins in dirs and provisions their databases. dbURL is the
+// core's database URL, which provisioning needs.
+func Open(ctx context.Context, pool *pgxpool.Pool, dirs Dirs, blobs *blobstore.Store, box *secrets.Box, dbURL string, log *slog.Logger) (*Registry, error) {
+	if err := os.MkdirAll(dirs.Installed, 0o755); err != nil {
+		return nil, err
 	}
+	r := New(pool, nil, blobs, box)
+	r.dirs, r.dbURL, r.log = dirs, dbURL, log
 	return r, r.Sync(ctx)
 }
 

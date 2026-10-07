@@ -30,8 +30,8 @@ var ErrSourceInUse = errors.New("plugins are installed from this source; uninsta
 
 var pluginName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
 
-// Source is an index.toml that plugins install from.
-type Source struct {
+// PluginSource is an index.toml that plugins install from.
+type PluginSource struct {
 	ID  string `json:"id"`
 	URL string `json:"url"`
 }
@@ -48,16 +48,16 @@ type Installed struct {
 }
 
 // Sources returns the sources, oldest first.
-func (r *Registry) Sources(ctx context.Context) ([]Source, error) {
+func (r *Registry) Sources(ctx context.Context) ([]PluginSource, error) {
 	rows, err := r.pool.Query(ctx, `SELECT id, url FROM plugin_source ORDER BY created_at, id`)
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(rows, pgx.RowToStructByPos[Source])
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[PluginSource])
 }
 
 // AddSource adds an https:// or file:// index to install plugins from.
-func (r *Registry) AddSource(ctx context.Context, s Source) error {
+func (r *Registry) AddSource(ctx context.Context, s PluginSource) error {
 	u, err := url.Parse(s.URL)
 	if err != nil || !(u.Scheme == "https" && u.Host != "" || u.Scheme == "file" && filepath.IsAbs(u.Path)) {
 		return fmt.Errorf("%w: source URL must be https:// or an absolute file:// path", ErrInvalid)

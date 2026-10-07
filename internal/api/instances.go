@@ -20,13 +20,17 @@ type enrichmentOut struct {
 }
 
 type pluginOut struct {
-	Name         string                   `json:"name"`
-	Version      string                   `json:"version"`
-	Capabilities []string                 `json:"capabilities"`
-	Secrets      []string                 `json:"secrets"`
-	Formats      []string                 `json:"formats,omitempty" doc:"File formats a codec plugin reads and writes"`
-	Config       map[string]any           `json:"config,omitempty" doc:"JSON Schema for an instance's config"`
-	Enrichments  map[string]enrichmentOut `json:"enrichments,omitempty"`
+	Name            string                   `json:"name"`
+	Version         string                   `json:"version"`
+	Capabilities    []string                 `json:"capabilities"`
+	Secrets         []string                 `json:"secrets"`
+	Formats         []string                 `json:"formats,omitempty" doc:"File formats a codec plugin reads and writes"`
+	Config          map[string]any           `json:"config,omitempty" doc:"JSON Schema for an instance's config"`
+	Enrichments     map[string]enrichmentOut `json:"enrichments,omitempty"`
+	Source          string                   `json:"source" doc:"Id of the source the plugin was installed from, or builtin"`
+	PreviousSource  *string                  `json:"previous_source,omitempty" doc:"Source of the version a rollback returns to"`
+	PreviousVersion *string                  `json:"previous_version,omitempty" doc:"Version a rollback returns to"`
+	Builtin         bool                     `json:"builtin" doc:"The image ships this plugin, so uninstalling falls back to that copy"`
 }
 
 type pluginsOut struct{ Body []pluginOut }
@@ -69,10 +73,18 @@ func (s *Server) instanceRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{OperationID: "list-plugins", Method: http.MethodGet, Path: "/plugins",
 		Summary: "List installed plugins", Tags: tags},
 		func(ctx context.Context, _ *struct{}) (*pluginsOut, error) {
+			installs, err := s.Registry.Installs(ctx)
+			if err != nil {
+				return nil, s.fail(err)
+			}
 			out := &pluginsOut{Body: []pluginOut{}}
 			for _, m := range s.Registry.Manifests() {
 				p := pluginOut{Name: m.Name, Version: m.Version, Capabilities: m.Capabilities,
-					Secrets: orEmpty(m.Secrets), Formats: m.Formats, Config: m.Config}
+					Secrets: orEmpty(m.Secrets), Formats: m.Formats, Config: m.Config,
+					Source: "builtin", Builtin: s.Registry.IsBuiltin(m.Name)}
+				if in, ok := installs[m.Name]; ok {
+					p.Source, p.PreviousSource, p.PreviousVersion = in.Source, in.PreviousSource, in.PreviousVersion
+				}
 				for k, e := range m.Enrichments {
 					if p.Enrichments == nil {
 						p.Enrichments = map[string]enrichmentOut{}

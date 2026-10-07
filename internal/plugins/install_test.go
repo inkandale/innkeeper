@@ -31,16 +31,16 @@ func folders(t *testing.T, dir string) []string {
 func TestSources(t *testing.T) {
 	ctx := context.Background()
 	reg, _ := openRegistry(t, testdb.New(t))
-	if err := reg.AddSource(ctx, Source{ID: "builtin", URL: "file:///x"}); !errors.Is(err, ErrInvalid) {
+	if err := reg.AddSource(ctx, PluginSource{ID: "builtin", URL: "file:///x"}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("builtin id: %v", err)
 	}
-	if err := reg.AddSource(ctx, Source{ID: "web", URL: "http://example.com/index.toml"}); !errors.Is(err, ErrInvalid) {
+	if err := reg.AddSource(ctx, PluginSource{ID: "web", URL: "http://example.com/index.toml"}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("http URL: %v", err)
 	}
-	if err := reg.AddSource(ctx, Source{ID: "local", URL: "file:///srv/index.toml"}); err != nil {
+	if err := reg.AddSource(ctx, PluginSource{ID: "local", URL: "file:///srv/index.toml"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := reg.AddSource(ctx, Source{ID: "local", URL: "file:///other.toml"}); !errors.Is(err, ErrNameTaken) {
+	if err := reg.AddSource(ctx, PluginSource{ID: "local", URL: "file:///other.toml"}); !errors.Is(err, ErrNameTaken) {
 		t.Fatalf("duplicate id: %v", err)
 	}
 	got, err := reg.Sources(ctx)
@@ -64,7 +64,7 @@ func TestInstallUpdateRollback(t *testing.T) {
 	src := testutil.PluginSource(t,
 		testutil.PluginRelease{Name: "good", Version: "1.0.0"},
 		testutil.PluginRelease{Name: "good", Version: "2.0.0"})
-	if err := reg.AddSource(ctx, Source{ID: "local", URL: src}); err != nil {
+	if err := reg.AddSource(ctx, PluginSource{ID: "local", URL: src}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -107,7 +107,7 @@ func TestInstallRefusesBadArtifacts(t *testing.T) {
 	src := testutil.PluginSource(t,
 		testutil.PluginRelease{Name: "tampered", Version: "1.0.0", SHA256: "00"},
 		testutil.PluginRelease{Name: "future", Version: "1.0.0", Protocol: 99})
-	if err := reg.AddSource(ctx, Source{ID: "local", URL: src}); err != nil {
+	if err := reg.AddSource(ctx, PluginSource{ID: "local", URL: src}); err != nil {
 		t.Fatal(err)
 	}
 	if err := reg.Install(ctx, "local", "tampered", "1.0.0"); !errors.Is(err, ErrSource) {
@@ -138,7 +138,7 @@ func TestSyncSeesOtherProcessInstall(t *testing.T) {
 	api, dirs := openRegistry(t, pool)
 	worker := openWith(t, pool, dirs)
 	src := testutil.PluginSource(t, testutil.PluginRelease{Name: "good", Version: "1.0.0"})
-	if err := api.AddSource(ctx, Source{ID: "local", URL: src}); err != nil {
+	if err := api.AddSource(ctx, PluginSource{ID: "local", URL: src}); err != nil {
 		t.Fatal(err)
 	}
 	if err := api.Install(ctx, "local", "good", "1.0.0"); err != nil {
@@ -175,7 +175,7 @@ func TestUninstallKeepsInstances(t *testing.T) {
 	src := testutil.PluginSource(t,
 		testutil.PluginRelease{Name: "good", Version: "1.0.0"},
 		testutil.PluginRelease{Name: "login", Version: "2.0.0"})
-	if err := reg.AddSource(ctx, Source{ID: "local", URL: src}); err != nil {
+	if err := reg.AddSource(ctx, PluginSource{ID: "local", URL: src}); err != nil {
 		t.Fatal(err)
 	}
 	if err := reg.Install(ctx, "local", "good", "1.0.0"); err != nil {

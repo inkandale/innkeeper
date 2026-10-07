@@ -448,6 +448,76 @@
         },
         "type": "object"
       },
+      "CatalogPluginOut": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "protocol": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "version": {
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "versions",
+          "name",
+          "version",
+          "protocol",
+          "capabilities",
+          "description"
+        ],
+        "type": "object"
+      },
+      "CatalogSourceOut": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "plugins": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogPluginOut"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "source": {
+            "$ref": "#/components/schemas/PluginSource"
+          }
+        },
+        "required": [
+          "source",
+          "plugins"
+        ],
+        "type": "object"
+      },
       "Change": {
         "additionalProperties": false,
         "properties": {
@@ -1311,6 +1381,33 @@
         ],
         "type": "object"
       },
+      "InstallInBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/InstallInBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "source": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "version": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "version"
+        ],
+        "type": "object"
+      },
       "InstanceInfo": {
         "additionalProperties": false,
         "properties": {
@@ -1633,6 +1730,10 @@
       "PluginOut": {
         "additionalProperties": false,
         "properties": {
+          "builtin": {
+            "description": "The image ships this plugin, so uninstalling falls back to that copy",
+            "type": "boolean"
+          },
           "capabilities": {
             "items": {
               "type": "string"
@@ -1666,6 +1767,14 @@
           "name": {
             "type": "string"
           },
+          "previous_source": {
+            "description": "Source of the version a rollback returns to",
+            "type": "string"
+          },
+          "previous_version": {
+            "description": "Version a rollback returns to",
+            "type": "string"
+          },
           "secrets": {
             "items": {
               "type": "string"
@@ -1675,6 +1784,10 @@
               "null"
             ]
           },
+          "source": {
+            "description": "Id of the source the plugin was installed from, or builtin",
+            "type": "string"
+          },
           "version": {
             "type": "string"
           }
@@ -1683,7 +1796,34 @@
           "name",
           "version",
           "capabilities",
-          "secrets"
+          "secrets",
+          "source",
+          "builtin"
+        ],
+        "type": "object"
+      },
+      "PluginSource": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/PluginSource.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "url"
         ],
         "type": "object"
       },
@@ -6493,6 +6633,148 @@
         ]
       }
     },
+    "/plugin-catalog": {
+      "get": {
+        "description": "Reads every source's index. It changes nothing.",
+        "operationId": "plugin-catalog",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CatalogSourceOut"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Check sources for plugins",
+        "tags": [
+          "Plugins"
+        ]
+      }
+    },
+    "/plugin-sources": {
+      "get": {
+        "operationId": "list-plugin-sources",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PluginSource"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List plugin sources",
+        "tags": [
+          "Plugins"
+        ]
+      },
+      "post": {
+        "description": "A source is the https:// or file:// URL of an index.toml. Its plugins run as code inside Innkeeper with their own database role, so add only sources you trust.",
+        "operationId": "add-plugin-source",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PluginSource"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Add a plugin source",
+        "tags": [
+          "Plugins"
+        ]
+      }
+    },
+    "/plugin-sources/{id}": {
+      "delete": {
+        "operationId": "delete-plugin-source",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a plugin source",
+        "tags": [
+          "Plugins"
+        ]
+      }
+    },
     "/plugin-tools": {
       "get": {
         "description": "Instances that are broken, or whose plugin doesn't answer, are left out.",
@@ -6563,6 +6845,121 @@
           }
         },
         "summary": "List installed plugins",
+        "tags": [
+          "Plugins"
+        ]
+      }
+    },
+    "/plugins/{name}": {
+      "delete": {
+        "description": "Removes the plugin's code. Its instances and data stay, and come back if it's installed again.",
+        "operationId": "uninstall-plugin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Uninstall a plugin",
+        "tags": [
+          "Plugins"
+        ]
+      }
+    },
+    "/plugins/{name}/data": {
+      "delete": {
+        "description": "Deletes the plugin's instances, database schema, and role. This can't be undone.",
+        "operationId": "remove-plugin-data",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Remove an uninstalled plugin's data",
+        "tags": [
+          "Plugins"
+        ]
+      }
+    },
+    "/plugins/{name}/install": {
+      "post": {
+        "description": "Installs a version from a source and makes it current. Running jobs finish on the old version. Installing the previous version rolls back without a download.",
+        "operationId": "install-plugin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Install or update a plugin",
         "tags": [
           "Plugins"
         ]

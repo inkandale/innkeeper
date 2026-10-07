@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -77,24 +76,6 @@ func TestParseID(t *testing.T) {
 	}
 }
 
-func TestWatchJob(t *testing.T) {
-	for _, tc := range []struct{ stream, want string }{
-		{"event: job\ndata: {\"status\": \"running\", \"progress\": {}}\n\n: ping\n\n", "running"},
-		{"event: job\ndata: {\"status\": \"failed\"}\n\n", "job failed"},
-		{"event: job\ndata: {\"status\": \"succeeded\"}\n\n", ""},
-	} {
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/event-stream")
-			fmt.Fprint(w, tc.stream)
-		}))
-		err := watchJob(context.Background(), &client{base: srv.URL, token: "tok"}, "1", io.Discard)
-		srv.Close()
-		if tc.want == "" && err != nil || tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)) {
-			t.Fatalf("stream %q: err = %v, want %q", tc.stream, err, tc.want)
-		}
-	}
-}
-
 func TestClientPlainTextError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadGateway)
@@ -104,16 +85,5 @@ func TestClientPlainTextError(t *testing.T) {
 	_, err := (&client{base: srv.URL, token: "tok"}).do(context.Background(), "GET", "/jobs", nil)
 	if err == nil || !strings.Contains(err.Error(), "502 upstream timed out") {
 		t.Fatalf("err = %v", err)
-	}
-}
-
-func TestUsageErrorsNeedNoClient(t *testing.T) {
-	t.Setenv("INNKEEPER_URL", "")
-	t.Setenv("INNKEEPER_TOKEN", "")
-	if err := bulkCmd([]string{"archive"}); err == nil || err.Error() != usage {
-		t.Fatalf("bulk err = %v", err)
-	}
-	if err := jobsCmd([]string{"bogus", "1"}); err == nil || err.Error() != usage {
-		t.Fatalf("jobs err = %v", err)
 	}
 }

@@ -58,7 +58,7 @@ func TestBulkResolveReportsEachItem(t *testing.T) {
 
 func mustJSON2(v any) string { return string(mustMarshal(v)) }
 
-// A suggested import sent twice, as resolve --suggested run twice does,
+// A suggested import sent twice, as ink sync apply run twice does,
 // adds one card.
 func TestBulkResolveRepeatedImportIsStale(t *testing.T) {
 	e := setup(t, nil)

@@ -21,20 +21,7 @@ const usage = `usage:
   innkeeper backup <dir> [assets|config]
   innkeeper restore [--replace] <archive-or-backup-dir>...
 
-API commands (read INNKEEPER_URL and INNKEEPER_TOKEN):
-  innkeeper call <method> <path> [json]
-  innkeeper import <instance-id> [params-json]
-  innkeeper export <card-id> [file [format]]
-  innkeeper bulk archive|unarchive <query-json>
-  innkeeper push <instance-id> <card-id>|<query-json> [--new-copy]
-  innkeeper sources <card-id> [add <url> | remove <source-id>]
-  innkeeper jobs [show|cancel|watch <job-id>]
-  innkeeper reconcile <instance-id> [params-json] [--json]
-  innkeeper compare <instance-id> <remote-id> [card-id]
-  innkeeper resolve <instance-id> <remote-id> bind|import|skip [card-id] [hunk=choice ...] [--default=choice]
-  innkeeper resolve --suggested <reconcile-job-id> [remote-id ...] [--verdict=exact,likely,new]
-
-See README.md for the environment variables each command reads.`
+The API commands moved to the ink client; see README.md.`
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -65,26 +52,6 @@ func run(args []string) error {
 		return backupCmd(rest)
 	case cmd == "restore":
 		return restoreCmd(rest)
-	case cmd == "call":
-		return call(rest)
-	case cmd == "import":
-		return importCmd(rest)
-	case cmd == "export":
-		return export(rest)
-	case cmd == "bulk":
-		return bulkCmd(rest)
-	case cmd == "push":
-		return pushCmd(rest)
-	case cmd == "sources":
-		return sourcesCmd(rest)
-	case cmd == "jobs":
-		return jobsCmd(rest)
-	case cmd == "reconcile":
-		return reconcileCmd(rest)
-	case cmd == "compare":
-		return compareCmd(rest)
-	case cmd == "resolve":
-		return resolveCmd(rest)
 	}
 	return errors.New(usage)
 }

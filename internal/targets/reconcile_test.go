@@ -48,7 +48,7 @@ func (e *env) reconcile(p ReconcileParams, remoteIDs ...string) map[string]Recon
 
 func (e *env) tryReconcile(p ReconcileParams, remoteIDs ...string) (map[string]ReconcileItem, error) {
 	e.t.Helper()
-	p, err := p.withDefaults()
+	p, err := withDefaults(p)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +157,7 @@ func TestReconcileVerdicts(t *testing.T) {
 }
 
 func TestReconcileParams(t *testing.T) {
-	p, err := ReconcileParams{}.withDefaults()
+	p, err := withDefaults(ReconcileParams{})
 	if err != nil || !*p.Match.Name || *p.Match.TextDistance != 8 || *p.Match.AvatarDistance != 8 || *p.SplitFields != 3 {
 		t.Fatalf("defaults = %+v, %v", p, err)
 	}
@@ -167,7 +167,7 @@ func TestReconcileParams(t *testing.T) {
 		{Match: ReconcileMatch{AvatarDistance: &neg}},
 		{SplitFields: &five},
 	} {
-		if _, err := bad.withDefaults(); !errors.Is(err, library.ErrInvalid) {
+		if _, err := withDefaults(bad); !errors.Is(err, library.ErrInvalid) {
 			t.Errorf("%+v: err = %v", bad, err)
 		}
 	}

@@ -40,7 +40,7 @@ What the move touches:
 - MCP dispatches tool calls through the API handler in process. It gets the
   inner mux, so its paths don't change.
 - The CLI keeps `INNKEEPER_URL` as the site root and adds `/api` in its one
-  request function. `innkeeper call PATCH /instances/3` keeps working.
+  request function. `ink call PATCH /instances/3` keeps working.
 - OAuth resource metadata, `docs/`, and the README examples.
 
 Code layout:

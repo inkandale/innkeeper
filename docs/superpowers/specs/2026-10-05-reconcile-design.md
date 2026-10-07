@@ -314,17 +314,17 @@ the library; reconcile resolves the world books.
 
 | Need | API | CLI | MCP |
 |---|---|---|---|
-| Run a reconcile | `POST /reconciles {"instance_id"}` → job | `innkeeper reconcile <instance>` | `start_reconcile` |
-| Read the snapshot | `GET /jobs/{id}` | `innkeeper jobs show <id>` | `get_job` |
-| Compare one pair | `GET /instances/{id}/items/{remote_id}/compare?card_id=` | `innkeeper compare <instance> <remote_id> [card]` | `compare_item` |
-| Resolve one item | `POST /instances/{id}/items/{remote_id}/resolve` | `innkeeper resolve <instance> <remote_id> …` | `resolve_item` |
-| Resolve many | `POST /resolutions` → job, per-item results | `innkeeper resolve --suggested <job>` | `resolve_items` |
-| Auto-bind setting | `PATCH /instances/{id} {"auto_bind_exact"}` | `innkeeper call PATCH /instances/<id> …` | none |
-| List, add, remove sources | `GET`, `PUT`, `DELETE /cards/{id}/sources`, and the same under `/lorebooks/{id}` | `innkeeper sources <card> [add <url> \| remove <id>]` | `list_sources`, `add_source`, `remove_source` |
+| Run a reconcile | `POST /reconciles {"instance_id"}` → job | `ink sync reconcile <instance>` | `start_reconcile` |
+| Read the snapshot | `GET /jobs/{id}` | `ink jobs show --json <id>` | `get_job` |
+| Compare one pair | `GET /instances/{id}/items/{remote_id}/compare?card_id=` | `ink sync compare <instance> <remote_id> [card]` | `compare_item` |
+| Resolve one item | `POST /instances/{id}/items/{remote_id}/resolve` | `ink sync resolve <instance> <remote_id> …` | `resolve_item` |
+| Resolve many | `POST /resolutions` → job, per-item results | `ink sync apply <job>` | `resolve_items` |
+| Auto-bind setting | `PATCH /instances/{id} {"auto_bind_exact"}` | `ink call PATCH /instances/<id> …` | none |
+| List, add, remove sources | `GET`, `PUT`, `DELETE /cards/{id}/sources`, and the same under `/lorebooks/{id}` | `ink cards sources [add\|remove] <card> …` | `list_sources`, `add_source`, `remove_source` |
 
 `card_id` is omitted for a bound item. To start from a library card instead,
 pick the app item from `GET /instances/{id}/items` and resolve it with that
-`card_id`; `POST /cards/{id}/bind` becomes this call with `default: library`. `resolve --suggested <job>` applies
+`card_id`; `POST /cards/{id}/bind` becomes this call with `default: library`. `ink sync apply <job>` applies
 every suggestion in a snapshot, each re-checked live.
 
 ## Testing

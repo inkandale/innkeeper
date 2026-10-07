@@ -11,14 +11,10 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 )
 
-// ReconcileKind is the job kind that lines an app up against the library.
-// Its final progress is the Snapshot; while it runs, {"done", "total"}.
-const ReconcileKind = "target.reconcile"
-
 // EnqueueReconcile queues a reconcile run. Bad params and a target that
 // can't pull are refused here, so no job is queued for them.
 func (s *Service) EnqueueReconcile(ctx context.Context, q *jobs.Queue, p ReconcileParams) (jobs.Job, error) {
-	p, err := p.withDefaults()
+	p, err := withDefaults(p)
 	if err != nil {
 		return jobs.Job{}, err
 	}

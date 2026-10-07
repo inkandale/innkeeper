@@ -10,38 +10,7 @@ import (
 
 	"github.com/davidgibbons/innkeeper/internal/cardhash"
 	"github.com/davidgibbons/innkeeper/internal/library"
-	"github.com/davidgibbons/innkeeper/internal/merge"
 )
-
-// Comparison is one app item set field by field against one library card or
-// lorebook, as a reconcile run sees the pair.
-type Comparison struct {
-	InstanceID int64  `json:"instance_id"`
-	RemoteID   string `json:"remote_id"`
-	CardID     int64  `json:"card_id"` // or the lorebook's ID
-	// HeadRevisionID is the library revision compared; a resolution names it.
-	HeadRevisionID int64 `json:"head_revision_id"`
-	// AcceptedHash is the ancestor binding's accepted_hash, empty when Base
-	// is none; a resolution names it.
-	AcceptedHash string `json:"accepted_hash"`
-	// Base is accepted when the pair is bound and the binding's copy is the
-	// ancestor, none otherwise.
-	Base string `json:"base" enum:"none,accepted"`
-	// AppHash is the projected hash of the app's copy compared here.
-	AppHash string `json:"app_hash"`
-	// BindingID is the item's live binding, 0 when unbound; an import sends it back.
-	BindingID int64         `json:"binding_id,omitempty"`
-	Fields    []merge.Field `json:"fields"`
-	// Avatar is set when the two avatars differ.
-	Avatar *AvatarDiff `json:"avatar,omitempty"`
-}
-
-// AvatarDiff names each side's avatar blob.
-type AvatarDiff struct {
-	Library       string `json:"library,omitempty"` // blob sha256
-	App           string `json:"app,omitempty"`
-	PhashDistance *int   `json:"phash_distance,omitempty"`
-}
 
 // CompareItem compares an app character with a library card. cardID 0 means
 // the card bound to remoteID.

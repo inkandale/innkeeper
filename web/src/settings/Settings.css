@@ -20,13 +20,14 @@
   border-bottom: 2px solid var(--accent);
 }
 
-.jobs {
+.settings table {
   width: 100%;
   border-collapse: collapse;
+  margin-bottom: calc(var(--space) * 2);
 }
 
-.jobs th,
-.jobs td {
+.settings th,
+.settings td {
   padding: calc(var(--space) * 0.75);
   border-bottom: 1px solid var(--border);
   text-align: left;
@@ -44,4 +45,89 @@
 
 .job dd {
   margin: 0;
+}
+
+.plugin {
+  margin-bottom: calc(var(--space) * 3);
+}
+
+.plugin header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space);
+}
+
+.plugin h2 {
+  margin: 0;
+  font-size: 1.1em;
+}
+
+.caps {
+  display: flex;
+  gap: calc(var(--space) * 0.5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.caps li {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 var(--space);
+  font-size: 0.85em;
+}
+
+.plugin header > :last-child {
+  margin-left: auto;
+}
+
+.instance-form,
+.appearance {
+  max-width: 640px;
+}
+
+.form-field {
+  margin-bottom: calc(var(--space) * 1.5);
+}
+
+.form-field > label {
+  display: grid;
+  gap: calc(var(--space) * 0.5);
+}
+
+/* The native required attribute drives the marker. */
+.form-field > label:has(:required) > span::after {
+  content: " *";
+  color: var(--danger);
+}
+
+.schema-object {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 0 0 calc(var(--space) * 1.5);
+}
+
+/* The root config object needs no frame of its own. */
+.instance-form > .schema-object {
+  border: 0;
+  padding: 0;
+}
+
+.created {
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: var(--space);
+  margin-bottom: calc(var(--space) * 2);
+}
+
+.created code {
+  display: block;
+  word-break: break-all;
+  margin-bottom: var(--space);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space);
 }

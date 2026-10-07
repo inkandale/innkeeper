@@ -225,12 +225,15 @@ it.
 
 Four tabs:
 
-- **Plugins**: each plugin with its capabilities and status. Instances can
-  be added, edited, and deleted.
+- **Plugins**: each plugin with its version and capabilities, and its
+  instances with their status. Instances can be added, edited, and deleted.
+  Theme plugins have no instances; they link to Appearance.
   - The settings form is rendered from the manifest's JSON Schema by our own
     renderer, which covers string, number, boolean, enum, and nested
     objects. Anything else is a raw JSON field.
   - Secrets are write-only and show "set" or "not set".
+  - Config, secrets, and the owner are sent only when changed, because
+    changing them ends the instance's logins.
   - A broken instance shows its error.
 - **Jobs**: a table of kind, state, progress, and age, filtered by state.
   The table refreshes every 2 seconds while a job runs, and a job's page
@@ -268,7 +271,8 @@ The cursor stays on `/search` for the CLI and MCP.
 - `401` goes to login. `409` on a save shows the banner above.
 - `502` and `503` from a plugin name the plugin and link to its instance.
 - Lost connection shows an offline bar. TanStack Query retries reads.
-- Unsaved edits are never dropped without asking.
+- Unsaved edits to a card or lorebook are never dropped without asking.
+  Settings forms don't ask yet.
 
 ## Testing
 

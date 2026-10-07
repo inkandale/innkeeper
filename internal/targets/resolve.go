@@ -245,6 +245,10 @@ func (rs *resolver) item(ctx context.Context, k kind, r Resolution) (ResolveResu
 		r.Choices, r.Default, r.AcceptedHash = nil, merge.ChooseKeepInApp, ""
 	}
 	bound, err := rs.bind(ctx, k, info, rinfo, it, r, id)
+	if r.Action == "import" && errors.Is(err, ErrBound) {
+		// A new card can only clash on the item: a concurrent import bound it first.
+		return res, stale
+	}
 	if err != nil {
 		return res, err
 	}

@@ -620,6 +620,27 @@ func TestReconcileReusedRemoteID(t *testing.T) {
 	}
 }
 
+// An item whose only binding is missing has no binding to send back, so an
+// import of it names none.
+func TestReconcileOnlyAMissingBinding(t *testing.T) {
+	e := setup(t, nil)
+	b := e.push(e.card)
+	if _, err := e.pool.Exec(e.ctx, `UPDATE binding SET remote_state = 'missing' WHERE id = $1`, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	it := e.reconcile(ReconcileParams{}, b.RemoteID)[b.RemoteID]
+	if it.Verdict != VerdictBound || it.BindingID != 0 {
+		t.Fatalf("item = %+v", it)
+	}
+	if c := e.compareItem(b.RemoteID, 0); c.BindingID != 0 {
+		t.Errorf("comparison binding = %d", c.BindingID)
+	}
+	res, err := e.s.Resolve(e.ctx, Resolution{InstanceID: e.inst, RemoteID: b.RemoteID, AppHash: it.AppHash, Action: "import"})
+	if err != nil || res.CardID == e.card {
+		t.Fatalf("import: %+v, %v", res, err)
+	}
+}
+
 func TestReconcileCapsCandidates(t *testing.T) {
 	e := setup(t, nil)
 	var want []int64

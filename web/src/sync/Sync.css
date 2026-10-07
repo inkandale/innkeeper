@@ -77,3 +77,11 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Outranks .card-aside h2, since the push preview opens inside the card page's aside. */
+dialog.dialog h2 {
+  font-size: 1.2em;
+  text-transform: none;
+  color: var(--text);
+  margin: 0;
+}

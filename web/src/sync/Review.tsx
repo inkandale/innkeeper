@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, ApiError, must, thumb } from "../api/client";
 import type { components } from "../api/schema";
-import { show } from "../card/draft";
+import { show, text } from "../card/draft";
 import { entryOf } from "../card/History";
 import { useToast } from "../shell/Toasts";
 import {
@@ -277,7 +277,8 @@ export function Review() {
     ((act !== "bind" || !!cmp.data) &&
       (!!item || !!cmp.data) &&
       nested.every((lb, i) => nestedPick(lb)?.action !== "bind" || !!nestedCmps[i]?.data));
-  const name = item?.name || remoteId;
+  // A drift review has no snapshot item, so it takes the library card's name.
+  const name = item?.name || text(cmp.data?.fields?.find((f) => f.path === "name")?.hunks?.map((h) => text(h.library)).join("")) || remoteId;
 
   if (jobId && job.isPending) return <p className="page">Loading…</p>;
   if (job.isError) return <p className="error page">{job.error.message}</p>;

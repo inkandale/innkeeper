@@ -192,7 +192,8 @@ test("Other match compares with any library card", async () => {
 
 test("a drift review compares with the named card", async () => {
   renderReview("/sync/3/items/a?card=1");
-  expect(await screen.findByRole("region", { name: "a" })).toBeInTheDocument();
+  expect(await screen.findByRole("region", { name: "Ann" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Ann");
   await waitFor(() => expect(compares).toEqual(["1"]));
 });
 

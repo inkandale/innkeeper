@@ -113,3 +113,14 @@ test("a login provider edits its owner and warns about sessions", async () => {
   await vi.waitFor(() => expect(sent).toHaveLength(1));
   expect(sent[0]?.body).toEqual({ name: "pw", owner_subject: "" });
 });
+
+test("a config edited back to its old value isn't sent", async () => {
+  const user = userEvent.setup();
+  renderAt("/settings/instances/3");
+  const url = await screen.findByLabelText("Server URL");
+  await user.clear(url);
+  await user.type(url, "http://st");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await vi.waitFor(() => expect(sent).toHaveLength(1));
+  expect(sent[0]?.body).toEqual({ name: "home", auto_bind_exact: true });
+});

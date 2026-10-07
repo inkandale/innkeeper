@@ -1,10 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
 import { api, must, mustOk } from "../api/client";
 import type { components } from "../api/schema";
 
 type Tier = components["schemas"]["Token"]["tier"];
-type Created = components["schemas"]["CreatedToken"];
 const tiers: Tier[] = ["read", "write", "destructive"];
 
 const when = (t?: string) => (t ? new Date(t).toLocaleString() : "never");
@@ -14,14 +12,10 @@ export function Access() {
   const me = useQuery({ queryKey: ["me"], queryFn: async () => must(await api.GET("/auth/me")) });
   const tokens = useQuery({ queryKey: ["tokens"], queryFn: async () => must(await api.GET("/tokens")) });
   const grants = useQuery({ queryKey: ["grants"], queryFn: async () => must(await api.GET("/grants")) });
-  const [created, setCreated] = useState<Created | null>(null);
 
   const create = useMutation({
     mutationFn: async (body: { name: string; tier: Tier }) => must(await api.POST("/tokens", { body })),
-    onSuccess: (t) => {
-      setCreated(t);
-      return qc.invalidateQueries({ queryKey: ["tokens"] });
-    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tokens"] }),
   });
   const revokeToken = useMutation({
     mutationFn: async (id: number) => mustOk(await api.DELETE("/tokens/{id}", { params: { path: { id } } })),
@@ -44,9 +38,10 @@ export function Access() {
         className="toolbar"
         onSubmit={(e) => {
           e.preventDefault();
-          const f = new FormData(e.currentTarget);
-          create.mutate({ name: String(f.get("name")).trim(), tier: f.get("tier") as Tier });
-          e.currentTarget.reset();
+          const form = e.currentTarget;
+          const f = new FormData(form);
+          // Reset only on success, so a refused name stays to fix.
+          create.mutate({ name: String(f.get("name")).trim(), tier: f.get("tier") as Tier }, { onSuccess: () => form.reset() });
         }}
       >
         <input className="input" name="name" required aria-label="Token name" placeholder="Token name" />
@@ -59,14 +54,14 @@ export function Access() {
           Create
         </button>
       </form>
-      {created && (
+      {create.data && (
         <div className="created" role="status">
-          <p>Copy the secret for {created.name} now. It isn't shown again.</p>
-          <code>{created.secret}</code>
-          <button type="button" className="button" onClick={() => navigator.clipboard?.writeText(created.secret)}>
+          <p>Copy the secret for {create.data.name} now. It isn't shown again.</p>
+          <code>{create.data.secret}</code>
+          <button type="button" className="button" onClick={() => navigator.clipboard?.writeText(create.data.secret)}>
             Copy
           </button>
-          <button type="button" className="button" onClick={() => setCreated(null)}>
+          <button type="button" className="button" onClick={() => create.reset()}>
             Done
           </button>
         </div>

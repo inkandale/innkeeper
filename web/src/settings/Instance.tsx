@@ -24,12 +24,21 @@ export function Instance() {
   return <InstanceForm key={inst.data?.id ?? name} plugin={plugin} instance={inst.data} />;
 }
 
+/** canon is v as JSON with object keys sorted, so edits that move a key don't count as changes. */
+function canon(v: unknown): string {
+  return JSON.stringify(v, (_, x) =>
+    x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1))) : x,
+  );
+}
+
 function InstanceForm({ plugin, instance }: { plugin: Plugin; instance?: InstanceInfo }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const toast = useToast();
   const caps = plugin.capabilities ?? [];
   const [config, setConfig] = useState<unknown>(instance?.config ?? {});
+  // What the form started from; a refetch mustn't make an untouched config look changed.
+  const [initial] = useState(() => canon(instance?.config ?? {}));
   // Only typed secrets (a string) and removed ones (null) are sent.
   const [secrets, setSecrets] = useState<Record<string, string | null>>({});
 
@@ -58,7 +67,7 @@ function InstanceForm({ plugin, instance }: { plugin: Plugin; instance?: Instanc
           params: { path: { id: instance.id } },
           body: {
             name,
-            config: JSON.stringify(cfg) !== JSON.stringify(instance.config) ? cfg : undefined,
+            config: canon(cfg) !== initial ? cfg : undefined,
             secrets: hasSecrets ? secrets : undefined,
             owner_subject: owner !== undefined && owner !== (instance.owner_subject ?? "") ? owner : undefined,
             auto_bind_exact: caps.includes("pull") ? form.get("auto_bind_exact") === "on" : undefined,

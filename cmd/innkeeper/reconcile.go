@@ -289,6 +289,7 @@ func resolveCmd(args []string) error {
 			return err
 		}
 		r.CardID, r.AppHash, r.BaseRevisionID, r.AcceptedHash = cmp.CardID, cmp.AppHash, cmp.HeadRevisionID, cmp.AcceptedHash
+		r.BindingID = cmp.BindingID
 	}
 	body, err := json.Marshal(r)
 	if err != nil {
@@ -339,7 +340,7 @@ func resolveSuggested(args []string) error {
 			return nil
 		}
 		r := targets.Resolution{InstanceID: snap.Params.InstanceID, RemoteID: it.RemoteID, Kind: kind,
-			AppHash: it.AppHash, Action: s.Action, CardID: s.CardID}
+			AppHash: it.AppHash, BindingID: it.BindingID, Action: s.Action, CardID: s.CardID}
 		if s.Action == "bind" {
 			// The snapshot doesn't carry the card's head, so a bind reads it
 			// from a comparison; the snapshot's app_hash still guards the app.

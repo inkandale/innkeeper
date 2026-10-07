@@ -28,8 +28,10 @@ type Comparison struct {
 	// ancestor, none otherwise.
 	Base string `json:"base" enum:"none,accepted"`
 	// AppHash is the projected hash of the app's copy compared here.
-	AppHash string        `json:"app_hash"`
-	Fields  []merge.Field `json:"fields"`
+	AppHash string `json:"app_hash"`
+	// BindingID is the item's live binding, 0 when unbound; an import sends it back.
+	BindingID int64         `json:"binding_id,omitempty"`
+	Fields    []merge.Field `json:"fields"`
 	// Avatar is set when the two avatars differ.
 	Avatar *AvatarDiff `json:"avatar,omitempty"`
 }
@@ -68,6 +70,9 @@ func (s *Service) compareItem(ctx context.Context, k kind, instanceID int64, rem
 			return c, ErrNotFound
 		}
 		c.CardID = b.entityID
+	}
+	if b.remoteState != remoteMissing {
+		c.BindingID = b.id
 	}
 	accepted := b.ancestor(c.CardID)
 	if accepted != nil {

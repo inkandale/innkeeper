@@ -58,6 +58,22 @@ func TestBulkResolveReportsEachItem(t *testing.T) {
 
 func mustJSON2(v any) string { return string(mustMarshal(v)) }
 
+// A suggested import sent twice, as resolve --suggested run twice does,
+// adds one card.
+func TestBulkResolveRepeatedImportIsStale(t *testing.T) {
+	e := setup(t, nil)
+	e.appCard("a", map[string]any{"name": "Pell", "description": "A clockwork owl."}, nil)
+	item := e.reconcile(ReconcileParams{InstanceID: e.inst}, "a")["a"]
+	rs := []Resolution{{InstanceID: e.inst, RemoteID: "a", AppHash: item.AppHash, BindingID: item.BindingID, Action: "import"}}
+	if _, out := e.runResolve(rs); out["import"] != 1 {
+		t.Fatalf("first: outcomes %v", out)
+	}
+	cards := e.cardCount()
+	if _, out := e.runResolve(rs); out["stale"] != 1 || e.cardCount() != cards {
+		t.Fatalf("again: outcomes %v, %d cards, want %d", out, e.cardCount(), cards)
+	}
+}
+
 func TestBulkResolveChecksShapeFirst(t *testing.T) {
 	e := setup(t, nil)
 	q := jobs.New(e.pool)

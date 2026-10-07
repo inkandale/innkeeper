@@ -1833,6 +1833,8 @@ export interface components {
             /** @enum {string} */
             base: "none" | "accepted";
             /** Format: int64 */
+            binding_id?: number;
+            /** Format: int64 */
             card_id: number;
             fields: components["schemas"]["Field"][] | null;
             /** Format: int64 */
@@ -2396,6 +2398,8 @@ export interface components {
             app_hash?: string;
             /** Format: int64 */
             base_revision_id?: number;
+            /** Format: int64 */
+            binding_id?: number;
             /** Format: int64 */
             card_id?: number;
             choices?: {

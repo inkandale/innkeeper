@@ -43,7 +43,10 @@ beforeEach(() => {
     vi.fn(async (req: Request) => {
       const path = new URL(req.url).pathname;
       if (path === "/api/search") {
-        searches.push(await req.json());
+        const body = await req.json();
+        searches.push(body);
+        if (body.page?.size === 1 && body.facets?.includes("targets"))
+          return json({ hits: [], total: 1, facets: { targets: [{ instance: 2, is: "ahead", cards: 1 }] } });
         return json(results);
       }
       if (path === "/api/bulk" || path === "/api/pushes") {
@@ -175,6 +178,7 @@ test("push offers only targets that push", async () => {
   await user.click(screen.getByRole("button", { name: "Push" }));
   const target = await screen.findByRole("combobox", { name: "Target" });
   expect(Array.from((target as HTMLSelectElement).options).map((o) => o.text)).toEqual(["Lumiverse"]);
+  expect(await screen.findByText("1 ahead")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Push 1 card" }));
   await waitFor(() => expect(posts[0]).toEqual({ path: "/api/pushes", body: { instance_id: 2, query: { filter: { ids: [8] } } } }));
   expect(posts[0]!.body).not.toHaveProperty("kind");

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { api, must } from "../api/client";
 import type { components } from "../api/schema";
 import { useToast } from "../shell/Toasts";
+import { pushSummary, stateCounts } from "../sync/sync";
 
 type Search = components["schemas"]["Query"];
 type Bulk = components["schemas"]["BulkInBody"];
@@ -57,6 +58,15 @@ export function SelectionBar(props: {
     start.mutate(async () => must(await api.POST("/bulk", { body: { query, ...kindField, ...body } })));
   const collectionId = collection ?? collections.data?.[0]?.id ?? 0;
   const instanceId = instance ?? targets[0]?.id ?? 0;
+  // What the push does to each copy, from the target facet over the same query.
+  const counts = useQuery({
+    enabled: panel === "push",
+    queryKey: ["search", kind, "push-counts", query],
+    queryFn: async () => {
+      const body = { ...query, facets: ["targets"], page: { size: 1 } };
+      return must(kind === "card" ? await api.POST("/search", { body }) : await api.POST("/lorebooks/search", { body }));
+    },
+  });
   const tagList = () => tags.split(",").map((t) => t.trim()).filter(Boolean);
 
   const toggle = (p: Panel) => setPanel(panel === p ? null : p);
@@ -131,6 +141,7 @@ export function SelectionBar(props: {
                 >
                   Push {plural(n)}
                 </button>
+                {counts.data && <span className="muted">{pushSummary(counts.data.total, stateCounts(counts.data.facets?.targets, instanceId))}</span>}
               </>
             ) : (
               <span>No target can take pushes. Add one in Settings.</span>

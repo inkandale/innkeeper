@@ -9,6 +9,9 @@ import { Login } from "./login/Login";
 import { Lorebook } from "./lorebook/Lorebook";
 import { Page } from "./shell/Page";
 import { Shell } from "./shell/Shell";
+import { Queue } from "./sync/Queue";
+import { Review } from "./sync/Review";
+import { Sync } from "./sync/SyncPage";
 import { Access } from "./settings/Access";
 import { Appearance } from "./settings/Appearance";
 import { Instance } from "./settings/Instance";
@@ -57,7 +60,9 @@ export const router = createBrowserRouter([
           { path: "cards/:id", element: <Card /> },
           { path: "cards/:id/history", element: <History /> },
           { path: "collections", element: <Collections /> },
-          { path: "sync", element: <Page title="Sync" /> },
+          { path: "sync", element: <Sync /> },
+          { path: "sync/reconciles/:job", element: <Queue /> },
+          { path: "sync/:instance/:kind/:remoteId", element: <Review /> },
           {
             path: "settings",
             element: <Settings />,

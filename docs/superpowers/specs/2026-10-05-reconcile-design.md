@@ -129,7 +129,8 @@ them: the library's head with this instance's override, limited to the fields
 the target stores, and without `character_book`.
 
 - `bound`: a binding already names this remote ID. Compared against the
-  accepted copy as ancestor. The avatar isn't read.
+  accepted copy as ancestor. The avatar isn't read. A live binding's ID is
+  the item's `binding_id`.
 - `exact`: a library card has the same content hash.
 - `likely`: candidates matched by a shared source, normalized name
   (case-folded, trimmed, spaces collapsed) when `match.name` is on, text
@@ -191,7 +192,7 @@ A resolution decides one app item:
 
 ```json
 { "instance_id": 3, "remote_id": "lv-abc", "app_hash": "…",
-  "base_revision_id": 118, "accepted_hash": "",
+  "base_revision_id": 118, "accepted_hash": "", "binding_id": 0,
   "action": "bind",
   "card_id": 42,
   "choices": { "first_mes#1": "app", "extensions.lumiverse_ui#0": "keep_in_app" },
@@ -210,16 +211,20 @@ A resolution decides one app item:
   instance's override. On a target that keeps world books on their own and
   doesn't list `character_book` among its fields, the card's embedded
   `character_book` is ignored; its linked world books are the nested items.
-  Only `app_hash` is needed.
+  It needs `app_hash` and `binding_id`. If the item's live binding isn't
+  `binding_id`, the import is stale, so sending it twice makes one card.
 - `skip`: do nothing, including the nested world books. The next reconcile
   reports it again.
 
 `card_id` may be any library card, not only a candidate from the snapshot.
 Clients find one with `POST /search` and check it with `compare`.
 
-`app_hash`, `base_revision_id`, and `accepted_hash` come from the comparison.
-`accepted_hash` is empty when the item isn't bound to the card; a missing
-value means empty. `base_revision_id` is required.
+`app_hash`, `base_revision_id`, `accepted_hash`, and `binding_id` come from
+the comparison. `accepted_hash` is empty when the item isn't bound to the
+card; a missing value means empty. `base_revision_id` is required.
+`binding_id` is the item's live binding, `0` or absent when it has none; a
+snapshot item carries it too, for an import without a comparison. Only
+`import` checks it, so splitting a bound item needs its `binding_id`.
 
 `choices` apply only to `bind`, one per hunk. A hunk not named takes `default`.
 In a field or setting this instance overrides, choices change the override,

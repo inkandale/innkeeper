@@ -631,6 +631,10 @@
             ],
             "type": "string"
           },
+          "binding_id": {
+            "format": "int64",
+            "type": "integer"
+          },
           "card_id": {
             "format": "int64",
             "type": "integer"
@@ -2204,6 +2208,10 @@
             "type": "string"
           },
           "base_revision_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "binding_id": {
             "format": "int64",
             "type": "integer"
           },

@@ -1,0 +1,87 @@
+.sync table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: calc(var(--space) * 2);
+}
+
+.sync th,
+.sync td {
+  padding: calc(var(--space) * 0.75);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.sync tr.nested td:nth-child(2) {
+  padding-left: calc(var(--space) * 3);
+}
+
+.chip[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.review {
+  display: grid;
+  gap: var(--space);
+  padding: calc(var(--space) * 2);
+}
+
+.hunk-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space);
+  padding: var(--space) 0;
+  border-top: 1px solid var(--border);
+}
+
+.hunk-pair > .muted,
+.hunk-pair > [role="radiogroup"] {
+  grid-column: 1 / -1;
+}
+
+.hunk-pair h4 {
+  margin: 0;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.hunks.same {
+  color: var(--text-muted);
+}
+
+.nested-item {
+  border-left: 3px solid var(--border);
+  padding-left: var(--space);
+}
+
+.dialog::backdrop {
+  background: rgb(0 0 0 / 0.6);
+}
+
+.dialog[open] {
+  display: grid;
+  gap: var(--space);
+  width: min(720px, 90vw);
+  max-height: 85vh;
+  overflow: auto;
+  padding: calc(var(--space) * 2);
+  color: var(--text);
+  background: var(--surface);
+  border: none;
+  border-radius: var(--radius);
+}
+
+@media (max-width: 640px) {
+  .hunk-pair {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Outranks .card-aside h2, since the push preview opens inside the card page's aside. */
+dialog.dialog h2 {
+  font-size: 1.2em;
+  text-transform: none;
+  color: var(--text);
+  margin: 0;
+}

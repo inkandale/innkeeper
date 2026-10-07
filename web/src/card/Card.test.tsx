@@ -21,6 +21,7 @@ let conflict: boolean;
 // The next avatar PUT gets a 409.
 let avatarConflict: boolean;
 let cardGets: number;
+let bindingStatus: string;
 // A save waits on gate when it's set.
 let gate: Promise<void> | undefined;
 let puts: { path: string; body: unknown }[];
@@ -29,6 +30,7 @@ beforeEach(() => {
   conflict = false;
   avatarConflict = false;
   cardGets = 0;
+  bindingStatus = "ahead";
   gate = undefined;
   puts = [];
   vi.stubGlobal(
@@ -62,7 +64,9 @@ beforeEach(() => {
       }
       if (path === "/api/cards/7/revisions") return json([head.revision]);
       if (path === "/api/cards/7/bindings")
-        return json([{ id: 1, instance_id: 2, remote_id: "r", status: "ahead", ahead: true, remote_state: "unchanged" }]);
+        return json([{ id: 1, instance_id: 2, remote_id: "r", status: bindingStatus, ahead: true, remote_state: "unchanged" }]);
+      if (path === "/api/cards/7/push-preview")
+        return json({ replaces: true, new_copy: false, dropped_fields: [], confirm: "c", changes: [] });
       if (path === "/api/cards/7/sources")
         return json([{ id: 4, kind: "chub", ref: "dg/brakka", url: "https://chub.ai/characters/dg/brakka", linked_by: "user", created_at: now },
           { id: 5, kind: "chub", ref: "dg/evil", url: "javascript:alert(1)", linked_by: "user", created_at: now }]);
@@ -232,4 +236,18 @@ test("an image change that hits a conflict says so and refetches the card", asyn
   await userEvent.upload(await screen.findByLabelText("Replace image"), new File(["png"], "new.png", { type: "image/png" }));
   expect(await screen.findByText("This card changed elsewhere. Try again.")).toBeInTheDocument();
   await waitFor(() => expect(cardGets).toBe(2));
+});
+
+test("a drifted target links to its review", async () => {
+  bindingStatus = "diverged";
+  renderAt("/cards/7");
+  const link = await screen.findByRole("link", { name: "Review" });
+  expect(link).toHaveAttribute("href", "/sync/2/items/r?card=7");
+});
+
+test("Push previews before pushing", async () => {
+  renderAt("/cards/7");
+  await userEvent.click(await screen.findByRole("button", { name: "Push" }));
+  expect(await screen.findByText("The app's copy already matches.")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Confirm push" })).toBeInTheDocument();
 });

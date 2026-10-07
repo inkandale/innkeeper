@@ -7,6 +7,8 @@ import { useToast } from "../shell/Toasts";
 import type { Entity } from "./Card";
 import { Crop } from "./CropDialog";
 import { text, type Data } from "./draft";
+import { PushPreview } from "../sync/PushPreview";
+import { reviewPath } from "../sync/sync";
 import { Collections, Sources, Tags } from "./Organize";
 
 export type PanelProps = {
@@ -71,18 +73,13 @@ export function Archive({ kind, entity }: { kind: Kind; entity: Entity }) {
 
 // Push sends the saved head, so it waits for unsaved edits to be saved.
 export function Push({ kind, id, dirty }: { kind: Kind; id: number; dirty: boolean }) {
-  const toast = useToast();
   const [instance, setInstance] = useState<number>();
+  const [previewing, setPreviewing] = useState(false);
   const instances = useQuery({ queryKey: ["instances"], queryFn: async () => must(await api.GET("/instances")) });
   const plugins = useQuery({ queryKey: ["plugins"], queryFn: async () => must(await api.GET("/plugins")) });
   const pushers = new Set((plugins.data ?? []).filter((p) => p.capabilities?.includes("push")).map((p) => p.name));
   const targets = (instances.data ?? []).filter((i) => pushers.has(i.plugin));
   const instanceId = instance ?? targets[0]?.id ?? 0;
-  const push = useMutation({
-    mutationFn: async () => must(await api.POST(route(kind, "/cards/{id}/push"), { params: { path: { id } }, body: { instance_id: instanceId } })),
-    onSuccess: (j) => toast({ text: `Job ${j.id} started`, link: { to: `/settings/jobs/${j.id}`, label: "View job" } }),
-    onError: (e) => toast({ text: e.message, error: true }),
-  });
   if (!targets.length) return null;
   return (
     <div className="row">
@@ -93,9 +90,18 @@ export function Push({ kind, id, dirty }: { kind: Kind; id: number; dirty: boole
           </option>
         ))}
       </select>
-      <button className="button" disabled={dirty || push.isPending} title={dirty ? "Save first" : undefined} onClick={() => push.mutate()}>
+      <button className="button" disabled={dirty} title={dirty ? "Save first" : undefined} onClick={() => setPreviewing(true)}>
         Push
       </button>
+      {previewing && (
+        <PushPreview
+          kind={kind}
+          id={id}
+          instance={instanceId}
+          name={targets.find((t) => t.id === instanceId)?.name ?? ""}
+          onClose={() => setPreviewing(false)}
+        />
+      )}
     </div>
   );
 }
@@ -115,6 +121,12 @@ export function Sync({ kind, id }: { kind: Kind; id: number }) {
         {bindings.data.map((b) => (
           <li key={b.id}>
             <span className={"badge " + (badgeClass[b.status] ?? "unknown")} aria-hidden="true" /> {name(b.instance_id)}: {b.status.replaceAll("_", " ")}
+            {(b.status === "remote_changed" || b.status === "diverged") && (
+              <>
+                {" "}
+                <Link to={reviewPath(b.instance_id, kind === "card" ? "items" : "lorebook-items", b.remote_id, { card: id })}>Review</Link>
+              </>
+            )}
           </li>
         ))}
       </ul>

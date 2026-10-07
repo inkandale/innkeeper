@@ -20,22 +20,20 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 	"github.com/davidgibbons/innkeeper/internal/secrets"
-	"github.com/davidgibbons/innkeeper/protocol"
 )
 
 // services are what the api and worker both use.
 type services struct {
-	pool      *pgxpool.Pool
-	lib       *library.Library
-	registry  *plugins.Registry
-	manifests map[string]*protocol.Manifest
-	store     *blobstore.Store
-	box       *secrets.Box
-	backups   backup.Settings
+	pool     *pgxpool.Pool
+	lib      *library.Library
+	registry *plugins.Registry
+	store    *blobstore.Store
+	box      *secrets.Box
+	backups  backup.Settings
 }
 
-// openServices reads the settings both services need, loads the installed
-// plugins, and connects to and migrates the database.
+// openServices reads the settings both services need, loads the built-in and
+// installed plugins, and connects to and migrates the database.
 func openServices(ctx context.Context, log *slog.Logger, maxConnsAtLeast int) (*services, error) {
 	cfg := map[string]string{}
 	for _, k := range []string{"INNKEEPER_BLOB_DIR", "INNKEEPER_PLUGINS_DIR"} {
@@ -56,21 +54,18 @@ func openServices(ctx context.Context, log *slog.Logger, maxConnsAtLeast int) (*
 	if err != nil {
 		return nil, err
 	}
-	manifests, err := plugins.LoadDir(cfg["INNKEEPER_PLUGINS_DIR"], log)
-	if err != nil {
-		return nil, err
-	}
 	pool, err := openDB(ctx, maxConnsAtLeast)
 	if err != nil {
 		return nil, err
 	}
 	store := &blobstore.Store{Name: "library", Root: blobDir}
-	registry := plugins.New(pool, manifests, store, box)
-	if err := registry.ProvisionDatabases(ctx, os.Getenv("INNKEEPER_DATABASE_URL")); err != nil {
+	dirs := plugins.Dirs{Builtin: os.Getenv("INNKEEPER_BUILTIN_PLUGINS_DIR"), Installed: cfg["INNKEEPER_PLUGINS_DIR"]}
+	registry, err := plugins.Open(ctx, pool, dirs, store, box, os.Getenv("INNKEEPER_DATABASE_URL"), log)
+	if err != nil {
 		pool.Close()
 		return nil, err
 	}
-	return &services{pool: pool, lib: library.New(pool, store), registry: registry, manifests: manifests,
+	return &services{pool: pool, lib: library.New(pool, store), registry: registry,
 		store: store, box: box, backups: backups}, nil
 }
 

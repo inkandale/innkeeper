@@ -44,7 +44,7 @@ func apiServer() error {
 	}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
-	log.Info("api listening", "addr", listen, "plugins", len(svc.manifests))
+	log.Info("api listening", "addr", listen, "plugins", len(svc.registry.Manifests()))
 	select {
 	case err := <-errc:
 		return err

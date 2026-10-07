@@ -156,6 +156,7 @@ type resolveIn struct {
 	AppHash        string            `json:"app_hash,omitempty" jsonschema:"From compare_item, or the snapshot for an import; not needed to skip"`
 	BaseRevisionID int64             `json:"base_revision_id,omitempty" jsonschema:"For bind: head_revision_id from compare_item"`
 	AcceptedHash   string            `json:"accepted_hash,omitempty" jsonschema:"accepted_hash from compare_item"`
+	BindingID      int64             `json:"binding_id,omitempty" jsonschema:"For import: binding_id from compare_item or the snapshot item; omit for an unbound item"`
 	Choices        map[string]string `json:"choices,omitempty" jsonschema:"Hunk ID, or avatar, to library, app, keep_in_app, or both"`
 	Default        string            `json:"default,omitempty" jsonschema:"The choice for hunks not in choices; default library"`
 	Lorebooks      []map[string]any  `json:"lorebooks,omitempty" jsonschema:"Resolutions for the character's linked world books, shaped like this one; left out ones take their suggestion"`
@@ -355,7 +356,7 @@ var tools = []tool{
 			return c.call(ctx, "POST", "/reconciles", in)
 		}),
 	def("compare_item", "Compare an app item with a library card or lorebook, hunk by hunk. resolve_item needs this reply's app_hash, "+
-		"head_revision_id, and accepted_hash. An unbound item needs an id to compare with.", tier.Read,
+		"head_revision_id, accepted_hash, and binding_id. An unbound item needs an id to compare with.", tier.Read,
 		func(ctx context.Context, c caller, in compareIn) (*sdk.CallToolResult, error) {
 			path, err := itemPath(in.InstanceID, in.Kind, in.RemoteID)
 			if err != nil {

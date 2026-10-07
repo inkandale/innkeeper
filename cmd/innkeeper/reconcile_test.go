@@ -74,7 +74,7 @@ func stubAPI(t *testing.T, replies map[string]string) *[]string {
 
 func TestResolveCmd(t *testing.T) {
 	got := stubAPI(t, map[string]string{
-		"/instances/3/items/a%2Fb.png/compare?card_id=12": `{"remote_id": "a/b.png", "card_id": 12, "head_revision_id": 40, "accepted_hash": "", "app_hash": "h1"}`,
+		"/instances/3/items/a%2Fb.png/compare?card_id=12": `{"remote_id": "a/b.png", "card_id": 12, "head_revision_id": 40, "accepted_hash": "", "app_hash": "h1", "binding_id": 7}`,
 	})
 	if err := resolveCmd([]string{"3", "a/b.png", "bind", "12", "first_mes#1=app", "--default=keep_in_app"}); err != nil {
 		t.Fatal(err)
@@ -91,7 +91,7 @@ func TestResolveCmd(t *testing.T) {
 		t.Fatal(err)
 	}
 	if r.AppHash != "h1" || r.BaseRevisionID != 40 || r.CardID != 12 || r.Action != "bind" ||
-		r.Choices["first_mes#1"] != merge.ChooseApp || r.Default != merge.ChooseKeepInApp {
+		r.BindingID != 7 || r.Choices["first_mes#1"] != merge.ChooseApp || r.Default != merge.ChooseKeepInApp {
 		t.Fatalf("resolution = %+v", r)
 	}
 	for _, args := range [][]string{{"3", "x"}, {"3", "x", "bind", "y"}, {"3", "x", "bind", "--force"}} {
@@ -103,7 +103,7 @@ func TestResolveCmd(t *testing.T) {
 
 func TestResolveSuggested(t *testing.T) {
 	snap, _ := json.Marshal(targets.Snapshot{Params: targets.ReconcileParams{InstanceID: 3}, Items: []targets.ReconcileItem{
-		{RemoteID: "r1", AppHash: "h1", Verdict: "exact", Suggested: &targets.Option{Action: "bind", CardID: 12}},
+		{RemoteID: "r1", AppHash: "h1", Verdict: "exact", BindingID: 7, Suggested: &targets.Option{Action: "bind", CardID: 12}},
 		{RemoteID: "r2", AppHash: "h2", Verdict: "new", Suggested: &targets.Option{Action: "import"}},
 	}})
 	job, _ := json.Marshal(map[string]any{"kind": targets.ReconcileKind, "status": "succeeded", "progress": json.RawMessage(snap)})
@@ -115,7 +115,7 @@ func TestResolveSuggested(t *testing.T) {
 		t.Fatal(err)
 	}
 	post := (*got)[len(*got)-1]
-	want := `POST /resolutions {"resolutions":[{"instance_id":3,"remote_id":"r1","app_hash":"h1","base_revision_id":40,"accepted_hash":"a1","action":"bind","card_id":12,"kind":"card"}]}`
+	want := `POST /resolutions {"resolutions":[{"instance_id":3,"remote_id":"r1","app_hash":"h1","base_revision_id":40,"accepted_hash":"a1","binding_id":7,"action":"bind","card_id":12,"kind":"card"}]}`
 	if post != want {
 		t.Fatalf("post = %s\nwant   %s", post, want)
 	}

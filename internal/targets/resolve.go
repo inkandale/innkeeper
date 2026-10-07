@@ -33,7 +33,10 @@ type Resolution struct {
 	// AcceptedHash is the comparison's accepted_hash, empty for an item that
 	// wasn't bound to the card; a binding that changed since is stale.
 	AcceptedHash string `json:"accepted_hash" required:"false"`
-	Action       string `json:"action" enum:"bind,import,skip"`
+	// BindingID is the item's live binding as the comparison or reconcile saw
+	// it; 0 means it was unbound. An import whose binding changed since is stale.
+	BindingID int64  `json:"binding_id" required:"false"`
+	Action    string `json:"action" enum:"bind,import,skip"`
 	// CardID is any library card or lorebook for bind; 0 means the bound one.
 	CardID int64 `json:"card_id,omitempty"`
 	// Choices maps hunk IDs, and avatar, to a choice.
@@ -233,7 +236,7 @@ func (rs *resolver) item(ctx context.Context, k kind, r Resolution) (ResolveResu
 		}
 	}
 	if r.Action == "import" {
-		if id, r.BaseRevisionID, err = rs.importItem(ctx, k, inst, info, r.InstanceID, r.RemoteID, it); err != nil {
+		if id, r.BaseRevisionID, err = rs.importItem(ctx, k, inst, info, r, it, stale); err != nil {
 			return res, err
 		}
 		res.RevisionID = r.BaseRevisionID
@@ -341,7 +344,7 @@ func (rs *resolver) suggested(ctx context.Context, inst pluginhost.Instance, inf
 			opt = &Option{Action: "bind", CardID: b.entityID}
 		}
 	}
-	n := Resolution{RemoteID: remoteID, Action: opt.Action, AppHash: item.AppHash}
+	n := Resolution{RemoteID: remoteID, Action: opt.Action, AppHash: item.AppHash, BindingID: item.BindingID}
 	if opt.Action == "bind" {
 		c, err := s.compareItem(ctx, lorebookKind, instanceID, remoteID, opt.CardID)
 		if err != nil {
@@ -354,25 +357,35 @@ func (rs *resolver) suggested(ctx context.Context, inst pluginhost.Instance, inf
 
 // importItem adds the app item to the library as a new card or lorebook and
 // returns it with its head revision. A card it was bound to on this instance
-// counts as missing from now on, as when an app reuses an ID.
+// counts as missing from now on, as when an app reuses an ID. A live binding
+// other than r.BindingID returns stale, so a repeated import can't add a copy.
 func (rs *resolver) importItem(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo,
-	instanceID int64, remoteID string, it appItem) (int64, int64, error) {
+	r Resolution, it appItem, stale error) (int64, int64, error) {
 	s := rs.s
-	var old int64
-	err := rs.tx.QueryRow(ctx, `SELECT `+k.col+` FROM binding WHERE instance_id = $1 AND remote_id = $2
-		AND `+k.col+` IS NOT NULL AND remote_state <> 'missing'`, instanceID, remoteID).Scan(&old)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	instanceID, remoteID := r.InstanceID, r.RemoteID
+	b, err := itemBinding(ctx, rs.tx, k, instanceID, remoteID)
+	if err != nil {
 		return 0, 0, err
 	}
-	if old != 0 {
+	if b.remoteState == remoteMissing {
+		b = boundItem{}
+	}
+	if b.id != r.BindingID {
+		return 0, 0, stale
+	}
+	if b.id != 0 {
 		// As a push of the old card would, so the two don't interleave.
-		if err := lock(ctx, rs.tx, k, instanceID, old); err != nil {
+		if err := lock(ctx, rs.tx, k, instanceID, b.entityID); err != nil {
 			return 0, 0, err
 		}
-		_, err := rs.tx.Exec(ctx, `UPDATE binding SET remote_state = 'missing', seen_data = NULL, version = version + 1
-			WHERE instance_id = $1 AND `+k.col+` = $2`, instanceID, old)
+		// No row means a concurrent import let go of it while this one waited for the lock.
+		tag, err := rs.tx.Exec(ctx, `UPDATE binding SET remote_state = 'missing', seen_data = NULL, version = version + 1
+			WHERE id = $1 AND remote_state <> 'missing'`, b.id)
 		if err != nil {
 			return 0, 0, err
+		}
+		if tag.RowsAffected() == 0 {
+			return 0, 0, stale
 		}
 	}
 	plugin := inst.Manifest.Name

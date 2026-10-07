@@ -747,13 +747,88 @@ func TestResolveImportSplitsABoundItem(t *testing.T) {
 	b := e.push(card)
 	e.editRemote(b.RemoteID, "description", "A different smith altogether.")
 	c := e.compareItem(b.RemoteID, 0)
-	res, err := e.s.Resolve(e.ctx, Resolution{InstanceID: e.inst, RemoteID: b.RemoteID, AppHash: c.AppHash, Action: "import"})
-	if err != nil || res.CardID == card {
-		t.Fatalf("result = %+v, %v", res, err)
+	r := Resolution{InstanceID: e.inst, RemoteID: b.RemoteID, AppHash: c.AppHash, BindingID: c.BindingID, Action: "import"}
+	res, err := e.s.Resolve(e.ctx, r)
+	if err != nil || c.BindingID != b.ID || res.CardID == card {
+		t.Fatalf("comparison binding %d, result = %+v, %v", c.BindingID, res, err)
 	}
 	if old, err := e.s.Binding(e.ctx, b.ID); err != nil || old.Status != "missing" {
 		t.Errorf("old binding = %+v, %v", old, err)
 	}
+	cards := e.cardCount()
+	// Sent again, the import names the binding it just let go of.
+	var stale *StaleError
+	if _, err := e.s.Resolve(e.ctx, r); !errors.As(err, &stale) || stale.Comparison.BindingID != res.BindingID {
+		t.Fatalf("again: err = %v", err)
+	}
+	if n := e.cardCount(); n != cards {
+		t.Errorf("%d cards after a repeated import, want %d", n, cards)
+	}
+}
+
+func TestResolveImportRepeatedIsStale(t *testing.T) {
+	e, card := resolveEnv(t)
+	c := e.compareItem("lv1", card)
+	r := Resolution{InstanceID: e.inst, RemoteID: "lv1", AppHash: c.AppHash, BindingID: c.BindingID, Action: "import"}
+	res, err := e.s.Resolve(e.ctx, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cards := e.cardCount()
+	var stale *StaleError
+	if _, err := e.s.Resolve(e.ctx, r); !errors.As(err, &stale) || stale.Comparison.BindingID != res.BindingID {
+		t.Fatalf("again: err = %v", err)
+	}
+	if b, err := e.s.Binding(e.ctx, res.BindingID); err != nil || b.Status != "in_sync" || e.cardCount() != cards {
+		t.Errorf("binding = %+v, %v, %d cards, want %d", b, err, e.cardCount(), cards)
+	}
+}
+
+func TestResolveImportOfAnItemBoundSinceIsStale(t *testing.T) {
+	e, card := resolveEnv(t)
+	b := e.push(card)
+	cards := e.cardCount()
+	_, err := e.s.Resolve(e.ctx, Resolution{InstanceID: e.inst, RemoteID: b.RemoteID, AppHash: e.compareItem(b.RemoteID, 0).AppHash,
+		Action: "import"})
+	var stale *StaleError
+	if !errors.As(err, &stale) || stale.Comparison.BindingID != b.ID {
+		t.Fatalf("err = %v", err)
+	}
+	if got, err := e.s.Binding(e.ctx, b.ID); err != nil || got.Status == "missing" || e.cardCount() != cards {
+		t.Errorf("binding = %+v, %v, %d cards", got, err, e.cardCount())
+	}
+}
+
+func TestResolveNestedImportRepeatedIsStale(t *testing.T) {
+	e, card, forge := worldBooks(t)
+	l2, err := e.s.CompareLorebookItem(e.ctx, e.inst, "l2", forge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := e.bindTo(false, "c1", card)
+	r.Lorebooks = []Resolution{{RemoteID: "l2", Action: "import", AppHash: l2.AppHash}}
+	if _, err := e.s.Resolve(e.ctx, r); err != nil {
+		t.Fatal(err)
+	}
+	books := e.lorebookCount()
+	r = e.bindTo(false, "c1", card)
+	r.Lorebooks = []Resolution{{RemoteID: "l2", Action: "import", AppHash: l2.AppHash}}
+	var stale *StaleError
+	if _, err := e.s.Resolve(e.ctx, r); !errors.As(err, &stale) || stale.Item != "lorebook:l2" {
+		t.Fatalf("again: err = %v", err)
+	}
+	if n := e.lorebookCount(); n != books {
+		t.Errorf("lorebooks %d, want %d", n, books)
+	}
+}
+
+func (e *env) cardCount() int {
+	e.t.Helper()
+	var n int
+	if err := e.pool.QueryRow(e.ctx, `SELECT count(*) FROM card`).Scan(&n); err != nil {
+		e.t.Fatal(err)
+	}
+	return n
 }
 
 func TestResolveSkipWritesNothing(t *testing.T) {

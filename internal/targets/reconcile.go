@@ -83,7 +83,7 @@ type ReconcileItem struct {
 	AppHash    string          `json:"app_hash"`
 	Verdict    string          `json:"verdict" enum:"bound,exact,likely,new,error"`
 	Error      string          `json:"error,omitempty"`
-	BindingID  int64           `json:"binding_id,omitempty"`
+	BindingID  int64           `json:"binding_id,omitempty"` // the live binding; an import sends it back
 	Candidates []Candidate     `json:"candidates,omitempty"`
 	Options    []Option        `json:"options"`
 	Suggested  *Option         `json:"suggested,omitempty"`
@@ -327,7 +327,10 @@ func (s *Service) verdict(ctx context.Context, k kind, inst pluginhost.Instance,
 		return c
 	}
 	if bound {
-		item.Verdict, item.BindingID = VerdictBound, b.id
+		item.Verdict = VerdictBound
+		if b.remoteState != remoteMissing {
+			item.BindingID = b.id
+		}
 		// An archived bound card isn't in the index, so it gets no candidate.
 		if e, ok := idx.byID[b.entityID]; ok {
 			item.Candidates = []Candidate{candidate(e, map[string]int{})}

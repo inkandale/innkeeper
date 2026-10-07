@@ -58,7 +58,8 @@ database at startup and stop cleanly on `SIGTERM`.
 | `INNKEEPER_DATABASE_URL` | `migrate`, `api`, `worker`, `token`, `backup`, `restore` | PostgreSQL URL |
 | `INNKEEPER_SECRETS_KEY` | `api`, `worker`, `backup`, `restore` | Encrypts plugin secrets. Generate with `openssl rand -base64 32`. Losing it loses every stored secret |
 | `INNKEEPER_BLOB_DIR` | `api`, `worker`, `backup`, `restore` | The library's blob store folder |
-| `INNKEEPER_PLUGINS_DIR` | `api`, `worker`, `restore` | Folder with one subfolder per installed plugin |
+| `INNKEEPER_PLUGINS_DIR` | `api`, `worker`, `restore` | Writable folder that plugins install into; `/data/plugins` in the image. The API and worker must share it |
+| `INNKEEPER_BUILTIN_PLUGINS_DIR` | `api`, `worker`, `restore` | Read-only folder of plugins that ship with Innkeeper, one subfolder each; an installed plugin of the same name overrides one |
 | `INNKEEPER_LISTEN` | `api` | Listen address; default `:8080` |
 | `INNKEEPER_PUBLIC_URL` | `api` | Where browsers reach the API, such as `https://innkeeper.example.com`. Needed for redirect logins and for MCP clients that connect through OAuth, such as claude.ai. An `http://` URL sends cookies without `Secure` |
 | `INNKEEPER_WORKER_CONCURRENCY` | `worker` | Jobs run at once; default 4 |
@@ -90,17 +91,15 @@ If something else already listens on port 8080, set `INNKEEPER_PORT` in
 `.env`. Docker doesn't report the clash; requests just reach the other
 program.
 
-The image includes the plugins from `innkeeper-plugins` at the branch or
-commit in the `PLUGINS_REF` build argument, `main` by default. A rebuild
-reuses its cached clone of `main`; to bundle newer plugins, pass a commit with
-`--build-arg PLUGINS_REF=<commit>` or build with `--no-cache`. Releases from CI
-always build `main`'s latest commit. Building clones that private
-repo, so it needs an SSH agent holding a key that can read it
-(`ssh-add -l`). For a key that isn't in the agent, build with
-`docker build --ssh default=$HOME/.ssh/<key> -t innkeeper:dev .`, then start
-with `docker compose up -d --no-build`.
+The image builds its two built-in plugins, `password-login` and
+`card-codec`, from `innkeeper-plugins` at the branch or commit in the
+`PLUGINS_REF` build argument, `main` by default. A rebuild reuses its cached
+clone of `main`; pass `--build-arg PLUGINS_REF=<commit>` or build with
+`--no-cache` for newer ones. Install other plugins at runtime; see
+[Plugins](#plugins).
 
-`docker compose down -v` deletes the database and blobs.
+Compose keeps blobs and installed plugins in one volume at `/data`.
+`docker compose down -v` deletes the database and that volume.
 
 ## Kubernetes
 
@@ -118,7 +117,7 @@ Commit messages follow [Conventional Commits](https://www.conventionalcommits.or
 `feat:` and `fix:` decide the next version, and `feat!:` marks a breaking change.
 
 The chart runs the API and the worker as two containers in one pod, sharing
-the blob volume. It creates no Secrets; point it at yours:
+the blob volume and a plugins volume (`persistence.plugins.size`, 1Gi). It creates no Secrets; point it at yours:
 
 ```bash
 helm install innkeeper oci://ghcr.io/davidgibbons/charts/innkeeper --version <version> \
@@ -147,7 +146,7 @@ bcrypt hash. Make the hash with the plugin, then create a login instance
 with it:
 
 ```bash
-read -rs PW && printf '%s\n' "$PW" | docker compose exec -T api /plugins/password-login/password-login hash; unset PW
+read -rs PW && printf '%s\n' "$PW" | docker compose exec -T api /usr/lib/innkeeper/plugins/password-login/password-login hash; unset PW
 innkeeper call POST /instances '{"plugin": "password-login", "name": "Login", "owner_subject": "owner", "secrets": {"password_hash": "<hash>"}}'
 ```
 
@@ -176,6 +175,34 @@ To restyle the UI, install a [theme plugin](docs/protocol.md#themes) and
 select it with `innkeeper call PATCH /settings '{"theme": "<name>"}'`; an
 empty name restores the default. A theme's CSS runs on the UI's origin, so
 install only themes you trust.
+
+## Plugins
+
+Innkeeper ships `password-login` and `card-codec`. Install other plugins
+from a source, an `index.toml` that lists plugin versions. The official
+`innkeeper-plugins` source is there by default:
+
+```bash
+innkeeper call GET /plugin-catalog
+innkeeper call POST /plugins/card-import/install '{"source": "official", "version": "0.1.0"}'
+```
+
+Installing a newer version updates the plugin; jobs already running finish
+on the old one. Innkeeper keeps the previous version, so installing it again
+rolls back without a download.
+
+Add another source by its `https://` or `file://` URL. Its plugins run as
+code inside Innkeeper with their own database role, so add only sources you
+trust. To publish one, see
+[Publishing a source](docs/protocol.md#publishing-a-source).
+
+```bash
+innkeeper call POST /plugin-sources '{"id": "mine", "url": "https://example.com/index.toml"}'
+```
+
+`DELETE /plugins/<name>` uninstalls a plugin but keeps its instances and
+database, which come back if you install it again. To delete those too, run
+`DELETE /plugins/<name>/data` afterwards. That can't be undone.
 
 ## Access tiers
 

@@ -40,6 +40,10 @@ Each plugin folder has a `plugin.toml`:
 
 Unknown keys are errors.
 
+The owner can roll a plugin back to its previous version. A plugin that
+changes its own tables must keep working with what its next version wrote,
+or a rollback strands its data.
+
 ### Themes
 
 A theme plugin is a stylesheet with no process. Its manifest lists only the
@@ -363,3 +367,36 @@ It loads the manifest, then checks that:
 
 It exits non-zero if any check fails. For a plugin with `database = true`,
 set `INNKEEPER_PLUGIN_DATABASE_URL` to send a test database as `database_url`.
+
+## Publishing a source
+
+A source is an `index.toml` that the owner adds to Innkeeper by its
+`https://` or `file://` URL. It lists each plugin version, with a gzipped
+tarball per platform:
+
+```toml
+[[plugin]]
+name = "lumiverse"
+version = "0.2.0"
+protocol = 1
+capabilities = ["push", "pull", "search"]
+description = "Push and pull cards and lorebooks with a Lumiverse server."
+
+[[plugin.artifact]]
+os = "linux"
+arch = "amd64"
+url = "lumiverse-0.2.0-linux-amd64.tar.gz"
+sha256 = "<hex sha256 of the tarball>"
+```
+
+- List every version you want owners to be able to install, not only the
+  newest.
+- `os` and `arch` use Go's names, such as `linux` and `arm64`.
+- `url` may be relative to the index. An `https://` index must point at
+  `https://` tarballs, and a `file://` index at local files.
+- The tarball holds `plugin.toml` and the files it needs, at the top level.
+  It may contain only regular files and folders, no links. Its manifest's
+  `name`, `version`, and `protocol` must match the index entry.
+- Innkeeper refuses a tarball whose sha256 doesn't match the index. That
+  catches a corrupted or swapped download, but whoever controls the index
+  controls what installs.

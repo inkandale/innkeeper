@@ -193,8 +193,11 @@ description = "Push and pull cards and lorebooks with a Lumiverse server."
 ```
 
 CI in `innkeeper-plugins` checks that every entry matches its folder's
-`plugin.toml`, and runs the contract kit against each plugin. The core image
-bakes in the v1 plugins from a pinned commit of this repo.
+`plugin.toml`, and runs the contract kit against each plugin. CI also
+publishes each plugin version as a gzipped tarball per platform on a GitHub
+Release, with an `index.toml` that lists them and their sha256. The core
+image ships only `password-login` and `card-codec`; the owner installs the
+rest from the Plugins page.
 
 The protocol reference and contract kit live in the `innkeeper` repo,
 because the core defines the protocol. `innkeeper-plugins` CI pins a core
@@ -208,6 +211,27 @@ version to test against.
 2. The plugin replies with its protocol version and capabilities. The core
    refuses a plugin whose protocol version it does not support.
 3. Plugins start on first use, stop when idle, and restart after a crash.
+
+### Install and update
+
+- **Sources.** A source is the `https://` or `file://` URL of an
+  `index.toml`. The official index is there by default; the owner can add
+  others. A plugin's identity is `source/name`, and only one plugin per name
+  is installed at a time, so a fork takes over the original's instances and
+  database.
+- **Install.** The core downloads the tarball for its platform, checks its
+  sha256 against the index and its manifest and protocol against the entry,
+  and unpacks it into `<plugins dir>/<name>/<source>@<version>/`. A `current`
+  symlink switches in one rename.
+- **Running jobs.** A job already running finishes on the old version. New
+  calls start the new one, and the old process stops once idle. The worker
+  reloads before each job when an install happened.
+- **Rollback.** The current and previous versions stay on disk. Installing
+  the previous one switches back without a download.
+- **Built-in plugins.** An install overrides the image's copy, and
+  uninstalling falls back to it.
+- **Uninstall.** Removes the code. Instances and the plugin's database stay
+  until the owner removes the data, a separate action.
 
 ### Methods
 

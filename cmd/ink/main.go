@@ -32,7 +32,7 @@ Make a token on the server with: innkeeper token create <name> [read|write|destr
 		PersistentPreRun: func(cmd *cobra.Command, _ []string) { cmd.SilenceUsage = true },
 	}
 	root.PersistentFlags().Bool("json", false, "print JSON instead of tables")
-	root.AddCommand(callCmd(), importCmd(), jobsCmd(), cardsCmd())
+	root.AddCommand(callCmd(), importCmd(), jobsCmd(), cardsCmd(), syncCmd())
 	return root
 }
 

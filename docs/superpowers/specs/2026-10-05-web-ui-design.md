@@ -271,7 +271,8 @@ The cursor stays on `/search` for the CLI and MCP.
 - `401` goes to login. `409` on a save shows the banner above.
 - `502` and `503` from a plugin name the plugin and link to its instance.
 - Lost connection shows an offline bar. TanStack Query retries reads.
-- Unsaved edits are never dropped without asking.
+- Unsaved edits to a card or lorebook are never dropped without asking.
+  Settings forms don't ask yet.
 
 ## Testing
 

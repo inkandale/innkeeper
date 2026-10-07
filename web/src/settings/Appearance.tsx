@@ -22,10 +22,8 @@ export function Appearance() {
 
   const save = useMutation({
     mutationFn: async (theme: string) => must(await api.PATCH("/settings", { body: { theme } })),
-    onSuccess: (s) => {
-      qc.setQueryData(["settings"], s);
-      setPicked(null);
-    },
+    // The pick stays: clearing it would show the old saved theme until the cache update lands.
+    onSuccess: (s) => qc.setQueryData(["settings"], s),
   });
 
   const themes = (plugins.data ?? []).filter((p) => p.capabilities?.includes("theme")).map((p) => p.name);

@@ -25,6 +25,9 @@ persistence:
   size: 5Gi
   storageClass: ""
   accessModes: [ReadWriteOncePod]
+  # Installed plugins, shared by the API and worker containers.
+  plugins:
+    size: 1Gi
 
 # Scheduled backups; see "Backup and restore" in the README. An empty
 # `every` turns that type's schedule off.

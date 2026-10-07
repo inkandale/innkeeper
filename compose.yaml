@@ -5,8 +5,6 @@
 x-innkeeper: &innkeeper
   build:
     context: .
-    # The plugins stage clones the private innkeeper-plugins repo.
-    ssh: [default]
   image: innkeeper:dev
   environment:
     INNKEEPER_DATABASE_URL: postgres://innkeeper:innkeeper@db:5432/innkeeper?sslmode=disable
@@ -21,7 +19,7 @@ x-innkeeper: &innkeeper
     # INNKEEPER_BACKUP_CONFIG_EVERY: 7d
     # INNKEEPER_BACKUP_CONFIG_KEEP: 7
   volumes:
-    - blobs:/data/blobs
+    - data:/data
     # Folder imports read from here; see "Importing" in README.md.
     - ${INNKEEPER_IMPORT_DIR:-./import}:/import:ro
     # - ./backups:/backups
@@ -56,4 +54,4 @@ services:
 
 volumes:
   pgdata:
-  blobs:
+  data:

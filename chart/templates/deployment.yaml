@@ -78,6 +78,8 @@ spec:
           volumeMounts:
             - name: blobs
               mountPath: /data/blobs
+            - name: plugins
+              mountPath: /data/plugins
             - name: tmp
               mountPath: /tmp
             {{- if $.Values.backup.persistence.enabled }}
@@ -89,6 +91,9 @@ spec:
         - name: blobs
           persistentVolumeClaim:
             claimName: {{ .Release.Name }}-blobs
+        - name: plugins
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-plugins
         - name: tmp
           emptyDir: {}
         {{- if .Values.backup.persistence.enabled }}

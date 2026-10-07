@@ -25,9 +25,25 @@ beforeEach(() => {
       requests.push(`${req.method} ${u.pathname}`);
       if (u.pathname === "/api/plugins")
         return json([
-          { name: "dusk", version: "1.0.0", capabilities: ["theme"], secrets: [] },
-          { name: "sillytavern", version: "0.1.0", capabilities: ["push", "pull"], secrets: ["password"] },
+          { name: "dusk", version: "1.0.0", capabilities: ["theme"], secrets: [], source: "builtin", builtin: true },
+          {
+            name: "sillytavern", version: "0.1.0", capabilities: ["push", "pull"], secrets: ["password"],
+            source: "official", builtin: false, previous_source: "official", previous_version: "0.0.9",
+          },
         ]);
+      if (u.pathname === "/api/plugin-sources") return json([{ id: "official", url: "https://example.com/index.toml" }]);
+      if (u.pathname === "/api/plugin-catalog")
+        return json([
+          {
+            source: { id: "official", url: "https://example.com/index.toml" },
+            plugins: [
+              { name: "sillytavern", version: "0.2.0", versions: ["0.2.0", "0.1.0"], protocol: 1, capabilities: [], description: "ST" },
+              { name: "card-import", version: "0.1.0", versions: ["0.1.0"], protocol: 1, capabilities: [], description: "Import cards." },
+            ],
+          },
+          { source: { id: "broken", url: "https://example.org/index.toml" }, plugins: [], error: "plugin source: 404" },
+        ]);
+      if (req.method === "POST") return new Response(null, { status: req.url.endsWith("/plugin-sources") ? 201 : 204 });
       if (u.pathname === "/api/instances")
         return json([inst(1, "sillytavern", "home"), inst(2, "sillytavern", "work", "connection refused"), inst(3, "gone", "old")]);
       if (req.method === "DELETE" && u.pathname === "/api/instances/1")
@@ -71,4 +87,64 @@ test("delete asks, calls the API, and shows a refusal", async () => {
   expect(requests).toContain("DELETE /api/instances/2");
   await user.click(screen.getByRole("button", { name: "Delete home" }));
   expect(await screen.findByText("instance in use")).toBeInTheDocument();
+});
+
+test("checks sources only when asked, then offers updates and installs", async () => {
+  const user = userEvent.setup();
+  renderPlugins();
+  const st = (await screen.findByRole("heading", { name: "sillytavern" })).closest("article")!;
+  expect(within(st).getByText("official/0.1.0")).toBeInTheDocument();
+  expect(requests).not.toContain("GET /api/plugin-catalog");
+
+  await user.click(screen.getByRole("button", { name: "Check for updates" }));
+  await user.click(await within(st).findByRole("button", { name: "Update to 0.2.0" }));
+  expect(requests).toContain("POST /api/plugins/sillytavern/install");
+  expect(screen.getByText("broken: plugin source: 404")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Install official/card-import" }));
+  expect(requests).toContain("POST /api/plugins/card-import/install");
+});
+
+test("rolls back, uninstalls, and removes data only after typing the name", async () => {
+  const user = userEvent.setup();
+  renderPlugins();
+  const st = (await screen.findByRole("heading", { name: "sillytavern" })).closest("article")!;
+  await user.click(within(st).getByRole("button", { name: "Roll back to 0.0.9" }));
+  expect(requests).toContain("POST /api/plugins/sillytavern/install");
+  await user.click(within(st).getByRole("button", { name: "Uninstall" }));
+  expect(requests).toContain("DELETE /api/plugins/sillytavern");
+  // A built-in plugin has nothing to uninstall.
+  const dusk = screen.getByRole("heading", { name: "dusk" }).closest("article")!;
+  expect(within(dusk).queryByRole("button", { name: "Uninstall" })).not.toBeInTheDocument();
+
+  const gone = screen.getByRole("heading", { name: "gone" }).closest("article")!;
+  vi.stubGlobal("prompt", () => "nope");
+  await user.click(within(gone).getByRole("button", { name: "Remove data" }));
+  expect(requests).not.toContain("DELETE /api/plugins/gone/data");
+  vi.stubGlobal("prompt", () => "gone");
+  await user.click(within(gone).getByRole("button", { name: "Remove data" }));
+  expect(requests).toContain("DELETE /api/plugins/gone/data");
+});
+
+test("adds a source", async () => {
+  const user = userEvent.setup();
+  renderPlugins();
+  await user.type(await screen.findByRole("textbox", { name: "Source id" }), "mine");
+  await user.type(screen.getByRole("textbox", { name: "Source URL" }), "https://example.net/index.toml");
+  await user.click(screen.getByRole("button", { name: "Add source" }));
+  expect(requests).toContain("POST /api/plugin-sources");
+});
+
+test("recommends plugins until one is installed", async () => {
+  renderPlugins();
+  await screen.findByRole("heading", { name: "sillytavern" });
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+});
+
+test("recommends plugins on a fresh install", async () => {
+  const fetch = globalThis.fetch;
+  vi.stubGlobal("fetch", async (req: Request) =>
+    new URL(req.url).pathname === "/api/plugins" ? json([]) : fetch(req),
+  );
+  renderPlugins();
+  expect(await screen.findByRole("status")).toHaveTextContent("card-import, lumiverse, sillytavern");
 });

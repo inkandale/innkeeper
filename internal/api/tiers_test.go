@@ -24,6 +24,12 @@ var tierExceptions = map[string]tier.Tier{
 	"delete-instance":  tier.Destructive,
 	"create-token":     tier.Destructive,
 	"revoke-token":     tier.Destructive,
+	// Plugins run as code inside Innkeeper.
+	"add-plugin-source":    tier.Destructive,
+	"delete-plugin-source": tier.Destructive,
+	"install-plugin":       tier.Destructive,
+	"uninstall-plugin":     tier.Destructive,
+	"remove-plugin-data":   tier.Destructive,
 	// Instance settings decide what a plugin reaches and who can log in.
 	"create-instance":   tier.Destructive,
 	"update-instance":   tier.Destructive,

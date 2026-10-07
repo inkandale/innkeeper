@@ -1260,6 +1260,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/plugin-catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check sources for plugins
+         * @description Reads every source's index. It changes nothing.
+         */
+        get: operations["plugin-catalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/plugin-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List plugin sources */
+        get: operations["list-plugin-sources"];
+        put?: never;
+        /**
+         * Add a plugin source
+         * @description A source is the https:// or file:// URL of an index.toml. Its plugins run as code inside Innkeeper with their own database role, so add only sources you trust.
+         */
+        post: operations["add-plugin-source"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/plugin-sources/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a plugin source */
+        delete: operations["delete-plugin-source"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/plugin-tools": {
         parameters: {
             query?: never;
@@ -1291,6 +1349,66 @@ export interface paths {
         get: operations["list-plugins"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/plugins/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Uninstall a plugin
+         * @description Removes the plugin's code. Its instances and data stay, and come back if it's installed again.
+         */
+        delete: operations["uninstall-plugin"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/plugins/{name}/data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove an uninstalled plugin's data
+         * @description Deletes the plugin's instances, database schema, and role. This can't be undone.
+         */
+        delete: operations["remove-plugin-data"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/plugins/{name}/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Install or update a plugin
+         * @description Installs a version from a source and makes it current. Running jobs finish on the old version. Installing the previous version rolls back without a download.
+         */
+        post: operations["install-plugin"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1659,6 +1777,20 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        CatalogPluginOut: {
+            capabilities: string[] | null;
+            description: string;
+            name: string;
+            /** Format: int64 */
+            protocol: number;
+            version: string;
+            versions: string[] | null;
+        };
+        CatalogSourceOut: {
+            error?: string;
+            plugins: components["schemas"]["CatalogPluginOut"][] | null;
+            source: components["schemas"]["PluginSource"];
+        };
         Change: {
             after?: unknown;
             before?: unknown;
@@ -1974,6 +2106,16 @@ export interface components {
             /** @description The import plugin's settings, such as a folder path. For a target app: remote_ids, to import only those items. */
             params?: unknown;
         };
+        InstallInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/InstallInBody.json
+             */
+            readonly $schema?: string;
+            source: string;
+            version: string;
+        };
         InstanceInfo: {
             /**
              * Format: uri
@@ -2100,6 +2242,8 @@ export interface components {
             theme?: string;
         };
         PluginOut: {
+            /** @description The image ships this plugin, so uninstalling falls back to that copy */
+            builtin: boolean;
             capabilities: string[] | null;
             /** @description JSON Schema for an instance's config */
             config?: {
@@ -2111,8 +2255,24 @@ export interface components {
             /** @description File formats a codec plugin reads and writes */
             formats?: string[] | null;
             name: string;
+            /** @description Source of the version a rollback returns to */
+            previous_source?: string;
+            /** @description Version a rollback returns to */
+            previous_version?: string;
             secrets: string[] | null;
+            /** @description Id of the source the plugin was installed from, or builtin */
+            source: string;
             version: string;
+        };
+        PluginSource: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/PluginSource.json
+             */
+            readonly $schema?: string;
+            id: string;
+            url: string;
         };
         PluginTool: {
             description: string;
@@ -5034,6 +5194,124 @@ export interface operations {
             };
         };
     };
+    "plugin-catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogSourceOut"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-plugin-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginSource"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "add-plugin-source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PluginSource"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-plugin-source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "list-plugin-tools": {
         parameters: {
             query?: never;
@@ -5080,6 +5358,97 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PluginOut"][] | null;
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "uninstall-plugin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "remove-plugin-data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "install-plugin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstallInBody"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {

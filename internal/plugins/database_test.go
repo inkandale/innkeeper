@@ -2,6 +2,7 @@ package plugins
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"os"
 	"strings"
@@ -192,5 +193,35 @@ func TestPluginUsesItsDatabase(t *testing.T) {
 	var got string
 	if err := reg.Call(ctx, mgr, inst, "db", "meow", &got); err != nil || got != "meow" {
 		t.Fatalf("db call: %q, %v", got, err)
+	}
+}
+
+func TestRemoveData(t *testing.T) {
+	ctx := context.Background()
+	reg, pool, dbURL := newDBRegistry(t)
+	if err := reg.ProvisionDatabases(ctx, dbURL); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "cat-log", Name: "Cats"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.RemoveData(ctx, "cat-log"); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("remove data while installed: %v", err)
+	}
+	delete(reg.manifests, "cat-log")
+	if err := reg.RemoveData(ctx, "cat-log"); err != nil {
+		t.Fatal(err)
+	}
+	var instances int
+	var schema, role bool
+	err := pool.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM plugin_instance WHERE plugin = 'cat-log'),
+		EXISTS (SELECT FROM pg_namespace WHERE nspname = 'plugin_cat_log'),
+		EXISTS (SELECT FROM pg_roles WHERE rolname = current_database() || '_plugin_cat_log')`).Scan(&instances, &schema, &role)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if instances != 0 || schema || role {
+		t.Fatalf("left instances %d, schema %v, role %v", instances, schema, role)
 	}
 }

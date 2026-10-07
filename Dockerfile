@@ -15,33 +15,33 @@ COPY . .
 COPY --from=web /web/dist ./web/dist
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /innkeeper ./cmd/innkeeper
 
-# The bundled plugins, built against this core's protocol package.
+# The built-in plugins, built against this core's protocol package. Owners
+# install the rest at runtime.
 FROM golang:1.27-alpine AS plugins
 # A branch or commit. CI passes main's commit, so a new one skips the cached clone.
 ARG PLUGINS_REF=main
-RUN apk add --no-cache git make openssh-client \
-    && mkdir -p -m 700 /root/.ssh \
-    && echo 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > /root/.ssh/known_hosts
-RUN --mount=type=ssh git clone git@github.com:davidgibbons/innkeeper-plugins.git /plugins-src \
+RUN apk add --no-cache git make
+RUN git clone https://github.com/davidgibbons/innkeeper-plugins.git /plugins-src \
     && git -C /plugins-src checkout --detach "$PLUGINS_REF"
 COPY . /core
 WORKDIR /plugins-src
 # ponytail: no go mod tidy, so this needs innkeeper-plugins' go.sum to cover
 # everything protocol/ imports; add tidy if a build reports a missing entry.
 RUN go mod edit -replace github.com/davidgibbons/innkeeper=/core \
-    && make install DEST=/plugins
+    && make install DEST=/plugins PLUGINS="password-login card-codec"
 
 FROM alpine:3.23
 # pg_dump for `innkeeper backup`; tini reaps plugin processes whose groups the host kills.
 RUN apk add --no-cache postgresql18-client tini \
     && adduser -D -u 10001 innkeeper \
-    && mkdir -p /data/blobs /plugins \
-    && chown innkeeper /data/blobs
+    && mkdir -p /data/blobs /data/plugins \
+    && chown -R innkeeper /data
 COPY --from=build /innkeeper /usr/local/bin/innkeeper
-COPY --from=plugins /plugins /plugins
+COPY --from=plugins /plugins /usr/lib/innkeeper/plugins
 USER innkeeper
 ENV INNKEEPER_BLOB_DIR=/data/blobs \
-    INNKEEPER_PLUGINS_DIR=/plugins \
+    INNKEEPER_PLUGINS_DIR=/data/plugins \
+    INNKEEPER_BUILTIN_PLUGINS_DIR=/usr/lib/innkeeper/plugins \
     INNKEEPER_LISTEN=:8080
 EXPOSE 8080
 ENTRYPOINT ["/sbin/tini", "--", "innkeeper"]

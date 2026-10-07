@@ -15,7 +15,7 @@ import (
 type Instance struct {
 	ID string
 	// Version is a decimal number that grows whenever the instance's
-	// settings change.
+	// settings or its plugin's install change.
 	Version  string
 	Manifest *protocol.Manifest
 	Params   protocol.InitializeParams

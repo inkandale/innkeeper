@@ -6,12 +6,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"maps"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -64,30 +67,166 @@ func LoadDir(dir string, log *slog.Logger) (map[string]*protocol.Manifest, error
 	return out, nil
 }
 
+// LoadInstalled loads the plugins the owner installed into dir. Each plugin's
+// folder holds one folder per version and a current symlink to one of them.
+// A missing dir has no plugins.
+func LoadInstalled(dir string, log *slog.Logger) (map[string]*protocol.Manifest, error) {
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return map[string]*protocol.Manifest{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]*protocol.Manifest{}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		// Resolved, so a running process keeps its own version's folder after current moves.
+		cur, err := filepath.EvalSymlinks(filepath.Join(dir, e.Name(), "current"))
+		if err != nil {
+			log.Error("skip plugin: no current version", "dir", e.Name(), "err", err)
+			continue
+		}
+		m, err := protocol.LoadManifest(cur)
+		if err == nil && m.Name != e.Name() {
+			err = fmt.Errorf("manifest names %q", m.Name)
+		}
+		if err != nil {
+			log.Error("skip plugin", "dir", e.Name(), "err", err)
+			continue
+		}
+		out[m.Name] = m
+	}
+	return out, nil
+}
+
 // Registry resolves plugin instances to what the plugin host needs to run
 // them.
 type Registry struct {
-	pool      *pgxpool.Pool
+	pool   *pgxpool.Pool
+	blobs  *blobstore.Store
+	box    *secrets.Box
+	dirs   Dirs
+	dbURL  string
+	log    *slog.Logger
+	client *http.Client
+
+	// mu guards the fields below, which a reload replaces.
+	mu        sync.RWMutex
 	manifests map[string]*protocol.Manifest
-	blobs     *blobstore.Store
-	box       *secrets.Box
+	builtin   map[string]*protocol.Manifest
 	dsns      map[string]string // by plugin, set by ProvisionDatabases
+	gen       int64             // plugin_generation at the last load; -1 before it
+
+	// installMu serializes installs, uninstalls, and data removal.
+	installMu sync.Mutex
 }
 
-// New returns a Registry for the installed plugins in manifests, whose
-// plugins write new blobs to blobs. box seals instance secrets.
+// Dirs are where a Registry finds plugins.
+type Dirs struct {
+	// Builtin holds the image's plugins, one folder each, or "" for none.
+	Builtin string
+	// Installed holds the plugins the owner installs.
+	Installed string
+}
+
+// New returns a Registry for a fixed set of plugins, for tests and tools that
+// don't install. blobs is where plugins write new blobs; box seals instance
+// secrets.
 func New(pool *pgxpool.Pool, manifests map[string]*protocol.Manifest, blobs *blobstore.Store, box *secrets.Box) *Registry {
-	return &Registry{pool: pool, manifests: manifests, blobs: blobs, box: box}
+	return &Registry{pool: pool, manifests: manifests, blobs: blobs, box: box, gen: -1, client: &http.Client{
+		Timeout: 5 * time.Minute,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if req.URL.Scheme != "https" {
+				return errors.New("redirect leaves https")
+			}
+			if len(via) >= 10 {
+				return errors.New("too many redirects")
+			}
+			return nil
+		},
+	}}
+}
+
+// Open loads the plugins in dirs and provisions their databases. dbURL is the
+// core's database URL, which provisioning needs.
+func Open(ctx context.Context, pool *pgxpool.Pool, dirs Dirs, blobs *blobstore.Store, box *secrets.Box, dbURL string, log *slog.Logger) (*Registry, error) {
+	if err := os.MkdirAll(dirs.Installed, 0o755); err != nil {
+		return nil, err
+	}
+	r := New(pool, nil, blobs, box)
+	r.dirs, r.dbURL, r.log = dirs, dbURL, log
+	return r, r.Sync(ctx)
+}
+
+// Sync reloads the plugins from disk when an install or uninstall happened
+// since the last load, in this process or another.
+func (r *Registry) Sync(ctx context.Context) error {
+	var gen int64
+	err := r.pool.QueryRow(ctx, `SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM plugin_generation`).Scan(&gen)
+	if err != nil {
+		return err
+	}
+	r.mu.RLock()
+	same := gen == r.gen
+	r.mu.RUnlock()
+	if same {
+		return nil
+	}
+	builtin := map[string]*protocol.Manifest{}
+	if r.dirs.Builtin != "" {
+		if builtin, err = LoadDir(r.dirs.Builtin, r.log); err != nil {
+			return err
+		}
+	}
+	installed, err := LoadInstalled(r.dirs.Installed, r.log)
+	if err != nil {
+		return err
+	}
+	all := maps.Clone(builtin)
+	maps.Copy(all, installed)
+	r.mu.Lock()
+	r.manifests, r.builtin, r.gen = all, builtin, gen
+	r.mu.Unlock()
+	return r.ProvisionDatabases(ctx, r.dbURL)
+}
+
+func (r *Registry) manifest(name string) (*protocol.Manifest, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	m, ok := r.manifests[name]
+	return m, ok
+}
+
+func (r *Registry) dsn(plugin string) string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.dsns[plugin]
+}
+
+// IsBuiltin reports whether the image ships plugin name, so uninstalling it
+// falls back to that copy.
+func (r *Registry) IsBuiltin(name string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	_, ok := r.builtin[name]
+	return ok
 }
 
 // HasCapability reports whether plugin is installed and declares capability.
 func (r *Registry) HasCapability(plugin, capability string) bool {
-	m, ok := r.manifests[plugin]
+	m, ok := r.manifest(plugin)
 	return ok && slices.Contains(m.Capabilities, capability)
 }
 
 // Manifests returns the installed plugins by name.
-func (r *Registry) Manifests() map[string]*protocol.Manifest { return r.manifests }
+func (r *Registry) Manifests() map[string]*protocol.Manifest {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return maps.Clone(r.manifests)
+}
 
 // InstanceInfo is an instance as the owner sees it. It names the secrets
 // that are set but never holds their values.
@@ -146,7 +285,7 @@ func writeErr(err error) error {
 
 // CreateInstance configures a new instance of an installed plugin.
 func (r *Registry) CreateInstance(ctx context.Context, n NewInstance) (int64, error) {
-	m, ok := r.manifests[n.Plugin]
+	m, ok := r.manifest(n.Plugin)
 	if !ok {
 		return 0, fmt.Errorf("%w: %s", ErrUnknownPlugin, n.Plugin)
 	}
@@ -190,7 +329,7 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 		return err
 	}
 	if e.Secrets != nil {
-		m, ok := r.manifests[plugin]
+		m, ok := r.manifest(plugin)
 		if !ok {
 			return fmt.Errorf("%w: %s", ErrUnknownPlugin, plugin)
 		}
@@ -299,7 +438,9 @@ func (r *Registry) Instance(ctx context.Context, id int64) (pluginhost.Instance,
 	var sealed []byte
 	var broken *string
 	var updated time.Time
-	err := r.pool.QueryRow(ctx, `SELECT plugin, config, secrets, broken_error, updated_at FROM plugin_instance WHERE id = $1`, id).
+	err := r.pool.QueryRow(ctx, `SELECT pi.plugin, pi.config, pi.secrets, pi.broken_error,
+			greatest(pi.updated_at, coalesce(p.changed_at, pi.updated_at))
+		FROM plugin_instance pi LEFT JOIN plugin_install p ON p.name = pi.plugin WHERE pi.id = $1`, id).
 		Scan(&plugin, &config, &sealed, &broken, &updated)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return pluginhost.Instance{}, ErrNotFound
@@ -310,7 +451,7 @@ func (r *Registry) Instance(ctx context.Context, id int64) (pluginhost.Instance,
 	if broken != nil {
 		return pluginhost.Instance{}, fmt.Errorf("%w: %s", ErrBroken, *broken)
 	}
-	m, ok := r.manifests[plugin]
+	m, ok := r.manifest(plugin)
 	if !ok {
 		return pluginhost.Instance{}, fmt.Errorf("%w: %s", ErrUnknownPlugin, plugin)
 	}
@@ -330,7 +471,7 @@ func (r *Registry) Instance(ctx context.Context, id int64) (pluginhost.Instance,
 			Secrets:     secrets,
 			BlobStores:  map[string]string{r.blobs.Name: r.blobs.Root},
 			BlobTmp:     r.blobs.TmpDir(),
-			DatabaseURL: r.dsns[plugin],
+			DatabaseURL: r.dsn(plugin),
 		},
 	}, nil
 }
@@ -351,7 +492,7 @@ func (r *Registry) CodecInstance(ctx context.Context, format string) (pluginhost
 		return pluginhost.Instance{}, err
 	}
 	for _, i := range all {
-		if m, ok := r.manifests[i.Plugin]; ok && slices.Contains(m.Capabilities, "codec") && slices.Contains(m.Formats, format) {
+		if m, ok := r.manifest(i.Plugin); ok && slices.Contains(m.Capabilities, "codec") && slices.Contains(m.Formats, format) {
 			return r.Instance(ctx, i.ID)
 		}
 	}
@@ -366,7 +507,9 @@ func (r *Registry) MarkBroken(ctx context.Context, id int64, version string, cau
 	if err != nil {
 		return fmt.Errorf("instance version %q: %w", version, err)
 	}
-	_, err = r.pool.Exec(ctx, `UPDATE plugin_instance SET broken_error = $2, broken_at = now() WHERE id = $1 AND updated_at = $3`,
+	_, err = r.pool.Exec(ctx, `UPDATE plugin_instance pi SET broken_error = $2, broken_at = now()
+		WHERE id = $1 AND greatest(updated_at,
+			coalesce((SELECT changed_at FROM plugin_install WHERE name = pi.plugin), updated_at)) = $3`,
 		id, cause.Error(), time.UnixMicro(micros))
 	return err
 }
@@ -409,7 +552,7 @@ func (r *Registry) SetTheme(ctx context.Context, name string) error {
 		_, err := r.pool.Exec(ctx, `DELETE FROM setting WHERE key = 'theme'`)
 		return err
 	}
-	if m, ok := r.manifests[name]; !ok || !m.IsTheme() {
+	if m, ok := r.manifest(name); !ok || !m.IsTheme() {
 		return fmt.Errorf("%w: %q is not an installed theme", ErrInvalid, name)
 	}
 	_, err := r.pool.Exec(ctx, `INSERT INTO setting (key, value) VALUES ('theme', $1)

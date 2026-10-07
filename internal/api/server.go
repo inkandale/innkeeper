@@ -139,6 +139,7 @@ func (s *Server) routes(api huma.API) {
 	s.organizeRoutes(api)
 	s.searchRoutes(api)
 	s.instanceRoutes(api)
+	s.pluginStoreRoutes(api)
 	s.jobRoutes(api)
 	s.targetRoutes(api)
 	s.reconcileRoutes(api)
@@ -211,7 +212,7 @@ func (s *Server) fail(err error) error {
 		errors.Is(err, plugins.ErrNotFound), errors.Is(err, auth.ErrNotFound), errors.Is(err, targets.ErrNotFound):
 		return huma.Error404NotFound("not found")
 	case errors.Is(err, library.ErrConflict), errors.Is(err, library.ErrSlugTaken), errors.Is(err, library.ErrNameTaken),
-		errors.Is(err, plugins.ErrNameTaken), errors.Is(err, jobs.ErrFinished), errors.Is(err, plugins.ErrInUse),
+		errors.Is(err, plugins.ErrNameTaken), errors.Is(err, jobs.ErrFinished), errors.Is(err, plugins.ErrInUse), errors.Is(err, plugins.ErrSourceInUse),
 		errors.Is(err, targets.ErrNewCopy), errors.Is(err, targets.ErrNoChanges), errors.Is(err, targets.ErrMoved),
 		errors.Is(err, targets.ErrBound):
 		return huma.Error409Conflict(err.Error())
@@ -223,6 +224,8 @@ func (s *Server) fail(err error) error {
 		return huma.Error400BadRequest(err.Error())
 	case errors.Is(err, merge.ErrUnknownHunk), errors.Is(err, merge.ErrBadChoice):
 		return huma.Error422UnprocessableEntity(err.Error())
+	case errors.Is(err, plugins.ErrSource):
+		return huma.Error502BadGateway(err.Error())
 	case errors.As(err, &startErr), errors.Is(err, protocol.ErrClosed):
 		s.Log.Error("plugin failed", "err", err)
 		return huma.Error502BadGateway("plugin failed; see the server log")

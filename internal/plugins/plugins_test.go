@@ -9,8 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/davidgibbons/innkeeper/internal/blobstore"
 	"github.com/davidgibbons/innkeeper/internal/secrets"
@@ -320,5 +323,134 @@ func TestTheme(t *testing.T) {
 	}
 	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "dusk", Name: "Dusk"}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("theme instance: %v", err)
+	}
+}
+
+func manifestFor(name, version string) string {
+	return fmt.Sprintf("name = %q\nversion = %q\nprotocol = 1\ncommand = [\"./%s\"]\ncapabilities = [\"import\"]\n",
+		name, version, name)
+}
+
+func TestLoadInstalled(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, filepath.Join(dir, "good", "local@1.0.0"), manifestFor("good", "1.0.0"))
+	writeManifest(t, filepath.Join(dir, "good", "local@2.0.0"), manifestFor("good", "2.0.0"))
+	if err := os.Symlink("local@2.0.0", filepath.Join(dir, "good", "current")); err != nil {
+		t.Fatal(err)
+	}
+	writeManifest(t, filepath.Join(dir, "nocurrent", "local@1.0.0"), manifestFor("nocurrent", "1.0.0"))
+	writeManifest(t, filepath.Join(dir, "misnamed", "local@1.0.0"), manifestFor("other", "1.0.0"))
+	if err := os.Symlink("local@1.0.0", filepath.Join(dir, "misnamed", "current")); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := LoadInstalled(dir, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got["good"] == nil || got["good"].Version != "2.0.0" {
+		t.Fatalf("loaded %v, want only good 2.0.0", got)
+	}
+	if want := filepath.Join(real, "good", "local@2.0.0"); got["good"].Dir != want {
+		t.Fatalf("Dir = %s, want %s", got["good"].Dir, want)
+	}
+
+	none, err := LoadInstalled(filepath.Join(dir, "missing"), quiet)
+	if err != nil || len(none) != 0 {
+		t.Fatalf("missing dir: %v, %v", none, err)
+	}
+}
+
+// openRegistry opens a registry over pool with a built-in "login" plugin and
+// an empty installed folder, and returns it with its dirs.
+func openRegistry(t *testing.T, pool *pgxpool.Pool) (*Registry, Dirs) {
+	t.Helper()
+	dirs := Dirs{Builtin: t.TempDir(), Installed: t.TempDir()}
+	writeManifest(t, filepath.Join(dirs.Builtin, "login"), manifestFor("login", "1.0.0"))
+	return openWith(t, pool, dirs), dirs
+}
+
+func openWith(t *testing.T, pool *pgxpool.Pool, dirs Dirs) *Registry {
+	t.Helper()
+	box, err := secrets.New(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg, err := Open(context.Background(), pool, dirs, &blobstore.Store{Name: "library", Root: t.TempDir()}, box, "", quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return reg
+}
+
+func TestSyncReloadsAfterGeneration(t *testing.T) {
+	ctx := context.Background()
+	pool := testdb.New(t)
+	reg, dirs := openRegistry(t, pool)
+	if m := reg.Manifests()["login"]; m == nil || m.Version != "1.0.0" || !reg.IsBuiltin("login") {
+		t.Fatalf("login = %+v, want built-in 1.0.0", m)
+	}
+
+	base := filepath.Join(dirs.Installed, "login")
+	writeManifest(t, filepath.Join(base, "local@2.0.0"), manifestFor("login", "2.0.0"))
+	if err := os.Symlink("local@2.0.0", filepath.Join(base, "current")); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if v := reg.Manifests()["login"].Version; v != "1.0.0" {
+		t.Fatalf("reloaded without a new generation: %s", v)
+	}
+	if _, err := pool.Exec(ctx, `SELECT nextval('plugin_generation')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if v := reg.Manifests()["login"].Version; v != "2.0.0" {
+		t.Fatalf("after a new generation, login = %s, want the installed 2.0.0", v)
+	}
+}
+
+func TestInstanceVersionFollowsPluginChange(t *testing.T) {
+	ctx := context.Background()
+	reg, _ := newRegistry(t)
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: "Fake"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := reg.Instance(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.pool.Exec(ctx, `INSERT INTO plugin_install (name, changed_at) VALUES ('fake', now() + interval '1 hour')`); err != nil {
+		t.Fatal(err)
+	}
+	after, err := reg.Instance(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := strconv.ParseInt(before.Version, 10, 64)
+	a, _ := strconv.ParseInt(after.Version, 10, 64)
+	if a <= b {
+		t.Fatalf("version %d after a plugin change, want more than %d", a, b)
+	}
+	// A failure at the old version must not mark the instance broken.
+	if err := reg.MarkBroken(ctx, id, before.Version, errors.New("old")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.Instance(ctx, id); err != nil {
+		t.Fatalf("stale MarkBroken broke the instance: %v", err)
+	}
+	if err := reg.MarkBroken(ctx, id, after.Version, errors.New("new")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.Instance(ctx, id); !errors.Is(err, ErrBroken) {
+		t.Fatalf("got %v, want ErrBroken", err)
 	}
 }

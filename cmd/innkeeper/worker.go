@@ -95,9 +95,18 @@ func worker() error {
 			{Kind: targets.ScanKind, Every: time.Hour},
 		},
 	}
+	// Plugins installed or removed through the API take effect at the next job.
+	for kind, h := range w.Handlers {
+		w.Handlers[kind] = func(ctx context.Context, r *jobs.Run) error {
+			if err := svc.registry.Sync(ctx); err != nil {
+				return err
+			}
+			return h(ctx, r)
+		}
+	}
 	for t, every := range svc.backups.Every {
 		w.Schedules = append(w.Schedules, jobs.Schedule{Kind: backup.Kind(t), Every: every})
 	}
-	log.Info("worker started", "plugins", len(svc.manifests), "concurrency", concurrency)
+	log.Info("worker started", "plugins", len(svc.registry.Manifests()), "concurrency", concurrency)
 	return w.Run(ctx)
 }

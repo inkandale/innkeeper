@@ -201,6 +201,9 @@ Reconcile and Push all ahead.
   dropdown of every option the backend lists, with its suggestion
   preselected.
 - **Apply N suggested** sends the selected rows to `POST /api/resolutions`.
+  Under a verdict chip, a character shown only because a world book under it
+  matches can't be selected. An import carries the snapshot's `binding_id`,
+  so applying the same run twice doesn't import twice.
 
 **Diff editor**: clicking a row opens it as a full page at
 `/sync/{instance}/{items|lorebook-items}/{remote_id}`, with `?job=` for the
@@ -209,7 +212,11 @@ reconcile's options and `?card=` for the library side.
 - Each field shows library and app columns, with a library or app choice
   on each hunk that needs one, and both on list hunks. `auto_*` hunks show
   which side merged. Fields that are the same are collapsed.
-- Linked lorebooks are nested sections, as the reconcile spec says.
+- Linked lorebooks are nested sections, as the reconcile spec says. One
+  with no suggestion shows "Server's suggestion" until the owner picks, and
+  is left out of the resolution.
+- Comparisons don't reload on window focus, so the choices stay on the
+  hunks the owner saw.
 - "Other match…" searches the library to bind any card.
 - Resolve calls `POST /api/instances/{id}/items/{remote_id}/resolve`. On a
   `409`, the app item changed, and the editor reloads it.

@@ -70,14 +70,19 @@ export function optionLabel(o: Option, candidates: Candidate[] = []): string {
 /** decidable hunks take the owner's choice; the others merge by their status. */
 export const decidable = (h: Hunk) => h.status === "conflict" || h.status === "library_only" || h.status === "app_only";
 
-/** resolution decides one app item. A bind carries its comparison's hashes, so the API refuses it if anything changed since. */
+/**
+ * resolution decides one app item. A bind carries its comparison's hashes and an import the binding the owner saw,
+ * so the API refuses either if anything changed since.
+ */
 export function resolution(
   remoteId: string,
   appHash: string,
   action: Option["action"],
   cmp?: Comparison,
   choices: Record<string, string> = {},
+  bindingId = 0,
 ): Resolution {
+  if (action === "import") return { remote_id: remoteId, app_hash: appHash, action, binding_id: bindingId };
   if (action !== "bind") return { remote_id: remoteId, app_hash: appHash, action };
   if (!cmp) throw new Error(`compare ${remoteId} before binding it`);
   const picked = Object.fromEntries(Object.entries(choices).filter(([, c]) => c !== "library"));
@@ -107,7 +112,7 @@ export async function bulkResolutions(
       const o = pick(r);
       const cmp = o.action === "bind" ? await compare(r, o.card_id ?? 0) : undefined;
       return {
-        ...resolution(r.item.remote_id, r.item.app_hash, o.action, cmp),
+        ...resolution(r.item.remote_id, r.item.app_hash, o.action, cmp, {}, r.item.binding_id ?? 0),
         // The run's hash, so an item that changed after the owner saw it goes stale.
         app_hash: r.item.app_hash,
         instance_id: instance,

@@ -62,14 +62,10 @@ export function Queue() {
     return (r.item.options ?? []).find((o) => optionKey(o) === key);
   };
   const isChecked = (r: Row) => !!pickOf(r) && (checked[rowKey(r)] ?? (!!r.item.suggested && !r.item.auto_bound && r.item.verdict !== "bound"));
-  const shown = all.filter(
-    (r) =>
-      !verdict ||
-      r.item.verdict === verdict ||
-      (verdict === "auto_bound" && r.item.auto_bound) ||
-      r.item.lorebooks?.some((lb) => lb.verdict === verdict),
-  );
-  const chosen = shown.filter(isChecked);
+  const ownMatch = (r: Row) => !verdict || r.item.verdict === verdict || (verdict === "auto_bound" && !!r.item.auto_bound);
+  // A character shown only for a matching world book is context; Apply leaves it out.
+  const shown = all.filter((r) => ownMatch(r) || r.item.lorebooks?.some((lb) => lb.verdict === verdict));
+  const chosen = shown.filter((r) => ownMatch(r) && isChecked(r));
   const instance = snap?.params.instance_id ?? 0;
 
   const apply = useMutation({
@@ -139,8 +135,8 @@ export function Queue() {
                         <input
                           type="checkbox"
                           aria-label={`Apply ${name}`}
-                          disabled={!pickOf(r)}
-                          checked={isChecked(r)}
+                          disabled={!pickOf(r) || !ownMatch(r)}
+                          checked={ownMatch(r) && isChecked(r)}
                           onChange={(e) => setChecked({ ...checked, [rowKey(r)]: e.target.checked })}
                         />
                       </td>

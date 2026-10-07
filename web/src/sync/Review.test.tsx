@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { focusManager, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -118,6 +118,51 @@ test("binds with the chosen side of each hunk, and the nested world book's", asy
       ],
     },
   ]);
+});
+
+test("an import sends the binding its comparison saw, and a nested one the snapshot's", async () => {
+  const [ann] = snap.items!;
+  progress = { ...snap, items: [{ ...ann!, binding_id: 3, lorebooks: [{ ...ann!.lorebooks![0]!, binding_id: 4 }] }] };
+  const fetch = globalThis.fetch;
+  vi.stubGlobal("fetch", async (req: Request) =>
+    new URL(req.url).pathname === "/api/instances/3/items/a/compare" ? json({ ...cardCmp, binding_id: 12 }) : fetch(req),
+  );
+  renderReview();
+  const user = userEvent.setup();
+  await screen.findByRole("radiogroup", { name: "Keep for description#1" });
+  await user.click(within(screen.getByRole("radiogroup", { name: "Action" })).getByLabelText("Import as new"));
+  await user.selectOptions(screen.getByRole("combobox", { name: "Action for Ann's world" }), "import");
+  await user.click(screen.getByRole("button", { name: "Resolve" }));
+  await screen.findByText("Queue page");
+  expect(resolved).toEqual([
+    {
+      remote_id: "a", action: "import", app_hash: "h2", binding_id: 12,
+      lorebooks: [{ remote_id: "w2", action: "import", app_hash: "hw", binding_id: 4 }],
+    },
+  ]);
+});
+
+test("a nested world book with no suggestion is left to the server", async () => {
+  const [ann] = snap.items!;
+  const { suggested: _, ...book } = ann!.lorebooks![0]!;
+  progress = { ...snap, items: [{ ...ann!, lorebooks: [book] }] };
+  renderReview();
+  const user = userEvent.setup();
+  expect(await screen.findByRole("combobox", { name: "Action for Ann's world" })).toHaveDisplayValue("Server's suggestion");
+  await screen.findByRole("radiogroup", { name: "Keep for description#1" });
+  await user.click(screen.getByRole("button", { name: "Resolve" }));
+  await screen.findByText("Queue page");
+  expect(resolved).toEqual([expect.not.objectContaining({ lorebooks: expect.anything() })]);
+});
+
+test("refocusing the window keeps the comparison", async () => {
+  renderReview();
+  await screen.findByRole("radiogroup", { name: "Keep for description#1" });
+  focusManager.setFocused(false);
+  focusManager.setFocused(true);
+  await new Promise((r) => setTimeout(r, 50));
+  expect(compares).toEqual(["1"]);
+  focusManager.setFocused(undefined);
 });
 
 test("fields with no differences start collapsed, and list hunks alone offer Both", async () => {

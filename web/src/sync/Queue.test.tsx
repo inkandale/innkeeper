@@ -100,6 +100,15 @@ test("Apply sends the checked rows as picked, comparing each bind", async () => 
   expect(screen.getByRole("button", { name: "Applied" })).toBeDisabled();
 });
 
+test("Apply under a verdict filter leaves out a character shown only for its world book", async () => {
+  renderQueue();
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "new 2" }));
+  expect(screen.getByRole("checkbox", { name: "Apply Ann" })).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "Apply 1 suggested" }));
+  await waitFor(() => expect(resolutions).toEqual([{ instance_id: 3, remote_id: "b", action: "import", app_hash: "hb", binding_id: 0 }]));
+});
+
 test("a running reconcile shows its progress", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => json({ ...job, status: "running", progress: { done: 2, total: 9 } })));
   renderQueue();

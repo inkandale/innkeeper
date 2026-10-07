@@ -12,7 +12,7 @@ const snap: Snapshot = {
       options: [{ action: "bind", card_id: 1 }, { action: "import" }, { action: "skip" }], suggested: { action: "bind", card_id: 1 },
       candidates: [{ card_id: 1, name: "Ann", reasons: { content: 0 }, differing_fields: 0, conflicts: 0 }],
     },
-    { remote_id: "b", name: "Bo", app_hash: "hb", verdict: "new", options: [{ action: "import" }, { action: "skip" }], suggested: { action: "import" } },
+    { remote_id: "b", name: "Bo", app_hash: "hb", verdict: "new", binding_id: 4, options: [{ action: "import" }, { action: "skip" }], suggested: { action: "import" } },
   ],
   lorebooks: [{ remote_id: "w", name: "World", app_hash: "hw", verdict: "likely", options: [{ action: "bind", card_id: 9 }], suggested: { action: "bind", card_id: 9 } }],
   missing: null,
@@ -25,7 +25,9 @@ test("a bind names its comparison and sends only the choices that aren't library
     remote_id: "a", action: "bind", card_id: 1, app_hash: "fresh", base_revision_id: 118, accepted_hash: "", default: "library",
     choices: { "first_mes#1": "app" },
   });
-  expect(resolution("a", "ha", "import")).toEqual({ remote_id: "a", app_hash: "ha", action: "import" });
+  expect(resolution("a", "ha", "import")).toEqual({ remote_id: "a", app_hash: "ha", action: "import", binding_id: 0 });
+  expect(resolution("a", "ha", "import", undefined, {}, 7)).toEqual({ remote_id: "a", app_hash: "ha", action: "import", binding_id: 7 });
+  expect(resolution("a", "ha", "skip", undefined, {}, 7)).toEqual({ remote_id: "a", app_hash: "ha", action: "skip" });
   expect(() => resolution("a", "ha", "bind")).toThrow();
 });
 
@@ -38,7 +40,7 @@ test("bulk resolutions compare each bind and keep the snapshot's app hash", asyn
   expect(compared).toEqual(["items/a/1", "lorebook-items/w/9"]);
   expect(out).toEqual([
     { instance_id: 3, remote_id: "a", action: "bind", card_id: 1, app_hash: "ha", base_revision_id: 118, accepted_hash: "", default: "library" },
-    { instance_id: 3, remote_id: "b", action: "import", app_hash: "hb" },
+    { instance_id: 3, remote_id: "b", action: "import", app_hash: "hb", binding_id: 4 },
     { instance_id: 3, kind: "lorebook", remote_id: "w", action: "bind", card_id: 9, app_hash: "hw", base_revision_id: 118, accepted_hash: "", default: "library" },
   ]);
 });

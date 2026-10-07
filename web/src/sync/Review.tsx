@@ -208,6 +208,8 @@ export function Review() {
     enabled: card > 0,
     queryKey: ["compare", instance, kind, remoteId, card],
     gcTime: 0,
+    // A refetch would swap the comparison under the owner's choices.
+    refetchOnWindowFocus: false,
     queryFn: () => compareItem(instance, kind, remoteId, card),
   });
   const nestedCmps = useQueries({
@@ -217,6 +219,7 @@ export function Review() {
         enabled: o?.action === "bind",
         queryKey: ["compare", instance, "lorebook-items", lb.remote_id, o?.card_id ?? 0],
         gcTime: 0,
+        refetchOnWindowFocus: false,
         queryFn: () => compareItem(instance, "lorebook-items", lb.remote_id, o?.card_id ?? 0),
       };
     }),
@@ -236,10 +239,14 @@ export function Review() {
 
   const resolve = useMutation({
     mutationFn: async () => {
-      const body = resolution(remoteId, cmp.data?.app_hash ?? item?.app_hash ?? "", act, cmp.data, choices);
+      // The comparison is newer than the snapshot, and it leaves binding_id out when the item is unbound.
+      const bindingId = cmp.data ? (cmp.data.binding_id ?? 0) : (item?.binding_id ?? 0);
+      const body = resolution(remoteId, cmp.data?.app_hash ?? item?.app_hash ?? "", act, cmp.data, choices, bindingId);
       const books = nested.flatMap((lb, i) => {
         const o = nestedPick(lb);
-        return o ? [resolution(lb.remote_id, lb.app_hash, o.action, nestedCmps[i]?.data, nestedChoices[lb.remote_id])] : [];
+        return o
+          ? [resolution(lb.remote_id, lb.app_hash, o.action, nestedCmps[i]?.data, nestedChoices[lb.remote_id], lb.binding_id ?? 0)]
+          : [];
       });
       if (books.length && act !== "skip") body.lorebooks = books;
       return resolveItem(instance, kind, remoteId, body);
@@ -345,6 +352,7 @@ export function Review() {
                     setNestedChoices({ ...nestedChoices, [lb.remote_id]: {} });
                   }}
                 >
+                  {!o && <option value="">Server's suggestion</option>}
                   {lb.options.map((opt) => (
                     <option key={optionKey(opt)} value={optionKey(opt)}>
                       {optionLabel(opt, lb.candidates)}

@@ -18,6 +18,7 @@ func pushCmd() *cobra.Command {
 	push := &cobra.Command{
 		Use:     "push <instance-id> <card-id>|<query-json>",
 		Short:   "Push one card, or the cards a search matches, to an app",
+		Long:    "Push replaces the app's copy, so it overwrites changes made in the app. A query needs a filter or text.",
 		Example: "  ink sync push 3 12\n  ink sync push 3 '{\"filter\": {\"tag\": \"fantasy\"}}'",
 		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {

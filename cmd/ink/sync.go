@@ -9,7 +9,7 @@ import (
 
 func syncCmd() *cobra.Command {
 	sync := &cobra.Command{Use: "sync", Short: "Push cards to apps and line apps up against the library"}
-	sync.AddCommand(pushCmd())
+	sync.AddCommand(pushCmd(), reconcileCmd(), compareCmd(), resolveCmd(), applyCmd())
 	return sync
 }
 

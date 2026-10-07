@@ -120,13 +120,18 @@ test("binds with the chosen side of each hunk, and the nested world book's", asy
   ]);
 });
 
-test("an import sends the binding its comparison saw, and a nested one the snapshot's", async () => {
+function importWithNewerComparison() {
   const [ann] = snap.items!;
   progress = { ...snap, items: [{ ...ann!, binding_id: 3, lorebooks: [{ ...ann!.lorebooks![0]!, binding_id: 4 }] }] };
+  // Reopened after an import, the fresh comparison names the binding that import made.
   const fetch = globalThis.fetch;
   vi.stubGlobal("fetch", async (req: Request) =>
     new URL(req.url).pathname === "/api/instances/3/items/a/compare" ? json({ ...cardCmp, binding_id: 12 }) : fetch(req),
   );
+}
+
+test("an import sends the snapshot's binding, not a reopened comparison's", async () => {
+  importWithNewerComparison();
   renderReview();
   const user = userEvent.setup();
   await screen.findByRole("radiogroup", { name: "Keep for description#1" });
@@ -136,10 +141,24 @@ test("an import sends the binding its comparison saw, and a nested one the snaps
   await screen.findByText("Queue page");
   expect(resolved).toEqual([
     {
-      remote_id: "a", action: "import", app_hash: "h2", binding_id: 12,
+      remote_id: "a", action: "import", app_hash: "h2", binding_id: 3,
       lorebooks: [{ remote_id: "w2", action: "import", app_hash: "hw", binding_id: 4 }],
     },
   ]);
+});
+
+test("after a 409, an import sends the reloaded comparison's binding", async () => {
+  importWithNewerComparison();
+  stale = true;
+  renderReview();
+  const user = userEvent.setup();
+  await screen.findByRole("radiogroup", { name: "Keep for description#1" });
+  await user.click(within(screen.getByRole("radiogroup", { name: "Action" })).getByLabelText("Import as new"));
+  await user.click(screen.getByRole("button", { name: "Resolve" }));
+  expect(await screen.findByText(/compare again/)).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Resolve" }));
+  await screen.findByText("Queue page");
+  expect(resolved.map((r) => (r as { binding_id: number }).binding_id)).toEqual([3, 12]);
 });
 
 test("a nested world book with no suggestion is left to the server", async () => {

@@ -196,6 +196,7 @@ export function Review() {
   const act =
     action ?? suggested?.action ?? (!item || item.verdict === "bound" ? "bind" : (actions[0] ?? "skip"));
   const [choices, setChoices] = useState<Choices>({});
+  const [afterStale, setAfterStale] = useState(false);
   const nested = kind === "items" ? (item?.lorebooks ?? []) : [];
   const [nestedPicks, setNestedPicks] = useState<Record<string, string>>({});
   const [nestedChoices, setNestedChoices] = useState<Record<string, Choices>>({});
@@ -239,8 +240,9 @@ export function Review() {
 
   const resolve = useMutation({
     mutationFn: async () => {
-      // The comparison is newer than the snapshot, and it leaves binding_id out when the item is unbound.
-      const bindingId = cmp.data ? (cmp.data.binding_id ?? 0) : (item?.binding_id ?? 0);
+      // The binding the owner saw: the snapshot's, since a comparison reopened after an import already names its new
+      // binding. A 409's reloaded comparison, or a drift review's, is what they saw instead; it omits binding_id when unbound.
+      const bindingId = item && !(afterStale && cmp.data) ? (item.binding_id ?? 0) : (cmp.data?.binding_id ?? 0);
       const body = resolution(remoteId, cmp.data?.app_hash ?? item?.app_hash ?? "", act, cmp.data, choices, bindingId);
       const books = nested.flatMap((lb, i) => {
         const o = nestedPick(lb);
@@ -264,6 +266,7 @@ export function Review() {
         // Hunk IDs may differ in the fresh comparison, so the old choices can't carry over.
         setChoices({});
         setNestedChoices({});
+        setAfterStale(true);
         void qc.invalidateQueries({ queryKey: ["compare", instance] });
       }
       // Nested world book imports carry the snapshot's hash, which only a new reconcile refreshes.

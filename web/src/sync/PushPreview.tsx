@@ -38,9 +38,7 @@ export function PushPreview(props: { kind: Kind; id: number; instance: number; n
       onClose();
     },
     onError: (e) => {
-      const changed = e instanceof ApiError && e.status === 409;
-      if (changed) void preview.refetch();
-      toast({ text: changed ? "What the push sends has changed. Check the new preview." : e.message, error: true });
+      if (e instanceof ApiError && e.status === 409) void preview.refetch();
     },
   });
   const changes = p?.changes ?? [];
@@ -85,6 +83,13 @@ export function PushPreview(props: { kind: Kind; id: number; instance: number; n
             </p>
           )}
         </>
+      )}
+      {push.isError && (
+        <p className="error">
+          {push.error instanceof ApiError && push.error.status === 409
+            ? "What the push sends has changed. Check the new preview."
+            : push.error.message}
+        </p>
       )}
       <div className="row">
         <button className="button primary" disabled={!p || push.isPending || preview.isFetching} onClick={() => push.mutate()}>

@@ -17,17 +17,19 @@ const preview = {
 let gets: number;
 let pushes: unknown[];
 let conflict: boolean;
+let current: typeof preview;
 beforeEach(() => {
   gets = 0;
   pushes = [];
   conflict = false;
+  current = preview;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
       const u = new URL(req.url);
       if (u.pathname === "/api/cards/7/push-preview" && u.searchParams.get("instance_id") === "2") {
         gets++;
-        return json(preview);
+        return json(current);
       }
       if (u.pathname === "/api/cards/7/push") {
         pushes.push(await req.json());
@@ -72,4 +74,12 @@ test("a push that would differ reloads the preview", async () => {
   await waitFor(() => expect(gets).toBe(2));
   expect(onClose).not.toHaveBeenCalled();
   expect(await screen.findByText(/Check the new preview/)).toBeInTheDocument();
+});
+
+test("a copy the app can't update is pushed as new", async () => {
+  current = { ...preview, new_copy: true };
+  const onClose = renderPreview();
+  await userEvent.click(await screen.findByRole("button", { name: "Confirm push" }));
+  await waitFor(() => expect(onClose).toHaveBeenCalled());
+  expect(pushes).toEqual([{ instance_id: 2, confirm: "c1", new_copy: true }]);
 });

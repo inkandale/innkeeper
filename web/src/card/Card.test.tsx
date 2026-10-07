@@ -22,6 +22,7 @@ let conflict: boolean;
 let avatarConflict: boolean;
 let cardGets: number;
 let bindingStatus: string;
+let pushPosts: number;
 // A save waits on gate when it's set.
 let gate: Promise<void> | undefined;
 let puts: { path: string; body: unknown }[];
@@ -31,6 +32,7 @@ beforeEach(() => {
   avatarConflict = false;
   cardGets = 0;
   bindingStatus = "ahead";
+  pushPosts = 0;
   gate = undefined;
   puts = [];
   vi.stubGlobal(
@@ -65,6 +67,10 @@ beforeEach(() => {
       if (path === "/api/cards/7/revisions") return json([head.revision]);
       if (path === "/api/cards/7/bindings")
         return json([{ id: 1, instance_id: 2, remote_id: "r", status: bindingStatus, ahead: true, remote_state: "unchanged" }]);
+      if (path === "/api/cards/7/push") {
+        pushPosts++;
+        return json({ id: 9, kind: "target.push", status: "queued" }, 202);
+      }
       if (path === "/api/cards/7/push-preview")
         return json({ replaces: true, new_copy: false, dropped_fields: [], confirm: "c", changes: [] });
       if (path === "/api/cards/7/sources")
@@ -250,4 +256,5 @@ test("Push previews before pushing", async () => {
   await userEvent.click(await screen.findByRole("button", { name: "Push" }));
   expect(await screen.findByText("The app's copy already matches.")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Confirm push" })).toBeInTheDocument();
+  expect(pushPosts).toBe(0);
 });

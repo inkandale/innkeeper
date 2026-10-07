@@ -35,7 +35,8 @@ export function Appearance() {
   return (
     <section className="appearance">
       {failed && <p className="error">{failed.message}</p>}
-      <fieldset>
+      {/* Picks wait for the saved theme, and for a save in flight. */}
+      <fieldset disabled={!ready || save.isPending}>
         <legend>Theme</legend>
         {["", ...themes].map((name) => (
           <label key={name} className="check">

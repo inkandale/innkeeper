@@ -310,7 +310,7 @@ the library; reconcile resolves the world books.
 | Need | API | CLI | MCP |
 |---|---|---|---|
 | Run a reconcile | `POST /reconciles {"instance_id"}` → job | `ink sync reconcile <instance>` | `start_reconcile` |
-| Read the snapshot | `GET /jobs/{id}` | `ink jobs show <id>` | `get_job` |
+| Read the snapshot | `GET /jobs/{id}` | `ink jobs show --json <id>` | `get_job` |
 | Compare one pair | `GET /instances/{id}/items/{remote_id}/compare?card_id=` | `ink sync compare <instance> <remote_id> [card]` | `compare_item` |
 | Resolve one item | `POST /instances/{id}/items/{remote_id}/resolve` | `ink sync resolve <instance> <remote_id> …` | `resolve_item` |
 | Resolve many | `POST /resolutions` → job, per-item results | `ink sync apply <job>` | `resolve_items` |

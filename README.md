@@ -457,7 +457,7 @@ ink import <instance-id> '{"remote_ids": ["<remote-id>"]}' # only these items
 Each item becomes a library card or lorebook bound to the app's copy, so it
 starts `in_sync`. Cards keep the lorebooks the app links them to, and their
 avatars where the plugin supplies them. The job runs one child per item and
-resumes after a restart. `ink jobs show <job-id>` counts the children
+resumes after a restart. `ink jobs show --json <job-id>` counts the children
 by outcome:
 
 | Outcome | Meaning |

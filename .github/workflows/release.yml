@@ -109,7 +109,7 @@ jobs:
               -ldflags="-s -w -X main.version=$VERSION" -o "dist/ink_${VERSION}_${os}_${arch}${ext}" ./cmd/ink
           done
           (cd dist && sha256sum -- * > checksums.txt)
-          gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY"
+          gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
         env:
           VERSION: ${{ needs.release-please.outputs.version }}
           TAG: ${{ needs.release-please.outputs.tag }}

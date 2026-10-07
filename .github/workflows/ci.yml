@@ -39,6 +39,11 @@ jobs:
           sudo apt-get install -y postgresql-client-18
           echo /usr/lib/postgresql/18/bin >> "$GITHUB_PATH"
       - run: go vet ./...
+      # ink must build where people run it, not only on the server's platform.
+      - run: |
+          for target in darwin/arm64 windows/amd64; do
+            GOOS=${target%/*} GOARCH=${target#*/} go build -o /dev/null ./cmd/ink
+          done
       - run: go test -race ./...
 
   chart:

@@ -14,6 +14,7 @@ RUN go mod download
 COPY . .
 COPY --from=web /web/dist ./web/dist
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /innkeeper ./cmd/innkeeper
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /ink ./cmd/ink
 
 # The built-in plugins, built against this core's protocol package. Owners
 # install the rest at runtime.
@@ -37,6 +38,7 @@ RUN apk add --no-cache postgresql18-client tini \
     && mkdir -p /data/blobs /data/plugins \
     && chown -R innkeeper /data
 COPY --from=build /innkeeper /usr/local/bin/innkeeper
+COPY --from=build /ink /usr/local/bin/ink
 COPY --from=plugins /plugins /usr/lib/innkeeper/plugins
 USER innkeeper
 ENV INNKEEPER_BLOB_DIR=/data/blobs \

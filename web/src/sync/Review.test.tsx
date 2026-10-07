@@ -176,12 +176,14 @@ test("Skip sends no choices and no world books", async () => {
   expect(resolved).toEqual([{ remote_id: "a", app_hash: "h2", action: "skip" }]);
 });
 
-test("Other match then Resolve binds to the found card", async () => {
+test("Other match on a new item offers Bind and binds to the found card", async () => {
+  progress = { ...snap, items: [{ remote_id: "a", name: "Ann", app_hash: "ha", verdict: "new", options: [{ action: "import" }, { action: "skip" }] }] };
   renderReview();
   const user = userEvent.setup();
   await user.type(await screen.findByRole("textbox", { name: "Other match" }), "Bel");
   await user.click(screen.getByRole("button", { name: "Search" }));
   await user.click(await screen.findByRole("button", { name: "Belle" }));
+  expect(within(screen.getByRole("radiogroup", { name: "Action" })).getByLabelText("Bind")).toBeChecked();
   const resolve = screen.getByRole("button", { name: "Resolve" });
   await waitFor(() => expect(resolve).toBeEnabled());
   await user.click(resolve);

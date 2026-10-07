@@ -186,7 +186,13 @@ export function Review() {
 
   const [action, setAction] = useState<Option["action"]>();
   // Only the snapshot's options are offered: an error item can only be skipped, and a bound one shouldn't default to a duplicate import.
-  const actions = (["bind", "import", "skip"] as const).filter((a) => !item || (item.options ?? []).some((o) => o.action === a));
+  // A match picked by hand adds Bind, unless the item errored.
+  const actions = (["bind", "import", "skip"] as const).filter(
+    (a) =>
+      !item ||
+      (item.options ?? []).some((o) => o.action === a) ||
+      (a === "bind" && card > 0 && item.verdict !== "error"),
+  );
   const act =
     action ?? suggested?.action ?? (!item || item.verdict === "bound" ? "bind" : (actions[0] ?? "skip"));
   const [choices, setChoices] = useState<Choices>({});
@@ -224,7 +230,7 @@ export function Review() {
       },
       { replace: true },
     );
-    setAction("bind");
+    if (item?.verdict !== "error") setAction("bind");
     setChoices({});
   };
 

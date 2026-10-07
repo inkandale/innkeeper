@@ -9,8 +9,12 @@ import { Login } from "./login/Login";
 import { Lorebook } from "./lorebook/Lorebook";
 import { Page } from "./shell/Page";
 import { Shell } from "./shell/Shell";
+import { Access } from "./settings/Access";
+import { Appearance } from "./settings/Appearance";
+import { Instance } from "./settings/Instance";
 import { Job } from "./settings/Job";
 import { Jobs } from "./settings/Jobs";
+import { Plugins } from "./settings/Plugins";
 import { Settings } from "./settings/Settings";
 
 // RequireAuth checks the session. A 401 sends the browser to /login via the
@@ -58,9 +62,14 @@ export const router = createBrowserRouter([
             path: "settings",
             element: <Settings />,
             children: [
-              { index: true, element: <Navigate to="jobs" replace /> },
+              { index: true, element: <Navigate to="plugins" replace /> },
+              { path: "plugins", element: <Plugins /> },
+              { path: "plugins/:plugin/new", element: <Instance /> },
+              { path: "instances/:id", element: <Instance /> },
               { path: "jobs", element: <Jobs /> },
               { path: "jobs/:id", element: <Job /> },
+              { path: "access", element: <Access /> },
+              { path: "appearance", element: <Appearance /> },
             ],
           },
           { path: "*", element: <Page title="Not found" /> },

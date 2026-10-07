@@ -147,7 +147,7 @@ with it:
 
 ```bash
 read -rs PW && printf '%s\n' "$PW" | docker compose exec -T api /usr/lib/innkeeper/plugins/password-login/password-login hash; unset PW
-innkeeper call POST /instances '{"plugin": "password-login", "name": "Login", "owner_subject": "owner", "secrets": {"password_hash": "<hash>"}}'
+ink call POST /instances '{"plugin": "password-login", "name": "Login", "owner_subject": "owner", "secrets": {"password_hash": "<hash>"}}'
 ```
 
 For another login provider, `owner_subject` is the identity it reports for
@@ -172,7 +172,7 @@ to `INNKEEPER_URL`, which defaults to `http://localhost:8080`. After changing
 the API, run `npm run gen` to regenerate the client; it needs Go.
 
 To restyle the UI, install a [theme plugin](docs/protocol.md#themes) and
-select it with `innkeeper call PATCH /settings '{"theme": "<name>"}'`; an
+select it with `ink call PATCH /settings '{"theme": "<name>"}'`; an
 empty name restores the default. A theme's CSS runs on the UI's origin, so
 install only themes you trust.
 
@@ -183,8 +183,8 @@ from a source, an `index.toml` that lists plugin versions. The official
 `innkeeper-plugins` source is there by default:
 
 ```bash
-innkeeper call GET /plugin-catalog
-innkeeper call POST /plugins/card-import/install '{"source": "official", "version": "0.1.0"}'
+ink call GET /plugin-catalog
+ink call POST /plugins/card-import/install '{"source": "official", "version": "0.1.0"}'
 ```
 
 Installing a newer version updates the plugin; jobs already running finish
@@ -197,7 +197,7 @@ trust. To publish one, see
 [Publishing a source](docs/protocol.md#publishing-a-source).
 
 ```bash
-innkeeper call POST /plugin-sources '{"id": "mine", "url": "https://example.com/index.toml"}'
+ink call POST /plugin-sources '{"id": "mine", "url": "https://example.com/index.toml"}'
 ```
 
 `DELETE /plugins/<name>` uninstalls a plugin but keeps its instances and
@@ -247,45 +247,75 @@ none counts as `destructive`. `GET /plugin-tools` lists them.
 
 ## CLI
 
-```text
-innkeeper call <method> <path> [json]           any API call, such as: call GET /jobs
-innkeeper import <instance-id> [params-json]    start an import
-innkeeper export <card-id> [file [format]]      a card as CCv3 JSON, or a codec's format (.png means png)
-innkeeper bulk archive|unarchive <query-json>   archive or unarchive the cards a search matches
-innkeeper push <instance-id> <card-id>|<query-json> [--new-copy]
-                                                push one card, or the cards a search matches, to a target
-innkeeper sources <card-id> [add <url> | remove <source-id>]
-                                                list, add, or remove a card's sources
-innkeeper jobs [show|cancel|watch <job-id>]     list or follow jobs
-innkeeper reconcile <instance-id> [params-json] [--json]
-                                                line an app up against the library
-innkeeper compare <instance-id> <remote-id> [card-id]
-                                                show how an app character differs from a card
-innkeeper resolve <instance-id> <remote-id> bind|import|skip [card-id] [hunk=choice ...] [--default=choice]
-innkeeper resolve --suggested <reconcile-job-id> [remote-id ...] [--verdict=v,...]
-                                                bind, import, or skip app items
-innkeeper token create <name> [tier] | list | revoke <id> | revoke-grant <id>
-innkeeper openapi                               print the OpenAPI spec
-innkeeper backup <dir> [assets|config]          back up both types, or one, into dir
-innkeeper restore [--replace] <archive-or-backup-dir>...
-                                                restore backups, assets first
+`ink` works with a server's API from any machine. The server binary,
+`innkeeper`, runs the server and the commands that need its database.
+
+### ink
+
+Download `ink` for your platform from the
+[latest release](https://github.com/davidgibbons/innkeeper/releases/latest),
+or build it:
+
+```bash
+go install github.com/davidgibbons/innkeeper/cmd/ink@latest
 ```
 
-`bulk` needs a query with a `filter` or `text`; to select every card, filter
-on `archived`. It touches only cards not already in the target state. The API's
-`POST /bulk` also tags, collects, and exports; see `/api/docs`.
+The image includes `ink` too. It reads `INNKEEPER_URL` and an API token in
+`INNKEEPER_TOKEN`; make one on the server with
+`innkeeper token create <name> [read|write|destructive]`.
+
+```text
+ink call <method> <path> [json]                   any API call, such as: ink call GET /jobs
+ink import <instance-id> [params-json]            start an import
+ink jobs [show|cancel|watch <job-id>]             list or follow jobs
+ink cards export <card-id> [file] [--format f]    a card as CCv3 JSON, or a codec's format (.png means png)
+ink cards archive|unarchive <query-json>          archive or unarchive the cards a search matches
+ink cards sources <card-id>                       list a card's sources
+ink cards sources add <card-id> <url>
+ink cards sources remove <card-id> <source-id>
+ink sync push <instance-id> <card-id>|<query-json> [--new-copy]
+                                                  push one card, or the cards a search matches, to an app
+ink sync reconcile <instance-id> [params-json]    line an app up against the library
+ink sync compare <instance-id> <remote-id> [card-id]
+                                                  show how an app character differs from a card
+ink sync resolve <instance-id> <remote-id> bind|import|skip [card-id] [hunk=choice ...] [--default choice]
+                                                  bind, import, or skip one app character
+ink sync apply <reconcile-job-id> [remote-id ...] [--verdict v,...]
+                                                  resolve a reconcile's items as it suggested
+```
+
+`--json` prints JSON instead of tables, and every command takes `--help`.
+`ink completion bash|zsh|fish|powershell` prints a shell completion script;
+`ink completion <shell> --help` says where to put it.
+
+`cards archive` needs a query with a `filter` or `text`; to select every card,
+filter on `archived`. It touches only cards not already in the target state.
+The API's `POST /bulk` also tags, collects, and exports; see `/api/docs`.
 
 `jobs watch` exits non-zero unless the job succeeds.
 
-`push --new-copy` is for apps that can't update a card: pushing there again
-makes another copy, so the push fails without the flag.
+`sync push` replaces the app's copy, so it overwrites changes made in the app.
+`--new-copy` is for apps that can't update a card: pushing there again makes
+another copy, so the push fails without the flag.
 
 Exporting in a format other than `json` needs an instance of a codec plugin
 that writes it. Export uses the oldest working codec instance for the format:
 
 ```bash
-innkeeper call POST /instances '{"plugin": "card-codec", "name": "Codec"}'
-innkeeper export 12 brakka.png
+ink call POST /instances '{"plugin": "card-codec", "name": "Codec"}'
+ink cards export 12 brakka.png
+```
+
+### innkeeper
+
+```text
+innkeeper api | worker | migrate                  run the server; see Running
+innkeeper token create <name> [tier] | list | revoke <id> | revoke-grant <id>
+innkeeper openapi                                 print the OpenAPI spec
+innkeeper plugin check <plugin-dir>               run the plugin contract checks
+innkeeper backup <dir> [assets|config]            back up both types, or one, into dir
+innkeeper restore [--replace] <archive-or-backup-dir>...
+                                                  restore backups, assets first
 ```
 
 ## Importing
@@ -298,9 +328,9 @@ To import a folder, put it under `./import`, or set `INNKEEPER_IMPORT_DIR`
 in `.env`. Compose mounts it read-only at `/import`:
 
 ```bash
-innkeeper call POST /instances '{"plugin": "card-import", "name": "Import", "config": {"folder": "/import"}}'
-innkeeper import <instance-id>                         # everything in /import
-innkeeper import <instance-id> '{"path": "fantasy"}'   # only /import/fantasy
+ink call POST /instances '{"plugin": "card-import", "name": "Import", "config": {"folder": "/import"}}'
+ink import <instance-id>                         # everything in /import
+ink import <instance-id> '{"path": "fantasy"}'   # only /import/fantasy
 ```
 
 To import one file, upload it, then import the `sha256` from the reply
@@ -309,7 +339,7 @@ within 24 hours:
 ```bash
 curl -sf -H "Authorization: Bearer $INNKEEPER_TOKEN" -H 'Content-Type: application/octet-stream' \
   --data-binary @brakka.png "$INNKEEPER_URL/api/blobs"
-innkeeper import <instance-id> '{"blob": "<sha256>", "name": "brakka.png"}'
+ink import <instance-id> '{"blob": "<sha256>", "name": "brakka.png"}'
 ```
 
 ## Sources
@@ -322,9 +352,9 @@ chub.ai is the only site Innkeeper knows.
 Add or remove one yourself with the API, MCP tools, or CLI:
 
 ```bash
-innkeeper sources 12 add https://chub.ai/characters/user/name
-innkeeper sources 12 remove 3
-innkeeper call GET /lorebooks/5/sources    # the CLI covers cards; use the API or MCP for lorebooks
+ink cards sources add 12 https://chub.ai/characters/user/name
+ink cards sources remove 12 3
+ink call GET /lorebooks/5/sources    # the CLI covers cards; use the API or MCP for lorebooks
 ```
 
 A removed source stays removed: detection won't add it back.
@@ -337,10 +367,10 @@ Add one per Lumiverse account; its
 covers what it syncs:
 
 ```bash
-innkeeper call POST /instances '{"plugin": "lumiverse", "name": "Lumiverse",
+ink call POST /instances '{"plugin": "lumiverse", "name": "Lumiverse",
   "config": {"url": "https://lumiverse.example.com", "username": "owner"},
   "secrets": {"password": "<password>"}}'
-innkeeper call POST /cards/<id>/push '{"instance_id": <instance-id>}'
+ink call POST /cards/<id>/push '{"instance_id": <instance-id>}'
 ```
 
 It also ships a target for [SillyTavern](https://github.com/SillyTavern/SillyTavern).
@@ -351,7 +381,7 @@ covers that and what it syncs. Set `auth` to `none`, `basic`, or `account` to
 match the server:
 
 ```bash
-innkeeper call POST /instances '{"plugin": "sillytavern", "name": "SillyTavern",
+ink call POST /instances '{"plugin": "sillytavern", "name": "SillyTavern",
   "config": {"url": "https://sillytavern.example.com", "auth": "basic", "username": "owner"},
   "secrets": {"password": "<password>"}}'
 ```
@@ -397,8 +427,8 @@ To link a card to a character the app already has, instead of pushing a new
 copy, list the app's characters and bind one:
 
 ```bash
-innkeeper call GET  /instances/<instance-id>/items
-innkeeper call POST /cards/<id>/bind '{"instance_id": <instance-id>, "remote_id": "<remote-id>"}'
+ink call GET  /instances/<instance-id>/items
+ink call POST /cards/<id>/bind '{"instance_id": <instance-id>, "remote_id": "<remote-id>"}'
 ```
 
 Binding changes nothing in the app or the library. The app's copy is
@@ -420,14 +450,14 @@ links. The next push links the library's.
 To take an app's whole library into Innkeeper, import from its instance:
 
 ```bash
-innkeeper import <instance-id>                                  # every unbound character and lorebook
-innkeeper import <instance-id> '{"remote_ids": ["<remote-id>"]}' # only these items
+ink import <instance-id>                                  # every unbound character and lorebook
+ink import <instance-id> '{"remote_ids": ["<remote-id>"]}' # only these items
 ```
 
 Each item becomes a library card or lorebook bound to the app's copy, so it
 starts `in_sync`. Cards keep the lorebooks the app links them to, and their
 avatars where the plugin supplies them. The job runs one child per item and
-resumes after a restart. `innkeeper jobs show <job-id>` counts the children
+resumes after a restart. `ink jobs show <job-id>` counts the children
 by outcome:
 
 | Outcome | Meaning |
@@ -447,7 +477,7 @@ When the app and the library both have characters, and some are probably the
 same, reconcile lines them up and suggests what to do with each:
 
 ```bash
-innkeeper reconcile <instance-id>
+ink sync reconcile <instance-id>
 ```
 
 It reads the app, changes nothing, and prints one row per app item, with
@@ -470,7 +500,7 @@ hunk, a part of a field, that differs, with changed words marked
 `[-library-]` and `{+app+}`:
 
 ```bash
-innkeeper compare <instance-id> <remote-id> <card-id>
+ink sync compare <instance-id> <remote-id> <card-id>
 ```
 
 Then resolve it, choosing per hunk which side to keep: `library`, `app`,
@@ -479,8 +509,8 @@ app's), or `both` (lists only: the library's entries, then the app's). Hunks
 you don't name take `--default`, or `library`:
 
 ```bash
-innkeeper resolve <instance-id> <remote-id> bind <card-id> first_mes#0=app --default=library
-innkeeper resolve <instance-id> <remote-id> skip
+ink sync resolve <instance-id> <remote-id> bind <card-id> first_mes#0=app --default library
+ink sync resolve <instance-id> <remote-id> skip
 ```
 
 Resolving changes the library and the binding, never the app. Keeping the
@@ -492,15 +522,15 @@ To take every suggestion from a reconcile, or only some verdicts or items,
 as one bulk job:
 
 ```bash
-innkeeper resolve --suggested <reconcile-job-id> --verdict=exact
-innkeeper resolve --suggested <reconcile-job-id> <remote-id>   # one new item, imported
+ink sync apply <reconcile-job-id> --verdict exact
+ink sync apply <reconcile-job-id> <remote-id>   # one new item, imported
 ```
 
 A suggested bind keeps the library's side of every hunk. An item with no
 binding or card has nothing to compare with, so import it this way.
 
-For world books in an app that keeps them separately, `compare` and `resolve`
-cover characters only; use `innkeeper call` with
+For world books in an app that keeps them separately, `sync compare` and
+`sync resolve` cover characters only; use `ink call` with
 `/instances/<instance-id>/lorebook-items/<remote-id>/compare?lorebook_id=<id>`
 and `.../resolve`. The MCP tools `start_reconcile`, `compare_item`,
 `resolve_item`, and `resolve_items` cover both.
@@ -511,9 +541,9 @@ Some apps, such as Lumiverse, keep lorebooks apart from cards. Lorebooks then
 sync on their own, with their own bindings, statuses, checks, and adopts:
 
 ```bash
-innkeeper call GET  '/lorebooks/<id>/push-preview?instance_id=<instance-id>'
-innkeeper call POST /lorebooks/<id>/push '{"instance_id": <instance-id>}'
-innkeeper call GET  /lorebooks/<id>/bindings
+ink call GET  '/lorebooks/<id>/push-preview?instance_id=<instance-id>'
+ink call POST /lorebooks/<id>/push '{"instance_id": <instance-id>}'
+ink call GET  /lorebooks/<id>/bindings
 ```
 
 A card push creates the card's lorebooks that the app doesn't have yet, then
@@ -568,8 +598,8 @@ These need a destructive token, since an assets backup holds every card and a
 config backup holds the encrypted secrets:
 
 ```bash
-innkeeper call POST /backups '{"type": "assets"}'
-innkeeper call GET /backups
+ink call POST /backups '{"type": "assets"}'
+ink call GET /backups
 curl -fH "Authorization: Bearer $INNKEEPER_TOKEN" -o assets.tar.gz "$INNKEEPER_URL/api/backups/<name>"
 ```
 

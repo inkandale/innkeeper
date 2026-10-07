@@ -592,9 +592,10 @@ func TestReconcileBoundArchived(t *testing.T) {
 
 func TestReconcileReusedRemoteID(t *testing.T) {
 	e := setup(t, nil)
-	live := e.push(e.card)
+	// The dead binding is older, so it sorts first by ID; the live one must still win.
 	deadCard := e.newCard("Iko")
 	dead := e.push(deadCard)
+	live := e.push(e.card)
 	// The app lost the dead card's item and gave its ID to the live one.
 	if _, err := e.pool.Exec(e.ctx, `UPDATE binding SET remote_state = 'missing', remote_id = $1 WHERE id = $2`,
 		live.RemoteID, dead.ID); err != nil {
@@ -651,6 +652,50 @@ func TestReconcileCapsCandidates(t *testing.T) {
 	it := e.reconcile(ReconcileParams{}, "guard")["guard"]
 	if !slices.Equal(ids(it.Candidates), want[:10]) {
 		t.Errorf("candidates = %v", ids(it.Candidates))
+	}
+}
+
+// The cap keeps an unbound match ranked past it, so the suggestion can bind
+// it rather than call the item a duplicate.
+func TestReconcileCapKeepsUnboundCandidate(t *testing.T) {
+	e := setup(t, nil)
+	guard := map[string]any{"name": "Guard", "description": "A tired guard at the gate."}
+	var cards []int64
+	for range 11 {
+		cards = append(cards, e.libCard(guard))
+	}
+	for _, c := range cards[:10] {
+		e.push(c)
+	}
+	e.appCard("guard", guard, nil)
+	it := e.reconcile(ReconcileParams{}, "guard")["guard"]
+	if it.Verdict != VerdictExact || !slices.Equal(ids(it.Candidates), append(cards[:9:9], cards[10])) {
+		t.Fatalf("verdict %s, candidates = %v", it.Verdict, ids(it.Candidates))
+	}
+	if it.Suggested == nil || it.Suggested.Action != "bind" || it.Suggested.CardID != cards[10] {
+		t.Errorf("suggested = %+v", it.Suggested)
+	}
+}
+
+// An embedded target's world books live inside its cards, so a card's links
+// aren't reconciled as standalone lorebooks.
+func TestReconcileEmbeddedIgnoresLinks(t *testing.T) {
+	e := setup(t, nil)
+	e.writeRemote("l1", map[string]any{"lorebook": map[string]any{"name": "Sea lore",
+		"entries": []any{map[string]any{"keys": []any{"tide"}, "content": "Tides rise twice a day."}}}})
+	e.appCard("r5", map[string]any{"name": "Pell", "description": "An owl."},
+		map[string]any{"lorebook_remote_ids": []string{"l1"}})
+	snap, err := e.s.Reconcile(e.ctx, ReconcileParams{InstanceID: e.inst}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range snap.Items {
+		if len(it.Lorebooks) != 0 {
+			t.Errorf("%s lorebooks = %+v", it.RemoteID, it.Lorebooks)
+		}
+	}
+	if len(snap.Lorebooks) != 0 {
+		t.Errorf("top-level lorebooks = %+v", snap.Lorebooks)
 	}
 }
 

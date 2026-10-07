@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { Toasts } from "../shell/Toasts";
@@ -26,7 +26,10 @@ let pushPosts: number;
 // A save waits on gate when it's set.
 let gate: Promise<void> | undefined;
 let puts: { path: string; body: unknown }[];
+// Whether a card-codec instance, which writes PNG, exists.
+let pngCodec: boolean;
 beforeEach(() => {
+  pngCodec = false;
   head = entity;
   conflict = false;
   avatarConflict = false;
@@ -76,8 +79,10 @@ beforeEach(() => {
       if (path === "/api/cards/7/sources")
         return json([{ id: 4, kind: "chub", ref: "dg/brakka", url: "https://chub.ai/characters/dg/brakka", linked_by: "user", created_at: now },
           { id: 5, kind: "chub", ref: "dg/evil", url: "javascript:alert(1)", linked_by: "user", created_at: now }]);
-      if (path === "/api/instances") return json([{ id: 2, name: "Lumiverse", plugin: "lumiverse" }]);
-      if (path === "/api/plugins") return json([{ name: "lumiverse", capabilities: ["push"] }]);
+      if (path === "/api/instances")
+        return json([{ id: 2, name: "Lumiverse", plugin: "lumiverse" }, ...(pngCodec ? [{ id: 5, name: "Codec", plugin: "card-codec" }] : [])]);
+      if (path === "/api/plugins")
+        return json([{ name: "lumiverse", capabilities: ["push"] }, { name: "card-codec", capabilities: ["codec"], formats: ["png"] }]);
       if (path === "/api/collections")
         return json([
           { id: 1, name: "Favorites" },
@@ -223,6 +228,39 @@ test("replacing the image saves a revision with the new avatar", async () => {
   await userEvent.upload(await screen.findByLabelText("Replace image"), file);
   await waitFor(() => expect(puts).toHaveLength(1));
   expect(puts[0]).toMatchObject({ path: "/api/cards/7", body: { base_revision_id: 11, avatar: "cd".repeat(32), data } });
+});
+
+test("a crop saves a revision named Crop image", async () => {
+  // jsdom can't draw, so the canvas hands back a stand-in PNG.
+  vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((done) => done(new Blob(["png"])));
+  renderAt("/cards/7");
+  await userEvent.click(await screen.findByRole("button", { name: "Crop" }));
+  // jsdom lacks showModal, so the dialog stays closed, with no accessible name.
+  const dialog = document.querySelector<HTMLElement>('dialog[aria-label="Crop image"]')!;
+  fireEvent.load(dialog.querySelector("img")!);
+  await userEvent.click(within(dialog).getByRole("button", { name: "Save crop", hidden: true }));
+  await waitFor(() => expect(puts).toHaveLength(1));
+  expect(puts[0]).toMatchObject({ path: "/api/cards/7", body: { avatar: "cd".repeat(32), message: "Crop image" } });
+});
+
+test("an upload saves a revision named Replace image", async () => {
+  renderAt("/cards/7");
+  await userEvent.upload(await screen.findByLabelText("Replace image"), new File(["png"], "new.png", { type: "image/png" }));
+  await waitFor(() => expect(puts).toHaveLength(1));
+  expect(puts[0]).toMatchObject({ body: { message: "Replace image" } });
+});
+
+test("Export PNG hides when no codec instance writes PNG", async () => {
+  renderAt("/cards/7");
+  // The Target select needs plugins and instances, so both have loaded.
+  await screen.findByRole("combobox", { name: "Target" });
+  expect(screen.queryByRole("link", { name: "Export PNG" })).not.toBeInTheDocument();
+});
+
+test("Export PNG links to the PNG export when a codec instance writes PNG", async () => {
+  pngCodec = true;
+  renderAt("/cards/7");
+  expect(await screen.findByRole("link", { name: "Export PNG" })).toHaveAttribute("href", "/api/cards/7/export?format=png");
 });
 
 test("saving after an image change goes on the avatar revision", async () => {

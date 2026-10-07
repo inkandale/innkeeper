@@ -92,3 +92,14 @@ export type Kind = "card" | "lorebook";
 export function route<P extends `/cards/${string}`>(kind: Kind, path: P): P {
   return (kind === "card" ? path : path.replace("/cards/", "/lorebooks/")) as P;
 }
+
+/** canWrite says whether export can write format: json always, anything else through a working instance of a codec plugin that lists it, as the server picks one. */
+export function canWrite(
+  format: string,
+  plugins: { name: string; capabilities?: string[] | null; formats?: string[] | null }[] | null | undefined,
+  instances: { plugin: string; broken_error?: string | null }[] | null | undefined,
+): boolean {
+  if (format === "json") return true;
+  const codecs = new Set((plugins ?? []).filter((p) => p.capabilities?.includes("codec") && p.formats?.includes(format)).map((p) => p.name));
+  return (instances ?? []).some((i) => codecs.has(i.plugin) && !i.broken_error);
+}

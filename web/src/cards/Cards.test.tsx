@@ -184,6 +184,18 @@ test("push offers only targets that push", async () => {
   expect(posts[0]!.body).not.toHaveProperty("kind");
 });
 
+test("export offers PNG only when a codec instance writes it", async () => {
+  renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
+  // Push's target list waits for plugins and instances, so both have loaded.
+  await user.click(screen.getByRole("button", { name: "Push" }));
+  await screen.findByRole("combobox", { name: "Target" });
+  await user.click(screen.getByRole("button", { name: "Export" }));
+  const format = screen.getByRole("combobox", { name: "Format" });
+  expect(Array.from((format as HTMLSelectElement).options).map((o) => o.text)).toEqual(["JSON"]);
+});
+
 // answer replaces the fake response for one path.
 function answer(path: string, f: (req: Request) => Promise<Response>) {
   const rest = fetch;

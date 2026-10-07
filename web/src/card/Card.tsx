@@ -25,11 +25,11 @@ function CardEditor({ id }: { id: number }) {
   // An image change saves at once, on the head. A draft started from that
   // head moves onto the new revision, since its data didn't change.
   const avatar = useMutation({
-    mutationFn: async ({ sha, base }: { sha: string; base: Entity["revision"] }) =>
+    mutationFn: async ({ sha, message, base }: { sha: string; message: string; base: Entity["revision"] }) =>
       must(
         await api.PUT("/cards/{id}", {
           params: { path: { id } },
-          body: { base_revision_id: base.id, data: base.data, avatar: sha, message: "Replace image", source: "ui" },
+          body: { base_revision_id: base.id, data: base.data, avatar: sha, message, source: "ui" },
         }),
       ),
     onSuccess: (e, { base }) => {
@@ -59,7 +59,7 @@ function CardEditor({ id }: { id: number }) {
         dirty={ed.dirty.size > 0}
         saving={ed.save.isPending || ed.stale || avatar.isPending}
         onSave={() => ed.draft && ed.save.mutate(ed.draft)}
-        onAvatar={(sha) => avatar.mutate({ sha, base: head.revision })}
+        onAvatar={(sha, message) => avatar.mutate({ sha, message, base: head.revision })}
         avatarBusy={avatar.isPending || ed.save.isPending}
       />
       <div className="card-main">

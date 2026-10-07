@@ -1,7 +1,7 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
-import { api, must, mustOk, route, thumb, upload, type Kind } from "../api/client";
+import { api, canWrite, must, mustOk, route, thumb, upload, type Kind } from "../api/client";
 import { badgeClass } from "../cards/Tile";
 import { useToast } from "../shell/Toasts";
 import type { Entity } from "./Card";
@@ -18,13 +18,16 @@ export type PanelProps = {
   dirty: boolean;
   saving: boolean;
   onSave: () => void;
-  onAvatar: (sha: string) => void;
+  /** onAvatar saves sha as the image, with message as the revision's. */
+  onAvatar: (sha: string, message: string) => void;
   avatarBusy: boolean;
 };
 
 /** Panel is the card page's left side. */
 export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avatarBusy }: PanelProps) {
   const avatar = card.revision.avatar;
+  const instances = useQuery({ queryKey: ["instances"], queryFn: async () => must(await api.GET("/instances")) });
+  const plugins = useQuery({ queryKey: ["plugins"], queryFn: async () => must(await api.GET("/plugins")) });
   return (
     <aside className="card-aside">
       {avatar ? <img className="portrait" src={thumb(avatar, 640)} alt="" /> : <div className="portrait" />}
@@ -38,9 +41,11 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
         <a className="button" href={`/api/cards/${card.id}/export?format=json`} download>
           Export JSON
         </a>
-        <a className="button" href={`/api/cards/${card.id}/export?format=png`} download>
-          Export PNG
-        </a>
+        {canWrite("png", plugins.data, instances.data) && (
+          <a className="button" href={`/api/cards/${card.id}/export?format=png`} download>
+            Export PNG
+          </a>
+        )}
         <Archive kind="card" entity={card} />
       </div>
       <Push kind="card" id={card.id} dirty={dirty} />
@@ -177,14 +182,14 @@ export function Revisions({ kind, id }: { kind: Kind; id: number }) {
   );
 }
 
-function Image({ sha, busy, onAvatar }: { sha?: string; busy: boolean; onAvatar: (sha: string) => void }) {
+function Image({ sha, busy, onAvatar }: { sha?: string; busy: boolean; onAvatar: PanelProps["onAvatar"] }) {
   const toast = useToast();
   const [cropping, setCropping] = useState(false);
   const up = useMutation({
-    mutationFn: upload,
-    onSuccess: (s) => {
+    mutationFn: ({ file }: { file: Blob; message: string }) => upload(file),
+    onSuccess: (s, { message }) => {
       setCropping(false);
-      onAvatar(s);
+      onAvatar(s, message);
     },
     onError: (e) => toast({ text: e.message, error: true }),
   });
@@ -201,7 +206,7 @@ function Image({ sha, busy, onAvatar }: { sha?: string; busy: boolean; onAvatar:
           onChange={(e) => {
             const f = e.target.files?.[0];
             e.target.value = "";
-            if (f) up.mutate(f);
+            if (f) up.mutate({ file: f, message: "Replace image" });
           }}
         />
       </label>
@@ -214,7 +219,7 @@ function Image({ sha, busy, onAvatar }: { sha?: string; busy: boolean; onAvatar:
         <Crop
           src={`/api/blobs/${sha}`}
           busy={up.isPending}
-          onDone={(png) => up.mutate(png)}
+          onDone={(png) => up.mutate({ file: png, message: "Crop image" })}
           onError={(text) => toast({ text, error: true })}
           onCancel={() => setCropping(false)}
         />

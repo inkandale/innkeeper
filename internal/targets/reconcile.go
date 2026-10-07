@@ -279,7 +279,7 @@ func (s *Service) verdict(ctx context.Context, k kind, inst pluginhost.Instance,
 	}
 	if item.Candidates != nil {
 		item.Verdict = VerdictExact
-		item.Candidates = item.Candidates[:min(len(item.Candidates), maxCandidates)]
+		item.Candidates = capCandidates(item.Candidates)
 		return item, it, nil
 	}
 
@@ -333,13 +333,29 @@ func (s *Service) verdict(ctx context.Context, k kind, inst pluginhost.Instance,
 		}
 		return cmp.Or(cmp.Compare(len(b.Reasons), len(a.Reasons)), cmp.Compare(total(a.Reasons), total(b.Reasons)))
 	})
-	item.Candidates = item.Candidates[:min(len(item.Candidates), maxCandidates)]
+	item.Candidates = capCandidates(item.Candidates)
 	return item, it, nil
 }
 
 // maxCandidates keeps a snapshot small when a common name matches many cards.
 // ponytail: fixed; make it a reconcile param if someone needs more.
 const maxCandidates = 10
+
+// capCandidates keeps the best maxCandidates. When every kept candidate is
+// bound to another app item, the best unbound one takes the last place, so
+// the suggestion can still bind to it.
+func capCandidates(cs []Candidate) []Candidate {
+	if len(cs) <= maxCandidates {
+		return cs
+	}
+	kept := cs[:maxCandidates]
+	if unbound(kept) < 0 {
+		if i := unbound(cs); i >= 0 {
+			kept[maxCandidates-1] = cs[i]
+		}
+	}
+	return kept
+}
 
 func total(reasons map[string]int) int {
 	n := 0

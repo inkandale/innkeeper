@@ -101,14 +101,26 @@ func validRedirect(raw string) bool {
 	if err != nil || u.Fragment != "" || u.Host == "" {
 		return false
 	}
-	switch u.Scheme {
-	case "https":
+	return u.Scheme == "https" || u.Scheme == "http" && loopback(u.Hostname())
+}
+
+func loopback(host string) bool { return host == "localhost" || host == "127.0.0.1" || host == "::1" }
+
+// redirectAllowed reports whether uri is one of registered. A loopback
+// redirect may use any port, since a native app learns its port only when
+// it starts listening (RFC 8252 §7.3).
+func redirectAllowed(registered []string, uri string) bool {
+	if slices.Contains(registered, uri) {
 		return true
-	case "http":
-		h := u.Hostname()
-		return h == "localhost" || h == "127.0.0.1" || h == "::1"
 	}
-	return false
+	u, err := url.Parse(uri)
+	if err != nil || u.Scheme != "http" || !loopback(u.Hostname()) {
+		return false
+	}
+	return slices.ContainsFunc(registered, func(r string) bool {
+		ru, err := url.Parse(r)
+		return err == nil && ru.Scheme == "http" && ru.Hostname() == u.Hostname() && ru.Path == u.Path && ru.RawQuery == u.RawQuery
+	})
 }
 
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
@@ -165,7 +177,7 @@ func (s *Server) checkAuthorize(w http.ResponseWriter, r *http.Request, q url.Va
 		s.page(w, http.StatusBadRequest, errorPage, "This app isn't registered with Innkeeper. Try connecting it again.")
 		return authRequest{}, false
 	}
-	if !slices.Contains(c.RedirectURIs, q.Get("redirect_uri")) {
+	if !redirectAllowed(c.RedirectURIs, q.Get("redirect_uri")) {
 		s.page(w, http.StatusBadRequest, errorPage, "This app sent a return address it didn't register.")
 		return authRequest{}, false
 	}

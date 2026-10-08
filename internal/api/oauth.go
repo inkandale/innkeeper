@@ -56,7 +56,7 @@ func (s *Server) resourceName(resource string) string {
 	return ""
 }
 
-// oauthRoutes serves OAuth for MCP clients. It needs PublicURL, since every
+// oauthRoutes serves OAuth for MCP clients and ink. It needs PublicURL, since every
 // endpoint is named by an absolute URL.
 func (s *Server) oauthRoutes(mux *http.ServeMux) {
 	if s.PublicURL == "" {

@@ -61,7 +61,7 @@ database at startup and stop cleanly on `SIGTERM`.
 | `INNKEEPER_PLUGINS_DIR` | `api`, `worker`, `restore` | Writable folder that plugins install into; `/data/plugins` in the image. The API and worker must share it |
 | `INNKEEPER_BUILTIN_PLUGINS_DIR` | `api`, `worker`, `restore` | Read-only folder of plugins that ship with Innkeeper, one subfolder each; an installed plugin of the same name overrides one |
 | `INNKEEPER_LISTEN` | `api` | Listen address; default `:8080` |
-| `INNKEEPER_PUBLIC_URL` | `api` | Where browsers reach the API, such as `https://innkeeper.example.com`. Needed for redirect logins and for MCP clients that connect through OAuth, such as claude.ai. An `http://` URL sends cookies without `Secure` |
+| `INNKEEPER_PUBLIC_URL` | `api` | Where browsers reach the API, such as `https://innkeeper.example.com`. Needed for redirect logins, `ink login`, and MCP clients that connect through OAuth, such as claude.ai. An `http://` URL sends cookies without `Secure` |
 | `INNKEEPER_WORKER_CONCURRENCY` | `worker` | Jobs run at once; default 4 |
 | `INNKEEPER_BACKUP_DIR` | `api`, `worker` | Where backups go. Needed for any backup or restore through the API, and for schedules |
 | `INNKEEPER_BACKUP_ASSETS_EVERY`, `INNKEEPER_BACKUP_CONFIG_EVERY` | `api`, `worker` | How often to back up that type, such as `24h` or `7d`. Unset means no schedule |
@@ -238,8 +238,8 @@ To connect claude.ai, or another client that signs in through OAuth, set
 with no credentials. The client sends you to Innkeeper to log in, then asks
 which tier to grant; read is the default. `innkeeper token list` shows
 approved clients, and `innkeeper token revoke-grant <id>` cuts one off.
-No MCP client can change login providers or who the owner is, whatever its
-tier.
+No MCP client or `ink` login can change login providers or who the owner
+is, whatever its tier; use an API token or the web UI.
 
 Plugins can add tools too. They show as `<instance>_<tool>`, such as
 `lumiverse_list_untracked`, and each declares its tier; one that declares

@@ -4903,7 +4903,7 @@
             "description": "Error"
           }
         },
-        "summary": "List MCP clients approved through OAuth",
+        "summary": "List the OAuth clients you approved",
         "tags": [
           "Tokens"
         ]

@@ -102,6 +102,9 @@ func callerTier(ctx context.Context) tier.Tier {
 	return t
 }
 
+// oauthKey marks a request whose credentials are an OAuth access token.
+type oauthKey struct{}
+
 // noAuth shows a public operation in the spec with no security requirement.
 var noAuth = []map[string][]string{}
 

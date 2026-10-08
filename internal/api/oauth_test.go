@@ -215,13 +215,19 @@ func itoa64(n int64) string { return strconv.FormatInt(n, 10) }
 func TestRedirectAllowed(t *testing.T) {
 	registered := []string{"http://127.0.0.1/callback", "https://app.example/cb"}
 	for uri, want := range map[string]bool{
-		"http://127.0.0.1/callback":          true,
-		"http://127.0.0.1:5555/callback":     true,
-		"http://127.0.0.1:5555/other":        false,
-		"http://127.0.0.1:5555/callback?x=1": false,
-		"http://localhost:5555/callback":     false,
-		"https://app.example/cb":             true,
-		"https://app.example:8443/cb":        false,
+		"http://127.0.0.1/callback":                   true,
+		"http://127.0.0.1:5555/callback":              true,
+		"http://127.0.0.1:5555/other":                 false,
+		"http://127.0.0.1:5555/callback?x=1":          false,
+		"http://localhost:5555/callback":              false,
+		"https://app.example/cb":                      true,
+		"https://app.example:8443/cb":                 false,
+		"http://127.0.0.1:5555/callback#x":            false,
+		"http://evil@127.0.0.1:5555/callback":         false,
+		"http://127.0.0.1:5555@evil.example/callback": false,
+		"https://127.0.0.1:5555/callback":             false,
+		"http://127.0.0.1:5555/call%62ack":            false,
+		"http://127.0.0.1:5555/callback?":             false,
 	} {
 		if got := redirectAllowed(registered, uri); got != want {
 			t.Errorf("redirectAllowed(%q) = %v", uri, got)

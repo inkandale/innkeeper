@@ -121,18 +121,19 @@ func loopback(host string) bool { return host == "localhost" || host == "127.0.0
 
 // redirectAllowed reports whether uri is one of registered. A loopback
 // redirect may use any port, since a native app learns its port only when
-// it starts listening (RFC 8252 §7.3).
+// it starts listening (RFC 8252 §7.3). Nothing else may differ, so the
+// match compares the escaped path and rejects userinfo and fragments.
 func redirectAllowed(registered []string, uri string) bool {
 	if slices.Contains(registered, uri) {
 		return true
 	}
 	u, err := url.Parse(uri)
-	if err != nil || u.Scheme != "http" || !loopback(u.Hostname()) {
+	if err != nil || u.Scheme != "http" || !loopback(u.Hostname()) || u.User != nil || u.Fragment != "" {
 		return false
 	}
 	return slices.ContainsFunc(registered, func(r string) bool {
 		ru, err := url.Parse(r)
-		return err == nil && ru.Scheme == "http" && ru.Hostname() == u.Hostname() && ru.Path == u.Path && ru.RawQuery == u.RawQuery
+		return err == nil && ru.Scheme == "http" && ru.Hostname() == u.Hostname() && ru.EscapedPath() == u.EscapedPath() && ru.RawQuery == u.RawQuery && ru.ForceQuery == u.ForceQuery
 	})
 }
 

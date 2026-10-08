@@ -18,7 +18,7 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-tools | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code | database | bad-list")
+	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-tools | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code | database | bad-list | bad-setup")
 	caps := flag.String("caps", "push,pull", "comma-separated capabilities to report")
 	name := flag.String("name", "fake", "the plugin name to report")
 	flag.Parse()
@@ -140,6 +140,23 @@ func main() {
 				return protocol.AuthCompleteResult{Subject: "someone-else"}, nil
 			}
 			return nil, protocol.NewError(-32000, "wrong password", false)
+		case protocol.MethodAuthSetup:
+			if *mode == "bad-setup" {
+				return protocol.AuthSetupResult{}, nil
+			}
+			return protocol.AuthSetupResult{
+				Form: json.RawMessage(`{"type": "object", "properties": {"password": {"type": "string"}, "confirm": {"type": "string"}}, "required": ["password", "confirm"]}`),
+			}, nil
+		case protocol.MethodAuthSetupComplete:
+			var p protocol.AuthSetupCompleteParams
+			_ = json.Unmarshal(params, &p)
+			if p.Params["password"] == "" || p.Params["password"] != p.Params["confirm"] {
+				return nil, protocol.NewError(-32000, "the passwords don't match", false)
+			}
+			return protocol.AuthSetupCompleteResult{
+				Secrets: map[string]string{"password_hash": "fake:" + p.Params["password"]},
+				Subject: "owner",
+			}, nil
 		case "freeze":
 			// A notification handler blocks the reader, so the plugin
 			// stops reading stdin, like a hung plugin.

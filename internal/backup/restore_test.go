@@ -545,6 +545,16 @@ func TestFailedRestoreRemovesItsBlobFiles(t *testing.T) {
 	}
 }
 
+func TestRestoreReportsMissingRows(t *testing.T) {
+	assets, _, _ := source(t)
+	// card_tag still points at the tag.
+	noTags := rebuild(t, assets, func(b map[string]string) { b["tables/tag.copy"] = "" })
+	_, err := newTarget(t).restore(noTags, nil, false)
+	if err == nil || !strings.Contains(err.Error(), "backup refers to rows it doesn't contain") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestRestoreRefusesOversizeBlob(t *testing.T) {
 	tg := newTarget(t)
 	var schema string

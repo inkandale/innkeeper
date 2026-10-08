@@ -1,0 +1,7 @@
+# A plugin with a database. Tests never run its command.
+name = "notes"
+version = "0.0.1"
+protocol = 1
+command = ["notes"]
+capabilities = ["action"]
+database = true

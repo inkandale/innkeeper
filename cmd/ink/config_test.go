@@ -105,6 +105,15 @@ func TestDeleteCredsRemovesTheKeychainCopyToo(t *testing.T) {
 	}
 }
 
+// A keychain that can't be reached holds no login, so logout can still forget it.
+func TestDeleteCredsWhenTheKeychainIsDown(t *testing.T) {
+	freshConfig(t)
+	keyring.MockInitWithError(errors.New("no dbus"))
+	if err := deleteCreds("home"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestLoadCredsKeepsTheLoginHintWhenTheKeychainIsDown(t *testing.T) {
 	freshConfig(t)
 	keyring.MockInitWithError(errors.New("no dbus"))

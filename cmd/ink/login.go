@@ -26,6 +26,8 @@ import (
 // loginWait is how long login waits for the browser to come back.
 var loginWait = 5 * time.Minute
 
+var errLoginWait = errors.New("timed out waiting for the login in the browser")
+
 // openBrowser opens page in the default browser. Tests replace it.
 var openBrowser = func(page string) error {
 	switch runtime.GOOS {
@@ -71,12 +73,21 @@ becomes the default. The server needs INNKEEPER_PUBLIC_URL set.`,
 			c.Profiles[name] = p
 			c.Default = cmp.Or(c.Default, name)
 			if err := c.save(); err != nil {
+				// The config still names the old client, so the creds must stay its login.
+				if oldErr == nil {
+					_, _ = saveCreds(name, oldCreds)
+				} else {
+					_ = deleteCreds(name)
+				}
 				return err
 			}
 			if hadOld && oldErr == nil {
 				// Revoke only once the new login is saved, so a failed save leaves the old one.
-				_ = postForm(cmd.Context(), old.URL+"/oauth/revoke",
-					url.Values{"token": {oldCreds.Refresh}, "client_id": {old.ClientID}}, nil)
+				if err := postForm(cmd.Context(), old.URL+"/oauth/revoke",
+					url.Values{"token": {oldCreds.Refresh}, "client_id": {old.ClientID}}, nil); err != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "Warning: %s didn't revoke the login this one replaces (%q); revoke it under Settings, Access, or with: innkeeper token revoke-grant <id>\n",
+						old.URL, err.Error())
+				}
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Logged in to %s with the %s tier as profile %s. The login is in %s.\n",
 				p.URL, toks.Scope, name, where)
@@ -90,6 +101,9 @@ becomes the default. The server needs INNKEEPER_PUBLIC_URL set.`,
 func login(ctx context.Context, stderr io.Writer, server string) (profile, tokenResponse, error) {
 	if !isWebURL(server) {
 		return profile{}, tokenResponse{}, fmt.Errorf("%s isn't an http or https address", server)
+	}
+	if u, _ := url.Parse(server); u.Scheme == "http" && !isLoopback(u.Hostname()) {
+		fmt.Fprintf(stderr, "Warning: %s is plain http, so the login will travel unencrypted.\n", server)
 	}
 	var meta struct {
 		Issuer     string `json:"issuer"`
@@ -108,35 +122,40 @@ func login(ctx context.Context, stderr io.Writer, server string) (profile, token
 		}
 		return profile{}, tokenResponse{}, fmt.Errorf("%s named an invalid address for itself", server)
 	}
-	issuer := server
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return profile{}, tokenResponse{}, err
 	}
 	defer ln.Close()
 	redirect := fmt.Sprintf("http://%s/callback", ln.Addr())
-	clientID, err := register(ctx, issuer)
+	clientID, err := register(ctx, server)
 	if err != nil {
 		return profile{}, tokenResponse{}, err
 	}
 	verifier, state := randomString(32), randomString(16)
 	sum := sha256.Sum256([]byte(verifier))
-	page := issuer + "/oauth/authorize?" + url.Values{"response_type": {"code"}, "client_id": {clientID},
+	page := server + "/oauth/authorize?" + url.Values{"response_type": {"code"}, "client_id": {clientID},
 		"redirect_uri": {redirect}, "code_challenge": {base64.RawURLEncoding.EncodeToString(sum[:])},
-		"code_challenge_method": {"S256"}, "state": {state}, "resource": {issuer + "/api"}}.Encode()
+		"code_challenge_method": {"S256"}, "state": {state}, "resource": {server + "/api"}}.Encode()
 	fmt.Fprintf(stderr, "Opening %s\nIf no browser opens, visit that address.\n", page)
 	_ = openBrowser(page)
-	code, err := awaitCode(ctx, ln, state, issuer)
+	code, err := awaitCode(ctx, ln, state, server)
 	if err != nil {
 		return profile{}, tokenResponse{}, err
 	}
 	var toks tokenResponse
-	err = postForm(ctx, issuer+"/oauth/token", url.Values{"grant_type": {"authorization_code"}, "code": {code},
+	err = postForm(ctx, server+"/oauth/token", url.Values{"grant_type": {"authorization_code"}, "code": {code},
 		"client_id": {clientID}, "redirect_uri": {redirect}, "code_verifier": {verifier}}, &toks)
 	if err == nil && toks.Access == "" {
-		err = fmt.Errorf("%s answered the login without an access token", issuer)
+		err = fmt.Errorf("%s answered the login without an access token", server)
 	}
-	return profile{URL: issuer, ClientID: clientID}, toks, err
+	return profile{URL: server, ClientID: clientID}, toks, err
+}
+
+// isLoopback reports whether host is this computer.
+func isLoopback(host string) bool {
+	ip := net.ParseIP(host)
+	return host == "localhost" || ip != nil && ip.IsLoopback()
 }
 
 // isWebURL reports whether s is an absolute http or https URL with a host.
@@ -241,13 +260,17 @@ func awaitCode(ctx context.Context, ln net.Listener, state, issuer string) (stri
 		defer stop()
 		_ = srv.Shutdown(sctx)
 	}()
-	ctx, cancel := context.WithTimeout(ctx, loginWait)
+	ctx, cancel := context.WithTimeoutCause(ctx, loginWait, errLoginWait)
 	defer cancel()
 	select {
 	case r := <-done:
 		return r.code, r.err
 	case <-ctx.Done():
-		return "", errors.New("timed out waiting for the login in the browser")
+		// Only the wait's own deadline is a timeout; anything else is the caller giving up.
+		if context.Cause(ctx) != errLoginWait {
+			return "", ctx.Err()
+		}
+		return "", errLoginWait
 	}
 }
 

@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -266,5 +270,68 @@ func TestLogoutWithoutItsLogin(t *testing.T) {
 	}
 	if c, _ := loadConfig(); len(c.Profiles) != 0 {
 		t.Fatalf("kept %+v", c.Profiles)
+	}
+}
+
+func TestLoginWarnsWhenTheOldLoginStaysLive(t *testing.T) {
+	freshConfig(t)
+	f := newFakeAuth(t)
+	loggedIn(t, f)
+	f.setRevokeFails(true)
+	browse(t, func(page *url.URL) string { return page.String() })
+	out, err := runInk(t, "login", f.URL, "--profile", "home")
+	if err != nil || !strings.Contains(out, "revoke-grant") || !strings.Contains(out, "Logged in") {
+		t.Fatalf("out = %q, err = %v", out, err)
+	}
+}
+
+// A config that can't be saved mustn't pair the old client with the new login.
+func TestLoginKeepsTheOldLoginWhenTheConfigWontSave(t *testing.T) {
+	freshConfig(t)
+	f := newFakeAuth(t)
+	loggedIn(t, f)
+	dir, _ := configDir()
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o700) })
+	browse(t, func(page *url.URL) string { return page.String() })
+	for _, name := range []string{"home", "other"} {
+		if _, err := runInk(t, "login", f.URL, "--profile", name); err == nil {
+			t.Fatalf("%s: logged in with a read-only config", name)
+		}
+	}
+	if c, err := loadCreds("home"); err != nil || c.Refresh != "r0" {
+		t.Fatalf("home's login = %+v, %v", c, err)
+	}
+	if c, err := loadCreds("other"); !errors.Is(err, errNoCreds) {
+		t.Fatalf("other's login = %+v, %v", c, err)
+	}
+}
+
+func TestLoginStopsWhenCancelled(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := awaitCode(ctx, ln, "s", "http://x"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestLoginWarnsOfPlainHTTP(t *testing.T) {
+	freshConfig(t)
+	neverOpen(t)
+	out, _ := runInk(t, "login", "http://inn.invalid")
+	if !strings.Contains(out, "unencrypted") {
+		t.Fatalf("out = %q", out)
+	}
+	f := newFakeAuth(t)
+	out, _ = runInk(t, "login", strings.Replace(f.URL, "127.0.0.1", "localhost", 1))
+	if strings.Contains(out, "unencrypted") {
+		t.Fatalf("warned about localhost: %q", out)
 	}
 }

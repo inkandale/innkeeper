@@ -110,13 +110,11 @@ func deleteCreds(name string) error {
 	if err != nil {
 		return err
 	}
-	// The keychain may hold an older copy from before a fallback save.
-	rerr := os.Remove(path)
-	if rerr != nil && !errors.Is(rerr, fs.ErrNotExist) {
-		return rerr
-	}
-	if err := keyring.Delete(keyringService, name); err != nil && !errors.Is(err, keyring.ErrNotFound) && rerr != nil {
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
+	// The keychain may hold an older copy from before a fallback save. Its
+	// errors don't matter: a keychain that can't be reached can't hold the login.
+	_ = keyring.Delete(keyringService, name)
 	return nil
 }

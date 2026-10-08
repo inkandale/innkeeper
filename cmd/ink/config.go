@@ -77,14 +77,11 @@ func (c config) save() error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
 	b, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(b, '\n'), 0o600)
+	return writePrivate(path, append(b, '\n'))
 }
 
 // profileFor returns the profile --profile names, or the default one.

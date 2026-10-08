@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -48,10 +49,34 @@ func saveCreds(name string, c creds) (string, error) {
 		}
 		return "the keychain", nil
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return "", err
+	return path, writePrivate(path, b)
+}
+
+// writePrivate replaces path with b, readable only by the user. The temp file
+// and rename keep readers from seeing a partial file and reset looser modes.
+func writePrivate(path string, b []byte) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
 	}
-	return path, os.WriteFile(path, b, 0o600)
+	f, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(b)
+	if err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(f.Name(), path)
+	}
+	if err != nil {
+		os.Remove(f.Name())
+	}
+	return err
 }
 
 // loadCreds returns a profile's tokens. A file means the keychain failed
@@ -69,7 +94,8 @@ func loadCreds(name string) (creds, error) {
 			return c, errNoCreds
 		}
 		if kerr != nil {
-			return c, kerr
+			// Keep errNoCreds so callers still print the login hint.
+			return c, fmt.Errorf("%w (keychain: %v)", errNoCreds, kerr)
 		}
 		b, err = []byte(s), nil
 	}
@@ -84,10 +110,12 @@ func deleteCreds(name string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.Remove(path); !errors.Is(err, fs.ErrNotExist) {
-		return err
+	// The keychain may hold an older copy from before a fallback save.
+	rerr := os.Remove(path)
+	if rerr != nil && !errors.Is(rerr, fs.ErrNotExist) {
+		return rerr
 	}
-	if err := keyring.Delete(keyringService, name); err != nil && !errors.Is(err, keyring.ErrNotFound) {
+	if err := keyring.Delete(keyringService, name); err != nil && !errors.Is(err, keyring.ErrNotFound) && rerr != nil {
 		return err
 	}
 	return nil

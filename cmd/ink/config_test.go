@@ -86,3 +86,44 @@ func TestCredsRefuseABadProfileName(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestDeleteCredsRemovesTheKeychainCopyToo(t *testing.T) {
+	freshConfig(t)
+	if _, err := saveCreds("home", creds{Access: "a1", Refresh: "r1"}); err != nil {
+		t.Fatal(err)
+	}
+	// A later save that fell back to the file leaves the keychain copy behind.
+	path, _ := credsFile("home")
+	if err := os.WriteFile(path, []byte(`{"access":"a2","refresh":"r2"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := deleteCreds("home"); err != nil {
+		t.Fatal(err)
+	}
+	if c, err := loadCreds("home"); !errors.Is(err, errNoCreds) {
+		t.Fatalf("loaded %+v, %v", c, err)
+	}
+}
+
+func TestLoadCredsKeepsTheLoginHintWhenTheKeychainIsDown(t *testing.T) {
+	freshConfig(t)
+	keyring.MockInitWithError(errors.New("no dbus"))
+	_, err := loadCreds("home")
+	if !errors.Is(err, errNoCreds) || !strings.Contains(err.Error(), "no dbus") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestSaveTightensAnExistingConfigFile(t *testing.T) {
+	freshConfig(t)
+	path, _ := configFile()
+	if err := os.WriteFile(path, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := (config{Profiles: map[string]profile{}}).save(); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Stat(path); err != nil || runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600 {
+		t.Fatalf("config file: %v, %v", fi.Mode(), err)
+	}
+}

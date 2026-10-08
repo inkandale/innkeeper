@@ -65,7 +65,7 @@ becomes the default. The server needs INNKEEPER_PUBLIC_URL set.`,
 						url.Values{"token": {cr.Refresh}, "client_id": {old.ClientID}}, nil)
 				}
 			}
-			where, err := saveCreds(name, toks.creds())
+			where, err := saveCreds(name, toks.creds(""))
 			if err != nil {
 				return err
 			}

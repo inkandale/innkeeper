@@ -28,10 +28,19 @@ type fakeAuth struct {
 	apiCalls    []string // the token on each API call
 	revoked     []string // "client_id token" of each revocation
 	revokeFails bool
+	used        map[string]time.Time // when each refresh token was spent
+	codeUsed    bool
+	authRedir   string // the redirect_uri sent to /oauth/authorize
+}
+
+func (f *fakeAuth) setRevokeFails(v bool) {
+	f.mu.Lock()
+	f.revokeFails = v
+	f.mu.Unlock()
 }
 
 func newFakeAuth(t *testing.T) *fakeAuth {
-	f := &fakeAuth{}
+	f := &fakeAuth{used: map[string]time.Time{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"issuer": %q, "revocation_endpoint": %q}`, f.URL, f.URL+"/oauth/revoke")
@@ -50,7 +59,7 @@ func newFakeAuth(t *testing.T) *fakeAuth {
 	mux.HandleFunc("GET /oauth/authorize", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		f.mu.Lock()
-		f.challenge, f.resource = q.Get("code_challenge"), q.Get("resource")
+		f.challenge, f.resource, f.authRedir = q.Get("code_challenge"), q.Get("resource"), q.Get("redirect_uri")
 		f.mu.Unlock()
 		back, _ := url.Parse(q.Get("redirect_uri"))
 		back.RawQuery = url.Values{"code": {"c1"}, "state": {q.Get("state")}, "iss": {f.URL}}.Encode()
@@ -64,9 +73,19 @@ func newFakeAuth(t *testing.T) *fakeAuth {
 		switch r.PostForm.Get("grant_type") {
 		case "authorization_code":
 			sum := sha256.Sum256([]byte(r.PostForm.Get("code_verifier")))
-			ok = ok && r.PostForm.Get("code") == "c1" && base64.RawURLEncoding.EncodeToString(sum[:]) == f.challenge
+			ok = ok && !f.codeUsed && r.PostForm.Get("code") == "c1" && r.PostForm.Get("redirect_uri") == f.authRedir &&
+				base64.RawURLEncoding.EncodeToString(sum[:]) == f.challenge
+			f.codeUsed = f.codeUsed || ok
 		case "refresh_token":
-			ok = ok && f.refresh != "" && r.PostForm.Get("refresh_token") == f.refresh
+			rt := r.PostForm.Get("refresh_token")
+			if at, spent := f.used[rt]; spent && time.Since(at) > 30*time.Second {
+				// Late reuse of a rotated token revokes the whole grant; early reuse is a race.
+				f.access, f.refresh = "", ""
+			}
+			ok = ok && f.refresh != "" && rt == f.refresh
+			if ok {
+				f.used[rt] = time.Now()
+			}
 		default:
 			ok = false
 		}
@@ -187,5 +206,33 @@ func TestProfiles(t *testing.T) {
 	}
 	if _, err := runInk(t, "profiles", "use", "nope"); err == nil {
 		t.Fatal("used an unknown profile")
+	}
+}
+
+func TestRefreshWaitsForConcurrentRefresh(t *testing.T) {
+	freshConfig(t)
+	f := newFakeAuth(t)
+	loggedIn(t, f)
+	// Another ink rotates r0 to r1 but saves it a moment later.
+	resp, err := http.PostForm(f.URL+"/oauth/token", url.Values{"grant_type": {"refresh_token"},
+		"refresh_token": {"r0"}, "client_id": {"inkc_1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		// A file, not saveCreds: the mock keychain isn't safe for concurrent use.
+		b, _ := json.Marshal(creds{Access: "a1", Expires: time.Now().Add(time.Hour), Refresh: "r1"})
+		path, _ := credsFile("home")
+		_ = writePrivate(path, b)
+	}()
+	if _, err := runInk(t, "call", "GET", "/jobs"); err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.access != "a1" || strings.Join(f.apiCalls, " ") != "a1" {
+		t.Fatalf("access %q, API calls %q", f.access, f.apiCalls)
 	}
 }

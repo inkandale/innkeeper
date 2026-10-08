@@ -3,6 +3,7 @@ package backup
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -43,14 +44,14 @@ func backupSize(dir, folder string, m Manifest) (int64, error) {
 }
 
 // backups returns the finished backups of type t, newest first, with their
-// manifests. skipped reports a backup folder whose manifest couldn't be read.
-func backups(dir string, t Type) (infos []Info, ms []Manifest, skipped bool, err error) {
+// manifests. damaged names the backup folders whose manifest couldn't be read.
+func backups(dir string, t Type) (infos []Info, ms []Manifest, damaged []string, err error) {
 	es, err := os.ReadDir(filepath.Join(dir, string(t)))
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil, false, nil
+		return nil, nil, nil, nil
 	}
 	if err != nil {
-		return nil, nil, false, err
+		return nil, nil, nil, err
 	}
 	for _, e := range es {
 		name := e.Name()
@@ -60,12 +61,12 @@ func backups(dir string, t Type) (infos []Info, ms []Manifest, skipped bool, err
 		folder := filepath.Join(dir, string(t), name)
 		m, err := readManifest(folder)
 		if err != nil {
-			skipped = true
+			damaged = append(damaged, name)
 			continue
 		}
 		size, err := backupSize(dir, folder, m)
 		if err != nil {
-			return nil, nil, false, err
+			return nil, nil, nil, err
 		}
 		infos = append(infos, Info{Name: name, Type: t, CreatedAt: m.CreatedAt, Size: size})
 		ms = append(ms, m)
@@ -73,7 +74,7 @@ func backups(dir string, t Type) (infos []Info, ms []Manifest, skipped bool, err
 	// Folder names sort by time.
 	slices.Reverse(infos)
 	slices.Reverse(ms)
-	return infos, ms, skipped, nil
+	return infos, ms, damaged, nil
 }
 
 // List returns every finished backup, newest first.
@@ -91,10 +92,11 @@ func List(dir string) ([]Info, error) {
 }
 
 // prune removes the backups of type t past the newest keep. For assets it
-// then removes shared blobs no remaining backup lists. Callers hold the backup
-// lock, so no write is copying blobs.
+// then removes shared blobs no remaining backup lists, or returns an error if
+// a damaged backup stops it. Callers hold the backup lock, so no write is
+// copying blobs.
 func prune(dir string, t Type, keep int) error {
-	infos, ms, skipped, err := backups(dir, t)
+	infos, ms, damaged, err := backups(dir, t)
 	if err != nil {
 		return err
 	}
@@ -116,9 +118,12 @@ func prune(dir string, t Type, keep int) error {
 			return err
 		}
 	}
-	// A damaged backup might still list blobs, so keep them all.
-	if t != Assets || skipped {
+	if t != Assets {
 		return nil
+	}
+	if len(damaged) > 0 {
+		// A damaged backup might still list blobs, so keep them all.
+		return fmt.Errorf("kept every shared blob: %s has no readable manifest.json", strings.Join(damaged, ", "))
 	}
 	blobs := filepath.Join(dir, string(Assets), "blobs")
 	return filepath.WalkDir(blobs, func(path string, d fs.DirEntry, err error) error {

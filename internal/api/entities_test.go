@@ -135,6 +135,39 @@ func TestUpdateKeepsAvatarAndOverrides(t *testing.T) {
 		"overrides": json.RawMessage(`[]`)}, 400, nil)
 }
 
+func TestRestoreAvatar(t *testing.T) {
+	e := newEnv(t)
+	blob, err := e.s.Lib.PutBlob(context.Background(), strings.NewReader("avatar"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := e.createCard(`{"name": "Old"}`)
+	first := c.Revision.ID
+	path := fmt.Sprintf("/cards/%d", c.ID)
+	e.call("PUT", path, map[string]any{"base_revision_id": first, "data": json.RawMessage(`{"name": "New"}`), "avatar": blob.SHA256}, 200, &c)
+
+	e.call("POST", path+"/restore", map[string]any{"revision_id": first, "base_revision_id": c.Revision.ID, "avatar": "nope"}, 422, nil)
+	for _, avatar := range []string{"", "keep", "revision"} {
+		body := map[string]any{"revision_id": first, "base_revision_id": c.Revision.ID}
+		if avatar != "" {
+			body["avatar"] = avatar
+		}
+		c = entityResult{}
+		e.call("POST", path+"/restore", body, 200, &c)
+		if !strings.Contains(string(c.Revision.Data), "Old") {
+			t.Fatalf("%q: data not restored: %s", avatar, c.Revision.Data)
+		}
+		if kept := c.Revision.Avatar != nil && *c.Revision.Avatar == blob.SHA256; kept != (avatar != "revision") {
+			t.Fatalf("%q: avatar = %v", avatar, c.Revision.Avatar)
+		}
+		if avatar == "revision" {
+			break
+		}
+		// Put the new text back so the next restore changes something.
+		e.call("PUT", path, map[string]any{"base_revision_id": c.Revision.ID, "data": json.RawMessage(`{"name": "New"}`)}, 200, &c)
+	}
+}
+
 func TestCardTagsLinksAndExport(t *testing.T) {
 	e := newEnv(t)
 	c := e.createCard(`{"name": "Brakka"}`)

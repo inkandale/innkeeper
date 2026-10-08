@@ -461,7 +461,7 @@ export interface paths {
         put?: never;
         /**
          * Restore an old revision
-         * @description Adds a revision with the old revision's content on top of base_revision_id.
+         * @description Adds a revision with the old revision's content on top of base_revision_id. Keeps the base revision's avatar unless avatar is revision.
          */
         post: operations["restore-card"];
         delete?: never;
@@ -1156,7 +1156,7 @@ export interface paths {
         put?: never;
         /**
          * Restore an old revision
-         * @description Adds a revision with the old revision's content on top of base_revision_id.
+         * @description Adds a revision with the old revision's content on top of base_revision_id. Keeps the base revision's avatar unless avatar is revision.
          */
         post: operations["restore-lorebook"];
         delete?: never;
@@ -2446,6 +2446,12 @@ export interface components {
              * @example /api/schemas/RestoreInBody.json
              */
             readonly $schema?: string;
+            /**
+             * @description keep: the base revision's avatar. revision: the old revision's, even none.
+             * @default keep
+             * @enum {string}
+             */
+            avatar: "keep" | "revision";
             /**
              * Format: int64
              * @description The current head revision

@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -58,6 +59,7 @@ type restoreIn struct {
 	ID             int64  `json:"id"`
 	RevisionID     int64  `json:"revision_id" jsonschema:"The old revision to bring back"`
 	BaseRevisionID int64  `json:"base_revision_id" jsonschema:"The current head revision"`
+	Avatar         string `json:"avatar,omitempty" jsonschema:"keep (default) keeps the head's image; revision takes the old revision's, even none"`
 }
 
 type previewIn struct {
@@ -234,7 +236,7 @@ var tools = []tool{
 				return nil, err
 			}
 			return c.call(ctx, "POST", fmt.Sprintf("/%s/%d/restore", p, in.ID),
-				map[string]any{"revision_id": in.RevisionID, "base_revision_id": in.BaseRevisionID, "source": "mcp"})
+				map[string]any{"revision_id": in.RevisionID, "base_revision_id": in.BaseRevisionID, "avatar": cmp.Or(in.Avatar, "keep"), "source": "mcp"})
 		}),
 	def("preview_push", "Show what pushing a card or lorebook to a target app would do: the fields it would change in the app, "+
 		"with the app's value as before and the pushed one as after, fields it would drop, and lorebooks it would create. "+

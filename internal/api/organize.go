@@ -16,9 +16,6 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/tier"
 )
 
-// maxBlobBytes caps uploads. Card PNGs are a few MB at most.
-const maxBlobBytes = 32 << 20
-
 type tagCountsOut struct{ Body []library.TagCount }
 
 type collectionsOut struct{ Body []library.Collection }
@@ -119,7 +116,7 @@ func (s *Server) organizeRoutes(api huma.API) {
 	tags = []string{"Blobs"}
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "upload-blob", Method: http.MethodPost, Path: "/blobs",
 		Summary: "Upload a file", Description: "Send any file as application/octet-stream. Uploading the same bytes twice returns the same blob.",
-		Tags: tags, DefaultStatus: http.StatusCreated, MaxBodyBytes: maxBlobBytes + 1, BodyReadTimeout: 2 * time.Minute,
+		Tags: tags, DefaultStatus: http.StatusCreated, MaxBodyBytes: library.MaxBlobBytes + 1, BodyReadTimeout: 2 * time.Minute,
 		RequestBody: &huma.RequestBody{Required: true, Content: map[string]*huma.MediaType{"application/octet-stream": {}}}},
 		func(ctx context.Context, in *uploadIn) (*blobOut, error) {
 			b, err := s.Lib.PutBlob(ctx, bytes.NewReader(in.RawBody))

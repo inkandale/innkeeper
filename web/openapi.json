@@ -2343,6 +2343,15 @@
             "readOnly": true,
             "type": "string"
           },
+          "avatar": {
+            "default": "keep",
+            "description": "keep: the base revision's avatar. revision: the old revision's, even none.",
+            "enum": [
+              "keep",
+              "revision"
+            ],
+            "type": "string"
+          },
           "base_revision_id": {
             "description": "The current head revision",
             "format": "int64",
@@ -4148,7 +4157,7 @@
     },
     "/cards/{id}/restore": {
       "post": {
-        "description": "Adds a revision with the old revision's content on top of base_revision_id.",
+        "description": "Adds a revision with the old revision's content on top of base_revision_id. Keeps the base revision's avatar unless avatar is revision.",
         "operationId": "restore-card",
         "parameters": [
           {
@@ -6286,7 +6295,7 @@
     },
     "/lorebooks/{id}/restore": {
       "post": {
-        "description": "Adds a revision with the old revision's content on top of base_revision_id.",
+        "description": "Adds a revision with the old revision's content on top of base_revision_id. Keeps the base revision's avatar unless avatar is revision.",
         "operationId": "restore-lorebook",
         "parameters": [
           {

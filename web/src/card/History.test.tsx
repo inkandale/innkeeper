@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { Toasts } from "../shell/Toasts";
@@ -10,10 +10,11 @@ function json(body: unknown, status = 200) {
 }
 
 const now = new Date().toISOString();
-const revisions = [
-  { id: 12, message: "grumpier", source: "ui", content_hash: "b", created_at: now },
+const plain = [
+  { id: 12, message: "grumpier", source: "ui", content_hash: "b", created_at: now, avatar: undefined as string | undefined },
   { id: 11, message: "", source: "ui", content_hash: "a", created_at: now },
 ];
+let revisions: typeof plain;
 const diff = {
   fields: [
     {
@@ -43,6 +44,7 @@ let requests: string[];
 let posts: unknown[];
 let staleHead: boolean;
 beforeEach(() => {
+  revisions = plain;
   requests = [];
   posts = [];
   staleHead = false;
@@ -93,7 +95,22 @@ test("an older revision compares with the head and can be restored", async () =>
   await waitFor(() => expect(requests).toContain("/api/cards/7/revisions/11/compare/12"));
   expect(router.state.location.search).toBe("?rev=11&against=head");
   await userEvent.click(screen.getByRole("button", { name: "Restore" }));
-  await waitFor(() => expect(posts).toEqual([{ revision_id: 11, base_revision_id: 12, source: "ui" }]));
+  await waitFor(() => expect(posts).toEqual([{ revision_id: 11, base_revision_id: 12, avatar: "keep", source: "ui" }]));
+  expect(document.querySelector("dialog")).toBeNull();
+});
+
+test("a revision with another image asks which image to keep", async () => {
+  revisions = [{ ...plain[0]!, avatar: "ab".repeat(32) }, plain[1]!];
+  renderAt("/cards/7/history?rev=11");
+  await userEvent.click(await screen.findByRole("button", { name: "Restore" }));
+  // jsdom lacks showModal, so the dialog stays closed, with no accessible name.
+  const dialog = document.querySelector<HTMLElement>('dialog[aria-label="Choose an image"]')!;
+  expect(within(dialog).getByRole("img", { name: "Current image", hidden: true })).toBeInTheDocument();
+  expect(dialog).toHaveTextContent("No image");
+  expect(posts).toEqual([]);
+  await userEvent.click(within(dialog).getByRole("button", { name: "Use this revision's image", hidden: true }));
+  await waitFor(() => expect(posts).toEqual([{ revision_id: 11, base_revision_id: 12, avatar: "revision", source: "ui" }]));
+  await waitFor(() => expect(document.querySelector("dialog")).toBeNull());
 });
 
 test("a restore on a stale head says so and refetches the revisions", async () => {

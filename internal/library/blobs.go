@@ -25,6 +25,9 @@ type Blob struct {
 
 const blobCols = `sha256, size, mime, store, avatar_phash, created_at`
 
+// MaxBlobBytes caps a stored file. Card PNGs are a few MB at most.
+const MaxBlobBytes = 32 << 20
+
 // PutBlob stores r and records it.
 func (l *Library) PutBlob(ctx context.Context, r io.Reader) (Blob, error) {
 	sha, size, err := l.blobs.Put(r)
@@ -37,7 +40,7 @@ func (l *Library) PutBlob(ctx context.Context, r io.Reader) (Blob, error) {
 // IngestBlob moves a file a plugin wrote to the store's tmp folder into the
 // store and records it. path is untrusted; see blobstore.Store.Ingest.
 func (l *Library) IngestBlob(ctx context.Context, path string) (Blob, error) {
-	sha, size, err := l.blobs.Ingest(path)
+	sha, size, err := l.blobs.Ingest(path, MaxBlobBytes)
 	if err != nil {
 		return Blob{}, err
 	}

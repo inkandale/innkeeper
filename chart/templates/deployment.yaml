@@ -6,8 +6,6 @@
 }}
 {{- if .Values.backup.persistence.enabled }}
 {{- $env = append $env (dict "name" "INNKEEPER_BACKUP_DIR" "value" "/backups") }}
-{{- /* Uploaded archives spool on the backup volume, not the node's ephemeral storage. */}}
-{{- $env = append $env (dict "name" "TMPDIR" "value" "/backups") }}
 {{- end }}
 {{- range $type := list "assets" "config" }}
 {{- $b := index $.Values.backup $type }}

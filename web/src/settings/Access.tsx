@@ -97,8 +97,8 @@ export function Access() {
         </tbody>
       </table>
 
-      <h2>MCP clients</h2>
-      <p className="muted">Clients approved through OAuth.</p>
+      <h2>OAuth clients</h2>
+      <p className="muted">MCP clients and ink logins you approved.</p>
       <table>
         <thead>
           <tr>

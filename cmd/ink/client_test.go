@@ -48,11 +48,12 @@ func TestClientStream(t *testing.T) {
 	}
 }
 
-func TestNewClientNeedsSettings(t *testing.T) {
+func TestNewClientNeedsALogin(t *testing.T) {
+	freshConfig(t)
 	t.Setenv("INNKEEPER_URL", "http://localhost:8080")
 	t.Setenv("INNKEEPER_TOKEN", "")
-	if _, err := newClient(); err == nil {
-		t.Fatal("no error without a token")
+	if _, err := newClient(newRoot()); err == nil || !strings.Contains(err.Error(), "ink login") {
+		t.Fatalf("err = %v", err)
 	}
 }
 

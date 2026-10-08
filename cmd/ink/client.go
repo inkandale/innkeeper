@@ -12,18 +12,40 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/spf13/cobra"
 )
 
-// client calls the HTTP API under INNKEEPER_URL/api with INNKEEPER_TOKEN.
+// client calls an Innkeeper server's HTTP API with a bearer token.
 type client struct{ base, token string }
 
-func newClient() (*client, error) {
-	root := strings.TrimSuffix(os.Getenv("INNKEEPER_URL"), "/")
-	c := &client{base: root + "/api", token: os.Getenv("INNKEEPER_TOKEN")}
-	if root == "" || c.token == "" {
-		return nil, errors.New("set INNKEEPER_URL and INNKEEPER_TOKEN; make a token with: innkeeper token create <name> [read|write|destructive]")
+// newClient uses INNKEEPER_URL and INNKEEPER_TOKEN if the token is set, and
+// otherwise the profile --profile names, or the default one.
+func newClient(cmd *cobra.Command) (*client, error) {
+	if tok := os.Getenv("INNKEEPER_TOKEN"); tok != "" {
+		root := strings.TrimSuffix(os.Getenv("INNKEEPER_URL"), "/")
+		if root == "" {
+			return nil, errors.New("INNKEEPER_TOKEN needs INNKEEPER_URL, the server's address")
+		}
+		return &client{base: root + "/api", token: tok}, nil
 	}
-	return c, nil
+	cfg, err := loadConfig()
+	if err != nil {
+		return nil, err
+	}
+	name := cfg.profileFor(cmd)
+	p, ok := cfg.Profiles[name]
+	if !ok && name == "" {
+		return nil, errors.New("log in with: ink login <url>; or set INNKEEPER_URL and INNKEEPER_TOKEN")
+	}
+	if !ok {
+		return nil, fmt.Errorf("no profile %q; log in with: ink login --profile %s <url>", name, name)
+	}
+	tok, err := accessToken(cmd.Context(), name, p)
+	if err != nil {
+		return nil, err
+	}
+	return &client{base: p.URL + "/api", token: tok}, nil
 }
 
 func (c *client) request(ctx context.Context, method, path string, body []byte) (*http.Response, error) {

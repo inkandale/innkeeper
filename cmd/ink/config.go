@@ -1,13 +1,19 @@
 package main
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"text/tabwriter"
+
+	"github.com/spf13/cobra"
 )
 
 // profile is a server ink logged in to. Its tokens are in the token store.
@@ -79,4 +85,70 @@ func (c config) save() error {
 		return err
 	}
 	return os.WriteFile(path, append(b, '\n'), 0o600)
+}
+
+// profileFor returns the profile --profile names, or the default one.
+func (c config) profileFor(cmd *cobra.Command) string {
+	name, _ := cmd.Flags().GetString("profile")
+	return cmp.Or(name, c.Default)
+}
+
+func completeProfiles(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+	c, _ := loadConfig()
+	return slices.Sorted(maps.Keys(c.Profiles)), cobra.ShellCompDirectiveNoFileComp
+}
+
+func profilesCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "profiles",
+		Short: "List the servers ink is logged in to",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			c, err := loadConfig()
+			if err != nil {
+				return err
+			}
+			type row struct {
+				Name    string `json:"name"`
+				URL     string `json:"url"`
+				Default bool   `json:"default"`
+			}
+			rows := []row{}
+			for _, n := range slices.Sorted(maps.Keys(c.Profiles)) {
+				rows = append(rows, row{n, c.Profiles[n].URL, n == c.Default})
+			}
+			w := cmd.OutOrStdout()
+			if jsonFlag(cmd) {
+				return json.NewEncoder(w).Encode(rows)
+			}
+			tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+			fmt.Fprintln(tw, "NAME\tURL\tDEFAULT")
+			for _, r := range rows {
+				def := ""
+				if r.Default {
+					def = "yes"
+				}
+				fmt.Fprintf(tw, "%s\t%s\t%s\n", r.Name, r.URL, def)
+			}
+			return tw.Flush()
+		},
+	}
+	cmd.AddCommand(&cobra.Command{
+		Use:               "use <name>",
+		Short:             "Make a profile the default",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeProfiles,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c, err := loadConfig()
+			if err != nil {
+				return err
+			}
+			if _, ok := c.Profiles[args[0]]; !ok {
+				return fmt.Errorf("no profile %q", args[0])
+			}
+			c.Default = args[0]
+			return c.save()
+		},
+	})
+	return cmd
 }

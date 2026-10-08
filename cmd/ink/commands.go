@@ -59,7 +59,7 @@ func callCmd() *cobra.Command {
 			if len(body) == 0 {
 				body = nil
 			}
-			c, err := newClient()
+			c, err := newClient(cmd)
 			if err != nil {
 				return err
 			}
@@ -75,7 +75,7 @@ func callCmd() *cobra.Command {
 
 // startJob posts body to path, which starts a job, and says how to follow it.
 func startJob(cmd *cobra.Command, path string, body any) error {
-	c, err := newClient()
+	c, err := newClient(cmd)
 	if err != nil {
 		return err
 	}
@@ -145,7 +145,7 @@ func jobsCmd() *cobra.Command {
 		Short: "List jobs, or show, cancel, or watch one",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			c, err := newClient()
+			c, err := newClient(cmd)
 			if err != nil {
 				return err
 			}
@@ -166,7 +166,7 @@ func jobsCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				c, err := newClient()
+				c, err := newClient(cmd)
 				if err != nil {
 					return err
 				}
@@ -190,7 +190,7 @@ func jobsCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				c, err := newClient()
+				c, err := newClient(cmd)
 				if err != nil {
 					return err
 				}

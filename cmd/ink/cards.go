@@ -56,7 +56,7 @@ PNG included, needs an instance of a codec plugin that writes it.`,
 					f = "png"
 				}
 			}
-			c, err := newClient()
+			c, err := newClient(cmd)
 			if err != nil {
 				return err
 			}
@@ -103,7 +103,7 @@ func sourcesCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c, err := newClient()
+			c, err := newClient(cmd)
 			if err != nil {
 				return err
 			}
@@ -128,7 +128,7 @@ func sourcesCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c, err := newClient()
+			c, err := newClient(cmd)
 			if err != nil {
 				return err
 			}
@@ -148,7 +148,7 @@ func sourcesCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c, err := newClient()
+			c, err := newClient(cmd)
 			if err != nil {
 				return err
 			}

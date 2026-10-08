@@ -23,8 +23,8 @@ func newRoot() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "ink",
 		Short: "Work with an Innkeeper server",
-		Long: `ink calls the Innkeeper API at INNKEEPER_URL with the API token in INNKEEPER_TOKEN.
-Make a token on the server with: innkeeper token create <name> [read|write|destructive]`,
+		Long: `ink calls the API of the Innkeeper server you logged in to with: ink login <url>
+For scripts, set INNKEEPER_URL and an API token in INNKEEPER_TOKEN; they take precedence.`,
 		Version:       buildVersion(),
 		SilenceErrors: true,
 		// Usage helps with a wrong argument or flag, which cobra reports
@@ -32,7 +32,9 @@ Make a token on the server with: innkeeper token create <name> [read|write|destr
 		PersistentPreRun: func(cmd *cobra.Command, _ []string) { cmd.SilenceUsage = true },
 	}
 	root.PersistentFlags().Bool("json", false, "print JSON instead of tables")
-	root.AddCommand(callCmd(), importCmd(), jobsCmd(), cardsCmd(), syncCmd())
+	root.PersistentFlags().String("profile", "", "the login to use, instead of the default")
+	_ = root.RegisterFlagCompletionFunc("profile", completeProfiles)
+	root.AddCommand(callCmd(), importCmd(), jobsCmd(), cardsCmd(), syncCmd(), profilesCmd())
 	return root
 }
 

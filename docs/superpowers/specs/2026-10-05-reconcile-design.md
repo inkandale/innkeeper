@@ -337,8 +337,7 @@ every suggestion in a snapshot, each re-checked live.
 - **Capture.** A script pushes each corpus card into throwaway SillyTavern and
   Lumiverse containers and saves what the codec and each plugin's `get`
   return, next to the source card. Rerun it after an app upgrade; the golden
-  diff shows what the app changed. CharX fails in the codec today; capture
-  records that, and adding CharX is a separate ticket.
+  diff shows what the app changed.
 - **Normalization.** Every captured variant of a card has the source's
   `content_hash`, and `Compare` between them has only `same` hunks. Each known
   app difference is a named case, including one app's keys carried into

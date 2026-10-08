@@ -37,6 +37,9 @@ func apiServer() error {
 		Targets: targets.New(svc.pool, svc.lib, svc.registry, mgr, log), Plugins: mgr, Log: log,
 		PublicURL: os.Getenv("INNKEEPER_PUBLIC_URL"), Stopping: stopping, Backups: svc.backups,
 		UI: web.Handler(web.Dist())}
+	if err := s.Bootstrap(ctx, os.Getenv("INNKEEPER_OWNER_PASSWORD_HASH")); err != nil {
+		return err
+	}
 	srv := &http.Server{
 		Addr:              listen,
 		Handler:           s.Handler(),

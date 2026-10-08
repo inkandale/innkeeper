@@ -269,6 +269,12 @@
   display: block;
 }
 
+.image-choice > div {
+  display: grid;
+  gap: var(--space);
+  justify-items: center;
+}
+
 .history-thumb {
   width: 80px;
   aspect-ratio: 2 / 3;

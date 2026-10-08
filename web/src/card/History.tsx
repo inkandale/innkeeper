@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { api, ApiError, must, route, thumb, type Kind } from "../api/client";
 import type { components } from "../api/schema";
@@ -74,6 +75,57 @@ function HunkList({ hunks, prose }: { hunks: Hunk[]; prose: boolean }) {
   );
 }
 
+type AvatarPick = "keep" | "revision";
+
+/** AvatarChoice asks which image a restore keeps when the revision's differs from the head's. */
+function AvatarChoice({ head, rev, busy, onPick, onCancel }: {
+  head?: string;
+  rev?: string;
+  busy: boolean;
+  onPick: (avatar: AvatarPick) => void;
+  onCancel: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  // As in Crop: showModal gives Escape and a focus trap. jsdom lacks both.
+  useLayoutEffect(() => {
+    const d = dialog.current;
+    d?.showModal?.();
+    return () => d?.close?.();
+  }, []);
+  const image = (sha: string | undefined, alt: string) =>
+    sha ? <img className="history-thumb" src={thumb(sha, 160)} alt={alt} /> : <span className="muted">No image</span>;
+  return (
+    <dialog
+      ref={dialog}
+      className="crop"
+      aria-label="Choose an image"
+      onCancel={(e) => {
+        e.preventDefault();
+        if (!busy) onCancel();
+      }}
+    >
+      <p>This revision has a different image. Which one should the restore keep?</p>
+      <div className="row image-choice">
+        <div>
+          {image(head, "Current image")}
+          <button className="button primary" disabled={busy} onClick={() => onPick("keep")}>
+            Keep the current image
+          </button>
+        </div>
+        <div>
+          {image(rev, "This revision's image")}
+          <button className="button" disabled={busy} onClick={() => onPick("revision")}>
+            Use this revision's image
+          </button>
+        </div>
+      </div>
+      <button className="button" disabled={busy} onClick={onCancel}>
+        Cancel
+      </button>
+    </dialog>
+  );
+}
+
 /** History lists a card's or lorebook's revisions and diffs the chosen one against the one before it or the head. */
 export function History({ kind = "card" }: { kind?: Kind }) {
   const id = Number(useParams().id);
@@ -102,9 +154,16 @@ export function History({ kind = "card" }: { kind?: Kind }) {
         }),
       ),
   });
+  const [asking, setAsking] = useState(false);
   const restore = useMutation({
-    mutationFn: async (r: { id: number; base: number }) =>
-      must(await api.POST(route(kind, "/cards/{id}/restore"), { params: { path: { id } }, body: { revision_id: r.id, base_revision_id: r.base, source: "ui" } })),
+    mutationFn: async (r: { id: number; base: number; avatar: AvatarPick }) =>
+      must(
+        await api.POST(route(kind, "/cards/{id}/restore"), {
+          params: { path: { id } },
+          body: { revision_id: r.id, base_revision_id: r.base, avatar: r.avatar, source: "ui" },
+        }),
+      ),
+    onSettled: () => setAsking(false),
     onSuccess: (_, r) => {
       void qc.invalidateQueries({ queryKey: [kind, id] });
       setParams({});
@@ -152,9 +211,22 @@ export function History({ kind = "card" }: { kind?: Kind }) {
                 </label>
               </span>
               {head && rev.id !== head.id && (
-                <button className="button primary" disabled={restore.isPending} onClick={() => restore.mutate({ id: rev.id, base: head.id })}>
+                <button
+                  className="button primary"
+                  disabled={restore.isPending}
+                  onClick={() => (rev.avatar === head.avatar ? restore.mutate({ id: rev.id, base: head.id, avatar: "keep" }) : setAsking(true))}
+                >
                   Restore
                 </button>
+              )}
+              {asking && head && (
+                <AvatarChoice
+                  head={head.avatar}
+                  rev={rev.avatar}
+                  busy={restore.isPending}
+                  onPick={(avatar) => restore.mutate({ id: rev.id, base: head.id, avatar })}
+                  onCancel={() => setAsking(false)}
+                />
               )}
             </div>
             {!from ? (

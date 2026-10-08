@@ -275,7 +275,7 @@ func (s *Server) decide(w http.ResponseWriter, r *http.Request) {
 		s.page(w, http.StatusBadRequest, errorPage, "Choose what the app may do.")
 		return
 	}
-	code, err := s.Auth.Approve(r.Context(), req.client.ID, t, req.params.Get("redirect_uri"), req.params.Get("code_challenge"))
+	code, err := s.Auth.Approve(r.Context(), req.client.ID, t, auth.ResourceMCP, req.params.Get("redirect_uri"), req.params.Get("code_challenge"))
 	if err != nil {
 		s.Log.Error("approve oauth client", "err", err)
 		s.redirectBack(w, r, req.params, url.Values{"error": {"server_error"}})

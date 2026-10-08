@@ -31,6 +31,12 @@ var (
 	ErrNoClient = errors.New("unknown client")
 )
 
+// The resources a grant can be for.
+const (
+	ResourceMCP = "mcp"
+	ResourceAPI = "api"
+)
+
 // Client is a registered OAuth client.
 type Client struct {
 	ID           string
@@ -56,14 +62,15 @@ func (a *Auth) Client(ctx context.Context, id string) (Client, error) {
 	return c, err
 }
 
-// Approve records the owner's approval of client at tier t, and returns an
-// authorization code for redirectURI, bound to the PKCE S256 challenge.
-func (a *Auth) Approve(ctx context.Context, clientID string, t tier.Tier, redirectURI, challenge string) (string, error) {
+// Approve records the owner's approval of client at tier t for resource,
+// and returns an authorization code for redirectURI, bound to the PKCE S256
+// challenge.
+func (a *Auth) Approve(ctx context.Context, clientID string, t tier.Tier, resource, redirectURI, challenge string) (string, error) {
 	code, h := newSecret("inkx_")
-	_, err := a.pool.Exec(ctx, `WITH g AS (INSERT INTO oauth_grant (client_id, tier) VALUES ($1, $2) RETURNING id)
+	_, err := a.pool.Exec(ctx, `WITH g AS (INSERT INTO oauth_grant (client_id, tier, resource) VALUES ($1, $2, $7) RETURNING id)
 		INSERT INTO oauth_code (hash, grant_id, redirect_uri, challenge, expires_at)
 		SELECT $3, id, $4, $5, now() + make_interval(secs => $6) FROM g`,
-		clientID, t.String(), h, redirectURI, challenge, CodeTTL.Seconds())
+		clientID, t.String(), h, redirectURI, challenge, CodeTTL.Seconds(), resource)
 	return code, err
 }
 
@@ -183,18 +190,18 @@ func (a *Auth) Refresh(ctx context.Context, clientID, refresh string) (Tokens, e
 	return toks, tx.Commit(ctx)
 }
 
-// CheckAccessToken returns the tier and expiry of an OAuth access token, or
-// a zero tier if it isn't a live one. It records the grant's use at most
-// once a minute.
-func (a *Auth) CheckAccessToken(ctx context.Context, secret string) (tier.Tier, time.Time, error) {
+// CheckAccessToken returns the tier and expiry of an OAuth access token for
+// resource, or a zero tier if it isn't a live one. It records the grant's
+// use at most once a minute.
+func (a *Auth) CheckAccessToken(ctx context.Context, secret, resource string) (tier.Tier, time.Time, error) {
 	var name *string
 	var expires time.Time
 	err := a.pool.QueryRow(ctx, `WITH t AS (SELECT g.id, g.tier, g.last_used_at, t.expires_at
 			FROM oauth_token t JOIN oauth_grant g ON g.id = t.grant_id
-			WHERE t.hash = $1 AND t.kind = 'access' AND t.expires_at > now()),
+			WHERE t.hash = $1 AND t.kind = 'access' AND t.expires_at > now() AND g.resource = $2),
 		used AS (UPDATE oauth_grant SET last_used_at = now() WHERE id IN (
 			SELECT id FROM t WHERE last_used_at IS NULL OR last_used_at < now() - interval '1 minute'))
-		SELECT tier, expires_at FROM t`, hash(secret)).Scan(&name, &expires)
+		SELECT tier, expires_at FROM t`, hash(secret), resource).Scan(&name, &expires)
 	if errors.Is(err, pgx.ErrNoRows) || err == nil && name == nil {
 		return 0, time.Time{}, nil
 	}
@@ -253,9 +260,8 @@ func (a *Auth) PruneOAuth(ctx context.Context) error {
 
 type viaMCPKey struct{}
 
-// ViaMCP marks a request the MCP server makes for a tool. OAuth access
-// tokens are for MCP only, so the API accepts them only on such requests.
-// No HTTP request can carry the mark.
+// ViaMCP marks a request the MCP server makes for a tool, so the API accepts
+// the MCP access token it carries. No HTTP request can carry the mark.
 func ViaMCP(ctx context.Context) context.Context { return context.WithValue(ctx, viaMCPKey{}, true) }
 
 // FromMCP reports whether ctx is marked by ViaMCP.

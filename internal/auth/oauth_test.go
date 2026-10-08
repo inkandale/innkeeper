@@ -34,7 +34,7 @@ func TestOAuthGrant(t *testing.T) {
 		t.Fatalf("unknown client: %v", err)
 	}
 	approve := func() string {
-		code, err := a.Approve(ctx, c.ID, tier.Write, "https://claude.example/cb", challenge(verifier))
+		code, err := a.Approve(ctx, c.ID, tier.Write, ResourceMCP, "https://claude.example/cb", challenge(verifier))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -53,10 +53,10 @@ func TestOAuthGrant(t *testing.T) {
 	if err != nil || toks.Tier != tier.Write {
 		t.Fatalf("redeem = %+v, %v", toks, err)
 	}
-	if got, _, _ := a.CheckAccessToken(ctx, toks.Access); got != tier.Write {
+	if got, _, _ := a.CheckAccessToken(ctx, toks.Access, ResourceMCP); got != tier.Write {
 		t.Fatalf("access token tier = %v", got)
 	}
-	if got, _, _ := a.CheckAccessToken(ctx, toks.Refresh); got != 0 {
+	if got, _, _ := a.CheckAccessToken(ctx, toks.Refresh, ResourceMCP); got != 0 {
 		t.Fatal("a refresh token works as an access token")
 	}
 	if got, _ := a.CheckToken(ctx, toks.Access); got != 0 {
@@ -72,7 +72,7 @@ func TestOAuthGrant(t *testing.T) {
 	if _, err := a.Refresh(ctx, c.ID, toks.Refresh); !errors.Is(err, ErrBadGrant) {
 		t.Fatalf("quick refresh reuse: %v", err)
 	}
-	if got, _, _ := a.CheckAccessToken(ctx, next.Access); got == 0 {
+	if got, _, _ := a.CheckAccessToken(ctx, next.Access, ResourceMCP); got == 0 {
 		t.Fatal("a retried refresh revoked the grant")
 	}
 	if _, err := pool.Exec(ctx, `UPDATE oauth_token SET used_at = now() - interval '1 minute' WHERE used_at IS NOT NULL`); err != nil {
@@ -81,7 +81,7 @@ func TestOAuthGrant(t *testing.T) {
 	if _, err := a.Refresh(ctx, c.ID, toks.Refresh); !errors.Is(err, ErrBadGrant) {
 		t.Fatalf("refresh reuse: %v", err)
 	}
-	if got, _, _ := a.CheckAccessToken(ctx, next.Access); got != 0 {
+	if got, _, _ := a.CheckAccessToken(ctx, next.Access, ResourceMCP); got != 0 {
 		t.Fatal("tokens survived a refresh token's reuse")
 	}
 
@@ -94,7 +94,7 @@ func TestOAuthGrant(t *testing.T) {
 	if _, err := a.RedeemCode(ctx, c.ID, code, "https://claude.example/cb", verifier); !errors.Is(err, ErrBadGrant) {
 		t.Fatalf("code reuse: %v", err)
 	}
-	if got, _, _ := a.CheckAccessToken(ctx, toks.Access); got != 0 {
+	if got, _, _ := a.CheckAccessToken(ctx, toks.Access, ResourceMCP); got != 0 {
 		t.Fatal("tokens survived a code's reuse")
 	}
 
@@ -114,10 +114,34 @@ func TestOAuthGrant(t *testing.T) {
 	if err := a.RevokeGrant(ctx, grants[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	if got, _, _ := a.CheckAccessToken(ctx, toks.Access); got != 0 {
+	if got, _, _ := a.CheckAccessToken(ctx, toks.Access, ResourceMCP); got != 0 {
 		t.Fatal("a revoked grant's token works")
 	}
 	if err := a.PruneOAuth(ctx); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestOAuthResource(t *testing.T) {
+	pool := testdb.New(t)
+	a := New(pool)
+	ctx := context.Background()
+	c, err := a.RegisterClient(ctx, "ink", []string{"http://127.0.0.1/callback"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, err := a.Approve(ctx, c.ID, tier.Read, ResourceAPI, "http://127.0.0.1/callback", challenge(verifier))
+	if err != nil {
+		t.Fatal(err)
+	}
+	toks, err := a.RedeemCode(ctx, c.ID, code, "http://127.0.0.1/callback", verifier)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _, err := a.CheckAccessToken(ctx, toks.Access, ResourceAPI); err != nil || got != tier.Read {
+		t.Fatalf("for the API: %v, %v", got, err)
+	}
+	if got, _, err := a.CheckAccessToken(ctx, toks.Access, ResourceMCP); err != nil || got != 0 {
+		t.Fatalf("an API token for MCP: %v, %v", got, err)
 	}
 }

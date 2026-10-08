@@ -69,7 +69,7 @@ func (s *Server) authorized(ctx huma.Context) (tier.Tier, error) {
 		t, err := s.Auth.CheckToken(ctx.Context(), token)
 		if t == 0 && err == nil && auth.FromMCP(ctx.Context()) {
 			// OAuth access tokens are for /mcp, whose tools call the API in process.
-			t, _, err = s.Auth.CheckAccessToken(ctx.Context(), token)
+			t, _, err = s.Auth.CheckAccessToken(ctx.Context(), token, auth.ResourceMCP)
 		}
 		return t, err
 	}

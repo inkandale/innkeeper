@@ -630,10 +630,9 @@ curl -fH "Authorization: Bearer $INNKEEPER_TOKEN" -F archive=@assets.tar.gz "$IN
 curl -fH "Authorization: Bearer $INNKEEPER_TOKEN" -F archive=@config.tar.gz -F replace=true "$INNKEEPER_URL/api/restores"
 ```
 
-The API holds an upload in the system temp folder before copying it into the
-backup folder, so a large archive needs room in both. On Kubernetes, the
-chart points the temp folder at the backup volume, so both copies land there
-rather than on the node's disk.
+The API writes an upload straight into `restores/` in the backup folder, so a
+large archive needs room only there. The daily `blob.gc` job removes uploads
+left behind when a restore job is cancelled before it runs.
 
 A backup restores only into the Innkeeper version that made it. A plugin
 database restores only where that plugin is installed with a database; others

@@ -1,7 +1,9 @@
 package backup
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -539,6 +541,39 @@ func TestFailedRestoreRemovesItsBlobFiles(t *testing.T) {
 	})
 	if !slices.Equal(shas, []string{kept}) {
 		t.Fatalf("store has %v, want only %s", shas, kept)
+	}
+}
+
+func TestRestoreRefusesOversizeBlob(t *testing.T) {
+	tg := newTarget(t)
+	var schema string
+	if err := tg.pool.QueryRow(context.Background(), `SELECT max(name) FROM schema_migration`).Scan(&schema); err != nil {
+		t.Fatal(err)
+	}
+	m, _ := json.Marshal(Manifest{Format: 1, Type: Assets, Schema: schema, Tables: map[string]int64{}, Blobs: []string{sha}})
+	// Only the blob's header: restore must refuse before reading its body.
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	tw.WriteHeader(&tar.Header{Name: "manifest.json", Size: int64(len(m)), Mode: 0o600, Typeflag: tar.TypeReg})
+	tw.Write(m)
+	tw.WriteHeader(&tar.Header{Name: "blobs/" + sha, Size: maxBlob + 1, Mode: 0o600, Typeflag: tar.TypeReg})
+	tw.Flush()
+	gz.Close()
+	if _, err := tg.restore(buf.Bytes(), nil, false); err == nil || !strings.Contains(err.Error(), "over 256 MiB") {
+		t.Fatalf("err = %v", err)
+	}
+	if es, _ := os.ReadDir(tg.store.Root); len(es) != 0 {
+		t.Fatalf("store has %v", es)
+	}
+}
+
+func TestStripUnrunnable(t *testing.T) {
+	long := strings.Repeat("x", 100<<10) + "\n"
+	in := "\\restrict abc\nCREATE SCHEMA plugin_fake;\nSELECT 1;\n" + long + "CREATE SCHEMA plugin_fake;x\n\\unrestrict abc"
+	got, err := stripUnrunnable(strings.NewReader(in), int64(len(in)))
+	if want := "SELECT 1;\n" + long + "CREATE SCHEMA plugin_fake;x\n"; err != nil || got != want {
+		t.Fatalf("got %d bytes starting %q, %v", len(got), got[:min(len(got), 40)], err)
 	}
 }
 

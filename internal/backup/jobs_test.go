@@ -71,6 +71,40 @@ func TestBackupHandlerPrunesToKeep(t *testing.T) {
 	}
 }
 
+func TestSweepUploads(t *testing.T) {
+	pool, _, o := setup(t)
+	ctx := context.Background()
+	if n, err := SweepUploads(ctx, pool, o.Dir, time.Hour); n != 0 || err != nil {
+		t.Fatalf("no restore folder: %d, %v", n, err)
+	}
+	rd := RestoreDir(o.Dir)
+	if err := os.Mkdir(rd, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	files := map[string]time.Time{"queued": old, "orphan": old, "fresh": time.Now()}
+	for name, mtime := range files {
+		p := filepath.Join(rd, name)
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, mtime, mtime); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := jobs.New(pool).Enqueue(ctx, jobs.Spec{Kind: RestoreKind, Payload: RestorePayload{Path: filepath.Join(rd, "queued")}}); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := SweepUploads(ctx, pool, o.Dir, time.Hour); n != 1 || err != nil {
+		t.Fatalf("SweepUploads = %d, %v; want 1", n, err)
+	}
+	for name := range files {
+		if _, err := os.Stat(filepath.Join(rd, name)); (name == "orphan") != os.IsNotExist(err) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
 func TestBackupHandlerNeedsDir(t *testing.T) {
 	pool, _, o := setup(t)
 	j := runJob(t, pool, Kind(Assets), BackupHandler(Settings{}, pool, o, Assets), nil)

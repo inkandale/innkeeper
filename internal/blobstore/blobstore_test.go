@@ -54,7 +54,7 @@ func TestIngest(t *testing.T) {
 	s := newStore(t)
 	src := filepath.Join(s.TmpDir(), "card.png")
 	os.WriteFile(src, []byte("png bytes"), 0o644)
-	sha, size, err := s.Ingest(src)
+	sha, size, err := s.Ingest(src, 1<<20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,6 +63,13 @@ func TestIngest(t *testing.T) {
 	}
 	if _, err := os.Stat(src); !os.IsNotExist(err) {
 		t.Fatal("source file still in tmp")
+	}
+	os.WriteFile(src, []byte("png bytes"), 0o644)
+	if _, _, err := s.Ingest(src, 8); !errors.Is(err, ErrInvalid) || !strings.Contains(err.Error(), "over") {
+		t.Fatalf("Ingest over the limit = %v, want ErrInvalid", err)
+	}
+	if es, _ := os.ReadDir(s.stagingDir()); len(es) != 0 {
+		t.Fatalf("staging has %v", es)
 	}
 }
 
@@ -90,7 +97,7 @@ func TestIngestRejectsUntrustedPaths(t *testing.T) {
 		"directory":   nested,
 		"missing":     filepath.Join(s.TmpDir(), "missing"),
 	} {
-		if _, _, err := s.Ingest(path); !errors.Is(err, ErrInvalid) {
+		if _, _, err := s.Ingest(path, 1<<20); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s: Ingest(%s) = %v, want ErrInvalid", name, path, err)
 		}
 	}
@@ -109,7 +116,7 @@ func TestIngestStoreFailureIsNotInvalid(t *testing.T) {
 	if err := os.Mkdir(s.stagingDir(), 0o555); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := s.Ingest(src); err == nil || errors.Is(err, ErrInvalid) {
+	if _, _, err := s.Ingest(src, 1<<20); err == nil || errors.Is(err, ErrInvalid) {
 		t.Fatalf("Ingest with unwritable staging = %v, want a non-ErrInvalid error", err)
 	}
 }

@@ -80,6 +80,11 @@ func worker() error {
 			backup.RestoreKind:         backup.RestoreHandler(svc.backups, restoreOpts, afterConfig),
 			blobGCKind: func(ctx context.Context, r *jobs.Run) error {
 				blobs, leftovers, err := svc.lib.CollectGarbage(ctx, 24*time.Hour)
+				if err == nil && svc.backups.Dir != "" {
+					var uploads int
+					uploads, err = backup.SweepUploads(ctx, svc.pool, svc.backups.Dir, time.Hour)
+					leftovers += uploads
+				}
 				r.SetProgress(fmt.Appendf(nil, `{"blobs": %d, "leftovers": %d}`, blobs, leftovers))
 				return err
 			},

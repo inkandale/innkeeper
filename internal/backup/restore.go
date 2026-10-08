@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -49,9 +50,35 @@ func validSchema(s string) bool { return schemaPattern.MatchString(s) }
 // maxPluginSQL bounds one plugin schema's SQL, which is read into memory.
 const maxPluginSQL = 256 << 20
 
+// maxBlob bounds one restored blob. Avatars stored from apps had no cap
+// before library.MaxBlobBytes, so older backups can hold blobs past it.
+const maxBlob = 256 << 20
+
 // unrunnable matches the psql meta-commands pg_dump 18 adds, which the server
 // can't run, and the CREATE SCHEMA that restore runs itself.
-var unrunnable = regexp.MustCompile(`(?m)^(\\(un)?restrict \S+|CREATE SCHEMA \S+;)$`)
+var unrunnable = regexp.MustCompile(`^(\\(un)?restrict \S+|CREATE SCHEMA \S+;)\n?$`)
+
+// stripUnrunnable reads size bytes of plugin SQL from r, dropping the lines
+// unrunnable matches, into a single buffer.
+func stripUnrunnable(r io.Reader, size int64) (string, error) {
+	var b strings.Builder
+	b.Grow(int(size))
+	br := bufio.NewReader(r)
+	long := false // in a line longer than br's buffer, which unrunnable can't match
+	for {
+		line, err := br.ReadSlice('\n')
+		if long || err == bufio.ErrBufferFull || !unrunnable.Match(line) {
+			b.Write(line)
+		}
+		long = err == bufio.ErrBufferFull
+		if err == io.EOF {
+			return b.String(), nil
+		}
+		if err != nil && !long {
+			return "", err
+		}
+	}
+}
 
 // hasData finds rows a restore without replace would collide with or, for a
 // plugin schema the archive lists, destroy. Config's $1 is those schemas.
@@ -151,6 +178,9 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (res Result, er
 			if m.Type != Assets || !validSHA(sha) || !blobs[sha] || seenBlobs[sha] {
 				return res, fmt.Errorf("unexpected archive entry %q", name)
 			}
+			if h.Size > maxBlob {
+				return res, fmt.Errorf("%s is over %d MiB", name, maxBlob>>20)
+			}
 			path, err := o.Store.Path(sha)
 			if err != nil {
 				return res, err
@@ -182,12 +212,12 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (res Result, er
 				return res, fmt.Errorf("unexpected archive entry %q", name)
 			}
 			seenSchemas[schema] = true
-			b, err := io.ReadAll(io.LimitReader(tr, maxPluginSQL+1))
+			if h.Size > maxPluginSQL {
+				return res, fmt.Errorf("%s is over %d MiB", name, maxPluginSQL>>20)
+			}
+			sql, err := stripUnrunnable(tr, h.Size)
 			if err != nil {
 				return res, fmt.Errorf("reading %s: %w", name, err)
-			}
-			if len(b) > maxPluginSQL {
-				return res, fmt.Errorf("%s is too large", name)
 			}
 			if !immediate {
 				// Core's deferred checks fire now, as the core user, so none are
@@ -197,7 +227,7 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (res Result, er
 				}
 				immediate = true
 			}
-			ok, err := loadPlugin(ctx, tx, schema, string(unrunnable.ReplaceAll(b, nil)))
+			ok, err := loadPlugin(ctx, tx, schema, sql)
 			if err != nil {
 				return res, fmt.Errorf("%s: %w", name, err)
 			}

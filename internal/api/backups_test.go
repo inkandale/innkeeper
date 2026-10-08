@@ -185,6 +185,25 @@ func TestBackups(t *testing.T) {
 	}
 }
 
+func TestRestoreUploadNeedsArchive(t *testing.T) {
+	e := newEnv(t)
+	dir := t.TempDir()
+	e.s.Backups = backup.Settings{Dir: dir}
+	for name, body := range map[string]string{
+		"no archive":  "--b\r\nContent-Disposition: form-data; name=\"replace\"\r\n\r\ntrue\r\n--b--\r\n",
+		"bad replace": "--b\r\nContent-Disposition: form-data; name=\"replace\"\r\n\r\nmaybe\r\n--b--\r\n",
+	} {
+		r := e.send("POST", "/restores", []byte(body), "Content-Type", "multipart/form-data; boundary=b",
+			"Authorization", "Bearer "+e.token)
+		if r.Status != 400 {
+			t.Errorf("%s: %s", name, r)
+		}
+	}
+	if es, _ := os.ReadDir(backup.RestoreDir(dir)); len(es) != 0 {
+		t.Errorf("rejected uploads left %v", es)
+	}
+}
+
 func TestHealth(t *testing.T) {
 	e := newEnv(t)
 	dir := t.TempDir()

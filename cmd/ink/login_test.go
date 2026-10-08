@@ -217,3 +217,38 @@ func TestLoginNeedsOAuth(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestLogout(t *testing.T) {
+	freshConfig(t)
+	f := newFakeAuth(t)
+	loggedIn(t, f)
+	out, err := runInk(t, "logout")
+	if err != nil || !strings.Contains(out, "Logged out of "+f.URL) {
+		t.Fatalf("out = %q, err = %v", out, err)
+	}
+	if _, _, revoked := f.snapshot(); len(revoked) != 1 || revoked[0] != "inkc_1 r0" {
+		t.Fatalf("revoked %q", revoked)
+	}
+	if c, _ := loadConfig(); len(c.Profiles) != 0 || c.Default != "" {
+		t.Fatalf("config = %+v", c)
+	}
+	if _, err := loadCreds("home"); err == nil {
+		t.Fatal("creds outlived logout")
+	}
+	if _, err := runInk(t, "logout"); err == nil {
+		t.Fatal("logged out with no profile")
+	}
+}
+
+func TestLogoutWhenTheServerFails(t *testing.T) {
+	freshConfig(t)
+	f := newFakeAuth(t)
+	loggedIn(t, f)
+	f.setRevokeFails(true)
+	if _, err := runInk(t, "logout"); err == nil || !strings.Contains(err.Error(), "revoke-grant") {
+		t.Fatalf("err = %v", err)
+	}
+	if c, _ := loadConfig(); len(c.Profiles) != 0 {
+		t.Fatalf("kept %+v", c.Profiles)
+	}
+}

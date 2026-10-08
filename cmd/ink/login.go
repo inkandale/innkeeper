@@ -250,3 +250,45 @@ func awaitCode(ctx context.Context, ln net.Listener, state, issuer string) (stri
 		return "", errors.New("timed out waiting for the login in the browser")
 	}
 }
+
+func logoutCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "logout",
+		Short: "Revoke a login and forget its profile",
+		Long:  "Logout revokes the login of the profile --profile names, or the default one, and forgets the profile.",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			c, err := loadConfig()
+			if err != nil {
+				return err
+			}
+			name := c.profileFor(cmd)
+			p, ok := c.Profiles[name]
+			if !ok {
+				return fmt.Errorf("no profile %q", name)
+			}
+			var revokeErr error
+			if cr, err := loadCreds(name); err == nil {
+				revokeErr = postForm(cmd.Context(), p.URL+"/oauth/revoke",
+					url.Values{"token": {cr.Refresh}, "client_id": {p.ClientID}}, nil)
+			}
+			if err := deleteCreds(name); err != nil {
+				return err
+			}
+			delete(c.Profiles, name)
+			if c.Default == name {
+				c.Default = ""
+			}
+			if err := c.save(); err != nil {
+				return err
+			}
+			if revokeErr != nil {
+				// Forget the profile anyway: the tokens are gone, so the user can't retry the revoke.
+				return fmt.Errorf("forgot profile %s, but %s didn't revoke its login (%q); revoke it under Settings, Access, or with: innkeeper token revoke-grant <id>",
+					name, p.URL, revokeErr.Error())
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Logged out of %s.\n", p.URL)
+			return err
+		},
+	}
+}

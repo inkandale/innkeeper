@@ -361,8 +361,8 @@ func TestPruneKeepsBlobsOfDamagedBackup(t *testing.T) {
 	}
 	o.Keep = 1
 	for range 2 {
-		if _, err := Write(ctx, pool, Assets, o); err != nil {
-			t.Fatal(err)
+		if info, err := Write(ctx, pool, Assets, o); info.Name == "" || err == nil || !strings.Contains(err.Error(), filepath.Base(damaged)) {
+			t.Fatalf("Write = %+v, %v; want a backup and an error naming the damaged one", info, err)
 		}
 	}
 	if list, err := List(o.Dir); err != nil || len(list) != 1 {

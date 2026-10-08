@@ -55,8 +55,8 @@ func worker() error {
 	ex := &exporter.Exporter{Lib: svc.lib, Registry: svc.registry, Plugins: mgr, Log: log}
 	q := jobs.New(svc.pool)
 	dbURL := os.Getenv("INNKEEPER_DATABASE_URL")
-	backupOpts := backup.Options{DatabaseURL: dbURL, Store: svc.store, Box: svc.box}
-	restoreOpts := backup.RestoreOptions{Conn: svc.pool.Config().ConnConfig, Store: svc.store, Box: svc.box}
+	backupOpts := backup.Options{DatabaseURL: dbURL, Store: svc.store, Box: svc.box, Log: log}
+	restoreOpts := backup.RestoreOptions{Conn: svc.pool.Config().ConnConfig, Store: svc.store, Box: svc.box, Log: log}
 	// A restored config brings back plugin instances whose databases must exist.
 	afterConfig := func(ctx context.Context) error { return svc.registry.ProvisionDatabases(ctx, dbURL) }
 	w := &jobs.Worker{
@@ -80,6 +80,11 @@ func worker() error {
 			backup.RestoreKind:         backup.RestoreHandler(svc.backups, restoreOpts, afterConfig),
 			blobGCKind: func(ctx context.Context, r *jobs.Run) error {
 				blobs, leftovers, err := svc.lib.CollectGarbage(ctx, 24*time.Hour)
+				if err == nil && svc.backups.Dir != "" {
+					var uploads int
+					uploads, err = backup.SweepUploads(ctx, svc.pool, svc.backups.Dir, time.Hour)
+					leftovers += uploads
+				}
 				r.SetProgress(fmt.Appendf(nil, `{"blobs": %d, "leftovers": %d}`, blobs, leftovers))
 				return err
 			},

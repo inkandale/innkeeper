@@ -96,13 +96,13 @@ func (s *Store) Put(r io.Reader) (sha string, size int64, err error) {
 }
 
 // Ingest moves a file a plugin wrote into the store. path is untrusted: it
-// must name a regular file directly inside TmpDir, and the hash is computed
-// here, never taken from the plugin.
+// must name a regular file of at most max bytes directly inside TmpDir, and
+// the hash is computed here, never taken from the plugin.
 //
 // ponytail: a plugin still holding the file open could change it after it is
 // hashed. Plugins run as the same OS user and could write the store directly
 // anyway; copy instead of moving if plugins ever get their own user.
-func (s *Store) Ingest(path string) (sha string, size int64, err error) {
+func (s *Store) Ingest(path string, max int64) (sha string, size int64, err error) {
 	tmp, err := filepath.EvalSymlinks(s.TmpDir())
 	if err != nil {
 		return "", 0, err
@@ -138,8 +138,11 @@ func (s *Store) Ingest(path string) (sha string, size int64, err error) {
 		return "", 0, fmt.Errorf("%w: %s has other hard links", ErrInvalid, path)
 	}
 	h := sha256.New()
-	if size, err = io.Copy(h, f); err != nil {
+	if size, err = io.Copy(h, io.LimitReader(f, max+1)); err != nil {
 		return "", 0, err
+	}
+	if size > max {
+		return "", 0, fmt.Errorf("%w: %s is over %d MiB", ErrInvalid, path, max>>20)
 	}
 	sha = hex.EncodeToString(h.Sum(nil))
 	return sha, size, s.place(staged.Name(), sha)

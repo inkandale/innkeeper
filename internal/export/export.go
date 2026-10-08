@@ -19,9 +19,6 @@ import (
 // ErrBadCodec means a codec plugin's reply broke the protocol.
 var ErrBadCodec = errors.New("codec plugin sent a bad reply")
 
-// maxBytes caps a codec's file, as uploads are capped.
-const maxBytes = 32 << 20
-
 // Exporter writes cards as JSON, or in a format a codec plugin writes.
 type Exporter struct {
 	Lib      *library.Library
@@ -83,8 +80,8 @@ func (e *Exporter) encode(ctx context.Context, revID int64, card json.RawMessage
 	if !protocol.ValidExtension(res.Extension) {
 		return nil, "", "", fmt.Errorf("%w: extension %q", ErrBadCodec, res.Extension)
 	}
-	// IngestBlob refuses a path outside blob_tmp. Nothing references the
-	// blob, so cleanup removes it after a day.
+	// IngestBlob refuses a path outside blob_tmp or a file over 32 MiB.
+	// Nothing references the blob, so cleanup removes it after a day.
 	b, err := e.Lib.IngestBlob(ctx, res.Path)
 	if errors.Is(err, blobstore.ErrInvalid) {
 		e.Log.Error("codec wrote a bad file", "format", format, "err", err)
@@ -92,12 +89,6 @@ func (e *Exporter) encode(ctx context.Context, revID int64, card json.RawMessage
 	}
 	if err != nil {
 		return nil, "", "", err
-	}
-	// ponytail: checked after IngestBlob stored the file, so a runaway codec
-	// can fill the disk until cleanup; check the size before ingesting if
-	// that matters.
-	if b.Size > maxBytes {
-		return nil, "", "", fmt.Errorf("%w: file is over %d MiB", ErrBadCodec, maxBytes>>20)
 	}
 	_, f, err := e.Lib.OpenBlob(ctx, b.SHA256)
 	if err != nil {

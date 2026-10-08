@@ -9,9 +9,11 @@ import (
 	"os"
 	"reflect"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
 	"github.com/davidgibbons/innkeeper/internal/backup"
 	"github.com/davidgibbons/innkeeper/internal/jobs"
@@ -40,11 +42,69 @@ type backupNameIn struct {
 	Name string `path:"name"`
 }
 
-type restoreBackupIn struct {
-	RawBody huma.MultipartFormFiles[struct {
-		Archive huma.FormFile `form:"archive" required:"true" doc:"A backup archive, as GET /backups/{name} returns."`
-		Replace bool          `form:"replace" required:"false" doc:"Replace data of the archive's type instead of refusing when some exists."`
-	}]
+// restoreBackupIn has no RawBody, so huma leaves the body unread: its
+// multipart parsing would spool the archive to TMPDIR. The handler streams it
+// to the backup volume instead.
+type restoreBackupIn struct{ req *http.Request }
+
+func (in *restoreBackupIn) Resolve(hc huma.Context) []error {
+	in.req, _ = humago.Unwrap(hc)
+	return nil
+}
+
+// restoreBody documents what the start-restore handler reads itself.
+var restoreBody = &huma.RequestBody{Content: map[string]*huma.MediaType{"multipart/form-data": {
+	Schema: &huma.Schema{Type: "object", Required: []string{"archive"}, Properties: map[string]*huma.Schema{
+		"archive": {Type: "string", Format: "binary", ContentEncoding: "binary",
+			Description: "A backup archive, as GET /backups/{name} returns."},
+		"replace": {Type: "boolean", Description: "Replace data of the archive's type instead of refusing when some exists."},
+	}},
+	Encoding: map[string]*huma.Encoding{"archive": {ContentType: "application/octet-stream"}, "replace": {ContentType: "text/plain"}},
+}}}
+
+// readRestoreForm saves the archive part to dir's restore folder as it
+// arrives and returns its path and the replace field.
+func readRestoreForm(dir string, r *http.Request) (path string, replace bool, err error) {
+	defer func() {
+		if err != nil && path != "" {
+			os.Remove(path)
+			path = ""
+		}
+	}()
+	mr, err := r.MultipartReader()
+	if err != nil {
+		return "", false, huma.Error400BadRequest(err.Error())
+	}
+	for {
+		p, err := mr.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return path, false, huma.Error400BadRequest("reading form: " + err.Error())
+		}
+		switch p.FormName() {
+		case "archive":
+			if path != "" {
+				return path, false, huma.Error400BadRequest("archive given twice")
+			}
+			if path, err = saveUpload(dir, p); err != nil {
+				return "", false, err
+			}
+		case "replace":
+			b, err := io.ReadAll(io.LimitReader(p, 16))
+			if err != nil {
+				return path, false, huma.Error400BadRequest("reading form: " + err.Error())
+			}
+			if replace, err = strconv.ParseBool(string(b)); err != nil {
+				return path, false, huma.Error400BadRequest("replace must be true or false")
+			}
+		}
+	}
+	if path == "" {
+		return "", false, huma.Error400BadRequest("archive is required")
+	}
+	return path, replace, nil
 }
 
 type typeHealth struct {
@@ -143,6 +203,17 @@ func saveUpload(dir string, r io.Reader) (string, error) {
 	return f.Name(), nil
 }
 
+// readManifest checks that the archive at path starts with a valid manifest.
+func readManifest(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = backup.ReadManifest(f)
+	return err
+}
+
 func (s *Server) backupRoutes(api huma.API) {
 	tags := []string{"Backups"}
 	// Assets backups hold every card and config backups the encrypted secrets.
@@ -213,33 +284,34 @@ func (s *Server) backupRoutes(api huma.API) {
 		Summary: "Restore a backup",
 		Description: "Uploads a backup archive and queues a job that restores it. Without replace, the job fails if the " +
 			"database already has data of the archive's type.",
-		Tags: tags, DefaultStatus: http.StatusAccepted,
-		// Archives can be many GB; multipart uploads spool to disk, not memory.
-		MaxBodyBytes: -1, BodyReadTimeout: -1},
+		Tags: tags, DefaultStatus: http.StatusAccepted},
 		func(ctx context.Context, in *restoreBackupIn) (*jobResp, error) {
 			dir, err := s.backupDir()
 			if err != nil {
 				return nil, err
 			}
-			f := in.RawBody.Data().Archive
-			if _, err := backup.ReadManifest(f); err != nil {
+			path, replace, err := readRestoreForm(dir, in.req)
+			if err != nil {
+				var se huma.StatusError
+				if errors.As(err, &se) {
+					return nil, err
+				}
+				return nil, s.fail(err)
+			}
+			if err := readManifest(path); err != nil {
+				os.Remove(path)
 				return nil, huma.Error400BadRequest(err.Error())
 			}
-			if _, err := f.Seek(0, io.SeekStart); err != nil {
-				return nil, s.fail(err)
-			}
-			path, err := saveUpload(dir, f)
-			if err != nil {
-				return nil, s.fail(err)
-			}
 			j, err := s.Queue.Enqueue(ctx, jobs.Spec{Kind: backup.RestoreKind,
-				Payload: backup.RestorePayload{Path: path, Replace: in.RawBody.Data().Replace}})
+				Payload: backup.RestorePayload{Path: path, Replace: replace}})
 			if err != nil {
 				os.Remove(path)
 				return nil, s.fail(err)
 			}
 			return &jobResp{Body: toJob(j)}, nil
 		})
+	// Set after registering, since a schema here would make huma read the body.
+	api.OpenAPI().Paths["/restores"].Post.RequestBody = restoreBody
 
 	healthSchema := api.OpenAPI().Components.Schemas.Schema(reflect.TypeFor[health](), true, "Health")
 	huma.Register(api, huma.Operation{Metadata: public, Security: noAuth, OperationID: "health", Method: http.MethodGet, Path: "/health",

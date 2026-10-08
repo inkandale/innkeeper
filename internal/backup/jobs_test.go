@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -68,6 +69,57 @@ func TestBackupHandlerPrunesToKeep(t *testing.T) {
 	var p struct{ Name string }
 	if err := json.Unmarshal(j.Progress, &p); err != nil || p.Name != infos[0].Name {
 		t.Fatalf("progress %s, want name %q", j.Progress, infos[0].Name)
+	}
+}
+
+func TestBackupHandlerSucceedsWhenPruneFails(t *testing.T) {
+	pool, _, o := setup(t)
+	// A damaged backup stops the shared-blob sweep, which prune reports.
+	if err := os.MkdirAll(filepath.Join(o.Dir, "assets", "assets-20000101T000000.000000Z"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	o.Log = slog.New(slog.NewTextHandler(&out, nil))
+	h := BackupHandler(Settings{Dir: o.Dir, Keep: map[Type]int{Assets: 1}}, pool, o, Assets)
+	if j := runJob(t, pool, Kind(Assets), h, nil); j.Status != jobs.StatusSucceeded {
+		t.Fatalf("job %s: %s", j.Status, jobError(j))
+	}
+	if !strings.Contains(out.String(), "not pruned") || !strings.Contains(out.String(), "assets-20000101T000000.000000Z") {
+		t.Fatalf("log = %q", out.String())
+	}
+}
+
+func TestSweepUploads(t *testing.T) {
+	pool, _, o := setup(t)
+	ctx := context.Background()
+	if n, err := SweepUploads(ctx, pool, o.Dir, time.Hour); n != 0 || err != nil {
+		t.Fatalf("no restore folder: %d, %v", n, err)
+	}
+	rd := RestoreDir(o.Dir)
+	if err := os.Mkdir(rd, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	files := map[string]time.Time{"queued": old, "orphan": old, "fresh": time.Now()}
+	for name, mtime := range files {
+		p := filepath.Join(rd, name)
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, mtime, mtime); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := jobs.New(pool).Enqueue(ctx, jobs.Spec{Kind: RestoreKind, Payload: RestorePayload{Path: filepath.Join(rd, "queued")}}); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := SweepUploads(ctx, pool, o.Dir, time.Hour); n != 1 || err != nil {
+		t.Fatalf("SweepUploads = %d, %v; want 1", n, err)
+	}
+	for name := range files {
+		if _, err := os.Stat(filepath.Join(rd, name)); (name == "orphan") != os.IsNotExist(err) {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }
 

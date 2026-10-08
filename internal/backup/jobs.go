@@ -5,9 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
+	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/davidgibbons/innkeeper/internal/jobs"
@@ -29,15 +33,16 @@ func BackupHandler(s Settings, pool *pgxpool.Pool, o Options, t Type) jobs.Handl
 		}
 		o.Dir, o.Keep = s.Dir, s.Keep[t]
 		info, err := Write(ctx, pool, t, o)
-		if info.Name == "" && err != nil {
+		if info.Name == "" {
 			return fmt.Errorf("%w: %w", jobs.ErrRetry, err)
 		}
-		// A prune error still leaves the backup it came after, so a retry
-		// would only add another.
-		if info.Name != "" {
-			r.SetProgress(fmt.Appendf(nil, `{"name": %q, "size": %d}`, info.Name, info.Size))
+		r.SetProgress(fmt.Appendf(nil, `{"name": %q, "size": %d}`, info.Name, info.Size))
+		// The backup is written, so failing or retrying would hide or
+		// duplicate it. The next run prunes again.
+		if err != nil {
+			orDefault(o.Log).Warn("backup written but not pruned", "name", info.Name, "err", err)
 		}
-		return err
+		return nil
 	}
 }
 
@@ -49,6 +54,40 @@ type RestorePayload struct {
 
 // RestoreDir is where uploaded archives wait for a restore job.
 func RestoreDir(dir string) string { return filepath.Join(dir, "restores") }
+
+// SweepUploads removes files in dir's restore folder untouched for age that
+// no queued or running restore job names: uploads whose job was cancelled,
+// or whose API stopped before queueing it. It returns how many it removed.
+func SweepUploads(ctx context.Context, pool *pgxpool.Pool, dir string, age time.Duration) (int, error) {
+	// Listed before the jobs are read, so an upload queued in between is kept.
+	es, err := os.ReadDir(RestoreDir(dir))
+	if errors.Is(err, fs.ErrNotExist) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	rows, _ := pool.Query(ctx, `SELECT coalesce(payload->>'path', '') FROM job
+		WHERE kind = $1 AND status IN ('queued', 'running')`, RestoreKind)
+	named, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, e := range es {
+		path := filepath.Join(RestoreDir(dir), e.Name())
+		fi, err := e.Info()
+		// age also keeps an upload the API saved but hasn't queued yet.
+		if err != nil || !fi.Mode().IsRegular() || time.Since(fi.ModTime()) < age || slices.Contains(named, path) {
+			continue
+		}
+		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
+}
 
 // RestoreHandler restores the archive named by the job's payload, then calls
 // afterConfig (if not nil) once a config restore succeeds.

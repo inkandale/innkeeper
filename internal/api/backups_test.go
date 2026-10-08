@@ -3,7 +3,9 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -182,6 +184,68 @@ func TestBackups(t *testing.T) {
 	}
 	if saved, err := os.ReadFile(p.Path); err != nil || !bytes.Equal(saved, r.Body) {
 		t.Errorf("saved upload differs: %v", err)
+	}
+}
+
+func TestRestoreUploadNeedsArchive(t *testing.T) {
+	e := newEnv(t)
+	dir := t.TempDir()
+	e.s.Backups = backup.Settings{Dir: dir}
+	for name, body := range map[string]string{
+		"no archive":  "--b\r\nContent-Disposition: form-data; name=\"replace\"\r\n\r\ntrue\r\n--b--\r\n",
+		"bad replace": "--b\r\nContent-Disposition: form-data; name=\"replace\"\r\n\r\nmaybe\r\n--b--\r\n",
+	} {
+		r := e.send("POST", "/restores", []byte(body), "Content-Type", "multipart/form-data; boundary=b",
+			"Authorization", "Bearer "+e.token)
+		if r.Status != 400 {
+			t.Errorf("%s: %s", name, r)
+		}
+	}
+	if es, _ := os.ReadDir(backup.RestoreDir(dir)); len(es) != 0 {
+		t.Errorf("rejected uploads left %v", es)
+	}
+}
+
+func TestDownloadAbortsPartway(t *testing.T) {
+	e := newEnv(t)
+	dir := t.TempDir()
+	e.s.Backups = backup.Settings{Dir: dir}
+	name := writeBackup(t, dir, backup.Config, time.Now())
+	folder := filepath.Join(dir, "config", name)
+	// Random padding compresses poorly, so the status and some bytes go out before the failure.
+	pad := make([]byte, 256<<10)
+	rand.Read(pad)
+	manifest := fmt.Sprintf(`{"format":1,"type":"config","tables":{"setting":1},"pad":"%x"}`, pad)
+	if err := os.WriteFile(filepath.Join(folder, "manifest.json"), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Present for the up-front check, unreadable once the archive has started.
+	table := filepath.Join(folder, "tables", "setting.copy")
+	if err := os.MkdirAll(filepath.Dir(table), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(table, []byte("x"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	if f, err := os.Open(table); err == nil {
+		f.Close()
+		t.Skip("running as a user who can read mode 000 files")
+	}
+	req, err := http.NewRequest("GET", e.srv.URL+"/api/backups/"+name, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+e.token)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if _, err := io.ReadAll(resp.Body); err == nil {
+		t.Fatal("truncated download read as complete")
 	}
 }
 

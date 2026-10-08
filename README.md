@@ -62,6 +62,7 @@ database at startup and stop cleanly on `SIGTERM`.
 | `INNKEEPER_BUILTIN_PLUGINS_DIR` | `api`, `worker`, `restore` | Read-only folder of plugins that ship with Innkeeper, one subfolder each; an installed plugin of the same name overrides one |
 | `INNKEEPER_LISTEN` | `api` | Listen address; default `:8080` |
 | `INNKEEPER_PUBLIC_URL` | `api` | Where browsers reach the API, such as `https://innkeeper.example.com`. Needed for redirect logins, `ink login`, and MCP clients that connect through OAuth, such as claude.ai. An `http://` URL sends cookies without `Secure` |
+| `INNKEEPER_OWNER_PASSWORD_HASH` | `api` | A bcrypt hash from `password-login hash`. On a server with no login provider, the API creates the owner's password login from it at startup. Ignored once the server is claimed |
 | `INNKEEPER_WORKER_CONCURRENCY` | `worker` | Jobs run at once; default 4 |
 | `INNKEEPER_BACKUP_DIR` | `api`, `worker` | Where backups go. Needed for any backup or restore through the API, and for schedules |
 | `INNKEEPER_BACKUP_ASSETS_EVERY`, `INNKEEPER_BACKUP_CONFIG_EVERY` | `api`, `worker` | How often to back up that type, such as `24h` or `7d`. Unset means no schedule |
@@ -133,26 +134,32 @@ annotations, and [scheduled backups](#backup-and-restore). Create the first toke
 
 ## First login
 
-Auth cannot be turned off. No one can log in until a login provider names
-an owner, so start with an API token:
+Auth cannot be turned off. A new server has no login provider, so the first
+step is to claim it. While it is unclaimed, the API logs a setup code:
 
 ```bash
-export INNKEEPER_TOKEN=$(innkeeper token create admin destructive)
-export INNKEEPER_URL=http://localhost:8080
+docker compose logs api | grep "setup code"
 ```
 
-The bundled `password-login` plugin logs in with one password, kept as a
-bcrypt hash. Make the hash with the plugin, then create a login instance
-with it:
+On Kubernetes, `kubectl logs deploy/innkeeper -c api` shows the same line.
+Open the site, which sends you to `/setup`, and enter the code with a
+password. This creates a login with the bundled `password-login` plugin.
+The code changes each time the API restarts. Add other login providers, such
+as OIDC, in Settings after setup.
+
+To claim the server from config instead, set `INNKEEPER_OWNER_PASSWORD_HASH`
+to a hash made by the plugin and restart the API. It is ignored once the
+server is claimed. With Compose, uncomment its line in `compose.yaml` and
+put the hash in `.env` in single quotes, so Compose leaves its `$` signs alone.
 
 ```bash
 read -rs PW && printf '%s\n' "$PW" | docker compose exec -T api /usr/lib/innkeeper/plugins/password-login/password-login hash; unset PW
-ink call POST /instances '{"plugin": "password-login", "name": "Login", "owner_subject": "owner", "secrets": {"password_hash": "<hash>"}}'
 ```
 
-For another login provider, `owner_subject` is the identity it reports for
-you; its README says what that is. Changing or clearing `owner_subject` logs
-that identity out.
+To claim with another login provider, create its instance with an API token
+(`innkeeper token create admin destructive`) and set `owner_subject` to the
+identity it reports for you; its README says what that is. Changing or
+clearing `owner_subject` logs that identity out.
 
 ## Web UI
 

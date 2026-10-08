@@ -34,7 +34,7 @@ For scripts, set INNKEEPER_URL and an API token in INNKEEPER_TOKEN; they take pr
 	root.PersistentFlags().Bool("json", false, "print JSON instead of tables")
 	root.PersistentFlags().String("profile", "", "the login to use, instead of the default")
 	_ = root.RegisterFlagCompletionFunc("profile", completeProfiles)
-	root.AddCommand(callCmd(), importCmd(), jobsCmd(), cardsCmd(), syncCmd(), profilesCmd())
+	root.AddCommand(callCmd(), importCmd(), jobsCmd(), cardsCmd(), syncCmd(), profilesCmd(), loginCmd())
 	return root
 }
 

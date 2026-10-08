@@ -4,13 +4,23 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"net/http"
 	"regexp"
+	"slices"
 	"strings"
+	"time"
 	"unicode"
 
+	"github.com/danielgtaylor/huma/v2"
+
+	"github.com/davidgibbons/innkeeper/internal/auth"
+	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
+	"github.com/davidgibbons/innkeeper/protocol"
 )
 
 // bcryptHash matches the shape of a bcrypt hash, as password-login makes.
@@ -98,4 +108,120 @@ func normalizeCode(code string) string {
 // codeMatches compares a typed code with the setup code in constant time.
 func codeMatches(want, got string) bool {
 	return want != "" && subtle.ConstantTimeCompare([]byte(normalizeCode(want)), []byte(normalizeCode(got))) == 1
+}
+
+type setupPlugin struct {
+	Plugin string          `json:"plugin"`
+	Form   json.RawMessage `json:"form" doc:"JSON Schema of the fields to ask for."`
+}
+
+type setupOut struct{ Body []setupPlugin }
+
+type claimIn struct {
+	Body struct {
+		Code   string            `json:"code" minLength:"1" doc:"The setup code from the server log."`
+		Plugin string            `json:"plugin" minLength:"1"`
+		Params map[string]string `json:"params"`
+	}
+}
+
+// setupInstance runs an auth plugin before it has an instance.
+func setupInstance(m *protocol.Manifest) pluginhost.Instance {
+	return pluginhost.Instance{ID: "setup-" + m.Name, Version: "0", Manifest: m,
+		Params: protocol.InitializeParams{Config: map[string]any{}, Secrets: map[string]string{}}}
+}
+
+func (s *Server) setupRoutes(api huma.API) {
+	tags := []string{"Auth"}
+	huma.Register(api, huma.Operation{OperationID: "get-setup", Method: http.MethodGet, Path: "/setup",
+		Summary:     "List the ways to claim this server",
+		Description: "Lists the login plugins that can claim a server with no login provider. 404 once the server is claimed.",
+		Tags:        tags, Metadata: public, Security: noAuth},
+		func(ctx context.Context, _ *struct{}) (*setupOut, error) {
+			claimed, err := s.claimed(ctx)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			if claimed {
+				return nil, huma.Error404NotFound("the server is already set up")
+			}
+			s.ensureSetupCode()
+			out := &setupOut{Body: []setupPlugin{}}
+			manifests := s.Registry.Manifests()
+			names := slices.Sorted(maps.Keys(manifests))
+			for _, name := range names {
+				m := manifests[name]
+				if !slices.Contains(m.Capabilities, "auth") {
+					continue
+				}
+				var res protocol.AuthSetupResult
+				err := s.Plugins.Call(ctx, setupInstance(m), protocol.MethodAuthSetup, nil, &res)
+				var rpcErr *protocol.Error
+				if errors.As(err, &rpcErr) && rpcErr.Code == protocol.CodeMethodNotFound {
+					continue
+				}
+				if err != nil {
+					s.Log.Warn("auth.setup failed", "plugin", name, "err", err)
+					continue
+				}
+				out.Body = append(out.Body, setupPlugin{Plugin: name, Form: res.Form})
+			}
+			return out, nil
+		})
+
+	huma.Register(api, huma.Operation{OperationID: "claim-server", Method: http.MethodPost, Path: "/setup",
+		Summary:     "Claim this server",
+		Description: "Creates the owner's login provider with the setup code from the server log, and sets the session cookie.",
+		Tags:        tags, Metadata: public, Security: noAuth, DefaultStatus: http.StatusNoContent},
+		func(ctx context.Context, in *claimIn) (*cookiesOut, error) {
+			select {
+			case s.loginSlot <- struct{}{}:
+				defer func() { <-s.loginSlot }()
+			case <-ctx.Done():
+				return nil, huma.Error503ServiceUnavailable("login busy, try again")
+			}
+			// One answer for a wrong code and a claimed server, so the
+			// page reveals neither.
+			refuse := func() error {
+				time.Sleep(failedLoginDelay)
+				return huma.Error403Forbidden("setup failed; check the setup code in the server log")
+			}
+			if !codeMatches(s.currentSetupCode(), in.Body.Code) {
+				return nil, refuse()
+			}
+			if claimed, err := s.claimed(ctx); err != nil {
+				return nil, s.fail(err)
+			} else if claimed {
+				return nil, refuse()
+			}
+			m := s.Registry.Manifests()[in.Body.Plugin]
+			if m == nil || !slices.Contains(m.Capabilities, "auth") {
+				return nil, huma.Error400BadRequest("no such login plugin: " + in.Body.Plugin)
+			}
+			var res protocol.AuthSetupCompleteResult
+			err := s.Plugins.Call(ctx, setupInstance(m), protocol.MethodAuthSetupComplete,
+				protocol.AuthSetupCompleteParams{Params: in.Body.Params}, &res)
+			var rpcErr *protocol.Error
+			if errors.As(err, &rpcErr) {
+				return nil, huma.Error400BadRequest(rpcErr.Message)
+			}
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			if res.Subject == "" {
+				return nil, huma.Error502BadGateway("plugin: auth.setup.complete returned no subject")
+			}
+			id, err := s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: m.Name, Name: "Login",
+				Secrets: res.Secrets, OwnerSubject: &res.Subject})
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			s.clearSetupCode()
+			s.Log.Info("server claimed", "plugin", m.Name, "instance", id)
+			secret, err := s.Auth.CreateSession(ctx, id, res.Subject)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			return &cookiesOut{SetCookie: []*http.Cookie{s.cookie(sessionCookie, secret, auth.SessionTTL)}}, nil
+		})
 }

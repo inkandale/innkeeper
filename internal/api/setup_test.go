@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"log/slog"
+	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -93,5 +95,84 @@ func TestBootstrapIgnoresAHashOnceClaimed(t *testing.T) {
 	}
 	if len(insts) != 2 || !strings.Contains(buf.String(), "ignored") || e.s.currentSetupCode() != "" {
 		t.Fatalf("instances %d, code %q, log %q", len(insts), e.s.currentSetupCode(), buf.String())
+	}
+}
+
+func claimBody(code, password, confirm string) map[string]any {
+	return map[string]any{"code": code, "plugin": "password-login",
+		"params": map[string]string{"password": password, "confirm": confirm}}
+}
+
+func TestSetupClaimsTheServer(t *testing.T) {
+	e := unclaimedEnv(t)
+	if err := e.s.Bootstrap(context.Background(), ""); err != nil {
+		t.Fatal(err)
+	}
+	var list []setupPlugin
+	e.call("GET", "/setup", nil, http.StatusOK, &list)
+	if !slices.ContainsFunc(list, func(p setupPlugin) bool { return p.Plugin == "password-login" && len(p.Form) > 0 }) {
+		t.Fatalf("setup plugins %+v", list)
+	}
+
+	// Lower case and no dashes still match.
+	code := strings.ToLower(strings.ReplaceAll(e.s.currentSetupCode(), "-", ""))
+	r := e.send("POST", "/setup", claimBody(code, "correct horse", "correct horse"))
+	if r.Status != http.StatusNoContent {
+		t.Fatalf("claim: %s", r)
+	}
+	session := r.cookie(t, sessionCookie)
+	if me := e.send("GET", "/auth/me", nil, "Cookie", session.Name+"="+session.Value); me.Status != http.StatusOK {
+		t.Fatalf("me with the claim's session: %s", me)
+	}
+	inst := loginInstance(t, e)
+	if inst.Name != "Login" || inst.OwnerSubject == nil || *inst.OwnerSubject != "owner" {
+		t.Fatalf("instance %+v", inst)
+	}
+
+	if r := e.send("GET", "/setup", nil); r.Status != http.StatusNotFound {
+		t.Fatalf("setup after claim: %s", r)
+	}
+	if r := e.send("POST", "/setup", claimBody(code, "x", "x")); r.Status != http.StatusForbidden {
+		t.Fatalf("second claim: %s", r)
+	}
+}
+
+func TestSetupRejectsAWrongCode(t *testing.T) {
+	e := unclaimedEnv(t)
+	if err := e.s.Bootstrap(context.Background(), ""); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.send("POST", "/setup", claimBody("AAAA-BBBB", "pw", "pw")); r.Status != http.StatusForbidden {
+		t.Fatalf("wrong code: %s", r)
+	}
+	if claimed, _ := e.s.claimed(context.Background()); claimed {
+		t.Fatal("a wrong code claimed the server")
+	}
+}
+
+func TestSetupShowsThePluginsRejection(t *testing.T) {
+	e := unclaimedEnv(t)
+	if err := e.s.Bootstrap(context.Background(), ""); err != nil {
+		t.Fatal(err)
+	}
+	r := e.send("POST", "/setup", claimBody(e.s.currentSetupCode(), "one", "two"))
+	if r.Status != http.StatusBadRequest || !strings.Contains(string(r.Body), "don't match") {
+		t.Fatalf("mismatch: %s", r)
+	}
+}
+
+func TestSetupIsGoneOnAClaimedServer(t *testing.T) {
+	e := newEnv(t)
+	if r := e.send("GET", "/setup", nil); r.Status != http.StatusNotFound {
+		t.Fatalf("got %s", r)
+	}
+}
+
+// A server that loses its last login provider makes a code on demand.
+func TestSetupMakesACodeWhenNeeded(t *testing.T) {
+	e := unclaimedEnv(t)
+	e.call("GET", "/setup", nil, http.StatusOK, nil)
+	if e.s.currentSetupCode() == "" {
+		t.Fatal("no setup code")
 	}
 }

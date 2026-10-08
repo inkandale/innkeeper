@@ -140,6 +140,7 @@ func config() huma.Config {
 // routes registers every API operation.
 func (s *Server) routes(api huma.API) {
 	s.authRoutes(api)
+	s.setupRoutes(api)
 	s.entityRoutes(api, s.Lib.Cards, "cards", "card", "Cards")
 	s.cardRoutes(api)
 	s.entityRoutes(api, s.Lib.Lorebooks, "lorebooks", "lorebook", "Lorebooks")

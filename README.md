@@ -636,6 +636,9 @@ The API writes an upload straight into `restores/` in the backup folder, so a
 large archive needs room only there. The daily `blob.gc` job removes uploads
 left behind when a restore job is cancelled before it runs.
 
+Replacing config deletes the existing plugin instances, so queued and
+finished jobs that named one lose the link: their `instance_id` becomes null.
+
 A backup restores only into the Innkeeper version that made it. A plugin
 database restores only where that plugin is installed with a database; others
 are skipped and reported.

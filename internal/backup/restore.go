@@ -284,6 +284,10 @@ const safePath = `SET LOCAL search_path = pg_catalog, pg_temp`
 // removeUnclaimed deletes the blob files in shas that have no blob row, once
 // a failed restore has rolled back. It opens a new connection because the
 // restore's may be what failed.
+//
+// ponytail: an import that stores one of these blobs while this runs can lose
+// its file before committing the row, the same window blob GC has; closing it
+// needs a blob lock that both take.
 func removeUnclaimed(o RestoreOptions, shas []string) {
 	log := orDefault(o.Log)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)

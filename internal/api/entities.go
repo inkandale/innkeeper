@@ -102,6 +102,7 @@ type restoreIn struct {
 	Body struct {
 		RevisionID     int64  `json:"revision_id" doc:"The old revision to restore"`
 		BaseRevisionID int64  `json:"base_revision_id" doc:"The current head revision"`
+		Avatar         string `json:"avatar,omitempty" enum:"keep,revision" default:"keep" doc:"keep: the base revision's avatar. revision: the old revision's, even none."`
 		Source         string `json:"source,omitempty" enum:"ui,mcp" default:"ui"`
 	}
 }
@@ -328,7 +329,8 @@ func (s *Server) entityRoutes(api huma.API, ents *library.Entities, plural, sing
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "restore-" + singular, Method: http.MethodPost,
 		Path: item + "/restore", Summary: "Restore an old revision",
-		Description: "Adds a revision with the old revision's content on top of base_revision_id.", Tags: tags},
+		Description: "Adds a revision with the old revision's content on top of base_revision_id. " +
+			"Keeps the base revision's avatar unless avatar is revision.", Tags: tags},
 		func(ctx context.Context, in *restoreIn) (*entityResp, error) {
 			old, err := s.revisionOf(ctx, ents, in.ID, in.Body.RevisionID)
 			if err != nil {
@@ -336,8 +338,19 @@ func (s *Server) entityRoutes(api huma.API, ents *library.Entities, plural, sing
 			}
 			e := library.Edit{Data: old.Data, Overrides: old.Overrides, Source: cmp.Or(in.Body.Source, "ui"),
 				Message: fmt.Sprintf("Restore revision %d", old.ID)}
-			if old.AvatarBlob != nil {
-				e.AvatarBlob = *old.AvatarBlob
+			avatar := old.AvatarBlob
+			if in.Body.Avatar != "revision" {
+				base, err := ents.Revision(ctx, in.Body.BaseRevisionID)
+				if errors.Is(err, library.ErrNotFound) || err == nil && base.EntityID != in.ID {
+					return nil, s.fail(library.ErrConflict)
+				}
+				if err != nil {
+					return nil, s.fail(err)
+				}
+				avatar = base.AvatarBlob
+			}
+			if avatar != nil {
+				e.AvatarBlob = *avatar
 			}
 			if _, err := ents.Update(ctx, in.ID, in.Body.BaseRevisionID, e); err != nil {
 				return nil, s.fail(err)

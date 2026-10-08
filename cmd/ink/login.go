@@ -23,6 +23,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// loginWait is how long login waits for the browser to come back.
+var loginWait = 5 * time.Minute
+
 // openBrowser opens page in the default browser. Tests replace it.
 var openBrowser = func(page string) error {
 	switch runtime.GOOS {
@@ -58,13 +61,9 @@ becomes the default. The server needs INNKEEPER_PUBLIC_URL set.`,
 			if err != nil {
 				return err
 			}
-			if old, ok := c.Profiles[name]; ok {
-				// Revoke the login this one replaces rather than leave it live.
-				if cr, err := loadCreds(name); err == nil {
-					_ = postForm(cmd.Context(), old.URL+"/oauth/revoke",
-						url.Values{"token": {cr.Refresh}, "client_id": {old.ClientID}}, nil)
-				}
-			}
+			// Read the login this one replaces before saving over it.
+			old, hadOld := c.Profiles[name]
+			oldCreds, oldErr := loadCreds(name)
 			where, err := saveCreds(name, toks.creds(""))
 			if err != nil {
 				return err
@@ -73,6 +72,11 @@ becomes the default. The server needs INNKEEPER_PUBLIC_URL set.`,
 			c.Default = cmp.Or(c.Default, name)
 			if err := c.save(); err != nil {
 				return err
+			}
+			if hadOld && oldErr == nil {
+				// Revoke only once the new login is saved, so a failed save leaves the old one.
+				_ = postForm(cmd.Context(), old.URL+"/oauth/revoke",
+					url.Values{"token": {oldCreds.Refresh}, "client_id": {old.ClientID}}, nil)
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Logged in to %s with the %s tier as profile %s. The login is in %s.\n",
 				p.URL, toks.Scope, name, where)
@@ -84,6 +88,9 @@ becomes the default. The server needs INNKEEPER_PUBLIC_URL set.`,
 // login runs the OAuth flow against server and returns the profile and the
 // tokens it got.
 func login(ctx context.Context, stderr io.Writer, server string) (profile, tokenResponse, error) {
+	if !isWebURL(server) {
+		return profile{}, tokenResponse{}, fmt.Errorf("%s isn't an http or https address", server)
+	}
 	var meta struct {
 		Issuer     string `json:"issuer"`
 		Revocation string `json:"revocation_endpoint"`
@@ -94,7 +101,14 @@ func login(ctx context.Context, stderr io.Writer, server string) (profile, token
 	if meta.Revocation == "" {
 		return profile{}, tokenResponse{}, fmt.Errorf("%s is too old for ink login; upgrade it", server)
 	}
-	issuer := meta.Issuer
+	// A server naming another issuer could hand the OS browser launcher any scheme.
+	if meta.Issuer != server {
+		if isWebURL(meta.Issuer) {
+			return profile{}, tokenResponse{}, fmt.Errorf("%s says its address is %s; log in with: ink login %s", server, meta.Issuer, meta.Issuer)
+		}
+		return profile{}, tokenResponse{}, fmt.Errorf("%s named an invalid address for itself", server)
+	}
+	issuer := server
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return profile{}, tokenResponse{}, err
@@ -119,7 +133,16 @@ func login(ctx context.Context, stderr io.Writer, server string) (profile, token
 	var toks tokenResponse
 	err = postForm(ctx, issuer+"/oauth/token", url.Values{"grant_type": {"authorization_code"}, "code": {code},
 		"client_id": {clientID}, "redirect_uri": {redirect}, "code_verifier": {verifier}}, &toks)
+	if err == nil && toks.Access == "" {
+		err = fmt.Errorf("%s answered the login without an access token", issuer)
+	}
 	return profile{URL: issuer, ClientID: clientID}, toks, err
+}
+
+// isWebURL reports whether s is an absolute http or https URL with a host.
+func isWebURL(s string) bool {
+	u, err := url.Parse(s)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
 }
 
 func randomString(n int) string {
@@ -133,7 +156,9 @@ func getJSON(ctx context.Context, u string, out any) error {
 	if err != nil {
 		return err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	// No redirects: metadata from another origin isn't the server's.
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -185,14 +210,17 @@ func awaitCode(ctx context.Context, ln net.Listener, state, issuer string) (stri
 			return
 		}
 		q := r.URL.Query()
+		if q.Get("state") != state {
+			// Anything local can hit this port; only the real redirect ends the wait.
+			http.Error(w, "wrong state", http.StatusBadRequest)
+			return
+		}
 		res := result{code: q.Get("code")}
 		switch {
-		case q.Get("state") != state:
-			res.err = errors.New("the login came back with the wrong state; start it again")
 		case q.Get("iss") != issuer:
 			res.err = fmt.Errorf("the login came back from %q, not %s", q.Get("iss"), issuer)
 		case q.Get("error") != "":
-			res.err = fmt.Errorf("login refused: %s", cmp.Or(q.Get("error_description"), q.Get("error")))
+			res.err = fmt.Errorf("login refused: %q", cmp.Or(q.Get("error_description"), q.Get("error")))
 		case res.code == "":
 			res.err = errors.New("the login came back without a code")
 		}
@@ -207,8 +235,13 @@ func awaitCode(ctx context.Context, ln net.Listener, state, issuer string) (stri
 		}
 	})}
 	go srv.Serve(ln)
-	defer srv.Close()
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer func() {
+		// Shutdown, not Close, so the page reaches the browser before the connection drops.
+		sctx, stop := context.WithTimeout(context.Background(), 2*time.Second)
+		defer stop()
+		_ = srv.Shutdown(sctx)
+	}()
+	ctx, cancel := context.WithTimeout(ctx, loginWait)
 	defer cancel()
 	select {
 	case r := <-done:

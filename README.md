@@ -586,7 +586,9 @@ their owner.
   `backup.assets.every` or `backup.config.every`. The chart adds a backup
   volume to the pod.
 
-A failed backup shows as a failed job and in `GET /api/backups`.
+A failed backup shows as a failed job and in `GET /api/backups`. A backup
+that's written but not pruned still succeeds; the worker logs a warning and
+the next run prunes again.
 `GET /api/health` needs no token and reports when each scheduled type last
 backed up. It answers 503 once a type's latest backup is older than two
 intervals, for an uptime monitor to watch. Don't use it as a liveness probe:

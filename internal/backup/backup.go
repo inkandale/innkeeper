@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -61,6 +62,7 @@ type Options struct {
 	Store       *blobstore.Store
 	Box         *secrets.Box // nil skips secrets_check
 	Keep        int          // backups of the type to keep; 0 doesn't prune
+	Log         *slog.Logger // BackupHandler's; nil logs to slog.Default
 }
 
 // Info describes one finished backup.

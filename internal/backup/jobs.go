@@ -33,15 +33,16 @@ func BackupHandler(s Settings, pool *pgxpool.Pool, o Options, t Type) jobs.Handl
 		}
 		o.Dir, o.Keep = s.Dir, s.Keep[t]
 		info, err := Write(ctx, pool, t, o)
-		if info.Name == "" && err != nil {
+		if info.Name == "" {
 			return fmt.Errorf("%w: %w", jobs.ErrRetry, err)
 		}
-		// A prune error still leaves the backup it came after, so a retry
-		// would only add another.
-		if info.Name != "" {
-			r.SetProgress(fmt.Appendf(nil, `{"name": %q, "size": %d}`, info.Name, info.Size))
+		r.SetProgress(fmt.Appendf(nil, `{"name": %q, "size": %d}`, info.Name, info.Size))
+		// The backup is written, so failing or retrying would hide or
+		// duplicate it. The next run prunes again.
+		if err != nil {
+			orDefault(o.Log).Warn("backup written but not pruned", "name", info.Name, "err", err)
 		}
-		return err
+		return nil
 	}
 }
 

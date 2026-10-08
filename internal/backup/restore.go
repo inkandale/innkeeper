@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"regexp"
 	"slices"
@@ -27,6 +28,7 @@ type RestoreOptions struct {
 	Store   *blobstore.Store
 	Box     *secrets.Box
 	Replace bool
+	Log     *slog.Logger // nil logs to slog.Default
 }
 
 type Result struct {
@@ -283,10 +285,12 @@ const safePath = `SET LOCAL search_path = pg_catalog, pg_temp`
 // a failed restore has rolled back. It opens a new connection because the
 // restore's may be what failed.
 func removeUnclaimed(o RestoreOptions, shas []string) {
+	log := orDefault(o.Log)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	conn, err := pgx.ConnectConfig(ctx, o.Conn)
 	if err != nil {
+		log.Error("failed restore can't remove the blob files it wrote", "files", len(shas), "err", err)
 		return
 	}
 	defer conn.Close(ctx)
@@ -294,11 +298,22 @@ func removeUnclaimed(o RestoreOptions, shas []string) {
 		WHERE NOT EXISTS (SELECT FROM public.blob WHERE sha256 = s)`, shas)
 	unclaimed, err := pgx.CollectRows(rows, pgx.RowTo[string])
 	if err != nil {
+		log.Error("failed restore can't remove the blob files it wrote", "files", len(shas), "err", err)
 		return
 	}
 	for _, sha := range unclaimed {
-		o.Store.Remove(sha)
+		if err := o.Store.Remove(sha); err != nil {
+			log.Error("failed restore can't remove a blob file it wrote", "sha256", sha, "err", err)
+		}
 	}
+}
+
+// orDefault returns l, or slog.Default when l is nil.
+func orDefault(l *slog.Logger) *slog.Logger {
+	if l == nil {
+		return slog.Default()
+	}
+	return l
 }
 
 func setOf(xs []string) map[string]bool {

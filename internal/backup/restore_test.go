@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"log/slog"
 	"maps"
 	"os"
 	"os/exec"
@@ -565,6 +566,18 @@ func TestRestoreRefusesOversizeBlob(t *testing.T) {
 	}
 	if es, _ := os.ReadDir(tg.store.Root); len(es) != 0 {
 		t.Fatalf("store has %v", es)
+	}
+}
+
+func TestRemoveUnclaimedLogsFailure(t *testing.T) {
+	conn, err := pgx.ParseConfig("postgres://nobody@127.0.0.1:1/none?connect_timeout=5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	removeUnclaimed(RestoreOptions{Conn: conn, Log: slog.New(slog.NewTextHandler(&out, nil))}, []string{sha})
+	if !strings.Contains(out.String(), "can't remove the blob files") {
+		t.Fatalf("log = %q", out.String())
 	}
 }
 

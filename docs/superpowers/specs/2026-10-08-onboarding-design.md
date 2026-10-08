@@ -67,8 +67,10 @@ either a form or "method not found".
 
 ### Setup code
 
-While the server is unclaimed, `innkeeper api` makes a random code at
-startup (128 bits, base32, grouped for typing) and logs it at WARN:
+While the server is unclaimed, `innkeeper api` makes a random code (128
+bits, base32, grouped for typing) and logs it at WARN. It does this at
+startup, or on the first `GET /api/setup` if the server becomes unclaimed
+later, such as when the owner deletes the only login:
 
 ```text
 level=WARN msg="server is unclaimed; open /setup and enter the setup code" code=ABCD-EFGH-…
@@ -80,17 +82,17 @@ the code; one replica is the supported setup.
 
 ### Endpoints
 
-Both are unauthenticated, exist only while the server is unclaimed, and
-return 404 once it is claimed.
+Both are unauthenticated. `GET` returns 404 once the server is claimed.
 
 - `GET /api/setup` lists the `auth` plugins that answer `auth.setup`, with
   their forms. Today that is `password-login`.
 - `POST /api/setup` with `{code, plugin, params}`:
-  1. Compares `code` in constant time. A wrong code fails without calling
+  1. Takes the login slot, so claims and logins run one at a time, then
+     compares `code` in constant time. A wrong code fails without calling
      the plugin.
   2. Calls `auth.setup.complete` with `params`.
-  3. In one transaction, re-checks that the server is unclaimed, then creates
-     an instance named "Login" with the returned secrets and `owner_subject`.
+  3. Re-checks that the server is unclaimed, then creates an instance named
+     "Login" with the returned secrets and `owner_subject`.
   4. Starts a session, as a completed login does.
 
 A wrong code, an already-claimed server and a lost race all get the same

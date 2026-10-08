@@ -1533,6 +1533,30 @@ export interface paths {
         patch: operations["update-settings"];
         trace?: never;
     };
+    "/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the ways to claim this server
+         * @description Lists the login plugins that can claim a server with no login provider. 404 once the server is claimed.
+         */
+        get: operations["get-setup"];
+        put?: never;
+        /**
+         * Claim this server
+         * @description Creates the owner's login provider with the setup code from the server log, and sets the session cookie.
+         */
+        post: operations["claim-server"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tags": {
         parameters: {
             query?: never;
@@ -1795,6 +1819,20 @@ export interface components {
             after?: unknown;
             before?: unknown;
             field: string;
+        };
+        ClaimInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/ClaimInBody.json
+             */
+            readonly $schema?: string;
+            /** @description The setup code from the server log. */
+            code: string;
+            params: {
+                [key: string]: string;
+            };
+            plugin: string;
         };
         Collection: {
             /**
@@ -2523,6 +2561,11 @@ export interface components {
             readonly $schema?: string;
             /** @description The selected theme plugin, or empty for the default theme. */
             theme: string;
+        };
+        SetupPlugin: {
+            /** @description JSON Schema of the fields to ask for. */
+            form: unknown;
+            plugin: string;
         };
         Source: {
             /**
@@ -5694,6 +5737,67 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Settings"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupPlugin"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "claim-server": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaimInBody"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {

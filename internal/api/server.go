@@ -57,6 +57,10 @@ type Server struct {
 
 	// loginSlot lets one login run at a time.
 	loginSlot chan struct{}
+	// setupMu guards setupCode, which claims the server while it has no
+	// login provider. Empty until needed.
+	setupMu   sync.Mutex
+	setupCode string
 	// tools caches each plugin instance's MCP tools, by instance version.
 	tools sync.Map
 	// lastPrune is when OAuth clients were last pruned, in Unix seconds.

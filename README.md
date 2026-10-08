@@ -66,7 +66,7 @@ database at startup and stop cleanly on `SIGTERM`.
 | `INNKEEPER_BACKUP_DIR` | `api`, `worker` | Where backups go. Needed for any backup or restore through the API, and for schedules |
 | `INNKEEPER_BACKUP_ASSETS_EVERY`, `INNKEEPER_BACKUP_CONFIG_EVERY` | `api`, `worker` | How often to back up that type, such as `24h` or `7d`. Unset means no schedule |
 | `INNKEEPER_BACKUP_ASSETS_KEEP`, `INNKEEPER_BACKUP_CONFIG_KEEP` | `api`, `worker` | How many backups of that type to keep; default 7 |
-| `INNKEEPER_URL`, `INNKEEPER_TOKEN` | API commands | The site root, such as `http://localhost:8080`, and a token. The CLI adds `/api` itself |
+| `INNKEEPER_URL`, `INNKEEPER_TOKEN` | `ink` | The site root, such as `http://localhost:8080`, and a token. When `INNKEEPER_TOKEN` is set, `ink` uses these instead of a login from `ink login`. The CLI adds `/api` itself |
 
 If any installed plugin sets `database = true`, the API and worker give it a
 schema and a login role limited to it at startup. That needs PostgreSQL 15 or
@@ -260,11 +260,35 @@ or build it:
 go install github.com/davidgibbons/innkeeper/cmd/ink@latest
 ```
 
-The image includes `ink` too. It reads `INNKEEPER_URL` and an API token in
-`INNKEEPER_TOKEN`; make one on the server with
+The image includes `ink` too. Log in through your browser:
+
+```bash
+ink login https://innkeeper.example.com
+```
+
+The server needs `INNKEEPER_PUBLIC_URL`, and the URL you give must match it
+exactly; otherwise `ink` refuses and names the right one. The URL must be
+`http` or `https`. Innkeeper asks which tier to give `ink`, as it does for an
+MCP client, and lists the login with the approved OAuth clients (Settings,
+Access, or `innkeeper token list`). `ink` keeps the login in the OS keychain,
+or where there is none, in a file only you can read. The login lasts while you
+use `ink` at least every 30 days. `ink logout` revokes it.
+
+Each login is a profile, named `default` unless you pass `--profile <name>`.
+The first one becomes the default. `ink profiles` lists them,
+`ink profiles use <name>` changes the default, and `--profile` picks one for a
+single command. Logging in again to a profile replaces its login and revokes
+the old one.
+
+Scripts can set `INNKEEPER_URL` and an API token in `INNKEEPER_TOKEN`
+instead; when `INNKEEPER_TOKEN` is set, they take precedence over profiles.
+Make a token on the server with
 `innkeeper token create <name> [read|write|destructive]`.
 
 ```text
+ink login <url> [--profile name]                  log in through the browser
+ink logout [--profile name]                       revoke a login and forget its profile
+ink profiles [use <name>]                         list profiles, or change the default
 ink call <method> <path> [json]                   any API call, such as: ink call GET /jobs
 ink import <instance-id> [params-json]            start an import
 ink jobs [show|cancel|watch <job-id>]             list or follow jobs

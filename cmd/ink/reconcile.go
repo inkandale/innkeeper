@@ -43,7 +43,7 @@ Apply the suggestions with: ink sync apply <job-id>`,
 				params = map[string]any{}
 			}
 			params["instance_id"] = json.Number(inst)
-			c, err := newClient()
+			c, err := newClient(cmd)
 			if err != nil {
 				return err
 			}
@@ -95,7 +95,7 @@ and {+app+}. Without a card ID, it compares the card the character is bound to.`
 					return err
 				}
 			}
-			c, err := newClient()
+			c, err := newClient(cmd)
 			if err != nil {
 				return err
 			}
@@ -148,7 +148,7 @@ keep_in_app, and both (list hunks only).`,
 					return err
 				}
 			}
-			c, err := newClient()
+			c, err := newClient(cmd)
 			if err != nil {
 				return err
 			}
@@ -195,7 +195,7 @@ for, or only the remote IDs named. A bind keeps the library's side of every hunk
 				return err
 			}
 			remoteIDs := args[1:]
-			c, err := newClient()
+			c, err := newClient(cmd)
 			if err != nil {
 				return err
 			}

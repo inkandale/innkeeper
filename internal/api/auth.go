@@ -39,7 +39,7 @@ func (s *Server) authenticate(api huma.API) func(huma.Context, func(huma.Context
 			next(ctx)
 			return
 		}
-		caller, err := s.authorized(ctx)
+		caller, oauth, err := s.authorized(ctx)
 		if err != nil {
 			s.Log.Error("check credentials", "err", err)
 			_ = huma.WriteErr(api, ctx, http.StatusInternalServerError, "internal error")
@@ -54,41 +54,52 @@ func (s *Server) authenticate(api huma.API) func(huma.Context, func(huma.Context
 				fmt.Sprintf("this token's tier is %s; %s needs %s", caller, op.OperationID, need))
 			return
 		}
-		next(huma.WithValue(ctx, tierKey{}, caller))
+		ctx = huma.WithValue(ctx, tierKey{}, caller)
+		if oauth {
+			ctx = huma.WithValue(ctx, oauthKey{}, true)
+		}
+		next(ctx)
 	}
 }
 
 // authorized returns the tier of the request's credentials, or 0 if it has
-// none that are valid. A logged-in browser is the owner, so it has every tier.
-func (s *Server) authorized(ctx huma.Context) (tier.Tier, error) {
+// none that are valid, and whether they are an OAuth access token. A
+// logged-in browser is the owner, so it has every tier.
+func (s *Server) authorized(ctx huma.Context) (t tier.Tier, oauth bool, err error) {
 	if h := ctx.Header("Authorization"); h != "" {
 		token, ok := strings.CutPrefix(h, "Bearer ")
 		if !ok {
-			return 0, nil
+			return 0, false, nil
 		}
-		t, err := s.Auth.CheckToken(ctx.Context(), token)
-		if t == 0 && err == nil && auth.FromMCP(ctx.Context()) {
-			// OAuth access tokens are for /mcp, whose tools call the API in process.
-			t, _, err = s.Auth.CheckAccessToken(ctx.Context(), token)
+		t, err = s.Auth.CheckToken(ctx.Context(), token)
+		if t == 0 && err == nil {
+			// An MCP access token works here only through /mcp's tools, which
+			// call the API in process.
+			resource := auth.ResourceAPI
+			if auth.FromMCP(ctx.Context()) {
+				resource = auth.ResourceMCP
+			}
+			t, _, err = s.Auth.CheckAccessToken(ctx.Context(), token, resource)
+			oauth = t != 0
 		}
-		return t, err
+		return t, oauth, err
 	}
 	c, err := huma.ReadCookie(ctx, sessionCookie)
 	if err != nil {
-		return 0, nil
+		return 0, false, nil
 	}
 	// Browsers attach cookies to requests that other sites start, so only
 	// this site's pages may change things.
 	if m := ctx.Method(); m != http.MethodGet && m != http.MethodHead {
 		if crossSite(ctx.Header("Sec-Fetch-Site")) {
-			return 0, nil
+			return 0, false, nil
 		}
 	}
 	ok, err := s.Auth.CheckSession(ctx.Context(), c.Value)
 	if !ok || err != nil {
-		return 0, err
+		return 0, false, err
 	}
-	return tier.Destructive, nil
+	return tier.Destructive, false, nil
 }
 
 // crossSite reports whether a browser says another site started the request.
@@ -203,7 +214,7 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 	for _, c := range cookies {
 		http.SetCookie(w, c)
 	}
-	// A login started by an MCP client's authorization goes back to it.
+	// A login started by an OAuth client's authorization goes back to it.
 	if c, err := r.Cookie(returnCookie); err == nil {
 		http.SetCookie(w, s.cookie(returnCookie, "", -time.Second))
 		resume(w, r, c.Value)
@@ -301,7 +312,7 @@ func (s *Server) authRoutes(api huma.API) {
 			}
 			// Encoded because plugins may use characters cookies can't hold.
 			state := base64.RawURLEncoding.EncodeToString([]byte(res.State))
-			// This is the UI's login; drop a return left by an abandoned MCP login.
+			// This is the UI's login; drop a return left by an abandoned OAuth login.
 			out := &beginOut{SetCookie: []*http.Cookie{
 				s.cookie(stateCookie, state, 10*time.Minute),
 				s.cookie(returnCookie, "", -time.Second),
@@ -371,7 +382,7 @@ func (s *Server) authRoutes(api huma.API) {
 		})
 
 	huma.Register(api, huma.Operation{OperationID: "list-grants", Method: http.MethodGet, Path: "/grants",
-		Summary: "List MCP clients approved through OAuth", Tags: tags},
+		Summary: "List the OAuth clients you approved", Tags: tags},
 		func(ctx context.Context, _ *struct{}) (*grantsOut, error) {
 			list, err := s.Auth.Grants(ctx)
 			if err != nil {

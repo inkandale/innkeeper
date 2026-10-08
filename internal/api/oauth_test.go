@@ -211,3 +211,160 @@ func TestOAuthFlow(t *testing.T) {
 }
 
 func itoa64(n int64) string { return strconv.FormatInt(n, 10) }
+
+func TestRedirectAllowed(t *testing.T) {
+	registered := []string{"http://127.0.0.1/callback", "https://app.example/cb"}
+	for uri, want := range map[string]bool{
+		"http://127.0.0.1/callback":                   true,
+		"http://127.0.0.1:5555/callback":              true,
+		"http://127.0.0.1:5555/other":                 false,
+		"http://127.0.0.1:5555/callback?x=1":          false,
+		"http://localhost:5555/callback":              false,
+		"https://app.example/cb":                      true,
+		"https://app.example:8443/cb":                 false,
+		"http://127.0.0.1:5555/callback#x":            false,
+		"http://evil@127.0.0.1:5555/callback":         false,
+		"http://127.0.0.1:5555@evil.example/callback": false,
+		"https://127.0.0.1:5555/callback":             false,
+		"http://127.0.0.1:5555/call%62ack":            false,
+		"http://127.0.0.1:5555/callback?":             false,
+	} {
+		if got := redirectAllowed(registered, uri); got != want {
+			t.Errorf("redirectAllowed(%q) = %v", uri, got)
+		}
+	}
+}
+
+func TestOAuthLoopbackPort(t *testing.T) {
+	o := newOAuthEnv(t)
+	id := o.register("http://127.0.0.1/callback")
+	verifier, params := authParams(id, "http://127.0.0.1:5555/callback", "")
+	code := o.approve(params, "read")
+	if code == "" {
+		t.Fatal("no code for a loopback redirect on an unregistered port")
+	}
+	o.redeem(id, code, "http://127.0.0.1:5555/callback", verifier)
+}
+
+// register registers a client that redirects to redirectURI, and returns
+// its ID.
+func (o *oauthEnv) register(redirectURI string) string {
+	o.t.Helper()
+	resp, err := http.Post(o.url+"/oauth/register", "application/json",
+		strings.NewReader(`{"client_name": "ink", "redirect_uris": ["`+redirectURI+`"]}`))
+	if err != nil {
+		o.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var c struct {
+		ID string `json:"client_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&c); err != nil || c.ID == "" {
+		o.t.Fatalf("register: %d, %v", resp.StatusCode, err)
+	}
+	return c.ID
+}
+
+// authParams returns a PKCE verifier and an authorization request from
+// clientID for resource, or for no resource if it is "".
+func authParams(clientID, redirectURI, resource string) (string, url.Values) {
+	verifier := strings.Repeat("x", 50)
+	sum := sha256.Sum256([]byte(verifier))
+	p := url.Values{"response_type": {"code"}, "client_id": {clientID}, "redirect_uri": {redirectURI},
+		"code_challenge": {base64.RawURLEncoding.EncodeToString(sum[:])}, "code_challenge_method": {"S256"},
+		"state": {"xyz"}}
+	if resource != "" {
+		p.Set("resource", resource)
+	}
+	return verifier, p
+}
+
+// approve logs in if it must, approves params at tier, and returns the code
+// sent back, or "" if none was.
+func (o *oauthEnv) approve(params url.Values, tier string) string {
+	o.t.Helper()
+	_, page := o.get("/oauth/authorize?" + params.Encode())
+	if strings.Contains(page, `name="f_password"`) {
+		o.post("/oauth/login", url.Values{"provider": {itoa64(o.loginID)}, "return": {params.Encode()}, "f_password": {"letmein"}})
+		_, page = o.get("/oauth/authorize?" + params.Encode())
+	}
+	m := csrfField.FindStringSubmatch(page)
+	if m == nil {
+		o.t.Fatalf("consent page = %s", page)
+	}
+	decision := url.Values{"csrf": {m[1]}, "tier": {tier}, "decision": {"approve"}}
+	for k, v := range params {
+		decision[k] = v
+	}
+	resp, _ := o.post("/oauth/authorize", decision)
+	back, _ := url.Parse(resp.Header.Get("Location"))
+	return back.Query().Get("code")
+}
+
+// redeem exchanges code for an access token and a refresh token.
+func (o *oauthEnv) redeem(clientID, code, redirectURI, verifier string) (string, string) {
+	o.t.Helper()
+	_, body := o.post("/oauth/token", url.Values{"grant_type": {"authorization_code"}, "code": {code},
+		"client_id": {clientID}, "redirect_uri": {redirectURI}, "code_verifier": {verifier}})
+	var toks struct {
+		Access  string `json:"access_token"`
+		Refresh string `json:"refresh_token"`
+	}
+	if json.Unmarshal([]byte(body), &toks) != nil || toks.Access == "" {
+		o.t.Fatalf("token = %s", body)
+	}
+	return toks.Access, toks.Refresh
+}
+
+// bearerStatus sends method path with token and returns the status.
+func (o *oauthEnv) bearerStatus(method, path, token string) int {
+	o.t.Helper()
+	req, _ := http.NewRequest(method, o.url+path, strings.NewReader("{}"))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		o.t.Fatal(err)
+	}
+	resp.Body.Close()
+	return resp.StatusCode
+}
+
+func TestOAuthForTheAPI(t *testing.T) {
+	o := newOAuthEnv(t)
+	id := o.register(redirect)
+	verifier, params := authParams(id, redirect, o.url+"/api")
+	access, _ := o.redeem(id, o.approve(params, "read"), redirect, verifier)
+	if s := o.bearerStatus("GET", "/api/jobs", access); s != http.StatusOK {
+		t.Fatalf("API token on the API: %d", s)
+	}
+	if s := o.bearerStatus("POST", "/mcp", access); s != http.StatusUnauthorized {
+		t.Fatalf("API token on /mcp: %d", s)
+	}
+	_, params = authParams(id, redirect, o.url+"/elsewhere")
+	if resp, _ := o.get("/oauth/authorize?" + params.Encode()); !strings.Contains(resp.Header.Get("Location"), "error=invalid_target") {
+		t.Fatalf("unknown resource: %s", resp.Header.Get("Location"))
+	}
+}
+
+func TestOAuthRevoke(t *testing.T) {
+	o := newOAuthEnv(t)
+	if _, meta := o.get("/.well-known/oauth-authorization-server"); !strings.Contains(meta, `"revocation_endpoint":"`+o.url+`/oauth/revoke"`) {
+		t.Fatalf("metadata = %s", meta)
+	}
+	id := o.register(redirect)
+	verifier, params := authParams(id, redirect, o.url+"/api")
+	access, refresh := o.redeem(id, o.approve(params, "read"), redirect, verifier)
+	if resp, _ := o.post("/oauth/revoke", url.Values{"token": {refresh}}); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("no client_id: %d", resp.StatusCode)
+	}
+	if resp, _ := o.post("/oauth/revoke", url.Values{"token": {refresh}, "client_id": {id}}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("revoke: %d", resp.StatusCode)
+	}
+	if s := o.bearerStatus("GET", "/api/jobs", access); s != http.StatusUnauthorized {
+		t.Fatalf("access token after revoking its grant: %d", s)
+	}
+	if resp, _ := o.post("/oauth/revoke", url.Values{"token": {"unknown"}, "client_id": {id}}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("unknown token: %d", resp.StatusCode)
+	}
+}

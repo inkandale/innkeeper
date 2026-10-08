@@ -666,7 +666,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List MCP clients approved through OAuth */
+        /** List the OAuth clients you approved */
         get: operations["list-grants"];
         put?: never;
         post?: never;

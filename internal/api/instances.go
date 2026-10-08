@@ -152,12 +152,13 @@ func (s *Server) instanceRoutes(api huma.API) {
 		})
 }
 
-// loginGuard keeps MCP clients away from login providers. A provider's
-// owner, config, and secrets decide who logs in with every tier, so a
-// client that could change them could make itself the owner.
+// loginGuard keeps OAuth and MCP clients away from login providers. A
+// provider's owner, config, and secrets decide who logs in with every tier,
+// so a client that could change them could make itself the owner.
 func (s *Server) loginGuard(ctx context.Context, plugin string, owner bool) error {
-	if auth.FromMCP(ctx) && (owner || s.Registry.HasCapability(plugin, "auth")) {
-		return huma.Error403Forbidden("login providers and owners can't be changed through MCP; use the CLI or the API")
+	client := auth.FromMCP(ctx) || ctx.Value(oauthKey{}) == true
+	if client && (owner || s.Registry.HasCapability(plugin, "auth")) {
+		return huma.Error403Forbidden("login providers and owners can't be changed by an OAuth or MCP client; use an API token or the web UI")
 	}
 	return nil
 }

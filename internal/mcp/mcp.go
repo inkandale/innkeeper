@@ -135,7 +135,7 @@ func New(api http.Handler, a *iauth.Auth, log *slog.Logger, resourceMetadata str
 		info := &auth.TokenInfo{Extra: map[string]any{"token": token}}
 		t, err := a.CheckToken(ctx, token)
 		if err == nil && t == 0 {
-			t, info.Expiration, err = a.CheckAccessToken(ctx, token)
+			t, info.Expiration, err = a.CheckAccessToken(ctx, token, iauth.ResourceMCP)
 		}
 		if err != nil {
 			return nil, err

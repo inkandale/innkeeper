@@ -43,7 +43,20 @@ var authorizeParams = []string{"response_type", "client_id", "redirect_uri", "co
 
 func (s *Server) public() string { return strings.TrimSuffix(s.PublicURL, "/") }
 
-// oauthRoutes serves OAuth for MCP clients. It needs PublicURL, since every
+// resourceName returns the grant resource an authorization request names,
+// or "" for an unknown one. Naming none means /mcp, since MCP clients may
+// leave it out.
+func (s *Server) resourceName(resource string) string {
+	switch strings.TrimSuffix(resource, "/") {
+	case "", s.public() + "/mcp":
+		return auth.ResourceMCP
+	case s.public() + "/api":
+		return auth.ResourceAPI
+	}
+	return ""
+}
+
+// oauthRoutes serves OAuth for MCP clients and ink. It needs PublicURL, since every
 // endpoint is named by an absolute URL.
 func (s *Server) oauthRoutes(mux *http.ServeMux) {
 	if s.PublicURL == "" {
@@ -61,9 +74,11 @@ func (s *Server) oauthRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /.well-known/oauth-protected-resource/mcp", resource)
 	mux.HandleFunc("GET /.well-known/oauth-authorization-server", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"issuer":                                         s.public(),
-			"authorization_endpoint":                         s.public() + "/oauth/authorize",
-			"token_endpoint":                                 s.public() + "/oauth/token",
+			"issuer":                 s.public(),
+			"authorization_endpoint": s.public() + "/oauth/authorize",
+			"token_endpoint":         s.public() + "/oauth/token",
+			"revocation_endpoint":    s.public() + "/oauth/revoke",
+			"revocation_endpoint_auth_methods_supported":     []string{"none"},
 			"registration_endpoint":                          s.public() + "/oauth/register",
 			"response_types_supported":                       []string{"code"},
 			"grant_types_supported":                          []string{"authorization_code", "refresh_token"},
@@ -79,6 +94,7 @@ func (s *Server) oauthRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /oauth/login", s.oauthLogin)
 	mux.HandleFunc("POST /oauth/login", s.oauthLoginSubmit)
 	mux.HandleFunc("POST /oauth/token", s.token)
+	mux.HandleFunc("POST /oauth/revoke", s.revoke)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -101,14 +117,27 @@ func validRedirect(raw string) bool {
 	if err != nil || u.Fragment != "" || u.Host == "" {
 		return false
 	}
-	switch u.Scheme {
-	case "https":
+	return u.Scheme == "https" || u.Scheme == "http" && loopback(u.Hostname())
+}
+
+func loopback(host string) bool { return host == "localhost" || host == "127.0.0.1" || host == "::1" }
+
+// redirectAllowed reports whether uri is one of registered. A loopback
+// redirect may use any port, since a native app learns its port only when
+// it starts listening (RFC 8252 §7.3). Nothing else may differ, so the
+// match compares the escaped path and rejects userinfo and fragments.
+func redirectAllowed(registered []string, uri string) bool {
+	if slices.Contains(registered, uri) {
 		return true
-	case "http":
-		h := u.Hostname()
-		return h == "localhost" || h == "127.0.0.1" || h == "::1"
 	}
-	return false
+	u, err := url.Parse(uri)
+	if err != nil || u.Scheme != "http" || !loopback(u.Hostname()) || u.User != nil || u.Fragment != "" {
+		return false
+	}
+	return slices.ContainsFunc(registered, func(r string) bool {
+		ru, err := url.Parse(r)
+		return err == nil && ru.Scheme == "http" && ru.Hostname() == u.Hostname() && ru.EscapedPath() == u.EscapedPath() && ru.RawQuery == u.RawQuery && ru.ForceQuery == u.ForceQuery
+	})
 }
 
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
@@ -165,7 +194,7 @@ func (s *Server) checkAuthorize(w http.ResponseWriter, r *http.Request, q url.Va
 		s.page(w, http.StatusBadRequest, errorPage, "This app isn't registered with Innkeeper. Try connecting it again.")
 		return authRequest{}, false
 	}
-	if !slices.Contains(c.RedirectURIs, q.Get("redirect_uri")) {
+	if !redirectAllowed(c.RedirectURIs, q.Get("redirect_uri")) {
 		s.page(w, http.StatusBadRequest, errorPage, "This app sent a return address it didn't register.")
 		return authRequest{}, false
 	}
@@ -178,8 +207,8 @@ func (s *Server) checkAuthorize(w http.ResponseWriter, r *http.Request, q url.Va
 		return fail("unsupported_response_type", "response_type must be code")
 	case q.Get("code_challenge_method") != "S256" || len(q.Get("code_challenge")) != 43:
 		return fail("invalid_request", "PKCE with S256 is required")
-	case q.Get("resource") != "" && strings.TrimSuffix(q.Get("resource"), "/") != s.public()+"/mcp":
-		return fail("invalid_target", "the only resource is "+s.public()+"/mcp")
+	case s.resourceName(q.Get("resource")) == "":
+		return fail("invalid_target", "the resource must be "+s.public()+"/mcp or "+s.public()+"/api")
 	}
 	kept := url.Values{}
 	for _, k := range authorizeParams {
@@ -275,7 +304,8 @@ func (s *Server) decide(w http.ResponseWriter, r *http.Request) {
 		s.page(w, http.StatusBadRequest, errorPage, "Choose what the app may do.")
 		return
 	}
-	code, err := s.Auth.Approve(r.Context(), req.client.ID, t, req.params.Get("redirect_uri"), req.params.Get("code_challenge"))
+	code, err := s.Auth.Approve(r.Context(), req.client.ID, t, s.resourceName(req.params.Get("resource")),
+		req.params.Get("redirect_uri"), req.params.Get("code_challenge"))
 	if err != nil {
 		s.Log.Error("approve oauth client", "err", err)
 		s.redirectBack(w, r, req.params, url.Values{"error": {"server_error"}})
@@ -315,6 +345,24 @@ func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 		"access_token": toks.Access, "token_type": "Bearer", "expires_in": int(auth.AccessTTL.Seconds()),
 		"refresh_token": toks.Refresh, "scope": toks.Tier.String(),
 	})
+}
+
+func (s *Server) revoke(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+	if err := r.ParseForm(); err != nil || r.PostForm.Get("token") == "" {
+		oauthError(w, http.StatusBadRequest, "invalid_request", "the body must be form-encoded and name a token")
+		return
+	}
+	if r.PostForm.Get("client_id") == "" {
+		oauthError(w, http.StatusUnauthorized, "invalid_client", "client_id is required")
+		return
+	}
+	if err := s.Auth.RevokeOAuthToken(r.Context(), r.PostForm.Get("client_id"), r.PostForm.Get("token")); err != nil {
+		s.Log.Error("revoke oauth token", "err", err)
+		oauthError(w, http.StatusInternalServerError, "server_error", "")
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 // loginProviders are the auth instances that can log the owner in.

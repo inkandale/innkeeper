@@ -1,12 +1,19 @@
 package api
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/davidgibbons/innkeeper/internal/auth"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
+	"github.com/davidgibbons/innkeeper/internal/tier"
 )
 
 func TestInstanceRoutes(t *testing.T) {
@@ -55,4 +62,46 @@ func TestInstanceRoutes(t *testing.T) {
 	e.call("DELETE", path, nil, 204, nil)
 	e.call("GET", path, nil, 404, nil)
 	e.call("PATCH", path, map[string]any{"name": "X"}, 404, nil)
+}
+
+// An OAuth client could make itself the owner through a login provider, so
+// even a destructive one for the API can't touch them; an API token can.
+func TestOAuthClientsCantChangeLogins(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	c, err := e.s.Auth.RegisterClient(ctx, "ink", []string{redirect})
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifier := strings.Repeat("x", 50)
+	sum := sha256.Sum256([]byte(verifier))
+	code, err := e.s.Auth.Approve(ctx, c.ID, tier.Destructive, auth.ResourceAPI, redirect, base64.RawURLEncoding.EncodeToString(sum[:]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	toks, err := e.s.Auth.RedeemCode(ctx, c.ID, code, redirect, verifier)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oauth, token := "Bearer "+toks.Access, "Bearer "+e.tokenWith(tier.Destructive)
+	login := map[string]any{"plugin": "fake", "name": "Login 2", "config": map[string]any{}}
+	owned := map[string]any{"plugin": "vault", "name": "Owned", "owner_subject": "me"}
+	for _, body := range []map[string]any{login, owned} {
+		if r := e.send("POST", "/instances", body, "Authorization", oauth); r.Status != http.StatusForbidden {
+			t.Fatalf("OAuth client creating %v: %s", body["name"], r)
+		}
+	}
+	var inst plugins.InstanceInfo
+	if r := e.send("POST", "/instances", login, "Authorization", token); r.Status != http.StatusCreated {
+		t.Fatalf("API token creating a login provider: %s", r)
+	} else if err := json.Unmarshal(r.Body, &inst); err != nil {
+		t.Fatal(err)
+	}
+	path := fmt.Sprintf("/instances/%d", inst.ID)
+	if r := e.send("PATCH", path, map[string]any{"name": "Renamed"}, "Authorization", oauth); r.Status != http.StatusForbidden {
+		t.Fatalf("OAuth client changing a login provider: %s", r)
+	}
+	if r := e.send("PATCH", path, map[string]any{"owner_subject": "me"}, "Authorization", token); r.Status != http.StatusOK {
+		t.Fatalf("API token setting an owner: %s", r)
+	}
 }

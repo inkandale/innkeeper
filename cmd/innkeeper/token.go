@@ -58,7 +58,7 @@ func token(args []string) error {
 			return err
 		}
 		if len(grants) > 0 {
-			fmt.Fprintln(tw, "\nGRANT\tMCP CLIENT\tTIER\tAPPROVED\tLAST USED")
+			fmt.Fprintln(tw, "\nGRANT\tOAUTH CLIENT\tTIER\tAPPROVED\tLAST USED")
 		}
 		for _, g := range grants {
 			used := "never"

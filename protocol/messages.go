@@ -115,3 +115,30 @@ type AuthCompleteResult struct {
 	Subject string `json:"subject"`
 	Name    string `json:"name,omitempty"`
 }
+
+// Optional auth methods that let the owner claim a new server. auth.setup
+// returns a form; auth.setup.complete turns its fields into the secrets of
+// the instance the core creates. Both run before any instance exists, with
+// an empty config and no secrets.
+const (
+	MethodAuthSetup         = "auth.setup"
+	MethodAuthSetupComplete = "auth.setup.complete"
+)
+
+// AuthSetupResult is the setup form, a JSON Schema object like
+// AuthBeginResult.Form.
+type AuthSetupResult struct {
+	Form json.RawMessage `json:"form"`
+}
+
+// AuthSetupCompleteParams carries the setup form's fields.
+type AuthSetupCompleteParams struct {
+	Params map[string]string `json:"params"`
+}
+
+// AuthSetupCompleteResult is the new instance's secrets and the subject
+// auth.complete will report for the owner.
+type AuthSetupCompleteResult struct {
+	Secrets map[string]string `json:"secrets"`
+	Subject string            `json:"subject"`
+}

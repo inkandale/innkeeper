@@ -145,3 +145,37 @@ func TestOAuthResource(t *testing.T) {
 		t.Fatalf("an API token for MCP: %v, %v", got, err)
 	}
 }
+
+func TestRevokeOAuthToken(t *testing.T) {
+	pool := testdb.New(t)
+	a := New(pool)
+	ctx := context.Background()
+	c, err := a.RegisterClient(ctx, "ink", []string{"http://127.0.0.1/callback"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, err := a.Approve(ctx, c.ID, tier.Read, ResourceAPI, "http://127.0.0.1/callback", challenge(verifier))
+	if err != nil {
+		t.Fatal(err)
+	}
+	toks, err := a.RedeemCode(ctx, c.ID, code, "http://127.0.0.1/callback", verifier)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live := func() bool {
+		got, _, err := a.CheckAccessToken(ctx, toks.Access, ResourceAPI)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got != 0
+	}
+	if err := a.RevokeOAuthToken(ctx, "another-client", toks.Refresh); err != nil || !live() {
+		t.Fatalf("another client's revocation: %v, live %v", err, live())
+	}
+	if err := a.RevokeOAuthToken(ctx, c.ID, toks.Refresh); err != nil || live() {
+		t.Fatalf("revocation: %v, live %v", err, live())
+	}
+	if err := a.RevokeOAuthToken(ctx, c.ID, "unknown"); err != nil {
+		t.Fatalf("unknown token: %v", err)
+	}
+}

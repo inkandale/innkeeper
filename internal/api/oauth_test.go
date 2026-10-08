@@ -346,3 +346,25 @@ func TestOAuthForTheAPI(t *testing.T) {
 		t.Fatalf("unknown resource: %s", resp.Header.Get("Location"))
 	}
 }
+
+func TestOAuthRevoke(t *testing.T) {
+	o := newOAuthEnv(t)
+	if _, meta := o.get("/.well-known/oauth-authorization-server"); !strings.Contains(meta, `"revocation_endpoint":"`+o.url+`/oauth/revoke"`) {
+		t.Fatalf("metadata = %s", meta)
+	}
+	id := o.register(redirect)
+	verifier, params := authParams(id, redirect, o.url+"/api")
+	access, refresh := o.redeem(id, o.approve(params, "read"), redirect, verifier)
+	if resp, _ := o.post("/oauth/revoke", url.Values{"token": {refresh}}); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("no client_id: %d", resp.StatusCode)
+	}
+	if resp, _ := o.post("/oauth/revoke", url.Values{"token": {refresh}, "client_id": {id}}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("revoke: %d", resp.StatusCode)
+	}
+	if s := o.bearerStatus("GET", "/api/jobs", access); s != http.StatusUnauthorized {
+		t.Fatalf("access token after revoking its grant: %d", s)
+	}
+	if resp, _ := o.post("/oauth/revoke", url.Values{"token": {"unknown"}, "client_id": {id}}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("unknown token: %d", resp.StatusCode)
+	}
+}

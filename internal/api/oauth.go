@@ -74,9 +74,11 @@ func (s *Server) oauthRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /.well-known/oauth-protected-resource/mcp", resource)
 	mux.HandleFunc("GET /.well-known/oauth-authorization-server", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"issuer":                                         s.public(),
-			"authorization_endpoint":                         s.public() + "/oauth/authorize",
-			"token_endpoint":                                 s.public() + "/oauth/token",
+			"issuer":                 s.public(),
+			"authorization_endpoint": s.public() + "/oauth/authorize",
+			"token_endpoint":         s.public() + "/oauth/token",
+			"revocation_endpoint":    s.public() + "/oauth/revoke",
+			"revocation_endpoint_auth_methods_supported":     []string{"none"},
 			"registration_endpoint":                          s.public() + "/oauth/register",
 			"response_types_supported":                       []string{"code"},
 			"grant_types_supported":                          []string{"authorization_code", "refresh_token"},
@@ -92,6 +94,7 @@ func (s *Server) oauthRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /oauth/login", s.oauthLogin)
 	mux.HandleFunc("POST /oauth/login", s.oauthLoginSubmit)
 	mux.HandleFunc("POST /oauth/token", s.token)
+	mux.HandleFunc("POST /oauth/revoke", s.revoke)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -342,6 +345,24 @@ func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 		"access_token": toks.Access, "token_type": "Bearer", "expires_in": int(auth.AccessTTL.Seconds()),
 		"refresh_token": toks.Refresh, "scope": toks.Tier.String(),
 	})
+}
+
+func (s *Server) revoke(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+	if err := r.ParseForm(); err != nil || r.PostForm.Get("token") == "" {
+		oauthError(w, http.StatusBadRequest, "invalid_request", "the body must be form-encoded and name a token")
+		return
+	}
+	if r.PostForm.Get("client_id") == "" {
+		oauthError(w, http.StatusUnauthorized, "invalid_client", "client_id is required")
+		return
+	}
+	if err := s.Auth.RevokeOAuthToken(r.Context(), r.PostForm.Get("client_id"), r.PostForm.Get("token")); err != nil {
+		s.Log.Error("revoke oauth token", "err", err)
+		oauthError(w, http.StatusInternalServerError, "server_error", "")
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 // loginProviders are the auth instances that can log the owner in.

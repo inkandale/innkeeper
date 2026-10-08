@@ -244,6 +244,14 @@ func (a *Auth) RevokeGrant(ctx context.Context, id int64) error {
 	return nil
 }
 
+// RevokeOAuthToken ends the grant that issued token, if clientID holds it.
+// An unknown token is not an error (RFC 7009 §2.2).
+func (a *Auth) RevokeOAuthToken(ctx context.Context, clientID, token string) error {
+	_, err := a.pool.Exec(ctx, `DELETE FROM oauth_grant WHERE client_id = $1
+		AND id = (SELECT grant_id FROM oauth_token WHERE hash = $2)`, clientID, hash(token))
+	return err
+}
+
 // PruneOAuth deletes expired tokens and codes, grants left with no tokens,
 // and clients a day old with no grants. Registration is open, so this keeps
 // unused clients from piling up.

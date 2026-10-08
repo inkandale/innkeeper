@@ -323,3 +323,20 @@ func (o *oauthEnv) bearerStatus(method, path, token string) int {
 	resp.Body.Close()
 	return resp.StatusCode
 }
+
+func TestOAuthForTheAPI(t *testing.T) {
+	o := newOAuthEnv(t)
+	id := o.register(redirect)
+	verifier, params := authParams(id, redirect, o.url+"/api")
+	access, _ := o.redeem(id, o.approve(params, "read"), redirect, verifier)
+	if s := o.bearerStatus("GET", "/api/jobs", access); s != http.StatusOK {
+		t.Fatalf("API token on the API: %d", s)
+	}
+	if s := o.bearerStatus("POST", "/mcp", access); s != http.StatusUnauthorized {
+		t.Fatalf("API token on /mcp: %d", s)
+	}
+	_, params = authParams(id, redirect, o.url+"/elsewhere")
+	if resp, _ := o.get("/oauth/authorize?" + params.Encode()); !strings.Contains(resp.Header.Get("Location"), "error=invalid_target") {
+		t.Fatalf("unknown resource: %s", resp.Header.Get("Location"))
+	}
+}

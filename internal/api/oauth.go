@@ -43,6 +43,19 @@ var authorizeParams = []string{"response_type", "client_id", "redirect_uri", "co
 
 func (s *Server) public() string { return strings.TrimSuffix(s.PublicURL, "/") }
 
+// resourceName returns the grant resource an authorization request names,
+// or "" for an unknown one. Naming none means /mcp, since MCP clients may
+// leave it out.
+func (s *Server) resourceName(resource string) string {
+	switch strings.TrimSuffix(resource, "/") {
+	case "", s.public() + "/mcp":
+		return auth.ResourceMCP
+	case s.public() + "/api":
+		return auth.ResourceAPI
+	}
+	return ""
+}
+
 // oauthRoutes serves OAuth for MCP clients. It needs PublicURL, since every
 // endpoint is named by an absolute URL.
 func (s *Server) oauthRoutes(mux *http.ServeMux) {
@@ -190,8 +203,8 @@ func (s *Server) checkAuthorize(w http.ResponseWriter, r *http.Request, q url.Va
 		return fail("unsupported_response_type", "response_type must be code")
 	case q.Get("code_challenge_method") != "S256" || len(q.Get("code_challenge")) != 43:
 		return fail("invalid_request", "PKCE with S256 is required")
-	case q.Get("resource") != "" && strings.TrimSuffix(q.Get("resource"), "/") != s.public()+"/mcp":
-		return fail("invalid_target", "the only resource is "+s.public()+"/mcp")
+	case s.resourceName(q.Get("resource")) == "":
+		return fail("invalid_target", "the resource must be "+s.public()+"/mcp or "+s.public()+"/api")
 	}
 	kept := url.Values{}
 	for _, k := range authorizeParams {
@@ -287,7 +300,8 @@ func (s *Server) decide(w http.ResponseWriter, r *http.Request) {
 		s.page(w, http.StatusBadRequest, errorPage, "Choose what the app may do.")
 		return
 	}
-	code, err := s.Auth.Approve(r.Context(), req.client.ID, t, auth.ResourceMCP, req.params.Get("redirect_uri"), req.params.Get("code_challenge"))
+	code, err := s.Auth.Approve(r.Context(), req.client.ID, t, s.resourceName(req.params.Get("resource")),
+		req.params.Get("redirect_uri"), req.params.Get("code_challenge"))
 	if err != nil {
 		s.Log.Error("approve oauth client", "err", err)
 		s.redirectBack(w, r, req.params, url.Values{"error": {"server_error"}})

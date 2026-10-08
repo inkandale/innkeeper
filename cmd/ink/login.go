@@ -267,10 +267,13 @@ func logoutCmd() *cobra.Command {
 			if !ok {
 				return fmt.Errorf("no profile %q", name)
 			}
-			var revokeErr error
-			if cr, err := loadCreds(name); err == nil {
-				revokeErr = postForm(cmd.Context(), p.URL+"/oauth/revoke",
-					url.Values{"token": {cr.Refresh}, "client_id": {p.ClientID}}, nil)
+			// An unreadable login may still be live on the server, so it fails like a revoke.
+			var failed string
+			if cr, err := loadCreds(name); err != nil {
+				failed = fmt.Sprintf("couldn't read its saved login to revoke it (%q)", err.Error())
+			} else if err := postForm(cmd.Context(), p.URL+"/oauth/revoke",
+				url.Values{"token": {cr.Refresh}, "client_id": {p.ClientID}}, nil); err != nil {
+				failed = fmt.Sprintf("%s didn't revoke its login (%q)", p.URL, err.Error())
 			}
 			if err := deleteCreds(name); err != nil {
 				return err
@@ -282,10 +285,10 @@ func logoutCmd() *cobra.Command {
 			if err := c.save(); err != nil {
 				return err
 			}
-			if revokeErr != nil {
+			if failed != "" {
 				// Forget the profile anyway: the tokens are gone, so the user can't retry the revoke.
-				return fmt.Errorf("forgot profile %s, but %s didn't revoke its login (%q); revoke it under Settings, Access, or with: innkeeper token revoke-grant <id>",
-					name, p.URL, revokeErr.Error())
+				return fmt.Errorf("forgot profile %s, but %s; revoke it under Settings, Access, or with: innkeeper token revoke-grant <id>",
+					name, failed)
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Logged out of %s.\n", p.URL)
 			return err

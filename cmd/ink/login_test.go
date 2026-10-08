@@ -252,3 +252,19 @@ func TestLogoutWhenTheServerFails(t *testing.T) {
 		t.Fatalf("kept %+v", c.Profiles)
 	}
 }
+
+func TestLogoutWithoutItsLogin(t *testing.T) {
+	freshConfig(t)
+	f := newFakeAuth(t)
+	loggedIn(t, f)
+	if err := deleteCreds("home"); err != nil {
+		t.Fatal(err)
+	}
+	_, err := runInk(t, "logout")
+	if err == nil || !strings.Contains(err.Error(), "revoke-grant") || !strings.Contains(err.Error(), "couldn't read") {
+		t.Fatalf("err = %v", err)
+	}
+	if c, _ := loadConfig(); len(c.Profiles) != 0 {
+		t.Fatalf("kept %+v", c.Profiles)
+	}
+}

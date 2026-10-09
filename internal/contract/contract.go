@@ -111,6 +111,12 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 		}
 	}
 
+	if slices.Contains(m.Capabilities, "catalog") {
+		results = append(results, checkCatalog(ctx, p, tmp)...)
+		if !p.Alive() {
+			return exited(results, p), nil
+		}
+	}
 	if slices.Contains(m.Capabilities, "codec") {
 		checks := []struct {
 			name string

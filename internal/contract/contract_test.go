@@ -158,3 +158,36 @@ func TestSetupCheck(t *testing.T) {
 		t.Fatalf("bad setup form: got %v", err)
 	}
 }
+
+func TestCatalogChecks(t *testing.T) {
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"catalog"}), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// initialize, unknown method, six catalog checks, and two for shutdown.
+	if len(results) != 10 {
+		t.Fatalf("ran %d checks, want 10: %v", len(results), results)
+	}
+	if f := failed(results); len(f) > 0 {
+		t.Fatalf("checks failed: %v", f)
+	}
+
+	tests := []struct{ mode, check, wantErr string }{
+		{"bad-catalog", catalogDescribeName, "kinds is empty"},
+		{"catalog-repeat", catalogPagesName, "came back on a later page"},
+		{"catalog-lax", catalogFiltersName, "got success"},
+		{"catalog-no-notfound", catalogNotFoundName, "expected error -32004, got -32000"},
+		{"catalog-wrong-hash", catalogGetName, "hash with the cardhash package"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.mode, func(t *testing.T) {
+			results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"catalog"}, "-mode="+tt.mode), quiet)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := failed(results)[tt.check]; got == nil || !strings.Contains(got.Error(), tt.wantErr) {
+				t.Fatalf("check %q: got %v, want %q", tt.check, got, tt.wantErr)
+			}
+		})
+	}
+}

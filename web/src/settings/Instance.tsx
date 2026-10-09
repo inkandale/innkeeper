@@ -31,7 +31,19 @@ function canon(v: unknown): string {
   );
 }
 
-function InstanceForm({ plugin, instance }: { plugin: Plugin; instance?: InstanceInfo }) {
+/** InstanceForm adds or edits an instance of plugin; Settings and the setup wizard both use it. */
+export function InstanceForm({
+  plugin,
+  instance,
+  onSaved,
+  cancelTo = "/settings/plugins",
+}: {
+  plugin: Plugin;
+  instance?: InstanceInfo;
+  /** Runs after a save in place of going back to Settings. */
+  onSaved?: (saved: InstanceInfo) => void;
+  cancelTo?: string;
+}) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const toast = useToast();
@@ -79,7 +91,8 @@ function InstanceForm({ plugin, instance }: { plugin: Plugin; instance?: Instanc
       qc.setQueryData(["instance", saved.id], saved);
       qc.invalidateQueries({ queryKey: ["instances"] });
       toast({ text: `Saved ${saved.name}.` });
-      navigate("/settings/plugins");
+      if (onSaved) onSaved(saved);
+      else navigate("/settings/plugins");
     },
   });
 
@@ -156,7 +169,7 @@ function InstanceForm({ plugin, instance }: { plugin: Plugin; instance?: Instanc
         <button className="button primary" disabled={save.isPending}>
           Save
         </button>
-        <Link className="button" to="/settings/plugins">
+        <Link className="button" to={cancelTo}>
           Cancel
         </Link>
       </div>

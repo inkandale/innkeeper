@@ -3,7 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { Toasts } from "../shell/Toasts";
-import { Instance } from "./Instance";
+import { Instance, InstanceForm } from "./Instance";
+import type { Plugin } from "./Plugins";
 
 function json(body: unknown) {
   return new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
@@ -123,4 +124,26 @@ test("a config edited back to its old value isn't sent", async () => {
   await user.click(screen.getByRole("button", { name: "Save" }));
   await vi.waitFor(() => expect(sent).toHaveLength(1));
   expect(sent[0]?.body).toEqual({ name: "home", auto_bind_exact: true });
+});
+
+test("InstanceForm calls onSaved instead of going to Settings", async () => {
+  const user = userEvent.setup();
+  const onSaved = vi.fn();
+  const router = createMemoryRouter(
+    [{ path: "/", element: <InstanceForm plugin={{ ...st, source: "official", builtin: false } satisfies Plugin} onSaved={onSaved} cancelTo="/welcome" /> }],
+    { initialEntries: ["/"] },
+  );
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <Toasts>
+        <RouterProvider router={router} />
+      </Toasts>
+    </QueryClientProvider>,
+  );
+  await user.type(await screen.findByLabelText("Name"), "home");
+  await user.type(screen.getByLabelText("Server URL"), "http://st");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await vi.waitFor(() => expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ id: 9 })));
+  expect(router.state.location.pathname).toBe("/");
+  expect(screen.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/welcome");
 });

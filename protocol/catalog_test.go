@@ -35,6 +35,7 @@ func TestCatalogInfoValidate(t *testing.T) {
 		{"enum without options", func(c *CatalogInfo) { c.Filters[0].Options = nil }, "only an enum has them"},
 		{"options on text", func(c *CatalogInfo) { c.Filters[1].Options = []CatalogOption{{Value: "a", Label: "A"}} }, "only an enum has them"},
 		{"filter without label", func(c *CatalogInfo) { c.Filters[1].Label = "" }, `filter "tag" has no label`},
+		{"repeated option", func(c *CatalogInfo) { c.Filters[0].Options = append(c.Filters[0].Options, c.Filters[0].Options[0]) }, `option "chub" listed twice`},
 		{"repeated filter", func(c *CatalogInfo) { c.Filters[1].Name = "site" }, `filter "site" listed twice`},
 		{"no sorts", func(c *CatalogInfo) { c.Sorts = nil }, "sorts is empty"},
 		{"sort without label", func(c *CatalogInfo) { c.Sorts[0].Label = "" }, "needs a value and a label"},
@@ -82,11 +83,15 @@ func TestCheckSearch(t *testing.T) {
 		{"undeclared filter", CatalogSearchParams{Filters: filters("color", `"red"`)}, `filter "color" is not declared`},
 		{"enum value not an option", CatalogSearchParams{Filters: filters("site", `"janitor"`)}, "not one of its options"},
 		{"text not a string", CatalogSearchParams{Filters: filters("tag", `3`)}, "want a non-empty string"},
+		{"null text", CatalogSearchParams{Filters: filters("tag", `null`)}, "want a non-empty string"},
+		{"enum not a string", CatalogSearchParams{Filters: filters("site", `1`)}, "want a non-empty string"},
+		{"null date range", CatalogSearchParams{Filters: filters("added", `null`)}, "at least one date"},
 		{"empty text", CatalogSearchParams{Filters: filters("tag", `""`)}, "want a non-empty string"},
 		{"empty date range", CatalogSearchParams{Filters: filters("added", `{}`)}, "at least one date"},
 		{"bad date", CatalogSearchParams{Filters: filters("added", `{"to": "May 1"}`)}, "must be YYYY-MM-DD"},
 		{"backward dates", CatalogSearchParams{Filters: filters("added", `{"from": "2025-01-02", "to": "2025-01-01"}`)}, "from is after to"},
 		{"empty number range", CatalogSearchParams{Filters: filters("rating", `{}`)}, "at least one number"},
+		{"min not a number", CatalogSearchParams{Filters: filters("rating", `{"min": "1"}`)}, "at least one number"},
 		{"backward numbers", CatalogSearchParams{Filters: filters("rating", `{"min": 5, "max": 1}`)}, "min is above max"},
 	}
 	for _, tt := range tests {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"time"
@@ -176,7 +177,8 @@ func (c CatalogInfo) CheckSearch(p CatalogSearchParams) error {
 	if p.Page.Size < 0 || p.Page.Size > MaxCatalogPage {
 		errs = append(errs, fmt.Errorf("page size %d must be 0 to %d", p.Page.Size, MaxCatalogPage))
 	}
-	for name, raw := range p.Filters {
+	for _, name := range slices.Sorted(maps.Keys(p.Filters)) {
+		raw := p.Filters[name]
 		i := slices.IndexFunc(c.Filters, func(f CatalogFilter) bool { return f.Name == name })
 		if i < 0 {
 			errs = append(errs, fmt.Errorf("filter %q is not declared", name))
@@ -249,7 +251,8 @@ type CatalogItem struct {
 }
 
 // CatalogHashes are an item's cardhash fingerprints, computed as the library
-// does: over a card's data object, or over the whole lorebook.
+// does: over a card's data object, or over the whole lorebook. The simhash
+// and phash are the 64 bits cardhash returns, read as a signed int64.
 type CatalogHashes struct {
 	ContentHash string `json:"content_hash"`
 	TextSimhash *int64 `json:"text_simhash,omitempty"`
@@ -317,7 +320,7 @@ type CatalogVersion struct {
 }
 
 // CatalogSimilarParams asks for items of Kind with the same content_hash, or
-// within MaxDistance bits of either other hash.
+// within MaxDistance bits of either other hash. Limit is 1 to MaxCatalogPage.
 type CatalogSimilarParams struct {
 	Kind        string        `json:"kind"`
 	Hashes      CatalogHashes `json:"hashes"`

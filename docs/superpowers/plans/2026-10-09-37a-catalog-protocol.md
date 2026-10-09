@@ -125,6 +125,7 @@ func TestCatalogInfoValidate(t *testing.T) {
 		{"enum without options", func(c *CatalogInfo) { c.Filters[0].Options = nil }, "only an enum has them"},
 		{"options on text", func(c *CatalogInfo) { c.Filters[1].Options = []CatalogOption{{Value: "a", Label: "A"}} }, "only an enum has them"},
 		{"filter without label", func(c *CatalogInfo) { c.Filters[1].Label = "" }, `filter "tag" has no label`},
+		{"repeated option", func(c *CatalogInfo) { c.Filters[0].Options = append(c.Filters[0].Options, c.Filters[0].Options[0]) }, `option "chub" listed twice`},
 		{"repeated filter", func(c *CatalogInfo) { c.Filters[1].Name = "site" }, `filter "site" listed twice`},
 		{"no sorts", func(c *CatalogInfo) { c.Sorts = nil }, "sorts is empty"},
 		{"sort without label", func(c *CatalogInfo) { c.Sorts[0].Label = "" }, "needs a value and a label"},
@@ -172,11 +173,15 @@ func TestCheckSearch(t *testing.T) {
 		{"undeclared filter", CatalogSearchParams{Filters: filters("color", `"red"`)}, `filter "color" is not declared`},
 		{"enum value not an option", CatalogSearchParams{Filters: filters("site", `"janitor"`)}, "not one of its options"},
 		{"text not a string", CatalogSearchParams{Filters: filters("tag", `3`)}, "want a non-empty string"},
+		{"null text", CatalogSearchParams{Filters: filters("tag", `null`)}, "want a non-empty string"},
+		{"enum not a string", CatalogSearchParams{Filters: filters("site", `1`)}, "want a non-empty string"},
+		{"null date range", CatalogSearchParams{Filters: filters("added", `null`)}, "at least one date"},
 		{"empty text", CatalogSearchParams{Filters: filters("tag", `""`)}, "want a non-empty string"},
 		{"empty date range", CatalogSearchParams{Filters: filters("added", `{}`)}, "at least one date"},
 		{"bad date", CatalogSearchParams{Filters: filters("added", `{"to": "May 1"}`)}, "must be YYYY-MM-DD"},
 		{"backward dates", CatalogSearchParams{Filters: filters("added", `{"from": "2025-01-02", "to": "2025-01-01"}`)}, "from is after to"},
 		{"empty number range", CatalogSearchParams{Filters: filters("rating", `{}`)}, "at least one number"},
+		{"min not a number", CatalogSearchParams{Filters: filters("rating", `{"min": "1"}`)}, "at least one number"},
 		{"backward numbers", CatalogSearchParams{Filters: filters("rating", `{"min": 5, "max": 1}`)}, "min is above max"},
 	}
 	for _, tt := range tests {
@@ -250,6 +255,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"time"
@@ -422,7 +428,8 @@ func (c CatalogInfo) CheckSearch(p CatalogSearchParams) error {
 	if p.Page.Size < 0 || p.Page.Size > MaxCatalogPage {
 		errs = append(errs, fmt.Errorf("page size %d must be 0 to %d", p.Page.Size, MaxCatalogPage))
 	}
-	for name, raw := range p.Filters {
+	for _, name := range slices.Sorted(maps.Keys(p.Filters)) {
+		raw := p.Filters[name]
 		i := slices.IndexFunc(c.Filters, func(f CatalogFilter) bool { return f.Name == name })
 		if i < 0 {
 			errs = append(errs, fmt.Errorf("filter %q is not declared", name))
@@ -495,7 +502,8 @@ type CatalogItem struct {
 }
 
 // CatalogHashes are an item's cardhash fingerprints, computed as the library
-// does: over a card's data object, or over the whole lorebook.
+// does: over a card's data object, or over the whole lorebook. The simhash
+// and phash are the 64 bits cardhash returns, read as a signed int64.
 type CatalogHashes struct {
 	ContentHash string `json:"content_hash"`
 	TextSimhash *int64 `json:"text_simhash,omitempty"`
@@ -563,7 +571,7 @@ type CatalogVersion struct {
 }
 
 // CatalogSimilarParams asks for items of Kind with the same content_hash, or
-// within MaxDistance bits of either other hash.
+// within MaxDistance bits of either other hash. Limit is 1 to MaxCatalogPage.
 type CatalogSimilarParams struct {
 	Kind        string        `json:"kind"`
 	Hashes      CatalogHashes `json:"hashes"`
@@ -821,7 +829,7 @@ and add these cases to the handler switch, after `case protocol.MethodCodecDecod
 
 - [ ] **Step 3: Build**
 
-Run: `go build ./internal/fakeplugin && go vet ./internal/fakeplugin`
+Run: `go build -o /dev/null ./internal/fakeplugin && go vet ./internal/fakeplugin`
 Expected: no output.
 
 - [ ] **Step 4: Commit**
@@ -1241,7 +1249,7 @@ cursor for the following page, or empty on the last. Each item has:
 | `id`, `kind`, `name` | Required |
 | `author`, `tags`, `summary` | Optional |
 | `latest_version` | The newest version's name |
-| `hashes` | The latest version's `content_hash` and, if you have them, `text_simhash` and `image_phash`. Compute them with the Go package `github.com/davidgibbons/innkeeper/cardhash`, over a card's `data` object or the whole lorebook, so they match the library's |
+| `hashes` | The latest version's `content_hash` and, if you have them, `text_simhash` and `image_phash`. Compute them with the Go package `github.com/davidgibbons/innkeeper/cardhash`, over a card's `data` object or the whole lorebook, so they match the library's. `text_simhash` and `image_phash` are signed 64-bit integers |
 | `thumbnail` | Optional. A base64 JPEG at most 160 pixels wide and 32 KiB |
 
 **`catalog.get`** returns one version of an item.
@@ -1265,7 +1273,7 @@ reuse the path.
 | `kind` | The kind to search |
 | `hashes` | The library item's hashes |
 | `max_distance` | The most bits `text_simhash` or `image_phash` may differ by |
-| `limit` | The most items to return |
+| `limit` | The most items to return, 1 to 100 |
 
 Reply with `items` that share `content_hash` or fall within `max_distance`
 on either other hash, closest first.

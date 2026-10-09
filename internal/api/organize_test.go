@@ -72,7 +72,7 @@ func TestBlobs(t *testing.T) {
 	e.call("GET", "/blobs/"+strings.Repeat("0", 64), nil, 404, nil)
 	e.call("GET", "/blobs/not-a-hash", nil, 422, nil)
 
-	avatar, err := os.ReadFile(filepath.Join("..", "cardhash", "testdata", "avatar.png"))
+	avatar, err := os.ReadFile(filepath.Join("..", "..", "cardhash", "testdata", "avatar.png"))
 	if err != nil {
 		t.Fatal(err)
 	}

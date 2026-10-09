@@ -17,7 +17,7 @@ import (
 func TestOpenThumb(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
-	avatar, err := os.Open(filepath.Join("..", "cardhash", "testdata", "avatar.png"))
+	avatar, err := os.Open(filepath.Join("..", "..", "cardhash", "testdata", "avatar.png"))
 	if err != nil {
 		t.Fatal(err)
 	}

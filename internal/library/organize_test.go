@@ -104,7 +104,7 @@ func TestLorebookLinks(t *testing.T) {
 func TestCollectionAvatars(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
-	png, err := os.Open(filepath.Join("..", "cardhash", "testdata", "avatar.png"))
+	png, err := os.Open(filepath.Join("..", "..", "cardhash", "testdata", "avatar.png"))
 	if err != nil {
 		t.Fatal(err)
 	}

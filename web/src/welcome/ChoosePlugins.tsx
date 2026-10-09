@@ -48,6 +48,9 @@ export function ChoosePlugins() {
       return next;
     });
   const pending = groups.flatMap((g) => g.plugins).filter((o) => chosen.has(o.name) && !installed.has(o.name));
+  // Until /plugins answers, an installed plugin would look unchosen and get installed again.
+  const locked = !plugins.isSuccess || install.isPending;
+  const empty = catalog.isSuccess && groups.length === 0 && !catalog.data?.some((s) => s.error);
 
   return (
     <div className="panel">
@@ -62,44 +65,56 @@ export function ChoosePlugins() {
             {s.source.id}: {s.error}
           </p>
         ))}
+      {empty && <p className="muted">Nothing in the catalog to install. Skip to continue.</p>}
       {groups.map((g) => (
         <div key={g.category}>
           <div className="group">{g.category}</div>
           <div className="grid">
             {g.plugins.map((p) => {
               const have = installed.has(p.name);
+              const errorId = `install-error-${p.name}`;
               return (
-                <label key={p.name} className="offer">
-                  <div className="top">
-                    <span>
-                      <input
-                        type="checkbox"
-                        aria-label={p.name}
-                        checked={have || chosen.has(p.name)}
-                        disabled={have || install.isPending}
-                        onChange={() => toggle(p.name)}
-                      />{" "}
-                      {p.name}
-                      {have && <span className="badge">installed</span>}
-                    </span>
-                    <span className="meta">
-                      v{p.version}
-                      {p.released && ` · ${p.released}`}
-                    </span>
-                  </div>
-                  <div className="desc">{p.description}</div>
-                  {errors[p.name] && <p className="error">{errors[p.name]}</p>}
-                </label>
+                <div key={p.name}>
+                  <label className="offer">
+                    <div className="top">
+                      <span>
+                        <input
+                          type="checkbox"
+                          aria-label={p.name}
+                          aria-describedby={errors[p.name] ? errorId : undefined}
+                          checked={have || chosen.has(p.name)}
+                          disabled={have || locked}
+                          onChange={() => toggle(p.name)}
+                        />{" "}
+                        {p.name}
+                        {have && <span className="badge">installed</span>}
+                      </span>
+                      <span className="meta">
+                        v{p.version}
+                        {p.released && ` · ${p.released}`}
+                      </span>
+                    </div>
+                    <div className="desc">{p.description}</div>
+                  </label>
+                  {errors[p.name] && (
+                    <p id={errorId} className="error" role="alert">
+                      {errors[p.name]}
+                    </p>
+                  )}
+                </div>
               );
             })}
           </div>
         </div>
       ))}
       <div className="toolbar">
-        <button className="button primary" disabled={install.isPending} onClick={() => install.mutate(pending)}>
-          {install.isPending ? "Installing…" : "Install and continue"}
-        </button>
-        <button className="button" onClick={() => navigate("/welcome/setup")}>
+        {!empty && (
+          <button className="button primary" disabled={locked} onClick={() => install.mutate(pending)}>
+            {install.isPending ? "Installing…" : "Install and continue"}
+          </button>
+        )}
+        {/* A pending install navigates when it ends, so leaving first would be undone. */}
+        <button className="button" disabled={install.isPending} onClick={() => navigate("/welcome/setup")}>
           Skip
         </button>
       </div>

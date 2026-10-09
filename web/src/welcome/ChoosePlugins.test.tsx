@@ -15,9 +15,13 @@ const offer = (name: string, category: string, released?: string) => ({
 
 let installs: { path: string; body: unknown }[];
 let installStatus: number;
+let offers: ReturnType<typeof offer>[];
+let pluginsHang: boolean;
 beforeEach(() => {
   installs = [];
   installStatus = 204;
+  offers = [offer("lumiverse", "Apps", "2026-10-06"), offer("sillytavern", "Apps"), offer("card-import", "Import")];
+  pluginsHang = false;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
@@ -26,9 +30,10 @@ beforeEach(() => {
         return json([
           {
             source: { id: "official", url: "https://example.com/index.toml" },
-            plugins: [offer("lumiverse", "Apps", "2026-10-06"), offer("sillytavern", "Apps"), offer("card-import", "Import")],
+            plugins: offers,
           },
         ]);
+      if (u.pathname === "/api/plugins" && pluginsHang) return new Promise<Response>(() => {});
       if (u.pathname === "/api/plugins")
         return json([{ name: "card-import", source: "official", builtin: false, version: "0.1.0", capabilities: ["import"], secrets: [] }]);
       if (req.method === "POST") {
@@ -79,6 +84,23 @@ test("a failed install shows its error and stays on the step", async () => {
   renderStep();
   await user.click(await screen.findByRole("checkbox", { name: "lumiverse" }));
   await user.click(screen.getByRole("button", { name: "Install and continue" }));
-  expect(await screen.findByText("download failed")).toBeInTheDocument();
+  const error = await screen.findByRole("alert");
+  expect(error).toHaveTextContent("download failed");
+  expect(screen.getByRole("checkbox", { name: "lumiverse" })).toHaveAccessibleDescription("download failed");
   expect(screen.queryByText("setup step")).not.toBeInTheDocument();
+});
+
+test("nothing can be chosen until the installed plugins load", async () => {
+  pluginsHang = true;
+  renderStep();
+  expect(await screen.findByRole("checkbox", { name: "lumiverse" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Install and continue" })).toBeDisabled();
+});
+
+test("an empty catalog says so and offers only Skip", async () => {
+  offers = [];
+  renderStep();
+  expect(await screen.findByText("Nothing in the catalog to install. Skip to continue.")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Install and continue" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Skip" })).toBeEnabled();
 });

@@ -92,7 +92,8 @@ Both are unauthenticated. `GET` returns 404 once the server is claimed.
      the plugin.
   2. Calls `auth.setup.complete` with `params`.
   3. Re-checks that the server is unclaimed, then creates an instance named
-     "Login" with the returned secrets and `owner_subject`.
+     "Login" with the returned secrets and `owner_subject`. If an old,
+     unusable provider still holds that name, it uses "Login 2" and on.
   4. Starts a session, as a completed login does.
 
 A wrong code, an already-claimed server and a lost race all get the same
@@ -119,7 +120,7 @@ redirects there whenever `GET /api/setup` succeeds. It asks for the setup
 code, then renders the plugin's form. Under the button it says the password
 can instead be set with `INNKEEPER_OWNER_PASSWORD_HASH`, and that other login
 providers can be added in Settings after setup. A successful claim goes to
-`/welcome`. If the server gets claimed while the page is open, it says so and
+`/`, and to `/welcome` once slice B adds it. If the server gets claimed while the page is open, it says so and
 links to login.
 
 ### Docs

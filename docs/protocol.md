@@ -30,7 +30,7 @@ Each plugin folder has a `plugin.toml`:
 | `version` | yes | The plugin's own version |
 | `protocol` | yes | Protocol version; must be `1` |
 | `command` | yes, except for themes | Program and arguments. Use `./name` for a program in the plugin folder: a relative path containing `/` is inside the folder and can't leave it, an absolute path is used as-is, and a bare name is found on `PATH` |
-| `capabilities` | yes | Any of `import`, `search`, `push`, `pull`, `action`, `enrich`, `codec`, `auth`, `mcp`, or `theme`. A theme lists no other capability |
+| `capabilities` | yes | Any of `import`, `search`, `push`, `pull`, `action`, `enrich`, `codec`, `auth`, `mcp`, `catalog`, or `theme`. A theme lists no other capability |
 | `secrets` | no | Names of secrets the owner enters for each instance, in lowercase `snake_case` |
 | `config` | no | JSON Schema for instance settings; the UI renders a form from it |
 | `enrichments` | no | Keys the plugin writes, in lowercase `snake_case`. Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list` |
@@ -341,6 +341,95 @@ letters and digits. The core moves the file, so don't reuse the path.
 {"jsonrpc": "2.0", "id": 5, "result": {"path": "/blobs/tmp/card-1234.png", "extension": "png"}}
 ```
 
+### `catalog`
+
+A catalog serves a collection of cards and lorebooks the owner searches and
+adopts from, without putting them in the library. An **ingested** catalog
+copies its source into its own schema (`database = true`) and answers
+`catalog.ingest`. A **pass-through** catalog forwards each call to a remote
+site and stores nothing.
+
+Every item has an `id` you assign that never changes, a `kind` (`card` or
+`lorebook`), and one or more versions, each named by a string you choose.
+Reply with error `-32004` for an ID or version you don't have. Check params
+before reaching your source, so a bad request gets `-32602` even when the
+source is down.
+
+**`catalog.describe`** takes no params. Don't contact your source to answer.
+
+| Field | Meaning |
+|---|---|
+| `kinds` | The kinds you hold, such as `["card", "lorebook"]` |
+| `filters` | The filters `catalog.search` accepts. Each has `name` (lowercase `snake_case`), `label`, `type`, and, for `enum` only, `options`: a list of `{value, label}` |
+| `sorts` | The orders `catalog.search` accepts, each `{value, label}`. The first is the default |
+| `ingest` | `true` if you answer `catalog.ingest` |
+| `similar` | `true` if you answer `catalog.similar` |
+
+| Filter `type` | Value in a search |
+|---|---|
+| `enum` | One of the option values, as a string |
+| `text` | A non-empty string |
+| `date_range` | `{"from": "2024-01-01", "to": "2024-12-31"}`, both inclusive, either optional |
+| `number_range` | `{"min": 1, "max": 5}`, both inclusive, either optional |
+
+**`catalog.search`** returns one page of items.
+
+| Param | Meaning |
+|---|---|
+| `q` | Search text, or empty for everything |
+| `kind` | One of your `kinds`, or empty for all |
+| `filters` | Filter values by name |
+| `sort` | One of your `sorts`, or empty for the first |
+| `page` | `size`, 1 to 100 or 0 for your default, and `cursor`, the `next` of the previous page or empty for the first |
+
+Reply with `-32602` for a kind, sort, or filter you didn't declare, or a
+filter value of the wrong shape. Otherwise reply with `items` and `next`, the
+cursor for the following page, or empty on the last. Each item has:
+
+| Field | Meaning |
+|---|---|
+| `id`, `kind`, `name` | Required |
+| `author`, `tags`, `summary` | Optional |
+| `latest_version` | The newest version's name |
+| `hashes` | The latest version's `content_hash` and, if you have them, `text_simhash` and `image_phash`. Compute them with the Go package `github.com/davidgibbons/innkeeper/cardhash`, over a card's `data` object or the whole lorebook, so they match the library's. `text_simhash` and `image_phash` are signed 64-bit integers |
+| `thumbnail` | Optional. A base64 JPEG at most 160 pixels wide and 32 KiB |
+
+**`catalog.get`** returns one version of an item.
+
+| Param | Meaning |
+|---|---|
+| `id` | The item |
+| `version` | A version name, or empty for the latest |
+| `avatar` | `true` to write the card's image to `blob_tmp`. Only adopt sets it |
+
+Reply with `item` (as in search), `version`, `versions` (newest first, each
+`{version, created}`, with `created` in RFC 3339 if you know it), `data` (a
+CCv3 card for a card, a CCv3 `character_book` for a lorebook), and `avatar`,
+the file you wrote to `blob_tmp`, or empty. The core moves the file, so don't
+reuse the path.
+
+**`catalog.similar`** finds near-duplicates of a library item.
+
+| Param | Meaning |
+|---|---|
+| `kind` | The kind to search |
+| `hashes` | The library item's hashes |
+| `max_distance` | The most bits `text_simhash` or `image_phash` may differ by |
+| `limit` | The most items to return, 1 to 100 |
+
+Reply with `items` that share `content_hash` or fall within `max_distance`
+on either other hash, closest first.
+
+**`catalog.ingest`** copies your source into your schema. It takes `run` and
+`checkpoint` and sends `progress` and `checkpoint` notifications, all as in
+`import.run`. Reply with the counts `added`, `updated`, `removed`, and
+`skipped`. Search keeps serving what you have while an ingest runs.
+
+```json
+{"jsonrpc": "2.0", "id": 8, "method": "catalog.search", "params": {"q": "dwarf", "kind": "card", "filters": {"site": "chub"}, "page": {"size": 1}}}
+{"jsonrpc": "2.0", "id": 8, "result": {"items": [{"id": "chub:42", "kind": "card", "name": "Brakka", "latest_version": "3", "hashes": {"content_hash": "90b4…a1e0", "text_simhash": -6846279246937013872}}], "next": "1"}}
+```
+
 ### `mcp`
 
 An `mcp` plugin adds tools to Innkeeper's MCP server. Each tool runs with the
@@ -389,11 +478,21 @@ It loads the manifest, then checks that:
   when asked to decode a file that isn't a card
 - an `mcp` plugin's `mcp.tools` reply has valid, unique names, valid input
   schemas, and comes within 5 seconds
+- a `catalog` plugin's `catalog.describe` reply is valid; `catalog.search`
+  pages one item at a time without repeats and refuses an undeclared filter
+  with `-32602`; `catalog.get` returns `-32004` for an unknown ID, and for the
+  first search result returns data that hashes to its `content_hash` and an
+  avatar inside `blob_tmp`; and, if it claims `similar`, `catalog.similar`
+  finds that item by its own hashes. Without a source, an error other than
+  `-32601` from search counts as an answer, and the checks that need an item
+  pass
 - `shutdown` gets a reply within 5 seconds
 - the plugin exits after `shutdown`, rather than having exited earlier
 
 It exits non-zero if any check fails. For a plugin with `database = true`,
 set `INNKEEPER_PLUGIN_DATABASE_URL` to send a test database as `database_url`.
+Set `INNKEEPER_PLUGIN_CONFIG` to a JSON object to send it as the instance
+config, such as a catalog's test data.
 
 ## Publishing a source
 

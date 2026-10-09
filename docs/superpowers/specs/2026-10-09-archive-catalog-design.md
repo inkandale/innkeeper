@@ -26,7 +26,7 @@ First real case: the chub.ai archive takeout, loaded from its 12GB SQL dump
 | Search | Postgres full-text search plus the filters each catalog declares. No embeddings in v1. Semantic search can come later as an enricher. |
 | Item kinds | `kind` is an open string the plugin declares: `card` and `lorebook` in v1, and `preset` once the library has presets (INN-39). |
 | Images | Stay in the plugin's schema. The chub dump already stores them as `bytea`. Core keeps one blob store. |
-| Adopt | Copies one version into the library as a new card or lorebook through the existing import path. It doesn't bring the version chain or track later versions. |
+| Adopt | Copies one version into the library as a new card or lorebook through the existing import path, as `emit.card` and `emit.lorebook` do. It doesn't bring the version chain or track later versions. |
 | Near-duplicates | Matched both ways. Core badges catalog results that match library items, and catalogs answer `catalog.similar` for the library card page. |
 | Language | Go, like every other plugin. `cardhash` becomes a public package so plugins use the same hashes as core. |
 | v1 plugins | `chub-archive` (the SQL dump) and `folder`. The live chub.ai catalog is INN-38. |
@@ -47,12 +47,12 @@ A plugin declares `capabilities = ["catalog"]`. Methods:
 | Method | Params | Result |
 |---|---|---|
 | `catalog.describe` | none | The kinds it holds, the filters it supports (name, label, type `enum`, `text`, `date_range` or `number_range`, and options for `enum`), its sort orders, and whether it supports `ingest` and `similar`. |
-| `catalog.search` | `q`, `kind`, `filters`, `sort`, `page` (`size`, `cursor`) | Items with ID, kind, name, author, tags, summary, latest version, thumbnail, and hashes (`content_hash`, `text_simhash`, `image_phash`), plus the next cursor. |
-| `catalog.get` | `id`, `version` (omitted means latest) | The item's metadata, its version list, and the raw file bytes with a filename. Core decodes the bytes through the codec, as it does an upload. |
-| `catalog.similar` | `hashes`, `max_distance`, `limit` | Items whose hashes fall within `max_distance`, closest first. Optional. |
-| `catalog.ingest` | `checkpoint` | Runs as a core job. Sends the existing `progress` and `checkpoint` notifications, and returns counts: added, updated, removed, skipped. Optional. |
+| `catalog.search` | `q`, `kind`, `filters`, `sort`, `page` (`size`, `cursor`) | Items with ID, kind, name, author, tags, summary, latest version, an inline JPEG thumbnail of at most 32 KiB, and hashes (`content_hash`, `text_simhash`, `image_phash`), plus the next cursor. |
+| `catalog.get` | `id`, `version` (omitted means latest), `avatar` | The item's metadata, its version list, and the version as CCv3: a card, or a `character_book` for a lorebook. With `avatar`, the card's image as a file in `blob_tmp`, as `target.get` returns it. |
+| `catalog.similar` | `kind`, `hashes`, `max_distance`, `limit` | Items whose hashes fall within `max_distance`, closest first. Optional. |
+| `catalog.ingest` | `run`, `checkpoint` | Runs as a core job. Sends the existing `progress` and `checkpoint` notifications, and returns counts: added, updated, removed, skipped. Optional. |
 
-Unknown IDs return the protocol's not-found error. Filters the catalog didn't
+Unknown IDs and versions return `-32004`, the error targets use for a missing `remote_id`. Filters the catalog didn't
 declare are refused as invalid.
 
 ## Core
@@ -64,8 +64,8 @@ declare are refused as invalid.
     the last ingest job.
   - `GET /catalogs/{id}/search` forwards to `catalog.search` and adds library
     matches to each result.
-  - `GET /catalogs/{id}/items/{item}` forwards to `catalog.get`, without the
-    bytes.
+  - `GET /catalogs/{id}/items/{item}` forwards to `catalog.get` without
+    `avatar`.
   - `POST /catalogs/{id}/items/{item}/adopt` takes an optional `version` and
     returns the library card or lorebook.
   - `POST /catalogs/{id}/ingest` queues a `catalog.ingest` job.
@@ -76,8 +76,8 @@ declare are refused as invalid.
 - **Library matches** are one query over the page's hashes: exact by
   `content_hash`, near by simhash or phash distance, using the thresholds
   `similar.go` already uses.
-- **Adopt** calls `catalog.get`, decodes the bytes, and imports them with
-  provenance `catalog:<instance>:<item>@<version>` and source
+- **Adopt** calls `catalog.get` with `avatar`, and imports the data and
+  avatar with provenance `catalog:<instance>:<item>@<version>` and source
   `plugin:<name>`. Import dedupe already keys on provenance and
   `content_hash`, so adopting the same version twice returns the existing
   card.
@@ -129,7 +129,7 @@ not in the dump. Each needs its own file ingester, added to this plugin later.
 
 - **Config:** a directory path.
 - **Ingest:** walks the directory and reads PNG, JSON, and CharX cards and
-  lorebook JSON with the codec's parsers. It upserts on path, mtime, and size.
+  lorebook JSON into CCv3 with the codec's parsers. It upserts on path, mtime, and size.
   The checkpoint is the last path processed.
 - **Item ID:** the path relative to the directory. A changed file adds a
   version.
@@ -160,14 +160,14 @@ not in the dump. Each needs its own file ingester, added to this plugin later.
   increment, and counts it in `skipped`.
 - **Ingest fails partway:** the job retries from its last checkpoint. Search
   keeps serving what is already ingested.
-- **Adopt fails to decode:** 422, with the codec's error.
 
 ## Testing
 
 - **Contract kit:** `innkeeper plugin check` gains catalog checks: `describe`
   is valid, `search` pages correctly and refuses undeclared filters, `get`
-  returns bytes the codec decodes, and unknown IDs return not-found. Both
-  plugins run it in CI.
+  returns data that hashes to the search result's `content_hash`, and unknown
+  IDs return `-32004`. Both plugins run it in CI, with
+  `INNKEEPER_PLUGIN_CONFIG` pointing at test data.
 - **`cardhash`:** its test vectors pass after the move.
 - **`catalogkit`:** LSH buckets find pairs within the distance threshold and
   miss pairs outside it.

@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -59,6 +60,11 @@ func run(args []string) error {
 func pluginCheck(dir string) error {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	contract.DatabaseURL = os.Getenv("INNKEEPER_PLUGIN_DATABASE_URL")
+	if s := os.Getenv("INNKEEPER_PLUGIN_CONFIG"); s != "" {
+		if err := json.Unmarshal([]byte(s), &contract.Config); err != nil {
+			return fmt.Errorf("INNKEEPER_PLUGIN_CONFIG: %w", err)
+		}
+	}
 	results, err := contract.Check(context.Background(), dir, log)
 	if err != nil {
 		return err

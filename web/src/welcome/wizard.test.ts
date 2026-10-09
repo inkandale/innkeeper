@@ -1,4 +1,4 @@
-import { groupCatalog, wizardPlugin } from "./wizard";
+import { groupCatalog, nextStep, wizardPlugin } from "./wizard";
 
 const entry = (name: string, category?: string, capabilities = ["push"]) => ({
   name, version: "1.0.0", protocol: 1, capabilities, description: name, versions: ["1.0.0"], category,
@@ -21,4 +21,17 @@ test("wizardPlugin leaves out codecs and themes", () => {
   expect(wizardPlugin({ capabilities: ["codec"] })).toBe(false);
   expect(wizardPlugin({ capabilities: ["theme"] })).toBe(false);
   expect(wizardPlugin({ capabilities: ["push", "pull"] })).toBe(true);
+});
+
+test("nextStep goes to the next chosen plugin without an instance, then to cards", () => {
+  const plugins = [
+    { name: "card-codec", source: "builtin", capabilities: ["codec"] },
+    { name: "a", source: "official", capabilities: ["push"] },
+    { name: "b", source: "official", capabilities: ["push"] },
+    { name: "c", source: "official", capabilities: ["push"] },
+  ];
+  expect(nextStep(plugins, [{ plugin: "a" }])).toBe("/welcome/setup/b");
+  expect(nextStep(plugins, [], "b")).toBe("/welcome/setup/c");
+  expect(nextStep(plugins, [{ plugin: "c" }], "b")).toBe("/welcome/cards");
+  expect(nextStep(plugins.slice(0, 1), [])).toBe("/welcome/cards");
 });

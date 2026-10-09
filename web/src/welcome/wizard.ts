@@ -32,3 +32,18 @@ export function groupCatalog(sources: CatalogSource[]): Group[] {
     .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
     .map(([category, plugins]) => ({ category, plugins }));
 }
+
+type Installed = { name: string; source: string; capabilities?: string[] | null; category?: string };
+
+/** setupPlugins is the installed plugins the wizard sets up: not built in, and ones it offers. */
+export function setupPlugins<P extends Installed>(plugins: P[]): P[] {
+  return plugins.filter((p) => p.source !== "builtin" && wizardPlugin(p));
+}
+
+/** nextStep is the first plugin after current with no instance yet, or the cards step when none is left. */
+export function nextStep(plugins: Installed[], instances: { plugin: string }[], current?: string): string {
+  const chosen = setupPlugins(plugins);
+  const have = new Set(instances.map((i) => i.plugin));
+  const next = chosen.slice(chosen.findIndex((p) => p.name === current) + 1).find((p) => !have.has(p.name));
+  return next ? `/welcome/setup/${encodeURIComponent(next.name)}` : "/welcome/cards";
+}

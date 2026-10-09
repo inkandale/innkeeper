@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Outlet, useNavigate } from "react-router";
 import { api, must } from "../api/client";
 import { pluginsQuery } from "../settings/Plugins";
-import { wizardPlugin } from "./wizard";
+import { setupPlugins } from "./wizard";
 import "./Welcome.css";
 
 /** useFinish marks the wizard done and goes to the library. */
@@ -22,7 +22,7 @@ export function useFinish() {
 export function Welcome() {
   const plugins = useQuery(pluginsQuery);
   const finish = useFinish();
-  const chosen = (plugins.data ?? []).filter((p) => p.source !== "builtin" && wizardPlugin(p));
+  const chosen = setupPlugins(plugins.data ?? []);
   return (
     <div className="welcome">
       <nav className="welcome-rail" aria-label="Setup steps">

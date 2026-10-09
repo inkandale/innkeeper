@@ -10,6 +10,7 @@ export function Settings() {
         <NavLink to="/settings/jobs">Jobs</NavLink>
         <NavLink to="/settings/access">Access</NavLink>
         <NavLink to="/settings/appearance">Appearance</NavLink>
+        <NavLink to="/welcome">Set up apps and import</NavLink>
       </nav>
       <Outlet />
     </div>

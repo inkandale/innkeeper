@@ -1,4 +1,4 @@
-import { groupCatalog, wizardPlugin } from "./welcome";
+import { groupCatalog, wizardPlugin } from "./wizard";
 
 const entry = (name: string, category?: string, capabilities = ["push"]) => ({
   name, version: "1.0.0", protocol: 1, capabilities, description: name, versions: ["1.0.0"], category,

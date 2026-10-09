@@ -23,7 +23,7 @@ type settingsOut struct{ Body settings }
 type patchSettingsIn struct {
 	Body struct {
 		Theme          *string `json:"theme,omitempty" doc:"An installed theme plugin's name, or empty for the default theme."`
-		OnboardingDone *bool   `json:"onboarding_done,omitempty"`
+		OnboardingDone *bool   `json:"onboarding_done,omitempty" doc:"true once the owner finishes or skips the setup wizard; false shows it again."`
 	}
 }
 

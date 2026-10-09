@@ -40,7 +40,7 @@ function RequireAuth() {
 export function Home() {
   const settings = useQuery({ queryKey: ["settings"], queryFn: async () => must(await api.GET("/settings")) });
   if (settings.isPending) return null;
-  if (settings.data && !settings.data.onboarding_done) return <Navigate to="/welcome" replace />;
+  // Read and drop the saved destination either way, so it can't hijack a later visit to /.
   let next = "/";
   try {
     next = safeNext(sessionStorage.getItem(nextKey));
@@ -48,6 +48,7 @@ export function Home() {
   } catch {
     // Storage is blocked: use the default.
   }
+  if (settings.data && !settings.data.onboarding_done) return <Navigate to="/welcome" replace />;
   return <Navigate to={next !== "/" ? next : "/cards"} replace />;
 }
 

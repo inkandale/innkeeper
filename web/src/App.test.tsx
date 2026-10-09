@@ -41,8 +41,10 @@ test("Home goes to the cards by default", async () => {
 
 test("Home goes to the wizard until the owner finishes it", async () => {
   onboardingDone = false;
+  sessionStorage.setItem(nextKey, "/sync");
   renderHome();
   expect(await screen.findByText("welcome page")).toBeInTheDocument();
+  expect(sessionStorage.getItem(nextKey)).toBeNull();
 });
 
 test("Home goes to the saved next once", async () => {

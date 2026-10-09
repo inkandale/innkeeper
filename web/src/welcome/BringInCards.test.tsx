@@ -15,8 +15,10 @@ const job = (id: number) => ({ id, kind: "import", status: "queued", attempts: 0
 let plugins: unknown[];
 let instances: unknown[];
 let sent: { method: string; path: string; body?: unknown }[];
+let blobGate: Promise<void>;
 beforeEach(() => {
   sent = [];
+  blobGate = Promise.resolve();
   vi.stubGlobal("EventSource", class { addEventListener() {} close() {} });
   vi.stubGlobal(
     "fetch",
@@ -26,6 +28,7 @@ beforeEach(() => {
       if (u.pathname === "/api/instances") return json(instances);
       if (req.method === "POST" && u.pathname === "/api/blobs") {
         sent.push({ method: "POST", path: u.pathname });
+        await blobGate;
         return json({ sha256: "abc" });
       }
       if (req.method === "POST" && u.pathname === "/api/imports") {
@@ -72,8 +75,13 @@ test("uploads files to the card importer", async () => {
   plugins = [plugin("card-import", ["import"])];
   instances = [instance(6, "card-import", "card-import")];
   renderStep();
+  let release!: () => void;
+  blobGate = new Promise((r) => (release = r));
   const file = new File(["png"], "brakka.png", { type: "image/png" });
-  await userEvent.upload(await screen.findByLabelText("Upload files"), file);
+  const input = await screen.findByLabelText("Upload files");
+  await userEvent.upload(input, file);
+  expect(input).toBeDisabled();
+  release();
   await vi.waitFor(() =>
     expect(sent).toEqual([
       { method: "POST", path: "/api/blobs" },
@@ -81,6 +89,7 @@ test("uploads files to the card importer", async () => {
     ]),
   );
   expect(await screen.findByText(/brakka\.png/)).toBeInTheDocument();
+  await vi.waitFor(() => expect(input).toBeEnabled());
 });
 
 test("with nothing to import from, points back to choosing plugins", async () => {

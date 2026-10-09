@@ -2280,6 +2280,7 @@ export interface components {
              * @example /api/schemas/PatchSettingsInBody.json
              */
             readonly $schema?: string;
+            /** @description true once the owner finishes or skips the setup wizard; false shows it again. */
             onboarding_done?: boolean;
             /** @description An installed theme plugin's name, or empty for the default theme. */
             theme?: string;

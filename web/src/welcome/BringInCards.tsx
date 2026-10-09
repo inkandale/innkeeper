@@ -95,6 +95,7 @@ export function BringInCards() {
               type="file"
               multiple
               accept=".png,.json,.charx"
+              disabled={uploads.some((u) => !u.job && !u.error)}
               onChange={(e) => {
                 const files = [...(e.target.files ?? [])];
                 e.target.value = "";

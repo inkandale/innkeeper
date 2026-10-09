@@ -460,6 +460,9 @@
               "null"
             ]
           },
+          "category": {
+            "type": "string"
+          },
           "description": {
             "type": "string"
           },
@@ -469,6 +472,9 @@
           "protocol": {
             "format": "int64",
             "type": "integer"
+          },
+          "released": {
+            "type": "string"
           },
           "version": {
             "type": "string"
@@ -1759,6 +1765,9 @@
             "readOnly": true,
             "type": "string"
           },
+          "onboarding_done": {
+            "type": "boolean"
+          },
           "theme": {
             "description": "An installed theme plugin's name, or empty for the default theme.",
             "type": "string"
@@ -2539,13 +2548,18 @@
             "readOnly": true,
             "type": "string"
           },
+          "onboarding_done": {
+            "description": "Whether the owner finished or skipped the setup wizard.",
+            "type": "boolean"
+          },
           "theme": {
             "description": "The selected theme plugin, or empty for the default theme.",
             "type": "string"
           }
         },
         "required": [
-          "theme"
+          "theme",
+          "onboarding_done"
         ],
         "type": "object"
       },

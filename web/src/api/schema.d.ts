@@ -1803,10 +1803,12 @@ export interface components {
         };
         CatalogPluginOut: {
             capabilities: string[] | null;
+            category?: string;
             description: string;
             name: string;
             /** Format: int64 */
             protocol: number;
+            released?: string;
             version: string;
             versions: string[] | null;
         };
@@ -2278,6 +2280,7 @@ export interface components {
              * @example /api/schemas/PatchSettingsInBody.json
              */
             readonly $schema?: string;
+            onboarding_done?: boolean;
             /** @description An installed theme plugin's name, or empty for the default theme. */
             theme?: string;
         };
@@ -2559,6 +2562,8 @@ export interface components {
              * @example /api/schemas/Settings.json
              */
             readonly $schema?: string;
+            /** @description Whether the owner finished or skipped the setup wizard. */
+            onboarding_done: boolean;
             /** @description The selected theme plugin, or empty for the default theme. */
             theme: string;
         };

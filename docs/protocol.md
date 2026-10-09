@@ -483,9 +483,10 @@ It loads the manifest, then checks that:
   with `-32602`; `catalog.get` returns `-32004` for an unknown ID, and for the
   first search result returns data that hashes to its `content_hash` and an
   avatar inside `blob_tmp`; and, if it claims `similar`, `catalog.similar`
-  finds that item by its own hashes. Without a source, an error other than
-  `-32601` from search counts as an answer, and the checks that need an item
-  pass
+  finds that item by its own hashes. Without `INNKEEPER_PLUGIN_CONFIG`, a
+  catalog may refuse search with an error other than `-32601`, and may then
+  answer `catalog.get` and `catalog.similar` the same way; the checks that
+  need an item pass
 - `shutdown` gets a reply within 5 seconds
 - the plugin exits after `shutdown`, rather than having exited earlier
 

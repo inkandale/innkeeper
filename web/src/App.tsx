@@ -6,6 +6,7 @@ import { History } from "./card/History";
 import { Cards } from "./cards/Cards";
 import { Collections } from "./collections/Collections";
 import { Login } from "./login/Login";
+import { Setup } from "./login/Setup";
 import { Lorebook } from "./lorebook/Lorebook";
 import { Page } from "./shell/Page";
 import { Shell } from "./shell/Shell";
@@ -45,6 +46,7 @@ export function Home() {
 
 export const router = createBrowserRouter([
   { path: "/login", element: <Login /> },
+  { path: "/setup", element: <Setup /> },
   {
     element: <RequireAuth />,
     children: [

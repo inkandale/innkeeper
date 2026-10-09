@@ -74,7 +74,10 @@ test("a failed login shows the error", async () => {
 });
 
 test("no providers explains what to do", async () => {
-  vi.stubGlobal("fetch", vi.fn(async () => json([])));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (req: Request) => (req.url.endsWith("/api/setup") ? json({ detail: "already set up" }, 404) : json([]))),
+  );
   renderLogin();
   expect(await screen.findByText(/No login provider is set up/)).toBeInTheDocument();
 });
@@ -119,4 +122,26 @@ test("a single redirect provider waits for a click without next", async () => {
   expect(assign).not.toHaveBeenCalled();
   await userEvent.click(button);
   await vi.waitFor(() => expect(assign).toHaveBeenCalledWith("https://idp.example/auth?x=1"));
+});
+
+test("an unclaimed server goes to setup", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (req: Request) =>
+      req.url.endsWith("/auth/providers") ? json([]) : json([{ plugin: "password-login", form: {} }]),
+    ),
+  );
+  const router = createMemoryRouter(
+    [
+      { path: "/login", element: <Login /> },
+      { path: "/setup", element: <p>setup page</p> },
+    ],
+    { initialEntries: ["/login"] },
+  );
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByText("setup page")).toBeInTheDocument();
 });

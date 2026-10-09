@@ -57,6 +57,10 @@ type Server struct {
 
 	// loginSlot lets one login run at a time.
 	loginSlot chan struct{}
+	// setupMu guards setupCode, which claims the server while it has no
+	// login provider. Empty until needed.
+	setupMu   sync.Mutex
+	setupCode string
 	// tools caches each plugin instance's MCP tools, by instance version.
 	tools sync.Map
 	// lastPrune is when OAuth clients were last pruned, in Unix seconds.
@@ -136,6 +140,7 @@ func config() huma.Config {
 // routes registers every API operation.
 func (s *Server) routes(api huma.API) {
 	s.authRoutes(api)
+	s.setupRoutes(api)
 	s.entityRoutes(api, s.Lib.Cards, "cards", "card", "Cards")
 	s.cardRoutes(api)
 	s.entityRoutes(api, s.Lib.Lorebooks, "lorebooks", "lorebook", "Lorebooks")

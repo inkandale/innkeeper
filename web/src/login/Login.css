@@ -27,3 +27,5 @@
   gap: calc(var(--space) * 0.5);
   color: var(--text-muted);
 }
+
+.login .hint { font-size: 0.85em; opacity: 0.8; }

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
-import { useNavigate, useSearchParams } from "react-router";
+import { Navigate, useNavigate, useSearchParams } from "react-router";
 import { api, must, nextKey, safeNext } from "../api/client";
 import type { components } from "../api/schema";
 import { formFields, type Field } from "./fields";
@@ -13,6 +13,12 @@ export function Login() {
     queryKey: ["login-providers"],
     queryFn: async () => must(await api.GET("/auth/providers")),
   });
+  // An unclaimed server has no providers; send the browser to claim it.
+  const setup = useQuery({
+    queryKey: ["setup"],
+    queryFn: async () => must(await api.GET("/setup")),
+    enabled: providers.isSuccess && (providers.data?.length ?? 0) === 0,
+  });
   const [chosen, setChosen] = useState<Provider | null>(null);
   const list = providers.data ?? [];
   // Skip the choice only after a 401 sent the user here (next is set). After
@@ -24,7 +30,11 @@ export function Login() {
   if (providers.isPending) body = null;
   else if (providers.isError) body = <p className="error">{providers.error.message}</p>;
   else if (list.length === 0)
-    body = <p>No login provider is set up. The README's "First login" section explains how to add one.</p>;
+    body = setup.isPending ? null : setup.isSuccess ? (
+      <Navigate to="/setup" replace />
+    ) : (
+      <p>No login provider is set up. The README's "First login" section explains how to add one.</p>
+    );
   else if (!provider)
     body = list.map((p) => (
       <button key={p.id} className="button" onClick={() => setChosen(p)}>

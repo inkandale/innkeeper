@@ -532,6 +532,41 @@
         ],
         "type": "object"
       },
+      "ClaimInBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/ClaimInBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "code": {
+            "description": "The setup code from the server log.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "plugin": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "plugin",
+          "params"
+        ],
+        "type": "object"
+      },
       "Collection": {
         "additionalProperties": false,
         "properties": {
@@ -2511,6 +2546,22 @@
         },
         "required": [
           "theme"
+        ],
+        "type": "object"
+      },
+      "SetupPlugin": {
+        "additionalProperties": false,
+        "properties": {
+          "form": {
+            "description": "JSON Schema of the fields to ask for."
+          },
+          "plugin": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "plugin",
+          "form"
         ],
         "type": "object"
       },
@@ -7282,6 +7333,86 @@
         "summary": "Change settings",
         "tags": [
           "Settings"
+        ]
+      }
+    },
+    "/setup": {
+      "get": {
+        "description": "Lists the login plugins that can claim a server with no login provider. 404 once the server is claimed.",
+        "operationId": "get-setup",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SetupPlugin"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [],
+        "summary": "List the ways to claim this server",
+        "tags": [
+          "Auth"
+        ]
+      },
+      "post": {
+        "description": "Creates the owner's login provider with the setup code from the server log, and sets the session cookie.",
+        "operationId": "claim-server",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [],
+        "summary": "Claim this server",
+        "tags": [
+          "Auth"
         ]
       }
     },

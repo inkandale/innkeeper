@@ -390,7 +390,7 @@ func (s *Server) loginPage(w http.ResponseWriter, r *http.Request, ret, failed s
 		return
 	}
 	if len(list) == 0 {
-		s.page(w, http.StatusServiceUnavailable, errorPage, "No login provider is set up yet.")
+		s.page(w, http.StatusServiceUnavailable, errorPage, "No login provider is set up yet. Open /setup in a browser to claim this server.")
 		return
 	}
 	if len(list) == 1 && failed == "" {

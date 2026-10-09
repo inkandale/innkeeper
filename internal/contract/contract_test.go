@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -133,5 +134,27 @@ func TestToolChecks(t *testing.T) {
 	}
 	if err := failed(results)["mcp.tools returns valid tools"]; err == nil || !strings.Contains(err.Error(), "lowercase letters") {
 		t.Fatalf("bad tools: %v", err)
+	}
+}
+
+func TestSetupCheck(t *testing.T) {
+	const name = "auth.setup returns a form or -32601"
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"auth"}), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := failed(results); len(f) > 0 {
+		t.Fatalf("checks failed: %v", f)
+	}
+	if !slices.ContainsFunc(results, func(r Result) bool { return r.Name == name }) {
+		t.Fatalf("no %q check in %v", name, results)
+	}
+
+	results, err = Check(context.Background(), testutil.FakePluginWith(t, []string{"auth"}, "-mode=bad-setup"), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := failed(results)[name]; err == nil || !strings.Contains(err.Error(), "not a JSON object") {
+		t.Fatalf("bad setup form: got %v", err)
 	}
 }

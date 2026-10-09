@@ -192,6 +192,33 @@ same way and waits a second, so don't add your own delay.
 {"jsonrpc": "2.0", "id": 3, "result": {"subject": "owner"}}
 ```
 
+Two optional methods let the owner claim a new server with this provider.
+Both run before any instance exists, with an empty config and no secrets. A
+plugin without them returns -32601 and can't be used to claim.
+`innkeeper plugin check` accepts either a form from `auth.setup` or -32601.
+
+**`auth.setup`** takes no params and replies with `form`, a JSON Schema
+object as in `auth.begin`.
+
+**`auth.setup.complete`** creates the owner's login.
+
+| Param | Meaning |
+|---|---|
+| `params` | The setup form's fields |
+
+| Field | Meaning |
+|---|---|
+| `secrets` | The new instance's secrets, such as `password_hash` |
+| `subject` | The `subject` `auth.complete` will report for the owner |
+
+Reply with an error to reject the form. The core shows the owner its
+message, so say what is wrong with the input.
+
+```json
+{"jsonrpc": "2.0", "id": 7, "method": "auth.setup.complete", "params": {"params": {"password": "…", "confirm": "…"}}}
+{"jsonrpc": "2.0", "id": 7, "result": {"secrets": {"password_hash": "$2a$12$…"}, "subject": "owner"}}
+```
+
 ### `push` and `pull`
 
 A target plugin sends cards to an app (`push`) and reads them back (`pull`).

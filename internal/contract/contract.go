@@ -95,6 +95,14 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 		}
 	}
 
+	if slices.Contains(m.Capabilities, "auth") {
+		setupErr := checkSetup(ctx, p)
+		results = append(results, Result{"auth.setup returns a form or -32601", setupErr})
+		if errors.Is(setupErr, protocol.ErrClosed) || !p.Alive() {
+			return exited(results, p), nil
+		}
+	}
+
 	if slices.Contains(m.Capabilities, "mcp") {
 		toolsErr := checkTools(ctx, p)
 		results = append(results, Result{"mcp.tools returns valid tools", toolsErr})
@@ -189,6 +197,25 @@ func checkTools(ctx context.Context, p *pluginhost.Process) error {
 		errs = append(errs, t.Validate())
 	}
 	return errors.Join(errs...)
+}
+
+// checkSetup accepts a plugin without setup, or one whose form is a JSON
+// object.
+func checkSetup(ctx context.Context, p *pluginhost.Process) error {
+	var res protocol.AuthSetupResult
+	err := call(ctx, p, protocol.MethodAuthSetup, nil, &res)
+	var rpcErr *protocol.Error
+	if errors.As(err, &rpcErr) && rpcErr.Code == protocol.CodeMethodNotFound {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var form map[string]any
+	if err := json.Unmarshal(res.Form, &form); err != nil || form == nil {
+		return errors.New("form is not a JSON object")
+	}
+	return nil
 }
 
 // call makes one plugin call with its own timeout.

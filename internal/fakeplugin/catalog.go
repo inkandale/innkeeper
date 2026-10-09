@@ -18,13 +18,16 @@ import (
 // bad-catalog describes nothing, catalog-repeat serves the first page for
 // every cursor, catalog-lax accepts any filter, catalog-no-notfound answers
 // unknown IDs with -32000, and catalog-wrong-hash reports a content_hash
-// that doesn't match the data.
+// that doesn't match the data. catalog-sourceless checks params, then
+// answers like a catalog whose source isn't configured.
 var catalogInfo = protocol.CatalogInfo{
 	Kinds:   []string{protocol.KindCard, protocol.KindLorebook},
 	Filters: []protocol.CatalogFilter{{Name: "tag", Label: "Tag", Type: protocol.FilterText}},
 	Sorts:   []protocol.CatalogOption{{Value: "name", Label: "Name"}},
 	Similar: true,
 }
+
+var noSource = protocol.NewError(-32000, "config.source is not set", false)
 
 type catalogEntry struct {
 	id, kind string
@@ -93,6 +96,9 @@ func catalogSearch(params json.RawMessage, mode string) (any, error) {
 			return nil, invalidParams(err)
 		}
 	}
+	if mode == "catalog-sourceless" {
+		return nil, noSource
+	}
 	var tag string
 	_ = json.Unmarshal(p.Filters["tag"], &tag)
 	items := []protocol.CatalogItem{}
@@ -120,6 +126,9 @@ func catalogGet(blobTmp string, params json.RawMessage, mode string) (any, error
 	var p protocol.CatalogGetParams
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, invalidParams(err)
+	}
+	if mode == "catalog-sourceless" {
+		return nil, noSource
 	}
 	i := slices.IndexFunc(catalogEntries, func(e catalogEntry) bool { return e.id == p.ID })
 	if i < 0 {
@@ -160,6 +169,9 @@ func catalogSimilar(params json.RawMessage, mode string) (any, error) {
 	var p protocol.CatalogSimilarParams
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, invalidParams(err)
+	}
+	if mode == "catalog-sourceless" {
+		return nil, noSource
 	}
 	near := func(a, b *int64) bool { return a != nil && b != nil && cardhash.Distance(*a, *b) <= p.MaxDistance }
 	res := protocol.CatalogSimilarResult{Items: []protocol.CatalogItem{}}

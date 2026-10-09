@@ -191,3 +191,26 @@ func TestCatalogChecks(t *testing.T) {
 		})
 	}
 }
+
+// Without a config, a catalog may refuse what needs its source. With one,
+// it must search.
+func TestSourcelessCatalog(t *testing.T) {
+	dir := testutil.FakePluginWith(t, []string{"catalog"}, "-mode=catalog-sourceless")
+	results, err := Check(context.Background(), dir, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := failed(results); len(f) > 0 {
+		t.Fatalf("checks failed without a config: %v", f)
+	}
+
+	Config = map[string]any{"source": "testdata"}
+	t.Cleanup(func() { Config = nil })
+	results, err = Check(context.Background(), dir, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := failed(results)[catalogPagesName]; got == nil || !strings.Contains(got.Error(), "config.source is not set") {
+		t.Fatalf("with a config: got %v, want the search error", got)
+	}
+}

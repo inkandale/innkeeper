@@ -37,20 +37,24 @@ func checkCatalog(ctx context.Context, p *pluginhost.Process, tmp string) []Resu
 		return results
 	}
 	var first *protocol.CatalogItem
+	var sourceless bool
 	checks := []struct {
 		name string
 		run  func(context.Context) error
 	}{
-		{catalogPagesName, func(ctx context.Context) (err error) { first, err = checkCatalogPages(ctx, p, info); return err }},
+		{catalogPagesName, func(ctx context.Context) (err error) {
+			first, sourceless, err = checkCatalogPages(ctx, p, info)
+			return err
+		}},
 		{catalogFiltersName, func(ctx context.Context) error { return checkCatalogFilters(ctx, p) }},
-		{catalogNotFoundName, func(ctx context.Context) error { return checkCatalogNotFound(ctx, p) }},
+		{catalogNotFoundName, func(ctx context.Context) error { return checkCatalogNotFound(ctx, p, sourceless) }},
 		{catalogGetName, func(ctx context.Context) error { return checkCatalogGet(ctx, p, first, tmp) }},
 	}
 	if info.Similar {
 		checks = append(checks, struct {
 			name string
 			run  func(context.Context) error
-		}{catalogSimilarName, func(ctx context.Context) error { return checkCatalogSimilar(ctx, p, info, first) }})
+		}{catalogSimilarName, func(ctx context.Context) error { return checkCatalogSimilar(ctx, p, info, first, sourceless) }})
 	}
 	for _, c := range checks {
 		err := c.run(ctx)
@@ -62,38 +66,38 @@ func checkCatalog(ctx context.Context, p *pluginhost.Process, tmp string) []Resu
 	return results
 }
 
-// answered reports whether err is a reply other than -32601. A catalog
-// checked without its source may refuse a search that way.
+// answered reports whether err is a reply other than -32601. Without a
+// config, a catalog may refuse calls that need its source that way.
 func answered(err error) bool {
 	var rpcErr *protocol.Error
 	return errors.As(err, &rpcErr) && rpcErr.Code != protocol.CodeMethodNotFound
 }
 
 // checkCatalogPages walks one-item pages and returns the first item. Every
-// item must be valid and none may come back on a later page.
-func checkCatalogPages(ctx context.Context, p *pluginhost.Process, info protocol.CatalogInfo) (*protocol.CatalogItem, error) {
-	var first *protocol.CatalogItem
+// item must be valid and none may come back on a later page. sourceless
+// reports that, checked without a config, the catalog refused to search.
+func checkCatalogPages(ctx context.Context, p *pluginhost.Process, info protocol.CatalogInfo) (first *protocol.CatalogItem, sourceless bool, err error) {
 	seen := map[string]bool{}
 	cursor := ""
 	for range catalogPages {
 		var res protocol.CatalogSearchResult
 		params := protocol.CatalogSearchParams{Page: protocol.CatalogPage{Size: 1, Cursor: cursor}}
 		err := call(ctx, p, protocol.MethodCatalogSearch, params, &res)
-		if cursor == "" && answered(err) {
-			return nil, nil
+		if cursor == "" && len(Config) == 0 && answered(err) {
+			return nil, true, nil
 		}
 		if err != nil {
-			return first, err
+			return first, false, err
 		}
 		if len(res.Items) > 1 {
-			return first, fmt.Errorf("asked for 1 item, got %d", len(res.Items))
+			return first, false, fmt.Errorf("asked for 1 item, got %d", len(res.Items))
 		}
 		for _, it := range res.Items {
 			if err := it.Validate(info.Kinds); err != nil {
-				return first, err
+				return first, false, err
 			}
 			if seen[it.ID] {
-				return first, fmt.Errorf("item %q came back on a later page", it.ID)
+				return first, false, fmt.Errorf("item %q came back on a later page", it.ID)
 			}
 			seen[it.ID] = true
 			if first == nil {
@@ -105,7 +109,7 @@ func checkCatalogPages(ctx context.Context, p *pluginhost.Process, info protocol
 		}
 		cursor = res.Next
 	}
-	return first, nil
+	return first, false, nil
 }
 
 func checkCatalogFilters(ctx context.Context, p *pluginhost.Process) error {
@@ -113,9 +117,13 @@ func checkCatalogFilters(ctx context.Context, p *pluginhost.Process) error {
 	return expectCode(call(ctx, p, protocol.MethodCatalogSearch, params, nil), protocol.CodeInvalidParams)
 }
 
-func checkCatalogNotFound(ctx context.Context, p *pluginhost.Process) error {
+func checkCatalogNotFound(ctx context.Context, p *pluginhost.Process, sourceless bool) error {
 	params := protocol.CatalogGetParams{ID: "innkeeper-contract-check-missing"}
-	return expectCode(call(ctx, p, protocol.MethodCatalogGet, params, nil), protocol.CodeRemoteNotFound)
+	err := call(ctx, p, protocol.MethodCatalogGet, params, nil)
+	if sourceless && answered(err) {
+		return nil
+	}
+	return expectCode(err, protocol.CodeRemoteNotFound)
 }
 
 // checkCatalogGet fetches the first search result with its avatar and wants
@@ -138,7 +146,7 @@ func checkCatalogGet(ctx context.Context, p *pluginhost.Process, it *protocol.Ca
 	if !slices.ContainsFunc(res.Versions, func(v protocol.CatalogVersion) bool { return v.Version == res.Version }) {
 		return fmt.Errorf("versions don't list version %q", res.Version)
 	}
-	data := res.Data
+	// The library has no hash for other kinds yet.
 	switch it.Kind {
 	case protocol.KindCard:
 		var c struct {
@@ -148,19 +156,12 @@ func checkCatalogGet(ctx context.Context, p *pluginhost.Process, it *protocol.Ca
 		if err := json.Unmarshal(res.Data, &c); err != nil || c.Spec != "chara_card_v3" {
 			return errors.New("data is not a chara_card_v3 card")
 		}
-		data = c.Data
-	case protocol.KindLorebook:
-	default:
-		// The library has no hash for other kinds yet.
-		data = nil
-	}
-	if data != nil {
-		hash, err := cardhash.ContentHash(data)
-		if err != nil {
-			return fmt.Errorf("data: %w", err)
+		if err := checkHash(c.Data, it.Hashes.ContentHash); err != nil {
+			return err
 		}
-		if hash != it.Hashes.ContentHash {
-			return fmt.Errorf("data hashes to %s, but search reported %s; hash with the cardhash package", hash, it.Hashes.ContentHash)
+	case protocol.KindLorebook:
+		if err := checkHash(res.Data, it.Hashes.ContentHash); err != nil {
+			return err
 		}
 	}
 	if res.Avatar == "" {
@@ -175,9 +176,20 @@ func checkCatalogGet(ctx context.Context, p *pluginhost.Process, it *protocol.Ca
 	return nil
 }
 
+func checkHash(data json.RawMessage, want string) error {
+	hash, err := cardhash.ContentHash(data)
+	if err != nil {
+		return fmt.Errorf("data: %w", err)
+	}
+	if hash != want {
+		return fmt.Errorf("data hashes to %s, but search reported %s; hash with the cardhash package", hash, want)
+	}
+	return nil
+}
+
 // checkCatalogSimilar looks up the first search result by its own hashes
 // and wants it among the matches. With no item it only wants an answer.
-func checkCatalogSimilar(ctx context.Context, p *pluginhost.Process, info protocol.CatalogInfo, it *protocol.CatalogItem) error {
+func checkCatalogSimilar(ctx context.Context, p *pluginhost.Process, info protocol.CatalogInfo, it *protocol.CatalogItem, sourceless bool) error {
 	params := protocol.CatalogSimilarParams{Kind: info.Kinds[0],
 		Hashes: protocol.CatalogHashes{ContentHash: strings.Repeat("0", 64)}, MaxDistance: 3, Limit: 10}
 	if it != nil {
@@ -185,7 +197,7 @@ func checkCatalogSimilar(ctx context.Context, p *pluginhost.Process, info protoc
 	}
 	var res protocol.CatalogSimilarResult
 	err := call(ctx, p, protocol.MethodCatalogSimilar, params, &res)
-	if it == nil && answered(err) {
+	if sourceless && answered(err) {
 		return nil
 	}
 	if err != nil {

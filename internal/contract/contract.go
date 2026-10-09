@@ -121,7 +121,7 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 
 	if slices.Contains(m.Capabilities, "catalog") {
 		results = append(results, checkCatalog(ctx, p, tmp)...)
-		if !p.Alive() {
+		if errors.Is(results[len(results)-1].Err, protocol.ErrClosed) || !p.Alive() {
 			return exited(results, p), nil
 		}
 	}

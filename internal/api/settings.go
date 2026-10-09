@@ -14,14 +14,16 @@ import (
 )
 
 type settings struct {
-	Theme string `json:"theme" doc:"The selected theme plugin, or empty for the default theme."`
+	Theme          string `json:"theme" doc:"The selected theme plugin, or empty for the default theme."`
+	OnboardingDone bool   `json:"onboarding_done" doc:"Whether the owner finished or skipped the setup wizard."`
 }
 
 type settingsOut struct{ Body settings }
 
 type patchSettingsIn struct {
 	Body struct {
-		Theme *string `json:"theme,omitempty" doc:"An installed theme plugin's name, or empty for the default theme."`
+		Theme          *string `json:"theme,omitempty" doc:"An installed theme plugin's name, or empty for the default theme."`
+		OnboardingDone *bool   `json:"onboarding_done,omitempty" doc:"true once the owner finishes or skips the setup wizard; false shows it again."`
 	}
 }
 
@@ -40,7 +42,11 @@ func (s *Server) settings(ctx context.Context) (*settingsOut, error) {
 	if m := s.Registry.Manifests()[name]; m == nil || !m.IsTheme() {
 		name = ""
 	}
-	return &settingsOut{Body: settings{Theme: name}}, nil
+	done, err := s.Registry.Setting(ctx, "onboarding_done")
+	if err != nil {
+		return nil, s.fail(err)
+	}
+	return &settingsOut{Body: settings{Theme: name, OnboardingDone: done == "true"}}, nil
 }
 
 func (s *Server) settingsRoutes(api huma.API) {
@@ -54,6 +60,15 @@ func (s *Server) settingsRoutes(api huma.API) {
 		func(ctx context.Context, in *patchSettingsIn) (*settingsOut, error) {
 			if in.Body.Theme != nil {
 				if err := s.Registry.SetTheme(ctx, *in.Body.Theme); err != nil {
+					return nil, s.fail(err)
+				}
+			}
+			if in.Body.OnboardingDone != nil {
+				v := ""
+				if *in.Body.OnboardingDone {
+					v = "true"
+				}
+				if err := s.Registry.SetSetting(ctx, "onboarding_done", v); err != nil {
 					return nil, s.fail(err)
 				}
 			}

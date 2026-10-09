@@ -137,10 +137,10 @@ Each `index.toml` entry in innkeeper-plugins gains two optional fields:
 | Field | Example | Use |
 |---|---|---|
 | `category` | `"Apps"` | The wizard's group heading |
-| `released` | `2026-10-06` | Shown next to the version |
+| `released` | `"2026-10-06"` | Shown next to the version |
 
-`/plugin-catalog` passes both through. The plugin repo's release step sets
-`released` when it bumps `version`. An entry without `released` shows only
+`/plugin-catalog` passes both through. `index.toml` in the plugin repo holds
+`category`; its `publish` tool stamps `released` with the publish date. An entry without `released` shows only
 its version.
 
 ### Route and flag
@@ -173,8 +173,8 @@ card, and the rest continue.
 ### Step: set up plugins
 
 One sub-step per selected plugin: an instance name, then the plugin's config
-through `SchemaForm`. Saving creates the instance and runs `check`. A failed
-check keeps the instance and shows the error, with retry and skip. A plugin
+through `SchemaForm`. Saving creates the instance. For a `pull` plugin it then lists the app's
+items (`GET /instances/{id}/items`) to check the connection. A failed check keeps the instance and shows the error, with retry and skip. A plugin
 with no config fields gets its instance created without a sub-step.
 
 ### Step: bring in cards

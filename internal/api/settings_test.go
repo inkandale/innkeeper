@@ -101,3 +101,26 @@ func TestUninstalledTheme(t *testing.T) {
 		t.Fatalf("theme.css = %s", r)
 	}
 }
+
+func TestOnboardingDone(t *testing.T) {
+	e := newEnv(t)
+	var got struct {
+		OnboardingDone bool `json:"onboarding_done"`
+	}
+	e.call("GET", "/settings", nil, 200, &got)
+	if got.OnboardingDone {
+		t.Fatal("onboarding done on a new server")
+	}
+	e.call("PATCH", "/settings", map[string]any{"onboarding_done": true}, 200, &got)
+	if !got.OnboardingDone {
+		t.Fatal("PATCH didn't set onboarding_done")
+	}
+	e.call("GET", "/settings", nil, 200, &got)
+	if !got.OnboardingDone {
+		t.Fatal("onboarding_done didn't persist")
+	}
+	e.call("PATCH", "/settings", map[string]any{"onboarding_done": false}, 200, &got)
+	if got.OnboardingDone {
+		t.Fatal("PATCH didn't clear onboarding_done")
+	}
+}

@@ -16,6 +16,8 @@ version = "1.0.0"
 protocol = 1
 capabilities = ["import"]
 description = "A good plugin."
+category = "Apps"
+released = "2026-10-06"
 unknown_key = "ignored"
 
 [[plugin.artifact]]
@@ -39,6 +41,10 @@ func TestIndex(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].Name != "good" || len(got[0].Artifacts) != 1 || got[0].Artifacts[0].Arch != "amd64" {
 		t.Fatalf("got %+v", got)
+	}
+
+	if got[0].Category != "Apps" || got[0].Released != "2026-10-06" {
+		t.Fatalf("category and released: %+v", got[0])
 	}
 
 	dir := t.TempDir()

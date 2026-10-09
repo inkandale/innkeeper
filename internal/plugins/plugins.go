@@ -536,26 +536,36 @@ func Retryable(err error) bool {
 	return errors.Is(err, protocol.ErrClosed) || errors.As(err, &rpcErr) && rpcErr.Retryable()
 }
 
-// Theme is the selected theme plugin's name, or "" for the default theme.
-func (r *Registry) Theme(ctx context.Context) (string, error) {
-	var name string
-	err := r.pool.QueryRow(ctx, `SELECT value FROM setting WHERE key = 'theme'`).Scan(&name)
+// Setting is a core setting's value, or "" when unset.
+func (r *Registry) Setting(ctx context.Context, key string) (string, error) {
+	var v string
+	err := r.pool.QueryRow(ctx, `SELECT value FROM setting WHERE key = $1`, key).Scan(&v)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", nil
 	}
-	return name, err
+	return v, err
 }
+
+// SetSetting stores a core setting; "" removes it.
+func (r *Registry) SetSetting(ctx context.Context, key, value string) error {
+	if value == "" {
+		_, err := r.pool.Exec(ctx, `DELETE FROM setting WHERE key = $1`, key)
+		return err
+	}
+	_, err := r.pool.Exec(ctx, `INSERT INTO setting (key, value) VALUES ($1, $2)
+		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, key, value)
+	return err
+}
+
+// Theme is the selected theme plugin's name, or "" for the default theme.
+func (r *Registry) Theme(ctx context.Context) (string, error) { return r.Setting(ctx, "theme") }
 
 // SetTheme selects an installed theme plugin, or the default theme for "".
 func (r *Registry) SetTheme(ctx context.Context, name string) error {
-	if name == "" {
-		_, err := r.pool.Exec(ctx, `DELETE FROM setting WHERE key = 'theme'`)
-		return err
+	if name != "" {
+		if m, ok := r.manifest(name); !ok || !m.IsTheme() {
+			return fmt.Errorf("%w: %q is not an installed theme", ErrInvalid, name)
+		}
 	}
-	if m, ok := r.manifest(name); !ok || !m.IsTheme() {
-		return fmt.Errorf("%w: %q is not an installed theme", ErrInvalid, name)
-	}
-	_, err := r.pool.Exec(ctx, `INSERT INTO setting (key, value) VALUES ('theme', $1)
-		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, name)
-	return err
+	return r.SetSetting(ctx, "theme", name)
 }

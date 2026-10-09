@@ -27,12 +27,16 @@ const (
 // Entry is one plugin version in a source's index.toml. Unknown keys are
 // ignored, so a newer index still reads.
 type Entry struct {
-	Name         string     `toml:"name" json:"name"`
-	Version      string     `toml:"version" json:"version"`
-	Protocol     int        `toml:"protocol" json:"protocol"`
-	Capabilities []string   `toml:"capabilities" json:"capabilities"`
-	Description  string     `toml:"description" json:"description"`
-	Artifacts    []Artifact `toml:"artifact" json:"-"`
+	Name         string   `toml:"name" json:"name"`
+	Version      string   `toml:"version" json:"version"`
+	Protocol     int      `toml:"protocol" json:"protocol"`
+	Capabilities []string `toml:"capabilities" json:"capabilities"`
+	Description  string   `toml:"description" json:"description"`
+	// Category groups the plugin in the setup wizard, such as "Apps".
+	Category string `toml:"category" json:"category,omitempty"`
+	// Released is the version's publish date, YYYY-MM-DD.
+	Released  string     `toml:"released" json:"released,omitempty"`
+	Artifacts []Artifact `toml:"artifact" json:"-"`
 }
 
 // Artifact is an Entry's gzipped tarball for one platform. URL may be

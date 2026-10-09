@@ -143,7 +143,8 @@ docker compose logs api | grep "setup code"
 
 On Kubernetes, `kubectl logs deploy/innkeeper -c api` shows the same line.
 Open the site, which sends you to `/setup`, and enter the code with a
-password. This creates a login with the bundled `password-login` plugin.
+password. This creates a login with the bundled `password-login` plugin and
+opens the setup wizard (see [Web UI](#web-ui)).
 The code changes each time the API restarts. Add other login providers, such
 as OIDC, in Settings after setup.
 
@@ -166,6 +167,10 @@ clearing `owner_subject` logs that identity out.
 `innkeeper api` serves the web UI at its root, for example
 `http://localhost:8080/`. Log in with any login provider (see
 [First login](#first-login)).
+
+After the claim, the setup wizard at `/welcome` walks you through choosing
+plugins from the catalog, setting up each one, and importing cards. It shows
+once; to open it again, use "Set up apps and import" in Settings.
 
 To work on the UI, run `innkeeper api` and then, in `web/`:
 

@@ -20,6 +20,10 @@ import { Job } from "./settings/Job";
 import { Jobs } from "./settings/Jobs";
 import { Plugins } from "./settings/Plugins";
 import { Settings } from "./settings/Settings";
+import { BringInCards } from "./welcome/BringInCards";
+import { ChoosePlugins } from "./welcome/ChoosePlugins";
+import { SetUpPlugins } from "./welcome/SetUpPlugins";
+import { Welcome } from "./welcome/Welcome";
 
 // RequireAuth checks the session. A 401 sends the browser to /login via the
 // client's middleware.
@@ -32,8 +36,11 @@ function RequireAuth() {
   return <Outlet />;
 }
 
-/** Home goes where a redirect login asked to return, or to the cards. */
+/** Home sends an owner who hasn't finished the setup wizard to it, else goes where a redirect login asked to return, or to the cards. */
 export function Home() {
+  const settings = useQuery({ queryKey: ["settings"], queryFn: async () => must(await api.GET("/settings")) });
+  if (settings.isPending) return null;
+  // Read and drop the saved destination either way, so it can't hijack a later visit to /.
   let next = "/";
   try {
     next = safeNext(sessionStorage.getItem(nextKey));
@@ -41,6 +48,7 @@ export function Home() {
   } catch {
     // Storage is blocked: use the default.
   }
+  if (settings.data && !settings.data.onboarding_done) return <Navigate to="/welcome" replace />;
   return <Navigate to={next !== "/" ? next : "/cards"} replace />;
 }
 
@@ -77,6 +85,17 @@ export const router = createBrowserRouter([
               { path: "jobs/:id", element: <Job /> },
               { path: "access", element: <Access /> },
               { path: "appearance", element: <Appearance /> },
+            ],
+          },
+          {
+            path: "welcome",
+            element: <Welcome />,
+            children: [
+              { index: true, element: <Navigate to="plugins" replace /> },
+              { path: "plugins", element: <ChoosePlugins /> },
+              { path: "setup", element: <SetUpPlugins /> },
+              { path: "setup/:plugin", element: <SetUpPlugins /> },
+              { path: "cards", element: <BringInCards /> },
             ],
           },
           { path: "*", element: <Page title="Not found" /> },

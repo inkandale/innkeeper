@@ -176,3 +176,57 @@ func TestSetupMakesACodeWhenNeeded(t *testing.T) {
 		t.Fatal("no setup code")
 	}
 }
+
+// takeLoginName leaves an ownerless instance holding the name "Login", as
+// an old, broken, or uninstalled login provider would.
+func takeLoginName(t *testing.T, e *testEnv) {
+	t.Helper()
+	if _, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "fake", Name: "Login"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBootstrapWhenLoginNameIsTaken(t *testing.T) {
+	e := unclaimedEnv(t)
+	takeLoginName(t, e)
+	if err := e.s.Bootstrap(context.Background(), validHash); err != nil {
+		t.Fatal(err)
+	}
+	if inst := loginInstance(t, e); inst.Name != "Login 2" {
+		t.Fatalf("instance %+v", inst)
+	}
+}
+
+func TestSetupWhenLoginNameIsTaken(t *testing.T) {
+	e := unclaimedEnv(t)
+	takeLoginName(t, e)
+	if err := e.s.Bootstrap(context.Background(), ""); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.send("POST", "/setup", claimBody(e.s.currentSetupCode(), "pw", "pw")); r.Status != http.StatusNoContent {
+		t.Fatalf("claim: %s", r)
+	}
+	if inst := loginInstance(t, e); inst.Name != "Login 2" {
+		t.Fatalf("instance %+v", inst)
+	}
+}
+
+// A code left over from before the server was claimed claims nothing.
+func TestSetupRefusesAClaimedServerWithAValidCode(t *testing.T) {
+	e := newEnv(t)
+	pw := *e.manifests["fake"]
+	pw.Name, pw.Capabilities, pw.Secrets = "password-login", []string{"auth"}, []string{"password_hash"}
+	pw.Command = []string{e.manifests["fake"].Command[0], "-caps=auth", "-name=password-login"}
+	e.manifests["password-login"] = &pw
+	code := e.s.ensureSetupCode()
+	if r := e.send("POST", "/setup", claimBody(code, "pw", "pw")); r.Status != http.StatusForbidden {
+		t.Fatalf("claim: %s", r)
+	}
+	insts, err := e.s.Registry.ListInstances(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(insts) != 2 {
+		t.Fatalf("%d instances, want 2", len(insts))
+	}
+}

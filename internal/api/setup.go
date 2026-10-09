@@ -52,13 +52,25 @@ func (s *Server) Bootstrap(ctx context.Context, ownerHash string) error {
 	if !bcryptHash.MatchString(ownerHash) {
 		return errors.New("INNKEEPER_OWNER_PASSWORD_HASH is not a bcrypt hash; make one with: password-login hash")
 	}
-	owner := "owner"
-	if _, err := s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: "password-login", Name: "Login",
-		Secrets: map[string]string{"password_hash": ownerHash}, OwnerSubject: &owner}); err != nil {
+	if _, err := s.createOwnerLogin(ctx, "password-login", map[string]string{"password_hash": ownerHash}, "owner"); err != nil {
 		return fmt.Errorf("create the owner's login from INNKEEPER_OWNER_PASSWORD_HASH: %w", err)
 	}
 	s.Log.Info("created the owner's login from INNKEEPER_OWNER_PASSWORD_HASH")
 	return nil
+}
+
+// createOwnerLogin creates the owner's login instance. An old, unusable
+// login provider may still hold the name "Login", so it tries "Login 2" and on.
+func (s *Server) createOwnerLogin(ctx context.Context, plugin string, secrets map[string]string, subject string) (int64, error) {
+	name := "Login"
+	for n := 2; ; n++ {
+		id, err := s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: plugin, Name: name,
+			Secrets: secrets, OwnerSubject: &subject})
+		if !errors.Is(err, plugins.ErrNameTaken) || n > 10 {
+			return id, err
+		}
+		name = fmt.Sprintf("Login %d", n)
+	}
 }
 
 // ensureSetupCode returns the setup code, making and logging one if needed.
@@ -189,11 +201,6 @@ func (s *Server) setupRoutes(api huma.API) {
 			if !codeMatches(s.currentSetupCode(), in.Body.Code) {
 				return nil, refuse()
 			}
-			if claimed, err := s.claimed(ctx); err != nil {
-				return nil, s.fail(err)
-			} else if claimed {
-				return nil, refuse()
-			}
 			m := s.Registry.Manifests()[in.Body.Plugin]
 			if m == nil || !slices.Contains(m.Capabilities, "auth") {
 				return nil, huma.Error400BadRequest("no such login plugin: " + in.Body.Plugin)
@@ -211,8 +218,13 @@ func (s *Server) setupRoutes(api huma.API) {
 			if res.Subject == "" {
 				return nil, huma.Error502BadGateway("plugin: auth.setup.complete returned no subject")
 			}
-			id, err := s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: m.Name, Name: "Login",
-				Secrets: res.Secrets, OwnerSubject: &res.Subject})
+			// Checked last, just before the claim; loginSlot keeps logins out meanwhile.
+			if claimed, err := s.claimed(ctx); err != nil {
+				return nil, s.fail(err)
+			} else if claimed {
+				return nil, refuse()
+			}
+			id, err := s.createOwnerLogin(ctx, m.Name, res.Secrets, res.Subject)
 			if err != nil {
 				return nil, s.fail(err)
 			}

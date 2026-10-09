@@ -49,9 +49,10 @@ Spec: `docs/superpowers/specs/2026-10-09-archive-catalog-design.md`, build step 
 git mv internal/cardhash cardhash
 grep -rl 'innkeeper/internal/cardhash' --include='*.go' . | xargs sed -i '' 's|innkeeper/internal/cardhash|innkeeper/cardhash|'
 gofmt -w $(grep -rl 'innkeeper/cardhash' --include='*.go' .)
+sed -i '' 's|filepath.Join("..", "cardhash", "testdata"|filepath.Join("..", "..", "cardhash", "testdata"|' internal/library/blobs_test.go internal/library/thumbs_test.go internal/library/organize_test.go internal/api/organize_test.go
 ```
 
-`gofmt -w` re-sorts the changed import within its group.
+`gofmt -w` re-sorts the changed import within its group. The four tests in the `sed` line open `cardhash/testdata/avatar.png` by relative path. They're database tests, so without `INNKEEPER_TEST_DATABASE_URL` they skip and look green.
 
 - [ ] **Step 2: Reword the package comment**
 

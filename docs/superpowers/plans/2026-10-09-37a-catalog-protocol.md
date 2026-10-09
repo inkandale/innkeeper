@@ -722,7 +722,7 @@ func catalogSearch(params json.RawMessage, mode string) (any, error) {
 	}
 	var tag string
 	_ = json.Unmarshal(p.Filters["tag"], &tag)
-	var items []protocol.CatalogItem
+	items := []protocol.CatalogItem{}
 	for _, e := range catalogEntries {
 		it := e.item(mode)
 		if (p.Kind == "" || p.Kind == e.kind) && (tag == "" || slices.Contains(e.tags, tag)) &&

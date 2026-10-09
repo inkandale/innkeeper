@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/davidgibbons/innkeeper/internal/cardhash"
+	"github.com/davidgibbons/innkeeper/cardhash"
 )
 
 // Blob is a stored file.

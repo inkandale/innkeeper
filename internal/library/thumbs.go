@@ -13,7 +13,7 @@ import (
 
 	"golang.org/x/image/draw"
 
-	"github.com/davidgibbons/innkeeper/internal/cardhash"
+	"github.com/davidgibbons/innkeeper/cardhash"
 )
 
 // ThumbWidths are the thumbnail widths OpenThumb makes. Few, so the cache

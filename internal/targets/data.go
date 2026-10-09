@@ -9,7 +9,7 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/davidgibbons/innkeeper/internal/cardhash"
+	"github.com/davidgibbons/innkeeper/cardhash"
 )
 
 // Change is one top-level field the app changed.

@@ -1,6 +1,6 @@
 // Package cardhash computes the duplicate-detection fingerprints for cards
-// and lorebooks. The archive catalog plugin must compute the same values, so
-// the test vectors in this package pin each algorithm.
+// and lorebooks. Catalog plugins import it so their hashes match the
+// library's; the test vectors in this package pin each algorithm.
 package cardhash
 
 import (

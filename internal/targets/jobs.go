@@ -30,6 +30,8 @@ type pushPayload struct {
 	LastPush *int64 `json:"last_push,omitempty"`
 	// AppHash is the hash of the app copy a query push may replace.
 	AppHash string `json:"app_hash,omitempty"`
+	// CreateOnly means a query push saw no app copy, so it may only create one.
+	CreateOnly bool `json:"create_only,omitempty"`
 }
 
 // EnqueuePush queues a push of one card.
@@ -90,13 +92,15 @@ func (s *Service) enqueueBulkPush(ctx context.Context, q *jobs.Queue, k kind, in
 		} else {
 			p.CardID = id
 		}
-		if t, ok := bound[id]; ok {
+		t, ok := bound[id]
+		if ok {
 			p.LastPush = &t.lastPush
 			p.AppHash = t.AppHash
 			if confirm == "" && t.AppHash != "" {
 				p.AppHash = t.accepted
 			}
 		}
+		p.CreateOnly = p.AppHash == ""
 		children[i] = jobs.Spec{Kind: PushKind, InstanceID: &instanceID, Payload: p}
 	}
 	return q.EnqueueBulk(ctx, jobs.Spec{Kind: bulk.Kind, InstanceID: &instanceID,
@@ -117,7 +121,7 @@ func (s *Service) RunPush(ctx context.Context, r *jobs.Run) error {
 	if p.LorebookID != 0 {
 		k, id, key = lorebookKind, p.LorebookID, fmt.Sprintf("%d:lorebook:%d:%d", *r.InstanceID, p.LorebookID, r.ID)
 	}
-	b, err := s.push(ctx, k, *r.InstanceID, id, p.NewCopy, key, &pushExpect{lastPush: p.LastPush, appHash: p.AppHash})
+	b, err := s.push(ctx, k, *r.InstanceID, id, p.NewCopy, key, &pushExpect{lastPush: p.LastPush, appHash: p.AppHash, createOnly: p.CreateOnly})
 	var startErr *pluginhost.StartError
 	switch {
 	case errors.Is(err, errAlreadyPushed):

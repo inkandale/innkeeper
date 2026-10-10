@@ -128,6 +128,25 @@ func TestBulkPushRefusesCopyChangedAfterPreview(t *testing.T) {
 	}
 }
 
+// A card unbound when the bulk push is queued may only be created, so a copy
+// bound to it before the job runs is left alone.
+func TestBulkPushLeavesCopyBoundAfterQueue(t *testing.T) {
+	e := setup(t, nil)
+	q := jobs.New(e.pool)
+	parent, err := e.s.EnqueueBulkPush(e.ctx, q, e.inst, []int64{e.card}, false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.push(e.card)
+	e.editRemote("r1", "first_mes", "Well met.")
+	if j := e.startWorker(q)(parent.ID); j.Status != jobs.StatusSucceeded {
+		t.Fatalf("bulk push %s: %v", j.Status, j.Error)
+	}
+	if got := e.remoteData("r1")["first_mes"]; got != "Well met." {
+		t.Fatalf("the app's edit was overwritten: first_mes = %v", got)
+	}
+}
+
 // A push that lands after the bulk push is queued is what the app's copy is
 // checked against, so the queued push still sends a later edit.
 func TestBulkPushAfterAnotherPush(t *testing.T) {

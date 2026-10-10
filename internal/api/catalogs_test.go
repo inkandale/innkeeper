@@ -183,10 +183,31 @@ func TestCatalogAdopt(t *testing.T) {
 	}
 }
 
+// An avatar path the blob store refuses is the catalog's fault, and the
+// path stays out of the reply.
+func TestCatalogAdoptBadAvatar(t *testing.T) {
+	e := newEnv(t)
+	inst := e.catalog("Archive", map[string]any{"bad_avatar": true})
+	r := e.call("POST", fmt.Sprintf("/catalogs/%d/items/brakka/adopt", inst), nil, 502, nil)
+	if strings.Contains(string(r.Body), "/etc/hosts") {
+		t.Fatalf("body leaks the path: %s", r.Body)
+	}
+	var cards, lorebooks int
+	if err := e.pool.QueryRow(context.Background(),
+		`SELECT (SELECT count(*) FROM card), (SELECT count(*) FROM lorebook)`).Scan(&cards, &lorebooks); err != nil {
+		t.Fatal(err)
+	}
+	if cards != 0 || lorebooks != 0 {
+		t.Fatalf("left %d cards and %d lorebooks behind", cards, lorebooks)
+	}
+}
+
 func TestCatalogMatches(t *testing.T) {
 	e := newEnv(t)
 	up := e.catalog("Archive", nil)
 	down := e.catalog("Down", map[string]any{"down": true})
+	broken := e.catalog("Broken", nil)
+	e.markBroken(broken, "bad config")
 	near := e.createCard(`{"name": "Carrow Two", "description": "A cheerful elven bard who sings of the sea."}`)
 
 	var out catalogMatches
@@ -195,7 +216,12 @@ func TestCatalogMatches(t *testing.T) {
 		len(out.Matches[0].Items) != 1 || out.Matches[0].Items[0].ID != "carrow" {
 		t.Fatalf("matches = %+v", out.Matches)
 	}
-	if len(out.Unreachable) != 1 || out.Unreachable[0].ID != down || !strings.Contains(out.Unreachable[0].Error, "catalog Down is unavailable") {
+	unreachable := map[int64]catalogRef{}
+	for _, c := range out.Unreachable {
+		unreachable[c.ID] = c
+	}
+	if len(out.Unreachable) != 2 || !strings.Contains(unreachable[down].Error, "catalog Down is unavailable") ||
+		unreachable[broken].Name != "Broken" || unreachable[broken].Error == "" {
 		t.Fatalf("unreachable = %+v", out.Unreachable)
 	}
 

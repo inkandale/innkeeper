@@ -7,11 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"slices"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/davidgibbons/innkeeper/internal/blobstore"
 	"github.com/davidgibbons/innkeeper/internal/importer"
 	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/library"
@@ -268,10 +270,19 @@ func (s *Server) catalogRoutes(api huma.API) {
 			return out, nil
 		})
 
+	// Listing 200 stops huma adding its default error response, so add it here.
+	schemas := api.OpenAPI().Components.Schemas
+	body := func(mediaType string, t reflect.Type) map[string]*huma.MediaType {
+		return map[string]*huma.MediaType{mediaType: {Schema: schemas.Schema(t, true, "")}}
+	}
 	huma.Register(api, huma.Operation{OperationID: "adopt-catalog-item", Method: http.MethodPost, Path: "/catalogs/{id}/items/{item}/adopt",
 		Summary: "Adopt a catalog item into the library",
 		Description: "Copies one version in as a new card or lorebook; a card's character_book becomes a linked lorebook. " +
-			"Returns 201 with the new entry, or 200 with the one an earlier adopt of the same version made.", Tags: tags},
+			"Returns 201 with the new entry, or 200 with the one an earlier adopt of the same version made.",
+		Tags: tags, DefaultStatus: http.StatusCreated,
+		Responses: map[string]*huma.Response{
+			"200":     {Description: "An earlier adopt's entry", Content: body("application/json", reflect.TypeFor[entityOut]())},
+			"default": {Description: "Error", Content: body("application/problem+json", reflect.TypeFor[huma.ErrorModel]())}}},
 		s.adoptCatalogItem)
 
 	huma.Register(api, huma.Operation{OperationID: "start-catalog-ingest", Method: http.MethodPost, Path: "/catalogs/{id}/ingest",
@@ -347,6 +358,11 @@ func (s *Server) adoptCatalogItem(ctx context.Context, in *catalogItemIn) (*adop
 			library.Edit{Data: res.Data, Source: source, Message: "Adopted"})
 	default:
 		return nil, huma.Error400BadRequest(fmt.Sprintf("can't adopt a %s; the library holds cards and lorebooks", res.Item.Kind))
+	}
+	// The error names server paths, so log it and keep it out of the body.
+	if errors.Is(err, blobstore.ErrInvalid) {
+		s.Log.Error("catalog sent a bad avatar", "catalog", info.Name, "err", err)
+		return nil, huma.Error502BadGateway(fmt.Sprintf("catalog %s sent an avatar the server can't accept", info.Name))
 	}
 	if errors.Is(err, library.ErrInvalid) {
 		return nil, huma.Error502BadGateway(fmt.Sprintf("catalog %s sent an item the library can't take: %v", info.Name, err))

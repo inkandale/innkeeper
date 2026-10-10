@@ -137,7 +137,7 @@ func main() {
 		case protocol.MethodCatalogSearch:
 			return catalogSearch(params, *mode)
 		case protocol.MethodCatalogGet:
-			return catalogGet(blobTmp, params, *mode)
+			return catalogGet(blobTmp, config, params, *mode)
 		case protocol.MethodCatalogSimilar:
 			return catalogSimilar(params, *mode)
 		case protocol.MethodAuthBegin:

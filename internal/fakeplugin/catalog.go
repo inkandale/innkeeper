@@ -21,7 +21,8 @@ import (
 // that doesn't match the data. catalog-sourceless checks params, then
 // answers like a catalog whose source isn't configured.
 // Config down fails every call but describe with a retryable error, and
-// no_ingest describes a catalog that doesn't ingest.
+// no_ingest describes a catalog that doesn't ingest. bad_avatar makes
+// catalog.get name /etc/hosts as a card's avatar.
 var catalogInfo = protocol.CatalogInfo{
 	Kinds:   []string{protocol.KindCard, protocol.KindLorebook},
 	Filters: []protocol.CatalogFilter{{Name: "tag", Label: "Tag", Type: protocol.FilterText}},
@@ -121,7 +122,7 @@ func catalogSearch(params json.RawMessage, mode string) (any, error) {
 	return res, nil
 }
 
-func catalogGet(blobTmp string, params json.RawMessage, mode string) (any, error) {
+func catalogGet(blobTmp string, config map[string]any, params json.RawMessage, mode string) (any, error) {
 	var p protocol.CatalogGetParams
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, invalidParams(err)
@@ -149,7 +150,9 @@ func catalogGet(blobTmp string, params json.RawMessage, mode string) (any, error
 	for v := len(e.versions); v >= 1; v-- {
 		res.Versions = append(res.Versions, protocol.CatalogVersion{Version: strconv.Itoa(v)})
 	}
-	if p.Avatar && e.kind == protocol.KindCard {
+	if p.Avatar && e.kind == protocol.KindCard && config["bad_avatar"] == true {
+		res.Avatar = "/etc/hosts"
+	} else if p.Avatar && e.kind == protocol.KindCard {
 		// The core moves the file, so each call writes a new one.
 		f, err := os.CreateTemp(blobTmp, "catalog-*.png")
 		if err != nil {

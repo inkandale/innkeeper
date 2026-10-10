@@ -81,6 +81,9 @@ func askBulkPush(cmd *cobra.Command, inst string, query json.RawMessage, yes boo
 	if err := json.Unmarshal(query, &search); err != nil || search == nil {
 		return errors.New("the query must be a JSON object")
 	}
+	if search["filter"] == nil && search["text"] == nil {
+		return errors.New("the query needs a filter or text; to select every card, filter on archived")
+	}
 	search["facets"] = []string{"targets"}
 	search["page"] = map[string]int{"size": 1}
 	body, err := json.Marshal(search)

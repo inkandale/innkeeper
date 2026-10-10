@@ -8,20 +8,27 @@ import (
 	"testing"
 )
 
-// runInkIn runs ink with stdin, as a terminal when tty is true.
+// runInkIn runs ink with stdin, as a terminal when tty is true, and returns
+// stderr then stdout.
 func runInkIn(t *testing.T, stdin string, tty bool, args ...string) (string, error) {
+	out, stderr, err := runInkSplit(t, stdin, tty, args...)
+	return stderr + out, err
+}
+
+// runInkSplit is runInkIn with stdout and stderr apart.
+func runInkSplit(t *testing.T, stdin string, tty bool, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
 	old := isTerminal
 	isTerminal = func(io.Reader) bool { return tty }
 	t.Cleanup(func() { isTerminal = old })
-	var out bytes.Buffer
+	var out, errOut bytes.Buffer
 	root := newRoot()
 	root.SetArgs(args)
 	root.SetIn(strings.NewReader(stdin))
 	root.SetOut(&out)
-	root.SetErr(&out)
-	err := root.Execute()
-	return out.String(), err
+	root.SetErr(&errOut)
+	err = root.Execute()
+	return out.String(), errOut.String(), err
 }
 
 const bindingJSON = `{"id": 5, "instance_id": 3, "card_id": 12, "remote_id": "brakka.png", "status": "remote_changed",

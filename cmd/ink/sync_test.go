@@ -48,10 +48,18 @@ func TestSyncPush(t *testing.T) {
 	if !slices.Equal(*got, want) {
 		t.Fatalf("requests = %q, want %q", *got, want)
 	}
-	for _, args := range [][]string{{"3"}, {"3", "12", "--force"}, {"x", "12"}, {"3", "{bad"}, {"3", "[]"}} {
+	out, stderr, err := runInkSplit(t, "", false, "sync", "push", "3", "12", "--yes", "--json")
+	if err != nil || out != `{"id": 9}`+"\n" || !strings.Contains(stderr, "Well met.") {
+		t.Errorf("--json: stdout = %q, stderr = %q, err = %v", out, stderr, err)
+	}
+	n := len(*got)
+	for _, args := range [][]string{{"3"}, {"3", "12", "--force"}, {"x", "12"}, {"3", "{bad"}, {"3", "[]"}, {"3", "{}"}} {
 		if _, err := runInk(t, append([]string{"sync", "push"}, args...)...); err == nil {
 			t.Errorf("push %q succeeded", args)
 		}
+	}
+	if len(*got) != n {
+		t.Errorf("bad pushes sent %q", (*got)[n:])
 	}
 }
 

@@ -448,6 +448,361 @@
         },
         "type": "object"
       },
+      "CatalogFilter": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogOption"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "label",
+          "type"
+        ],
+        "type": "object"
+      },
+      "CatalogGetResult": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/CatalogGetResult.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "avatar": {
+            "type": "string"
+          },
+          "data": {},
+          "item": {
+            "$ref": "#/components/schemas/CatalogItem"
+          },
+          "version": {
+            "type": "string"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogVersion"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "item",
+          "version",
+          "versions",
+          "data"
+        ],
+        "type": "object"
+      },
+      "CatalogHashes": {
+        "additionalProperties": false,
+        "properties": {
+          "content_hash": {
+            "type": "string"
+          },
+          "image_phash": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "text_simhash": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "content_hash"
+        ],
+        "type": "object"
+      },
+      "CatalogHit": {
+        "additionalProperties": false,
+        "properties": {
+          "author": {
+            "type": "string"
+          },
+          "hashes": {
+            "$ref": "#/components/schemas/CatalogHashes"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "latest_version": {
+            "type": "string"
+          },
+          "library": {
+            "description": "Library entries of the item's kind that match it, closest first. content means the same content.",
+            "items": {
+              "$ref": "#/components/schemas/HashMatch"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "thumbnail": {
+            "contentEncoding": "base64",
+            "type": "string"
+          }
+        },
+        "required": [
+          "library",
+          "id",
+          "kind",
+          "name",
+          "latest_version",
+          "hashes"
+        ],
+        "type": "object"
+      },
+      "CatalogInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "filters": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogFilter"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "ingest": {
+            "type": "boolean"
+          },
+          "kinds": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "similar": {
+            "type": "boolean"
+          },
+          "sorts": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogOption"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "kinds",
+          "filters",
+          "sorts",
+          "ingest",
+          "similar"
+        ],
+        "type": "object"
+      },
+      "CatalogItem": {
+        "additionalProperties": false,
+        "properties": {
+          "author": {
+            "type": "string"
+          },
+          "hashes": {
+            "$ref": "#/components/schemas/CatalogHashes"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "latest_version": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "thumbnail": {
+            "contentEncoding": "base64",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "latest_version",
+          "hashes"
+        ],
+        "type": "object"
+      },
+      "CatalogMatch": {
+        "additionalProperties": false,
+        "properties": {
+          "catalog": {
+            "type": "string"
+          },
+          "catalog_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogItem"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "catalog_id",
+          "catalog",
+          "items"
+        ],
+        "type": "object"
+      },
+      "CatalogMatches": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/CatalogMatches.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "matches": {
+            "description": "One per catalog with matches",
+            "items": {
+              "$ref": "#/components/schemas/CatalogMatch"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "unreachable": {
+            "description": "Catalogs that didn't answer, which may hold more matches",
+            "items": {
+              "$ref": "#/components/schemas/CatalogRef"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "matches",
+          "unreachable"
+        ],
+        "type": "object"
+      },
+      "CatalogOption": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "label"
+        ],
+        "type": "object"
+      },
+      "CatalogOut": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "description": "Why the catalog couldn't describe itself",
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "info": {
+            "$ref": "#/components/schemas/CatalogInfo",
+            "description": "The catalog's kinds, filters, and sorts, and whether it ingests and finds similar items"
+          },
+          "last_ingest": {
+            "$ref": "#/components/schemas/JobOut",
+            "description": "The newest catalog.ingest job"
+          },
+          "name": {
+            "type": "string"
+          },
+          "plugin": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "plugin"
+        ],
+        "type": "object"
+      },
       "CatalogPluginOut": {
         "additionalProperties": false,
         "properties": {
@@ -499,6 +854,67 @@
         ],
         "type": "object"
       },
+      "CatalogRef": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "error"
+        ],
+        "type": "object"
+      },
+      "CatalogResults": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/CatalogResults.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "catalog_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "error": {
+            "description": "In POST /search and POST /lorebooks/search: why this catalog returned nothing",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogHit"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next": {
+            "description": "Cursor for the next page, for GET /catalogs/{id}/search",
+            "type": "string"
+          }
+        },
+        "required": [
+          "catalog_id",
+          "items"
+        ],
+        "type": "object"
+      },
       "CatalogSourceOut": {
         "additionalProperties": false,
         "properties": {
@@ -521,6 +937,21 @@
         "required": [
           "source",
           "plugins"
+        ],
+        "type": "object"
+      },
+      "CatalogVersion": {
+        "additionalProperties": false,
+        "properties": {
+          "created": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version"
         ],
         "type": "object"
       },
@@ -1273,6 +1704,33 @@
         ],
         "type": "object"
       },
+      "HashMatch": {
+        "additionalProperties": false,
+        "properties": {
+          "distance": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "reason": {
+            "enum": [
+              "content",
+              "text",
+              "avatar"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "reason",
+          "distance"
+        ],
+        "type": "object"
+      },
       "Health": {
         "additionalProperties": false,
         "properties": {
@@ -1606,7 +2064,7 @@
           },
           "payload": {},
           "progress": {
-            "description": "An import's has done, total, message, imported, skipped, failed, and errors. A running reconcile's has done and total; a finished one's is the snapshot, cut to totals in job lists and streams."
+            "description": "An import's has done, total, message, imported, skipped, failed, and errors. A catalog ingest's has done, total, and message, and once finished, added, updated, removed, and skipped. A running reconcile's has done and total; a finished one's is the snapshot, cut to totals in job lists and streams."
           },
           "run_after": {
             "format": "date-time",
@@ -2152,7 +2610,7 @@
             "type": "string"
           },
           "sources": {
-            "description": "Only library for now.",
+            "description": "library, or catalog:\u003cinstance id\u003e to also search a catalog by text alone. Default: library.",
             "items": {
               "type": "string"
             },
@@ -2422,45 +2880,6 @@
         ],
         "type": "object"
       },
-      "Results": {
-        "additionalProperties": false,
-        "properties": {
-          "$schema": {
-            "description": "A URL to the JSON Schema for this object.",
-            "examples": [
-              "/api/schemas/Results.json"
-            ],
-            "format": "uri",
-            "readOnly": true,
-            "type": "string"
-          },
-          "facets": {
-            "$ref": "#/components/schemas/Facets"
-          },
-          "hits": {
-            "items": {
-              "$ref": "#/components/schemas/Hit"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "next_cursor": {
-            "type": "string"
-          },
-          "total": {
-            "description": "How many match.",
-            "format": "int64",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "hits",
-          "total"
-        ],
-        "type": "object"
-      },
       "RevisionDiff": {
         "additionalProperties": false,
         "properties": {
@@ -2534,6 +2953,55 @@
           "message",
           "source",
           "created_at"
+        ],
+        "type": "object"
+      },
+      "SearchResults": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/SearchResults.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "catalogs": {
+            "description": "One per catalog:\u003cid\u003e source, in order",
+            "items": {
+              "$ref": "#/components/schemas/CatalogResults"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "facets": {
+            "$ref": "#/components/schemas/Facets"
+          },
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/Hit"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next_cursor": {
+            "type": "string"
+          },
+          "total": {
+            "description": "How many match.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "hits",
+          "total"
         ],
         "type": "object"
       },
@@ -3945,6 +4413,49 @@
         ]
       }
     },
+    "/cards/{id}/catalog-matches": {
+      "get": {
+        "description": "Asks every catalog that finds similar items for the same content, near-identical text, or a similar avatar.",
+        "operationId": "find-card-in-catalogs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogMatches"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Find a card in the catalogs",
+        "tags": [
+          "Catalogs"
+        ]
+      }
+    },
     "/cards/{id}/export": {
       "get": {
         "description": "Linked lorebooks are embedded as data.character_book. Formats other than json need a codec plugin instance that writes them.",
@@ -4696,6 +5207,329 @@
         "summary": "Replace a card's tags",
         "tags": [
           "Cards"
+        ]
+      }
+    },
+    "/catalogs": {
+      "get": {
+        "description": "Every instance of a catalog plugin, with its description and newest ingest job.",
+        "operationId": "list-catalogs",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CatalogOut"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List catalogs",
+        "tags": [
+          "Catalogs"
+        ]
+      }
+    },
+    "/catalogs/{id}/ingest": {
+      "post": {
+        "description": "Queues a catalog.ingest job. Returns 409 while an earlier ingest of the catalog is unfinished.",
+        "operationId": "start-catalog-ingest",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Ingest a catalog's source",
+        "tags": [
+          "Catalogs"
+        ]
+      }
+    },
+    "/catalogs/{id}/items/{item}": {
+      "get": {
+        "description": "One version as CCv3, with the item's versions, newest first.",
+        "operationId": "get-catalog-item",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The catalog's item ID, with / escaped as %2F",
+            "in": "path",
+            "name": "item",
+            "required": true,
+            "schema": {
+              "description": "The catalog's item ID, with / escaped as %2F",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Default: the latest",
+            "explode": false,
+            "in": "query",
+            "name": "version",
+            "schema": {
+              "description": "Default: the latest",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogGetResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a catalog item",
+        "tags": [
+          "Catalogs"
+        ]
+      }
+    },
+    "/catalogs/{id}/items/{item}/adopt": {
+      "post": {
+        "description": "Copies one version in as a new card or lorebook; a card's character_book becomes a linked lorebook. Returns 201 with the new entry, or 200 with the one an earlier adopt of the same version made.",
+        "operationId": "adopt-catalog-item",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The catalog's item ID, with / escaped as %2F",
+            "in": "path",
+            "name": "item",
+            "required": true,
+            "schema": {
+              "description": "The catalog's item ID, with / escaped as %2F",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Default: the latest",
+            "explode": false,
+            "in": "query",
+            "name": "version",
+            "schema": {
+              "description": "Default: the latest",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityOut"
+                }
+              }
+            },
+            "description": "An earlier adopt's entry"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Adopt a catalog item into the library",
+        "tags": [
+          "Catalogs"
+        ]
+      }
+    },
+    "/catalogs/{id}/search": {
+      "get": {
+        "description": "Returns one page of items, each with the library entries that match it.",
+        "operationId": "search-catalog",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Search text; empty matches everything",
+            "explode": false,
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "description": "Search text; empty matches everything",
+              "type": "string"
+            }
+          },
+          {
+            "description": "One of the catalog's kinds; empty for all",
+            "explode": false,
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "description": "One of the catalog's kinds; empty for all",
+              "type": "string"
+            }
+          },
+          {
+            "description": "A JSON object of filter values by name, as the catalog declares them, such as {\"site\": \"chub\"}",
+            "explode": false,
+            "in": "query",
+            "name": "filters",
+            "schema": {
+              "description": "A JSON object of filter values by name, as the catalog declares them, such as {\"site\": \"chub\"}",
+              "type": "string"
+            }
+          },
+          {
+            "description": "One of the catalog's sorts; empty for its first",
+            "explode": false,
+            "in": "query",
+            "name": "sort",
+            "schema": {
+              "description": "One of the catalog's sorts; empty for its first",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Default: the catalog's",
+            "explode": false,
+            "in": "query",
+            "name": "size",
+            "schema": {
+              "description": "Default: the catalog's",
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "next from the previous page",
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "next from the previous page",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogResults"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Search a catalog",
+        "tags": [
+          "Catalogs"
         ]
       }
     },
@@ -5974,7 +6808,7 @@
     },
     "/lorebooks/search": {
       "post": {
-        "description": "Takes the same query as POST /search. Text matches names, descriptions, entry keys, and entry content. Lorebooks have no tags or collections. Send {} to list every lorebook that isn't archived, newest first.",
+        "description": "Takes the same query as POST /search. Text matches names, descriptions, entry keys, and entry content. Lorebooks have no tags or collections. Send {} to list every lorebook that isn't archived, newest first. With catalog:\u003cid\u003e sources, also returns each catalog's first page of lorebooks matching text, on the first library page only.",
         "operationId": "search-lorebooks",
         "requestBody": {
           "content": {
@@ -5991,7 +6825,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Results"
+                  "$ref": "#/components/schemas/SearchResults"
                 }
               }
             },
@@ -6250,6 +7084,49 @@
         "summary": "List the targets a lorebook is pushed to",
         "tags": [
           "Sync"
+        ]
+      }
+    },
+    "/lorebooks/{id}/catalog-matches": {
+      "get": {
+        "description": "Asks every catalog that finds similar items for the same content, near-identical text, or a similar avatar.",
+        "operationId": "find-lorebook-in-catalogs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogMatches"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Find a lorebook in the catalogs",
+        "tags": [
+          "Catalogs"
         ]
       }
     },
@@ -7241,7 +8118,7 @@
     },
     "/search": {
       "post": {
-        "description": "Send {} to list every card that isn't archived, newest first.",
+        "description": "Send {} to list every card that isn't archived, newest first. With catalog:\u003cid\u003e sources, also returns each catalog's first page of cards matching text, on the first library page only.",
         "operationId": "search-cards",
         "requestBody": {
           "content": {
@@ -7258,7 +8135,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Results"
+                  "$ref": "#/components/schemas/SearchResults"
                 }
               }
             },

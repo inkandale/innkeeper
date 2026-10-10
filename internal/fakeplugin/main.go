@@ -28,6 +28,12 @@ func main() {
 	var config map[string]any
 	var databaseURL string
 	handler := func(ctx context.Context, method string, params json.RawMessage) (any, error) {
+		if config["down"] == true && strings.HasPrefix(method, "catalog.") && method != protocol.MethodCatalogDescribe {
+			return nil, protocol.NewError(-32000, "archive unavailable", true)
+		}
+		if config["failing"] == true && strings.HasPrefix(method, "catalog.") && method != protocol.MethodCatalogDescribe {
+			return nil, protocol.NewError(-32000, "open /srv/dump.sql: permission denied", false)
+		}
 		switch method {
 		case protocol.MethodInitialize:
 			var init protocol.InitializeParams
@@ -126,11 +132,15 @@ func main() {
 			if *mode == "bad-catalog" {
 				return protocol.CatalogInfo{}, nil
 			}
-			return catalogInfo, nil
+			info := catalogInfo
+			info.Ingest = config["no_ingest"] != true
+			return info, nil
+		case protocol.MethodCatalogIngest:
+			return catalogIngest(conn, config, params)
 		case protocol.MethodCatalogSearch:
 			return catalogSearch(params, *mode)
 		case protocol.MethodCatalogGet:
-			return catalogGet(blobTmp, params, *mode)
+			return catalogGet(blobTmp, config, params, *mode)
 		case protocol.MethodCatalogSimilar:
 			return catalogSimilar(params, *mode)
 		case protocol.MethodAuthBegin:

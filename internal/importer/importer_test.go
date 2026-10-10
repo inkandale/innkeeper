@@ -38,11 +38,17 @@ type env struct {
 // with args.
 func setup(t *testing.T, args ...string) *env {
 	t.Helper()
+	return setupCaps(t, []string{"import"}, args...)
+}
+
+// setupCaps is setup with a plugin that has caps.
+func setupCaps(t *testing.T, caps []string, args ...string) *env {
+	t.Helper()
 	ctx := context.Background()
 	pool := testdb.New(t)
 	store := &blobstore.Store{Name: "library", Root: t.TempDir()}
 	lib := library.New(pool, store)
-	m, err := protocol.LoadManifest(testutil.FakePluginWith(t, []string{"import"}, args...))
+	m, err := protocol.LoadManifest(testutil.FakePluginWith(t, caps, args...))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +64,7 @@ func setup(t *testing.T, args ...string) *env {
 
 	q := jobs.New(pool)
 	w := &jobs.Worker{Queue: q, Log: quiet, Poll: 50 * time.Millisecond,
-		Backoff: func(int) time.Duration { return 0 }, Handlers: map[string]jobs.Handler{Kind: im.Run}}
+		Backoff: func(int) time.Duration { return 0 }, Handlers: map[string]jobs.Handler{Kind: im.Run, IngestKind: im.RunIngest}}
 	wctx, cancel := context.WithCancel(ctx)
 	done := make(chan error, 1)
 	go func() { done <- w.Run(wctx) }()
@@ -84,20 +90,28 @@ func (e *env) run(t *testing.T, params string) (jobs.Job, progress) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	j = e.wait(t, j.ID)
+	var p progress
+	if err := json.Unmarshal(j.Progress, &p); err != nil {
+		t.Fatal(err)
+	}
+	return j, p
+}
+
+// wait returns the job once it finishes.
+func (e *env) wait(t *testing.T, id int64) jobs.Job {
+	t.Helper()
 	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-		if j, err = e.q.Get(ctx, j.ID); err != nil {
+		j, err := e.q.Get(context.Background(), id)
+		if err != nil {
 			t.Fatal(err)
 		}
 		if j.Status == jobs.StatusSucceeded || j.Status == jobs.StatusFailed {
-			var p progress
-			if err := json.Unmarshal(j.Progress, &p); err != nil {
-				t.Fatal(err)
-			}
-			return j, p
+			return j
 		}
 	}
-	t.Fatalf("import job still %s", j.Status)
-	return j, progress{}
+	t.Fatalf("job %d still running", id)
+	return jobs.Job{}
 }
 
 func errText(j jobs.Job) string {
@@ -215,5 +229,34 @@ func TestCancelledStartLeavesInstanceWorking(t *testing.T) {
 	}
 	if _, err := e.reg.Instance(context.Background(), e.inst); err != nil {
 		t.Fatalf("instance: %v", err)
+	}
+}
+
+func TestCatalogIngestResumes(t *testing.T) {
+	e := setupCaps(t, []string{"catalog"})
+	ctx := context.Background()
+	inst, err := e.reg.CreateInstance(ctx, plugins.NewInstance{Plugin: "fake", Name: "Archive",
+		Config: map[string]any{"crash_ingest_at": 1, "emit_during_ingest": true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	j, err := e.q.Enqueue(ctx, jobs.Spec{Kind: IngestKind, InstanceID: &inst})
+	if err != nil {
+		t.Fatal(err)
+	}
+	j = e.wait(t, j.ID)
+	if j.Status != jobs.StatusSucceeded || j.Attempts != 2 {
+		t.Fatalf("job %s after %d attempts: %s", j.Status, j.Attempts, errText(j))
+	}
+	var p ingestProgress
+	if err := json.Unmarshal(j.Progress, &p); err != nil {
+		t.Fatal(err)
+	}
+	// The retry starts after entry 1's checkpoint, so it adds only entry 2.
+	if p.Done != 3 || p.Total != 3 || p.CatalogIngestResult == nil || p.Added != 1 {
+		t.Fatalf("progress = %s", j.Progress)
+	}
+	if n := e.count(t, "card"); n != 0 {
+		t.Fatalf("ingest stored %d cards", n)
 	}
 }

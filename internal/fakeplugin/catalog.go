@@ -20,6 +20,10 @@ import (
 // unknown IDs with -32000, and catalog-wrong-hash reports a content_hash
 // that doesn't match the data. catalog-sourceless checks params, then
 // answers like a catalog whose source isn't configured.
+// Config down fails every call but describe with a retryable error, and
+// no_ingest describes a catalog that doesn't ingest. bad_avatar makes
+// catalog.get name /etc/hosts as a card's avatar. failing fails every call
+// but describe with an error that names a server path.
 var catalogInfo = protocol.CatalogInfo{
 	Kinds:   []string{protocol.KindCard, protocol.KindLorebook},
 	Filters: []protocol.CatalogFilter{{Name: "tag", Label: "Tag", Type: protocol.FilterText}},
@@ -119,7 +123,7 @@ func catalogSearch(params json.RawMessage, mode string) (any, error) {
 	return res, nil
 }
 
-func catalogGet(blobTmp string, params json.RawMessage, mode string) (any, error) {
+func catalogGet(blobTmp string, config map[string]any, params json.RawMessage, mode string) (any, error) {
 	var p protocol.CatalogGetParams
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, invalidParams(err)
@@ -147,7 +151,9 @@ func catalogGet(blobTmp string, params json.RawMessage, mode string) (any, error
 	for v := len(e.versions); v >= 1; v-- {
 		res.Versions = append(res.Versions, protocol.CatalogVersion{Version: strconv.Itoa(v)})
 	}
-	if p.Avatar && e.kind == protocol.KindCard {
+	if p.Avatar && e.kind == protocol.KindCard && config["bad_avatar"] == true {
+		res.Avatar = "/etc/hosts"
+	} else if p.Avatar && e.kind == protocol.KindCard {
 		// The core moves the file, so each call writes a new one.
 		f, err := os.CreateTemp(blobTmp, "catalog-*.png")
 		if err != nil {
@@ -177,6 +183,39 @@ func catalogSimilar(params json.RawMessage, mode string) (any, error) {
 		if e.kind == p.Kind && len(res.Items) < p.Limit && (it.Hashes.ContentHash == p.Hashes.ContentHash ||
 			near(it.Hashes.TextSimhash, p.Hashes.TextSimhash) || near(it.Hashes.ImagePhash, p.Hashes.ImagePhash)) {
 			res.Items = append(res.Items, it)
+		}
+	}
+	return res, nil
+}
+
+// catalogIngest walks the entries, one checkpoint each, and counts them all
+// as added. Config crash_ingest_at exits after that entry's checkpoint on a
+// first attempt, and emit_during_ingest sends a card the core must drop.
+func catalogIngest(conn *protocol.Conn, config map[string]any, params json.RawMessage) (any, error) {
+	var p protocol.CatalogIngestParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, invalidParams(err)
+	}
+	var cp struct {
+		Next int `json:"next"`
+	}
+	resumed := len(p.Checkpoint) > 0 && string(p.Checkpoint) != "null"
+	if resumed {
+		_ = json.Unmarshal(p.Checkpoint, &cp)
+	}
+	if config["emit_during_ingest"] == true {
+		_ = conn.Notify(protocol.NotifyEmitCard, protocol.EmitCard{Run: p.Run, Item: "smuggled",
+			Card: json.RawMessage(catalogEntries[0].versions[0])})
+	}
+	var res protocol.CatalogIngestResult
+	total := int64(len(catalogEntries))
+	for i := cp.Next; i < len(catalogEntries); i++ {
+		res.Added++
+		_ = conn.Notify(protocol.NotifyProgress, protocol.Progress{Run: p.Run, Done: int64(i + 1), Total: total})
+		next, _ := json.Marshal(map[string]int{"next": i + 1})
+		_ = conn.Notify(protocol.NotifyCheckpoint, protocol.Checkpoint{Run: p.Run, Checkpoint: next})
+		if at, ok := config["crash_ingest_at"].(float64); ok && int(at) == i && !resumed {
+			os.Exit(5)
 		}
 	}
 	return res, nil

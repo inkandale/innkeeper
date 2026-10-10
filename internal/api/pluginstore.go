@@ -47,7 +47,7 @@ type catalogSourceOut struct {
 	Error string `json:"error,omitempty"`
 }
 
-type catalogOut struct{ Body []catalogSourceOut }
+type pluginCatalogOut struct{ Body []catalogSourceOut }
 
 func (s *Server) pluginStoreRoutes(api huma.API) {
 	tags := []string{"Plugins"}
@@ -81,12 +81,12 @@ func (s *Server) pluginStoreRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{OperationID: "plugin-catalog", Method: http.MethodGet, Path: "/plugin-catalog",
 		Summary: "Check sources for plugins", Tags: tags,
 		Description: "Reads every source's index. It changes nothing."},
-		func(ctx context.Context, _ *struct{}) (*catalogOut, error) {
+		func(ctx context.Context, _ *struct{}) (*pluginCatalogOut, error) {
 			sources, err := s.Registry.Sources(ctx)
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			out := &catalogOut{Body: []catalogSourceOut{}}
+			out := &pluginCatalogOut{Body: []catalogSourceOut{}}
 			// ponytail: sources are read one at a time; fetch in parallel if owners add many.
 			for _, src := range sources {
 				entries, err := s.Registry.Index(ctx, src.URL)

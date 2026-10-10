@@ -13,31 +13,6 @@ import (
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
-// Preview is what a push would send, for the owner to confirm first.
-type Preview struct {
-	// Card or Lorebook is what the target would get.
-	Card     json.RawMessage `json:"card,omitempty"`
-	Lorebook json.RawMessage `json:"lorebook,omitempty"`
-	// DroppedFields are fields with content that the target doesn't store.
-	DroppedFields []string `json:"dropped_fields"`
-	// NewCopy means the push makes another copy, because the target can't
-	// update the one it has.
-	NewCopy bool `json:"new_copy"`
-	// Replaces means the push overwrites the app's copy. Changes lists what
-	// it changes there: Before is the app's value, After the pushed one.
-	Replaces bool     `json:"replaces"`
-	Changes  []Change `json:"changes"`
-	// Stale means the app couldn't be read, so Changes compare against what
-	// the last push or adopt accepted.
-	Stale bool `json:"stale,omitempty"`
-	// CreateLorebooks are the card's lorebooks that the push creates in the
-	// app first, for a target that keeps lorebooks on their own.
-	CreateLorebooks []int64 `json:"create_lorebooks,omitempty"`
-	// Confirm identifies this preview. A push that sends it goes ahead only
-	// if a new preview would be the same, so nothing changes unseen.
-	Confirm string `json:"confirm"`
-}
-
 // Preview renders the card for a target without pushing it, and compares it
 // with the app's copy.
 func (s *Service) Preview(ctx context.Context, instanceID, cardID int64) (Preview, error) {

@@ -18,13 +18,16 @@ import (
 )
 
 func reconcileCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "reconcile <instance-id> [params-json]",
-		Short: "Line an app up against the library",
-		Long: `Reconcile runs a job that compares each app item with the library, waits for
-it, and prints a row per item with its verdict and suggested resolution.
-Apply the suggestions with: ink sync apply <job-id>`,
-		Example: "  ink sync reconcile 3\n  ink sync reconcile 3 '{\"match\": {\"text_distance\": 4}}'",
+	var dryRun bool
+	run := &cobra.Command{
+		Use:     "run <instance-id> [params-json]",
+		Aliases: []string{"reconcile"},
+		Short:   "Sync an app with the library",
+		Long: `Sync reads the app, links exact matches, imports items the library doesn't
+have, waits for the job, and prints a row per item with its verdict and
+suggested resolution. Items marked (auto) were applied by the sync. Apply the
+suggestions for the rest with: ink sync apply <sync-job-id>`,
+		Example: "  ink sync run 3\n  ink sync run 3 --dry-run\n  ink sync run 3 '{\"match\": {\"text_distance\": 4}}'",
 		Args:    cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			inst, err := parseID(args[0])
@@ -43,6 +46,9 @@ Apply the suggestions with: ink sync apply <job-id>`,
 				params = map[string]any{}
 			}
 			params["instance_id"] = json.Number(inst)
+			if dryRun {
+				params["apply"] = wire.ApplyNone
+			}
 			c, err := newClient(cmd)
 			if err != nil {
 				return err
@@ -71,10 +77,12 @@ Apply the suggestions with: ink sync apply <job-id>`,
 			if jsonFlag(cmd) {
 				return json.NewEncoder(cmd.OutOrStdout()).Encode(snap)
 			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "reconcile job %d; apply its suggestions with: ink sync apply %d\n", j.ID, j.ID)
+			fmt.Fprintf(cmd.ErrOrStderr(), "sync job %d; apply its suggestions with: ink sync apply %d\n", j.ID, j.ID)
 			return printSnapshot(cmd.OutOrStdout(), snap)
 		},
 	}
+	run.Flags().BoolVar(&dryRun, "dry-run", false, "only report what a sync would do; link and import nothing")
+	return run
 }
 
 func compareCmd() *cobra.Command {
@@ -157,7 +165,7 @@ keep_in_app, and both (list hunks only).`,
 				cmp, err := fetchComparison(ctx, c, comparePath(inst, r.RemoteID, card))
 				if err != nil {
 					if r.Action == "import" && card == "" {
-						return fmt.Errorf("%w; an unbound item has no comparison, so import it from its reconcile: ink sync apply <job-id> %s", err, r.RemoteID)
+						return fmt.Errorf("%w; an unbound item has no comparison, so import it from its sync: ink sync apply <sync-job-id> %s", err, r.RemoteID)
 					}
 					return err
 				}
@@ -183,9 +191,9 @@ keep_in_app, and both (list hunks only).`,
 func applyCmd() *cobra.Command {
 	var verdicts []string
 	apply := &cobra.Command{
-		Use:   "apply <reconcile-job-id> [remote-id ...]",
-		Short: "Resolve a reconcile's items as it suggested",
-		Long: `Apply starts one job that resolves each item the reconcile has a suggestion
+		Use:   "apply <sync-job-id> [remote-id ...]",
+		Short: "Resolve a sync's items as it suggested",
+		Long: `Apply starts one job that resolves each item the sync has a suggestion
 for, or only the remote IDs named. A bind keeps the library's side of every hunk.`,
 		Example: "  ink sync apply 41 --verdict exact\n  ink sync apply 41 brakka.png",
 		Args:    cobra.MinimumNArgs(1),
@@ -267,7 +275,7 @@ func snapshot(ctx context.Context, c *client, jobID string) (wire.Snapshot, erro
 		return snap, err
 	}
 	if j.Kind != wire.ReconcileKind || j.Status != "succeeded" {
-		return snap, fmt.Errorf("job %s is a %s job that is %s, not a finished reconcile", jobID, j.Kind, j.Status)
+		return snap, fmt.Errorf("job %s is a %s job that is %s, not a finished sync", jobID, j.Kind, j.Status)
 	}
 	return snap, json.Unmarshal(j.Progress, &snap)
 }
@@ -276,6 +284,8 @@ func snapshot(ctx context.Context, c *client, jobID string) (wire.Snapshot, erro
 func printSnapshot(w io.Writer, snap wire.Snapshot) error {
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(tw, "KIND\tVERDICT\tREMOTE ID\tNAME\tTOP CANDIDATE\tSUGGESTED")
+	// Nested world books get rows, so they count toward both numbers.
+	var applied, pending int
 	row := func(kind string, it wire.ReconcileItem) {
 		top := ""
 		if len(it.Candidates) > 0 {
@@ -291,7 +301,14 @@ func printSnapshot(w io.Writer, snap wire.Snapshot) error {
 		if it.Error != "" {
 			suggested = "error: " + it.Error
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", kind, it.Verdict, it.RemoteID, it.Name, top, suggested)
+		verdict := it.Verdict
+		if it.AutoBound || it.AutoImported {
+			applied++
+			verdict += " (auto)"
+		} else if it.Verdict != "bound" {
+			pending++
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", kind, verdict, it.RemoteID, it.Name, top, suggested)
 	}
 	for _, it := range snap.Items {
 		row("card", it)
@@ -311,6 +328,7 @@ func printSnapshot(w io.Writer, snap wire.Snapshot) error {
 	}
 	slices.Sort(verdicts)
 	fmt.Fprintln(w, "totals:", strings.Join(verdicts, ", "))
+	fmt.Fprintf(w, "%d applied, %d left to review\n", applied, pending)
 	if len(snap.Missing) > 0 {
 		fmt.Fprintln(w, "bound cards the app no longer has:", snap.Missing)
 	}

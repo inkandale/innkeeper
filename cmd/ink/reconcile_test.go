@@ -30,6 +30,28 @@ func TestPrintSnapshot(t *testing.T) {
 	if lines[2] != "totals: likely 1" {
 		t.Errorf("totals = %q", lines[2])
 	}
+	if lines[3] != "0 applied, 1 left to review" {
+		t.Errorf("summary = %q", lines[3])
+	}
+}
+
+func TestPrintSnapshotAuto(t *testing.T) {
+	var b strings.Builder
+	err := printSnapshot(&b, wire.Snapshot{Items: []wire.ReconcileItem{
+		{RemoteID: "a", Verdict: "exact", AutoBound: true},
+		{RemoteID: "b", Verdict: "new", AutoImported: true, Lorebooks: []wire.ReconcileItem{{RemoteID: "lb", Verdict: "new"}}},
+		{RemoteID: "c", Verdict: "bound"},
+		{RemoteID: "d", Verdict: "likely"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := b.String()
+	for _, want := range []string{"exact (auto)", "new (auto)", "2 applied, 2 left to review"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
 }
 
 func TestPrintComparison(t *testing.T) {
@@ -112,14 +134,14 @@ func TestSyncApply(t *testing.T) {
 	}
 }
 
-func TestSyncReconcile(t *testing.T) {
+func TestSyncRun(t *testing.T) {
 	snap, _ := json.Marshal(wire.Snapshot{Items: []wire.ReconcileItem{{RemoteID: "r1", Name: "Brakka", Verdict: "new"}}, Totals: map[string]int{"new": 1}})
 	job, _ := json.Marshal(map[string]any{"kind": wire.ReconcileKind, "status": "succeeded", "progress": json.RawMessage(snap)})
 	got := stubAPI(t, map[string]string{
 		"/jobs/9/events": "event: job\ndata: {\"status\": \"succeeded\"}\n\n",
 		"/jobs/9":        string(job),
 	})
-	out, err := runInk(t, "sync", "reconcile", "3")
+	out, err := runInk(t, "sync", "run", "3")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +153,16 @@ func TestSyncReconcile(t *testing.T) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}
 	}
-	if _, err := runInk(t, "sync", "reconcile", "3", "null"); err != nil {
+	if _, err := runInk(t, "sync", "run", "3", "null"); err != nil {
 		t.Errorf("null params: %v", err)
+	}
+	if _, err := runInk(t, "sync", "reconcile", "3"); err != nil {
+		t.Errorf("reconcile alias: %v", err)
+	}
+	if _, err := runInk(t, "sync", "run", "3", "--dry-run"); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(*got, func(r string) bool { return strings.HasPrefix(r, "POST /reconciles") && strings.Contains(r, `"apply":"none"`) }) {
+		t.Errorf("no dry-run request in %q", *got)
 	}
 }

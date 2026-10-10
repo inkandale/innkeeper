@@ -23,7 +23,13 @@ type ReconcileParams struct {
 	// SplitFields is how many core fields must differ before import is
 	// suggested over bind.
 	SplitFields *int `json:"split_fields" required:"false"` // default 3, 1..4
+	// Apply is what a run resolves itself: ApplyObvious (the default) binds
+	// exact matches and imports new items; ApplyNone writes nothing.
+	Apply string `json:"apply,omitempty" enum:"obvious,none" required:"false"`
 }
+
+// What a reconcile run applies; empty means ApplyObvious.
+const ApplyObvious, ApplyNone = "obvious", "none"
 
 // Snapshot is a finished reconcile run.
 type Snapshot struct {
@@ -32,7 +38,7 @@ type Snapshot struct {
 	Lorebooks []ReconcileItem `json:"lorebooks"` // world books no character links to
 	Missing   []int64         `json:"missing"`   // card IDs bound here whose app item is gone
 	Unpushed  []int64         `json:"unpushed"`  // card IDs with no binding here
-	Totals    map[string]int  `json:"totals"`    // by verdict, each world book once
+	Totals    map[string]int  `json:"totals"`    // by verdict, auto_bound, and auto_imported; each world book once
 }
 
 // ReconcileItem is one app item and how it lines up with the library.
@@ -47,9 +53,10 @@ type ReconcileItem struct {
 	Options    []Option        `json:"options"`
 	Suggested  *Option         `json:"suggested,omitempty"`
 	Lorebooks  []ReconcileItem `json:"lorebooks,omitempty"`
-	// AutoBound means the run bound this exact match, because the instance
-	// has auto_bind_exact on.
+	// AutoBound means the run bound this exact match.
 	AutoBound bool `json:"auto_bound,omitempty"`
+	// AutoImported means the run imported this new item.
+	AutoImported bool `json:"auto_imported,omitempty"`
 }
 
 // Candidate is a library card or lorebook an app item may be a copy of.

@@ -9,7 +9,6 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/merge"
-	"github.com/davidgibbons/innkeeper/internal/plugins"
 )
 
 // runResolve runs a bulk resolve to the end and returns the parent and the
@@ -130,7 +129,8 @@ func TestBulkResolveSharedWorldBook(t *testing.T) {
 }
 
 func TestReconcileAutoBindsExactMatches(t *testing.T) {
-	for _, on := range []bool{true, false} {
+	for _, apply := range []string{"", ApplyNone} {
+		on := apply == ""
 		e, tova, _ := worldBooks(t)
 		dain := e.libCard(map[string]any{"name": "Dain", "description": "A miner."})
 		e.appCard("r1", map[string]any{"name": "Tova", "description": "A smith."}, nil)
@@ -139,10 +139,7 @@ func TestReconcileAutoBindsExactMatches(t *testing.T) {
 			"entries": []any{map[string]any{"keys": []any{"forge"}, "content": "The forge is cold."}}}})
 		e.appCard("r2", map[string]any{"name": "Dain", "description": "A miner."},
 			map[string]any{"lorebook_remote_ids": []string{"l9"}})
-		if err := e.reg.UpdateInstance(e.ctx, e.inst, plugins.InstanceEdit{AutoBindExact: &on}); err != nil {
-			t.Fatal(err)
-		}
-		snap, err := e.s.Reconcile(e.ctx, ReconcileParams{InstanceID: e.inst}, nil)
+		snap, err := e.s.Reconcile(e.ctx, ReconcileParams{InstanceID: e.inst, Apply: apply}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -186,14 +183,10 @@ func TestBulkResolveWorldBook(t *testing.T) {
 	}
 }
 
-// autoReconcile turns auto_bind_exact on and reconciles, running edit once
-// every item is read and before anything is auto-bound.
+// autoReconcile reconciles, running edit once every item is read and before
+// anything is applied.
 func (e *env) autoReconcile(edit func()) Snapshot {
 	e.t.Helper()
-	on := true
-	if err := e.reg.UpdateInstance(e.ctx, e.inst, plugins.InstanceEdit{AutoBindExact: &on}); err != nil {
-		e.t.Fatal(err)
-	}
 	snap, err := e.s.Reconcile(e.ctx, ReconcileParams{InstanceID: e.inst}, func(done, total int) {
 		if done == total && edit != nil {
 			edit()
@@ -362,5 +355,68 @@ func TestAutoBindSharesAWorldBookAcrossCards(t *testing.T) {
 	snap := e.autoReconcile(nil)
 	if !item(snap, "r1").AutoBound || !item(snap, "r2").AutoBound || e.lorebookStatus(forge) != "in_sync" {
 		t.Fatalf("r1 = %+v, r2 = %+v", item(snap, "r1"), item(snap, "r2"))
+	}
+}
+
+func TestAutoApplyImportsNewItems(t *testing.T) {
+	e, _, _ := worldBooks(t)
+	// Listed, unlike worldBooks' c1: r1 (Tova, exact) links l1 (Forge, exact) and l2 (Mines, new).
+	e.appCard("r1", map[string]any{"name": "Tova", "description": "A smith."},
+		map[string]any{"lorebook_remote_ids": []string{"l1", "l2"}})
+	e.writeRemote("l7", map[string]any{"lorebook": map[string]any{"name": "Docks", "description": "The harbor.",
+		"entries": []any{map[string]any{"keys": []any{"pier"}, "content": "The pier floods at night."}}}})
+	e.appCard("r5", map[string]any{"name": "Wren", "description": "A ferrywoman."},
+		map[string]any{"lorebook_remote_ids": []string{"l7"}})
+	snap := e.autoReconcile(nil)
+	r1, r5 := item(snap, "r1"), item(snap, "r5")
+	if !r1.AutoBound || len(r1.Lorebooks) != 2 || !r1.Lorebooks[0].AutoBound || !r1.Lorebooks[1].AutoImported {
+		t.Errorf("r1 = %+v", r1)
+	}
+	if r5.Verdict != VerdictNew || !r5.AutoImported || r5.BindingID == 0 || !r5.Lorebooks[0].AutoImported {
+		t.Fatalf("r5 = %+v", r5)
+	}
+	if snap.Totals["auto_imported"] != 3 || snap.Totals["auto_bound"] != 2 { // r5, l7, l2; r1, l1
+		t.Errorf("totals = %v", snap.Totals)
+	}
+	if e.bindingOf("r5").ID != r5.BindingID {
+		t.Errorf("binding = %+v", e.bindingOf("r5"))
+	}
+}
+
+func TestAutoApplyLeavesANewCardWithALikelyWorldBook(t *testing.T) {
+	e, _, _ := worldBooks(t)
+	// Named like the library's Forge, with other text: likely, not exact.
+	e.writeRemote("l6", map[string]any{"lorebook": map[string]any{"name": "Forge", "description": "Another forge.",
+		"entries": []any{map[string]any{"keys": []any{"anvil"}, "content": "The anvil is cracked."}}}})
+	e.appCard("r6", map[string]any{"name": "Pell", "description": "A tinker."},
+		map[string]any{"lorebook_remote_ids": []string{"l6"}})
+	if it := item(e.autoReconcile(nil), "r6"); it.AutoImported || it.BindingID != 0 {
+		t.Fatalf("r6 = %+v", it)
+	}
+}
+
+func TestAutoApplySharesAnImportedWorldBook(t *testing.T) {
+	e, _, _ := worldBooks(t)
+	e.writeRemote("l8", map[string]any{"lorebook": map[string]any{"name": "Market", "description": "Stalls.",
+		"entries": []any{map[string]any{"keys": []any{"stall"}, "content": "Stalls open at dawn."}}}})
+	for _, id := range []string{"r7", "r8"} {
+		e.appCard(id, map[string]any{"name": "Seller " + id, "description": "Sells things."},
+			map[string]any{"lorebook_remote_ids": []string{"l8"}})
+	}
+	snap := e.autoReconcile(nil)
+	// Forge, plus Mines (l2) and Market (l8) imported once each.
+	if !item(snap, "r7").AutoImported || !item(snap, "r8").AutoImported || e.lorebookCount() != 3 {
+		t.Fatalf("r7 = %+v, r8 = %+v, %d lorebooks", item(snap, "r7"), item(snap, "r8"), e.lorebookCount())
+	}
+	if snap.Totals["auto_imported"] != 4 || snap.Totals["auto_bound"] != 1 { // r7, r8, l8, l2; l1
+		t.Errorf("totals = %v", snap.Totals)
+	}
+}
+
+func TestApplyNoneWritesNothing(t *testing.T) {
+	e, _, _ := worldBooks(t)
+	snap, err := e.s.Reconcile(e.ctx, ReconcileParams{InstanceID: e.inst, Apply: ApplyNone}, nil)
+	if err != nil || e.bindingCount() != 0 || snap.Totals["auto_bound"]+snap.Totals["auto_imported"] != 0 {
+		t.Fatalf("%v, %d bindings, totals %v", err, e.bindingCount(), snap.Totals)
 	}
 }

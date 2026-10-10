@@ -15,7 +15,7 @@ func TestReconcileJob(t *testing.T) {
 	e.appCard("r5", map[string]any{"name": "Pell", "description": "A clockwork owl that reads the stars."}, nil)
 	q := jobs.New(e.pool)
 	wait := e.startWorker(q)
-	j, err := e.s.EnqueueReconcile(e.ctx, q, ReconcileParams{InstanceID: e.inst})
+	j, err := e.s.EnqueueReconcile(e.ctx, q, ReconcileParams{InstanceID: e.inst, Apply: ApplyNone})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestReconcileJobFailureKeepsProgress(t *testing.T) {
 	}
 	q := jobs.New(e.pool)
 	wait := e.startWorker(q)
-	j, err := e.s.EnqueueReconcile(e.ctx, q, ReconcileParams{InstanceID: e.inst})
+	j, err := e.s.EnqueueReconcile(e.ctx, q, ReconcileParams{InstanceID: e.inst, Apply: ApplyNone})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestReconcileJobRetries(t *testing.T) {
 	e := setup(t, map[string]any{"fail_list": "retryable"})
 	q := jobs.New(e.pool)
 	wait := e.startWorker(q)
-	j, err := e.s.EnqueueReconcile(e.ctx, q, ReconcileParams{InstanceID: e.inst})
+	j, err := e.s.EnqueueReconcile(e.ctx, q, ReconcileParams{InstanceID: e.inst, Apply: ApplyNone})
 	if err != nil {
 		t.Fatal(err)
 	}

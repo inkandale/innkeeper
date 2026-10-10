@@ -457,33 +457,39 @@ func (s *Service) Reconcile(ctx context.Context, p ReconcileParams, progress fun
 		snap.Lorebooks = append(snap.Lorebooks, lb)
 	}
 
-	named, err := s.reg.GetInstance(ctx, p.InstanceID)
-	if err != nil {
-		return snap, err
-	}
-	if named.AutoBindExact {
-		s.autoBind(ctx, lorebookKind, p.InstanceID, bookIdx, bookIdx, snap.Lorebooks)
+	if p.Apply != ApplyNone {
+		s.autoApply(ctx, lorebookKind, p.InstanceID, bookIdx, bookIdx, snap.Lorebooks)
 		// The index was read before these bindings; a bound card isn't unpushed.
-		for id := range s.autoBind(ctx, cardKind, p.InstanceID, cardIdx, bookIdx, snap.Items) {
+		for id := range s.autoApply(ctx, cardKind, p.InstanceID, cardIdx, bookIdx, snap.Items) {
 			cardIdx.remoteOf[id] = ""
 		}
 		// Each world book once, as the verdict totals count them.
-		books := map[string]bool{}
-		for _, it := range snap.Items {
-			if it.AutoBound {
+		type auto struct{ bound, imported bool }
+		count := func(a auto) {
+			if a.bound {
 				snap.Totals["auto_bound"]++
 			}
+			if a.imported {
+				snap.Totals["auto_imported"]++
+			}
+		}
+		books := map[string]auto{}
+		mark := func(lb ReconcileItem) {
+			a := books[lb.RemoteID]
+			books[lb.RemoteID] = auto{a.bound || lb.AutoBound, a.imported || lb.AutoImported}
+		}
+		for _, it := range snap.Items {
+			count(auto{it.AutoBound, it.AutoImported})
 			for _, lb := range it.Lorebooks {
-				books[lb.RemoteID] = books[lb.RemoteID] || lb.AutoBound
+				mark(lb)
 			}
 		}
 		for _, lb := range snap.Lorebooks {
-			books[lb.RemoteID] = books[lb.RemoteID] || lb.AutoBound
+			mark(lb)
 		}
-		for _, auto := range books {
-			if auto {
-				snap.Totals["auto_bound"]++
-			}
+		for _, a := range books {
+			// A later card binds the world book an earlier one imported.
+			count(auto{a.bound && !a.imported, a.imported})
 		}
 	}
 
@@ -502,25 +508,33 @@ func (s *Service) Reconcile(ctx context.Context, p ReconcileParams, progress fun
 	return snap, nil
 }
 
-// autoBind binds each exact item whose world books are all exact or bound
-// without drift, keeping the library's copy, and returns the IDs it bound. It
-// resolves with the hashes this run read, so an item that changed since is
-// stale and left for the owner, and it never writes a library revision. A
-// failure leaves the item as it was.
-func (s *Service) autoBind(ctx context.Context, k kind, instanceID int64, idx, books index,
+// autoApply binds each exact item and imports each new one whose world books
+// are all exact, new, or bound without drift, keeping the library's copy, and
+// returns the card IDs it bound or imported. It resolves with the hashes this
+// run read, so an item that changed since is stale and left for the owner, and
+// it never changes an existing library item. A failure leaves the item as it was.
+func (s *Service) autoApply(ctx context.Context, k kind, instanceID int64, idx, books index,
 	items []ReconcileItem) map[int64]bool {
-	bound := map[int64]bool{}
-	// World books bound earlier in this run, as the next card must name them.
+	applied := map[int64]bool{}
+	// World books bound or imported earlier in this run, as the next card must name them.
 	nested := map[string]Resolution{}
 items:
 	for i := range items {
 		it := &items[i]
-		if it.Verdict != VerdictExact || it.Suggested == nil || it.Suggested.Action != "bind" {
+		var r Resolution
+		switch {
+		case it.Suggested == nil:
+			continue
+		case it.Verdict == VerdictExact && it.Suggested.Action == "bind":
+			r = Resolution{InstanceID: instanceID, RemoteID: it.RemoteID, AppHash: it.AppHash,
+				BaseRevisionID: idx.byID[it.Suggested.CardID].head, Action: "bind", CardID: it.Suggested.CardID,
+				Default: merge.ChooseLibrary}
+		case it.Verdict == VerdictNew && it.Suggested.Action == "import":
+			r = Resolution{InstanceID: instanceID, RemoteID: it.RemoteID, AppHash: it.AppHash,
+				BindingID: it.BindingID, Action: "import"}
+		default:
 			continue
 		}
-		r := Resolution{InstanceID: instanceID, RemoteID: it.RemoteID, AppHash: it.AppHash,
-			BaseRevisionID: idx.byID[it.Suggested.CardID].head, Action: "bind", CardID: it.Suggested.CardID,
-			Default: merge.ChooseLibrary}
 		for _, lb := range it.Lorebooks {
 			n, ok := nested[lb.RemoteID]
 			if !ok {
@@ -530,31 +544,39 @@ items:
 			}
 			r.Lorebooks = append(r.Lorebooks, n)
 		}
-		res, err := s.resolve(ctx, k, r, resolveOpts{bindOnly: true})
+		res, err := s.resolve(ctx, k, r, resolveOpts{bindOnly: true, importNew: true})
 		if err != nil {
-			s.log.Warn("reconcile: auto-bind failed", "remote_id", it.RemoteID, "err", err)
+			s.log.Warn("reconcile: auto-apply failed", "remote_id", it.RemoteID, "err", err)
 			continue
 		}
-		it.AutoBound, it.BindingID = true, res.BindingID
-		bound[res.CardID] = true
+		it.AutoBound, it.AutoImported = r.Action == "bind", r.Action == "import"
+		it.BindingID = res.BindingID
+		applied[res.CardID] = true
 		for j, lr := range res.Lorebooks {
-			lb := &it.Lorebooks[j]
-			lb.AutoBound, lb.BindingID = true, lr.BindingID
-			n := r.Lorebooks[j]
+			lb, n := &it.Lorebooks[j], r.Lorebooks[j]
+			lb.AutoBound, lb.AutoImported, lb.BindingID = n.Action == "bind", n.Action == "import", lr.BindingID
+			if n.Action == "import" {
+				// The next card binds the lorebook this one imported; books.byID predates it.
+				n = Resolution{RemoteID: n.RemoteID, AppHash: n.AppHash, Action: "bind", CardID: lr.CardID,
+					BaseRevisionID: lr.RevisionID, Default: merge.ChooseLibrary}
+			}
 			if err := s.pool.QueryRow(ctx, `SELECT accepted_hash FROM binding WHERE id = $1`, lr.BindingID).
 				Scan(&n.AcceptedHash); err == nil {
 				nested[lb.RemoteID] = n
 			}
 		}
 	}
-	return bound
+	return applied
 }
 
-// autoNested is the resolution auto-bind gives a card's world book: bind to
-// its exact match, or to the lorebook it's bound to when nothing differs.
+// autoNested is the resolution auto-apply gives a card's world book: bind to
+// its exact match or to the lorebook it's bound to when nothing differs, or
+// import it when it's new.
 func autoNested(lb ReconcileItem, books index) (Resolution, bool) {
 	n := Resolution{RemoteID: lb.RemoteID, AppHash: lb.AppHash, Action: "bind", Default: merge.ChooseLibrary}
 	switch {
+	case lb.Verdict == VerdictNew && lb.Suggested != nil && lb.Suggested.Action == "import":
+		return Resolution{RemoteID: lb.RemoteID, AppHash: lb.AppHash, BindingID: lb.BindingID, Action: "import"}, true
 	case lb.Verdict == VerdictExact && lb.Suggested != nil && lb.Suggested.Action == "bind":
 		n.CardID = lb.Suggested.CardID
 	case lb.Verdict == VerdictBound && len(lb.Candidates) == 1 && lb.Candidates[0].DifferingFields == 0:

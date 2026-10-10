@@ -518,7 +518,7 @@ func TestReconcileInstance(t *testing.T) {
 		map[string]any{"lorebook_remote_ids": []string{"l2"}})
 
 	var progress [][2]int
-	snap, err := e.s.Reconcile(e.ctx, ReconcileParams{InstanceID: e.inst}, func(done, total int) {
+	snap, err := e.s.Reconcile(e.ctx, ReconcileParams{InstanceID: e.inst, Apply: ApplyNone}, func(done, total int) {
 		progress = append(progress, [2]int{done, total})
 	})
 	if err != nil {

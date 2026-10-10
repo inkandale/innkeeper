@@ -324,11 +324,12 @@ ink instances create <plugin> <name> [config-json] [--secrets file]
 ink instances configure <instance-id> [--name n] [--config json] [--secrets file]
 ink plugins [catalog]                             list installed plugins, or what sources offer
 ink plugins install <name> [version] [--source id]   install or update a plugin
-ink plugins remove|purge <name>                   uninstall a plugin, or delete its data too
+ink plugins remove <name>                         uninstall a plugin
+ink plugins purge <name> [--yes]                  delete an uninstalled plugin's instances and data
 ink plugins sources [add <id> <url>|remove <id>]  list, add, or remove plugin sources
 ink backups [create assets|config]                list backups, or start one
 ink backups download <name> [file]                download a backup as a .tar.gz
-ink backups restore <file> [--replace]            upload a backup and restore it
+ink backups restore <file> [--replace] [--yes]    upload a backup and restore it
 ```
 
 `--json` prints JSON instead of tables, and every command takes `--help`.
@@ -665,6 +666,7 @@ innkeeper restore --replace assets.tar.gz       # replaces the whole library
 ```bash
 ink backups restore assets.tar.gz
 ink backups restore config.tar.gz --replace
+ink backups restore assets.tar.gz --yes   # in a script: skip the question
 ```
 
 The API writes an upload straight into `restores/` in the backup folder, so a

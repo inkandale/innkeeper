@@ -176,9 +176,16 @@ func createInstanceCmd() *cobra.Command {
 			}
 			body := map[string]any{"plugin": args[0], "name": args[1], "config": config}
 			if secrets != "" {
-				if body["secrets"], err = readSecrets(cmd, secrets); err != nil {
+				s, err := readSecrets(cmd, secrets)
+				if err != nil {
 					return err
 				}
+				for k, v := range s {
+					if v == nil {
+						return fmt.Errorf("secret %s is null; null removes a secret only with configure", k)
+					}
+				}
+				body["secrets"] = s
 			}
 			if cmd.Flags().Changed("owner-subject") {
 				body["owner_subject"] = owner

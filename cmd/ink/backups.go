@@ -82,8 +82,8 @@ func backupsCmd() *cobra.Command {
 	return backups
 }
 
-// downloadBackup streams the backup name to file, and removes the file if the
-// transfer breaks, so a truncated archive never looks whole.
+// downloadBackup streams the backup name to file. A broken transfer leaves
+// file as it was, so a truncated archive never looks whole.
 func downloadBackup(cmd *cobra.Command, name, file string) (err error) {
 	c, err := newClient(cmd)
 	if err != nil {
@@ -94,7 +94,8 @@ func downloadBackup(cmd *cobra.Command, name, file string) (err error) {
 		return err
 	}
 	defer resp.Body.Close()
-	f, err := os.Create(file)
+	// Writing beside file and renaming keeps an existing copy until the new one is whole.
+	f, err := os.CreateTemp(filepath.Dir(file), ".ink-download-*")
 	if err != nil {
 		return err
 	}
@@ -102,8 +103,11 @@ func downloadBackup(cmd *cobra.Command, name, file string) (err error) {
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
+	if err == nil {
+		err = os.Rename(f.Name(), file)
+	}
 	if err != nil {
-		os.Remove(file)
+		os.Remove(f.Name())
 		return fmt.Errorf("download %s: %w", name, err)
 	}
 	return nil

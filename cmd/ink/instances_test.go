@@ -47,7 +47,14 @@ func TestInstances(t *testing.T) {
 	if err := os.WriteFile(secrets, []byte(`{"password": "p"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	nullSecrets := filepath.Join(t.TempDir(), "null.json")
+	if err := os.WriteFile(nullSecrets, []byte(`{"password": null}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	*got = nil
+	if _, err := runInk(t, "instances", "create", "a", "b", "--secrets", nullSecrets); err == nil || len(*got) != 0 {
+		t.Errorf("create with a null secret: %v, sent %q", err, *got)
+	}
 	if _, err := runInk(t, "instances", "create", "lumiverse", "Lumi", `{"url": "u"}`, "--secrets", secrets); err != nil {
 		t.Fatal(err)
 	}

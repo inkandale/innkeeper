@@ -77,7 +77,7 @@ func TestBackups(t *testing.T) {
 	}
 }
 
-func TestDownloadRemovesPartialFile(t *testing.T) {
+func TestDownloadKeepsFileOnBrokenTransfer(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", "100")
 		_, _ = io.WriteString(w, "PART")
@@ -85,11 +85,18 @@ func TestDownloadRemovesPartialFile(t *testing.T) {
 	t.Cleanup(srv.Close)
 	t.Setenv("INNKEEPER_URL", srv.URL)
 	t.Setenv("INNKEEPER_TOKEN", "tok")
-	file := filepath.Join(t.TempDir(), "a.tar.gz")
+	dir := t.TempDir()
+	file := filepath.Join(dir, "a.tar.gz")
+	if err := os.WriteFile(file, []byte("OLD"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := runInk(t, "backups", "download", "a", file); err == nil {
 		t.Fatal("a broken transfer succeeded")
 	}
-	if _, err := os.Stat(file); !os.IsNotExist(err) {
-		t.Fatalf("partial file left: %v", err)
+	if b, _ := os.ReadFile(file); string(b) != "OLD" {
+		t.Errorf("file = %q", b)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+		t.Errorf("left behind: %v", entries)
 	}
 }

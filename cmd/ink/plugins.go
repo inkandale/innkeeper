@@ -91,7 +91,11 @@ func pickInstall(catalog []catalogSource, name, source, version string) (string,
 	}
 	switch len(offers) {
 	case 0:
-		return "", "", fmt.Errorf("no source offers %s %s; see: ink plugins catalog", name, version)
+		if version == "" {
+			return "", "", fmt.Errorf("no source offers %s; see: ink plugins catalog", name)
+		}
+		// A rollback can name a version its source no longer lists.
+		return "", "", fmt.Errorf("no source lists %s %s; to install it anyway, name its source with --source", name, version)
 	case 1:
 		return offers[0].source, offers[0].version, nil
 	}

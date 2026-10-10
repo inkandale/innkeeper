@@ -128,21 +128,36 @@ func instancesCmd() *cobra.Command {
 		},
 	}, &cobra.Command{
 		Use:   "check <instance-id>",
-		Short: "Say whether an instance works, and fail if it's broken",
-		Long:  "An instance is broken when its plugin failed to start with its settings. Configuring it clears that.",
-		Args:  cobra.ExactArgs(1),
+		Short: "Test an instance now, and fail if it doesn't work",
+		Long: `Check starts the instance's plugin, even when it's broken. For an app that
+can be read back, it also lists the app's cards, which tests the address and
+login. A failed start marks the instance broken, and a good one clears that.`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			out, err := get(cmd, args)
+			id, err := parseID(args[0])
 			if err != nil {
 				return err
 			}
-			return show(cmd, out, func(w io.Writer, i instance) error {
-				if i.BrokenError != nil {
-					return fmt.Errorf("instance %d is broken: %s", i.ID, *i.BrokenError)
-				}
-				_, err := fmt.Fprintln(w, "ok")
+			out, err := callAPI(cmd, "POST", "/instances/"+id+"/check", nil)
+			if err != nil {
 				return err
-			})
+			}
+			var res struct {
+				OK    bool   `json:"ok"`
+				Error string `json:"error"`
+			}
+			if err := json.Unmarshal(out, &res); err != nil {
+				return err
+			}
+			if jsonFlag(cmd) {
+				fmt.Fprintln(cmd.OutOrStdout(), strings.TrimSuffix(string(out), "\n"))
+			} else if res.OK {
+				fmt.Fprintln(cmd.OutOrStdout(), "ok")
+			}
+			if !res.OK {
+				return fmt.Errorf("instance %s doesn't work: %s", id, res.Error)
+			}
+			return nil
 		},
 	}, createInstanceCmd(), configureInstanceCmd(), &cobra.Command{
 		Use:   "delete <instance-id>",

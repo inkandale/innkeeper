@@ -264,6 +264,12 @@ func TestSearchCatalogSources(t *testing.T) {
 	if catalogIDs(lore.Catalogs[0].Items) != "forge-lore" {
 		t.Fatalf("lorebooks = %+v", lore)
 	}
+	var later searchResults
+	e.call("POST", "/search", map[string]any{"sources": []string{"library", src}, "page": map[string]any{"number": 2}}, 200, &later)
+	if later.Catalogs != nil {
+		t.Fatalf("page 2 searched catalogs: %+v", later.Catalogs)
+	}
+	e.call("POST", "/search", map[string]any{"sources": []string{"catalog:999999"}}, 400, nil)
 	e.call("POST", "/search", map[string]any{"sources": []string{"catalog:x"}}, 400, nil)
 	e.call("POST", "/search", map[string]any{"sources": []string{fmt.Sprintf("catalog:%d", e.importID)}}, 400, nil)
 	e.call("POST", "/search", map[string]any{"sources": []string{"chub"}}, 400, nil)

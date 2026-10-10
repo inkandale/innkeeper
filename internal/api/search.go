@@ -53,6 +53,10 @@ func (s *Server) search(ctx context.Context, q library.Query, kind string,
 		}
 		out.Body.Results = res
 	}
+	// Catalogs return only their first page, so later library pages leave them out.
+	if q.Page.Cursor != nil || q.Page.Number > 1 {
+		catalogs = nil
+	}
 	p := protocol.CatalogSearchParams{Q: q.Text, Kind: kind, Page: protocol.CatalogPage{Size: min(cmp.Or(q.Page.Size, 50), protocol.MaxCatalogPage)}}
 	for _, id := range catalogs {
 		res, err := s.searchCatalog(ctx, id, p)

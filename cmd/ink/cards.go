@@ -15,6 +15,7 @@ import (
 
 func cardsCmd() *cobra.Command {
 	cards := &cobra.Command{Use: "cards", Short: "Work with library cards"}
+	cards.AddCommand(entityCmds(cardKind)...)
 	cards.AddCommand(exportCmd(), sourcesCmd())
 	for _, action := range []string{"archive", "unarchive"} {
 		cards.AddCommand(&cobra.Command{

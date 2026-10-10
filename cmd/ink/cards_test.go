@@ -67,3 +67,46 @@ func TestCardsSources(t *testing.T) {
 		}
 	}
 }
+
+func TestCardsSearch(t *testing.T) {
+	page := `{"hits": [{"id": 3, "slug": "brakka", "fields": {"name": "Brakka"}, "tags": ["orc", "hero"], "entries": 4}], "total": 2}`
+	got := stubAPI(t, map[string]string{"/search": page, "/lorebooks/search": page})
+	out, err := runInk(t, "cards", "search", "orc", "--limit", "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(out, "\n")
+	if f := strings.Fields(lines[1]); !slices.Equal(f, []string{"3", "brakka", "Brakka", "orc,hero"}) {
+		t.Errorf("row = %q", f)
+	}
+	if !strings.Contains(out, "1 of 2; next: --page 2") {
+		t.Errorf("no next-page hint in %q", out)
+	}
+	for _, args := range [][]string{
+		{"cards", "list", "--archived"},
+		{"cards", "search", `{"text": "x", "sort": "name"}`, "--page", "3"},
+		{"lorebooks", "list"},
+	} {
+		if _, err := runInk(t, args...); err != nil {
+			t.Fatalf("%q: %v", args, err)
+		}
+	}
+	want := []string{
+		`POST /search {"include":["tags"],"page":{"size":1},"text":"orc"}`,
+		`POST /search {"filter":{"archived":true},"include":["tags"]}`,
+		`POST /search {"include":["tags"],"page":{"number":3},"sort":"name","text":"x"}`,
+		`POST /lorebooks/search {}`,
+	}
+	if !slices.Equal(*got, want) {
+		t.Fatalf("requests = %q\nwant %q", *got, want)
+	}
+	if out, _ := runInk(t, "lorebooks", "list"); !strings.Contains(out, "ENTRIES") || !strings.Contains(out, " 4") {
+		t.Errorf("lorebooks list = %q", out)
+	}
+	if out, _ := runInk(t, "cards", "list", "--json"); out != page+"\n" {
+		t.Errorf("--json = %q", out)
+	}
+	if _, err := runInk(t, "cards", "search", "{bad"); err == nil {
+		t.Error("bad query JSON succeeded")
+	}
+}

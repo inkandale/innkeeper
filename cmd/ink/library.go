@@ -29,7 +29,12 @@ func (k kind) searchPath() string {
 
 // entityCmds returns the commands cards and lorebooks share.
 func entityCmds(k kind) []*cobra.Command {
-	return []*cobra.Command{listCmd(k), searchCmd(k)}
+	return []*cobra.Command{
+		listCmd(k),
+		searchCmd(k),
+		getCmd(k, "show", "Show a "+k.singular+"; --json includes its data", "", printEntity),
+		getCmd(k, "history", "List a "+k.singular+"'s revisions, newest first", "/revisions", printRevisions),
+	}
 }
 
 func lorebooksCmd() *cobra.Command {
@@ -163,4 +168,87 @@ starts with { is a whole query, as POST /api` + k.searchPath() + ` takes; see /a
 	}
 	pageFlags(search)
 	return search
+}
+
+// entity is GET /cards/{id} or /lorebooks/{id}.
+type entity struct {
+	ID          int64      `json:"id"`
+	Slug        string     `json:"slug"`
+	Provenance  string     `json:"provenance"`
+	ArchivedAt  *time.Time `json:"archived_at"`
+	CreatedAt   time.Time  `json:"created_at"`
+	Revision    revision   `json:"revision"`
+	Tags        []string   `json:"tags"`
+	Lorebooks   []int64    `json:"lorebooks"`
+	Collections []int64    `json:"collections"`
+	Cards       []int64    `json:"cards"`
+}
+
+// revision is a row of a history, or an entity's head with its data.
+type revision struct {
+	ID        int64           `json:"id"`
+	Data      json.RawMessage `json:"data"`
+	Message   string          `json:"message"`
+	Source    string          `json:"source"`
+	CreatedAt time.Time       `json:"created_at"`
+}
+
+func printEntity(w io.Writer, e entity) error {
+	var d struct {
+		Name string `json:"name"`
+	}
+	_ = json.Unmarshal(e.Revision.Data, &d)
+	ids := func(v []int64) string { return strings.Trim(fmt.Sprint(v), "[]") }
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	for _, row := range [][2]string{
+		{"ID", fmt.Sprint(e.ID)},
+		{"SLUG", e.Slug},
+		{"NAME", d.Name},
+		{"PROVENANCE", e.Provenance},
+		{"CREATED", e.CreatedAt.Local().Format(time.DateTime)},
+		{"REVISION", fmt.Sprintf("%d, %s", e.Revision.ID, e.Revision.CreatedAt.Local().Format(time.DateTime))},
+		{"ARCHIVED", date(e.ArchivedAt)},
+		{"TAGS", strings.Join(e.Tags, ", ")},
+		{"LOREBOOKS", ids(e.Lorebooks)},
+		{"COLLECTIONS", ids(e.Collections)},
+		{"CARDS", ids(e.Cards)},
+	} {
+		if row[1] != "" {
+			fmt.Fprintf(tw, "%s\t%s\n", row[0], row[1])
+		}
+	}
+	return tw.Flush()
+}
+
+func printRevisions(w io.Writer, list []revision) error {
+	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "ID\tCREATED\tSOURCE\tMESSAGE")
+	for _, r := range list {
+		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\n", r.ID, r.CreatedAt.Local().Format(time.DateTime), r.Source, r.Message)
+	}
+	return tw.Flush()
+}
+
+// getCmd makes a command that gets path under an entity and prints it.
+func getCmd[T any](k kind, use, short, suffix string, table func(io.Writer, T) error) *cobra.Command {
+	return &cobra.Command{
+		Use:   use + " <" + k.singular + "-id>",
+		Short: short,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := parseID(args[0])
+			if err != nil {
+				return err
+			}
+			c, err := newClient(cmd)
+			if err != nil {
+				return err
+			}
+			out, err := c.do(cmd.Context(), "GET", "/"+k.plural+"/"+id+suffix, nil)
+			if err != nil {
+				return err
+			}
+			return show(cmd, out, table)
+		},
+	}
 }

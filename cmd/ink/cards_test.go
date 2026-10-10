@@ -110,3 +110,39 @@ func TestCardsSearch(t *testing.T) {
 		t.Error("bad query JSON succeeded")
 	}
 }
+
+const brakka = `{"id": 3, "slug": "brakka", "provenance": "api", "created_at": "2026-10-07T10:00:00Z",
+	"revision": {"id": 7, "data": {"name": "Brakka", "description": "An orc"}, "created_at": "2026-10-08T10:00:00Z"},
+	"tags": ["orc"], "lorebooks": [5]}`
+
+func TestCardsShowAndHistory(t *testing.T) {
+	stubAPI(t, map[string]string{
+		"/cards/3":           brakka,
+		"/cards/3/revisions": `[{"id": 7, "source": "ui", "message": "fix typo", "created_at": "2026-10-08T10:00:00Z"}]`,
+	})
+	out, err := runInk(t, "cards", "show", "3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Brakka", "brakka", "orc", "5", "7"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("show lacks %q: %q", want, out)
+		}
+	}
+	out, err = runInk(t, "cards", "history", "3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(out, "\n")
+	if f := strings.Fields(lines[0]); !slices.Equal(f, []string{"ID", "CREATED", "SOURCE", "MESSAGE"}) {
+		t.Errorf("header = %q", lines[0])
+	}
+	if f := strings.Fields(lines[1]); f[0] != "7" || f[3] != "ui" || f[4] != "fix" {
+		t.Errorf("row = %q", lines[1])
+	}
+	for _, args := range [][]string{{"cards", "show", "x"}, {"lorebooks", "history"}} {
+		if _, err := runInk(t, args...); err == nil {
+			t.Errorf("%q succeeded", args)
+		}
+	}
+}

@@ -2685,6 +2685,8 @@ export interface components {
              * @example /api/schemas/ReconcileParams.json
              */
             readonly $schema?: string;
+            /** @enum {string} */
+            apply?: "obvious" | "none";
             /** Format: int64 */
             instance_id: number;
             match?: components["schemas"]["ReconcileMatch"];

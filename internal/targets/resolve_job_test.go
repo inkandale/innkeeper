@@ -129,8 +129,7 @@ func TestBulkResolveSharedWorldBook(t *testing.T) {
 }
 
 func TestReconcileAutoBindsExactMatches(t *testing.T) {
-	for _, apply := range []string{"", ApplyNone} {
-		on := apply == ""
+	for _, apply := range []string{ApplyObvious, ApplyNone} {
 		e, tova, _ := worldBooks(t)
 		dain := e.libCard(map[string]any{"name": "Dain", "description": "A miner."})
 		e.appCard("r1", map[string]any{"name": "Tova", "description": "A smith."}, nil)
@@ -149,17 +148,17 @@ func TestReconcileAutoBindsExactMatches(t *testing.T) {
 		}
 		c1, c2 := items["r1"], items["r2"]
 		if c2.Verdict != VerdictExact || c2.Lorebooks[0].Verdict != VerdictLikely || c2.AutoBound {
-			t.Errorf("on %v: c2 = %+v", on, c2)
+			t.Errorf("%s: c2 = %+v", apply, c2)
 		}
-		if !on {
+		if apply == ApplyNone {
 			if c1.AutoBound || e.bindingCount() != 0 {
-				t.Errorf("off: c1 = %+v, %d bindings", c1, e.bindingCount())
+				t.Errorf("none: c1 = %+v, %d bindings", c1, e.bindingCount())
 			}
 			continue
 		}
 		dainBindings, err := e.s.Bindings(e.ctx, dain)
 		if !c1.AutoBound || c1.BindingID == 0 || e.status(tova) != "in_sync" || err != nil || len(dainBindings) != 0 {
-			t.Errorf("on: c1 = %+v, dain bindings %v, %v", c1, dainBindings, err)
+			t.Errorf("obvious: c1 = %+v, dain bindings %v, %v", c1, dainBindings, err)
 		}
 		for _, id := range snap.Unpushed {
 			if id == tova {

@@ -2664,6 +2664,13 @@
             "readOnly": true,
             "type": "string"
           },
+          "apply": {
+            "enum": [
+              "obvious",
+              "none"
+            ],
+            "type": "string"
+          },
           "instance_id": {
             "format": "int64",
             "type": "integer"

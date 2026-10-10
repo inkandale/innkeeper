@@ -17,5 +17,6 @@ type (
 
 const (
 	ReconcileKind = wire.ReconcileKind
+	ApplyObvious  = wire.ApplyObvious
 	ApplyNone     = wire.ApplyNone
 )

@@ -278,9 +278,14 @@ func TestMCPReconcile(t *testing.T) {
 	e.appCard(dir, "rBrakka.png", "Brakka", "Well met.")
 	e.appCard(dir, "rCarrow", "Carrow", "Hello.")
 
-	read := e.mcpClient(tier.Read)
+	read, write := e.mcpClient(tier.Read), e.mcpClient(tier.Write)
+	if _, err := read.CallTool(context.Background(), &sdk.CallToolParams{Name: "start_reconcile",
+		Arguments: map[string]any{"instance_id": inst}}); err == nil {
+		t.Fatal("a read token called start_reconcile")
+	}
 	var j jobOut
-	if err := json.Unmarshal([]byte(tool(t, read, "start_reconcile", map[string]any{"instance_id": inst}, false)), &j); err != nil {
+	start := map[string]any{"instance_id": inst, "apply": "none"}
+	if err := json.Unmarshal([]byte(tool(t, write, "start_reconcile", start, false)), &j); err != nil {
 		t.Fatal(err)
 	}
 	if last, r := e.watchJob(j.ID); last.Status != "succeeded" {
@@ -295,7 +300,6 @@ func TestMCPReconcile(t *testing.T) {
 		t.Fatal("a read token called resolve_item")
 	}
 
-	write := e.mcpClient(tier.Write)
 	got = tool(t, write, "resolve_item", map[string]any{"instance_id": inst, "remote_id": "rBrakka.png", "action": "bind", "card_id": c.ID,
 		"app_hash": cmp.AppHash, "base_revision_id": cmp.HeadRevisionID, "default": "app"}, false)
 	if !strings.Contains(got, `"binding_id"`) {

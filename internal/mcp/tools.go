@@ -140,6 +140,7 @@ type reconcileIn struct {
 	InstanceID  int64          `json:"instance_id" jsonschema:"The target plugin instance"`
 	Match       map[string]any `json:"match,omitempty" jsonschema:"name (bool), text_distance and avatar_distance (0..32); defaults true, 8, 8"`
 	SplitFields *int           `json:"split_fields,omitempty" jsonschema:"How many core fields must differ before import is suggested over bind; default 3"`
+	Apply       string         `json:"apply,omitempty" jsonschema:"obvious (default) binds exact matches and imports new items; none writes nothing"`
 }
 
 type compareIn struct {
@@ -353,7 +354,7 @@ var tools = []tool{
 			return c.call(ctx, "POST", "/imports", body)
 		}),
 	def("start_reconcile", "Line a target app up against the library. Starts a job; its finished get_job progress is the snapshot: "+
-		"a verdict, candidates, and a suggested action for each app item. Changes nothing unless the instance has auto_bind_exact.", tier.Read,
+		"a verdict, candidates, and a suggested action for each app item. Binds exact matches and imports new items unless apply is \"none\".", tier.Write,
 		func(ctx context.Context, c caller, in reconcileIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", "/reconciles", in)
 		}),

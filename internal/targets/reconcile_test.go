@@ -158,7 +158,8 @@ func TestReconcileVerdicts(t *testing.T) {
 
 func TestReconcileParams(t *testing.T) {
 	p, err := withDefaults(ReconcileParams{})
-	if err != nil || !*p.Match.Name || *p.Match.TextDistance != 8 || *p.Match.AvatarDistance != 8 || *p.SplitFields != 3 {
+	if err != nil || !*p.Match.Name || *p.Match.TextDistance != 8 || *p.Match.AvatarDistance != 8 || *p.SplitFields != 3 ||
+		p.Apply != ApplyObvious {
 		t.Fatalf("defaults = %+v, %v", p, err)
 	}
 	big, neg, five := 33, -1, 5
@@ -166,6 +167,7 @@ func TestReconcileParams(t *testing.T) {
 		{Match: ReconcileMatch{TextDistance: &big}},
 		{Match: ReconcileMatch{AvatarDistance: &neg}},
 		{SplitFields: &five},
+		{Apply: "all"},
 	} {
 		if _, err := withDefaults(bad); !errors.Is(err, library.ErrInvalid) {
 			t.Errorf("%+v: err = %v", bad, err)

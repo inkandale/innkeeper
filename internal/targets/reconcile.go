@@ -47,6 +47,10 @@ func withDefaults(p ReconcileParams) (ReconcileParams, error) {
 	if n := *p.SplitFields; n < 1 || n > 4 {
 		return p, fmt.Errorf("%w: split_fields must be 1 to 4", library.ErrInvalid)
 	}
+	p.Apply = cmp.Or(p.Apply, ApplyObvious)
+	if p.Apply != ApplyObvious && p.Apply != ApplyNone {
+		return p, fmt.Errorf("%w: apply must be obvious or none", library.ErrInvalid)
+	}
 	return p, nil
 }
 
@@ -459,27 +463,20 @@ func (s *Service) Reconcile(ctx context.Context, p ReconcileParams, progress fun
 
 	if p.Apply != ApplyNone {
 		s.autoApply(ctx, lorebookKind, p.InstanceID, bookIdx, bookIdx, snap.Lorebooks)
-		// The index was read before these bindings; a bound card isn't unpushed.
+		// The index was read before this run applied anything; an applied card isn't unpushed.
 		for id := range s.autoApply(ctx, cardKind, p.InstanceID, cardIdx, bookIdx, snap.Items) {
 			cardIdx.remoteOf[id] = ""
 		}
-		// Each world book once, as the verdict totals count them.
 		type auto struct{ bound, imported bool }
-		count := func(a auto) {
-			if a.bound {
-				snap.Totals["auto_bound"]++
-			}
-			if a.imported {
-				snap.Totals["auto_imported"]++
-			}
-		}
+		// Each world book once, as the verdict totals count them.
 		books := map[string]auto{}
 		mark := func(lb ReconcileItem) {
 			a := books[lb.RemoteID]
 			books[lb.RemoteID] = auto{a.bound || lb.AutoBound, a.imported || lb.AutoImported}
 		}
+		all := []auto{}
 		for _, it := range snap.Items {
-			count(auto{it.AutoBound, it.AutoImported})
+			all = append(all, auto{it.AutoBound, it.AutoImported})
 			for _, lb := range it.Lorebooks {
 				mark(lb)
 			}
@@ -488,8 +485,16 @@ func (s *Service) Reconcile(ctx context.Context, p ReconcileParams, progress fun
 			mark(lb)
 		}
 		for _, a := range books {
-			// A later card binds the world book an earlier one imported.
-			count(auto{a.bound && !a.imported, a.imported})
+			all = append(all, a)
+		}
+		for _, a := range all {
+			// A world book one card imported, a later card binds; it counts as imported.
+			switch {
+			case a.imported:
+				snap.Totals["auto_imported"]++
+			case a.bound:
+				snap.Totals["auto_bound"]++
+			}
 		}
 	}
 
@@ -508,11 +513,11 @@ func (s *Service) Reconcile(ctx context.Context, p ReconcileParams, progress fun
 	return snap, nil
 }
 
-// autoApply binds each exact item and imports each new one whose world books
-// are all exact, new, or bound without drift, keeping the library's copy, and
-// returns the card IDs it bound or imported. It resolves with the hashes this
-// run read, so an item that changed since is stale and left for the owner, and
-// it never changes an existing library item. A failure leaves the item as it was.
+// autoApply binds each exact item, keeping the library's copy, and imports
+// each new one, when its world books are all exact, new, or bound without
+// drift. It returns the card IDs it applied. It resolves with the hashes this
+// run read, so an item that changed since is left for the owner, and it never
+// changes an existing library item. A failure leaves the item as it was.
 func (s *Service) autoApply(ctx context.Context, k kind, instanceID int64, idx, books index,
 	items []ReconcileItem) map[int64]bool {
 	applied := map[int64]bool{}
@@ -556,7 +561,7 @@ items:
 			lb, n := &it.Lorebooks[j], r.Lorebooks[j]
 			lb.AutoBound, lb.AutoImported, lb.BindingID = n.Action == "bind", n.Action == "import", lr.BindingID
 			if n.Action == "import" {
-				// The next card binds the lorebook this one imported; books.byID predates it.
+				// The next card binds the world book this one imported; books.byID predates it.
 				n = Resolution{RemoteID: n.RemoteID, AppHash: n.AppHash, Action: "bind", CardID: lr.CardID,
 					BaseRevisionID: lr.RevisionID, Default: merge.ChooseLibrary}
 			}

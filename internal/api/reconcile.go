@@ -43,9 +43,7 @@ type resolutionsIn struct {
 func (s *Server) reconcileRoutes(api huma.API) {
 	tags := []string{"Sync"}
 
-	// Read tier: it changes nothing unless the instance has auto_bind_exact,
-	// which only a destructive token can turn on.
-	huma.Register(api, huma.Operation{Metadata: needs(tier.Read), OperationID: "start-reconcile", Method: http.MethodPost,
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "start-reconcile", Method: http.MethodPost,
 		Path: "/reconciles", Summary: "Line up a target app against the library", Tags: tags, DefaultStatus: http.StatusAccepted,
 		Description: "Queues a reconcile job. Read the snapshot from GET /jobs/{id}: its progress is the snapshot once the job finishes."},
 		func(ctx context.Context, in *reconcileIn) (*jobResp, error) {

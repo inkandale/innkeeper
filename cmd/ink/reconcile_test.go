@@ -41,13 +41,14 @@ func TestPrintSnapshotAuto(t *testing.T) {
 		{RemoteID: "a", Verdict: "exact", AutoBound: true},
 		{RemoteID: "b", Verdict: "new", AutoImported: true, Lorebooks: []wire.ReconcileItem{{RemoteID: "lb", Verdict: "new"}}},
 		{RemoteID: "c", Verdict: "bound"},
+		{RemoteID: "e", Verdict: "bound", Suggested: &wire.Option{Action: "bind", CardID: 1}},
 		{RemoteID: "d", Verdict: "likely"},
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	out := b.String()
-	for _, want := range []string{"exact (auto)", "new (auto)", "2 applied, 2 left to review"} {
+	for _, want := range []string{"exact (auto)", "new (auto)", "2 applied, 3 left to review"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}
@@ -159,7 +160,7 @@ func TestSyncRun(t *testing.T) {
 	if _, err := runInk(t, "sync", "reconcile", "3"); err != nil {
 		t.Errorf("reconcile alias: %v", err)
 	}
-	if _, err := runInk(t, "sync", "run", "3", "--dry-run"); err != nil {
+	if _, err := runInk(t, "sync", "run", "3", `{"apply":"obvious"}`, "--dry-run"); err != nil {
 		t.Fatal(err)
 	}
 	if !slices.ContainsFunc(*got, func(r string) bool { return strings.HasPrefix(r, "POST /reconciles") && strings.Contains(r, `"apply":"none"`) }) {

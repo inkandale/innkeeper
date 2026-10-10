@@ -284,7 +284,8 @@ func snapshot(ctx context.Context, c *client, jobID string) (wire.Snapshot, erro
 func printSnapshot(w io.Writer, snap wire.Snapshot) error {
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(tw, "KIND\tVERDICT\tREMOTE ID\tNAME\tTOP CANDIDATE\tSUGGESTED")
-	// Nested world books get rows, so they count toward both numbers.
+	// Nested world books get rows, so they count toward both numbers. A bound
+	// item is left to review only when it drifted (a suggestion) or errored.
 	var applied, pending int
 	row := func(kind string, it wire.ReconcileItem) {
 		top := ""
@@ -305,7 +306,7 @@ func printSnapshot(w io.Writer, snap wire.Snapshot) error {
 		if it.AutoBound || it.AutoImported {
 			applied++
 			verdict += " (auto)"
-		} else if it.Verdict != "bound" {
+		} else if it.Verdict != "bound" || it.Suggested != nil || it.Error != "" {
 			pending++
 		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", kind, verdict, it.RemoteID, it.Name, top, suggested)

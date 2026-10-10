@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -265,6 +266,42 @@ func TestEditKeepsTheFileWhenTheSaveFails(t *testing.T) {
 func TestCardsNeedAnID(t *testing.T) {
 	stubAPI(t, nil)
 	for _, args := range [][]string{{"cards", "edit", "x"}, {"lorebooks", "create"}, {"cards", "bogus"}, {"lorebooks", "bogus", "1"}} {
+		if _, err := runInk(t, args...); err == nil {
+			t.Errorf("%q succeeded", args)
+		}
+	}
+}
+
+func TestCardsImport(t *testing.T) {
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		got = append(got, r.Method+" "+r.URL.Path+" "+r.Header.Get("Content-Type")+" "+string(body))
+		if r.URL.Path == "/api/blobs" {
+			_, _ = w.Write([]byte(`{"sha256": "abc"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"id": 9}`))
+	}))
+	defer srv.Close()
+	t.Setenv("INNKEEPER_URL", srv.URL)
+	t.Setenv("INNKEEPER_TOKEN", "tok")
+	file := filepath.Join(t.TempDir(), "brakka.png")
+	if err := os.WriteFile(file, []byte("PNG"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runInk(t, "lorebooks", "import", "4", file)
+	if err != nil || out != "started job 9; follow it with: ink jobs watch 9\n" {
+		t.Fatalf("out = %q, err = %v", out, err)
+	}
+	want := []string{
+		"POST /api/blobs application/octet-stream PNG",
+		`POST /api/imports application/json {"instance_id":4,"params":{"blob":"abc","name":"brakka.png"}}`,
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("requests = %q\nwant %q", got, want)
+	}
+	for _, args := range [][]string{{"cards", "import", "x", file}, {"cards", "import", "4", file + ".missing"}} {
 		if _, err := runInk(t, args...); err == nil {
 			t.Errorf("%q succeeded", args)
 		}

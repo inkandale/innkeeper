@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -38,6 +40,39 @@ func entityCmds(k kind) []*cobra.Command {
 		editCmd(k),
 		archiveCmd(k, "archive"),
 		archiveCmd(k, "unarchive"),
+		importFileCmd(k),
+	}
+}
+
+func importFileCmd(k kind) *cobra.Command {
+	return &cobra.Command{
+		Use:   "import <instance-id> <file>",
+		Short: "Import a card or lorebook file with an importer instance",
+		Long: `Import uploads the file, then starts an import of it with the instance, such
+as one of the card-import plugin. The instance decides whether the file holds
+a card or a lorebook.`,
+		Example: "  ink " + k.plural + " import 4 brakka.png",
+		Args:    cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := parseID(args[0])
+			if err != nil {
+				return err
+			}
+			file, err := os.ReadFile(args[1])
+			if err != nil {
+				return err
+			}
+			c, err := newClient(cmd)
+			if err != nil {
+				return err
+			}
+			sha, err := c.upload(cmd.Context(), file)
+			if err != nil {
+				return err
+			}
+			return startJob(cmd, "/imports", map[string]any{"instance_id": json.Number(id),
+				"params": map[string]string{"blob": sha, "name": filepath.Base(args[1])}})
+		},
 	}
 }
 

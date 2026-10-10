@@ -48,7 +48,7 @@ func newClient(cmd *cobra.Command) (*client, error) {
 	return &client{base: p.URL + "/api", token: tok}, nil
 }
 
-func (c *client) request(ctx context.Context, method, path string, body []byte) (*http.Response, error) {
+func (c *client) request(ctx context.Context, method, path, ctype string, body []byte) (*http.Response, error) {
 	var r io.Reader
 	if body != nil {
 		r = bytes.NewReader(body)
@@ -59,7 +59,7 @@ func (c *client) request(ctx context.Context, method, path string, body []byte) 
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Type", ctype)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -100,7 +100,7 @@ func (c *client) request(ctx context.Context, method, path string, body []byte) 
 // do sends body as JSON, or nothing if it is nil, and returns the response
 // body. An error status becomes an error with the API's explanation.
 func (c *client) do(ctx context.Context, method, path string, body []byte) ([]byte, error) {
-	resp, err := c.request(ctx, method, path, body)
+	resp, err := c.request(ctx, method, path, "application/json", body)
 	if err != nil {
 		return nil, err
 	}
@@ -108,9 +108,25 @@ func (c *client) do(ctx context.Context, method, path string, body []byte) ([]by
 	return io.ReadAll(resp.Body)
 }
 
+// upload posts a file to POST /blobs and returns its sha256.
+func (c *client) upload(ctx context.Context, file []byte) (string, error) {
+	resp, err := c.request(ctx, http.MethodPost, "/blobs", "application/octet-stream", file)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	var b struct {
+		SHA256 string `json:"sha256"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&b); err != nil {
+		return "", err
+	}
+	return b.SHA256, nil
+}
+
 // stream calls fn with each server-sent event's data until the stream ends.
 func (c *client) stream(ctx context.Context, path string, fn func(data []byte) error) error {
-	resp, err := c.request(ctx, http.MethodGet, path, nil)
+	resp, err := c.request(ctx, http.MethodGet, path, "", nil)
 	if err != nil {
 		return err
 	}

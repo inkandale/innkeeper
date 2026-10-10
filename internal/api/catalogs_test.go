@@ -110,6 +110,15 @@ func TestCatalogIngestRoute(t *testing.T) {
 	}
 	// Nothing runs jobs here, so the first ingest is still queued.
 	e.call("POST", fmt.Sprintf("/catalogs/%d/ingest", inst), nil, 409, nil)
+	// A finished ingest no longer blocks a new one.
+	if err := e.s.Queue.Cancel(context.Background(), j.ID); err != nil {
+		t.Fatal(err)
+	}
+	var j2 jobOut
+	e.call("POST", fmt.Sprintf("/catalogs/%d/ingest", inst), nil, 202, &j2)
+	if j2.ID == j.ID {
+		t.Fatalf("second ingest reused job %d", j.ID)
+	}
 	if r := e.call("POST", fmt.Sprintf("/catalogs/%d/ingest", static), nil, 400, nil); !strings.Contains(string(r.Body), "doesn't ingest") {
 		t.Fatalf("static: %s", r)
 	}
@@ -120,7 +129,7 @@ func TestCatalogIngestRoute(t *testing.T) {
 	for _, c := range list {
 		last[c.ID] = c.LastIngest
 	}
-	if last[inst] == nil || last[inst].ID != j.ID || last[static] != nil {
+	if last[inst] == nil || last[inst].ID != j2.ID || last[static] != nil {
 		t.Fatalf("last ingests = %+v", last)
 	}
 }

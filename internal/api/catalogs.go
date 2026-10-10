@@ -23,6 +23,9 @@ import (
 // catalogTimeout bounds each call the API makes to a catalog.
 const catalogTimeout = 30 * time.Second
 
+// describeTimeout is shorter: describe never reaches the source, and GET /catalogs waits on every catalog.
+const describeTimeout = 5 * time.Second
+
 // catalogMatchLimit is the most items each catalog returns for one card or
 // lorebook.
 const catalogMatchLimit = 20
@@ -144,7 +147,10 @@ func (s *Server) catalogs(ctx context.Context) ([]catalogOut, error) {
 		}
 		c := catalogOut{ID: i.ID, Name: i.Name, Plugin: i.Plugin}
 		var info protocol.CatalogInfo
-		if _, err := s.catalogCall(ctx, i.ID, protocol.MethodCatalogDescribe, nil, &info); err != nil {
+		dctx, cancel := context.WithTimeout(ctx, describeTimeout)
+		_, err := s.catalogCall(dctx, i.ID, protocol.MethodCatalogDescribe, nil, &info)
+		cancel()
+		if err != nil {
 			c.Error = err.Error()
 		} else {
 			c.Info = &info
@@ -257,6 +263,8 @@ func (s *Server) catalogRoutes(api huma.API) {
 			if _, err := s.catalogCall(ctx, in.ID, protocol.MethodCatalogGet, params, &out.Body); err != nil {
 				return nil, err
 			}
+			// Only adopt asks for an avatar; never hand a client a server path.
+			out.Body.Avatar = ""
 			return out, nil
 		})
 

@@ -1,9 +1,12 @@
 package targets
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"log/slog"
 	"maps"
@@ -209,4 +212,42 @@ func (e *env) forgetLinks(id string) {
 	card := e.remote(id)
 	delete(card, "lorebook_remote_ids")
 	e.writeRemote(id, card)
+}
+
+// appCard puts a card in the fake app, as if the owner made it there.
+func (e *env) appCard(id string, data map[string]any, extra map[string]any) {
+	e.t.Helper()
+	item := map[string]any{"spec": "chara_card_v3", "spec_version": "3.0", "data": data}
+	for k, v := range extra {
+		item[k] = v
+	}
+	e.writeRemote(id, item)
+}
+
+// bindingOf returns the binding that uses the app item.
+func (e *env) bindingOf(remoteID string) Binding {
+	e.t.Helper()
+	var id int64
+	if err := e.pool.QueryRow(e.ctx, `SELECT id FROM binding WHERE instance_id = $1 AND remote_id = $2`,
+		e.inst, remoteID).Scan(&id); err != nil {
+		e.t.Fatalf("binding for %s: %v", remoteID, err)
+	}
+	b, err := e.s.Binding(e.ctx, id)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return b
+}
+
+func pngFile(t *testing.T) string {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, image.NewGray(image.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "iko.png")
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }

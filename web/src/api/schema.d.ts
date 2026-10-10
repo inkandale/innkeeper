@@ -346,7 +346,7 @@ export interface paths {
         put?: never;
         /**
          * Bind a card to one the app already has
-         * @description Changes nothing in the app or the library. The app's copy becomes the accepted one, so the binding is ahead where the library differs, and the next push sends the library's. The app's linked world books are left for reconcile.
+         * @description Changes nothing in the app or the library. The app's copy becomes the accepted one, so the binding is ahead where the library differs, and the next push sends the library's. The app's linked world books are left for sync.
          */
         post: operations["bind-card"];
         delete?: never;
@@ -844,7 +844,7 @@ export interface paths {
         put?: never;
         /**
          * Start an import
-         * @description Queues an import job for an instance of an import plugin. For a target app, queues a bulk job that takes each character and lorebook not yet bound on the instance into the library and binds it; the payload counts those skipped as already_bound.
+         * @description Queues an import job for an instance of an import plugin.
          */
         post: operations["start-import"];
         delete?: never;
@@ -1199,7 +1199,7 @@ export interface paths {
         put?: never;
         /**
          * Bind a lorebook to one the app already has
-         * @description Changes nothing in the app or the library. The app's copy becomes the accepted one, so the binding is ahead where the library differs, and the next push sends the library's. The app's linked world books are left for reconcile.
+         * @description Changes nothing in the app or the library. The app's copy becomes the accepted one, so the binding is ahead where the library differs, and the next push sends the library's. The app's linked world books are left for sync.
          */
         post: operations["bind-lorebook"];
         delete?: never;

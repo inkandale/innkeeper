@@ -266,7 +266,7 @@ extension field, so it survives your plugin restarting.
 | Param | Meaning |
 |---|---|
 | `remote_id` | The ID from `target.put` |
-| `avatar` | `true` when the core imports the card and wants its image too. Checks don't set it |
+| `avatar` | `true` when the core wants the card and wants its image too. Checks don't set it |
 
 | Reply field | Meaning |
 |---|---|

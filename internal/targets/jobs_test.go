@@ -48,7 +48,7 @@ func (e *env) startWorker(q *jobs.Queue) func(id int64) jobs.Job {
 	e.t.Helper()
 	w := &jobs.Worker{Queue: q, Log: quiet, Poll: 50 * time.Millisecond,
 		Backoff: func(int) time.Duration { return time.Hour },
-		Handlers: map[string]jobs.Handler{PushKind: e.s.RunPush, ScanKind: e.s.RunScan, ImportKind: e.s.RunImport,
+		Handlers: map[string]jobs.Handler{PushKind: e.s.RunPush, ScanKind: e.s.RunScan,
 			ReconcileKind: e.s.RunReconcile, ResolveKind: e.s.RunResolve}}
 	ctx, cancel := context.WithCancel(e.ctx)
 	done := make(chan error, 1)

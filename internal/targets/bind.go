@@ -117,7 +117,7 @@ func (s *Service) bindResolved(ctx context.Context, k kind, instanceID, id int64
 }
 
 // bind links an item to a library one whose content matches it exactly, with
-// the library's copy as the baseline, for target import.
+// the library's copy as the baseline.
 func (s *Service) bind(ctx context.Context, k kind, instanceID, id int64, remoteID string) (Binding, error) {
 	inst, info, err := s.describePull(ctx, k, instanceID)
 	if err != nil {

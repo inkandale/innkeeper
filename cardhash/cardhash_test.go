@@ -79,3 +79,20 @@ func TestLorebookSimhash(t *testing.T) {
 		t.Fatalf("got %d, want %d", a, want)
 	}
 }
+
+func TestCardData(t *testing.T) {
+	data, book, err := CardData([]byte(`{"spec": "chara_card_v3", "data": {"name": "A", "extensions": {"fav": true, "world": "W", "depth": 4},
+		"character_book": {"name": "B", "entries": []}}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != `{"extensions":{"depth":4},"name":"A"}` {
+		t.Errorf("data = %s", data)
+	}
+	if string(book) != `{"name": "B", "entries": []}` {
+		t.Errorf("book = %s", book)
+	}
+	if data, _, err := CardData([]byte(`{"spec": "chara_card_v3"}`)); data != nil || err != nil {
+		t.Errorf("no data: got %s, %v", data, err)
+	}
+}

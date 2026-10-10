@@ -41,7 +41,7 @@ type catalogEntry struct {
 var catalogEntries = []catalogEntry{
 	{"brakka", protocol.KindCard, []string{"dwarf"}, []string{
 		`{"spec": "chara_card_v3", "spec_version": "3.0", "data": {"name": "Brakka", "description": "A dwarf blacksmith."}}`,
-		`{"spec": "chara_card_v3", "spec_version": "3.0", "data": {"name": "Brakka", "description": "A grumpy dwarf blacksmith who runs the forge at the edge of town."}}`,
+		`{"spec": "chara_card_v3", "spec_version": "3.0", "data": {"name": "Brakka", "description": "A grumpy dwarf blacksmith who runs the forge at the edge of town.", "extensions": {"fav": true}, "character_book": {"name": "Forge Songs", "entries": [{"keys": ["forge"], "content": "Hammer songs keep the forge lit."}]}}}`,
 	}},
 	{"carrow", protocol.KindCard, []string{"elf"}, []string{
 		`{"spec": "chara_card_v3", "spec_version": "3.0", "data": {"name": "Carrow", "description": "A cheerful elven bard who sings of the sea."}}`,
@@ -52,16 +52,13 @@ var catalogEntries = []catalogEntry{
 }
 
 // hashed is the part of an item's data the library hashes: a card's data
-// object, or the whole lorebook.
+// as cardhash.CardData returns it, or the whole lorebook.
 func hashed(kind, raw string) json.RawMessage {
 	if kind != protocol.KindCard {
 		return json.RawMessage(raw)
 	}
-	var c struct {
-		Data json.RawMessage `json:"data"`
-	}
-	_ = json.Unmarshal([]byte(raw), &c)
-	return c.Data
+	data, _, _ := cardhash.CardData(json.RawMessage(raw))
+	return data
 }
 
 func (e catalogEntry) item(mode string) protocol.CatalogItem {

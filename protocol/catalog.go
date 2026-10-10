@@ -251,7 +251,7 @@ type CatalogItem struct {
 }
 
 // CatalogHashes are an item's cardhash fingerprints, computed as the library
-// does: over a card's data object, or over the whole lorebook. The simhash
+// does: over cardhash.CardData of a card, or over the whole lorebook. The simhash
 // and phash are the 64 bits cardhash returns, read as a signed int64.
 type CatalogHashes struct {
 	ContentHash string `json:"content_hash"`
@@ -294,7 +294,7 @@ type CatalogSearchResult struct {
 }
 
 // CatalogGetParams asks for one version of an item, the latest if Version is
-// empty. Avatar asks for its image too; only adopt sets it.
+// empty. Avatar asks for its image too; adopt and plugin check set it.
 type CatalogGetParams struct {
 	ID      string `json:"id"`
 	Version string `json:"version,omitempty"`

@@ -18,6 +18,37 @@ import (
 // Fields that change on every save without changing the card.
 var volatile = []string{"creation_date", "modification_date"}
 
+// appLocalKeys are extensions that hold SillyTavern's favorite star and world
+// link: app state, not card content.
+var appLocalKeys = []string{"fav", "world"}
+
+// CardData returns a CCv3 card's data object as the library stores and
+// hashes it, without character_book or the app-local extensions, and the
+// character_book, or nil. data is nil when the card has no data.
+func CardData(card json.RawMessage) (data, book json.RawMessage, err error) {
+	var c struct {
+		Data map[string]json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(card, &c); err != nil || c.Data == nil {
+		return nil, nil, err
+	}
+	if b := c.Data["character_book"]; len(b) > 0 && string(b) != "null" {
+		book = b
+	}
+	delete(c.Data, "character_book")
+	var ext map[string]json.RawMessage
+	if json.Unmarshal(c.Data["extensions"], &ext) == nil && ext != nil {
+		for _, k := range appLocalKeys {
+			delete(ext, k)
+		}
+		if c.Data["extensions"], err = json.Marshal(ext); err != nil {
+			return nil, nil, err
+		}
+	}
+	data, err = json.Marshal(c.Data)
+	return data, book, err
+}
+
 // ContentHash returns the hex SHA-256 of the card or lorebook data in
 // canonical form:
 //

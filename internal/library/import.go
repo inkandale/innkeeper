@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/davidgibbons/innkeeper/cardhash"
 )
 
 const maxSlugLen = 60
@@ -137,16 +139,11 @@ func (s *Entities) createFromName(ctx context.Context, tx pgx.Tx, name, provenan
 	return Entity{}, Revision{}, ErrSlugTaken
 }
 
-// appLocalKeys are extensions that hold SillyTavern's favorite star and world
-// link: app state, not card content.
-var appLocalKeys = []string{"fav", "world"}
-
 // SplitCard checks that card is a CCv3 card and returns its name, its data
-// without character_book or appLocalKeys, and the character_book, or nil.
+// as cardhash.CardData returns it, and the character_book, or nil.
 func SplitCard(card json.RawMessage) (name string, data, book json.RawMessage, err error) {
 	var c struct {
-		Spec string                     `json:"spec"`
-		Data map[string]json.RawMessage `json:"data"`
+		Spec string `json:"spec"`
 	}
 	if err := json.Unmarshal(card, &c); err != nil {
 		return "", nil, nil, fmt.Errorf("%w: %w", ErrInvalid, err)
@@ -154,25 +151,17 @@ func SplitCard(card json.RawMessage) (name string, data, book json.RawMessage, e
 	if c.Spec != "chara_card_v3" {
 		return "", nil, nil, fmt.Errorf("%w: spec %q is not chara_card_v3", ErrInvalid, c.Spec)
 	}
-	if c.Data == nil {
+	if data, book, err = cardhash.CardData(card); err != nil {
+		return "", nil, nil, fmt.Errorf("%w: %w", ErrInvalid, err)
+	}
+	if data == nil {
 		return "", nil, nil, fmt.Errorf("%w: card has no data", ErrInvalid)
 	}
-	_ = json.Unmarshal(c.Data["name"], &name)
-	if b := c.Data["character_book"]; len(b) > 0 && string(b) != "null" {
-		book = b
+	var n struct {
+		Name string `json:"name"`
 	}
-	delete(c.Data, "character_book")
-	var ext map[string]json.RawMessage
-	if json.Unmarshal(c.Data["extensions"], &ext) == nil && ext != nil {
-		for _, k := range appLocalKeys {
-			delete(ext, k)
-		}
-		if c.Data["extensions"], err = json.Marshal(ext); err != nil {
-			return "", nil, nil, err
-		}
-	}
-	data, err = json.Marshal(c.Data)
-	return name, data, book, err
+	_ = json.Unmarshal(data, &n)
+	return n.Name, data, book, nil
 }
 
 // ImportCard adds a CCv3 card from a plugin as Import does, with its

@@ -150,13 +150,16 @@ func checkCatalogGet(ctx context.Context, p *pluginhost.Process, it *protocol.Ca
 	switch it.Kind {
 	case protocol.KindCard:
 		var c struct {
-			Spec string          `json:"spec"`
-			Data json.RawMessage `json:"data"`
+			Spec string `json:"spec"`
 		}
 		if err := json.Unmarshal(res.Data, &c); err != nil || c.Spec != "chara_card_v3" {
 			return errors.New("data is not a chara_card_v3 card")
 		}
-		if err := checkHash(c.Data, it.Hashes.ContentHash); err != nil {
+		data, _, err := cardhash.CardData(res.Data)
+		if err != nil {
+			return fmt.Errorf("data: %w", err)
+		}
+		if err := checkHash(data, it.Hashes.ContentHash); err != nil {
 			return err
 		}
 	case protocol.KindLorebook:

@@ -63,6 +63,54 @@ func TestInstanceRoutes(t *testing.T) {
 	e.call("PATCH", path, map[string]any{"name": "X"}, 404, nil)
 }
 
+func TestInstanceCheck(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	create := func(plugin, name string, config map[string]any) int64 {
+		id, err := e.s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: plugin, Name: name, Config: config})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	check := func(id int64) (out checkResult) {
+		t.Helper()
+		e.call("POST", fmt.Sprintf("/instances/%d/check", id), nil, 200, &out)
+		return out
+	}
+	broken := func(id int64) *string {
+		t.Helper()
+		i, err := e.s.Registry.GetInstance(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return i.BrokenError
+	}
+
+	good := create("target", "Good", map[string]any{"dir": t.TempDir()})
+	if c := check(good); !c.OK || c.Error != "" {
+		t.Errorf("good: %+v", c)
+	}
+	e.markBroken(good, "passing trouble")
+	if c := check(good); !c.OK || broken(good) != nil {
+		t.Errorf("a good start leaves %+v, broken %v", c, broken(good))
+	}
+
+	// Without a dir, the fake target's app refuses target.list.
+	noApp := create("target", "No app", nil)
+	if c := check(noApp); c.OK || !strings.Contains(c.Error, "config.dir is not set") || broken(noApp) != nil {
+		t.Errorf("app error: %+v, broken %v", c, broken(noApp))
+	}
+
+	// The vault manifest names no binary, so its plugin can't start.
+	vault := create("vault", "Vault", nil)
+	if c := check(vault); c.OK || c.Error == "" || broken(vault) == nil {
+		t.Errorf("failed start: %+v, broken %v", c, broken(vault))
+	}
+
+	e.call("POST", "/instances/9999/check", nil, 404, nil)
+}
+
 // An OAuth client could make itself the owner through a login provider, so
 // even a destructive one for the API can't touch them; an API token can.
 func TestOAuthClientsCantChangeLogins(t *testing.T) {

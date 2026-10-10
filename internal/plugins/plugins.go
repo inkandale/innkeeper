@@ -31,7 +31,7 @@ var (
 	ErrNotFound      = errors.New("plugin instance not found")
 	ErrUnknownPlugin = errors.New("plugin is not installed")
 	// ErrBroken means the instance's plugin failed to start. It stays broken
-	// until the owner changes the instance.
+	// until the owner changes the instance or a check starts it.
 	ErrBroken    = errors.New("plugin instance is broken")
 	ErrInvalid   = errors.New("invalid plugin instance")
 	ErrNameTaken = errors.New("plugin instance name already in use")
@@ -429,34 +429,39 @@ func (r *Registry) ListInstances(ctx context.Context) ([]InstanceInfo, error) {
 
 // Instance returns what the plugin host needs to run an instance.
 func (r *Registry) Instance(ctx context.Context, id int64) (pluginhost.Instance, error) {
+	inst, broken, err := r.load(ctx, id)
+	if err == nil && broken != nil {
+		return pluginhost.Instance{}, fmt.Errorf("%w: %s", ErrBroken, *broken)
+	}
+	return inst, err
+}
+
+// load is Instance without the broken check; broken is the stored error.
+func (r *Registry) load(ctx context.Context, id int64) (inst pluginhost.Instance, broken *string, err error) {
 	var plugin string
 	var config map[string]any
 	var sealed []byte
-	var broken *string
 	var updated time.Time
-	err := r.pool.QueryRow(ctx, `SELECT pi.plugin, pi.config, pi.secrets, pi.broken_error,
+	err = r.pool.QueryRow(ctx, `SELECT pi.plugin, pi.config, pi.secrets, pi.broken_error,
 			greatest(pi.updated_at, coalesce(p.changed_at, pi.updated_at))
 		FROM plugin_instance pi LEFT JOIN plugin_install p ON p.name = pi.plugin WHERE pi.id = $1`, id).
 		Scan(&plugin, &config, &sealed, &broken, &updated)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return pluginhost.Instance{}, ErrNotFound
+		return inst, nil, ErrNotFound
 	}
 	if err != nil {
-		return pluginhost.Instance{}, err
-	}
-	if broken != nil {
-		return pluginhost.Instance{}, fmt.Errorf("%w: %s", ErrBroken, *broken)
+		return inst, nil, err
 	}
 	m, ok := r.manifest(plugin)
 	if !ok {
-		return pluginhost.Instance{}, fmt.Errorf("%w: %s", ErrUnknownPlugin, plugin)
+		return inst, nil, fmt.Errorf("%w: %s", ErrUnknownPlugin, plugin)
 	}
 	secrets, err := r.box.Open(sealed)
 	if err != nil {
-		return pluginhost.Instance{}, err
+		return inst, nil, err
 	}
 	if err := os.MkdirAll(r.blobs.TmpDir(), 0o755); err != nil {
-		return pluginhost.Instance{}, err
+		return inst, nil, err
 	}
 	return pluginhost.Instance{
 		ID:       strconv.FormatInt(id, 10),
@@ -469,7 +474,7 @@ func (r *Registry) Instance(ctx context.Context, id int64) (pluginhost.Instance,
 			BlobTmp:     r.blobs.TmpDir(),
 			DatabaseURL: r.dsn(plugin),
 		},
-	}, nil
+	}, broken, nil
 }
 
 // CodecInstance returns the oldest working instance of a codec plugin that
@@ -496,18 +501,60 @@ func (r *Registry) CodecInstance(ctx context.Context, format string) (pluginhost
 }
 
 // MarkBroken records that an instance's plugin failed to start, so nothing
-// starts it again until the owner changes the instance. version is the
-// Instance.Version that failed; a later edit makes the call a no-op.
+// starts it again until the owner changes or checks the instance. version is
+// the Instance.Version that failed; a later edit makes the call a no-op.
 func (r *Registry) MarkBroken(ctx context.Context, id int64, version string, cause error) error {
+	msg := cause.Error()
+	return r.setBroken(ctx, id, version, &msg)
+}
+
+// setBroken records cause as the instance's broken error, or clears it for
+// nil, if the instance is still at version.
+func (r *Registry) setBroken(ctx context.Context, id int64, version string, cause *string) error {
 	micros, err := strconv.ParseInt(version, 10, 64)
 	if err != nil {
 		return fmt.Errorf("instance version %q: %w", version, err)
 	}
-	_, err = r.pool.Exec(ctx, `UPDATE plugin_instance pi SET broken_error = $2, broken_at = now()
+	_, err = r.pool.Exec(ctx, `UPDATE plugin_instance pi
+		SET broken_error = $2::text, broken_at = CASE WHEN $2::text IS NULL THEN NULL ELSE now() END
 		WHERE id = $1 AND greatest(updated_at,
 			coalesce((SELECT changed_at FROM plugin_install WHERE name = pi.plugin), updated_at)) = $3`,
-		id, cause.Error(), time.UnixMicro(micros))
+		id, cause, time.UnixMicro(micros))
 	return err
+}
+
+// Check starts an instance's plugin even when it's broken: a failed start
+// marks it broken, and a good one clears that. A pull target then lists the
+// app's cards, which tests its address and login. problem says why the
+// instance doesn't work; err means the check itself failed.
+func (r *Registry) Check(ctx context.Context, mgr *pluginhost.Manager, id int64) (problem, err error) {
+	inst, broken, err := r.load(ctx, id)
+	if errors.Is(err, ErrUnknownPlugin) {
+		return err, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var startErr *pluginhost.StartError
+	if err := mgr.Start(ctx, inst); errors.As(err, &startErr) && ctx.Err() == nil {
+		return err, r.MarkBroken(context.WithoutCancel(ctx), id, inst.Version, err)
+	} else if err != nil {
+		return nil, err
+	}
+	if broken != nil {
+		if err := r.setBroken(ctx, id, inst.Version, nil); err != nil {
+			return nil, err
+		}
+	}
+	if slices.Contains(inst.Manifest.Capabilities, "pull") {
+		var res protocol.TargetListResult
+		if err := r.Call(ctx, mgr, inst, protocol.MethodTargetList, nil, &res); err != nil && ctx.Err() == nil {
+			return err, nil
+		} else if err != nil {
+			return nil, err
+		}
+	}
+	return nil, nil
 }
 
 // Call sends method to inst's plugin through mgr. A plugin that fails to

@@ -16,6 +16,7 @@ var tierExceptions = map[string]tier.Tier{
 	"search-cards":     tier.Read,
 	"search-lorebooks": tier.Read,
 	"check-binding":    tier.Read,
+	"check-instance":   tier.Read,
 	"push-card":        tier.Destructive,
 	"push-lorebook":    tier.Destructive,
 	"push-cards":       tier.Destructive,

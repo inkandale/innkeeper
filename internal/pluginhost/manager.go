@@ -63,6 +63,16 @@ func (m *Manager) Call(ctx context.Context, inst Instance, method string, params
 	return e.proc.Call(ctx, method, params, result)
 }
 
+// Start starts the instance's plugin if it isn't running.
+func (m *Manager) Start(ctx context.Context, inst Instance) error {
+	e, err := m.acquire(ctx, inst)
+	if err != nil {
+		return err
+	}
+	m.release(e)
+	return nil
+}
+
 func (m *Manager) acquire(ctx context.Context, inst Instance) (*entry, error) {
 	// ponytail: one lock across plugin startup, so a slow start (up to the
 	// initialize timeout) also delays other plugins' calls, releases, and

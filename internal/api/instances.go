@@ -39,6 +39,13 @@ type instancesOut struct{ Body []plugins.InstanceInfo }
 
 type instanceOut struct{ Body plugins.InstanceInfo }
 
+type checkResult struct {
+	OK    bool   `json:"ok"`
+	Error string `json:"error,omitempty" doc:"Why the instance doesn't work"`
+}
+
+type checkOut struct{ Body checkResult }
+
 type createInstanceIn struct {
 	Body struct {
 		Plugin       string            `json:"plugin"`
@@ -142,6 +149,22 @@ func (s *Server) instanceRoutes(api huma.API) {
 				return nil, s.fail(err)
 			}
 			return s.instance(ctx, in.ID)
+		})
+
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Read), OperationID: "check-instance", Method: http.MethodPost, Path: "/instances/{id}/check",
+		Summary:     "Check that a plugin instance works",
+		Description: "Starts the plugin, even when the instance is broken; a pull target also lists the app's cards. A failed start marks the instance broken, and a good one clears that. An app error is reported but doesn't mark it broken.",
+		Tags:        tags},
+		func(ctx context.Context, in *idIn) (*checkOut, error) {
+			problem, err := s.Registry.Check(ctx, s.Plugins, in.ID)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			out := &checkOut{Body: checkResult{OK: problem == nil}}
+			if problem != nil {
+				out.Body.Error = problem.Error()
+			}
+			return out, nil
 		})
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "delete-instance", Method: http.MethodDelete, Path: "/instances/{id}",

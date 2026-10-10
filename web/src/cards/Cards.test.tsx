@@ -35,9 +35,11 @@ const results = {
 
 let searches: unknown[];
 let posts: { path: string; body: unknown }[];
+let previews: unknown[];
 beforeEach(() => {
   searches = [];
   posts = [];
+  previews = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
@@ -48,6 +50,10 @@ beforeEach(() => {
         if (body.page?.size === 1 && body.facets?.includes("targets"))
           return json({ hits: [], total: 1, facets: { targets: [{ instance: 2, is: "ahead", cards: 1 }] } });
         return json(results);
+      }
+      if (path === "/api/pushes/preview") {
+        previews.push(await req.json());
+        return json({ total: 1, new: 0, ahead: 1, in_sync: 0, cant_check: 0, drifted: 0, confirm: "q1" });
       }
       if (path === "/api/bulk" || path === "/api/pushes") {
         posts.push({ path, body: await req.json() });
@@ -179,8 +185,11 @@ test("push offers only targets that push", async () => {
   const target = await screen.findByRole("combobox", { name: "Target" });
   expect(Array.from((target as HTMLSelectElement).options).map((o) => o.text)).toEqual(["Lumiverse"]);
   expect(await screen.findByText("1 ahead")).toBeInTheDocument();
+  expect(previews).toEqual([{ instance_id: 2, query: { filter: { ids: [8] } } }]);
   await user.click(screen.getByRole("button", { name: "Push 1 card" }));
-  await waitFor(() => expect(posts[0]).toEqual({ path: "/api/pushes", body: { instance_id: 2, query: { filter: { ids: [8] } } } }));
+  await waitFor(() =>
+    expect(posts[0]).toEqual({ path: "/api/pushes", body: { instance_id: 2, query: { filter: { ids: [8] } }, confirm: "q1" } }),
+  );
   expect(posts[0]!.body).not.toHaveProperty("kind");
 });
 
@@ -217,6 +226,18 @@ test("a second click while the job starts sends nothing more", async () => {
   await user.click(screen.getByRole("button", { name: "Archive 1 card" }));
   await new Promise((r) => setTimeout(r, 20));
   expect(posts).toHaveLength(1);
+});
+
+test("a push refused for a stale preview shows the new one", async () => {
+  answer("/api/pushes", async () => new Response(JSON.stringify({ detail: "the push would differ from the preview" }), { status: 409 }));
+  renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
+  await user.click(screen.getByRole("button", { name: "Push" }));
+  await screen.findByText("1 ahead");
+  await user.click(screen.getByRole("button", { name: "Push 1 card" }));
+  expect(await screen.findByText(/differ from the preview/)).toBeInTheDocument();
+  await waitFor(() => expect(previews).toHaveLength(2));
 });
 
 test("a facet click clears the selection, and paging keeps it", async () => {

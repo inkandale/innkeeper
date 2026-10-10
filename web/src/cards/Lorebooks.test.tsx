@@ -46,6 +46,7 @@ beforeEach(() => {
         searches.push({ path, body: await req.json() });
         return json({ total: 1, hits: [{ id: 7, slug: "brakka", revision_id: 1, fields: { name: "Brakka", avatar: "ab".repeat(32) } }] });
       }
+      if (path === "/api/pushes/preview") return json({ total: 1, new: 1, ahead: 0, in_sync: 0, cant_check: 0, drifted: 0, confirm: "q1" });
       if (path === "/api/bulk" || path === "/api/pushes") {
         posts.push({ path, body: await req.json() });
         return json({ id: 5, kind: "bulk", status: "waiting" });
@@ -93,9 +94,10 @@ test("bulk archive and push send kind lorebook", async () => {
 
   await userEvent.click(await screen.findByRole("checkbox", { name: "Select Forge" }));
   await userEvent.click(screen.getByRole("button", { name: "Push" }));
-  await userEvent.click(await screen.findByRole("button", { name: "Push 1 lorebook" }));
+  await screen.findByText("1 new");
+  await userEvent.click(screen.getByRole("button", { name: "Push 1 lorebook" }));
   await waitFor(() => expect(posts).toHaveLength(2));
-  expect(posts[1]).toMatchObject({ path: "/api/pushes", body: { kind: "lorebook", instance_id: 2 } });
+  expect(posts[1]).toMatchObject({ path: "/api/pushes", body: { kind: "lorebook", instance_id: 2, confirm: "q1" } });
 });
 
 test("the list reloads when a bulk job it started finishes", async () => {

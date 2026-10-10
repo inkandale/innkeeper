@@ -5,6 +5,7 @@ export type Comparison = components["schemas"]["Comparison"];
 export type Resolution = components["schemas"]["Resolution"];
 type Hunk = components["schemas"]["Hunk"];
 type TargetCount = components["schemas"]["TargetCount"];
+type BulkPreview = components["schemas"]["BulkPreview"];
 
 // The snapshot is a sync job's progress, which the schema leaves
 // untyped. These match Snapshot in internal/targets/reconcile.go.
@@ -158,10 +159,10 @@ export function stateCounts(targets: TargetCount[] | null | undefined, instance:
   return c;
 }
 
-/** pushSummary says what pushing total cards does to the app's copies. Unbound and missing ones become new copies. */
-export function pushSummary(total: number, c: Counts): string {
+/** pushSummary says what a query push does to the app's copies. */
+export function pushSummary(c: BulkPreview): string {
   const parts: [number, string][] = [
-    [total - c.bound + c.missing, "new"],
+    [c.new, "new"],
     [c.ahead, "ahead"],
     [c.in_sync, "in sync"],
     [c.cant_check, "can't check"],

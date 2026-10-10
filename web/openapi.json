@@ -390,6 +390,92 @@
         ],
         "type": "object"
       },
+      "BulkPreview": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/BulkPreview.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "ahead": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "cant_check": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "confirm": {
+            "type": "string"
+          },
+          "drifted": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "in_sync": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "new": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "new",
+          "ahead",
+          "in_sync",
+          "cant_check",
+          "drifted",
+          "confirm"
+        ],
+        "type": "object"
+      },
+      "BulkPreviewInBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/BulkPreviewInBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "instance_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "description": "What the query selects; default card.",
+            "enum": [
+              "card",
+              "lorebook"
+            ],
+            "type": "string"
+          },
+          "query": {
+            "$ref": "#/components/schemas/Query",
+            "description": "Selects the cards, as in POST /search. Paging is ignored."
+          }
+        },
+        "required": [
+          "instance_id",
+          "query"
+        ],
+        "type": "object"
+      },
       "BulkPushInBody": {
         "additionalProperties": false,
         "properties": {
@@ -400,6 +486,10 @@
             ],
             "format": "uri",
             "readOnly": true,
+            "type": "string"
+          },
+          "confirm": {
+            "description": "The confirm value from POST /pushes/preview. If the preview would differ now, the push is refused with 409 and the new preview. Without it, a push replaces only app copies unchanged since their last push or adopt.",
             "type": "string"
           },
           "instance_id": {
@@ -7994,7 +8084,7 @@
     },
     "/pushes": {
       "post": {
-        "description": "Queues one child job per card or lorebook the query matches.",
+        "description": "Queues one child job per card or lorebook the query matches. A child fails, leaving the app's copy alone, if that copy changed since the preview, or since its last push or adopt when confirm isn't sent.",
         "operationId": "push-cards",
         "requestBody": {
           "content": {
@@ -8029,6 +8119,48 @@
           }
         },
         "summary": "Push many cards or lorebooks to a target",
+        "tags": [
+          "Sync"
+        ]
+      }
+    },
+    "/pushes/preview": {
+      "post": {
+        "description": "Counts the cards by state, as of each binding's last check, and returns the confirm value for POST /pushes.",
+        "operationId": "preview-push-cards",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkPreviewInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkPreview"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Show how the cards a query push would send stand on a target",
         "tags": [
           "Sync"
         ]

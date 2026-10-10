@@ -1586,9 +1586,29 @@ export interface paths {
         put?: never;
         /**
          * Push many cards or lorebooks to a target
-         * @description Queues one child job per card or lorebook the query matches.
+         * @description Queues one child job per card or lorebook the query matches. A child fails, leaving the app's copy alone, if that copy changed since the preview, or since its last push or adopt when confirm isn't sent.
          */
         post: operations["push-cards"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/pushes/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Show how the cards a query push would send stand on a target
+         * @description Counts the cards by state, as of each binding's last check, and returns the confirm value for POST /pushes.
+         */
+        post: operations["preview-push-cards"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1931,6 +1951,44 @@ export interface components {
             /** @description For tag and untag: the tags to add or remove. */
             tags?: string[] | null;
         };
+        BulkPreview: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/BulkPreview.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            ahead: number;
+            /** Format: int64 */
+            cant_check: number;
+            confirm: string;
+            /** Format: int64 */
+            drifted: number;
+            /** Format: int64 */
+            in_sync: number;
+            /** Format: int64 */
+            new: number;
+            /** Format: int64 */
+            total: number;
+        };
+        BulkPreviewInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/BulkPreviewInBody.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            instance_id: number;
+            /**
+             * @description What the query selects; default card.
+             * @enum {string}
+             */
+            kind?: "card" | "lorebook";
+            /** @description Selects the cards, as in POST /search. Paging is ignored. */
+            query: components["schemas"]["Query"];
+        };
         BulkPushInBody: {
             /**
              * Format: uri
@@ -1938,6 +1996,8 @@ export interface components {
              * @example /api/schemas/BulkPushInBody.json
              */
             readonly $schema?: string;
+            /** @description The confirm value from POST /pushes/preview. If the preview would differ now, the push is refused with 409 and the new preview. Without it, a push replaces only app copies unchanged since their last push or adopt. */
+            confirm?: string;
             /** Format: int64 */
             instance_id: number;
             /**
@@ -6114,6 +6174,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "preview-push-cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkPreviewInBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkPreview"];
                 };
             };
             /** @description Error */

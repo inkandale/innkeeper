@@ -43,7 +43,7 @@ type jobOut struct {
 	CreatedAt   time.Time       `json:"created_at"`
 	FinishedAt  *time.Time      `json:"finished_at,omitempty"`
 	Children    map[string]int  `json:"children,omitempty" doc:"A bulk job's children, counted by status. Get-job, cancel-job, watch-job, and list-jobs fill it."`
-	Outcomes    map[string]int  `json:"outcomes,omitempty" doc:"A bulk import's finished children, counted by outcome: created, bound, already_bound, duplicate, or missing. Only get-job, cancel-job, and watch-job fill it."`
+	Outcomes    map[string]int  `json:"outcomes,omitempty" doc:"A bulk job's finished children, counted by outcome, such as a resolve's action, stale, conflict, or failed. Only get-job, cancel-job, and watch-job fill it."`
 }
 
 func toJob(j jobs.Job) jobOut {
@@ -91,7 +91,7 @@ type listJobsIn struct {
 type importIn struct {
 	Body struct {
 		InstanceID int64           `json:"instance_id"`
-		Params     json.RawMessage `json:"params,omitempty" doc:"The import plugin's settings, such as a folder path. For a target app: remote_ids, to import only those items."`
+		Params     json.RawMessage `json:"params,omitempty" doc:"The import plugin's settings, such as a folder path."`
 	}
 }
 
@@ -275,7 +275,10 @@ func (s *Server) jobRoutes(api huma.API) {
 				return nil, s.fail(err)
 			}
 			if !s.Registry.HasCapability(inst.Plugin, "import") {
-				return nil, huma.Error400BadRequest(fmt.Sprintf("plugin %s has no importer; sync the app with POST /reconciles", inst.Plugin))
+				if s.Registry.HasCapability(inst.Plugin, "push") {
+					return nil, huma.Error400BadRequest(fmt.Sprintf("plugin %s has no importer; sync the app with POST /reconciles", inst.Plugin))
+				}
+				return nil, huma.Error400BadRequest(fmt.Sprintf("plugin %s can't import", inst.Plugin))
 			}
 			if err := s.usable(ctx, in.Body.InstanceID, "import"); err != nil {
 				return nil, err

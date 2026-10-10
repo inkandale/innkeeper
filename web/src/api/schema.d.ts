@@ -2409,7 +2409,7 @@ export interface components {
             readonly $schema?: string;
             /** Format: int64 */
             instance_id: number;
-            /** @description The import plugin's settings, such as a folder path. For a target app: remote_ids, to import only those items. */
+            /** @description The import plugin's settings, such as a folder path. */
             params?: unknown;
         };
         InstallInBody: {
@@ -2477,7 +2477,7 @@ export interface components {
             kind: string;
             /** Format: int64 */
             max_attempts: number;
-            /** @description A bulk import's finished children, counted by outcome: created, bound, already_bound, duplicate, or missing. Only get-job, cancel-job, and watch-job fill it. */
+            /** @description A bulk job's finished children, counted by outcome, such as a resolve's action, stale, conflict, or failed. Only get-job, cancel-job, and watch-job fill it. */
             outcomes?: {
                 [key: string]: number;
             };

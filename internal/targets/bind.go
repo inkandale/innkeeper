@@ -2,15 +2,11 @@ package targets
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/merge"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/protocol"
@@ -114,81 +110,6 @@ func (s *Service) bindResolved(ctx context.Context, k kind, instanceID, id int64
 		return Binding{}, err
 	}
 	return s.Binding(ctx, res.BindingID)
-}
-
-// bind links an item to a library one whose content matches it exactly, with
-// the library's copy as the baseline.
-func (s *Service) bind(ctx context.Context, k kind, instanceID, id int64, remoteID string) (Binding, error) {
-	inst, info, err := s.describePull(ctx, k, instanceID)
-	if err != nil {
-		return Binding{}, err
-	}
-	r, err := s.render(ctx, k, instanceID, id, info)
-	if err != nil {
-		return Binding{}, err
-	}
-	var links []string
-	var appData json.RawMessage
-	if k.isLorebook() {
-		appData, err = s.fetchRaw(ctx, k, inst, remoteID)
-	} else {
-		var got protocol.TargetGetResult
-		got, err = s.getCard(ctx, inst, protocol.TargetGetParams{RemoteID: remoteID})
-		links = got.LorebookRemoteIDs
-		if err == nil {
-			appData, err = cardData(got.Card)
-		}
-	}
-	if remoteNotFound(err) {
-		return Binding{}, fmt.Errorf("%w: the app has no %s %s", library.ErrNotFound, k.name, remoteID)
-	} else if err != nil {
-		return Binding{}, err
-	}
-	// The app's copy is where the sources are, even if the target drops extensions.
-	if err := k.entities(s.lib).DetectSources(ctx, id, appData); err != nil {
-		return Binding{}, err
-	}
-	// The bind row records the lorebooks the app links to the character, so
-	// the card is ahead only if the library links others. A plugin that can't
-	// tell records none, and a card with lorebooks shows as ahead.
-	if !k.isLorebook() && info.Lorebooks == protocol.LorebooksStandalone {
-		r.lorebookRemoteIDs = slices.Sorted(slices.Values(links))
-		if r.lorebookRemoteIDs == nil {
-			r.lorebookRemoteIDs = []string{}
-		}
-	}
-	accepted, hash, err := Project(r.data, k.fields(info))
-	if err != nil {
-		return Binding{}, err
-	}
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return Binding{}, err
-	}
-	defer tx.Rollback(ctx)
-	if err := lock(ctx, tx, k, instanceID, id); err != nil {
-		return Binding{}, err
-	}
-	var bindingID int64
-	err = tx.QueryRow(ctx, `INSERT INTO binding (instance_id, `+k.col+`, remote_id, remote_state, accepted_data,
-			accepted_hash)
-		VALUES ($1, $2, $3, 'unknown', $4, $5) RETURNING id`, instanceID, id, remoteID, accepted, hash).Scan(&bindingID)
-	if pgErr := (*pgconn.PgError)(nil); errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return Binding{}, ErrBound
-	}
-	if err != nil {
-		return Binding{}, err
-	}
-	_, err = tx.Exec(ctx, `INSERT INTO push (binding_id, kind, revision_id, lorebook_revision_ids, lorebook_remote_ids,
-			pushed_hash, remote_id)
-		VALUES ($1, 'bind', $2, $3, $4, $5, $6)`, bindingID, r.revision, r.lorebooks, r.lorebookRemoteIDs, hash, remoteID)
-	if err != nil {
-		return Binding{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return Binding{}, err
-	}
-	return s.Check(ctx, bindingID)
 }
 
 // describePull is describe for a target that must read the app, and keep

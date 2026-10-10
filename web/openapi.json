@@ -1876,7 +1876,7 @@
             "type": "integer"
           },
           "params": {
-            "description": "The import plugin's settings, such as a folder path. For a target app: remote_ids, to import only those items."
+            "description": "The import plugin's settings, such as a folder path."
           }
         },
         "required": [
@@ -2051,7 +2051,7 @@
               "format": "int64",
               "type": "integer"
             },
-            "description": "A bulk import's finished children, counted by outcome: created, bound, already_bound, duplicate, or missing. Only get-job, cancel-job, and watch-job fill it.",
+            "description": "A bulk job's finished children, counted by outcome, such as a resolve's action, stale, conflict, or failed. Only get-job, cancel-job, and watch-job fill it.",
             "type": "object"
           },
           "parent_id": {

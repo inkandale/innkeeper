@@ -62,20 +62,29 @@ declare are refused as invalid.
 - **Routes:**
   - `GET /catalogs` lists catalog instances with their `describe` result and
     the last ingest job.
-  - `GET /catalogs/{id}/search` forwards to `catalog.search` and adds library
-    matches to each result.
+  - `GET /catalogs/{id}/search` forwards to `catalog.search`, with `filters`
+    as one JSON-object query parameter, and adds library matches to each
+    result.
   - `GET /catalogs/{id}/items/{item}` forwards to `catalog.get` without
-    `avatar`.
-  - `POST /catalogs/{id}/items/{item}/adopt` takes an optional `version` and
-    returns the library card or lorebook.
-  - `POST /catalogs/{id}/ingest` queues a `catalog.ingest` job.
+    `avatar`. An item ID escapes `/` as `%2F`.
+  - `POST /catalogs/{id}/items/{item}/adopt` takes an optional `version`
+    query parameter. It returns 201 with the new library card or lorebook,
+    or 200 with the one an earlier adopt of that version made. A catalog
+    that sends an avatar the server can't accept gets 502.
+  - `POST /catalogs/{id}/ingest` queues a `catalog.ingest` job, or returns
+    409 while the catalog's last ingest is unfinished.
   - `GET /cards/{id}/catalog-matches` and `GET /lorebooks/{id}/catalog-matches`
-    return matches from every catalog that supports `similar`.
+    return matches from every catalog that supports `similar`, and name the
+    catalogs that didn't answer.
 - **`/search`** accepts `catalog:<instance>` in `sources`, so the CLI and MCP
-  can search the library and catalogs together.
-- **Library matches** are one query over the page's hashes: exact by
-  `content_hash`, near by simhash or phash distance, using the thresholds
-  `similar.go` already uses.
+  can search the library and catalogs together. Each catalog source adds its
+  first page, matched on `text` alone, to a `catalogs` list beside the
+  library's hits. The library is searched when `sources` is empty or names
+  `library`. Catalogs are searched only on the first library page: a request
+  with a cursor or a page number above 1 leaves them out.
+- **Library matches** are one query per kind over the page's hashes: exact by
+  `content_hash`, near by simhash or phash within 8 bits, against each
+  entry's head revision, as `/cards/{id}/similar` compares.
 - **Adopt** calls `catalog.get` with `avatar`, and imports the data and
   avatar with provenance `catalog:<instance>:<item>@<version>` and source
   `plugin:<name>`. Import dedupe already keys on provenance and
@@ -153,8 +162,10 @@ not in the dump. Each needs its own file ingester, added to this plugin later.
 
 ## Errors
 
-- **A plugin is down or times out:** that catalog's routes return 503 naming
-  the catalog, and the Archive page shows the error inline. "Found in
+- **A plugin is down or times out:** a catalog that won't start, exits, takes
+  over 30 seconds, or returns a retryable error makes that catalog's routes
+  return 503 naming the catalog, and the Archive page shows the error inline.
+  In `/search`, the catalog's entry carries the error instead. "Found in
   archives" skips the catalog and names the ones it couldn't reach.
 - **A dump row won't decode:** the plugin skips it, logs the table, ID, and
   increment, and counts it in `skipped`.

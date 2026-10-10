@@ -1,11 +1,15 @@
 package cardhash
 
 import (
+	"bytes"
+	"encoding/binary"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -76,5 +80,38 @@ func TestImagePhashRejectsNonImage(t *testing.T) {
 	os.WriteFile(path, []byte("not an image"), 0o644)
 	if _, err := ImagePhash(path); err == nil {
 		t.Fatal("hashed a text file")
+	}
+}
+
+func TestPhashMatchesImagePhash(t *testing.T) {
+	path := filepath.Join("testdata", "avatar.png")
+	want, err := ImagePhash(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	img, err := DecodeImageBytes(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := Phash(img); got != want {
+		t.Fatalf("Phash = %x, ImagePhash = %x", got, want)
+	}
+}
+
+func TestDecodeImageBytesRefusesHuge(t *testing.T) {
+	// A PNG header claiming 100000×100000 pixels.
+	var buf bytes.Buffer
+	buf.WriteString("\x89PNG\r\n\x1a\n")
+	ihdr := []byte{0, 1, 0x86, 0xa0, 0, 1, 0x86, 0xa0, 8, 2, 0, 0, 0}
+	binary.Write(&buf, binary.BigEndian, uint32(len(ihdr)))
+	chunk := append([]byte("IHDR"), ihdr...)
+	buf.Write(chunk)
+	binary.Write(&buf, binary.BigEndian, crc32.ChecksumIEEE(chunk))
+	if _, err := DecodeImageBytes(buf.Bytes()); err == nil || !strings.Contains(err.Error(), "pixel limit") {
+		t.Fatalf("err = %v, want the pixel limit", err)
 	}
 }

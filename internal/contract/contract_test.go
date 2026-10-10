@@ -214,3 +214,31 @@ func TestSourcelessCatalog(t *testing.T) {
 		t.Fatalf("with a config: got %v, want the search error", got)
 	}
 }
+
+// With a config, a catalog that ingests runs catalog.ingest before the
+// other catalog checks.
+func TestCatalogIngestCheck(t *testing.T) {
+	dir := testutil.FakePluginWith(t, []string{"catalog"})
+	t.Cleanup(func() { Config = nil })
+
+	Config = map[string]any{"source": "testdata"}
+	results, err := Check(context.Background(), dir, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := failed(results); len(f) > 0 {
+		t.Fatalf("checks failed: %v", f)
+	}
+	if !slices.ContainsFunc(results, func(r Result) bool { return r.Name == catalogIngestName }) {
+		t.Fatal("the ingest check didn't run")
+	}
+
+	Config = map[string]any{"crash_ingest_at": 0.0}
+	results, err = Check(context.Background(), dir, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed(results)[catalogIngestName] == nil {
+		t.Fatal("an ingest that crashed passed")
+	}
+}

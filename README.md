@@ -302,7 +302,7 @@ ink login <url> [--profile name]                  log in through the browser
 ink logout [--profile name]                       revoke a login and forget its profile
 ink profiles [use <name>]                         list profiles, or change the default
 ink call <method> <path> [json]                   any API call, such as: ink call GET /jobs
-ink import <instance-id> [params-json]            start an import
+ink import <instance-id> [params-json]            start an import (importer plugins only)
 ink jobs [show|cancel|watch <job-id>]             list or follow jobs
 ink cards export <card-id> [file] [--format f]    a card as CCv3 JSON, or a codec's format (.png means png)
 ink cards archive|unarchive <query-json>          archive or unarchive the cards a search matches
@@ -311,13 +311,13 @@ ink cards sources add <card-id> <url>
 ink cards sources remove <card-id> <source-id>
 ink sync push <instance-id> <card-id>|<query-json> [--new-copy]
                                                   push one card, or the cards a search matches, to an app
-ink sync reconcile <instance-id> [params-json]    line an app up against the library
+ink sync run <instance-id> [params-json] [--dry-run]   sync an app with the library
 ink sync compare <instance-id> <remote-id> [card-id]
                                                   show how an app character differs from a card
 ink sync resolve <instance-id> <remote-id> bind|import|skip [card-id] [hunk=choice ...] [--default choice]
                                                   bind, import, or skip one app character
-ink sync apply <reconcile-job-id> [remote-id ...] [--verdict v,...]
-                                                  resolve a reconcile's items as it suggested
+ink sync apply <sync-job-id> [remote-id ...] [--verdict v,...]
+                                                  resolve a sync's items as it suggested
 ```
 
 `--json` prints JSON instead of tables, and every command takes `--help`.
@@ -381,7 +381,7 @@ ink import <instance-id> '{"blob": "<sha256>", "name": "brakka.png"}'
 ## Sources
 
 A source is a site a card or lorebook was published on, such as its chub.ai
-page. Importing from a folder or an app, and binding to an app item, records
+page. Importing from a folder, syncing an app, and binding to an app item, records
 the `extensions.chub` entry that chub.ai imports leave in the data. Currently
 chub.ai is the only site Innkeeper knows.
 
@@ -476,48 +476,24 @@ while it ran. In the push history, a bind shows as `"kind": "bind"`.
 
 For lorebooks in an app that keeps them separately, use
 `/instances/<instance-id>/lorebook-items` and `/lorebooks/<id>/bind`. Binding
-a card leaves the app's linked world books for reconcile: none are imported,
+a card leaves the app's linked world books for sync: none are imported,
 bound, or changed. A bound card is `ahead` when the app links it to lorebooks
 other than the library's bound ones, or when the plugin can't tell which it
 links. The next push links the library's.
 
-### Importing what the app already has
+### Syncing an app
 
-To take an app's whole library into Innkeeper, import from its instance:
-
-```bash
-ink import <instance-id>                                  # every unbound character and lorebook
-ink import <instance-id> '{"remote_ids": ["<remote-id>"]}' # only these items
-```
-
-Each item becomes a library card or lorebook bound to the app's copy, so it
-starts `in_sync`. Cards keep the lorebooks the app links them to, and their
-avatars where the plugin supplies them. The job runs one child per item and
-resumes after a restart. `ink jobs show --json <job-id>` counts the children
-by outcome:
-
-| Outcome | Meaning |
-|---|---|
-| `created` | Added to the library |
-| `bound` | The library already had the same content, so that card or lorebook was bound instead of copied |
-| `already_bound` | Another bind or import bound the item while the job ran |
-| `duplicate` | The library item with this content is already bound to another item in the app, such as a duplicated character. Skipped |
-| `missing` | The app no longer has the item |
-
-Items bound before the import started are skipped and counted in the job's
-`payload` as `already_bound`.
-
-### Reconciling an app
-
-When the app and the library both have characters, and some are probably the
-same, reconcile lines them up and suggests what to do with each:
+A sync reads the app, links the characters and world books that match library
+items exactly, imports the ones the library doesn't have, and leaves the rest
+for you to review:
 
 ```bash
-ink sync reconcile <instance-id>
+ink sync run <instance-id>             # alias: ink sync reconcile
+ink sync run <instance-id> --dry-run   # report only; link and import nothing
 ```
 
-It reads the app, changes nothing, and prints one row per app item, with
-each linked world book under its character:
+It prints one row per app item, with each linked world book under its
+character, and ends with `<n> applied, <m> left to review`:
 
 | Verdict | Meaning |
 |---|---|
@@ -527,7 +503,10 @@ each linked world book under its character:
 | `new` | Nothing in the library matches |
 | `error` | The app item couldn't be read |
 
-Each row has a suggested action: `bind` to a card, `import` as a new card, or
+`exact (auto)` and `new (auto)` are items this run linked or imported. A
+character is imported only when each world book it links is exact, new, or
+already linked and unchanged; otherwise it stays for review. Each remaining
+row has a suggested action: `bind` to a card, `import` as a new card, or
 `skip`. Pass `'{"match": {"name": false}}'` to stop matching by name alone,
 and `--json` for the whole snapshot.
 
@@ -554,12 +533,12 @@ library's side of a hunk leaves the binding `ahead`; push to send the result.
 If the app's copy, the card, or the binding changed since the comparison,
 `resolve` is refused with `409`; compare again.
 
-To take every suggestion from a reconcile, or only some verdicts or items,
+To take every suggestion from a sync, or only some verdicts or items,
 as one bulk job:
 
 ```bash
-ink sync apply <reconcile-job-id> --verdict exact
-ink sync apply <reconcile-job-id> <remote-id>   # one new item, imported
+ink sync apply <sync-job-id> --verdict exact
+ink sync apply <sync-job-id> <remote-id>   # one new item, imported
 ```
 
 A suggested bind keeps the library's side of every hunk. An item with no
@@ -568,7 +547,7 @@ binding or card has nothing to compare with, so import it this way.
 For world books in an app that keeps them separately, `sync compare` and
 `sync resolve` cover characters only; use `ink call` with
 `/instances/<instance-id>/lorebook-items/<remote-id>/compare?lorebook_id=<id>`
-and `.../resolve`. The MCP tools `start_reconcile`, `compare_item`,
+and `.../resolve`. The MCP tools `start_sync`, `compare_item`,
 `resolve_item`, and `resolve_items` cover both.
 
 ### Lorebooks in apps that keep them separately

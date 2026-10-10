@@ -90,7 +90,6 @@ test("edits a broken instance and sends only what changed", async () => {
   expect(await screen.findByText(/connection refused/)).toBeInTheDocument();
   expect(screen.getByText("Set. Type to replace it.")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Remove password" }));
-  await user.click(screen.getByLabelText("Bind exact matches when reconciling"));
   const name = screen.getByLabelText("Name");
   await user.clear(name);
   await user.type(name, "home2");

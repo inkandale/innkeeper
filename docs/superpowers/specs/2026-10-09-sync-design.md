@@ -20,7 +20,7 @@ The owner sees **Sync** in the web UI, the CLI, and MCP. The API path
 | Surface | Before | After |
 |---|---|---|
 | Web | "Reconcile" button, "Reconcile #12", "Last reconcile" | "Sync", "Sync #12", "Last sync" |
-| CLI | `innkeeper reconcile <instance>` | `innkeeper sync <instance> [--dry-run]` |
+| CLI | `ink sync reconcile <instance>` | `ink sync run <instance> [--dry-run]`; `reconcile` stays as an alias |
 | MCP | `start_reconcile` | `start_sync`, with `dry_run` |
 
 ## What a run applies

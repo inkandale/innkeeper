@@ -34,11 +34,20 @@ func entityCmds(k kind) []*cobra.Command {
 		searchCmd(k),
 		getCmd(k, "show", "Show a "+k.singular+"; --json includes its data", "", printEntity),
 		getCmd(k, "history", "List a "+k.singular+"'s revisions, newest first", "/revisions", printRevisions),
+		createCmd(k),
+		editCmd(k),
 	}
 }
 
+// group makes a command that only holds subcommands. Unlike cobra's default,
+// it fails on an unknown subcommand.
+func group(use, short string) *cobra.Command {
+	return &cobra.Command{Use: use, Short: short, Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() }}
+}
+
 func lorebooksCmd() *cobra.Command {
-	lorebooks := &cobra.Command{Use: "lorebooks", Short: "Work with library lorebooks"}
+	lorebooks := group("lorebooks", "Work with library lorebooks")
 	lorebooks.AddCommand(entityCmds(lorebookKind)...)
 	return lorebooks
 }

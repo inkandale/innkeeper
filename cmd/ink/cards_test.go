@@ -1,8 +1,11 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -141,6 +144,113 @@ func TestCardsShowAndHistory(t *testing.T) {
 		t.Errorf("row = %q", lines[1])
 	}
 	for _, args := range [][]string{{"cards", "show", "x"}, {"lorebooks", "history"}} {
+		if _, err := runInk(t, args...); err == nil {
+			t.Errorf("%q succeeded", args)
+		}
+	}
+}
+
+func TestCardsCreate(t *testing.T) {
+	got := stubAPI(t, map[string]string{"/cards": brakka})
+	file := filepath.Join(t.TempDir(), "brakka.json")
+	if err := os.WriteFile(file, []byte(`{"spec": "chara_card_v3", "data": {"name": "Brakka"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runInk(t, "cards", "create", file, "--slug", "brakka", "--message", "new")
+	if err != nil || out != "created card 3, brakka\n" {
+		t.Fatalf("out = %q, err = %v", out, err)
+	}
+	if want := `POST /cards {"data":{"name":"Brakka"},"message":"new","slug":"brakka"}`; (*got)[0] != want {
+		t.Fatalf("request = %s, want %s", (*got)[0], want)
+	}
+	if err := os.WriteFile(file, []byte(`{bad`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runInk(t, "cards", "create", file); err == nil {
+		t.Error("created a card from bad JSON")
+	}
+}
+
+// fakeEditor sets EDITOR to a script that writes content over the file it opens.
+func fakeEditor(t *testing.T, content string) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake editor is a shell script")
+	}
+	script := filepath.Join(t.TempDir(), "ed")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf '%s' '"+content+"' > \"$1\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("VISUAL", "")
+	t.Setenv("EDITOR", script)
+}
+
+func TestCardsEdit(t *testing.T) {
+	got := stubAPI(t, map[string]string{"/cards/3": brakka})
+	fakeEditor(t, `{"name": "Brakka II"}`)
+	out, err := runInk(t, "cards", "edit", "3", "-m", "rename")
+	if err != nil || out != "card 3 is at revision 7\n" {
+		t.Fatalf("out = %q, err = %v", out, err)
+	}
+	want := []string{"GET /cards/3 ", `PUT /cards/3 {"base_revision_id":7,"data":{"name":"Brakka II"},"message":"rename"}`}
+	if !slices.Equal(*got, want) {
+		t.Fatalf("requests = %q\nwant %q", *got, want)
+	}
+
+	*got = nil
+	fakeEditor(t, `{"name": "Brakka", "description": "An orc"}`)
+	if out, err := runInk(t, "cards", "edit", "3"); err != nil || out != "no changes\n" {
+		t.Fatalf("unchanged: out = %q, err = %v", out, err)
+	}
+	if len(*got) != 1 {
+		t.Fatalf("unchanged edit sent %q", *got)
+	}
+
+	fakeEditor(t, `{bad`)
+	_, err = runInk(t, "cards", "edit", "3")
+	if err == nil || !strings.Contains(err.Error(), "your edit is in ") {
+		t.Fatalf("bad JSON: err = %v", err)
+	}
+	kept := err.Error()[strings.LastIndex(err.Error(), " ")+1:]
+	if b, _ := os.ReadFile(kept); string(b) != "{bad" {
+		t.Errorf("kept file %s holds %q", kept, b)
+	}
+	os.Remove(kept)
+
+	*got = nil
+	file := filepath.Join(t.TempDir(), "b.json")
+	if err := os.WriteFile(file, []byte(`{"name": "B"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runInk(t, "cards", "edit", "3", file); err != nil {
+		t.Fatal(err)
+	}
+	if want := `PUT /cards/3 {"base_revision_id":7,"data":{"name":"B"}}`; (*got)[1] != want {
+		t.Fatalf("request = %s, want %s", (*got)[1], want)
+	}
+}
+
+func TestEditKeepsTheFileWhenTheSaveFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			http.Error(w, `{"detail": "stale base revision"}`, http.StatusConflict)
+			return
+		}
+		_, _ = w.Write([]byte(brakka))
+	}))
+	defer srv.Close()
+	t.Setenv("INNKEEPER_URL", srv.URL)
+	t.Setenv("INNKEEPER_TOKEN", "tok")
+	fakeEditor(t, `{"name": "C"}`)
+	_, err := runInk(t, "cards", "edit", "3")
+	if err == nil || !strings.Contains(err.Error(), "stale base revision") || !strings.Contains(err.Error(), "your edit is in ") {
+		t.Fatalf("err = %v", err)
+	}
+	os.Remove(err.Error()[strings.LastIndex(err.Error(), " ")+1:])
+}
+
+func TestCardsNeedAnID(t *testing.T) {
+	stubAPI(t, nil)
+	for _, args := range [][]string{{"cards", "edit", "x"}, {"lorebooks", "create"}, {"cards", "bogus"}, {"lorebooks", "bogus", "1"}} {
 		if _, err := runInk(t, args...); err == nil {
 			t.Errorf("%q succeeded", args)
 		}

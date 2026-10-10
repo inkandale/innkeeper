@@ -87,6 +87,11 @@ func startJob(cmd *cobra.Command, path string, body any) error {
 	if err != nil {
 		return err
 	}
+	return jobStarted(cmd, out)
+}
+
+// jobStarted prints the job a response started and how to follow it.
+func jobStarted(cmd *cobra.Command, out []byte) error {
 	return show(cmd, out, func(w io.Writer, j job) error {
 		_, err := fmt.Fprintf(w, "started job %d; follow it with: ink jobs watch %d\n", j.ID, j.ID)
 		return err

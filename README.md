@@ -195,8 +195,9 @@ from a source, an `index.toml` that lists plugin versions. The official
 `innkeeper-plugins` source is there by default:
 
 ```bash
-ink call GET /plugin-catalog
-ink call POST /plugins/card-import/install '{"source": "official", "version": "0.1.0"}'
+ink plugins catalog
+ink plugins install card-import          # the newest version
+ink plugins install card-import 0.1.0
 ```
 
 Installing a newer version updates the plugin; jobs already running finish
@@ -209,12 +210,12 @@ trust. To publish one, see
 [Publishing a source](docs/protocol.md#publishing-a-source).
 
 ```bash
-ink call POST /plugin-sources '{"id": "mine", "url": "https://example.com/index.toml"}'
+ink plugins sources add mine https://example.com/index.toml
 ```
 
-`DELETE /plugins/<name>` uninstalls a plugin but keeps its instances and
+`ink plugins remove <name>` uninstalls a plugin but keeps its instances and
 database, which come back if you install it again. To delete those too, run
-`DELETE /plugins/<name>/data` afterwards. That can't be undone.
+`ink plugins purge <name>` afterwards. That can't be undone.
 
 ## Access tiers
 
@@ -336,6 +337,17 @@ ink sync resolve <instance-id> <remote-id> bind|import|skip [card-id] [hunk=choi
                                                   bind, import, or skip one app character
 ink sync apply <sync-job-id> [remote-id ...] [--verdict v,...]
                                                   resolve a sync's items as it suggested
+ink instances [show|check|delete <instance-id>]   list plugin instances, or show, check, or delete one
+ink instances create <plugin> <name> [config-json] [--secrets file]
+ink instances configure <instance-id> [--name n] [--config json] [--secrets file]
+ink plugins [catalog]                             list installed plugins, or what sources offer
+ink plugins install <name> [version] [--source id]   install or update a plugin
+ink plugins remove <name>                         uninstall a plugin
+ink plugins purge <name> [--yes]                  delete an uninstalled plugin's instances and data
+ink plugins sources [add <id> <url>|remove <id>]  list, add, or remove plugin sources
+ink backups [create assets|config]                list backups, or start one
+ink backups download <name> [file]                download a backup as a .tar.gz
+ink backups restore <file> [--replace] [--yes]    upload a backup and restore it
 ```
 
 `--json` prints JSON instead of tables, and every command takes `--help`.
@@ -354,13 +366,21 @@ card meanwhile, the error names the file that holds your edit.
 filter on `archived`. It touches only cards not already in the target state.
 The API's `POST /bulk` also tags, collects, and exports; see `/api/docs`.
 
-`sync push` prints what it would replace in the app and asks before replacing
-it. For one card, that's each field it changes; for a query, how many matching
-cards are new, ahead, in sync, or drifted there as of their last check. Use
-`ink sync preview` to see one card's changes. Without a terminal to ask on,
-`push` and `unbind` refuse unless given `--yes`.
+`sync push` prints what it would replace in the app. For one card, that's
+each field it changes; for a query, how many matching cards are new, ahead, in
+sync, or drifted there as of their last check. Use `ink sync preview` to see
+one card's changes.
 
-`jobs watch` exits non-zero unless the job succeeds.
+`sync push`, `sync unbind`, `plugins purge`, and `backups restore` ask before
+they run, since they replace or delete data; `--yes` skips the question.
+Without a terminal and without `--yes`, they fail instead of waiting.
+
+`jobs watch` exits non-zero unless the job succeeds. So does `instances check`
+when the instance is broken.
+
+`--secrets` reads a JSON object of secrets from a file, or from stdin with `-`,
+so they stay out of shell history. For `instances configure`, a `null` value
+removes a secret.
 
 `sync push` replaces the app's copy, so it overwrites changes made in the app.
 `--new-copy` is for apps that can't update a card: pushing there again makes
@@ -370,7 +390,7 @@ Exporting in a format other than `json` needs an instance of a codec plugin
 that writes it. Export uses the oldest working codec instance for the format:
 
 ```bash
-ink call POST /instances '{"plugin": "card-codec", "name": "Codec"}'
+ink instances create card-codec Codec
 ink cards export 12 brakka.png
 ```
 
@@ -396,7 +416,7 @@ To import a folder, put it under `./import`, or set `INNKEEPER_IMPORT_DIR`
 in `.env`. Compose mounts it read-only at `/import`:
 
 ```bash
-ink call POST /instances '{"plugin": "card-import", "name": "Import", "config": {"folder": "/import"}}'
+ink instances create card-import Import '{"folder": "/import"}'
 ink import <instance-id>                         # everything in /import
 ink import <instance-id> '{"path": "fantasy"}'   # only /import/fantasy
 ```
@@ -436,9 +456,9 @@ Add one per Lumiverse account; its
 covers what it syncs:
 
 ```bash
-ink call POST /instances '{"plugin": "lumiverse", "name": "Lumiverse",
-  "config": {"url": "https://lumiverse.example.com", "username": "owner"},
-  "secrets": {"password": "<password>"}}'
+ink instances create lumiverse Lumiverse \
+  '{"url": "https://lumiverse.example.com", "username": "owner"}' \
+  --secrets lumiverse.json    # {"password": "<password>"}
 ink sync push <instance-id> <card-id>
 ```
 
@@ -450,9 +470,9 @@ covers that and what it syncs. Set `auth` to `none`, `basic`, or `account` to
 match the server:
 
 ```bash
-ink call POST /instances '{"plugin": "sillytavern", "name": "SillyTavern",
-  "config": {"url": "https://sillytavern.example.com", "auth": "basic", "username": "owner"},
-  "secrets": {"password": "<password>"}}'
+ink instances create sillytavern SillyTavern \
+  '{"url": "https://sillytavern.example.com", "auth": "basic", "username": "owner"}' \
+  --secrets sillytavern.json  # {"password": "<password>"}
 ```
 
 A card pushed to a target app gets a binding. `ink sync bindings <card-id>`
@@ -652,9 +672,9 @@ These need a destructive token, since an assets backup holds every card and a
 config backup holds the encrypted secrets:
 
 ```bash
-ink call POST /backups '{"type": "assets"}'
-ink call GET /backups
-curl -fH "Authorization: Bearer $INNKEEPER_TOKEN" -o assets.tar.gz "$INNKEEPER_URL/api/backups/<name>"
+ink backups create assets
+ink backups
+ink backups download <name> assets.tar.gz
 ```
 
 A download is one unencrypted `.tar.gz`. Keep `INNKEEPER_SECRETS_KEY` with
@@ -677,11 +697,12 @@ innkeeper restore assets.tar.gz config.tar.gz   # archives or backup folders, in
 innkeeper restore --replace assets.tar.gz       # replaces the whole library
 ```
 
-Over the API, upload one archive at a time. It restores as a job:
+`ink` uploads one archive at a time to the API, which restores it as a job:
 
 ```bash
-curl -fH "Authorization: Bearer $INNKEEPER_TOKEN" -F archive=@assets.tar.gz "$INNKEEPER_URL/api/restores"
-curl -fH "Authorization: Bearer $INNKEEPER_TOKEN" -F archive=@config.tar.gz -F replace=true "$INNKEEPER_URL/api/restores"
+ink backups restore assets.tar.gz
+ink backups restore config.tar.gz --replace
+ink backups restore assets.tar.gz --yes   # in a script: skip the question
 ```
 
 The API writes an upload straight into `restores/` in the backup folder, so a

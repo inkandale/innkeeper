@@ -18,9 +18,9 @@ func runInkIn(t *testing.T, stdin string, tty bool, args ...string) (string, err
 // runInkSplit is runInkIn with stdout and stderr apart.
 func runInkSplit(t *testing.T, stdin string, tty bool, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
-	old := isTerminal
-	isTerminal = func(io.Reader) bool { return tty }
-	t.Cleanup(func() { isTerminal = old })
+	old := stdinIsTerminal
+	stdinIsTerminal = func(io.Reader) bool { return tty }
+	t.Cleanup(func() { stdinIsTerminal = old })
 	var out, errOut bytes.Buffer
 	root := newRoot()
 	root.SetArgs(args)

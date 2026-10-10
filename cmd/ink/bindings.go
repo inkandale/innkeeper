@@ -1,12 +1,9 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"os"
 	"slices"
 	"strings"
 	"text/tabwriter"
@@ -24,34 +21,6 @@ func apiCall(cmd *cobra.Command, method, path string, body []byte) ([]byte, erro
 		return nil, err
 	}
 	return c.do(cmd.Context(), method, path, body)
-}
-
-// isTerminal reports whether r is a terminal; tests replace it.
-var isTerminal = func(r io.Reader) bool {
-	f, ok := r.(*os.File)
-	if !ok {
-		return false
-	}
-	fi, err := f.Stat()
-	return err == nil && fi.Mode()&os.ModeCharDevice != 0
-}
-
-// confirm asks question on stderr and wants y or yes on stdin. With no
-// terminal to ask on it refuses, so a script never hangs or goes ahead unasked.
-func confirm(cmd *cobra.Command, yes bool, question string) error {
-	if yes {
-		return nil
-	}
-	in := cmd.InOrStdin()
-	if !isTerminal(in) {
-		return fmt.Errorf("%s There is no terminal to ask on; pass --yes to go ahead", question)
-	}
-	fmt.Fprint(cmd.ErrOrStderr(), question+" [y/N] ")
-	line, _ := bufio.NewReader(in).ReadString('\n')
-	if a := strings.ToLower(strings.TrimSpace(line)); a == "y" || a == "yes" {
-		return nil
-	}
-	return errors.New("canceled")
 }
 
 func printBindings(w io.Writer, list []wire.Binding) error {

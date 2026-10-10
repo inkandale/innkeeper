@@ -57,10 +57,17 @@ func (c *client) request(ctx context.Context, method, path, ctype string, body [
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
 	if body != nil {
 		req.Header.Set("Content-Type", ctype)
 	}
+	return c.send(req, path)
+}
+
+// send sends req, a request for path, with the token, and turns an error
+// status into an error with the API's explanation.
+func (c *client) send(req *http.Request, path string) (*http.Response, error) {
+	method := req.Method
+	req.Header.Set("Authorization", "Bearer "+c.token)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err

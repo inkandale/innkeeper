@@ -304,11 +304,23 @@ ink profiles [use <name>]                         list profiles, or change the d
 ink call <method> <path> [json]                   any API call, such as: ink call GET /jobs
 ink import <instance-id> [params-json]            start an import (importer plugins only)
 ink jobs [show|cancel|watch <job-id>]             list or follow jobs
+ink cards list [--archived] [--limit n] [--page n]
+                                                  list cards, newest first
+ink cards search <text>|<query-json> [--limit n] [--page n]
+                                                  search cards by text, or with a query
+ink cards show <card-id>                          a card's details; --json includes its data
+ink cards history <card-id>                       a card's revisions, newest first
+ink cards create <file>|- [--slug s] [-m message]
+                                                  create a card from CCv3 JSON, or stdin
+ink cards edit <card-id> [file] [-m message]      edit a card's data in $EDITOR, or replace it with a file's
+ink cards import <instance-id> <file>             upload a card or lorebook file and import it
 ink cards export <card-id> [file] [--format f]    a card as CCv3 JSON, or a codec's format (.png means png)
-ink cards archive|unarchive <query-json>          archive or unarchive the cards a search matches
+ink cards archive|unarchive <card-id>|<query-json>
+                                                  archive or unarchive a card, or the cards a search matches
 ink cards sources <card-id>                       list a card's sources
 ink cards sources add <card-id> <url>
 ink cards sources remove <card-id> <source-id>
+ink lorebooks ...                                 the same commands for lorebooks; export writes CCv3 JSON only
 ink sync push <instance-id> <card-id>|<query-json> [--new-copy]
                                                   push one card, or the cards a search matches, to an app
 ink sync run <instance-id> [params-json] [--dry-run]   sync an app with the library
@@ -324,7 +336,15 @@ ink sync apply <sync-job-id> [remote-id ...] [--verdict v,...]
 `ink completion bash|zsh|fish|powershell` prints a shell completion script;
 `ink completion <shell> --help` says where to put it.
 
-`cards archive` needs a query with a `filter` or `text`; to select every card,
+`cards search` takes text, or a whole `POST /search` query when the argument
+starts with `{`. `list` and `search` print 50 rows unless `--limit` says
+otherwise, and name the next page when there is one.
+
+`cards edit` opens the data in `$VISUAL` or `$EDITOR` and saves a revision if
+it changed. If the save fails, for example because someone else edited the
+card meanwhile, the error names the file that holds your edit.
+
+`cards archive` with a query needs a `filter` or `text`; to select every card,
 filter on `archived`. It touches only cards not already in the target state.
 The API's `POST /bulk` also tags, collects, and exports; see `/api/docs`.
 
@@ -369,14 +389,15 @@ ink import <instance-id>                         # everything in /import
 ink import <instance-id> '{"path": "fantasy"}'   # only /import/fantasy
 ```
 
-To import one file, upload it, then import the `sha256` from the reply
-within 24 hours:
+To import one file, card or lorebook:
 
 ```bash
-curl -sf -H "Authorization: Bearer $INNKEEPER_TOKEN" -H 'Content-Type: application/octet-stream' \
-  --data-binary @brakka.png "$INNKEEPER_URL/api/blobs"
-ink import <instance-id> '{"blob": "<sha256>", "name": "brakka.png"}'
+ink cards import <instance-id> brakka.png
 ```
+
+Over the API, upload the file to `POST /api/blobs`, then within 24 hours
+start an import with `{"blob": "<sha256>", "name": "brakka.png"}` as its
+params.
 
 ## Sources
 
@@ -390,7 +411,7 @@ Add or remove one yourself with the API, MCP tools, or CLI:
 ```bash
 ink cards sources add 12 https://chub.ai/characters/user/name
 ink cards sources remove 12 3
-ink call GET /lorebooks/5/sources    # the CLI covers cards; use the API or MCP for lorebooks
+ink lorebooks sources add 5 https://chub.ai/lorebooks/user/name
 ```
 
 A removed source stays removed: detection won't add it back.

@@ -14,24 +14,9 @@ import (
 )
 
 func cardsCmd() *cobra.Command {
-	cards := &cobra.Command{Use: "cards", Short: "Work with library cards"}
-	cards.AddCommand(exportCmd(), sourcesCmd())
-	for _, action := range []string{"archive", "unarchive"} {
-		cards.AddCommand(&cobra.Command{
-			Use:     action + " <query-json>",
-			Short:   strings.ToUpper(action[:1]) + action[1:] + " the cards a search matches",
-			Long:    "The query needs a filter or text; to select every card, filter on archived. Cards already in that state are left alone.",
-			Example: "  ink cards " + action + ` '{"filter": {"tag": "fantasy"}}'`,
-			Args:    cobra.ExactArgs(1),
-			RunE: func(cmd *cobra.Command, args []string) error {
-				query, err := jsonArg(args, 0, "")
-				if err != nil {
-					return err
-				}
-				return startJob(cmd, "/bulk", map[string]any{"query": query, "action": action})
-			},
-		})
-	}
+	cards := group("cards", "Work with library cards")
+	cards.AddCommand(entityCmds(cardKind)...)
+	cards.AddCommand(exportCmd(), sourcesCmd(cardKind))
 	return cards
 }
 
@@ -93,31 +78,16 @@ func printSources(w io.Writer, list []source) error {
 	return tw.Flush()
 }
 
-func sourcesCmd() *cobra.Command {
-	sources := &cobra.Command{
-		Use:   "sources <card-id>",
-		Short: "List, add, or remove the sites a card was published on",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := parseID(args[0])
-			if err != nil {
-				return err
-			}
-			c, err := newClient(cmd)
-			if err != nil {
-				return err
-			}
-			out, err := c.do(cmd.Context(), "GET", "/cards/"+id+"/sources", nil)
-			if err != nil {
-				return err
-			}
-			return show(cmd, out, printSources)
-		},
+func sourcesCmd(k kind) *cobra.Command {
+	sources := getCmd(k, "sources", "List, add, or remove the sites a "+k.singular+" was published on", "/sources", printSources)
+	example := "https://chub.ai/characters/user/name"
+	if k == lorebookKind {
+		example = "https://chub.ai/lorebooks/user/name"
 	}
 	sources.AddCommand(&cobra.Command{
-		Use:     "add <card-id> <url>",
-		Short:   "Add a source to a card",
-		Example: "  ink cards sources add 12 https://chub.ai/characters/user/name",
+		Use:     "add <" + k.singular + "-id> <url>",
+		Short:   "Add a source to a " + k.singular,
+		Example: "  ink " + k.plural + " sources add 12 " + example,
 		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := parseID(args[0])
@@ -132,12 +102,12 @@ func sourcesCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			_, err = c.do(cmd.Context(), "PUT", "/cards/"+id+"/sources", body)
+			_, err = c.do(cmd.Context(), "PUT", "/"+k.plural+"/"+id+"/sources", body)
 			return err
 		},
 	}, &cobra.Command{
-		Use:   "remove <card-id> <source-id>",
-		Short: "Remove a source from a card; detection won't add it back",
+		Use:   "remove <" + k.singular + "-id> <source-id>",
+		Short: "Remove a source from a " + k.singular + "; detection won't add it back",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := parseID(args[0])
@@ -152,7 +122,7 @@ func sourcesCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			_, err = c.do(cmd.Context(), "DELETE", "/cards/"+id+"/sources/"+sid, nil)
+			_, err = c.do(cmd.Context(), "DELETE", "/"+k.plural+"/"+id+"/sources/"+sid, nil)
 			return err
 		},
 	})

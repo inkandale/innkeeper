@@ -163,7 +163,9 @@ func TestSyncRun(t *testing.T) {
 	if _, err := runInk(t, "sync", "run", "3", `{"apply":"obvious"}`, "--dry-run"); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.ContainsFunc(*got, func(r string) bool { return strings.HasPrefix(r, "POST /reconciles") && strings.Contains(r, `"apply":"none"`) }) {
+	if !slices.ContainsFunc(*got, func(r string) bool {
+		return strings.HasPrefix(r, "POST /reconciles") && strings.Contains(r, `"apply":"none"`)
+	}) {
 		t.Errorf("no dry-run request in %q", *got)
 	}
 }

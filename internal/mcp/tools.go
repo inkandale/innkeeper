@@ -33,7 +33,7 @@ func plural(kind string) (string, error) {
 }
 
 type searchIn struct {
-	Query map[string]any `json:"query" jsonschema:"The search query, as the API's POST /search body: text, filter, sources, include, fields, page"`
+	Query map[string]any `json:"query" jsonschema:"The search query, as the API's POST /search body: text, filter, sources (library, or catalog:<instance id> to search a catalog too), include, fields, page"`
 }
 
 type createIn struct {

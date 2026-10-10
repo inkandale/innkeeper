@@ -208,3 +208,37 @@ func TestCatalogMatches(t *testing.T) {
 	}
 	e.call("GET", "/cards/999999/catalog-matches", nil, 404, nil)
 }
+
+func TestSearchCatalogSources(t *testing.T) {
+	e := newEnv(t)
+	inst := e.catalog("Archive", nil)
+	down := e.catalog("Down", map[string]any{"down": true})
+	near := e.createCard(`{"name": "Carrow Two", "description": "A cheerful elven bard who sings of the sea."}`)
+	src := fmt.Sprintf("catalog:%d", inst)
+
+	var res searchResults
+	e.call("POST", "/search", map[string]any{"text": "carrow", "sources": []string{"library", src, fmt.Sprintf("catalog:%d", down)}}, 200, &res)
+	if res.Total != 1 || res.Hits[0].ID != near.ID || len(res.Catalogs) != 2 {
+		t.Fatalf("search = %+v", res)
+	}
+	if c := res.Catalogs[0]; c.CatalogID != inst || catalogIDs(c.Items) != "carrow" || len(c.Items[0].Library) != 1 || c.Error != "" {
+		t.Fatalf("archive = %+v", c)
+	}
+	if c := res.Catalogs[1]; c.CatalogID != down || len(c.Items) != 0 || !strings.Contains(c.Error, "unavailable") {
+		t.Fatalf("down = %+v", c)
+	}
+
+	var only searchResults
+	e.call("POST", "/search", map[string]any{"sources": []string{src}}, 200, &only)
+	if len(only.Hits) != 0 || only.Total != 0 || catalogIDs(only.Catalogs[0].Items) != "brakka,carrow" {
+		t.Fatalf("catalog only = %+v", only)
+	}
+	var lore searchResults
+	e.call("POST", "/lorebooks/search", map[string]any{"sources": []string{src}}, 200, &lore)
+	if catalogIDs(lore.Catalogs[0].Items) != "forge-lore" {
+		t.Fatalf("lorebooks = %+v", lore)
+	}
+	e.call("POST", "/search", map[string]any{"sources": []string{"catalog:x"}}, 400, nil)
+	e.call("POST", "/search", map[string]any{"sources": []string{fmt.Sprintf("catalog:%d", e.importID)}}, 400, nil)
+	e.call("POST", "/search", map[string]any{"sources": []string{"chub"}}, 400, nil)
+}

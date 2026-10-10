@@ -18,7 +18,7 @@ type Query struct {
 	Text     string   `json:"text,omitempty" doc:"Words to match in name, description, personality, scenario, creator notes, and first message. Supports \"quoted phrases\", or, and -excluded words."`
 	Semantic bool     `json:"semantic,omitempty" doc:"Not available yet: needs an embedding enricher."`
 	Filter   *Filter  `json:"filter,omitempty"`
-	Sources  []string `json:"sources,omitempty" doc:"Only library for now."`
+	Sources  []string `json:"sources,omitempty" doc:"library, or catalog:<instance id> to also search a catalog by text alone. Default: library."`
 	Include  []string `json:"include,omitempty" doc:"Extra data per hit: tags, lorebooks, targets. Lorebooks take cards and targets."`
 	Fields   []string `json:"fields,omitempty" doc:"Card data keys to return per hit, plus avatar. Default: name."`
 	Sort     string   `json:"sort,omitempty" enum:"relevance,updated,name,created" doc:"Default: relevance with text, newest first without."`

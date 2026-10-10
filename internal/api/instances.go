@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"slices"
 	"strings"
@@ -9,8 +10,10 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/davidgibbons/innkeeper/internal/auth"
+	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 	"github.com/davidgibbons/innkeeper/internal/tier"
+	"github.com/davidgibbons/innkeeper/protocol"
 )
 
 type enrichmentOut struct {
@@ -160,11 +163,19 @@ func (s *Server) instanceRoutes(api huma.API) {
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			out := &checkOut{Body: checkResult{OK: problem == nil}}
-			if problem != nil {
-				out.Body.Error = problem.Error()
+			// Report only what GET /instances already shows: the start error
+			// it stores as broken_error, or the plugin's own reply.
+			var startErr *pluginhost.StartError
+			var rpcErr *protocol.Error
+			switch {
+			case problem == nil:
+				return &checkOut{Body: checkResult{OK: true}}, nil
+			case errors.As(problem, &startErr):
+				return &checkOut{Body: checkResult{Error: startErr.Error()}}, nil
+			case errors.As(problem, &rpcErr), errors.Is(problem, plugins.ErrUnknownPlugin):
+				return &checkOut{Body: checkResult{Error: problem.Error()}}, nil
 			}
-			return out, nil
+			return nil, s.fail(problem)
 		})
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "delete-instance", Method: http.MethodDelete, Path: "/instances/{id}",

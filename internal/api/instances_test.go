@@ -98,13 +98,14 @@ func TestInstanceCheck(t *testing.T) {
 
 	// Without a dir, the fake target's app refuses target.list.
 	noApp := create("target", "No app", nil)
+	e.markBroken(noApp, "passing trouble")
 	if c := check(noApp); c.OK || !strings.Contains(c.Error, "config.dir is not set") || broken(noApp) != nil {
 		t.Errorf("app error: %+v, broken %v", c, broken(noApp))
 	}
 
 	// The vault manifest names no binary, so its plugin can't start.
 	vault := create("vault", "Vault", nil)
-	if c := check(vault); c.OK || c.Error == "" || broken(vault) == nil {
+	if c := check(vault); c.OK || broken(vault) == nil || c.Error != *broken(vault) {
 		t.Errorf("failed start: %+v, broken %v", c, broken(vault))
 	}
 

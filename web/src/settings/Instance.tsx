@@ -174,7 +174,7 @@ export function InstanceForm({
           Save
         </button>
         {instance && (
-          <button type="button" className="button" disabled={check.isPending} onClick={() => check.mutate(instance.id)}>
+          <button type="button" className="button" title="Tests the saved settings" disabled={check.isPending} onClick={() => check.mutate(instance.id)}>
             Check
           </button>
         )}

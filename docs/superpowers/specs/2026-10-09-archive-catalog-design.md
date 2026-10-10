@@ -103,6 +103,9 @@ All three live in `innkeeper-plugins`.
 A shared Go package, not a plugin. It holds:
 
 - The `item` and `item_version` tables and their migrations.
+- Every row keyed by instance ID. The core gives a plugin one schema for all
+  its instances, so two `folder` archives share tables. A deleted instance's
+  rows stay until purged (INN-41).
 - Full-text search over name, author, description, and tags (a generated
   `tsvector` with a GIN index).
 - Declared filters compiled to SQL, and cursor paging.

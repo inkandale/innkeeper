@@ -17,22 +17,6 @@ func cardsCmd() *cobra.Command {
 	cards := group("cards", "Work with library cards")
 	cards.AddCommand(entityCmds(cardKind)...)
 	cards.AddCommand(exportCmd(), sourcesCmd())
-	for _, action := range []string{"archive", "unarchive"} {
-		cards.AddCommand(&cobra.Command{
-			Use:     action + " <query-json>",
-			Short:   strings.ToUpper(action[:1]) + action[1:] + " the cards a search matches",
-			Long:    "The query needs a filter or text; to select every card, filter on archived. Cards already in that state are left alone.",
-			Example: "  ink cards " + action + ` '{"filter": {"tag": "fantasy"}}'`,
-			Args:    cobra.ExactArgs(1),
-			RunE: func(cmd *cobra.Command, args []string) error {
-				query, err := jsonArg(args, 0, "")
-				if err != nil {
-					return err
-				}
-				return startJob(cmd, "/bulk", map[string]any{"query": query, "action": action})
-			},
-		})
-	}
 	return cards
 }
 

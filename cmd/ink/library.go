@@ -36,6 +36,41 @@ func entityCmds(k kind) []*cobra.Command {
 		getCmd(k, "history", "List a "+k.singular+"'s revisions, newest first", "/revisions", printRevisions),
 		createCmd(k),
 		editCmd(k),
+		archiveCmd(k, "archive"),
+		archiveCmd(k, "unarchive"),
+	}
+}
+
+// archiveCmd archives or unarchives one entity by ID, or what a query
+// matches with a bulk job.
+func archiveCmd(k kind, action string) *cobra.Command {
+	return &cobra.Command{
+		Use:   action + " <" + k.singular + "-id>|<query-json>",
+		Short: strings.ToUpper(action[:1]) + action[1:] + " a " + k.singular + ", or the " + k.plural + " a search matches",
+		Long: "A query starts a job. It needs a filter or text; to select every " + k.singular +
+			", filter on archived. " + strings.ToUpper(k.plural[:1]) + k.plural[1:] + " already in that state are left alone.",
+		Example: "  ink " + k.plural + " " + action + " 12\n  ink " + k.plural + " " + action + ` '{"filter": {"source": "chub"}}'`,
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if id, err := parseID(args[0]); err == nil {
+				c, err := newClient(cmd)
+				if err != nil {
+					return err
+				}
+				body := []byte(fmt.Sprintf(`{"archived":%t}`, action == "archive"))
+				_, err = c.do(cmd.Context(), "PUT", "/"+k.plural+"/"+id+"/archived", body)
+				return err
+			}
+			query, err := jsonArg(args, 0, "")
+			if err != nil {
+				return err
+			}
+			body := map[string]any{"query": query, "action": action}
+			if k != cardKind {
+				body["kind"] = k.singular
+			}
+			return startJob(cmd, "/bulk", body)
+		},
 	}
 }
 

@@ -42,6 +42,20 @@ func TestCardsArchive(t *testing.T) {
 	if _, err := runInk(t, "cards", "archive"); err == nil {
 		t.Error("archive without a query succeeded")
 	}
+	*got = nil
+	for _, args := range [][]string{{"cards", "archive", "3"}, {"lorebooks", "unarchive", "5"}, {"lorebooks", "archive", `{"text": "old"}`}} {
+		if _, err := runInk(t, args...); err != nil {
+			t.Fatalf("%q: %v", args, err)
+		}
+	}
+	want := []string{
+		`PUT /cards/3/archived {"archived":true}`,
+		`PUT /lorebooks/5/archived {"archived":false}`,
+		`POST /bulk {"action":"archive","kind":"lorebook","query":{"text":"old"}}`,
+	}
+	if !slices.Equal(*got, want) {
+		t.Fatalf("requests = %q\nwant %q", *got, want)
+	}
 }
 
 func TestCardsSources(t *testing.T) {

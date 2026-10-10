@@ -119,7 +119,48 @@ func group(use, short string) *cobra.Command {
 func lorebooksCmd() *cobra.Command {
 	lorebooks := group("lorebooks", "Work with library lorebooks")
 	lorebooks.AddCommand(entityCmds(lorebookKind)...)
+	lorebooks.AddCommand(lorebookExportCmd(), sourcesCmd(lorebookKind))
 	return lorebooks
+}
+
+func lorebookExportCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:     "export <lorebook-id> [file]",
+		Short:   "Export a lorebook as CCv3 JSON to a file, or to stdout",
+		Example: "  ink lorebooks export 5 orcs.json",
+		Args:    cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := parseID(args[0])
+			if err != nil {
+				return err
+			}
+			c, err := newClient(cmd)
+			if err != nil {
+				return err
+			}
+			out, err := c.do(cmd.Context(), "GET", "/lorebooks/"+id, nil)
+			if err != nil {
+				return err
+			}
+			var e entity
+			if err := json.Unmarshal(out, &e); err != nil {
+				return err
+			}
+			// The API has no lorebook export; CCv3's standalone lorebook is this wrapper.
+			file, err := json.Marshal(struct {
+				Spec string          `json:"spec"`
+				Data json.RawMessage `json:"data"`
+			}{"lorebook_v3", e.Revision.Data})
+			if err != nil {
+				return err
+			}
+			if len(args) == 1 {
+				_, err = fmt.Fprintln(cmd.OutOrStdout(), string(file))
+				return err
+			}
+			return os.WriteFile(args[1], file, 0o644)
+		},
+	}
 }
 
 // hit is a row of a search.

@@ -272,6 +272,33 @@ func TestCardsNeedAnID(t *testing.T) {
 	}
 }
 
+func TestLorebooksExportAndSources(t *testing.T) {
+	got := stubAPI(t, map[string]string{
+		"/lorebooks/5":         `{"id": 5, "slug": "orcs", "revision": {"id": 8, "data": {"name": "Orcs", "entries": []}}}`,
+		"/lorebooks/5/sources": `[]`,
+	})
+	file := filepath.Join(t.TempDir(), "orcs.json")
+	if _, err := runInk(t, "lorebooks", "export", "5", file); err != nil {
+		t.Fatal(err)
+	}
+	want := `{"spec":"lorebook_v3","data":{"name":"Orcs","entries":[]}}`
+	if b, _ := os.ReadFile(file); string(b) != want {
+		t.Fatalf("file = %s, want %s", b, want)
+	}
+	if out, err := runInk(t, "lorebooks", "export", "5"); err != nil || out != want+"\n" {
+		t.Fatalf("stdout = %q, err = %v", out, err)
+	}
+	if _, err := runInk(t, "lorebooks", "sources", "add", "5", "https://chub.ai/lorebooks/u/orcs"); err != nil {
+		t.Fatal(err)
+	}
+	if last := (*got)[len(*got)-1]; last != `PUT /lorebooks/5/sources {"url":"https://chub.ai/lorebooks/u/orcs"}` {
+		t.Fatalf("request = %q", last)
+	}
+	if _, err := runInk(t, "lorebooks", "export", "5", "--format", "png"); err == nil {
+		t.Error("lorebooks export took --format")
+	}
+}
+
 func TestCardsImport(t *testing.T) {
 	var got []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

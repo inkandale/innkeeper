@@ -1585,8 +1585,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Line up a target app against the library
-         * @description Queues a reconcile job. Read the snapshot from GET /jobs/{id}: its progress is the snapshot once the job finishes.
+         * Sync a target app with the library
+         * @description Queues a sync. With apply obvious (the default) it binds exact matches and imports new items; apply none previews. Read the snapshot from GET /jobs/{id} once the job finishes.
          */
         post: operations["start-reconcile"];
         delete?: never;

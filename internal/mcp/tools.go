@@ -145,7 +145,7 @@ type reconcileIn struct {
 
 type compareIn struct {
 	InstanceID int64  `json:"instance_id" jsonschema:"The target plugin instance"`
-	RemoteID   string `json:"remote_id" jsonschema:"The app item's remote_id, from the reconcile snapshot"`
+	RemoteID   string `json:"remote_id" jsonschema:"The app item's remote_id, from the sync snapshot"`
 	Kind       string `json:"kind,omitempty" jsonschema:"card or lorebook; default card"`
 	ID         int64  `json:"id,omitempty" jsonschema:"The library card or lorebook to compare with; omit for the bound one"`
 }
@@ -318,7 +318,7 @@ var tools = []tool{
 			}
 			return c.call(ctx, "GET", fmt.Sprintf("/instances/%d/%s", in.InstanceID, path), nil)
 		}),
-	def("bind", "Link a card or lorebook to one the app already has. Changes nothing in the app or the library; the binding shows ahead until the next push where they differ. The app's linked world books are left for reconcile.", tier.Write,
+	def("bind", "Link a card or lorebook to one the app already has. Changes nothing in the app or the library; the binding shows ahead until the next push where they differ. The app's linked world books are left for sync.", tier.Write,
 		func(ctx context.Context, c caller, in bindIn) (*sdk.CallToolResult, error) {
 			if (in.CardID == 0) == (in.LorebookID == 0) {
 				return nil, fmt.Errorf("give exactly one of card_id and lorebook_id")
@@ -329,7 +329,7 @@ var tools = []tool{
 			}
 			return c.call(ctx, "POST", path, map[string]any{"instance_id": in.InstanceID, "remote_id": in.RemoteID})
 		}),
-	def("list_jobs", "List recent jobs: imports, pushes, scans, reconciles, bulk actions. A finished reconcile shows only its totals; get_job returns the whole snapshot.", tier.Read,
+	def("list_jobs", "List recent jobs: imports, pushes, scans, syncs, bulk actions. A finished sync shows only its totals; get_job returns the whole snapshot.", tier.Read,
 		func(ctx context.Context, c caller, _ none) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "GET", "/jobs", nil)
 		}),
@@ -353,8 +353,8 @@ var tools = []tool{
 			}
 			return c.call(ctx, "POST", "/imports", body)
 		}),
-	def("start_reconcile", "Line a target app up against the library. Starts a job; its finished get_job progress is the snapshot: "+
-		"a verdict, candidates, and a suggested action for each app item. Binds exact matches and imports new items unless apply is \"none\".", tier.Write,
+	def("start_sync", "Sync a target app with the library: binds exact matches and imports new items, then lists what's left for the owner. "+
+		"Pass apply \"none\" to preview without writing. Starts a job; its finished get_job progress is the snapshot.", tier.Write,
 		func(ctx context.Context, c caller, in reconcileIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", "/reconciles", in)
 		}),
@@ -385,7 +385,7 @@ var tools = []tool{
 			}
 			return c.call(ctx, "POST", path+"/resolve", in)
 		}),
-	def("resolve_items", "Resolve many app items as one bulk job, such as a reconcile's suggestions. One that fails doesn't stop the others; "+
+	def("resolve_items", "Resolve many app items as one bulk job, such as a sync's suggestions. One that fails doesn't stop the others; "+
 		"get_job on each child shows its outcome. Pushing is a separate step.", tier.Write,
 		func(ctx context.Context, c caller, in resolveItemsIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", "/resolutions", in)

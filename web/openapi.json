@@ -7968,7 +7968,7 @@
     },
     "/reconciles": {
       "post": {
-        "description": "Queues a reconcile job. Read the snapshot from GET /jobs/{id}: its progress is the snapshot once the job finishes.",
+        "description": "Queues a sync. With apply obvious (the default) it binds exact matches and imports new items; apply none previews. Read the snapshot from GET /jobs/{id} once the job finishes.",
         "operationId": "start-reconcile",
         "requestBody": {
           "content": {
@@ -8002,7 +8002,7 @@
             "description": "Error"
           }
         },
-        "summary": "Line up a target app against the library",
+        "summary": "Sync a target app with the library",
         "tags": [
           "Sync"
         ]

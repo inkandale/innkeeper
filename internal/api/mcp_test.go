@@ -279,13 +279,13 @@ func TestMCPReconcile(t *testing.T) {
 	e.appCard(dir, "rCarrow", "Carrow", "Hello.")
 
 	read, write := e.mcpClient(tier.Read), e.mcpClient(tier.Write)
-	if _, err := read.CallTool(context.Background(), &sdk.CallToolParams{Name: "start_reconcile",
+	if _, err := read.CallTool(context.Background(), &sdk.CallToolParams{Name: "start_sync",
 		Arguments: map[string]any{"instance_id": inst}}); err == nil {
-		t.Fatal("a read token called start_reconcile")
+		t.Fatal("a read token called start_sync")
 	}
 	var j jobOut
 	start := map[string]any{"instance_id": inst, "apply": "none"}
-	if err := json.Unmarshal([]byte(tool(t, write, "start_reconcile", start, false)), &j); err != nil {
+	if err := json.Unmarshal([]byte(tool(t, write, "start_sync", start, false)), &j); err != nil {
 		t.Fatal(err)
 	}
 	if last, r := e.watchJob(j.ID); last.Status != "succeeded" {

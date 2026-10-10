@@ -43,7 +43,7 @@ function OptionSelect({ item, value, onChange, label }: { item: Item; value?: Op
   );
 }
 
-/** Queue shows a reconcile run's snapshot: every app item, its verdict and match, and the action to apply. */
+/** Queue shows a sync run's snapshot: every app item, its verdict and match, and the action to apply. */
 export function Queue() {
   const id = Number(useParams().job);
   const toast = useToast();
@@ -52,7 +52,7 @@ export function Queue() {
   useJobEvents(id, !!j && !finished(j));
   const snap = snapshotOf(j);
   const [verdict, setVerdict] = useState<string>();
-  // The owner's changes from the defaults: the suggestion, checked unless the run auto-bound it.
+  // The owner's changes from the defaults: the suggestion, checked unless the run applied it itself.
   const [picks, setPicks] = useState<Record<string, string>>({});
   const [checked, setChecked] = useState<Record<string, boolean>>({});
 
@@ -61,12 +61,23 @@ export function Queue() {
     const key = picks[rowKey(r)] ?? (r.item.suggested && optionKey(r.item.suggested));
     return (r.item.options ?? []).find((o) => optionKey(o) === key);
   };
-  const isChecked = (r: Row) => !!pickOf(r) && (checked[rowKey(r)] ?? (!!r.item.suggested && !r.item.auto_bound && r.item.verdict !== "bound"));
+  const isChecked = (r: Row) => !!pickOf(r) && (checked[rowKey(r)] ?? (!!r.item.suggested && !r.item.auto_bound && !r.item.auto_imported && r.item.verdict !== "bound"));
   const ownMatch = (r: Row) => !verdict || r.item.verdict === verdict || (verdict === "auto_bound" && !!r.item.auto_bound);
   // A character shown only for a matching world book is context; Apply leaves it out.
   const shown = all.filter((r) => ownMatch(r) || r.item.lorebooks?.some((lb) => lb.verdict === verdict));
   const chosen = shown.filter((r) => ownMatch(r) && isChecked(r));
   const instance = snap?.params.instance_id ?? 0;
+
+  // Matches the CLI: bound items without a suggestion or error are in sync, and auto-applied rows are done.
+  const left = (i: Item) => !i.auto_bound && !i.auto_imported && (i.verdict !== "bound" || !!i.suggested || !!i.error);
+  const nothingLeft = !all.some((r) => left(r.item) || r.item.lorebooks?.some(left));
+  const summary = [
+    [snap?.totals?.auto_imported, "imported"],
+    [snap?.totals?.auto_bound, "linked"],
+  ]
+    .filter(([n]) => n)
+    .map(([n, w]) => `${n} ${w}`)
+    .join(", ");
 
   const apply = useMutation({
     mutationFn: async () => {
@@ -78,7 +89,7 @@ export function Queue() {
       return must(await api.POST("/resolutions", { body: { resolutions } }));
     },
     onSuccess: (j) =>
-      toast({ text: `Job ${j.id} started. Reconcile again to see what's left.`, link: { to: `/settings/jobs/${j.id}`, label: "View job" } }),
+      toast({ text: `Job ${j.id} started. Sync again to see what's left.`, link: { to: `/settings/jobs/${j.id}`, label: "View job" } }),
     onError: (e) => toast({ text: e.message, error: true }),
   });
 
@@ -89,13 +100,15 @@ export function Queue() {
       <p>
         <Link to="/sync">← Sync</Link>
       </p>
-      <h1>Reconcile #{j.id}</h1>
+      <h1>Sync #{j.id}</h1>
       {!finished(j) ? (
         <p>Reading the app… {progressText(j)}</p>
       ) : j.status === "failed" ? (
         <p className="error">{j.error}</p>
       ) : !snap ? (
         <p>Loading…</p>
+      ) : nothingLeft ? (
+        <p>Nothing to review. {summary}</p>
       ) : (
         <>
           <p className="chips" role="group" aria-label="Verdicts">
@@ -153,7 +166,7 @@ export function Queue() {
                         )}
                       </td>
                       <td>
-                        {it.auto_bound ? "bound (auto)" : it.verdict}
+                        {it.auto_bound ? "linked (auto)" : it.auto_imported ? "imported (auto)" : it.verdict}
                         {it.error && <span className="error"> {it.error}</span>}
                       </td>
                       <td>

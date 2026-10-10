@@ -35,6 +35,10 @@ beforeEach(() => {
         sent.push({ method: "POST", path: u.pathname, body: await req.json() });
         return json(job(sent.length), 202);
       }
+      if (req.method === "POST" && u.pathname === "/api/reconciles") {
+        sent.push({ method: "POST", path: u.pathname, body: await req.json() });
+        return json({ ...job(sent.length), kind: "target.reconcile" }, 202);
+      }
       if (req.method === "PATCH") {
         const body = await req.json();
         sent.push({ method: "PATCH", path: u.pathname, body });
@@ -62,13 +66,13 @@ function renderStep() {
   );
 }
 
-test("imports from an app that can be read", async () => {
+test("syncs an app that can be read", async () => {
   plugins = [plugin("lumiverse", ["push", "pull"])];
   instances = [instance(5, "lumiverse", "Lumiverse")];
   renderStep();
-  await userEvent.click(await screen.findByRole("button", { name: "Import from Lumiverse" }));
-  await vi.waitFor(() => expect(sent).toEqual([{ method: "POST", path: "/api/imports", body: { instance_id: 5 } }]));
-  expect(await screen.findByRole("link", { name: /queued/ })).toHaveAttribute("href", "/settings/jobs/1");
+  await userEvent.click(await screen.findByRole("button", { name: "Sync Lumiverse" }));
+  await vi.waitFor(() => expect(sent).toEqual([{ method: "POST", path: "/api/reconciles", body: { instance_id: 5 } }]));
+  expect(await screen.findByRole("link", { name: /queued/ })).toHaveAttribute("href", "/sync/reconciles/1");
 });
 
 test("uploads files to the card importer", async () => {
@@ -90,6 +94,7 @@ test("uploads files to the card importer", async () => {
   );
   expect(await screen.findByText(/brakka\.png/)).toBeInTheDocument();
   await vi.waitFor(() => expect(input).toBeEnabled());
+  expect(await screen.findByRole("link", { name: /brakka\.png/ })).toHaveAttribute("href", "/settings/jobs/2");
 });
 
 test("with nothing to import from, points back to choosing plugins", async () => {

@@ -6,7 +6,7 @@ export type Resolution = components["schemas"]["Resolution"];
 type Hunk = components["schemas"]["Hunk"];
 type TargetCount = components["schemas"]["TargetCount"];
 
-// The snapshot is a reconcile job's progress, which the schema leaves
+// The snapshot is a sync job's progress, which the schema leaves
 // untyped. These match Snapshot in internal/targets/reconcile.go.
 export type Option = { action: "bind" | "import" | "skip"; card_id?: number; why?: string };
 export type Candidate = {
@@ -29,6 +29,7 @@ export type Item = {
   suggested?: Option;
   lorebooks?: Item[];
   auto_bound?: boolean;
+  auto_imported?: boolean;
 };
 export type Snapshot = {
   params: { instance_id: number };
@@ -43,7 +44,7 @@ export type Snapshot = {
 export type ItemKind = "items" | "lorebook-items";
 export type Row = { kind: ItemKind; item: Item };
 
-/** snapshotOf is a finished reconcile's snapshot, or undefined while it runs or when a job list cut it to totals. */
+/** snapshotOf is a finished sync's snapshot, or undefined while it runs or when a job list cut it to totals. */
 export function snapshotOf(job: { status: string; progress: unknown } | undefined): Snapshot | undefined {
   const p = job?.status === "succeeded" ? job.progress : undefined;
   return p && typeof p === "object" && "params" in p ? (p as Snapshot) : undefined;

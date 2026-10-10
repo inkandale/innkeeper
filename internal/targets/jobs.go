@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/jackc/pgx/v5"
-
 	"github.com/davidgibbons/innkeeper/internal/bulk"
 	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
@@ -30,6 +28,8 @@ type pushPayload struct {
 	// if the card wasn't bound. A run that finds another one knows an
 	// earlier run, or another push, already pushed.
 	LastPush *int64 `json:"last_push,omitempty"`
+	// AppHash is the hash of the app copy a query push may replace.
+	AppHash string `json:"app_hash,omitempty"`
 }
 
 // EnqueuePush queues a push of one card.
@@ -57,32 +57,30 @@ func (s *Service) enqueuePush(ctx context.Context, q *jobs.Queue, k kind, instan
 	return q.Enqueue(ctx, jobs.Spec{Kind: PushKind, InstanceID: &instanceID, Payload: p})
 }
 
-// EnqueueBulkPush queues a push of each card, as one bulk job.
-func (s *Service) EnqueueBulkPush(ctx context.Context, q *jobs.Queue, instanceID int64, cardIDs []int64, newCopy bool) (jobs.Job, error) {
-	return s.enqueueBulkPush(ctx, q, cardKind, instanceID, cardIDs, newCopy)
+// EnqueueBulkPush queues a push of each card, as one bulk job. With confirm
+// from PreviewBulkPush, it returns a *StalePreviewError if the preview would
+// differ now, and each push may replace the app copy the preview counted.
+// Without it, each may replace only a copy unchanged since its last push or
+// adopt. A push whose app copy differs fails with ErrAppChanged.
+func (s *Service) EnqueueBulkPush(ctx context.Context, q *jobs.Queue, instanceID int64, cardIDs []int64, newCopy bool, confirm string) (jobs.Job, error) {
+	return s.enqueueBulkPush(ctx, q, cardKind, instanceID, cardIDs, newCopy, confirm)
 }
 
-// EnqueueBulkLorebookPush queues a push of each lorebook, as one bulk job.
-func (s *Service) EnqueueBulkLorebookPush(ctx context.Context, q *jobs.Queue, instanceID int64, lorebookIDs []int64, newCopy bool) (jobs.Job, error) {
-	return s.enqueueBulkPush(ctx, q, lorebookKind, instanceID, lorebookIDs, newCopy)
+// EnqueueBulkLorebookPush is EnqueueBulkPush for lorebooks.
+func (s *Service) EnqueueBulkLorebookPush(ctx context.Context, q *jobs.Queue, instanceID int64, lorebookIDs []int64, newCopy bool, confirm string) (jobs.Job, error) {
+	return s.enqueueBulkPush(ctx, q, lorebookKind, instanceID, lorebookIDs, newCopy, confirm)
 }
 
-func (s *Service) enqueueBulkPush(ctx context.Context, q *jobs.Queue, k kind, instanceID int64, ids []int64, newCopy bool) (jobs.Job, error) {
+func (s *Service) enqueueBulkPush(ctx context.Context, q *jobs.Queue, k kind, instanceID int64, ids []int64, newCopy bool, confirm string) (jobs.Job, error) {
 	ids = slices.Clone(ids)
 	slices.Sort(ids)
 	ids = slices.Compact(ids)
-	rows, err := s.pool.Query(ctx, `SELECT b.`+k.col+`, max(p.id) FROM binding b JOIN push p ON p.binding_id = b.id
-		WHERE b.instance_id = $1 AND b.`+k.col+` = ANY($2) GROUP BY b.`+k.col, instanceID, ids)
+	preview, bound, err := s.bulkPreview(ctx, k, instanceID, ids)
 	if err != nil {
 		return jobs.Job{}, err
 	}
-	lastPush := map[int64]int64{}
-	var id, last int64
-	if _, err := pgx.ForEachRow(rows, []any{&id, &last}, func() error {
-		lastPush[id] = last
-		return nil
-	}); err != nil {
-		return jobs.Job{}, err
+	if confirm != "" && confirm != preview.Confirm {
+		return jobs.Job{}, &StalePreviewError{Preview: preview}
 	}
 	children := make([]jobs.Spec, len(ids))
 	for i, id := range ids {
@@ -92,8 +90,12 @@ func (s *Service) enqueueBulkPush(ctx context.Context, q *jobs.Queue, k kind, in
 		} else {
 			p.CardID = id
 		}
-		if v, ok := lastPush[id]; ok {
-			p.LastPush = &v
+		if t, ok := bound[id]; ok {
+			p.LastPush = &t.lastPush
+			p.AppHash = t.AppHash
+			if confirm == "" && t.AppHash != "" {
+				p.AppHash = t.accepted
+			}
 		}
 		children[i] = jobs.Spec{Kind: PushKind, InstanceID: &instanceID, Payload: p}
 	}
@@ -115,7 +117,7 @@ func (s *Service) RunPush(ctx context.Context, r *jobs.Run) error {
 	if p.LorebookID != 0 {
 		k, id, key = lorebookKind, p.LorebookID, fmt.Sprintf("%d:lorebook:%d:%d", *r.InstanceID, p.LorebookID, r.ID)
 	}
-	b, err := s.push(ctx, k, *r.InstanceID, id, p.NewCopy, key, &pushExpect{lastPush: p.LastPush})
+	b, err := s.push(ctx, k, *r.InstanceID, id, p.NewCopy, key, &pushExpect{lastPush: p.LastPush, appHash: p.AppHash})
 	var startErr *pluginhost.StartError
 	switch {
 	case errors.Is(err, errAlreadyPushed):

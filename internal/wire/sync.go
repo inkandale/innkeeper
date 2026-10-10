@@ -74,3 +74,19 @@ type Preview struct {
 	// if a new preview would be the same, so nothing changes unseen.
 	Confirm string `json:"confirm"`
 }
+
+// BulkPreview counts how the cards a query push would send stand on the
+// target, as of each binding's last check.
+type BulkPreview struct {
+	Total int `json:"total"`
+	// New are unbound, or missing from the app; the push creates them.
+	New       int `json:"new"`
+	Ahead     int `json:"ahead"`
+	InSync    int `json:"in_sync"`
+	CantCheck int `json:"cant_check"`
+	// Drifted were changed in the app; the push overwrites those changes.
+	Drifted int `json:"drifted"`
+	// Confirm identifies this preview. A push that sends it is refused if a
+	// new preview would differ, and replaces only the app copies it counted.
+	Confirm string `json:"confirm"`
+}

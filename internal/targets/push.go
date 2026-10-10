@@ -35,6 +35,8 @@ type pushExpect struct {
 	lastPush *int64
 	// createOnly gives up if the app has a copy, so the push never updates.
 	createOnly bool
+	// appHash, if set, is the app copy the push may replace.
+	appHash string
 }
 
 // errAlreadyPushed means the card's pushes aren't what the job expected, so
@@ -76,11 +78,11 @@ func (s *Service) push(ctx context.Context, k kind, instanceID, id int64, newCop
 	if err := lock(ctx, tx, k, instanceID, id); err != nil {
 		return Binding{}, err
 	}
-	var remoteID, state string
+	var remoteID, state, acceptedHash string
 	var lastPush *int64
-	err = tx.QueryRow(ctx, `SELECT remote_id, remote_state, (SELECT max(id) FROM push WHERE binding_id = b.id)
+	err = tx.QueryRow(ctx, `SELECT remote_id, remote_state, accepted_hash, (SELECT max(id) FROM push WHERE binding_id = b.id)
 		FROM binding b WHERE instance_id = $1 AND `+k.col+` = $2`,
-		instanceID, id).Scan(&remoteID, &state, &lastPush)
+		instanceID, id).Scan(&remoteID, &state, &acceptedHash, &lastPush)
 	bound := err == nil
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return Binding{}, err
@@ -93,8 +95,26 @@ func (s *Service) push(ctx context.Context, k kind, instanceID, id int64, newCop
 	if expect != nil && expect.createOnly && bound && state != remoteMissing {
 		return Binding{}, errAlreadyPushed
 	}
-	if expect != nil && create && bound && (expect.lastPush == nil || lastPush == nil || *expect.lastPush != *lastPush) {
+	pushedSince := expect != nil && (expect.lastPush == nil || lastPush == nil || *expect.lastPush != *lastPush)
+	if create && bound && pushedSince {
 		return Binding{}, errAlreadyPushed
+	}
+	if expect != nil && expect.appHash != "" && !create && info.Pull {
+		// A push since then replaced the copy the owner agreed to, so the
+		// app must still hold what that push left.
+		want := expect.appHash
+		if pushedSince {
+			want = acceptedHash
+		}
+		_, hash, err := s.fetch(ctx, k, inst, info, remoteID)
+		switch {
+		case remoteNotFound(err):
+			// The put below makes a new copy.
+		case err != nil:
+			return Binding{}, err
+		case hash != want:
+			return Binding{}, ErrAppChanged
+		}
 	}
 	putRemote, putKey := "", key
 	switch {

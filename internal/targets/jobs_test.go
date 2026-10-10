@@ -18,7 +18,7 @@ func TestJobs(t *testing.T) {
 	q := jobs.New(e.pool)
 	wait := e.startWorker(q)
 
-	parent, err := e.s.EnqueueBulkPush(e.ctx, q, e.inst, []int64{e.card, other}, false)
+	parent, err := e.s.EnqueueBulkPush(e.ctx, q, e.inst, []int64{e.card, other}, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestPushJobUpdatesAfterAnotherPush(t *testing.T) {
 func TestBulkPushDedupes(t *testing.T) {
 	e := setup(t, nil)
 	q := jobs.New(e.pool)
-	parent, err := e.s.EnqueueBulkPush(e.ctx, q, e.inst, []int64{e.card, e.card}, false)
+	parent, err := e.s.EnqueueBulkPush(e.ctx, q, e.inst, []int64{e.card, e.card}, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestBulkLorebookPush(t *testing.T) {
 	e := setup(t, map[string]any{"lorebooks": "standalone"})
 	a, b := e.newLorebook("Forge lore"), e.newLorebook("Sea lore")
 	q := jobs.New(e.pool)
-	parent, err := e.s.EnqueueBulkLorebookPush(e.ctx, q, e.inst, []int64{a, b, a}, false)
+	parent, err := e.s.EnqueueBulkLorebookPush(e.ctx, q, e.inst, []int64{a, b, a}, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}

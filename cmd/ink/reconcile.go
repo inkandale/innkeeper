@@ -305,7 +305,10 @@ func printSnapshot(w io.Writer, snap wire.Snapshot) error {
 		verdict := it.Verdict
 		if it.AutoBound || it.AutoImported {
 			applied++
-			verdict += " (auto)"
+			verdict = "linked (auto)"
+			if it.AutoImported {
+				verdict = "imported (auto)"
+			}
 		} else if it.Verdict != "bound" || it.Suggested != nil || it.Error != "" {
 			pending++
 		}

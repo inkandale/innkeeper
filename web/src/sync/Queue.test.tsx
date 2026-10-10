@@ -203,7 +203,7 @@ test("the auto_imported chip shows the auto-imported rows, with the same label o
     totals: { new: 1, likely: 1, auto_imported: 1 },
   });
   renderQueue();
-  await userEvent.click(await screen.findByRole("button", { name: "auto_imported 1" }));
+  await userEvent.click(await screen.findByRole("button", { name: "imported (auto) 1" }));
   expect(screen.getByRole("link", { name: "Ann" })).toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "Bo" })).not.toBeInTheDocument();
   expect(screen.getAllByText("imported (auto)")).toHaveLength(2);

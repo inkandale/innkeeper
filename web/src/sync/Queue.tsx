@@ -22,6 +22,7 @@ import "./Sync.css";
 
 const plural = (n: number, s: string) => `${n} ${s}${n === 1 ? "" : "s"}`;
 
+const chipLabel: Record<string, string> = { auto_bound: "linked (auto)", auto_imported: "imported (auto)" };
 const verdictLabel = (i: Item) => (i.auto_bound ? "linked (auto)" : i.auto_imported ? "imported (auto)" : i.verdict);
 
 /** reasons lists the signals a candidate matched on, with their distances. */
@@ -127,7 +128,7 @@ export function Queue() {
           <p className="chips" role="group" aria-label="Verdicts">
             {Object.entries(snap.totals ?? {}).map(([v, n]) => (
               <button key={v} className="chip" aria-pressed={verdict === v} onClick={() => setVerdict(verdict === v ? undefined : v)}>
-                {v} {n}
+                {chipLabel[v] ?? v} {n}
               </button>
             ))}
           </p>

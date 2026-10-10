@@ -503,7 +503,7 @@ character, and ends with `<n> applied, <m> left to review`:
 | `new` | Nothing in the library matches |
 | `error` | The app item couldn't be read |
 
-`exact (auto)` and `new (auto)` are items this run linked or imported. A
+`linked (auto)` and `imported (auto)` are items this run linked or imported. A
 character is imported only when each world book it links is exact, new, or
 already linked and unchanged; otherwise it stays for review. Each remaining
 row has a suggested action: `bind` to a card, `import` as a new card, or

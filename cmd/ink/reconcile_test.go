@@ -48,7 +48,7 @@ func TestPrintSnapshotAuto(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := b.String()
-	for _, want := range []string{"exact (auto)", "new (auto)", "2 applied, 3 left to review"} {
+	for _, want := range []string{"linked (auto)", "imported (auto)", "2 applied, 3 left to review"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}

@@ -12,15 +12,6 @@ import (
 	"github.com/davidgibbons/innkeeper/cardhash"
 )
 
-// Change is one top-level field the app changed.
-type Change struct {
-	Field string `json:"field"`
-	// Before is absent if the field was missing at the last push or adopt.
-	Before json.RawMessage `json:"before,omitempty"`
-	// After is absent if the field is missing from the app.
-	After json.RawMessage `json:"after,omitempty"`
-}
-
 // MergePatch applies an RFC 7386 JSON merge patch to doc. Per-target
 // overrides are merge patches applied to a card's data.
 func MergePatch(doc, patch json.RawMessage) (json.RawMessage, error) {

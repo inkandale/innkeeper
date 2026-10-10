@@ -321,8 +321,14 @@ ink cards sources <card-id>                       list a card's sources
 ink cards sources add <card-id> <url>
 ink cards sources remove <card-id> <source-id>
 ink lorebooks ...                                 the same commands for lorebooks; export writes CCv3 JSON only
-ink sync push <instance-id> <card-id>|<query-json> [--new-copy]
+ink sync push <instance-id> <card-id>|<query-json> [--new-copy] [--yes]
                                                   push one card, or the cards a search matches, to an app
+ink sync preview <instance-id> <card-id>          show what pushing a card would change in an app
+ink sync bindings <card-id>                       list a card's bindings
+ink sync bindings show|pushes <binding-id>        show a binding, or list its pushes
+ink sync status <binding-id>                      read the app's copy now and show the binding
+ink sync adopt <binding-id> base|override|ignore  take the app's changes into the library
+ink sync unbind <binding-id> [--yes]              forget a binding and its push history
 ink sync run <instance-id> [params-json] [--dry-run]   sync an app with the library
 ink sync compare <instance-id> <remote-id> [card-id]
                                                   show how an app character differs from a card
@@ -347,6 +353,12 @@ card meanwhile, the error names the file that holds your edit.
 `cards archive` with a query needs a `filter` or `text`; to select every card,
 filter on `archived`. It touches only cards not already in the target state.
 The API's `POST /bulk` also tags, collects, and exports; see `/api/docs`.
+
+`sync push` prints what it would replace in the app and asks before replacing
+it. For one card, that's each field it changes; for a query, how many matching
+cards are new, ahead, in sync, or drifted there as of their last check. Use
+`ink sync preview` to see one card's changes. Without a terminal to ask on,
+`push` and `unbind` refuse unless given `--yes`.
 
 `jobs watch` exits non-zero unless the job succeeds.
 
@@ -427,7 +439,7 @@ covers what it syncs:
 ink call POST /instances '{"plugin": "lumiverse", "name": "Lumiverse",
   "config": {"url": "https://lumiverse.example.com", "username": "owner"},
   "secrets": {"password": "<password>"}}'
-ink call POST /cards/<id>/push '{"instance_id": <instance-id>}'
+ink sync push <instance-id> <card-id>
 ```
 
 It also ships a target for [SillyTavern](https://github.com/SillyTavern/SillyTavern).
@@ -443,8 +455,9 @@ ink call POST /instances '{"plugin": "sillytavern", "name": "SillyTavern",
   "secrets": {"password": "<password>"}}'
 ```
 
-A card pushed to a target app gets a binding. `GET /cards/{id}/bindings`
-shows its status on each target:
+A card pushed to a target app gets a binding. `ink sync bindings <card-id>`
+(`GET /cards/{id}/bindings`) shows its status on each target as last checked;
+`ink sync status <binding-id>` reads the app's copy now:
 
 | Status | Meaning |
 |---|---|
@@ -456,7 +469,8 @@ shows its status on each target:
 | `cant_check` | The app can't be read back, so changes made there are unknown |
 
 When the app's copy changed, the binding lists the changed fields. Take them
-with `POST /bindings/{id}/adopt`, `into` one of:
+with `ink sync adopt <binding-id> <into>` (`POST /bindings/{id}/adopt`),
+`into` one of:
 
 - `base`: into the card itself. Adopted fields leave this target's override,
   so the app keeps what it has.
@@ -466,8 +480,10 @@ with `POST /bindings/{id}/adopt`, `into` one of:
 Changes to `character_book` can't be adopted; edit the lorebooks instead. To
 throw the app's changes away, push: a push overwrites them.
 
-Before a push, `GET /cards/{id}/push-preview?instance_id=<id>` reads the
-app's copy and shows what the push would do:
+Before a push, `ink sync preview <instance-id> <card-id>`
+(`GET /cards/{id}/push-preview?instance_id=<id>`) reads the app's copy and
+shows what the push would do. `ink sync push` shows it too, and sends its
+`confirm` itself:
 
 - `changes`: the fields it would change in the app, with the app's value as
   `before` and the pushed value as `after`

@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -59,42 +58,6 @@ type Service struct {
 // New returns a Service that runs target plugins with mgr.
 func New(pool *pgxpool.Pool, lib *library.Library, reg *plugins.Registry, mgr *pluginhost.Manager, log *slog.Logger) *Service {
 	return &Service{pool: pool, lib: lib, reg: reg, plugins: mgr, log: log}
-}
-
-// Push is one push of a card or lorebook to a target, or the bind that
-// linked it to an item the app already had.
-type Push struct {
-	ID         int64  `json:"id"`
-	Kind       string `json:"kind" enum:"push,bind"`
-	RevisionID int64  `json:"revision_id"`
-	// LorebookRevisionIDs are the embedded lorebooks' revisions; absent when
-	// the target doesn't embed lorebooks.
-	LorebookRevisionIDs []int64 `json:"lorebook_revision_ids,omitempty"`
-	// LorebookRemoteIDs are the card's lorebooks in the app; absent unless
-	// the target keeps lorebooks on their own.
-	LorebookRemoteIDs []string  `json:"lorebook_remote_ids,omitempty"`
-	PushedHash        string    `json:"pushed_hash"`
-	RemoteID          string    `json:"remote_id"`
-	PushedAt          time.Time `json:"pushed_at"`
-}
-
-// Binding is a card's or lorebook's link to its copy in one target app.
-// Exactly one of CardID and LorebookID is set.
-type Binding struct {
-	ID         int64  `json:"id"`
-	InstanceID int64  `json:"instance_id"`
-	CardID     int64  `json:"card_id,omitempty"`
-	LorebookID int64  `json:"lorebook_id,omitempty"`
-	RemoteID   string `json:"remote_id"`
-	Status     string `json:"status" enum:"in_sync,ahead,remote_changed,diverged,missing,cant_check"`
-	// Ahead means the library changed since the last push.
-	Ahead       bool       `json:"ahead"`
-	RemoteState string     `json:"remote_state" enum:"unknown,unchanged,changed,missing"`
-	CheckedAt   *time.Time `json:"checked_at,omitempty"`
-	LastPush    Push       `json:"last_push"`
-	// Changes are the fields the app changed since the last push or adopt.
-	Changes   []Change  `json:"changes,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
 }
 
 const bindingQuery = `SELECT b.id, b.instance_id, coalesce(b.card_id, 0), coalesce(b.lorebook_id, 0), b.remote_id,

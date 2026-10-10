@@ -2,7 +2,7 @@ package targets
 
 import "github.com/davidgibbons/innkeeper/internal/wire"
 
-// The reconcile API types live in wire so the ink client can import them.
+// The reconcile and sync API types live in wire so the ink client can import them.
 type (
 	ReconcileMatch  = wire.ReconcileMatch
 	ReconcileParams = wire.ReconcileParams
@@ -13,6 +13,10 @@ type (
 	Comparison      = wire.Comparison
 	AvatarDiff      = wire.AvatarDiff
 	Resolution      = wire.Resolution
+	Change          = wire.Change
+	Push            = wire.Push
+	Binding         = wire.Binding
+	Preview         = wire.Preview
 )
 
 const (

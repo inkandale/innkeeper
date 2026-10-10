@@ -20,14 +20,18 @@ func runInk(t *testing.T, args ...string) (string, error) {
 	return out.String(), err
 }
 
-// stubAPI points ink at a server that answers POST with job 9 and anything
-// else with the reply for its path, and records every request as
-// "METHOD URI BODY".
+// stubAPI points ink at a server that answers with the reply for
+// "METHOD URI" if there is one, then POST with job 9 and anything else with
+// the reply for its URI, and records every request as "METHOD URI BODY".
 func stubAPI(t *testing.T, replies map[string]string) *[]string {
 	var got []string
 	srv := httptest.NewServer(http.StripPrefix("/api", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		got = append(got, r.Method+" "+r.URL.RequestURI()+" "+string(body))
+		if reply, ok := replies[r.Method+" "+r.URL.RequestURI()]; ok {
+			_, _ = w.Write([]byte(reply))
+			return
+		}
 		if r.Method == http.MethodPost {
 			w.WriteHeader(http.StatusAccepted)
 			_, _ = w.Write([]byte(`{"id": 9}`))

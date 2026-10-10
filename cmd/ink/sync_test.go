@@ -10,8 +10,7 @@ func TestSyncPush(t *testing.T) {
 	got := stubAPI(t, map[string]string{
 		"/cards/12/push-preview?instance_id=3": `{"replaces": true, "changes": [{"field": "first_mes", "before": "Well met.", "after": "Hail."}], "confirm": "c1"}`,
 		"/cards/13/push-preview?instance_id=3": `{"replaces": false, "changes": [], "confirm": "c2"}`,
-		"POST /search": `{"hits": [], "total": 5, "facets": {"targets": [{"instance": 3, "is": "ahead", "cards": 2},
-			{"instance": 3, "is": "diverged", "cards": 1}, {"instance": 4, "is": "in_sync", "cards": 5}]}}`,
+		"POST /pushes/preview":                 `{"total": 5, "new": 2, "ahead": 2, "in_sync": 0, "cant_check": 0, "drifted": 1, "confirm": "q1"}`,
 	})
 	if _, err := runInkIn(t, "", false, "sync", "push", "3", "12"); err == nil || !strings.Contains(err.Error(), "--yes") {
 		t.Fatalf("push without a terminal: err = %v", err)
@@ -42,8 +41,8 @@ func TestSyncPush(t *testing.T) {
 		`POST /cards/12/push {"confirm":"c1","instance_id":3,"new_copy":false}`,
 		"GET /cards/13/push-preview?instance_id=3 ",
 		`POST /cards/13/push {"confirm":"c2","instance_id":3,"new_copy":false}`,
-		`POST /search {"facets":["targets"],"filter":{"tag":"fantasy"},"page":{"size":1}}`,
-		`POST /pushes {"instance_id":3,"new_copy":true,"query":{"filter":{"tag":"fantasy"}}}`,
+		`POST /pushes/preview {"instance_id":3,"query":{"filter":{"tag":"fantasy"}}}`,
+		`POST /pushes {"confirm":"q1","instance_id":3,"new_copy":true,"query":{"filter":{"tag":"fantasy"}}}`,
 	}
 	if !slices.Equal(*got, want) {
 		t.Fatalf("requests = %q, want %q", *got, want)
@@ -64,7 +63,7 @@ func TestSyncPush(t *testing.T) {
 }
 
 func TestSyncPushQueryNoMatch(t *testing.T) {
-	got := stubAPI(t, map[string]string{"POST /search": `{"hits": [], "total": 0}`})
+	got := stubAPI(t, map[string]string{"POST /pushes/preview": `{"total": 0, "confirm": "q0"}`})
 	if _, err := runInkIn(t, "", false, "sync", "push", "3", `{"text": "nobody"}`, "--yes"); err == nil {
 		t.Fatal("push of a query that matches nothing succeeded")
 	}

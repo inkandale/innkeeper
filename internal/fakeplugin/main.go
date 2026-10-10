@@ -31,6 +31,9 @@ func main() {
 		if config["down"] == true && strings.HasPrefix(method, "catalog.") && method != protocol.MethodCatalogDescribe {
 			return nil, protocol.NewError(-32000, "archive unavailable", true)
 		}
+		if config["failing"] == true && strings.HasPrefix(method, "catalog.") && method != protocol.MethodCatalogDescribe {
+			return nil, protocol.NewError(-32000, "open /srv/dump.sql: permission denied", false)
+		}
 		switch method {
 		case protocol.MethodInitialize:
 			var init protocol.InitializeParams

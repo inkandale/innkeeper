@@ -892,7 +892,7 @@
             "type": "integer"
           },
           "error": {
-            "description": "In POST /search: why this catalog returned nothing",
+            "description": "In POST /search and POST /lorebooks/search: why this catalog returned nothing",
             "type": "string"
           },
           "items": {
@@ -6808,7 +6808,7 @@
     },
     "/lorebooks/search": {
       "post": {
-        "description": "Takes the same query as POST /search. Text matches names, descriptions, entry keys, and entry content. Lorebooks have no tags or collections. Send {} to list every lorebook that isn't archived, newest first. With catalog:\u003cid\u003e sources, also returns each catalog's first page of lorebooks matching text.",
+        "description": "Takes the same query as POST /search. Text matches names, descriptions, entry keys, and entry content. Lorebooks have no tags or collections. Send {} to list every lorebook that isn't archived, newest first. With catalog:\u003cid\u003e sources, also returns each catalog's first page of lorebooks matching text, on the first library page only.",
         "operationId": "search-lorebooks",
         "requestBody": {
           "content": {
@@ -8118,7 +8118,7 @@
     },
     "/search": {
       "post": {
-        "description": "Send {} to list every card that isn't archived, newest first. With catalog:\u003cid\u003e sources, also returns each catalog's first page of cards matching text.",
+        "description": "Send {} to list every card that isn't archived, newest first. With catalog:\u003cid\u003e sources, also returns each catalog's first page of cards matching text, on the first library page only.",
         "operationId": "search-cards",
         "requestBody": {
           "content": {

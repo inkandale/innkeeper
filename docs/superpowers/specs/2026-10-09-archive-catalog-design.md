@@ -167,6 +167,11 @@ not in the dump. Each needs its own file ingester, added to this plugin later.
   return 503 naming the catalog, and the Archive page shows the error inline.
   In `/search`, the catalog's entry carries the error instead. "Found in
   archives" skips the catalog and names the ones it couldn't reach.
+- **A catalog returns any other error:** its routes return 502 naming the
+  catalog. The error goes to the server log, since it can name files on the
+  server.
+- **A catalog instance is broken:** its routes return 409, as for any other
+  broken instance.
 - **A dump row won't decode:** the plugin skips it, logs the table, ID, and
   increment, and counts it in `skipped`.
 - **Ingest fails partway:** the job retries from its last checkpoint. Search

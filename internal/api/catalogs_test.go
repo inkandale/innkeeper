@@ -80,6 +80,10 @@ func TestCatalogRoutes(t *testing.T) {
 	if r := e.call("GET", fmt.Sprintf("/catalogs/%d/search", down), nil, 503, nil); !strings.Contains(string(r.Body), "catalog Down is unavailable") {
 		t.Fatalf("down: %s", r)
 	}
+	failing := e.catalog("Failing", map[string]any{"failing": true})
+	if r := e.call("GET", fmt.Sprintf("/catalogs/%d/search", failing), nil, 502, nil); strings.Contains(string(r.Body), "/srv") {
+		t.Fatalf("failing catalog leaked its error: %s", r)
+	}
 	e.call("GET", fmt.Sprintf("/catalogs/%d/search", broken), nil, 409, nil)
 	e.call("GET", fmt.Sprintf("/catalogs/%d/search", e.importID), nil, 404, nil)
 

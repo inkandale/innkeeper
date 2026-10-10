@@ -1141,7 +1141,7 @@ export interface paths {
         put?: never;
         /**
          * Search the library's lorebooks
-         * @description Takes the same query as POST /search. Text matches names, descriptions, entry keys, and entry content. Lorebooks have no tags or collections. Send {} to list every lorebook that isn't archived, newest first. With catalog:<id> sources, also returns each catalog's first page of lorebooks matching text.
+         * @description Takes the same query as POST /search. Text matches names, descriptions, entry keys, and entry content. Lorebooks have no tags or collections. Send {} to list every lorebook that isn't archived, newest first. With catalog:<id> sources, also returns each catalog's first page of lorebooks matching text, on the first library page only.
          */
         post: operations["search-lorebooks"];
         delete?: never;
@@ -1646,7 +1646,7 @@ export interface paths {
         put?: never;
         /**
          * Search the library
-         * @description Send {} to list every card that isn't archived, newest first. With catalog:<id> sources, also returns each catalog's first page of cards matching text.
+         * @description Send {} to list every card that isn't archived, newest first. With catalog:<id> sources, also returns each catalog's first page of cards matching text, on the first library page only.
          */
         post: operations["search-cards"];
         delete?: never;
@@ -2058,7 +2058,7 @@ export interface components {
             readonly $schema?: string;
             /** Format: int64 */
             catalog_id: number;
-            /** @description In POST /search: why this catalog returned nothing */
+            /** @description In POST /search and POST /lorebooks/search: why this catalog returned nothing */
             error?: string;
             items: components["schemas"]["CatalogHit"][] | null;
             /** @description Cursor for the next page, for GET /catalogs/{id}/search */

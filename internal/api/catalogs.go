@@ -64,7 +64,7 @@ type catalogResults struct {
 	CatalogID int64        `json:"catalog_id"`
 	Items     []catalogHit `json:"items"`
 	Next      string       `json:"next,omitempty" doc:"Cursor for the next page, for GET /catalogs/{id}/search"`
-	Error     string       `json:"error,omitempty" doc:"In POST /search: why this catalog returned nothing"`
+	Error     string       `json:"error,omitempty" doc:"In POST /search and POST /lorebooks/search: why this catalog returned nothing"`
 }
 
 type catalogResultsOut struct{ Body catalogResults }
@@ -131,6 +131,13 @@ func (s *Server) catalogCall(ctx context.Context, id int64, method string, param
 		errors.As(err, &rpcErr) && rpcErr.Retryable():
 		s.Log.Warn("catalog unavailable", "catalog", info.Name, "err", err)
 		return info, huma.Error503ServiceUnavailable(fmt.Sprintf("catalog %s is unavailable; see the server log", info.Name))
+	case errors.As(err, &rpcErr):
+		// A catalog's error can name files on the server, and read-tier clients see this.
+		s.Log.Error("catalog failed", "catalog", info.Name, "err", err)
+		return info, huma.Error502BadGateway(fmt.Sprintf("catalog %s failed; see the server log", info.Name))
+	case errors.Is(err, context.Canceled):
+		// The client went away; there is no one to answer.
+		return info, err
 	}
 	return info, s.fail(err)
 }

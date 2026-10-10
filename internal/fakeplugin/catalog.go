@@ -22,7 +22,8 @@ import (
 // answers like a catalog whose source isn't configured.
 // Config down fails every call but describe with a retryable error, and
 // no_ingest describes a catalog that doesn't ingest. bad_avatar makes
-// catalog.get name /etc/hosts as a card's avatar.
+// catalog.get name /etc/hosts as a card's avatar. failing fails every call
+// but describe with an error that names a server path.
 var catalogInfo = protocol.CatalogInfo{
 	Kinds:   []string{protocol.KindCard, protocol.KindLorebook},
 	Filters: []protocol.CatalogFilter{{Name: "tag", Label: "Tag", Type: protocol.FilterText}},

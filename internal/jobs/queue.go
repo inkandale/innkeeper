@@ -299,6 +299,8 @@ func (q *Queue) Cancel(ctx context.Context, id int64) error {
 type ListOptions struct {
 	Status string
 	Kind   string
+	// Instance lists only that plugin instance's jobs; 0 lists every one's.
+	Instance int64
 	// Parent lists that parent's children. Without it, List returns only
 	// top-level jobs.
 	Parent *int64
@@ -316,7 +318,8 @@ func (q *Queue) List(ctx context.Context, o ListOptions) ([]Job, error) {
 	rows, err := q.pool.Query(ctx, `SELECT `+jobCols+` FROM job
 		WHERE ($1::text = '' OR status = $1) AND ($2::text = '' OR kind = $2)
 			AND parent_id IS NOT DISTINCT FROM $3::bigint AND ($4::bigint = 0 OR id < $4)
-		ORDER BY id DESC LIMIT $5`, o.Status, o.Kind, o.Parent, o.Before, o.Limit)
+			AND ($6::bigint = 0 OR instance_id = $6)
+		ORDER BY id DESC LIMIT $5`, o.Status, o.Kind, o.Parent, o.Before, o.Limit, o.Instance)
 	if err != nil {
 		return nil, err
 	}

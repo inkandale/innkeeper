@@ -375,8 +375,13 @@ one card's changes.
 they run, since they replace or delete data; `--yes` skips the question.
 Without a terminal and without `--yes`, they fail instead of waiting.
 
-`jobs watch` exits non-zero unless the job succeeds. So does `instances check`
-when the instance is broken.
+`jobs watch` exits non-zero unless the job succeeds.
+
+`instances check` starts the instance's plugin, even a broken one, and exits
+non-zero with the reason if it doesn't work. For an app it can read cards back
+from, it also lists the app's cards, which tests the address and login. A
+failed start marks the instance broken, and a good one clears that. An app
+error doesn't mark it broken.
 
 `--secrets` reads a JSON object of secrets from a file, or from stdin with `-`,
 so they stay out of shell history. For `instances configure`, a `null` value

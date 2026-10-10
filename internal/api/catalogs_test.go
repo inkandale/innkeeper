@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/davidgibbons/innkeeper/internal/importer"
+	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 	"github.com/davidgibbons/innkeeper/protocol"
 )
@@ -121,5 +122,54 @@ func TestCatalogIngestRoute(t *testing.T) {
 	}
 	if last[inst] == nil || last[inst].ID != j.ID || last[static] != nil {
 		t.Fatalf("last ingests = %+v", last)
+	}
+}
+
+func TestCatalogAdopt(t *testing.T) {
+	e := newEnv(t)
+	inst := e.catalog("Archive", nil)
+	base := fmt.Sprintf("/catalogs/%d", inst)
+
+	var c entityOut
+	e.call("POST", base+"/items/brakka/adopt", nil, 201, &c)
+	if c.Provenance != fmt.Sprintf("catalog:%d:brakka@2", inst) || c.Revision.Source != "plugin:catalog" ||
+		len(c.Lorebooks) != 1 || c.Revision.Avatar == nil {
+		t.Fatalf("adopted %+v", c)
+	}
+	for _, path := range []string{"/items/brakka/adopt", "/items/brakka/adopt?version=2"} {
+		var again entityOut
+		e.call("POST", base+path, nil, 200, &again)
+		if again.ID != c.ID {
+			t.Fatalf("%s adopted again as %d, want %d", path, again.ID, c.ID)
+		}
+	}
+	var old entityOut
+	e.call("POST", base+"/items/brakka/adopt?version=1", nil, 201, &old)
+	if old.ID == c.ID || old.Provenance != fmt.Sprintf("catalog:%d:brakka@1", inst) {
+		t.Fatalf("version 1 = %+v", old)
+	}
+	e.call("POST", base+"/items/brakka/adopt?version=9", nil, 404, nil)
+	e.call("POST", base+"/items/nobody/adopt", nil, 404, nil)
+
+	var lb entityOut
+	e.call("POST", base+"/items/forge-lore/adopt", nil, 201, &lb)
+	e.call("GET", fmt.Sprintf("/lorebooks/%d", lb.ID), nil, 200, nil)
+
+	// near has carrow's text but not its content.
+	near := e.createCard(`{"name": "Carrow Two", "description": "A cheerful elven bard who sings of the sea."}`)
+	var page catalogResults
+	e.call("GET", base+"/search", nil, 200, &page)
+	got := map[string][]library.HashMatch{}
+	for _, it := range page.Items {
+		got[it.ID] = it.Library
+	}
+	if m := got["brakka"]; len(m) == 0 || m[0] != (library.HashMatch{ID: c.ID, Reason: "content"}) {
+		t.Fatalf("brakka matches = %+v", m)
+	}
+	if m := got["carrow"]; len(m) != 1 || m[0] != (library.HashMatch{ID: near.ID, Reason: "text"}) {
+		t.Fatalf("carrow matches = %+v", m)
+	}
+	if m := got["forge-lore"]; len(m) != 1 || m[0] != (library.HashMatch{ID: lb.ID, Reason: "content"}) {
+		t.Fatalf("forge-lore matches = %+v", m)
 	}
 }

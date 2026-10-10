@@ -1,6 +1,7 @@
 package api
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -65,6 +66,11 @@ type catalogItemIn struct {
 }
 
 type catalogItemOut struct{ Body protocol.CatalogGetResult }
+
+type adoptCatalogOut struct {
+	Status int
+	Body   entityOut
+}
 
 // catalogCall sends method to catalog instance id with a timeout, and maps
 // its errors to HTTP ones. It returns the instance's settings.
@@ -230,6 +236,12 @@ func (s *Server) catalogRoutes(api huma.API) {
 			return out, nil
 		})
 
+	huma.Register(api, huma.Operation{OperationID: "adopt-catalog-item", Method: http.MethodPost, Path: "/catalogs/{id}/items/{item}/adopt",
+		Summary: "Adopt a catalog item into the library",
+		Description: "Copies one version in as a new card or lorebook; a card's character_book becomes a linked lorebook. " +
+			"Returns 201 with the new entry, or 200 with the one an earlier adopt of the same version made.", Tags: tags},
+		s.adoptCatalogItem)
+
 	huma.Register(api, huma.Operation{OperationID: "start-catalog-ingest", Method: http.MethodPost, Path: "/catalogs/{id}/ingest",
 		Summary:     "Ingest a catalog's source",
 		Description: "Queues a catalog.ingest job. Returns 409 while an earlier ingest of the catalog is unfinished.",
@@ -258,4 +270,52 @@ func (s *Server) catalogRoutes(api huma.API) {
 			}
 			return &jobResp{Body: toJob(j)}, nil
 		})
+}
+
+// adoptCatalogItem copies one version of an item into the library. Import
+// dedupes on provenance and content, so adopting a version twice finds the
+// first copy.
+func (s *Server) adoptCatalogItem(ctx context.Context, in *catalogItemIn) (*adoptCatalogOut, error) {
+	var res protocol.CatalogGetResult
+	info, err := s.catalogCall(ctx, in.ID, protocol.MethodCatalogGet,
+		protocol.CatalogGetParams{ID: in.Item, Version: in.Version, Avatar: true}, &res)
+	if err != nil {
+		return nil, err
+	}
+	prov := fmt.Sprintf("catalog:%d:%s@%s", in.ID, in.Item, res.Version)
+	source := "plugin:" + info.Plugin
+	var ents *library.Entities
+	var id int64
+	var created bool
+	// An avatar sent with anything but a card stays in blob_tmp until garbage collection.
+	switch res.Item.Kind {
+	case protocol.KindCard:
+		ents = s.Lib.Cards
+		id, created, err = s.Lib.ImportCard(ctx, prov, source, res.Data, res.Avatar)
+	case protocol.KindLorebook:
+		ents = s.Lib.Lorebooks
+		var meta struct {
+			Name string `json:"name"`
+		}
+		_ = json.Unmarshal(res.Data, &meta)
+		id, created, err = s.Lib.Lorebooks.Import(ctx, prov, cmp.Or(meta.Name, res.Item.Name),
+			library.Edit{Data: res.Data, Source: source, Message: "Adopted"})
+	default:
+		return nil, huma.Error400BadRequest(fmt.Sprintf("can't adopt a %s; the library holds cards and lorebooks", res.Item.Kind))
+	}
+	if errors.Is(err, library.ErrInvalid) {
+		return nil, huma.Error502BadGateway(fmt.Sprintf("catalog %s sent an item the library can't take: %v", info.Name, err))
+	}
+	if err != nil {
+		return nil, s.fail(err)
+	}
+	out, err := s.entity(ctx, ents, id)
+	if err != nil {
+		return nil, err
+	}
+	status := http.StatusOK
+	if created {
+		status = http.StatusCreated
+	}
+	return &adoptCatalogOut{Status: status, Body: out.Body}, nil
 }

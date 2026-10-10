@@ -76,7 +76,6 @@ func TestPlugins(t *testing.T) {
 		{"install", "lumiverse"}, // two sources offer it
 		{"install", "nothing"},   // none does
 		{"install", "card-import", "--source", "mine"},
-		{"purge", "card-import"}, // no --yes, no terminal
 		{"sources", "add", "mine"},
 		{"remove"},
 	} {

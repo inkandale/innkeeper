@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -14,6 +15,7 @@ func runInk(t *testing.T, args ...string) (string, error) {
 	var out bytes.Buffer
 	root := newRoot()
 	root.SetArgs(args)
+	root.SetIn(strings.NewReader(""))
 	root.SetOut(&out)
 	root.SetErr(&out)
 	err := root.Execute()

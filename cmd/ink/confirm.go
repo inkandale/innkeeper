@@ -9,16 +9,13 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 // stdinIsTerminal reports whether r is a terminal; tests replace it.
 var stdinIsTerminal = func(r io.Reader) bool {
 	f, ok := r.(*os.File)
-	if !ok {
-		return false
-	}
-	fi, err := f.Stat()
-	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+	return ok && term.IsTerminal(int(f.Fd()))
 }
 
 // confirm asks question unless yes is set. Without a terminal it fails

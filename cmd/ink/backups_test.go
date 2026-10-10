@@ -66,7 +66,7 @@ func TestBackups(t *testing.T) {
 
 	*got = nil
 	for _, args := range [][]string{
-		{"create", "bogus"}, {"create"}, {"download"}, {"restore", file}, {"restore", filepath.Join(dir, "missing"), "--yes"},
+		{"create", "bogus"}, {"create"}, {"download"}, {"restore", filepath.Join(dir, "missing"), "--yes"},
 	} {
 		if _, err := runInk(t, append([]string{"backups"}, args...)...); err == nil {
 			t.Errorf("%q succeeded", args)

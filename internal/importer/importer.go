@@ -1,5 +1,6 @@
 // Package importer runs import jobs: it calls an import plugin's import.run
-// and stores the cards and lorebooks the plugin emits.
+// and stores the cards and lorebooks the plugin emits. It also runs catalog
+// ingests, which send the same progress and checkpoint notifications.
 package importer
 
 import (
@@ -20,6 +21,10 @@ import (
 // Kind is the job kind for imports. The job's instance is the import plugin
 // instance, and its payload is a Payload.
 const Kind = "import"
+
+// IngestKind is the job kind for catalog ingests. The job's instance is the
+// catalog plugin instance, and its payload is empty.
+const IngestKind = "catalog.ingest"
 
 // maxErrors is how many item errors a job's progress keeps.
 const maxErrors = 20
@@ -57,23 +62,43 @@ type progress struct {
 	Errors   []string `json:"errors,omitempty"`
 }
 
+// ingestProgress is a catalog ingest's progress: Done, Total, and Message
+// from the plugin, and once it finishes, the counts catalog.ingest returns.
+type ingestProgress struct {
+	Done    int64  `json:"done,omitempty"`
+	Total   int64  `json:"total,omitempty"`
+	Message string `json:"message,omitempty"`
+	*protocol.CatalogIngestResult
+}
+
 // session is one running import.run call.
 type session struct {
 	im     *Importer
 	run    *jobs.Run
 	plugin string
+	// ingest marks a catalog.ingest run, which stores no items.
+	ingest bool
 	ctx    context.Context
 	cancel context.CancelCauseFunc
 
-	mu  sync.Mutex
-	p   progress
-	err error
+	mu sync.Mutex
+	p  progress
+	// result is what catalog.ingest returned.
+	result *protocol.CatalogIngestResult
+	err    error
 }
 
 // Run is the jobs.Handler for Kind.
-func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
+func (im *Importer) Run(ctx context.Context, r *jobs.Run) error { return im.run(ctx, r, false) }
+
+// RunIngest is the jobs.Handler for IngestKind.
+func (im *Importer) RunIngest(ctx context.Context, r *jobs.Run) error { return im.run(ctx, r, true) }
+
+// run calls import.run, or catalog.ingest if ingest is set, on the job's
+// instance.
+func (im *Importer) run(ctx context.Context, r *jobs.Run, ingest bool) error {
 	if r.InstanceID == nil {
-		return errors.New("import job has no plugin instance")
+		return fmt.Errorf("%s job has no plugin instance", r.Kind)
 	}
 	inst, err := im.Registry.Instance(ctx, *r.InstanceID)
 	if err != nil {
@@ -81,11 +106,11 @@ func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
 	}
 	var payload Payload
 	if err := json.Unmarshal(r.Payload, &payload); err != nil {
-		return fmt.Errorf("import payload: %w", err)
+		return fmt.Errorf("%s payload: %w", r.Kind, err)
 	}
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
-	s := &session{im: im, run: r, plugin: inst.Manifest.Name, ctx: ctx, cancel: cancel}
+	s := &session{im: im, run: r, plugin: inst.Manifest.Name, ingest: ingest, ctx: ctx, cancel: cancel}
 	// ponytail: items re-sent after a resume count as skipped a second time.
 	_ = json.Unmarshal(r.Progress, &s.p)
 
@@ -103,8 +128,20 @@ func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
 
 	// ponytail: a run abandoned on shutdown or a lost lease keeps going in
 	// the plugin until it finishes or the plugin is stopped.
-	err = im.Plugins.Call(ctx, inst, protocol.MethodImportRun,
-		protocol.ImportRunParams{Run: token, Params: payload.Params, Checkpoint: r.Checkpoint}, nil)
+	if ingest {
+		var res protocol.CatalogIngestResult
+		err = im.Plugins.Call(ctx, inst, protocol.MethodCatalogIngest,
+			protocol.CatalogIngestParams{Run: token, Checkpoint: r.Checkpoint}, &res)
+		if err == nil {
+			s.mu.Lock()
+			s.result = &res
+			s.mu.Unlock()
+			s.publish()
+		}
+	} else {
+		err = im.Plugins.Call(ctx, inst, protocol.MethodImportRun,
+			protocol.ImportRunParams{Run: token, Params: payload.Params, Checkpoint: r.Checkpoint}, nil)
+	}
 	if serr := s.failure(); serr != nil {
 		return serr
 	}
@@ -154,6 +191,10 @@ func (im *Importer) Handle(_ context.Context, method string, params json.RawMess
 // saved only after every item sent before it is stored.
 func (s *session) handle(method string, params json.RawMessage) {
 	if s.ctx.Err() != nil {
+		return
+	}
+	if s.ingest && (method == protocol.NotifyEmitCard || method == protocol.NotifyEmitLorebook) {
+		s.im.Log.Warn("catalog sent an item during ingest; only adopt adds catalog items", "plugin", s.plugin, "method", method)
 		return
 	}
 	switch method {
@@ -218,7 +259,12 @@ func (s *session) count(item string, created bool, err error) {
 
 func (s *session) publish() {
 	s.mu.Lock()
-	raw, _ := json.Marshal(s.p)
+	var raw []byte
+	if s.ingest {
+		raw, _ = json.Marshal(ingestProgress{Done: s.p.Done, Total: s.p.Total, Message: s.p.Message, CatalogIngestResult: s.result})
+	} else {
+		raw, _ = json.Marshal(s.p)
+	}
 	s.mu.Unlock()
 	s.run.SetProgress(raw)
 }

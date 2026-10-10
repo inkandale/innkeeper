@@ -173,3 +173,29 @@ func TestCatalogAdopt(t *testing.T) {
 		t.Fatalf("forge-lore matches = %+v", m)
 	}
 }
+
+func TestCatalogMatches(t *testing.T) {
+	e := newEnv(t)
+	up := e.catalog("Archive", nil)
+	down := e.catalog("Down", map[string]any{"down": true})
+	near := e.createCard(`{"name": "Carrow Two", "description": "A cheerful elven bard who sings of the sea."}`)
+
+	var out catalogMatches
+	e.call("GET", fmt.Sprintf("/cards/%d/catalog-matches", near.ID), nil, 200, &out)
+	if len(out.Matches) != 1 || out.Matches[0].CatalogID != up || out.Matches[0].Catalog != "Archive" ||
+		len(out.Matches[0].Items) != 1 || out.Matches[0].Items[0].ID != "carrow" {
+		t.Fatalf("matches = %+v", out.Matches)
+	}
+	if len(out.Unreachable) != 1 || out.Unreachable[0].ID != down || !strings.Contains(out.Unreachable[0].Error, "catalog Down is unavailable") {
+		t.Fatalf("unreachable = %+v", out.Unreachable)
+	}
+
+	var lb entityOut
+	e.call("POST", fmt.Sprintf("/catalogs/%d/items/forge-lore/adopt", up), nil, 201, &lb)
+	var lbOut catalogMatches
+	e.call("GET", fmt.Sprintf("/lorebooks/%d/catalog-matches", lb.ID), nil, 200, &lbOut)
+	if len(lbOut.Matches) != 1 || lbOut.Matches[0].Items[0].ID != "forge-lore" {
+		t.Fatalf("lorebook matches = %+v", lbOut.Matches)
+	}
+	e.call("GET", "/cards/999999/catalog-matches", nil, 404, nil)
+}

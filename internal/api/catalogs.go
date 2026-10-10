@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -21,6 +22,10 @@ import (
 
 // catalogTimeout bounds each call the API makes to a catalog.
 const catalogTimeout = 30 * time.Second
+
+// catalogMatchLimit is the most items each catalog returns for one card or
+// lorebook.
+const catalogMatchLimit = 20
 
 type catalogOut struct {
 	ID         int64                 `json:"id"`
@@ -71,6 +76,25 @@ type adoptCatalogOut struct {
 	Status int
 	Body   entityOut
 }
+
+type catalogMatch struct {
+	CatalogID int64                  `json:"catalog_id"`
+	Catalog   string                 `json:"catalog"`
+	Items     []protocol.CatalogItem `json:"items"`
+}
+
+type catalogRef struct {
+	ID    int64  `json:"id"`
+	Name  string `json:"name"`
+	Error string `json:"error"`
+}
+
+type catalogMatches struct {
+	Matches     []catalogMatch `json:"matches" doc:"One per catalog with matches"`
+	Unreachable []catalogRef   `json:"unreachable" doc:"Catalogs that didn't answer, which may hold more matches"`
+}
+
+type catalogMatchesOut struct{ Body catalogMatches }
 
 // catalogCall sends method to catalog instance id with a timeout, and maps
 // its errors to HTTP ones. It returns the instance's settings.
@@ -270,6 +294,19 @@ func (s *Server) catalogRoutes(api huma.API) {
 			}
 			return &jobResp{Body: toJob(j)}, nil
 		})
+
+	for _, k := range []struct {
+		plural, kind string
+		ents         *library.Entities
+	}{{"cards", protocol.KindCard, s.Lib.Cards}, {"lorebooks", protocol.KindLorebook, s.Lib.Lorebooks}} {
+		huma.Register(api, huma.Operation{OperationID: "find-" + k.kind + "-in-catalogs", Method: http.MethodGet,
+			Path: "/" + k.plural + "/{id}/catalog-matches", Summary: "Find a " + k.kind + " in the catalogs",
+			Description: "Asks every catalog that finds similar items for the same content, near-identical text, or a similar avatar.",
+			Tags:        tags},
+			func(ctx context.Context, in *idIn) (*catalogMatchesOut, error) {
+				return s.findInCatalogs(ctx, k.ents, k.kind, in.ID)
+			})
+	}
 }
 
 // adoptCatalogItem copies one version of an item into the library. Import
@@ -318,4 +355,51 @@ func (s *Server) adoptCatalogItem(ctx context.Context, in *catalogItemIn) (*adop
 		status = http.StatusCreated
 	}
 	return &adoptCatalogOut{Status: status, Body: out.Body}, nil
+}
+
+// findInCatalogs asks every catalog that answers catalog.similar for an
+// entity's head revision.
+//
+// ponytail: asks one catalog at a time; ask in parallel if many catalogs make this slow.
+func (s *Server) findInCatalogs(ctx context.Context, ents *library.Entities, kind string, id int64) (*catalogMatchesOut, error) {
+	e, err := ents.Get(ctx, id)
+	if err != nil {
+		return nil, s.fail(err)
+	}
+	rev, err := ents.Revision(ctx, e.HeadRevisionID)
+	if err != nil {
+		return nil, s.fail(err)
+	}
+	h := protocol.CatalogHashes{ContentHash: rev.ContentHash, TextSimhash: rev.TextSimhash}
+	if rev.AvatarBlob != nil {
+		b, err := s.Lib.Blob(ctx, *rev.AvatarBlob)
+		if err != nil {
+			return nil, s.fail(err)
+		}
+		h.ImagePhash = b.AvatarPhash
+	}
+	cats, err := s.catalogs(ctx)
+	if err != nil {
+		return nil, s.fail(err)
+	}
+	out := &catalogMatchesOut{Body: catalogMatches{Matches: []catalogMatch{}, Unreachable: []catalogRef{}}}
+	for _, c := range cats {
+		if c.Info == nil {
+			out.Body.Unreachable = append(out.Body.Unreachable, catalogRef{c.ID, c.Name, c.Error})
+			continue
+		}
+		if !c.Info.Similar || !slices.Contains(c.Info.Kinds, kind) {
+			continue
+		}
+		var res protocol.CatalogSimilarResult
+		params := protocol.CatalogSimilarParams{Kind: kind, Hashes: h, MaxDistance: library.NearDistance, Limit: catalogMatchLimit}
+		if _, err := s.catalogCall(ctx, c.ID, protocol.MethodCatalogSimilar, params, &res); err != nil {
+			out.Body.Unreachable = append(out.Body.Unreachable, catalogRef{c.ID, c.Name, err.Error()})
+			continue
+		}
+		if len(res.Items) > 0 {
+			out.Body.Matches = append(out.Body.Matches, catalogMatch{c.ID, c.Name, res.Items})
+		}
+	}
+	return out, nil
 }

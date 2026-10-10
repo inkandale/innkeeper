@@ -59,11 +59,12 @@ function renderSync() {
   );
 }
 
-test("lists target apps with their counts and last reconcile", async () => {
+test("lists target apps with their counts and last sync", async () => {
   renderSync();
   const row = await screen.findByRole("row", { name: /Lumiverse/ });
   expect(within(row).getAllByRole("cell").map((c) => c.textContent).slice(0, 6)).toEqual(["Lumiverse", "lumiverse", "5", "3", "3", "4"]);
   expect(within(row).getByRole("link", { name: /ago/ })).toHaveAttribute("href", "/sync/reconciles/5");
+  expect(screen.getByRole("columnheader", { name: "Last sync" })).toBeInTheDocument();
   expect(screen.queryByText("Cards folder")).not.toBeInTheDocument();
 });
 
@@ -78,9 +79,9 @@ test("Push all ahead asks again with the count", async () => {
   await waitFor(() => expect(screen.queryByRole("button", { name: "Push all ahead" })).not.toBeInTheDocument());
 });
 
-test("Reconcile starts a run and opens its queue", async () => {
+test("Sync starts a run and opens its queue", async () => {
   renderSync();
-  await userEvent.click(await screen.findByRole("button", { name: "Reconcile" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Sync" }));
   expect(await screen.findByText("Queue page")).toBeInTheDocument();
   expect(posts).toEqual([{ path: "/api/reconciles", body: { instance_id: 2 } }]);
 });

@@ -7,7 +7,7 @@ import { useToast } from "../shell/Toasts";
 import { stateCounts } from "./sync";
 import "./Sync.css";
 
-/** Sync lists each target app with how its cards stand, and runs reconciles and pushes. */
+/** Sync lists each target app with how its cards stand, and runs syncs and pushes. */
 export function Sync() {
   const navigate = useNavigate();
   const toast = useToast();
@@ -65,7 +65,7 @@ export function Sync() {
               <th>Ahead</th>
               <th>Drifted</th>
               <th>Can't check</th>
-              <th>Last reconcile</th>
+              <th>Last sync</th>
               <th>
                 <span className="visually-hidden">Actions</span>
               </th>
@@ -99,7 +99,7 @@ export function Sync() {
                   <td className="row">
                     {can.includes("pull") && (
                       <button className="button" disabled={reconcile.isPending} onClick={() => reconcile.mutate(i.id)}>
-                        Reconcile
+                        Sync
                       </button>
                     )}
                     {can.includes("push") && c.ahead > 0 && !pushed.includes(i.id) &&

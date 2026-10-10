@@ -269,8 +269,8 @@ export function Review() {
         setAfterStale(true);
         void qc.invalidateQueries({ queryKey: ["compare", instance] });
       }
-      // Nested world book imports carry the snapshot's hash, which only a new reconcile refreshes.
-      const more = e instanceof ApiError && e.status === 409 ? " If this keeps happening, run Reconcile again." : "";
+      // Nested world book imports carry the snapshot's hash, which only a new sync refreshes.
+      const more = e instanceof ApiError && e.status === 409 ? " If this keeps happening, run Sync again." : "";
       toast({ text: e.message + more, error: true });
     },
   });
@@ -287,7 +287,7 @@ export function Review() {
   if (job.isError) return <p className="error page">{job.error.message}</p>;
   return (
     <div className="review">
-      <p>{jobId ? <Link to={`/sync/reconciles/${jobId}`}>← Reconcile #{jobId}</Link> : <Link to="/sync">← Sync</Link>}</p>
+      <p>{jobId ? <Link to={`/sync/reconciles/${jobId}`}>← Sync #{jobId}</Link> : <Link to="/sync">← Sync</Link>}</p>
       <section aria-label={name}>
         <div className="row">
           <h1>{name}</h1>

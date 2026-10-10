@@ -1876,7 +1876,7 @@
             "type": "integer"
           },
           "params": {
-            "description": "The import plugin's settings, such as a folder path. For a target app: remote_ids, to import only those items."
+            "description": "The import plugin's settings, such as a folder path."
           }
         },
         "required": [
@@ -1922,9 +1922,6 @@
             "format": "uri",
             "readOnly": true,
             "type": "string"
-          },
-          "auto_bind_exact": {
-            "type": "boolean"
           },
           "broken_at": {
             "format": "date-time",
@@ -1974,7 +1971,6 @@
           "name",
           "config",
           "secrets",
-          "auto_bind_exact",
           "created_at",
           "updated_at"
         ],
@@ -2055,7 +2051,7 @@
               "format": "int64",
               "type": "integer"
             },
-            "description": "A bulk import's finished children, counted by outcome: created, bound, already_bound, duplicate, or missing. Only get-job, cancel-job, and watch-job fill it.",
+            "description": "A bulk job's finished children, counted by outcome, such as a resolve's action, stale, conflict, or failed. Only get-job, cancel-job, and watch-job fill it.",
             "type": "object"
           },
           "parent_id": {
@@ -2662,6 +2658,13 @@
             ],
             "format": "uri",
             "readOnly": true,
+            "type": "string"
+          },
+          "apply": {
+            "enum": [
+              "obvious",
+              "none"
+            ],
             "type": "string"
           },
           "instance_id": {
@@ -3384,10 +3387,6 @@
             "format": "uri",
             "readOnly": true,
             "type": "string"
-          },
-          "auto_bind_exact": {
-            "description": "Reconcile binds each exact match it finds, keeping the library's copy.",
-            "type": "boolean"
           },
           "config": {
             "additionalProperties": {},
@@ -4314,7 +4313,7 @@
     },
     "/cards/{id}/bind": {
       "post": {
-        "description": "Changes nothing in the app or the library. The app's copy becomes the accepted one, so the binding is ahead where the library differs, and the next push sends the library's. The app's linked world books are left for reconcile.",
+        "description": "Changes nothing in the app or the library. The app's copy becomes the accepted one, so the binding is ahead where the library differs, and the next push sends the library's. The app's linked world books are left for sync.",
         "operationId": "bind-card",
         "parameters": [
           {
@@ -5888,7 +5887,7 @@
     },
     "/imports": {
       "post": {
-        "description": "Queues an import job for an instance of an import plugin. For a target app, queues a bulk job that takes each character and lorebook not yet bound on the instance into the library and binds it; the payload counts those skipped as already_bound.",
+        "description": "Queues an import job for an instance of an import plugin.",
         "operationId": "start-import",
         "requestBody": {
           "content": {
@@ -6988,7 +6987,7 @@
     },
     "/lorebooks/{id}/bind": {
       "post": {
-        "description": "Changes nothing in the app or the library. The app's copy becomes the accepted one, so the binding is ahead where the library differs, and the next push sends the library's. The app's linked world books are left for reconcile.",
+        "description": "Changes nothing in the app or the library. The app's copy becomes the accepted one, so the binding is ahead where the library differs, and the next push sends the library's. The app's linked world books are left for sync.",
         "operationId": "bind-lorebook",
         "parameters": [
           {
@@ -7969,7 +7968,7 @@
     },
     "/reconciles": {
       "post": {
-        "description": "Queues a reconcile job. Read the snapshot from GET /jobs/{id}: its progress is the snapshot once the job finishes.",
+        "description": "Queues a sync. With apply obvious (the default) it binds exact matches and imports new items; apply none previews. Read the snapshot from GET /jobs/{id} once the job finishes.",
         "operationId": "start-reconcile",
         "requestBody": {
           "content": {
@@ -8003,7 +8002,7 @@
             "description": "Error"
           }
         },
-        "summary": "Line up a target app against the library",
+        "summary": "Sync a target app with the library",
         "tags": [
           "Sync"
         ]

@@ -62,7 +62,7 @@ func TestReconcileLive(t *testing.T) {
 	}
 
 	start := time.Now()
-	snap, err := New(pool, lib, reg, mgr, quiet).Reconcile(ctx, ReconcileParams{InstanceID: inst}, nil)
+	snap, err := New(pool, lib, reg, mgr, quiet).Reconcile(ctx, ReconcileParams{InstanceID: inst, Apply: ApplyNone}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -49,7 +49,7 @@ func TestReconcileRoutes(t *testing.T) {
 	e.appCard(dir, "rsub/Brakka.png", "Brakka", "Well met, traveler.")
 
 	var j jobOut
-	e.call("POST", "/reconciles", map[string]any{"instance_id": inst}, 202, &j)
+	e.call("POST", "/reconciles", map[string]any{"instance_id": inst, "apply": "none"}, 202, &j)
 	if last, r := e.watchJob(j.ID); last.Status != "succeeded" {
 		t.Fatalf("reconcile = %+v\n%s", last, r.Body)
 	}

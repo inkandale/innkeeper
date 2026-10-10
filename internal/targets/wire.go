@@ -15,4 +15,8 @@ type (
 	Resolution      = wire.Resolution
 )
 
-const ReconcileKind = wire.ReconcileKind
+const (
+	ReconcileKind = wire.ReconcileKind
+	ApplyObvious  = wire.ApplyObvious
+	ApplyNone     = wire.ApplyNone
+)

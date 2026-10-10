@@ -96,10 +96,9 @@ func startJob(cmd *cobra.Command, path string, body any) error {
 func importCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "import <instance-id> [params-json]",
-		Short: "Start an import from an importer or app instance",
+		Short: "Start an import from an importer instance",
 		Example: `  ink import 4                                  # everything the instance offers
-  ink import 4 '{"path": "fantasy"}'            # a folder importer's subfolder
-  ink import 5 '{"remote_ids": ["brakka.png"]}' # only these app items`,
+  ink import 4 '{"path": "fantasy"}'            # a folder importer's subfolder`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := parseID(args[0])

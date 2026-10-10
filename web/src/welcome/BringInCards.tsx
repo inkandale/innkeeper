@@ -6,8 +6,8 @@ import { finished, progressText, useJobEvents, type Job } from "../settings/jobU
 import { pluginsQuery } from "../settings/Plugins";
 import { useFinish } from "./Welcome";
 
-/** JobLine is one import job's live status, linking to its page. */
-function JobLine({ label, id }: { label: string; id: number }) {
+/** JobLine is one job's live status, linking to its page. */
+function JobLine({ label, id, to }: { label: string; id: number; to: string }) {
   const job = useQuery({
     queryKey: ["job", id],
     queryFn: async () => must(await api.GET("/jobs/{id}", { params: { path: { id } } })),
@@ -16,7 +16,7 @@ function JobLine({ label, id }: { label: string; id: number }) {
   useJobEvents(id, !!j && !finished(j));
   return (
     <p>
-      <Link to={`/settings/jobs/${id}`}>
+      <Link to={to}>
         {label}: {j?.status} {j && progressText(j)}
       </Link>
       {j?.error && <span className="error"> {j.error}</span>}
@@ -26,7 +26,7 @@ function JobLine({ label, id }: { label: string; id: number }) {
 
 type Upload = { key: number; name: string; job?: number; error?: string };
 
-/** BringInCards imports cards from the apps that were set up, and from uploaded files. */
+/** BringInCards syncs the apps that were set up and imports uploaded files. */
 export function BringInCards() {
   const qc = useQueryClient();
   const finish = useFinish();
@@ -36,13 +36,13 @@ export function BringInCards() {
   const [uploads, setUploads] = useState<Upload[]>([]);
   const nextKey = useRef(0);
 
-  const start = async (instance_id: number, params?: unknown) => {
-    const job: Job = must(await api.POST("/imports", { body: { instance_id, ...(params ? { params } : {}) } }));
+  // Seeds the cache so the job line has a status before its first fetch.
+  const track = (job: Job) => {
     qc.setQueryData(["job", job.id], job);
     return job.id;
   };
   const pull = useMutation({
-    mutationFn: (id: number) => start(id),
+    mutationFn: async (instance_id: number) => track(must(await api.POST("/reconciles", { body: { instance_id } }))),
     onSuccess: (job, id) => setStarted((s) => ({ ...s, [id]: job })),
   });
   // One file at a time: avatars can be large.
@@ -52,7 +52,7 @@ export function BringInCards() {
     for (const [i, f] of files.entries()) {
       let u: Upload = added[i]!;
       try {
-        u = { ...u, job: await start(instance_id, { blob: await upload(f), name: f.name }) };
+        u = { ...u, job: track(must(await api.POST("/imports", { body: { instance_id, params: { blob: await upload(f), name: f.name } } }))) };
       } catch (e) {
         u = { ...u, error: (e as Error).message };
       }
@@ -78,10 +78,10 @@ export function BringInCards() {
       {apps.map((i) => (
         <div key={i.id}>
           {started[i.id] ? (
-            <JobLine label={i.name} id={started[i.id]!} />
+            <JobLine label={i.name} id={started[i.id]!} to={`/sync/reconciles/${started[i.id]}`} />
           ) : (
             <button className="button" disabled={pull.isPending} onClick={() => pull.mutate(i.id)}>
-              Import from {i.name}
+              Sync {i.name}
             </button>
           )}
         </div>
@@ -105,7 +105,7 @@ export function BringInCards() {
           </label>
           {uploads.map((u) =>
             u.job ? (
-              <JobLine key={u.key} label={u.name} id={u.job} />
+              <JobLine key={u.key} label={u.name} id={u.job} to={`/settings/jobs/${u.job}`} />
             ) : (
               <p key={u.key} className={u.error ? "error" : "muted"}>
                 {u.name}: {u.error ?? "uploading…"}

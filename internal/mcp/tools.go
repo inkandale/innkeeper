@@ -117,9 +117,8 @@ func sourcesPath(in sourceIn) (string, error) {
 }
 
 type importIn struct {
-	InstanceID int64    `json:"instance_id" jsonschema:"An import plugin or target app instance"`
-	Path       string   `json:"path,omitempty" jsonschema:"For an import plugin: a subfolder of the instance's folder; empty for all of it"`
-	RemoteIDs  []string `json:"remote_ids,omitempty" jsonschema:"For a target app: the items to import, from list_app_items; empty for every unbound one"`
+	InstanceID int64  `json:"instance_id" jsonschema:"An instance of an import plugin"`
+	Path       string `json:"path,omitempty" jsonschema:"A subfolder of the instance's folder; empty for all of it"`
 }
 
 type instanceIn struct {
@@ -140,11 +139,12 @@ type reconcileIn struct {
 	InstanceID  int64          `json:"instance_id" jsonschema:"The target plugin instance"`
 	Match       map[string]any `json:"match,omitempty" jsonschema:"name (bool), text_distance and avatar_distance (0..32); defaults true, 8, 8"`
 	SplitFields *int           `json:"split_fields,omitempty" jsonschema:"How many core fields must differ before import is suggested over bind; default 3"`
+	Apply       string         `json:"apply,omitempty" jsonschema:"obvious (default) binds exact matches and imports new items; none writes nothing"`
 }
 
 type compareIn struct {
 	InstanceID int64  `json:"instance_id" jsonschema:"The target plugin instance"`
-	RemoteID   string `json:"remote_id" jsonschema:"The app item's remote_id, from the reconcile snapshot"`
+	RemoteID   string `json:"remote_id" jsonschema:"The app item's remote_id, from the sync snapshot"`
 	Kind       string `json:"kind,omitempty" jsonschema:"card or lorebook; default card"`
 	ID         int64  `json:"id,omitempty" jsonschema:"The library card or lorebook to compare with; omit for the bound one"`
 }
@@ -317,7 +317,7 @@ var tools = []tool{
 			}
 			return c.call(ctx, "GET", fmt.Sprintf("/instances/%d/%s", in.InstanceID, path), nil)
 		}),
-	def("bind", "Link a card or lorebook to one the app already has. Changes nothing in the app or the library; the binding shows ahead until the next push where they differ. The app's linked world books are left for reconcile.", tier.Write,
+	def("bind", "Link a card or lorebook to one the app already has. Changes nothing in the app or the library; the binding shows ahead until the next push where they differ. The app's linked world books are left for sync.", tier.Write,
 		func(ctx context.Context, c caller, in bindIn) (*sdk.CallToolResult, error) {
 			if (in.CardID == 0) == (in.LorebookID == 0) {
 				return nil, fmt.Errorf("give exactly one of card_id and lorebook_id")
@@ -328,7 +328,7 @@ var tools = []tool{
 			}
 			return c.call(ctx, "POST", path, map[string]any{"instance_id": in.InstanceID, "remote_id": in.RemoteID})
 		}),
-	def("list_jobs", "List recent jobs: imports, pushes, scans, reconciles, bulk actions. A finished reconcile shows only its totals; get_job returns the whole snapshot.", tier.Read,
+	def("list_jobs", "List recent jobs: imports, pushes, scans, syncs, bulk actions. A finished sync shows only its totals; get_job returns the whole snapshot.", tier.Read,
 		func(ctx context.Context, c caller, _ none) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "GET", "/jobs", nil)
 		}),
@@ -340,20 +340,16 @@ var tools = []tool{
 		func(ctx context.Context, c caller, in idIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", fmt.Sprintf("/jobs/%d/cancel", in.ID), nil)
 		}),
-	def("start_import", "Import cards and lorebooks from an import instance's folder, or from a target app, binding each "+
-		"to the app item it came from. A card already in the library is bound rather than copied.", tier.Write,
+	def("start_import", "Import cards and lorebooks from an import plugin instance, such as a folder. To bring in an app's items, use start_sync.", tier.Write,
 		func(ctx context.Context, c caller, in importIn) (*sdk.CallToolResult, error) {
 			body := map[string]any{"instance_id": in.InstanceID}
-			switch {
-			case in.Path != "":
+			if in.Path != "" {
 				body["params"] = map[string]any{"path": in.Path}
-			case in.RemoteIDs != nil:
-				body["params"] = map[string]any{"remote_ids": in.RemoteIDs}
 			}
 			return c.call(ctx, "POST", "/imports", body)
 		}),
-	def("start_reconcile", "Line a target app up against the library. Starts a job; its finished get_job progress is the snapshot: "+
-		"a verdict, candidates, and a suggested action for each app item. Changes nothing unless the instance has auto_bind_exact.", tier.Read,
+	def("start_sync", "Sync a target app with the library: binds exact matches and imports new items, then lists what's left for the owner. "+
+		"Pass apply \"none\" to preview without writing. Starts a job; its finished get_job progress is the snapshot.", tier.Write,
 		func(ctx context.Context, c caller, in reconcileIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", "/reconciles", in)
 		}),
@@ -384,7 +380,7 @@ var tools = []tool{
 			}
 			return c.call(ctx, "POST", path+"/resolve", in)
 		}),
-	def("resolve_items", "Resolve many app items as one bulk job, such as a reconcile's suggestions. One that fails doesn't stop the others; "+
+	def("resolve_items", "Resolve many app items as one bulk job, such as a sync's suggestions. One that fails doesn't stop the others; "+
 		"get_job on each child shows its outcome. Pushing is a separate step.", tier.Write,
 		func(ctx context.Context, c caller, in resolveItemsIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", "/resolutions", in)

@@ -34,13 +34,15 @@ const job = { id: 5, kind: "target.reconcile", status: "succeeded", instance_id:
 const cmp = { instance_id: 3, remote_id: "a", card_id: 1, head_revision_id: 118, accepted_hash: "", base: "none", app_hash: "ha", fields: [] };
 
 let resolutions: unknown;
+let progress: Snapshot = snap;
 beforeEach(() => {
   resolutions = undefined;
+  progress = snap;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
       const u = new URL(req.url);
-      if (u.pathname === "/api/jobs/5") return json(job);
+      if (u.pathname === "/api/jobs/5") return json({ ...job, progress });
       if (u.pathname === "/api/instances/3/items/a/compare" && u.searchParams.get("card_id") === "1") return json(cmp);
       if (u.pathname === "/api/instances/3/lorebook-items/w/compare" && u.searchParams.get("lorebook_id") === "9")
         return json({ ...cmp, remote_id: "w", card_id: 9, head_revision_id: 50 });
@@ -109,7 +111,7 @@ test("Apply under a verdict filter leaves out a character shown only for its wor
   await waitFor(() => expect(resolutions).toEqual([{ instance_id: 3, remote_id: "b", action: "import", app_hash: "hb", binding_id: 0 }]));
 });
 
-test("a running reconcile shows its progress", async () => {
+test("a running sync shows its progress", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => json({ ...job, status: "running", progress: { done: 2, total: 9 } })));
   renderQueue();
   expect(await screen.findByText(/2 of 9/)).toBeInTheDocument();
@@ -124,4 +126,85 @@ test("bound and error rows start unchecked; picking an action checks the row", a
   expect(bad).toBeDisabled();
   await user.selectOptions(screen.getByRole("combobox", { name: "Action for c" }), "skip");
   expect(bad).toBeChecked();
+});
+
+const done = (over: Partial<Snapshot>): Snapshot => ({ ...snap, lorebooks: [], missing: null, unpushed: null, ...over });
+const auto = { options: null, app_hash: "h" } as const;
+
+test("with nothing left to review, shows a summary instead of the table", async () => {
+  progress = done({
+    items: [
+      { ...auto, remote_id: "a", name: "Ann", verdict: "new", auto_imported: true },
+      { ...auto, remote_id: "b", name: "Bo", verdict: "new", auto_imported: true },
+      { ...auto, remote_id: "c", name: "Cy", verdict: "exact", auto_bound: true },
+      { ...auto, remote_id: "d", name: "Di", verdict: "bound" },
+    ],
+    totals: { new: 2, exact: 1, bound: 1, auto_imported: 2, auto_bound: 1 },
+  });
+  renderQueue();
+  expect(await screen.findByText("Nothing to review. 2 imported, 1 linked")).toBeInTheDocument();
+  expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  expect(screen.queryByRole("group", { name: "Verdicts" })).not.toBeInTheDocument();
+});
+
+test("a drifted bound item, or one with an error, is still left to review", async () => {
+  progress = done({
+    items: [{ ...auto, remote_id: "d", name: "Di", verdict: "bound", options: [{ action: "skip" }], suggested: { action: "skip" } }],
+    totals: { bound: 1 },
+  });
+  renderQueue();
+  expect(await screen.findByRole("table")).toBeInTheDocument();
+  expect(screen.queryByText(/Nothing to review/)).not.toBeInTheDocument();
+});
+
+test("a bound item with an error is still left to review", async () => {
+  progress = done({ items: [{ ...auto, remote_id: "e", name: "Ed", verdict: "bound", error: "bad JSON" }], totals: { bound: 1 } });
+  renderQueue();
+  expect(await screen.findByRole("table")).toBeInTheDocument();
+  expect(screen.getByText("bad JSON")).toBeInTheDocument();
+});
+
+test("the missing and unpushed note shows even with nothing to review", async () => {
+  progress = done({ items: [], missing: [4], unpushed: [5, 6], totals: {} });
+  renderQueue();
+  expect(await screen.findByText(/Nothing to review/)).toBeInTheDocument();
+  expect(screen.getByText(/1 bound card the app no longer has/)).toBeInTheDocument();
+});
+
+test("a pending nested world book keeps the table", async () => {
+  progress = done({
+    items: [{ ...auto, remote_id: "d", name: "Di", verdict: "bound", lorebooks: [{ ...auto, remote_id: "w", name: "W", verdict: "new", options: [{ action: "import" }], suggested: { action: "import" } }] }],
+    totals: { bound: 1 },
+  });
+  renderQueue();
+  expect(await screen.findByRole("table")).toBeInTheDocument();
+});
+
+test("auto rows are labelled and start unchecked", async () => {
+  progress = done({
+    items: [
+      { remote_id: "a", name: "Ann", app_hash: "ha", verdict: "new", auto_imported: true, options: [{ action: "import" }, { action: "skip" }], suggested: { action: "import" } },
+      { remote_id: "b", name: "Bo", app_hash: "hb", verdict: "likely", options: [{ action: "import" }], suggested: { action: "import" } },
+    ],
+    totals: { new: 1, likely: 1, auto_imported: 1 },
+  });
+  renderQueue();
+  expect(await screen.findByText("imported (auto)")).toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "Apply Ann" })).not.toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "Apply Bo" })).toBeChecked();
+});
+
+test("the auto_imported chip shows the auto-imported rows, with the same label on world books", async () => {
+  progress = done({
+    items: [
+      { remote_id: "a", name: "Ann", app_hash: "ha", verdict: "new", auto_imported: true, options: null, lorebooks: [{ remote_id: "w", name: "AW", app_hash: "h", verdict: "new", auto_imported: true, options: null }] },
+      { remote_id: "b", name: "Bo", app_hash: "hb", verdict: "likely", options: [{ action: "import" }], suggested: { action: "import" } },
+    ],
+    totals: { new: 1, likely: 1, auto_imported: 1 },
+  });
+  renderQueue();
+  await userEvent.click(await screen.findByRole("button", { name: "imported (auto) 1" }));
+  expect(screen.getByRole("link", { name: "Ann" })).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Bo" })).not.toBeInTheDocument();
+  expect(screen.getAllByText("imported (auto)")).toHaveLength(2);
 });

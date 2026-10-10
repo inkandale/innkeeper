@@ -46,13 +46,12 @@ func TestInstanceRoutes(t *testing.T) {
 		t.Fatalf("patched %+v", inst)
 	}
 
-	e.call("PATCH", path, map[string]any{"auto_bind_exact": true}, 200, &inst)
-	if !inst.AutoBindExact || inst.Name != "Vault 2" {
-		t.Fatalf("auto_bind_exact on: %+v", inst)
+	var raw map[string]any
+	e.call("PATCH", path, map[string]any{"name": "Vault 2"}, 200, &raw)
+	if _, ok := raw["auto_bind_exact"]; ok {
+		t.Fatalf("instance still has auto_bind_exact: %v", raw)
 	}
-	if e.call("GET", path, nil, 200, &inst); !inst.AutoBindExact {
-		t.Fatalf("GET after PATCH: %+v", inst)
-	}
+	e.call("PATCH", path, map[string]any{"auto_bind_exact": true}, 422, nil)
 
 	var list []plugins.InstanceInfo
 	e.call("GET", "/instances", nil, 200, &list)

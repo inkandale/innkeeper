@@ -21,7 +21,7 @@ The owner sees **Sync** in the web UI, the CLI, and MCP. The API path
 |---|---|---|
 | Web | "Reconcile" button, "Reconcile #12", "Last reconcile" | "Sync", "Sync #12", "Last sync" |
 | CLI | `ink sync reconcile <instance>` | `ink sync run <instance> [--dry-run]`; `reconcile` stays as an alias |
-| MCP | `start_reconcile` | `start_sync`, with `dry_run` |
+| MCP | `start_reconcile` | `start_sync`, with `apply: "none"` to preview |
 
 ## What a run applies
 

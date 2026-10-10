@@ -346,7 +346,7 @@ export interface paths {
         put?: never;
         /**
          * Bind a card to one the app already has
-         * @description Changes nothing in the app or the library. The app's copy becomes the accepted one, so the binding is ahead where the library differs, and the next push sends the library's. The app's linked world books are left for reconcile.
+         * @description Changes nothing in the app or the library. The app's copy becomes the accepted one, so the binding is ahead where the library differs, and the next push sends the library's. The app's linked world books are left for sync.
          */
         post: operations["bind-card"];
         delete?: never;
@@ -844,7 +844,7 @@ export interface paths {
         put?: never;
         /**
          * Start an import
-         * @description Queues an import job for an instance of an import plugin. For a target app, queues a bulk job that takes each character and lorebook not yet bound on the instance into the library and binds it; the payload counts those skipped as already_bound.
+         * @description Queues an import job for an instance of an import plugin.
          */
         post: operations["start-import"];
         delete?: never;
@@ -1199,7 +1199,7 @@ export interface paths {
         put?: never;
         /**
          * Bind a lorebook to one the app already has
-         * @description Changes nothing in the app or the library. The app's copy becomes the accepted one, so the binding is ahead where the library differs, and the next push sends the library's. The app's linked world books are left for reconcile.
+         * @description Changes nothing in the app or the library. The app's copy becomes the accepted one, so the binding is ahead where the library differs, and the next push sends the library's. The app's linked world books are left for sync.
          */
         post: operations["bind-lorebook"];
         delete?: never;
@@ -1585,8 +1585,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Line up a target app against the library
-         * @description Queues a reconcile job. Read the snapshot from GET /jobs/{id}: its progress is the snapshot once the job finishes.
+         * Sync a target app with the library
+         * @description Queues a sync. With apply obvious (the default) it binds exact matches and imports new items; apply none previews. Read the snapshot from GET /jobs/{id} once the job finishes.
          */
         post: operations["start-reconcile"];
         delete?: never;
@@ -2409,7 +2409,7 @@ export interface components {
             readonly $schema?: string;
             /** Format: int64 */
             instance_id: number;
-            /** @description The import plugin's settings, such as a folder path. For a target app: remote_ids, to import only those items. */
+            /** @description The import plugin's settings, such as a folder path. */
             params?: unknown;
         };
         InstallInBody: {
@@ -2429,7 +2429,6 @@ export interface components {
              * @example /api/schemas/InstanceInfo.json
              */
             readonly $schema?: string;
-            auto_bind_exact: boolean;
             /** Format: date-time */
             broken_at?: string;
             broken_error?: string;
@@ -2478,7 +2477,7 @@ export interface components {
             kind: string;
             /** Format: int64 */
             max_attempts: number;
-            /** @description A bulk import's finished children, counted by outcome: created, bound, already_bound, duplicate, or missing. Only get-job, cancel-job, and watch-job fill it. */
+            /** @description A bulk job's finished children, counted by outcome, such as a resolve's action, stale, conflict, or failed. Only get-job, cancel-job, and watch-job fill it. */
             outcomes?: {
                 [key: string]: number;
             };
@@ -2685,6 +2684,8 @@ export interface components {
              * @example /api/schemas/ReconcileParams.json
              */
             readonly $schema?: string;
+            /** @enum {string} */
+            apply?: "obvious" | "none";
             /** Format: int64 */
             instance_id: number;
             match?: components["schemas"]["ReconcileMatch"];
@@ -2966,8 +2967,6 @@ export interface components {
              * @example /api/schemas/UpdateInstanceInBody.json
              */
             readonly $schema?: string;
-            /** @description Reconcile binds each exact match it finds, keeping the library's copy. */
-            auto_bind_exact?: boolean;
             /** @description Replaces the whole config. */
             config?: {
                 [key: string]: unknown;

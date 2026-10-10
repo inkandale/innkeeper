@@ -73,7 +73,6 @@ func worker() error {
 			bulk.ExportKind:            bulk.Export(ex),
 			targets.PushKind:           tg.RunPush,
 			targets.ScanKind:           tg.RunScan,
-			targets.ImportKind:         tg.RunImport,
 			targets.ReconcileKind:      tg.RunReconcile,
 			targets.ResolveKind:        tg.RunResolve,
 			backup.Kind(backup.Assets): backup.BackupHandler(svc.backups, svc.pool, backupOpts, backup.Assets),

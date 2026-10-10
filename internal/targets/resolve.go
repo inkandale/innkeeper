@@ -86,6 +86,9 @@ func (s *Service) ResolveLorebook(ctx context.Context, r Resolution) (ResolveRes
 type resolveOpts struct {
 	// bindOnly refuses the whole resolve if it would write to the library.
 	bindOnly bool
+	// importNew lets a bindOnly resolve import, which adds to the library
+	// without changing anything already there.
+	importNew bool
 	// skipLeftOut skips the app's linked world books the resolution leaves
 	// out, instead of taking their suggestions.
 	skipLeftOut bool
@@ -164,7 +167,7 @@ func (rs *resolver) item(ctx context.Context, k kind, r Resolution) (ResolveResu
 	if r.Action == "skip" {
 		return res, nil
 	}
-	if rs.bindOnly && r.Action == "import" {
+	if rs.bindOnly && !rs.importNew && r.Action == "import" {
 		return res, errWouldRevise
 	}
 	if done, ok := rs.books[r.RemoteID]; ok && k.isLorebook() {

@@ -96,6 +96,9 @@ func archiveCmd(k kind, action string) *cobra.Command {
 				_, err = c.do(cmd.Context(), "PUT", "/"+k.plural+"/"+id+"/archived", body)
 				return err
 			}
+			if !strings.HasPrefix(strings.TrimSpace(args[0]), "{") {
+				return fmt.Errorf("%q is neither an ID nor a query", args[0])
+			}
 			query, err := jsonArg(args, 0, "")
 			if err != nil {
 				return err
@@ -189,16 +192,23 @@ func pageFlags(cmd *cobra.Command) {
 func runSearch(cmd *cobra.Command, k kind, query map[string]any) error {
 	limit, _ := cmd.Flags().GetInt("limit")
 	page, _ := cmd.Flags().GetInt("page")
-	if limit > 0 || page > 0 {
-		p := map[string]int{}
-		if limit > 0 {
-			p["size"] = limit
-		}
-		if page > 0 {
-			p["number"] = page
-		}
+	// The flags override the query's own page, field by field.
+	p, _ := query["page"].(map[string]any)
+	if p == nil {
+		p = map[string]any{}
+	}
+	if limit > 0 {
+		p["size"] = limit
+	}
+	if page > 0 {
+		p["number"] = page
+	}
+	if len(p) > 0 {
 		query["page"] = p
 	}
+	size, _ := p["size"].(float64)
+	number, _ := p["number"].(float64)
+	limit, page = cmp.Or(limit, int(size)), cmp.Or(page, int(number))
 	if _, ok := query["include"]; !ok && k == cardKind {
 		query["include"] = []string{"tags"}
 	}

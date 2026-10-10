@@ -43,6 +43,9 @@ func TestCardsArchive(t *testing.T) {
 	if _, err := runInk(t, "cards", "archive"); err == nil {
 		t.Error("archive without a query succeeded")
 	}
+	if _, err := runInk(t, "cards", "archive", "true"); err == nil || !strings.Contains(err.Error(), "neither an ID nor a query") {
+		t.Errorf("archive true: err = %v", err)
+	}
 	*got = nil
 	for _, args := range [][]string{{"cards", "archive", "3"}, {"lorebooks", "unarchive", "5"}, {"lorebooks", "archive", `{"text": "old"}`}} {
 		if _, err := runInk(t, args...); err != nil {
@@ -104,6 +107,7 @@ func TestCardsSearch(t *testing.T) {
 		{"cards", "list", "--archived"},
 		{"cards", "search", `{"text": "x", "sort": "name"}`, "--page", "3"},
 		{"lorebooks", "list"},
+		{"cards", "search", `{"page": {"size": 1}}`},
 	} {
 		if _, err := runInk(t, args...); err != nil {
 			t.Fatalf("%q: %v", args, err)
@@ -114,12 +118,19 @@ func TestCardsSearch(t *testing.T) {
 		`POST /search {"filter":{"archived":true},"include":["tags"]}`,
 		`POST /search {"include":["tags"],"page":{"number":3},"sort":"name","text":"x"}`,
 		`POST /lorebooks/search {}`,
+		`POST /search {"include":["tags"],"page":{"size":1}}`,
 	}
 	if !slices.Equal(*got, want) {
 		t.Fatalf("requests = %q\nwant %q", *got, want)
 	}
 	if out, _ := runInk(t, "lorebooks", "list"); !strings.Contains(out, "ENTRIES") || !strings.Contains(out, " 4") {
 		t.Errorf("lorebooks list = %q", out)
+	}
+	if out, _ := runInk(t, "cards", "search", `{"page": {"size": 1}}`); !strings.Contains(out, "next: --page 2") {
+		t.Errorf("a query's page size gave no next-page hint: %q", out)
+	}
+	if out, _ := runInk(t, "cards", "search", `{"page": {"size": 1}}`, "--page", "2"); strings.Contains(out, "next:") {
+		t.Errorf("hinted past the last page: %q", out)
 	}
 	if out, _ := runInk(t, "cards", "list", "--json"); out != page+"\n" {
 		t.Errorf("--json = %q", out)

@@ -87,8 +87,8 @@ func editData(data json.RawMessage, name string) (string, []byte, error) {
 	// The editor needs the terminal, not whatever cobra was given.
 	run.Stdin, run.Stdout, run.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := run.Run(); err != nil {
-		os.Remove(f.Name())
-		return "", nil, fmt.Errorf("%s: %w", ed[0], err)
+		// Some editors save and still exit non-zero, so keep the file.
+		return "", nil, fmt.Errorf("%s: %w; the file is %s", ed[0], err, f.Name())
 	}
 	edited, err := os.ReadFile(f.Name())
 	return f.Name(), edited, err

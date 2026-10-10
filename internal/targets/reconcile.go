@@ -462,9 +462,10 @@ func (s *Service) Reconcile(ctx context.Context, p ReconcileParams, progress fun
 	}
 
 	if p.Apply != ApplyNone {
-		s.autoApply(ctx, lorebookKind, p.InstanceID, bookIdx, bookIdx, snap.Lorebooks)
+		imported := map[string]bool{}
+		s.autoApply(ctx, lorebookKind, p.InstanceID, bookIdx, bookIdx, snap.Lorebooks, imported)
 		// The index was read before this run applied anything; an applied card isn't unpushed.
-		for id := range s.autoApply(ctx, cardKind, p.InstanceID, cardIdx, bookIdx, snap.Items) {
+		for id := range s.autoApply(ctx, cardKind, p.InstanceID, cardIdx, bookIdx, snap.Items, imported) {
 			cardIdx.remoteOf[id] = ""
 		}
 		type auto struct{ bound, imported bool }
@@ -518,8 +519,10 @@ func (s *Service) Reconcile(ctx context.Context, p ReconcileParams, progress fun
 // drift. It returns the card IDs it applied. It resolves with the hashes this
 // run read, so an item that changed since is left for the owner, and it never
 // changes an existing library item. A failure leaves the item as it was.
+// imported holds the kind:app_hash of each item imported this run; a copy of
+// one is left for the owner rather than imported twice.
 func (s *Service) autoApply(ctx context.Context, k kind, instanceID int64, idx, books index,
-	items []ReconcileItem) map[int64]bool {
+	items []ReconcileItem, imported map[string]bool) map[int64]bool {
 	applied := map[int64]bool{}
 	// World books bound or imported earlier in this run, as the next card must name them.
 	nested := map[string]Resolution{}
@@ -534,18 +537,26 @@ items:
 			r = Resolution{InstanceID: instanceID, RemoteID: it.RemoteID, AppHash: it.AppHash,
 				BaseRevisionID: idx.byID[it.Suggested.CardID].head, Action: "bind", CardID: it.Suggested.CardID,
 				Default: merge.ChooseLibrary}
-		case it.Verdict == VerdictNew && it.Suggested.Action == "import":
+		case it.Verdict == VerdictNew && it.Suggested.Action == "import" && !imported[k.name+":"+it.AppHash]:
 			r = Resolution{InstanceID: instanceID, RemoteID: it.RemoteID, AppHash: it.AppHash,
 				BindingID: it.BindingID, Action: "import"}
 		default:
 			continue
 		}
+		// This card's own world books may be copies of each other too.
+		importing := map[string]bool{}
 		for _, lb := range it.Lorebooks {
 			n, ok := nested[lb.RemoteID]
 			if !ok {
 				if n, ok = autoNested(lb, books); !ok {
 					continue items
 				}
+			}
+			if key := lorebookKind.name + ":" + n.AppHash; n.Action == "import" {
+				if imported[key] || importing[key] {
+					continue items
+				}
+				importing[key] = true
 			}
 			r.Lorebooks = append(r.Lorebooks, n)
 		}
@@ -556,11 +567,15 @@ items:
 		}
 		it.AutoBound, it.AutoImported = r.Action == "bind", r.Action == "import"
 		it.BindingID = res.BindingID
+		if it.AutoImported {
+			imported[k.name+":"+it.AppHash] = true
+		}
 		applied[res.CardID] = true
 		for j, lr := range res.Lorebooks {
 			lb, n := &it.Lorebooks[j], r.Lorebooks[j]
 			lb.AutoBound, lb.AutoImported, lb.BindingID = n.Action == "bind", n.Action == "import", lr.BindingID
 			if n.Action == "import" {
+				imported[lorebookKind.name+":"+n.AppHash] = true
 				// The next card binds the world book this one imported; books.byID predates it.
 				n = Resolution{RemoteID: n.RemoteID, AppHash: n.AppHash, Action: "bind", CardID: lr.CardID,
 					BaseRevisionID: lr.RevisionID, Default: merge.ChooseLibrary}

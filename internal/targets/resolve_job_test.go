@@ -419,3 +419,35 @@ func TestApplyNoneWritesNothing(t *testing.T) {
 		t.Fatalf("%v, %d bindings, totals %v", err, e.bindingCount(), snap.Totals)
 	}
 }
+
+func TestAutoApplyImportsOneCopyOfTheSameContent(t *testing.T) {
+	e := setup(t, map[string]any{"lorebooks": "standalone", "fields": []string{"name", "description"}})
+	cards := e.cardCount()
+	for _, id := range []string{"r1", "r2"} {
+		e.appCard(id, map[string]any{"name": "Pell", "description": "A tinker."}, nil)
+	}
+	for _, id := range []string{"l1", "l2"} {
+		e.writeRemote(id, map[string]any{"lorebook": map[string]any{"name": "Docks", "description": "The harbor.",
+			"entries": []any{map[string]any{"keys": []any{"pier"}, "content": "The pier floods at night."}}}})
+	}
+	snap := e.autoReconcile(nil)
+	if snap.Totals["auto_imported"] != 2 || e.cardCount() != cards+1 || e.lorebookCount() != 1 {
+		t.Fatalf("totals %v, %d new cards, %d lorebooks", snap.Totals, e.cardCount()-cards, e.lorebookCount())
+	}
+	if r1, r2 := item(snap, "r1"), item(snap, "r2"); r1.AutoImported == r2.AutoImported || r2.Verdict != VerdictNew {
+		t.Errorf("r1 = %+v, r2 = %+v", r1, r2)
+	}
+}
+
+func TestAutoApplyImportsOneCopyOfALinkedWorldBook(t *testing.T) {
+	e, _, _ := worldBooks(t)
+	// Like l2 (Mines), which the run imports as a world book no card links.
+	e.writeRemote("l5", map[string]any{"lorebook": map[string]any{"name": "Mines", "description": "Deep tunnels.",
+		"entries": []any{map[string]any{"keys": []any{"mine"}, "content": "The mines are dark."}}}})
+	e.appCard("r1", map[string]any{"name": "Wren", "description": "A ferrywoman."},
+		map[string]any{"lorebook_remote_ids": []string{"l5"}})
+	snap := e.autoReconcile(nil)
+	if it := item(snap, "r1"); it.AutoImported || e.lorebookCount() != 2 { // Forge, Mines
+		t.Fatalf("r1 = %+v, %d lorebooks", it, e.lorebookCount())
+	}
+}

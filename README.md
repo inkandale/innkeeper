@@ -369,7 +369,9 @@ The API's `POST /bulk` also tags, collects, and exports; see `/api/docs`.
 `sync push` prints what it would replace in the app. For one card, that's
 each field it changes; for a query, how many matching cards are new, ahead, in
 sync, or drifted there as of their last check. Use `ink sync preview` to see
-one card's changes.
+one card's changes. A query push replaces only the copies it counted; a card
+whose app copy changes after that fails, and the app keeps its copy. `--yes`
+skips the question, not that check.
 
 `sync push`, `sync unbind`, `plugins purge`, and `backups restore` ask before
 they run, since they replace or delete data; `--yes` skips the question.
@@ -518,6 +520,23 @@ shows what the push would do. `ink sync push` shows it too, and sends its
 - `stale`: the app couldn't be read, so `changes` compare against the last push
 - `confirm`: send it with the push, and the push is refused with `409` and
   the new preview if anything changed since
+
+A query push has its own preview, `POST /pushes/preview`, with the same body
+as `POST /pushes`. It counts the matching cards that are `new`, `ahead`,
+`in_sync`, `cant_check`, or `drifted` on the target, as of their last check,
+and returns a `confirm`. `ink sync push` with a query and the web's bulk push
+both ask from it and send its `confirm`:
+
+- If the counts would differ now, `POST /pushes` is refused with `409` and the
+  new preview.
+- Each card's push reads the app's copy first. If it changed since the
+  preview, that push fails and the app keeps its copy.
+- Without `confirm`, a card's push replaces the app's copy only if it hasn't
+  changed since the last push or adopt, so drifted copies fail instead of
+  being overwritten.
+
+An app that can't be read back can't be checked, so its cards are pushed as
+counted.
 
 ### Binding what the app already has
 

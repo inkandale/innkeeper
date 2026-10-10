@@ -1923,9 +1923,6 @@
             "readOnly": true,
             "type": "string"
           },
-          "auto_bind_exact": {
-            "type": "boolean"
-          },
           "broken_at": {
             "format": "date-time",
             "type": "string"
@@ -1974,7 +1971,6 @@
           "name",
           "config",
           "secrets",
-          "auto_bind_exact",
           "created_at",
           "updated_at"
         ],
@@ -3391,10 +3387,6 @@
             "format": "uri",
             "readOnly": true,
             "type": "string"
-          },
-          "auto_bind_exact": {
-            "description": "Reconcile binds each exact match it finds, keeping the library's copy.",
-            "type": "boolean"
           },
           "config": {
             "additionalProperties": {},

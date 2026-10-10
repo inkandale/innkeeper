@@ -10,7 +10,7 @@ function json(body: unknown, status = 200) {
 
 const now = new Date().toISOString();
 const inst = (id: number, plugin: string, name: string, broken?: string) => ({
-  id, plugin, name, config: {}, secrets: [], auto_bind_exact: false, created_at: now, updated_at: now,
+  id, plugin, name, config: {}, secrets: [], created_at: now, updated_at: now,
   ...(broken ? { broken_error: broken, broken_at: now } : {}),
 });
 

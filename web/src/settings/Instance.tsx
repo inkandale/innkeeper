@@ -82,7 +82,6 @@ export function InstanceForm({
             config: canon(cfg) !== initial ? cfg : undefined,
             secrets: hasSecrets ? secrets : undefined,
             owner_subject: owner !== undefined && owner !== (instance.owner_subject ?? "") ? owner : undefined,
-            auto_bind_exact: caps.includes("pull") ? form.get("auto_bind_exact") === "on" : undefined,
           },
         }),
       );
@@ -157,12 +156,6 @@ export function InstanceForm({
           </label>
           <small className="muted">The login that becomes the owner. Leave empty for none.</small>
         </div>
-      )}
-      {instance && caps.includes("pull") && (
-        <label className="check">
-          <input type="checkbox" name="auto_bind_exact" defaultChecked={instance.auto_bind_exact} /> Bind exact matches when
-          reconciling
-        </label>
       )}
       {save.error && <p className="error">{save.error.message}</p>}
       <div className="actions">

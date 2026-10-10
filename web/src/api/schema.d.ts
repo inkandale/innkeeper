@@ -2429,7 +2429,6 @@ export interface components {
              * @example /api/schemas/InstanceInfo.json
              */
             readonly $schema?: string;
-            auto_bind_exact: boolean;
             /** Format: date-time */
             broken_at?: string;
             broken_error?: string;
@@ -2968,8 +2967,6 @@ export interface components {
              * @example /api/schemas/UpdateInstanceInBody.json
              */
             readonly $schema?: string;
-            /** @description Reconcile binds each exact match it finds, keeping the library's copy. */
-            auto_bind_exact?: boolean;
             /** @description Replaces the whole config. */
             config?: {
                 [key: string]: unknown;

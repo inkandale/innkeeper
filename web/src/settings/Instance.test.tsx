@@ -24,7 +24,7 @@ const st = {
 const login = { name: "password-login", version: "0.1.0", capabilities: ["auth"], secrets: ["password_hash"] };
 const broken = {
   id: 3, plugin: "sillytavern", name: "home", config: { url: "http://st", auth: "none" }, secrets: ["password"],
-  auto_bind_exact: true, broken_error: "connection refused", broken_at: now, created_at: now, updated_at: now,
+  broken_error: "connection refused", broken_at: now, created_at: now, updated_at: now,
 };
 const owned = { ...broken, id: 4, plugin: "password-login", name: "pw", config: {}, secrets: [], owner_subject: "me" };
 
@@ -99,7 +99,7 @@ test("edits a broken instance and sends only what changed", async () => {
   expect(sent[0]).toEqual({
     method: "PATCH",
     path: "/api/instances/3",
-    body: { name: "home2", secrets: { password: null }, auto_bind_exact: false },
+    body: { name: "home2", secrets: { password: null } },
   });
 });
 
@@ -123,7 +123,7 @@ test("a config edited back to its old value isn't sent", async () => {
   await user.type(url, "http://st");
   await user.click(screen.getByRole("button", { name: "Save" }));
   await vi.waitFor(() => expect(sent).toHaveLength(1));
-  expect(sent[0]?.body).toEqual({ name: "home", auto_bind_exact: true });
+  expect(sent[0]?.body).toEqual({ name: "home" });
 });
 
 test("InstanceForm calls onSaved instead of going to Settings", async () => {

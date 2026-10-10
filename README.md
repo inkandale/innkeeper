@@ -521,14 +521,15 @@ shows what the push would do. `ink sync push` shows it too, and sends its
 - `confirm`: send it with the push, and the push is refused with `409` and
   the new preview if anything changed since
 
-A query push has its own preview, `POST /pushes/preview`, with the same body
-as `POST /pushes`. It counts the matching cards that are `new`, `ahead`,
+A query push has its own preview, `POST /pushes/preview`, which takes the
+`instance_id`, `query`, and `kind` of `POST /pushes`. It counts the matching cards that are `new`, `ahead`,
 `in_sync`, `cant_check`, or `drifted` on the target, as of their last check,
 and returns a `confirm`. `ink sync push` with a query and the web's bulk push
 both ask from it and send its `confirm`:
 
-- If the counts would differ now, `POST /pushes` is refused with `409` and the
-  new preview.
+- If a new preview would differ, because the matching cards changed or a
+  check or push changed one's binding, `POST /pushes` is refused with `409`
+  and the new preview.
 - Each card's push reads the app's copy first. If it changed since the
   preview, that push fails and the app keeps its copy.
 - Without `confirm`, a card's push replaces the app's copy only if it hasn't

@@ -109,6 +109,26 @@ func TestBulkPush(t *testing.T) {
 	if j.Kind != bulk.Kind || j.Children["queued"] != 1 {
 		t.Fatalf("bulk push = %+v", j)
 	}
+
+	body := map[string]any{"instance_id": inst, "query": map[string]any{"text": "brakka"}}
+	e.call("POST", "/pushes/preview", map[string]any{"instance_id": inst, "query": map[string]any{}}, 400, nil)
+	var p targets.BulkPreview
+	e.call("POST", "/pushes/preview", body, 200, &p)
+	if p.Total != 1 || p.New != 1 || p.Confirm == "" {
+		t.Fatalf("preview = %+v", p)
+	}
+	body["confirm"] = "stale"
+	var conflict struct {
+		Errors []struct {
+			Value targets.BulkPreview `json:"value"`
+		} `json:"errors"`
+	}
+	e.call("POST", "/pushes", body, 409, &conflict)
+	if len(conflict.Errors) != 1 || conflict.Errors[0].Value.Confirm != p.Confirm {
+		t.Fatalf("409 = %+v", conflict)
+	}
+	body["confirm"] = p.Confirm
+	e.call("POST", "/pushes", body, 202, &j)
 }
 
 func TestFailHidesStartError(t *testing.T) {

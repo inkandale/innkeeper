@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -27,8 +28,19 @@ type bulkPushIn struct {
 		Query      library.Query `json:"query" doc:"Selects the cards, as in POST /search. Paging is ignored."`
 		Kind       string        `json:"kind,omitempty" enum:"card,lorebook" doc:"What the query selects; default card."`
 		NewCopy    bool          `json:"new_copy,omitempty" doc:"Let a target that can't update cards make another copy"`
+		Confirm    string        `json:"confirm,omitempty" doc:"The confirm value from POST /pushes/preview. If the preview would differ now, the push is refused with 409 and the new preview. Without it, a push replaces only app copies unchanged since their last push or adopt."`
 	}
 }
+
+type bulkPreviewIn struct {
+	Body struct {
+		InstanceID int64         `json:"instance_id"`
+		Query      library.Query `json:"query" doc:"Selects the cards, as in POST /search. Paging is ignored."`
+		Kind       string        `json:"kind,omitempty" enum:"card,lorebook" doc:"What the query selects; default card."`
+	}
+}
+
+type bulkPreviewOut struct{ Body targets.BulkPreview }
 
 type previewIn struct {
 	ID         int64 `path:"id"`
@@ -161,30 +173,68 @@ func (s *Server) targetRoutes(api huma.API) {
 			})
 	}
 
-	huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "push-cards", Method: http.MethodPost, Path: "/pushes",
-		Summary: "Push many cards or lorebooks to a target", Description: "Queues one child job per card or lorebook the query matches.",
-		Tags: tags, DefaultStatus: http.StatusAccepted},
-		func(ctx context.Context, in *bulkPushIn) (*jobResp, error) {
-			q := in.Body.Query
-			if q.Filter == nil && q.Text == "" {
-				return nil, huma.Error400BadRequest("bulk actions need a filter or text; to select every card, filter on archived")
+	// bulkPush selects what a query push sends and checks that the instance
+	// can take it.
+	bulkPush := func(ctx context.Context, instanceID int64, q library.Query, kind string) ([]int64, error) {
+		if q.Filter == nil && q.Text == "" {
+			return nil, huma.Error400BadRequest("bulk actions need a filter or text; to select every card, filter on archived")
+		}
+		if err := s.usable(ctx, instanceID, "push"); err != nil {
+			return nil, err
+		}
+		search := s.Lib.SearchIDs
+		if kind == "lorebook" {
+			search = s.Lib.SearchLorebookIDs
+			// Fail now; otherwise every child job fails (and retries) on the same reason.
+			if err := s.Targets.CheckLorebookPush(ctx, instanceID); err != nil {
+				return nil, s.fail(err)
 			}
-			if err := s.usable(ctx, in.Body.InstanceID, "push"); err != nil {
+		}
+		ids, err := search(ctx, q)
+		if err != nil {
+			return nil, s.fail(err)
+		}
+		return ids, nil
+	}
+
+	huma.Register(api, huma.Operation{OperationID: "preview-push-cards", Method: http.MethodPost, Path: "/pushes/preview",
+		Summary: "Show how the cards a query push would send stand on a target", Tags: tags,
+		Description: "Counts the cards by state, as of each binding's last check, and returns the confirm value for POST /pushes."},
+		func(ctx context.Context, in *bulkPreviewIn) (*bulkPreviewOut, error) {
+			ids, err := bulkPush(ctx, in.Body.InstanceID, in.Body.Query, in.Body.Kind)
+			if err != nil {
 				return nil, err
 			}
-			search, enqueue := s.Lib.SearchIDs, s.Targets.EnqueueBulkPush
+			preview := s.Targets.PreviewBulkPush
 			if in.Body.Kind == "lorebook" {
-				search, enqueue = s.Lib.SearchLorebookIDs, s.Targets.EnqueueBulkLorebookPush
-				// Fail now; otherwise every child job fails (and retries) on the same reason.
-				if err := s.Targets.CheckLorebookPush(ctx, in.Body.InstanceID); err != nil {
-					return nil, s.fail(err)
-				}
+				preview = s.Targets.PreviewBulkLorebookPush
 			}
-			ids, err := search(ctx, q)
+			p, err := preview(ctx, in.Body.InstanceID, ids)
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			p, err := enqueue(ctx, s.Queue, in.Body.InstanceID, ids, in.Body.NewCopy)
+			return &bulkPreviewOut{Body: p}, nil
+		})
+
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "push-cards", Method: http.MethodPost, Path: "/pushes",
+		Summary: "Push many cards or lorebooks to a target",
+		Description: "Queues one child job per card or lorebook the query matches. A child fails, leaving the app's copy alone, " +
+			"if that copy changed since the preview, or since its last push or adopt when confirm isn't sent.",
+		Tags: tags, DefaultStatus: http.StatusAccepted},
+		func(ctx context.Context, in *bulkPushIn) (*jobResp, error) {
+			ids, err := bulkPush(ctx, in.Body.InstanceID, in.Body.Query, in.Body.Kind)
+			if err != nil {
+				return nil, err
+			}
+			enqueue := s.Targets.EnqueueBulkPush
+			if in.Body.Kind == "lorebook" {
+				enqueue = s.Targets.EnqueueBulkLorebookPush
+			}
+			p, err := enqueue(ctx, s.Queue, in.Body.InstanceID, ids, in.Body.NewCopy, in.Body.Confirm)
+			var stale *targets.StalePreviewError
+			if errors.As(err, &stale) {
+				return nil, huma.Error409Conflict(stale.Error(), &huma.ErrorDetail{Location: "body.confirm", Value: stale.Preview})
+			}
 			if err != nil {
 				return nil, s.fail(err)
 			}

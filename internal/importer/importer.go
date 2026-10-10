@@ -34,11 +34,11 @@ type Payload struct {
 	Params json.RawMessage `json:"params"`
 }
 
-// Importer runs import jobs.
+// Importer runs import and catalog ingest jobs.
 type Importer struct {
 	Lib      *library.Library
 	Registry *plugins.Registry
-	// Plugins runs the import plugins. Its core handler must be Handle.
+	// Plugins runs the import and catalog plugins. Its core handler must be Handle.
 	Plugins *pluginhost.Manager
 	Log     *slog.Logger
 
@@ -71,7 +71,7 @@ type ingestProgress struct {
 	*protocol.CatalogIngestResult
 }
 
-// session is one running import.run call.
+// session is one running import.run or catalog.ingest call.
 type session struct {
 	im     *Importer
 	run    *jobs.Run
@@ -269,7 +269,7 @@ func (s *session) publish() {
 	s.run.SetProgress(raw)
 }
 
-// fail stops the run: the import.run call is cancelled and Run returns err.
+// fail stops the run: the plugin call is cancelled and run returns err.
 func (s *session) fail(err error) {
 	s.mu.Lock()
 	if s.err == nil {

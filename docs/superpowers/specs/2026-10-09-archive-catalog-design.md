@@ -102,12 +102,19 @@ All three live in `innkeeper-plugins`.
 
 A shared Go package, not a plugin. It holds:
 
-- The `item`, `item_version`, and `lsh_bucket` tables and their migrations.
+- The `item` and `item_version` tables and their migrations.
+- Every row keyed by instance ID. The core gives a plugin one schema for all
+  its instances, so two `folder` archives share tables. A deleted instance's
+  rows stay until purged (INN-41).
 - Full-text search over name, author, description, and tags (a generated
   `tsvector` with a GIN index).
 - Declared filters compiled to SQL, and cursor paging.
-- LSH bucketing over `text_simhash` and `image_phash`, for `similar` and for
-  near matches.
+- Tags stored and filtered in lowercase.
+- LSH bands over `text_simhash` and `image_phash`, in an `lsh` array column
+  with a GIN index. Each hash splits into 9 bands of 7 bits, so hashes within
+  8 bits share a band. `catalog.similar` refuses a `max_distance` over 8.
+- A new version when an item's whole data changes, including a card's
+  embedded lorebook, which `content_hash` leaves out.
 
 ### `chub-archive`
 
@@ -142,9 +149,13 @@ not in the dump. Each needs its own file ingester, added to this plugin later.
   The checkpoint is the last path processed.
 - **Item ID:** the path relative to the directory. A changed file adds a
   version.
+- **Versions:** numbered 1, 2, 3, each dated by the file's modification time.
+  Only the latest version of a file unchanged since ingest has an avatar,
+  read from the file.
 - **Removal:** a file that disappears marks its item removed instead of
   deleting it, so cards already adopted from it keep their provenance.
-- **Filters:** kind, subdirectory, tag, and date modified.
+- **Filters:** subdirectory, tag, and date modified. `catalog.search` takes
+  `kind` already.
 
 ## Web UI
 
@@ -182,10 +193,12 @@ not in the dump. Each needs its own file ingester, added to this plugin later.
 - **Contract kit:** `innkeeper plugin check` gains catalog checks: `describe`
   is valid, `search` pages correctly and refuses undeclared filters, `get`
   returns data that hashes to the search result's `content_hash`, and unknown
-  IDs return `-32004`. Both plugins run it in CI, with
-  `INNKEEPER_PLUGIN_CONFIG` pointing at test data.
+  IDs return `-32004`. When a catalog ingests and the check has a config, the
+  kit runs `catalog.ingest` first. Both plugins run it in CI, with
+  `INNKEEPER_PLUGIN_CONFIG` pointing at test data and
+  `INNKEEPER_PLUGIN_DATABASE_URL` at a test database.
 - **`cardhash`:** its test vectors pass after the move.
-- **`catalogkit`:** LSH buckets find pairs within the distance threshold and
+- **`catalogkit`:** LSH bands find pairs within the distance threshold and
   miss pairs outside it.
 - **`chub-archive`:** a fixture dump cut from the real one, with a few rows
   from every table, multiple increments, and a bad row. Tests cover counts,

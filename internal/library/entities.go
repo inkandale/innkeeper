@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/davidgibbons/innkeeper/internal/cardhash"
+	"github.com/davidgibbons/innkeeper/cardhash"
 )
 
 // kind holds what differs between cards and lorebooks. Their tables have the

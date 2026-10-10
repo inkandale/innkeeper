@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/davidgibbons/innkeeper/internal/cardhash"
+	"github.com/davidgibbons/innkeeper/cardhash"
 )
 
 func TestSlugify(t *testing.T) {

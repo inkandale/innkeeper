@@ -18,7 +18,7 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-tools | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code | database | bad-list | bad-setup")
+	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-tools | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code | database | bad-list | bad-setup | bad-catalog | catalog-repeat | catalog-lax | catalog-no-notfound | catalog-wrong-hash | catalog-sourceless")
 	caps := flag.String("caps", "push,pull", "comma-separated capabilities to report")
 	name := flag.String("name", "fake", "the plugin name to report")
 	flag.Parse()
@@ -122,6 +122,17 @@ func main() {
 			return codecEncode(blobTmp, params, *mode)
 		case protocol.MethodCodecDecode:
 			return codecDecode(params, *mode)
+		case protocol.MethodCatalogDescribe:
+			if *mode == "bad-catalog" {
+				return protocol.CatalogInfo{}, nil
+			}
+			return catalogInfo, nil
+		case protocol.MethodCatalogSearch:
+			return catalogSearch(params, *mode)
+		case protocol.MethodCatalogGet:
+			return catalogGet(blobTmp, params, *mode)
+		case protocol.MethodCatalogSimilar:
+			return catalogSimilar(params, *mode)
 		case protocol.MethodAuthBegin:
 			return protocol.AuthBeginResult{
 				Form:  json.RawMessage(`{"type": "object", "properties": {"password": {"type": "string"}}, "required": ["password"]}`),

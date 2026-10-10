@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/davidgibbons/innkeeper/internal/cardhash"
+	"github.com/davidgibbons/innkeeper/cardhash"
 	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/merge"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"

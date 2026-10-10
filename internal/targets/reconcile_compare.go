@@ -8,7 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/davidgibbons/innkeeper/internal/cardhash"
+	"github.com/davidgibbons/innkeeper/cardhash"
 	"github.com/davidgibbons/innkeeper/internal/library"
 )
 

@@ -29,6 +29,10 @@ var callTimeout = 5 * time.Second
 // declares `database = true`. Empty sends none.
 var DatabaseURL string
 
+// Config is sent to the plugin as its instance config. Nil sends an empty
+// one.
+var Config map[string]any
+
 // Result is the outcome of one check. Err is nil when it passed.
 type Result struct {
 	Name string
@@ -61,7 +65,11 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	if err := os.Mkdir(tmp, 0o700); err != nil {
 		return nil, err
 	}
-	params := protocol.InitializeParams{InstanceID: "contract-check", Config: map[string]any{}, Secrets: secrets,
+	config := Config
+	if config == nil {
+		config = map[string]any{}
+	}
+	params := protocol.InitializeParams{InstanceID: "contract-check", Config: config, Secrets: secrets,
 		BlobStores: map[string]string{"contract-check": root}, BlobTmp: tmp, DatabaseURL: DatabaseURL}
 
 	p, err := pluginhost.Start(ctx, m, params, noCore, log)
@@ -111,6 +119,12 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 		}
 	}
 
+	if slices.Contains(m.Capabilities, "catalog") {
+		results = append(results, checkCatalog(ctx, p, tmp)...)
+		if errors.Is(results[len(results)-1].Err, protocol.ErrClosed) || !p.Alive() {
+			return exited(results, p), nil
+		}
+	}
 	if slices.Contains(m.Capabilities, "codec") {
 		checks := []struct {
 			name string

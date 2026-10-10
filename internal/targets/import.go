@@ -9,8 +9,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/davidgibbons/innkeeper/cardhash"
 	"github.com/davidgibbons/innkeeper/internal/bulk"
-	"github.com/davidgibbons/innkeeper/internal/cardhash"
 	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"

@@ -20,6 +20,7 @@ const (
 	catalogNotFoundName = "catalog.get returns -32004 for an unknown ID"
 	catalogGetName      = "catalog.get returns a search result's data and avatar"
 	catalogSimilarName  = "catalog.similar finds an item by its own hashes"
+	catalogIngestName   = "catalog.ingest completes"
 )
 
 // catalogPages is how many one-item pages the paging check walks.
@@ -35,6 +36,15 @@ func checkCatalog(ctx context.Context, p *pluginhost.Process, tmp string) []Resu
 	results := []Result{{catalogDescribeName, err}}
 	if err != nil {
 		return results
+	}
+	// An ingested catalog is empty until it ingests its source.
+	if info.Ingest && len(Config) > 0 {
+		params := protocol.CatalogIngestParams{Run: "contract-check"}
+		err := call(ctx, p, protocol.MethodCatalogIngest, params, &protocol.CatalogIngestResult{})
+		results = append(results, Result{catalogIngestName, err})
+		if err != nil {
+			return results
+		}
 	}
 	var first *protocol.CatalogItem
 	var sourceless bool

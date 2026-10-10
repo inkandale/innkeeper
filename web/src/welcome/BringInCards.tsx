@@ -36,17 +36,13 @@ export function BringInCards() {
   const [uploads, setUploads] = useState<Upload[]>([]);
   const nextKey = useRef(0);
 
-  const start = async (instance_id: number, params?: unknown) => {
-    const job: Job = must(await api.POST("/imports", { body: { instance_id, ...(params ? { params } : {}) } }));
+  // Seeds the cache so the job line has a status before its first fetch.
+  const track = (job: Job) => {
     qc.setQueryData(["job", job.id], job);
     return job.id;
   };
   const pull = useMutation({
-    mutationFn: async (instance_id: number) => {
-      const job: Job = must(await api.POST("/reconciles", { body: { instance_id } }));
-      qc.setQueryData(["job", job.id], job);
-      return job.id;
-    },
+    mutationFn: async (instance_id: number) => track(must(await api.POST("/reconciles", { body: { instance_id } }))),
     onSuccess: (job, id) => setStarted((s) => ({ ...s, [id]: job })),
   });
   // One file at a time: avatars can be large.
@@ -56,7 +52,7 @@ export function BringInCards() {
     for (const [i, f] of files.entries()) {
       let u: Upload = added[i]!;
       try {
-        u = { ...u, job: await start(instance_id, { blob: await upload(f), name: f.name }) };
+        u = { ...u, job: track(must(await api.POST("/imports", { body: { instance_id, params: { blob: await upload(f), name: f.name } } }))) };
       } catch (e) {
         u = { ...u, error: (e as Error).message };
       }

@@ -157,6 +157,20 @@ test("a drifted bound item, or one with an error, is still left to review", asyn
   expect(screen.queryByText(/Nothing to review/)).not.toBeInTheDocument();
 });
 
+test("a bound item with an error is still left to review", async () => {
+  progress = done({ items: [{ ...auto, remote_id: "e", name: "Ed", verdict: "bound", error: "bad JSON" }], totals: { bound: 1 } });
+  renderQueue();
+  expect(await screen.findByRole("table")).toBeInTheDocument();
+  expect(screen.getByText("bad JSON")).toBeInTheDocument();
+});
+
+test("the missing and unpushed note shows even with nothing to review", async () => {
+  progress = done({ items: [], missing: [4], unpushed: [5, 6], totals: {} });
+  renderQueue();
+  expect(await screen.findByText(/Nothing to review/)).toBeInTheDocument();
+  expect(screen.getByText(/1 bound card the app no longer has/)).toBeInTheDocument();
+});
+
 test("a pending nested world book keeps the table", async () => {
   progress = done({
     items: [{ ...auto, remote_id: "d", name: "Di", verdict: "bound", lorebooks: [{ ...auto, remote_id: "w", name: "W", verdict: "new", options: [{ action: "import" }], suggested: { action: "import" } }] }],
@@ -178,4 +192,19 @@ test("auto rows are labelled and start unchecked", async () => {
   expect(await screen.findByText("imported (auto)")).toBeInTheDocument();
   expect(screen.getByRole("checkbox", { name: "Apply Ann" })).not.toBeChecked();
   expect(screen.getByRole("checkbox", { name: "Apply Bo" })).toBeChecked();
+});
+
+test("the auto_imported chip shows the auto-imported rows, with the same label on world books", async () => {
+  progress = done({
+    items: [
+      { remote_id: "a", name: "Ann", app_hash: "ha", verdict: "new", auto_imported: true, options: null, lorebooks: [{ remote_id: "w", name: "AW", app_hash: "h", verdict: "new", auto_imported: true, options: null }] },
+      { remote_id: "b", name: "Bo", app_hash: "hb", verdict: "likely", options: [{ action: "import" }], suggested: { action: "import" } },
+    ],
+    totals: { new: 1, likely: 1, auto_imported: 1 },
+  });
+  renderQueue();
+  await userEvent.click(await screen.findByRole("button", { name: "auto_imported 1" }));
+  expect(screen.getByRole("link", { name: "Ann" })).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Bo" })).not.toBeInTheDocument();
+  expect(screen.getAllByText("imported (auto)")).toHaveLength(2);
 });

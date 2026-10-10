@@ -22,6 +22,8 @@ import "./Sync.css";
 
 const plural = (n: number, s: string) => `${n} ${s}${n === 1 ? "" : "s"}`;
 
+const verdictLabel = (i: Item) => (i.auto_bound ? "linked (auto)" : i.auto_imported ? "imported (auto)" : i.verdict);
+
 /** reasons lists the signals a candidate matched on, with their distances. */
 const reasons = (c: Candidate) =>
   Object.entries(c.reasons ?? {})
@@ -62,7 +64,8 @@ export function Queue() {
     return (r.item.options ?? []).find((o) => optionKey(o) === key);
   };
   const isChecked = (r: Row) => !!pickOf(r) && (checked[rowKey(r)] ?? (!!r.item.suggested && !r.item.auto_bound && !r.item.auto_imported && r.item.verdict !== "bound"));
-  const ownMatch = (r: Row) => !verdict || r.item.verdict === verdict || (verdict === "auto_bound" && !!r.item.auto_bound);
+  const ownMatch = (r: Row) => !verdict || r.item.verdict === verdict || (verdict === "auto_bound" && !!r.item.auto_bound) ||
+    (verdict === "auto_imported" && !!r.item.auto_imported);
   // A character shown only for a matching world book is context; Apply leaves it out.
   const shown = all.filter((r) => ownMatch(r) || r.item.lorebooks?.some((lb) => lb.verdict === verdict));
   const chosen = shown.filter((r) => ownMatch(r) && isChecked(r));
@@ -78,6 +81,13 @@ export function Queue() {
     .filter(([n]) => n)
     .map(([n, w]) => `${n} ${w}`)
     .join(", ");
+
+  const note = (!!snap?.missing?.length || !!snap?.unpushed?.length) && (
+    <p className="muted">
+      {!!snap.missing?.length && `${plural(snap.missing.length, "bound card")} the app no longer has. `}
+      {!!snap.unpushed?.length && `${plural(snap.unpushed.length, "card")} never pushed here.`}
+    </p>
+  );
 
   const apply = useMutation({
     mutationFn: async () => {
@@ -108,7 +118,10 @@ export function Queue() {
       ) : !snap ? (
         <p>Loading…</p>
       ) : nothingLeft ? (
-        <p>Nothing to review. {summary}</p>
+        <>
+          <p>Nothing to review. {summary}</p>
+          {note}
+        </>
       ) : (
         <>
           <p className="chips" role="group" aria-label="Verdicts">
@@ -118,12 +131,7 @@ export function Queue() {
               </button>
             ))}
           </p>
-          {(!!snap.missing?.length || !!snap.unpushed?.length) && (
-            <p className="muted">
-              {!!snap.missing?.length && `${plural(snap.missing.length, "bound card")} the app no longer has. `}
-              {!!snap.unpushed?.length && `${plural(snap.unpushed.length, "card")} never pushed here.`}
-            </p>
-          )}
+          {note}
           <table>
             <thead>
               <tr>
@@ -166,7 +174,7 @@ export function Queue() {
                         )}
                       </td>
                       <td>
-                        {it.auto_bound ? "linked (auto)" : it.auto_imported ? "imported (auto)" : it.verdict}
+                        {verdictLabel(it)}
                         {it.error && <span className="error"> {it.error}</span>}
                       </td>
                       <td>
@@ -191,7 +199,7 @@ export function Queue() {
                         <td />
                         <td>↳ {lb.name || lb.remote_id}</td>
                         <td>{lb.candidates?.[0]?.name}</td>
-                        <td>{lb.verdict}</td>
+                        <td>{verdictLabel(lb)}</td>
                         <td className="muted">{lb.suggested && optionLabel(lb.suggested, lb.candidates)}</td>
                       </tr>
                     ))}

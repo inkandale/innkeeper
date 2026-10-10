@@ -969,6 +969,31 @@
         ],
         "type": "object"
       },
+      "CheckResult": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/CheckResult.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "error": {
+            "description": "Why the instance doesn't work",
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "type": "object"
+      },
       "ClaimInBody": {
         "additionalProperties": false,
         "properties": {
@@ -6125,6 +6150,49 @@
           }
         },
         "summary": "Change a plugin instance",
+        "tags": [
+          "Plugins"
+        ]
+      }
+    },
+    "/instances/{id}/check": {
+      "post": {
+        "description": "Starts the plugin, even when the instance is broken; a pull target also lists the app's cards. A failed start marks the instance broken, and a good one clears that. An app error is reported but doesn't mark it broken.",
+        "operationId": "check-instance",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Check that a plugin instance works",
         "tags": [
           "Plugins"
         ]

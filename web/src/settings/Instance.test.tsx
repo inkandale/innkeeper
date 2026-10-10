@@ -38,6 +38,10 @@ beforeEach(() => {
       if (u.pathname === "/api/plugins") return json([login, st]);
       if (req.method === "GET" && u.pathname === "/api/instances/3") return json(broken);
       if (req.method === "GET" && u.pathname === "/api/instances/4") return json(owned);
+      if (u.pathname === "/api/instances/3/check") {
+        sent.push({ method: req.method, path: u.pathname, body: null });
+        return json({ ok: false, error: "login refused" });
+      }
       const body = await req.json();
       sent.push({ method: req.method, path: u.pathname, body });
       return json({ ...broken, ...(body as object), id: 9 });
@@ -100,6 +104,14 @@ test("edits a broken instance and sends only what changed", async () => {
     path: "/api/instances/3",
     body: { name: "home2", secrets: { password: null } },
   });
+});
+
+test("checks an instance and shows why it doesn't work", async () => {
+  const user = userEvent.setup();
+  renderAt("/settings/instances/3");
+  await user.click(await screen.findByRole("button", { name: "Check" }));
+  expect(await screen.findByText("Doesn't work: login refused")).toBeInTheDocument();
+  expect(sent).toEqual([{ method: "POST", path: "/api/instances/3/check", body: null }]);
 });
 
 test("a login provider edits its owner and warns about sessions", async () => {

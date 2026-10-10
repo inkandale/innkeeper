@@ -896,6 +896,26 @@ export interface paths {
         patch: operations["update-instance"];
         trace?: never;
     };
+    "/instances/{id}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check that a plugin instance works
+         * @description Starts the plugin, even when the instance is broken; a pull target also lists the app's cards. A failed start marks the instance broken, and a good one clears that. An app error is reported but doesn't mark it broken.
+         */
+        post: operations["check-instance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/instances/{id}/items": {
         parameters: {
             query?: never;
@@ -2077,6 +2097,17 @@ export interface components {
             after?: unknown;
             before?: unknown;
             field: string;
+        };
+        CheckResult: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/CheckResult.json
+             */
+            readonly $schema?: string;
+            /** @description Why the instance doesn't work */
+            error?: string;
+            ok: boolean;
         };
         ClaimInBody: {
             /**
@@ -4821,6 +4852,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InstanceInfo"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "check-instance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckResult"];
                 };
             };
             /** @description Error */

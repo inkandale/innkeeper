@@ -95,6 +95,15 @@ export function InstanceForm({
     },
   });
 
+  const check = useMutation({
+    mutationFn: async (id: number) => must(await api.POST("/instances/{id}/check", { params: { path: { id } } })),
+    // A check can mark the instance broken or clear that.
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["instance", instance?.id] });
+      qc.invalidateQueries({ queryKey: ["instances"] });
+    },
+  });
+
   return (
     <form
       className="instance-form"
@@ -107,7 +116,7 @@ export function InstanceForm({
       {instance?.broken_error && (
         <p className="error">
           Broken since {new Date(instance.broken_at ?? instance.updated_at).toLocaleString()}: {instance.broken_error}.
-          Saving clears this and restarts the plugin.
+          Saving or a check that starts the plugin clears this.
         </p>
       )}
       {instance && caps.includes("auth") && (
@@ -157,11 +166,18 @@ export function InstanceForm({
           <small className="muted">The login that becomes the owner. Leave empty for none.</small>
         </div>
       )}
+      {check.data && (check.data.ok ? <p>Works.</p> : <p className="error">Doesn't work: {check.data.error}</p>)}
+      {check.error && <p className="error">{check.error.message}</p>}
       {save.error && <p className="error">{save.error.message}</p>}
       <div className="actions">
         <button className="button primary" disabled={save.isPending}>
           Save
         </button>
+        {instance && (
+          <button type="button" className="button" disabled={check.isPending} onClick={() => check.mutate(instance.id)}>
+            Check
+          </button>
+        )}
         <Link className="button" to={cancelTo}>
           Cancel
         </Link>

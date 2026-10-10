@@ -349,8 +349,9 @@ copies its source into its own schema (`database = true`) and answers
 `catalog.ingest`. A **pass-through** catalog forwards each call to a remote
 site and stores nothing.
 
-Every item has an `id` you assign that never changes, a `kind` (`card` or
-`lorebook`), and one or more versions, each named by a string you choose.
+Every item has an `id` you assign that never changes, a `kind` in lowercase
+`snake_case`, and one or more versions, each named by a string you choose.
+The core adopts kinds `card` and `lorebook`.
 Reply with error `-32004` for an ID or version you don't have. Check params
 before reaching your source, so a bad request gets `-32602` even when the
 source is down.
@@ -382,8 +383,8 @@ source is down.
 | `sort` | One of your `sorts`, or empty for the first |
 | `page` | `size`, 1 to 100 or 0 for your default, and `cursor`, the `next` of the previous page or empty for the first |
 
-Reply with `-32602` for a kind, sort, or filter you didn't declare, or a
-filter value of the wrong shape. Otherwise reply with `items` and `next`, the
+Reply with `-32602` for a kind, sort, or filter you didn't declare, a filter
+value of the wrong shape, or a page size out of range. Otherwise reply with `items` and `next`, the
 cursor for the following page, or empty on the last. Each item has:
 
 | Field | Meaning |
@@ -391,7 +392,7 @@ cursor for the following page, or empty on the last. Each item has:
 | `id`, `kind`, `name` | Required |
 | `author`, `tags`, `summary` | Optional |
 | `latest_version` | The newest version's name |
-| `hashes` | The latest version's `content_hash` and, if you have them, `text_simhash` and `image_phash`. Compute them with the Go package `github.com/davidgibbons/innkeeper/cardhash`, over a card's `data` object or the whole lorebook, so they match the library's. `text_simhash` and `image_phash` are signed 64-bit integers |
+| `hashes` | The latest version's `content_hash` and, if you have them, `text_simhash` and `image_phash`. Compute them with the Go package `github.com/davidgibbons/innkeeper/cardhash`, over `cardhash.CardData` of a card (its `data` without `character_book` or the SillyTavern `fav` and `world` extensions) or the whole lorebook, so they match the library's. `text_simhash` and `image_phash` are signed 64-bit integers |
 | `thumbnail` | Optional. A base64 JPEG at most 160 pixels wide and 32 KiB |
 
 **`catalog.get`** returns one version of an item.
@@ -400,7 +401,7 @@ cursor for the following page, or empty on the last. Each item has:
 |---|---|
 | `id` | The item |
 | `version` | A version name, or empty for the latest |
-| `avatar` | `true` to write the card's image to `blob_tmp`. Only adopt sets it |
+| `avatar` | `true` to write the card's image to `blob_tmp`. Adopt and `innkeeper plugin check` set it |
 
 Reply with `item` (as in search), `version`, `versions` (newest first, each
 `{version, created}`, with `created` in RFC 3339 if you know it), `data` (a
@@ -471,8 +472,8 @@ It loads the manifest, then checks that:
   if the manifest declares it
 - a `push` plugin that claims `pull` answers `target.list` and
   `target.list_lorebooks` within 5 seconds, with a `remote_id` on every item
-  it returns. The check sends an empty config, so an error other than
-  `-32601` counts as an answer.
+  it returns. A target checked without its app can only return an error, so
+  an error other than `-32601` counts as an answer.
 - a `codec` plugin encodes a sample card in each of its `formats` into
   `blob_tmp` with a valid extension, decodes it back, and returns an error
   when asked to decode a file that isn't a card
@@ -481,9 +482,9 @@ It loads the manifest, then checks that:
 - a `catalog` plugin's `catalog.describe` reply is valid; `catalog.search`
   pages one item at a time without repeats and refuses an undeclared filter
   with `-32602`; `catalog.get` returns `-32004` for an unknown ID, and for the
-  first search result returns data that hashes to its `content_hash` and an
-  avatar inside `blob_tmp`; and, if it claims `similar`, `catalog.similar`
-  finds that item by its own hashes. Without `INNKEEPER_PLUGIN_CONFIG`, a
+  first search result returns data that hashes to its `content_hash` and, if
+  it returns an avatar, one inside `blob_tmp`; and, if it claims `similar`,
+  `catalog.similar` finds that item by its own hashes. Without `INNKEEPER_PLUGIN_CONFIG`, a
   catalog may refuse search with an error other than `-32601`, and may then
   answer `catalog.get` and `catalog.similar` the same way; the checks that
   need an item pass

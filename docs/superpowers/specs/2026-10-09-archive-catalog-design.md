@@ -49,7 +49,7 @@ A plugin declares `capabilities = ["catalog"]`. Methods:
 | `catalog.describe` | none | The kinds it holds, the filters it supports (name, label, type `enum`, `text`, `date_range` or `number_range`, and options for `enum`), its sort orders, and whether it supports `ingest` and `similar`. |
 | `catalog.search` | `q`, `kind`, `filters`, `sort`, `page` (`size`, `cursor`) | Items with ID, kind, name, author, tags, summary, latest version, an inline JPEG thumbnail of at most 32 KiB, and hashes (`content_hash`, `text_simhash`, `image_phash`), plus the next cursor. |
 | `catalog.get` | `id`, `version` (omitted means latest), `avatar` | The item's metadata, its version list, and the version as CCv3: a card, or a `character_book` for a lorebook. With `avatar`, the card's image as a file in `blob_tmp`, as `target.get` returns it. |
-| `catalog.similar` | `kind`, `hashes`, `max_distance`, `limit` | Items whose hashes fall within `max_distance`, closest first. Optional. |
+| `catalog.similar` | `kind`, `hashes`, `max_distance`, `limit` | Items with the same `content_hash`, or whose simhash or phash falls within `max_distance`, closest first. Optional. |
 | `catalog.ingest` | `run`, `checkpoint` | Runs as a core job. Sends the existing `progress` and `checkpoint` notifications, and returns counts: added, updated, removed, skipped. Optional. |
 
 Unknown IDs and versions return `-32004`, the error targets use for a missing `remote_id`. Filters the catalog didn't

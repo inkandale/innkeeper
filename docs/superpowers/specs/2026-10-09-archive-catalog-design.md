@@ -25,7 +25,7 @@ First real case: the chub.ai archive takeout, loaded from its 12GB SQL dump
 | Index | Each ingested catalog owns its index in its `plugin_<name>` schema and answers search itself. Core owns no catalog tables. |
 | Search | Postgres full-text search plus the filters each catalog declares. No embeddings in v1. Semantic search can come later as an enricher. |
 | Item kinds | `kind` is an open string the plugin declares: `card` and `lorebook` in v1, and `preset` once the library has presets (INN-39). |
-| Images | Stay in the plugin's schema. The chub dump already stores them as `bytea`. Core keeps one blob store. |
+| Images | Stay where the catalog's source keeps them. The chub archive keeps them as files named by hash, beside the dump. Core keeps one blob store. |
 | Adopt | Copies one version into the library as a new card or lorebook through the existing import path, as `emit.card` and `emit.lorebook` do. It doesn't bring the version chain or track later versions. |
 | Near-duplicates | Matched both ways. Core badges catalog results that match library items, and catalogs answer `catalog.similar` for the library card page. |
 | Language | Go, like every other plugin. `cardhash` becomes a public package so plugins use the same hashes as core. |
@@ -110,6 +110,12 @@ A shared Go package, not a plugin. It holds:
   `tsvector` with a GIN index).
 - Declared filters compiled to SQL, and cursor paging.
 - Tags stored and filtered in lowercase.
+- Versions numbered by the plugin, such as the dump's `increment`, or
+  numbered 1, 2, 3 as the data changes.
+- Entries that set their own author, tags, date added, and numbers for
+  `number_range` filters.
+- Entries over a Postgres limit, such as a description too long for a
+  `tsvector`, refused as bad data so an ingest skips them.
 - LSH bands over `text_simhash` and `image_phash`, in an `lsh` array column
   with a GIN index. Each hash splits into 9 bands of 7 bits, so hashes within
   8 bits share a band. `catalog.similar` refuses a `max_distance` over 8.
@@ -118,7 +124,7 @@ A shared Go package, not a plugin. It holds:
 
 ### `chub-archive`
 
-- **Config:** the path to the dump file.
+- **Config:** the path to the dump file, and the archive's image folders.
 - **Ingest:**
   1. Streams the dump one `COPY` block at a time. It parses the `COPY` text
      format itself, so it doesn't need psql.
@@ -126,13 +132,20 @@ A shared Go package, not a plugin. It holds:
      `nyaime_character_def`, `risuai_character_def`,
      `webring_character_def`, and `generic_character_def` into cards, and
      `chub_lorebook_def` into lorebooks. Each row is one version.
-  3. Joins `chub_character` and `chub_lorebook` for ratings, tags, and dates.
+     `webring_character_def` and `generic_character_def` have no source ID,
+     so each row is its own item, named by `card_data_hash`.
+  3. Reads `chub_character` and `chub_lorebook`, which come before their
+     versions in the dump, for tags, ratings, dates, and the hidden flag.
+  4. Reads each version's image from the image folders, at
+     `<a>/<b>/<c>/<rest>` of its `image_hash`. A missing image leaves the
+     version without one. Any other read error stops the ingest, which
+     retries from its checkpoint.
 - **Item ID:** `<table>:<source id>`. A version is the row's `increment`.
-  Re-ingesting a newer dump upserts on table, source ID, and increment, so IDs
-  stay stable.
-- **Checkpoint:** the current block and its byte offset in the dump.
-  `progress` counts rows, with the total taken from the line counts of the
-  `COPY` blocks.
+  `booru_character_def` has no `increment`, so its items have one version,
+  `1`. Re-ingesting skips versions already stored, so IDs stay stable.
+- **Checkpoint:** the current block, its byte offset, and the dump's size. A
+  checkpoint from a dump of another size is refused. `progress` counts bytes
+  of the dump.
 - **Filters:** site (the source table), tag, author, date added, rating, and
   hidden.
 - **Skipped:** `aicg_chronicles`, `stored_rentry_links`, `chub_user`,
@@ -233,5 +246,7 @@ Each step merges on its own.
   versions of an adopted card.
 - A second blob store.
 - JanitorAI and the historical scrapes, which need file ingesters.
+- Refreshing the ratings and tags of `chub-archive` versions already
+  ingested.
 - Using a catalog item as the merge ancestor in reconcile. The reconcile spec
   allows it, but nothing calls `catalog.get` for it yet.

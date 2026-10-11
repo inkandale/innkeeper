@@ -16,6 +16,7 @@ import (
 
 	"github.com/davidgibbons/innkeeper/cardhash"
 	"github.com/davidgibbons/innkeeper/internal/library"
+	"github.com/davidgibbons/innkeeper/internal/plugins"
 )
 
 const (
@@ -771,5 +772,51 @@ func TestReconcileSplitUsesUnboundCandidate(t *testing.T) {
 			it.Suggested.CardID != want.CardID {
 			t.Errorf("%s = %+v, suggested %+v", id, ids(it.Candidates), it.Suggested)
 		}
+	}
+}
+
+// Two apps reconciled side by side both see a card as new. The second import
+// binds to the card the first one made rather than adding a copy.
+func TestReconcileConcurrentImportsBindOneCard(t *testing.T) {
+	e := setup(t, nil)
+	dir2 := t.TempDir()
+	inst2, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: "fake", Name: "Other app",
+		Config: map[string]any{"dir": dir2}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.appCard("r1", map[string]any{"name": "Lia", "description": liaText}, nil)
+	raw, err := os.ReadFile(filepath.Join(e.dir, "r1.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir2, "r1.json"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// The other app's run reads the library before this one imports.
+	stale, err := e.s.Reconcile(e.ctx, ReconcileParams{InstanceID: inst2, Apply: ApplyNone}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	it := stale.Items[0]
+	if it.Verdict != VerdictNew {
+		t.Fatalf("other app item = %+v", it)
+	}
+	snap, err := e.s.Reconcile(e.ctx, ReconcileParams{InstanceID: e.inst, Apply: ApplyObvious}, nil)
+	if err != nil || !snap.Items[0].AutoImported {
+		t.Fatalf("first import = %+v, %v", snap.Items, err)
+	}
+	lia := e.bindingOf("r1").CardID
+	res, err := e.s.Resolve(e.ctx, Resolution{InstanceID: inst2, RemoteID: "r1", AppHash: it.AppHash, Action: "import"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cards int
+	if err := e.pool.QueryRow(e.ctx, `SELECT count(*) FROM card WHERE archived_at IS NULL`).Scan(&cards); err != nil {
+		t.Fatal(err)
+	}
+	// Brakka from setup and Lia.
+	if res.Action != "bind" || res.CardID != lia || cards != 2 {
+		t.Errorf("second import = %+v, want bind to #%d; %d cards", res, lia, cards)
 	}
 }

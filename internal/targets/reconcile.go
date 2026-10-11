@@ -565,7 +565,7 @@ items:
 			s.log.Warn("reconcile: auto-apply failed", "remote_id", it.RemoteID, "err", err)
 			continue
 		}
-		it.AutoBound, it.AutoImported = r.Action == "bind", r.Action == "import"
+		it.AutoBound, it.AutoImported = res.Action == "bind", res.Action == "import"
 		it.BindingID = res.BindingID
 		if it.AutoImported {
 			imported[k.name+":"+it.AppHash] = true

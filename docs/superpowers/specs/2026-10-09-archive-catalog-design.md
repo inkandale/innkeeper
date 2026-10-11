@@ -121,6 +121,8 @@ A shared Go package, not a plugin. It holds:
   8 bits share a band. `catalog.similar` refuses a `max_distance` over 8.
 - A new version when an item's whole data changes, including a card's
   embedded lorebook, which `content_hash` leaves out.
+- `Serve`, which answers the catalog protocol, so a plugin supplies only its
+  config, instance setup, `catalog.get`, and `catalog.ingest`.
 
 ### `chub-archive`
 

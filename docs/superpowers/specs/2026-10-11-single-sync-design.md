@@ -65,7 +65,8 @@ items of every app, which the review queue reads.
 
 - Migration: `binding.autosync boolean NOT NULL DEFAULT false`. Every
   existing binding starts off, so nothing pushes on deploy.
-- `PATCH /bindings/{id}` takes `{"autosync": bool}`, tier `write`.
+- `PATCH /bindings/{id}` takes `{"autosync": bool}`, tier `destructive`, as
+  push is: autosync replaces the app's copy without asking.
 - Turning it on pushes nothing until the next sync.
 
 ponytail: one switch per binding; add per-app defaults if switching cards one

@@ -178,3 +178,103 @@ func TestSetAutosync(t *testing.T) {
 		t.Errorf("unknown binding: %v", err)
 	}
 }
+
+// appData reads the data of the card the fake app in dir keeps as remoteID.
+func appData(t *testing.T, dir, remoteID string) map[string]any {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(dir, remoteID+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var item struct{ Data map[string]any }
+	if err := json.Unmarshal(raw, &item); err != nil {
+		t.Fatal(err)
+	}
+	return item.Data
+}
+
+// twoApps pushes e.card to e's app and to a second one, and returns the
+// second app's dir and binding.
+func twoApps(e *env) (string, Binding) {
+	e.t.Helper()
+	e.push(e.card)
+	inst2, dir2 := e.addApp()
+	b2, err := e.s.Push(e.ctx, inst2, e.card, false)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return dir2, b2
+}
+
+// bindingOfCard is e.card's binding on inst.
+func (e *env) bindingOfCard(inst int64) Binding {
+	e.t.Helper()
+	list, err := e.s.Bindings(e.ctx, e.card)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	for _, b := range list {
+		if b.InstanceID == inst {
+			return b
+		}
+	}
+	e.t.Fatalf("card %d has no binding on %d", e.card, inst)
+	return Binding{}
+}
+
+// An edit pulled from one app reaches an app with autosync on in the same sync.
+func TestSyncAutosyncPushes(t *testing.T) {
+	for _, on := range []bool{true, false} {
+		e := setup(t, nil)
+		dir2, b2 := twoApps(e)
+		if _, err := e.s.SetAutosync(e.ctx, b2.ID, on); err != nil {
+			t.Fatal(err)
+		}
+		e.editRemote(e.bindingOfCard(e.inst).RemoteID, "description", "Edited in the first app.")
+		res, err := e.s.Sync(e.ctx, SyncParams{}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := appData(t, dir2, b2.RemoteID)["description"]
+		pushed := res.Apps[1].Totals["autosync_pushed"]
+		if on && (got != "Edited in the first app." || pushed != 1) {
+			t.Errorf("autosync on: second app has %v, pushed %d", got, pushed)
+		}
+		if !on && (got == "Edited in the first app." || pushed != 0) {
+			t.Errorf("autosync off: second app has %v, pushed %d", got, pushed)
+		}
+	}
+}
+
+// Autosync doesn't overwrite an app copy that changed; the item waits for review.
+func TestSyncAutosyncLeavesChangedApp(t *testing.T) {
+	e := setup(t, nil)
+	dir2, b2 := twoApps(e)
+	if _, err := e.s.SetAutosync(e.ctx, b2.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	e.update(e.card, func(ed *library.Edit) { ed.Data = setField(ed.Data, "first_mes", "Edited in the library.") })
+	raw, err := os.ReadFile(filepath.Join(dir2, b2.RemoteID+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var item map[string]any
+	if err := json.Unmarshal(raw, &item); err != nil {
+		t.Fatal(err)
+	}
+	item["data"].(map[string]any)["description"] = "Edited in the second app."
+	raw, _ = json.Marshal(item)
+	if err := os.WriteFile(filepath.Join(dir2, b2.RemoteID+".json"), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := e.s.Sync(e.ctx, SyncParams{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := appData(t, dir2, b2.RemoteID)["description"]; got != "Edited in the second app." {
+		t.Errorf("second app was overwritten: %v", got)
+	}
+	if res.Apps[1].Totals["autosync_changed"] != 1 || res.Apps[1].Totals["autosync_pushed"] != 0 {
+		t.Errorf("totals = %v", res.Apps[1].Totals)
+	}
+}

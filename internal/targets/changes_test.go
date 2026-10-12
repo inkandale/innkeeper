@@ -100,3 +100,49 @@ func TestChanges(t *testing.T) {
 		t.Errorf("after bind = %+v, %v", ch.Rows, err)
 	}
 }
+
+func TestChangesBoundError(t *testing.T) {
+	e := setup(t, nil)
+	b := e.push(e.card)
+	// The fake still lists a card with no data, but innkeeper can't read it.
+	if err := os.WriteFile(filepath.Join(e.dir, b.RemoteID+".json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := e.s.Sync(e.ctx, SyncParams{Apply: ApplyNone}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Apps[0].Error != "" {
+		t.Fatal(res.Apps[0].Error)
+	}
+	ch, err := e.s.Changes(e.ctx, ChangesFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ch.Rows) != 1 || ch.Rows[0].CardID != e.card || len(ch.Rows[0].Apps) != 1 || ch.Rows[0].Apps[0].State != ChangeError {
+		t.Errorf("rows = %+v, want an error on card %d", ch.Rows, e.card)
+	}
+}
+
+func TestChangesOneItemPerCard(t *testing.T) {
+	e := setup(t, nil)
+	// Two identical copies of one card; the sync binds one, and the other must not claim the card too.
+	r := e.appCopy(e.card)
+	e.writeRemote("r7", e.remote(r))
+	e.writeRemote("r8", e.remote(r))
+	if err := os.Remove(filepath.Join(e.dir, r+".json")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.s.Sync(e.ctx, SyncParams{Apply: ApplyObvious}, nil); err != nil {
+		t.Fatal(err)
+	}
+	ch, err := e.s.Changes(e.ctx, ChangesFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range ch.Rows {
+		if r.CardID == e.card {
+			t.Errorf("card %d listed though bound: %+v", e.card, r.Apps)
+		}
+	}
+}

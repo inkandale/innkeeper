@@ -53,21 +53,27 @@ func (s *Service) Changes(ctx context.Context, f ChangesFilter) (Changes, error)
 		r.Apps = append(r.Apps, c)
 	}
 
-	// The copy each live binding accepted, by instance and remote ID, to drop
-	// entries settled since the snapshot.
-	accepted := map[int64]map[string]string{}
-	rows, err := s.pool.Query(ctx, `SELECT instance_id, remote_id, accepted_hash FROM binding
+	// Each live binding's card and accepted copy, by instance and remote ID, to
+	// drop entries settled since the snapshot; and the cards bound now.
+	type live struct {
+		card int64
+		hash string
+	}
+	accepted := map[int64]map[string]live{}
+	boundNow := map[[2]int64]bool{} // card and instance
+	rows, err := s.pool.Query(ctx, `SELECT instance_id, remote_id, card_id, accepted_hash FROM binding
 		WHERE card_id IS NOT NULL AND remote_state <> 'missing'`)
 	if err != nil {
 		return out, err
 	}
-	var inst int64
+	var inst, bcard int64
 	var remote, hash string
-	if _, err := pgx.ForEachRow(rows, []any{&inst, &remote, &hash}, func() error {
+	if _, err := pgx.ForEachRow(rows, []any{&inst, &remote, &bcard, &hash}, func() error {
 		if accepted[inst] == nil {
-			accepted[inst] = map[string]string{}
+			accepted[inst] = map[string]live{}
 		}
-		accepted[inst][remote] = hash
+		accepted[inst][remote] = live{bcard, hash}
+		boundNow[[2]int64{bcard, inst}] = true
 		return nil
 	}); err != nil {
 		return out, err
@@ -105,22 +111,28 @@ func (s *Service) Changes(ctx context.Context, f ChangesFilter) (Changes, error)
 			switch {
 			case it.AutoBound || it.AutoImported || it.AutoPulled:
 				continue
+			case it.Verdict == VerdictError:
+				// An item the app can't read has no candidates; a bound one belongs to its binding's card.
+				c.State = ChangeError
+				if isBound {
+					card = acc.card
+				} else if len(it.Candidates) > 0 {
+					card = it.Candidates[0].CardID
+				}
 			case it.Verdict == VerdictBound:
 				// A library-only change shows as ahead from the binding status instead.
-				if !it.AppChanged || it.AppOnly || len(it.Candidates) == 0 || (isBound && acc == it.AppHash) {
+				if !it.AppChanged || it.AppOnly || len(it.Candidates) == 0 || (isBound && acc.hash == it.AppHash) {
 					continue
 				}
 				c.State, card = ChangeBothChanged, it.Candidates[0].CardID
 			case isBound:
 				// Bound since the snapshot.
 				continue
-			case it.Verdict == VerdictError:
-				c.State = ChangeError
-				if len(it.Candidates) > 0 {
-					card = it.Candidates[0].CardID
-				}
 			default:
-				i := unbound(it.Candidates)
+				// A card bound on this app since the snapshot, as a duplicate's sibling may be, is taken.
+				i := slices.IndexFunc(it.Candidates, func(c Candidate) bool {
+					return c.BoundTo == "" && !boundNow[[2]int64{c.CardID, l.inst}]
+				})
 				if it.Verdict == VerdictNew || i < 0 {
 					c.State = ChangeNew
 				} else {

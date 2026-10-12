@@ -86,21 +86,68 @@ type querier interface {
 }
 
 func insert(ctx context.Context, db querier, s Spec, parent *int64, status string) (Job, error) {
-	payload := []byte(`{}`)
-	if s.Payload != nil {
-		var err error
-		if payload, err = json.Marshal(s.Payload); err != nil {
-			return Job{}, err
-		}
+	payload, err := payloadOf(s)
+	if err != nil {
+		return Job{}, err
 	}
 	return scanJob(db.QueryRow(ctx, `INSERT INTO job (kind, instance_id, payload, parent_id, status, finished_at)
 		VALUES ($1, $2, $3, $4, $5, CASE WHEN $5 = 'succeeded' THEN now() END) RETURNING `+jobCols,
 		s.Kind, s.InstanceID, payload, parent, status))
 }
 
+func payloadOf(s Spec) ([]byte, error) {
+	if s.Payload == nil {
+		return []byte(`{}`), nil
+	}
+	return json.Marshal(s.Payload)
+}
+
 // Enqueue adds a job to run as soon as a worker is free.
 func (q *Queue) Enqueue(ctx context.Context, s Spec) (Job, error) {
 	return insert(ctx, q.pool, s, nil, StatusQueued)
+}
+
+// EnqueueOnce returns the queued or running top-level job of s's kind, or
+// enqueues s when there is none.
+func (q *Queue) EnqueueOnce(ctx context.Context, s Spec) (Job, error) {
+	tx, err := q.pool.Begin(ctx)
+	if err != nil {
+		return Job{}, err
+	}
+	defer tx.Rollback(ctx)
+	// The schedule's lock, so a scheduled run and a manual start don't both enqueue.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('innkeeper-schedule'))`); err != nil {
+		return Job{}, err
+	}
+	j, err := scanJob(tx.QueryRow(ctx, `SELECT `+jobCols+` FROM job WHERE kind = $1 AND parent_id IS NULL
+		AND status IN ('queued', 'running') ORDER BY id LIMIT 1`, s.Kind))
+	if errors.Is(err, ErrNotFound) {
+		j, err = insert(ctx, tx, s, nil, StatusQueued)
+	}
+	if err != nil {
+		return Job{}, err
+	}
+	return j, tx.Commit(ctx)
+}
+
+// Record adds a finished top-level job holding progress, for work another
+// job did itself. A failure fails it with that message.
+func (q *Queue) Record(ctx context.Context, s Spec, progress json.RawMessage, failure error) (Job, error) {
+	payload, err := payloadOf(s)
+	if err != nil {
+		return Job{}, err
+	}
+	if progress == nil {
+		progress = json.RawMessage(`{}`)
+	}
+	status, msg := StatusSucceeded, (*string)(nil)
+	if failure != nil {
+		m := failure.Error()
+		status, msg = StatusFailed, &m
+	}
+	return scanJob(q.pool.QueryRow(ctx, `INSERT INTO job (kind, instance_id, payload, status, progress, error, finished_at)
+		VALUES ($1, $2, $3, $4, $5, $6, now()) RETURNING `+jobCols,
+		s.Kind, s.InstanceID, payload, status, progress, msg))
 }
 
 // EnqueueBulk adds a parent job with one child job per spec, in one

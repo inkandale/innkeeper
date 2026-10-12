@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -262,4 +263,45 @@ func ids(js []Job) []int64 {
 		out[i] = j.ID
 	}
 	return out
+}
+
+func TestEnqueueOnce(t *testing.T) {
+	q := newQueue(t)
+	ctx := context.Background()
+	a, err := q.EnqueueOnce(ctx, Spec{Kind: "t.once"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := q.EnqueueOnce(ctx, Spec{Kind: "t.once"})
+	if err != nil || b.ID != a.ID {
+		t.Fatalf("second start = %d, %v; want job %d", b.ID, err, a.ID)
+	}
+	if _, err := q.pool.Exec(ctx, `UPDATE job SET status = 'succeeded', finished_at = now() WHERE id = $1`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	c, err := q.EnqueueOnce(ctx, Spec{Kind: "t.once"})
+	if err != nil || c.ID == a.ID || c.Status != StatusQueued {
+		t.Fatalf("start after finish = %+v, %v", c, err)
+	}
+}
+
+func TestRecord(t *testing.T) {
+	q := newQueue(t)
+	ctx := context.Background()
+	ok, err := q.Record(ctx, Spec{Kind: "t.rec", Payload: map[string]int{"n": 1}}, json.RawMessage(`{"x":1}`), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var p struct{ X int }
+	if ok.Status != StatusSucceeded || ok.FinishedAt == nil || json.Unmarshal(ok.Progress, &p) != nil || p.X != 1 {
+		t.Errorf("recorded = %+v", ok)
+	}
+	bad, err := q.Record(ctx, Spec{Kind: "t.rec"}, nil, errors.New("boom"))
+	if err != nil || bad.Status != StatusFailed || bad.Error == nil || *bad.Error != "boom" || bad.FinishedAt == nil {
+		t.Errorf("failed record = %+v, %v", bad, err)
+	}
+	listed, err := q.List(ctx, ListOptions{Kind: "t.rec"})
+	if err != nil || len(listed) != 2 {
+		t.Errorf("listed %d, %v", len(listed), err)
+	}
 }

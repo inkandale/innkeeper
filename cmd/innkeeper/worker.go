@@ -34,6 +34,14 @@ func worker() error {
 		}
 		concurrency = n
 	}
+	syncEvery := time.Hour
+	if v := os.Getenv("INNKEEPER_SYNC_EVERY"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d < 0 {
+			return fmt.Errorf("INNKEEPER_SYNC_EVERY: %q is not a duration like 1h, or 0 for no schedule", v)
+		}
+		syncEvery = d
+	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	ctx, stop := signalContext()
 	defer stop()
@@ -75,6 +83,7 @@ func worker() error {
 			targets.ScanKind:           tg.RunScan,
 			targets.ReconcileKind:      tg.RunReconcile,
 			targets.ResolveKind:        tg.RunResolve,
+			targets.SyncKind:           tg.RunSync,
 			backup.Kind(backup.Assets): backup.BackupHandler(svc.backups, svc.pool, backupOpts, backup.Assets),
 			backup.Kind(backup.Config): backup.BackupHandler(svc.backups, svc.pool, backupOpts, backup.Config),
 			backup.RestoreKind:         backup.RestoreHandler(svc.backups, restoreOpts, afterConfig),
@@ -99,6 +108,9 @@ func worker() error {
 			{Kind: jobPruneKind, Every: 24 * time.Hour},
 			{Kind: targets.ScanKind, Every: time.Hour},
 		},
+	}
+	if syncEvery > 0 {
+		w.Schedules = append(w.Schedules, jobs.Schedule{Kind: targets.SyncKind, Every: syncEvery})
 	}
 	// Plugins installed or removed through the API take effect at the next job.
 	for kind, h := range w.Handlers {

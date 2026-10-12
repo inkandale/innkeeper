@@ -31,7 +31,8 @@ func (e *testEnv) appCard(dir, remoteID, name, greeting string) {
 // work runs reconcile and resolve jobs until the test ends.
 func (e *testEnv) work() {
 	w := &jobs.Worker{Queue: e.s.Queue, Log: quiet, Poll: 50 * time.Millisecond,
-		Handlers: map[string]jobs.Handler{targets.ReconcileKind: e.s.Targets.RunReconcile, targets.ResolveKind: e.s.Targets.RunResolve}}
+		Handlers: map[string]jobs.Handler{targets.ReconcileKind: e.s.Targets.RunReconcile, targets.ResolveKind: e.s.Targets.RunResolve,
+			targets.SyncKind: e.s.Targets.RunSync}}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- w.Run(ctx) }()
@@ -115,4 +116,37 @@ func TestReconcileRoutes(t *testing.T) {
 		t.Fatalf("children = %+v", children)
 	}
 	e.call("POST", "/resolutions", map[string]any{"resolutions": []map[string]any{{"remote_id": "rCarrow", "action": "skip"}}}, 400, nil)
+}
+
+func TestSyncRoute(t *testing.T) {
+	e := newEnv(t)
+	e.work()
+	inst, dir := e.target()
+	e.appCard(dir, "rCarrow", "Carrow", "Hello.")
+	var j jobOut
+	e.call("POST", "/syncs", map[string]any{}, 202, &j)
+	if last, r := e.watchJob(j.ID); last.Status != "succeeded" {
+		t.Fatalf("sync = %+v\n%s", last, r.Body)
+	}
+	e.call("GET", fmt.Sprintf("/jobs/%d", j.ID), nil, 200, &j)
+	var res targets.SyncResult
+	if err := json.Unmarshal(j.Progress, &res); err != nil {
+		t.Fatalf("result = %s, %v", j.Progress, err)
+	}
+	// The env's other fake instances can pull too, and fail without a dir; the sync goes on.
+	var mine targets.SyncApp
+	for _, a := range res.Apps {
+		if a.InstanceID == inst {
+			mine = a
+		}
+	}
+	if mine.JobID == 0 || mine.Error != "" {
+		t.Fatalf("app for instance %d = %+v in %s", inst, mine, j.Progress)
+	}
+	var app jobOut
+	e.call("GET", fmt.Sprintf("/jobs/%d", mine.JobID), nil, 200, &app)
+	if app.Kind != targets.ReconcileKind || app.Status != "succeeded" {
+		t.Errorf("app job = %+v", app)
+	}
+	e.call("POST", "/syncs", map[string]any{"instance_id": 999}, 404, nil)
 }

@@ -280,4 +280,16 @@ func (s *Server) targetRoutes(api huma.API) {
 		func(ctx context.Context, in *idIn) (*bindingOut, error) {
 			return s.binding(s.Targets.Check(ctx, in.ID))
 		})
+
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Read), OperationID: "start-scan", Method: http.MethodPost,
+		Path: "/scans", Summary: "Refresh: check every app for changes", Tags: tags, DefaultStatus: http.StatusAccepted,
+		Description: "Reads every bound item back from its app and counts the app items nothing is bound to. " +
+			"Changes nothing in the library or the apps. Returns the scan already queued or running, if there is one."},
+		func(ctx context.Context, _ *struct{}) (*jobResp, error) {
+			j, err := s.Queue.EnqueueOnce(ctx, jobs.Spec{Kind: targets.ScanKind})
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			return &jobResp{Body: toJob(j)}, nil
+		})
 }

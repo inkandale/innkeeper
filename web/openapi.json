@@ -8332,6 +8332,38 @@
         ]
       }
     },
+    "/scans": {
+      "post": {
+        "description": "Reads every bound item back from its app and counts the app items nothing is bound to. Changes nothing in the library or the apps. Returns the scan already queued or running, if there is one.",
+        "operationId": "start-scan",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Refresh: check every app for changes",
+        "tags": [
+          "Sync"
+        ]
+      }
+    },
     "/search": {
       "post": {
         "description": "Send {} to list every card that isn't archived, newest first. With catalog:\u003cid\u003e sources, also returns each catalog's first page of cards matching text, on the first library page only.",

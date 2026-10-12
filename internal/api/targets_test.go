@@ -306,3 +306,13 @@ func TestBindingAutosyncRoute(t *testing.T) {
 	}
 	e.call("PATCH", "/bindings/999999", map[string]any{"autosync": true}, 404, nil)
 }
+
+func TestScanRoute(t *testing.T) {
+	e := newEnv(t)
+	var a, b jobOut
+	e.call("POST", "/scans", nil, 202, &a)
+	e.call("POST", "/scans", nil, 202, &b)
+	if a.Kind != targets.ScanKind || b.ID != a.ID {
+		t.Errorf("scans = %+v, %+v", a, b)
+	}
+}

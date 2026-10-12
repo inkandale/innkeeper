@@ -202,6 +202,17 @@ func (rs *resolver) item(ctx context.Context, k kind, r Resolution) (ResolveResu
 	if it.hash != r.AppHash {
 		return res, stale
 	}
+	if r.Action == "import" && r.BindingID == 0 {
+		// Another app's import may have added this item since the comparison.
+		m, ok, err := rs.exactMatch(ctx, k, inst, rinfo, r.InstanceID, it)
+		if err != nil {
+			return res, err
+		}
+		if ok {
+			r.Action, r.CardID, r.BaseRevisionID, r.Default = "bind", m.id, m.head, merge.ChooseLibrary
+			res.Action, id, stale.id = "bind", m.id, m.id
+		}
+	}
 	var linked []int64
 	if !k.isLorebook() {
 		if res.Lorebooks, linked, err = rs.lorebooks(ctx, inst, rinfo, r, it.links); err != nil {
@@ -385,6 +396,28 @@ func (rs *resolver) importItem(ctx context.Context, k kind, inst pluginhost.Inst
 	_, rev, err := s.lib.Lorebooks.CreateFromNameTx(ctx, rs.tx, cmp.Or(it.name, "lorebook"), provenance,
 		library.Edit{Data: it.raw, Source: source, Message: "Imported"})
 	return rev.EntityID, rev.ID, err
+}
+
+// exactMatch finds an unbound library item with the app item's content. It
+// locks the item's name until the transaction ends, so concurrent imports from two apps see each other's copy.
+func (rs *resolver) exactMatch(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo,
+	instanceID int64, it appItem) (indexEntry, bool, error) {
+	if _, err := rs.tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+		fmt.Sprintf("import %s %s", k.name, it.name)); err != nil {
+		return indexEntry{}, false, err
+	}
+	ents, err := rs.s.loadEntries(ctx, k, inst, info, `e.archived_at IS NULL
+		AND coalesce(r.overrides -> $1 ->> 'name', r.data ->> 'name') = $2
+		AND NOT EXISTS (SELECT 1 FROM binding WHERE instance_id = $3 AND `+k.col+` = e.id)`, it.name, instanceID)
+	if err != nil {
+		return indexEntry{}, false, err
+	}
+	for _, e := range ents {
+		if e.hash == it.hash {
+			return e, true, nil
+		}
+	}
+	return indexEntry{}, false, nil
 }
 
 // bind binds the app item to the card, taking each hunk from the side its

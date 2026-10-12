@@ -6,6 +6,7 @@ export type Resolution = components["schemas"]["Resolution"];
 type Hunk = components["schemas"]["Hunk"];
 type TargetCount = components["schemas"]["TargetCount"];
 type BulkPreview = components["schemas"]["BulkPreview"];
+export type AppChange = components["schemas"]["AppChange"];
 
 // The snapshot is a sync job's progress, which the schema leaves
 // untyped. These match Snapshot in internal/targets/reconcile.go.
@@ -101,11 +102,11 @@ export function resolution(
 }
 
 /** bulkResolutions resolves rows as picked. The snapshot has no library head, so each bind is compared first. */
-export async function bulkResolutions(
+export async function bulkResolutions<R extends { kind: ItemKind; item: Pick<Item, "remote_id" | "app_hash" | "binding_id"> }>(
   instance: number,
-  picked: Row[],
-  pick: (r: Row) => Option,
-  compare: (r: Row, id: number) => Promise<Comparison>,
+  picked: R[],
+  pick: (r: R) => Option,
+  compare: (r: R, id: number) => Promise<Comparison>,
 ): Promise<Resolution[]> {
   const out: Resolution[] = [];
   // ponytail: four comparisons at a time, each reading the app; batch on the server if a few hundred binds is too slow.
@@ -144,6 +145,15 @@ export function reviewPath(instance: number, kind: ItemKind, remoteId: string, p
   const q = new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString();
   return `/sync/${instance}/${kind}/${encodeURIComponent(remoteId)}${q ? "?" + q : ""}`;
 }
+
+/** reviewable changes open Review; the others are pushed, unbound, or only shown. */
+export const reviewable = (c: AppChange) => c.state === "differs" || c.state === "both_changed" || c.state === "new";
+
+/** changePath reviews a change from the queue, so Review steps on to the next one. */
+export const changePath = (c: AppChange) => reviewPath(c.instance_id, "items", c.remote_id ?? "", { job: c.job_id ?? 0, queue: 1 });
+
+/** needsYou counts an app's changes that need a decision, from GET /sync/changes counts. */
+export const needsYou = (c: Record<string, number> = {}) => (c.differs ?? 0) + (c.both_changed ?? 0) + (c.error ?? 0) + (c.new ?? 0);
 
 export type Counts = Record<"in_sync" | "ahead" | "drifted" | "missing" | "cant_check" | "bound", number>;
 

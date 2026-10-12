@@ -34,8 +34,8 @@ beforeEach(() => {
         });
       if (u.pathname === "/api/jobs" && u.searchParams.get("kind") === "target.reconcile")
         return json([{ id: 5, instance_id: 2, kind: "target.reconcile", status: "succeeded", created_at: now, payload: {}, progress: { totals: { bound: 9, auto_bound: 1, auto_imported: 2, auto_pulled: 3 } } }]);
-      if (u.pathname === "/api/jobs" && u.searchParams.get("kind") === "target.scan")
-        return json([{ id: 3, kind: "target.scan", status: "succeeded", created_at: now, payload: {}, progress: { new_in_app: { "2": 4 } } }]);
+      if (u.pathname === "/api/sync/changes")
+        return json({ rows: [], counts: { "2": { differs: 2, both_changed: 1, error: 1, new: 3, ahead: 3, missing: 2 } } });
       if (u.pathname === "/api/jobs/6") return json({ id: 6, kind: "x", status: "running", created_at: now, payload: {}, progress: {} });
       if (req.method === "POST" && u.pathname !== "/api/search") {
         posts.push({ path: u.pathname, body: await req.json().catch(() => undefined) });
@@ -65,20 +65,35 @@ function renderSync() {
 test("lists target apps with their counts and last sync", async () => {
   renderSync();
   const row = await screen.findByRole("row", { name: /Lumiverse/ });
-  await waitFor(() => expect(within(row).getAllByRole("cell")[6]).toHaveTextContent("4"));
-  expect(within(row).getAllByRole("cell").map((c) => c.textContent).slice(0, 7)).toEqual(["Lumiverse", "lumiverse", "5", "3", "3", "4", "4"]);
+  await waitFor(() => expect(within(row).getAllByRole("cell")[2]).toHaveTextContent("7"));
+  expect(screen.getAllByRole("columnheader").map((c) => c.textContent)).toEqual(
+    ["Target", "In sync (cards)", "Needs you", "Ahead", "Missing", "Can't check", "Last sync"],
+  );
+  expect(within(row).getAllByRole("cell").map((c) => c.textContent).slice(0, 6)).toEqual(["Lumiverse", "5", "7", "3", "2", "4"]);
+  expect(within(row).getByRole("link", { name: "7" })).toHaveAttribute("href", "/sync/changes?instance_id=2");
+  expect(within(row).getByRole("link", { name: "3" })).toHaveAttribute("href", "/sync/changes?instance_id=2&state=ahead");
+  expect(within(row).getByRole("link", { name: "2" })).toHaveAttribute("href", "/sync/changes?instance_id=2&state=missing");
   const last = within(row).getByRole("link", { name: /ago/ });
   expect(last).toHaveAttribute("href", "/sync/reconciles/5");
-  expect(last).toHaveTextContent("applied: 6");
-  expect(screen.getByRole("columnheader", { name: "Last sync" })).toBeInTheDocument();
+  expect(last).not.toHaveTextContent("applied");
+  expect(screen.getByRole("link", { name: "Changes" })).toHaveAttribute("href", "/sync/changes");
   expect(screen.queryByText("Cards folder")).not.toBeInTheDocument();
 });
 
-test("the table shows new app items from the last scan", async () => {
+test("Can't check shows only when it isn't zero", async () => {
+  vi.mocked(fetch).mockImplementation(async (req) => {
+    const u = new URL((req as Request).url);
+    if (u.pathname === "/api/instances") return json([{ id: 2, name: "Lumiverse", plugin: "lumiverse" }]);
+    if (u.pathname === "/api/plugins") return json([{ name: "lumiverse", capabilities: ["push"] }]);
+    if (u.pathname === "/api/search") return json({ hits: [], total: 5, facets: { targets: [{ instance: 2, is: "in_sync", cards: 5 }] } });
+    if (u.pathname === "/api/sync/changes") return json({ rows: [], counts: {} });
+    return json([]);
+  });
   renderSync();
-  expect(await screen.findByRole("columnheader", { name: "New in app" })).toBeInTheDocument();
   const row = await screen.findByRole("row", { name: /Lumiverse/ });
-  await waitFor(() => expect(within(row).getAllByRole("cell")[6]).toHaveTextContent("4"));
+  await waitFor(() => expect(within(row).getAllByRole("cell")[1]).toHaveTextContent("5"));
+  expect(screen.queryByRole("columnheader", { name: "Can't check" })).not.toBeInTheDocument();
+  expect(within(row).getAllByRole("cell")[2]).toHaveTextContent("0");
 });
 
 test("Sync starts one run for every app", async () => {

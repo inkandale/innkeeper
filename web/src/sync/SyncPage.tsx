@@ -4,7 +4,7 @@ import { Link } from "react-router";
 import { api, must } from "../api/client";
 import { age, finished, type Job } from "../settings/jobUtil";
 import { useToast } from "../shell/Toasts";
-import { stateCounts } from "./sync";
+import { needsYou, stateCounts } from "./sync";
 import "./Sync.css";
 
 /** useRun starts a job for every app and watches it until it finishes, then refreshes the page's counts. */
@@ -24,7 +24,7 @@ function useRun(start: () => Promise<Job>, text: string) {
   useEffect(() => {
     if (!done) return;
     setId(undefined);
-    for (const queryKey of [["search", "card", "sync-counts"], ["jobs", "target.reconcile"], ["jobs", "target.scan"]])
+    for (const queryKey of [["search", "card", "sync-counts"], ["jobs", "target.reconcile"], ["sync", "changes"]])
       void qc.invalidateQueries({ queryKey });
   }, [done, qc]);
   const run = useMutation({
@@ -40,12 +40,6 @@ function useRun(start: () => Promise<Job>, text: string) {
   return { start: () => run.mutate(), busy: run.isPending || id !== undefined };
 }
 
-/** applied is how many items the run linked, imported, or pulled on its own. */
-function applied(j: Job): number | undefined {
-  const t = (j.progress as { totals?: Record<string, number> } | null)?.totals;
-  return t && (t.auto_bound ?? 0) + (t.auto_imported ?? 0) + (t.auto_pulled ?? 0);
-}
-
 /** Sync lists each target app with how its cards stand, and refreshes or syncs every app at once. */
 export function Sync() {
   const instances = useQuery({ queryKey: ["instances"], queryFn: async () => must(await api.GET("/instances")) });
@@ -59,15 +53,13 @@ export function Sync() {
     // ponytail: the newest 200 runs across all instances; an instance not run in that window shows Never.
     queryFn: async () => must(await api.GET("/jobs", { params: { query: { kind: "target.reconcile", limit: 200 } } })),
   });
-  const scans = useQuery({
-    queryKey: ["jobs", "target.scan"],
-    // The newest finished scan, so a scan in progress doesn't blank the counts.
-    queryFn: async () =>
-      must(await api.GET("/jobs", { params: { query: { kind: "target.scan", status: "succeeded", limit: 1 } } })),
+  const changes = useQuery({
+    queryKey: ["sync", "changes", "counts"],
+    queryFn: async () => must(await api.GET("/sync/changes")),
   });
-  const newInApp = (scans.data?.[0]?.progress as { new_in_app?: Record<string, number> } | null)?.new_in_app ?? {};
   const caps = new Map((plugins.data ?? []).map((p) => [p.name, p.capabilities ?? []]));
   const targets = (instances.data ?? []).filter((i) => caps.get(i.plugin)?.some((c) => c === "push" || c === "pull"));
+  const cantCheck = targets.some((i) => stateCounts(facets.data?.facets?.targets, i.id).cant_check > 0);
 
   const refresh = useRun(async () => must(await api.POST("/scans")), "Refreshing every app…");
   const sync = useRun(async () => must(await api.POST("/syncs", { body: {} })), "Syncing every app…");
@@ -91,53 +83,72 @@ export function Sync() {
           </button>
         </div>
       )}
-      {[facets, runs, scans].map((q, n) => q.isError && <p key={n} className="error">{q.error.message}</p>)}
+      {[facets, runs, changes].map((q, n) => q.isError && <p key={n} className="error">{q.error.message}</p>)}
       {!!targets.length && (
-        <table>
-          <thead>
-            <tr>
-              <th>Target</th>
-              <th>Plugin</th>
-              <th>In sync</th>
-              <th>Ahead</th>
-              <th>Drifted</th>
-              <th>Can't check</th>
-              <th>New in app</th>
-              <th>Last sync</th>
-            </tr>
-          </thead>
-          <tbody>
-            {targets.map((i) => {
-              const c = stateCounts(facets.data?.facets?.targets, i.id);
-              const last = runs.data?.find((j) => j.instance_id === i.id);
-              const wait = facets.isPending;
-              const n = last && applied(last);
-              return (
-                <tr key={i.id}>
-                  <td>{i.name}</td>
-                  <td>{i.plugin}</td>
-                  <td>{wait ? "…" : c.in_sync}</td>
-                  <td>{wait ? "…" : c.ahead}</td>
-                  <td>{wait ? "…" : c.drifted + c.missing}</td>
-                  <td>{wait ? "…" : c.cant_check}</td>
-                  <td>{newInApp[String(i.id)] ?? "–"}</td>
-                  <td>
-                    {last ? (
-                      <Link to={`/sync/reconciles/${last.id}`}>
-                        {age(last.created_at)} ago{last.status !== "succeeded" && ` (${last.status})`}
-                        {n !== undefined && `, applied: ${n}`}
-                      </Link>
-                    ) : runs.isPending ? (
-                      "…"
+        <>
+          <p>
+            <Link to="/sync/changes">Changes</Link>
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Target</th>
+                <th>In sync (cards)</th>
+                <th>Needs you</th>
+                <th>Ahead</th>
+                <th>Missing</th>
+                {cantCheck && <th>Can't check</th>}
+                <th>Last sync</th>
+              </tr>
+            </thead>
+            <tbody>
+              {targets.map((i) => {
+                const c = stateCounts(facets.data?.facets?.targets, i.id);
+                const last = runs.data?.find((j) => j.instance_id === i.id);
+                const wait = facets.isPending;
+                const n = changes.data?.counts[String(i.id)] ?? {};
+                const queue = (state?: string) => `/sync/changes?instance_id=${i.id}${state ? `&state=${state}` : ""}`;
+                return (
+                  <tr key={i.id}>
+                    <td>{i.name}</td>
+                    <td>{wait ? "…" : c.in_sync}</td>
+                    {changes.data ? (
+                      <>
+                        <td>
+                          <Link to={queue()}>{needsYou(n)}</Link>
+                        </td>
+                        <td>
+                          <Link to={queue("ahead")}>{n.ahead ?? 0}</Link>
+                        </td>
+                        <td>
+                          <Link to={queue("missing")}>{n.missing ?? 0}</Link>
+                        </td>
+                      </>
                     ) : (
-                      "Never"
+                      <>
+                        <td>…</td>
+                        <td>…</td>
+                        <td>…</td>
+                      </>
                     )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                    {cantCheck && <td>{c.cant_check}</td>}
+                    <td>
+                      {last ? (
+                        <Link to={`/sync/reconciles/${last.id}`}>
+                          {age(last.created_at)} ago{last.status !== "succeeded" && ` (${last.status})`}
+                        </Link>
+                      ) : runs.isPending ? (
+                        "…"
+                      ) : (
+                        "Never"
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </>
       )}
     </section>
   );

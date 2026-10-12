@@ -17,9 +17,10 @@ function useRun(start: () => Promise<Job>, text: string) {
     queryFn: async () => must(await api.GET("/jobs/{id}", { params: { path: { id: id! } } })),
     enabled: id !== undefined,
     // ponytail: polls every 2s; the job's event stream would also work but holds a connection open.
-    refetchInterval: (q) => (q.state.data && finished(q.state.data) ? false : 2000),
+    // A job that can't be read, such as one pruned since, stops the polling.
+    refetchInterval: (q) => (q.state.status === "error" || (q.state.data && finished(q.state.data)) ? false : 2000),
   });
-  const done = !!job.data && finished(job.data);
+  const done = job.isError || (!!job.data && finished(job.data));
   useEffect(() => {
     if (!done) return;
     setId(undefined);
@@ -60,7 +61,9 @@ export function Sync() {
   });
   const scans = useQuery({
     queryKey: ["jobs", "target.scan"],
-    queryFn: async () => must(await api.GET("/jobs", { params: { query: { kind: "target.scan", limit: 1 } } })),
+    // The newest finished scan, so a scan in progress doesn't blank the counts.
+    queryFn: async () =>
+      must(await api.GET("/jobs", { params: { query: { kind: "target.scan", status: "succeeded", limit: 1 } } })),
   });
   const newInApp = (scans.data?.[0]?.progress as { new_in_app?: Record<string, number> } | null)?.new_in_app ?? {};
   const caps = new Map((plugins.data ?? []).map((p) => [p.name, p.capabilities ?? []]));

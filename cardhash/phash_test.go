@@ -115,3 +115,30 @@ func TestDecodeImageBytesRefusesHuge(t *testing.T) {
 		t.Fatalf("err = %v, want the pixel limit", err)
 	}
 }
+
+func TestPixelHashIgnoresEncoding(t *testing.T) {
+	gray := image.NewGray(image.Rect(0, 0, 4, 4))
+	rgba := image.NewNRGBA(image.Rect(0, 0, 4, 4))
+	for y := range 4 {
+		for x := range 4 {
+			v := uint8(x*40 + y*10)
+			gray.SetGray(x, y, color.Gray{Y: v})
+			rgba.SetNRGBA(x, y, color.NRGBA{R: v, G: v, B: v, A: 255})
+		}
+	}
+	if PixelHash(gray) != PixelHash(rgba) {
+		t.Error("same pixels in two color models hash differently")
+	}
+	rgba.SetNRGBA(0, 0, color.NRGBA{R: 1, G: 0, B: 0, A: 255})
+	if PixelHash(gray) == PixelHash(rgba) {
+		t.Error("one changed pixel hashes the same")
+	}
+}
+
+func TestPixelHashIncludesSize(t *testing.T) {
+	a := image.NewGray(image.Rect(0, 0, 2, 8))
+	b := image.NewGray(image.Rect(0, 0, 8, 2))
+	if PixelHash(a) == PixelHash(b) {
+		t.Error("2×8 and 8×2 of the same pixels hash the same")
+	}
+}

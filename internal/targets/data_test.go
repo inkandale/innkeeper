@@ -75,31 +75,6 @@ func TestDroppedFields(t *testing.T) {
 	}
 }
 
-func TestAdoptChanges(t *testing.T) {
-	changes := []Change{
-		{Field: "first_mes", Before: json.RawMessage(`"Hail."`), After: json.RawMessage(`"Well met."`)},
-		{Field: "description", Before: json.RawMessage(`"A dwarf."`)},
-		{Field: "character_book", After: json.RawMessage(`{"entries": []}`)},
-	}
-	data, changed, err := applyChanges(json.RawMessage(`{"name": "Brakka", "description": "A dwarf.", "first_mes": "Hail."}`), changes)
-	if err != nil || !changed {
-		t.Fatal(changed, err)
-	}
-	if string(data) != `{"first_mes":"Well met.","name":"Brakka"}` {
-		t.Fatalf("data = %s", data)
-	}
-	over, changed, err := overrideChanges(json.RawMessage(`{"name": "Brakka", "description": "A dwarf.", "first_mes": "Hail."}`), json.RawMessage(`{"7": {"name": "Brakka (Fake)"}, "9": {"name": "Other"}}`), "7", changes)
-	if err != nil || !changed {
-		t.Fatal(changed, err)
-	}
-	if string(over) != `{"7":{"description":null,"first_mes":"Well met.","name":"Brakka (Fake)"},"9":{"name":"Other"}}` {
-		t.Fatalf("overrides = %s", over)
-	}
-	if _, changed, _ := applyChanges(json.RawMessage(`{}`), changes[2:]); changed {
-		t.Fatal("a lorebook-only change was applied")
-	}
-}
-
 func TestDiffIgnoresVolatileFields(t *testing.T) {
 	got, err := diff(json.RawMessage(`{"name": "B", "modification_date": 1}`), json.RawMessage(`{"name": "B", "modification_date": 2}`))
 	if err != nil || len(got) != 0 {
@@ -111,47 +86,8 @@ func TestDiffIgnoresVolatileFields(t *testing.T) {
 	}
 }
 
-func TestOverrideChangesRemovesNestedKeys(t *testing.T) {
-	base := json.RawMessage(`{"name":"B","extensions":{"a":1,"b":2}}`)
-	changes := []Change{{Field: "extensions", Before: json.RawMessage(`{"a":1,"b":2}`), After: json.RawMessage(`{"a":1}`)}}
-	over, changed, err := overrideChanges(base, json.RawMessage(`{}`), "7", changes)
-	if err != nil || !changed {
-		t.Fatal(changed, err)
-	}
-	var all map[string]json.RawMessage
-	if err := json.Unmarshal(over, &all); err != nil {
-		t.Fatal(err)
-	}
-	got, err := MergePatch(base, all["7"])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != `{"extensions":{"a":1},"name":"B"}` {
-		t.Fatalf("rendered %s", got)
-	}
-}
-
 func TestDecodeRejectsTrailingData(t *testing.T) {
 	if _, err := MergePatch(json.RawMessage(`{} {}`), json.RawMessage(`{}`)); err == nil {
 		t.Fatal("trailing data accepted")
-	}
-}
-
-func TestClearOverride(t *testing.T) {
-	over := json.RawMessage(`{"7":{"first_mes":"a","scenario":"b"},"8":{"first_mes":"c"}}`)
-	changes := []Change{{Field: "first_mes"}, {Field: "character_book"}}
-	got, changed, err := clearOverride(over, "7", changes)
-	if err != nil || !changed || string(got) != `{"7":{"scenario":"b"},"8":{"first_mes":"c"}}` {
-		t.Fatalf("got %s, %v, %v", got, changed, err)
-	}
-	got, changed, err = clearOverride(got, "7", []Change{{Field: "scenario"}})
-	if err != nil || !changed || string(got) != `{"8":{"first_mes":"c"}}` {
-		t.Fatalf("emptied: %s, %v, %v", got, changed, err)
-	}
-	if got, changed, err = clearOverride(got, "7", changes); err != nil || changed || string(got) != `{"8":{"first_mes":"c"}}` {
-		t.Fatalf("absent: %s, %v, %v", got, changed, err)
-	}
-	if _, changed, _ := clearOverride(over, "7", []Change{{Field: "character_book"}}); changed {
-		t.Fatal("character_book cleared")
 	}
 }

@@ -80,12 +80,6 @@ type bindingIn struct {
 	BindingID int64 `json:"binding_id"`
 }
 
-type adoptIn struct {
-	BindingID      int64  `json:"binding_id"`
-	Into           string `json:"into" jsonschema:"base: into the card or lorebook. override: into this target's override. ignore: stop reporting these changes."`
-	BaseRevisionID int64  `json:"base_revision_id,omitempty" jsonschema:"The head revision; required unless into is ignore"`
-}
-
 type itemsIn struct {
 	InstanceID int64  `json:"instance_id" jsonschema:"The target plugin instance"`
 	Kind       string `json:"kind,omitempty" jsonschema:"card or lorebook; default card"`
@@ -264,14 +258,6 @@ var tools = []tool{
 	def("check_drift", "Read a bound card or lorebook back from its app now, and report what changed there.", tier.Read,
 		func(ctx context.Context, c caller, in bindingIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", fmt.Sprintf("/bindings/%d/check", in.BindingID), nil)
-		}),
-	def("adopt", "Take the changes made in the app into the library, as a new revision.", tier.Write,
-		func(ctx context.Context, c caller, in adoptIn) (*sdk.CallToolResult, error) {
-			body := map[string]any{"into": in.Into}
-			if in.BaseRevisionID != 0 {
-				body["base_revision_id"] = in.BaseRevisionID
-			}
-			return c.call(ctx, "POST", fmt.Sprintf("/bindings/%d/adopt", in.BindingID), body)
 		}),
 	def("list_bindings", "List the target apps a card or lorebook is pushed to, with each one's status.", tier.Read,
 		func(ctx context.Context, c caller, in entityIn) (*sdk.CallToolResult, error) {

@@ -63,7 +63,7 @@ func (s *Service) enqueuePush(ctx context.Context, q *jobs.Queue, k kind, instan
 // from PreviewBulkPush, it returns a *StalePreviewError if the preview would
 // differ now, and each push may replace the app copy the preview counted.
 // Without it, each may replace only a copy unchanged since its last push or
-// adopt. A push whose app copy differs fails with ErrAppChanged.
+// resolve. A push whose app copy differs fails with ErrAppChanged.
 func (s *Service) EnqueueBulkPush(ctx context.Context, q *jobs.Queue, instanceID int64, cardIDs []int64, newCopy bool, confirm string) (jobs.Job, error) {
 	return s.enqueueBulkPush(ctx, q, cardKind, instanceID, cardIDs, newCopy, confirm)
 }

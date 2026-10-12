@@ -10,7 +10,7 @@ import (
 )
 
 // Check reads a bound card or lorebook back from its app and records whether the app's
-// copy changed since the last push or adopt. If a push or adopt lands while
+// copy changed since the last push or resolve. If a push or resolve lands while
 // it reads, Check records nothing and returns the binding as they left it.
 func (s *Service) Check(ctx context.Context, id int64) (Binding, error) {
 	b, err := s.stored(ctx, id)
@@ -41,7 +41,7 @@ func (s *Service) Check(ctx context.Context, id int64) (Binding, error) {
 	return s.Binding(ctx, id)
 }
 
-// record stores what a check found, unless a push or adopt landed since b
+// record stores what a check found, unless a push or resolve landed since b
 // was read. It guards on version alone: the accepted hash can't tell, because
 // a push of identical content leaves it unchanged. The guard must be a column
 // of the row, since a subquery would keep the statement's old snapshot when

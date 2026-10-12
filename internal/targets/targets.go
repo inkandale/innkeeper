@@ -1,5 +1,5 @@
 // Package targets syncs library cards and lorebooks with target apps through
-// push and pull plugins: bindings, pushes, drift checks, and adopting app
+// push and pull plugins: bindings, pushes, drift checks, and resolving app
 // changes.
 package targets
 
@@ -29,8 +29,6 @@ var (
 	// ErrNewCopy means the target can't update its copy, so pushing again
 	// makes another one. The caller must ask for that.
 	ErrNewCopy = errors.New("this target can't update cards; push with new_copy to make another copy")
-	// ErrNoChanges means there are no app changes to adopt.
-	ErrNoChanges = errors.New("the app's copy has no changes to adopt")
 	// ErrBadReply means the plugin replied with something the core can't use.
 	ErrBadReply = errors.New("plugin sent a bad reply")
 	// ErrUncertain means a create failed in a way that may have made the
@@ -156,14 +154,14 @@ func lock(ctx context.Context, tx pgx.Tx, k kind, instanceID, id int64) error {
 	return err
 }
 
-// stored is a binding row as checks and adopts read it.
+// stored is a binding row as checks read it.
 type stored struct {
 	k kind
 	// id is the card's or lorebook's ID.
 	instanceID, id                      int64
 	remoteID, remoteState, acceptedHash string
 	accepted, seen                      []byte
-	// version is bumped by every push and adopt. Writes that must lose to
+	// version is bumped by every push and resolve. Writes that must lose to
 	// one that landed meanwhile guard on it.
 	version int64
 }

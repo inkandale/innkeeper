@@ -53,11 +53,8 @@ func boundChanged(t *testing.T) (*env, Binding) {
 	return e, b
 }
 
-func TestBindDifferingItemHasNothingToAdopt(t *testing.T) {
-	e, b := boundChanged(t)
-	if _, err := e.s.Adopt(e.ctx, b.ID, IntoBase, e.head(e.card).ID); !errors.Is(err, ErrNoChanges) {
-		t.Fatalf("adopt: %v", err)
-	}
+func TestBindDifferingItemKeepsLibrary(t *testing.T) {
+	e, _ := boundChanged(t)
 	if field(t, e.head(e.card).Data, "description") != "A dwarf smith." || e.revisions(e.card) != 1 {
 		t.Fatalf("head = %s", e.head(e.card).Data)
 	}

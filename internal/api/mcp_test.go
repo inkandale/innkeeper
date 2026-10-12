@@ -83,7 +83,7 @@ func TestMCPToolsByTier(t *testing.T) {
 	}
 	read, write, all := names(tier.Read), names(tier.Write), names(tier.Destructive)
 	if !slices.Contains(read, "search_cards") || slices.Contains(read, "create_card") || slices.Contains(write, "push") ||
-		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 33 {
+		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 32 {
 		t.Fatalf("read %v\nwrite %v\nall %v", read, write, all)
 	}
 }
@@ -190,8 +190,6 @@ func TestMCPOtherTools(t *testing.T) {
 	if got := tool(t, s, "check_drift", map[string]any{"binding_id": bindings[0].ID}, false); !strings.Contains(got, "remote_changed") {
 		t.Fatalf("check_drift = %s", got)
 	}
-	head := c.Revision.ID
-	tool(t, s, "adopt", map[string]any{"binding_id": bindings[0].ID, "into": "base", "base_revision_id": head}, false)
 
 	var job struct{ ID int64 }
 	_ = json.Unmarshal([]byte(tool(t, s, "start_import", map[string]any{"instance_id": e.importID}, false)), &job)

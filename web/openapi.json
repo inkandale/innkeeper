@@ -31,38 +31,6 @@
         },
         "type": "object"
       },
-      "AdoptInBody": {
-        "additionalProperties": false,
-        "properties": {
-          "$schema": {
-            "description": "A URL to the JSON Schema for this object.",
-            "examples": [
-              "/api/schemas/AdoptInBody.json"
-            ],
-            "format": "uri",
-            "readOnly": true,
-            "type": "string"
-          },
-          "base_revision_id": {
-            "description": "The card's head revision. Required unless into is ignore; a stale one returns 409.",
-            "format": "int64",
-            "type": "integer"
-          },
-          "into": {
-            "description": "base: into the card's own data. override: into this target's override. ignore: keep the library as it is and stop reporting these changes.",
-            "enum": [
-              "base",
-              "override",
-              "ignore"
-            ],
-            "type": "string"
-          }
-        },
-        "required": [
-          "into"
-        ],
-        "type": "object"
-      },
       "ArchiveInBody": {
         "additionalProperties": false,
         "properties": {
@@ -514,7 +482,7 @@
             "type": "string"
           },
           "confirm": {
-            "description": "The confirm value from POST /pushes/preview. If the preview would differ now, the push is refused with 409 and the new preview. Without it, a push replaces only app copies unchanged since their last push or adopt.",
+            "description": "The confirm value from POST /pushes/preview. If the preview would differ now, the push is refused with 409 and the new preview. Without it, a push replaces only app copies unchanged since their last push or resolve.",
             "type": "string"
           },
           "instance_id": {
@@ -4072,59 +4040,6 @@
         ]
       }
     },
-    "/bindings/{id}/adopt": {
-      "post": {
-        "description": "Adopts into the card or lorebook the binding is for. A card's changes to character_book aren't adopted. To discard the app's changes, push instead.",
-        "operationId": "adopt",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AdoptInBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Binding"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "default": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorModel"
-                }
-              }
-            },
-            "description": "Error"
-          }
-        },
-        "summary": "Adopt the app's changes",
-        "tags": [
-          "Sync"
-        ]
-      }
-    },
     "/bindings/{id}/check": {
       "post": {
         "description": "Reads the card back from the app now.",
@@ -4844,7 +4759,7 @@
     },
     "/cards/{id}/push": {
       "post": {
-        "description": "Queues a push job. Pushing overwrites changes made in the app; adopt them first to keep them. A card push creates the card's lorebooks the app doesn't have, on a target that keeps lorebooks on their own.",
+        "description": "Queues a push job. Pushing overwrites changes made in the app; review them first (compare, then resolve) to keep them. A card push creates the card's lorebooks the app doesn't have, on a target that keeps lorebooks on their own.",
         "operationId": "push-card",
         "parameters": [
           {
@@ -7391,7 +7306,7 @@
     },
     "/lorebooks/{id}/push": {
       "post": {
-        "description": "Queues a push job. Pushing overwrites changes made in the app; adopt them first to keep them. A card push creates the card's lorebooks the app doesn't have, on a target that keeps lorebooks on their own.",
+        "description": "Queues a push job. Pushing overwrites changes made in the app; review them first (compare, then resolve) to keep them. A card push creates the card's lorebooks the app doesn't have, on a target that keeps lorebooks on their own.",
         "operationId": "push-lorebook",
         "parameters": [
           {
@@ -8186,7 +8101,7 @@
     },
     "/pushes": {
       "post": {
-        "description": "Queues one child job per card or lorebook the query matches. A child fails, leaving the app's copy alone, if that copy changed since the preview, or since its last push or adopt when confirm isn't sent.",
+        "description": "Queues one child job per card or lorebook the query matches. A child fails, leaving the app's copy alone, if that copy changed since the preview, or since its last push or resolve when confirm isn't sent.",
         "operationId": "push-cards",
         "requestBody": {
           "content": {

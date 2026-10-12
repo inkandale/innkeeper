@@ -25,7 +25,7 @@ First real case: the chub.ai archive takeout, loaded from its 12GB SQL dump
 | Index | Each ingested catalog owns its index in its `plugin_<name>` schema and answers search itself. Core owns no catalog tables. |
 | Search | Postgres full-text search plus the filters each catalog declares. No embeddings in v1. Semantic search can come later as an enricher. |
 | Item kinds | `kind` is an open string the plugin declares: `card` and `lorebook` in v1, and `preset` once the library has presets (INN-39). |
-| Images | Stay where the catalog's source keeps them. The chub archive keeps them as files named by hash, beside the dump. Core keeps one blob store. |
+| Images | `folder` reads them from its card files. `chub-archive` copies them from the takeout into a folder it owns during ingest, so the takeout isn't needed afterwards. Core keeps one blob store. |
 | Adopt | Copies one version into the library as a new card or lorebook through the existing import path, as `emit.card` and `emit.lorebook` do. It doesn't bring the version chain or track later versions. |
 | Near-duplicates | Matched both ways. Core badges catalog results that match library items, and catalogs answer `catalog.similar` for the library card page. |
 | Language | Go, like every other plugin. `cardhash` becomes a public package so plugins use the same hashes as core. |
@@ -126,7 +126,9 @@ A shared Go package, not a plugin. It holds:
 
 ### `chub-archive`
 
-- **Config:** the path to the dump file, and the archive's image folders.
+- **Config:** the path to the dump file, the archive's image folders, and
+  the image store, a writable folder the plugin owns. Ingest reads the dump
+  and image folders; after it, only the image store needs to stay mounted.
 - **Ingest:**
   1. Streams the dump one `COPY` block at a time. It parses the `COPY` text
      format itself, so it doesn't need psql.
@@ -139,9 +141,19 @@ A shared Go package, not a plugin. It holds:
   3. Reads `chub_character` and `chub_lorebook`, which come before their
      versions in the dump, for tags, ratings, dates, and the hidden flag.
   4. Reads each version's image from the image folders, at
-     `<a>/<b>/<c>/<rest>` of its `image_hash`. A missing image leaves the
-     version without one. Any other read error stops the ingest, which
-     retries from its checkpoint.
+     `<a>/<b>/<c>/<rest>` of its `image_hash`, and copies it into the image
+     store. A missing image leaves the version without one. Any other read
+     or write error stops the ingest, which retries from its checkpoint.
+     Ingest refuses to start if the image store isn't a writable folder.
+- **Image store:** one file per distinct image, at
+  `<h[0:2]>/<h[2:4]>/<h>.<ext>` where `h` is the `image_hash` and `ext`
+  comes from the image's bytes (`png`, `webp`, `jpg`, or `gif`). Each file
+  is written under a temporary name and renamed, so a crash never leaves a
+  partial image. A version already stored still has its image copied if the
+  store lacks it, so re-ingesting fills a new or incomplete store. The
+  01-05-2025 dump's images take about 100 GB.
+- **Avatar:** `catalog.get` reads the image from the image store only. A
+  missing file returns the item without an avatar.
 - **Item ID:** `<table>:<source id>`. A version is the row's `increment`.
   `booru_character_def` has no `increment`, so its items have one version,
   `1`. Re-ingesting skips versions already stored, so IDs stay stable.
@@ -218,7 +230,9 @@ not in the dump. Each needs its own file ingester, added to this plugin later.
 - **`chub-archive`:** a fixture dump cut from the real one, with a few rows
   from every table, multiple increments, and a bad row. Tests cover counts,
   resuming from a checkpoint in the middle of a block, and an idempotent
-  re-ingest.
+  re-ingest. Image store tests cover filling it, a re-ingest backfilling
+  missing images, `get` with the takeout gone, and a write failure failing
+  the run as retryable.
 - **`folder`:** a temp directory of PNG, JSON, CharX, and lorebook files, with
   a file added, changed, and deleted between runs.
 - **Core:** API tests against a fake catalog plugin cover search routing,
@@ -238,6 +252,7 @@ Each step merges on its own.
    protocol first.
 4. The `chub-archive` plugin.
 5. Web: the Archive page and the "Found in archives" panel.
+6. `chub-archive`'s image store. It doesn't depend on step 5.
 
 ## Out of scope
 

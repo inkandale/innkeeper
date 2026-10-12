@@ -330,7 +330,9 @@ ink sync bindings <card-id>                       list a card's bindings
 ink sync bindings show|pushes <binding-id>        show a binding, or list its pushes
 ink sync status <binding-id>                      read the app's copy now and show the binding
 ink sync unbind <binding-id> [--yes]              forget a binding and its push history
-ink sync run <instance-id> [params-json] [--dry-run]   sync an app with the library
+ink sync run [instance-id] [params-json] [--dry-run]   sync every app with the library, or one app
+ink sync refresh                                  check every app for changes; changes nothing
+ink sync autosync <binding-id> on|off             let each sync push the library's copy to this app, or stop it
 ink sync compare <instance-id> <remote-id> [card-id]
                                                   show how an app character differs from a card
 ink sync resolve <instance-id> <remote-id> bind|import|skip [card-id] [hunk=choice ...] [--default choice]
@@ -563,9 +565,19 @@ items exactly, imports the ones the library doesn't have, and leaves the rest
 for you to review:
 
 ```bash
+ink sync run                           # every app, one at a time
 ink sync run <instance-id>             # alias: ink sync reconcile
 ink sync run <instance-id> --dry-run   # report only; link and import nothing
+ink sync refresh                       # check every app; change nothing
 ```
+
+A sync of every app prints a line per app with its totals and the job to
+pass to `ink sync apply`.
+
+With autosync on, each sync pushes the library's copy to that app when the
+card is ahead and the app's copy hasn't changed, so it never overwrites an
+edit made in the app. Turning it on or off needs a destructive token:
+`ink sync autosync <binding-id> on|off`.
 
 It prints one row per app item, with each linked world book under its
 character, and ends with `<n> applied, <m> left to review`:

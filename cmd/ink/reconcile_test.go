@@ -169,3 +169,51 @@ func TestSyncRun(t *testing.T) {
 		t.Errorf("no dry-run request in %q", *got)
 	}
 }
+
+func TestSyncRunEveryApp(t *testing.T) {
+	got := stubAPI(t, map[string]string{
+		"/jobs/9/events": "event: job\ndata: {\"status\": \"succeeded\"}\n\n",
+		"/jobs/9": `{"id": 9, "kind": "target.sync", "status": "succeeded",
+			"progress": {"apps": [{"instance_id": 2, "job_id": 11, "totals": {"likely": 1, "auto_imported": 3}},
+				{"instance_id": 4, "job_id": 12, "error": "app is down"}]}}`,
+	})
+	out, err := runInk(t, "sync", "run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if (*got)[0] != `POST /syncs {}` {
+		t.Errorf("request = %s", (*got)[0])
+	}
+	for _, want := range []string{"instance 2: auto_imported=3 likely=1 (review: ink sync apply 11)", "instance 4: error: app is down"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	if _, err := runInk(t, "sync", "run", "--dry-run"); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(*got, `POST /syncs {"apply":"none"}`) {
+		t.Errorf("no dry-run request in %q", *got)
+	}
+}
+
+func TestSyncRefreshAndAutosync(t *testing.T) {
+	got := stubAPI(t, map[string]string{"PATCH /bindings/5": bindingJSON})
+	if _, err := runInk(t, "sync", "refresh"); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runInk(t, "sync", "autosync", "5", "on")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "autosync") {
+		t.Errorf("output lacks autosync:\n%s", out)
+	}
+	if _, err := runInk(t, "sync", "autosync", "5", "maybe"); err == nil {
+		t.Error("autosync maybe succeeded")
+	}
+	want := []string{"POST /scans ", `PATCH /bindings/5 {"autosync":true}`}
+	if !slices.Equal(*got, want) {
+		t.Errorf("requests = %q, want %q", *got, want)
+	}
+}

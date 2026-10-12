@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -19,6 +20,30 @@ func apiCall(cmd *cobra.Command, method, path string, body []byte) ([]byte, erro
 		return nil, err
 	}
 	return c.do(cmd.Context(), method, path, body)
+}
+
+func autosyncCmd() *cobra.Command {
+	return &cobra.Command{Use: "autosync <binding-id> on|off",
+		Short: "Let each sync push the library's copy to this app, or stop it",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := parseID(args[0])
+			if err != nil {
+				return err
+			}
+			if args[1] != "on" && args[1] != "off" {
+				return fmt.Errorf("say on or off, not %q", args[1])
+			}
+			body, err := json.Marshal(map[string]bool{"autosync": args[1] == "on"})
+			if err != nil {
+				return err
+			}
+			raw, err := apiCall(cmd, "PATCH", "/bindings/"+id, body)
+			if err != nil {
+				return err
+			}
+			return show(cmd, raw, printBinding)
+		}}
 }
 
 func printBindings(w io.Writer, list []wire.Binding) error {
@@ -40,6 +65,11 @@ func printBinding(w io.Writer, b wire.Binding) error {
 	if err := printBindings(w, []wire.Binding{b}); err != nil {
 		return err
 	}
+	autosync := "off"
+	if b.Autosync {
+		autosync = "on"
+	}
+	fmt.Fprintln(w, "autosync:", autosync)
 	if len(b.Changes) > 0 {
 		fmt.Fprintln(w, "\nchanged in the app since the last push or resolve:")
 		printChanges(w, b.Changes, "pushed", "app")

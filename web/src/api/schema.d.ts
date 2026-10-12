@@ -1737,6 +1737,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/syncs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sync every target app with the library
+         * @description Queues a sync of every app, one at a time, or returns the one already queued or running. Each app's snapshot is a finished reconcile job named in the result's apps; read it from GET /jobs/{id}.
+         */
+        post: operations["start-sync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/tags": {
         parameters: {
             query?: never;
@@ -2969,6 +2989,18 @@ export interface components {
             readonly $schema?: string;
             /** @enum {string} */
             type: "assets" | "config";
+        };
+        SyncParams: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/SyncParams.json
+             */
+            readonly $schema?: string;
+            /** @enum {string} */
+            apply?: "obvious" | "none";
+            /** Format: int64 */
+            instance_id?: number;
         };
         TagCount: {
             /** Format: int64 */
@@ -6471,6 +6503,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "start-sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncParams"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
             };
             /** @description Error */
             default: {

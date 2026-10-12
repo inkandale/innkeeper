@@ -3275,6 +3275,32 @@
         ],
         "type": "object"
       },
+      "SyncParams": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/SyncParams.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "apply": {
+            "enum": [
+              "obvious",
+              "none"
+            ],
+            "type": "string"
+          },
+          "instance_id": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "TagCount": {
         "additionalProperties": false,
         "properties": {
@@ -8504,6 +8530,48 @@
         "summary": "Claim this server",
         "tags": [
           "Auth"
+        ]
+      }
+    },
+    "/syncs": {
+      "post": {
+        "description": "Queues a sync of every app, one at a time, or returns the one already queued or running. Each app's snapshot is a finished reconcile job named in the result's apps; read it from GET /jobs/{id}.",
+        "operationId": "start-sync",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncParams"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Sync every target app with the library",
+        "tags": [
+          "Sync"
         ]
       }
     },

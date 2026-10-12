@@ -105,8 +105,8 @@ card bound to a second app shows `ahead`.
   set at ingest where the image is already decoded for `avatar_phash`.
 - Avatars are equal when both have a `pixel_hash` and it matches, or when
   their `sha256` matches.
-- A one-off job fills `pixel_hash` for existing image blobs. Bindings wrongly
-  `ahead` clear at their next check.
+- An older blob gets its `pixel_hash` the first time it is compared. Bindings wrongly
+  `ahead` clear at their next resolve or push.
 
 ponytail: exact pixels; an app that resizes or recompresses would still
 differ. Use `avatar_phash` distance 0 if that turns up.

@@ -144,17 +144,17 @@ export function Sync({ kind, id }: { kind: Kind; id: number }) {
               />{" "}
               autosync
             </label>
-            {kind === "card" && ["ahead", "missing", "remote_changed", "diverged"].includes(b.status) ? (
+            {/* The queue lists drift only after a sync reads the app, and cards only, so drift opens Review. */}
+            {kind === "card" && (b.status === "ahead" || b.status === "missing") ? (
               <>
                 {" "}
                 <Link to={`/sync/changes?instance_id=${b.instance_id}`}>Changes</Link>
               </>
             ) : (
-              // The changes queue lists cards only, so a world book's drift opens Review.
               (b.status === "remote_changed" || b.status === "diverged") && (
                 <>
                   {" "}
-                  <Link to={reviewPath(b.instance_id, "lorebook-items", b.remote_id, { card: id })}>Review</Link>
+                  <Link to={reviewPath(b.instance_id, kind === "card" ? "items" : "lorebook-items", b.remote_id, { card: id })}>Review</Link>
                 </>
               )
             )}

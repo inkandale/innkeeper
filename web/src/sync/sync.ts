@@ -141,16 +141,41 @@ export async function resolveItem(instance: number, kind: ItemKind, remoteId: st
     : must(await api.POST("/instances/{id}/lorebook-items/{remote_id}/resolve", { params: { path }, body }));
 }
 
-export function reviewPath(instance: number, kind: ItemKind, remoteId: string, params: Record<string, number> = {}): string {
-  const q = new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString();
+/** query is a URL query string of the params that are set. */
+const query = (params: Record<string, number | string | undefined>) =>
+  new URLSearchParams(Object.entries(params).flatMap(([k, v]) => (v === undefined ? [] : [[k, String(v)]]))).toString();
+
+export function reviewPath(
+  instance: number,
+  kind: ItemKind,
+  remoteId: string,
+  params: Record<string, number | string | undefined> = {},
+): string {
+  const q = query(params);
   return `/sync/${instance}/${kind}/${encodeURIComponent(remoteId)}${q ? "?" + q : ""}`;
 }
 
 /** reviewable changes open Review; the others are pushed, unbound, or only shown. */
 export const reviewable = (c: AppChange) => c.state === "differs" || c.state === "both_changed" || c.state === "new";
 
-/** changePath reviews a change from the queue, so Review steps on to the next one. */
-export const changePath = (c: AppChange) => reviewPath(c.instance_id, "items", c.remote_id ?? "", { job: c.job_id ?? 0, queue: 1 });
+/** ChangesFilter narrows the changes queue, as GET /sync/changes takes it. */
+export type ChangesFilter = { instance_id?: number; state?: AppChange["state"] };
+
+/** changesFilter reads the queue's filter from a URL's search params. */
+export const changesFilter = (p: URLSearchParams): ChangesFilter => ({
+  instance_id: Number(p.get("instance_id")) || undefined,
+  state: (p.get("state") || undefined) as AppChange["state"] | undefined,
+});
+
+/** changesPath is the changes queue, filtered. */
+export function changesPath(f: ChangesFilter = {}): string {
+  const q = query(f);
+  return `/sync/changes${q ? "?" + q : ""}`;
+}
+
+/** changePath reviews a change from the queue, so Review steps on to the next one within the queue's filter. */
+export const changePath = (c: AppChange, f: ChangesFilter = {}) =>
+  reviewPath(c.instance_id, "items", c.remote_id ?? "", { job: c.job_id ?? 0, queue: 1, ...f });
 
 /** needsYou counts an app's changes that need a decision, from GET /sync/changes counts. */
 export const needsYou = (c: Record<string, number> = {}) => (c.differs ?? 0) + (c.both_changed ?? 0) + (c.error ?? 0) + (c.new ?? 0);

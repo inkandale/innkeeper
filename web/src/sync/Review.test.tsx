@@ -55,7 +55,8 @@ let compares: string[];
 let resolved: unknown[];
 let stale: boolean;
 let changesGets: number;
-const changes = {
+let changes: { rows: { card_id?: number; name: string; apps: { instance_id: number; state: string; remote_id: string; job_id?: number; binding_id?: number }[] }[]; counts: object };
+const baseChanges = {
   rows: [
     { card_id: 1, name: "Ann", apps: [{ instance_id: 3, state: "differs", remote_id: "a", job_id: 5 }] },
     { card_id: 4, name: "Bo", apps: [{ instance_id: 3, state: "ahead", remote_id: "x", binding_id: 11 }] },
@@ -64,6 +65,7 @@ const changes = {
   counts: {},
 };
 beforeEach(() => {
+  changes = baseChanges;
   changesGets = 0;
   progress = snap;
   compares = [];
@@ -76,7 +78,13 @@ beforeEach(() => {
       if (u.pathname === "/api/jobs/5") return json({ ...job, progress });
       if (u.pathname === "/api/sync/changes") {
         changesGets++;
-        return json(changes);
+        // The API filters entries by app and state.
+        const inst = Number(u.searchParams.get("instance_id")) || 0;
+        const state = u.searchParams.get("state") ?? "";
+        const rows = changes.rows
+          .map((r) => ({ ...r, apps: r.apps.filter((c) => (!inst || c.instance_id === inst) && (!state || c.state === state)) }))
+          .filter((r) => r.apps.length);
+        return json({ ...changes, rows });
       }
       if (u.pathname === "/api/instances/3/items/a/compare") {
         compares.push(u.searchParams.get("card_id")!);
@@ -299,6 +307,26 @@ test("with no review left, the queue opens", async () => {
   await screen.findByText("2 of 2");
   await user.click(screen.getByRole("button", { name: "Later" }));
   await waitFor(() => expect(at(router)).toBe("/sync/changes"));
+});
+
+test("filtered to one app, steps through that app's reviews only and returns to the filtered queue", async () => {
+  changes = {
+    ...baseChanges,
+    rows: [
+      baseChanges.rows[0]!,
+      { card_id: 6, name: "Dee", apps: [{ instance_id: 8, state: "differs", remote_id: "d", job_id: 9 }] },
+      ...baseChanges.rows.slice(1),
+    ],
+  };
+  const router = renderReview("/sync/3/items/a?job=5&queue=1&instance_id=3");
+  const user = userEvent.setup();
+  expect(await screen.findByText("1 of 2")).toBeInTheDocument();
+  await screen.findByRole("radiogroup", { name: "Keep for description#1" });
+  await user.click(screen.getByRole("button", { name: "Resolve" }));
+  await waitFor(() => expect(at(router)).toBe("/sync/3/items/c?job=5&queue=1&instance_id=3"));
+  await screen.findByText("2 of 2");
+  await user.click(screen.getByRole("button", { name: "Later" }));
+  await waitFor(() => expect(at(router)).toBe("/sync/changes?instance_id=3"));
 });
 
 test("without the queue, Review neither counts nor offers Later", async () => {

@@ -144,6 +144,14 @@ test("Review one by one opens the first review", async () => {
   expect(router.state.location.pathname + router.state.location.search).toBe("/sync/2/items/z?job=7&queue=1");
 });
 
+test("Review one by one keeps the filter", async () => {
+  const router = renderChanges("/sync/changes?instance_id=2&state=differs");
+  await userEvent.click(await screen.findByRole("link", { name: "Review one by one" }));
+  expect(router.state.location.pathname + router.state.location.search).toBe(
+    "/sync/2/items/z?job=7&queue=1&instance_id=2&state=differs",
+  );
+});
+
 test("nothing to do", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => json({ rows: [], counts: {} })));
   renderChanges();

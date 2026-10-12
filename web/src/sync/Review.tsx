@@ -8,6 +8,8 @@ import { entryOf } from "../card/History";
 import { useToast } from "../shell/Toasts";
 import {
   changePath,
+  changesFilter,
+  changesPath,
   compareItem,
   decidable,
   optionKey,
@@ -177,6 +179,7 @@ function ReviewItem() {
   const [search, setSearch] = useSearchParams();
   const jobId = Number(search.get("job")) || 0;
   const queue = search.has("queue");
+  const filter = changesFilter(search);
   const navigate = useNavigate();
   const location = useLocation();
   const qc = useQueryClient();
@@ -189,13 +192,13 @@ function ReviewItem() {
   });
   const changes = useQuery({
     enabled: queue,
-    queryKey: ["sync", "changes"],
-    queryFn: async () => must(await api.GET("/sync/changes")),
+    queryKey: ["sync", "changes", filter.instance_id, filter.state],
+    queryFn: async () => must(await api.GET("/sync/changes", { params: { query: filter } })),
   });
   const reviews = (changes.data?.rows ?? []).flatMap((r) => r.apps ?? []).filter(reviewable);
   const at = reviews.findIndex((c) => c.instance_id === instance && c.remote_id === remoteId);
   const next = reviews[at + 1];
-  const onward = () => navigate(next ? changePath(next) : "/sync/changes");
+  const onward = () => navigate(next ? changePath(next, filter) : changesPath(filter));
   const snap = snapshotOf(job.data);
   const item = snap && rows(snap).find((r) => r.kind === kind && r.item.remote_id === remoteId)?.item;
   const suggested = item?.suggested;
@@ -308,7 +311,7 @@ function ReviewItem() {
   if (job.isError) return <p className="error page">{job.error.message}</p>;
   return (
     <div className="review">
-      <p>{queue ? <Link to="/sync/changes">← Changes</Link> : jobId ? <Link to={`/sync/reconciles/${jobId}`}>← Sync #{jobId}</Link> : <Link to="/sync">← Sync</Link>}</p>
+      <p>{queue ? <Link to={changesPath(filter)}>← Changes</Link> : jobId ? <Link to={`/sync/reconciles/${jobId}`}>← Sync #{jobId}</Link> : <Link to="/sync">← Sync</Link>}</p>
       <section aria-label={name}>
         <div className="row">
           <h1>{name}</h1>

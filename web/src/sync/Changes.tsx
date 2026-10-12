@@ -6,7 +6,7 @@ import type { components } from "../api/schema";
 import { badgeClass } from "../cards/Tile";
 import { useToast } from "../shell/Toasts";
 import { PushPreview } from "./PushPreview";
-import { bulkResolutions, changePath, compareItem, pushSummary, reviewable, type AppChange, type Option } from "./sync";
+import { bulkResolutions, changePath, changesFilter, compareItem, pushSummary, reviewable, type AppChange, type Option } from "./sync";
 import "./Sync.css";
 
 type ChangeRow = components["schemas"]["ChangeRow"];
@@ -30,8 +30,8 @@ export function Changes() {
   const qc = useQueryClient();
   const toast = useToast();
   const [params, setParams] = useSearchParams();
-  const instance = Number(params.get("instance_id")) || undefined;
-  const state = (params.get("state") || undefined) as (typeof states)[number] | undefined;
+  const filter = changesFilter(params);
+  const { instance_id: instance, state } = filter;
   const changes = useQuery({
     queryKey: ["sync", "changes", instance, state],
     queryFn: async () => must(await api.GET("/sync/changes", { params: { query: { instance_id: instance, state } } })),
@@ -132,7 +132,7 @@ export function Changes() {
       case "both_changed":
       case "new":
         return (
-          <Link to={changePath(c)}>
+          <Link to={changePath(c, filter)}>
             Review{where}
           </Link>
         );
@@ -181,7 +181,7 @@ export function Changes() {
           ))}
         </select>
         {first && (
-          <Link className="button" to={changePath(first)}>
+          <Link className="button" to={changePath(first, filter)}>
             Review one by one
           </Link>
         )}

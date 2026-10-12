@@ -75,6 +75,9 @@ func (s *Service) push(ctx context.Context, k kind, instanceID, id int64, newCop
 		return Binding{}, err
 	}
 	defer tx.Rollback(ctx)
+	if err := waitForSync(ctx, tx); err != nil {
+		return Binding{}, err
+	}
 	if err := lock(ctx, tx, k, instanceID, id); err != nil {
 		return Binding{}, err
 	}

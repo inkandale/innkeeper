@@ -36,6 +36,11 @@ func (s *Service) RunReconcile(ctx context.Context, r *jobs.Run) error {
 		return fmt.Errorf("reconcile payload: %w", err)
 	}
 	p.InstanceID = *r.InstanceID
+	ctx, release, err := s.lockSync(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 	snap, err := s.Reconcile(ctx, p, func(done, total int) {
 		raw, _ := json.Marshal(map[string]int{"done": done, "total": total})
 		r.SetProgress(raw)

@@ -871,3 +871,42 @@ func TestReconcileBindIgnoresAvatarMetadata(t *testing.T) {
 		}
 	}
 }
+
+// An edit made only in the app becomes a library revision.
+func TestReconcilePullsAppOnlyEdits(t *testing.T) {
+	e := setup(t, nil)
+	b := e.push(e.card)
+	e.editRemote(b.RemoteID, "description", "Edited in the app.")
+	snap, err := e.s.Reconcile(e.ctx, ReconcileParams{InstanceID: e.inst, Apply: ApplyObvious}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	it := snap.Items[0]
+	if !it.AppOnly || !it.AutoPulled || it.AutoBound || snap.Totals["auto_pulled"] != 1 {
+		t.Fatalf("item = %+v, totals %v", it, snap.Totals)
+	}
+	var data map[string]any
+	if err := json.Unmarshal(e.head(e.card).Data, &data); err != nil || data["description"] != "Edited in the app." {
+		t.Errorf("library = %v, %v", data, err)
+	}
+	if got := e.status(e.card); got != "in_sync" {
+		t.Errorf("status %s", got)
+	}
+}
+
+// Edits on both sides stay for the owner, even when they don't conflict.
+func TestReconcileLeavesBothSidesEdited(t *testing.T) {
+	e := setup(t, nil)
+	b := e.push(e.card)
+	e.editRemote(b.RemoteID, "description", "Edited in the app.")
+	e.update(e.card, func(ed *library.Edit) { ed.Data = setField(ed.Data, "first_mes", "Edited in the library.") })
+	before := e.head(e.card).ID
+	snap, err := e.s.Reconcile(e.ctx, ReconcileParams{InstanceID: e.inst, Apply: ApplyObvious}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	it := snap.Items[0]
+	if it.AppOnly || it.AutoPulled || e.head(e.card).ID != before {
+		t.Errorf("item = %+v; head moved: %v", it, e.head(e.card).ID != before)
+	}
+}

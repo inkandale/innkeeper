@@ -38,7 +38,7 @@ type Snapshot struct {
 	Lorebooks []ReconcileItem `json:"lorebooks"` // world books no character links to
 	Missing   []int64         `json:"missing"`   // card IDs bound here whose app item is gone
 	Unpushed  []int64         `json:"unpushed"`  // card IDs with no binding here
-	Totals    map[string]int  `json:"totals"`    // by verdict, auto_bound, and auto_imported; each world book once
+	Totals    map[string]int  `json:"totals"`    // by verdict, auto_bound, auto_imported, and auto_pulled; each world book once
 }
 
 // ReconcileItem is one app item and how it lines up with the library.
@@ -57,6 +57,11 @@ type ReconcileItem struct {
 	AutoBound bool `json:"auto_bound,omitempty"`
 	// AutoImported means the run imported this new item.
 	AutoImported bool `json:"auto_imported,omitempty"`
+	// AppOnly means the app changed this bound item and the library didn't
+	// since the last push or resolve.
+	AppOnly bool `json:"app_only,omitempty"`
+	// AutoPulled means the run took the app's changes into the library.
+	AutoPulled bool `json:"auto_pulled,omitempty"`
 }
 
 // Candidate is a library card or lorebook an app item may be a copy of.

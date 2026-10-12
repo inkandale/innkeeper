@@ -225,7 +225,7 @@ Every API token has a tier, and every route needs one:
 | Tier | Allows |
 |---|---|
 | `read` | Anything that changes nothing: lists, search, push previews, drift checks |
-| `write` | Also changes to the library, which revision history can undo: edits, adopts, imports |
+| `write` | Also changes to the library, which revision history can undo: edits, imports |
 | `destructive` | Also what Innkeeper can't undo, or what grants more access: pushes, unbinding, deleting collections, creating or changing plugin instances, managing tokens |
 
 `innkeeper token create <name>` makes a `read` token unless you name a tier.
@@ -329,9 +329,10 @@ ink sync preview <instance-id> <card-id>          show what pushing a card would
 ink sync bindings <card-id>                       list a card's bindings
 ink sync bindings show|pushes <binding-id>        show a binding, or list its pushes
 ink sync status <binding-id>                      read the app's copy now and show the binding
-ink sync adopt <binding-id> base|override|ignore  take the app's changes into the library
 ink sync unbind <binding-id> [--yes]              forget a binding and its push history
-ink sync run <instance-id> [params-json] [--dry-run]   sync an app with the library
+ink sync run [instance-id] [params-json] [--dry-run]   sync every app with the library, or one app
+ink sync refresh                                  check every app for changes; changes nothing
+ink sync autosync <binding-id> on|off             let each sync push the library's copy to this app, or stop it
 ink sync compare <instance-id> <remote-id> [card-id]
                                                   show how an app character differs from a card
 ink sync resolve <instance-id> <remote-id> bind|import|skip [card-id] [hunk=choice ...] [--default choice]
@@ -496,17 +497,10 @@ A card pushed to a target app gets a binding. `ink sync bindings <card-id>`
 | `missing` | The app no longer has the card. The next push makes a new copy |
 | `cant_check` | The app can't be read back, so changes made there are unknown |
 
-When the app's copy changed, the binding lists the changed fields. Take them
-with `ink sync adopt <binding-id> <into>` (`POST /bindings/{id}/adopt`),
-`into` one of:
-
-- `base`: into the card itself. Adopted fields leave this target's override,
-  so the app keeps what it has.
-- `override`: into this target's override, so only this app keeps them
-- `ignore`: leave the library as it is and stop reporting them
-
-Changes to `character_book` can't be adopted; edit the lorebooks instead. To
-throw the app's changes away, push: a push overwrites them.
+When the app's copy changed, the binding lists the changed fields. To take the
+app's changes, keep them only in that app, or keep the library's copy, review
+the item: `ink sync compare` and `ink sync resolve`, or Review in the web app.
+To throw the app's changes away, push: a push overwrites them.
 
 Before a push, `ink sync preview <instance-id> <card-id>`
 (`GET /cards/{id}/push-preview?instance_id=<id>`) reads the app's copy and
@@ -534,7 +528,7 @@ both ask from it and send its `confirm`:
 - Each card's push reads the app's copy first. If it changed since the
   preview, that push fails and the app keeps its copy.
 - Without `confirm`, a card's push replaces the app's copy only if it hasn't
-  changed since the last push or adopt, so drifted copies fail instead of
+  changed since the last push or resolve, so drifted copies fail instead of
   being overwritten.
 
 An app that can't be read back can't be checked, so its cards are pushed as
@@ -571,9 +565,19 @@ items exactly, imports the ones the library doesn't have, and leaves the rest
 for you to review:
 
 ```bash
+ink sync run                           # every app, one at a time
 ink sync run <instance-id>             # alias: ink sync reconcile
 ink sync run <instance-id> --dry-run   # report only; link and import nothing
+ink sync refresh                       # check every app; change nothing
 ```
+
+A sync of every app prints a line per app with its totals and the job to
+pass to `ink sync apply`.
+
+With autosync on, each sync pushes the library's copy to that app when the
+card is ahead and the app's copy hasn't changed, so it never overwrites an
+edit made in the app. Turning it on or off needs a destructive token:
+`ink sync autosync <binding-id> on|off`.
 
 It prints one row per app item, with each linked world book under its
 character, and ends with `<n> applied, <m> left to review`:
@@ -636,7 +640,7 @@ and `.../resolve`. The MCP tools `start_sync`, `compare_item`,
 ### Lorebooks in apps that keep them separately
 
 Some apps, such as Lumiverse, keep lorebooks apart from cards. Lorebooks then
-sync on their own, with their own bindings, statuses, checks, and adopts:
+sync on their own, with their own bindings, statuses, and checks:
 
 ```bash
 ink call GET  '/lorebooks/<id>/push-preview?instance_id=<instance-id>'

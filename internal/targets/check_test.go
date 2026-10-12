@@ -44,7 +44,7 @@ func TestScan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Checked != 2 || p.Changed != 1 || p.Missing != 1 || p.Failed != 0 || reports != 2 {
+	if p.Checked != 2 || p.Changed != 1 || p.Missing != 1 || p.Failed != 0 || reports != 3 {
 		t.Fatalf("scan = %+v after %d reports", p, reports)
 	}
 	if e.status(e.card) != "remote_changed" || e.status(other) != "missing" {
@@ -133,5 +133,20 @@ func TestCheckLeavesMissingWhenAnotherBindingTookTheID(t *testing.T) {
 	}
 	if a = e.check(a); a.Status != "missing" {
 		t.Fatalf("status = %s, want missing", a.Status)
+	}
+}
+
+// A scan counts each app's items that nothing in the library is bound to.
+func TestScanCountsNewInApp(t *testing.T) {
+	e := setup(t, nil)
+	e.push(e.card)
+	e.appCard("r7", map[string]any{"name": "Lia", "description": liaText}, nil)
+	e.appCard("r8", map[string]any{"name": "Mira", "description": miraText}, nil)
+	p, err := e.s.Scan(e.ctx, func(ScanProgress) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.NewInApp[e.inst] != 2 {
+		t.Errorf("new_in_app = %v, want 2 for instance %d", p.NewInApp, e.inst)
 	}
 }

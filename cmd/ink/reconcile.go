@@ -20,16 +20,22 @@ import (
 func reconcileCmd() *cobra.Command {
 	var dryRun bool
 	run := &cobra.Command{
-		Use:     "run <instance-id> [params-json]",
+		Use:     "run [instance-id] [params-json]",
 		Aliases: []string{"reconcile"},
-		Short:   "Sync an app with the library",
+		Short:   "Sync every app with the library, or one app",
 		Long: `Sync reads the app, links exact matches, imports items the library doesn't
 have, waits for the job, and prints a row per item with its verdict and
 suggested resolution. Items marked (auto) were applied by the sync. Apply the
-suggestions for the rest with: ink sync apply <sync-job-id>`,
-		Example: "  ink sync run 3\n  ink sync run 3 --dry-run\n  ink sync run 3 '{\"match\": {\"text_distance\": 4}}'",
-		Args:    cobra.RangeArgs(1, 2),
+suggestions for the rest with: ink sync apply <sync-job-id>
+
+Without an instance ID, it syncs every app, one at a time, and prints a line
+per app with its totals and the job to apply.`,
+		Example: "  ink sync run\n  ink sync run 3\n  ink sync run 3 --dry-run\n  ink sync run 3 '{\"match\": {\"text_distance\": 4}}'",
+		Args:    cobra.RangeArgs(0, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return syncEveryApp(cmd, dryRun)
+			}
 			inst, err := parseID(args[0])
 			if err != nil {
 				return err
@@ -83,6 +89,63 @@ suggestions for the rest with: ink sync apply <sync-job-id>`,
 	}
 	run.Flags().BoolVar(&dryRun, "dry-run", false, "only report what a sync would do; link and import nothing")
 	return run
+}
+
+// syncEveryApp starts a sync of every app, waits for it, and prints a line
+// per app.
+func syncEveryApp(cmd *cobra.Command, dryRun bool) error {
+	params := wire.SyncParams{}
+	if dryRun {
+		params.Apply = wire.ApplyNone
+	}
+	body, err := json.Marshal(params)
+	if err != nil {
+		return err
+	}
+	c, err := newClient(cmd)
+	if err != nil {
+		return err
+	}
+	ctx := cmd.Context()
+	out, err := c.do(ctx, "POST", "/syncs", body)
+	if err != nil {
+		return err
+	}
+	var j job
+	if err := json.Unmarshal(out, &j); err != nil {
+		return err
+	}
+	id := fmt.Sprint(j.ID)
+	if err := watchJob(ctx, c, id, cmd.ErrOrStderr()); err != nil {
+		return err
+	}
+	out, err = c.do(ctx, "GET", "/jobs/"+id, nil)
+	if err != nil {
+		return err
+	}
+	var done struct {
+		Progress wire.SyncResult `json:"progress"`
+	}
+	if err := json.Unmarshal(out, &done); err != nil {
+		return err
+	}
+	if jsonFlag(cmd) {
+		return json.NewEncoder(cmd.OutOrStdout()).Encode(done.Progress)
+	}
+	w := cmd.OutOrStdout()
+	for _, a := range done.Progress.Apps {
+		if a.Error != "" {
+			fmt.Fprintf(w, "instance %d: error: %s\n", a.InstanceID, a.Error)
+			continue
+		}
+		totals := make([]string, 0, len(a.Totals))
+		for k, n := range a.Totals {
+			totals = append(totals, fmt.Sprintf("%s=%d", k, n))
+		}
+		slices.Sort(totals)
+		fmt.Fprintf(w, "instance %d: %s (review: ink sync apply %d)\n", a.InstanceID, strings.Join(totals, " "), a.JobID)
+	}
+	return nil
 }
 
 func compareCmd() *cobra.Command {

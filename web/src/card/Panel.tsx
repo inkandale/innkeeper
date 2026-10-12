@@ -118,6 +118,14 @@ export function Sync({ kind, id }: { kind: Kind; id: number }) {
   });
   const instances = useQuery({ queryKey: ["instances"], queryFn: async () => must(await api.GET("/instances")) });
   const name = (n: number) => instances.data?.find((i) => i.id === n)?.name ?? `#${n}`;
+  const qc = useQueryClient();
+  const toast = useToast();
+  const setAutosync = useMutation({
+    mutationFn: async ({ id, on }: { id: number; on: boolean }) =>
+      must(await api.PATCH("/bindings/{id}", { params: { path: { id } }, body: { autosync: on } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [kind, id, "bindings"] }),
+    onError: (e) => toast({ text: e.message, error: true }),
+  });
   if (!bindings.data?.length) return null;
   return (
     <section>
@@ -125,7 +133,17 @@ export function Sync({ kind, id }: { kind: Kind; id: number }) {
       <ul className="plain">
         {bindings.data.map((b) => (
           <li key={b.id}>
-            <span className={"badge " + (badgeClass[b.status] ?? "unknown")} aria-hidden="true" /> {name(b.instance_id)}: {b.status.replaceAll("_", " ")}
+            <span className={"badge " + (badgeClass[b.status] ?? "unknown")} aria-hidden="true" /> {name(b.instance_id)}: {b.status.replaceAll("_", " ")}{" "}
+            <label className="autosync">
+              <input
+                type="checkbox"
+                checked={b.autosync}
+                aria-label={`Autosync to ${name(b.instance_id)}`}
+                disabled={setAutosync.isPending}
+                onChange={(e) => setAutosync.mutate({ id: b.id, on: e.target.checked })}
+              />{" "}
+              autosync
+            </label>
             {(b.status === "remote_changed" || b.status === "diverged") && (
               <>
                 {" "}

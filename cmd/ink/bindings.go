@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"slices"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -21,6 +20,30 @@ func apiCall(cmd *cobra.Command, method, path string, body []byte) ([]byte, erro
 		return nil, err
 	}
 	return c.do(cmd.Context(), method, path, body)
+}
+
+func autosyncCmd() *cobra.Command {
+	return &cobra.Command{Use: "autosync <binding-id> on|off",
+		Short: "Let each sync push the library's copy to this app, or stop it",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := parseID(args[0])
+			if err != nil {
+				return err
+			}
+			if args[1] != "on" && args[1] != "off" {
+				return fmt.Errorf("say on or off, not %q", args[1])
+			}
+			body, err := json.Marshal(map[string]bool{"autosync": args[1] == "on"})
+			if err != nil {
+				return err
+			}
+			raw, err := apiCall(cmd, "PATCH", "/bindings/"+id, body)
+			if err != nil {
+				return err
+			}
+			return show(cmd, raw, printBinding)
+		}}
 }
 
 func printBindings(w io.Writer, list []wire.Binding) error {
@@ -42,8 +65,13 @@ func printBinding(w io.Writer, b wire.Binding) error {
 	if err := printBindings(w, []wire.Binding{b}); err != nil {
 		return err
 	}
+	autosync := "off"
+	if b.Autosync {
+		autosync = "on"
+	}
+	fmt.Fprintln(w, "autosync:", autosync)
 	if len(b.Changes) > 0 {
-		fmt.Fprintln(w, "\nchanged in the app since the last push or adopt:")
+		fmt.Fprintln(w, "\nchanged in the app since the last push or resolve:")
 		printChanges(w, b.Changes, "pushed", "app")
 	}
 	return nil
@@ -150,71 +178,6 @@ func previewCmd() *cobra.Command {
 				return err
 			}
 			return show(cmd, out, printPreview)
-		},
-	}
-}
-
-func adoptCmd() *cobra.Command {
-	into := []string{"base", "override", "ignore"}
-	return &cobra.Command{
-		Use:   "adopt <binding-id> base|override|ignore",
-		Short: "Take the changes made in the app into the library",
-		Long: `Adopt takes the fields the app changed, as ink sync bindings show prints them.
-base: into the card itself. override: into this app's override, so only this
-app keeps them. ignore: leave the library as it is and stop reporting them.
-Changes to character_book can't be adopted. To discard the app's changes, push.`,
-		Example:   "  ink sync adopt 5 base",
-		Args:      cobra.ExactArgs(2),
-		ValidArgs: into,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := parseID(args[0])
-			if err != nil {
-				return err
-			}
-			if !slices.Contains(into, args[1]) {
-				return fmt.Errorf("adopt into %q; want base, override, or ignore", args[1])
-			}
-			c, err := newClient(cmd)
-			if err != nil {
-				return err
-			}
-			ctx := cmd.Context()
-			body := map[string]any{"into": args[1]}
-			if args[1] != "ignore" {
-				out, err := c.do(ctx, "GET", "/bindings/"+id, nil)
-				if err != nil {
-					return err
-				}
-				var b wire.Binding
-				if err := json.Unmarshal(out, &b); err != nil {
-					return err
-				}
-				path := fmt.Sprintf("/cards/%d", b.CardID)
-				if b.CardID == 0 {
-					path = fmt.Sprintf("/lorebooks/%d", b.LorebookID)
-				}
-				if out, err = c.do(ctx, "GET", path, nil); err != nil {
-					return err
-				}
-				var e struct {
-					Revision struct {
-						ID int64 `json:"id"`
-					} `json:"revision"`
-				}
-				if err := json.Unmarshal(out, &e); err != nil {
-					return err
-				}
-				body["base_revision_id"] = e.Revision.ID
-			}
-			raw, err := json.Marshal(body)
-			if err != nil {
-				return err
-			}
-			out, err := c.do(ctx, "POST", "/bindings/"+id+"/adopt", raw)
-			if err != nil {
-				return err
-			}
-			return show(cmd, out, printBinding)
 		},
 	}
 }

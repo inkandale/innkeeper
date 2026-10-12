@@ -17,6 +17,7 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 	"github.com/davidgibbons/innkeeper/internal/targets"
 	"github.com/davidgibbons/innkeeper/internal/tier"
+	"github.com/davidgibbons/innkeeper/internal/wire"
 )
 
 type bearer struct{ scheme, token string }
@@ -83,7 +84,8 @@ func TestMCPToolsByTier(t *testing.T) {
 	}
 	read, write, all := names(tier.Read), names(tier.Write), names(tier.Destructive)
 	if !slices.Contains(read, "search_cards") || slices.Contains(read, "create_card") || slices.Contains(write, "push") ||
-		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 33 {
+		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 34 ||
+		!slices.Contains(read, "refresh") || slices.Contains(write, "set_autosync") || !slices.Contains(all, "set_autosync") {
 		t.Fatalf("read %v\nwrite %v\nall %v", read, write, all)
 	}
 }
@@ -190,8 +192,12 @@ func TestMCPOtherTools(t *testing.T) {
 	if got := tool(t, s, "check_drift", map[string]any{"binding_id": bindings[0].ID}, false); !strings.Contains(got, "remote_changed") {
 		t.Fatalf("check_drift = %s", got)
 	}
-	head := c.Revision.ID
-	tool(t, s, "adopt", map[string]any{"binding_id": bindings[0].ID, "into": "base", "base_revision_id": head}, false)
+	if got := tool(t, s, "set_autosync", map[string]any{"binding_id": bindings[0].ID, "autosync": true}, false); !strings.Contains(got, `"autosync":true`) {
+		t.Fatalf("set_autosync = %s", got)
+	}
+	if got := tool(t, s, "refresh", map[string]any{}, false); !strings.Contains(got, `"id"`) {
+		t.Fatalf("refresh = %s", got)
+	}
 
 	var job struct{ ID int64 }
 	_ = json.Unmarshal([]byte(tool(t, s, "start_import", map[string]any{"instance_id": e.importID}, false)), &job)
@@ -289,7 +295,16 @@ func TestMCPReconcile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if last, r := e.watchJob(j.ID); last.Status != "succeeded" {
-		t.Fatalf("reconcile = %+v\n%s", last, r.Body)
+		t.Fatalf("sync = %+v\n%s", last, r.Body)
+	}
+	// The sync's progress names the app's reconcile job, which holds the snapshot.
+	var sync struct{ Progress wire.SyncResult }
+	if err := json.Unmarshal([]byte(tool(t, read, "get_job", map[string]any{"id": j.ID}, false)), &sync); err != nil ||
+		len(sync.Progress.Apps) != 1 || sync.Progress.Apps[0].JobID == 0 {
+		t.Fatalf("sync progress = %+v, %v", sync.Progress, err)
+	}
+	if got := tool(t, read, "get_job", map[string]any{"id": sync.Progress.Apps[0].JobID}, false); !strings.Contains(got, "rCarrow") {
+		t.Fatalf("reconcile job = %s", got)
 	}
 	var cmp targets.Comparison
 	got := tool(t, read, "compare_item", map[string]any{"instance_id": inst, "remote_id": "rBrakka.png", "id": c.ID}, false)

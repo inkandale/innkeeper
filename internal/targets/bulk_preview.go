@@ -48,7 +48,7 @@ type bulkTarget struct {
 	Version int64  `json:"version"`
 	State   string `json:"state"`
 	// AppHash is the app copy the owner agrees to replace: what the last
-	// check saw if it found a change, else what the last push or adopt
+	// check saw if it found a change, else what the last push or resolve
 	// accepted. Empty if the app lost its copy.
 	AppHash  string `json:"app_hash"`
 	accepted string

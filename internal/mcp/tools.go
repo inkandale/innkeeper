@@ -80,12 +80,6 @@ type bindingIn struct {
 	BindingID int64 `json:"binding_id"`
 }
 
-type adoptIn struct {
-	BindingID      int64  `json:"binding_id"`
-	Into           string `json:"into" jsonschema:"base: into the card or lorebook. override: into this target's override. ignore: stop reporting these changes."`
-	BaseRevisionID int64  `json:"base_revision_id,omitempty" jsonschema:"The head revision; required unless into is ignore"`
-}
-
 type itemsIn struct {
 	InstanceID int64  `json:"instance_id" jsonschema:"The target plugin instance"`
 	Kind       string `json:"kind,omitempty" jsonschema:"card or lorebook; default card"`
@@ -135,11 +129,14 @@ type instanceUpdateIn struct {
 	Secrets map[string]*string `json:"secrets,omitempty" jsonschema:"Sets each named secret; null removes one. Write-only."`
 }
 
-type reconcileIn struct {
-	InstanceID  int64          `json:"instance_id" jsonschema:"The target plugin instance"`
-	Match       map[string]any `json:"match,omitempty" jsonschema:"name (bool), text_distance and avatar_distance (0..32); defaults true, 8, 8"`
-	SplitFields *int           `json:"split_fields,omitempty" jsonschema:"How many core fields must differ before import is suggested over bind; default 3"`
-	Apply       string         `json:"apply,omitempty" jsonschema:"obvious (default) binds exact matches and imports new items; none writes nothing"`
+type syncIn struct {
+	InstanceID int64  `json:"instance_id,omitempty" jsonschema:"One target plugin instance to sync; omit to sync every app"`
+	Apply      string `json:"apply,omitempty" jsonschema:"obvious (default) binds exact matches and imports new items; none writes nothing"`
+}
+
+type autosyncIn struct {
+	BindingID int64 `json:"binding_id" jsonschema:"The binding, from list_bindings"`
+	Autosync  bool  `json:"autosync" jsonschema:"true to turn autosync on, false to turn it off"`
 }
 
 type compareIn struct {
@@ -265,14 +262,6 @@ var tools = []tool{
 		func(ctx context.Context, c caller, in bindingIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", fmt.Sprintf("/bindings/%d/check", in.BindingID), nil)
 		}),
-	def("adopt", "Take the changes made in the app into the library, as a new revision.", tier.Write,
-		func(ctx context.Context, c caller, in adoptIn) (*sdk.CallToolResult, error) {
-			body := map[string]any{"into": in.Into}
-			if in.BaseRevisionID != 0 {
-				body["base_revision_id"] = in.BaseRevisionID
-			}
-			return c.call(ctx, "POST", fmt.Sprintf("/bindings/%d/adopt", in.BindingID), body)
-		}),
 	def("list_bindings", "List the target apps a card or lorebook is pushed to, with each one's status.", tier.Read,
 		func(ctx context.Context, c caller, in entityIn) (*sdk.CallToolResult, error) {
 			p, err := plural(in.Kind)
@@ -348,10 +337,20 @@ var tools = []tool{
 			}
 			return c.call(ctx, "POST", "/imports", body)
 		}),
-	def("start_sync", "Sync a target app with the library: binds exact matches and imports new items, then lists what's left for the owner. "+
-		"Pass apply \"none\" to preview without writing. Starts a job; its finished get_job progress is the snapshot.", tier.Write,
-		func(ctx context.Context, c caller, in reconcileIn) (*sdk.CallToolResult, error) {
-			return c.call(ctx, "POST", "/reconciles", in)
+	def("start_sync", "Sync every target app with the library, one at a time, or one app: binds exact matches, imports new items, "+
+		"and takes edits made only in an app. Pass apply \"none\" to preview. Starts a job; its finished get_job progress names "+
+		"each app's reconcile job, whose progress is that app's snapshot.", tier.Write,
+		func(ctx context.Context, c caller, in syncIn) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "POST", "/syncs", in)
+		}),
+	def("refresh", "Check every app for changes and count the app items nothing is bound to. Changes nothing.", tier.Read,
+		func(ctx context.Context, c caller, _ none) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "POST", "/scans", nil)
+		}),
+	def("set_autosync", "Turn autosync on or off for a binding. With it on, each sync pushes the library's copy to that app "+
+		"when the card is ahead and the app's copy hasn't changed.", tier.Destructive,
+		func(ctx context.Context, c caller, in autosyncIn) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "PATCH", fmt.Sprintf("/bindings/%d", in.BindingID), map[string]bool{"autosync": in.Autosync})
 		}),
 	def("compare_item", "Compare an app item with a library card or lorebook, hunk by hunk. resolve_item needs this reply's app_hash, "+
 		"head_revision_id, accepted_hash, and binding_id. An unbound item needs an id to compare with.", tier.Read,

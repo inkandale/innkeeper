@@ -26,6 +26,7 @@ let pushPosts: number;
 // A save waits on gate when it's set.
 let gate: Promise<void> | undefined;
 let puts: { path: string; body: unknown }[];
+let patches: { path: string; body: unknown }[];
 // Whether a card-codec instance, which writes PNG, exists.
 let pngCodec: boolean;
 beforeEach(() => {
@@ -38,10 +39,16 @@ beforeEach(() => {
   pushPosts = 0;
   gate = undefined;
   puts = [];
+  patches = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
       const path = new URL(req.url).pathname;
+      if (req.method === "PATCH") {
+        const body = await req.json();
+        patches.push({ path, body });
+        return json({ id: 1, instance_id: 2, remote_id: "r", status: bindingStatus, ahead: true, remote_state: "unchanged", ...body });
+      }
       if (req.method === "PUT") {
         // Collection PUTs have no body.
         const body = await req.json().catch(() => null);
@@ -69,7 +76,7 @@ beforeEach(() => {
       }
       if (path === "/api/cards/7/revisions") return json([head.revision]);
       if (path === "/api/cards/7/bindings")
-        return json([{ id: 1, instance_id: 2, remote_id: "r", status: bindingStatus, ahead: true, remote_state: "unchanged" }]);
+        return json([{ id: 1, instance_id: 2, remote_id: "r", status: bindingStatus, ahead: true, remote_state: "unchanged", autosync: false }]);
       if (path === "/api/cards/7/push") {
         pushPosts++;
         return json({ id: 9, kind: "target.push", status: "queued" }, 202);
@@ -287,6 +294,14 @@ test("a drifted target links to its review", async () => {
   renderAt("/cards/7");
   const link = await screen.findByRole("link", { name: "Review" });
   expect(link).toHaveAttribute("href", "/sync/2/items/r?card=7");
+});
+
+test("the autosync box turns autosync on for that app", async () => {
+  renderAt("/cards/7");
+  const box = await screen.findByRole("checkbox", { name: "Autosync to Lumiverse" });
+  expect(box).not.toBeChecked();
+  await userEvent.click(box);
+  await waitFor(() => expect(patches).toEqual([{ path: "/api/bindings/1", body: { autosync: true } }]));
 });
 
 test("Push previews before pushing", async () => {

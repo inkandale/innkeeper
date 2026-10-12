@@ -8,7 +8,7 @@ import (
 // Change is one top-level field the app changed.
 type Change struct {
 	Field string `json:"field"`
-	// Before is absent if the field was missing at the last push or adopt.
+	// Before is absent if the field was missing at the last push or resolve.
 	Before json.RawMessage `json:"before,omitempty"`
 	// After is absent if the field is missing from the app.
 	After json.RawMessage `json:"after,omitempty"`
@@ -48,7 +48,7 @@ type Binding struct {
 	Autosync  bool       `json:"autosync"`
 	CheckedAt *time.Time `json:"checked_at,omitempty"`
 	LastPush  Push       `json:"last_push"`
-	// Changes are the fields the app changed since the last push or adopt.
+	// Changes are the fields the app changed since the last push or resolve.
 	Changes   []Change  `json:"changes,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -68,7 +68,7 @@ type Preview struct {
 	Replaces bool     `json:"replaces"`
 	Changes  []Change `json:"changes"`
 	// Stale means the app couldn't be read, so Changes compare against what
-	// the last push or adopt accepted.
+	// the last push or resolve accepted.
 	Stale bool `json:"stale,omitempty"`
 	// CreateLorebooks are the card's lorebooks that the push creates in the
 	// app first, for a target that keeps lorebooks on their own.

@@ -16,6 +16,7 @@ var tierExceptions = map[string]tier.Tier{
 	"search-cards":     tier.Read,
 	"search-lorebooks": tier.Read,
 	"check-binding":    tier.Read,
+	"start-scan":       tier.Read, // Reads the apps; changes nothing.
 	"check-instance":   tier.Read,
 	"push-card":        tier.Destructive,
 	"push-lorebook":    tier.Destructive,
@@ -84,7 +85,8 @@ func TestOperationTiers(t *testing.T) {
 				}
 			}
 			for have, token := range tokens {
-				r := e.send(method, param.ReplaceAllString(path, "1"), nil, "Authorization", "Bearer "+token)
+				// An ID nothing has: a job another call queued would keep its event stream open.
+				r := e.send(method, param.ReplaceAllString(path, "999999"), nil, "Authorization", "Bearer "+token)
 				if refused := r.Status == http.StatusForbidden; refused != !have.Allows(need) {
 					t.Errorf("%s (%s %s) with a %s token: got %d; it needs %s", op.OperationID, method, path, have, r.Status, need)
 				}

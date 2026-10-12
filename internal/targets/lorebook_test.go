@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/davidgibbons/innkeeper/internal/library"
+	"github.com/davidgibbons/innkeeper/internal/merge"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 )
 
@@ -102,26 +103,13 @@ func TestPushLorebookNeedsStandaloneTarget(t *testing.T) {
 	}
 }
 
-func TestCheckAndAdoptLorebook(t *testing.T) {
+func TestCheckLorebook(t *testing.T) {
 	e := setup(t, map[string]any{"lorebooks": "standalone"})
 	lb := e.newLorebook("Forge lore")
 	b := e.pushLorebook(lb)
 	e.editRemote("l1", "entries", newEntries)
 	if b = e.check(b); b.Status != "remote_changed" || len(b.Changes) != 1 || b.Changes[0].Field != "entries" {
 		t.Fatalf("check: %+v", b)
-	}
-	b, err := e.s.Adopt(e.ctx, b.ID, IntoBase, e.lorebookHead(lb).ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	rev := e.lorebookHead(lb)
-	var data map[string]any
-	_ = json.Unmarshal(rev.Data, &data)
-	if rev.Source != "adopt" || fmt.Sprint(data["entries"]) != fmt.Sprint(newEntries) || data["scan_depth"] == nil {
-		t.Fatalf("adopted revision: %s %s", rev.Source, rev.Data)
-	}
-	if b.Status != "ahead" {
-		t.Fatalf("after adopt: %+v", b)
 	}
 }
 
@@ -136,14 +124,21 @@ func TestLorebookOverride(t *testing.T) {
 		t.Fatalf("the app got %v", e.remoteBook("l1"))
 	}
 	e.editRemote("l1", "name", "Forge lore (LV)")
-	b = e.check(b)
-	if _, err := e.s.Adopt(e.ctx, b.ID, IntoOverride, e.lorebookHead(lb).ID); err != nil {
+	e.check(b)
+	// Both sides renamed it, so keep_in_app, which applies to conflicts, decides the name.
+	e.updateLorebook(lb, func(ed *library.Edit) { ed.Data = setField(ed.Data, "name", "Forge lore II") })
+	c, err := e.s.CompareLorebookItem(e.ctx, e.inst, "l1", lb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.s.ResolveLorebook(e.ctx, Resolution{InstanceID: e.inst, RemoteID: "l1", AppHash: c.AppHash,
+		BaseRevisionID: c.HeadRevisionID, AcceptedHash: c.AcceptedHash, Action: "bind", CardID: lb, Default: merge.ChooseKeepInApp}); err != nil {
 		t.Fatal(err)
 	}
 	rev := e.lorebookHead(lb)
 	var data map[string]any
 	_ = json.Unmarshal(rev.Data, &data)
-	if data["name"] != "Forge lore" || data["description"] != "Forge lore." {
+	if data["name"] != "Forge lore II" || data["description"] != "Forge lore." {
 		t.Fatalf("the lorebook's own data changed: %s", rev.Data)
 	}
 	if want := fmt.Sprintf(`{%q: {"description": "Lumiverse lore.", "name": "Forge lore (LV)"}}`, e.key()); !jsonEqual(rev.Overrides, want) {

@@ -75,16 +75,6 @@ func TestPushRoutes(t *testing.T) {
 	if b.Status != "remote_changed" || len(b.Changes) != 1 {
 		t.Fatalf("check = %+v", b)
 	}
-	e.call("POST", bpath+"/adopt", map[string]any{"into": "base", "base_revision_id": c.Revision.ID + 100}, 409, nil)
-	e.call("POST", bpath+"/adopt", map[string]any{"into": "base", "base_revision_id": c.Revision.ID}, 200, &b)
-	if b.Status != "ahead" {
-		t.Fatalf("adopt = %+v", b)
-	}
-	e.call("POST", bpath+"/adopt", map[string]any{"into": "ignore"}, 409, nil)
-	e.call("GET", path, nil, 200, &c)
-	if c.Revision.Source != "adopt" {
-		t.Fatalf("card after adopt = %+v", c.Revision)
-	}
 
 	var pushes []targets.Push
 	e.call("GET", bpath+"/pushes", nil, 200, &pushes)
@@ -151,9 +141,7 @@ func TestBindingRequestChecks(t *testing.T) {
 	e.call("GET", fmt.Sprintf("/cards/%d/bindings", c.ID), nil, 200, &list)
 	bpath := fmt.Sprintf("/bindings/%d", list[0].ID)
 
-	e.call("POST", bpath+"/adopt", map[string]any{"into": "base"}, 400, nil)
 	e.call("POST", "/bindings/9999/check", nil, 404, nil)
-	e.call("POST", "/bindings/9999/adopt", map[string]any{"into": "ignore"}, 404, nil)
 	e.call("GET", "/cards/9999/push-preview?instance_id=1", nil, 404, nil)
 
 	e.markBroken(inst, "leaky-cause-xyz")
@@ -317,4 +305,14 @@ func TestBindingAutosyncRoute(t *testing.T) {
 		t.Errorf("read back = %+v", got)
 	}
 	e.call("PATCH", "/bindings/999999", map[string]any{"autosync": true}, 404, nil)
+}
+
+func TestScanRoute(t *testing.T) {
+	e := newEnv(t)
+	var a, b jobOut
+	e.call("POST", "/scans", nil, 202, &a)
+	e.call("POST", "/scans", nil, 202, &b)
+	if a.Kind != targets.ScanKind || b.ID != a.ID {
+		t.Errorf("scans = %+v, %+v", a, b)
+	}
 }

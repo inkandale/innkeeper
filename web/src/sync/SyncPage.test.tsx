@@ -33,10 +33,13 @@ beforeEach(() => {
           facets: { targets: [{ instance: 2, is: "in_sync", cards: 5 }, { instance: 2, is: "ahead", cards: 3 }, { instance: 2, is: "diverged", cards: 1 }, { instance: 2, is: "missing", cards: 2 }, { instance: 2, is: "cant_check", cards: 4 }] },
         });
       if (u.pathname === "/api/jobs" && u.searchParams.get("kind") === "target.reconcile")
-        return json([{ id: 5, instance_id: 2, kind: "target.reconcile", status: "succeeded", created_at: now, payload: {}, progress: {} }]);
-      if (u.pathname === "/api/reconciles" || u.pathname === "/api/pushes") {
-        posts.push({ path: u.pathname, body: await req.json() });
-        return json({ id: 6, kind: "x", status: "queued" }, 202);
+        return json([{ id: 5, instance_id: 2, kind: "target.reconcile", status: "succeeded", created_at: now, payload: {}, progress: { totals: { bound: 9, auto_bound: 1, auto_imported: 2, auto_pulled: 3 } } }]);
+      if (u.pathname === "/api/jobs" && u.searchParams.get("kind") === "target.scan")
+        return json([{ id: 3, kind: "target.scan", status: "succeeded", created_at: now, payload: {}, progress: { new_in_app: { "2": 4 } } }]);
+      if (u.pathname === "/api/jobs/6") return json({ id: 6, kind: "x", status: "running", created_at: now, payload: {}, progress: {} });
+      if (req.method === "POST" && u.pathname !== "/api/search") {
+        posts.push({ path: u.pathname, body: await req.json().catch(() => undefined) });
+        return json({ id: 6, kind: "x", status: "queued", created_at: now, payload: {}, progress: {} }, 202);
       }
       return json([]);
     }),
@@ -62,26 +65,37 @@ function renderSync() {
 test("lists target apps with their counts and last sync", async () => {
   renderSync();
   const row = await screen.findByRole("row", { name: /Lumiverse/ });
-  expect(within(row).getAllByRole("cell").map((c) => c.textContent).slice(0, 6)).toEqual(["Lumiverse", "lumiverse", "5", "3", "3", "4"]);
-  expect(within(row).getByRole("link", { name: /ago/ })).toHaveAttribute("href", "/sync/reconciles/5");
+  await waitFor(() => expect(within(row).getAllByRole("cell")[6]).toHaveTextContent("4"));
+  expect(within(row).getAllByRole("cell").map((c) => c.textContent).slice(0, 7)).toEqual(["Lumiverse", "lumiverse", "5", "3", "3", "4", "4"]);
+  const last = within(row).getByRole("link", { name: /ago/ });
+  expect(last).toHaveAttribute("href", "/sync/reconciles/5");
+  expect(last).toHaveTextContent("applied: 6");
   expect(screen.getByRole("columnheader", { name: "Last sync" })).toBeInTheDocument();
   expect(screen.queryByText("Cards folder")).not.toBeInTheDocument();
 });
 
-test("Push all ahead asks again with the count", async () => {
+test("the table shows new app items from the last scan", async () => {
   renderSync();
-  const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: "Push all ahead" }));
-  await user.click(screen.getByRole("button", { name: "Push 3 ahead cards" }));
-  await waitFor(() =>
-    expect(posts).toEqual([{ path: "/api/pushes", body: { instance_id: 2, query: { filter: { target_state: { instance: 2, is: "ahead" } } } } }]),
-  );
-  await waitFor(() => expect(screen.queryByRole("button", { name: "Push all ahead" })).not.toBeInTheDocument());
+  expect(await screen.findByRole("columnheader", { name: "New in app" })).toBeInTheDocument();
+  const row = await screen.findByRole("row", { name: /Lumiverse/ });
+  await waitFor(() => expect(within(row).getAllByRole("cell")[6]).toHaveTextContent("4"));
 });
 
-test("Sync starts a run and opens its queue", async () => {
+test("Sync starts one run for every app", async () => {
   renderSync();
-  await userEvent.click(await screen.findByRole("button", { name: "Sync" }));
-  expect(await screen.findByText("Queue page")).toBeInTheDocument();
-  expect(posts).toEqual([{ path: "/api/reconciles", body: { instance_id: 2 } }]);
+  await screen.findByRole("row", { name: /Lumiverse/ });
+  expect(screen.getAllByRole("button", { name: "Sync" })).toHaveLength(1);
+  expect(screen.queryByRole("button", { name: /Push/ })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Sync" }));
+  await waitFor(() => expect(posts).toEqual([{ path: "/api/syncs", body: {} }]));
+  expect(await screen.findByText("Syncing every app…")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "View job" })).toHaveAttribute("href", "/settings/jobs/6");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Sync" })).toBeDisabled());
+});
+
+test("Refresh starts a scan", async () => {
+  renderSync();
+  await userEvent.click(await screen.findByRole("button", { name: "Refresh" }));
+  await waitFor(() => expect(posts).toEqual([{ path: "/api/scans", body: undefined }]));
+  expect(await screen.findByText("Refreshing every app…")).toBeInTheDocument();
 });

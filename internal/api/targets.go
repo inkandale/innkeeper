@@ -28,7 +28,7 @@ type bulkPushIn struct {
 		Query      library.Query `json:"query" doc:"Selects the cards, as in POST /search. Paging is ignored."`
 		Kind       string        `json:"kind,omitempty" enum:"card,lorebook" doc:"What the query selects; default card."`
 		NewCopy    bool          `json:"new_copy,omitempty" doc:"Let a target that can't update cards make another copy"`
-		Confirm    string        `json:"confirm,omitempty" doc:"The confirm value from POST /pushes/preview. If the preview would differ now, the push is refused with 409 and the new preview. Without it, a push replaces only app copies unchanged since their last push or adopt."`
+		Confirm    string        `json:"confirm,omitempty" doc:"The confirm value from POST /pushes/preview. If the preview would differ now, the push is refused with 409 and the new preview. Without it, a push replaces only app copies unchanged since their last push or resolve."`
 	}
 }
 
@@ -72,14 +72,6 @@ type autosyncIn struct {
 
 type pushesOut struct{ Body []targets.Push }
 
-type adoptIn struct {
-	ID   int64 `path:"id"`
-	Body struct {
-		Into           string `json:"into" enum:"base,override,ignore" doc:"base: into the card's own data. override: into this target's override. ignore: keep the library as it is and stop reporting these changes."`
-		BaseRevisionID int64  `json:"base_revision_id,omitempty" doc:"The card's head revision. Required unless into is ignore; a stale one returns 409."`
-	}
-}
-
 func (s *Server) binding(b targets.Binding, err error) (*bindingOut, error) {
 	if err != nil {
 		return nil, s.fail(err)
@@ -107,7 +99,7 @@ func (s *Server) targetRoutes(api huma.API) {
 	} {
 		huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "push-" + k.name, Method: http.MethodPost, Path: "/" + k.plural + "/{id}/push",
 			Summary: "Push a " + k.name + " to a target", Tags: tags, DefaultStatus: http.StatusAccepted,
-			Description: "Queues a push job. Pushing overwrites changes made in the app; adopt them first to keep them. " +
+			Description: "Queues a push job. Pushing overwrites changes made in the app; review them first (compare, then resolve) to keep them. " +
 				"A card push creates the card's lorebooks the app doesn't have, on a target that keeps lorebooks on their own."},
 			func(ctx context.Context, in *pushIn) (*jobResp, error) {
 				if _, err := k.get(ctx, in.ID); err != nil {
@@ -226,7 +218,7 @@ func (s *Server) targetRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "push-cards", Method: http.MethodPost, Path: "/pushes",
 		Summary: "Push many cards or lorebooks to a target",
 		Description: "Queues one child job per card or lorebook the query matches. A child fails, leaving the app's copy alone, " +
-			"if that copy changed since the preview, or since its last push or adopt when confirm isn't sent.",
+			"if that copy changed since the preview, or since its last push or resolve when confirm isn't sent.",
 		Tags: tags, DefaultStatus: http.StatusAccepted},
 		func(ctx context.Context, in *bulkPushIn) (*jobResp, error) {
 			ids, err := bulkPush(ctx, in.Body.InstanceID, in.Body.Query, in.Body.Kind)
@@ -289,14 +281,15 @@ func (s *Server) targetRoutes(api huma.API) {
 			return s.binding(s.Targets.Check(ctx, in.ID))
 		})
 
-	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "adopt", Method: http.MethodPost, Path: "/bindings/{id}/adopt",
-		Summary: "Adopt the app's changes", Tags: tags,
-		Description: "Adopts into the card or lorebook the binding is for. A card's changes to character_book aren't adopted. " +
-			"To discard the app's changes, push instead."},
-		func(ctx context.Context, in *adoptIn) (*bindingOut, error) {
-			if in.Body.Into != "ignore" && in.Body.BaseRevisionID == 0 {
-				return nil, huma.Error400BadRequest("base_revision_id is required unless into is ignore")
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Read), OperationID: "start-scan", Method: http.MethodPost,
+		Path: "/scans", Summary: "Refresh: check every app for changes", Tags: tags, DefaultStatus: http.StatusAccepted,
+		Description: "Reads every bound item back from its app and counts the app items nothing is bound to. " +
+			"Changes nothing in the library or the apps. Returns the scan already queued or running, if there is one."},
+		func(ctx context.Context, _ *struct{}) (*jobResp, error) {
+			j, err := s.Queue.EnqueueOnce(ctx, jobs.Spec{Kind: targets.ScanKind})
+			if err != nil {
+				return nil, s.fail(err)
 			}
-			return s.binding(s.Targets.Adopt(ctx, in.ID, in.Body.Into, in.Body.BaseRevisionID))
+			return &jobResp{Body: toJob(j)}, nil
 		})
 }

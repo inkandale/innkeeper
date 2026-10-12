@@ -167,26 +167,6 @@ export interface paths {
         patch: operations["update-binding"];
         trace?: never;
     };
-    "/bindings/{id}/adopt": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Adopt the app's changes
-         * @description Adopts into the card or lorebook the binding is for. A card's changes to character_book aren't adopted. To discard the app's changes, push instead.
-         */
-        post: operations["adopt"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/bindings/{id}/check": {
         parameters: {
             query?: never;
@@ -445,7 +425,7 @@ export interface paths {
         put?: never;
         /**
          * Push a card to a target
-         * @description Queues a push job. Pushing overwrites changes made in the app; adopt them first to keep them. A card push creates the card's lorebooks the app doesn't have, on a target that keeps lorebooks on their own.
+         * @description Queues a push job. Pushing overwrites changes made in the app; review them first (compare, then resolve) to keep them. A card push creates the card's lorebooks the app doesn't have, on a target that keeps lorebooks on their own.
          */
         post: operations["push-card"];
         delete?: never;
@@ -1280,7 +1260,7 @@ export interface paths {
         put?: never;
         /**
          * Push a lorebook to a target
-         * @description Queues a push job. Pushing overwrites changes made in the app; adopt them first to keep them. A card push creates the card's lorebooks the app doesn't have, on a target that keeps lorebooks on their own.
+         * @description Queues a push job. Pushing overwrites changes made in the app; review them first (compare, then resolve) to keep them. A card push creates the card's lorebooks the app doesn't have, on a target that keeps lorebooks on their own.
          */
         post: operations["push-lorebook"];
         delete?: never;
@@ -1590,7 +1570,7 @@ export interface paths {
         put?: never;
         /**
          * Push many cards or lorebooks to a target
-         * @description Queues one child job per card or lorebook the query matches. A child fails, leaving the app's copy alone, if that copy changed since the preview, or since its last push or adopt when confirm isn't sent.
+         * @description Queues one child job per card or lorebook the query matches. A child fails, leaving the app's copy alone, if that copy changed since the preview, or since its last push or resolve when confirm isn't sent.
          */
         post: operations["push-cards"];
         delete?: never;
@@ -1673,6 +1653,26 @@ export interface paths {
          * @description Uploads a backup archive and queues a job that restores it. Without replace, the job fails if the database already has data of the archive's type.
          */
         post: operations["start-restore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh: check every app for changes
+         * @description Reads every bound item back from its app and counts the app items nothing is bound to. Changes nothing in the library or the apps. Returns the scan already queued or running, if there is one.
+         */
+        post: operations["start-scan"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1831,24 +1831,6 @@ export interface components {
             ref?: string;
             /** @description A page on a known site. Use this, or kind and ref. */
             url?: string;
-        };
-        AdoptInBody: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example /api/schemas/AdoptInBody.json
-             */
-            readonly $schema?: string;
-            /**
-             * Format: int64
-             * @description The card's head revision. Required unless into is ignore; a stale one returns 409.
-             */
-            base_revision_id?: number;
-            /**
-             * @description base: into the card's own data. override: into this target's override. ignore: keep the library as it is and stop reporting these changes.
-             * @enum {string}
-             */
-            into: "base" | "override" | "ignore";
         };
         ArchiveInBody: {
             /**
@@ -2030,7 +2012,7 @@ export interface components {
              * @example /api/schemas/BulkPushInBody.json
              */
             readonly $schema?: string;
-            /** @description The confirm value from POST /pushes/preview. If the preview would differ now, the push is refused with 409 and the new preview. Without it, a push replaces only app copies unchanged since their last push or adopt. */
+            /** @description The confirm value from POST /pushes/preview. If the preview would differ now, the push is refused with 409 and the new preview. Without it, a push replaces only app copies unchanged since their last push or resolve. */
             confirm?: string;
             /** Format: int64 */
             instance_id: number;
@@ -3448,41 +3430,6 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["AutosyncInBody"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Binding"];
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ErrorModel"];
-                };
-            };
-        };
-    };
-    adopt: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AdoptInBody"];
             };
         };
         responses: {
@@ -6387,6 +6334,35 @@ export interface operations {
                 };
             };
         };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "start-scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Accepted */
             202: {

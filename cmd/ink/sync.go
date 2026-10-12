@@ -14,8 +14,19 @@ import (
 func syncCmd() *cobra.Command {
 	sync := &cobra.Command{Use: "sync", Short: "Push cards to apps and line apps up against the library"}
 	sync.AddCommand(pushCmd(), reconcileCmd(), compareCmd(), resolveCmd(), applyCmd(),
-		bindingsCmd(), statusCmd(), previewCmd(), adoptCmd(), unbindCmd())
+		bindingsCmd(), statusCmd(), previewCmd(), unbindCmd(), refreshCmd(), autosyncCmd())
 	return sync
+}
+
+func refreshCmd() *cobra.Command {
+	return &cobra.Command{Use: "refresh", Short: "Check every app for changes; changes nothing", Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			out, err := apiCall(cmd, "POST", "/scans", nil)
+			if err != nil {
+				return err
+			}
+			return jobStarted(cmd, out)
+		}}
 }
 
 func pushCmd() *cobra.Command {

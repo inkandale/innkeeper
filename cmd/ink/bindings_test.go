@@ -105,33 +105,6 @@ func TestSyncPreview(t *testing.T) {
 	}
 }
 
-func TestSyncAdopt(t *testing.T) {
-	got := stubAPI(t, map[string]string{
-		"/bindings/5":            bindingJSON,
-		"/cards/12":              `{"id": 12, "revision": {"id": 41}}`,
-		"POST /bindings/5/adopt": bindingJSON,
-	})
-	if _, err := runInk(t, "sync", "adopt", "5", "base"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := runInk(t, "sync", "adopt", "5", "ignore"); err != nil {
-		t.Fatal(err)
-	}
-	want := []string{"GET /bindings/5 ", "GET /cards/12 ", `POST /bindings/5/adopt {"base_revision_id":41,"into":"base"}`,
-		`POST /bindings/5/adopt {"into":"ignore"}`}
-	if !slices.Equal(*got, want) {
-		t.Errorf("requests = %q, want %q", *got, want)
-	}
-	for _, args := range [][]string{{"5", "bogus"}, {"x", "base"}, {"5"}} {
-		if _, err := runInk(t, append([]string{"sync", "adopt"}, args...)...); err == nil {
-			t.Errorf("adopt %q succeeded", args)
-		}
-	}
-	if len(*got) != len(want) {
-		t.Errorf("bad adopts sent requests: %q", (*got)[len(want):])
-	}
-}
-
 func TestSyncUnbind(t *testing.T) {
 	got := stubAPI(t, nil)
 	if _, err := runInkIn(t, "", false, "sync", "unbind", "5"); err == nil || !strings.Contains(err.Error(), "--yes") {

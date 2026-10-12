@@ -122,8 +122,11 @@ differ. Use `avatar_phash` distance 0 if that turns up.
 | Web, Sync page | Refresh and Sync buttons; per-app table of scan counts and the last sync's totals; link to the review queue | Per-app Sync and Push ahead buttons |
 | Web, card panel | Autosync toggle per app; a changed row links to the item in review | Adopt |
 
-Adopt's modes map onto review choices: base is the app's side, override is
-keep in app, ignore is the library's side.
+Adopt's base and ignore modes map onto review's app and library choices. Its
+override mode has no full equivalent: review keeps a change in one app only
+when both sides changed that field, and a sync pulls a change made only in an
+app into the library. That is decided: the library wins, and a version meant
+for one app is a separate card.
 
 Kept: the push preview and confirm from a card or a query, and the review
 queue.

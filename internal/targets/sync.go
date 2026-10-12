@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"slices"
 
@@ -116,6 +115,7 @@ func (s *Service) Sync(ctx context.Context, p SyncParams, progress func(SyncResu
 			return res, ctx.Err()
 		}
 		app := SyncApp{InstanceID: id}
+		failure := err
 		var raw json.RawMessage
 		if err != nil {
 			app.Error = err.Error()
@@ -125,7 +125,7 @@ func (s *Service) Sync(ctx context.Context, p SyncParams, progress func(SyncResu
 				return res, err
 			}
 		}
-		j, rerr := q.Record(ctx, jobs.Spec{Kind: ReconcileKind, InstanceID: &id, Payload: params}, raw, errorOrNil(app.Error))
+		j, rerr := q.Record(ctx, jobs.Spec{Kind: ReconcileKind, InstanceID: &id, Payload: params}, raw, failure)
 		if rerr != nil {
 			return res, rerr
 		}
@@ -156,11 +156,4 @@ func (s *Service) syncApps(ctx context.Context, only int64) ([]int64, error) {
 	}
 	slices.Sort(ids)
 	return ids, nil
-}
-
-func errorOrNil(msg string) error {
-	if msg == "" {
-		return nil
-	}
-	return errors.New(msg)
 }

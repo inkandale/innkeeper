@@ -194,7 +194,8 @@ func suggest(k kind, info protocol.TargetInfo, idx index, p ReconcileParams, ite
 	case VerdictBound:
 		if len(item.Candidates) > 0 && item.Candidates[0].DifferingFields > 0 {
 			why := "the app and the library differ; bind to resolve the drift"
-			if item.AppOnly = appOnly[0]; item.AppOnly {
+			// A missing binding has no ancestor to pull against.
+			if item.AppOnly = appOnly[0] && idx.byRemote[item.RemoteID].remoteState != remoteMissing; item.AppOnly {
 				why = "changed only in the app"
 			}
 			bind(item.Candidates[0], why)
@@ -598,6 +599,10 @@ items:
 			imported[k.name+":"+it.AppHash] = true
 		}
 		applied[res.CardID] = true
+		if pull {
+			// Its world books were skipped, so there is nothing to record for them.
+			continue
+		}
 		for j, lr := range res.Lorebooks {
 			lb, n := &it.Lorebooks[j], r.Lorebooks[j]
 			lb.AutoBound, lb.AutoImported, lb.BindingID = n.Action == "bind", n.Action == "import", lr.BindingID

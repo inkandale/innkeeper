@@ -871,3 +871,72 @@ func TestReconcileBindIgnoresAvatarMetadata(t *testing.T) {
 		}
 	}
 }
+
+// An edit made only in the app becomes a library revision.
+func TestReconcilePullsAppOnlyEdits(t *testing.T) {
+	e := setup(t, nil)
+	b := e.push(e.card)
+	e.editRemote(b.RemoteID, "description", "Edited in the app.")
+	snap, err := e.s.Reconcile(e.ctx, ReconcileParams{InstanceID: e.inst, Apply: ApplyObvious}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	it := snap.Items[0]
+	if !it.AppOnly || !it.AutoPulled || it.AutoBound || snap.Totals["auto_pulled"] != 1 {
+		t.Fatalf("item = %+v, totals %v", it, snap.Totals)
+	}
+	var data map[string]any
+	if err := json.Unmarshal(e.head(e.card).Data, &data); err != nil || data["description"] != "Edited in the app." {
+		t.Errorf("library = %v, %v", data, err)
+	}
+	if got := e.status(e.card); got != "in_sync" {
+		t.Errorf("status %s", got)
+	}
+}
+
+// Edits on both sides stay for the owner, even when they don't conflict.
+func TestReconcileLeavesBothSidesEdited(t *testing.T) {
+	e := setup(t, nil)
+	b := e.push(e.card)
+	e.editRemote(b.RemoteID, "description", "Edited in the app.")
+	e.update(e.card, func(ed *library.Edit) { ed.Data = setField(ed.Data, "first_mes", "Edited in the library.") })
+	before := e.head(e.card).ID
+	snap, err := e.s.Reconcile(e.ctx, ReconcileParams{InstanceID: e.inst, Apply: ApplyObvious}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	it := snap.Items[0]
+	if it.AppOnly || it.AutoPulled || e.head(e.card).ID != before {
+		t.Errorf("item = %+v; head moved: %v", it, e.head(e.card).ID != before)
+	}
+}
+
+// Pulling a card leaves the world books it links as they are.
+func TestReconcilePullsCardWithWorldBooks(t *testing.T) {
+	e, card, _ := worldBooks(t)
+	// The fake app lists only cards whose IDs start with r.
+	e.appCard("r1", map[string]any{"name": "Tova", "description": "A smith."},
+		map[string]any{"lorebook_remote_ids": []string{"l1", "l2"}})
+	if _, err := e.s.Bind(e.ctx, e.inst, card, "r1"); err != nil {
+		t.Fatal(err)
+	}
+	e.editRemote("r1", "description", "A smith, edited in the app.")
+	snap, err := e.s.Reconcile(e.ctx, ReconcileParams{InstanceID: e.inst, Apply: ApplyObvious}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var it ReconcileItem
+	for _, i := range snap.Items {
+		if i.RemoteID == "r1" {
+			it = i
+		}
+	}
+	if !it.AutoPulled || len(it.Lorebooks) != 2 {
+		t.Fatalf("r1 = %+v", it)
+	}
+	for _, lb := range it.Lorebooks {
+		if lb.AutoBound || lb.AutoImported {
+			t.Errorf("world book %s was applied: %+v", lb.RemoteID, lb)
+		}
+	}
+}

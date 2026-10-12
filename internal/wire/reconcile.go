@@ -38,7 +38,7 @@ type Snapshot struct {
 	Lorebooks []ReconcileItem `json:"lorebooks"` // world books no character links to
 	Missing   []int64         `json:"missing"`   // card IDs bound here whose app item is gone
 	Unpushed  []int64         `json:"unpushed"`  // card IDs with no binding here
-	Totals    map[string]int  `json:"totals"`    // by verdict, auto_bound, and auto_imported; each world book once
+	Totals    map[string]int  `json:"totals"`    // by verdict, auto_bound, auto_imported, and auto_pulled; each world book once
 }
 
 // ReconcileItem is one app item and how it lines up with the library.
@@ -57,6 +57,11 @@ type ReconcileItem struct {
 	AutoBound bool `json:"auto_bound,omitempty"`
 	// AutoImported means the run imported this new item.
 	AutoImported bool `json:"auto_imported,omitempty"`
+	// AppOnly means the app changed this bound item and the library didn't
+	// since the last push or resolve.
+	AppOnly bool `json:"app_only,omitempty"`
+	// AutoPulled means the run took the app's changes into the library.
+	AutoPulled bool `json:"auto_pulled,omitempty"`
 }
 
 // Candidate is a library card or lorebook an app item may be a copy of.
@@ -139,4 +144,30 @@ type Resolution struct {
 	// Kind says whether a top-level item in a bulk resolve is a card or a
 	// world book; empty means card. Nested items are world books.
 	Kind string `json:"kind,omitempty" enum:"card,lorebook"`
+}
+
+// SyncKind is the job kind that syncs every target app, one at a time.
+const SyncKind = "target.sync"
+
+// SyncParams starts a sync.
+type SyncParams struct {
+	// InstanceID limits the sync to one app; 0 syncs every app that can pull.
+	InstanceID int64 `json:"instance_id,omitempty" required:"false"`
+	// Apply is as in ReconcileParams; empty means ApplyObvious.
+	Apply string `json:"apply,omitempty" enum:"obvious,none" required:"false"`
+}
+
+// SyncResult is a sync's progress, and its result once it finishes.
+type SyncResult struct {
+	Apps []SyncApp `json:"apps"`
+}
+
+// SyncApp is one app's part of a sync.
+type SyncApp struct {
+	InstanceID int64 `json:"instance_id"`
+	// JobID is the finished reconcile job holding this app's snapshot, as
+	// the review queue reads it.
+	JobID  int64          `json:"job_id"`
+	Totals map[string]int `json:"totals,omitempty"`
+	Error  string         `json:"error,omitempty"`
 }

@@ -17,10 +17,14 @@ type (
 	Push            = wire.Push
 	Binding         = wire.Binding
 	Preview         = wire.Preview
+	SyncParams      = wire.SyncParams
+	SyncResult      = wire.SyncResult
+	SyncApp         = wire.SyncApp
 )
 
 const (
 	ReconcileKind = wire.ReconcileKind
 	ApplyObvious  = wire.ApplyObvious
 	ApplyNone     = wire.ApplyNone
+	SyncKind      = wire.SyncKind
 )

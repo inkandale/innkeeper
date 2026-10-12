@@ -157,19 +157,24 @@ func suggest(k kind, info protocol.TargetInfo, idx index, p ReconcileParams, ite
 		accepted = b.accepted
 	}
 	var core []int
+	// appOnly[i]: every hunk that differs from candidate i is the app's change alone.
+	var appOnly []bool
 	for i := range item.Candidates {
 		c := &item.Candidates[i]
 		fields, err := compare(k, info, idx.byID[c.CardID].data, it.data, accepted)
 		if err != nil {
 			return item, err
 		}
-		n := 0
+		n, only := 0, true
 		for _, f := range fields {
 			differs := false
 			for _, h := range f.Hunks {
 				differs = differs || h.Status != merge.Same
 				if h.Status == merge.Conflict {
 					c.Conflicts++
+				}
+				if h.Status != merge.Same && h.Status != merge.AutoApp {
+					only = false
 				}
 			}
 			if differs {
@@ -180,6 +185,7 @@ func suggest(k kind, info protocol.TargetInfo, idx index, p ReconcileParams, ite
 			}
 		}
 		core = append(core, n)
+		appOnly = append(appOnly, only && c.DifferingFields > 0)
 		item.Options = append(item.Options, Option{Action: "bind", CardID: c.CardID})
 	}
 	item.Options = append(item.Options, Option{Action: "import"}, Option{Action: "skip"})
@@ -187,7 +193,12 @@ func suggest(k kind, info protocol.TargetInfo, idx index, p ReconcileParams, ite
 	switch item.Verdict {
 	case VerdictBound:
 		if len(item.Candidates) > 0 && item.Candidates[0].DifferingFields > 0 {
-			bind(item.Candidates[0], "the app and the library differ; bind to resolve the drift")
+			why := "the app and the library differ; bind to resolve the drift"
+			// A missing binding has no ancestor to pull against.
+			if item.AppOnly = appOnly[0] && idx.byRemote[item.RemoteID].remoteState != remoteMissing; item.AppOnly {
+				why = "changed only in the app"
+			}
+			bind(item.Candidates[0], why)
 		}
 	case VerdictExact:
 		if i := unbound(item.Candidates); i >= 0 {
@@ -468,16 +479,16 @@ func (s *Service) Reconcile(ctx context.Context, p ReconcileParams, progress fun
 		for id := range s.autoApply(ctx, cardKind, p.InstanceID, cardIdx, bookIdx, snap.Items, imported) {
 			cardIdx.remoteOf[id] = ""
 		}
-		type auto struct{ bound, imported bool }
+		type auto struct{ bound, imported, pulled bool }
 		// Each world book once, as the verdict totals count them.
 		books := map[string]auto{}
 		mark := func(lb ReconcileItem) {
 			a := books[lb.RemoteID]
-			books[lb.RemoteID] = auto{a.bound || lb.AutoBound, a.imported || lb.AutoImported}
+			books[lb.RemoteID] = auto{a.bound || lb.AutoBound, a.imported || lb.AutoImported, a.pulled || lb.AutoPulled}
 		}
 		all := []auto{}
 		for _, it := range snap.Items {
-			all = append(all, auto{it.AutoBound, it.AutoImported})
+			all = append(all, auto{it.AutoBound, it.AutoImported, it.AutoPulled})
 			for _, lb := range it.Lorebooks {
 				mark(lb)
 			}
@@ -495,6 +506,8 @@ func (s *Service) Reconcile(ctx context.Context, p ReconcileParams, progress fun
 				snap.Totals["auto_imported"]++
 			case a.bound:
 				snap.Totals["auto_bound"]++
+			case a.pulled:
+				snap.Totals["auto_pulled"]++
 			}
 		}
 	}
@@ -530,6 +543,7 @@ items:
 	for i := range items {
 		it := &items[i]
 		var r Resolution
+		pull := false
 		switch {
 		case it.Suggested == nil:
 			continue
@@ -540,37 +554,55 @@ items:
 		case it.Verdict == VerdictNew && it.Suggested.Action == "import" && !imported[k.name+":"+it.AppHash]:
 			r = Resolution{InstanceID: instanceID, RemoteID: it.RemoteID, AppHash: it.AppHash,
 				BindingID: it.BindingID, Action: "import"}
+		case it.Verdict == VerdictBound && it.AppOnly && it.Suggested.Action == "bind":
+			// A bind takes auto_app hunks by status, so it brings the app's changes in.
+			// ponytail: a world book linked to a card is only resolved through its card, so an app-only edit to it waits for the owner.
+			r = Resolution{InstanceID: instanceID, RemoteID: it.RemoteID, AppHash: it.AppHash,
+				BaseRevisionID: idx.byID[it.Suggested.CardID].head, AcceptedHash: idx.byRemote[it.RemoteID].acceptedHash,
+				Action: "bind", CardID: it.Suggested.CardID}
+			pull = true
 		default:
 			continue
 		}
-		// This card's own world books may be copies of each other too.
-		importing := map[string]bool{}
-		for _, lb := range it.Lorebooks {
-			n, ok := nested[lb.RemoteID]
-			if !ok {
-				if n, ok = autoNested(lb, books); !ok {
-					continue items
+		opts := resolveOpts{bindOnly: true, importNew: true}
+		if pull {
+			// Writes a revision, and leaves the card's world books as they are.
+			opts = resolveOpts{skipLeftOut: true}
+		} else {
+			// This card's own world books may be copies of each other too.
+			importing := map[string]bool{}
+			for _, lb := range it.Lorebooks {
+				n, ok := nested[lb.RemoteID]
+				if !ok {
+					if n, ok = autoNested(lb, books); !ok {
+						continue items
+					}
 				}
-			}
-			if key := lorebookKind.name + ":" + n.AppHash; n.Action == "import" {
-				if imported[key] || importing[key] {
-					continue items
+				if key := lorebookKind.name + ":" + n.AppHash; n.Action == "import" {
+					if imported[key] || importing[key] {
+						continue items
+					}
+					importing[key] = true
 				}
-				importing[key] = true
+				r.Lorebooks = append(r.Lorebooks, n)
 			}
-			r.Lorebooks = append(r.Lorebooks, n)
 		}
-		res, err := s.resolve(ctx, k, r, resolveOpts{bindOnly: true, importNew: true})
+		res, err := s.resolve(ctx, k, r, opts)
 		if err != nil {
 			s.log.Warn("reconcile: auto-apply failed", "remote_id", it.RemoteID, "err", err)
 			continue
 		}
-		it.AutoBound, it.AutoImported = res.Action == "bind", res.Action == "import"
+		it.AutoPulled = pull
+		it.AutoBound, it.AutoImported = res.Action == "bind" && !pull, res.Action == "import"
 		it.BindingID = res.BindingID
 		if it.AutoImported {
 			imported[k.name+":"+it.AppHash] = true
 		}
 		applied[res.CardID] = true
+		if pull {
+			// Its world books were skipped, so there is nothing to record for them.
+			continue
+		}
 		for j, lr := range res.Lorebooks {
 			lb, n := &it.Lorebooks[j], r.Lorebooks[j]
 			lb.AutoBound, lb.AutoImported, lb.BindingID = n.Action == "bind", n.Action == "import", lr.BindingID

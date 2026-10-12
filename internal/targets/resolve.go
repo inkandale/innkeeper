@@ -101,6 +101,9 @@ func (s *Service) resolve(ctx context.Context, k kind, r Resolution, o resolveOp
 		return ResolveResult{}, err
 	}
 	defer tx.Rollback(ctx)
+	if err := waitForSync(ctx, tx); err != nil {
+		return ResolveResult{}, err
+	}
 	rs := &resolver{s: s, tx: tx, books: map[string]ResolveResult{}, wrote: map[int64]string{}, resolveOpts: o}
 	res, err := rs.item(ctx, k, r)
 	if st := (*staleItem)(nil); errors.As(err, &st) {

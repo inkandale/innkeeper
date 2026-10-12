@@ -12,6 +12,8 @@ import (
 
 type reconcileIn struct{ Body targets.ReconcileParams }
 
+type syncIn struct{ Body targets.SyncParams }
+
 type compareCardIn struct {
 	ID       int64  `path:"id"`
 	RemoteID string `path:"remote_id" doc:"The app's id for the item, path-escaped"`
@@ -42,6 +44,23 @@ type resolutionsIn struct {
 
 func (s *Server) reconcileRoutes(api huma.API) {
 	tags := []string{"Sync"}
+
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "start-sync", Method: http.MethodPost,
+		Path: "/syncs", Summary: "Sync every target app with the library", Tags: tags, DefaultStatus: http.StatusAccepted,
+		Description: "Queues a sync of every app, one at a time, or returns the one already queued or running. " +
+			"Each app's snapshot is a finished reconcile job named in the result's apps; read it from GET /jobs/{id}."},
+		func(ctx context.Context, in *syncIn) (*jobResp, error) {
+			if in.Body.InstanceID != 0 {
+				if err := s.usable(ctx, in.Body.InstanceID, "pull"); err != nil {
+					return nil, err
+				}
+			}
+			j, err := s.Targets.EnqueueSync(ctx, s.Queue, in.Body)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			return &jobResp{Body: toJob(j)}, nil
+		})
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "start-reconcile", Method: http.MethodPost,
 		Path: "/reconciles", Summary: "Sync a target app with the library", Tags: tags, DefaultStatus: http.StatusAccepted,

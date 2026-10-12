@@ -160,7 +160,11 @@ export interface paths {
         delete: operations["unbind"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Change a binding's settings
+         * @description With autosync on, each sync pushes the library's copy when the card is ahead and the app's copy hasn't changed. Destructive, as a push is: autosync replaces the app's copy.
+         */
+        patch: operations["update-binding"];
         trace?: never;
     };
     "/bindings/{id}/adopt": {
@@ -1855,6 +1859,15 @@ export interface components {
             readonly $schema?: string;
             archived: boolean;
         };
+        AutosyncInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/AutosyncInBody.json
+             */
+            readonly $schema?: string;
+            autosync: boolean;
+        };
         AvatarDiff: {
             app?: string;
             library?: string;
@@ -1908,6 +1921,7 @@ export interface components {
              */
             readonly $schema?: string;
             ahead: boolean;
+            autosync: boolean;
             /** Format: int64 */
             card_id?: number;
             changes?: components["schemas"]["Change"][] | null;
@@ -3410,6 +3424,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "update-binding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AutosyncInBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Binding"];
+                };
             };
             /** @description Error */
             default: {

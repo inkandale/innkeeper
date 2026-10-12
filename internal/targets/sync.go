@@ -3,7 +3,9 @@ package targets
 import (
 	"cmp"
 	"context"
+	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -135,6 +137,18 @@ func (s *Service) Sync(ctx context.Context, p SyncParams, progress func(SyncResu
 			progress(res)
 		}
 	}
+	// Pass 2 runs after every app's pass 1, so an edit pulled from one app reaches the others.
+	for i := range res.Apps {
+		if res.Apps[i].Error == "" {
+			s.autosync(ctx, &res.Apps[i])
+		}
+		if ctx.Err() != nil {
+			return res, ctx.Err()
+		}
+	}
+	if progress != nil {
+		progress(res)
+	}
 	return res, nil
 }
 
@@ -156,4 +170,66 @@ func (s *Service) syncApps(ctx context.Context, only int64) ([]int64, error) {
 	}
 	slices.Sort(ids)
 	return ids, nil
+}
+
+// autosync pushes the app's bindings that have autosync on and are ahead.
+// Each push expects the app to hold the copy the library last agreed with,
+// so one that changed in the app is left for the owner and counted as
+// autosync_changed.
+//
+// ponytail: the check compares the card's stored fields, not its avatar, so
+// an avatar changed only in the app is overwritten, as a manual push would.
+func (s *Service) autosync(ctx context.Context, app *SyncApp) {
+	if app.Totals == nil {
+		app.Totals = map[string]int{}
+	}
+	failed := func(binding int64, err error) {
+		app.Totals["autosync_failed"]++
+		s.log.Warn("sync: autosync push failed", "instance", app.InstanceID, "binding", binding, "err", err)
+	}
+	// Without an accepted copy, a push can't tell whether the app changed.
+	rows, err := s.pool.Query(ctx, `SELECT b.id, coalesce(b.card_id, 0), coalesce(b.lorebook_id, 0), b.accepted_hash, p.id
+		FROM binding b JOIN binding_status st ON st.binding_id = b.id
+		JOIN LATERAL (SELECT id FROM push WHERE binding_id = b.id ORDER BY id DESC LIMIT 1) p ON TRUE
+		WHERE b.instance_id = $1 AND b.autosync AND st.status = 'ahead' AND b.accepted_hash <> ''
+		ORDER BY b.id`, app.InstanceID)
+	if err != nil {
+		failed(0, err)
+		return
+	}
+	type due struct {
+		binding, card, lorebook int64
+		accepted                string
+		lastPush                int64
+	}
+	var list []due
+	var d due
+	if _, err := pgx.ForEachRow(rows, []any{&d.binding, &d.card, &d.lorebook, &d.accepted, &d.lastPush}, func() error {
+		list = append(list, d)
+		return nil
+	}); err != nil {
+		failed(0, err)
+		return
+	}
+	for _, d := range list {
+		if ctx.Err() != nil {
+			return
+		}
+		k, id := cardKind, d.card
+		if d.lorebook != 0 {
+			k, id = lorebookKind, d.lorebook
+		}
+		_, err := s.push(ctx, k, app.InstanceID, id, false, rand.Text(), &pushExpect{lastPush: &d.lastPush, appHash: d.accepted})
+		switch {
+		case err == nil:
+			app.Totals["autosync_pushed"]++
+		case errors.Is(err, ErrAppChanged):
+			app.Totals["autosync_changed"]++
+		case errors.Is(err, ErrNewCopy):
+			// The app can't update its copy, and autosync never makes another.
+			app.Totals["autosync_skipped"]++
+		default:
+			failed(d.binding, err)
+		}
+	}
 }

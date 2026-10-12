@@ -41,10 +41,13 @@ type Binding struct {
 	RemoteID   string `json:"remote_id"`
 	Status     string `json:"status" enum:"in_sync,ahead,remote_changed,diverged,missing,cant_check"`
 	// Ahead means the library changed since the last push.
-	Ahead       bool       `json:"ahead"`
-	RemoteState string     `json:"remote_state" enum:"unknown,unchanged,changed,missing"`
-	CheckedAt   *time.Time `json:"checked_at,omitempty"`
-	LastPush    Push       `json:"last_push"`
+	Ahead       bool   `json:"ahead"`
+	RemoteState string `json:"remote_state" enum:"unknown,unchanged,changed,missing"`
+	// Autosync means each sync pushes the library's copy when the card is
+	// ahead and the app's copy hasn't changed.
+	Autosync  bool       `json:"autosync"`
+	CheckedAt *time.Time `json:"checked_at,omitempty"`
+	LastPush  Push       `json:"last_push"`
 	// Changes are the fields the app changed since the last push or adopt.
 	Changes   []Change  `json:"changes,omitempty"`
 	CreatedAt time.Time `json:"created_at"`

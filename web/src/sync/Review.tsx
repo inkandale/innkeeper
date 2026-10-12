@@ -7,12 +7,14 @@ import { show, text } from "../card/draft";
 import { entryOf } from "../card/History";
 import { useToast } from "../shell/Toasts";
 import {
+  changePath,
   compareItem,
   decidable,
   optionKey,
   optionLabel,
   resolution,
   resolveItem,
+  reviewable,
   rows,
   snapshotOf,
   type Comparison,
@@ -162,12 +164,19 @@ function OtherMatch({ kind, onPick }: { kind: ItemKind; onPick: (id: number) => 
 
 /** Review is the diff editor: one app item against a library card, decided hunk by hunk, with the card's world books nested. */
 export function Review() {
+  const p = useParams();
+  // Stepping through the queue reuses this route, so each item starts with fresh choices.
+  return <ReviewItem key={`${p.instance}/${p.kind}/${p.remoteId}`} />;
+}
+
+function ReviewItem() {
   const params = useParams();
   const instance = Number(params.instance);
   const kind: ItemKind = params.kind === "lorebook-items" ? "lorebook-items" : "items";
   const remoteId = params.remoteId ?? "";
   const [search, setSearch] = useSearchParams();
   const jobId = Number(search.get("job")) || 0;
+  const queue = search.has("queue");
   const navigate = useNavigate();
   const location = useLocation();
   const qc = useQueryClient();
@@ -178,6 +187,15 @@ export function Review() {
     queryKey: ["job", jobId],
     queryFn: async () => must(await api.GET("/jobs/{id}", { params: { path: { id: jobId } } })),
   });
+  const changes = useQuery({
+    enabled: queue,
+    queryKey: ["sync", "changes"],
+    queryFn: async () => must(await api.GET("/sync/changes")),
+  });
+  const reviews = (changes.data?.rows ?? []).flatMap((r) => r.apps ?? []).filter(reviewable);
+  const at = reviews.findIndex((c) => c.instance_id === instance && c.remote_id === remoteId);
+  const next = reviews[at + 1];
+  const onward = () => navigate(next ? changePath(next) : "/sync/changes");
   const snap = snapshotOf(job.data);
   const item = snap && rows(snap).find((r) => r.kind === kind && r.item.remote_id === remoteId)?.item;
   const suggested = item?.suggested;
@@ -256,7 +274,10 @@ export function Review() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["search"] });
       toast({ text: `Resolved ${item?.name || remoteId}. Push to send the library's side to the app.` });
-      if (jobId) navigate(`/sync/reconciles/${jobId}`);
+      if (queue) {
+        void qc.invalidateQueries({ queryKey: ["sync", "changes"] });
+        onward();
+      } else if (jobId) navigate(`/sync/reconciles/${jobId}`);
       // Opened directly, there's no history entry to go back to.
       else if (location.key === "default") navigate("/sync");
       else navigate(-1);
@@ -287,11 +308,12 @@ export function Review() {
   if (job.isError) return <p className="error page">{job.error.message}</p>;
   return (
     <div className="review">
-      <p>{jobId ? <Link to={`/sync/reconciles/${jobId}`}>← Sync #{jobId}</Link> : <Link to="/sync">← Sync</Link>}</p>
+      <p>{queue ? <Link to="/sync/changes">← Changes</Link> : jobId ? <Link to={`/sync/reconciles/${jobId}`}>← Sync #{jobId}</Link> : <Link to="/sync">← Sync</Link>}</p>
       <section aria-label={name}>
         <div className="row">
           <h1>{name}</h1>
           {item && <span className="muted">{item.verdict}</span>}
+          {at >= 0 && <span className="muted">{`${at + 1} of ${reviews.length}`}</span>}
           <span className="row" role="radiogroup" aria-label="Action">
             {actions.map((a) => (
               <label key={a} className="check">
@@ -303,6 +325,11 @@ export function Review() {
           <button className="button primary" disabled={!ready || resolve.isPending} onClick={() => resolve.mutate()}>
             Resolve
           </button>
+          {queue && (
+            <button className="button" disabled={!changes.data || resolve.isPending} onClick={onward}>
+              Later
+            </button>
+          )}
         </div>
         {suggested && (
           <p className="muted">

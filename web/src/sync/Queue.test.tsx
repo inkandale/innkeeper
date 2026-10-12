@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { Toasts } from "../shell/Toasts";
@@ -31,25 +31,15 @@ const snap: Snapshot = {
   totals: { exact: 1, new: 2, error: 1, likely: 1, bound: 1 },
 };
 const job = { id: 5, kind: "target.reconcile", status: "succeeded", instance_id: 3, created_at: now, payload: {}, progress: snap, attempts: 1, max_attempts: 3, run_after: now };
-const cmp = { instance_id: 3, remote_id: "a", card_id: 1, head_revision_id: 118, accepted_hash: "", base: "none", app_hash: "ha", fields: [] };
 
-let resolutions: unknown;
 let progress: Snapshot = snap;
 beforeEach(() => {
-  resolutions = undefined;
   progress = snap;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
       const u = new URL(req.url);
       if (u.pathname === "/api/jobs/5") return json({ ...job, progress });
-      if (u.pathname === "/api/instances/3/items/a/compare" && u.searchParams.get("card_id") === "1") return json(cmp);
-      if (u.pathname === "/api/instances/3/lorebook-items/w/compare" && u.searchParams.get("lorebook_id") === "9")
-        return json({ ...cmp, remote_id: "w", card_id: 9, head_revision_id: 50 });
-      if (u.pathname === "/api/resolutions") {
-        resolutions = (await req.json()).resolutions;
-        return json({ id: 9, kind: "bulk", status: "waiting" }, 202);
-      }
       return json({}, 404);
     }),
   );
@@ -71,10 +61,20 @@ test("lists each app item with its match and suggestion", async () => {
   renderQueue();
   expect(await screen.findByRole("link", { name: "Ann" })).toHaveAttribute("href", "/sync/3/items/a?job=5");
   expect(screen.getByRole("link", { name: "World" })).toHaveAttribute("href", "/sync/3/lorebook-items/w?job=5");
-  expect(screen.getByRole("combobox", { name: "Action for Ann" })).toHaveDisplayValue("Bind to Ann (suggested)");
+  expect(screen.getByRole("row", { name: /Bo/ })).toHaveTextContent("Import as new");
   expect(screen.getByText("bad JSON")).toBeInTheDocument();
   expect(screen.getByText(/Ann's world/)).toBeInTheDocument();
   expect(screen.getByText(/1 bound card the app no longer has/)).toBeInTheDocument();
+});
+
+test("is a record: no checkboxes or Apply, and a note pointing at Changes", async () => {
+  renderQueue();
+  await screen.findByRole("table");
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Apply/ })).not.toBeInTheDocument();
+  expect(screen.getByText(/What this sync found\. Work through what needs you in/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Changes" })).toHaveAttribute("href", "/sync/changes?instance_id=3");
 });
 
 test("verdict chips filter the rows", async () => {
@@ -86,46 +86,11 @@ test("verdict chips filter the rows", async () => {
   expect(screen.getByRole("link", { name: "Bo" })).toBeInTheDocument();
 });
 
-test("Apply sends the checked rows as picked, comparing each bind", async () => {
-  renderQueue();
-  const user = userEvent.setup();
-  await user.selectOptions(await screen.findByRole("combobox", { name: "Action for Bo" }), "skip");
-  await user.click(screen.getByRole("checkbox", { name: "Apply World" }));
-  await user.click(screen.getByRole("button", { name: "Apply 2 suggested" }));
-  await waitFor(() =>
-    expect(resolutions).toEqual([
-      { instance_id: 3, remote_id: "a", action: "bind", card_id: 1, app_hash: "ha", base_revision_id: 118, accepted_hash: "", default: "library" },
-      { instance_id: 3, remote_id: "b", action: "skip", app_hash: "hb" },
-    ]),
-  );
-  expect(await screen.findByText(/Job 9 started/)).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Applied" })).toBeDisabled();
-});
-
-test("Apply under a verdict filter leaves out a character shown only for its world book", async () => {
-  renderQueue();
-  const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: "new 2" }));
-  expect(screen.getByRole("checkbox", { name: "Apply Ann" })).toBeDisabled();
-  await user.click(screen.getByRole("button", { name: "Apply 1 suggested" }));
-  await waitFor(() => expect(resolutions).toEqual([{ instance_id: 3, remote_id: "b", action: "import", app_hash: "hb", binding_id: 0 }]));
-});
-
 test("a running sync shows its progress", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => json({ ...job, status: "running", progress: { done: 2, total: 9 } })));
   renderQueue();
   expect(await screen.findByText(/2 of 9/)).toBeInTheDocument();
   expect(within(document.body).queryByRole("table")).not.toBeInTheDocument();
-});
-
-test("bound and error rows start unchecked; picking an action checks the row", async () => {
-  renderQueue();
-  const user = userEvent.setup();
-  expect(await screen.findByRole("checkbox", { name: "Apply Di" })).not.toBeChecked();
-  const bad = screen.getByRole("checkbox", { name: "Apply c" });
-  expect(bad).toBeDisabled();
-  await user.selectOptions(screen.getByRole("combobox", { name: "Action for c" }), "skip");
-  expect(bad).toBeChecked();
 });
 
 const done = (over: Partial<Snapshot>): Snapshot => ({ ...snap, lorebooks: [], missing: null, unpushed: null, ...over });
@@ -180,7 +145,7 @@ test("a pending nested world book keeps the table", async () => {
   expect(await screen.findByRole("table")).toBeInTheDocument();
 });
 
-test("auto rows are labelled and start unchecked", async () => {
+test("auto rows are labelled", async () => {
   progress = done({
     items: [
       { remote_id: "a", name: "Ann", app_hash: "ha", verdict: "new", auto_imported: true, options: [{ action: "import" }, { action: "skip" }], suggested: { action: "import" } },
@@ -190,8 +155,6 @@ test("auto rows are labelled and start unchecked", async () => {
   });
   renderQueue();
   expect(await screen.findByText("imported (auto)")).toBeInTheDocument();
-  expect(screen.getByRole("checkbox", { name: "Apply Ann" })).not.toBeChecked();
-  expect(screen.getByRole("checkbox", { name: "Apply Bo" })).toBeChecked();
 });
 
 test("the auto_imported chip shows the auto-imported rows, with the same label on world books", async () => {

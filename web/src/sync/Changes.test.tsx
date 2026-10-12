@@ -149,3 +149,28 @@ test("nothing to do", async () => {
   renderChanges();
   expect(await screen.findByText("Nothing needs you.")).toBeInTheDocument();
 });
+
+test("Unbind asks first, and deletes the binding only once confirmed", async () => {
+  const deletes: string[] = [];
+  const base = fetch;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (req: Request) => {
+      if (req.method === "DELETE") {
+        deletes.push(new URL(req.url).pathname);
+        return new Response(null, { status: 204 });
+      }
+      return base(req);
+    }),
+  );
+  const ask = vi.fn(() => false);
+  vi.stubGlobal("confirm", ask);
+  renderChanges();
+  const cy = await screen.findByRole("row", { name: /Cy/ });
+  await userEvent.click(within(cy).getByRole("button", { name: /Unbind/ }));
+  expect(ask).toHaveBeenCalledTimes(1);
+  expect(deletes).toEqual([]);
+  ask.mockReturnValue(true);
+  await userEvent.click(within(cy).getByRole("button", { name: /Unbind/ }));
+  await waitFor(() => expect(deletes).toEqual(["/api/bindings/12"]));
+});

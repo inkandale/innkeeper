@@ -289,11 +289,18 @@ test("an image change that hits a conflict says so and refetches the card", asyn
   await waitFor(() => expect(cardGets).toBe(2));
 });
 
-test("a drifted target links to its review", async () => {
-  bindingStatus = "diverged";
+test.each(["diverged", "remote_changed", "ahead", "missing"])("a %s target links to the changes queue", async (status) => {
+  bindingStatus = status;
   renderAt("/cards/7");
-  const link = await screen.findByRole("link", { name: "Review" });
-  expect(link).toHaveAttribute("href", "/sync/2/items/r?card=7");
+  const link = await screen.findByRole("link", { name: "Changes" });
+  expect(link).toHaveAttribute("href", "/sync/changes?instance_id=2");
+});
+
+test("an in-sync target has no changes link", async () => {
+  bindingStatus = "in_sync";
+  renderAt("/cards/7");
+  await screen.findByRole("checkbox", { name: "Autosync to Lumiverse" });
+  expect(screen.queryByRole("link", { name: "Changes" })).not.toBeInTheDocument();
 });
 
 test("the autosync box turns autosync on for that app", async () => {

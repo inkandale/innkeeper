@@ -142,7 +142,11 @@ export function Changes() {
         return (
           <>
             {push("Push again")}{" "}
-            <button className="button" disabled={unbind.isPending} onClick={() => unbind.mutate(c.binding_id ?? 0)}>
+            <button
+              className="button"
+              disabled={unbind.isPending}
+              onClick={() => confirm(`Unbind ${r.name} from ${name(c.instance_id)}? The card stays in the library.`) && unbind.mutate(c.binding_id ?? 0)}
+            >
               Unbind{where}
             </button>
           </>

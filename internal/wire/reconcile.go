@@ -145,3 +145,29 @@ type Resolution struct {
 	// world book; empty means card. Nested items are world books.
 	Kind string `json:"kind,omitempty" enum:"card,lorebook"`
 }
+
+// SyncKind is the job kind that syncs every target app, one at a time.
+const SyncKind = "target.sync"
+
+// SyncParams starts a sync.
+type SyncParams struct {
+	// InstanceID limits the sync to one app; 0 syncs every app that can pull.
+	InstanceID int64 `json:"instance_id,omitempty" required:"false"`
+	// Apply is as in ReconcileParams; empty means ApplyObvious.
+	Apply string `json:"apply,omitempty" enum:"obvious,none" required:"false"`
+}
+
+// SyncResult is a sync's progress, and its result once it finishes.
+type SyncResult struct {
+	Apps []SyncApp `json:"apps"`
+}
+
+// SyncApp is one app's part of a sync.
+type SyncApp struct {
+	InstanceID int64 `json:"instance_id"`
+	// JobID is the finished reconcile job holding this app's snapshot, as
+	// the review queue reads it.
+	JobID  int64          `json:"job_id"`
+	Totals map[string]int `json:"totals,omitempty"`
+	Error  string         `json:"error,omitempty"`
+}

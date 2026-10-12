@@ -68,7 +68,11 @@ func (s *Service) compareItem(ctx context.Context, k kind, instanceID int64, rem
 	if c.Fields, err = compare(k, info, lib.data, it.data, accepted); err != nil {
 		return c, err
 	}
-	if lib.avatar != it.avatar {
+	same, err := s.lib.SameImage(ctx, lib.avatar, it.avatar)
+	if err != nil {
+		return c, err
+	}
+	if !same {
 		c.Avatar = &AvatarDiff{Library: lib.avatar, App: it.avatar}
 		if lib.phash != nil && it.phash != nil {
 			d := cardhash.Distance(*lib.phash, *it.phash)

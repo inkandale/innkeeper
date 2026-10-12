@@ -490,7 +490,11 @@ func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.Targe
 	if headAvatar != nil {
 		avatar = *headAvatar
 	}
-	if _, ok := r.Choices[avatarChoice]; ok && avatar == it.avatar {
+	sameAvatar, err := s.lib.SameImage(ctx, avatar, it.avatar)
+	if err != nil {
+		return res, err
+	}
+	if _, ok := r.Choices[avatarChoice]; ok && sameAvatar {
 		return res, fmt.Errorf("%w: %s", merge.ErrUnknownHunk, avatarChoice)
 	}
 	// An empty app avatar can't clear the library's.
@@ -571,7 +575,8 @@ func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.Targe
 		return res, err
 	}
 	newAvatar := avatar
-	if takeAppAvatar {
+	// Taking the app's copy of the same picture would only add a revision.
+	if takeAppAvatar && !sameAvatar {
 		newAvatar = it.avatar
 	}
 	baseChange, err := merge.Diff(headData, base)
@@ -590,7 +595,7 @@ func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.Targe
 	if err != nil {
 		return res, err
 	}
-	appBehind := wantHash != it.hash || newAvatar != it.avatar
+	appBehind := wantHash != it.hash || (newAvatar != it.avatar && !sameAvatar)
 	revise := baseChange != nil || overrideChanged || newAvatar != avatar
 
 	// The app's copy is where the sources are, even if the target drops extensions,

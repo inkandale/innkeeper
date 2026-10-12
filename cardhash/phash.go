@@ -2,6 +2,9 @@ package cardhash
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"image"
 	_ "image/gif"
@@ -100,4 +103,17 @@ func Phash(img image.Image) int64 {
 		}
 	}
 	return int64(out)
+}
+
+// PixelHash returns the hex SHA-256 of img's size and its pixels as 8-bit
+// NRGBA, so the same picture hashes the same whatever its file format,
+// color model, or metadata.
+func PixelHash(img image.Image) string {
+	b := img.Bounds()
+	n := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
+	draw.Draw(n, n.Bounds(), img, b.Min, draw.Src)
+	h := sha256.New()
+	_ = binary.Write(h, binary.BigEndian, [2]uint32{uint32(b.Dx()), uint32(b.Dy())})
+	h.Write(n.Pix)
+	return hex.EncodeToString(h.Sum(nil))
 }

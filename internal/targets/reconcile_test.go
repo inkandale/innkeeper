@@ -2,9 +2,11 @@ package targets
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/png"
@@ -818,5 +820,54 @@ func TestReconcileConcurrentImportsBindOneCard(t *testing.T) {
 	// Brakka from setup and Lia.
 	if res.Action != "bind" || res.CardID != lia || cards != 2 {
 		t.Errorf("second import = %+v, want bind to #%d; %d cards", res, lia, cards)
+	}
+}
+
+// tagPNG copies the PNG at path with a tEXt chunk before IEND, as
+// SillyTavern embeds the card in its avatars.
+func tagPNG(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := []byte("chara\x00card json")
+	body := append([]byte("tEXt"), data...)
+	chunk := binary.BigEndian.AppendUint32(nil, uint32(len(data)))
+	chunk = append(chunk, body...)
+	chunk = binary.BigEndian.AppendUint32(chunk, crc32.ChecksumIEEE(body))
+	iend := len(b) - 12
+	out := append(append(append([]byte{}, b[:iend]...), chunk...), b[iend:]...)
+	tagged := filepath.Join(t.TempDir(), "tagged.png")
+	if err := os.WriteFile(tagged, out, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return tagged
+}
+
+// An app avatar with the library's pixels but other metadata binds in sync;
+// one changed pixel leaves the card ahead.
+func TestReconcileBindIgnoresAvatarMetadata(t *testing.T) {
+	for _, change := range []bool{false, true} {
+		e := setup(t, nil)
+		img := patternPNG(t, func(x, y int) uint8 { return uint8(x * y) })
+		lia := e.libCard(map[string]any{"name": "Lia", "description": liaText})
+		e.setAvatar(lia, img)
+		appImg := tagPNG(t, img)
+		if change {
+			appImg = patternPNG(t, func(x, y int) uint8 { return uint8(x*y) + 1 })
+		}
+		e.appCard("r1", map[string]any{"name": "Lia", "description": liaText}, map[string]any{"avatar": appImg})
+		snap, err := e.s.Reconcile(e.ctx, ReconcileParams{InstanceID: e.inst, Apply: ApplyObvious}, nil)
+		if err != nil || !snap.Items[0].AutoBound {
+			t.Fatalf("change=%v: items %+v, %v", change, snap.Items, err)
+		}
+		want := "in_sync"
+		if change {
+			want = "ahead"
+		}
+		if got := e.status(lia); got != want {
+			t.Errorf("change=%v: status %s, want %s", change, got, want)
+		}
 	}
 }

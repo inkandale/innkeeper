@@ -20,6 +20,10 @@ type (
 	SyncParams      = wire.SyncParams
 	SyncResult      = wire.SyncResult
 	SyncApp         = wire.SyncApp
+	AppChange       = wire.AppChange
+	ChangeRow       = wire.ChangeRow
+	Changes         = wire.Changes
+	ChangesFilter   = wire.ChangesFilter
 )
 
 const (
@@ -27,4 +31,11 @@ const (
 	ApplyObvious  = wire.ApplyObvious
 	ApplyNone     = wire.ApplyNone
 	SyncKind      = wire.SyncKind
+
+	ChangeDiffers     = wire.ChangeDiffers
+	ChangeBothChanged = wire.ChangeBothChanged
+	ChangeAhead       = wire.ChangeAhead
+	ChangeMissing     = wire.ChangeMissing
+	ChangeError       = wire.ChangeError
+	ChangeNew         = wire.ChangeNew
 )

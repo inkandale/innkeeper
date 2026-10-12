@@ -332,6 +332,8 @@ ink sync status <binding-id>                      read the app's copy now and sh
 ink sync unbind <binding-id> [--yes]              forget a binding and its push history
 ink sync run [instance-id] [params-json] [--dry-run]   sync every app with the library, or one app
 ink sync refresh                                  check every app for changes; changes nothing
+ink sync changes [--app <instance-id>] [--state <state>]
+                                                  list the cards an app needs you for
 ink sync autosync <binding-id> on|off             let each sync push the library's copy to this app, or stop it
 ink sync compare <instance-id> <remote-id> [card-id]
                                                   show how an app character differs from a card
@@ -596,6 +598,12 @@ already linked and unchanged; otherwise it stays for review. Each remaining
 row has a suggested action: `bind` to a card, `import` as a new card, or
 `skip`. Pass `'{"match": {"name": false}}'` to stop matching by name alone,
 and `--json` for the whole snapshot.
+
+The changes queue lists every card an app needs you for, built from each
+app's latest sync and the binding statuses, with app items no card matches
+first. Each app's state is `differs`, `both_changed`, `ahead`, `missing`,
+`error`, or `new`. List it with
+`ink sync changes [--app <instance-id>] [--state <state>]`.
 
 Compare an item with a card before binding them. The output lists each
 hunk, a part of a field, that differs, with changed words marked

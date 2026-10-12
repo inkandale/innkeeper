@@ -85,3 +85,7 @@ dialog.dialog h2 {
   color: var(--text);
   margin: 0;
 }
+
+.sync .badge {
+  display: inline-block;
+}

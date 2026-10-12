@@ -1741,6 +1741,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sync/changes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the cards that need the owner
+         * @description One row per card with a change in some app, and app items no card matches first. Built from each app's latest sync and the binding statuses.
+         */
+        get: operations["list-changes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/syncs": {
         parameters: {
             query?: never;
@@ -1831,6 +1851,21 @@ export interface components {
             ref?: string;
             /** @description A page on a known site. Use this, or kind and ref. */
             url?: string;
+        };
+        AppChange: {
+            app_hash?: string;
+            /** Format: int64 */
+            binding_id?: number;
+            error?: string;
+            /** Format: int64 */
+            instance_id: number;
+            /** Format: int64 */
+            job_id?: number;
+            name?: string;
+            remote_id?: string;
+            /** @enum {string} */
+            state: "differs" | "both_changed" | "ahead" | "missing" | "error" | "new";
+            suggested?: components["schemas"]["Option"];
         };
         ArchiveInBody: {
             /**
@@ -2173,6 +2208,26 @@ export interface components {
             after?: unknown;
             before?: unknown;
             field: string;
+        };
+        ChangeRow: {
+            apps: components["schemas"]["AppChange"][] | null;
+            /** Format: int64 */
+            card_id?: number;
+            name: string;
+        };
+        Changes: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/Changes.json
+             */
+            readonly $schema?: string;
+            counts: {
+                [key: string]: {
+                    [key: string]: number;
+                };
+            };
+            rows: components["schemas"]["ChangeRow"][] | null;
         };
         CheckResult: {
             /**
@@ -2628,6 +2683,13 @@ export interface components {
             readonly $schema?: string;
             /** @description What the caller's credentials may do. */
             tier: string;
+        };
+        Option: {
+            /** @enum {string} */
+            action: "bind" | "import" | "skip";
+            /** Format: int64 */
+            card_id?: number;
+            why?: string;
         };
         Page: {
             /** @description next_cursor from the previous page. */
@@ -6528,6 +6590,40 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-changes": {
+        parameters: {
+            query?: {
+                /** @description Only this app's changes; counts still cover every app */
+                instance_id?: number;
+                /** @description Only this state */
+                state?: "differs" | "both_changed" | "ahead" | "missing" | "error" | "new";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Changes"];
+                };
             };
             /** @description Error */
             default: {

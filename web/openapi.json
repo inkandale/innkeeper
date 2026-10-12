@@ -31,6 +31,54 @@
         },
         "type": "object"
       },
+      "AppChange": {
+        "additionalProperties": false,
+        "properties": {
+          "app_hash": {
+            "type": "string"
+          },
+          "binding_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "error": {
+            "type": "string"
+          },
+          "instance_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "job_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "remote_id": {
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "differs",
+              "both_changed",
+              "ahead",
+              "missing",
+              "error",
+              "new"
+            ],
+            "type": "string"
+          },
+          "suggested": {
+            "$ref": "#/components/schemas/Option"
+          }
+        },
+        "required": [
+          "instance_id",
+          "state"
+        ],
+        "type": "object"
+      },
       "ArchiveInBody": {
         "additionalProperties": false,
         "properties": {
@@ -1049,6 +1097,70 @@
         },
         "required": [
           "field"
+        ],
+        "type": "object"
+      },
+      "ChangeRow": {
+        "additionalProperties": false,
+        "properties": {
+          "apps": {
+            "items": {
+              "$ref": "#/components/schemas/AppChange"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "card_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "apps"
+        ],
+        "type": "object"
+      },
+      "Changes": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/Changes.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "counts": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            "type": "object"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ChangeRow"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "rows",
+          "counts"
         ],
         "type": "object"
       },
@@ -2285,6 +2397,30 @@
         },
         "required": [
           "tier"
+        ],
+        "type": "object"
+      },
+      "Option": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "bind",
+              "import",
+              "skip"
+            ],
+            "type": "string"
+          },
+          "card_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "why": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
         ],
         "type": "object"
       },
@@ -8553,6 +8689,69 @@
         "summary": "Claim this server",
         "tags": [
           "Auth"
+        ]
+      }
+    },
+    "/sync/changes": {
+      "get": {
+        "description": "One row per card with a change in some app, and app items no card matches first. Built from each app's latest sync and the binding statuses.",
+        "operationId": "list-changes",
+        "parameters": [
+          {
+            "description": "Only this app's changes; counts still cover every app",
+            "explode": false,
+            "in": "query",
+            "name": "instance_id",
+            "schema": {
+              "description": "Only this app's changes; counts still cover every app",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only this state",
+            "explode": false,
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "description": "Only this state",
+              "enum": [
+                "differs",
+                "both_changed",
+                "ahead",
+                "missing",
+                "error",
+                "new"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Changes"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the cards that need the owner",
+        "tags": [
+          "Sync"
         ]
       }
     },

@@ -159,13 +159,15 @@ func suggest(k kind, info protocol.TargetInfo, idx index, p ReconcileParams, ite
 	var core []int
 	// appOnly[i]: every hunk that differs from candidate i is the app's change alone.
 	var appOnly []bool
+	// appChanged[i]: some hunk that differs from candidate i is the app's change.
+	var appChanged []bool
 	for i := range item.Candidates {
 		c := &item.Candidates[i]
 		fields, err := compare(k, info, idx.byID[c.CardID].data, it.data, accepted)
 		if err != nil {
 			return item, err
 		}
-		n, only := 0, true
+		n, only, changed := 0, true, false
 		for _, f := range fields {
 			differs := false
 			for _, h := range f.Hunks {
@@ -173,6 +175,7 @@ func suggest(k kind, info protocol.TargetInfo, idx index, p ReconcileParams, ite
 				if h.Status == merge.Conflict {
 					c.Conflicts++
 				}
+				changed = changed || h.Status == merge.AutoApp || h.Status == merge.Conflict
 				if h.Status != merge.Same && h.Status != merge.AutoApp {
 					only = false
 				}
@@ -186,16 +189,19 @@ func suggest(k kind, info protocol.TargetInfo, idx index, p ReconcileParams, ite
 		}
 		core = append(core, n)
 		appOnly = append(appOnly, only && c.DifferingFields > 0)
+		appChanged = append(appChanged, changed)
 		item.Options = append(item.Options, Option{Action: "bind", CardID: c.CardID})
 	}
 	item.Options = append(item.Options, Option{Action: "import"}, Option{Action: "skip"})
 	bind := func(c Candidate, why string) { item.Suggested = &Option{Action: "bind", CardID: c.CardID, Why: why} }
 	switch item.Verdict {
 	case VerdictBound:
+		missing := idx.byRemote[item.RemoteID].remoteState == remoteMissing
+		item.AppChanged = len(item.Candidates) > 0 && !missing && appChanged[0]
 		if len(item.Candidates) > 0 && item.Candidates[0].DifferingFields > 0 {
 			why := "the app and the library differ; bind to resolve the drift"
 			// A missing binding has no ancestor to pull against.
-			if item.AppOnly = appOnly[0] && idx.byRemote[item.RemoteID].remoteState != remoteMissing; item.AppOnly {
+			if item.AppOnly = appOnly[0] && !missing; item.AppOnly {
 				why = "changed only in the app"
 			}
 			bind(item.Candidates[0], why)

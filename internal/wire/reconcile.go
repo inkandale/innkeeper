@@ -60,6 +60,9 @@ type ReconcileItem struct {
 	// AppOnly means the app changed this bound item and the library didn't
 	// since the last push or resolve.
 	AppOnly bool `json:"app_only,omitempty"`
+	// AppChanged means the app changed this bound item since the last push
+	// or resolve, whether or not the library did too.
+	AppChanged bool `json:"app_changed,omitempty"`
 	// AutoPulled means the run took the app's changes into the library.
 	AutoPulled bool `json:"auto_pulled,omitempty"`
 }

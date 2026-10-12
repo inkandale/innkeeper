@@ -128,7 +128,8 @@ keep in app, ignore is the library's side.
 Kept: the push preview and confirm from a card or a query, and the review
 queue.
 
-Removing adopt is a breaking change: commit it as `feat!`.
+Removing adopt is not marked as a breaking change: every client ships from
+this repo, so it doesn't need a major version.
 
 ## Testing
 
@@ -156,4 +157,4 @@ Each step ships on its own:
 1. Avatar comparison.
 2. The sync run, pulling app-only edits, the schedule, and the lock.
 3. Autosync.
-4. Surfaces, including removing adopt (`feat!`).
+4. Surfaces, including removing adopt.

@@ -969,4 +969,4 @@ git commit -m "feat(api): start a sync of every app, and run one hourly"
 ### Task 6: full check
 
 - [ ] **Step 1:** Run `go vet ./... && INNKEEPER_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:55432/postgres go test ./...`. Expected: every package `ok` or `no test files`.
-- [ ] **Step 2:** Run `cd web && npm test -- --run` to confirm the web app still passes. It reads the same reconcile jobs as before.
+- [ ] **Step 2:** Run `cd web && npm test` to confirm the web app still passes. It reads the same reconcile jobs as before.

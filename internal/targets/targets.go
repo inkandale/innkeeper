@@ -61,7 +61,7 @@ func New(pool *pgxpool.Pool, lib *library.Library, reg *plugins.Registry, mgr *p
 }
 
 const bindingQuery = `SELECT b.id, b.instance_id, coalesce(b.card_id, 0), coalesce(b.lorebook_id, 0), b.remote_id,
-		s.status, s.ahead, b.remote_state, b.checked_at, b.created_at, p.id, p.kind, p.revision_id, p.lorebook_revision_ids,
+		s.status, s.ahead, b.remote_state, b.autosync, b.checked_at, b.created_at, p.id, p.kind, p.revision_id, p.lorebook_revision_ids,
 		p.lorebook_remote_ids, p.pushed_hash, p.remote_id, p.pushed_at, b.accepted_data, b.seen_data
 	FROM binding b JOIN binding_status s ON s.binding_id = b.id
 	JOIN LATERAL (SELECT * FROM push WHERE binding_id = b.id ORDER BY id DESC LIMIT 1) p ON TRUE`
@@ -70,7 +70,7 @@ func scanBinding(row pgx.Row) (Binding, error) {
 	var b Binding
 	var accepted, seen []byte
 	p := &b.LastPush
-	err := row.Scan(&b.ID, &b.InstanceID, &b.CardID, &b.LorebookID, &b.RemoteID, &b.Status, &b.Ahead, &b.RemoteState,
+	err := row.Scan(&b.ID, &b.InstanceID, &b.CardID, &b.LorebookID, &b.RemoteID, &b.Status, &b.Ahead, &b.RemoteState, &b.Autosync,
 		&b.CheckedAt, &b.CreatedAt, &p.ID, &p.Kind, &p.RevisionID, &p.LorebookRevisionIDs, &p.LorebookRemoteIDs, &p.PushedHash,
 		&p.RemoteID, &p.PushedAt, &accepted, &seen)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -134,6 +134,18 @@ func (s *Service) Unbind(ctx context.Context, id int64) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// SetAutosync turns autosync on or off for a binding.
+func (s *Service) SetAutosync(ctx context.Context, id int64, on bool) (Binding, error) {
+	tag, err := s.pool.Exec(ctx, `UPDATE binding SET autosync = $2 WHERE id = $1`, id, on)
+	if err != nil {
+		return Binding{}, err
+	}
+	if tag.RowsAffected() == 0 {
+		return Binding{}, ErrNotFound
+	}
+	return s.Binding(ctx, id)
 }
 
 // lock serializes pushes and binds of one card or lorebook to one target, so

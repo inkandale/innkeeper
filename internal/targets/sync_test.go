@@ -160,3 +160,21 @@ func TestEnqueueSyncJoins(t *testing.T) {
 		t.Errorf("bad apply: %v", err)
 	}
 }
+
+func TestSetAutosync(t *testing.T) {
+	e := setup(t, nil)
+	b := e.push(e.card)
+	if b.Autosync {
+		t.Fatal("a new binding has autosync on")
+	}
+	got, err := e.s.SetAutosync(e.ctx, b.ID, true)
+	if err != nil || !got.Autosync {
+		t.Fatalf("on = %+v, %v", got, err)
+	}
+	if got, err = e.s.SetAutosync(e.ctx, b.ID, false); err != nil || got.Autosync {
+		t.Fatalf("off = %+v, %v", got, err)
+	}
+	if _, err := e.s.SetAutosync(e.ctx, 999999, true); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown binding: %v", err)
+	}
+}

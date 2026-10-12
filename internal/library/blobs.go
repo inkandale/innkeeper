@@ -15,15 +15,17 @@ import (
 
 // Blob is a stored file.
 type Blob struct {
-	SHA256      string    `json:"sha256"`
-	Size        int64     `json:"size"`
-	MIME        string    `json:"mime"`
-	Store       string    `json:"store"`
-	AvatarPhash *int64    `json:"avatar_phash,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
+	SHA256      string `json:"sha256"`
+	Size        int64  `json:"size"`
+	MIME        string `json:"mime"`
+	Store       string `json:"store"`
+	AvatarPhash *int64 `json:"avatar_phash,omitempty"`
+	// PixelHash is the SHA-256 of an image's decoded pixels; nil for other blobs.
+	PixelHash *string   `json:"-"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
-const blobCols = `sha256, size, mime, store, avatar_phash, created_at`
+const blobCols = `sha256, size, mime, store, avatar_phash, pixel_hash, created_at`
 
 // MaxBlobBytes caps a stored file. Card PNGs are a few MB at most.
 const MaxBlobBytes = 32 << 20
@@ -54,11 +56,11 @@ func (l *Library) Blob(ctx context.Context, sha string) (Blob, error) {
 
 func scanBlob(row interface{ Scan(...any) error }) (Blob, error) {
 	var b Blob
-	err := row.Scan(&b.SHA256, &b.Size, &b.MIME, &b.Store, &b.AvatarPhash, &b.CreatedAt)
+	err := row.Scan(&b.SHA256, &b.Size, &b.MIME, &b.Store, &b.AvatarPhash, &b.PixelHash, &b.CreatedAt)
 	return b, mapErr(err)
 }
 
-// record inserts the blob row. Images get an avatar_phash; an image that
+// record inserts the blob row. Images get an avatar_phash and pixel_hash; an image that
 // fails to decode is still stored, just without one.
 //
 // A blob stored again gets a fresh created_at, so garbage collection gives
@@ -77,14 +79,16 @@ func (l *Library) record(ctx context.Context, sha string, size int64) (Blob, err
 		return Blob{}, err
 	}
 	var phash *int64
+	var pixels *string
 	if strings.HasPrefix(mime, "image/") {
-		if h, err := cardhash.ImagePhash(path); err == nil {
-			phash = &h
+		if img, err := cardhash.DecodeImage(path); err == nil {
+			h, p := cardhash.Phash(img), cardhash.PixelHash(img)
+			phash, pixels = &h, &p
 		}
 	}
-	if _, err := l.pool.Exec(ctx, `INSERT INTO blob (sha256, size, mime, store, avatar_phash)
-		VALUES ($1, $2, $3, $4, $5) ON CONFLICT (sha256) DO UPDATE SET created_at = now()`,
-		sha, size, mime, l.blobs.Name, phash); err != nil {
+	if _, err := l.pool.Exec(ctx, `INSERT INTO blob (sha256, size, mime, store, avatar_phash, pixel_hash)
+		VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (sha256) DO UPDATE SET created_at = now()`,
+		sha, size, mime, l.blobs.Name, phash, pixels); err != nil {
 		return Blob{}, err
 	}
 	return l.Blob(ctx, sha)
@@ -123,3 +127,47 @@ func (l *Library) OpenBlob(ctx context.Context, sha string) (Blob, *os.File, err
 
 // BlobPath returns where a blob's file lives.
 func (l *Library) BlobPath(sha string) (string, error) { return l.blobs.Path(sha) }
+
+// SameImage reports whether blobs a and b are the same picture: the same
+// bytes, or images with the same pixels. Either may be "", meaning no
+// avatar. A blob stored before pixel_hash existed gets one now.
+func (l *Library) SameImage(ctx context.Context, a, b string) (bool, error) {
+	if a == b {
+		return true, nil
+	}
+	if a == "" || b == "" {
+		return false, nil
+	}
+	pa, err := l.pixelHash(ctx, a)
+	if err != nil || pa == "" {
+		return false, err
+	}
+	pb, err := l.pixelHash(ctx, b)
+	return pb != "" && pa == pb, err
+}
+
+// pixelHash returns the blob's pixel_hash, computing and storing it if
+// missing; "" when the blob isn't an image that decodes.
+func (l *Library) pixelHash(ctx context.Context, sha string) (string, error) {
+	blob, err := l.Blob(ctx, sha)
+	if err != nil {
+		return "", err
+	}
+	if blob.PixelHash != nil {
+		return *blob.PixelHash, nil
+	}
+	if !strings.HasPrefix(blob.MIME, "image/") {
+		return "", nil
+	}
+	path, err := l.blobs.Path(sha)
+	if err != nil {
+		return "", err
+	}
+	img, err := cardhash.DecodeImage(path)
+	if err != nil {
+		return "", nil
+	}
+	p := cardhash.PixelHash(img)
+	_, err = l.pool.Exec(ctx, `UPDATE blob SET pixel_hash = $2 WHERE sha256 = $1`, sha, p)
+	return p, err
+}

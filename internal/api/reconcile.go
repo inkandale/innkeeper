@@ -42,6 +42,13 @@ type resolutionsIn struct {
 	}
 }
 
+type changesIn struct {
+	InstanceID int64  `query:"instance_id" doc:"Only this app's changes; counts still cover every app"`
+	State      string `query:"state" enum:"differs,both_changed,ahead,missing,error,new" doc:"Only this state"`
+}
+
+type changesOut struct{ Body targets.Changes }
+
 func (s *Server) reconcileRoutes(api huma.API) {
 	tags := []string{"Sync"}
 
@@ -74,6 +81,17 @@ func (s *Server) reconcileRoutes(api huma.API) {
 				return nil, s.fail(err)
 			}
 			return &jobResp{Body: toJob(j)}, nil
+		})
+
+	huma.Register(api, huma.Operation{OperationID: "list-changes", Method: http.MethodGet, Path: "/sync/changes",
+		Summary: "List the cards that need the owner", Tags: tags,
+		Description: "One row per card with a change in some app, and app items no card matches first. Built from each app's latest sync and the binding statuses."},
+		func(ctx context.Context, in *changesIn) (*changesOut, error) {
+			ch, err := s.Targets.Changes(ctx, targets.ChangesFilter{InstanceID: in.InstanceID, State: in.State})
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			return &changesOut{Body: ch}, nil
 		})
 
 	huma.Register(api, huma.Operation{OperationID: "compare-item", Method: http.MethodGet,

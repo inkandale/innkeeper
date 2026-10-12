@@ -150,3 +150,27 @@ func TestSyncRoute(t *testing.T) {
 	}
 	e.call("POST", "/syncs", map[string]any{"instance_id": 999}, 404, nil)
 }
+
+func TestChangesRoute(t *testing.T) {
+	e := newEnv(t)
+	e.work()
+	inst, dir := e.target()
+	e.appCard(dir, "rCarrow", "Carrow", "Hello.")
+	var j jobOut
+	e.call("POST", "/syncs", map[string]any{"apply": "none"}, 202, &j)
+	if last, r := e.watchJob(j.ID); last.Status != "succeeded" {
+		t.Fatalf("sync = %+v\n%s", last, r.Body)
+	}
+	var ch targets.Changes
+	e.call("GET", "/sync/changes", nil, 200, &ch)
+	if len(ch.Rows) != 1 || len(ch.Rows[0].Apps) != 1 || ch.Rows[0].Apps[0].State != targets.ChangeNew ||
+		ch.Rows[0].Apps[0].InstanceID != inst || ch.Counts[inst][targets.ChangeNew] != 1 {
+		t.Fatalf("changes = %+v", ch)
+	}
+	var ahead targets.Changes
+	e.call("GET", "/sync/changes?state=ahead", nil, 200, &ahead)
+	if len(ahead.Rows) != 0 || ahead.Counts[inst][targets.ChangeNew] != 1 {
+		t.Fatalf("ahead = %+v", ahead)
+	}
+	e.call("GET", "/sync/changes?state=bogus", nil, 422, nil)
+}

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/url"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -14,7 +16,7 @@ import (
 func syncCmd() *cobra.Command {
 	sync := &cobra.Command{Use: "sync", Short: "Push cards to apps and line apps up against the library"}
 	sync.AddCommand(pushCmd(), reconcileCmd(), compareCmd(), resolveCmd(), applyCmd(),
-		bindingsCmd(), statusCmd(), previewCmd(), unbindCmd(), refreshCmd(), autosyncCmd())
+		bindingsCmd(), statusCmd(), previewCmd(), unbindCmd(), refreshCmd(), autosyncCmd(), changesCmd())
 	return sync
 }
 
@@ -27,6 +29,55 @@ func refreshCmd() *cobra.Command {
 			}
 			return jobStarted(cmd, out)
 		}}
+}
+
+func changesCmd() *cobra.Command {
+	var app int64
+	var state string
+	changes := &cobra.Command{
+		Use:   "changes",
+		Short: "List the cards an app needs you for",
+		Long: `Changes prints a line per card with a change in some app, and first the app
+items no card matches. It reads each app's latest sync and the binding
+statuses. The states are differs, both_changed, ahead, missing, error, and new.`,
+		Example: "  ink sync changes\n  ink sync changes --app 3 --state both_changed",
+		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			q := url.Values{}
+			if app != 0 {
+				q.Set("instance_id", fmt.Sprint(app))
+			}
+			if state != "" {
+				q.Set("state", state)
+			}
+			path := "/sync/changes"
+			if len(q) > 0 {
+				path += "?" + q.Encode()
+			}
+			out, err := apiCall(cmd, "GET", path, nil)
+			if err != nil {
+				return err
+			}
+			return show(cmd, out, printQueue)
+		},
+	}
+	changes.Flags().Int64Var(&app, "app", 0, "only this app instance's changes")
+	changes.Flags().StringVar(&state, "state", "", "only this state")
+	return changes
+}
+
+// printQueue prints a line per row: its name, then each app's state.
+func printQueue(w io.Writer, ch wire.Changes) error {
+	for _, r := range ch.Rows {
+		apps := make([]string, len(r.Apps))
+		for i, a := range r.Apps {
+			apps[i] = fmt.Sprintf("#%d: %s", a.InstanceID, a.State)
+		}
+		if _, err := fmt.Fprintf(w, "%s  %s\n", r.Name, strings.Join(apps, ", ")); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func pushCmd() *cobra.Command {

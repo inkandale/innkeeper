@@ -217,3 +217,20 @@ func TestSyncRefreshAndAutosync(t *testing.T) {
 		t.Errorf("requests = %q, want %q", *got, want)
 	}
 }
+
+func TestSyncChanges(t *testing.T) {
+	got := stubAPI(t, map[string]string{
+		"/sync/changes?instance_id=3&state=both_changed": `{"rows": [{"card_id": 12, "name": "Brakka",
+			"apps": [{"instance_id": 3, "state": "both_changed"}, {"instance_id": 4, "state": "ahead"}]}], "counts": {"3": {"both_changed": 1}}}`,
+	})
+	out, err := runInk(t, "sync", "changes", "--app", "3", "--state", "both_changed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "GET /sync/changes?instance_id=3&state=both_changed "; len(*got) != 1 || (*got)[0] != want {
+		t.Fatalf("requests = %q", *got)
+	}
+	if !strings.Contains(out, "Brakka  #3: both_changed, #4: ahead") {
+		t.Errorf("out = %q", out)
+	}
+}

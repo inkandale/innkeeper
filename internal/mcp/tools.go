@@ -134,6 +134,11 @@ type syncIn struct {
 	Apply      string `json:"apply,omitempty" jsonschema:"obvious (default) binds exact matches and imports new items; none writes nothing"`
 }
 
+type changesIn struct {
+	InstanceID int64  `json:"instance_id,omitempty" jsonschema:"Only this target app's changes; counts still cover every app"`
+	State      string `json:"state,omitempty" jsonschema:"Only this state: differs, both_changed, ahead, missing, error, or new"`
+}
+
 type autosyncIn struct {
 	BindingID int64 `json:"binding_id" jsonschema:"The binding, from list_bindings"`
 	Autosync  bool  `json:"autosync" jsonschema:"true to turn autosync on, false to turn it off"`
@@ -346,6 +351,18 @@ var tools = []tool{
 	def("refresh", "Check every app for changes and count the app items nothing is bound to. Changes nothing.", tier.Read,
 		func(ctx context.Context, c caller, _ none) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", "/scans", nil)
+		}),
+	def("list_changes", "List the cards some app needs the owner for, one row per card with each app's state, and app items no card "+
+		"matches first. Built from each app's latest sync and the binding statuses; counts are by instance and state.", tier.Read,
+		func(ctx context.Context, c caller, in changesIn) (*sdk.CallToolResult, error) {
+			q := url.Values{}
+			if in.InstanceID != 0 {
+				q.Set("instance_id", fmt.Sprint(in.InstanceID))
+			}
+			if in.State != "" {
+				q.Set("state", in.State)
+			}
+			return c.call(ctx, "GET", "/sync/changes?"+q.Encode(), nil)
 		}),
 	def("set_autosync", "Turn autosync on or off for a binding. With it on, each sync pushes the library's copy to that app "+
 		"when the card is ahead and the app's copy hasn't changed.", tier.Destructive,

@@ -258,9 +258,10 @@ func (s *Server) targetRoutes(api huma.API) {
 			return s.binding(s.Targets.Binding(ctx, in.ID))
 		})
 
-	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "update-binding", Method: http.MethodPatch,
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "update-binding", Method: http.MethodPatch,
 		Path: "/bindings/{id}", Summary: "Change a binding's settings", Tags: tags,
-		Description: "With autosync on, each sync pushes the library's copy when the card is ahead and the app's copy hasn't changed."},
+		Description: "With autosync on, each sync pushes the library's copy when the card is ahead and the app's copy hasn't changed. " +
+			"Destructive, as a push is: autosync replaces the app's copy."},
 		func(ctx context.Context, in *autosyncIn) (*bindingOut, error) {
 			return s.binding(s.Targets.SetAutosync(ctx, in.ID, in.Body.Autosync))
 		})

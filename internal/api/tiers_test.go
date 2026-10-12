@@ -21,9 +21,11 @@ var tierExceptions = map[string]tier.Tier{
 	"push-lorebook":    tier.Destructive,
 	"push-cards":       tier.Destructive,
 	"unbind":           tier.Destructive,
-	"delete-instance":  tier.Destructive,
-	"create-token":     tier.Destructive,
-	"revoke-token":     tier.Destructive,
+	// Autosync pushes unattended, replacing the app's copy.
+	"update-binding":  tier.Destructive,
+	"delete-instance": tier.Destructive,
+	"create-token":    tier.Destructive,
+	"revoke-token":    tier.Destructive,
 	// Plugins run as code inside Innkeeper.
 	"add-plugin-source":    tier.Destructive,
 	"delete-plugin-source": tier.Destructive,

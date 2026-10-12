@@ -162,7 +162,7 @@ export interface paths {
         head?: never;
         /**
          * Change a binding's settings
-         * @description With autosync on, each sync pushes the library's copy when the card is ahead and the app's copy hasn't changed.
+         * @description With autosync on, each sync pushes the library's copy when the card is ahead and the app's copy hasn't changed. Destructive, as a push is: autosync replaces the app's copy.
          */
         patch: operations["update-binding"];
         trace?: never;

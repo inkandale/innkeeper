@@ -142,6 +142,9 @@ func (s *Service) Sync(ctx context.Context, p SyncParams, progress func(SyncResu
 		if res.Apps[i].Error == "" {
 			s.autosync(ctx, &res.Apps[i])
 		}
+		if ctx.Err() != nil {
+			return res, ctx.Err()
+		}
 	}
 	if progress != nil {
 		progress(res)
@@ -173,7 +176,17 @@ func (s *Service) syncApps(ctx context.Context, only int64) ([]int64, error) {
 // Each push expects the app to hold the copy the library last agreed with,
 // so one that changed in the app is left for the owner and counted as
 // autosync_changed.
+//
+// ponytail: the check compares the card's stored fields, not its avatar, so
+// an avatar changed only in the app is overwritten, as a manual push would.
 func (s *Service) autosync(ctx context.Context, app *SyncApp) {
+	if app.Totals == nil {
+		app.Totals = map[string]int{}
+	}
+	failed := func(binding int64, err error) {
+		app.Totals["autosync_failed"]++
+		s.log.Warn("sync: autosync push failed", "instance", app.InstanceID, "binding", binding, "err", err)
+	}
 	// Without an accepted copy, a push can't tell whether the app changed.
 	rows, err := s.pool.Query(ctx, `SELECT b.id, coalesce(b.card_id, 0), coalesce(b.lorebook_id, 0), b.accepted_hash, p.id
 		FROM binding b JOIN binding_status st ON st.binding_id = b.id
@@ -181,7 +194,7 @@ func (s *Service) autosync(ctx context.Context, app *SyncApp) {
 		WHERE b.instance_id = $1 AND b.autosync AND st.status = 'ahead' AND b.accepted_hash <> ''
 		ORDER BY b.id`, app.InstanceID)
 	if err != nil {
-		app.Error = "autosync: " + err.Error()
+		failed(0, err)
 		return
 	}
 	type due struct {
@@ -195,13 +208,13 @@ func (s *Service) autosync(ctx context.Context, app *SyncApp) {
 		list = append(list, d)
 		return nil
 	}); err != nil {
-		app.Error = "autosync: " + err.Error()
+		failed(0, err)
 		return
 	}
-	if app.Totals == nil {
-		app.Totals = map[string]int{}
-	}
 	for _, d := range list {
+		if ctx.Err() != nil {
+			return
+		}
 		k, id := cardKind, d.card
 		if d.lorebook != 0 {
 			k, id = lorebookKind, d.lorebook
@@ -212,9 +225,11 @@ func (s *Service) autosync(ctx context.Context, app *SyncApp) {
 			app.Totals["autosync_pushed"]++
 		case errors.Is(err, ErrAppChanged):
 			app.Totals["autosync_changed"]++
+		case errors.Is(err, ErrNewCopy):
+			// The app can't update its copy, and autosync never makes another.
+			app.Totals["autosync_skipped"]++
 		default:
-			app.Totals["autosync_failed"]++
-			s.log.Warn("sync: autosync push failed", "binding", d.binding, "err", err)
+			failed(d.binding, err)
 		}
 	}
 }

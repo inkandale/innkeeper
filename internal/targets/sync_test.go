@@ -243,6 +243,13 @@ func TestSyncAutosyncPushes(t *testing.T) {
 		if !on && (got == "Edited in the first app." || pushed != 0) {
 			t.Errorf("autosync off: second app has %v, pushed %d", got, pushed)
 		}
+		if !on {
+			continue
+		}
+		// Once pushed, the binding is in sync, so the next sync pushes nothing.
+		if res, err = e.s.Sync(e.ctx, SyncParams{}, nil); err != nil || res.Apps[1].Totals["autosync_pushed"] != 0 {
+			t.Errorf("second sync = %+v, %v", res.Apps, err)
+		}
 	}
 }
 

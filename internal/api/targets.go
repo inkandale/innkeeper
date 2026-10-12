@@ -63,6 +63,13 @@ type bindIn struct {
 	}
 }
 
+type autosyncIn struct {
+	ID   int64 `path:"id"`
+	Body struct {
+		Autosync bool `json:"autosync"`
+	}
+}
+
 type pushesOut struct{ Body []targets.Push }
 
 type adoptIn struct {
@@ -249,6 +256,13 @@ func (s *Server) targetRoutes(api huma.API) {
 		Summary: "Get a binding", Tags: tags},
 		func(ctx context.Context, in *idIn) (*bindingOut, error) {
 			return s.binding(s.Targets.Binding(ctx, in.ID))
+		})
+
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "update-binding", Method: http.MethodPatch,
+		Path: "/bindings/{id}", Summary: "Change a binding's settings", Tags: tags,
+		Description: "With autosync on, each sync pushes the library's copy when the card is ahead and the app's copy hasn't changed."},
+		func(ctx context.Context, in *autosyncIn) (*bindingOut, error) {
+			return s.binding(s.Targets.SetAutosync(ctx, in.ID, in.Body.Autosync))
 		})
 
 	huma.Register(api, huma.Operation{OperationID: "list-pushes", Method: http.MethodGet, Path: "/bindings/{id}/pushes",

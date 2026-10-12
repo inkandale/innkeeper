@@ -296,3 +296,25 @@ func TestFailCarriesTheFreshComparison(t *testing.T) {
 		t.Fatalf("fail = %d %s", he.GetStatus(), raw)
 	}
 }
+
+func TestBindingAutosyncRoute(t *testing.T) {
+	e := newEnv(t)
+	inst, _ := e.target()
+	var c entityOut
+	e.call("POST", "/cards", map[string]any{"data": map[string]any{"name": "Brakka", "first_mes": "Hail."}}, 201, &c)
+	b, err := e.s.Targets.Push(context.Background(), inst, c.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := fmt.Sprintf("/bindings/%d", b.ID)
+	var got targets.Binding
+	e.call("PATCH", path, map[string]any{"autosync": true}, 200, &got)
+	if !got.Autosync {
+		t.Fatalf("patched = %+v", got)
+	}
+	e.call("GET", path, nil, 200, &got)
+	if !got.Autosync {
+		t.Errorf("read back = %+v", got)
+	}
+	e.call("PATCH", "/bindings/999999", map[string]any{"autosync": true}, 404, nil)
+}

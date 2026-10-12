@@ -84,6 +84,27 @@
         ],
         "type": "object"
       },
+      "AutosyncInBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/AutosyncInBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "autosync": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "autosync"
+        ],
+        "type": "object"
+      },
       "AvatarDiff": {
         "additionalProperties": false,
         "properties": {
@@ -211,6 +232,9 @@
           "ahead": {
             "type": "boolean"
           },
+          "autosync": {
+            "type": "boolean"
+          },
           "card_id": {
             "format": "int64",
             "type": "integer"
@@ -278,6 +302,7 @@
           "status",
           "ahead",
           "remote_state",
+          "autosync",
           "last_push",
           "created_at"
         ],
@@ -3991,6 +4016,57 @@
           }
         },
         "summary": "Get a binding",
+        "tags": [
+          "Sync"
+        ]
+      },
+      "patch": {
+        "description": "With autosync on, each sync pushes the library's copy when the card is ahead and the app's copy hasn't changed.",
+        "operationId": "update-binding",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutosyncInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Binding"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Change a binding's settings",
         "tags": [
           "Sync"
         ]

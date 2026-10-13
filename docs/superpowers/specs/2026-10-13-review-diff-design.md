@@ -37,11 +37,8 @@ A collapsed run uses `<details>`, the same as each field does now.
 
 ## Styling
 
-`Sync.css` only:
-
-- `--diff-removed` and `--diff-added` background tints, defined for both themes beside the existing tokens.
-- Removed runs get `text-decoration: line-through` as well as the tint, so the mark doesn't rely on color alone.
-- A colored left border on each hunk that needs a decision.
+- Removed and added runs render as `<del>` and `<ins>`, which `Card.css` already tints red and green under `.hunks`. A `<del>` keeps the browser's strikethrough, so the mark doesn't rely on color alone.
+- `Sync.css` adds a colored left border on each hunk that needs a decision, and the one-column grid.
 
 ## Tests
 

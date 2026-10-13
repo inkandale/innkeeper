@@ -149,11 +149,15 @@ func syncEveryApp(cmd *cobra.Command, dryRun bool) error {
 }
 
 func compareCmd() *cobra.Command {
-	return &cobra.Command{
+	var twoWay bool
+	compare := &cobra.Command{
 		Use:   "compare <instance-id> <remote-id> [card-id]",
 		Short: "Show how an app character differs from a card",
 		Long: `Compare prints each hunk that differs, with changed words marked [-library-]
-and {+app+}. Without a card ID, it compares the card the character is bound to.`,
+and {+app+}. Without a card ID, it compares the card the character is bound to.
+--two-way leaves out the copy the binding accepted, so every difference is a
+choice: use it for a card not pushed, since a bind accepts the app's copy as it
+is and the library's side would otherwise be kept without asking.`,
 		Args: cobra.RangeArgs(2, 3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			inst, err := parseID(args[0])
@@ -170,7 +174,7 @@ and {+app+}. Without a card ID, it compares the card the character is bound to.`
 			if err != nil {
 				return err
 			}
-			cmp, err := fetchComparison(cmd.Context(), c, comparePath(inst, args[1], card))
+			cmp, err := fetchComparison(cmd.Context(), c, comparePath(inst, args[1], card, twoWay))
 			if err != nil {
 				return err
 			}
@@ -181,17 +185,21 @@ and {+app+}. Without a card ID, it compares the card the character is bound to.`
 			return nil
 		},
 	}
+	compare.Flags().BoolVar(&twoWay, "two-way", false, "compare without the binding's accepted copy")
+	return compare
 }
 
 func resolveCmd() *cobra.Command {
 	var def string
+	var twoWay bool
 	resolve := &cobra.Command{
 		Use:   "resolve <instance-id> <remote-id> bind|import|skip [card-id] [hunk=choice ...]",
 		Short: "Bind, import, or skip one app character",
 		Long: `Bind and import compare the item first, and the resolution fails if either
 side changed since. hunk=choice picks a side for one hunk, using the hunk IDs
 compare prints; --default picks it for the rest. Choices are library, app,
-keep_in_app, and both (list hunks only).`,
+keep_in_app, and both (list hunks only). Resolve hunks from compare --two-way
+with --two-way.`,
 		Example: "  ink sync resolve 3 brakka.png bind 12 first_mes#0=app --default library\n  ink sync resolve 3 brakka.png skip",
 		Args:    cobra.MinimumNArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -225,7 +233,7 @@ keep_in_app, and both (list hunks only).`,
 			}
 			ctx := cmd.Context()
 			if r.Action != "skip" {
-				cmp, err := fetchComparison(ctx, c, comparePath(inst, r.RemoteID, card))
+				cmp, err := fetchComparison(ctx, c, comparePath(inst, r.RemoteID, card, twoWay))
 				if err != nil {
 					if r.Action == "import" && card == "" {
 						return fmt.Errorf("%w; an unbound item has no comparison, so import it from its sync: ink sync apply <sync-job-id> %s", err, r.RemoteID)
@@ -234,6 +242,9 @@ keep_in_app, and both (list hunks only).`,
 				}
 				r.CardID, r.AppHash, r.BaseRevisionID, r.AcceptedHash = cmp.CardID, cmp.AppHash, cmp.HeadRevisionID, cmp.AcceptedHash
 				r.BindingID = cmp.BindingID
+				if twoWay {
+					r.Base = "none"
+				}
 			}
 			body, err := json.Marshal(r)
 			if err != nil {
@@ -248,6 +259,7 @@ keep_in_app, and both (list hunks only).`,
 		},
 	}
 	resolve.Flags().StringVar(&def, "default", "", "choice for hunks not named (default library)")
+	resolve.Flags().BoolVar(&twoWay, "two-way", false, "resolve against a compare --two-way")
 	return resolve
 }
 
@@ -406,10 +418,17 @@ func printSnapshot(w io.Writer, snap wire.Snapshot) error {
 }
 
 // comparePath is an app character's compare route, with card_id when given.
-func comparePath(inst, remoteID, card string) string {
-	p := "/instances/" + inst + "/items/" + url.PathEscape(remoteID) + "/compare"
+func comparePath(inst, remoteID, card string, twoWay bool) string {
+	q := url.Values{}
 	if card != "" {
-		p += "?card_id=" + card
+		q.Set("card_id", card)
+	}
+	if twoWay {
+		q.Set("base", "none")
+	}
+	p := "/instances/" + inst + "/items/" + url.PathEscape(remoteID) + "/compare"
+	if len(q) > 0 {
+		p += "?" + q.Encode()
 	}
 	return p
 }

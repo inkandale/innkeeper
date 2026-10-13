@@ -32,7 +32,7 @@ func TestSyncPush(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "5 cards: 2 new, 2 ahead, 1 drifted") || !strings.Contains(out, "Replace 3 copies") {
+	if !strings.Contains(out, "5 cards: 2 new, 2 not pushed, 1 drifted") || !strings.Contains(out, "Replace 3 copies") {
 		t.Errorf("no counts in:\n%s", out)
 	}
 	preview := "GET /cards/12/push-preview?instance_id=3 "

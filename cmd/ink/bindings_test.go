@@ -51,7 +51,7 @@ func TestSyncBindings(t *testing.T) {
 	if f := strings.Fields(lines[0]); !slices.Equal(f, []string{"ID", "INSTANCE", "REMOTE", "ID", "STATUS", "LAST", "PUSH", "CHECKED"}) {
 		t.Errorf("header = %q", lines[0])
 	}
-	if f := strings.Fields(lines[1]); len(f) < 4 || !slices.Equal(f[:4], []string{"5", "3", "brakka.png", "remote_changed"}) {
+	if f := strings.Fields(lines[1]); len(f) < 6 || !slices.Equal(f[:6], []string{"5", "3", "brakka.png", "changed", "in", "app"}) {
 		t.Errorf("row = %q", lines[1])
 	}
 	if out, _ := runInk(t, "sync", "bindings", "12", "--json"); out != "["+bindingJSON+"]\n" {
@@ -62,7 +62,7 @@ func TestSyncBindings(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, want := range []string{"remote_changed", "first_mes", "pushed: Hail.", "app:    Well met."} {
+		for _, want := range []string{"changed in app", "first_mes", "pushed: Hail.", "app:    Well met."} {
 			if !strings.Contains(out, want) {
 				t.Errorf("%q: missing %q in:\n%s", args, want, out)
 			}

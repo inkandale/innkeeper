@@ -136,7 +136,7 @@ type syncIn struct {
 
 type changesIn struct {
 	InstanceID int64  `json:"instance_id,omitempty" jsonschema:"Only this target app's changes; counts still cover every app"`
-	State      string `json:"state,omitempty" jsonschema:"Only this state: differs, both_changed, ahead, missing, error, or new"`
+	State      string `json:"state,omitempty" jsonschema:"Only this state: differs, both_changed, ahead, missing, error, or new. Ahead means the library has what the app doesn't: not pushed"`
 }
 
 type autosyncIn struct {
@@ -149,6 +149,7 @@ type compareIn struct {
 	RemoteID   string `json:"remote_id" jsonschema:"The app item's remote_id, from the sync snapshot"`
 	Kind       string `json:"kind,omitempty" jsonschema:"card or lorebook; default card"`
 	ID         int64  `json:"id,omitempty" jsonschema:"The library card or lorebook to compare with; omit for the bound one"`
+	TwoWay     bool   `json:"two_way,omitempty" jsonschema:"Cards only: compare without the binding's accepted copy, so every difference is a choice. Use it for an ahead card; resolve with base none"`
 }
 
 type resolveIn struct {
@@ -160,6 +161,7 @@ type resolveIn struct {
 	AppHash        string            `json:"app_hash,omitempty" jsonschema:"From compare_item, or the snapshot for an import; not needed to skip"`
 	BaseRevisionID int64             `json:"base_revision_id,omitempty" jsonschema:"For bind: head_revision_id from compare_item"`
 	AcceptedHash   string            `json:"accepted_hash,omitempty" jsonschema:"accepted_hash from compare_item"`
+	Base           string            `json:"base,omitempty" jsonschema:"none when compare_item ran with two_way"`
 	BindingID      int64             `json:"binding_id,omitempty" jsonschema:"For import: binding_id from compare_item or the snapshot item; omit for an unbound item"`
 	Choices        map[string]string `json:"choices,omitempty" jsonschema:"Hunk ID, or avatar, to library, app, keep_in_app, or both"`
 	Default        string            `json:"default,omitempty" jsonschema:"The choice for hunks not in choices; default library"`
@@ -353,7 +355,8 @@ var tools = []tool{
 			return c.call(ctx, "POST", "/scans", nil)
 		}),
 	def("list_changes", "List the cards some app needs the owner for, one row per card with each app's state, and app items no card "+
-		"matches first. Built from each app's latest sync and the binding statuses; counts are by instance and state.", tier.Read,
+		"matches first. Built from each app's latest sync and the binding statuses; counts are by instance and state. "+
+		"An ahead card may have been bound to an app copy that differs, so show the owner compare_item with two_way before pushing it.", tier.Read,
 		func(ctx context.Context, c caller, in changesIn) (*sdk.CallToolResult, error) {
 			q := url.Values{}
 			if in.InstanceID != 0 {
@@ -380,10 +383,19 @@ var tools = []tool{
 			if in.Kind == "lorebook" {
 				q = "lorebook_id"
 			}
+			v := url.Values{}
 			if in.ID != 0 {
-				path += fmt.Sprintf("/compare?%s=%d", q, in.ID)
-			} else {
-				path += "/compare"
+				v.Set(q, fmt.Sprint(in.ID))
+			}
+			if in.TwoWay {
+				if in.Kind == "lorebook" {
+					return nil, fmt.Errorf("two_way compares cards only")
+				}
+				v.Set("base", "none")
+			}
+			path += "/compare"
+			if len(v) > 0 {
+				path += "?" + v.Encode()
 			}
 			return c.call(ctx, "GET", path, nil)
 		}),

@@ -54,7 +54,7 @@ func printBindings(w io.Writer, list []wire.Binding) error {
 		if b.CheckedAt != nil {
 			checked = b.CheckedAt.Local().Format(time.DateTime)
 		}
-		fmt.Fprintf(tw, "%d\t%d\t%s\t%s\t%s %s\t%s\n", b.ID, b.InstanceID, b.RemoteID, b.Status,
+		fmt.Fprintf(tw, "%d\t%d\t%s\t%s\t%s %s\t%s\n", b.ID, b.InstanceID, b.RemoteID, stateLabel(b.Status),
 			b.LastPush.Kind, b.LastPush.PushedAt.Local().Format(time.DateTime), checked)
 	}
 	return tw.Flush()

@@ -102,6 +102,22 @@ func TestResolveCmd(t *testing.T) {
 	}
 }
 
+func TestResolveTwoWay(t *testing.T) {
+	got := stubAPI(t, map[string]string{
+		"/instances/3/items/r1/compare?base=none": `{"remote_id": "r1", "card_id": 12, "head_revision_id": 40, "accepted_hash": "acc", "base": "none", "app_hash": "h1"}`,
+	})
+	if _, err := runInk(t, "sync", "resolve", "3", "r1", "bind", "description#0=app", "--two-way"); err != nil {
+		t.Fatal(err)
+	}
+	var r wire.Resolution
+	if err := json.Unmarshal([]byte(strings.SplitN((*got)[1], " ", 3)[2]), &r); err != nil {
+		t.Fatal(err)
+	}
+	if r.Base != "none" || r.AcceptedHash != "acc" {
+		t.Fatalf("resolution = %+v", r)
+	}
+}
+
 func TestResolveRemoteIDWithEquals(t *testing.T) {
 	got := stubAPI(t, nil)
 	if _, err := runInk(t, "sync", "resolve", "3", "a=b.png", "skip"); err != nil {
@@ -230,7 +246,7 @@ func TestSyncChanges(t *testing.T) {
 	if want := "GET /sync/changes?instance_id=3&state=both_changed "; len(*got) != 1 || (*got)[0] != want {
 		t.Fatalf("requests = %q", *got)
 	}
-	if !strings.Contains(out, "Brakka  #3: both_changed, #4: ahead") {
+	if !strings.Contains(out, "Brakka  #3: changed in both, #4: not pushed") {
 		t.Errorf("out = %q", out)
 	}
 }

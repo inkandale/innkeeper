@@ -371,8 +371,8 @@ filter on `archived`. It touches only cards not already in the target state.
 The API's `POST /bulk` also tags, collects, and exports; see `/api/docs`.
 
 `sync push` prints what it would replace in the app. For one card, that's
-each field it changes; for a query, how many matching cards are new, ahead, in
-sync, or drifted there as of their last check. Use `ink sync preview` to see
+each field it changes; for a query, how many matching cards are new, not
+pushed, in sync, or drifted there as of their last check. Use `ink sync preview` to see
 one card's changes. A query push replaces only the copies it counted; a card
 whose app copy changes after that fails, and the app keeps its copy. `--yes`
 skips the question, not that check.
@@ -603,7 +603,10 @@ The changes queue lists every card an app needs you for, built from each
 app's latest sync and the binding statuses, with app items no card matches
 first. Each app's state is `differs`, `both_changed`, `ahead`, `missing`,
 `error`, or `new`. List it with
-`ink sync changes [--app <instance-id>] [--state <state>]`.
+`ink sync changes [--app <instance-id>] [--state <state>]`. The CLI and web
+print states from the library's side: `ahead` is "not pushed",
+`remote_changed` "changed in app", and `diverged` and `both_changed` "changed
+in both".
 
 Compare an item with a card before binding them. The output lists each
 hunk, a part of a field, that differs, with changed words marked
@@ -622,6 +625,11 @@ you don't name take `--default`, or `library`:
 ink sync resolve <instance-id> <remote-id> bind <card-id> first_mes#0=app --default library
 ink sync resolve <instance-id> <remote-id> skip
 ```
+
+A bind accepts the app's copy as it is, so a card bound to a copy that differs
+is `ahead`, and a plain compare keeps the library's side of each difference
+without asking. Add `--two-way` to both `compare` and `resolve` to choose a
+side for every difference; the MCP tools take `two_way` and `base: "none"`.
 
 Resolving changes the library and the binding, never the app. Keeping the
 library's side of a hunk leaves the binding `ahead`; push to send the result.

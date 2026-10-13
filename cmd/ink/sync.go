@@ -39,7 +39,10 @@ func changesCmd() *cobra.Command {
 		Short: "List the cards an app needs you for",
 		Long: `Changes prints a line per card with a change in some app, and first the app
 items no card matches. It reads each app's latest sync and the binding
-statuses. The states are differs, both_changed, ahead, missing, error, and new.`,
+statuses. The states are differs, both_changed, ahead, missing, error, and
+new; it prints them from the library's side, so ahead is "not pushed" and
+both_changed "changed in both". A card not pushed may have been bound to an app
+copy that differs, so review it before pushing: ink sync compare --two-way.`,
 		Example: "  ink sync changes\n  ink sync changes --app 3 --state both_changed",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -66,12 +69,25 @@ statuses. The states are differs, both_changed, ahead, missing, error, and new.`
 	return changes
 }
 
+// stateLabel names a binding or queue state from the library's side.
+func stateLabel(s string) string {
+	switch s {
+	case "ahead":
+		return "not pushed"
+	case "remote_changed":
+		return "changed in app"
+	case "diverged", "both_changed":
+		return "changed in both"
+	}
+	return strings.ReplaceAll(s, "_", " ")
+}
+
 // printQueue prints a line per row: its name, then each app's state.
 func printQueue(w io.Writer, ch wire.Changes) error {
 	for _, r := range ch.Rows {
 		apps := make([]string, len(r.Apps))
 		for i, a := range r.Apps {
-			apps[i] = fmt.Sprintf("#%d: %s", a.InstanceID, a.State)
+			apps[i] = fmt.Sprintf("#%d: %s", a.InstanceID, stateLabel(a.State))
 		}
 		if _, err := fmt.Fprintf(w, "%s  %s\n", r.Name, strings.Join(apps, ", ")); err != nil {
 			return err
@@ -88,7 +104,7 @@ func pushCmd() *cobra.Command {
 		Long: `Push replaces the app's copy, so it overwrites changes made in the app. It
 prints what it would replace and asks first; --yes skips the question. A card
 push prints each field it changes, and is refused if the app's copy changes
-before it runs. A query push prints how many cards are new, ahead, in sync, or
+before it runs. A query push prints how many cards are new, not pushed, in sync, or
 drifted there, as of their last check. It replaces only the copies it counted:
 a card whose app copy changes after that fails, and the app keeps its copy. A
 query needs a filter or text.`,
@@ -172,7 +188,7 @@ func askBulkPush(cmd *cobra.Command, inst string, query json.RawMessage, yes boo
 		what string
 	}{
 		{p.New, "new"},
-		{p.Ahead, "ahead"},
+		{p.Ahead, "not pushed"},
 		{p.InSync, "in sync"},
 		{p.CantCheck, "can't check"},
 		{p.Drifted, "drifted (pushing overwrites their app edits)"},

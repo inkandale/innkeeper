@@ -323,6 +323,15 @@ func TestMCPReconcile(t *testing.T) {
 	if !strings.Contains(got, `"binding_id"`) {
 		t.Fatalf("resolve_item = %s", got)
 	}
+	got = tool(t, read, "compare_item", map[string]any{"instance_id": inst, "remote_id": "rBrakka.png", "two_way": true}, false)
+	if err := json.Unmarshal([]byte(got), &cmp); err != nil || cmp.Base != "none" || cmp.AcceptedHash == "" {
+		t.Fatalf("two-way compare_item = %s", got)
+	}
+	got = tool(t, write, "resolve_item", map[string]any{"instance_id": inst, "remote_id": "rBrakka.png", "action": "bind", "card_id": cmp.CardID,
+		"app_hash": cmp.AppHash, "base_revision_id": cmp.HeadRevisionID, "accepted_hash": cmp.AcceptedHash, "base": "none"}, false)
+	if !strings.Contains(got, `"binding_id"`) {
+		t.Fatalf("two-way resolve_item = %s", got)
+	}
 	got = tool(t, write, "resolve_items", map[string]any{"resolutions": []map[string]any{
 		{"instance_id": inst, "remote_id": "rCarrow", "action": "skip"}}}, false)
 	if err := json.Unmarshal([]byte(got), &j); err != nil || j.Kind != bulk.Kind {

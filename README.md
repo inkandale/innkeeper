@@ -316,6 +316,7 @@ ink cards create <file>|- [--slug s] [-m message]
                                                   create a card from CCv3 JSON, or stdin
 ink cards edit <card-id> [file] [-m message]      edit a card's data in $EDITOR, or replace it with a file's
 ink cards import <instance-id> <file>             upload a card or lorebook file and import it
+ink cards import-url <instance-id> <url>          import a card or lorebook from its page on a site, such as chub.ai
 ink cards export <card-id> [file] [--format f]    a card as CCv3 JSON, or a codec's format (.png means png)
 ink cards archive|unarchive <card-id>|<query-json>
                                                   archive or unarchive a card, or the cards a search matches
@@ -442,12 +443,26 @@ Over the API, upload the file to `POST /api/blobs`, then within 24 hours
 start an import with `{"blob": "<sha256>", "name": "brakka.png"}` as its
 params.
 
+To import a card from its page on chub.ai, RisuRealm, or Character Tavern,
+install the `url-import` plugin and give it the page URL:
+
+```bash
+ink plugins install url-import
+ink instances create url-import "From URL"
+ink cards import-url <instance-id> https://chub.ai/characters/user/name
+```
+
+The web's "Bring in cards" step has a URL field once the instance exists.
+Over the API, start an import with `{"url": "<page URL>"}` as its params;
+over MCP, pass `url` to `start_import`.
+
 ## Sources
 
 A source is a site a card or lorebook was published on, such as its chub.ai
-page. Importing from a folder, syncing an app, and binding to an app item, records
-the `extensions.chub` entry that chub.ai imports leave in the data. Currently
-chub.ai is the only site Innkeeper knows.
+page. Importing, syncing an app, and binding to an app item record the sources
+the data names: the `extensions.chub` entry that chub.ai imports leave, and
+each page URL in the card's `data.source` list, which `url-import` adds.
+Innkeeper knows chub.ai, RisuRealm, and Character Tavern.
 
 Add or remove one yourself with the API, MCP tools, or CLI:
 

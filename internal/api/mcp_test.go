@@ -207,6 +207,9 @@ func TestMCPOtherTools(t *testing.T) {
 	tool(t, s, "get_job", map[string]any{"id": job.ID}, false)
 	tool(t, s, "list_jobs", map[string]any{}, false)
 	tool(t, s, "cancel_job", map[string]any{"id": job.ID}, false)
+	if got := tool(t, s, "start_import", map[string]any{"instance_id": e.importID, "url": "https://chub.ai/characters/u/b"}, false); !strings.Contains(got, `"url":"https://chub.ai/characters/u/b"`) {
+		t.Fatalf("start_import with url = %s", got)
+	}
 	if got := tool(t, s, "list_plugins", map[string]any{}, false); !strings.Contains(got, "fake") {
 		t.Fatalf("list_plugins = %s", got)
 	}

@@ -123,3 +123,18 @@ func TestParseSourceURLSites(t *testing.T) {
 		t.Errorf("risu lorebook: got %v, want ErrInvalid", err)
 	}
 }
+
+func TestDetectSourceFit(t *testing.T) {
+	got := Detect([]byte(`{"source":["https://chub.ai/lorebooks/a/b"]}`), false)
+	if len(got) != 0 {
+		t.Errorf("a card took a lorebook page as a source: %+v", got)
+	}
+	got = Detect([]byte(`{"source":["https://realm.risuai.net/character/976e92f8-2c7e-4bf9-aef4-586a7a753338"]}`), true)
+	if len(got) != 0 {
+		t.Errorf("a lorebook took a risu source: %+v", got)
+	}
+	got = Detect([]byte(`{"extensions":{"chub":{"id":7,"full_path":"a/b"}},"source":["https://realm.risuai.net/character/976e92f8-2c7e-4bf9-aef4-586a7a753338"]}`), false)
+	if len(got) != 2 || got[0].Kind != "chub" || got[1].Kind != "risu" {
+		t.Errorf("sources = %+v, want chub then risu", got)
+	}
+}

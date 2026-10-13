@@ -188,7 +188,10 @@ func Detect(data json.RawMessage, lorebook bool) []Source {
 	for _, v := range list {
 		if raw, ok := v.(string); ok {
 			if s, err := ParseSourceURL(raw); err == nil {
-				add(s)
+				// Keep only sources that fit this kind of entity.
+				if v, err := ValidateSource(s, lorebook); err == nil && v.URL == s.URL {
+					add(s)
+				}
 			}
 		}
 	}

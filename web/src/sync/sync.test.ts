@@ -57,7 +57,7 @@ test("state counts fold drift, and a push summary counts new copies", () => {
   const c = stateCounts(targets, 2);
   expect(c).toEqual({ in_sync: 4, ahead: 2, drifted: 2, missing: 1, cant_check: 0, bound: 9 });
   expect(pushSummary({ total: 12, new: 4, ahead: 2, in_sync: 4, cant_check: 0, drifted: 2, confirm: "q" })).toBe(
-    "4 new, 2 ahead, 4 in sync, 2 drifted (pushing overwrites their app edits)",
+    "4 new, 2 not pushed, 4 in sync, 2 drifted (pushing overwrites their app edits)",
   );
 });
 

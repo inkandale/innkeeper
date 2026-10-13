@@ -95,7 +95,7 @@ func (s *Service) bindResolved(ctx context.Context, k kind, instanceID, id int64
 	if err := bound(k.col+` = $2`, id); err != nil {
 		return Binding{}, err
 	}
-	c, err := s.compareItem(ctx, k, instanceID, remoteID, id)
+	c, err := s.compareItem(ctx, k, instanceID, remoteID, id, false)
 	if err != nil {
 		return Binding{}, err
 	}

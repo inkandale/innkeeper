@@ -143,7 +143,7 @@ type staleItem struct {
 func (e *staleItem) Error() string { return (&StaleError{}).Error() }
 
 func (e *staleItem) fresh(ctx context.Context, s *Service) error {
-	c, err := s.compareItem(ctx, e.k, e.instanceID, e.remoteID, e.id)
+	c, err := s.compareItem(ctx, e.k, e.instanceID, e.remoteID, e.id, false)
 	if errors.Is(err, ErrNotFound) && e.id == 0 {
 		// An import of an unbound item has no card to compare with.
 		inst, info, err := s.describeReconcile(ctx, e.k, e.instanceID)
@@ -337,7 +337,7 @@ func (rs *resolver) suggested(ctx context.Context, inst pluginhost.Instance, inf
 	}
 	n := Resolution{RemoteID: remoteID, Action: opt.Action, AppHash: item.AppHash, BindingID: item.BindingID}
 	if opt.Action == "bind" {
-		c, err := s.compareItem(ctx, lorebookKind, instanceID, remoteID, opt.CardID)
+		c, err := s.compareItem(ctx, lorebookKind, instanceID, remoteID, opt.CardID, false)
 		if err != nil {
 			return Resolution{}, err
 		}
@@ -488,6 +488,9 @@ func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.Targe
 	// Hunk IDs and statuses come from the compared head and ancestor, so choices can't apply to others.
 	if headID != r.BaseRevisionID || ancestorHash != r.AcceptedHash {
 		return res, stale
+	}
+	if r.Base == "none" {
+		ancestor = nil
 	}
 	avatar := ""
 	if headAvatar != nil {

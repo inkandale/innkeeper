@@ -2,10 +2,12 @@ package targets
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/davidgibbons/innkeeper/internal/library"
+	"github.com/davidgibbons/innkeeper/internal/merge"
 )
 
 // appCopy pushes card and unbinds it, leaving a copy the app has but the
@@ -249,4 +251,35 @@ func TestBindChecksTheCardFirst(t *testing.T) {
 	if _, err := e.s.Bind(e.ctx, e.inst, e.card, "gone"); !errors.Is(err, ErrBound) {
 		t.Fatalf("err = %v", err)
 	}
+}
+
+func TestBoundAheadReviewsTwoWay(t *testing.T) {
+	for name, choice := range map[string]merge.Choice{"library": merge.ChooseLibrary, "app": merge.ChooseApp} {
+		t.Run(name, func(t *testing.T) {
+			e, b := boundChanged(t)
+			if c := e.compareItem(b.RemoteID, 0); len(c.Fields) == 0 || slices.ContainsFunc(c.Fields, decidableField) {
+				t.Fatalf("with the accepted copy, the library's side is kept unasked: %+v", c.Fields)
+			}
+			c, err := e.s.CompareItemTwoWay(e.ctx, e.inst, b.RemoteID, 0)
+			if err != nil || c.Base != "none" || c.AcceptedHash == "" {
+				t.Fatalf("comparison = %+v, %v", c, err)
+			}
+			_, err = e.s.Resolve(e.ctx, Resolution{InstanceID: e.inst, RemoteID: c.RemoteID, AppHash: c.AppHash,
+				BaseRevisionID: c.HeadRevisionID, AcceptedHash: c.AcceptedHash, Base: "none", Action: "bind", CardID: c.CardID,
+				Choices: map[string]merge.Choice{hunk(t, c, "description"): choice}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := map[merge.Choice]string{merge.ChooseLibrary: "ahead", merge.ChooseApp: "in_sync"}[choice]
+			if s := e.status(e.card); s != want {
+				t.Fatalf("status = %s, want %s", s, want)
+			}
+		})
+	}
+}
+
+func decidableField(f merge.Field) bool {
+	return slices.ContainsFunc(f.Hunks, func(h merge.Hunk) bool {
+		return h.Status == merge.Conflict || h.Status == merge.LibraryOnly || h.Status == merge.AppOnly
+	})
 }

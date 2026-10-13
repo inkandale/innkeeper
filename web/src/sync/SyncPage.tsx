@@ -95,7 +95,7 @@ export function Sync() {
                 <th>Target</th>
                 <th>In sync (cards)</th>
                 <th>Needs you</th>
-                <th>Ahead</th>
+                <th>Not pushed</th>
                 <th>Missing</th>
                 {cantCheck && <th>Can't check</th>}
                 <th>Last sync</th>

@@ -18,6 +18,7 @@ type compareCardIn struct {
 	ID       int64  `path:"id"`
 	RemoteID string `path:"remote_id" doc:"The app's id for the item, path-escaped"`
 	CardID   int64  `query:"card_id" doc:"The library card to compare with; 0 means the bound one"`
+	Base     string `query:"base" enum:"none" required:"false" doc:"none leaves out the binding's accepted copy, so each difference is a choice; resolve with base none"`
 }
 
 type compareLorebookIn struct {
@@ -98,7 +99,11 @@ func (s *Server) reconcileRoutes(api huma.API) {
 		Path: "/instances/{id}/items/{remote_id}/compare", Summary: "Compare an app character with a library card", Tags: tags,
 		Description: "Reads the app. Resolve with the comparison's app_hash, head_revision_id, and accepted_hash."},
 		func(ctx context.Context, in *compareCardIn) (*comparisonOut, error) {
-			c, err := s.Targets.CompareItem(ctx, in.ID, in.RemoteID, in.CardID)
+			compare := s.Targets.CompareItem
+			if in.Base == "none" {
+				compare = s.Targets.CompareItemTwoWay
+			}
+			c, err := compare(ctx, in.ID, in.RemoteID, in.CardID)
 			if err != nil {
 				return nil, s.fail(err)
 			}

@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import { thumb } from "../api/client";
 import type { components } from "../api/schema";
+import { stateLabel } from "../sync/sync";
 
 export type Hit = components["schemas"]["Hit"];
 export type Names = { instances: Map<number, string>; collections: Map<number, string> };
@@ -26,8 +27,8 @@ export function Badges({ hit, names }: { hit: Hit; names: Names }) {
           key={t.instance}
           className={"badge " + badgeClass[t.is]}
           role="img"
-          aria-label={`${names.instances.get(t.instance) ?? "#" + t.instance}: ${t.is.replace("_", " ")}`}
-          title={`${names.instances.get(t.instance) ?? "#" + t.instance}: ${t.is.replace("_", " ")}`}
+          aria-label={`${names.instances.get(t.instance) ?? "#" + t.instance}: ${stateLabel(t.is)}`}
+          title={`${names.instances.get(t.instance) ?? "#" + t.instance}: ${stateLabel(t.is)}`}
         />
       ))}
     </span>

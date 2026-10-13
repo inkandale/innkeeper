@@ -8,7 +8,7 @@ import type { Entity } from "./Card";
 import { Crop } from "./CropDialog";
 import { text, type Data } from "./draft";
 import { PushPreview } from "../sync/PushPreview";
-import { reviewPath } from "../sync/sync";
+import { reviewPath, stateLabel } from "../sync/sync";
 import { Collections, Sources, Tags } from "./Organize";
 
 export type PanelProps = {
@@ -133,7 +133,7 @@ export function Sync({ kind, id }: { kind: Kind; id: number }) {
       <ul className="plain">
         {bindings.data.map((b) => (
           <li key={b.id}>
-            <span className={"badge " + (badgeClass[b.status] ?? "unknown")} aria-hidden="true" /> {name(b.instance_id)}: {b.status.replaceAll("_", " ")}{" "}
+            <span className={"badge " + (badgeClass[b.status] ?? "unknown")} aria-hidden="true" /> {name(b.instance_id)}: {stateLabel(b.status)}{" "}
             <label className="autosync">
               <input
                 type="checkbox"

@@ -2872,6 +2872,8 @@ export interface components {
             /** @enum {string} */
             action: "bind" | "import" | "skip";
             app_hash?: string;
+            /** @enum {string} */
+            base?: "accepted" | "none";
             /** Format: int64 */
             base_revision_id?: number;
             /** Format: int64 */
@@ -5082,6 +5084,8 @@ export interface operations {
             query?: {
                 /** @description The library card to compare with; 0 means the bound one */
                 card_id?: number;
+                /** @description none leaves out the binding's accepted copy, so each difference is a choice; resolve with base none */
+                base?: "none";
             };
             header?: never;
             path: {

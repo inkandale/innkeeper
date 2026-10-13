@@ -67,7 +67,7 @@ test("lists target apps with their counts and last sync", async () => {
   const row = await screen.findByRole("row", { name: /Lumiverse/ });
   await waitFor(() => expect(within(row).getAllByRole("cell")[2]).toHaveTextContent("7"));
   expect(screen.getAllByRole("columnheader").map((c) => c.textContent)).toEqual(
-    ["Target", "In sync (cards)", "Needs you", "Ahead", "Missing", "Can't check", "Last sync"],
+    ["Target", "In sync (cards)", "Needs you", "Not pushed", "Missing", "Can't check", "Last sync"],
   );
   expect(within(row).getAllByRole("cell").map((c) => c.textContent).slice(0, 6)).toEqual(["Lumiverse", "5", "7", "3", "2", "4"]);
   expect(within(row).getByRole("link", { name: "7" })).toHaveAttribute("href", "/sync/changes?instance_id=2");

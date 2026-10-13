@@ -184,7 +184,7 @@ test("after a stale save, reload drops my edits", async () => {
 
 test("the panel shows sync, lorebooks, collections, and sources", async () => {
   renderAt("/cards/7");
-  expect(await screen.findByText("Lumiverse: ahead")).toBeInTheDocument();
+  expect(await screen.findByText("Lumiverse: not pushed")).toBeInTheDocument();
   expect(await screen.findByRole("link", { name: "Forge" })).toHaveAttribute("href", "/lorebooks/3");
   expect(await screen.findByRole("checkbox", { name: "Favorites" })).toBeChecked();
   expect(screen.getByRole("checkbox", { name: "Pirates" })).not.toBeChecked();

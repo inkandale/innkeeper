@@ -14,9 +14,9 @@ import {
   decidable,
   optionKey,
   optionLabel,
+  queueReviews,
   resolution,
   resolveItem,
-  reviewable,
   rows,
   snapshotOf,
   type Comparison,
@@ -178,6 +178,7 @@ function ReviewItem() {
   const remoteId = params.remoteId ?? "";
   const [search, setSearch] = useSearchParams();
   const jobId = Number(search.get("job")) || 0;
+  const twoWay = search.get("base") === "none";
   const queue = search.has("queue");
   const filter = changesFilter(search);
   const navigate = useNavigate();
@@ -195,7 +196,7 @@ function ReviewItem() {
     queryKey: ["sync", "changes", filter.instance_id, filter.state],
     queryFn: async () => must(await api.GET("/sync/changes", { params: { query: filter } })),
   });
-  const reviews = (changes.data?.rows ?? []).flatMap((r) => r.apps ?? []).filter(reviewable);
+  const reviews = queueReviews(changes.data?.rows ?? []);
   const at = reviews.findIndex((c) => c.instance_id === instance && c.remote_id === remoteId);
   const next = reviews[at + 1];
   const onward = () => navigate(next ? changePath(next, filter) : changesPath(filter));
@@ -228,11 +229,11 @@ function ReviewItem() {
 
   const cmp = useQuery({
     enabled: card > 0,
-    queryKey: ["compare", instance, kind, remoteId, card],
+    queryKey: ["compare", instance, kind, remoteId, card, twoWay],
     gcTime: 0,
     // A refetch would swap the comparison under the owner's choices.
     refetchOnWindowFocus: false,
-    queryFn: () => compareItem(instance, kind, remoteId, card),
+    queryFn: () => compareItem(instance, kind, remoteId, card, twoWay),
   });
   const nestedCmps = useQueries({
     queries: nested.map((lb) => {

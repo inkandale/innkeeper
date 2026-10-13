@@ -15,16 +15,24 @@ import (
 // CompareItem compares an app character with a library card. cardID 0 means
 // the card bound to remoteID.
 func (s *Service) CompareItem(ctx context.Context, instanceID int64, remoteID string, cardID int64) (Comparison, error) {
-	return s.compareItem(ctx, cardKind, instanceID, remoteID, cardID)
+	return s.compareItem(ctx, cardKind, instanceID, remoteID, cardID, false)
+}
+
+// CompareItemTwoWay is CompareItem without the binding's accepted copy as
+// the ancestor, so every difference is the owner's choice. A bind accepts the
+// app's copy as it is, so with the ancestor the library's side of each
+// difference would be kept without asking. Resolve it with base none.
+func (s *Service) CompareItemTwoWay(ctx context.Context, instanceID int64, remoteID string, cardID int64) (Comparison, error) {
+	return s.compareItem(ctx, cardKind, instanceID, remoteID, cardID, true)
 }
 
 // CompareLorebookItem compares an app world book with a library lorebook.
 // lorebookID 0 means the lorebook bound to remoteID.
 func (s *Service) CompareLorebookItem(ctx context.Context, instanceID int64, remoteID string, lorebookID int64) (Comparison, error) {
-	return s.compareItem(ctx, lorebookKind, instanceID, remoteID, lorebookID)
+	return s.compareItem(ctx, lorebookKind, instanceID, remoteID, lorebookID, false)
 }
 
-func (s *Service) compareItem(ctx context.Context, k kind, instanceID int64, remoteID string, id int64) (Comparison, error) {
+func (s *Service) compareItem(ctx context.Context, k kind, instanceID int64, remoteID string, id int64, twoWay bool) (Comparison, error) {
 	c := Comparison{InstanceID: instanceID, RemoteID: remoteID, CardID: id, Base: "none"}
 	inst, info, err := s.describeReconcile(ctx, k, instanceID)
 	if err != nil {
@@ -46,6 +54,10 @@ func (s *Service) compareItem(ctx context.Context, k kind, instanceID int64, rem
 	accepted := b.ancestor(c.CardID)
 	if accepted != nil {
 		c.Base, c.AcceptedHash = "accepted", b.acceptedHash
+	}
+	if twoWay {
+		// The hash still guards the binding against a change before resolve.
+		c.Base, accepted = "none", nil
 	}
 	ents, err := s.loadEntries(ctx, k, inst, info, `e.id = $2`, c.CardID)
 	if err != nil {

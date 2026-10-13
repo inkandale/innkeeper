@@ -113,6 +113,7 @@ func sourcesPath(in sourceIn) (string, error) {
 type importIn struct {
 	InstanceID int64  `json:"instance_id" jsonschema:"An instance of an import plugin"`
 	Path       string `json:"path,omitempty" jsonschema:"A subfolder of the instance's folder; empty for all of it"`
+	URL        string `json:"url,omitempty" jsonschema:"A card's or lorebook's page URL, for a url-import instance"`
 }
 
 type instanceIn struct {
@@ -336,11 +337,19 @@ var tools = []tool{
 		func(ctx context.Context, c caller, in idIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", fmt.Sprintf("/jobs/%d/cancel", in.ID), nil)
 		}),
-	def("start_import", "Import cards and lorebooks from an import plugin instance, such as a folder. To bring in an app's items, use start_sync.", tier.Write,
+	def("start_import", "Import cards and lorebooks from an import plugin instance, such as a folder, or one card from its page URL "+
+		"with url-import. To bring in an app's items, use start_sync.", tier.Write,
 		func(ctx context.Context, c caller, in importIn) (*sdk.CallToolResult, error) {
 			body := map[string]any{"instance_id": in.InstanceID}
+			params := map[string]any{}
 			if in.Path != "" {
-				body["params"] = map[string]any{"path": in.Path}
+				params["path"] = in.Path
+			}
+			if in.URL != "" {
+				params["url"] = in.URL
+			}
+			if len(params) > 0 {
+				body["params"] = params
 			}
 			return c.call(ctx, "POST", "/imports", body)
 		}),

@@ -97,6 +97,23 @@ test("uploads files to the card importer", async () => {
   expect(await screen.findByRole("link", { name: /brakka\.png/ })).toHaveAttribute("href", "/settings/jobs/2");
 });
 
+test("imports a page URL with the URL importer", async () => {
+  plugins = [plugin("url-import", ["import"])];
+  instances = [instance(7, "url-import", "url-import")];
+  renderStep();
+  await userEvent.type(await screen.findByLabelText("Import from a page URL"), "https://chub.ai/characters/u/brakka");
+  await userEvent.click(screen.getByRole("button", { name: "Import" }));
+  await vi.waitFor(() =>
+    expect(sent).toEqual([
+      { method: "POST", path: "/api/imports", body: { instance_id: 7, params: { url: "https://chub.ai/characters/u/brakka" } } },
+    ]),
+  );
+  expect(await screen.findByRole("link", { name: /brakka/ })).toHaveAttribute("href", "/settings/jobs/1");
+  expect(screen.getByLabelText("Import from a page URL")).toHaveValue("");
+  expect(screen.queryByLabelText("Upload files")).not.toBeInTheDocument();
+  expect(screen.queryByText(/Nothing to import from yet/)).not.toBeInTheDocument();
+});
+
 test("with nothing to import from, points back to choosing plugins", async () => {
   plugins = [];
   instances = [];

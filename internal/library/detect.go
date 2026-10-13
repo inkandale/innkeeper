@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -28,7 +30,7 @@ type detector struct {
 	fromRef  func(ref string, lorebook bool) (Source, bool)
 }
 
-var detectors = []detector{chub}
+var detectors = []detector{chub, risu, characterTavern}
 
 var chub = detector{
 	kind: "chub",
@@ -51,30 +53,107 @@ var chub = detector{
 	},
 	fromRef: func(ref string, lorebook bool) (Source, bool) { return chubSource(chubDir(lorebook), ref) },
 	fromURL: func(u *url.URL) (Source, bool) {
-		if (u.Scheme != "http" && u.Scheme != "https") || (!strings.EqualFold(u.Hostname(), "chub.ai") && !strings.EqualFold(u.Hostname(), "www.chub.ai")) {
+		if !webURL(u, "chub.ai", "www.chub.ai", "characterhub.org", "www.characterhub.org", "venus.chub.ai") {
 			return Source{}, false
 		}
-		dir, ref, ok := strings.Cut(strings.Trim(u.Path, "/"), "/")
-		if !ok || (dir != "characters" && dir != "lorebooks") {
-			return Source{}, false
+		parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+		switch {
+		case len(parts) == 3 && (parts[0] == "characters" || parts[0] == "lorebooks"):
+			return chubSource(parts[0], parts[1]+"/"+parts[2])
+		case len(parts) == 2 && parts[0] != "characters" && parts[0] != "lorebooks":
+			// chub.ai/{user}/{slug} is a character's page.
+			return chubSource("characters", parts[0]+"/"+parts[1])
 		}
-		return chubSource(dir, ref)
+		return Source{}, false
 	},
 }
 
-// chubSource validates ref as exactly <user>/<name> so the stored URL is clean.
-func chubSource(dir, ref string) (Source, bool) {
+var uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// noData is fromData for a site whose cards name it only in data.source.
+func noData(map[string]any, bool) (Source, bool) { return Source{}, false }
+
+// risu is RisuRealm. Its ref is the card's UUID; it has no lorebook pages.
+var risu = detector{
+	kind:     "risu",
+	fromData: noData,
+	fromRef:  risuSource,
+	fromURL: func(u *url.URL) (Source, bool) {
+		// A RisuRealm card's own data.source says risurealm:{uuid}.
+		if u.Scheme == "risurealm" {
+			return risuSource(u.Opaque, false)
+		}
+		if !webURL(u, "realm.risuai.net") {
+			return Source{}, false
+		}
+		id, ok := strings.CutPrefix(strings.TrimSuffix(u.Path, "/"), "/character/")
+		if !ok {
+			return Source{}, false
+		}
+		return risuSource(id, false)
+	},
+}
+
+func risuSource(ref string, lorebook bool) (Source, bool) {
+	ref = strings.ToLower(ref)
+	if lorebook || !uuidPattern.MatchString(ref) {
+		return Source{}, false
+	}
+	return Source{Kind: "risu", Ref: ref, URL: "https://realm.risuai.net/character/" + ref}, true
+}
+
+// characterTavern is Character Tavern. Its ref is <author>/<slug>; it has no lorebook pages.
+var characterTavern = detector{
+	kind:     "character-tavern",
+	fromData: noData,
+	fromRef:  tavernSource,
+	fromURL: func(u *url.URL) (Source, bool) {
+		if !webURL(u, "character-tavern.com") {
+			return Source{}, false
+		}
+		ref, ok := strings.CutPrefix(strings.Trim(u.Path, "/"), "character/")
+		if !ok {
+			return Source{}, false
+		}
+		return tavernSource(ref, false)
+	},
+}
+
+func tavernSource(ref string, lorebook bool) (Source, bool) {
+	esc, ok := pathRef(ref)
+	if lorebook || !ok {
+		return Source{}, false
+	}
+	return Source{Kind: "character-tavern", Ref: ref, URL: "https://character-tavern.com/character/" + esc}, true
+}
+
+// pathRef validates ref as exactly <a>/<b> and returns it path-escaped, so the stored URL is clean.
+func pathRef(ref string) (string, bool) {
 	parts := strings.Split(ref, "/")
 	if len(parts) != 2 {
-		return Source{}, false
+		return "", false
 	}
 	for i, p := range parts {
 		if p == "" || p == "." || p == ".." || strings.ContainsAny(p, "?#\\") || strings.IndexFunc(p, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) >= 0 {
-			return Source{}, false
+			return "", false
 		}
 		parts[i] = url.PathEscape(p)
 	}
-	return Source{Kind: "chub", Ref: ref, URL: "https://chub.ai/" + dir + "/" + parts[0] + "/" + parts[1]}, true
+	return parts[0] + "/" + parts[1], true
+}
+
+func chubSource(dir, ref string) (Source, bool) {
+	esc, ok := pathRef(ref)
+	if !ok {
+		return Source{}, false
+	}
+	return Source{Kind: "chub", Ref: ref, URL: "https://chub.ai/" + dir + "/" + esc}, true
+}
+
+// webURL reports whether u is an http or https URL on one of hosts.
+func webURL(u *url.URL, hosts ...string) bool {
+	return (u.Scheme == "http" || u.Scheme == "https") &&
+		slices.ContainsFunc(hosts, func(h string) bool { return strings.EqualFold(u.Hostname(), h) })
 }
 
 func chubDir(lorebook bool) string {
@@ -93,9 +172,27 @@ func Detect(data json.RawMessage, lorebook bool) []Source {
 		return nil
 	}
 	var out []Source
+	add := func(s Source) {
+		// The first wins, so an ID read from the data isn't lost to the same page's URL.
+		if !slices.ContainsFunc(out, func(o Source) bool { return o.Kind == s.Kind && o.Ref == s.Ref }) {
+			out = append(out, s)
+		}
+	}
 	for _, d := range detectors {
 		if s, ok := d.fromData(m, lorebook); ok {
-			out = append(out, s)
+			add(s)
+		}
+	}
+	// data.source lists the card's pages, such as the one url-import read it from.
+	list, _ := m["source"].([]any)
+	for _, v := range list {
+		if raw, ok := v.(string); ok {
+			if s, err := ParseSourceURL(raw); err == nil {
+				// Keep only sources that fit this kind of entity.
+				if v, err := ValidateSource(s, lorebook); err == nil && v.URL == s.URL {
+					add(s)
+				}
+			}
 		}
 	}
 	return out

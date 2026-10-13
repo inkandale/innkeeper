@@ -16,9 +16,11 @@ let plugins: unknown[];
 let instances: unknown[];
 let sent: { method: string; path: string; body?: unknown }[];
 let blobGate: Promise<void>;
+let importGate: Promise<void>;
 beforeEach(() => {
   sent = [];
   blobGate = Promise.resolve();
+  importGate = Promise.resolve();
   vi.stubGlobal("EventSource", class { addEventListener() {} close() {} });
   vi.stubGlobal(
     "fetch",
@@ -33,6 +35,7 @@ beforeEach(() => {
       }
       if (req.method === "POST" && u.pathname === "/api/imports") {
         sent.push({ method: "POST", path: u.pathname, body: await req.json() });
+        await importGate;
         return json(job(sent.length), 202);
       }
       if (req.method === "POST" && u.pathname === "/api/reconciles") {
@@ -95,6 +98,39 @@ test("uploads files to the card importer", async () => {
   expect(await screen.findByText(/brakka\.png/)).toBeInTheDocument();
   await vi.waitFor(() => expect(input).toBeEnabled());
   expect(await screen.findByRole("link", { name: /brakka\.png/ })).toHaveAttribute("href", "/settings/jobs/2");
+});
+
+test("imports a page URL with the URL importer", async () => {
+  plugins = [plugin("url-import", ["import"])];
+  instances = [instance(7, "url-import", "url-import")];
+  renderStep();
+  await userEvent.type(await screen.findByLabelText("Import from a page URL"), "https://chub.ai/characters/u/brakka");
+  await userEvent.click(screen.getByRole("button", { name: "Import" }));
+  await vi.waitFor(() =>
+    expect(sent).toEqual([
+      { method: "POST", path: "/api/imports", body: { instance_id: 7, params: { url: "https://chub.ai/characters/u/brakka" } } },
+    ]),
+  );
+  expect(await screen.findByRole("link", { name: /brakka/ })).toHaveAttribute("href", "/settings/jobs/1");
+  expect(screen.getByLabelText("Import from a page URL")).toHaveValue("");
+  expect(screen.queryByLabelText("Upload files")).not.toBeInTheDocument();
+  expect(screen.queryByText(/Nothing to import from yet/)).not.toBeInTheDocument();
+});
+
+test("shows a page URL import while it starts and blocks a second", async () => {
+  let release!: () => void;
+  importGate = new Promise((r) => (release = r));
+  plugins = [plugin("url-import", ["import"])];
+  instances = [instance(7, "url-import", "url-import")];
+  renderStep();
+  await userEvent.type(await screen.findByLabelText("Import from a page URL"), "https://chub.ai/characters/u/brakka");
+  await userEvent.click(screen.getByRole("button", { name: "Import" }));
+  expect(await screen.findByText(/brakka: uploading…/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Import" })).toBeDisabled();
+  release();
+  expect(await screen.findByRole("link", { name: /brakka/ })).toHaveAttribute("href", "/settings/jobs/1");
+  await userEvent.type(screen.getByLabelText("Import from a page URL"), "https://x.test/a");
+  expect(screen.getByRole("button", { name: "Import" })).toBeEnabled();
 });
 
 test("with nothing to import from, points back to choosing plugins", async () => {

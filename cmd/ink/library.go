@@ -41,6 +41,7 @@ func entityCmds(k kind) []*cobra.Command {
 		archiveCmd(k, "archive"),
 		archiveCmd(k, "unarchive"),
 		importFileCmd(k),
+		importURLCmd(k),
 	}
 }
 
@@ -72,6 +73,23 @@ a card or a lorebook.`,
 			}
 			return startJob(cmd, "/imports", map[string]any{"instance_id": json.Number(id),
 				"params": map[string]string{"blob": sha, "name": filepath.Base(args[1])}})
+		},
+	}
+}
+
+func importURLCmd(k kind) *cobra.Command {
+	return &cobra.Command{
+		Use:     "import-url <instance-id> <url>",
+		Short:   "Import a card or lorebook from its page URL with an importer instance, such as one of url-import",
+		Example: "  ink " + k.plural + " import-url 7 https://chub.ai/characters/user/name",
+		Args:    cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := parseID(args[0])
+			if err != nil {
+				return err
+			}
+			return startJob(cmd, "/imports", map[string]any{"instance_id": json.Number(id),
+				"params": map[string]string{"url": args[1]}})
 		},
 	}
 }

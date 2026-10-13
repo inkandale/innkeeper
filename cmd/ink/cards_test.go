@@ -345,3 +345,26 @@ func TestCardsImport(t *testing.T) {
 		}
 	}
 }
+
+func TestCardsImportURL(t *testing.T) {
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		got = append(got, r.Method+" "+r.URL.Path+" "+string(body))
+		_, _ = w.Write([]byte(`{"id": 9}`))
+	}))
+	defer srv.Close()
+	t.Setenv("INNKEEPER_URL", srv.URL)
+	t.Setenv("INNKEEPER_TOKEN", "tok")
+	out, err := runInk(t, "cards", "import-url", "7", "https://chub.ai/characters/u/brakka")
+	if err != nil || out != "started job 9; follow it with: ink jobs watch 9\n" {
+		t.Fatalf("out = %q, err = %v", out, err)
+	}
+	want := `POST /api/imports {"instance_id":7,"params":{"url":"https://chub.ai/characters/u/brakka"}}`
+	if len(got) != 1 || got[0] != want {
+		t.Fatalf("requests = %q\nwant %q", got, want)
+	}
+	if _, err := runInk(t, "cards", "import-url", "x", "https://chub.ai/characters/u/brakka"); err == nil {
+		t.Error("a non-numeric instance ID was accepted")
+	}
+}

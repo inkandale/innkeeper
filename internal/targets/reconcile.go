@@ -213,7 +213,7 @@ func suggest(k kind, info protocol.TargetInfo, idx index, p ReconcileParams, ite
 		} else {
 			c := item.Candidates[0]
 			item.Suggested = &Option{Action: "skip", Why: fmt.Sprintf(
-				"same as #%d %s, already bound to %s: the app has a duplicate", c.CardID, c.Name, c.BoundTo)}
+				"same as #%d %s, already bound to another app item: the app has a duplicate", c.CardID, c.Name)}
 		}
 	case VerdictLikely:
 		i := unbound(item.Candidates)

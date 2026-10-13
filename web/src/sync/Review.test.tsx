@@ -359,3 +359,23 @@ test("without the queue, Review neither counts nor offers Later", async () => {
   expect(screen.queryByRole("button", { name: "Later" })).not.toBeInTheDocument();
   expect(changesGets).toBe(0);
 });
+
+test("a suggested import compares with the first unbound match and shows the diff without choices", async () => {
+  progress = {
+    ...snap,
+    items: [{
+      remote_id: "a", name: "Ann", app_hash: "ha", verdict: "likely",
+      options: [{ action: "import" }, { action: "skip" }],
+      suggested: { action: "import", why: "4 of 4 core fields differ from #1 Ann" },
+      candidates: [
+        { card_id: 2, name: "Ann", reasons: { name: 0 }, differing_fields: 4, conflicts: 0, bound_to: "Ann_1.png" },
+        { card_id: 1, name: "Ann", reasons: { name: 0 }, differing_fields: 4, conflicts: 0 },
+      ],
+    }],
+  };
+  renderReview();
+  expect(await screen.findByRole("combobox", { name: "Library match" })).toHaveValue("1");
+  expect(screen.getByRole("option", { name: "#2 Ann (already bound to another app item)" })).toBeInTheDocument();
+  expect(await screen.findByText("short.")).toBeInTheDocument();
+  expect(screen.queryByRole("radiogroup", { name: "Keep for description#1" })).not.toBeInTheDocument();
+});

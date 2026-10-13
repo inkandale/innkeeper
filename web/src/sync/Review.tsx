@@ -32,7 +32,7 @@ type Choices = Record<string, string>;
 
 const sideText = (v: unknown) => (v === undefined ? <em className="muted">absent</em> : show(v));
 
-function HunkChoice(props: { scope: string; hunk: Hunk; label: string; list: boolean; choice: string; onChoose: (c: string) => void }) {
+function HunkChoice(props: { scope: string; hunk: Hunk; label: string; list: boolean; choice: string; onChoose?: (c: string) => void }) {
   const { scope, hunk, label, list, choice, onChoose } = props;
   const sides = list ? ["library", "app", "both"] : ["library", "app"];
   return (
@@ -46,19 +46,21 @@ function HunkChoice(props: { scope: string; hunk: Hunk; label: string; list: boo
         <h4>App</h4>
         <p className="hunks">{sideText(hunk.app)}</p>
       </div>
-      <span className="row" role="radiogroup" aria-label={`Keep for ${hunk.id}`}>
-        {sides.map((s) => (
-          <label key={s} className="check">
-            <input type="radio" name={`${scope}/${hunk.id}`} checked={choice === s} onChange={() => onChoose(s)} />{" "}
-            {s === "library" ? "Library" : s === "app" ? "App" : "Both"}
-          </label>
-        ))}
-      </span>
+      {onChoose && (
+        <span className="row" role="radiogroup" aria-label={`Keep for ${hunk.id}`}>
+          {sides.map((s) => (
+            <label key={s} className="check">
+              <input type="radio" name={`${scope}/${hunk.id}`} checked={choice === s} onChange={() => onChoose(s)} />{" "}
+              {s === "library" ? "Library" : s === "app" ? "App" : "Both"}
+            </label>
+          ))}
+        </span>
+      )}
     </div>
   );
 }
 
-function FieldChoices({ scope, field, choices, onChoose }: { scope: string; field: Field; choices: Choices; onChoose: (id: string, c: string) => void }) {
+function FieldChoices({ scope, field, choices, onChoose }: { scope: string; field: Field; choices: Choices; onChoose?: (id: string, c: string) => void }) {
   const hunks = field.hunks ?? [];
   const differs = hunks.some((h) => h.status !== "same");
   const label = (h: Hunk) => {
@@ -85,7 +87,7 @@ function FieldChoices({ scope, field, choices, onChoose }: { scope: string; fiel
             label={label(h)}
             list={field.kind === "list"}
             choice={choices[h.id] ?? "library"}
-            onChoose={(c) => onChoose(h.id, c)}
+            onChoose={onChoose && ((c) => onChoose(h.id, c))}
           />
         ) : (
           <p key={h.id} className="hunks">
@@ -98,8 +100,8 @@ function FieldChoices({ scope, field, choices, onChoose }: { scope: string; fiel
   );
 }
 
-/** Diff lists a comparison field by field, with a choice on each hunk the owner must decide. */
-function Diff({ scope, cmp, choices, onChoose }: { scope: string; cmp: Comparison; choices: Choices; onChoose: (id: string, c: string) => void }) {
+/** Diff lists a comparison field by field, with a choice on each hunk the owner must decide; without onChoose it only shows them. */
+function Diff({ scope, cmp, choices, onChoose }: { scope: string; cmp: Comparison; choices: Choices; onChoose?: (id: string, c: string) => void }) {
   const fields = cmp.fields ?? [];
   const a = cmp.avatar;
   return (
@@ -114,14 +116,16 @@ function Diff({ scope, cmp, choices, onChoose }: { scope: string; cmp: Compariso
             <h4>App image</h4>
             {a.app ? <img className="history-thumb" src={thumb(a.app, 160)} alt="App" /> : "None"}
           </div>
-          <span className="row" role="radiogroup" aria-label="Keep for avatar">
-            {(a.app ? ["library", "app"] : ["library"]).map((s) => (
-              <label key={s} className="check">
-                <input type="radio" name={`${scope}/avatar`} checked={(choices.avatar ?? "library") === s} onChange={() => onChoose("avatar", s)} />{" "}
-                {s === "library" ? "Library" : "App"}
-              </label>
-            ))}
-          </span>
+          {onChoose && (
+            <span className="row" role="radiogroup" aria-label="Keep for avatar">
+              {(a.app ? ["library", "app"] : ["library"]).map((s) => (
+                <label key={s} className="check">
+                  <input type="radio" name={`${scope}/avatar`} checked={(choices.avatar ?? "library") === s} onChange={() => onChoose("avatar", s)} />{" "}
+                  {s === "library" ? "Library" : "App"}
+                </label>
+              ))}
+            </span>
+          )}
         </div>
       )}
       {!a && fields.every((f) => (f.hunks ?? []).every((h) => h.status === "same")) && <p>No differences.</p>}
@@ -203,8 +207,11 @@ function ReviewItem() {
   const snap = snapshotOf(job.data);
   const item = snap && rows(snap).find((r) => r.kind === kind && r.item.remote_id === remoteId)?.item;
   const suggested = item?.suggested;
+  const candidates = item?.candidates ?? [];
   const card =
-    Number(search.get("card")) || (suggested?.action === "bind" ? suggested.card_id : item?.candidates?.[0]?.card_id) || 0;
+    Number(search.get("card")) ||
+    (suggested?.action === "bind" ? suggested.card_id : (candidates.find((c) => !c.bound_to) ?? candidates[0])?.card_id) ||
+    0;
 
   const [action, setAction] = useState<Option["action"]>();
   // Only the snapshot's options are offered: an error item can only be skipped, and a bound one shouldn't default to a duplicate import.
@@ -348,8 +355,8 @@ function ReviewItem() {
               {!item.candidates.some((c) => c.card_id === card) && card > 0 && <option value={card}>#{card}</option>}
               {item.candidates.map((c) => (
                 <option key={c.card_id} value={c.card_id}>
-                  {c.name}
-                  {c.bound_to ? ` (bound to ${c.bound_to})` : ""}
+                  #{c.card_id} {c.name}
+                  {c.bound_to ? " (already bound to another app item)" : ""}
                 </option>
               ))}
             </select>
@@ -363,7 +370,14 @@ function ReviewItem() {
         ) : !cmp.data ? (
           <p>Comparing…</p>
         ) : (
-          act === "bind" && <Diff scope={`${kind === "items" ? "card" : "book"}:${remoteId}`} cmp={cmp.data} choices={choices} onChoose={(id, c) => setChoices({ ...choices, [id]: c })} />
+          act !== "skip" && (
+            <Diff
+              scope={`${kind === "items" ? "card" : "book"}:${remoteId}`}
+              cmp={cmp.data}
+              choices={choices}
+              onChoose={act === "bind" ? (id, c) => setChoices({ ...choices, [id]: c }) : undefined}
+            />
+          )
         )}
       </section>
       {act !== "skip" &&

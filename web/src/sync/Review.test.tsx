@@ -406,3 +406,42 @@ test("a JSON change names its key and diffs its words side by side", async () =>
   expect(within(block).getByText("0.5", { selector: "del" })).toBeInTheDocument();
   expect(within(block).getByText("0.7", { selector: "ins" })).toBeInTheDocument();
 });
+
+test("a JSON field folds its unchanged keys, each still labelled", async () => {
+  cardBody = {
+    ...cardCmp,
+    fields: [{
+      path: "extensions", kind: "json",
+      hunks: [
+        { id: "extensions.depth_prompt.depth#0", status: "same", library: 4 },
+        { id: "extensions.depth_prompt.role#0", status: "same", library: "system" },
+        { id: "extensions.talkativeness#0", status: "conflict", library: "0.5", app: "0.7" },
+      ],
+    }],
+  } as typeof cardCmp;
+  renderReview();
+  await screen.findByRole("radiogroup", { name: "Keep for extensions.talkativeness#0" });
+  const folded = screen.getByText("2 unchanged keys").closest("details")!;
+  expect(folded).not.toHaveAttribute("open");
+  expect(within(folded).getByText("depth_prompt.depth")).toBeInTheDocument();
+  expect(within(folded).getByText("depth_prompt.role")).toBeInTheDocument();
+});
+
+test("prose folds an unchanged run longer than two sentences and keeps a shorter one", async () => {
+  cardBody = {
+    ...cardCmp,
+    fields: [{
+      path: "first_mes", kind: "prose",
+      hunks: [
+        { id: "first_mes#0", status: "same", library: "One. Two. Three. " },
+        { id: "first_mes#1", status: "conflict", library: "Old.", app: "New." },
+        { id: "first_mes#2", status: "same", library: " Four. Five." },
+      ],
+    }],
+  };
+  renderReview();
+  await screen.findByRole("radiogroup", { name: "Keep for first_mes#1" });
+  const folded = screen.getByText("⋯ 3 unchanged sentences").closest("details")!;
+  expect(within(folded).getByText("One. Two. Three.")).toBeInTheDocument();
+  expect(screen.getByText("Four. Five.").closest("details.unchanged")).toBeNull();
+});

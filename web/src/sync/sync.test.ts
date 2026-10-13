@@ -1,4 +1,4 @@
-import { bulkResolutions, optionLabel, pushSummary, resolution, reviewPath, rows, snapshotOf, stateCounts, type Comparison, type Snapshot } from "./sync";
+import { bulkResolutions, jsonKey, optionLabel, pushSummary, resolution, reviewPath, rows, sentenceCount, snapshotOf, stateCounts, wordDiff, type Comparison, type Snapshot } from "./sync";
 
 const cmp: Comparison = {
   instance_id: 3, remote_id: "a", card_id: 1, head_revision_id: 118, accepted_hash: "", base: "none", app_hash: "fresh", fields: [],
@@ -69,4 +69,40 @@ test("labels, review paths, and snapshots", () => {
   // Job lists and streams cut the snapshot to its totals.
   expect(snapshotOf({ status: "succeeded", progress: { totals: {} } })).toBeUndefined();
   expect(snapshotOf({ status: "running", progress: { done: 1, total: 4 } })).toBeUndefined();
+});
+
+test("wordDiff marks the words each side changed and keeps the rest", () => {
+  expect(wordDiff("Bradley shouts at Tiff.", "Bradley yells at Tiff and Dex.")).toEqual([
+    { op: "same", text: "Bradley " },
+    { op: "del", text: "shouts " },
+    { op: "ins", text: "yells " },
+    { op: "same", text: "at " },
+    { op: "del", text: "Tiff." },
+    { op: "ins", text: "Tiff and Dex." },
+  ]);
+  expect(wordDiff("", "New text")).toEqual([{ op: "ins", text: "New text" }]);
+  expect(wordDiff("Gone now", "")).toEqual([{ op: "del", text: "Gone now" }]);
+  expect(wordDiff("", "")).toEqual([]);
+});
+
+test("wordDiff works on characters, not bytes, so curly quotes and dashes stay whole", () => {
+  expect(wordDiff("“Hi,” she said—quietly.", "“Hi,” he said—quietly.")).toEqual([
+    { op: "same", text: "“Hi,” " },
+    { op: "del", text: "she " },
+    { op: "ins", text: "he " },
+    { op: "same", text: "said—quietly." },
+  ]);
+});
+
+test("sentenceCount splits where the server's sentences() does", () => {
+  expect(sentenceCount("One. Two. Three. ")).toBe(3);
+  expect(sentenceCount("“Stop!” she said. Then left.")).toBe(3);
+  expect(sentenceCount("Line one\nline two")).toBe(2);
+  expect(sentenceCount(" Four. Five.")).toBe(2);
+  expect(sentenceCount("")).toBe(0);
+});
+
+test("jsonKey names a hunk by its path inside the field", () => {
+  expect(jsonKey("extensions", "extensions.depth_prompt.depth#0")).toBe("depth_prompt.depth");
+  expect(jsonKey("extensions", "extensions#0")).toBe("");
 });

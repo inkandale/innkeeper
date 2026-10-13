@@ -235,3 +235,44 @@ export function pushSummary(c: BulkPreview): string {
     .map(([n, s]) => `${n} ${s}`)
     .join(", ");
 }
+
+export type Run = { op: "same" | "del" | "ins"; text: string };
+
+// Each word keeps its trailing whitespace, as the server's words() does, so runs rejoin to the input.
+const words = (s: string) => s.match(/\s*\S+\s*/g) ?? (s ? [s] : []);
+
+/** wordDiff lines up two texts word by word: same runs, then what only the library (del) or the app (ins) has. */
+export function wordDiff(library: string, app: string): Run[] {
+  const a = words(library);
+  const b = words(app);
+  const w = b.length + 1;
+  // ponytail: O(n·m) LCS table; fine for one hunk, switch to Myers if hunks grow to whole fields.
+  const lcs = new Int32Array((a.length + 1) * w);
+  const at = (i: number, j: number) => lcs[i * w + j] ?? 0;
+  for (let i = a.length - 1; i >= 0; i--)
+    for (let j = b.length - 1; j >= 0; j--)
+      lcs[i * w + j] = a[i] === b[j] ? at(i + 1, j + 1) + 1 : Math.max(at(i + 1, j), at(i, j + 1));
+  const out: Run[] = [];
+  const push = (op: Run["op"], text: string) => {
+    const last = out.at(-1);
+    if (last?.op === op) last.text += text;
+    else out.push({ op, text });
+  };
+  let i = 0;
+  let j = 0;
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && a[i] === b[j]) {
+      push("same", a[i++] ?? "");
+      j++;
+    } else if (j >= b.length || (i < a.length && at(i + 1, j) >= at(i, j + 1))) push("del", a[i++] ?? "");
+    else push("ins", b[j++] ?? "");
+  }
+  return out;
+}
+
+/** sentenceCount counts sentences the way the server's sentences() splits them: after a terminator or a line break. */
+export const sentenceCount = (s: string) =>
+  s.split(/(?<=[.!?…]["'”’*)]*\s+|\n\s*)(?=\S)/).filter((p) => p.trim()).length;
+
+/** jsonKey is a JSON field hunk's key path, without the field's own path or the hunk number. */
+export const jsonKey = (path: string, id: string) => id.replace(/#\d+$/, "").slice(path.length + 1);

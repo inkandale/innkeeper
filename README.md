@@ -453,8 +453,8 @@ ink cards import-url <instance-id> https://chub.ai/characters/user/name
 ```
 
 The web's "Bring in cards" step has a URL field once the instance exists.
-Over the API or MCP, start an import with `{"url": "<page URL>"}` as its
-params.
+Over the API, start an import with `{"url": "<page URL>"}` as its params;
+over MCP, pass `url` to `start_import`.
 
 ## Sources
 

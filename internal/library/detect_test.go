@@ -28,6 +28,11 @@ func TestDetect(t *testing.T) {
 		{"nul", "{\"extensions\":{\"chub\":{\"full_path\":\"a/b\\u0000\"}}}", false, nil},
 		{"nbsp", "{\"extensions\":{\"chub\":{\"full_path\":\"a/b\u00a0c\"}}}", false, nil},
 		{"not json", `nope`, false, nil},
+		{"chub data and source", `{"extensions":{"chub":{"id":7,"full_path":"a/b"}},"source":["https://chub.ai/characters/a/b"]}`, false, &Source{Kind: "chub", Ref: "a/b", ExternalID: "7", URL: "https://chub.ai/characters/a/b"}},
+		{"risu source", `{"source":["risurealm:976E92F8-2C7E-4BF9-AEF4-586A7A753338","https://realm.risuai.net/character/976e92f8-2c7e-4bf9-aef4-586a7a753338"]}`, false, &Source{Kind: "risu", Ref: "976e92f8-2c7e-4bf9-aef4-586a7a753338", URL: "https://realm.risuai.net/character/976e92f8-2c7e-4bf9-aef4-586a7a753338"}},
+		{"tavern source", `{"source":["https://character-tavern.com/character/ann/brakka"]}`, false, &Source{Kind: "character-tavern", Ref: "ann/brakka", URL: "https://character-tavern.com/character/ann/brakka"}},
+		{"unknown source", `{"source":["https://example.com/x", 5, null]}`, false, nil},
+		{"source not a list", `{"source":"https://chub.ai/characters/a/b"}`, false, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -87,5 +92,34 @@ func TestValidateSource(t *testing.T) {
 		if _, err := ValidateSource(s, false); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%+v: got %v, want ErrInvalid", s, err)
 		}
+	}
+}
+
+func TestParseSourceURLSites(t *testing.T) {
+	const risuID = "976e92f8-2c7e-4bf9-aef4-586a7a753338"
+	for u, want := range map[string]Source{
+		"https://characterhub.org/characters/a/b":           {Kind: "chub", Ref: "a/b", URL: "https://chub.ai/characters/a/b"},
+		"https://www.characterhub.org/lorebooks/a/b":        {Kind: "chub", Ref: "a/b", URL: "https://chub.ai/lorebooks/a/b"},
+		"https://venus.chub.ai/characters/a/b":              {Kind: "chub", Ref: "a/b", URL: "https://chub.ai/characters/a/b"},
+		"https://chub.ai/a/b":                               {Kind: "chub", Ref: "a/b", URL: "https://chub.ai/characters/a/b"},
+		"https://realm.risuai.net/character/" + risuID:      {Kind: "risu", Ref: risuID, URL: "https://realm.risuai.net/character/" + risuID},
+		"risurealm:" + risuID:                               {Kind: "risu", Ref: risuID, URL: "https://realm.risuai.net/character/" + risuID},
+		"https://character-tavern.com/character/ann/brakka": {Kind: "character-tavern", Ref: "ann/brakka", URL: "https://character-tavern.com/character/ann/brakka"},
+	} {
+		if got, err := ParseSourceURL(u); err != nil || got != want {
+			t.Errorf("%s: got %+v, %v", u, got, err)
+		}
+	}
+	for _, u := range []string{
+		"https://realm.risuai.net/character/not-a-uuid", "risurealm:x", "https://evil.example/character/" + risuID,
+		"https://character-tavern.com/character/ann", "https://character-tavern.com/ann/brakka", "https://character-tavern.com/character/../x",
+		"https://character-tavern.com/character/ann/b%20c",
+	} {
+		if _, err := ParseSourceURL(u); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: got %v, want ErrInvalid", u, err)
+		}
+	}
+	if _, err := ValidateSource(Source{Kind: "risu", Ref: risuID}, true); !errors.Is(err, ErrInvalid) {
+		t.Errorf("risu lorebook: got %v, want ErrInvalid", err)
 	}
 }

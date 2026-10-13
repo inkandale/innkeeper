@@ -90,6 +90,14 @@ beforeEach(() => {
         compares.push(u.searchParams.get("card_id")!);
         return json({ ...cardCmp, card_id: Number(u.searchParams.get("card_id")) });
       }
+      if (u.pathname === "/api/instances/3/items/x/compare") {
+        compares.push(u.search);
+        return json({ ...cardCmp, remote_id: "x", card_id: 4, accepted_hash: "acc", base: u.searchParams.get("base") ?? "accepted" });
+      }
+      if (u.pathname === "/api/instances/3/items/x/resolve") {
+        resolved.push(await req.json());
+        return json({ remote_id: "x", action: "bind", card_id: 4 });
+      }
       if (u.pathname === "/api/instances/3/lorebook-items/w2/compare") return json(bookCmp);
       if (u.pathname === "/api/instances/3/items/a/resolve") {
         resolved.push(await req.json());
@@ -285,26 +293,26 @@ const at = (router: ReturnType<typeof renderReview>) => router.state.location.pa
 test("from the queue, shows its place among the reviews and resolves on to the next", async () => {
   const router = renderReview("/sync/3/items/a?job=5&queue=1");
   const user = userEvent.setup();
-  expect(await screen.findByText("1 of 2")).toBeInTheDocument();
+  expect(await screen.findByText("1 of 3")).toBeInTheDocument();
   await screen.findByRole("radiogroup", { name: "Keep for description#1" });
   await user.click(screen.getByRole("button", { name: "Resolve" }));
-  await waitFor(() => expect(at(router)).toBe("/sync/3/items/c?job=5&queue=1"));
+  await waitFor(() => expect(at(router)).toBe("/sync/3/items/x?card=4&base=none&queue=1"));
   expect(resolved).toHaveLength(1);
 });
 
 test("Later moves on without resolving", async () => {
   const router = renderReview("/sync/3/items/a?job=5&queue=1");
   const user = userEvent.setup();
-  await screen.findByText("1 of 2");
+  await screen.findByText("1 of 3");
   await user.click(screen.getByRole("button", { name: "Later" }));
-  await waitFor(() => expect(at(router)).toBe("/sync/3/items/c?job=5&queue=1"));
+  await waitFor(() => expect(at(router)).toBe("/sync/3/items/x?card=4&base=none&queue=1"));
   expect(resolved).toEqual([]);
 });
 
 test("with no review left, the queue opens", async () => {
   const router = renderReview("/sync/3/items/c?job=5&queue=1");
   const user = userEvent.setup();
-  await screen.findByText("2 of 2");
+  await screen.findByText("3 of 3");
   await user.click(screen.getByRole("button", { name: "Later" }));
   await waitFor(() => expect(at(router)).toBe("/sync/changes"));
 });
@@ -320,13 +328,29 @@ test("filtered to one app, steps through that app's reviews only and returns to 
   };
   const router = renderReview("/sync/3/items/a?job=5&queue=1&instance_id=3");
   const user = userEvent.setup();
-  expect(await screen.findByText("1 of 2")).toBeInTheDocument();
+  expect(await screen.findByText("1 of 3")).toBeInTheDocument();
   await screen.findByRole("radiogroup", { name: "Keep for description#1" });
   await user.click(screen.getByRole("button", { name: "Resolve" }));
+  await waitFor(() => expect(at(router)).toBe("/sync/3/items/x?card=4&base=none&queue=1&instance_id=3"));
+  await screen.findByText("2 of 3");
+  await user.click(screen.getByRole("button", { name: "Later" }));
   await waitFor(() => expect(at(router)).toBe("/sync/3/items/c?job=5&queue=1&instance_id=3"));
-  await screen.findByText("2 of 2");
+  await screen.findByText("3 of 3");
   await user.click(screen.getByRole("button", { name: "Later" }));
   await waitFor(() => expect(at(router)).toBe("/sync/changes?instance_id=3"));
+});
+
+test("a change not pushed compares without the accepted copy and resolves the same way", async () => {
+  const router = renderReview("/sync/3/items/x?card=4&base=none&queue=1");
+  const user = userEvent.setup();
+  await screen.findByText("2 of 3");
+  expect(compares).toEqual(["?card_id=4&base=none"]);
+  await user.click(await screen.findByLabelText("App", { selector: "[name='card:x/description#1']" }));
+  await user.click(screen.getByRole("button", { name: "Resolve" }));
+  await waitFor(() => expect(at(router)).toBe("/sync/3/items/c?job=5&queue=1"));
+  expect(resolved).toEqual([
+    expect.objectContaining({ card_id: 4, accepted_hash: "acc", base: "none", choices: { "description#1": "app" } }),
+  ]);
 });
 
 test("without the queue, Review neither counts nor offers Later", async () => {

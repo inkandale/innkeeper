@@ -97,11 +97,11 @@ type Comparison struct {
 	CardID     int64  `json:"card_id"` // or the lorebook's ID
 	// HeadRevisionID is the library revision compared; a resolution names it.
 	HeadRevisionID int64 `json:"head_revision_id"`
-	// AcceptedHash is the ancestor binding's accepted_hash, empty when Base
-	// is none; a resolution names it.
+	// AcceptedHash is the binding's accepted_hash when the pair is bound,
+	// else empty; a resolution names it.
 	AcceptedHash string `json:"accepted_hash"`
 	// Base is accepted when the pair is bound and the binding's copy is the
-	// ancestor, none otherwise.
+	// ancestor, none otherwise or when the comparison was asked for without it.
 	Base string `json:"base" enum:"none,accepted"`
 	// AppHash is the projected hash of the app's copy compared here.
 	AppHash string `json:"app_hash"`
@@ -141,6 +141,9 @@ type Resolution struct {
 	CardID int64 `json:"card_id,omitempty"`
 	// Choices maps hunk IDs, and avatar, to a choice.
 	Choices map[string]merge.Choice `json:"choices,omitempty"`
+	// Base is the comparison's base. None resolves without the accepted copy
+	// as the ancestor, as a comparison asked for without it showed the hunks.
+	Base string `json:"base,omitempty" enum:"accepted,none" required:"false"`
 	// Default is the choice for hunks not in Choices; empty means library.
 	Default   merge.Choice `json:"default,omitempty"`
 	Lorebooks []Resolution `json:"lorebooks,omitempty"`

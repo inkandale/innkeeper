@@ -6,14 +6,13 @@ import type { components } from "../api/schema";
 import { badgeClass } from "../cards/Tile";
 import { useToast } from "../shell/Toasts";
 import { PushPreview } from "./PushPreview";
-import { bulkResolutions, changePath, changesFilter, compareItem, pushSummary, reviewable, type AppChange, type Option } from "./sync";
+import { bulkResolutions, changePath, changesFilter, compareItem, pushSummary, queueReviews, reviewable, stateLabel, type AppChange, type Option } from "./sync";
 import "./Sync.css";
 
 type ChangeRow = components["schemas"]["ChangeRow"];
 type Job = components["schemas"]["JobOut"];
 
 const states = ["differs", "both_changed", "new", "error", "ahead", "missing"] as const;
-const label = (s: string) => s.replaceAll("_", " ");
 const rowKey = (r: ChangeRow) => (r.card_id ? `card/${r.card_id}` : `app/${r.apps?.[0]?.instance_id}/${r.apps?.[0]?.remote_id}`);
 /** applicable entries are what Apply suggested settles: a review with a suggestion, or a push. */
 const applicable = (c: AppChange) => (reviewable(c) && !!c.suggested) || c.state === "ahead";
@@ -46,11 +45,12 @@ export function Changes() {
   const rows = changes.data?.rows ?? [];
   const apps = [...new Set(rows.flatMap((r) => (r.apps ?? []).map((c) => c.instance_id)))].sort((a, b) => a - b);
   const isChecked = (r: ChangeRow) =>
-    (r.apps ?? []).some(applicable) && (checked[rowKey(r)] ?? (r.apps ?? []).every(applicable));
+    (r.apps ?? []).some(applicable) && // A push overwrites the app's copy, so it waits for the owner to check it.
+    (checked[rowKey(r)] ?? (r.apps ?? []).every((c) => applicable(c) && c.state !== "ahead"));
   const chosen = rows.filter(isChecked).flatMap((r) => (r.apps ?? []).filter(applicable).map((c) => ({ card: r.card_id ?? 0, c })));
   const reviews = chosen.filter(({ c }) => c.state !== "ahead").map(({ c }) => c);
   const pushes = group(chosen.filter(({ c }) => c.state === "ahead"), ({ c }) => c.instance_id);
-  const first = rows.flatMap((r) => r.apps ?? []).find(reviewable);
+  const first = queueReviews(rows)[0];
 
   const setFilter = (k: string, v: string) => {
     const next = new URLSearchParams(params);
@@ -127,17 +127,22 @@ export function Changes() {
         {where}
       </button>
     );
+    const review = (
+      <Link to={changePath({ ...c, card_id: r.card_id }, filter)}>
+        Review{where}
+      </Link>
+    );
     switch (c.state) {
       case "differs":
       case "both_changed":
       case "new":
-        return (
-          <Link to={changePath(c, filter)}>
-            Review{where}
-          </Link>
-        );
+        return review;
       case "ahead":
-        return push("Push");
+        return (
+          <>
+            {review} {push("Push")}
+          </>
+        );
       case "missing":
         return (
           <>
@@ -176,7 +181,7 @@ export function Changes() {
           <option value="">All states</option>
           {states.map((s) => (
             <option key={s} value={s}>
-              {label(s)}
+              {stateLabel(s)}
             </option>
           ))}
         </select>
@@ -224,7 +229,7 @@ export function Changes() {
                         .filter((c) => c.instance_id === i)
                         .map((c) => (
                           <span key={c.state}>
-                            <span className={"badge " + (badgeClass[c.state] ?? "drift")} aria-hidden="true" /> {label(c.state)}
+                            <span className={"badge " + (badgeClass[c.state] ?? "drift")} aria-hidden="true" /> {stateLabel(c.state)}
                           </span>
                         ))}
                     </td>

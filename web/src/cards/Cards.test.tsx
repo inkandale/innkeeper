@@ -91,7 +91,7 @@ test("the URL becomes the search, and hits become tiles", async () => {
   expect(await screen.findByText("Brakka")).toBeInTheDocument();
   expect(searches[0]).toMatchObject({ filter: { and: [{ tag: "fantasy" }] }, page: { size: 48, number: 2 } });
   expect(screen.getByText("+1")).toBeInTheDocument();
-  expect(screen.getByTitle("Lumiverse: ahead")).toBeInTheDocument();
+  expect(screen.getByTitle("Lumiverse: not pushed")).toBeInTheDocument();
   expect(screen.getByText("49 cards")).toBeInTheDocument();
   expect(container.querySelector("img")).toHaveAttribute("src", `/api/blobs/${"ab".repeat(32)}?w=320`);
 });
@@ -184,7 +184,7 @@ test("push offers only targets that push", async () => {
   await user.click(screen.getByRole("button", { name: "Push" }));
   const target = await screen.findByRole("combobox", { name: "Target" });
   expect(Array.from((target as HTMLSelectElement).options).map((o) => o.text)).toEqual(["Lumiverse"]);
-  expect(await screen.findByText("1 ahead")).toBeInTheDocument();
+  expect(await screen.findByText("1 not pushed")).toBeInTheDocument();
   expect(previews).toEqual([{ instance_id: 2, query: { filter: { ids: [8] } } }]);
   await user.click(screen.getByRole("button", { name: "Push 1 card" }));
   await waitFor(() =>
@@ -234,7 +234,7 @@ test("a push refused for a stale preview shows the new one", async () => {
   const user = userEvent.setup();
   await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
   await user.click(screen.getByRole("button", { name: "Push" }));
-  await screen.findByText("1 ahead");
+  await screen.findByText("1 not pushed");
   await user.click(screen.getByRole("button", { name: "Push 1 card" }));
   expect(await screen.findByText(/differ from the preview/)).toBeInTheDocument();
   await waitFor(() => expect(previews).toHaveLength(2));

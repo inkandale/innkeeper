@@ -2957,6 +2957,13 @@
           "app_hash": {
             "type": "string"
           },
+          "base": {
+            "enum": [
+              "accepted",
+              "none"
+            ],
+            "type": "string"
+          },
           "base_revision_id": {
             "format": "int64",
             "type": "integer"
@@ -6523,6 +6530,19 @@
               "description": "The library card to compare with; 0 means the bound one",
               "format": "int64",
               "type": "integer"
+            }
+          },
+          {
+            "description": "none leaves out the binding's accepted copy, so each difference is a choice; resolve with base none",
+            "explode": false,
+            "in": "query",
+            "name": "base",
+            "schema": {
+              "description": "none leaves out the binding's accepted copy, so each difference is a choice; resolve with base none",
+              "enum": [
+                "none"
+              ],
+              "type": "string"
             }
           }
         ],

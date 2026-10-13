@@ -86,16 +86,17 @@ test("one row per card, with each app's state under its column, orphans first", 
   expect(within(ann).getAllByRole("cell")[2]).toHaveTextContent("differs");
   expect(within(ann).getAllByRole("cell")[3]).toHaveTextContent("");
   const bo = screen.getByRole("row", { name: /Bo/ });
-  expect(within(bo).getAllByRole("cell")[3]).toHaveTextContent("ahead");
+  expect(within(bo).getAllByRole("cell")[3]).toHaveTextContent("not pushed");
   expect(within(ann).getByRole("link", { name: /Review/ })).toHaveAttribute("href", "/sync/2/items/a?job=7&queue=1");
   expect(within(bo).getByRole("button", { name: /Push/ })).toBeInTheDocument();
+  expect(within(bo).getByRole("link", { name: /Review/ })).toHaveAttribute("href", "/sync/3/items/b?card=4&base=none&queue=1");
   const cy = screen.getByRole("row", { name: /Cy/ });
   expect(within(cy).getByRole("button", { name: /Push again/ })).toBeInTheDocument();
   expect(within(cy).getByRole("button", { name: /Unbind/ })).toBeInTheDocument();
   expect(screen.getByText("bad JSON")).toBeInTheDocument();
-  // Checked when every entry has a suggestion or is ahead.
+  // Checked when every entry has a suggestion; a push waits to be checked.
   expect(within(ann).getByRole("checkbox")).toBeChecked();
-  expect(within(bo).getByRole("checkbox")).toBeChecked();
+  expect(within(bo).getByRole("checkbox")).not.toBeChecked();
   expect(within(cy).getByRole("checkbox")).not.toBeChecked();
   expect(within(rows[0]!).getByRole("checkbox")).not.toBeChecked();
 });
@@ -106,7 +107,7 @@ test("filters come from the URL and go to the query", async () => {
   expect(queries[0]!.get("instance_id")).toBe("3");
   expect(queries[0]!.get("state")).toBe("ahead");
   expect(screen.getByRole("combobox", { name: "App" })).toHaveDisplayValue("Tavern");
-  expect(screen.getByRole("combobox", { name: "State" })).toHaveDisplayValue("ahead");
+  expect(screen.getByRole("combobox", { name: "State" })).toHaveDisplayValue("not pushed");
   await userEvent.selectOptions(screen.getByRole("combobox", { name: "State" }), "missing");
   await waitFor(() => expect(queries.at(-1)?.get("state")).toBe("missing"));
   expect(queries.at(-1)?.get("instance_id")).toBe("3");
@@ -114,8 +115,7 @@ test("filters come from the URL and go to the query", async () => {
 
 test("Apply suggested resolves the checked reviews", async () => {
   renderChanges();
-  const bo = await screen.findByRole("row", { name: /Bo/ });
-  await userEvent.click(within(bo).getByRole("checkbox"));
+  await screen.findByRole("row", { name: /Bo/ });
   await userEvent.click(screen.getByRole("button", { name: /Apply/ }));
   await waitFor(() => expect(posts.map((p) => p.path)).toEqual(["/api/resolutions"]));
   expect(posts[0]!.body).toEqual({
@@ -128,11 +128,12 @@ test("Apply suggested resolves the checked reviews", async () => {
 
 test("Apply suggested with an ahead row asks with the push preview first", async () => {
   renderChanges();
-  await screen.findByRole("row", { name: /Bo/ });
+  const bo = await screen.findByRole("row", { name: /Bo/ });
+  await userEvent.click(within(bo).getByRole("checkbox"));
   await userEvent.click(screen.getByRole("button", { name: /Apply/ }));
   const dialog = await screen.findByRole("dialog");
   expect(posts).toEqual([{ path: "/api/pushes/preview", body: { instance_id: 3, query: { filter: { ids: [4] } } } }]);
-  expect(await within(dialog).findByText(/1 ahead/)).toBeInTheDocument();
+  expect(await within(dialog).findByText(/1 not pushed/)).toBeInTheDocument();
   await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
   await waitFor(() => expect(posts.map((p) => p.path)).toEqual(["/api/pushes/preview", "/api/resolutions", "/api/pushes"]));
   expect(posts[2]!.body).toEqual({ instance_id: 3, query: { filter: { ids: [4] } }, confirm: "q1" });

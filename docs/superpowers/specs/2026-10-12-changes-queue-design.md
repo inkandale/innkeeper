@@ -36,7 +36,7 @@ reads:
 |---|---|---|---|
 | `differs` | a snapshot item left unbound whose best candidate is this card (likely, or exact but not auto-bound) | the candidate card | review: bind to it, or import as a new card |
 | `both_changed` | a bound snapshot item that isn't app-only and has differing fields | the bound card | review |
-| `ahead` | `binding_status` `ahead` | the bound card | push, with its preview |
+| `ahead` | `binding_status` `ahead` | the bound card | review, or push with its preview |
 | `missing` | `binding_status` `missing` | the bound card | push again, or unbind |
 | `error` | a snapshot item with an error | the bound or candidate card, else an orphan row | none; shows the error |
 | `new` | an unbound snapshot item with no candidate | an orphan row, named "*name* (*app* only)" | import or skip |
@@ -50,6 +50,15 @@ An app item can be a candidate for one card only in the queue: its best
 unbound candidate, as the snapshot ranks them. Its other candidates stay
 reachable in review.
 
+An `ahead` binding may come from a bind, which accepts the app's copy as it
+is, so the library being ahead doesn't mean its copy is the one to keep. Its
+review compares with `base=none`, leaving out the accepted copy, so every
+difference is the owner's choice, and resolves with `base: none`.
+
+The web labels states from the library's side: `ahead` is "not pushed",
+`remote_changed` "changed in app", and `diverged` and `both_changed` "changed
+in both".
+
 ponytail: rows are built from every app's latest snapshot on each request.
 Store them if a library outgrows that.
 
@@ -61,15 +70,16 @@ Store them if a library outgrows that.
 
 **Web:**
 
-- **Sync page:** columns Target, In sync (cards), Needs you, Ahead, Missing,
-  Last sync. Needs you is that app's `differs`, `both_changed`, `error`, and
-  `new` count and links to the queue filtered to the app. Ahead and Missing
+- **Sync page:** columns Target, In sync (cards), Needs you, Not pushed,
+  Missing, Last sync. Needs you is that app's `differs`, `both_changed`,
+  `error`, and `new` count and links to the queue filtered to the app. Not
+  pushed and Missing
   link to the queue filtered to that app and state. Can't check shows only
   when it isn't zero. A Changes link above the table opens the whole queue.
 - **Queue** (`/sync/changes`): filters by app and by state; a checkbox per
   row; "Apply suggested" resolves the checked reviews that have a suggestion
   and pushes the checked `ahead` entries, asking with the push preview first.
-  "Review one by one" opens the first review.
+  "Review one by one" opens the first review, `ahead` entries included.
 - **Review:** after a decision it opens the next change from the queue, with
   "3 of 32", and a Later button that moves on without deciding. With nothing
   left it returns to the queue.

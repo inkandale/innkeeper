@@ -96,6 +96,7 @@ export function resolution(
     app_hash: cmp.app_hash,
     base_revision_id: cmp.head_revision_id,
     accepted_hash: cmp.accepted_hash,
+    ...(cmp.base === "none" && cmp.accepted_hash ? { base: "none" as const } : {}),
     default: "library",
     ...(Object.keys(picked).length ? { choices: picked } : {}),
   };
@@ -127,10 +128,14 @@ export async function bulkResolutions<R extends { kind: ItemKind; item: Pick<Ite
   return out;
 }
 
-export async function compareItem(instance: number, kind: ItemKind, remoteId: string, id: number): Promise<Comparison> {
+export async function compareItem(instance: number, kind: ItemKind, remoteId: string, id: number, twoWay = false): Promise<Comparison> {
   const path = { id: instance, remote_id: remoteId };
   return kind === "items"
-    ? must(await api.GET("/instances/{id}/items/{remote_id}/compare", { params: { path, query: { card_id: id } } }))
+    ? must(
+        await api.GET("/instances/{id}/items/{remote_id}/compare", {
+          params: { path, query: { card_id: id, ...(twoWay ? { base: "none" as const } : {}) } },
+        }),
+      )
     : must(await api.GET("/instances/{id}/lorebook-items/{remote_id}/compare", { params: { path, query: { lorebook_id: id } } }));
 }
 
@@ -155,8 +160,21 @@ export function reviewPath(
   return `/sync/${instance}/${kind}/${encodeURIComponent(remoteId)}${q ? "?" + q : ""}`;
 }
 
-/** reviewable changes open Review; the others are pushed, unbound, or only shown. */
-export const reviewable = (c: AppChange) => c.state === "differs" || c.state === "both_changed" || c.state === "new";
+/** reviewable changes open Review; the others are pushed again, unbound, or only shown. */
+export const reviewable = (c: AppChange) =>
+  c.state === "differs" || c.state === "both_changed" || c.state === "new" || c.state === "ahead";
+
+/** QueueChange is a queue entry with its row's card, which Review compares with when there's no snapshot. */
+export type QueueChange = AppChange & { card_id?: number };
+
+/** queueReviews lists the queue's reviewable entries in order. */
+export const queueReviews = (rows: { card_id?: number; apps: AppChange[] | null }[]): QueueChange[] =>
+  rows.flatMap((r) => (r.apps ?? []).filter(reviewable).map((c) => ({ ...c, card_id: r.card_id })));
+
+/** stateLabel names a binding or queue state from the library's side. */
+export const stateLabel = (s: string) =>
+  ({ ahead: "not pushed", remote_changed: "changed in app", diverged: "changed in both", both_changed: "changed in both" })[s] ??
+  s.replaceAll("_", " ");
 
 /** ChangesFilter narrows the changes queue, as GET /sync/changes takes it. */
 export type ChangesFilter = { instance_id?: number; state?: AppChange["state"] };
@@ -173,9 +191,18 @@ export function changesPath(f: ChangesFilter = {}): string {
   return `/sync/changes${q ? "?" + q : ""}`;
 }
 
-/** changePath reviews a change from the queue, so Review steps on to the next one within the queue's filter. */
-export const changePath = (c: AppChange, f: ChangesFilter = {}) =>
-  reviewPath(c.instance_id, "items", c.remote_id ?? "", { job: c.job_id ?? 0, queue: 1, ...f });
+/**
+ * changePath reviews a change from the queue, so Review steps on to the next one within the queue's filter. A change
+ * not pushed has no snapshot, so it compares with its card, and without the accepted copy: a bind accepts the app's
+ * copy, which would keep the library's side of every difference unasked.
+ */
+export const changePath = (c: QueueChange, f: ChangesFilter = {}) =>
+  reviewPath(
+    c.instance_id,
+    "items",
+    c.remote_id ?? "",
+    c.state === "ahead" ? { card: c.card_id, base: "none", queue: 1, ...f } : { job: c.job_id ?? 0, queue: 1, ...f },
+  );
 
 /** needsYou counts an app's changes that need a decision, from GET /sync/changes counts. */
 export const needsYou = (c: Record<string, number> = {}) => (c.differs ?? 0) + (c.both_changed ?? 0) + (c.error ?? 0) + (c.new ?? 0);
@@ -198,7 +225,7 @@ export function stateCounts(targets: TargetCount[] | null | undefined, instance:
 export function pushSummary(c: BulkPreview): string {
   const parts: [number, string][] = [
     [c.new, "new"],
-    [c.ahead, "ahead"],
+    [c.ahead, "not pushed"],
     [c.in_sync, "in sync"],
     [c.cant_check, "can't check"],
     [c.drifted, "drifted (pushing overwrites their app edits)"],

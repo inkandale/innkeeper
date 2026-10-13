@@ -1,5 +1,5 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, ApiError, must, thumb } from "../api/client";
 import type { components } from "../api/schema";
@@ -12,17 +12,21 @@ import {
   changesPath,
   compareItem,
   decidable,
+  jsonKey,
   optionKey,
   optionLabel,
   queueReviews,
   resolution,
   resolveItem,
   rows,
+  sentenceCount,
   snapshotOf,
+  wordDiff,
   type Comparison,
   type Item,
   type ItemKind,
   type Option,
+  type Run,
 } from "./sync";
 import "./Sync.css";
 
@@ -30,22 +34,37 @@ type Field = components["schemas"]["Field"];
 type Hunk = components["schemas"]["Hunk"];
 type Choices = Record<string, string>;
 
-const sideText = (v: unknown) => (v === undefined ? <em className="muted">absent</em> : show(v));
+const absent = <em className="muted">absent</em>;
 
-function HunkChoice(props: { scope: string; hunk: Hunk; label: string; list: boolean; choice: string; onChoose?: (c: string) => void }) {
-  const { scope, hunk, label, list, choice, onChoose } = props;
+/** Words renders a word diff: what only the library has struck through, what only the app has marked. */
+function Words({ runs }: { runs: Run[] }) {
+  return <>{runs.map((r, i) => (r.op === "del" ? <del key={i}>{r.text}</del> : r.op === "ins" ? <ins key={i}>{r.text}</ins> : r.text))}</>;
+}
+
+/** HunkText shows one changed hunk, in one column or as a Library | App pair. */
+function HunkText({ hunk, inline }: { hunk: Hunk; inline: boolean }) {
+  const runs = wordDiff(show(hunk.library), show(hunk.app));
+  if (inline)
+    return (
+      <p className="hunks">
+        <Words runs={runs} />
+      </p>
+    );
+  return (
+    <>
+      <p className="hunks">{hunk.library === undefined ? absent : <Words runs={runs.filter((r) => r.op !== "ins")} />}</p>
+      <p className="hunks">{hunk.app === undefined ? absent : <Words runs={runs.filter((r) => r.op !== "del")} />}</p>
+    </>
+  );
+}
+
+function HunkChoice(props: { scope: string; hunk: Hunk; label: string; inline: boolean; list: boolean; choice: string; onChoose?: (c: string) => void }) {
+  const { scope, hunk, label, inline, list, choice, onChoose } = props;
   const sides = list ? ["library", "app", "both"] : ["library", "app"];
   return (
-    <div className="hunk-pair">
+    <div className={inline ? "hunk-pair inline decide" : "hunk-pair decide"}>
       {label && <span className="muted">{label}</span>}
-      <div>
-        <h4>Library</h4>
-        <p className="hunks">{sideText(hunk.library)}</p>
-      </div>
-      <div>
-        <h4>App</h4>
-        <p className="hunks">{sideText(hunk.app)}</p>
-      </div>
+      <HunkText hunk={hunk} inline={inline} />
       {onChoose && (
         <span className="row" role="radiogroup" aria-label={`Keep for ${hunk.id}`}>
           {sides.map((s) => (
@@ -60,42 +79,94 @@ function HunkChoice(props: { scope: string; hunk: Hunk; label: string; list: boo
   );
 }
 
+/** Unchanged shows a run both sides share, folding prose longer than two sentences. */
+function Unchanged({ text, prose }: { text: string; prose: boolean }) {
+  const n = prose ? sentenceCount(text) : 0;
+  if (n <= 2) return <p className="hunks same">{text}</p>;
+  return (
+    <details className="unchanged">
+      <summary className="muted">⋯ {n} unchanged sentences</summary>
+      <p className="hunks same">{text}</p>
+    </details>
+  );
+}
+
 function FieldChoices({ scope, field, choices, onChoose }: { scope: string; field: Field; choices: Choices; onChoose?: (id: string, c: string) => void }) {
   const hunks = field.hunks ?? [];
   const differs = hunks.some((h) => h.status !== "same");
+  // Prose reads best as one column; values and structure read best side by side.
+  const inline = (h: Hunk) => field.kind === "prose" || (field.kind === "entries" && entryOf(h.id).field === "content");
+  const paired = hunks.some((h) => h.status !== "same" && !inline(h));
   const label = (h: Hunk) => {
+    if (field.kind === "json") return jsonKey(field.path, h.id);
     if (field.kind !== "entries") return "";
     const e = entryOf(h.id);
     return e.field ? `${e.entry} · ${e.field}` : e.entry;
   };
+  const out: ReactNode[] = [];
+  let folded: Hunk[] = [];
+  // A JSON field's unchanged keys fold into one line, each keeping its label.
+  const fold = () => {
+    if (folded.length)
+      out.push(
+        <details key={`same:${folded[0]?.id}`} className="unchanged">
+          <summary className="muted">
+            {folded.length} unchanged {folded.length === 1 ? "key" : "keys"}
+          </summary>
+          {folded.map((h) => (
+            <p key={h.id} className="hunks same">
+              <span className="hunk-key">{label(h)}</span> {show(h.library)}
+            </p>
+          ))}
+        </details>,
+      );
+    folded = [];
+  };
+  for (const h of hunks) {
+    if (h.status === "same" && field.kind === "json") {
+      folded.push(h);
+      continue;
+    }
+    fold();
+    if (h.status === "same") out.push(<Unchanged key={h.id} text={show(h.library)} prose={inline(h)} />);
+    else if (decidable(h))
+      out.push(
+        <HunkChoice
+          key={h.id}
+          scope={scope}
+          hunk={h}
+          label={label(h)}
+          inline={inline(h)}
+          list={field.kind === "list"}
+          choice={choices[h.id] ?? "library"}
+          onChoose={onChoose && ((c) => onChoose(h.id, c))}
+        />,
+      );
+    else
+      out.push(
+        <div key={h.id} className={inline(h) ? "hunk-pair inline" : "hunk-pair"}>
+          <span className="muted">
+            {label(h) && `${label(h)} · `}
+            {h.status === "auto_app" ? "App's change, merged" : "Library's change, kept"}
+          </span>
+          <HunkText hunk={h} inline={inline(h)} />
+        </div>,
+      );
+  }
+  fold();
   return (
     <details className="field" open={differs}>
       <summary>
         {field.path}
         {!differs && <span className="muted"> · same</span>}
       </summary>
-      {hunks.map((h) =>
-        h.status === "same" ? (
-          <p key={h.id} className="hunks same">
-            {show(h.library)}
-          </p>
-        ) : decidable(h) ? (
-          <HunkChoice
-            key={h.id}
-            scope={scope}
-            hunk={h}
-            label={label(h)}
-            list={field.kind === "list"}
-            choice={choices[h.id] ?? "library"}
-            onChoose={onChoose && ((c) => onChoose(h.id, c))}
-          />
-        ) : (
-          <p key={h.id} className="hunks">
-            <span className="muted">{h.status === "auto_app" ? "App's change, merged: " : "Library's change, kept: "}</span>
-            {show(h.status === "auto_app" ? h.app : h.library)}
-          </p>
-        ),
+      {paired && (
+        <div className="hunk-pair hunk-head">
+          <h4>Library</h4>
+          <h4>App</h4>
+        </div>
       )}
+      {out}
     </details>
   );
 }

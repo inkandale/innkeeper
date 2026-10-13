@@ -46,6 +46,33 @@
   color: var(--text-muted);
 }
 
+.hunk-pair.inline {
+  grid-template-columns: 1fr;
+}
+
+.hunk-pair > p {
+  margin: 0;
+}
+
+.hunk-pair.decide {
+  border-left: 3px solid var(--drift);
+  padding-left: var(--space);
+}
+
+.hunk-head {
+  border-top: none;
+  padding-bottom: 0;
+}
+
+.unchanged > summary {
+  cursor: pointer;
+}
+
+.hunk-key {
+  font-family: ui-monospace, monospace;
+  color: var(--text-muted);
+}
+
 .hunks.same {
   color: var(--text-muted);
 }

@@ -63,12 +63,13 @@ export function BringInCards() {
   };
   const sendURL = async (instance_id: number, url: string) => {
     let u: Upload = { key: nextKey.current++, name: url };
+    setUploads((all) => [...all, u]);
     try {
       u = { ...u, job: track(must(await api.POST("/imports", { body: { instance_id, params: { url } } }))) };
     } catch (e) {
       u = { ...u, error: (e as Error).message };
     }
-    setUploads((all) => [...all, u]);
+    setUploads((all) => all.map((x) => (x.key === u.key ? u : x)));
   };
 
   const failed = plugins.error ?? instances.error;
@@ -133,7 +134,7 @@ export function BringInCards() {
               onChange={(e) => setPageURL(e.target.value)}
             />
           </label>{" "}
-          <button className="button" type="submit">
+          <button className="button" type="submit" disabled={uploads.some((u) => !u.job && !u.error)}>
             Import
           </button>
         </form>

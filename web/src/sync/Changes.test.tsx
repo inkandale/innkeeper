@@ -94,9 +94,9 @@ test("one row per card, with each app's state under its column, orphans first", 
   expect(within(cy).getByRole("button", { name: /Push again/ })).toBeInTheDocument();
   expect(within(cy).getByRole("button", { name: /Unbind/ })).toBeInTheDocument();
   expect(screen.getByText("bad JSON")).toBeInTheDocument();
-  // Checked when every entry has a suggestion or is ahead.
+  // Checked when every entry has a suggestion; a push waits to be checked.
   expect(within(ann).getByRole("checkbox")).toBeChecked();
-  expect(within(bo).getByRole("checkbox")).toBeChecked();
+  expect(within(bo).getByRole("checkbox")).not.toBeChecked();
   expect(within(cy).getByRole("checkbox")).not.toBeChecked();
   expect(within(rows[0]!).getByRole("checkbox")).not.toBeChecked();
 });
@@ -115,8 +115,7 @@ test("filters come from the URL and go to the query", async () => {
 
 test("Apply suggested resolves the checked reviews", async () => {
   renderChanges();
-  const bo = await screen.findByRole("row", { name: /Bo/ });
-  await userEvent.click(within(bo).getByRole("checkbox"));
+  await screen.findByRole("row", { name: /Bo/ });
   await userEvent.click(screen.getByRole("button", { name: /Apply/ }));
   await waitFor(() => expect(posts.map((p) => p.path)).toEqual(["/api/resolutions"]));
   expect(posts[0]!.body).toEqual({
@@ -129,7 +128,8 @@ test("Apply suggested resolves the checked reviews", async () => {
 
 test("Apply suggested with an ahead row asks with the push preview first", async () => {
   renderChanges();
-  await screen.findByRole("row", { name: /Bo/ });
+  const bo = await screen.findByRole("row", { name: /Bo/ });
+  await userEvent.click(within(bo).getByRole("checkbox"));
   await userEvent.click(screen.getByRole("button", { name: /Apply/ }));
   const dialog = await screen.findByRole("dialog");
   expect(posts).toEqual([{ path: "/api/pushes/preview", body: { instance_id: 3, query: { filter: { ids: [4] } } } }]);

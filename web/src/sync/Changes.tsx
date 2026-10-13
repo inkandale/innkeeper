@@ -45,7 +45,8 @@ export function Changes() {
   const rows = changes.data?.rows ?? [];
   const apps = [...new Set(rows.flatMap((r) => (r.apps ?? []).map((c) => c.instance_id)))].sort((a, b) => a - b);
   const isChecked = (r: ChangeRow) =>
-    (r.apps ?? []).some(applicable) && (checked[rowKey(r)] ?? (r.apps ?? []).every(applicable));
+    (r.apps ?? []).some(applicable) && // A push overwrites the app's copy, so it waits for the owner to check it.
+    (checked[rowKey(r)] ?? (r.apps ?? []).every((c) => applicable(c) && c.state !== "ahead"));
   const chosen = rows.filter(isChecked).flatMap((r) => (r.apps ?? []).filter(applicable).map((c) => ({ card: r.card_id ?? 0, c })));
   const reviews = chosen.filter(({ c }) => c.state !== "ahead").map(({ c }) => c);
   const pushes = group(chosen.filter(({ c }) => c.state === "ahead"), ({ c }) => c.instance_id);

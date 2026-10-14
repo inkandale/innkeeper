@@ -422,9 +422,8 @@ func (rs *resolver) exactMatch(ctx context.Context, k kind, inst pluginhost.Inst
 // choice names.
 func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.TargetInfo, it appItem, r Resolution,
 	id int64) (ResolveResult, error) {
-	s, tx := rs.s, rs.tx
+	s := rs.s
 	res := ResolveResult{RemoteID: r.RemoteID, Action: r.Action, CardID: id}
-	stale := &staleItem{k: k, instanceID: r.InstanceID, remoteID: r.RemoteID, id: id}
 	choices, takeAppAvatar, err := splitAvatar(k, r.Choices)
 	if err != nil {
 		return res, err
@@ -437,43 +436,138 @@ func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.Targe
 	if err != nil {
 		return res, err
 	}
-	if err := lock(ctx, tx, k, r.InstanceID, id); err != nil {
+	if err := lock(ctx, rs.tx, k, r.InstanceID, id); err != nil {
 		return res, err
 	}
-	// Lorebook columns as bind writes them.
-	var lorebooks []int64
-	var lorebookRemoteIDs []string
-	if !k.isLorebook() {
-		switch info.Lorebooks {
-		case protocol.LorebooksEmbedded:
-			// In the transaction, so an import's split lorebook counts.
-			err := tx.QueryRow(ctx, `SELECT array(SELECT l.head_revision_id FROM card_lorebook cl
-				JOIN lorebook l ON l.id = cl.lorebook_id WHERE cl.card_id = $1 ORDER BY l.head_revision_id)`, id).
-				Scan(&lorebooks)
-			if err != nil {
-				return res, err
-			}
-		case protocol.LorebooksStandalone:
-			lorebookRemoteIDs = slices.Sorted(slices.Values(it.links))
-			if lorebookRemoteIDs == nil {
-				lorebookRemoteIDs = []string{}
-			}
-		}
-	}
-	var headID int64
-	var headData, headOverrides json.RawMessage
-	var headAvatar *string
-	err = tx.QueryRow(ctx, `SELECT r.id, r.data, r.overrides, r.avatar_blob FROM `+k.Table+` e
-		JOIN `+k.RevTable+` r ON r.id = e.head_revision_id WHERE e.id = $1`, id).
-		Scan(&headID, &headData, &headOverrides, &headAvatar)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return res, library.ErrNotFound
-	} else if err != nil {
-		return res, err
-	}
-	item, err := itemBinding(ctx, tx, k, r.InstanceID, r.RemoteID)
+	books, err := rs.pushedLorebooks(ctx, k, info, it, id)
 	if err != nil {
 		return res, err
+	}
+	head, err := rs.head(ctx, k, id)
+	if err != nil {
+		return res, err
+	}
+	ancestor, err := rs.ancestor(ctx, k, r, id, head.id)
+	if err != nil {
+		return res, err
+	}
+	sameAvatar, err := rs.sameAvatar(ctx, r, it, head.avatar, takeAppAvatar)
+	if err != nil {
+		return res, err
+	}
+	cb, err := rs.entityBinding(ctx, k, r.InstanceID, id, r.RemoteID)
+	if err != nil {
+		return res, err
+	}
+	plan, err := planBind(k, rinfo, bindInput{head: head, ancestor: ancestor, app: it, instanceID: r.InstanceID,
+		choices: choices, def: r.Default, takeAppAvatar: takeAppAvatar, sameAvatar: sameAvatar})
+	if err != nil {
+		return res, err
+	}
+
+	// The app's copy is where the sources are, even if the target drops extensions,
+	// and they are facts about the item, so a no-op records them too.
+	if err := s.lib.Entities(k.Kind).DetectSourcesTx(ctx, rs.tx, id, it.raw); err != nil {
+		return res, err
+	}
+	if !plan.revise && cb.remoteID == r.RemoteID && cb.state == remoteUnchanged && cb.accepted == acceptedHash {
+		same, err := rs.samePush(ctx, cb.id, lastPush{revision: head.id, behind: plan.appBehind, books: books})
+		if err != nil {
+			return res, err
+		}
+		if same {
+			// Nothing would change, so nothing is written.
+			res.BindingID = cb.id
+			return res, nil
+		}
+	}
+
+	revisionID := head.id
+	if plan.revise && rs.bindOnly {
+		return res, errWouldRevise
+	}
+	if plan.revise {
+		rev, err := s.lib.Entities(k.Kind).UpdateTx(ctx, rs.tx, id, head.id, library.Edit{Data: plan.base,
+			AvatarBlob: plan.avatar, Overrides: plan.overrides, Source: "reconcile", Message: "Reconcile with " + named.Name})
+		if err != nil {
+			return res, err
+		}
+		revisionID, res.RevisionID = rev.ID, rev.ID
+	}
+	bindingID, err := rs.saveBinding(ctx, k, r, id, cb.id, accepted, acceptedHash)
+	if err != nil {
+		return res, err
+	}
+	_, err = rs.tx.Exec(ctx, `INSERT INTO push (binding_id, kind, revision_id, lorebook_revision_ids, lorebook_remote_ids,
+			pushed_hash, remote_id, app_behind)
+		VALUES ($1, 'bind', $2, $3, $4, $5, $6, $7)`,
+		bindingID, revisionID, books.revisionIDs, books.remoteIDs, acceptedHash, r.RemoteID, plan.appBehind)
+	if err != nil {
+		return res, err
+	}
+	res.BindingID = bindingID
+	return res, nil
+}
+
+// pushLorebooks are a push row's lorebook columns.
+type pushLorebooks struct {
+	revisionIDs []int64
+	remoteIDs   []string
+}
+
+// pushedLorebooks are the card's lorebook columns as bind writes them.
+func (rs *resolver) pushedLorebooks(ctx context.Context, k kind, info protocol.TargetInfo, it appItem,
+	id int64) (pushLorebooks, error) {
+	var books pushLorebooks
+	if k.isLorebook() {
+		return books, nil
+	}
+	switch info.Lorebooks {
+	case protocol.LorebooksEmbedded:
+		// In the transaction, so an import's split lorebook counts.
+		err := rs.tx.QueryRow(ctx, `SELECT array(SELECT l.head_revision_id FROM card_lorebook cl
+			JOIN lorebook l ON l.id = cl.lorebook_id WHERE cl.card_id = $1 ORDER BY l.head_revision_id)`, id).
+			Scan(&books.revisionIDs)
+		return books, err
+	case protocol.LorebooksStandalone:
+		books.remoteIDs = slices.Sorted(slices.Values(it.links))
+		if books.remoteIDs == nil {
+			books.remoteIDs = []string{}
+		}
+	}
+	return books, nil
+}
+
+// headRow is a card or lorebook's head revision.
+type headRow struct {
+	id              int64
+	data, overrides json.RawMessage
+	// avatar is the avatar blob's sha256, or empty.
+	avatar string
+}
+
+// head reads the entity's head revision.
+func (rs *resolver) head(ctx context.Context, k kind, id int64) (headRow, error) {
+	var h headRow
+	var avatar *string
+	err := rs.tx.QueryRow(ctx, `SELECT r.id, r.data, r.overrides, r.avatar_blob FROM `+k.Table+` e
+		JOIN `+k.RevTable+` r ON r.id = e.head_revision_id WHERE e.id = $1`, id).
+		Scan(&h.id, &h.data, &h.overrides, &avatar)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return h, library.ErrNotFound
+	}
+	if avatar != nil {
+		h.avatar = *avatar
+	}
+	return h, err
+}
+
+// ancestor is the merge's common copy, or nil for none. It returns stale
+// unless the head and the item's binding are the ones r was compared against.
+func (rs *resolver) ancestor(ctx context.Context, k kind, r Resolution, id, headID int64) (json.RawMessage, error) {
+	item, err := itemBinding(ctx, rs.tx, k, r.InstanceID, r.RemoteID)
+	if err != nil {
+		return nil, err
 	}
 	ancestor := item.ancestor(id)
 	ancestorHash := ""
@@ -482,196 +576,222 @@ func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.Targe
 	}
 	// Hunk IDs and statuses come from the compared head and ancestor, so choices can't apply to others.
 	if headID != r.BaseRevisionID || ancestorHash != r.AcceptedHash {
-		return res, stale
+		return nil, &staleItem{k: k, instanceID: r.InstanceID, remoteID: r.RemoteID, id: id}
 	}
 	if r.Base == "none" {
-		ancestor = nil
+		return nil, nil
 	}
-	avatar := ""
-	if headAvatar != nil {
-		avatar = *headAvatar
-	}
-	sameAvatar, err := s.lib.SameImage(ctx, avatar, it.avatar)
+	return ancestor, nil
+}
+
+// sameAvatar says whether the app's avatar is the same picture as the
+// library's, and refuses an avatar choice that can't apply.
+func (rs *resolver) sameAvatar(ctx context.Context, r Resolution, it appItem, avatar string,
+	takeAppAvatar bool) (bool, error) {
+	same, err := rs.s.lib.SameImage(ctx, avatar, it.avatar)
 	if err != nil {
-		return res, err
+		return false, err
 	}
-	if _, ok := r.Choices[avatarChoice]; ok && sameAvatar {
-		return res, fmt.Errorf("%w: %s", merge.ErrUnknownHunk, avatarChoice)
+	if _, ok := r.Choices[avatarChoice]; ok && same {
+		return false, fmt.Errorf("%w: %s", merge.ErrUnknownHunk, avatarChoice)
 	}
 	// An empty app avatar can't clear the library's.
 	if takeAppAvatar && it.avatar == "" {
-		return res, fmt.Errorf("%w: %s: the app has no avatar", merge.ErrBadChoice, avatarChoice)
+		return false, fmt.Errorf("%w: %s: the app has no avatar", merge.ErrBadChoice, avatarChoice)
 	}
-	var cardBinding struct {
-		id                        int64
-		remoteID, state, accepted string
-	}
-	err = tx.QueryRow(ctx, `SELECT id, remote_id, remote_state, accepted_hash FROM binding
-		WHERE instance_id = $1 AND `+k.FK+` = $2`, r.InstanceID, id).
-		Scan(&cardBinding.id, &cardBinding.remoteID, &cardBinding.state, &cardBinding.accepted)
+	return same, nil
+}
+
+// entityBinding is the entity's binding on the instance, if any.
+type entityBinding struct {
+	id                        int64
+	remoteID, state, accepted string
+}
+
+// entityBinding reads the entity's binding on the instance, and fails with
+// ErrBound if it binds a different app item that isn't missing.
+func (rs *resolver) entityBinding(ctx context.Context, k kind, instanceID, id int64,
+	remoteID string) (entityBinding, error) {
+	var b entityBinding
+	err := rs.tx.QueryRow(ctx, `SELECT id, remote_id, remote_state, accepted_hash FROM binding
+		WHERE instance_id = $1 AND `+k.FK+` = $2`, instanceID, id).
+		Scan(&b.id, &b.remoteID, &b.state, &b.accepted)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return res, err
+		return b, err
 	}
 	// A card whose copy went missing can bind to the app's new one.
-	if cardBinding.id != 0 && cardBinding.remoteID != r.RemoteID && cardBinding.state != remoteMissing {
-		return res, ErrBound
+	if b.id != 0 && b.remoteID != remoteID && b.state != remoteMissing {
+		return b, ErrBound
 	}
+	return b, nil
+}
 
-	key := strconv.FormatInt(r.InstanceID, 10)
-	overrides, err := object(headOverrides)
+// bindInput is what a bind merges.
+type bindInput struct {
+	head     headRow
+	ancestor json.RawMessage
+	app      appItem
+	// instanceID keys the instance's override in head.overrides.
+	instanceID int64
+	choices    map[string]merge.Choice
+	def        merge.Choice
+	// takeAppAvatar is the avatar choice; sameAvatar, whether the two avatars are the same picture.
+	takeAppAvatar, sameAvatar bool
+}
+
+// bindPlan is the revision a bind would write, and what it leaves the app.
+type bindPlan struct {
+	// base is the new revision's data; overrides, its overrides, set only when revise.
+	base, overrides json.RawMessage
+	avatar          string
+	// appBehind means the app's copy differs from the library's after the bind.
+	appBehind bool
+	// revise means the bind writes a new revision.
+	revise bool
+}
+
+// planBind merges the app's copy into the head by the choices. Choices on a
+// field the instance overrides change the override, never the base.
+func planBind(k kind, info protocol.TargetInfo, in bindInput) (bindPlan, error) {
+	var plan bindPlan
+	key := strconv.FormatInt(in.instanceID, 10)
+	overrides, err := object(in.head.overrides)
 	if err != nil {
-		return res, err
+		return plan, err
 	}
 	oldOverride, hadOverride := overrides[key]
-	rendered := headData
+	rendered := in.head.data
 	var pinned map[string]any
 	if hadOverride {
 		if rendered, err = MergePatch(rendered, oldOverride); err != nil {
-			return res, err
+			return plan, err
 		}
 		if pinned, err = decodeObject(oldOverride); err != nil {
-			return res, err
+			return plan, err
 		}
 	}
-	lib, _, err := Project(rendered, k.fields(rinfo))
+	lib, _, err := Project(rendered, k.fields(info))
 	if err != nil {
-		return res, err
+		return plan, err
 	}
+	ancestor := in.ancestor
 	if ancestor != nil {
-		if ancestor, _, err = Project(ancestor, k.fields(rinfo)); err != nil {
-			return res, err
+		if ancestor, _, err = Project(ancestor, k.fields(info)); err != nil {
+			return plan, err
 		}
 	}
-	if choices, err = keepPinnedLists(k, lib, it.data, ancestor, pinned, choices, r.Default); err != nil {
-		return res, err
-	}
-	merged, patch, err := merge.Apply(k.Schema, lib, it.data, ancestor, choices, r.Default)
+	choices, err := keepPinnedLists(k, lib, in.app.data, ancestor, pinned, in.choices, in.def)
 	if err != nil {
-		return res, err
+		return plan, err
+	}
+	merged, patch, err := merge.Apply(k.Schema, lib, in.app.data, ancestor, choices, in.def)
+	if err != nil {
+		return plan, err
 	}
 	forApp := merged
 	if patch != nil {
 		if forApp, err = MergePatch(merged, patch); err != nil {
-			return res, err
+			return plan, err
 		}
 	}
-	// In a field or setting this instance overrides, choices change the override, never the base.
 	toBase, err := restore(merged, lib, pinned)
 	if err != nil {
-		return res, err
+		return plan, err
 	}
 	// Only what was taken from the app reaches the base, and fields the target
 	// doesn't store stay as they are.
-	base, err := patched(headData, lib, toBase)
-	if err != nil {
-		return res, err
+	if plan.base, err = patched(in.head.data, lib, toBase); err != nil {
+		return plan, err
 	}
 	appCopy, err := patched(rendered, lib, forApp)
 	if err != nil {
-		return res, err
+		return plan, err
 	}
 	// From the full data, so override values on fields the target doesn't store survive.
-	newOverride, err := merge.Diff(base, appCopy)
+	newOverride, err := merge.Diff(plan.base, appCopy)
 	if err != nil {
-		return res, err
+		return plan, err
 	}
-	newAvatar := avatar
+	plan.avatar = in.head.avatar
 	// Taking the app's copy of the same picture would only add a revision.
-	if takeAppAvatar && !sameAvatar {
-		newAvatar = it.avatar
+	if in.takeAppAvatar && !in.sameAvatar {
+		plan.avatar = in.app.avatar
 	}
-	baseChange, err := merge.Diff(headData, base)
+	baseChange, err := merge.Diff(in.head.data, plan.base)
 	if err != nil {
-		return res, err
+		return plan, err
 	}
 	overrideChanged := hadOverride != (newOverride != nil)
 	if hadOverride && newOverride != nil {
 		d, err := merge.Diff(oldOverride, newOverride)
 		if err != nil {
-			return res, err
+			return plan, err
 		}
 		overrideChanged = d != nil
 	}
-	_, wantHash, err := Project(appCopy, k.fields(rinfo))
+	_, wantHash, err := Project(appCopy, k.fields(info))
 	if err != nil {
-		return res, err
+		return plan, err
 	}
-	appBehind := wantHash != it.hash || (newAvatar != it.avatar && !sameAvatar)
-	revise := baseChange != nil || overrideChanged || newAvatar != avatar
+	plan.appBehind = wantHash != in.app.hash || (plan.avatar != in.app.avatar && !in.sameAvatar)
+	plan.revise = baseChange != nil || overrideChanged || plan.avatar != in.head.avatar
+	if !plan.revise {
+		return plan, nil
+	}
+	if newOverride == nil {
+		delete(overrides, key)
+	} else {
+		overrides[key] = newOverride
+	}
+	plan.overrides, err = json.Marshal(overrides)
+	return plan, err
+}
 
-	// The app's copy is where the sources are, even if the target drops extensions,
-	// and they are facts about the item, so a no-op records them too.
-	if err := s.lib.Entities(k.Kind).DetectSourcesTx(ctx, tx, id, it.raw); err != nil {
-		return res, err
-	}
-	if !revise && cardBinding.remoteID == r.RemoteID && cardBinding.state == remoteUnchanged &&
-		cardBinding.accepted == acceptedHash {
-		var last struct {
-			revision int64
-			behind   bool
-			books    []int64
-			links    []string
-		}
-		err := tx.QueryRow(ctx, `SELECT revision_id, app_behind, lorebook_revision_ids, lorebook_remote_ids FROM push
-			WHERE binding_id = $1 ORDER BY id DESC LIMIT 1`, cardBinding.id).
-			Scan(&last.revision, &last.behind, &last.books, &last.links)
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			return res, err
-		}
-		if err == nil && last.revision == headID && last.behind == appBehind && slices.Equal(last.books, lorebooks) &&
-			slices.Equal(last.links, lorebookRemoteIDs) && (last.links == nil) == (lorebookRemoteIDs == nil) {
-			// Nothing would change, so nothing is written.
-			res.BindingID = cardBinding.id
-			return res, nil
-		}
-	}
+// lastPush is a push row's record of what the app was left with.
+type lastPush struct {
+	revision int64
+	behind   bool
+	books    pushLorebooks
+}
 
-	revisionID := headID
-	if revise && rs.bindOnly {
-		return res, errWouldRevise
+// samePush says whether the binding's last push recorded want, so a bind that
+// changes nothing needn't write.
+func (rs *resolver) samePush(ctx context.Context, bindingID int64, want lastPush) (bool, error) {
+	var last lastPush
+	err := rs.tx.QueryRow(ctx, `SELECT revision_id, app_behind, lorebook_revision_ids, lorebook_remote_ids FROM push
+		WHERE binding_id = $1 ORDER BY id DESC LIMIT 1`, bindingID).
+		Scan(&last.revision, &last.behind, &last.books.revisionIDs, &last.books.remoteIDs)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
 	}
-	if revise {
-		if newOverride == nil {
-			delete(overrides, key)
-		} else {
-			overrides[key] = newOverride
-		}
-		raw, err := json.Marshal(overrides)
-		if err != nil {
-			return res, err
-		}
-		rev, err := s.lib.Entities(k.Kind).UpdateTx(ctx, tx, id, headID, library.Edit{Data: base, AvatarBlob: newAvatar,
-			Overrides: raw, Source: "reconcile", Message: "Reconcile with " + named.Name})
-		if err != nil {
-			return res, err
-		}
-		revisionID, res.RevisionID = rev.ID, rev.ID
+	if err != nil {
+		return false, err
 	}
-	bindingID := cardBinding.id
+	return last.revision == want.revision && last.behind == want.behind &&
+		slices.Equal(last.books.revisionIDs, want.books.revisionIDs) &&
+		slices.Equal(last.books.remoteIDs, want.books.remoteIDs) &&
+		(last.books.remoteIDs == nil) == (want.books.remoteIDs == nil), nil
+}
+
+// saveBinding points the entity's binding, or a new one, at the app item as
+// accepted, and returns its ID. It fails with ErrBound if another binding has the item.
+func (rs *resolver) saveBinding(ctx context.Context, k kind, r Resolution, id, bindingID int64,
+	accepted json.RawMessage, acceptedHash string) (int64, error) {
+	var err error
 	if bindingID != 0 {
-		_, err = tx.Exec(ctx, `UPDATE binding SET remote_id = $2, remote_state = 'unchanged', accepted_data = $3,
+		_, err = rs.tx.Exec(ctx, `UPDATE binding SET remote_id = $2, remote_state = 'unchanged', accepted_data = $3,
 				accepted_hash = $4, seen_data = NULL, checked_at = now(), version = version + 1
 			WHERE id = $1`, bindingID, r.RemoteID, accepted, acceptedHash)
 	} else {
-		err = tx.QueryRow(ctx, `INSERT INTO binding (instance_id, `+k.FK+`, remote_id, remote_state, accepted_data,
+		err = rs.tx.QueryRow(ctx, `INSERT INTO binding (instance_id, `+k.FK+`, remote_id, remote_state, accepted_data,
 				accepted_hash, checked_at)
 			VALUES ($1, $2, $3, 'unchanged', $4, $5, now()) RETURNING id`,
 			r.InstanceID, id, r.RemoteID, accepted, acceptedHash).Scan(&bindingID)
 	}
 	if pgErr := (*pgconn.PgError)(nil); errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return res, ErrBound
-	} else if err != nil {
-		return res, err
+		return 0, ErrBound
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO push (binding_id, kind, revision_id, lorebook_revision_ids, lorebook_remote_ids,
-			pushed_hash, remote_id, app_behind)
-		VALUES ($1, 'bind', $2, $3, $4, $5, $6, $7)`,
-		bindingID, revisionID, lorebooks, lorebookRemoteIDs, acceptedHash, r.RemoteID, appBehind)
-	if err != nil {
-		return res, err
-	}
-	res.BindingID = bindingID
-	return res, nil
+	return bindingID, err
 }
 
 // splitAvatar takes the avatar choice out of choices, since it isn't a hunk,

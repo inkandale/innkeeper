@@ -9,7 +9,6 @@ import (
 
 	"github.com/davidgibbons/innkeeper/internal/bulk"
 	"github.com/davidgibbons/innkeeper/internal/jobs"
-	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 )
 
@@ -122,7 +121,6 @@ func (s *Service) RunPush(ctx context.Context, r *jobs.Run) error {
 		k, id, key = lorebookKind, p.LorebookID, fmt.Sprintf("%d:lorebook:%d:%d", *r.InstanceID, p.LorebookID, r.ID)
 	}
 	b, err := s.push(ctx, k, *r.InstanceID, id, p.NewCopy, key, &pushExpect{lastPush: p.LastPush, appHash: p.AppHash, createOnly: p.CreateOnly})
-	var startErr *pluginhost.StartError
 	switch {
 	case errors.Is(err, errAlreadyPushed):
 		var bindingID int64
@@ -135,12 +133,8 @@ func (s *Service) RunPush(ctx context.Context, r *jobs.Run) error {
 	case errors.Is(err, ErrUncertain):
 		// Final even on shutdown: a re-run could make a second copy.
 		return fmt.Errorf("%w: %w", jobs.ErrFinal, err)
-	case errors.As(err, &startErr):
-		return err
-	case plugins.Retryable(err):
-		return fmt.Errorf("%w: %w", jobs.ErrRetry, err)
 	default:
-		return err
+		return plugins.JobErr(err)
 	}
 	raw, err := json.Marshal(map[string]any{"binding_id": b.ID, "remote_id": b.RemoteID})
 	if err != nil {

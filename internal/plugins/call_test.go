@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/davidgibbons/innkeeper/internal/blobstore"
+	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/secrets"
 	"github.com/davidgibbons/innkeeper/internal/testdb"
@@ -59,6 +60,23 @@ func TestRetryable(t *testing.T) {
 	for _, tt := range tests {
 		if got := Retryable(tt.err); got != tt.want {
 			t.Errorf("Retryable(%v) = %v, want %v", tt.err, got, tt.want)
+		}
+	}
+}
+
+func TestJobErrRetriesOnlyWhatMayWorkLater(t *testing.T) {
+	tests := []struct {
+		err   error
+		retry bool
+	}{
+		{protocol.ErrClosed, true},
+		{&pluginhost.StartError{Err: protocol.ErrClosed}, false},
+		{protocol.NewError(-32000, "rejected", false), false},
+	}
+	for _, tt := range tests {
+		got := JobErr(tt.err)
+		if errors.Is(got, jobs.ErrRetry) != tt.retry || !errors.Is(got, tt.err) {
+			t.Errorf("JobErr(%v) = %v, want retry %v", tt.err, got, tt.retry)
 		}
 	}
 }

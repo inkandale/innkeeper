@@ -68,10 +68,8 @@ func (s *Service) RunResolve(ctx context.Context, run *jobs.Run) error {
 	var startErr *pluginhost.StartError
 	switch {
 	case err == nil:
-	case errors.As(err, &startErr):
-		return err
-	case plugins.Retryable(err):
-		return fmt.Errorf("%w: %w", jobs.ErrRetry, err)
+	case errors.As(err, &startErr), plugins.Retryable(err):
+		return plugins.JobErr(err)
 	case errors.As(err, &stale):
 		p = resolveProgress{Outcome: "stale", Stale: stale}
 	case errors.Is(err, library.ErrConflict):

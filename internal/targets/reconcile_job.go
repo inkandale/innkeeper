@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	"github.com/davidgibbons/innkeeper/internal/jobs"
-	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 )
 
@@ -45,15 +44,8 @@ func (s *Service) RunReconcile(ctx context.Context, r *jobs.Run) error {
 		raw, _ := json.Marshal(map[string]int{"done": done, "total": total})
 		r.SetProgress(raw)
 	})
-	var startErr *pluginhost.StartError
-	switch {
-	case err == nil:
-	case errors.As(err, &startErr):
-		return err
-	case plugins.Retryable(err):
-		return fmt.Errorf("%w: %w", jobs.ErrRetry, err)
-	default:
-		return err
+	if err != nil {
+		return plugins.JobErr(err)
 	}
 	raw, err := json.Marshal(snap)
 	if err != nil {

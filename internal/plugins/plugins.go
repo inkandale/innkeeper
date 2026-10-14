@@ -22,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/davidgibbons/innkeeper/internal/blobstore"
+	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/secrets"
 	"github.com/davidgibbons/innkeeper/protocol"
@@ -577,6 +578,17 @@ func (r *Registry) Call(ctx context.Context, mgr *pluginhost.Manager, inst plugi
 func Retryable(err error) bool {
 	var rpcErr *protocol.Error
 	return errors.Is(err, protocol.ErrClosed) || errors.As(err, &rpcErr) && rpcErr.Retryable()
+}
+
+// JobErr is a job's error for a failed plugin call: retried if the call may
+// work later. A plugin that failed to start isn't retried; its instance is
+// broken until someone fixes it.
+func JobErr(err error) error {
+	var startErr *pluginhost.StartError
+	if !errors.As(err, &startErr) && Retryable(err) {
+		return fmt.Errorf("%w: %w", jobs.ErrRetry, err)
+	}
+	return err
 }
 
 // Setting is a core setting's value, or "" when unset.

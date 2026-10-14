@@ -88,6 +88,15 @@ func (s *Server) resourceMetadataURL() string {
 // and HEAD, and write for anything else.
 func needs(t tier.Tier) map[string]any { return map[string]any{"tier": t} }
 
+// registerMoved registers op, and again at old, the path it had before, for
+// clients that still call that one.
+func registerMoved[I, O any](api huma.API, op huma.Operation, old string, h func(context.Context, *I) (*O, error)) {
+	huma.Register(api, op, h)
+	op.OperationID += "-legacy"
+	op.Path, op.Deprecated = old, true
+	huma.Register(api, op, h)
+}
+
 // kindNamed is the library kind a request names: card unless it names
 // another.
 func kindNamed(name string) *library.Kind {

@@ -25,7 +25,7 @@ type pushIn struct {
 type bulkPushIn struct {
 	Body struct {
 		InstanceID int64         `json:"instance_id"`
-		Query      library.Query `json:"query" doc:"Selects the cards, as in POST /search. Paging is ignored."`
+		Query      library.Query `json:"query" doc:"Selects the cards, as in POST /cards/search. Paging is ignored."`
 		Kind       string        `json:"kind,omitempty" enum:"card,lorebook" doc:"What the query selects; default card."`
 		NewCopy    bool          `json:"new_copy,omitempty" doc:"Let a target that can't update cards make another copy"`
 		Confirm    string        `json:"confirm,omitempty" doc:"The confirm value from POST /pushes/preview. If the preview would differ now, the push is refused with 409 and the new preview. Without it, a push replaces only app copies unchanged since their last push or resolve."`
@@ -35,7 +35,7 @@ type bulkPushIn struct {
 type bulkPreviewIn struct {
 	Body struct {
 		InstanceID int64         `json:"instance_id"`
-		Query      library.Query `json:"query" doc:"Selects the cards, as in POST /search. Paging is ignored."`
+		Query      library.Query `json:"query" doc:"Selects the cards, as in POST /cards/search. Paging is ignored."`
 		Kind       string        `json:"kind,omitempty" enum:"card,lorebook" doc:"What the query selects; default card."`
 	}
 }
@@ -144,9 +144,9 @@ func (s *Server) targetRoutes(api huma.API) {
 				return &bindingsOut{Body: orEmpty(list)}, nil
 			})
 
-		huma.Register(api, huma.Operation{OperationID: "list-" + k.Name + "-items", Method: http.MethodGet,
-			Path: "/instances/{id}/" + legacyItems[k], Summary: "List the " + k.Plural + " a target app has", Tags: tags,
-			Description: "Reads the app. Each item has a binding_id if a binding already uses it."},
+		registerMoved(api, huma.Operation{OperationID: "list-" + k.Name + "-items", Method: http.MethodGet,
+			Path: "/instances/{id}/" + k.Plural, Summary: "List the " + k.Plural + " a target app has", Tags: tags,
+			Description: "Reads the app. Each item has a binding_id if a binding already uses it."}, "/instances/{id}/"+legacyItems[k],
 			func(ctx context.Context, in *idIn) (*itemsOut, error) {
 				list, err := s.Targets.Items(ctx, k, in.ID)
 				if err != nil {

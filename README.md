@@ -359,7 +359,7 @@ ink backups restore <file> [--replace] [--yes]    upload a backup and restore it
 `ink completion bash|zsh|fish|powershell` prints a shell completion script;
 `ink completion <shell> --help` says where to put it.
 
-`cards search` takes text, or a whole `POST /search` query when the argument
+`cards search` takes text, or a whole `POST /cards/search` query when the argument
 starts with `{`. `list` and `search` print 50 rows unless `--limit` says
 otherwise, and name the next page when there is one.
 
@@ -557,7 +557,7 @@ To link a card to a character the app already has, instead of pushing a new
 copy, list the app's characters and bind one:
 
 ```bash
-ink call GET  /instances/<instance-id>/items
+ink call GET  /instances/<instance-id>/cards
 ink call POST /cards/<id>/bind '{"instance_id": <instance-id>, "remote_id": "<remote-id>"}'
 ```
 
@@ -569,7 +569,7 @@ again is refused with `409`, as is a bind whose app copy or card changed
 while it ran. In the push history, a bind shows as `"kind": "bind"`.
 
 For lorebooks in an app that keeps them separately, use
-`/instances/<instance-id>/lorebook-items` and `/lorebooks/<id>/bind`. Binding
+`/instances/<instance-id>/lorebooks` and `/lorebooks/<id>/bind`. Binding
 a card leaves the app's linked world books for sync: none are imported,
 bound, or changed. A bound card is `ahead` when the app links it to lorebooks
 other than the library's bound ones, or when the plugin can't tell which it
@@ -664,7 +664,7 @@ binding or card has nothing to compare with, so import it this way.
 
 For world books in an app that keeps them separately, `sync compare` and
 `sync resolve` cover characters only; use `ink call` with
-`/instances/<instance-id>/lorebook-items/<remote-id>/compare?lorebook_id=<id>`
+`/instances/<instance-id>/lorebooks/<remote-id>/compare?lorebook_id=<id>`
 and `.../resolve`. The MCP tools `start_sync`, `compare_item`,
 `resolve_item`, and `resolve_items` cover both.
 

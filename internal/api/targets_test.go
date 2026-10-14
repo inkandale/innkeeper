@@ -257,12 +257,16 @@ func TestBindRoutes(t *testing.T) {
 	}
 	var c entityOut
 	e.call("POST", "/cards", map[string]any{"data": map[string]any{"name": "Brakka"}}, 201, &c)
-	var items []targets.Item
-	e.call("GET", fmt.Sprintf("/instances/%d/items", inst), nil, 200, &items)
-	if len(items) != 1 || items[0].RemoteID != "r1" || items[0].BindingID != nil {
-		t.Fatalf("items = %+v", items)
+	// The items paths before /instances/{id}/{plural} still answer.
+	for _, p := range []string{"cards", "items"} {
+		var items []targets.Item
+		e.call("GET", fmt.Sprintf("/instances/%d/%s", inst, p), nil, 200, &items)
+		if len(items) != 1 || items[0].RemoteID != "r1" || items[0].BindingID != nil {
+			t.Fatalf("%s = %+v", p, items)
+		}
 	}
-	e.call("GET", fmt.Sprintf("/instances/%d/lorebook-items", inst), nil, 400, nil) // the fake keeps lorebooks inside cards
+	e.call("GET", fmt.Sprintf("/instances/%d/lorebooks", inst), nil, 400, nil) // the fake keeps lorebooks inside cards
+	e.call("GET", fmt.Sprintf("/instances/%d/lorebook-items", inst), nil, 400, nil)
 	bind := map[string]any{"instance_id": inst, "remote_id": "r1"}
 	path := fmt.Sprintf("/cards/%d/bind", c.ID)
 	var b targets.Binding

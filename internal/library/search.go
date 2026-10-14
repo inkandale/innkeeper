@@ -12,8 +12,8 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Query is a structured card search, as POST /search takes it. Bulk actions
-// select cards with it too.
+// Query is a structured card search, as POST /cards/search takes it. Bulk
+// actions select cards with it too.
 type Query struct {
 	Text     string   `json:"text,omitempty" doc:"Words to match in name, description, personality, scenario, creator notes, and first message. Supports \"quoted phrases\", or, and -excluded words."`
 	Semantic bool     `json:"semantic,omitempty" doc:"Not available yet: needs an embedding enricher."`

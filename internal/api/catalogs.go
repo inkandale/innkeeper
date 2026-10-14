@@ -63,7 +63,7 @@ type catalogResults struct {
 	CatalogID int64        `json:"catalog_id"`
 	Items     []catalogHit `json:"items"`
 	Next      string       `json:"next,omitempty" doc:"Cursor for the next page, for GET /catalogs/{id}/search"`
-	Error     string       `json:"error,omitempty" doc:"In POST /search and POST /lorebooks/search: why this catalog returned nothing"`
+	Error     string       `json:"error,omitempty" doc:"In POST /cards/search and POST /lorebooks/search: why this catalog returned nothing"`
 }
 
 type catalogResultsOut struct{ Body catalogResults }

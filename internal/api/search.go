@@ -72,17 +72,17 @@ func (s *Server) search(ctx context.Context, k *library.Kind, q library.Query) (
 }
 
 func (s *Server) searchRoutes(api huma.API) {
-	huma.Register(api, huma.Operation{Metadata: needs(tier.Read), OperationID: "search-cards", Method: http.MethodPost, Path: "/search",
+	registerMoved(api, huma.Operation{Metadata: needs(tier.Read), OperationID: "search-cards", Method: http.MethodPost, Path: "/cards/search",
 		Summary: "Search the library",
 		Description: "Send {} to list every card that isn't archived, newest first. " +
 			"With catalog:<id> sources, also returns each catalog's first page of cards matching text, on the first library page only.",
-		Tags: []string{"Search"}},
+		Tags: []string{"Search"}}, "/search",
 		func(ctx context.Context, in *searchIn) (*searchOut, error) {
 			return s.search(ctx, library.Card, in.Body)
 		})
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Read), OperationID: "search-lorebooks", Method: http.MethodPost, Path: "/lorebooks/search",
 		Summary: "Search the library's lorebooks",
-		Description: "Takes the same query as POST /search. Text matches names, descriptions, entry keys, and entry content. " +
+		Description: "Takes the same query as POST /cards/search. Text matches names, descriptions, entry keys, and entry content. " +
 			"Lorebooks have no tags or collections. Send {} to list every lorebook that isn't archived, newest first. " +
 			"With catalog:<id> sources, also returns each catalog's first page of lorebooks matching text, on the first library page only.",
 		Tags: []string{"Search"}},

@@ -13,15 +13,16 @@ import (
 
 // Operations whose tier isn't what their method suggests.
 var tierExceptions = map[string]tier.Tier{
-	"search-cards":     tier.Read,
-	"search-lorebooks": tier.Read,
-	"check-binding":    tier.Read,
-	"start-scan":       tier.Read, // Reads the apps; changes nothing.
-	"check-instance":   tier.Read,
-	"push-card":        tier.Destructive,
-	"push-lorebook":    tier.Destructive,
-	"push-cards":       tier.Destructive,
-	"unbind":           tier.Destructive,
+	"search-cards":        tier.Read,
+	"search-lorebooks":    tier.Read,
+	"search-cards-legacy": tier.Read,
+	"check-binding":       tier.Read,
+	"start-scan":          tier.Read, // Reads the apps; changes nothing.
+	"check-instance":      tier.Read,
+	"push-card":           tier.Destructive,
+	"push-lorebook":       tier.Destructive,
+	"push-cards":          tier.Destructive,
+	"unbind":              tier.Destructive,
 	// Autosync pushes unattended, replacing the app's copy.
 	"update-binding":  tier.Destructive,
 	"delete-instance": tier.Destructive,

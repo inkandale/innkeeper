@@ -410,7 +410,7 @@
           },
           "query": {
             "$ref": "#/components/schemas/Query",
-            "description": "Selects the cards, as in POST /search. Paging is ignored. To pick cards by ID, filter on ids."
+            "description": "Selects the cards, as in POST /cards/search. Paging is ignored. To pick cards by ID, filter on ids."
           },
           "tags": {
             "description": "For tag and untag: the tags to add or remove.",
@@ -508,7 +508,7 @@
           },
           "query": {
             "$ref": "#/components/schemas/Query",
-            "description": "Selects the cards, as in POST /search. Paging is ignored."
+            "description": "Selects the cards, as in POST /cards/search. Paging is ignored."
           }
         },
         "required": [
@@ -551,7 +551,7 @@
           },
           "query": {
             "$ref": "#/components/schemas/Query",
-            "description": "Selects the cards, as in POST /search. Paging is ignored."
+            "description": "Selects the cards, as in POST /cards/search. Paging is ignored."
           }
         },
         "required": [
@@ -1023,7 +1023,7 @@
             "type": "integer"
           },
           "error": {
-            "description": "In POST /search and POST /lorebooks/search: why this catalog returned nothing",
+            "description": "In POST /cards/search and POST /lorebooks/search: why this catalog returned nothing",
             "type": "string"
           },
           "items": {
@@ -4448,6 +4448,48 @@
         ]
       }
     },
+    "/cards/search": {
+      "post": {
+        "description": "Send {} to list every card that isn't archived, newest first. With catalog:\u003cid\u003e sources, also returns each catalog's first page of cards matching text, on the first library page only.",
+        "operationId": "search-cards",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Query"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResults"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Search the library",
+        "tags": [
+          "Search"
+        ]
+      }
+    },
     "/cards/{id}": {
       "get": {
         "operationId": "get-card",
@@ -6405,50 +6447,7 @@
         ]
       }
     },
-    "/instances/{id}/check": {
-      "post": {
-        "description": "Starts the plugin, even when the instance is broken; a pull target also lists the app's cards. A failed start marks the instance broken, and a good one clears that. An app error is reported but doesn't mark it broken.",
-        "operationId": "check-instance",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CheckResult"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "default": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorModel"
-                }
-              }
-            },
-            "description": "Error"
-          }
-        },
-        "summary": "Check that a plugin instance works",
-        "tags": [
-          "Plugins"
-        ]
-      }
-    },
-    "/instances/{id}/items": {
+    "/instances/{id}/cards": {
       "get": {
         "description": "Reads the app. Each item has a binding_id if a binding already uses it.",
         "operationId": "list-card-items",
@@ -6497,10 +6496,244 @@
         ]
       }
     },
-    "/instances/{id}/items/{remote_id}/compare": {
+    "/instances/{id}/cards/{remote_id}/compare": {
       "get": {
         "description": "Reads the app. Resolve with the comparison's app_hash, head_revision_id, and accepted_hash.",
-        "operationId": "compare-item",
+        "operationId": "compare-card-item",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The app's id for the item, path-escaped",
+            "in": "path",
+            "name": "remote_id",
+            "required": true,
+            "schema": {
+              "description": "The app's id for the item, path-escaped",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The library card to compare with; 0 means the bound one",
+            "explode": false,
+            "in": "query",
+            "name": "card_id",
+            "schema": {
+              "description": "The library card to compare with; 0 means the bound one",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "none leaves out the binding's accepted copy, so each difference is a choice; resolve with base none",
+            "explode": false,
+            "in": "query",
+            "name": "base",
+            "schema": {
+              "description": "none leaves out the binding's accepted copy, so each difference is a choice; resolve with base none",
+              "enum": [
+                "none"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comparison"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Compare an app character with a library card",
+        "tags": [
+          "Sync"
+        ]
+      }
+    },
+    "/instances/{id}/cards/{remote_id}/resolve": {
+      "post": {
+        "description": "The path sets instance_id and remote_id. Changes the library and the binding, never the app; push afterwards. If the app's copy, the library, or the binding changed since the comparison, returns 409 with a fresh comparison.",
+        "operationId": "resolve-card-item",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The app's id for the item, path-escaped",
+            "in": "path",
+            "name": "remote_id",
+            "required": true,
+            "schema": {
+              "description": "The app's id for the item, path-escaped",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Resolution"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolveResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Bind, import, or skip an app card",
+        "tags": [
+          "Sync"
+        ]
+      }
+    },
+    "/instances/{id}/check": {
+      "post": {
+        "description": "Starts the plugin, even when the instance is broken; a pull target also lists the app's cards. A failed start marks the instance broken, and a good one clears that. An app error is reported but doesn't mark it broken.",
+        "operationId": "check-instance",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Check that a plugin instance works",
+        "tags": [
+          "Plugins"
+        ]
+      }
+    },
+    "/instances/{id}/items": {
+      "get": {
+        "deprecated": true,
+        "description": "Reads the app. Each item has a binding_id if a binding already uses it.",
+        "operationId": "list-card-items-legacy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Item"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the cards a target app has",
+        "tags": [
+          "Sync"
+        ]
+      }
+    },
+    "/instances/{id}/items/{remote_id}/compare": {
+      "get": {
+        "deprecated": true,
+        "description": "Reads the app. Resolve with the comparison's app_hash, head_revision_id, and accepted_hash.",
+        "operationId": "compare-card-item-legacy",
         "parameters": [
           {
             "in": "path",
@@ -6576,8 +6809,9 @@
     },
     "/instances/{id}/items/{remote_id}/resolve": {
       "post": {
+        "deprecated": true,
         "description": "The path sets instance_id and remote_id. Changes the library and the binding, never the app; push afterwards. If the app's copy, the library, or the binding changed since the comparison, returns 409 with a fresh comparison.",
-        "operationId": "resolve-item",
+        "operationId": "resolve-card-item-legacy",
         "parameters": [
           {
             "in": "path",
@@ -6631,13 +6865,192 @@
             "description": "Error"
           }
         },
-        "summary": "Bind, import, or skip an app item",
+        "summary": "Bind, import, or skip an app card",
         "tags": [
           "Sync"
         ]
       }
     },
     "/instances/{id}/lorebook-items": {
+      "get": {
+        "deprecated": true,
+        "description": "Reads the app. Each item has a binding_id if a binding already uses it.",
+        "operationId": "list-lorebook-items-legacy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Item"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the lorebooks a target app has",
+        "tags": [
+          "Sync"
+        ]
+      }
+    },
+    "/instances/{id}/lorebook-items/{remote_id}/compare": {
+      "get": {
+        "deprecated": true,
+        "description": "Reads the app. Resolve with the comparison's app_hash, head_revision_id, and accepted_hash.",
+        "operationId": "compare-lorebook-item-legacy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The app's id for the world book, path-escaped",
+            "in": "path",
+            "name": "remote_id",
+            "required": true,
+            "schema": {
+              "description": "The app's id for the world book, path-escaped",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The library lorebook to compare with; 0 means the bound one",
+            "explode": false,
+            "in": "query",
+            "name": "lorebook_id",
+            "schema": {
+              "description": "The library lorebook to compare with; 0 means the bound one",
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Comparison"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Compare an app world book with a library lorebook",
+        "tags": [
+          "Sync"
+        ]
+      }
+    },
+    "/instances/{id}/lorebook-items/{remote_id}/resolve": {
+      "post": {
+        "deprecated": true,
+        "description": "The path sets instance_id and remote_id. Changes the library and the binding, never the app; push afterwards. If the app's copy, the library, or the binding changed since the comparison, returns 409 with a fresh comparison.",
+        "operationId": "resolve-lorebook-item-legacy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The app's id for the item, path-escaped",
+            "in": "path",
+            "name": "remote_id",
+            "required": true,
+            "schema": {
+              "description": "The app's id for the item, path-escaped",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Resolution"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolveResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Bind, import, or skip an app lorebook",
+        "tags": [
+          "Sync"
+        ]
+      }
+    },
+    "/instances/{id}/lorebooks": {
       "get": {
         "description": "Reads the app. Each item has a binding_id if a binding already uses it.",
         "operationId": "list-lorebook-items",
@@ -6686,7 +7099,7 @@
         ]
       }
     },
-    "/instances/{id}/lorebook-items/{remote_id}/compare": {
+    "/instances/{id}/lorebooks/{remote_id}/compare": {
       "get": {
         "description": "Reads the app. Resolve with the comparison's app_hash, head_revision_id, and accepted_hash.",
         "operationId": "compare-lorebook-item",
@@ -6750,7 +7163,7 @@
         ]
       }
     },
-    "/instances/{id}/lorebook-items/{remote_id}/resolve": {
+    "/instances/{id}/lorebooks/{remote_id}/resolve": {
       "post": {
         "description": "The path sets instance_id and remote_id. Changes the library and the binding, never the app; push afterwards. If the app's copy, the library, or the binding changed since the comparison, returns 409 with a fresh comparison.",
         "operationId": "resolve-lorebook-item",
@@ -6807,7 +7220,7 @@
             "description": "Error"
           }
         },
-        "summary": "Bind, import, or skip an app lorebook-item",
+        "summary": "Bind, import, or skip an app lorebook",
         "tags": [
           "Sync"
         ]
@@ -7138,7 +7551,7 @@
     },
     "/lorebooks/search": {
       "post": {
-        "description": "Takes the same query as POST /search. Text matches names, descriptions, entry keys, and entry content. Lorebooks have no tags or collections. Send {} to list every lorebook that isn't archived, newest first. With catalog:\u003cid\u003e sources, also returns each catalog's first page of lorebooks matching text, on the first library page only.",
+        "description": "Takes the same query as POST /cards/search. Text matches names, descriptions, entry keys, and entry content. Lorebooks have no tags or collections. Send {} to list every lorebook that isn't archived, newest first. With catalog:\u003cid\u003e sources, also returns each catalog's first page of lorebooks matching text, on the first library page only.",
         "operationId": "search-lorebooks",
         "requestBody": {
           "content": {
@@ -8522,8 +8935,9 @@
     },
     "/search": {
       "post": {
+        "deprecated": true,
         "description": "Send {} to list every card that isn't archived, newest first. With catalog:\u003cid\u003e sources, also returns each catalog's first page of cards matching text, on the first library page only.",
-        "operationId": "search-cards",
+        "operationId": "search-cards-legacy",
         "requestBody": {
           "content": {
             "application/json": {

@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"net/http"
-	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -97,9 +96,10 @@ func (s *Server) reconcileRoutes(api huma.API) {
 			return &changesOut{Body: ch}, nil
 		})
 
-	huma.Register(api, huma.Operation{OperationID: "compare-item", Method: http.MethodGet,
-		Path: "/instances/{id}/items/{remote_id}/compare", Summary: "Compare an app character with a library card", Tags: tags,
+	registerMoved(api, huma.Operation{OperationID: "compare-card-item", Method: http.MethodGet,
+		Path: "/instances/{id}/cards/{remote_id}/compare", Summary: "Compare an app character with a library card", Tags: tags,
 		Description: "Reads the app. Resolve with the comparison's app_hash, head_revision_id, and accepted_hash."},
+		"/instances/{id}/items/{remote_id}/compare",
 		func(ctx context.Context, in *compareCardIn) (*comparisonOut, error) {
 			compare := s.Targets.CompareItem
 			if in.Base == "none" {
@@ -112,9 +112,10 @@ func (s *Server) reconcileRoutes(api huma.API) {
 			return &comparisonOut{Body: c}, nil
 		})
 
-	huma.Register(api, huma.Operation{OperationID: "compare-lorebook-item", Method: http.MethodGet,
-		Path: "/instances/{id}/lorebook-items/{remote_id}/compare", Summary: "Compare an app world book with a library lorebook", Tags: tags,
+	registerMoved(api, huma.Operation{OperationID: "compare-lorebook-item", Method: http.MethodGet,
+		Path: "/instances/{id}/lorebooks/{remote_id}/compare", Summary: "Compare an app world book with a library lorebook", Tags: tags,
 		Description: "Reads the app. Resolve with the comparison's app_hash, head_revision_id, and accepted_hash."},
+		"/instances/{id}/lorebook-items/{remote_id}/compare",
 		func(ctx context.Context, in *compareLorebookIn) (*comparisonOut, error) {
 			c, err := s.Targets.CompareItem(ctx, library.Lorebook, in.ID, in.RemoteID, in.LorebookID)
 			if err != nil {
@@ -124,11 +125,11 @@ func (s *Server) reconcileRoutes(api huma.API) {
 		})
 
 	for _, k := range library.Kinds {
-		old := strings.TrimSuffix(legacyItems[k], "s")
-		huma.Register(api, huma.Operation{OperationID: "resolve-" + old, Method: http.MethodPost,
-			Path: "/instances/{id}/" + legacyItems[k] + "/{remote_id}/resolve", Summary: "Bind, import, or skip an app " + old, Tags: tags,
+		registerMoved(api, huma.Operation{OperationID: "resolve-" + k.Name + "-item", Method: http.MethodPost,
+			Path: "/instances/{id}/" + k.Plural + "/{remote_id}/resolve", Summary: "Bind, import, or skip an app " + k.Name, Tags: tags,
 			Description: "The path sets instance_id and remote_id. Changes the library and the binding, never the app; push afterwards. " +
 				"If the app's copy, the library, or the binding changed since the comparison, returns 409 with a fresh comparison."},
+			"/instances/{id}/"+legacyItems[k]+"/{remote_id}/resolve",
 			func(ctx context.Context, in *resolveIn) (*resolveOut, error) {
 				r := in.Body
 				r.InstanceID, r.RemoteID = in.ID, in.RemoteID

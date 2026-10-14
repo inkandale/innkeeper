@@ -22,6 +22,12 @@ func TestSearchRoute(t *testing.T) {
 	}
 
 	res = library.Results{}
+	e.call("POST", "/cards/search", map[string]any{"text": "blacksmith", "filter": map[string]any{"tag": "fantasy"}}, 200, &res)
+	if len(res.Hits) != 1 || res.Hits[0].ID != a.ID {
+		t.Fatalf("/cards/search = %+v", res)
+	}
+
+	res = library.Results{}
 	e.call("POST", "/search", map[string]any{"page": map[string]any{"size": 1, "cursor": nil}}, 200, &res)
 	if len(res.Hits) != 1 || res.NextCursor == nil {
 		t.Fatalf("first page = %+v", res)

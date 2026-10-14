@@ -281,6 +281,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cards/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search the library
+         * @description Send {} to list every card that isn't archived, newest first. With catalog:<id> sources, also returns each catalog's first page of cards matching text, on the first library page only.
+         */
+        post: operations["search-cards"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cards/{id}": {
         parameters: {
             query?: never;
@@ -880,6 +900,66 @@ export interface paths {
         patch: operations["update-instance"];
         trace?: never;
     };
+    "/instances/{id}/cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the cards a target app has
+         * @description Reads the app. Each item has a binding_id if a binding already uses it.
+         */
+        get: operations["list-card-items"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/instances/{id}/cards/{remote_id}/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare an app character with a library card
+         * @description Reads the app. Resolve with the comparison's app_hash, head_revision_id, and accepted_hash.
+         */
+        get: operations["compare-card-item"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/instances/{id}/cards/{remote_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bind, import, or skip an app card
+         * @description The path sets instance_id and remote_id. Changes the library and the binding, never the app; push afterwards. If the app's copy, the library, or the binding changed since the comparison, returns 409 with a fresh comparison.
+         */
+        post: operations["resolve-card-item"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/instances/{id}/check": {
         parameters: {
             query?: never;
@@ -909,9 +989,10 @@ export interface paths {
         };
         /**
          * List the cards a target app has
+         * @deprecated
          * @description Reads the app. Each item has a binding_id if a binding already uses it.
          */
-        get: operations["list-card-items"];
+        get: operations["list-card-items-legacy"];
         put?: never;
         post?: never;
         delete?: never;
@@ -929,9 +1010,10 @@ export interface paths {
         };
         /**
          * Compare an app character with a library card
+         * @deprecated
          * @description Reads the app. Resolve with the comparison's app_hash, head_revision_id, and accepted_hash.
          */
-        get: operations["compare-item"];
+        get: operations["compare-card-item-legacy"];
         put?: never;
         post?: never;
         delete?: never;
@@ -950,10 +1032,11 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Bind, import, or skip an app item
+         * Bind, import, or skip an app card
+         * @deprecated
          * @description The path sets instance_id and remote_id. Changes the library and the binding, never the app; push afterwards. If the app's copy, the library, or the binding changed since the comparison, returns 409 with a fresh comparison.
          */
-        post: operations["resolve-item"];
+        post: operations["resolve-card-item-legacy"];
         delete?: never;
         options?: never;
         head?: never;
@@ -961,6 +1044,69 @@ export interface paths {
         trace?: never;
     };
     "/instances/{id}/lorebook-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the lorebooks a target app has
+         * @deprecated
+         * @description Reads the app. Each item has a binding_id if a binding already uses it.
+         */
+        get: operations["list-lorebook-items-legacy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/instances/{id}/lorebook-items/{remote_id}/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare an app world book with a library lorebook
+         * @deprecated
+         * @description Reads the app. Resolve with the comparison's app_hash, head_revision_id, and accepted_hash.
+         */
+        get: operations["compare-lorebook-item-legacy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/instances/{id}/lorebook-items/{remote_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bind, import, or skip an app lorebook
+         * @deprecated
+         * @description The path sets instance_id and remote_id. Changes the library and the binding, never the app; push afterwards. If the app's copy, the library, or the binding changed since the comparison, returns 409 with a fresh comparison.
+         */
+        post: operations["resolve-lorebook-item-legacy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/instances/{id}/lorebooks": {
         parameters: {
             query?: never;
             header?: never;
@@ -980,7 +1126,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/instances/{id}/lorebook-items/{remote_id}/compare": {
+    "/instances/{id}/lorebooks/{remote_id}/compare": {
         parameters: {
             query?: never;
             header?: never;
@@ -1000,7 +1146,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/instances/{id}/lorebook-items/{remote_id}/resolve": {
+    "/instances/{id}/lorebooks/{remote_id}/resolve": {
         parameters: {
             query?: never;
             header?: never;
@@ -1010,7 +1156,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Bind, import, or skip an app lorebook-item
+         * Bind, import, or skip an app lorebook
          * @description The path sets instance_id and remote_id. Changes the library and the binding, never the app; push afterwards. If the app's copy, the library, or the binding changed since the comparison, returns 409 with a fresh comparison.
          */
         post: operations["resolve-lorebook-item"];
@@ -1145,7 +1291,7 @@ export interface paths {
         put?: never;
         /**
          * Search the library's lorebooks
-         * @description Takes the same query as POST /search. Text matches names, descriptions, entry keys, and entry content. Lorebooks have no tags or collections. Send {} to list every lorebook that isn't archived, newest first. With catalog:<id> sources, also returns each catalog's first page of lorebooks matching text, on the first library page only.
+         * @description Takes the same query as POST /cards/search. Text matches names, descriptions, entry keys, and entry content. Lorebooks have no tags or collections. Send {} to list every lorebook that isn't archived, newest first. With catalog:<id> sources, also returns each catalog's first page of lorebooks matching text, on the first library page only.
          */
         post: operations["search-lorebooks"];
         delete?: never;
@@ -1690,9 +1836,10 @@ export interface paths {
         put?: never;
         /**
          * Search the library
+         * @deprecated
          * @description Send {} to list every card that isn't archived, newest first. With catalog:<id> sources, also returns each catalog's first page of cards matching text, on the first library page only.
          */
-        post: operations["search-cards"];
+        post: operations["search-cards-legacy"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1997,7 +2144,7 @@ export interface components {
              * @enum {string}
              */
             kind?: "card" | "lorebook";
-            /** @description Selects the cards, as in POST /search. Paging is ignored. To pick cards by ID, filter on ids. */
+            /** @description Selects the cards, as in POST /cards/search. Paging is ignored. To pick cards by ID, filter on ids. */
             query: components["schemas"]["Query"];
             /** @description For tag and untag: the tags to add or remove. */
             tags?: string[] | null;
@@ -2037,7 +2184,7 @@ export interface components {
              * @enum {string}
              */
             kind?: "card" | "lorebook";
-            /** @description Selects the cards, as in POST /search. Paging is ignored. */
+            /** @description Selects the cards, as in POST /cards/search. Paging is ignored. */
             query: components["schemas"]["Query"];
         };
         BulkPushInBody: {
@@ -2058,7 +2205,7 @@ export interface components {
             kind?: "card" | "lorebook";
             /** @description Let a target that can't update cards make another copy */
             new_copy?: boolean;
-            /** @description Selects the cards, as in POST /search. Paging is ignored. */
+            /** @description Selects the cards, as in POST /cards/search. Paging is ignored. */
             query: components["schemas"]["Query"];
         };
         CallToolInBody: {
@@ -2189,7 +2336,7 @@ export interface components {
             readonly $schema?: string;
             /** Format: int64 */
             catalog_id: number;
-            /** @description In POST /search and POST /lorebooks/search: why this catalog returned nothing */
+            /** @description In POST /cards/search and POST /lorebooks/search: why this catalog returned nothing */
             error?: string;
             items: components["schemas"]["CatalogHit"][] | null;
             /** @description Cursor for the next page, for GET /catalogs/{id}/search */
@@ -3710,6 +3857,39 @@ export interface operations {
             };
         };
     };
+    "search-cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Query"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResults"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "get-card": {
         parameters: {
             query?: never;
@@ -5017,37 +5197,6 @@ export interface operations {
             };
         };
     };
-    "check-instance": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CheckResult"];
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ErrorModel"];
-                };
-            };
-        };
-    };
     "list-card-items": {
         parameters: {
             query?: never;
@@ -5079,7 +5228,7 @@ export interface operations {
             };
         };
     };
-    "compare-item": {
+    "compare-card-item": {
         parameters: {
             query?: {
                 /** @description The library card to compare with; 0 means the bound one */
@@ -5117,7 +5266,248 @@ export interface operations {
             };
         };
     };
-    "resolve-item": {
+    "resolve-card-item": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                /** @description The app's id for the item, path-escaped */
+                remote_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Resolution"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolveResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "check-instance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-card-items-legacy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Item"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "compare-card-item-legacy": {
+        parameters: {
+            query?: {
+                /** @description The library card to compare with; 0 means the bound one */
+                card_id?: number;
+                /** @description none leaves out the binding's accepted copy, so each difference is a choice; resolve with base none */
+                base?: "none";
+            };
+            header?: never;
+            path: {
+                id: number;
+                /** @description The app's id for the item, path-escaped */
+                remote_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Comparison"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "resolve-card-item-legacy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                /** @description The app's id for the item, path-escaped */
+                remote_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Resolution"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolveResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-lorebook-items-legacy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Item"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "compare-lorebook-item-legacy": {
+        parameters: {
+            query?: {
+                /** @description The library lorebook to compare with; 0 means the bound one */
+                lorebook_id?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+                /** @description The app's id for the world book, path-escaped */
+                remote_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Comparison"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "resolve-lorebook-item-legacy": {
         parameters: {
             query?: never;
             header?: never;
@@ -6450,7 +6840,7 @@ export interface operations {
             };
         };
     };
-    "search-cards": {
+    "search-cards-legacy": {
         parameters: {
             query?: never;
             header?: never;

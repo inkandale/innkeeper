@@ -97,7 +97,7 @@ type importIn struct {
 
 type bulkIn struct {
 	Body struct {
-		Query      library.Query `json:"query" doc:"Selects the cards, as in POST /search. Paging is ignored. To pick cards by ID, filter on ids."`
+		Query      library.Query `json:"query" doc:"Selects the cards, as in POST /cards/search. Paging is ignored. To pick cards by ID, filter on ids."`
 		Kind       string        `json:"kind,omitempty" enum:"card,lorebook" doc:"What the query selects; default card. Lorebooks take archive and unarchive only."`
 		Action     string        `json:"action" enum:"archive,unarchive,tag,untag,collect,uncollect,export"`
 		Tags       []string      `json:"tags,omitempty" maxItems:"100" maxLength:"100" doc:"For tag and untag: the tags to add or remove."`

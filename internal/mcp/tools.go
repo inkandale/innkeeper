@@ -135,7 +135,12 @@ type syncIn struct {
 
 type changesIn struct {
 	InstanceID int64  `json:"instance_id,omitempty" jsonschema:"Only this target app's changes; counts still cover every app"`
-	State      string `json:"state,omitempty" jsonschema:"Only this state: differs, both_changed, ahead, missing, error, or new. Ahead means the library has what the app doesn't: not pushed"`
+	State      string `json:"state,omitempty" jsonschema:"Only this state: differs, both_changed, ahead, missing, error, new, or update. Ahead means the library has what the app doesn't: not pushed. Update means a followed site source changed"`
+}
+
+type sourceCheckIn struct {
+	Kind string `json:"kind,omitempty" jsonschema:"card or lorebook; default card"`
+	ID   int64  `json:"id,omitempty" jsonschema:"One card or lorebook to check now; omit to start a job that checks every source"`
 }
 
 type autosyncIn struct {
@@ -260,7 +265,7 @@ var tools = []tool{
 		func(ctx context.Context, c caller, in bindingIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", fmt.Sprintf("/bindings/%d/check", in.BindingID), nil)
 		}),
-	def("list_bindings", "List the target apps a card or lorebook is pushed to, with each one's status.", tier.Read,
+	def("list_bindings", "List the target apps a card or lorebook is pushed to, and the site sources it follows, with each one's status.", tier.Read,
 		func(ctx context.Context, c caller, in entityIn) (*sdk.CallToolResult, error) {
 			k, err := kindNamed(in.Kind)
 			if err != nil {
@@ -348,6 +353,19 @@ var tools = []tool{
 	def("refresh", "Check every app for changes and count the app items nothing is bound to. Changes nothing.", tier.Read,
 		func(ctx context.Context, c caller, _ none) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", "/scans", nil)
+		}),
+	def("check_sources", "Check the sites cards and lorebooks came from, such as chub.ai, for updates. With id, checks that one "+
+		"now and returns its bindings; without, starts a job. An update shows in list_changes with state update; review it "+
+		"with compare_item and resolve_item, passing the card's id.", tier.Write,
+		func(ctx context.Context, c caller, in sourceCheckIn) (*sdk.CallToolResult, error) {
+			if in.ID == 0 {
+				return c.call(ctx, "POST", "/source-checks", nil)
+			}
+			k, err := kindNamed(cmp.Or(in.Kind, library.Card.Name))
+			if err != nil {
+				return nil, err
+			}
+			return c.call(ctx, "POST", fmt.Sprintf("/%s/%d/source-check", k.Plural, in.ID), nil)
 		}),
 	def("list_changes", "List the cards some app needs the owner for, one row per card with each app's state, and app items no card "+
 		"matches first. Built from each app's latest sync and the binding statuses; counts are by instance and state. "+

@@ -85,7 +85,7 @@ func TestMCPToolsByTier(t *testing.T) {
 	}
 	read, write, all := names(tier.Read), names(tier.Write), names(tier.Destructive)
 	if !slices.Contains(read, "search_cards") || slices.Contains(read, "create_card") || slices.Contains(write, "push") ||
-		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 35 ||
+		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 36 ||
 		!slices.Contains(read, "refresh") || slices.Contains(write, "set_autosync") || !slices.Contains(all, "set_autosync") {
 		t.Fatalf("read %v\nwrite %v\nall %v", read, write, all)
 	}
@@ -341,5 +341,18 @@ func TestMCPReconcile(t *testing.T) {
 		{"instance_id": inst, "remote_id": "rCarrow", "action": "skip"}}}, false)
 	if err := json.Unmarshal([]byte(got), &j); err != nil || j.Kind != bulk.Kind {
 		t.Fatalf("resolve_items = %s", got)
+	}
+}
+
+func TestCheckSourcesTool(t *testing.T) {
+	e := newEnv(t)
+	s := e.mcpClient(tier.Write)
+	if got := tool(t, s, "check_sources", map[string]any{}, false); !strings.Contains(got, `"kind":"target.source-check"`) {
+		t.Fatalf("check_sources = %s", got)
+	}
+	var c entityOut
+	e.call("POST", "/cards", map[string]any{"data": map[string]any{"name": "Vyr"}}, 201, &c)
+	if got := tool(t, s, "check_sources", map[string]any{"id": c.ID}, false); !strings.HasPrefix(got, "[") {
+		t.Fatalf("check_sources for one card = %s", got)
 	}
 }

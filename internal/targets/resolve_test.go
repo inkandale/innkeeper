@@ -757,6 +757,26 @@ func TestResolveImportSplitsABoundItem(t *testing.T) {
 	}
 }
 
+func TestCompareFromACardThatLostTheItemNamesItsLiveBinding(t *testing.T) {
+	e, card := resolveEnv(t)
+	b := e.push(card)
+	e.editRemote(b.RemoteID, "description", "A different smith altogether.")
+	c := e.compareItem(b.RemoteID, 0)
+	split, err := e.s.Resolve(e.ctx, library.Card, Resolution{InstanceID: e.inst, RemoteID: b.RemoteID, AppHash: c.AppHash,
+		BindingID: c.BindingID, Action: "import"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c = e.compareItem(b.RemoteID, card)
+	if c.BindingID != split.BindingID {
+		t.Fatalf("comparison binding = %d, want the live one %d", c.BindingID, split.BindingID)
+	}
+	if _, err := e.s.Resolve(e.ctx, library.Card, Resolution{InstanceID: e.inst, RemoteID: b.RemoteID, AppHash: c.AppHash,
+		BindingID: c.BindingID, Action: "import"}); err != nil {
+		t.Fatalf("import from the old card's comparison: %v", err)
+	}
+}
+
 func TestResolveImportRepeatedIsStale(t *testing.T) {
 	e, card := resolveEnv(t)
 	c := e.compareItem("lv1", card)

@@ -101,12 +101,12 @@ type queryRower interface {
 
 // itemBinding finds the app item's binding: the live one, else a missing one,
 // since an app can reuse a missing binding's ID. Cards that share a followed
-// source each have one, so id, when set, picks the entity's.
+// source each have one, so id, when set, picks the entity's followed binding.
 func itemBinding(ctx context.Context, q queryRower, k kind, instanceID int64, remoteID string, id int64) (boundItem, error) {
 	var b boundItem
 	err := q.QueryRow(ctx, `SELECT id, `+k.FK+`, accepted_hash, remote_state, accepted_data FROM binding
 		WHERE instance_id = $1 AND remote_id = $2 AND `+k.FK+` IS NOT NULL
-		ORDER BY `+k.FK+` = $3 DESC, remote_state = 'missing', id LIMIT 1`, instanceID, remoteID, id).
+		ORDER BY (NOT push AND `+k.FK+` = $3) DESC, remote_state = 'missing', id LIMIT 1`, instanceID, remoteID, id).
 		Scan(&b.id, &b.entityID, &b.acceptedHash, &b.remoteState, &b.accepted)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return boundItem{}, nil

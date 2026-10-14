@@ -190,7 +190,7 @@ func (m *Manifest) Validate() error {
 		}
 		seenFormats[f] = true
 	}
-	if !slices.Contains(m.Capabilities, "import") && len(m.Inputs) > 0 {
+	if !m.Has("import") && len(m.Inputs) > 0 {
 		errs = append(errs, errors.New("inputs needs the import capability"))
 	}
 	seenInputs := map[string]bool{}

@@ -249,3 +249,10 @@ func TestThemeStylesheetConfined(t *testing.T) {
 		})
 	}
 }
+
+func TestManifestHasOnlyDeclaredCapabilities(t *testing.T) {
+	m := &Manifest{Capabilities: []string{"push", "pull"}}
+	if !m.Has("pull") || m.Has("import") {
+		t.Fatalf("Has(pull) = %v, Has(import) = %v; want true, false", m.Has("pull"), m.Has("import"))
+	}
+}

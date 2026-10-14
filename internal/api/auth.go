@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -131,7 +130,7 @@ func (s *Server) authInstance(ctx context.Context, id int64) (pluginhost.Instanc
 	if err != nil {
 		return inst, s.fail(err)
 	}
-	if !slices.Contains(inst.Manifest.Capabilities, "auth") {
+	if !inst.Manifest.Has("auth") {
 		return inst, huma.Error404NotFound("no such login provider")
 	}
 	return inst, nil
@@ -287,7 +286,7 @@ func (s *Server) authRoutes(api huma.API) {
 			out := &providersOut{Body: []provider{}}
 			for _, i := range insts {
 				m := s.Registry.Manifests()[i.Plugin]
-				if m != nil && slices.Contains(m.Capabilities, "auth") && i.OwnerSubject != nil && i.BrokenError == nil {
+				if m != nil && m.Has("auth") && i.OwnerSubject != nil && i.BrokenError == nil {
 					out.Body = append(out.Body, provider{i.ID, i.Name, i.Plugin})
 				}
 			}

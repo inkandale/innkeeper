@@ -170,7 +170,7 @@ func (m *Manifest) Validate() error {
 			errs = append(errs, fmt.Errorf("enrichment %q: score needs range = [low, high]", key))
 		}
 	}
-	hasCodec := slices.Contains(m.Capabilities, "codec")
+	hasCodec := m.Has("codec")
 	if hasCodec && len(m.Formats) == 0 {
 		errs = append(errs, errors.New("a codec plugin must list its formats"))
 	}
@@ -217,8 +217,11 @@ func (m *Manifest) CommandPath() string {
 	return cmd
 }
 
+// Has reports whether the plugin declares capability.
+func (m *Manifest) Has(capability string) bool { return slices.Contains(m.Capabilities, capability) }
+
 // IsTheme reports whether the plugin is a theme: a stylesheet and no process.
-func (m *Manifest) IsTheme() bool { return slices.Contains(m.Capabilities, "theme") }
+func (m *Manifest) IsTheme() bool { return m.Has("theme") }
 
 // StylesheetPath is the theme's CSS file.
 func (m *Manifest) StylesheetPath() string { return filepath.Join(m.Dir, m.Stylesheet) }

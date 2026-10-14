@@ -374,7 +374,7 @@ func (s *Server) loginProviders(ctx context.Context) ([]provider, error) {
 	var out []provider
 	for _, i := range insts {
 		m := s.Registry.Manifests()[i.Plugin]
-		if m != nil && slices.Contains(m.Capabilities, "auth") && i.OwnerSubject != nil && i.BrokenError == nil {
+		if m != nil && m.Has("auth") && i.OwnerSubject != nil && i.BrokenError == nil {
 			out = append(out, provider{i.ID, i.Name, i.Plugin})
 		}
 	}

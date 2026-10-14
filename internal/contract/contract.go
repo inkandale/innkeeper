@@ -13,7 +13,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"slices"
 	"syscall"
 	"time"
 
@@ -88,7 +87,7 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 		return exited(results, p), nil
 	}
 
-	if slices.Contains(m.Capabilities, "push") {
+	if m.Has("push") {
 		info, descErr := checkDescribe(ctx, p, m)
 		results = append(results, Result{"target.describe returns a valid description", descErr})
 		if errors.Is(descErr, protocol.ErrClosed) || !p.Alive() {
@@ -103,7 +102,7 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 		}
 	}
 
-	if slices.Contains(m.Capabilities, "auth") {
+	if m.Has("auth") {
 		setupErr := checkSetup(ctx, p)
 		results = append(results, Result{"auth.setup returns a form or -32601", setupErr})
 		if errors.Is(setupErr, protocol.ErrClosed) || !p.Alive() {
@@ -111,7 +110,7 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 		}
 	}
 
-	if slices.Contains(m.Capabilities, "mcp") {
+	if m.Has("mcp") {
 		toolsErr := checkTools(ctx, p)
 		results = append(results, Result{"mcp.tools returns valid tools", toolsErr})
 		if errors.Is(toolsErr, protocol.ErrClosed) || !p.Alive() {
@@ -119,13 +118,13 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 		}
 	}
 
-	if slices.Contains(m.Capabilities, "catalog") {
+	if m.Has("catalog") {
 		results = append(results, checkCatalog(ctx, p, tmp)...)
 		if errors.Is(results[len(results)-1].Err, protocol.ErrClosed) || !p.Alive() {
 			return exited(results, p), nil
 		}
 	}
-	if slices.Contains(m.Capabilities, "codec") {
+	if m.Has("codec") {
 		checks := []struct {
 			name string
 			run  func(context.Context) error
@@ -167,7 +166,7 @@ func checkDescribe(ctx context.Context, p *pluginhost.Process, m *protocol.Manif
 	if err := info.Validate(); err != nil {
 		return info, err
 	}
-	if info.Pull && !slices.Contains(m.Capabilities, "pull") {
+	if info.Pull && !m.Has("pull") {
 		return info, errors.New("pull is true, but the manifest doesn't declare the pull capability")
 	}
 	return info, nil

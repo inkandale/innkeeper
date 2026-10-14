@@ -219,7 +219,7 @@ func (r *Registry) IsBuiltin(name string) bool {
 // HasCapability reports whether plugin is installed and declares capability.
 func (r *Registry) HasCapability(plugin, capability string) bool {
 	m, ok := r.manifest(plugin)
-	return ok && slices.Contains(m.Capabilities, capability)
+	return ok && m.Has(capability)
 }
 
 // Manifests returns the installed plugins by name.
@@ -494,7 +494,7 @@ func (r *Registry) CodecInstance(ctx context.Context, format string) (pluginhost
 		return pluginhost.Instance{}, err
 	}
 	for _, i := range all {
-		if m, ok := r.manifest(i.Plugin); ok && slices.Contains(m.Capabilities, "codec") && slices.Contains(m.Formats, format) {
+		if m, ok := r.manifest(i.Plugin); ok && m.Has("codec") && slices.Contains(m.Formats, format) {
 			return r.Instance(ctx, i.ID)
 		}
 	}
@@ -547,7 +547,7 @@ func (r *Registry) Check(ctx context.Context, mgr *pluginhost.Manager, id int64)
 			return nil, err
 		}
 	}
-	if slices.Contains(inst.Manifest.Capabilities, "pull") {
+	if inst.Manifest.Has("pull") {
 		var res protocol.TargetListResult
 		if err := r.Call(ctx, mgr, inst, protocol.MethodTargetList, nil, &res); err != nil && ctx.Err() == nil {
 			return err, nil

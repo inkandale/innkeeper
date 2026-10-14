@@ -2317,6 +2317,7 @@ export interface components {
             name: string;
             /** Format: int64 */
             protocol: number;
+            recommended?: boolean;
             released?: string;
             version: string;
             versions: string[] | null;
@@ -2343,6 +2344,7 @@ export interface components {
             next?: string;
         };
         CatalogSourceOut: {
+            categories?: string[] | null;
             error?: string;
             plugins: components["schemas"]["CatalogPluginOut"][] | null;
             source: components["schemas"]["PluginSource"];

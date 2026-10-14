@@ -41,8 +41,10 @@ type catalogPluginOut struct {
 }
 
 type catalogSourceOut struct {
-	Source  plugins.PluginSource `json:"source"`
-	Plugins []catalogPluginOut   `json:"plugins"`
+	Source plugins.PluginSource `json:"source"`
+	// Categories is the setup wizard's category order; unlisted ones follow alphabetically.
+	Categories []string           `json:"categories,omitempty"`
+	Plugins    []catalogPluginOut `json:"plugins"`
 	// Error says why the source couldn't be read; Plugins is empty then.
 	Error string `json:"error,omitempty"`
 }
@@ -89,8 +91,8 @@ func (s *Server) pluginStoreRoutes(api huma.API) {
 			out := &pluginCatalogOut{Body: []catalogSourceOut{}}
 			// ponytail: sources are read one at a time; fetch in parallel if owners add many.
 			for _, src := range sources {
-				entries, err := s.Registry.Index(ctx, src.URL)
-				c := catalogSourceOut{Source: src, Plugins: catalog(entries)}
+				idx, err := s.Registry.Index(ctx, src.URL)
+				c := catalogSourceOut{Source: src, Categories: idx.Categories, Plugins: catalog(idx.Plugins)}
 				if err != nil {
 					c.Error = err.Error()
 				}

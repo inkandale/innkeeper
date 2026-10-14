@@ -7,16 +7,20 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
-const testIndex = `[[plugin]]
+const testIndex = `categories = ["Apps", "Import"]
+
+[[plugin]]
 name = "good"
 version = "1.0.0"
 protocol = 1
 capabilities = ["import"]
 description = "A good plugin."
 category = "Apps"
+recommended = true
 released = "2026-10-06"
 unknown_key = "ignored"
 
@@ -35,23 +39,27 @@ func TestIndex(t *testing.T) {
 	defer srv.Close()
 	reg := &Registry{client: srv.Client()}
 
-	got, err := reg.Index(ctx, srv.URL+"/index.toml")
+	idx, err := reg.Index(ctx, srv.URL+"/index.toml")
 	if err != nil {
 		t.Fatal(err)
 	}
+	got := idx.Plugins
 	if len(got) != 1 || got[0].Name != "good" || len(got[0].Artifacts) != 1 || got[0].Artifacts[0].Arch != "amd64" {
 		t.Fatalf("got %+v", got)
 	}
 
-	if got[0].Category != "Apps" || got[0].Released != "2026-10-06" {
-		t.Fatalf("category and released: %+v", got[0])
+	if got[0].Category != "Apps" || got[0].Released != "2026-10-06" || !got[0].Recommended {
+		t.Fatalf("category, released, and recommended: %+v", got[0])
+	}
+	if !slices.Equal(idx.Categories, []string{"Apps", "Import"}) {
+		t.Fatalf("categories: %v", idx.Categories)
 	}
 
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "index.toml"), []byte(testIndex), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := reg.Index(ctx, "file://"+filepath.Join(dir, "index.toml")); err != nil || len(got) != 1 {
+	if got, err := reg.Index(ctx, "file://"+filepath.Join(dir, "index.toml")); err != nil || len(got.Plugins) != 1 {
 		t.Fatalf("file source: %+v, %v", got, err)
 	}
 

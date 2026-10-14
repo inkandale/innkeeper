@@ -175,10 +175,11 @@ func (r *Registry) download(ctx context.Context, srcURL, name, version, base, fo
 	if err != nil {
 		return "", fmt.Errorf("%w: %v", ErrSource, err)
 	}
-	entries, err := r.Index(ctx, srcURL)
+	idx, err := r.Index(ctx, srcURL)
 	if err != nil {
 		return "", err
 	}
+	entries := idx.Plugins
 	i := slices.IndexFunc(entries, func(e Entry) bool { return e.Name == name && e.Version == version })
 	if i < 0 {
 		return "", fmt.Errorf("%w: %s %s is not in %s", ErrInvalid, name, version, index.Redacted())

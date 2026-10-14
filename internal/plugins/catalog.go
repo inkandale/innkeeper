@@ -34,6 +34,8 @@ type Entry struct {
 	Description  string   `toml:"description" json:"description"`
 	// Category groups the plugin in the setup wizard, such as "Apps".
 	Category string `toml:"category" json:"category,omitempty"`
+	// Recommended marks a plugin the Plugins page suggests on a fresh install.
+	Recommended bool `toml:"recommended" json:"recommended,omitempty"`
 	// Released is the version's publish date, YYYY-MM-DD.
 	Released  string     `toml:"released" json:"released,omitempty"`
 	Artifacts []Artifact `toml:"artifact" json:"-"`
@@ -48,23 +50,28 @@ type Artifact struct {
 	SHA256 string `toml:"sha256"`
 }
 
+// Index is a source's index.toml.
+type Index struct {
+	// Categories is the setup wizard's category order; unlisted ones follow alphabetically.
+	Categories []string `toml:"categories"`
+	Plugins    []Entry  `toml:"plugin"`
+}
+
 // Index reads the index.toml at rawURL, an https:// or file:// URL.
-func (r *Registry) Index(ctx context.Context, rawURL string) ([]Entry, error) {
+func (r *Registry) Index(ctx context.Context, rawURL string) (Index, error) {
+	var idx Index
 	u, err := url.Parse(rawURL)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrSource, err)
+		return idx, fmt.Errorf("%w: %v", ErrSource, err)
 	}
 	b, err := r.fetch(ctx, u, maxIndex)
 	if err != nil {
-		return nil, err
-	}
-	var idx struct {
-		Plugin []Entry `toml:"plugin"`
+		return idx, err
 	}
 	if err := toml.Unmarshal(b, &idx); err != nil {
-		return nil, fmt.Errorf("%w: %s: %v", ErrSource, u.Redacted(), err)
+		return Index{}, fmt.Errorf("%w: %s: %v", ErrSource, u.Redacted(), err)
 	}
-	return idx.Plugin, nil
+	return idx, nil
 }
 
 // fetch reads u, up to max bytes.

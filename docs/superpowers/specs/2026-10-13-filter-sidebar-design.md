@@ -20,7 +20,7 @@ A card's tags are its `data.tags`. Library tags are removed.
 
 The tables hold no rows in use, so the migration drops them without copying anything.
 
-**Editing.** Tags become a field in the draft editor (`web/src/card/Fields.tsx`), edited with `ChipInput`, which moves from `web/src/lorebook/` to a shared place. A tag edit saves with the rest of the draft as one revision, so the card goes ahead on its targets and the next push sends the new tags.
+**Editing.** Tags become a draft field in the card panel (`web/src/card/Panel.tsx`), edited with `ChipInput`, which moves from `web/src/lorebook/` to `web/src/card/`. A tag edit saves with the rest of the draft as one revision, so the card goes ahead on its targets and the next push sends the new tags.
 
 **Bulk.** The `card.tag` action keeps its add and remove lists but writes a new revision for each card whose `data.tags` changes. Cards it leaves unchanged get no revision. Names match case-insensitively, as now.
 

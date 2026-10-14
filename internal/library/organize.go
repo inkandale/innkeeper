@@ -44,8 +44,13 @@ func (l *Library) EditCardTags(ctx context.Context, cardID int64, add, remove []
 		}
 		var old []string
 		if raw, ok := data["tags"]; ok {
-			if err := json.Unmarshal(raw, &old); err != nil {
+			// *string so a null element is seen; []string would turn it into "".
+			var elems []*string
+			if err := json.Unmarshal(raw, &elems); err != nil || slices.Contains(elems, nil) {
 				return fmt.Errorf("%w: card %d tags aren't a list of strings", ErrInvalid, cardID)
+			}
+			for _, e := range elems {
+				old = append(old, *e)
 			}
 		}
 		tags := editTags(old, add, remove)

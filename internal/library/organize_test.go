@@ -217,6 +217,17 @@ func TestEditCardTagsRejectsNonListTags(t *testing.T) {
 	}
 }
 
+func TestEditCardTagsRejectsNonStringTags(t *testing.T) {
+	lib := newLibrary(t)
+	id, first := newCard(t, lib, "brakka", `{"name": "B", "tags": ["x", null]}`)
+	if err := lib.EditCardTags(context.Background(), id, []string{"y"}, nil); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("err = %v", err)
+	}
+	if c, _ := lib.Cards.Get(context.Background(), id); c.HeadRevisionID != first {
+		t.Fatalf("head = %d, want %d", c.HeadRevisionID, first)
+	}
+}
+
 func TestCardCollections(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()

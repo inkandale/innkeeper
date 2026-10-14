@@ -2,7 +2,8 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router";
 import { api, must, route } from "../api/client";
-import { instancesQuery, collectionsQuery } from "../api/queries";
+import { instancesQuery, collectionsQuery, pluginsQuery } from "../api/queries";
+import { apps } from "../sync/Logo";
 import { Facets } from "./Facets";
 import { pageLinks } from "./pages";
 import { defaultSort, parseQuery, sizes, toggleTerm, toParams, toLorebookSearch, toSearch, type CardQuery, type Sort, type Term } from "./query";
@@ -48,10 +49,12 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
     placeholderData: keepPreviousData,
   });
   const instances = useQuery(instancesQuery);
+  const plugins = useQuery(pluginsQuery);
   const collections = useQuery(collectionsQuery);
   const names: Names = {
     instances: new Map((instances.data ?? []).map((i) => [i.id, i.name])),
     collections: new Map((collections.data ?? []).map((c) => [c.id, c.name])),
+    logos: apps(instances.data, plugins.data),
   };
 
   const search = (e: FormEvent<HTMLFormElement>) => {

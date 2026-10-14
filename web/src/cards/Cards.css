@@ -191,6 +191,36 @@
 .badge.drift { background: var(--drift); }
 .badge.unknown { background: var(--unknown); }
 
+.logo,
+.attention {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--bg);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.logo {
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.attention {
+  background: var(--drift);
+  color: var(--bg);
+}
+
 .lorebooks {
   position: absolute;
   right: var(--space);

@@ -184,6 +184,10 @@
   position: static;
 }
 
+.card-aside .logo {
+  vertical-align: middle;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;

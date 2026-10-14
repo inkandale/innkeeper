@@ -8,6 +8,7 @@ import { useToast } from "../shell/Toasts";
 import type { Entity } from "./Card";
 import { Crop } from "./CropDialog";
 import { text, type Data } from "./draft";
+import { Logo, apps } from "../sync/Logo";
 import { PushPreview } from "../sync/PushPreview";
 import { reviewPath, stateLabel } from "../sync/sync";
 import { Collections, Sources, Tags } from "./Organize";
@@ -110,6 +111,8 @@ export function Sync({ kind, id }: { kind: Kind; id: number }) {
     queryFn: async () => must(await api.GET(route(kind, "/cards/{id}/bindings"), { params: { path: { id } } })),
   });
   const instances = useQuery(instancesQuery);
+  const plugins = useQuery(pluginsQuery);
+  const logos = apps(instances.data, plugins.data);
   const name = (n: number) => instances.data?.find((i) => i.id === n)?.name ?? `#${n}`;
   const qc = useQueryClient();
   const setAutosync = useMutation({
@@ -124,6 +127,9 @@ export function Sync({ kind, id }: { kind: Kind; id: number }) {
       <ul className="plain">
         {bindings.data.map((b) => (
           <li key={b.id}>
+            <span aria-hidden="true">
+              <Logo app={logos.get(b.instance_id)} label={name(b.instance_id)} />
+            </span>{" "}
             <span className={"badge " + (badgeClass[b.status] ?? "unknown")} aria-hidden="true" /> {name(b.instance_id)}: {stateLabel(b.status)}{" "}
             <label className="autosync">
               <input

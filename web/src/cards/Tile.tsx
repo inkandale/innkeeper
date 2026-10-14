@@ -2,10 +2,11 @@ import { Link } from "react-router";
 import { thumb } from "../api/client";
 import type { components } from "../api/schema";
 import { text } from "../card/draft";
+import { Logo, type App } from "../sync/Logo";
 import { stateLabel } from "../sync/sync";
 
 export type Hit = components["schemas"]["Hit"];
-export type Names = { instances: Map<number, string>; collections: Map<number, string> };
+export type Names = { instances: Map<number, string>; collections: Map<number, string>; logos: Map<number, App> };
 
 export const badgeClass: Record<string, string> = {
   in_sync: "ok",
@@ -16,17 +17,23 @@ export const badgeClass: Record<string, string> = {
   cant_check: "unknown",
 };
 
+// Logos say where the card is linked; one marker says whether any of those needs the owner.
 function Badges({ hit, names }: { hit: Hit; names: Names }) {
+  const targets = hit.targets ?? [];
+  const name = (instance: number) => names.instances.get(instance) ?? "#" + instance;
+  const attention = targets
+    .filter((t) => t.is !== "in_sync")
+    .map((t) => `${name(t.instance)}: ${stateLabel(t.is)}`)
+    .join(" · ");
   return (
     <span className="badges">
-      {(hit.targets ?? []).map((t) => (
-        <span
-          key={t.instance}
-          className={"badge " + badgeClass[t.is]}
-          role="img"
-          aria-label={`${names.instances.get(t.instance) ?? "#" + t.instance}: ${stateLabel(t.is)}`}
-          title={`${names.instances.get(t.instance) ?? "#" + t.instance}: ${stateLabel(t.is)}`}
-        />
+      {attention && (
+        <span className="attention" role="img" aria-label={`Needs attention: ${attention}`} title={attention}>
+          !
+        </span>
+      )}
+      {targets.map((t) => (
+        <Logo key={t.instance} app={names.logos.get(t.instance)} label={name(t.instance)} />
       ))}
     </span>
   );

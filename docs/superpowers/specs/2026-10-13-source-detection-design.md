@@ -94,20 +94,26 @@ neither form.
 
 ### How core calls it
 
-The shared code lives in `internal/plugins/sources.go`, beside
+The shared code lives in `internal/plugins/sites.go`, beside
 `CodecInstance` (`plugins.go:506`), which already picks an instance by
-capability:
+capability. It is named for the capability, since "source" in that package
+already means a plugin index:
 
-- `(*Registry).SourcePlugins(ctx)`: for each plugin that declares `sites`,
+- `(*Registry).SitesInstances(ctx)`: for each plugin that declares `sites`,
   its oldest working instance, ordered by that instance's ID.
-- `(*Registry).DetectSources(ctx, mgr, entity, data) []library.Source`:
+- `(*Registry).DetectSources(ctx, mgr, k, data) ([]library.Source, error)`:
   calls each with a 5-second timeout, drops invalid sources, and merges them
   first-wins on `(kind, ref)`, the rule in `detect.go:176`. A plugin error is
   logged and skipped; `Registry.Call` already marks an instance that fails
-  to start as broken (`plugins.go:586`).
-- `(*Registry).ParseSource(ctx, mgr, entity, in) (library.Source, error)`:
-  the first non-null `source` wins. A `-32602` from a plugin becomes
-  `library.ErrInvalid` with its message.
+  to start as broken (`plugins.go:586`). A reply with more than 32 sources
+  is skipped. The error is non-nil only when `ctx` ended or a plugin failed
+  retryably, so the job can keep the entity queued; the sources are then the
+  other plugins'. Reconcile and resolve ignore that error.
+- `(*Registry).ParseSource(ctx, mgr, k, in) (library.Source, error)`:
+  `in` is a URL alone, or a kind and ref. The first non-null `source` wins,
+  keeping the owner's `external_id` if they sent one. A `-32602` from a
+  plugin becomes `library.ErrInvalid` with its message, and an invalid
+  source `plugins.ErrBadSource`, which the API answers with 502.
 
 | Case | `DetectSources` | `PUT …/sources` |
 |---|---|---|
@@ -129,25 +135,35 @@ both importing and detecting, an inline `sites.detect` from `emit.card`
 would wait on a reply that goroutine can never read. So imports queue
 instead of calling:
 
-1. Migration `00NN_source_detect.sql`: `source_detect (kind text, entity_id
-   bigint, PRIMARY KEY (kind, entity_id))`.
-2. `Entities.DetectSources` and `DetectSourcesTx` keep their signatures and
-   callers in `import.go`, but only insert the entity into `source_detect`.
-   No plugin call happens in `library`, so it needs no new dependency.
-3. A `detect-sources` job (a `jobs.Worker.Handlers` entry in the worker)
-   reads each queued entity's head revision, calls `DetectSources`, records
-   the `auto` rows, and deletes the queue row. Rows stay queued when no
-   `sites` plugin exists, or when a call failed retryably.
-4. `EnqueueOnce` of that job at the end of every import job, after an adopt,
-   and when a `sites` instance is created, edited, or checked. The last
-   case picks up everything imported while no plugin existed.
+1. Migration `0020_source_detect.sql`: `source_detect (kind text, entity_id
+   bigint, PRIMARY KEY (kind, entity_id))`. Backups leave it out, as they
+   leave out jobs.
+2. `Entities.Import` inserts the entity into `source_detect` inside its own
+   transaction, also on a repeat import. `Entities.DetectSources` and
+   `DetectSourcesTx` go: no plugin call happens in `library`, so it needs no
+   new dependency. `Library.DetectQueue` pages through the queue, and
+   `Library.Detected` records an entity's `auto` rows and deletes its queue
+   row in one transaction.
+3. A `detect-sources` job, `importer.DetectKind` run by `Importer.RunDetect`,
+   reads each queued entity's head revision, calls `DetectSources`, and calls
+   `Detected`; an entity that is gone is only dequeued. It makes passes over
+   the queue until one detects nothing, so entities queued behind its cursor
+   are not missed. A retryable failure keeps that entity queued and the job
+   ends with `jobs.ErrRetry`.
+4. `importer.EnqueueDetect` (`EnqueueOnce` of that job) at the end of every
+   import job and after an adopt. A failure to enqueue is logged, not
+   returned, so detection never fails an import. The worker also schedules
+   the job hourly: that catches an entity queued while a job was finishing,
+   which `EnqueueOnce` treats as already running.
 
 Reconcile and resolve call `Registry.DetectSources` directly. They run in a
 job or a request, not a notification handler, and resolve already calls
 `target.get` inside its transaction (`resolve.go:193`). `appItem` gains
 `sources`, filled once in `readItemData` (`reconcile.go:101`), so reconcile
-and resolve share one call per item. `DetectSourcesTx` gains a variant that
-records given sources, for resolve's bind (`resolve.go:470`).
+and resolve share one call per item. `Entities.RecordSourcesTx` records
+given sources, for resolve's bind (`resolve.go:470`). Resolve's import
+action detects the split lorebook itself and passes the sources to
+`ImportCardTx`, which gains a `bookSources` parameter.
 
 ## Performance
 
@@ -194,7 +210,7 @@ Into `url-import`, which already holds a file per site:
 | `chub.go`, `risu.go`, `tavern.go` | Each exports one page parser, such as `chubPage(u) (dir, user, slug, ok)`, used by the resolver and by detection |
 | `sites.go` (new) | `sites.detect`: reads `extensions.chub` (`full_path`, and `id` decoded with `UseNumber`), then each string in `data.source` through the page parsers, plus `risurealm:{uuid}`. `sites.parse`: URL, or kind and ref |
 | `main.go` | Declares and answers `sites` |
-| `plugin.toml` | `capabilities = ["import", "sources"]`, version 0.2.0 |
+| `plugin.toml` | `capabilities = ["import", "sites"]`, version 0.2.0 |
 | `sources_test.go` (new) | `detect_test.go`'s tables, moved verbatim, so output matches what core stored |
 
 The hostile-input checks in `pathRef` (`detect.go:130-143`) move with the
@@ -245,11 +261,12 @@ a plugin".
 | Where | Covers |
 |---|---|
 | `protocol` | The source check: kind regex, empty ref, lengths, non-https URL |
-| `internal/plugins/sources_test.go` | Order and first-wins merge across two fake plugins; a broken, erroring, and hanging plugin each skipped; invalid sources dropped; no plugin gives `nil` |
-| `internal/library/sources_test.go` | `DetectSources` queues and doesn't record; owner and removed rows survive the job |
-| Job test | Drains the queue; rows stay with no plugin and drain once one is created; a retryable failure keeps the row |
-| `internal/importer` | `url-import`-style fake that imports and detects on one process: the import finishes and its sources appear after the job, with no deadlock |
-| `internal/api/sources_test.go`, `mcp_test.go`, targets tests | Rewritten from chub data to the fake `sites` plugin |
+| `internal/plugins/sites_test.go` | Order and first-wins merge across two fake plugins; a broken, erroring, retryable, and hanging plugin each skipped; invalid sources dropped; no plugin falls back to `detect.go`; `ParseSource`'s answers and errors |
+| `internal/library` | `Import` queues and doesn't record, also on a repeat; the queue pages in order; owner and removed rows survive `Detected` |
+| `internal/importer/detect_test.go` | A `url-import`-style fake that imports and detects on one process: the import finishes and its sources appear after the job, with no deadlock; a retryable failure keeps the row until a later run; the fallback without a `sites` plugin |
+| `internal/api` | Adding a source through the fake `sites` plugin, its 422s and 502; adopt queues the item and the job |
+| `internal/targets/sites_test.go` | Reconcile matches, bind records, and resolve's import records the split lorebook's sources through the fake `sites` plugin |
+| `internal/contract` | Each check against the fake's `sites` mode and one bad mode per check |
 | `url-import/sources_test.go` | `detect_test.go`'s cases, verbatim |
 
 ## Rollout
@@ -261,14 +278,21 @@ must ship first, and the protocol version stays 1.
 1. **Core PR 1.** `sites` capability and protocol types, `internal/plugins`
    shared code, queue, job, callers switched, contract checks, fakeplugin,
    `docs/protocol.md`. `detect.go`'s detectors stay as the fallback used only
-   when no instance declares `sites`, so `main` keeps detecting.
+   when no working instance declares `sites`, for both `DetectSources` and
+   `ParseSource`, so `main` keeps detecting and keeps the old 422 wording.
+   The existing chub-data tests stay as the fallback's tests; new tests use
+   the fake `sites` plugin.
 2. **Plugins PR.** `url-import` 0.2.0 with `sites`, `go.mod` pinned to PR
    1's commit. Its README and index description say which core it needs.
    Merge only after PR 1 is on core `main`, since the image builds plugins
    from `main` (`Dockerfile:23-26`).
 3. **Core PR 3.** `url-import` built in, the startup instance, and deletion
    of the fallback and `detect_test.go`. Cut the core release after this PR,
-   so no release carries the fallback.
+   so no release carries the fallback. With the fallback gone, entities must
+   stay queued while no `sites` plugin exists, so this PR also has
+   `DetectSources` report that case for the job to keep the rows, and
+   enqueues the job when a `sites` instance is created, edited, or checked.
+   PR 1 needs neither, since the fallback drains the queue.
 
 ## Alternatives considered
 

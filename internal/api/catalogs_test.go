@@ -149,6 +149,12 @@ func TestCatalogAdopt(t *testing.T) {
 		len(c.Lorebooks) != 1 || c.Revision.Avatar == nil {
 		t.Fatalf("adopted %+v", c)
 	}
+	var jobs int
+	var queued bool
+	if err := e.pool.QueryRow(context.Background(), `SELECT (SELECT count(*) FROM job WHERE kind = 'detect-sources'),
+		EXISTS (SELECT 1 FROM source_detect WHERE kind = 'card' AND entity_id = $1)`, c.ID).Scan(&jobs, &queued); err != nil || jobs != 1 || !queued {
+		t.Fatalf("detect jobs %d, card queued %v, %v; want the adopted card queued for detection", jobs, queued, err)
+	}
 	for _, path := range []string{"/items/brakka/adopt", "/items/brakka/adopt?version=2"} {
 		var again entityOut
 		e.call("POST", base+path, nil, 200, &again)

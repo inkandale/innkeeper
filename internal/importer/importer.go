@@ -1,6 +1,7 @@
 // Package importer runs import jobs: it calls an import plugin's import.run
 // and stores the cards and lorebooks the plugin emits. It also runs catalog
-// ingests, which send the same progress and checkpoint notifications.
+// ingests, which send the same progress and checkpoint notifications, and the
+// job that detects imported items' sources.
 package importer
 
 import (
@@ -38,6 +39,8 @@ type Payload struct {
 type Importer struct {
 	Lib      *library.Library
 	Registry *plugins.Registry
+	// Queue gets a DetectKind job after each import.
+	Queue *jobs.Queue
 	// Plugins runs the import and catalog plugins. Its core handler must be Handle.
 	Plugins *pluginhost.Manager
 	Log     *slog.Logger
@@ -46,8 +49,8 @@ type Importer struct {
 	runs map[string]*session
 }
 
-func New(lib *library.Library, reg *plugins.Registry, log *slog.Logger) *Importer {
-	return &Importer{Lib: lib, Registry: reg, Log: log, runs: map[string]*session{}}
+func New(lib *library.Library, reg *plugins.Registry, q *jobs.Queue, log *slog.Logger) *Importer {
+	return &Importer{Lib: lib, Registry: reg, Queue: q, Log: log, runs: map[string]*session{}}
 }
 
 // progress is an import job's progress. Done, Total, and Message come from
@@ -150,6 +153,9 @@ func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
 	// ponytail: a run abandoned on shutdown or a lost lease keeps going in
 	// the plugin until it finishes or the plugin is stopped.
 	err = im.Registry.Call(ctx, im.Plugins, inst, m.name, m.params(token, payload, r.Checkpoint), result)
+	if m.stores {
+		EnqueueDetect(ctx, im.Queue, im.Log)
+	}
 	if err == nil && result != nil {
 		s.mu.Lock()
 		s.result = &res
@@ -160,6 +166,14 @@ func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
 		return serr
 	}
 	return plugins.JobErr(err)
+}
+
+// EnqueueDetect makes sure a DetectKind job will run. A failure is only
+// logged, since detection never fails an import; the hourly run catches up.
+func EnqueueDetect(ctx context.Context, q *jobs.Queue, log *slog.Logger) {
+	if _, err := q.EnqueueOnce(context.WithoutCancel(ctx), jobs.Spec{Kind: DetectKind}); err != nil {
+		log.Error("enqueue source detection", "err", err)
+	}
 }
 
 // Handle is the core handler for the plugin manager that runs imports. It

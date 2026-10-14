@@ -53,7 +53,8 @@ func worker() error {
 	}
 	defer svc.close()
 
-	im := importer.New(svc.lib, svc.registry, log)
+	q := jobs.New(svc.pool)
+	im := importer.New(svc.lib, svc.registry, q, log)
 	mgr := pluginhost.NewManager(im.Handle, 5*time.Minute, log)
 	defer mgr.Close()
 	im.Plugins = mgr
@@ -61,7 +62,6 @@ func worker() error {
 
 	tg := targets.New(svc.pool, svc.lib, svc.registry, mgr, log)
 	ex := &exporter.Exporter{Lib: svc.lib, Registry: svc.registry, Plugins: mgr, Log: log}
-	q := jobs.New(svc.pool)
 	dbURL := os.Getenv("INNKEEPER_DATABASE_URL")
 	backupOpts := backup.Options{DatabaseURL: dbURL, Store: svc.store, Box: svc.box, Log: log}
 	restoreOpts := backup.RestoreOptions{Conn: svc.pool.Config().ConnConfig, Store: svc.store, Box: svc.box, Log: log}
@@ -74,6 +74,7 @@ func worker() error {
 		Handlers: map[string]jobs.Handler{
 			importer.Kind:              im.Run,
 			importer.IngestKind:        im.Run,
+			importer.DetectKind:        im.RunDetect,
 			bulk.ArchiveKind:           bulk.Archive(svc.lib),
 			bulk.LorebookArchiveKind:   bulk.ArchiveLorebook(svc.lib),
 			bulk.TagKind:               bulk.Tag(svc.lib),
@@ -107,6 +108,8 @@ func worker() error {
 			{Kind: blobGCKind, Every: 24 * time.Hour},
 			{Kind: jobPruneKind, Every: 24 * time.Hour},
 			{Kind: targets.ScanKind, Every: time.Hour},
+			// ponytail: catches entities queued while a detect job was finishing, and enqueues that failed; hourly is the delay then.
+			{Kind: importer.DetectKind, Every: time.Hour},
 		},
 	}
 	if syncEvery > 0 {

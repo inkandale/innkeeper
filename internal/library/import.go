@@ -89,21 +89,22 @@ func (s *Entities) Import(ctx context.Context, provenance, name string, e Edit) 
 	err = tx.QueryRow(ctx, `SELECT e.id FROM `+s.k.Table+` e WHERE e.provenance = $1 AND EXISTS (
 		SELECT 1 FROM `+s.k.RevTable+` r WHERE r.`+s.k.FK+` = e.id AND r.content_hash = $2)
 		ORDER BY e.id LIMIT 1`, provenance, r.contentHash).Scan(&id)
-	if err == nil {
-		// Also on a repeat, so a run that stopped before detecting finishes.
-		return id, false, s.DetectSources(ctx, id, e.Data)
-	}
-	if !errors.Is(err, pgx.ErrNoRows) {
+	created := errors.Is(err, pgx.ErrNoRows)
+	if err != nil && !created {
 		return 0, false, err
 	}
-	ent, _, err := s.createFromName(ctx, tx, name, provenance, r)
-	if err != nil {
+	if created {
+		ent, _, err := s.createFromName(ctx, tx, name, provenance, r)
+		if err != nil {
+			return 0, false, err
+		}
+		id = ent.ID
+	}
+	// Also on a repeat, so a run that stopped before detecting finishes.
+	if err := s.queueDetect(ctx, tx, id); err != nil {
 		return 0, false, err
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return 0, false, err
-	}
-	return ent.ID, true, s.DetectSources(ctx, ent.ID, e.Data)
+	return id, created, tx.Commit(ctx)
 }
 
 // CreateFromName creates an entity with a free slug made from name.

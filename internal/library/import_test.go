@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 
@@ -129,32 +130,30 @@ func TestConcurrentImportsOfOneItemMakeOneCard(t *testing.T) {
 	}
 }
 
-func TestImportCardRecordsSources(t *testing.T) {
+func TestImportCardQueuesCardAndLorebook(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
-	card := `{"spec":"chara_card_v3","spec_version":"3.0","data":{"name":"A","extensions":{"chub":{"id":7,"full_path":"u/a"}},
-		"character_book":{"name":"L","entries":[],"extensions":{"chub":{"id":8,"full_path":"u/l"}}}}}`
+	card := `{"spec":"chara_card_v3","spec_version":"3.0","data":{"name":"A","character_book":{"name":"L","entries":[]}}}`
+	var id int64
 	for range 2 {
-		id, _, err := lib.ImportCard(ctx, "plugin:x:1", "plugin:x", []byte(card), "")
-		if err != nil {
+		var err error
+		if id, _, err = lib.ImportCard(ctx, "plugin:x:1", "plugin:x", []byte(card), ""); err != nil {
 			t.Fatal(err)
 		}
-		got, err := lib.Cards.Sources(ctx, id)
-		if err != nil || len(got) != 1 || got[0].Ref != "u/a" || got[0].LinkedBy != "auto" {
-			t.Fatalf("card sources: %+v, %v", got, err)
-		}
 	}
-	ids, err := lib.Lorebooks.BySource(ctx, "chub", "u/l")
-	if err != nil || len(ids) != 1 {
-		t.Fatalf("lorebook sources: %v, %v", ids, err)
+	books, err := lib.CardLorebooks(ctx, id)
+	if err != nil || len(books) != 1 {
+		t.Fatalf("lorebooks = %v, %v", books, err)
 	}
-	// A standalone lorebook import records its source too.
-	id, _, err := lib.Lorebooks.Import(ctx, "plugin:x:2", "M", Edit{Data: []byte(`{"name":"M","entries":[],"extensions":{"chub":{"full_path":"u/m"}}}`), Source: "plugin:x"})
+	// A standalone lorebook import queues too.
+	lb, _, err := lib.Lorebooks.Import(ctx, "plugin:x:2", "M", Edit{Data: []byte(`{"name":"M","entries":[]}`), Source: "plugin:x"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := lib.Lorebooks.Sources(ctx, id); len(got) != 1 || got[0].URL != "https://chub.ai/lorebooks/u/m" {
-		t.Fatalf("standalone lorebook sources: %+v", got)
+	q, err := lib.DetectQueue(ctx, DetectItem{}, 10)
+	want := []DetectItem{{Card, id}, {Lorebook, books[0]}, {Lorebook, lb}}
+	if err != nil || !slices.Equal(q, want) {
+		t.Fatalf("queue = %+v, %v; want %+v", q, err, want)
 	}
 }
 

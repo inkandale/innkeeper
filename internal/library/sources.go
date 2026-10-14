@@ -2,7 +2,6 @@ package library
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"regexp"
 
@@ -64,14 +63,59 @@ func (s *Entities) RemoveSource(ctx context.Context, id, sourceID int64) error {
 	return nil
 }
 
-// DetectSources records the sources data names as auto-linked; removed and owner rows stay as they are.
-func (s *Entities) DetectSources(ctx context.Context, id int64, data json.RawMessage) error {
-	return s.recordSources(ctx, s.pool, id, Detect(data, s.k == Lorebook))
-}
-
 // RecordSourcesTx records srcs as auto-linked inside the caller's transaction; removed and owner rows stay as they are.
 func (s *Entities) RecordSourcesTx(ctx context.Context, tx pgx.Tx, id int64, srcs []Source) error {
 	return s.recordSources(ctx, tx, id, srcs)
+}
+
+// DetectItem is an entity waiting for source detection.
+type DetectItem struct {
+	Kind *Kind
+	ID   int64
+}
+
+// queueDetect adds the entity to the detection queue; library code never calls plugins.
+func (s *Entities) queueDetect(ctx context.Context, tx pgx.Tx, id int64) error {
+	_, err := tx.Exec(ctx, `INSERT INTO source_detect (kind, entity_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, s.k.Name, id)
+	return err
+}
+
+// DetectQueue returns up to n queued entities after after, in queue order.
+// The zero DetectItem starts at the beginning.
+func (l *Library) DetectQueue(ctx context.Context, after DetectItem, n int) ([]DetectItem, error) {
+	var kind string
+	if after.Kind != nil {
+		kind = after.Kind.Name
+	}
+	rows, err := l.pool.Query(ctx, `SELECT kind, entity_id FROM source_detect
+		WHERE (kind, entity_id) > ($1, $2) ORDER BY kind, entity_id LIMIT $3`, kind, after.ID, n)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (DetectItem, error) {
+		var name string
+		var it DetectItem
+		if err := row.Scan(&name, &it.ID); err != nil {
+			return it, err
+		}
+		var ok bool
+		if it.Kind, ok = KindNamed(name); !ok {
+			return it, fmt.Errorf("source_detect row has unknown kind %q", name)
+		}
+		return it, nil
+	})
+}
+
+// Detected records srcs as the entity's auto-linked sources and takes it off
+// the detection queue. With no entity left, it only takes it off the queue.
+func (l *Library) Detected(ctx context.Context, it DetectItem, srcs []Source) error {
+	return pgx.BeginFunc(ctx, l.pool, func(tx pgx.Tx) error {
+		if err := l.Entities(it.Kind).recordSources(ctx, tx, it.ID, srcs); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, `DELETE FROM source_detect WHERE kind = $1 AND entity_id = $2`, it.Kind.Name, it.ID)
+		return err
+	})
 }
 
 func (s *Entities) recordSources(ctx context.Context, q interface {

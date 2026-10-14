@@ -323,6 +323,7 @@ func (s *Server) adoptCatalogItem(ctx context.Context, in *catalogItemIn) (*adop
 	if err != nil {
 		return nil, s.fail(err)
 	}
+	importer.EnqueueDetect(ctx, s.Queue, s.Log)
 	out, err := s.entity(ctx, s.Lib.Entities(k), id)
 	if err != nil {
 		return nil, err

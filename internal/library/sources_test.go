@@ -3,11 +3,74 @@ package library
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 )
 
 const chubCard = `{"name": "A", "extensions": {"chub": {"id": 7, "full_path": "u/a"}}}`
+
+// detect records what the built-in detectors find in chubCard, as the detect-sources job would.
+func detect(t *testing.T, lib *Library, s *Entities, id int64) error {
+	t.Helper()
+	return lib.Detected(context.Background(), DetectItem{s.k, id}, Detect([]byte(chubCard), s.k == Lorebook))
+}
+
+func TestImportQueuesDetection(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	id, _, err := lib.Cards.Import(ctx, "p:1", "A", edit(chubCard))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A repeat import queues again, so a run that stopped before detecting finishes.
+	if _, _, err := lib.Cards.Import(ctx, "p:1", "A", edit(chubCard)); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustSources(t, lib.Cards, id); len(got) != 0 {
+		t.Fatalf("import recorded %+v; only the job records sources", got)
+	}
+	q, err := lib.DetectQueue(ctx, DetectItem{}, 10)
+	if err != nil || len(q) != 1 || q[0] != (DetectItem{Card, id}) {
+		t.Fatalf("queue = %+v, %v", q, err)
+	}
+	if err := detect(t, lib, lib.Cards, id); err != nil {
+		t.Fatal(err)
+	}
+	if q, _ := lib.DetectQueue(ctx, DetectItem{}, 10); len(q) != 0 {
+		t.Fatalf("queue after Detected = %+v", q)
+	}
+	if got := mustSources(t, lib.Cards, id); len(got) != 1 || got[0].Ref != "u/a" {
+		t.Fatalf("sources = %+v", got)
+	}
+}
+
+func TestDetectQueuePages(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	var want []DetectItem
+	for i, k := range []*Kind{Card, Lorebook, Card} {
+		id, _, err := lib.Entities(k).Import(ctx, fmt.Sprintf("p:%d", i), "A", edit(`{"name": "A"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want = append(want, DetectItem{k, id})
+	}
+	var got []DetectItem
+	for after := (DetectItem{}); ; {
+		page, err := lib.DetectQueue(ctx, after, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page) == 0 {
+			break
+		}
+		got, after = append(got, page...), page[len(page)-1]
+	}
+	if len(got) != 3 || got[0] != want[0] || got[1] != want[2] || got[2] != want[1] {
+		t.Fatalf("queue = %+v, want cards then lorebooks: %+v", got, want)
+	}
+}
 
 func newLorebook(t *testing.T, lib *Library, slug string) int64 {
 	t.Helper()
@@ -26,7 +89,7 @@ func TestSourcesLifecycle(t *testing.T) {
 	s := lib.Cards
 
 	for range 2 {
-		if err := s.DetectSources(ctx, id, []byte(chubCard)); err != nil {
+		if err := detect(t, lib, s, id); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -39,7 +102,7 @@ func TestSourcesLifecycle(t *testing.T) {
 	if err := s.RemoveSource(ctx, id, got[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.DetectSources(ctx, id, []byte(chubCard)); err != nil {
+	if err := detect(t, lib, s, id); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := s.Sources(ctx, id); len(got) != 0 {
@@ -57,7 +120,7 @@ func TestSourcesLifecycle(t *testing.T) {
 	if err != nil || added.LinkedBy != "owner" {
 		t.Fatalf("restore: %+v, %v", added, err)
 	}
-	if err := s.DetectSources(ctx, id, []byte(chubCard)); err != nil {
+	if err := detect(t, lib, s, id); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := s.Sources(ctx, id); len(got) != 1 || got[0].LinkedBy != "owner" || got[0].ID != added.ID {
@@ -88,7 +151,7 @@ func TestSourcesLifecycle(t *testing.T) {
 	if _, err := s.AddSource(ctx, id, Source{Kind: "chub", Ref: "u/a", ExternalID: "1", URL: "https://example.org/mine"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.DetectSources(ctx, id, []byte(chubCard)); err != nil {
+	if err := detect(t, lib, s, id); err != nil {
 		t.Fatal(err)
 	}
 	for _, src := range mustSources(t, s, id) {
@@ -130,7 +193,7 @@ func TestLorebookSources(t *testing.T) {
 	ctx := context.Background()
 	a, b := newLorebook(t, lib, "a"), newLorebook(t, lib, "b")
 	s := lib.Lorebooks
-	if err := s.DetectSources(ctx, a, []byte(chubCard)); err != nil {
+	if err := detect(t, lib, s, a); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.Sources(ctx, a)
@@ -146,7 +209,7 @@ func TestLorebookSources(t *testing.T) {
 	if ids, _ := s.BySource(ctx, "chub", "u/a"); len(ids) != 0 {
 		t.Fatalf("BySource saw a removed row: %v", ids)
 	}
-	if err := s.DetectSources(ctx, a, []byte(chubCard)); err != nil {
+	if err := detect(t, lib, s, a); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := s.Sources(ctx, a); len(got) != 0 {

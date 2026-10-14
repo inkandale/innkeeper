@@ -57,14 +57,14 @@ func setupCaps(t *testing.T, caps []string, args ...string) *env {
 		t.Fatal(err)
 	}
 	reg := plugins.New(pool, map[string]*protocol.Manifest{"fake": m}, store, box)
-	im := New(lib, reg, quiet)
+	q := jobs.New(pool)
+	im := New(lib, reg, q, quiet)
 	mgr := pluginhost.NewManager(im.Handle, time.Minute, quiet)
 	t.Cleanup(mgr.Close)
 	im.Plugins = mgr
 
-	q := jobs.New(pool)
 	w := &jobs.Worker{Queue: q, Log: quiet, Poll: 50 * time.Millisecond,
-		Backoff: func(int) time.Duration { return 0 }, Handlers: map[string]jobs.Handler{Kind: im.Run, IngestKind: im.Run}}
+		Backoff: func(int) time.Duration { return 0 }, Handlers: map[string]jobs.Handler{Kind: im.Run, IngestKind: im.Run, DetectKind: im.RunDetect}}
 	wctx, cancel := context.WithCancel(ctx)
 	done := make(chan error, 1)
 	go func() { done <- w.Run(wctx) }()

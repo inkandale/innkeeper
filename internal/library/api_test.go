@@ -38,14 +38,8 @@ func TestOverridesMustBeAnObject(t *testing.T) {
 func TestTags(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
-	a, _ := newCard(t, lib, "a", `{"name": "A"}`)
-	b, _ := newCard(t, lib, "b", `{"name": "B"}`)
-	if err := lib.SetCardTags(ctx, a, []string{"fantasy", "Dwarf"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := lib.SetCardTags(ctx, b, []string{"fantasy"}); err != nil {
-		t.Fatal(err)
-	}
+	newCard(t, lib, "a", `{"name": "A", "tags": ["fantasy", "Dwarf"]}`)
+	newCard(t, lib, "b", `{"name": "B", "tags": ["fantasy"]}`)
 	got, err := lib.Tags(ctx)
 	if err != nil {
 		t.Fatal(err)

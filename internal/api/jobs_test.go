@@ -54,10 +54,11 @@ func TestImportAndCancel(t *testing.T) {
 func TestBulkArchiveAndWatch(t *testing.T) {
 	e := newEnv(t)
 	for _, name := range []string{"A", "B", "C"} {
-		c := e.createCard(fmt.Sprintf(`{"name": %q}`, name))
+		tags := `[]`
 		if name != "C" {
-			e.call("PUT", fmt.Sprintf("/cards/%d/tags", c.ID), map[string]any{"tags": []string{"old"}}, 200, nil)
+			tags = `["old"]`
 		}
+		e.createCard(fmt.Sprintf(`{"name": %q, "tags": %s}`, name, tags))
 	}
 	w := &jobs.Worker{Queue: e.s.Queue, Log: quiet, Poll: 50 * time.Millisecond,
 		Handlers: map[string]jobs.Handler{bulk.ArchiveKind: bulk.Archive(e.s.Lib)}}

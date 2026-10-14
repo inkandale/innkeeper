@@ -14,8 +14,7 @@ import (
 
 func TestTagsAndCollections(t *testing.T) {
 	e := newEnv(t)
-	c := e.createCard(`{"name": "Brakka"}`)
-	e.call("PUT", fmt.Sprintf("/cards/%d/tags", c.ID), map[string]any{"tags": []string{"fantasy"}}, 200, nil)
+	c := e.createCard(`{"name": "Brakka", "tags": ["fantasy"]}`)
 	var tags []library.TagCount
 	e.call("GET", "/tags", nil, 200, &tags)
 	if len(tags) != 1 || tags[0] != (library.TagCount{Name: "fantasy", Cards: 1}) {

@@ -2,7 +2,9 @@ package library
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 )
@@ -13,15 +15,9 @@ func seedSearch(t *testing.T, lib *Library) searchCards {
 	t.Helper()
 	ctx := context.Background()
 	var s searchCards
-	s.brakka, _ = newCard(t, lib, "brakka", `{"name": "Brakka", "description": "A grumpy dwarf blacksmith."}`)
-	s.carrow, _ = newCard(t, lib, "carrow", `{"name": "Carrow", "description": "A sailor who owes Brakka money."}`)
+	s.brakka, _ = newCard(t, lib, "brakka", `{"name": "Brakka", "description": "A grumpy dwarf blacksmith.", "tags": ["fantasy"]}`)
+	s.carrow, _ = newCard(t, lib, "carrow", `{"name": "Carrow", "description": "A sailor who owes Brakka money.", "tags": ["pirate"]}`)
 	s.dellin, _ = newCard(t, lib, "dellin", `{"name": "Dellin", "description": "A retired dwarf blacksmith."}`)
-	if err := lib.SetCardTags(ctx, s.brakka, []string{"fantasy"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := lib.SetCardTags(ctx, s.carrow, []string{"pirate"}); err != nil {
-		t.Fatal(err)
-	}
 	if err := lib.Cards.SetArchived(ctx, s.dellin, true); err != nil {
 		t.Fatal(err)
 	}
@@ -83,10 +79,7 @@ func manyTags(n int) []Filter {
 func TestSearchQuotedTagAndBareAvatar(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
-	id, _ := newCard(t, lib, "obrien", `{"name": "O", "avatar": "from-data"}`)
-	if err := lib.SetCardTags(ctx, id, []string{"o'brien"}); err != nil {
-		t.Fatal(err)
-	}
+	id, _ := newCard(t, lib, "obrien", `{"name": "O", "avatar": "from-data", "tags": ["o'brien"]}`)
 	got, err := lib.Search(ctx, Card, Query{Filter: &Filter{Tag: ptr("o'brien")}, Fields: []string{"avatar"}})
 	if err != nil || !slices.Equal(hitIDs(got), []int64{id}) {
 		t.Fatalf("hits = %v, %v", hitIDs(got), err)
@@ -250,7 +243,7 @@ func TestSearchFacets(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
 	s := seedSearch(t, lib)
-	if err := lib.SetCardTags(ctx, s.carrow, []string{"pirate", "fantasy"}); err != nil {
+	if err := lib.EditCardTags(ctx, s.carrow, []string{"fantasy"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	crew, err := lib.CreateCollection(ctx, "Crew", "")
@@ -392,5 +385,23 @@ func TestSearchLorebookSourcesAndBareEntries(t *testing.T) {
 	res, err = lib.Search(ctx, Lorebook, Query{Text: "bare"})
 	if err != nil || len(res.Hits) != 1 || res.Hits[0].ID != bare.ID || res.Hits[0].Entries == nil || *res.Hits[0].Entries != 0 {
 		t.Fatalf("bare = %+v, %v", res.Hits, err)
+	}
+}
+
+func TestSearchTagFacetCountsEveryTagOncePerCard(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	tags := make([]string, 60)
+	for i := range tags {
+		tags[i] = fmt.Sprintf("t%02d", i)
+	}
+	raw, _ := json.Marshal(map[string]any{"name": "Many", "tags": append(tags, "T00")})
+	newCard(t, lib, "many", string(raw))
+	got, err := lib.Search(ctx, Card, Query{Facets: []string{"tags"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Facets.Tags) != 60 || got.Facets.Tags[0].Cards != 1 {
+		t.Fatalf("tags = %+v", got.Facets.Tags)
 	}
 }

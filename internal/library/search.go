@@ -80,7 +80,7 @@ type Results struct {
 
 // Facets counts the matching cards per value. Only the facets asked for are set.
 type Facets struct {
-	Tags        []TagCount        `json:"tags,omitempty" doc:"The 50 most used."`
+	Tags        []TagCount        `json:"tags,omitempty" doc:"Most used first."`
 	Collections []CollectionCount `json:"collections,omitempty"`
 	Targets     []TargetCount     `json:"targets,omitempty"`
 	Sources     []SourceCount     `json:"sources,omitempty"`
@@ -112,6 +112,10 @@ func from(k *Kind) string {
 	return k.Table + ` c JOIN ` + k.RevTable + ` r ON r.id = c.head_revision_id`
 }
 
+// tagsOf is r's data.tags as rows of text, none when tags is missing or
+// not a list.
+const tagsOf = `jsonb_array_elements_text(CASE jsonb_typeof(r.data->'tags') WHEN 'array' THEN r.data->'tags' ELSE '[]' END)`
+
 // cardOnly names the facets and includes that need card tags, collections,
 // or linked lorebooks.
 func cardOnly(name string) bool {
@@ -120,9 +124,9 @@ func cardOnly(name string) bool {
 
 // facetSQL selects each facet's rows for the IDs in match.
 var facetSQL = map[string]func(k *Kind, match string) string{
-	"tags": func(_ *Kind, m string) string {
-		return `SELECT t.name, count(*)::int FROM card_tag ct JOIN tag t ON t.id = ct.tag_id
-			WHERE ct.card_id IN (` + m + `) GROUP BY t.id ORDER BY count(*) DESC, lower(t.name) LIMIT 50`
+	"tags": func(k *Kind, m string) string {
+		return `SELECT min(t), count(DISTINCT c.id)::int FROM ` + from(k) + `, ` + tagsOf + ` t
+			WHERE c.id IN (` + m + `) GROUP BY lower(t) ORDER BY count(DISTINCT c.id) DESC, lower(t)`
 	},
 	"collections": func(_ *Kind, m string) string {
 		return `SELECT co.id, co.name, count(*)::int FROM collection_card cc JOIN collection co ON co.id = cc.collection_id
@@ -204,8 +208,7 @@ func (w *where) filter(f Filter) (string, error) {
 	case f.IDs != nil:
 		return `c.id = ANY(` + w.arg(f.IDs) + `)`, nil
 	case f.Tag != nil:
-		return `EXISTS (SELECT 1 FROM card_tag ct JOIN tag t ON t.id = ct.tag_id
-			WHERE ct.card_id = c.id AND lower(t.name) = lower(` + w.arg(*f.Tag) + `))`, nil
+		return `EXISTS (SELECT 1 FROM ` + tagsOf + ` t WHERE lower(t) = lower(` + w.arg(*f.Tag) + `))`, nil
 	case f.Collection != nil:
 		return `EXISTS (SELECT 1 FROM collection_card cc
 			WHERE cc.card_id = c.id AND cc.collection_id = ` + w.arg(*f.Collection) + `)`, nil
@@ -324,8 +327,7 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 		}
 		switch inc {
 		case "tags":
-			tags = `array(SELECT t.name FROM card_tag ct JOIN tag t ON t.id = ct.tag_id
-				WHERE ct.card_id = c.id ORDER BY lower(t.name))`
+			tags = `array(SELECT t FROM ` + tagsOf + ` t)`
 		case "lorebooks":
 			books = `array(SELECT lorebook_id FROM card_lorebook WHERE card_id = c.id ORDER BY lorebook_id)`
 		case "cards":

@@ -85,6 +85,8 @@ type appItem struct {
 	links []string
 	// avatarErr is why the app's avatar couldn't be stored; avatar and phash are then empty.
 	avatarErr error
+	// sources are what DetectSources found in raw.
+	sources []library.Source
 }
 
 // readItem reads an app item and, with avatar, moves the avatar into the blob
@@ -125,6 +127,10 @@ func (s *Service) readItemData(ctx context.Context, k kind, inst pluginhost.Inst
 	}
 	if it.data, it.hash, err = Project(it.raw, k.fields(info)); err != nil {
 		return it, err
+	}
+	// A plugin that failed was logged and skipped, since detection never fails a sync.
+	if it.sources, _ = s.reg.DetectSources(ctx, s.plugins, k.Kind, it.raw); ctx.Err() != nil {
+		return it, ctx.Err()
 	}
 	it.name = library.DataName(it.data)
 	it.simhash, err = textSimhash(k, it.data)
@@ -302,7 +308,7 @@ func (s *Service) verdict(ctx context.Context, k kind, inst pluginhost.Instance,
 	}
 
 	sourced := map[int64]bool{}
-	for _, src := range library.Detect(it.raw, k.isLorebook()) {
+	for _, src := range it.sources {
 		ids, err := s.lib.Entities(k.Kind).BySource(ctx, src.Kind, src.Ref)
 		if err != nil {
 			return item, it, err

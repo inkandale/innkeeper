@@ -388,7 +388,14 @@ func (rs *resolver) importItem(ctx context.Context, k kind, inst pluginhost.Inst
 		if err != nil {
 			return 0, 0, err
 		}
-		rev, err := s.lib.ImportCardTx(ctx, rs.tx, provenance, source, card, it.avatar)
+		var bookSources []library.Source
+		if _, _, book, err := library.SplitCard(card); err == nil && book != nil {
+			// A plugin that failed was logged and skipped, since detection never fails a sync.
+			if bookSources, _ = s.reg.DetectSources(ctx, s.plugins, library.Lorebook, book); ctx.Err() != nil {
+				return 0, 0, ctx.Err()
+			}
+		}
+		rev, err := s.lib.ImportCardTx(ctx, rs.tx, provenance, source, card, it.avatar, bookSources)
 		return rev.EntityID, rev.ID, err
 	}
 	_, rev, err := s.lib.Lorebooks.CreateFromNameTx(ctx, rs.tx, cmp.Or(it.name, "lorebook"), provenance,
@@ -467,7 +474,7 @@ func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.Targe
 
 	// The app's copy is where the sources are, even if the target drops extensions,
 	// and they are facts about the item, so a no-op records them too.
-	if err := s.lib.Entities(k.Kind).DetectSourcesTx(ctx, rs.tx, id, it.raw); err != nil {
+	if err := s.lib.Entities(k.Kind).RecordSourcesTx(ctx, rs.tx, id, it.sources); err != nil {
 		return res, err
 	}
 	if !plan.revise && cb.remoteID == r.RemoteID && cb.state == remoteUnchanged && cb.accepted == acceptedHash {

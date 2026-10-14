@@ -63,7 +63,11 @@ func setup(t *testing.T, config map[string]any) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reg := plugins.New(pool, map[string]*protocol.Manifest{"fake": m}, store, box)
+	// sites is the fake as a sites plugin only; addSites gives it an instance.
+	sites := *m
+	sites.Name, sites.Capabilities = "sites", []string{"sites"}
+	sites.Command = []string{m.Command[0], "-caps=sites", "-name=sites"}
+	reg := plugins.New(pool, map[string]*protocol.Manifest{"fake": m, "sites": &sites}, store, box)
 	mgr := pluginhost.NewManager(noCore, time.Minute, quiet)
 	t.Cleanup(mgr.Close)
 	e := &env{t: t, ctx: ctx, pool: pool, lib: lib, reg: reg, s: New(pool, lib, reg, mgr, quiet), dir: t.TempDir()}

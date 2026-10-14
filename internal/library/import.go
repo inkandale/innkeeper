@@ -229,9 +229,9 @@ func (l *Library) ImportItem(ctx context.Context, it PluginItem) (int64, bool, e
 // transaction, with its character_book as a new linked lorebook. Unlike
 // ImportCard it always creates, since the caller asked for a new copy and its
 // transaction makes a retry unnecessary. avatar is a blob's sha256, or empty.
-// It returns the card's head revision.
+// bookSources are recorded on the lorebook. It returns the card's head revision.
 func (l *Library) ImportCardTx(ctx context.Context, tx pgx.Tx, provenance, source string, card json.RawMessage,
-	avatar string) (Revision, error) {
+	avatar string, bookSources []Source) (Revision, error) {
 	name, data, book, err := SplitCard(card)
 	if err != nil {
 		return Revision{}, err
@@ -246,7 +246,7 @@ func (l *Library) ImportCardTx(ctx context.Context, tx pgx.Tx, provenance, sourc
 	if err != nil {
 		return Revision{}, err
 	}
-	if err := l.Lorebooks.DetectSourcesTx(ctx, tx, lb.ID, book); err != nil {
+	if err := l.Lorebooks.RecordSourcesTx(ctx, tx, lb.ID, bookSources); err != nil {
 		return Revision{}, err
 	}
 	return rev, l.LinkLorebookTx(ctx, tx, rev.EntityID, lb.ID)

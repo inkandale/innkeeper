@@ -38,7 +38,7 @@ export function Facets({ facets, names, q, onToggle }: { facets?: FacetData; nam
         q={q}
         onToggle={onToggle}
         values={(facets?.targets ?? []).map((t) => ({
-          term: { kind: "target", value: `${t.instance}:${t.is}` },
+          term: { kind: "target", value: String(t.instance) },
           label: `${names.instances.get(t.instance) ?? "#" + t.instance}: ${status(t.is)}`,
           cards: t.cards,
         }))}

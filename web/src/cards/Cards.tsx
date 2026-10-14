@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router";
 import { api, must, route } from "../api/client";
 import { instancesQuery, collectionsQuery, pluginsQuery } from "../api/queries";
 import { apps } from "../sync/Logo";
+import { stateLabel } from "../sync/sync";
 import { Facets } from "./Facets";
 import { pageLinks } from "./pages";
 import { defaultSort, parseQuery, sizes, toggleTerm, toParams, toLorebookSearch, toSearch, type CardQuery, type Sort, type Term } from "./query";
@@ -16,12 +17,11 @@ import "./Cards.css";
 const sortLabels: Record<Sort, string> = { relevance: "Best match", updated: "Updated", name: "Name", created: "Created" };
 
 function termLabel(t: Term, names: Names): string {
-  let value = t.value;
-  if (t.kind === "collection") value = names.collections.get(Number(t.value)) ?? "#" + t.value;
-  if (t.kind === "target") {
-    const [id, is] = t.value.split(":");
-    value = `${names.instances.get(Number(id)) ?? "#" + id} ${is?.replace("_", " ")}`;
-  }
+  const value =
+    t.kind === "collection" ? (names.collections.get(Number(t.value)) ?? "#" + t.value)
+    : t.kind === "target" ? (names.instances.get(Number(t.value)) ?? "#" + t.value)
+    : t.kind === "state" ? stateLabel(t.value)
+    : t.value;
   return `${t.not ? "not " : ""}${t.kind}: ${value}`;
 }
 

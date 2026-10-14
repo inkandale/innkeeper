@@ -176,15 +176,16 @@ func (s *Service) stored(ctx context.Context, id int64) (stored, error) {
 	return b, nil
 }
 
-// describe resolves a push plugin's instance and asks what its app stores.
+// describe resolves a target plugin's instance, one that pushes or pulls,
+// and asks what its app stores.
 func (s *Service) describe(ctx context.Context, instanceID int64) (pluginhost.Instance, protocol.TargetInfo, error) {
 	var info protocol.TargetInfo
-	inst, err := s.reg.InstanceWith(ctx, instanceID, "push")
-	if errors.Is(err, plugins.ErrIncapable) {
-		return inst, info, fmt.Errorf("%w: %s", ErrCannot, inst.Manifest.Name)
-	}
+	inst, err := s.reg.Instance(ctx, instanceID)
 	if err != nil {
 		return inst, info, err
+	}
+	if !inst.Manifest.Has("push") && !inst.Manifest.Has("pull") {
+		return inst, info, fmt.Errorf("%w: %s", ErrCannot, inst.Manifest.Name)
 	}
 	if err := s.reg.Call(ctx, s.plugins, inst, protocol.MethodTargetDescribe, nil, &info); err != nil {
 		return inst, info, err
@@ -194,6 +195,16 @@ func (s *Service) describe(ctx context.Context, instanceID int64) (pluginhost.In
 	}
 	info.Pull = info.Pull && inst.Manifest.Has("pull")
 	return inst, info, nil
+}
+
+// describePush is describe for a target the library's copy is sent to, so
+// not one that only follows site sources.
+func (s *Service) describePush(ctx context.Context, instanceID int64) (pluginhost.Instance, protocol.TargetInfo, error) {
+	inst, info, err := s.describe(ctx, instanceID)
+	if err == nil && !inst.Manifest.Has("push") {
+		err = fmt.Errorf("%w: %s only follows site sources", ErrCannot, inst.Manifest.Name)
+	}
+	return inst, info, err
 }
 
 // rendered is a card or lorebook as one target gets it.

@@ -1,10 +1,16 @@
 package targets
 
 import (
+	"encoding/json"
+	"errors"
+	"maps"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/davidgibbons/innkeeper/internal/db"
 	"github.com/davidgibbons/innkeeper/internal/library"
+	"github.com/davidgibbons/innkeeper/internal/plugins"
 )
 
 func TestPullOnlyBindingsMayShareAnItem(t *testing.T) {
@@ -37,5 +43,68 @@ func TestAPullOnlyBindingIsNeverAhead(t *testing.T) {
 	e.update(e.card, func(ed *library.Edit) { ed.Data = setField(ed.Data, "description", "A dwarf smith, retired.") })
 	if got := e.status(e.card); got != "in_sync" {
 		t.Fatalf("status = %s, want in_sync", got)
+	}
+}
+
+// addUpstream creates an instance of the pull-only fake. It keeps each site
+// page as <updir>/fake:<ref>.json, and config adds to its settings.
+func (e *env) addUpstream(config map[string]any) {
+	e.t.Helper()
+	e.updir = e.t.TempDir()
+	cfg := map[string]any{"dir": e.updir, "fields": []string{"name", "description", "first_mes"}, "lorebooks": "standalone"}
+	maps.Copy(cfg, config)
+	id, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: "upstream", Name: "Sites", Config: cfg})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	e.up = id
+}
+
+// publish puts a card's page on the fake site as its author last saved it.
+// avatar is an image file, or empty.
+func (e *env) publish(ref string, data map[string]any, avatar string) {
+	e.t.Helper()
+	item := map[string]any{"spec": "chara_card_v3", "spec_version": "3.0", "data": data}
+	if avatar != "" {
+		item["avatar"] = avatar
+	}
+	e.writeSite(ref, item)
+}
+
+func (e *env) writeSite(ref string, item map[string]any) {
+	e.t.Helper()
+	raw, _ := json.Marshal(item)
+	if err := os.WriteFile(filepath.Join(e.updir, "fake:"+ref+".json"), raw, 0o644); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+// imported creates a card as an import plugin would, with the fake source ref.
+func (e *env) imported(ref string, data map[string]any) int64 {
+	e.t.Helper()
+	raw, _ := json.Marshal(data)
+	c, _, err := e.lib.Cards.CreateFromName(e.ctx, data["name"].(string), "upload", library.Edit{Data: raw, Source: "plugin:upstream"})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	if _, err := e.lib.Cards.AddSource(e.ctx, c.ID, library.Source{Kind: "fake", Ref: ref}); err != nil {
+		e.t.Fatal(err)
+	}
+	return c.ID
+}
+
+func TestPushRefusesAPullOnlyTarget(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	if _, err := e.s.Push(e.ctx, library.Card, e.up, e.card, false); !errors.Is(err, ErrCannot) {
+		t.Fatalf("push = %v, want ErrCannot", err)
+	}
+}
+
+func TestAPullOnlyTargetCanBeRead(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	if items, err := e.s.Items(e.ctx, library.Card, e.up); err != nil || len(items) != 0 {
+		t.Fatalf("items = %+v, %v", items, err)
 	}
 }

@@ -33,7 +33,7 @@ func (s *Service) Preview(ctx context.Context, lk *library.Kind, instanceID, id 
 
 // compare is preview without Confirm.
 func (s *Service) compare(ctx context.Context, k kind, instanceID, id int64) (Preview, error) {
-	inst, info, err := s.describe(ctx, instanceID)
+	inst, info, err := s.describePush(ctx, instanceID)
 	if err != nil {
 		return Preview{}, err
 	}

@@ -127,7 +127,7 @@ func lorebookCheck(k kind, inst pluginhost.Instance, info protocol.TargetInfo) e
 
 // CheckLorebookPush fails with ErrCannot if the target can't take lorebooks on their own.
 func (s *Service) CheckLorebookPush(ctx context.Context, instanceID int64) error {
-	inst, info, err := s.describe(ctx, instanceID)
+	inst, info, err := s.describePush(ctx, instanceID)
 	if err != nil {
 		return err
 	}

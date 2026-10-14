@@ -45,6 +45,9 @@ type env struct {
 	// dir is where the fake app keeps its cards.
 	dir  string
 	card int64
+	// up is the pull-only fake's instance, once addUpstream made one; updir is where it keeps the site's pages.
+	up    int64
+	updir string
 }
 
 // setup returns a Service with one fake target instance, set up by config
@@ -67,7 +70,11 @@ func setup(t *testing.T, config map[string]any) *env {
 	sites := *m
 	sites.Name, sites.Capabilities = "sites", []string{"sites"}
 	sites.Command = []string{m.Command[0], "-caps=sites", "-name=sites"}
-	reg := plugins.New(pool, map[string]*protocol.Manifest{"fake": m, "sites": &sites}, store, box)
+	// upstream is the fake as a pull-only plugin that follows fake sources; addUpstream gives it an instance.
+	upstream := *m
+	upstream.Name, upstream.Capabilities, upstream.SourceKinds = "upstream", []string{"pull"}, []string{"fake"}
+	upstream.Command = []string{m.Command[0], "-caps=pull", "-name=upstream"}
+	reg := plugins.New(pool, map[string]*protocol.Manifest{"fake": m, "sites": &sites, "upstream": &upstream}, store, box)
 	mgr := pluginhost.NewManager(noCore, time.Minute, quiet)
 	t.Cleanup(mgr.Close)
 	e := &env{t: t, ctx: ctx, pool: pool, lib: lib, reg: reg, s: New(pool, lib, reg, mgr, quiet), dir: t.TempDir()}

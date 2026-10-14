@@ -43,7 +43,7 @@ var errAlreadyPushed = errors.New("already pushed")
 // if the entity was pushed since expect. key is the put key for a create; a
 // re-run of the same push must pass the same key.
 func (s *Service) push(ctx context.Context, k kind, instanceID, id int64, newCopy bool, key string, expect *pushExpect) (Binding, error) {
-	inst, info, err := s.describe(ctx, instanceID)
+	inst, info, err := s.describePush(ctx, instanceID)
 	if err != nil {
 		return Binding{}, err
 	}

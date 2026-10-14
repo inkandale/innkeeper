@@ -20,34 +20,85 @@
 }
 
 .facet-section h2 {
+  margin: calc(var(--space) * 1.5) 0 calc(var(--space) * 0.5);
+}
+
+.facet-head {
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0 var(--space);
   font-size: 0.85em;
   text-transform: uppercase;
   color: var(--text-muted);
-  margin: calc(var(--space) * 1.5) var(--space) calc(var(--space) * 0.5);
+  text-align: left;
+  cursor: pointer;
+}
+
+.facet-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 .facet {
   display: flex;
-  justify-content: space-between;
-  width: 100%;
+  align-items: center;
+  border-radius: calc(var(--radius) * 0.5);
+}
+
+.facet:hover,
+.facet:focus-within {
+  background: var(--surface-2);
+}
+
+.facet-pick {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--space) * 0.5);
+  flex: 1;
+  min-width: 0;
   background: none;
   border: none;
-  border-radius: calc(var(--radius) * 0.5);
   padding: calc(var(--space) * 0.25 * var(--density)) var(--space);
+  color: inherit;
   cursor: pointer;
   text-align: left;
 }
 
-.facet:hover {
-  background: var(--surface-2);
+.facet-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.facet .badge {
+  flex: none;
+  box-shadow: none;
+}
+
+/* The row's own actions show on hover and keyboard focus; visibility keeps them out of the tab order until then. */
+.facet-act {
+  visibility: hidden;
+  background: none;
+  border: none;
+  padding: 0 calc(var(--space) * 0.5);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.facet:hover .facet-act,
+.facet:focus-within .facet-act {
+  visibility: visible;
 }
 
 .facet.included {
   color: var(--accent);
 }
 
-.facet.excluded {
-  color: var(--danger);
+.facet.excluded .facet-label {
+  color: var(--drift);
   text-decoration: line-through;
 }
 

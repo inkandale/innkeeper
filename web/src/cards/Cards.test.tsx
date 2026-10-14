@@ -37,6 +37,7 @@ let searches: unknown[];
 let posts: { path: string; body: unknown }[];
 let previews: unknown[];
 beforeEach(() => {
+  localStorage.clear();
   searches = [];
   posts = [];
   previews = [];
@@ -89,7 +90,7 @@ function renderCards(entry: string) {
 test("the URL becomes the search, and hits become tiles", async () => {
   const { container } = renderCards("/cards?f=tag:fantasy&page=2");
   expect(await screen.findByText("Brakka")).toBeInTheDocument();
-  expect(searches[0]).toMatchObject({ filter: { and: [{ tag: "fantasy" }] }, page: { size: 48, number: 2 } });
+  expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ tag: "fantasy" }] }, page: { size: 48, number: 2 } }));
   expect(screen.getByText("+1")).toBeInTheDocument();
   expect(screen.getByTitle("Lumiverse: not pushed")).toBeInTheDocument();
   expect(screen.getByText("49 cards")).toBeInTheDocument();
@@ -99,10 +100,10 @@ test("the URL becomes the search, and hits become tiles", async () => {
 test("a facet click filters and shift-click excludes", async () => {
   const { router } = renderCards("/cards?page=3");
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: /pirate/ }));
+  await user.click(await screen.findByRole("button", { name: /^pirate/ }));
   expect(router.state.location.search).toBe("?f=tag%3Apirate");
   await user.keyboard("{Shift>}");
-  await user.click(screen.getByRole("button", { name: /fantasy/ }));
+  await user.click(screen.getByRole("button", { name: /^fantasy/ }));
   await user.keyboard("{/Shift}");
   expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["tag:pirate", "-tag:fantasy"]);
 });
@@ -139,6 +140,51 @@ test("an active facet is pressed", async () => {
   renderCards("/cards?f=tag:pirate");
   expect(await screen.findByRole("button", { name: /^pirate/ })).toHaveAttribute("aria-pressed", "true");
   expect(screen.getByRole("button", { name: /^fantasy/ })).toHaveAttribute("aria-pressed", "false");
+});
+
+test("only keeps one value in its section", async () => {
+  const { router } = renderCards("/cards?f=tag:fantasy&f=source:chub");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Only pirate" }));
+  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["source:chub", "tag:pirate"]);
+});
+
+test("the exclude button excludes a value", async () => {
+  const { router } = renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Exclude pirate" }));
+  expect(router.state.location.search).toBe("?f=-tag%3Apirate");
+});
+
+test("a section's counts leave out its own selections", async () => {
+  renderCards("/cards?f=tag:fantasy&f=source:chub");
+  await screen.findByRole("button", { name: /^pirate/ });
+  expect(searches).toContainEqual({ filter: { and: [{ source: "chub" }] }, facets: ["tags"], page: { size: 1 } });
+  expect(searches).toContainEqual({
+    filter: { and: [{ target_state: { states: ["ahead"] } }, { tag: "fantasy" }, { source: "chub" }] },
+    page: { size: 1 },
+  });
+});
+
+test("target rows name the app and state rows show the status dot", async () => {
+  const { container } = renderCards("/cards");
+  expect(await screen.findByRole("button", { name: /^Lumiverse/ })).toBeInTheDocument();
+  const ahead = await screen.findByRole("button", { name: /^not pushed/ });
+  expect(ahead.querySelector(".badge.ahead")).not.toBeNull();
+  expect(container.querySelector(".facets")).toHaveTextContent("Target");
+});
+
+test("chips name targets and states", async () => {
+  renderCards("/cards?f=target:2&f=state:ahead");
+  expect(await screen.findByRole("button", { name: "Remove target: Lumiverse" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Remove state: not pushed" })).toBeInTheDocument();
+});
+
+test("the main search asks for no facets", async () => {
+  renderCards("/cards");
+  await screen.findByText("Brakka");
+  const main = searches.find((s) => (s as { page?: { size?: number } }).page?.size === 48);
+  expect(main).not.toHaveProperty("facets");
 });
 
 test("a page past the end offers the last page", async () => {
@@ -247,7 +293,7 @@ test("a facet click clears the selection, and paging keeps it", async () => {
   await user.click(screen.getByRole("button", { name: "2" }));
   expect(router.state.location.search).toBe("?page=2");
   expect(screen.getByText("1 selected")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: /pirate/ }));
+  await user.click(screen.getByRole("button", { name: /^pirate/ }));
   expect(screen.getByRole("searchbox")).toBeInTheDocument();
   expect(screen.getByRole("checkbox", { name: "Select Carrow" })).not.toBeChecked();
 });
@@ -276,7 +322,7 @@ test("going back to a search doesn't bring its selection back", async () => {
   renderCards("/cards");
   const user = userEvent.setup();
   await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
-  await user.click(screen.getByRole("button", { name: /pirate/ }));
+  await user.click(screen.getByRole("button", { name: /^pirate/ }));
   await user.click(screen.getByRole("button", { name: "Remove tag: pirate" }));
   expect(screen.getByRole("checkbox", { name: "Select Carrow" })).not.toBeChecked();
   expect(screen.queryByText("1 selected")).not.toBeInTheDocument();

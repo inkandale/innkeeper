@@ -110,14 +110,13 @@ export function toSearch(q: CardQuery): Search {
     sort: q.sort,
     fields: ["name", "description", "avatar"],
     include: ["tags", "lorebooks", "targets"],
-    facets: ["tags", "collections", "targets", "sources"],
     page: { size: q.size, number: q.page },
   };
 }
 
 /** toLorebookSearch is the POST /api/lorebooks/search body for the state. */
 export function toLorebookSearch(q: CardQuery): Search {
-  return { ...toSearch(q), fields: ["name", "description"], include: ["cards", "targets"], facets: ["targets", "sources"] };
+  return { ...toSearch(q), fields: ["name", "description"], include: ["cards", "targets"] };
 }
 
 const facetOf = { target: "targets", tag: "tags", source: "sources", collection: "collections" } as const;

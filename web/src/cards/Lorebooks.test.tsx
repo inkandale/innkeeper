@@ -76,11 +76,12 @@ test("lists lorebooks with entries, linked cards, and sync", async () => {
   expect(screen.getByText("1 lorebook")).toBeInTheDocument();
   expect(screen.getByText("2 entries")).toBeInTheDocument();
   expect(await screen.findByRole("link", { name: "Brakka" })).toHaveAttribute("href", "/cards/7");
-  expect(searches[0]).toMatchObject({ path: "/api/lorebooks/search", body: { include: ["cards", "targets"], facets: ["targets", "sources"] } });
+  expect(searches).toContainEqual(expect.objectContaining({ path: "/api/lorebooks/search", body: expect.objectContaining({ include: ["cards", "targets"] }) }));
+  expect(searches).toContainEqual({ path: "/api/lorebooks/search", body: { facets: ["sources"], page: { size: 1 } } });
   expect(searches).toContainEqual({ path: "/api/cards/search", body: { filter: { ids: [7] }, fields: ["name", "avatar"], page: { size: 500 } } });
   expect(screen.getByRole("searchbox")).toHaveAttribute("placeholder", "Search lorebooks");
   expect(screen.queryByRole("button", { name: "List view" })).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /chub/ })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: /^chub/ })).toBeInTheDocument();
 });
 
 test("bulk archive and push send kind lorebook", async () => {

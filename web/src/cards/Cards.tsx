@@ -85,7 +85,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
 
   return (
     <div className={facetsOpen ? "cards" : "cards no-facets"}>
-      {facetsOpen && <Facets facets={res.data?.facets} names={names} q={q} onToggle={(t) => go(toggleTerm(q, t))} />}
+      {facetsOpen && <Facets kind={kind} q={q} names={names} onChange={go} />}
       {picking ? (
         <SelectionBar
           count={sel.ids.length}

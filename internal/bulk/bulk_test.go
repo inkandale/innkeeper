@@ -2,6 +2,7 @@ package bulk
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"slices"
@@ -79,7 +80,9 @@ func TestTagAndCollect(t *testing.T) {
 	lib, q, ids := setup(t, func(lib *library.Library) map[string]jobs.Handler {
 		return map[string]jobs.Handler{TagKind: Tag(lib), CollectKind: Collect(lib)}
 	}, "a", "b")
-	if err := lib.SetCardTags(ctx, ids[0], []string{"old", "keep"}); err != nil {
+	head, _ := lib.Cards.Get(ctx, ids[0])
+	if _, err := lib.Cards.Update(ctx, ids[0], head.HeadRevisionID,
+		library.Edit{Data: []byte(`{"name": "x", "tags": ["old", "keep"]}`), Source: "ui"}); err != nil {
 		t.Fatal(err)
 	}
 	col, err := lib.CreateCollection(ctx, "Fantasy", "")
@@ -93,8 +96,11 @@ func TestTagAndCollect(t *testing.T) {
 	}
 	wait(t, q, p.ID)
 	for i, want := range [][]string{{"keep", "new"}, {"new"}} {
-		if got, _ := lib.CardTags(ctx, ids[i]); !slices.Equal(got, want) {
-			t.Errorf("card %d tags = %v, want %v", ids[i], got, want)
+		c, _ := lib.Cards.Get(ctx, ids[i])
+		rev, _ := lib.Cards.Revision(ctx, c.HeadRevisionID)
+		var data struct{ Tags []string }
+		if err := json.Unmarshal(rev.Data, &data); err != nil || !slices.Equal(data.Tags, want) {
+			t.Errorf("card %d tags = %v, want %v (%v)", ids[i], data.Tags, want, err)
 		}
 	}
 

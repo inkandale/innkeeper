@@ -2,11 +2,13 @@ package library
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -153,22 +155,80 @@ func TestCollectionAvatars(t *testing.T) {
 	}
 }
 
-func TestEditCardTags(t *testing.T) {
+func putBlob(t *testing.T, lib *Library, content string) string {
+	t.Helper()
+	b, err := lib.PutBlob(context.Background(), strings.NewReader(content))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b.SHA256
+}
+
+// headTags returns the tags in a card's head revision data.
+func headTags(t *testing.T, lib *Library, id int64) []string {
+	t.Helper()
+	ctx := context.Background()
+	c, err := lib.Cards.Get(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rev, err := lib.Cards.Revision(ctx, c.HeadRevisionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var data struct{ Tags []string }
+	if err := json.Unmarshal(rev.Data, &data); err != nil {
+		t.Fatal(err)
+	}
+	return data.Tags
+}
+
+func TestEditCardTagsAddsARevision(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
-	id, _ := newCard(t, lib, "brakka", `{"name": "Brakka"}`)
-	if err := lib.SetCardTags(ctx, id, []string{"Dwarf", "smith"}); err != nil {
+	avatar := putBlob(t, lib, "avatar")
+	c, _, err := lib.Cards.Create(ctx, "brakka", "upload",
+		Edit{Data: json.RawMessage(`{"name": "Brakka", "tags": ["Dwarf", "smith"]}`), AvatarBlob: avatar, Source: "ui"})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := lib.EditCardTags(ctx, id, []string{" grumpy ", "dwarf"}, []string{"SMITH", "absent"}); err != nil {
+	if err := lib.EditCardTags(ctx, c.ID, []string{" grumpy ", "dwarf"}, []string{"SMITH", "absent"}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := lib.CardTags(ctx, id)
-	if err != nil || !slices.Equal(got, []string{"Dwarf", "grumpy"}) {
-		t.Fatalf("tags = %v, %v", got, err)
+	if got := headTags(t, lib, c.ID); !slices.Equal(got, []string{"Dwarf", "grumpy"}) {
+		t.Fatalf("tags = %v", got)
 	}
-	if err := lib.EditCardTags(ctx, 99999, []string{"x"}, nil); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("missing card: %v", err)
+	head, _ := lib.Cards.Get(ctx, c.ID)
+	rev, _ := lib.Cards.Revision(ctx, head.HeadRevisionID)
+	if rev.AvatarBlob == nil || *rev.AvatarBlob != avatar || rev.Message != "Edit tags" {
+		t.Fatalf("revision = %+v", rev)
+	}
+}
+
+func TestEditCardTagsWithNoChangeAddsNoRevision(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	id, first := newCard(t, lib, "brakka", `{"name": "Brakka", "tags": ["dwarf"]}`)
+	if err := lib.EditCardTags(ctx, id, []string{"DWARF"}, []string{"absent"}); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := lib.Cards.Get(ctx, id); c.HeadRevisionID != first {
+		t.Fatalf("head = %d, want %d", c.HeadRevisionID, first)
+	}
+}
+
+func TestEditCardTagsOnMissingCard(t *testing.T) {
+	lib := newLibrary(t)
+	if err := lib.EditCardTags(context.Background(), 99999, []string{"x"}, nil); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestEditCardTagsRejectsNonListTags(t *testing.T) {
+	lib := newLibrary(t)
+	id, _ := newCard(t, lib, "brakka", `{"name": "Brakka", "tags": "dwarf"}`)
+	if err := lib.EditCardTags(context.Background(), id, []string{"x"}, nil); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("err = %v", err)
 	}
 }
 

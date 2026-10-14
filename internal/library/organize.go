@@ -2,7 +2,9 @@ package library
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -47,31 +49,64 @@ func (l *Library) SetCardTags(ctx context.Context, cardID int64, names []string)
 	return tx.Commit(ctx)
 }
 
-// EditCardTags adds and removes tags on a card and keeps the rest. Names
-// match as in SetCardTags.
+// EditCardTags adds and removes names in a card's data.tags as a new
+// revision. Names are trimmed and match case-insensitively; an edit that
+// changes nothing adds no revision.
 func (l *Library) EditCardTags(ctx context.Context, cardID int64, add, remove []string) error {
 	add, remove = cleanTags(add), cleanTags(remove)
-	tx, err := l.pool.Begin(ctx)
-	if err != nil {
+	return pgx.BeginFunc(ctx, l.pool, func(tx pgx.Tx) error {
+		var head int64
+		if err := tx.QueryRow(ctx, `SELECT head_revision_id FROM card WHERE id = $1 FOR UPDATE`, cardID).Scan(&head); err != nil {
+			return mapErr(err)
+		}
+		rev, err := scanRevision(tx.QueryRow(ctx, `SELECT `+l.Cards.revCols()+` FROM card_revision WHERE id = $1`, head))
+		if err != nil {
+			return err
+		}
+		var data map[string]json.RawMessage
+		if err := json.Unmarshal(rev.Data, &data); err != nil {
+			return fmt.Errorf("card %d data: %w", cardID, err)
+		}
+		var old []string
+		if raw, ok := data["tags"]; ok {
+			if err := json.Unmarshal(raw, &old); err != nil {
+				return fmt.Errorf("%w: card %d tags aren't a list of strings", ErrInvalid, cardID)
+			}
+		}
+		tags := editTags(old, add, remove)
+		if slices.Equal(tags, old) {
+			return nil
+		}
+		if data["tags"], err = json.Marshal(tags); err != nil {
+			return err
+		}
+		body, err := json.Marshal(data)
+		if err != nil {
+			return err
+		}
+		e := Edit{Data: body, Overrides: rev.Overrides, Message: "Edit tags", Source: "ui"}
+		if rev.AvatarBlob != nil {
+			e.AvatarBlob = *rev.AvatarBlob
+		}
+		_, err = l.Cards.UpdateTx(ctx, tx, cardID, head, e)
 		return err
+	})
+}
+
+// editTags drops remove from tags, then appends each of add not already
+// there. Matching ignores case.
+func editTags(tags, add, remove []string) []string {
+	out := slices.DeleteFunc(slices.Clone(tags), func(t string) bool { return containsFold(remove, t) })
+	for _, a := range add {
+		if !containsFold(out, a) {
+			out = append(out, a)
+		}
 	}
-	defer tx.Rollback(ctx)
-	if _, err := tx.Exec(ctx, `INSERT INTO tag (name)
-		SELECT DISTINCT ON (lower(n)) n FROM unnest($1::text[]) n
-		ON CONFLICT (lower(name)) DO NOTHING`, add); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx, `INSERT INTO card_tag (card_id, tag_id)
-		SELECT $1, id FROM tag WHERE lower(name) IN (SELECT lower(n) FROM unnest($2::text[]) n)
-		ON CONFLICT DO NOTHING`, cardID, add); err != nil {
-		return mapErr(err)
-	}
-	if _, err := tx.Exec(ctx, `DELETE FROM card_tag WHERE card_id = $1 AND tag_id IN
-		(SELECT id FROM tag WHERE lower(name) IN (SELECT lower(n) FROM unnest($2::text[]) n))`,
-		cardID, remove); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
+	return out
+}
+
+func containsFold(list []string, s string) bool {
+	return slices.ContainsFunc(list, func(x string) bool { return strings.EqualFold(x, s) })
 }
 
 // CardTags returns a card's tag names in alphabetical order.

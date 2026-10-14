@@ -79,7 +79,7 @@ test("syncs an app that can be read", async () => {
 });
 
 test("uploads files to the card importer", async () => {
-  plugins = [plugin("card-import", ["import"])];
+  plugins = [{ ...plugin("card-import", ["import"]), inputs: ["file"] }];
   instances = [instance(6, "card-import", "card-import")];
   renderStep();
   let release!: () => void;
@@ -101,7 +101,7 @@ test("uploads files to the card importer", async () => {
 });
 
 test("imports a page URL with the URL importer", async () => {
-  plugins = [plugin("url-import", ["import"])];
+  plugins = [{ ...plugin("url-import", ["import"]), inputs: ["url"] }];
   instances = [instance(7, "url-import", "url-import")];
   renderStep();
   await userEvent.type(await screen.findByLabelText("Import from a page URL"), "https://chub.ai/characters/u/brakka");
@@ -132,7 +132,7 @@ test("any importer offers the inputs its manifest declares", async () => {
 test("shows a page URL import while it starts and blocks a second", async () => {
   let release!: () => void;
   importGate = new Promise((r) => (release = r));
-  plugins = [plugin("url-import", ["import"])];
+  plugins = [{ ...plugin("url-import", ["import"]), inputs: ["url"] }];
   instances = [instance(7, "url-import", "url-import")];
   renderStep();
   await userEvent.type(await screen.findByLabelText("Import from a page URL"), "https://chub.ai/characters/u/brakka");

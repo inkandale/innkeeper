@@ -48,10 +48,7 @@ func checkCatalog(ctx context.Context, p *pluginhost.Process, tmp string) []Resu
 	}
 	var first *protocol.CatalogItem
 	var sourceless bool
-	checks := []struct {
-		name string
-		run  func(context.Context) error
-	}{
+	checks := []check{
 		{catalogPagesName, func(ctx context.Context) (err error) {
 			first, sourceless, err = checkCatalogPages(ctx, p, info)
 			return err
@@ -61,19 +58,9 @@ func checkCatalog(ctx context.Context, p *pluginhost.Process, tmp string) []Resu
 		{catalogGetName, func(ctx context.Context) error { return checkCatalogGet(ctx, p, first, tmp) }},
 	}
 	if info.Similar {
-		checks = append(checks, struct {
-			name string
-			run  func(context.Context) error
-		}{catalogSimilarName, func(ctx context.Context) error { return checkCatalogSimilar(ctx, p, info, first, sourceless) }})
+		checks = append(checks, check{catalogSimilarName, func(ctx context.Context) error { return checkCatalogSimilar(ctx, p, info, first, sourceless) }})
 	}
-	for _, c := range checks {
-		err := c.run(ctx)
-		results = append(results, Result{c.name, err})
-		if errors.Is(err, protocol.ErrClosed) || !p.Alive() {
-			break
-		}
-	}
-	return results
+	return append(results, runChecks(ctx, p, checks)...)
 }
 
 // answered reports whether err is a reply other than -32601. Without a
@@ -180,10 +167,7 @@ func checkCatalogGet(ctx context.Context, p *pluginhost.Process, it *protocol.Ca
 	if res.Avatar == "" {
 		return nil
 	}
-	if !inside(res.Avatar, tmp) {
-		return fmt.Errorf("avatar %q is not directly inside blob_tmp (%s)", res.Avatar, tmp)
-	}
-	if err := plainFile(res.Avatar); err != nil {
+	if err := checkTmpFile(res.Avatar, tmp); err != nil {
 		return fmt.Errorf("avatar: %w", err)
 	}
 	return nil

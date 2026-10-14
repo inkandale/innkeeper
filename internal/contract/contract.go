@@ -83,61 +83,32 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 
 	// A plugin that already died would "exit after shutdown" without
 	// handling it.
-	if errors.Is(err, protocol.ErrClosed) || !p.Alive() {
+	if dead(err, p) {
 		return exited(results, p), nil
 	}
 
-	if m.Has("push") {
-		info, descErr := checkDescribe(ctx, p, m)
-		results = append(results, Result{"target.describe returns a valid description", descErr})
-		if errors.Is(descErr, protocol.ErrClosed) || !p.Alive() {
-			return exited(results, p), nil
-		}
-		if descErr == nil && info.Pull {
-			listErr := checkLists(ctx, p)
-			results = append(results, Result{"a pull target answers target.list and target.list_lorebooks", listErr})
-			if errors.Is(listErr, protocol.ErrClosed) || !p.Alive() {
-				return exited(results, p), nil
-			}
-		}
+	suites := []struct {
+		capability string
+		run        func() []Result
+	}{
+		{"push", func() []Result { return checkTarget(ctx, p, m) }},
+		{"auth", func() []Result { return []Result{{"auth.setup returns a form or -32601", checkSetup(ctx, p)}} }},
+		{"mcp", func() []Result { return []Result{{"mcp.tools returns valid tools", checkTools(ctx, p)}} }},
+		{"catalog", func() []Result { return checkCatalog(ctx, p, tmp) }},
+		{"codec", func() []Result {
+			return runChecks(ctx, p, []check{
+				{checkRoundTripName, func(ctx context.Context) error { return checkRoundTrip(ctx, p, m, tmp) }},
+				{checkRejectsName, func(ctx context.Context) error { return checkRejects(ctx, p, tmp) }},
+			})
+		}},
 	}
-
-	if m.Has("auth") {
-		setupErr := checkSetup(ctx, p)
-		results = append(results, Result{"auth.setup returns a form or -32601", setupErr})
-		if errors.Is(setupErr, protocol.ErrClosed) || !p.Alive() {
+	for _, suite := range suites {
+		if !m.Has(suite.capability) {
+			continue
+		}
+		results = append(results, suite.run()...)
+		if dead(results[len(results)-1].Err, p) {
 			return exited(results, p), nil
-		}
-	}
-
-	if m.Has("mcp") {
-		toolsErr := checkTools(ctx, p)
-		results = append(results, Result{"mcp.tools returns valid tools", toolsErr})
-		if errors.Is(toolsErr, protocol.ErrClosed) || !p.Alive() {
-			return exited(results, p), nil
-		}
-	}
-
-	if m.Has("catalog") {
-		results = append(results, checkCatalog(ctx, p, tmp)...)
-		if errors.Is(results[len(results)-1].Err, protocol.ErrClosed) || !p.Alive() {
-			return exited(results, p), nil
-		}
-	}
-	if m.Has("codec") {
-		checks := []struct {
-			name string
-			run  func(context.Context) error
-		}{
-			{checkRoundTripName, func(ctx context.Context) error { return checkRoundTrip(ctx, p, m, tmp) }},
-			{checkRejectsName, func(ctx context.Context) error { return checkRejects(ctx, p, tmp) }},
-		}
-		for _, c := range checks {
-			err := c.run(ctx)
-			results = append(results, Result{c.name, err})
-			if errors.Is(err, protocol.ErrClosed) || !p.Alive() {
-				return exited(results, p), nil
-			}
 		}
 	}
 
@@ -149,6 +120,48 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	}
 	results = append(results, Result{"answers shutdown", err})
 	return append(results, Result{"exits after shutdown", p.Stop()}), nil
+}
+
+// check is one named check against a running plugin.
+type check struct {
+	name string
+	run  func(context.Context) error
+}
+
+// runChecks runs checks in order, stopping if the plugin dies.
+func runChecks(ctx context.Context, p *pluginhost.Process, checks []check) []Result {
+	var results []Result
+	for _, c := range checks {
+		err := c.run(ctx)
+		results = append(results, Result{c.name, err})
+		if dead(err, p) {
+			break
+		}
+	}
+	return results
+}
+
+// dead reports whether the plugin is gone, so no further check can run.
+func dead(err error, p *pluginhost.Process) bool {
+	return errors.Is(err, protocol.ErrClosed) || !p.Alive()
+}
+
+// checkTarget checks target.describe and, for a pull target, its lists.
+func checkTarget(ctx context.Context, p *pluginhost.Process, m *protocol.Manifest) []Result {
+	info, err := checkDescribe(ctx, p, m)
+	results := []Result{{"target.describe returns a valid description", err}}
+	if err != nil || !info.Pull || dead(err, p) {
+		return results
+	}
+	return append(results, Result{"a pull target answers target.list and target.list_lorebooks", checkLists(ctx, p)})
+}
+
+// checkTmpFile reports why path isn't a file the core would take from blob_tmp.
+func checkTmpFile(path, tmp string) error {
+	if !inside(path, tmp) {
+		return fmt.Errorf("%q is not directly inside blob_tmp (%s)", path, tmp)
+	}
+	return plainFile(path)
 }
 
 // exited stops a plugin that died mid-check and fails the shutdown checks.
@@ -304,11 +317,8 @@ func checkRoundTrip(ctx context.Context, p *pluginhost.Process, m *protocol.Mani
 		if err := call(ctx, p, protocol.MethodCodecEncode, protocol.CodecEncodeParams{Card: sampleCard, Format: format, Avatar: avatar}, &enc); err != nil {
 			return fmt.Errorf("encode %s: %w", format, err)
 		}
-		if !inside(enc.Path, tmp) {
-			return fmt.Errorf("encode %s: path %q is not directly inside blob_tmp (%s)", format, enc.Path, tmp)
-		}
-		if err := plainFile(enc.Path); err != nil {
-			return fmt.Errorf("encode %s: %w", format, err)
+		if err := checkTmpFile(enc.Path, tmp); err != nil {
+			return fmt.Errorf("encode %s: path: %w", format, err)
 		}
 		if !protocol.ValidExtension(enc.Extension) {
 			return fmt.Errorf("encode %s: extension %q must be 1 to 10 lowercase letters and digits", format, enc.Extension)
@@ -326,11 +336,8 @@ func checkRoundTrip(ctx context.Context, p *pluginhost.Process, m *protocol.Mani
 		if err := json.Unmarshal(dec.Card, &c); err != nil || c.Spec != "chara_card_v3" || c.Data.Name != "Contract Check" {
 			return fmt.Errorf("decode %s: got %s, want a chara_card_v3 card named Contract Check", format, dec.Card)
 		}
-		if dec.Avatar != "" && !inside(dec.Avatar, tmp) {
-			return fmt.Errorf("decode %s: avatar %q is not directly inside blob_tmp (%s)", format, dec.Avatar, tmp)
-		}
 		if dec.Avatar != "" {
-			if err := plainFile(dec.Avatar); err != nil {
+			if err := checkTmpFile(dec.Avatar, tmp); err != nil {
 				return fmt.Errorf("decode %s: avatar: %w", format, err)
 			}
 		}

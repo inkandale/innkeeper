@@ -405,3 +405,20 @@ func TestSearchTagFacetCountsEveryTagOncePerCard(t *testing.T) {
 		t.Fatalf("tags = %+v", got.Facets.Tags)
 	}
 }
+
+func TestSearchIgnoresNonStringTags(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	newCard(t, lib, "n", `{"name": "N", "tags": ["fantasy", null, 3]}`)
+	tags, err := lib.Tags(ctx)
+	if err != nil || len(tags) != 1 || tags[0].Name != "fantasy" {
+		t.Fatalf("Tags = %v, %v", tags, err)
+	}
+	got, err := lib.Search(ctx, Card, Query{Facets: []string{"tags"}, Include: []string{"tags"}})
+	if err != nil || len(got.Facets.Tags) != 1 || got.Facets.Tags[0].Name != "fantasy" {
+		t.Fatalf("facet = %+v, %v", got.Facets, err)
+	}
+	if !slices.Equal(got.Hits[0].Tags, []string{"fantasy"}) {
+		t.Fatalf("include tags = %v", got.Hits[0].Tags)
+	}
+}

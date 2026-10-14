@@ -40,6 +40,10 @@ func TestTags(t *testing.T) {
 	ctx := context.Background()
 	newCard(t, lib, "a", `{"name": "A", "tags": ["fantasy", "Dwarf"]}`)
 	newCard(t, lib, "b", `{"name": "B", "tags": ["fantasy"]}`)
+	retired, _ := newCard(t, lib, "r", `{"name": "R", "tags": ["retired"]}`)
+	if err := lib.Cards.SetArchived(ctx, retired, true); err != nil {
+		t.Fatal(err)
+	}
 	got, err := lib.Tags(ctx)
 	if err != nil {
 		t.Fatal(err)

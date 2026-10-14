@@ -199,8 +199,8 @@ type TagCount struct {
 // Tags returns every tag on an active card with its card count,
 // alphabetically. Spellings that differ only in case count as one.
 func (l *Library) Tags(ctx context.Context) ([]TagCount, error) {
-	rows, err := l.pool.Query(ctx, `SELECT min(t), count(DISTINCT c.id)::int FROM `+from(Card)+`, `+tagsOf+` t
-		WHERE c.archived_at IS NULL GROUP BY lower(t) ORDER BY lower(t)`)
+	rows, err := l.pool.Query(ctx, `SELECT min(t.t), count(DISTINCT c.id)::int FROM `+from(Card)+`, `+tagsOf+`
+		WHERE c.archived_at IS NULL GROUP BY lower(t.t) ORDER BY lower(t.t)`)
 	if err != nil {
 		return nil, err
 	}

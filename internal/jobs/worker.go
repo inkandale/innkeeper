@@ -110,6 +110,13 @@ func (w *Worker) Run(ctx context.Context) error {
 
 	// Listen before the first claim, so no job queued after it is missed.
 	conn, err := w.subscribe(ctx)
+	if ctx.Err() != nil {
+		// Stopped during startup: a clean shutdown, same as stopping later.
+		if conn != nil {
+			conn.Close(context.Background())
+		}
+		return nil
+	}
 	if err != nil {
 		return err
 	}

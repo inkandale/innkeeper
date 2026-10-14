@@ -86,6 +86,15 @@ func TestWorkerRunsQueuedJob(t *testing.T) {
 	}
 }
 
+func TestWorkerStoppedBeforeListeningReturnsNil(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	w := &Worker{Queue: newQueue(t), Log: quiet, Handlers: map[string]Handler{"test": func(context.Context, *Run) error { return nil }}}
+	if err := w.Run(ctx); err != nil {
+		t.Fatalf("run = %v, want nil for a shutdown", err)
+	}
+}
+
 func TestRetryableErrorRequeuesWithBackoff(t *testing.T) {
 	q := newQueue(t)
 	startWorker(t, &Worker{Queue: q, Handlers: map[string]Handler{

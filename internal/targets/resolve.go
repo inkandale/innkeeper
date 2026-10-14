@@ -181,7 +181,7 @@ func (rs *resolver) item(ctx context.Context, k kind, r Resolution) (ResolveResu
 	if r.Action == "import" {
 		id = 0
 	} else if id == 0 {
-		b, err := itemBinding(ctx, rs.tx, k, r.InstanceID, r.RemoteID)
+		b, err := itemBinding(ctx, rs.tx, k, r.InstanceID, r.RemoteID, 0)
 		if err != nil {
 			return res, err
 		}
@@ -226,7 +226,7 @@ func (rs *resolver) item(ctx context.Context, k kind, r Resolution) (ResolveResu
 		// like SillyTavern's favorite star: app state this app keeps.
 		r.Choices, r.Default, r.AcceptedHash = nil, merge.ChooseKeepInApp, ""
 	}
-	bound, err := rs.bind(ctx, k, info, rinfo, it, r, id)
+	bound, err := rs.bind(ctx, k, info, rinfo, it, r, id, inst.Manifest.Has("push"))
 	if r.Action == "import" && errors.Is(err, ErrBound) {
 		// A new card can only clash on the item: a concurrent import bound it first.
 		return res, stale
@@ -349,7 +349,7 @@ func (rs *resolver) importItem(ctx context.Context, k kind, inst pluginhost.Inst
 	r Resolution, it appItem, stale error) (int64, int64, error) {
 	s := rs.s
 	instanceID, remoteID := r.InstanceID, r.RemoteID
-	b, err := itemBinding(ctx, rs.tx, k, instanceID, remoteID)
+	b, err := itemBinding(ctx, rs.tx, k, instanceID, remoteID, 0)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -428,7 +428,7 @@ func (rs *resolver) exactMatch(ctx context.Context, k kind, inst pluginhost.Inst
 // bind binds the app item to the card, taking each hunk from the side its
 // choice names.
 func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.TargetInfo, it appItem, r Resolution,
-	id int64) (ResolveResult, error) {
+	id int64, push bool) (ResolveResult, error) {
 	s := rs.s
 	res := ResolveResult{RemoteID: r.RemoteID, Action: r.Action, CardID: id}
 	choices, takeAppAvatar, err := splitAvatar(k, r.Choices)
@@ -501,7 +501,16 @@ func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.Targe
 		}
 		revisionID, res.RevisionID = rev.ID, rev.ID
 	}
-	bindingID, err := rs.saveBinding(ctx, k, r, id, cb.id, accepted, acceptedHash)
+	// Stored as Check compares it, "" for none, so the next check finds it accepted.
+	var avatar *string
+	if !push {
+		key, err := s.avatarKey(ctx, it.avatar)
+		if err != nil {
+			return res, err
+		}
+		avatar = &key
+	}
+	bindingID, err := rs.saveBinding(ctx, k, r, id, cb.id, accepted, acceptedHash, avatar, push)
 	if err != nil {
 		return res, err
 	}
@@ -572,7 +581,7 @@ func (rs *resolver) head(ctx context.Context, k kind, id int64) (headRow, error)
 // ancestor is the merge's common copy, or nil for none. It returns stale
 // unless the head and the item's binding are the ones r was compared against.
 func (rs *resolver) ancestor(ctx context.Context, k kind, r Resolution, id, headID int64) (json.RawMessage, error) {
-	item, err := itemBinding(ctx, rs.tx, k, r.InstanceID, r.RemoteID)
+	item, err := itemBinding(ctx, rs.tx, k, r.InstanceID, r.RemoteID, id)
 	if err != nil {
 		return nil, err
 	}
@@ -781,19 +790,22 @@ func (rs *resolver) samePush(ctx context.Context, bindingID int64, want lastPush
 }
 
 // saveBinding points the entity's binding, or a new one, at the app item as
-// accepted, and returns its ID. It fails with ErrBound if another binding has the item.
+// accepted, with avatar as the accepted avatar_hash, and returns its ID. push
+// is false for a new binding on a target that only follows site sources. It
+// fails with ErrBound if another binding has the item.
 func (rs *resolver) saveBinding(ctx context.Context, k kind, r Resolution, id, bindingID int64,
-	accepted json.RawMessage, acceptedHash string) (int64, error) {
+	accepted json.RawMessage, acceptedHash string, avatar *string, push bool) (int64, error) {
 	var err error
 	if bindingID != 0 {
 		_, err = rs.tx.Exec(ctx, `UPDATE binding SET remote_id = $2, remote_state = 'unchanged', accepted_data = $3,
-				accepted_hash = $4, seen_data = NULL, checked_at = now(), version = version + 1
-			WHERE id = $1`, bindingID, r.RemoteID, accepted, acceptedHash)
+				accepted_hash = $4, seen_data = NULL, checked_at = now(), version = version + 1,
+				avatar_hash = $5, check_failures = 0, check_error = NULL
+			WHERE id = $1`, bindingID, r.RemoteID, accepted, acceptedHash, avatar)
 	} else {
 		err = rs.tx.QueryRow(ctx, `INSERT INTO binding (instance_id, `+k.FK+`, remote_id, remote_state, accepted_data,
-				accepted_hash, checked_at)
-			VALUES ($1, $2, $3, 'unchanged', $4, $5, now()) RETURNING id`,
-			r.InstanceID, id, r.RemoteID, accepted, acceptedHash).Scan(&bindingID)
+				accepted_hash, checked_at, avatar_hash, push)
+			VALUES ($1, $2, $3, 'unchanged', $4, $5, now(), $6, $7) RETURNING id`,
+			r.InstanceID, id, r.RemoteID, accepted, acceptedHash, avatar, push).Scan(&bindingID)
 	}
 	if db.IsCode(err, db.UniqueViolation) {
 		return 0, ErrBound

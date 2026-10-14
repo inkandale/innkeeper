@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/davidgibbons/innkeeper/internal/library"
+	"github.com/davidgibbons/innkeeper/internal/merge"
 )
 
 // followers maps each pull-only instance to the source kinds it follows. A
@@ -162,4 +163,35 @@ func (s *Service) checkSources(ctx context.Context, only *library.Kind, id int64
 		return p, err
 	}
 	return p, s.checkEach(ctx, ids, &p, report, nil)
+}
+
+// Dismiss accepts the app's copy as it is now, leaving the library as it is.
+// For a followed source, this is "ignore this change": the next change on
+// the site shows again.
+func (s *Service) Dismiss(ctx context.Context, id int64) (Binding, error) {
+	b, err := s.Binding(ctx, id)
+	if err != nil {
+		return Binding{}, err
+	}
+	lk, entity := bindingEntity(b)
+	k := targetKind(lk)
+	// Two-way, so the author's edits to fields the owner never touched are refused too.
+	c, err := s.compareItem(ctx, k, b.InstanceID, b.RemoteID, entity, true)
+	if err != nil {
+		return Binding{}, err
+	}
+	if _, err := s.resolve(ctx, k, Resolution{InstanceID: b.InstanceID, RemoteID: b.RemoteID, AppHash: c.AppHash,
+		BaseRevisionID: c.HeadRevisionID, AcceptedHash: c.AcceptedHash, Action: "bind", CardID: entity, Base: "none",
+		Default: merge.ChooseLibrary}, resolveOpts{bindOnly: true, skipLeftOut: true}); err != nil {
+		return Binding{}, err
+	}
+	return s.Binding(ctx, id)
+}
+
+// bindingEntity is the kind and ID of what b binds.
+func bindingEntity(b Binding) (*library.Kind, int64) {
+	if b.LorebookID != 0 {
+		return library.Lorebook, b.LorebookID
+	}
+	return library.Card, b.CardID
 }

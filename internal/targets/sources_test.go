@@ -13,6 +13,7 @@ import (
 
 	"github.com/davidgibbons/innkeeper/internal/db"
 	"github.com/davidgibbons/innkeeper/internal/library"
+	"github.com/davidgibbons/innkeeper/internal/merge"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 )
 
@@ -422,5 +423,80 @@ func TestChangesTellSourcesFromApps(t *testing.T) {
 	}
 	if a := got[e.card]; a.State != ChangeAhead || !a.Push || a.SourceID != 0 {
 		t.Fatalf("app entry = %+v", a)
+	}
+}
+
+func TestReviewingASharedSourceUsesTheCardsOwnBinding(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	first := e.imported("vyr", vyrCard)
+	second := e.imported("vyr", map[string]any{"name": "Vyr", "description": "A red dragon, older.", "first_mes": "Who wakes me?"})
+	e.publish("vyr", vyrCard, "")
+	e.follow(first)
+	b := e.follow(second)
+	c, err := e.s.CompareItem(e.ctx, library.Card, e.up, b.RemoteID, second)
+	if err != nil || c.Base != "accepted" || c.AcceptedHash != b.LastPush.PushedHash {
+		t.Fatalf("comparison = %+v, %v; want the second card's accepted copy", c, err)
+	}
+}
+
+func TestReviewingASourceUpdateKeepsTheOwnersEdits(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	card := e.imported("vyr", vyrCard)
+	e.update(card, func(ed *library.Edit) { ed.Data = setField(ed.Data, "description", "My red dragon.") })
+	e.publish("vyr", map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Begone."}, "")
+	b := e.follow(card)
+	c, err := e.s.CompareItem(e.ctx, library.Card, e.up, b.RemoteID, card)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.s.Resolve(e.ctx, library.Card, Resolution{InstanceID: e.up, RemoteID: b.RemoteID, AppHash: c.AppHash,
+		BaseRevisionID: c.HeadRevisionID, AcceptedHash: c.AcceptedHash, Action: "bind", CardID: card,
+		Default: merge.ChooseLibrary}); err != nil {
+		t.Fatal(err)
+	}
+	var data map[string]any
+	_ = json.Unmarshal(e.head(card).Data, &data)
+	if data["description"] != "My red dragon." || data["first_mes"] != "Begone." {
+		t.Fatalf("head = %v", data)
+	}
+	if got, _ := e.s.Binding(e.ctx, b.ID); got.RemoteState != remoteUnchanged {
+		t.Fatalf("binding = %+v", got)
+	}
+}
+
+func TestDismissingASourceUpdateKeepsTheLibrary(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	card := e.imported("vyr", vyrCard)
+	e.publish("vyr", map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Begone."}, "")
+	b := e.follow(card)
+	before := e.revisions(card)
+	got, err := e.s.Dismiss(e.ctx, b.ID)
+	if err != nil || got.RemoteState != remoteUnchanged || e.revisions(card) != before {
+		t.Fatalf("dismissed = %+v, %v; revisions %d, want %d", got, err, e.revisions(card), before)
+	}
+	e.publish("vyr", map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Begone, again."}, "")
+	if got := e.follow(card); got.RemoteState != remoteChanged {
+		t.Fatalf("after another change = %+v", got)
+	}
+}
+
+func TestDismissingANewAvatarAcceptsIt(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	card := e.imported("vyr", vyrCard)
+	stripes := patternPNG(t, func(x, _ int) uint8 { return uint8(x / 8 % 2 * 255) })
+	rings := patternPNG(t, func(x, y int) uint8 { return uint8((x-32)*(x-32)+(y-32)*(y-32)) / 128 * 255 })
+	e.publish("vyr", vyrCard, stripes)
+	e.follow(card)
+	e.publish("vyr", vyrCard, rings)
+	b := e.follow(card)
+	if _, err := e.s.Dismiss(e.ctx, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.follow(card); got.RemoteState != remoteUnchanged {
+		t.Fatalf("after dismissing the avatar = %+v", got)
 	}
 }

@@ -32,7 +32,7 @@ func (s *Service) compareItem(ctx context.Context, k kind, instanceID int64, rem
 	if err != nil {
 		return c, err
 	}
-	b, err := itemBinding(ctx, s.pool, k, instanceID, remoteID)
+	b, err := itemBinding(ctx, s.pool, k, instanceID, remoteID, c.CardID)
 	if err != nil {
 		return c, err
 	}
@@ -100,12 +100,13 @@ type queryRower interface {
 }
 
 // itemBinding finds the app item's binding: the live one, else a missing one,
-// since an app can reuse a missing binding's ID.
-func itemBinding(ctx context.Context, q queryRower, k kind, instanceID int64, remoteID string) (boundItem, error) {
+// since an app can reuse a missing binding's ID. Cards that share a followed
+// source each have one, so id, when set, picks the entity's.
+func itemBinding(ctx context.Context, q queryRower, k kind, instanceID int64, remoteID string, id int64) (boundItem, error) {
 	var b boundItem
 	err := q.QueryRow(ctx, `SELECT id, `+k.FK+`, accepted_hash, remote_state, accepted_data FROM binding
 		WHERE instance_id = $1 AND remote_id = $2 AND `+k.FK+` IS NOT NULL
-		ORDER BY remote_state = 'missing', id LIMIT 1`, instanceID, remoteID).
+		ORDER BY `+k.FK+` = $3 DESC, remote_state = 'missing', id LIMIT 1`, instanceID, remoteID, id).
 		Scan(&b.id, &b.entityID, &b.acceptedHash, &b.remoteState, &b.accepted)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return boundItem{}, nil

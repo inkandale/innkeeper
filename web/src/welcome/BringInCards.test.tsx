@@ -117,6 +117,18 @@ test("imports a page URL with the URL importer", async () => {
   expect(screen.queryByText(/Nothing to import from yet/)).not.toBeInTheDocument();
 });
 
+test("any importer offers the inputs its manifest declares", async () => {
+  plugins = [{ ...plugin("site-grabber", ["import"]), inputs: ["file", "url"] }, plugin("mystery", ["import"])];
+  instances = [instance(9, "mystery", "mystery"), instance(8, "site-grabber", "Site grabber")];
+  renderStep();
+  expect(await screen.findByLabelText("Upload files")).toBeInTheDocument();
+  await userEvent.type(screen.getByLabelText("Import from a page URL"), "https://x.test/a");
+  await userEvent.click(screen.getByRole("button", { name: "Import" }));
+  await vi.waitFor(() =>
+    expect(sent).toEqual([{ method: "POST", path: "/api/imports", body: { instance_id: 8, params: { url: "https://x.test/a" } } }]),
+  );
+});
+
 test("shows a page URL import while it starts and blocks a second", async () => {
   let release!: () => void;
   importGate = new Promise((r) => (release = r));

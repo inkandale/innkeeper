@@ -19,6 +19,9 @@ function JobLine({ label, id, to }: { label: string; id: number; to: string }) {
   );
 }
 
+// ponytail: importers released before plugin.toml had inputs; delete once they declare it.
+const legacyInputs: Record<string, string[]> = { "card-import": ["file"], "url-import": ["url"] };
+
 /** Upload is a file or page URL sent to an importer, and its job. */
 type Upload = { key: number; name: string; job?: number; error?: string };
 
@@ -72,8 +75,10 @@ export function BringInCards() {
   if (failed) return <p className="error">{failed.message}</p>;
   if (plugins.isPending || instances.isPending) return null;
   const apps = withCapability(instances.data, plugins.data, "pull");
-  const importer = (instances.data ?? []).find((i) => i.plugin === "card-import");
-  const urlImporter = (instances.data ?? []).find((i) => i.plugin === "url-import");
+  const inputs = new Map((plugins.data ?? []).map((p) => [p.name, p.inputs ?? legacyInputs[p.name] ?? []]));
+  const importers = withCapability(instances.data, plugins.data, "import");
+  const importer = importers.find((i) => inputs.get(i.plugin)?.includes("file"));
+  const urlImporter = importers.find((i) => inputs.get(i.plugin)?.includes("url"));
 
   return (
     <div className="panel">

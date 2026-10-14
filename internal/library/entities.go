@@ -179,16 +179,13 @@ func (s *Entities) Create(ctx context.Context, slug, provenance string, e Edit) 
 	if err != nil {
 		return Entity{}, Revision{}, err
 	}
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return Entity{}, Revision{}, err
-	}
-	defer tx.Rollback(ctx)
-	ent, rev, err := s.create(ctx, tx, slug, provenance, r)
-	if err != nil {
-		return Entity{}, Revision{}, err
-	}
-	return ent, rev, tx.Commit(ctx)
+	var ent Entity
+	var rev Revision
+	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) (err error) {
+		ent, rev, err = s.create(ctx, tx, slug, provenance, r)
+		return err
+	})
+	return ent, rev, err
 }
 
 // create inserts the entity inside a savepoint, so a taken slug leaves tx
@@ -218,16 +215,12 @@ func (s *Entities) create(ctx context.Context, tx pgx.Tx, slug, provenance strin
 // Update adds a revision on top of base. It returns ErrConflict if base is no
 // longer the head.
 func (s *Entities) Update(ctx context.Context, id, base int64, e Edit) (Revision, error) {
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return Revision{}, err
-	}
-	defer tx.Rollback(ctx)
-	rev, err := s.UpdateTx(ctx, tx, id, base, e)
-	if err != nil {
-		return Revision{}, err
-	}
-	return rev, tx.Commit(ctx)
+	var rev Revision
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) (err error) {
+		rev, err = s.UpdateTx(ctx, tx, id, base, e)
+		return err
+	})
+	return rev, err
 }
 
 // UpdateTx is Update inside the caller's transaction, which the caller commits.

@@ -108,20 +108,13 @@ func (s *Entities) Import(ctx context.Context, provenance, name string, e Edit) 
 
 // CreateFromName creates an entity with a free slug made from name.
 func (s *Entities) CreateFromName(ctx context.Context, name, provenance string, e Edit) (Entity, Revision, error) {
-	r, err := s.prepare(e)
-	if err != nil {
-		return Entity{}, Revision{}, err
-	}
-	tx, err := s.pool.Begin(ctx)
-	if err != nil {
-		return Entity{}, Revision{}, err
-	}
-	defer tx.Rollback(ctx)
-	ent, rev, err := s.createFromName(ctx, tx, name, provenance, r)
-	if err != nil {
-		return Entity{}, Revision{}, err
-	}
-	return ent, rev, tx.Commit(ctx)
+	var ent Entity
+	var rev Revision
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) (err error) {
+		ent, rev, err = s.CreateFromNameTx(ctx, tx, name, provenance, e)
+		return err
+	})
+	return ent, rev, err
 }
 
 // CreateFromNameTx is CreateFromName inside the caller's transaction.

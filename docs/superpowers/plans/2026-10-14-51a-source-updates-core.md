@@ -11,8 +11,9 @@
 Pieces:
 - **Pull-only plugin:** declares `pull`, not `push`, and lists the source kinds it follows in a new manifest key, `source_kinds`.
 - **Following sources:** a source-check job binds each live source of a followed kind to that plugin's instance, with `remote_id` `kind:ref`. The binding's accepted copy is the entity's first revision that a plugin imported. The job then checks every such binding.
-- **Bindings:** `push = false` marks these bindings. They are never ahead, may share a `remote_id`, and compare the site's avatar by hash.
-- **Changes queue:** they appear as `update`, `missing`, or `error` entries. Review, "ignore this change" (`Dismiss`), pause, and autosync reuse compare, resolve, and the existing binding flags.
+- **Bindings:** `push = false` marks these bindings. They are never ahead, may share a `remote_id`, and compare the site's avatar by its pixels (`blob.pixel_hash`), so a re-encode isn't an update.
+- **Changes queue:** they appear as `update`, `missing`, or `error` entries, marked `push: false` with their source's ID. Review, "ignore this change" (`Dismiss`), pause, and autosync reuse compare, resolve, and the existing binding flags.
+- **Search and `ink plugin check`:** search's targets leave followed sources out, and the check kit checks a pull-only plugin's target methods.
 
 **Tech Stack:** Go, pgx, PostgreSQL migrations, Huma, MCP Go SDK.
 
@@ -35,11 +36,14 @@ Pieces:
 |---|---|
 | `protocol/manifest.go`, `protocol/manifest_test.go` | `source_kinds` key and its validation |
 | `internal/db/migrations/0022_pull_only_bindings.sql` | New columns, partial unique indexes, `binding_status` never ahead for `NOT push` |
-| `internal/wire/sync.go`, `internal/wire/changes.go` | `Binding` gets `push`, `paused`, `check_failures`, `check_error`. `ChangeUpdate` and `ChangeRow.LorebookID` |
+| `internal/wire/sync.go`, `internal/wire/changes.go` | `Binding` gets `push`, `paused`, `check_failures`, `check_error`. `ChangeUpdate`, `AppChange.Push` and `SourceID`, `ChangeRow.LorebookID` |
+| `internal/library/blobs.go` | `pixelHash` exported as `PixelHash` |
+| `internal/library/search.go`, `internal/targets/filter_test.go` | Search's targets leave out followed sources |
+| `internal/contract/contract.go`, `contract_test.go` | A pull-only plugin's target methods are checked |
 | `internal/targets/targets.go` | `describe` accepts pull-only, `describePush`, binding query columns, `SetPaused`, `stored` columns |
 | `internal/targets/push.go`, `preview.go`, `bind.go` | Call `describePush` |
 | `internal/targets/sources.go` (new) | `followers`, `follow`, `CheckSources`, `CheckEntitySources`, `Dismiss`, `applyUpdate` |
-| `internal/targets/check.go` | Followed bindings: avatar hash, failures, pause. `checkEach` shared with Scan, which skips followed bindings |
+| `internal/targets/check.go` | Followed bindings: avatar by pixel hash (`avatarKey`), failures, pause. `checkEach` shared with Scan, which skips followed bindings |
 | `internal/targets/changes.go` | `update`, `missing`, `error` entries for followed bindings, including lorebook rows |
 | `internal/targets/reconcile_compare.go`, `resolve.go` | `itemBinding` picks the entity's binding. `saveBinding` stores the avatar hash and `push` |
 | `internal/targets/jobs.go`, `internal/targets/wire.go` | `SourceCheckKind`, `RunSourceCheck`, `ChangeUpdate` alias |
@@ -218,7 +222,8 @@ Create `internal/db/migrations/0022_pull_only_bindings.sql`:
 ALTER TABLE binding ADD COLUMN push boolean NOT NULL DEFAULT true,
     -- The owner stopped checking it; checks skip it.
     ADD COLUMN paused boolean NOT NULL DEFAULT false,
-    -- sha256 of the site's avatar as last accepted, for a pull-only binding.
+    -- The site's avatar as last accepted, for a pull-only binding: its
+    -- blob's pixel_hash, so a re-encode isn't a change, else its sha256.
     ADD COLUMN avatar_hash text,
     -- Checks of a pull-only binding that failed in a row, and the last error.
     ADD COLUMN check_failures int NOT NULL DEFAULT 0,
@@ -846,12 +851,13 @@ git commit -m "feat(targets): follow each site source through a pull-only bindin
 ### Task 5: Checking a followed source
 
 **Files:**
-- Modify: `internal/targets/check.go` (`Check`, `record`), `internal/targets/targets.go` (`stored`, `SetPaused`)
+- Modify: `internal/targets/check.go` (`Check`, `record`, `avatarKey`), `internal/targets/targets.go` (`stored`, `SetPaused`)
+- Modify: `internal/library/blobs.go` (`pixelHash` becomes `PixelHash`)
 - Test: `internal/targets/sources_test.go`
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `internal/targets/sources_test.go`, and add `strings` to its imports:
+Append to `internal/targets/sources_test.go`, and add `bytes`, `image/png`, and `strings` to its imports:
 
 ```go
 func TestANewAvatarOnTheSiteIsAnUpdate(t *testing.T) {
@@ -868,6 +874,43 @@ func TestANewAvatarOnTheSiteIsAnUpdate(t *testing.T) {
 	if b := e.follow(card); b.RemoteState != remoteChanged {
 		t.Fatalf("after a new avatar = %+v", b)
 	}
+}
+
+func TestARecodedAvatarIsNotAnUpdate(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	card := e.imported("vyr", vyrCard)
+	stripes := patternPNG(t, func(x, _ int) uint8 { return uint8(x / 8 % 2 * 255) })
+	e.publish("vyr", vyrCard, stripes)
+	e.follow(card)
+	e.publish("vyr", vyrCard, recoded(t, stripes))
+	if b := e.follow(card); b.RemoteState != remoteUnchanged {
+		t.Fatalf("after the same picture, re-encoded = %+v", b)
+	}
+}
+
+// recoded writes the PNG at path again without compression: the same pixels
+// in different bytes.
+func recoded(t *testing.T, path string) string {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	img, err := png.Decode(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if err := (&png.Encoder{CompressionLevel: png.NoCompression}).Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "recoded.png")
+	if err := os.WriteFile(out, buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return out
 }
 
 func TestFailedChecksOfASourceAreCounted(t *testing.T) {
@@ -916,7 +959,7 @@ func TestAPausedSourceIsNotChecked(t *testing.T) {
 
 - [ ] **Step 2: Run them to verify they fail**
 
-Run: `$DB go test ./internal/targets -run 'NewAvatarOnTheSite|FailedChecksOfASource|GoneFromTheSite|PausedSource' -timeout 15m`
+Run: `$DB go test ./internal/targets -run 'NewAvatarOnTheSite|RecodedAvatar|FailedChecksOfASource|GoneFromTheSite|PausedSource' -timeout 15m`
 Expected: FAIL to compile: `e.s.SetPaused undefined`.
 
 - [ ] **Step 3: Read the new columns**
@@ -1011,7 +1054,7 @@ func (s *Service) Check(ctx context.Context, id int64) (Binding, error) {
 }
 
 // fetchFollowed is fetch for a followed source. It also stores the site's
-// avatar as a blob and returns its sha256, since a new avatar is an update too.
+// avatar as a blob and returns its avatarKey, since a new avatar is an update too.
 //
 // ponytail: stores the avatar on every check; unreferenced blobs are
 // collected after a day. Ask the plugin for a hash first if that grows.
@@ -1034,7 +1077,22 @@ func (s *Service) fetchFollowed(ctx context.Context, k kind, inst pluginhost.Ins
 		return data, hash, "", err
 	}
 	blob, err := s.lib.IngestBlob(ctx, got.Avatar)
-	return data, hash, blob.SHA256, err
+	if err != nil {
+		return nil, "", "", err
+	}
+	avatar, err := s.avatarKey(ctx, blob.SHA256)
+	return data, hash, avatar, err
+}
+
+// avatarKey is what a followed source's avatar is compared by: its pixels, so
+// a re-encode or new metadata isn't a change, else its bytes when it isn't an
+// image that decodes. "" for no avatar.
+func (s *Service) avatarKey(ctx context.Context, sha string) (string, error) {
+	if sha == "" {
+		return "", nil
+	}
+	pixels, err := s.lib.PixelHash(ctx, sha)
+	return cmp.Or(pixels, sha), err
 }
 
 // record stores what a check found, unless a push or resolve landed since b
@@ -1063,17 +1121,28 @@ func (s *Service) recordFailure(ctx context.Context, id int64, cause error) erro
 }
 ```
 
-Add `github.com/davidgibbons/innkeeper/internal/pluginhost` to `check.go`'s imports.
+Add `cmp` and `github.com/davidgibbons/innkeeper/internal/pluginhost` to `check.go`'s imports.
 
-- [ ] **Step 5: Run the tests**
+- [ ] **Step 5: Export `PixelHash`**
 
-Run: `$DB go test ./internal/targets -timeout 15m`
-Expected: PASS.
-
-- [ ] **Step 6: Commit**
+`avatarKey` reuses the library's pixel hash, which `SameImage` already computes and backfills for blobs stored before `pixel_hash` existed. In `internal/library/blobs.go`, rename `pixelHash` to `PixelHash`, with its two calls in `SameImage`:
 
 ```bash
-git add internal/targets
+sed -i '' 's/l\.pixelHash(/l.PixelHash(/; s/^func (l \*Library) pixelHash(/func (l *Library) PixelHash(/; s/^\/\/ pixelHash returns/\/\/ PixelHash returns/' internal/library/blobs.go
+grep -n 'ixelHash(' internal/library/blobs.go
+```
+
+Expected: the function and both calls read `PixelHash`.
+
+- [ ] **Step 6: Run the tests**
+
+Run: `$DB go test ./internal/targets ./internal/library -timeout 15m`
+Expected: PASS.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add internal/targets internal/library/blobs.go
 git commit -m "feat(targets): check followed sources' avatars, count failed checks, and skip paused bindings"
 ```
 
@@ -1168,12 +1237,42 @@ func TestChangesListALorebookSourceUpdate(t *testing.T) {
 		t.Fatalf("lorebook entries = %+v", books)
 	}
 }
+
+func TestChangesTellSourcesFromApps(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	card := e.imported("vyr", vyrCard)
+	e.publish("vyr", map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Begone."}, "")
+	e.follow(card)
+	e.push(e.card)
+	e.update(e.card, func(ed *library.Edit) { ed.Data = setField(ed.Data, "description", "A dwarf smith, retired.") })
+	srcs, err := e.lib.Cards.Sources(e.ctx, card)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch, err := e.s.Changes(e.ctx, ChangesFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[int64]AppChange{}
+	for _, r := range ch.Rows {
+		for _, a := range r.Apps {
+			got[r.CardID] = a
+		}
+	}
+	if a := got[card]; a.Push || a.SourceID != srcs[0].ID {
+		t.Fatalf("source entry = %+v, want push false and source %d", a, srcs[0].ID)
+	}
+	if a := got[e.card]; a.State != ChangeAhead || !a.Push || a.SourceID != 0 {
+		t.Fatalf("app entry = %+v", a)
+	}
+}
 ```
 
 - [ ] **Step 2: Run them to verify they fail**
 
-Run: `$DB go test ./internal/targets -run 'TestChanges(ListSource|ShowASource|ListALorebook)' -timeout 15m`
-Expected: FAIL to compile: `ChangeUpdate undefined` and `r.LorebookID undefined`.
+Run: `$DB go test ./internal/targets -run 'TestChanges(ListSource|ShowASource|ListALorebook|TellSources)' -timeout 15m`
+Expected: FAIL to compile: `ChangeUpdate undefined`, `r.LorebookID undefined`, and `a.SourceID undefined`.
 
 - [ ] **Step 3: Add the state and the lorebook row**
 
@@ -1184,7 +1283,17 @@ In `internal/wire/changes.go`, add to the state constants:
 	ChangeUpdate = "update"
 ```
 
-change the `State` tag to `enum:"differs,both_changed,ahead,missing,error,new,update"`, and add to `ChangeRow` after `CardID`:
+change the `State` tag to `enum:"differs,both_changed,ahead,missing,error,new,update"`, add to `AppChange` after `BindingID`:
+
+```go
+	// Push is true for an app's entry and false for a followed site source's,
+	// whose actions differ: it can't be pushed again or unbound.
+	Push bool `json:"push"`
+	// SourceID is a followed source's card_source or lorebook_source ID, for removing it.
+	SourceID int64 `json:"source_id,omitempty"`
+```
+
+and add to `ChangeRow` after `CardID`:
 
 ```go
 	// LorebookID is set instead of CardID for a lorebook that follows a site source.
@@ -1247,28 +1356,31 @@ Replace the `add` closure with:
 	}
 ```
 
+Both existing entries are apps': add `Push: true` to the `AppChange` literal built from a snapshot item, and to the one built from a `binding_status` row.
+
 In the `binding_status` query, add `AND b.push` after `c.archived_at IS NULL`. After that query's `ForEachRow` block, add:
 
 ```go
-	// Followed sources, from their last check. One the owner removed is gone
-	// from the queue before the next check unbinds it.
+	// Followed sources, from their last check. One the owner removed has no
+	// live source row, so it is gone from the queue before the next check unbinds it.
 	fl, err := s.pool.Query(ctx, `SELECT coalesce(b.card_id, 0), coalesce(b.lorebook_id, 0), b.instance_id, b.id, b.remote_id,
-			b.remote_state, coalesce(b.check_error, '')
+			b.remote_state, coalesce(b.check_error, ''), src.id
 		FROM binding b LEFT JOIN card c ON c.id = b.card_id LEFT JOIN lorebook l ON l.id = b.lorebook_id
+		JOIN LATERAL (SELECT s.id FROM card_source s WHERE s.card_id = b.card_id AND s.removed_at IS NULL
+				AND s.kind || ':' || s.ref = b.remote_id
+			UNION ALL SELECT s.id FROM lorebook_source s WHERE s.lorebook_id = b.lorebook_id AND s.removed_at IS NULL
+				AND s.kind || ':' || s.ref = b.remote_id
+			LIMIT 1) src ON TRUE
 		WHERE NOT b.push AND NOT b.paused AND coalesce(c.archived_at, l.archived_at) IS NULL
 			AND (b.remote_state IN ('changed', 'missing') OR b.check_failures >= $1)
-			AND EXISTS (SELECT 1 FROM card_source src WHERE src.card_id = b.card_id AND src.removed_at IS NULL
-					AND src.kind || ':' || src.ref = b.remote_id
-				UNION ALL SELECT 1 FROM lorebook_source src WHERE src.lorebook_id = b.lorebook_id AND src.removed_at IS NULL
-					AND src.kind || ':' || src.ref = b.remote_id)
 		ORDER BY b.id`, failuresShown)
 	if err != nil {
 		return out, err
 	}
-	var book int64
+	var book, source int64
 	var state, checkErr string
-	if _, err := pgx.ForEachRow(fl, []any{&card, &book, &inst, &binding, &remote, &state, &checkErr}, func() error {
-		c := AppChange{InstanceID: inst, RemoteID: remote, BindingID: binding}
+	if _, err := pgx.ForEachRow(fl, []any{&card, &book, &inst, &binding, &remote, &state, &checkErr, &source}, func() error {
+		c := AppChange{InstanceID: inst, RemoteID: remote, BindingID: binding, SourceID: source}
 		switch state {
 		case remoteChanged:
 			c.State = ChangeUpdate
@@ -1469,9 +1581,13 @@ func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.Targe
 and its `saveBinding` call to:
 
 ```go
-	bindingID, err := rs.saveBinding(ctx, k, r, id, cb.id, accepted, acceptedHash, it.avatar, push)
+	// Stored as Check compares it, so the next check finds the avatar accepted.
+	avatar, err := rs.s.avatarKey(ctx, it.avatar)
+	if err != nil {
+		return res, err
+	}
+	bindingID, err := rs.saveBinding(ctx, k, r, id, cb.id, accepted, acceptedHash, avatar, push)
 ```
-
 Replace `saveBinding` with:
 
 ```go
@@ -1500,7 +1616,7 @@ func (rs *resolver) saveBinding(ctx context.Context, k kind, r Resolution, id, b
 }
 ```
 
-A push binding's `avatar_hash` is never read: `Check` compares it only when `push` is false.
+A push binding's `avatar_hash` is never read: `Check` compares it only when `push` is false. `TestDismissingANewAvatarAcceptsIt` fails if resolve and `Check` store the avatar differently.
 
 - [ ] **Step 5: Add `Dismiss`**
 
@@ -1847,11 +1963,50 @@ func TestSourceCheckRoutes(t *testing.T) {
 		t.Fatalf("jobs = %+v, %+v", a, again)
 	}
 }
+
+// chub refs hold a slash, so the remote_id reaches compare and resolve as %2F.
+func TestReviewingASourceWhoseRefHasASlash(t *testing.T) {
+	e := newEnv(t)
+	inst, dir := e.upstream()
+	var c entityOut
+	e.call("POST", "/cards", map[string]any{"data": map[string]any{"name": "Vyr", "first_mes": "Who wakes me?"}}, 201, &c)
+	if _, err := e.s.Lib.Cards.AddSource(context.Background(), c.ID, library.Source{Kind: "fake", Ref: "alice/vyr"}); err != nil {
+		t.Fatal(err)
+	}
+	// The fake keeps a page as <dir>/<remote_id>.json, so the slash makes a folder.
+	page := filepath.Join(dir, "fake:alice", "vyr.json")
+	if err := os.MkdirAll(filepath.Dir(page), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw := `{"spec": "chara_card_v3", "spec_version": "3.0", "data": {"name": "Vyr", "first_mes": "Begone."}}`
+	if err := os.WriteFile(page, []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var list []targets.Binding
+	e.call("POST", fmt.Sprintf("/cards/%d/source-check", c.ID), nil, 200, &list)
+	if len(list) != 1 || list[0].RemoteID != "fake:alice/vyr" || list[0].RemoteState != "changed" {
+		t.Fatalf("bindings = %+v", list)
+	}
+	item := fmt.Sprintf("/instances/%d/cards/%s", inst, url.PathEscape("fake:alice/vyr"))
+	var cmp targets.Comparison
+	e.call("GET", fmt.Sprintf("%s/compare?card_id=%d", item, c.ID), nil, 200, &cmp)
+	if cmp.RemoteID != "fake:alice/vyr" || cmp.Base != "accepted" {
+		t.Fatalf("comparison = %+v", cmp)
+	}
+	e.call("POST", item+"/resolve", map[string]any{"action": "bind", "card_id": c.ID, "app_hash": cmp.AppHash,
+		"base_revision_id": cmp.HeadRevisionID, "accepted_hash": cmp.AcceptedHash, "default": "app"}, 200, nil)
+	e.call("GET", fmt.Sprintf("/cards/%d/bindings", c.ID), nil, 200, &list)
+	if len(list) != 1 || list[0].RemoteState != "unchanged" {
+		t.Fatalf("after resolving = %+v", list)
+	}
+}
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
+Add `net/url` to the test file's imports.
 
-Run: `$DB go test ./internal/api -run TestSourceCheckRoutes -timeout 15m`
+- [ ] **Step 2: Run them to verify they fail**
+
+Run: `$DB go test ./internal/api -run 'TestSourceCheckRoutes|TestReviewingASourceWhoseRefHasASlash' -timeout 15m`
 Expected: FAIL with `404` on `POST /cards/{id}/source-check`.
 
 - [ ] **Step 3: Add the routes**
@@ -1938,6 +2093,8 @@ In `internal/api/reconcile.go:49`, change the `State` tag's enum to `enum:"diffe
 
 Run: `$DB go test ./internal/api -timeout 15m`
 Expected: PASS, including `TestBindingAutosyncRoute` and the tier test. All three new POST routes are Write, the method's default.
+
+`TestReviewingASourceWhoseRefHasASlash` should pass with no route change: Go's `ServeMux` matches the escaped path one segment at a time and unescapes `{remote_id}`, as `TestCatalogRoutes`' `no%2Fsuch` lookup already relies on, and `http.StripPrefix` strips `/api` from `RawPath` too. If compare answers 404 anyway, log `r.URL.RawPath` in a test handler on `apiMux` (`internal/api/server.go:191`) to see where the escape is lost, fix it there, and rerun.
 
 Run: `cd web && npm run gen && npm run typecheck && npm test`
 Expected: the schema changes, typecheck passes, tests pass.
@@ -2028,7 +2185,205 @@ git commit -m "feat(mcp): check site sources for updates"
 
 ---
 
-### Task 12: Document pull-only targets
+### Task 12: Search leaves followed sources out of targets
+
+Search's target facets, target-state filter, and per-hit targets read `binding_status`, so without this a followed source shows as a target on library tiles, in facets, and in the Sync page's counts.
+
+**Files:**
+- Modify: `internal/library/search.go:144-147` (`"targets"` facet), `:240` (`TargetState` filter), `:353-354` (`"targets"` include)
+- Test: `internal/targets/filter_test.go`
+
+- [ ] **Step 1: Write the failing test**
+
+Append to `internal/targets/filter_test.go`, and add `slices` to its imports if missing. It uses this plan's helpers `addUpstream`, `imported`, `publish`, `follow`, and `vyrCard`:
+
+```go
+func TestSearchLeavesOutFollowedSources(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	vyr := e.imported("vyr", vyrCard)
+	e.publish("vyr", map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Begone."}, "")
+	if b := e.follow(vyr); b.RemoteState != remoteChanged {
+		t.Fatalf("followed = %+v", b)
+	}
+	got, err := e.lib.Search(e.ctx, library.Card, library.Query{Include: []string{"targets"}, Facets: []string{"targets"},
+		Filter: &library.Filter{IDs: []int64{vyr}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Hits) != 1 || len(got.Hits[0].Targets) != 0 || len(got.Facets.Targets) != 0 {
+		t.Fatalf("hits = %+v, facets = %+v", got.Hits, got.Facets)
+	}
+	ids, err := e.lib.SearchIDs(e.ctx, library.Card, library.Query{Filter: &library.Filter{TargetState: &library.TargetFilter{}}})
+	if err != nil || slices.Contains(ids, vyr) {
+		t.Fatalf("pushed anywhere = %v, %v", ids, err)
+	}
+}
+```
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `$DB go test ./internal/targets -run TestSearchLeavesOutFollowedSources -timeout 15m`
+Expected: FAIL with `hits = [...Targets:[{Instance:... Is:remote_changed}]...]`.
+
+- [ ] **Step 3: Read targets from pushed bindings only**
+
+In `internal/library/search.go`, above the facet map that holds `"targets"`, add:
+
+```go
+// pushedStatus is binding_status for apps the library pushes to. A followed
+// site source isn't a target.
+const pushedStatus = `(SELECT bs.* FROM binding_status bs JOIN binding b ON b.id = bs.binding_id WHERE b.push)`
+```
+
+Change the `"targets"` facet to:
+
+```go
+	"targets": func(k *Kind, m string) string {
+		return `SELECT instance_id, status, count(*)::int FROM ` + pushedStatus + ` bs
+			WHERE ` + k.FK + ` IN (` + m + `) GROUP BY 1, 2 ORDER BY 1, 2`
+	},
+```
+
+Change the `TargetState` filter's return to:
+
+```go
+		return `EXISTS (SELECT 1 FROM ` + pushedStatus + ` bs WHERE ` + cond + `)`, nil
+```
+
+Change the `"targets"` include to:
+
+```go
+		case "targets":
+			targets = `(SELECT jsonb_agg(jsonb_build_object('instance', instance_id, 'is', status) ORDER BY instance_id)
+				FROM ` + pushedStatus + ` bs WHERE ` + k.FK + ` = c.id)`
+```
+
+- [ ] **Step 4: Run the tests**
+
+Run: `$DB go test ./internal/targets ./internal/library -timeout 15m`
+Expected: PASS, including `TestSearchTargets` and `TestFilterTargetState`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add internal/library/search.go internal/targets/filter_test.go
+git commit -m "fix(search): leave followed site sources out of targets"
+```
+
+---
+
+### Task 13: `ink plugin check` checks a pull-only plugin
+
+The check kit runs its target checks only for `push`, so a pull-only plugin's `target.describe` and lists go unchecked, and nothing checks the `-32004` the core relies on to mark a source gone.
+
+**Files:**
+- Modify: `internal/contract/contract.go` (the suites list, `checkTarget`)
+- Test: `internal/contract/contract_test.go`
+
+- [ ] **Step 1: Write the failing test**
+
+Append to `internal/contract/contract_test.go`:
+
+```go
+func TestPullOnlyTargetChecks(t *testing.T) {
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"pull"}), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, len(results))
+	for i, r := range results {
+		names[i] = r.Name
+	}
+	if !slices.Contains(names, "a pull target answers target.list and target.list_lorebooks") || !slices.Contains(names, checkGoneName) {
+		t.Fatalf("ran %v, want the list and gone checks", names)
+	}
+	if f := failed(results); len(f) > 0 {
+		t.Fatalf("checks failed: %v", f)
+	}
+
+	Config = map[string]any{"fail_get": "retryable"}
+	t.Cleanup(func() { Config = nil })
+	results, err = Check(context.Background(), testutil.FakePluginWith(t, []string{"pull"}), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := failed(results)[checkGoneName]; got == nil || !strings.Contains(got.Error(), "-32004") {
+		t.Fatalf("a retryable error for a gone item: got %v, want an -32004 failure", got)
+	}
+}
+```
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `go test ./internal/contract -run TestPullOnlyTargetChecks`
+Expected: FAIL to compile: `checkGoneName undefined`.
+
+- [ ] **Step 3: Run the target checks for `pull` too**
+
+In `internal/contract/contract.go`, add `slices` to the imports. Change the suites' `capability string` field to `capabilities []string`, the target suite to:
+
+```go
+		{[]string{"push", "pull"}, func() []Result { return checkTarget(ctx, p, m) }},
+```
+
+and every other suite's capability to a one-item list, such as `{[]string{"auth"}, ...}`. Change the loop's condition to:
+
+```go
+		if !slices.ContainsFunc(suite.capabilities, m.Has) {
+```
+
+Replace `checkTarget` with:
+
+```go
+const checkGoneName = "a pull-only target answers -32004 for an item it doesn't have"
+
+// checkTarget checks target.describe and, for a pull target, its lists. A
+// pull-only target follows site sources, so it must also say when one is gone.
+func checkTarget(ctx context.Context, p *pluginhost.Process, m *protocol.Manifest) []Result {
+	info, err := checkDescribe(ctx, p, m)
+	results := []Result{{"target.describe returns a valid description", err}}
+	if err != nil || !info.Pull || dead(err, p) {
+		return results
+	}
+	err = checkLists(ctx, p)
+	results = append(results, Result{"a pull target answers target.list and target.list_lorebooks", err})
+	if m.Has("push") || dead(err, p) {
+		return results
+	}
+	return append(results, Result{checkGoneName, checkGone(ctx, p)})
+}
+
+// checkGone asks for a card and a lorebook no site has. The core shows -32004
+// as "no longer on the site", and anything else as a failed check.
+func checkGone(ctx context.Context, p *pluginhost.Process) error {
+	for _, method := range []string{protocol.MethodTargetGet, protocol.MethodTargetGetLorebook} {
+		err := call(ctx, p, method, protocol.TargetGetParams{RemoteID: "innkeeper-contract:none"}, nil)
+		if err := expectCode(err, protocol.CodeRemoteNotFound); err != nil {
+			return fmt.Errorf("%s: %w", method, err)
+		}
+	}
+	return nil
+}
+```
+
+The fake answers `-32004` for a page it doesn't keep, and with `fail_get` it answers a retryable error, which the second half of the test catches.
+
+- [ ] **Step 4: Run the tests**
+
+Run: `go test ./internal/contract`
+Expected: PASS, including `TestWellBehavedPluginPasses`, which still runs 6 checks: the fake there pushes, so it skips the gone check.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add internal/contract
+git commit -m "feat(contract): check the target methods of a plugin that pulls without pushing"
+```
+
+---
+
+### Task 14: Document pull-only targets
 
 **Files:**
 - Modify: `docs/protocol.md` (after the `push` and `pull` section)
@@ -2052,9 +2407,11 @@ changes in the changes queue.
 - `target.get` and `target.get_lorebook`: return the site's current copy. A
   source check sets `avatar`, so return the image when asked.
 - Errors: return `-32004` when the page is gone, private, or hides its
-  definition. The core shows that as "no longer on the site". Make a timeout,
-  a 5xx, or rate limiting retryable. The core shows a source only after 3
-  failed checks in a row.
+  definition. The core shows that as "no longer on the site", and
+  `ink plugin check` asks for an item no site has and wants `-32004`. Make a
+  timeout, a 5xx, or rate limiting retryable. The core shows a source only
+  after 3 failed checks in a row.
+- Avatars are compared by their pixels, so re-encoding one isn't an update.
 - `target.list` and `target.list_lorebooks`: return no items. Instance checks
   and `ink plugin check` call them.
 - Space out requests to one site yourself; the core checks sources one at a time.
@@ -2069,7 +2426,7 @@ git commit -m "docs(protocol): describe plugins that follow site sources"
 
 ---
 
-### Task 13: Verify
+### Task 15: Verify
 
 - [ ] **Step 1: Run what CI runs**
 
@@ -2104,7 +2461,8 @@ Run: `git diff origin/main --stat` and read the whole diff. Look for:
 | Transient | A retryable protocol error for timeouts, 5xx, and 429 |
 | `target.list`, `target.list_lorebooks` | `{"items": []}` |
 | `target.put`, `target.put_lorebook` | Not implemented; method not found |
-| Stable output | Two fetches of an unchanged page must return identical `data` for the listed fields, or every check flags an update. Drop volatile values, such as view counts in `extensions.chub`, before replying |
+| Stable output | Two fetches of an unchanged page must return identical `data` for the listed fields, or every check flags an update. Drop volatile values, such as view counts in `extensions.chub`, before replying. Avatars are compared by pixel hash, so only the picture itself must be stable |
+| `ink plugin check` | Checks `target.describe`, both lists, and that `target.get` and `target.get_lorebook` answer `-32004` for `innkeeper-contract:none` (Task 13) |
 | Pacing | Space requests per host; the core checks one source at a time |
 
 ### 51c: web
@@ -2124,12 +2482,15 @@ Every binding has these new fields:
 The url-import instance now has the `pull` capability. Places that pick "apps" by `pull` must also require `push`:
 - `web/src/welcome/BringInCards.tsx`
 - `web/src/welcome/SetUpPlugins.tsx`
-- target facets in search
+- `web/src/sync/SyncPage.tsx`
+
+Search's target facets, target filter, and per-hit targets already leave followed sources out (Task 12).
 
 **Changes queue (`GET /sync/changes`)**
 
 - `AppChange.state` has a new value, `update`.
-- A followed source's entry has `instance_id` (the url-import instance), `remote_id`, and `binding_id`. Its state is one of:
+- Every entry has `push`: true for an app's, false for a followed source's. Tell the two apart by it, not by the plugin's capabilities.
+- A followed source's entry has `instance_id` (the url-import instance), `remote_id`, `binding_id`, and `source_id`, the card's or lorebook's source row. Its state is one of:
   - `update`
   - `missing`: show "No longer on chub" with the site's name.
   - `error`: show `error`.
@@ -2138,7 +2499,7 @@ The url-import instance now has the `pull` capability. Places that pick "apps" b
 
 **Reviewing an update**
 
-1. Compare with `GET /instances/{instance_id}/cards/{remote_id}/compare?id={card_id}`, or `.../lorebooks/...`. Path-escape `remote_id`: it contains `:` and `/`.
+1. Compare with `GET /instances/{instance_id}/cards/{remote_id}/compare?card_id={card_id}`, or `.../lorebooks/{remote_id}/compare?lorebook_id={lorebook_id}`. Path-escape `remote_id`: it contains `:` and `/` (Task 10 tests `%2F`).
 2. Resolve with `POST /instances/{instance_id}/cards/{remote_id}/resolve`. The body is the Resolution, with `action: "bind"` and the comparison's hashes.
 
 Always send `card_id`, because several cards may follow one source.
@@ -2151,7 +2512,7 @@ Always send `card_id`, because several cards may follow one source.
 | Ignore all | `PATCH /bindings/{id}` `{"paused": true}` |
 | Check again | `PATCH /bindings/{id}` `{"paused": false}` |
 | Autosync | `PATCH /bindings/{id}` `{"autosync": true}`. Both body fields are optional now |
-| Remove source | The existing `DELETE /{cards|lorebooks}/{id}/sources/{source_id}`. The queue entry disappears straight away |
+| Remove source | The existing `DELETE /{cards|lorebooks}/{id}/sources/{source_id}`, with the entry's `source_id`. The queue entry disappears straight away |
 
 **Checks**
 

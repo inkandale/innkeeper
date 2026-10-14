@@ -21,7 +21,7 @@ but never push.
 | Model | A source is a **pull-only binding** on the instance whose plugin pulls that source's kind. `remote_id` is `kind:ref`. |
 | Plugin | `url-import` answers `target.get` for `chub`, `risu`, and `character-tavern`, reusing its resolvers. Its manifest lists the source kinds it pulls. A new site touches only a plugin. |
 | What counts as a change | Upstream differs from `accepted_data`, the upstream copy last accepted. The owner's own edits never count. |
-| Avatar | Compared separately, by the hash of upstream's bytes against the last-seen hash. |
+| Avatar | Compared separately, by the pixel hash of upstream's image (`blob.pixel_hash`) against the last-seen one, so a re-encode or new metadata isn't a change. |
 | Baseline | The entity's first revision with a `plugin:` source, else its first revision. For an imported card, that is the imported content. The avatar hash is stored silently on the first check. |
 | Pull | The existing three-way merge and resolve: head, upstream, and `accepted_data` as the ancestor. The owner can take the data, the avatar, or both. |
 | Auto-apply | Off by default. With the binding's `autosync` on, the check applies an update that merges with no conflicting hunks and leaves the avatar as the library's. A different avatar waits for review: there's no ancestor avatar to say whose change it is. |
@@ -41,8 +41,10 @@ without pushing:
 | `binding` table | No pull-only marker | New columns: `push boolean NOT NULL DEFAULT true`, `paused boolean NOT NULL DEFAULT false`, `avatar_hash text`, `check_failures int NOT NULL DEFAULT 0`, `check_error text` |
 | `binding_card_remote` and `binding_lorebook_remote` indexes | One card per `(instance_id, remote_id)` | Add `WHERE push`, so cards that share a source each get a binding |
 | `binding_status` view | Any library edit since the last push makes a binding `ahead` | A binding with `push = false` is never `ahead` |
-| `targets.Check` (`check.go`) | Compares projected data only | Also fetches the avatar and compares `avatar_hash`. Skips `paused` bindings. |
-| Changes queue (`changes.go`) | `changed` comes only from sync's reconcile snapshot | A pull-only binding with `remote_state = changed` adds an `update` entry |
+| `targets.Check` (`check.go`) | Compares projected data only | Also fetches the avatar and compares its pixel hash with `avatar_hash`. Skips `paused` bindings. |
+| Changes queue (`changes.go`) | `changed` comes only from sync's reconcile snapshot | A pull-only binding with `remote_state = changed` adds an `update` entry. Every entry carries `push`, and a source's entry its `source_id` |
+| Search (`internal/library/search.go`) | Target facets, filter, and per-hit targets read every binding | They read push bindings only, so a followed source isn't a target |
+| `ink plugin check` (`internal/contract`) | Checks target methods only for `push` | Also for `pull`, and a pull-only plugin must answer `-32004` for an item it doesn't have |
 | Scan | Hourly, every binding | Skips pull-only bindings. A source-check job kind checks them on its own schedule |
 | Source check (`internal/targets`) | None | Before checking, binds each live source of a followed kind that has no binding, and unbinds pull-only bindings whose source was removed. Source writes stay in `internal/library`, which never calls targets |
 

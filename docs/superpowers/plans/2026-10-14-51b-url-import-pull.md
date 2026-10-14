@@ -23,9 +23,9 @@ cd ~/git/innkeeper-plugins-inn-51b
 
 No commit may be marked as a breaking change.
 
-**Stable output.** The core flags an update whenever two fetches of an unchanged page differ, so this plan checked what the sites send. Fetched twice on 2026-10-14, chub's `card.json` (it's a file in the card's git repo), chub's avatar PNG, and two RisuRealm `json-v3` downloads were each byte-identical. chub's `extensions.chub` holds `id`, `full_path`, `expressions`, `alt_expressions`, and `related_lorebooks`; none of them are view counts or dates. The core's content hash already drops `creation_date` and `modification_date`, and `CardData` drops the app-local `extensions.fav` and `extensions.world`. So nothing in `data` is stripped. Two things would still cause false updates, and this plan fixes both:
+**Stable output.** The core flags an update whenever two fetches of an unchanged page differ, so this plan checked what the sites send. Fetched twice on 2026-10-14, chub's `card.json` (it's a file in the card's git repo), chub's avatar PNG, and two RisuRealm `json-v3` downloads were each byte-identical. chub's `extensions.chub` holds `id`, `full_path`, `expressions`, `alt_expressions`, and `related_lorebooks`; none of them are view counts or dates. The core's content hash already drops `creation_date` and `modification_date`, and `CardData` drops the app-local `extensions.fav` and `extensions.world`. So nothing in `data` is stripped. Two things still need care:
 - **`data.source`.** The import adds the page URL to it, but a card imported from a file has none. `target.describe` leaves `source` out of `fields`, so it's never compared. It lists pages Innkeeper linked, not anything the author wrote.
-- **chub's avatar is the card PNG** (`chara_card_v2.png`), with the card text in a `chara` chunk. When the author edits the text, the avatar's bytes change too, so every text update would also look like a new avatar, and autosync would always skip it. Avatars lose their card chunks before they're returned (Task 3).
+- **chub's avatar is the card PNG** (`chara_card_v2.png`), with the card text in a `chara` chunk. When the author edits the text, the avatar's bytes change too. The core compares avatars by pixel hash (51a Task 5), so that alone isn't an update; avatars still lose their card chunks before they're returned (Task 3), since it's one `card.Decode` call and keeps a stale copy of the card text out of the library's avatar.
 
 Character Tavern wasn't fetched live. Task 6's live test covers it.
 
@@ -769,7 +769,7 @@ URL_IMPORT_FOLLOW="chub:<user>/<slug> risu:<uuid> character-tavern:<author>/<slu
 - [ ] **Step 5: Run the checks**
 
 Run: `go vet ./... && go test -race ./... && make check`
-Expected: PASS. `make check` loads `plugin.toml` through the pinned core, which accepts `source_kinds` only with `pull` and without `push`.
+Expected: PASS. With 51a's Task 13 in the pinned core, `make check` also runs the pull-only target checks: `target.get` and `target.get_lorebook` for `innkeeper-contract:none` must answer `-32004`, which `follow` does for a kind it doesn't follow. `make check` loads `plugin.toml` through the pinned core, which accepts `source_kinds` only with `pull` and without `push`.
 
 - [ ] **Step 6: Commit**
 
@@ -892,11 +892,11 @@ Compare against [the contract for 51b](2026-10-14-51a-source-updates-core.md#con
 | `target.describe`: no `character_book`, `pull` true, `update` false, `standalone` with `lorebook_fields`, no site contact | `targetInfo` |
 | `target.get`: `{card}`, plus `avatar` when asked, no `lorebook_remote_ids` | `getCard` |
 | `target.get_lorebook`: `{lorebook}` | `getLorebook` |
-| Gone: `-32004`, not retryable | `gone`, `follow` |
+| Gone: `-32004`, not retryable, including an unfollowed kind | `gone`, `follow` |
 | Transient: retryable | `fetcher.get` (unchanged) |
 | Lists: `{"items": []}` | `noItems` |
 | Put: method not found | `main.go`'s default |
-| Stable output | Task 6 |
+| Stable output (avatars compare by pixel hash in core) | Task 6 |
 | Pacing | `fetcher.wait` |
 
 - [ ] **Step 3: Read the diff**

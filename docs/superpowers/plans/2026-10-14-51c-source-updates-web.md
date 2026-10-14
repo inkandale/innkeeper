@@ -5,11 +5,11 @@
 **Goal:** The web shows each followed site source's update, lets the owner review it, ignore it, pause checks, or remove the source, and stops treating `url-import` as an app.
 
 **Architecture:** INN-51, spec `docs/superpowers/specs/2026-10-14-source-updates-design.md`. This plan is 51c. It builds on 51a (`docs/superpowers/plans/2026-10-14-51a-source-updates-core.md`) and follows its "Contract for 51b and 51c" section.
-- A **follower** is an instance whose plugin has `pull` and not `push`, such as `url-import`. One helper, `followers`, says which instances those are; every page that tells sources from apps uses it.
+- A **follower** is an instance whose plugin has `pull` and not `push`, such as `url-import`. A changes-queue entry says which kind it is with its `push` flag. Pages without an entry, Review and the Sync page, ask one helper, `followers`.
 - Reviewing an update reuses the Review page, compare, and resolve. The Diff already offers a choice on every conflicting hunk and on the avatar, so taking the data, the avatar, or both needs no new control.
 - Ignore this change, Ignore all, Check again, and autosync are calls to `POST /bindings/{id}/dismiss` and `PATCH /bindings/{id}`, wrapped once in `web/src/sync/sync.ts`.
 
-**Tech Stack:** React, TypeScript, TanStack Query, openapi-fetch, Vitest with Testing Library. Task 1 is Go against PostgreSQL.
+**Tech Stack:** React, TypeScript, TanStack Query, openapi-fetch, Vitest with Testing Library.
 
 **Before you start:** 51a must be merged. Its Task 10 already ran `npm run gen`. Confirm the generated schema has the new fields, and never edit `web/openapi.json` or `web/src/api/schema.d.ts` by hand:
 
@@ -19,9 +19,9 @@ cd web && grep -c '"update"' src/api/schema.d.ts && grep -n 'paused' src/api/sch
 
 Expected: a count above 0, and `paused` lines. If not, run `npm run gen` and commit the result before Task 1.
 
-**Tests:** run web tests from `web/` with `npx vitest run <file>`. The Go test needs the database: `$DB` means `INNKEEPER_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:55432/postgres`; without it the test skips and proves nothing. No commit may be marked as a breaking change.
+**Tests:** run web tests from `web/` with `npx vitest run <file>`. No commit may be marked as a breaking change.
 
-**Deviation from the contract:** search's target facets, target filter, and per-hit targets come from `binding_status` on the server, so the web can't drop followed sources from them. Task 1 fixes that in `internal/library/search.go`; it could move into 51a instead.
+Search's target facets, filter, and per-hit targets leave followed sources out on the server (51a Task 12), so search needs no web change.
 
 ---
 
@@ -29,7 +29,6 @@ Expected: a count above 0, and `paused` lines. If not, run `npm run gen` and com
 
 | File | Change |
 |---|---|
-| `internal/library/search.go`, `internal/targets/filter_test.go` | Search's targets leave out followed sources |
 | `web/src/api/client.ts`, `client.test.ts` | `followers` |
 | `web/src/api/queries.ts` | `bindingsQuery`, `useFollowers` |
 | `web/src/sync/sync.ts`, `sync.test.ts` | `sourceRemoteId`, `siteOf`, `sourceLabel`, `editBinding`, `dismissBinding`, `removeSource`; `update` is reviewable; `changePath` for updates and lorebook rows |
@@ -42,93 +41,7 @@ Expected: a count above 0, and `paused` lines. If not, run `npm run gen` and com
 
 ---
 
-### Task 1: Search leaves followed sources out of targets
-
-**Files:**
-- Modify: `internal/library/search.go:144-147`, `:240`, `:353-354`
-- Test: `internal/targets/filter_test.go`
-
-- [ ] **Step 1: Write the failing test**
-
-Append to `internal/targets/filter_test.go`. It uses 51a's test helpers `addUpstream`, `imported`, `publish`, `follow`, and `vyrCard`:
-
-```go
-func TestSearchLeavesOutFollowedSources(t *testing.T) {
-	e := setup(t, nil)
-	e.addUpstream(nil)
-	vyr := e.imported("vyr", vyrCard)
-	e.publish("vyr", map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Begone."}, "")
-	if b := e.follow(vyr); b.RemoteState != "changed" {
-		t.Fatalf("followed = %+v", b)
-	}
-	got, err := e.lib.Search(e.ctx, library.Card, library.Query{Include: []string{"targets"}, Facets: []string{"targets"},
-		Filter: &library.Filter{IDs: []int64{vyr}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got.Hits) != 1 || len(got.Hits[0].Targets) != 0 || len(got.Facets.Targets) != 0 {
-		t.Fatalf("hits = %+v, facets = %+v", got.Hits, got.Facets)
-	}
-	ids, err := e.lib.SearchIDs(e.ctx, library.Card, library.Query{Filter: &library.Filter{TargetState: &library.TargetFilter{}}})
-	if err != nil || slices.Contains(ids, vyr) {
-		t.Fatalf("pushed anywhere = %v, %v", ids, err)
-	}
-}
-```
-
-- [ ] **Step 2: Run it to verify it fails**
-
-Run: `$DB go test ./internal/targets -run TestSearchLeavesOutFollowedSources -timeout 15m`
-Expected: FAIL with `hits = [...Targets:[{Instance:... Is:remote_changed}]...]`.
-
-- [ ] **Step 3: Read targets from pushed bindings only**
-
-In `internal/library/search.go`, above the facet map that holds `"targets"`, add:
-
-```go
-// pushedStatus is binding_status for apps the library pushes to. A followed
-// site source isn't a target.
-const pushedStatus = `(SELECT bs.* FROM binding_status bs JOIN binding b ON b.id = bs.binding_id WHERE b.push)`
-```
-
-Change the `"targets"` facet to:
-
-```go
-	"targets": func(k *Kind, m string) string {
-		return `SELECT instance_id, status, count(*)::int FROM ` + pushedStatus + ` bs
-			WHERE ` + k.FK + ` IN (` + m + `) GROUP BY 1, 2 ORDER BY 1, 2`
-	},
-```
-
-Change the `TargetState` filter's return to:
-
-```go
-		return `EXISTS (SELECT 1 FROM ` + pushedStatus + ` bs WHERE ` + cond + `)`, nil
-```
-
-Change the `"targets"` include to:
-
-```go
-		case "targets":
-			targets = `(SELECT jsonb_agg(jsonb_build_object('instance', instance_id, 'is', status) ORDER BY instance_id)
-				FROM ` + pushedStatus + ` bs WHERE ` + k.FK + ` = c.id)`
-```
-
-- [ ] **Step 4: Run the tests**
-
-Run: `$DB go test ./internal/targets ./internal/library -timeout 15m`
-Expected: PASS, including `TestSearchTargets` and `TestFilterTargetState`.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add internal/library/search.go internal/targets/filter_test.go
-git commit -m "fix(search): leave followed site sources out of targets"
-```
-
----
-
-### Task 2: Shared helpers for followed sources
+### Task 1: Shared helpers for followed sources
 
 **Files:**
 - Modify: `web/src/api/client.ts`, `web/src/api/queries.ts`, `web/src/sync/sync.ts`
@@ -296,12 +209,9 @@ export async function dismissBinding(id: number) {
   return must(await api.POST("/bindings/{id}/dismiss", { params: { path: { id } } }));
 }
 
-/** removeSource removes the card's or lorebook's source that a followed binding's remote ID names. */
-export async function removeSource(kind: Kind, id: number, remoteId: string) {
-  const list = must(await api.GET(route(kind, "/cards/{id}/sources"), { params: { path: { id } } }));
-  const s = list.find((s) => sourceRemoteId(s) === remoteId);
-  if (!s) return;
-  mustOk(await api.DELETE(route(kind, "/cards/{id}/sources/{source_id}"), { params: { path: { id, source_id: s.id } } }));
+/** removeSource removes a card's or lorebook's source, as a queue entry's source_id names it. */
+export async function removeSource(kind: Kind, id: number, sourceId: number) {
+  mustOk(await api.DELETE(route(kind, "/cards/{id}/sources/{source_id}"), { params: { path: { id, source_id: sourceId } } }));
 }
 ```
 
@@ -319,7 +229,7 @@ git commit -m "feat(web): helpers for followed site sources"
 
 ---
 
-### Task 3: An app needs `push`
+### Task 2: An app needs `push`
 
 `url-import` now declares `pull` without `push`. These places pick apps by `pull` and would list it.
 
@@ -327,7 +237,7 @@ git commit -m "feat(web): helpers for followed site sources"
 - Modify: `web/src/sync/SyncPage.tsx:59`, `web/src/welcome/BringInCards.tsx:74`, `web/src/welcome/SetUpPlugins.tsx:53`
 - Test: `web/src/welcome/BringInCards.test.tsx`, `web/src/welcome/SetUpPlugins.test.tsx`
 
-SyncPage's test comes in Task 7, with its Sources line.
+SyncPage's test comes in Task 6, with its Sources line.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -394,7 +304,7 @@ git commit -m "fix(web): count only plugins that push as apps"
 
 ---
 
-### Task 4: Source entries in the changes queue
+### Task 3: Source entries in the changes queue
 
 **Files:**
 - Modify: `web/src/sync/Changes.tsx`
@@ -407,8 +317,12 @@ In `web/src/sync/Changes.test.tsx`, after the `cmp` constant, add:
 ```ts
 const followed = {
   rows: [
-    { lorebook_id: 9, name: "Forge lore", apps: [{ instance_id: 4, state: "missing", remote_id: "chub:alice/forge", binding_id: 22 }] },
-    { card_id: 8, name: "Vyr", apps: [{ instance_id: 4, state: "update", remote_id: "chub:alice/vyr", binding_id: 21 }] },
+    {
+      lorebook_id: 9,
+      name: "Forge lore",
+      apps: [{ instance_id: 4, state: "missing", remote_id: "chub:alice/forge", binding_id: 22, push: false, source_id: 30 }],
+    },
+    { card_id: 8, name: "Vyr", apps: [{ instance_id: 4, state: "update", remote_id: "chub:alice/vyr", binding_id: 21, push: false, source_id: 31 }] },
   ],
   counts: { "4": { update: 1, missing: 1 } },
 };
@@ -426,9 +340,6 @@ test("a followed source's entries offer review, ignoring, and removing the sourc
       const u = new URL(req.url);
       if (u.pathname === "/api/sync/changes") return json(followed);
       if (u.pathname === "/api/instances") return json([{ id: 4, name: "URL import", plugin: "url-import" }]);
-      if (u.pathname === "/api/plugins") return json([{ name: "url-import", capabilities: ["import", "sites", "pull"] }]);
-      if (req.method === "GET" && u.pathname === "/api/lorebooks/9/sources")
-        return json([{ id: 30, kind: "chub", ref: "alice/forge", linked_by: "auto", created_at: "" }]);
       if (req.method !== "GET") {
         sent.push({ method: req.method, path: u.pathname, ...(req.method === "PATCH" ? { body: await req.json() } : {}) });
         return req.method === "DELETE" ? new Response(null, { status: 204 }) : json({ id: 21, instance_id: 4, remote_id: "chub:alice/vyr" });
@@ -473,7 +384,7 @@ Expected: FAIL: the URL import cell reads `update`, not `update on chub`.
 
 In `web/src/sync/Changes.tsx`:
 
-Change the queries import to `import { instancesQuery, useFollowers } from "../api/queries";`, and the `./sync` import to:
+Change the `./sync` import to:
 
 ```ts
 import {
@@ -502,12 +413,6 @@ const rowKey = (r: ChangeRow) =>
   r.card_id ? `card/${r.card_id}` : r.lorebook_id ? `lorebook/${r.lorebook_id}` : `app/${r.apps?.[0]?.instance_id}/${r.apps?.[0]?.remote_id}`;
 ```
 
-After `const name = ...`, add:
-
-```ts
-  const follows = useFollowers();
-```
-
 After the `unbind` mutation, add:
 
 ```ts
@@ -517,8 +422,8 @@ After the `unbind` mutation, add:
       const binding = c.binding_id ?? 0;
       if (act === "dismiss") await dismissBinding(binding);
       else if (act === "pause") await editBinding(binding, { paused: true });
-      else if (r.lorebook_id) await removeSource("lorebook", r.lorebook_id, c.remote_id ?? "");
-      else await removeSource("card", r.card_id ?? 0, c.remote_id ?? "");
+      else if (r.lorebook_id) await removeSource("lorebook", r.lorebook_id, c.source_id ?? 0);
+      else await removeSource("card", r.card_id ?? 0, c.source_id ?? 0);
     },
     onSuccess: done,
   });
@@ -553,8 +458,10 @@ Make `actions` start with:
 
 ```ts
   const actions = (r: ChangeRow, c: AppChange) => {
-    if (follows.has(c.instance_id)) return sourceActions(r, c);
+    if (c.push === false) return sourceActions(r, c);
 ```
+
+Compare `push` with `false`, here and in the state cell below: the existing tests' app entries leave `push` out, and they must stay apps.
 
 Replace the name cell with:
 
@@ -573,7 +480,7 @@ Replace the name cell with:
 and, in the per-app cell, replace `{stateLabel(c.state)}` with:
 
 ```tsx
-{follows.has(c.instance_id) ? sourceLabel(c.state, c.remote_id ?? "") : stateLabel(c.state)}
+{c.push === false ? sourceLabel(c.state, c.remote_id ?? "") : stateLabel(c.state)}
 ```
 
 Update `Changes`' doc comment to: "Changes lists every card some app needs the owner for, and every card or lorebook whose followed source changed, one row each, and settles the checked ones."
@@ -592,7 +499,7 @@ git commit -m "feat(web): source updates, gone sources, and failing checks in th
 
 ---
 
-### Task 5: Reviewing a source update
+### Task 4: Reviewing a source update
 
 **Files:**
 - Modify: `web/src/sync/Review.tsx`
@@ -730,7 +637,7 @@ git commit -m "feat(web): review a site source's update"
 
 ---
 
-### Task 6: The card and lorebook pages
+### Task 5: The card and lorebook pages
 
 **Files:**
 - Create: `web/src/card/Upstream.tsx`
@@ -1046,7 +953,7 @@ git commit -m "feat(web): show and settle site source updates on the card and lo
 
 ---
 
-### Task 7: Sources on the Sync page
+### Task 6: Sources on the Sync page
 
 **Files:**
 - Modify: `web/src/sync/SyncPage.tsx`
@@ -1126,7 +1033,7 @@ git commit -m "feat(web): check every site source from the Sync page"
 
 ---
 
-### Task 8: Verify
+### Task 7: Verify
 
 - [ ] **Step 1: Run what CI runs**
 
@@ -1150,9 +1057,9 @@ Run: `git diff origin/main --stat` and read every changed file once more. Look f
 ## Self-review notes
 
 - Spec coverage:
-  - The queue's `update`, `missing`, and `error` entries come in Task 4.
-  - Review, Ignore this change, Ignore all, and Remove source come in Tasks 4 to 6.
-  - The banner on both pages, the Sources panel's pause, Check again, and autosync, and the per-entity check come in Task 6.
-  - The library-wide check comes in Task 7.
-  - Apps needing `push` come in Tasks 1 and 3.
+  - The queue's `update`, `missing`, and `error` entries come in Task 3.
+  - Review, Ignore this change, Ignore all, and Remove source come in Tasks 3 to 5.
+  - The banner on both pages, the Sources panel's pause, Check again, and autosync, and the per-entity check come in Task 5.
+  - The library-wide check comes in Task 6.
+  - Apps needing `push` come in Task 2. Search's targets are 51a Task 12.
 - Taking data, avatar, or both uses the Diff's existing hunk and avatar choices. A "take everything from the site" shortcut isn't built; add it if reviewing long updates hunk by hunk proves slow.

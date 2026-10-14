@@ -1,11 +1,14 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/davidgibbons/innkeeper/internal/library"
+	"github.com/davidgibbons/innkeeper/internal/plugins"
 )
 
 func TestSourcesAPI(t *testing.T) {
@@ -70,5 +73,42 @@ func TestSourcesAPI(t *testing.T) {
 			e.call("PUT", fmt.Sprintf("/%s/999/sources", plural), map[string]any{"url": "https://chub.ai/characters/a/b"}, 404, nil)
 			e.call("DELETE", fmt.Sprintf("/%s/999/sources/1", plural), nil, 404, nil)
 		})
+	}
+}
+
+func TestAddSourceThroughSitesPlugin(t *testing.T) {
+	e := newEnv(t)
+	sites := *e.manifests["target"]
+	sites.Name, sites.Capabilities = "sites", []string{"sites"}
+	sites.Command = []string{sites.Command[0], "-caps=sites", "-name=sites"}
+	e.manifests["sites"] = &sites
+	id, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "sites", Name: "Sites"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ent entityResult
+	e.call("POST", "/lorebooks", map[string]any{"data": json.RawMessage(`{"name": "A", "entries": []}`)}, 201, &ent)
+	path := fmt.Sprintf("/lorebooks/%d/sources", ent.ID)
+
+	var added library.Source
+	e.call("PUT", path, map[string]any{"url": "https://fake.example/u/a"}, 200, &added)
+	if added.Kind != "fake" || added.Ref != "u/a" || added.URL != "https://fake.example/u/a" || added.LinkedBy != "owner" {
+		t.Fatalf("added = %+v", added)
+	}
+	for body, want := range map[string]string{
+		`{"url": "https://chub.ai/characters/u/a"}`: "no installed plugin recognizes that URL",
+		`{"kind": "chub", "ref": "u/a"}`:            `no installed plugin knows source kind \"chub\"`,
+		`{"kind": "fake", "ref": "nope"}`:           "a fake ref is",
+	} {
+		if r := e.call("PUT", path, json.RawMessage(body), 422, nil); !strings.Contains(string(r.Body), want) {
+			t.Errorf("%s: %s, want %q", body, r.Body, want)
+		}
+	}
+
+	if err := e.s.Registry.UpdateInstance(context.Background(), id, plugins.InstanceEdit{Config: map[string]any{"sites_bad": true}}); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.call("PUT", path, map[string]any{"url": "https://fake.example/u/b"}, 502, nil); !strings.Contains(string(r.Body), "sites") {
+		t.Fatalf("invalid source: %s, want a 502 naming the plugin", r.Body)
 	}
 }

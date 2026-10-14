@@ -367,17 +367,12 @@ func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
 			if b.URL != "" && (b.Kind != "" || b.Ref != "" || b.ExternalID != "") {
 				return nil, huma.Error422UnprocessableEntity("give a url, or a kind and ref, not both")
 			}
-			src := library.Source{Kind: b.Kind, Ref: b.Ref, ExternalID: b.ExternalID}
-			if b.URL != "" {
-				var err error
-				if src, err = library.ParseSourceURL(b.URL); err != nil {
-					return nil, huma.Error422UnprocessableEntity(err.Error())
-				}
-			}
-			// Rebuilt so the stored URL always matches the entity type.
-			src, err := library.ValidateSource(src, k == library.Lorebook)
-			if err != nil {
+			src, err := s.Registry.ParseSource(ctx, s.Plugins, k, library.Source{URL: b.URL, Kind: b.Kind, Ref: b.Ref, ExternalID: b.ExternalID})
+			if errors.Is(err, library.ErrInvalid) {
 				return nil, huma.Error422UnprocessableEntity(err.Error())
+			}
+			if err != nil {
+				return nil, s.fail(err)
 			}
 			got, err := ents.AddSource(ctx, in.ID, src)
 			if err != nil {

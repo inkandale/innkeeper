@@ -254,7 +254,7 @@ func (s *Server) failAs(who string, err error) error {
 		return huma.Error400BadRequest(err.Error())
 	case errors.Is(err, merge.ErrUnknownHunk), errors.Is(err, merge.ErrBadChoice):
 		return huma.Error422UnprocessableEntity(err.Error())
-	case errors.Is(err, plugins.ErrSource):
+	case errors.Is(err, plugins.ErrSource), errors.Is(err, plugins.ErrBadSource):
 		return huma.Error502BadGateway(err.Error())
 	// A plugin's error text can name files on the server, and read-tier
 	// clients see these, so it goes only to the log.

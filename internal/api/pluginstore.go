@@ -41,8 +41,8 @@ type catalogPluginOut struct {
 }
 
 type catalogSourceOut struct {
-	Source  plugins.PluginSource     `json:"source"`
-	Plugins []catalogPluginOut `json:"plugins"`
+	Source  plugins.PluginSource `json:"source"`
+	Plugins []catalogPluginOut   `json:"plugins"`
 	// Error says why the source couldn't be read; Plugins is empty then.
 	Error string `json:"error,omitempty"`
 }

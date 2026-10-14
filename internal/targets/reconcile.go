@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/davidgibbons/innkeeper/cardhash"
@@ -480,52 +481,72 @@ func (s *Service) Reconcile(ctx context.Context, p ReconcileParams, progress fun
 		for id := range s.autoApply(ctx, cardKind, p.InstanceID, cardIdx, bookIdx, snap.Items, imported) {
 			cardIdx.remoteOf[id] = ""
 		}
-		type auto struct{ bound, imported, pulled bool }
-		// Each world book once, as the verdict totals count them.
-		books := map[string]auto{}
-		mark := func(lb ReconcileItem) {
-			a := books[lb.RemoteID]
-			books[lb.RemoteID] = auto{a.bound || lb.AutoBound, a.imported || lb.AutoImported, a.pulled || lb.AutoPulled}
-		}
-		all := []auto{}
-		for _, it := range snap.Items {
-			all = append(all, auto{it.AutoBound, it.AutoImported, it.AutoPulled})
-			for _, lb := range it.Lorebooks {
-				mark(lb)
-			}
-		}
-		for _, lb := range snap.Lorebooks {
+		maps.Copy(snap.Totals, autoTotals(snap.Items, snap.Lorebooks))
+	}
+	snap.Missing = missing(cardIdx, listed)
+	snap.Unpushed = unpushed(cardIdx)
+	return snap, nil
+}
+
+// autoTotals counts the items auto-apply imported, bound, or pulled.
+func autoTotals(items, lorebooks []ReconcileItem) map[string]int {
+	type auto struct{ bound, imported, pulled bool }
+	// Each world book once, as the verdict totals count them.
+	books := map[string]auto{}
+	mark := func(lb ReconcileItem) {
+		a := books[lb.RemoteID]
+		books[lb.RemoteID] = auto{a.bound || lb.AutoBound, a.imported || lb.AutoImported, a.pulled || lb.AutoPulled}
+	}
+	all := []auto{}
+	for _, it := range items {
+		all = append(all, auto{it.AutoBound, it.AutoImported, it.AutoPulled})
+		for _, lb := range it.Lorebooks {
 			mark(lb)
 		}
-		for _, a := range books {
-			all = append(all, a)
-		}
-		for _, a := range all {
-			// A world book one card imported, a later card binds; it counts as imported.
-			switch {
-			case a.imported:
-				snap.Totals["auto_imported"]++
-			case a.bound:
-				snap.Totals["auto_bound"]++
-			case a.pulled:
-				snap.Totals["auto_pulled"]++
-			}
+	}
+	for _, lb := range lorebooks {
+		mark(lb)
+	}
+	for _, a := range books {
+		all = append(all, a)
+	}
+	totals := map[string]int{}
+	for _, a := range all {
+		// A world book one card imported, a later card binds; it counts as imported.
+		switch {
+		case a.imported:
+			totals["auto_imported"]++
+		case a.bound:
+			totals["auto_bound"]++
+		case a.pulled:
+			totals["auto_pulled"]++
 		}
 	}
+	return totals
+}
 
-	// A card whose remote ID the app reused for another bound item is gone too.
-	for id, remoteID := range cardIdx.remoteOf {
-		if remoteID != "" && (!listed[remoteID] || cardIdx.byRemote[remoteID].entityID != id) {
-			snap.Missing = append(snap.Missing, id)
+// missing are the bound cards whose app item isn't listed. A card whose
+// remote ID the app reused for another bound item is gone too.
+func missing(idx index, listed map[string]bool) []int64 {
+	out := []int64{}
+	for id, remoteID := range idx.remoteOf {
+		if remoteID != "" && (!listed[remoteID] || idx.byRemote[remoteID].entityID != id) {
+			out = append(out, id)
 		}
 	}
-	slices.Sort(snap.Missing)
-	for _, e := range cardIdx.entries {
-		if _, ok := cardIdx.remoteOf[e.id]; !ok {
-			snap.Unpushed = append(snap.Unpushed, e.id)
+	slices.Sort(out)
+	return out
+}
+
+// unpushed are the library's cards with no binding on the instance.
+func unpushed(idx index) []int64 {
+	out := []int64{}
+	for _, e := range idx.entries {
+		if _, ok := idx.remoteOf[e.id]; !ok {
+			out = append(out, e.id)
 		}
 	}
-	return snap, nil
+	return out
 }
 
 // autoApply binds each exact item, keeping the library's copy, and imports

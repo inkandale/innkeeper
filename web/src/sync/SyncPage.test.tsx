@@ -27,7 +27,7 @@ beforeEach(() => {
           { name: "lumiverse", capabilities: ["push", "pull"] },
           { name: "folder", capabilities: ["import"] },
         ]);
-      if (u.pathname === "/api/search")
+      if (u.pathname === "/api/cards/search")
         return json({
           hits: [], total: 10,
           facets: { targets: [{ instance: 2, is: "in_sync", cards: 5 }, { instance: 2, is: "ahead", cards: 3 }, { instance: 2, is: "diverged", cards: 1 }, { instance: 2, is: "missing", cards: 2 }, { instance: 2, is: "cant_check", cards: 4 }] },
@@ -37,7 +37,7 @@ beforeEach(() => {
       if (u.pathname === "/api/sync/changes")
         return json({ rows: [], counts: { "2": { differs: 2, both_changed: 1, error: 1, new: 3, ahead: 3, missing: 2 } } });
       if (u.pathname === "/api/jobs/6") return json({ id: 6, kind: "x", status: "running", created_at: now, payload: {}, progress: {} });
-      if (req.method === "POST" && u.pathname !== "/api/search") {
+      if (req.method === "POST" && u.pathname !== "/api/cards/search") {
         posts.push({ path: u.pathname, body: await req.json().catch(() => undefined) });
         return json({ id: 6, kind: "x", status: "queued", created_at: now, payload: {}, progress: {} }, 202);
       }
@@ -85,7 +85,7 @@ test("Can't check shows only when it isn't zero", async () => {
     const u = new URL((req as Request).url);
     if (u.pathname === "/api/instances") return json([{ id: 2, name: "Lumiverse", plugin: "lumiverse" }]);
     if (u.pathname === "/api/plugins") return json([{ name: "lumiverse", capabilities: ["push"] }]);
-    if (u.pathname === "/api/search") return json({ hits: [], total: 5, facets: { targets: [{ instance: 2, is: "in_sync", cards: 5 }] } });
+    if (u.pathname === "/api/cards/search") return json({ hits: [], total: 5, facets: { targets: [{ instance: 2, is: "in_sync", cards: 5 }] } });
     if (u.pathname === "/api/sync/changes") return json({ rows: [], counts: {} });
     return json([]);
   });

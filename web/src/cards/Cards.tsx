@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router";
-import { api, must } from "../api/client";
+import { api, must, route } from "../api/client";
 import { Facets } from "./Facets";
 import { pageLinks } from "./pages";
 import { defaultSort, parseQuery, sizes, toggleTerm, toParams, toLorebookSearch, toSearch, type CardQuery, type Sort, type Term } from "./query";
@@ -43,7 +43,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const body = kind === "card" ? toSearch(q) : toLorebookSearch(q);
   const res = useQuery({
     queryKey: ["search", kind, body],
-    queryFn: async () => must(kind === "card" ? await api.POST("/search", { body }) : await api.POST("/lorebooks/search", { body })),
+    queryFn: async () => must(await api.POST(route(kind, "/cards/search"), { body })),
     placeholderData: keepPreviousData,
   });
   const instances = useQuery({ queryKey: ["instances"], queryFn: async () => must(await api.GET("/instances")) });
@@ -68,7 +68,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const linked = useQuery({
     queryKey: ["search", "card", linkedBody],
     enabled: linkedIds.length > 0,
-    queryFn: async () => must(await api.POST("/search", { body: linkedBody })),
+    queryFn: async () => must(await api.POST("/cards/search", { body: linkedBody })),
   });
   const linkedCards = new Map((linked.data?.hits ?? []).map((h) => [h.id, h]));
   const pageIds = hits.map((h) => h.id);

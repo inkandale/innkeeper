@@ -84,10 +84,10 @@ export function Changes() {
           [...group(reviews, (c) => c.instance_id)].map(([i, cs]) =>
             bulkResolutions(
               i,
-              cs.map((c) => ({ kind: "items" as const, item: { remote_id: c.remote_id ?? "", app_hash: c.app_hash ?? "", binding_id: c.binding_id }, c })),
+              cs.map((c) => ({ kind: "card" as const, item: { remote_id: c.remote_id ?? "", app_hash: c.app_hash ?? "", binding_id: c.binding_id }, c })),
               (r) => r.c.suggested as Option,
               (r, card) =>
-                compareItem(i, "items", r.item.remote_id, card).catch((e: Error) => {
+                compareItem(i, "card", r.item.remote_id, card).catch((e: Error) => {
                   throw new Error(`${r.c.name || r.item.remote_id}: ${e.message}`);
                 }),
             ),

@@ -75,7 +75,7 @@ func TestPrintComparison(t *testing.T) {
 
 func TestResolveCmd(t *testing.T) {
 	got := stubAPI(t, map[string]string{
-		"/instances/3/items/a%2Fb.png/compare?card_id=12": `{"remote_id": "a/b.png", "card_id": 12, "head_revision_id": 40, "accepted_hash": "", "app_hash": "h1", "binding_id": 7}`,
+		"/instances/3/cards/a%2Fb.png/compare?card_id=12": `{"remote_id": "a/b.png", "card_id": 12, "head_revision_id": 40, "accepted_hash": "", "app_hash": "h1", "binding_id": 7}`,
 	})
 	if _, err := runInk(t, "sync", "resolve", "3", "a/b.png", "bind", "12", "first_mes#1=app", "--default", "keep_in_app"); err != nil {
 		t.Fatal(err)
@@ -84,7 +84,7 @@ func TestResolveCmd(t *testing.T) {
 		t.Fatalf("requests = %q", *got)
 	}
 	post := (*got)[1]
-	if !strings.HasPrefix(post, "POST /instances/3/items/a%2Fb.png/resolve ") {
+	if !strings.HasPrefix(post, "POST /instances/3/cards/a%2Fb.png/resolve ") {
 		t.Fatalf("post = %q", post)
 	}
 	var r wire.Resolution
@@ -104,7 +104,7 @@ func TestResolveCmd(t *testing.T) {
 
 func TestResolveTwoWay(t *testing.T) {
 	got := stubAPI(t, map[string]string{
-		"/instances/3/items/r1/compare?base=none": `{"remote_id": "r1", "card_id": 12, "head_revision_id": 40, "accepted_hash": "acc", "base": "none", "app_hash": "h1"}`,
+		"/instances/3/cards/r1/compare?base=none": `{"remote_id": "r1", "card_id": 12, "head_revision_id": 40, "accepted_hash": "acc", "base": "none", "app_hash": "h1"}`,
 	})
 	if _, err := runInk(t, "sync", "resolve", "3", "r1", "bind", "description#0=app", "--two-way"); err != nil {
 		t.Fatal(err)
@@ -123,7 +123,7 @@ func TestResolveRemoteIDWithEquals(t *testing.T) {
 	if _, err := runInk(t, "sync", "resolve", "3", "a=b.png", "skip"); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix((*got)[0], "POST /instances/3/items/a=b.png/resolve ") {
+	if !strings.HasPrefix((*got)[0], "POST /instances/3/cards/a=b.png/resolve ") {
 		t.Fatalf("request = %q", (*got)[0])
 	}
 }
@@ -136,7 +136,7 @@ func TestSyncApply(t *testing.T) {
 	job, _ := json.Marshal(map[string]any{"kind": wire.ReconcileKind, "status": "succeeded", "progress": json.RawMessage(snap)})
 	got := stubAPI(t, map[string]string{
 		"/jobs/5": string(job),
-		"/instances/3/items/r1/compare?card_id=12": `{"head_revision_id": 40, "accepted_hash": "a1", "app_hash": "h1-newer"}`,
+		"/instances/3/cards/r1/compare?card_id=12": `{"head_revision_id": 40, "accepted_hash": "a1", "app_hash": "h1-newer"}`,
 	})
 	if _, err := runInk(t, "sync", "apply", "5", "--verdict", "exact"); err != nil {
 		t.Fatal(err)

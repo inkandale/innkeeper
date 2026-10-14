@@ -58,7 +58,7 @@ function LinkedCards({ ids }: { ids: number[] }) {
   const cards = useQuery({
     queryKey: ["search", "card", body],
     enabled: ids.length > 0,
-    queryFn: async () => must(await api.POST("/search", { body })),
+    queryFn: async () => must(await api.POST("/cards/search", { body })),
   });
   if (!ids.length) return null;
   const names = new Map((cards.data?.hits ?? []).map((h) => [h.id, text(h.fields.name)]));

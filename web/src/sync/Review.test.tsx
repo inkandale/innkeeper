@@ -88,20 +88,20 @@ beforeEach(() => {
           .filter((r) => r.apps.length);
         return json({ ...changes, rows });
       }
-      if (u.pathname === "/api/instances/3/items/a/compare") {
+      if (u.pathname === "/api/instances/3/cards/a/compare") {
         compares.push(u.searchParams.get("card_id")!);
         return json({ ...cardBody, card_id: Number(u.searchParams.get("card_id")) });
       }
-      if (u.pathname === "/api/instances/3/items/x/compare") {
+      if (u.pathname === "/api/instances/3/cards/x/compare") {
         compares.push(u.search);
         return json({ ...cardCmp, remote_id: "x", card_id: 4, accepted_hash: "acc", base: u.searchParams.get("base") ?? "accepted" });
       }
-      if (u.pathname === "/api/instances/3/items/x/resolve") {
+      if (u.pathname === "/api/instances/3/cards/x/resolve") {
         resolved.push(await req.json());
         return json({ remote_id: "x", action: "bind", card_id: 4 });
       }
-      if (u.pathname === "/api/instances/3/lorebook-items/w2/compare") return json(bookCmp);
-      if (u.pathname === "/api/instances/3/items/a/resolve") {
+      if (u.pathname === "/api/instances/3/lorebooks/w2/compare") return json(bookCmp);
+      if (u.pathname === "/api/instances/3/cards/a/resolve") {
         resolved.push(await req.json());
         if (stale) {
           stale = false;
@@ -109,14 +109,14 @@ beforeEach(() => {
         }
         return json({ remote_id: "a", action: "bind", card_id: 1 });
       }
-      if (u.pathname === "/api/search") return json({ total: 1, hits: [{ id: 77, slug: "belle", revision_id: 1, fields: { name: "Belle" } }] });
+      if (u.pathname === "/api/cards/search") return json({ total: 1, hits: [{ id: 77, slug: "belle", revision_id: 1, fields: { name: "Belle" } }] });
       return json({}, 404);
     }),
   );
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function renderReview(entry = "/sync/3/items/a?job=5") {
+function renderReview(entry = "/sync/3/card/a?job=5") {
   const router = createMemoryRouter(
     [
       { path: "/sync/:instance/:kind/:remoteId", element: <Toasts><Review /></Toasts> },
@@ -160,7 +160,7 @@ function importWithNewerComparison() {
   // Reopened after an import, the fresh comparison names the binding that import made.
   const fetch = globalThis.fetch;
   vi.stubGlobal("fetch", async (req: Request) =>
-    new URL(req.url).pathname === "/api/instances/3/items/a/compare" ? json({ ...cardCmp, binding_id: 12 }) : fetch(req),
+    new URL(req.url).pathname === "/api/instances/3/cards/a/compare" ? json({ ...cardCmp, binding_id: 12 }) : fetch(req),
   );
 }
 
@@ -244,7 +244,7 @@ test("Other match compares with any library card", async () => {
 });
 
 test("a drift review compares with the named card", async () => {
-  renderReview("/sync/3/items/a?card=1");
+  renderReview("/sync/3/card/a?card=1");
   expect(await screen.findByRole("region", { name: "Ann" })).toBeInTheDocument();
   expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Ann");
   await waitFor(() => expect(compares).toEqual(["1"]));
@@ -293,26 +293,26 @@ test("Other match on a new item offers Bind and binds to the found card", async 
 const at = (router: ReturnType<typeof renderReview>) => router.state.location.pathname + router.state.location.search;
 
 test("from the queue, shows its place among the reviews and resolves on to the next", async () => {
-  const router = renderReview("/sync/3/items/a?job=5&queue=1");
+  const router = renderReview("/sync/3/card/a?job=5&queue=1");
   const user = userEvent.setup();
   expect(await screen.findByText("1 of 3")).toBeInTheDocument();
   await screen.findByRole("radiogroup", { name: "Keep for description#1" });
   await user.click(screen.getByRole("button", { name: "Resolve" }));
-  await waitFor(() => expect(at(router)).toBe("/sync/3/items/x?card=4&base=none&queue=1"));
+  await waitFor(() => expect(at(router)).toBe("/sync/3/card/x?card=4&base=none&queue=1"));
   expect(resolved).toHaveLength(1);
 });
 
 test("Later moves on without resolving", async () => {
-  const router = renderReview("/sync/3/items/a?job=5&queue=1");
+  const router = renderReview("/sync/3/card/a?job=5&queue=1");
   const user = userEvent.setup();
   await screen.findByText("1 of 3");
   await user.click(screen.getByRole("button", { name: "Later" }));
-  await waitFor(() => expect(at(router)).toBe("/sync/3/items/x?card=4&base=none&queue=1"));
+  await waitFor(() => expect(at(router)).toBe("/sync/3/card/x?card=4&base=none&queue=1"));
   expect(resolved).toEqual([]);
 });
 
 test("with no review left, the queue opens", async () => {
-  const router = renderReview("/sync/3/items/c?job=5&queue=1");
+  const router = renderReview("/sync/3/card/c?job=5&queue=1");
   const user = userEvent.setup();
   await screen.findByText("3 of 3");
   await user.click(screen.getByRole("button", { name: "Later" }));
@@ -328,28 +328,28 @@ test("filtered to one app, steps through that app's reviews only and returns to 
       ...baseChanges.rows.slice(1),
     ],
   };
-  const router = renderReview("/sync/3/items/a?job=5&queue=1&instance_id=3");
+  const router = renderReview("/sync/3/card/a?job=5&queue=1&instance_id=3");
   const user = userEvent.setup();
   expect(await screen.findByText("1 of 3")).toBeInTheDocument();
   await screen.findByRole("radiogroup", { name: "Keep for description#1" });
   await user.click(screen.getByRole("button", { name: "Resolve" }));
-  await waitFor(() => expect(at(router)).toBe("/sync/3/items/x?card=4&base=none&queue=1&instance_id=3"));
+  await waitFor(() => expect(at(router)).toBe("/sync/3/card/x?card=4&base=none&queue=1&instance_id=3"));
   await screen.findByText("2 of 3");
   await user.click(screen.getByRole("button", { name: "Later" }));
-  await waitFor(() => expect(at(router)).toBe("/sync/3/items/c?job=5&queue=1&instance_id=3"));
+  await waitFor(() => expect(at(router)).toBe("/sync/3/card/c?job=5&queue=1&instance_id=3"));
   await screen.findByText("3 of 3");
   await user.click(screen.getByRole("button", { name: "Later" }));
   await waitFor(() => expect(at(router)).toBe("/sync/changes?instance_id=3"));
 });
 
 test("a change not pushed compares without the accepted copy and resolves the same way", async () => {
-  const router = renderReview("/sync/3/items/x?card=4&base=none&queue=1");
+  const router = renderReview("/sync/3/card/x?card=4&base=none&queue=1");
   const user = userEvent.setup();
   await screen.findByText("2 of 3");
   expect(compares).toEqual(["?card_id=4&base=none"]);
   await user.click(await screen.findByLabelText("App", { selector: "[name='card:x/description#1']" }));
   await user.click(screen.getByRole("button", { name: "Resolve" }));
-  await waitFor(() => expect(at(router)).toBe("/sync/3/items/c?job=5&queue=1"));
+  await waitFor(() => expect(at(router)).toBe("/sync/3/card/c?job=5&queue=1"));
   expect(resolved).toEqual([
     expect.objectContaining({ card_id: 4, accepted_hash: "acc", base: "none", choices: { "description#1": "app" } }),
   ]);

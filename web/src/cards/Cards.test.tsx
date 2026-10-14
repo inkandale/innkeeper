@@ -44,7 +44,7 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (req: Request) => {
       const path = new URL(req.url).pathname;
-      if (path === "/api/search") {
+      if (path === "/api/cards/search") {
         const body = await req.json();
         searches.push(body);
         if (body.page?.size === 1 && body.facets?.includes("targets"))

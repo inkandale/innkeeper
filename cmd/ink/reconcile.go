@@ -250,7 +250,7 @@ with --two-way.`,
 			if err != nil {
 				return err
 			}
-			out, err := c.do(ctx, "POST", "/instances/"+inst+"/items/"+url.PathEscape(r.RemoteID)+"/resolve", body)
+			out, err := c.do(ctx, "POST", "/instances/"+inst+"/cards/"+url.PathEscape(r.RemoteID)+"/resolve", body)
 			if err != nil {
 				return err
 			}
@@ -289,23 +289,19 @@ for, or only the remote IDs named. A bind keeps the library's side of every hunk
 			}
 			inst := fmt.Sprint(snap.Params.InstanceID)
 			var rs []wire.Resolution
-			add := func(kind, itemsPath string, it wire.ReconcileItem) error {
+			add := func(k kind, it wire.ReconcileItem) error {
 				s := it.Suggested
 				if s == nil || len(verdicts) > 0 && !slices.Contains(verdicts, it.Verdict) ||
 					len(remoteIDs) > 0 && !slices.Contains(remoteIDs, it.RemoteID) {
 					return nil
 				}
-				r := wire.Resolution{InstanceID: snap.Params.InstanceID, RemoteID: it.RemoteID, Kind: kind,
+				r := wire.Resolution{InstanceID: snap.Params.InstanceID, RemoteID: it.RemoteID, Kind: k.singular,
 					AppHash: it.AppHash, BindingID: it.BindingID, Action: s.Action, CardID: s.CardID}
 				if s.Action == "bind" {
 					// The snapshot doesn't carry the card's head, so a bind reads it
 					// from a comparison; the snapshot's app_hash still guards the app.
-					path := "/instances/" + inst + "/" + itemsPath + "/" + url.PathEscape(it.RemoteID) + "/compare"
-					q := "card_id"
-					if kind == "lorebook" {
-						q = "lorebook_id"
-					}
-					cmp, err := fetchComparison(ctx, c, fmt.Sprintf("%s?%s=%d", path, q, s.CardID))
+					path := "/instances/" + inst + "/" + k.plural + "/" + url.PathEscape(it.RemoteID) + "/compare"
+					cmp, err := fetchComparison(ctx, c, fmt.Sprintf("%s?%s_id=%d", path, k.singular, s.CardID))
 					if err != nil {
 						return fmt.Errorf("%s: %w", it.RemoteID, err)
 					}
@@ -315,12 +311,12 @@ for, or only the remote IDs named. A bind keeps the library's side of every hunk
 				return nil
 			}
 			for _, it := range snap.Items {
-				if err := add("card", "items", it); err != nil {
+				if err := add(cardKind, it); err != nil {
 					return err
 				}
 			}
 			for _, lb := range snap.Lorebooks {
-				if err := add("lorebook", "lorebook-items", lb); err != nil {
+				if err := add(lorebookKind, lb); err != nil {
 					return err
 				}
 			}
@@ -426,7 +422,7 @@ func comparePath(inst, remoteID, card string, twoWay bool) string {
 	if twoWay {
 		q.Set("base", "none")
 	}
-	p := "/instances/" + inst + "/items/" + url.PathEscape(remoteID) + "/compare"
+	p := "/instances/" + inst + "/cards/" + url.PathEscape(remoteID) + "/compare"
 	if len(q) > 0 {
 		p += "?" + q.Encode()
 	}

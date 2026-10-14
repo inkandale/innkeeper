@@ -43,7 +43,7 @@ beforeEach(() => {
           { id: 2, name: "Lumiverse", plugin: "lumiverse" },
           { id: 3, name: "Tavern", plugin: "tavern" },
         ]);
-      if (u.pathname === "/api/instances/2/items/a/compare" && u.searchParams.get("card_id") === "1") return json(cmp);
+      if (u.pathname === "/api/instances/2/cards/a/compare" && u.searchParams.get("card_id") === "1") return json(cmp);
       if (u.pathname === "/api/pushes/preview") {
         posts.push({ path: u.pathname, body: await req.json() });
         return json({ total: 1, new: 0, ahead: 1, in_sync: 0, cant_check: 0, drifted: 0, confirm: "q1" });
@@ -87,9 +87,9 @@ test("one row per card, with each app's state under its column, orphans first", 
   expect(within(ann).getAllByRole("cell")[3]).toHaveTextContent("");
   const bo = screen.getByRole("row", { name: /Bo/ });
   expect(within(bo).getAllByRole("cell")[3]).toHaveTextContent("not pushed");
-  expect(within(ann).getByRole("link", { name: /Review/ })).toHaveAttribute("href", "/sync/2/items/a?job=7&queue=1");
+  expect(within(ann).getByRole("link", { name: /Review/ })).toHaveAttribute("href", "/sync/2/card/a?job=7&queue=1");
   expect(within(bo).getByRole("button", { name: /Push/ })).toBeInTheDocument();
-  expect(within(bo).getByRole("link", { name: /Review/ })).toHaveAttribute("href", "/sync/3/items/b?card=4&base=none&queue=1");
+  expect(within(bo).getByRole("link", { name: /Review/ })).toHaveAttribute("href", "/sync/3/card/b?card=4&base=none&queue=1");
   const cy = screen.getByRole("row", { name: /Cy/ });
   expect(within(cy).getByRole("button", { name: /Push again/ })).toBeInTheDocument();
   expect(within(cy).getByRole("button", { name: /Unbind/ })).toBeInTheDocument();
@@ -142,14 +142,14 @@ test("Apply suggested with an ahead row asks with the push preview first", async
 test("Review one by one opens the first review", async () => {
   const router = renderChanges();
   await userEvent.click(await screen.findByRole("link", { name: "Review one by one" }));
-  expect(router.state.location.pathname + router.state.location.search).toBe("/sync/2/items/z?job=7&queue=1");
+  expect(router.state.location.pathname + router.state.location.search).toBe("/sync/2/card/z?job=7&queue=1");
 });
 
 test("Review one by one keeps the filter", async () => {
   const router = renderChanges("/sync/changes?instance_id=2&state=differs");
   await userEvent.click(await screen.findByRole("link", { name: "Review one by one" }));
   expect(router.state.location.pathname + router.state.location.search).toBe(
-    "/sync/2/items/z?job=7&queue=1&instance_id=2&state=differs",
+    "/sync/2/card/z?job=7&queue=1&instance_id=2&state=differs",
   );
 });
 

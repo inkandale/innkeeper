@@ -9,6 +9,7 @@ import (
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/tier"
 )
 
@@ -21,19 +22,16 @@ type entityIn struct {
 	ID   int64  `json:"id"`
 }
 
-// plural is the API path segment for kind.
-func plural(kind string) (string, error) {
-	switch kind {
-	case "card":
-		return "cards", nil
-	case "lorebook":
-		return "lorebooks", nil
+// kindNamed is the library kind a tool's input names.
+func kindNamed(name string) (*library.Kind, error) {
+	if k, ok := library.KindNamed(name); ok {
+		return k, nil
 	}
-	return "", fmt.Errorf("kind must be card or lorebook, not %q", kind)
+	return nil, fmt.Errorf("kind must be card or lorebook, not %q", name)
 }
 
 type searchIn struct {
-	Query map[string]any `json:"query" jsonschema:"The search query, as the API's POST /search body: text, filter, sources (library, or catalog:<instance id> to search a catalog too), include, fields, page"`
+	Query map[string]any `json:"query" jsonschema:"The search query, as the API's POST /cards/search body: text, filter, sources (library, or catalog:<instance id> to search a catalog too), include, fields, page"`
 }
 
 type createIn struct {
@@ -173,17 +171,9 @@ type resolveItemsIn struct {
 	Resolutions []map[string]any `json:"resolutions" jsonschema:"Each shaped like resolve_item's input, with instance_id and kind"`
 }
 
-// itemPath is the API path of an app item, under kind's items.
-func itemPath(instanceID int64, kind, remoteID string) (string, error) {
-	items := "items"
-	switch kind {
-	case "", "card":
-	case "lorebook":
-		items = "lorebook-items"
-	default:
-		return "", fmt.Errorf("kind must be card or lorebook, not %q", kind)
-	}
-	return fmt.Sprintf("/instances/%d/%s/%s", instanceID, items, url.PathEscape(remoteID)), nil
+// itemPath is the API path of an app item of kind k.
+func itemPath(instanceID int64, k *library.Kind, remoteID string) string {
+	return fmt.Sprintf("/instances/%d/%s/%s", instanceID, k.Plural, url.PathEscape(remoteID))
 }
 
 type none struct{}
@@ -192,7 +182,7 @@ type none struct{}
 var tools = []tool{
 	def("search_cards", "Search the library's cards by text and filters. Returns matching cards.", tier.Read,
 		func(ctx context.Context, c caller, in searchIn) (*sdk.CallToolResult, error) {
-			return c.call(ctx, "POST", "/search", in.Query)
+			return c.call(ctx, "POST", "/cards/search", in.Query)
 		}),
 	def("get_card", "Get a card: its head revision, tags, linked lorebooks, and its status on each target app.", tier.Read,
 		func(ctx context.Context, c caller, in idIn) (*sdk.CallToolResult, error) {
@@ -204,11 +194,11 @@ var tools = []tool{
 		}),
 	def("get_history", "List a card's or lorebook's revisions, newest first.", tier.Read,
 		func(ctx context.Context, c caller, in entityIn) (*sdk.CallToolResult, error) {
-			p, err := plural(in.Kind)
+			k, err := kindNamed(in.Kind)
 			if err != nil {
 				return nil, err
 			}
-			return c.call(ctx, "GET", fmt.Sprintf("/%s/%d/revisions", p, in.ID), nil)
+			return c.call(ctx, "GET", fmt.Sprintf("/%s/%d/revisions", k.Plural, in.ID), nil)
 		}),
 	def("create_card", "Create a card from a CCv3 data object.", tier.Write,
 		func(ctx context.Context, c caller, in createIn) (*sdk.CallToolResult, error) {
@@ -236,34 +226,34 @@ var tools = []tool{
 		}),
 	def("restore_revision", "Bring back an old revision of a card or lorebook as a new revision.", tier.Write,
 		func(ctx context.Context, c caller, in restoreIn) (*sdk.CallToolResult, error) {
-			p, err := plural(in.Kind)
+			k, err := kindNamed(in.Kind)
 			if err != nil {
 				return nil, err
 			}
-			return c.call(ctx, "POST", fmt.Sprintf("/%s/%d/restore", p, in.ID),
+			return c.call(ctx, "POST", fmt.Sprintf("/%s/%d/restore", k.Plural, in.ID),
 				map[string]any{"revision_id": in.RevisionID, "base_revision_id": in.BaseRevisionID, "avatar": cmp.Or(in.Avatar, "keep"), "source": "mcp"})
 		}),
 	def("preview_push", "Show what pushing a card or lorebook to a target app would do: the fields it would change in the app, "+
 		"with the app's value as before and the pushed one as after, fields it would drop, and lorebooks it would create. "+
 		"Show the owner the changes, then pass confirm to push.", tier.Read,
 		func(ctx context.Context, c caller, in previewIn) (*sdk.CallToolResult, error) {
-			p, err := plural(in.Kind)
+			k, err := kindNamed(in.Kind)
 			if err != nil {
 				return nil, err
 			}
-			return c.call(ctx, "GET", fmt.Sprintf("/%s/%d/push-preview?instance_id=%d", p, in.ID, in.InstanceID), nil)
+			return c.call(ctx, "GET", fmt.Sprintf("/%s/%d/push-preview?instance_id=%d", k.Plural, in.ID, in.InstanceID), nil)
 		}),
 	def("push", "Push a card or lorebook to a target app, overwriting the app's copy. Needs confirm from preview_push; "+
 		"if anything changed since, it returns the new preview instead.", tier.Destructive,
 		func(ctx context.Context, c caller, in pushIn) (*sdk.CallToolResult, error) {
-			p, err := plural(in.Kind)
+			k, err := kindNamed(in.Kind)
 			if err != nil {
 				return nil, err
 			}
 			if in.Confirm == "" {
 				return nil, fmt.Errorf("confirm is required: call preview_push and show the owner its changes first")
 			}
-			return c.call(ctx, "POST", fmt.Sprintf("/%s/%d/push", p, in.ID),
+			return c.call(ctx, "POST", fmt.Sprintf("/%s/%d/push", k.Plural, in.ID),
 				map[string]any{"instance_id": in.InstanceID, "confirm": in.Confirm, "new_copy": in.NewCopy})
 		}),
 	def("check_drift", "Read a bound card or lorebook back from its app now, and report what changed there.", tier.Read,
@@ -272,11 +262,11 @@ var tools = []tool{
 		}),
 	def("list_bindings", "List the target apps a card or lorebook is pushed to, with each one's status.", tier.Read,
 		func(ctx context.Context, c caller, in entityIn) (*sdk.CallToolResult, error) {
-			p, err := plural(in.Kind)
+			k, err := kindNamed(in.Kind)
 			if err != nil {
 				return nil, err
 			}
-			return c.call(ctx, "GET", fmt.Sprintf("/%s/%d/bindings", p, in.ID), nil)
+			return c.call(ctx, "GET", fmt.Sprintf("/%s/%d/bindings", k.Plural, in.ID), nil)
 		}),
 	def("list_sources", "List the sites a card or lorebook was published on.", tier.Read,
 		func(ctx context.Context, c caller, in sourceIn) (*sdk.CallToolResult, error) {
@@ -304,15 +294,11 @@ var tools = []tool{
 		}),
 	def("list_app_items", "List the cards or lorebooks a target app already has, with the binding that uses each, if any.", tier.Read,
 		func(ctx context.Context, c caller, in itemsIn) (*sdk.CallToolResult, error) {
-			path := "items"
-			switch in.Kind {
-			case "", "card":
-			case "lorebook":
-				path = "lorebook-items"
-			default:
-				return nil, fmt.Errorf("kind must be card or lorebook, not %q", in.Kind)
+			k, err := kindNamed(cmp.Or(in.Kind, library.Card.Name))
+			if err != nil {
+				return nil, err
 			}
-			return c.call(ctx, "GET", fmt.Sprintf("/instances/%d/%s", in.InstanceID, path), nil)
+			return c.call(ctx, "GET", fmt.Sprintf("/instances/%d/%s", in.InstanceID, k.Plural), nil)
 		}),
 	def("bind", "Link a card or lorebook to one the app already has. Changes nothing in the app or the library; the binding shows ahead until the next push where they differ. The app's linked world books are left for sync.", tier.Write,
 		func(ctx context.Context, c caller, in bindIn) (*sdk.CallToolResult, error) {
@@ -384,20 +370,17 @@ var tools = []tool{
 	def("compare_item", "Compare an app item with a library card or lorebook, hunk by hunk. resolve_item needs this reply's app_hash, "+
 		"head_revision_id, accepted_hash, and binding_id. An unbound item needs an id to compare with.", tier.Read,
 		func(ctx context.Context, c caller, in compareIn) (*sdk.CallToolResult, error) {
-			path, err := itemPath(in.InstanceID, in.Kind, in.RemoteID)
+			k, err := kindNamed(cmp.Or(in.Kind, library.Card.Name))
 			if err != nil {
 				return nil, err
 			}
-			q := "card_id"
-			if in.Kind == "lorebook" {
-				q = "lorebook_id"
-			}
+			path := itemPath(in.InstanceID, k, in.RemoteID)
 			v := url.Values{}
 			if in.ID != 0 {
-				v.Set(q, fmt.Sprint(in.ID))
+				v.Set(k.Name+"_id", fmt.Sprint(in.ID))
 			}
 			if in.TwoWay {
-				if in.Kind == "lorebook" {
+				if k == library.Lorebook {
 					return nil, fmt.Errorf("two_way compares cards only")
 				}
 				v.Set("base", "none")
@@ -411,11 +394,11 @@ var tools = []tool{
 	def("resolve_item", "Bind an app item to a library card with per-hunk choices, import it, or skip it. Show the owner compare_item first. "+
 		"Changes the library and the binding, never the app: push afterwards to send the result. A 409 means something changed; it has a fresh comparison.", tier.Write,
 		func(ctx context.Context, c caller, in resolveIn) (*sdk.CallToolResult, error) {
-			path, err := itemPath(in.InstanceID, in.Kind, in.RemoteID)
+			k, err := kindNamed(cmp.Or(in.Kind, library.Card.Name))
 			if err != nil {
 				return nil, err
 			}
-			return c.call(ctx, "POST", path+"/resolve", in)
+			return c.call(ctx, "POST", itemPath(in.InstanceID, k, in.RemoteID)+"/resolve", in)
 		}),
 	def("resolve_items", "Resolve many app items as one bulk job, such as a sync's suggestions. One that fails doesn't stop the others; "+
 		"get_job on each child shows its outcome. Pushing is a separate step.", tier.Write,

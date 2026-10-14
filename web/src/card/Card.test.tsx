@@ -301,7 +301,7 @@ test.each(["diverged", "remote_changed"])("a %s target links to its review", asy
   bindingStatus = status;
   renderAt("/cards/7");
   const link = await screen.findByRole("link", { name: "Review" });
-  expect(link).toHaveAttribute("href", "/sync/2/items/r?card=7");
+  expect(link).toHaveAttribute("href", "/sync/2/card/r?card=7");
   expect(screen.queryByRole("link", { name: "Changes" })).not.toBeInTheDocument();
 });
 

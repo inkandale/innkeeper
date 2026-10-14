@@ -35,7 +35,7 @@ beforeEach(() => {
       }
       if (path === "/api/lorebooks/3") return json(head);
       if (path === "/api/lorebooks/3/revisions") return json([head.revision]);
-      if (path === "/api/search") return json({ total: 1, hits: [{ id: 7, slug: "brakka", revision_id: 1, fields: { name: "Brakka" } }] });
+      if (path === "/api/cards/search") return json({ total: 1, hits: [{ id: 7, slug: "brakka", revision_id: 1, fields: { name: "Brakka" } }] });
       return json([]);
     }),
   );

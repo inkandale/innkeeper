@@ -59,8 +59,8 @@ function renderQueue() {
 
 test("lists each app item with its match and suggestion", async () => {
   renderQueue();
-  expect(await screen.findByRole("link", { name: "Ann" })).toHaveAttribute("href", "/sync/3/items/a?job=5");
-  expect(screen.getByRole("link", { name: "World" })).toHaveAttribute("href", "/sync/3/lorebook-items/w?job=5");
+  expect(await screen.findByRole("link", { name: "Ann" })).toHaveAttribute("href", "/sync/3/card/a?job=5");
+  expect(screen.getByRole("link", { name: "World" })).toHaveAttribute("href", "/sync/3/lorebook/w?job=5");
   expect(screen.getByRole("row", { name: /Bo/ })).toHaveTextContent("Import as new");
   expect(screen.getByText("bad JSON")).toBeInTheDocument();
   expect(screen.getByText(/Ann's world/)).toBeInTheDocument();

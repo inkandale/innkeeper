@@ -1,7 +1,7 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
-import { api, ApiError, must, thumb } from "../api/client";
+import { api, ApiError, must, route, thumb, type Kind } from "../api/client";
 import type { components } from "../api/schema";
 import { show, text } from "../card/draft";
 import { entryOf } from "../card/History";
@@ -24,7 +24,6 @@ import {
   wordDiff,
   type Comparison,
   type Item,
-  type ItemKind,
   type Option,
   type Run,
 } from "./sync";
@@ -207,7 +206,7 @@ function Diff({ scope, cmp, choices, onChoose }: { scope: string; cmp: Compariso
   );
 }
 
-function OtherMatch({ kind, onPick }: { kind: ItemKind; onPick: (id: number) => void }) {
+function OtherMatch({ kind, onPick }: { kind: Kind; onPick: (id: number) => void }) {
   const [text, setText] = useState("");
   const [q, setQ] = useState("");
   const hits = useQuery({
@@ -215,7 +214,7 @@ function OtherMatch({ kind, onPick }: { kind: ItemKind; onPick: (id: number) => 
     queryKey: ["search", kind, "other-match", q],
     queryFn: async () => {
       const body = { text: q, page: { size: 10 } };
-      return must(kind === "items" ? await api.POST("/search", { body }) : await api.POST("/lorebooks/search", { body }));
+      return must(await api.POST(route(kind, "/cards/search"), { body }));
     },
   });
   return (
@@ -249,7 +248,8 @@ export function Review() {
 function ReviewItem() {
   const params = useParams();
   const instance = Number(params.instance);
-  const kind: ItemKind = params.kind === "lorebook-items" ? "lorebook-items" : "items";
+  // lorebook-items is the segment links had before they named the kind.
+  const kind: Kind = params.kind === "lorebook" || params.kind === "lorebook-items" ? "lorebook" : "card";
   const remoteId = params.remoteId ?? "";
   const [search, setSearch] = useSearchParams();
   const jobId = Number(search.get("job")) || 0;
@@ -297,7 +297,7 @@ function ReviewItem() {
     action ?? suggested?.action ?? (!item || item.verdict === "bound" ? "bind" : (actions[0] ?? "skip"));
   const [choices, setChoices] = useState<Choices>({});
   const [afterStale, setAfterStale] = useState(false);
-  const nested = kind === "items" ? (item?.lorebooks ?? []) : [];
+  const nested = kind === "card" ? (item?.lorebooks ?? []) : [];
   const [nestedPicks, setNestedPicks] = useState<Record<string, string>>({});
   const [nestedChoices, setNestedChoices] = useState<Record<string, Choices>>({});
   const nestedPick = (lb: Item) => {
@@ -318,10 +318,10 @@ function ReviewItem() {
       const o = nestedPick(lb);
       return {
         enabled: o?.action === "bind",
-        queryKey: ["compare", instance, "lorebook-items", lb.remote_id, o?.card_id ?? 0],
+        queryKey: ["compare", instance, "lorebook", lb.remote_id, o?.card_id ?? 0],
         gcTime: 0,
         refetchOnWindowFocus: false,
-        queryFn: () => compareItem(instance, "lorebook-items", lb.remote_id, o?.card_id ?? 0),
+        queryFn: () => compareItem(instance, "lorebook", lb.remote_id, o?.card_id ?? 0),
       };
     }),
   });
@@ -443,7 +443,7 @@ function ReviewItem() {
         ) : (
           act !== "skip" && (
             <Diff
-              scope={`${kind === "items" ? "card" : "book"}:${remoteId}`}
+              scope={`${kind === "card" ? "card" : "book"}:${remoteId}`}
               cmp={cmp.data}
               choices={choices}
               onChoose={act === "bind" ? (id, c) => setChoices({ ...choices, [id]: c }) : undefined}

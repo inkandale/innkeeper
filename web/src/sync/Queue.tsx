@@ -104,7 +104,7 @@ export function Queue() {
                     <tr>
                       <td>
                         <Link to={reviewPath(instance, r.kind, it.remote_id, { job: id })}>{name}</Link>
-                        {r.kind === "lorebook-items" && <span className="muted"> world book</span>}
+                        {r.kind === "lorebook" && <span className="muted"> world book</span>}
                       </td>
                       <td>
                         {top && (

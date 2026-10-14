@@ -46,7 +46,7 @@ export function Sync() {
   const plugins = useQuery({ queryKey: ["plugins"], queryFn: async () => must(await api.GET("/plugins")) });
   const facets = useQuery({
     queryKey: ["search", "card", "sync-counts"],
-    queryFn: async () => must(await api.POST("/search", { body: { facets: ["targets"], page: { size: 1 } } })),
+    queryFn: async () => must(await api.POST("/cards/search", { body: { facets: ["targets"], page: { size: 1 } } })),
   });
   const runs = useQuery({
     queryKey: ["jobs", "target.reconcile"],

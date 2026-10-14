@@ -91,7 +91,7 @@ func TestCardsSources(t *testing.T) {
 
 func TestCardsSearch(t *testing.T) {
 	page := `{"hits": [{"id": 3, "slug": "brakka", "fields": {"name": "Brakka"}, "tags": ["orc", "hero"], "entries": 4}], "total": 2}`
-	got := stubAPI(t, map[string]string{"/search": page, "/lorebooks/search": page})
+	got := stubAPI(t, map[string]string{"/cards/search": page, "/lorebooks/search": page})
 	out, err := runInk(t, "cards", "search", "orc", "--limit", "1")
 	if err != nil {
 		t.Fatal(err)
@@ -114,11 +114,11 @@ func TestCardsSearch(t *testing.T) {
 		}
 	}
 	want := []string{
-		`POST /search {"include":["tags"],"page":{"size":1},"text":"orc"}`,
-		`POST /search {"filter":{"archived":true},"include":["tags"]}`,
-		`POST /search {"include":["tags"],"page":{"number":3},"sort":"name","text":"x"}`,
+		`POST /cards/search {"include":["tags"],"page":{"size":1},"text":"orc"}`,
+		`POST /cards/search {"filter":{"archived":true},"include":["tags"]}`,
+		`POST /cards/search {"include":["tags"],"page":{"number":3},"sort":"name","text":"x"}`,
 		`POST /lorebooks/search {}`,
-		`POST /search {"include":["tags"],"page":{"size":1}}`,
+		`POST /cards/search {"include":["tags"],"page":{"size":1}}`,
 	}
 	if !slices.Equal(*got, want) {
 		t.Fatalf("requests = %q\nwant %q", *got, want)

@@ -37,7 +37,7 @@ test("bulk resolutions compare each bind and keep the snapshot's app hash", asyn
     compared.push(`${r.kind}/${r.item.remote_id}/${id}`);
     return { ...cmp, card_id: id };
   });
-  expect(compared).toEqual(["items/a/1", "lorebook-items/w/9"]);
+  expect(compared).toEqual(["card/a/1", "lorebook/w/9"]);
   expect(out).toEqual([
     { instance_id: 3, remote_id: "a", action: "bind", card_id: 1, app_hash: "ha", base_revision_id: 118, accepted_hash: "", default: "library" },
     { instance_id: 3, remote_id: "b", action: "import", app_hash: "hb", binding_id: 4 },
@@ -64,7 +64,7 @@ test("state counts fold drift, and a push summary counts new copies", () => {
 test("labels, review paths, and snapshots", () => {
   expect(optionLabel({ action: "bind", card_id: 1 }, snap.items![0]!.candidates)).toBe("Bind to Ann");
   expect(optionLabel({ action: "bind", card_id: 4 })).toBe("Bind to #4");
-  expect(reviewPath(3, "items", "a/b", { job: 5 })).toBe("/sync/3/items/a%2Fb?job=5");
+  expect(reviewPath(3, "card", "a/b", { job: 5 })).toBe("/sync/3/card/a%2Fb?job=5");
   expect(snapshotOf({ status: "succeeded", progress: snap })).toBe(snap);
   // Job lists and streams cut the snapshot to its totals.
   expect(snapshotOf({ status: "succeeded", progress: { totals: {} } })).toBeUndefined();

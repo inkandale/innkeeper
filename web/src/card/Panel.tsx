@@ -154,7 +154,7 @@ export function Sync({ kind, id }: { kind: Kind; id: number }) {
               (b.status === "remote_changed" || b.status === "diverged") && (
                 <>
                   {" "}
-                  <Link to={reviewPath(b.instance_id, kind === "card" ? "items" : "lorebook-items", b.remote_id, { card: id })}>Review</Link>
+                  <Link to={reviewPath(b.instance_id, kind, b.remote_id, { card: id })}>Review</Link>
                 </>
               )
             )}

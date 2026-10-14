@@ -89,8 +89,8 @@ export async function upload(file: Blob): Promise<string> {
 export type Kind = "card" | "lorebook";
 
 /** route is a card route's path for kind. Lorebook routes have the same shapes, so they keep the card path's types. */
-export function route<P extends `/cards/${string}`>(kind: Kind, path: P): P {
-  return (kind === "card" ? path : path.replace("/cards/", "/lorebooks/")) as P;
+export function route<P extends `/cards/${string}` | `/instances/{id}/cards${string}`>(kind: Kind, path: P): P {
+  return (kind === "card" ? path : path.replace("/cards", "/lorebooks")) as P;
 }
 
 /** canWrite says whether export can write format: json always, anything else through a working instance of a codec plugin that lists it, as the server picks one. */

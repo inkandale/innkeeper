@@ -22,12 +22,7 @@ var (
 	lorebookKind = kind{"lorebooks", "lorebook"}
 )
 
-func (k kind) searchPath() string {
-	if k == cardKind {
-		return "/search"
-	}
-	return "/" + k.plural + "/search"
-}
+func (k kind) searchPath() string { return "/" + k.plural + "/search" }
 
 // entityCmds returns the commands cards and lorebooks share.
 func entityCmds(k kind) []*cobra.Command {

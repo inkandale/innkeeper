@@ -1,4 +1,4 @@
-import { api, must } from "../api/client";
+import { api, must, route, type Kind } from "../api/client";
 import type { components } from "../api/schema";
 
 export type Comparison = components["schemas"]["Comparison"];
@@ -42,9 +42,7 @@ export type Snapshot = {
   totals: Record<string, number> | null;
 };
 
-/** ItemKind is an app item's path segment in the API. */
-export type ItemKind = "items" | "lorebook-items";
-export type Row = { kind: ItemKind; item: Item };
+export type Row = { kind: Kind; item: Item };
 
 /** snapshotOf is a finished sync's snapshot, or undefined while it runs or when a job list cut it to totals. */
 export function snapshotOf(job: { status: string; progress: unknown } | undefined): Snapshot | undefined {
@@ -55,8 +53,8 @@ export function snapshotOf(job: { status: string; progress: unknown } | undefine
 /** rows lists a snapshot's characters, then its world books no character links to. */
 export function rows(s: Snapshot): Row[] {
   return [
-    ...(s.items ?? []).map((item) => ({ kind: "items" as const, item })),
-    ...(s.lorebooks ?? []).map((item) => ({ kind: "lorebook-items" as const, item })),
+    ...(s.items ?? []).map((item) => ({ kind: "card" as const, item })),
+    ...(s.lorebooks ?? []).map((item) => ({ kind: "lorebook" as const, item })),
   ];
 }
 
@@ -103,7 +101,7 @@ export function resolution(
 }
 
 /** bulkResolutions resolves rows as picked. The snapshot has no library head, so each bind is compared first. */
-export async function bulkResolutions<R extends { kind: ItemKind; item: Pick<Item, "remote_id" | "app_hash" | "binding_id"> }>(
+export async function bulkResolutions<R extends { kind: Kind; item: Pick<Item, "remote_id" | "app_hash" | "binding_id"> }>(
   instance: number,
   picked: R[],
   pick: (r: R) => Option,
@@ -120,7 +118,7 @@ export async function bulkResolutions<R extends { kind: ItemKind; item: Pick<Ite
         // The run's hash, so an item that changed after the owner saw it goes stale.
         app_hash: r.item.app_hash,
         instance_id: instance,
-        ...(r.kind === "lorebook-items" ? { kind: "lorebook" as const } : {}),
+        ...(r.kind === "lorebook" ? { kind: "lorebook" as const } : {}),
       };
     });
     out.push(...(await Promise.all(batch)));
@@ -128,22 +126,21 @@ export async function bulkResolutions<R extends { kind: ItemKind; item: Pick<Ite
   return out;
 }
 
-export async function compareItem(instance: number, kind: ItemKind, remoteId: string, id: number, twoWay = false): Promise<Comparison> {
+export async function compareItem(instance: number, kind: Kind, remoteId: string, id: number, twoWay = false): Promise<Comparison> {
   const path = { id: instance, remote_id: remoteId };
-  return kind === "items"
+  return kind === "card"
     ? must(
-        await api.GET("/instances/{id}/items/{remote_id}/compare", {
+        await api.GET("/instances/{id}/cards/{remote_id}/compare", {
           params: { path, query: { card_id: id, ...(twoWay ? { base: "none" as const } : {}) } },
         }),
       )
-    : must(await api.GET("/instances/{id}/lorebook-items/{remote_id}/compare", { params: { path, query: { lorebook_id: id } } }));
+    : must(await api.GET("/instances/{id}/lorebooks/{remote_id}/compare", { params: { path, query: { lorebook_id: id } } }));
 }
 
-export async function resolveItem(instance: number, kind: ItemKind, remoteId: string, body: Resolution) {
-  const path = { id: instance, remote_id: remoteId };
-  return kind === "items"
-    ? must(await api.POST("/instances/{id}/items/{remote_id}/resolve", { params: { path }, body }))
-    : must(await api.POST("/instances/{id}/lorebook-items/{remote_id}/resolve", { params: { path }, body }));
+export async function resolveItem(instance: number, kind: Kind, remoteId: string, body: Resolution) {
+  return must(
+    await api.POST(route(kind, "/instances/{id}/cards/{remote_id}/resolve"), { params: { path: { id: instance, remote_id: remoteId } }, body }),
+  );
 }
 
 /** query is a URL query string of the params that are set. */
@@ -152,7 +149,7 @@ const query = (params: Record<string, number | string | undefined>) =>
 
 export function reviewPath(
   instance: number,
-  kind: ItemKind,
+  kind: Kind,
   remoteId: string,
   params: Record<string, number | string | undefined> = {},
 ): string {
@@ -199,7 +196,7 @@ export function changesPath(f: ChangesFilter = {}): string {
 export const changePath = (c: QueueChange, f: ChangesFilter = {}) =>
   reviewPath(
     c.instance_id,
-    "items",
+    "card",
     c.remote_id ?? "",
     c.state === "ahead" ? { card: c.card_id, base: "none", queue: 1, ...f } : { job: c.job_id ?? 0, queue: 1, ...f },
   );

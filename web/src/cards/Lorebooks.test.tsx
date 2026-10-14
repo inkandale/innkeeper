@@ -42,7 +42,7 @@ beforeEach(() => {
         searches.push({ path, body: await req.json() });
         return json(results);
       }
-      if (path === "/api/search") {
+      if (path === "/api/cards/search") {
         searches.push({ path, body: await req.json() });
         return json({ total: 1, hits: [{ id: 7, slug: "brakka", revision_id: 1, fields: { name: "Brakka", avatar: "ab".repeat(32) } }] });
       }
@@ -77,7 +77,7 @@ test("lists lorebooks with entries, linked cards, and sync", async () => {
   expect(screen.getByText("2 entries")).toBeInTheDocument();
   expect(await screen.findByRole("link", { name: "Brakka" })).toHaveAttribute("href", "/cards/7");
   expect(searches[0]).toMatchObject({ path: "/api/lorebooks/search", body: { include: ["cards", "targets"], facets: ["targets", "sources"] } });
-  expect(searches).toContainEqual({ path: "/api/search", body: { filter: { ids: [7] }, fields: ["name", "avatar"], page: { size: 500 } } });
+  expect(searches).toContainEqual({ path: "/api/cards/search", body: { filter: { ids: [7] }, fields: ["name", "avatar"], page: { size: 500 } } });
   expect(screen.getByRole("searchbox")).toHaveAttribute("placeholder", "Search lorebooks");
   expect(screen.queryByRole("button", { name: "List view" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: /chub/ })).toBeInTheDocument();

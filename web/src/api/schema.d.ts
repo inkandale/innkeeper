@@ -2625,7 +2625,7 @@ export interface components {
              * @example /api/schemas/DismissInBody.json
              */
             readonly $schema?: string;
-            /** @description The app_hash of the change the owner saw, from the binding or the changes queue. If the app's copy changed since, the dismiss is refused with 409 and a fresh comparison. */
+            /** @description The app_hash of the change the owner saw, from the binding or the changes queue. If the site's data changed since (an avatar change alone does not count), the dismiss is refused with 409 and a fresh comparison. */
             app_hash: string;
         };
         EnrichmentOut: {

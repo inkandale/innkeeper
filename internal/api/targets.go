@@ -74,7 +74,7 @@ type bindingEditIn struct {
 type dismissIn struct {
 	ID   int64 `path:"id"`
 	Body struct {
-		AppHash string `json:"app_hash" minLength:"1" doc:"The app_hash of the change the owner saw, from the binding or the changes queue. If the app's copy changed since, the dismiss is refused with 409 and a fresh comparison."`
+		AppHash string `json:"app_hash" minLength:"1" doc:"The app_hash of the change the owner saw, from the binding or the changes queue. If the site's data changed since (an avatar change alone does not count), the dismiss is refused with 409 and a fresh comparison."`
 	}
 }
 

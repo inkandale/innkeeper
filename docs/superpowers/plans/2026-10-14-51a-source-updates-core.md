@@ -2509,7 +2509,7 @@ Always send `card_id`, because several cards may follow one source.
 
 | Action | Route |
 |---|---|
-| Ignore this change | `POST /bindings/{id}/dismiss` `{"app_hash": ...}` → Binding. Send the queue entry's or binding's `app_hash`. If the site changed since, it answers 409 with a fresh comparison and ignores nothing |
+| Ignore this change | `POST /bindings/{id}/dismiss` `{"app_hash": ...}` → Binding. Send the queue entry's or binding's `app_hash`. If the site's data changed since (an avatar change alone does not count), it answers 409 with a fresh comparison and ignores nothing |
 | Ignore all | `PATCH /bindings/{id}` `{"paused": true}` |
 | Check again | `PATCH /bindings/{id}` `{"paused": false}` |
 | Autosync | `PATCH /bindings/{id}` `{"autosync": true}`. Both body fields are optional now |

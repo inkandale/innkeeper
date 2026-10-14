@@ -399,19 +399,14 @@ func (s *Service) Reconcile(ctx context.Context, p ReconcileParams, progress fun
 	if err != nil {
 		return snap, err
 	}
-	list := func(k kind) ([]protocol.TargetItem, error) {
-		var res protocol.TargetListResult
-		err := s.reg.Call(ctx, s.plugins, inst, k.list, nil, &res)
-		return res.Items, err
-	}
-	cards, err := list(cardKind)
+	cards, err := s.listItems(ctx, cardKind, inst)
 	if err != nil {
 		return snap, err
 	}
 	var books []protocol.TargetItem
 	standalone := info.Lorebooks == protocol.LorebooksStandalone
 	if standalone {
-		if books, err = list(lorebookKind); err != nil {
+		if books, err = s.listItems(ctx, lorebookKind, inst); err != nil {
 			return snap, err
 		}
 	}

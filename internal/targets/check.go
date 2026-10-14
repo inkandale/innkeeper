@@ -156,12 +156,12 @@ func (s *Service) newInApp(ctx context.Context, instanceID int64) (int, error) {
 	}
 	n := 0
 	for _, k := range kinds {
-		var res protocol.TargetListResult
-		if err := s.reg.Call(ctx, s.plugins, inst, k.list, nil, &res); err != nil {
+		listed, err := s.listItems(ctx, k, inst)
+		if err != nil {
 			return 0, err
 		}
-		ids := make([]string, len(res.Items))
-		for i, it := range res.Items {
+		ids := make([]string, len(listed))
+		for i, it := range listed {
 			ids[i] = it.RemoteID
 		}
 		var bound int

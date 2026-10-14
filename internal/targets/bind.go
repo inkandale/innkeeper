@@ -31,8 +31,8 @@ func (s *Service) Items(ctx context.Context, lk *library.Kind, instanceID int64)
 	if err != nil {
 		return nil, err
 	}
-	var res protocol.TargetListResult
-	if err := s.reg.Call(ctx, s.plugins, inst, k.list, nil, &res); err != nil {
+	listed, err := s.listItems(ctx, k, inst)
+	if err != nil {
 		return nil, err
 	}
 	rows, err := s.pool.Query(ctx, `SELECT remote_id, id FROM binding WHERE instance_id = $1 AND `+k.FK+` IS NOT NULL
@@ -50,14 +50,21 @@ func (s *Service) Items(ctx context.Context, lk *library.Kind, instanceID int64)
 	}); err != nil {
 		return nil, err
 	}
-	items := make([]Item, len(res.Items))
-	for i, it := range res.Items {
+	items := make([]Item, len(listed))
+	for i, it := range listed {
 		items[i].TargetItem = it
 		if id, ok := bound[it.RemoteID]; ok {
 			items[i].BindingID = &id
 		}
 	}
 	return items, nil
+}
+
+// listItems lists the app's items of kind k.
+func (s *Service) listItems(ctx context.Context, k kind, inst pluginhost.Instance) ([]protocol.TargetItem, error) {
+	var res protocol.TargetListResult
+	err := s.reg.Call(ctx, s.plugins, inst, k.list, nil, &res)
+	return res.Items, err
 }
 
 // Bind links a card or lorebook to one the app already has, without

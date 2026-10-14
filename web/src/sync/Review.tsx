@@ -1,211 +1,28 @@
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useMutation, useQueries, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
-import { api, ApiError, must, route, thumb, type Kind } from "../api/client";
-import type { components } from "../api/schema";
-import { show, text } from "../card/draft";
-import { entryOf } from "../card/History";
+import { api, ApiError, must, route, type Kind } from "../api/client";
+import { text } from "../card/draft";
 import { useJob } from "../settings/jobUtil";
 import { useToast } from "../shell/Toasts";
+import { Diff, type Choices } from "./Diff";
 import {
   changePath,
   changesFilter,
   changesPath,
   compareItem,
-  decidable,
-  jsonKey,
   optionKey,
   optionLabel,
   queueReviews,
   resolution,
   resolveItem,
   rows,
-  sentenceCount,
   snapshotOf,
-  wordDiff,
   type Comparison,
   type Item,
   type Option,
-  type Run,
 } from "./sync";
 import "./Sync.css";
-
-type Field = components["schemas"]["Field"];
-type Hunk = components["schemas"]["Hunk"];
-type Choices = Record<string, string>;
-
-const absent = <em className="muted">absent</em>;
-
-/** Words renders a word diff: what only the library has struck through, what only the app has marked. */
-function Words({ runs }: { runs: Run[] }) {
-  return <>{runs.map((r, i) => (r.op === "del" ? <del key={i}>{r.text}</del> : r.op === "ins" ? <ins key={i}>{r.text}</ins> : r.text))}</>;
-}
-
-/** HunkText shows one changed hunk, in one column or as a Library | App pair. */
-function HunkText({ hunk, inline }: { hunk: Hunk; inline: boolean }) {
-  const runs = wordDiff(show(hunk.library), show(hunk.app));
-  if (inline)
-    return (
-      <p className="hunks">
-        <Words runs={runs} />
-      </p>
-    );
-  return (
-    <>
-      <p className="hunks">{hunk.library === undefined ? absent : <Words runs={runs.filter((r) => r.op !== "ins")} />}</p>
-      <p className="hunks">{hunk.app === undefined ? absent : <Words runs={runs.filter((r) => r.op !== "del")} />}</p>
-    </>
-  );
-}
-
-function HunkChoice(props: { scope: string; hunk: Hunk; label: string; inline: boolean; list: boolean; choice: string; onChoose?: (c: string) => void }) {
-  const { scope, hunk, label, inline, list, choice, onChoose } = props;
-  const sides = list ? ["library", "app", "both"] : ["library", "app"];
-  return (
-    <div className={inline ? "hunk-pair inline decide" : "hunk-pair decide"}>
-      {label && <span className="muted">{label}</span>}
-      <HunkText hunk={hunk} inline={inline} />
-      {onChoose && (
-        <span className="row" role="radiogroup" aria-label={`Keep for ${hunk.id}`}>
-          {sides.map((s) => (
-            <label key={s} className="check">
-              <input type="radio" name={`${scope}/${hunk.id}`} checked={choice === s} onChange={() => onChoose(s)} />{" "}
-              {s === "library" ? "Library" : s === "app" ? "App" : "Both"}
-            </label>
-          ))}
-        </span>
-      )}
-    </div>
-  );
-}
-
-/** Unchanged shows a run both sides share, folding prose longer than two sentences. */
-function Unchanged({ text, prose }: { text: string; prose: boolean }) {
-  const n = prose ? sentenceCount(text) : 0;
-  if (n <= 2) return <p className="hunks same">{text}</p>;
-  return (
-    <details className="unchanged">
-      <summary className="muted">⋯ {n} unchanged sentences</summary>
-      <p className="hunks same">{text}</p>
-    </details>
-  );
-}
-
-function FieldChoices({ scope, field, choices, onChoose }: { scope: string; field: Field; choices: Choices; onChoose?: (id: string, c: string) => void }) {
-  const hunks = field.hunks ?? [];
-  const differs = hunks.some((h) => h.status !== "same");
-  // Prose reads best as one column; values and structure read best side by side.
-  const inline = (h: Hunk) => field.kind === "prose" || (field.kind === "entries" && entryOf(h.id).field === "content");
-  const paired = hunks.some((h) => h.status !== "same" && !inline(h));
-  const label = (h: Hunk) => {
-    if (field.kind === "json") return jsonKey(field.path, h.id);
-    if (field.kind !== "entries") return "";
-    const e = entryOf(h.id);
-    return e.field ? `${e.entry} · ${e.field}` : e.entry;
-  };
-  const out: ReactNode[] = [];
-  let folded: Hunk[] = [];
-  // A JSON field's unchanged keys fold into one line, each keeping its label.
-  const fold = () => {
-    if (folded.length)
-      out.push(
-        <details key={`same:${folded[0]?.id}`} className="unchanged">
-          <summary className="muted">
-            {folded.length} unchanged {folded.length === 1 ? "key" : "keys"}
-          </summary>
-          {folded.map((h) => (
-            <p key={h.id} className="hunks same">
-              <span className="hunk-key">{label(h)}</span> {show(h.library)}
-            </p>
-          ))}
-        </details>,
-      );
-    folded = [];
-  };
-  for (const h of hunks) {
-    if (h.status === "same" && field.kind === "json") {
-      folded.push(h);
-      continue;
-    }
-    fold();
-    if (h.status === "same") out.push(<Unchanged key={h.id} text={show(h.library)} prose={inline(h)} />);
-    else if (decidable(h))
-      out.push(
-        <HunkChoice
-          key={h.id}
-          scope={scope}
-          hunk={h}
-          label={label(h)}
-          inline={inline(h)}
-          list={field.kind === "list"}
-          choice={choices[h.id] ?? "library"}
-          onChoose={onChoose && ((c) => onChoose(h.id, c))}
-        />,
-      );
-    else
-      out.push(
-        <div key={h.id} className={inline(h) ? "hunk-pair inline" : "hunk-pair"}>
-          <span className="muted">
-            {label(h) && `${label(h)} · `}
-            {h.status === "auto_app" ? "App's change, merged" : "Library's change, kept"}
-          </span>
-          <HunkText hunk={h} inline={inline(h)} />
-        </div>,
-      );
-  }
-  fold();
-  return (
-    <details className="field" open={differs}>
-      <summary>
-        {field.path}
-        {!differs && <span className="muted"> · same</span>}
-      </summary>
-      {paired && (
-        <div className="hunk-pair hunk-head">
-          <h4>Library</h4>
-          <h4>App</h4>
-        </div>
-      )}
-      {out}
-    </details>
-  );
-}
-
-/** Diff lists a comparison field by field, with a choice on each hunk the owner must decide; without onChoose it only shows them. */
-function Diff({ scope, cmp, choices, onChoose }: { scope: string; cmp: Comparison; choices: Choices; onChoose?: (id: string, c: string) => void }) {
-  const fields = cmp.fields ?? [];
-  const a = cmp.avatar;
-  return (
-    <>
-      {a && (
-        <div className="hunk-pair">
-          <div>
-            <h4>Library image</h4>
-            {a.library ? <img className="history-thumb" src={thumb(a.library, 160)} alt="Library" /> : "None"}
-          </div>
-          <div>
-            <h4>App image</h4>
-            {a.app ? <img className="history-thumb" src={thumb(a.app, 160)} alt="App" /> : "None"}
-          </div>
-          {onChoose && (
-            <span className="row" role="radiogroup" aria-label="Keep for avatar">
-              {(a.app ? ["library", "app"] : ["library"]).map((s) => (
-                <label key={s} className="check">
-                  <input type="radio" name={`${scope}/avatar`} checked={(choices.avatar ?? "library") === s} onChange={() => onChoose("avatar", s)} />{" "}
-                  {s === "library" ? "Library" : "App"}
-                </label>
-              ))}
-            </span>
-          )}
-        </div>
-      )}
-      {!a && fields.every((f) => (f.hunks ?? []).every((h) => h.status === "same")) && <p>No differences.</p>}
-      {fields.map((f) => (
-        <FieldChoices key={f.path} scope={scope} field={f} choices={choices} onChoose={onChoose} />
-      ))}
-    </>
-  );
-}
 
 function OtherMatch({ kind, onPick }: { kind: Kind; onPick: (id: number) => void }) {
   const [text, setText] = useState("");
@@ -451,49 +268,60 @@ function ReviewItem() {
       </section>
       {act !== "skip" &&
         nested.map((lb, i) => {
-          const o = nestedPick(lb);
-          const q = nestedCmps[i];
           const own = nestedChoices[lb.remote_id] ?? {};
           return (
-            <section key={lb.remote_id} className="nested-item" aria-label={`World book ${lb.name || lb.remote_id}`}>
-              <h2>
-                {lb.name || lb.remote_id} <span className="muted">{lb.verdict}</span>
-              </h2>
-              {lb.error && <p className="error">{lb.error}</p>}
-              {!!lb.options?.length && (
-                <select
-                  className="input"
-                  aria-label={`Action for ${lb.name || lb.remote_id}`}
-                  value={o ? optionKey(o) : ""}
-                  onChange={(e) => {
-                    setNestedPicks({ ...nestedPicks, [lb.remote_id]: e.target.value });
-                    setNestedChoices({ ...nestedChoices, [lb.remote_id]: {} });
-                  }}
-                >
-                  {!o && <option value="">Server's suggestion</option>}
-                  {lb.options.map((opt) => (
-                    <option key={optionKey(opt)} value={optionKey(opt)}>
-                      {optionLabel(opt, lb.candidates)}
-                    </option>
-                  ))}
-                </select>
-              )}
-              {o?.action === "bind" &&
-                (q?.data ? (
-                  <Diff
-                    scope={`book:${lb.remote_id}`}
-                    cmp={q.data}
-                    choices={own}
-                    onChoose={(id, c) => setNestedChoices({ ...nestedChoices, [lb.remote_id]: { ...own, [id]: c } })}
-                  />
-                ) : q?.isError ? (
-                  <p className="error">{q.error.message}</p>
-                ) : (
-                  <p>Comparing…</p>
-                ))}
-            </section>
+            <NestedLorebook
+              key={lb.remote_id}
+              lb={lb}
+              pick={nestedPick(lb)}
+              cmp={nestedCmps[i]}
+              choices={own}
+              onPick={(key) => {
+                setNestedPicks({ ...nestedPicks, [lb.remote_id]: key });
+                setNestedChoices({ ...nestedChoices, [lb.remote_id]: {} });
+              }}
+              onChoose={(id, c) => setNestedChoices({ ...nestedChoices, [lb.remote_id]: { ...own, [id]: c } })}
+            />
           );
         })}
     </div>
+  );
+}
+
+/** NestedLorebook is one of the card's world books: what to do with it, and its diff when it binds. */
+function NestedLorebook(props: {
+  lb: Item;
+  pick?: Option;
+  cmp?: UseQueryResult<Comparison>;
+  choices: Choices;
+  onPick: (key: string) => void;
+  onChoose: (id: string, c: string) => void;
+}) {
+  const { lb, pick, cmp, choices, onPick, onChoose } = props;
+  return (
+    <section className="nested-item" aria-label={`World book ${lb.name || lb.remote_id}`}>
+      <h2>
+        {lb.name || lb.remote_id} <span className="muted">{lb.verdict}</span>
+      </h2>
+      {lb.error && <p className="error">{lb.error}</p>}
+      {!!lb.options?.length && (
+        <select className="input" aria-label={`Action for ${lb.name || lb.remote_id}`} value={pick ? optionKey(pick) : ""} onChange={(e) => onPick(e.target.value)}>
+          {!pick && <option value="">Server's suggestion</option>}
+          {lb.options.map((opt) => (
+            <option key={optionKey(opt)} value={optionKey(opt)}>
+              {optionLabel(opt, lb.candidates)}
+            </option>
+          ))}
+        </select>
+      )}
+      {pick?.action === "bind" &&
+        (cmp?.data ? (
+          <Diff scope={`book:${lb.remote_id}`} cmp={cmp.data} choices={choices} onChoose={onChoose} />
+        ) : cmp?.isError ? (
+          <p className="error">{cmp.error.message}</p>
+        ) : (
+          <p>Comparing…</p>
+        ))}
+    </section>
   );
 }

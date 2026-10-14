@@ -2,79 +2,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { api, ApiError, must, route, thumb, type Kind } from "../api/client";
-import type { components } from "../api/schema";
 import { useToast } from "../shell/Toasts";
 import { useModal } from "../shell/useModal";
-import { show } from "./draft";
+import { Diff } from "../sync/Diff";
 import "./Card.css";
-
-type Field = components["schemas"]["Field"];
-
-type Hunk = components["schemas"]["Hunk"];
-
-const unescape = (s: string) => s.replace(/\\(.)/g, "$1");
-
-/** entryOf splits an entries hunk ID, entries[<entry>].<field>#n, into an entry label and its field. */
-export function entryOf(id: string): { entry: string; field: string } {
-  const m = /^entries\[((?:\\.|[^\]\\])*)\](?:\.(.*))?#\d+$/.exec(id);
-  if (!m) return { entry: id, field: "" };
-  const raw = unescape(m[1] ?? "").replace(/~\d+$/, "");
-  const entry = raw.startsWith("c:") ? raw.slice(2) : raw.slice(2).split(",").join(", ") || "(no keys)";
-  return { entry, field: unescape(m[2] ?? "") };
-}
-
-/** EntryHunks shows an entries field's changes, grouped by entry, each field named. */
-function EntryHunks({ hunks }: { hunks: Hunk[] }) {
-  const entries = new Map<string, Map<string, Hunk[]>>();
-  for (const h of hunks) {
-    const { entry, field } = entryOf(h.id);
-    const fields = entries.get(entry) ?? new Map<string, Hunk[]>();
-    fields.set(field, [...(fields.get(field) ?? []), h]);
-    entries.set(entry, fields);
-  }
-  const changed = (hs: Hunk[]) => hs.some((h) => h.status !== "same");
-  return (
-    <>
-      {[...entries].map(([entry, fields]) =>
-        [...fields.values()].some(changed) ? (
-          <section key={entry} className="entry-hunks">
-            <h3>{entry}</h3>
-            {[...fields].filter(([, hs]) => changed(hs)).map(([field, hs]) => (
-              <div key={field}>
-                {field && <span className="muted">{field}</span>}
-                <HunkList hunks={hs} prose={field === "content"} />
-              </div>
-            ))}
-          </section>
-        ) : null,
-      )}
-    </>
-  );
-}
-
-/** Hunks renders a field's hunks: the first revision's value struck out, the second's marked. */
-export function Hunks({ field }: { field: Field }) {
-  if (field.kind === "entries") return <EntryHunks hunks={field.hunks ?? []} />;
-  return <HunkList hunks={field.hunks ?? []} prose={field.kind === "prose"} />;
-}
-
-function HunkList({ hunks, prose }: { hunks: Hunk[]; prose: boolean }) {
-  // Only prose flows inline; list and JSON values print as blocks of JSON.
-  return (
-    <p className={prose ? "hunks" : "hunks blocks"}>
-      {hunks.map((h) =>
-        h.status === "same" ? (
-          <span key={h.id}>{show(h.library)}</span>
-        ) : (
-          <span key={h.id}>
-            {h.library !== undefined && <del>{show(h.library)}</del>}
-            {h.app !== undefined && <ins>{show(h.app)}</ins>}
-          </span>
-        ),
-      )}
-    </p>
-  );
-}
 
 type AvatarPick = "keep" | "revision";
 
@@ -90,11 +21,7 @@ function AvatarChoice({ head, rev, busy, onPick, onCancel }: {
   const image = (sha: string | undefined, alt: string) =>
     sha ? <img className="history-thumb" src={thumb(sha, 160)} alt={alt} /> : <span className="muted">No image</span>;
   return (
-    <dialog
-      {...modal}
-      className="crop"
-      aria-label="Choose an image"
-    >
+    <dialog {...modal} className="crop" aria-label="Choose an image">
       <p>This revision has a different image. Which one should the restore keep?</p>
       <div className="row image-choice">
         <div>
@@ -240,13 +167,11 @@ export function History({ kind = "card" }: { kind?: Kind }) {
                     </p>
                   </section>
                 )}
-                {changes.length === 0 && <p>No field changed.</p>}
-                {changes.map((f) => (
-                  <section key={f.path}>
-                    <h2>{f.path}</h2>
-                    <Hunks field={f} />
-                  </section>
-                ))}
+                {changes.length === 0 ? (
+                  <p>No field changed.</p>
+                ) : (
+                  <Diff scope={`revision:${from.id}:${to?.id}`} cmp={{ fields: changes }} sides={{ library: "Before", app: "After" }} />
+                )}
               </>
             )}
           </>

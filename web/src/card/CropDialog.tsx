@@ -62,11 +62,7 @@ export function Crop({
   };
 
   return (
-    <dialog
-      {...modal}
-      className="crop"
-      aria-label="Crop image"
-    >
+    <dialog {...modal} className="crop" aria-label="Crop image">
       <div
         className="crop-box"
         style={{ width: box.w, height: box.h }}

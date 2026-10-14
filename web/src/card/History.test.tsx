@@ -78,13 +78,13 @@ function renderAt(entry: string) {
   return router;
 }
 
-test("the head shows what it changed from the revision before", async () => {
+test("the head shows what it changed from the revision before, word by word", async () => {
   renderAt("/cards/7/history");
-  expect(await screen.findByText("grumpy dwarf.")).toBeInTheDocument();
+  expect(await screen.findByText("grumpy")).toBeInTheDocument();
   expect(requests).toContain("/api/cards/7/revisions/11/compare/12");
-  expect(screen.getByText("dwarf.").tagName).toBe("DEL");
-  expect(screen.getByText("grumpy dwarf.").tagName).toBe("INS");
-  expect(screen.queryByRole("heading", { name: "name" })).not.toBeInTheDocument();
+  expect(screen.getByText("grumpy").tagName).toBe("INS");
+  expect(screen.queryByText("name")).not.toBeInTheDocument();
+  expect(screen.queryByRole("radio", { name: "Before" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Restore" })).not.toBeInTheDocument();
 });
 
@@ -103,7 +103,6 @@ test("a revision with another image asks which image to keep", async () => {
   revisions = [{ ...plain[0]!, avatar: "ab".repeat(32) }, plain[1]!];
   renderAt("/cards/7/history?rev=11");
   await userEvent.click(await screen.findByRole("button", { name: "Restore" }));
-  // jsdom lacks showModal, so the dialog stays closed, with no accessible name.
   const dialog = document.querySelector<HTMLElement>('dialog[aria-label="Choose an image"]')!;
   expect(within(dialog).getByRole("img", { name: "Current image", hidden: true })).toBeInTheDocument();
   expect(dialog).toHaveTextContent("No image");
@@ -121,20 +120,19 @@ test("a restore on a stale head says so and refetches the revisions", async () =
   await waitFor(() => expect(requests.filter((r) => r === "/api/cards/7/revisions")).toHaveLength(2));
 });
 
-test("list hunks render as blocks", async () => {
+test("values pair up under Before and After, prose stays in one column", async () => {
   renderAt("/cards/7/history");
-  await screen.findByText("grumpy dwarf.");
-  expect(screen.getByRole("heading", { name: "alternate_greetings" }).nextElementSibling).toHaveClass("blocks");
-  expect(screen.getByRole("heading", { name: "description" }).nextElementSibling).not.toHaveClass("blocks");
+  await screen.findByText("grumpy");
+  const greetings = screen.getByText("alternate_greetings").closest("details")!;
+  expect(within(greetings).getByRole("heading", { name: "Before" })).toBeInTheDocument();
+  expect(within(greetings).getByRole("heading", { name: "After" })).toBeInTheDocument();
+  expect(within(screen.getByText("description").closest("details")!).queryByRole("heading", { name: "Before" })).not.toBeInTheDocument();
 });
 
-test("entry hunks group by entry and name each changed field", async () => {
+test("entry hunks name their entry and field", async () => {
   renderAt("/cards/7/history");
-  const anvil = await screen.findByRole("heading", { name: "anvil" });
-  expect(screen.getByRole("heading", { name: "Sea.lore" })).toBeInTheDocument();
-  const group = anvil.closest("section")!;
-  expect(group).toHaveTextContent("content");
-  expect(group).not.toHaveTextContent("enabled");
+  expect(await screen.findByText("anvil · content")).toBeInTheDocument();
+  expect(screen.getByText("Sea.lore")).toBeInTheDocument();
   expect(screen.getByText("iron.").tagName).toBe("DEL");
   expect(screen.getByText("steel.").tagName).toBe("INS");
 });

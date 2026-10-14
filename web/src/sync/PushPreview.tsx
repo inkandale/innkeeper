@@ -38,11 +38,7 @@ export function PushPreview(props: { kind: Kind; id: number; instance: number; n
   });
   const changes = p?.changes ?? [];
   return (
-    <dialog
-      {...modal}
-      className="dialog"
-      aria-label={`Push to ${name}`}
-    >
+    <dialog {...modal} className="dialog" aria-label={`Push to ${name}`}>
       <h2>Push to {name}</h2>
       {preview.isError ? (
         <p className="error">{preview.error.message}</p>

@@ -283,11 +283,7 @@ function AskPush(props: {
   const { name, previews, busy, onConfirm, onClose } = props;
   const modal = useModal(onClose);
   return (
-    <dialog
-      {...modal}
-      className="dialog"
-      aria-label="Apply suggested"
-    >
+    <dialog {...modal} className="dialog" aria-label="Apply suggested">
       <h2>Apply suggested</h2>
       {previews.error ? (
         <p className="error">

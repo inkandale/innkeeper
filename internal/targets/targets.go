@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/davidgibbons/innkeeper/cardhash"
 	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
@@ -78,7 +79,10 @@ func scanBinding(row pgx.Row) (Binding, error) {
 	if err != nil || seen == nil {
 		return b, err
 	}
-	b.Changes, err = diff(accepted, seen)
+	if b.Changes, err = diff(accepted, seen); err != nil {
+		return b, err
+	}
+	b.AppHash, err = cardhash.ContentHash(seen)
 	return b, err
 }
 

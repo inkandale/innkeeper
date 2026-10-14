@@ -130,6 +130,26 @@ func (e *env) follow(card int64) Binding {
 	return Binding{}
 }
 
+// followFailing is follow for a source whose check fails: the check returns
+// the error, and the card's followed binding records it.
+func (e *env) followFailing(card int64) Binding {
+	e.t.Helper()
+	if _, err := e.s.CheckEntitySources(e.ctx, library.Card, card); err == nil {
+		e.t.Fatal("check worked; want its error")
+	}
+	list, err := e.s.Bindings(e.ctx, library.Card, card)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	for _, b := range list {
+		if !b.Push {
+			return b
+		}
+	}
+	e.t.Fatalf("card %d follows no source: %+v", card, list)
+	return Binding{}
+}
+
 var vyrCard = map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Who wakes me?"}
 
 func TestFollowingASourceAcceptsTheImportedRevision(t *testing.T) {
@@ -281,7 +301,7 @@ func TestFailedChecksOfASourceAreCounted(t *testing.T) {
 	card := e.imported("vyr", vyrCard)
 	var b Binding
 	for range 3 {
-		b = e.follow(card)
+		b = e.followFailing(card)
 	}
 	if b.CheckFailures != 3 || !strings.Contains(b.CheckError, "app unavailable") {
 		t.Fatalf("binding = %+v", b)
@@ -374,12 +394,12 @@ func TestChangesShowASourceThatKeepsFailing(t *testing.T) {
 	e.addUpstream(map[string]any{"fail_get": "retryable"})
 	card := e.imported("vyr", vyrCard)
 	for range 2 {
-		e.follow(card)
+		e.followFailing(card)
 	}
 	if cards, _ := e.followedStates(); len(cards) != 0 {
 		t.Fatalf("after 2 failures = %+v", cards)
 	}
-	e.follow(card)
+	e.followFailing(card)
 	if cards, _ := e.followedStates(); cards[card].State != ChangeError || !strings.Contains(cards[card].Error, "app unavailable") {
 		t.Fatalf("after 3 failures = %+v", cards)
 	}
@@ -481,7 +501,7 @@ func TestDismissingASourceUpdateKeepsTheLibrary(t *testing.T) {
 	e.publish("vyr", map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Begone."}, "")
 	b := e.follow(card)
 	before := e.revisions(card)
-	got, err := e.s.Dismiss(e.ctx, b.ID)
+	got, err := e.s.Dismiss(e.ctx, b.ID, b.AppHash)
 	if err != nil || got.RemoteState != remoteUnchanged || e.revisions(card) != before {
 		t.Fatalf("dismissed = %+v, %v; revisions %d, want %d", got, err, e.revisions(card), before)
 	}
@@ -501,7 +521,7 @@ func TestDismissingANewAvatarAcceptsIt(t *testing.T) {
 	e.follow(card)
 	e.publish("vyr", vyrCard, rings)
 	b := e.follow(card)
-	if _, err := e.s.Dismiss(e.ctx, b.ID); err != nil {
+	if _, err := e.s.Dismiss(e.ctx, b.ID, b.AppHash); err != nil {
 		t.Fatal(err)
 	}
 	if got := e.follow(card); got.RemoteState != remoteUnchanged {
@@ -535,7 +555,7 @@ func TestDismissingAnAvatarRemovalAcceptsIt(t *testing.T) {
 	if b.RemoteState != remoteChanged {
 		t.Fatalf("after removing the avatar = %+v", b)
 	}
-	if _, err := e.s.Dismiss(e.ctx, b.ID); err != nil {
+	if _, err := e.s.Dismiss(e.ctx, b.ID, b.AppHash); err != nil {
 		t.Fatal(err)
 	}
 	if got := e.follow(card); got.RemoteState != remoteUnchanged {

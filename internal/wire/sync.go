@@ -58,7 +58,10 @@ type Binding struct {
 	CheckedAt     *time.Time `json:"checked_at,omitempty"`
 	LastPush      Push       `json:"last_push"`
 	// Changes are the fields the app changed since the last push or resolve.
-	Changes   []Change  `json:"changes,omitempty"`
+	Changes []Change `json:"changes,omitempty"`
+	// AppHash is the app's copy as the last check saw it, when it differed.
+	// Dismiss takes it, so a change made since is refused rather than ignored unseen.
+	AppHash   string    `json:"app_hash,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 }
 

@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/davidgibbons/innkeeper/cardhash"
 )
 
 // failuresShown is how many checks of a followed source must fail in a row
@@ -186,7 +188,7 @@ func (s *Service) Changes(ctx context.Context, f ChangesFilter) (Changes, error)
 	// Followed sources, from their last check. One the owner removed has no
 	// live source row, so it is gone from the queue before the next check unbinds it.
 	fl, err := s.pool.Query(ctx, `SELECT coalesce(b.card_id, 0), coalesce(b.lorebook_id, 0), b.instance_id, b.id, b.remote_id,
-			b.remote_state, coalesce(b.check_error, ''), src.id
+			b.remote_state, coalesce(b.check_error, ''), src.id, b.seen_data
 		FROM binding b LEFT JOIN card c ON c.id = b.card_id LEFT JOIN lorebook l ON l.id = b.lorebook_id
 		JOIN LATERAL (SELECT s.id FROM card_source s WHERE s.card_id = b.card_id AND s.removed_at IS NULL
 				AND s.kind || ':' || s.ref = b.remote_id
@@ -201,11 +203,18 @@ func (s *Service) Changes(ctx context.Context, f ChangesFilter) (Changes, error)
 	}
 	var book, source int64
 	var state, checkErr string
-	if _, err := pgx.ForEachRow(fl, []any{&card, &book, &inst, &binding, &remote, &state, &checkErr, &source}, func() error {
+	var seenData []byte
+	if _, err := pgx.ForEachRow(fl, []any{&card, &book, &inst, &binding, &remote, &state, &checkErr, &source, &seenData}, func() error {
 		c := AppChange{InstanceID: inst, RemoteID: remote, BindingID: binding, SourceID: source}
 		switch state {
 		case remoteChanged:
 			c.State = ChangeUpdate
+			// Dismiss takes the hash of the update the owner saw.
+			hash, err := cardhash.ContentHash(seenData)
+			if err != nil {
+				return fmt.Errorf("binding %d seen copy: %w", binding, err)
+			}
+			c.AppHash = hash
 		case remoteMissing:
 			c.State = ChangeMissing
 		default:

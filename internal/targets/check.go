@@ -143,6 +143,8 @@ type ScanProgress struct {
 	Errors  []string `json:"errors,omitempty"`
 	// NewInApp counts, by instance ID, the app items no binding uses.
 	NewInApp map[int64]int `json:"new_in_app,omitempty"`
+	// firstErr keeps the first failure's error, which Errors holds only as text.
+	firstErr error
 }
 
 // maxErrors is how many check errors a scan's progress keeps.
@@ -230,6 +232,9 @@ func (s *Service) checkEach(ctx context.Context, ids []int64, p *ScanProgress, r
 // fail counts a failure and keeps its error, up to maxErrors.
 func (p *ScanProgress) fail(what string, err error) {
 	p.Failed++
+	if p.firstErr == nil {
+		p.firstErr = err
+	}
 	if len(p.Errors) < maxErrors {
 		p.Errors = append(p.Errors, fmt.Sprintf("%s: %v", what, err))
 	}

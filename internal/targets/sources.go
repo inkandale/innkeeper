@@ -118,10 +118,15 @@ func (s *Service) CheckSources(ctx context.Context, report func(ScanProgress)) (
 }
 
 // CheckEntitySources is CheckSources for one card or lorebook, now. It
-// returns the entity's bindings.
+// returns the entity's bindings, or the first error of a follow or check
+// that failed, since the owner asked and is waiting on the answer.
 func (s *Service) CheckEntitySources(ctx context.Context, lk *library.Kind, id int64) ([]Binding, error) {
-	if _, err := s.checkSources(ctx, lk, id, func(ScanProgress) {}); err != nil {
+	p, err := s.checkSources(ctx, lk, id, func(ScanProgress) {})
+	if err != nil {
 		return nil, err
+	}
+	if p.firstErr != nil {
+		return nil, p.firstErr
 	}
 	return s.Bindings(ctx, lk, id)
 }
@@ -218,10 +223,11 @@ func hasConflict(c Comparison) bool {
 	return false
 }
 
-// Dismiss accepts the app's copy as it is now, leaving the library as it is.
+// Dismiss accepts the app's copy, leaving the library as it is. appHash is
+// the copy the owner saw; if the app's differs now, it returns a StaleError.
 // For a followed source, this is "ignore this change": the next change on
 // the site shows again.
-func (s *Service) Dismiss(ctx context.Context, id int64) (Binding, error) {
+func (s *Service) Dismiss(ctx context.Context, id int64, appHash string) (Binding, error) {
 	b, err := s.Binding(ctx, id)
 	if err != nil {
 		return Binding{}, err
@@ -233,7 +239,7 @@ func (s *Service) Dismiss(ctx context.Context, id int64) (Binding, error) {
 	if err != nil {
 		return Binding{}, err
 	}
-	if _, err := s.resolve(ctx, k, Resolution{InstanceID: b.InstanceID, RemoteID: b.RemoteID, AppHash: c.AppHash,
+	if _, err := s.resolve(ctx, k, Resolution{InstanceID: b.InstanceID, RemoteID: b.RemoteID, AppHash: appHash,
 		BaseRevisionID: c.HeadRevisionID, AcceptedHash: c.AcceptedHash, Action: "bind", CardID: entity, Base: "none",
 		Default: merge.ChooseLibrary}, resolveOpts{bindOnly: true, skipLeftOut: true}); err != nil {
 		return Binding{}, err

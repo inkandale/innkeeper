@@ -56,6 +56,10 @@ beforeEach(() => {
         previews.push(await req.json());
         return json({ total: 1, new: 0, ahead: 1, in_sync: 0, cant_check: 0, drifted: 0, confirm: "q1" });
       }
+      if (path === "/api/imports") {
+        posts.push({ path, body: await req.json() });
+        return json({ id: 11, kind: "import", status: "queued" });
+      }
       if (path === "/api/bulk" || path === "/api/pushes") {
         posts.push({ path, body: await req.json() });
         return json({ id: 5, kind: "bulk", status: "waiting" });
@@ -64,11 +68,13 @@ beforeEach(() => {
         return json([
           { id: 2, name: "Lumiverse", plugin: "lumiverse" },
           { id: 3, name: "Cards folder", plugin: "folder" },
+          { id: 6, name: "url-import", plugin: "url-import" },
         ]);
       if (path === "/api/plugins")
         return json([
           { name: "lumiverse", capabilities: ["push", "pull"] },
           { name: "folder", capabilities: ["import"] },
+          { name: "url-import", capabilities: ["import"], inputs: ["url"] },
         ]);
       if (path === "/api/collections") return json([{ id: 4, name: "Elves", cards: 0 }]);
       return json([]);
@@ -409,4 +415,18 @@ test("an excluded row's pick button is not pressed", async () => {
   renderCards("/cards?f=-tag:fantasy");
   expect(await screen.findByRole("button", { name: /^not fantasy / })).toHaveAttribute("aria-pressed", "false");
   expect(screen.getByRole("button", { name: "Exclude fantasy" })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("Import cards opens the importer and imports a page URL", async () => {
+  vi.stubGlobal("EventSource", class { addEventListener() {} close() {} });
+  renderCards("/cards");
+  const open = await screen.findByRole("button", { name: "Import cards" });
+  expect(screen.getByLabelText("Import from a page URL")).not.toBeVisible();
+  await userEvent.click(open);
+  await userEvent.type(screen.getByLabelText("Import from a page URL"), "https://chub.ai/characters/u/brakka");
+  await userEvent.click(screen.getByRole("button", { name: "Import" }));
+  await waitFor(() =>
+    expect(posts).toEqual([{ path: "/api/imports", body: { instance_id: 6, params: { url: "https://chub.ai/characters/u/brakka" } } }]),
+  );
+  expect(await screen.findByRole("link", { name: /brakka/ })).toHaveAttribute("href", "/settings/jobs/11");
 });

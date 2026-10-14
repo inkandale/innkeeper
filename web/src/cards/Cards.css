@@ -387,3 +387,9 @@
   color: var(--accent);
   cursor: pointer;
 }
+
+.import-panel {
+  margin-bottom: calc(var(--space) * 2);
+  padding-bottom: var(--space);
+  border-bottom: 1px solid var(--border);
+}

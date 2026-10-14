@@ -1,26 +1,11 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
-import { api, must, upload, withCapability } from "../api/client";
+import { api, must, withCapability } from "../api/client";
 import { instancesQuery, pluginsQuery } from "../api/queries";
-import { progressText, useJob, type Job } from "../settings/jobUtil";
+import { ImportForm, importers, JobLine } from "../cards/ImportForm";
+import type { Job } from "../settings/jobUtil";
 import { useFinish } from "./Welcome";
-
-/** JobLine is one job's live status, linking to its page. */
-function JobLine({ label, id, to }: { label: string; id: number; to: string }) {
-  const j = useJob(id).data;
-  return (
-    <p>
-      <Link to={to}>
-        {label}: {j?.status} {j && progressText(j)}
-      </Link>
-      {j?.error && <span className="error"> {j.error}</span>}
-    </p>
-  );
-}
-
-/** Upload is a file or page URL sent to an importer, and its job. */
-type Upload = { key: number; name: string; job?: number; error?: string };
 
 /** BringInCards syncs the apps that were set up and imports uploaded files and page URLs. */
 export function BringInCards() {
@@ -29,9 +14,6 @@ export function BringInCards() {
   const plugins = useQuery(pluginsQuery);
   const instances = useQuery(instancesQuery);
   const [started, setStarted] = useState<Record<number, number>>({});
-  const [uploads, setUploads] = useState<Upload[]>([]);
-  const [pageURL, setPageURL] = useState("");
-  const nextKey = useRef(0);
 
   // Seeds the cache so the job line has a status before its first fetch.
   const track = (job: Job) => {
@@ -43,44 +25,16 @@ export function BringInCards() {
     onSuccess: (job, id) => setStarted((s) => ({ ...s, [id]: job })),
     meta: { toast: false },
   });
-  // One file at a time: avatars can be large.
-  const sendFiles = async (instance_id: number, files: File[]) => {
-    const added = files.map((f) => ({ key: nextKey.current++, name: f.name }));
-    setUploads((all) => [...all, ...added]);
-    for (const [i, f] of files.entries()) {
-      let u: Upload = added[i]!;
-      try {
-        u = { ...u, job: track(must(await api.POST("/imports", { body: { instance_id, params: { blob: await upload(f), name: f.name } } }))) };
-      } catch (e) {
-        u = { ...u, error: (e as Error).message };
-      }
-      setUploads((all) => all.map((x) => (x.key === u.key ? u : x)));
-    }
-  };
-  const sendURL = async (instance_id: number, url: string) => {
-    let u: Upload = { key: nextKey.current++, name: url };
-    setUploads((all) => [...all, u]);
-    try {
-      u = { ...u, job: track(must(await api.POST("/imports", { body: { instance_id, params: { url } } }))) };
-    } catch (e) {
-      u = { ...u, error: (e as Error).message };
-    }
-    setUploads((all) => all.map((x) => (x.key === u.key ? u : x)));
-  };
-
   const failed = plugins.error ?? instances.error;
   if (failed) return <p className="error">{failed.message}</p>;
   if (plugins.isPending || instances.isPending) return null;
   const apps = withCapability(instances.data, plugins.data, "pull");
-  const inputs = new Map((plugins.data ?? []).map((p) => [p.name, p.inputs ?? []]));
-  const importers = withCapability(instances.data, plugins.data, "import");
-  const importer = importers.find((i) => inputs.get(i.plugin)?.includes("file"));
-  const urlImporter = importers.find((i) => inputs.get(i.plugin)?.includes("url"));
+  const imp = importers(instances.data, plugins.data);
 
   return (
     <div className="panel">
       <h2>Bring in cards</h2>
-      {!apps.length && !importer && !urlImporter && (
+      {!apps.length && !imp.file && !imp.url && (
         <p>
           Nothing to import from yet. <Link to="/welcome/plugins">Set up an app or the importer first.</Link>
         </p>
@@ -97,54 +51,7 @@ export function BringInCards() {
         </div>
       ))}
       {pull.error && <p className="error">{pull.error.message}</p>}
-      {importer && (
-        <label>
-          Upload files{" "}
-          <input
-            type="file"
-            multiple
-            accept=".png,.json,.charx"
-            disabled={uploads.some((u) => !u.job && !u.error)}
-            onChange={(e) => {
-              const files = [...(e.target.files ?? [])];
-              e.target.value = "";
-              void sendFiles(importer.id, files);
-            }}
-          />
-        </label>
-      )}
-      {urlImporter && (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void sendURL(urlImporter.id, pageURL.trim());
-            setPageURL("");
-          }}
-        >
-          <label>
-            Import from a page URL{" "}
-            <input
-              type="url"
-              required
-              placeholder="https://chub.ai/characters/…"
-              value={pageURL}
-              onChange={(e) => setPageURL(e.target.value)}
-            />
-          </label>{" "}
-          <button className="button" type="submit" disabled={uploads.some((u) => !u.job && !u.error)}>
-            Import
-          </button>
-        </form>
-      )}
-      {uploads.map((u) =>
-        u.job ? (
-          <JobLine key={u.key} label={u.name} id={u.job} to={`/settings/jobs/${u.job}`} />
-        ) : (
-          <p key={u.key} className={u.error ? "error" : "muted"}>
-            {u.name}: {u.error ?? "uploading…"}
-          </p>
-        ),
-      )}
+      <ImportForm {...imp} />
       <p className="muted">Imports keep running after you leave; Settings › Jobs shows them.</p>
       <button className="button primary" disabled={finish.isPending} onClick={() => finish.mutate()}>
         Finish

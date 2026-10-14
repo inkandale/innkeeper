@@ -108,3 +108,89 @@ func TestAPullOnlyTargetCanBeRead(t *testing.T) {
 		t.Fatalf("items = %+v, %v", items, err)
 	}
 }
+
+// follow checks a card's sources now and returns its one followed binding.
+func (e *env) follow(card int64) Binding {
+	e.t.Helper()
+	list, err := e.s.CheckEntitySources(e.ctx, library.Card, card)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	for _, b := range list {
+		if !b.Push {
+			return b
+		}
+	}
+	e.t.Fatalf("card %d follows no source: %+v", card, list)
+	return Binding{}
+}
+
+var vyrCard = map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Who wakes me?"}
+
+func TestFollowingASourceAcceptsTheImportedRevision(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	card := e.imported("vyr", vyrCard)
+	e.update(card, func(ed *library.Edit) { ed.Data = setField(ed.Data, "description", "My red dragon.") })
+	e.publish("vyr", vyrCard, "")
+	b := e.follow(card)
+	if b.InstanceID != e.up || b.RemoteID != "fake:vyr" || b.RemoteState != remoteUnchanged || b.Ahead || b.Status != "in_sync" {
+		t.Fatalf("binding = %+v", b)
+	}
+}
+
+func TestFollowingFlagsAnUpdatePublishedSinceTheImport(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	card := e.imported("vyr", vyrCard)
+	e.publish("vyr", map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Begone."}, "")
+	b := e.follow(card)
+	if b.RemoteState != remoteChanged || b.Status != "remote_changed" || len(b.Changes) != 1 || b.Changes[0].Field != "first_mes" {
+		t.Fatalf("binding = %+v", b)
+	}
+}
+
+func TestCardsSharingASourceEachFollowIt(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	first, second := e.imported("vyr", vyrCard), e.imported("vyr", vyrCard)
+	e.publish("vyr", vyrCard, "")
+	a, b := e.follow(first), e.follow(second)
+	if a.ID == b.ID || a.RemoteID != "fake:vyr" || b.RemoteID != "fake:vyr" {
+		t.Fatalf("bindings = %+v, %+v", a, b)
+	}
+}
+
+func TestRemovingASourceStopsFollowingIt(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	card := e.imported("vyr", vyrCard)
+	e.publish("vyr", vyrCard, "")
+	e.follow(card)
+	srcs, err := e.lib.Cards.Sources(e.ctx, card)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.lib.Cards.RemoveSource(e.ctx, card, srcs[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	list, err := e.s.CheckEntitySources(e.ctx, library.Card, card)
+	if err != nil || len(list) != 0 {
+		t.Fatalf("bindings = %+v, %v", list, err)
+	}
+}
+
+func TestScanLeavesFollowedSourcesAlone(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	card := e.imported("vyr", vyrCard)
+	e.publish("vyr", vyrCard, "")
+	b := e.follow(card)
+	e.publish("vyr", map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Begone."}, "")
+	if _, err := e.s.Scan(e.ctx, func(ScanProgress) {}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := e.s.Binding(e.ctx, b.ID); err != nil || got.RemoteState != remoteUnchanged {
+		t.Fatalf("after a scan = %+v, %v", got, err)
+	}
+}

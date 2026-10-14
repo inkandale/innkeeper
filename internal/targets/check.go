@@ -81,8 +81,9 @@ const maxErrors = 20
 func (s *Service) Scan(ctx context.Context, report func(ScanProgress)) (ScanProgress, error) {
 	var p ScanProgress
 	// Includes 'unknown' bindings, so a target that gains pull gets checked.
+	// Followed sources are CheckSources' job, on their own schedule.
 	rows, err := s.pool.Query(ctx, `SELECT b.id FROM binding b JOIN plugin_instance i ON i.id = b.instance_id
-		WHERE i.broken_error IS NULL ORDER BY b.id`)
+		WHERE i.broken_error IS NULL AND b.push ORDER BY b.id`)
 	if err != nil {
 		return p, err
 	}
@@ -90,30 +91,8 @@ func (s *Service) Scan(ctx context.Context, report func(ScanProgress)) (ScanProg
 	if err != nil {
 		return p, err
 	}
-	for _, id := range ids {
-		b, err := s.Check(ctx, id)
-		switch {
-		case ctx.Err() != nil:
-			return p, ctx.Err()
-		case errors.Is(err, ErrNotFound):
-			continue
-		case err != nil:
-			p.Failed++
-			if len(p.Errors) < maxErrors {
-				p.Errors = append(p.Errors, fmt.Sprintf("binding %d: %v", id, err))
-			}
-		case b.RemoteState == remoteUnknown:
-			// The target still can't pull, so nothing was checked.
-		default:
-			p.Checked++
-			switch b.RemoteState {
-			case remoteChanged:
-				p.Changed++
-			case remoteMissing:
-				p.Missing++
-			}
-		}
-		report(p)
+	if err := s.checkEach(ctx, ids, &p, report, nil); err != nil {
+		return p, err
 	}
 	apps, err := s.syncApps(ctx, 0)
 	if err != nil {
@@ -128,10 +107,7 @@ func (s *Service) Scan(ctx context.Context, report func(ScanProgress)) (ScanProg
 			// The app can't be read right now, so there's nothing to count.
 			continue
 		case err != nil:
-			p.Failed++
-			if len(p.Errors) < maxErrors {
-				p.Errors = append(p.Errors, fmt.Sprintf("instance %d: %v", id, err))
-			}
+			p.fail(fmt.Sprintf("instance %d", id), err)
 			continue
 		}
 		if p.NewInApp == nil {
@@ -141,6 +117,47 @@ func (s *Service) Scan(ctx context.Context, report func(ScanProgress)) (ScanProg
 		report(p)
 	}
 	return p, nil
+}
+
+// checkEach checks each binding and counts what it found in p. A binding that
+// fails to check is counted, and the rest go on. then, if set, runs after
+// each check that worked, and its error counts as the binding's.
+func (s *Service) checkEach(ctx context.Context, ids []int64, p *ScanProgress, report func(ScanProgress),
+	then func(Binding) error) error {
+	for _, id := range ids {
+		b, err := s.Check(ctx, id)
+		if err == nil && then != nil {
+			err = then(b)
+		}
+		switch {
+		case ctx.Err() != nil:
+			return ctx.Err()
+		case errors.Is(err, ErrNotFound):
+			continue
+		case err != nil:
+			p.fail(fmt.Sprintf("binding %d", id), err)
+		case b.RemoteState == remoteUnknown:
+			// The target still can't pull, so nothing was checked.
+		default:
+			p.Checked++
+			switch b.RemoteState {
+			case remoteChanged:
+				p.Changed++
+			case remoteMissing:
+				p.Missing++
+			}
+		}
+		report(*p)
+	}
+	return nil
+}
+
+// fail counts a failure and keeps its error, up to maxErrors.
+func (p *ScanProgress) fail(what string, err error) {
+	p.Failed++
+	if len(p.Errors) < maxErrors {
+		p.Errors = append(p.Errors, fmt.Sprintf("%s: %v", what, err))
+	}
 }
 
 // newInApp counts the app's characters, and world books on an app that keeps

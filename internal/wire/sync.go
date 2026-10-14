@@ -45,9 +45,18 @@ type Binding struct {
 	RemoteState string `json:"remote_state" enum:"unknown,unchanged,changed,missing"`
 	// Autosync means each sync pushes the library's copy when the card is
 	// ahead and the app's copy hasn't changed.
-	Autosync  bool       `json:"autosync"`
-	CheckedAt *time.Time `json:"checked_at,omitempty"`
-	LastPush  Push       `json:"last_push"`
+	Autosync bool `json:"autosync"`
+	// Push is false for a binding that follows a site source: the core only
+	// reads it, and it is never ahead.
+	Push bool `json:"push"`
+	// Paused means checks skip the binding, as when the owner ignores a source's changes.
+	Paused bool `json:"paused"`
+	// CheckFailures counts a followed source's checks that failed in a row;
+	// CheckError is the last one's error.
+	CheckFailures int        `json:"check_failures"`
+	CheckError    string     `json:"check_error,omitempty"`
+	CheckedAt     *time.Time `json:"checked_at,omitempty"`
+	LastPush      Push       `json:"last_push"`
 	// Changes are the fields the app changed since the last push or resolve.
 	Changes   []Change  `json:"changes,omitempty"`
 	CreatedAt time.Time `json:"created_at"`

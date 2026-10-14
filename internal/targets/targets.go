@@ -59,8 +59,8 @@ func New(pool *pgxpool.Pool, lib *library.Library, reg *plugins.Registry, mgr *p
 }
 
 const bindingQuery = `SELECT b.id, b.instance_id, coalesce(b.card_id, 0), coalesce(b.lorebook_id, 0), b.remote_id,
-		s.status, s.ahead, b.remote_state, b.autosync, b.checked_at, b.created_at, p.id, p.kind, p.revision_id, p.lorebook_revision_ids,
-		p.lorebook_remote_ids, p.pushed_hash, p.remote_id, p.pushed_at, b.accepted_data, b.seen_data
+		s.status, s.ahead, b.remote_state, b.autosync, b.push, b.paused, b.check_failures, coalesce(b.check_error, ''),
+		b.checked_at, b.created_at, p.id, p.kind, p.revision_id, p.lorebook_revision_ids, p.lorebook_remote_ids, p.pushed_hash, p.remote_id, p.pushed_at, b.accepted_data, b.seen_data
 	FROM binding b JOIN binding_status s ON s.binding_id = b.id
 	JOIN LATERAL (SELECT * FROM push WHERE binding_id = b.id ORDER BY id DESC LIMIT 1) p ON TRUE`
 
@@ -69,6 +69,7 @@ func scanBinding(row pgx.Row) (Binding, error) {
 	var accepted, seen []byte
 	p := &b.LastPush
 	err := row.Scan(&b.ID, &b.InstanceID, &b.CardID, &b.LorebookID, &b.RemoteID, &b.Status, &b.Ahead, &b.RemoteState, &b.Autosync,
+		&b.Push, &b.Paused, &b.CheckFailures, &b.CheckError,
 		&b.CheckedAt, &b.CreatedAt, &p.ID, &p.Kind, &p.RevisionID, &p.LorebookRevisionIDs, &p.LorebookRemoteIDs, &p.PushedHash,
 		&p.RemoteID, &p.PushedAt, &accepted, &seen)
 	if errors.Is(err, pgx.ErrNoRows) {

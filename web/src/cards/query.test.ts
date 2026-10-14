@@ -8,6 +8,7 @@ import {
   toLorebookSearch,
   toParams,
   toSearch,
+  sameValue,
   toggleTerm,
   type CardQuery,
   type Term,
@@ -118,6 +119,16 @@ test("toggleTerm adds, flips, and removes, and resets the page", () => {
   expect(added.page).toBe(1);
   expect(toggleTerm(added, { ...tag, not: true }).terms).toEqual([{ ...tag, not: true }]);
   expect(toggleTerm(added, tag).terms).toEqual([]);
+});
+
+test("toggleTerm treats tags in any case as the same tag", () => {
+  expect(toggleTerm({ ...base, terms: [term("tag", "Fantasy")] }, term("tag", "fantasy")).terms).toEqual([]);
+});
+
+test("only tags compare in any case", () => {
+  expect(sameValue("tag", "Fantasy", "fantasy")).toBe(true);
+  expect(sameValue("collection", "Ab", "ab")).toBe(false);
+  expect(sameValue("target", "2", "2")).toBe(true);
 });
 
 test("onlyTerm keeps one value in its section and leaves other sections alone", () => {

@@ -3,7 +3,7 @@ import { useState, type MouseEvent } from "react";
 import { api, must, route, type Kind } from "../api/client";
 import type { components } from "../api/schema";
 import { stateLabel } from "../sync/sync";
-import { countSearch, onlyTerm, sectionsFor, stateCountSearch, targetStates, toggleTerm, type CardQuery, type TermKind } from "./query";
+import { countSearch, onlyTerm, sameValue, sectionsFor, stateCountSearch, targetStates, toggleTerm, type CardQuery, type TermKind } from "./query";
 import { badgeClass, type Names } from "./Tile";
 
 type Search = components["schemas"]["Query"];
@@ -31,9 +31,6 @@ function saveCollapsed(v: TermKind[]) {
     // A layout preference that can't be saved isn't worth an error.
   }
 }
-
-// The tag facet groups by lower-cased name and the API filter ignores case, so tags match that way here too.
-const sameValue = (kind: TermKind, a: string, b: string) => (kind === "tag" ? a.toLowerCase() === b.toLowerCase() : a === b);
 
 /** useRows runs each open section's count searches and turns the results into rows, selected values included. */
 function useRows(kind: Kind, q: CardQuery, names: Names, sections: TermKind[], open: (s: TermKind) => boolean): Partial<Record<TermKind, Row[]>> {

@@ -137,9 +137,12 @@ export function stateCountSearch(q: CardQuery, is: TargetIs): Search {
   return { text: q.text || undefined, filter: filterFor(terms), page: { size: 1 } };
 }
 
+// The tag facet groups by lower-cased name and the API filter ignores case, so tags match that way here too.
+export const sameValue = (kind: TermKind, a: string, b: string) => (kind === "tag" ? a.toLowerCase() === b.toLowerCase() : a === b);
+
 /** toggleTerm adds t, flips its negation, or removes it if it's already there as given. */
 export function toggleTerm(q: CardQuery, t: Term): CardQuery {
-  const i = q.terms.findIndex((x) => x.kind === t.kind && x.value === t.value);
+  const i = q.terms.findIndex((x) => x.kind === t.kind && sameValue(t.kind, x.value, t.value));
   const terms = q.terms.filter((_, j) => j !== i);
   if (i < 0 || q.terms[i]?.not !== t.not) terms.push(t);
   return { ...q, terms, page: 1 };

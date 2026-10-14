@@ -16,7 +16,7 @@ func TestFilterTargetState(t *testing.T) {
 
 	search := func(f library.Filter) []int64 {
 		t.Helper()
-		ids, err := e.lib.SearchIDs(e.ctx, library.Query{Filter: &f})
+		ids, err := e.lib.SearchIDs(e.ctx, library.Card, library.Query{Filter: &f})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -48,7 +48,7 @@ func TestSearchTargets(t *testing.T) {
 	e.push(edited)
 	e.update(edited, func(ed *library.Edit) { ed.Data = setField(ed.Data, "first_mes", "Well met.") })
 
-	got, err := e.lib.Search(e.ctx, library.Query{Include: []string{"targets"}, Facets: []string{"targets"}})
+	got, err := e.lib.Search(e.ctx, library.Card, library.Query{Include: []string{"targets"}, Facets: []string{"targets"}})
 	if err != nil {
 		t.Fatal(err)
 	}

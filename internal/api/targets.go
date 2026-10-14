@@ -181,15 +181,14 @@ func (s *Server) targetRoutes(api huma.API) {
 		if err := s.usable(ctx, instanceID, "push"); err != nil {
 			return nil, err
 		}
-		search := s.Lib.SearchIDs
-		if kind == "lorebook" {
-			search = s.Lib.SearchLorebookIDs
+		k := kindNamed(kind)
+		if k == library.Lorebook {
 			// Fail now; otherwise every child job fails (and retries) on the same reason.
 			if err := s.Targets.CheckLorebookPush(ctx, instanceID); err != nil {
 				return nil, s.fail(err)
 			}
 		}
-		ids, err := search(ctx, q)
+		ids, err := s.Lib.SearchIDs(ctx, k, q)
 		if err != nil {
 			return nil, s.fail(err)
 		}

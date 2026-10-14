@@ -88,6 +88,15 @@ func (s *Server) resourceMetadataURL() string {
 // and HEAD, and write for anything else.
 func needs(t tier.Tier) map[string]any { return map[string]any{"tier": t} }
 
+// kindNamed is the library kind a request names: card unless it names
+// another.
+func kindNamed(name string) *library.Kind {
+	if k, ok := library.KindNamed(name); ok {
+		return k
+	}
+	return library.Card
+}
+
 func opTier(op *huma.Operation) tier.Tier {
 	if t, ok := op.Metadata["tier"].(tier.Tier); ok {
 		return t

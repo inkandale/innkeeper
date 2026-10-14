@@ -9,7 +9,6 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/davidgibbons/innkeeper/cardhash"
 	"github.com/davidgibbons/innkeeper/internal/blobstore"
 )
 
@@ -36,17 +35,10 @@ type Library struct {
 // New returns a Library that writes new blobs to blobs.
 func New(pool *pgxpool.Pool, blobs *blobstore.Store) *Library {
 	return &Library{
-		Cards: &Entities{pool: pool, k: kind{
-			table: "card", revTable: "card_revision", fk: "card_id",
-			simhash: cardhash.CardSimhash,
-			forbid:  []string{"character_book"},
-		}},
-		Lorebooks: &Entities{pool: pool, k: kind{
-			table: "lorebook", revTable: "lorebook_revision", fk: "lorebook_id",
-			simhash: cardhash.LorebookSimhash,
-		}},
-		pool:  pool,
-		blobs: blobs,
+		Cards:     &Entities{pool: pool, k: Card},
+		Lorebooks: &Entities{pool: pool, k: Lorebook},
+		pool:      pool,
+		blobs:     blobs,
 	}
 }
 
@@ -60,4 +52,12 @@ func mapErr(err error) error {
 		return errors.Join(ErrNotFound, err)
 	}
 	return err
+}
+
+// Entities is where the library keeps kind k.
+func (l *Library) Entities(k *Kind) *Entities {
+	if k == Lorebook {
+		return l.Lorebooks
+	}
+	return l.Cards
 }

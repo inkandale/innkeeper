@@ -344,11 +344,7 @@ func (s *Server) jobRoutes(api huma.API) {
 					}
 				}
 			}
-			search := s.Lib.SearchIDs
-			if lorebooks {
-				search = s.Lib.SearchLorebookIDs
-			}
-			ids, err := search(ctx, q)
+			ids, err := s.Lib.SearchIDs(ctx, kindNamed(b.Kind), q)
 			if err != nil {
 				return nil, s.fail(err)
 			}

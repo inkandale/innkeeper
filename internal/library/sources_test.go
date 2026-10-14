@@ -119,7 +119,7 @@ func mustSources(t *testing.T, s *Entities, id int64) []Source {
 func sourceID(t *testing.T, s *Entities, id int64) int64 {
 	t.Helper()
 	var sid int64
-	if err := s.pool.QueryRow(context.Background(), `SELECT id FROM `+s.k.table+`_source WHERE `+s.k.fk+` = $1`, id).Scan(&sid); err != nil {
+	if err := s.pool.QueryRow(context.Background(), `SELECT id FROM `+s.k.SourceTable+` WHERE `+s.k.FK+` = $1`, id).Scan(&sid); err != nil {
 		t.Fatal(err)
 	}
 	return sid

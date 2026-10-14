@@ -61,7 +61,7 @@ func TestSearch(t *testing.T) {
 		"and":        {Query{Filter: &Filter{And: []Filter{{Tag: ptr("fantasy")}, {Tag: ptr("pirate")}}}}, []int64{}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			got, err := lib.Search(ctx, tc.q)
+			got, err := lib.Search(ctx, Card, tc.q)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -87,7 +87,7 @@ func TestSearchQuotedTagAndBareAvatar(t *testing.T) {
 	if err := lib.SetCardTags(ctx, id, []string{"o'brien"}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := lib.Search(ctx, Query{Filter: &Filter{Tag: ptr("o'brien")}, Fields: []string{"avatar"}})
+	got, err := lib.Search(ctx, Card, Query{Filter: &Filter{Tag: ptr("o'brien")}, Fields: []string{"avatar"}})
 	if err != nil || !slices.Equal(hitIDs(got), []int64{id}) {
 		t.Fatalf("hits = %v, %v", hitIDs(got), err)
 	}
@@ -107,7 +107,7 @@ func TestSearchCollection(t *testing.T) {
 	if err := lib.AddToCollection(ctx, c.ID, s.carrow); err != nil {
 		t.Fatal(err)
 	}
-	got, err := lib.Search(ctx, Query{Filter: &Filter{Collection: &c.ID}})
+	got, err := lib.Search(ctx, Card, Query{Filter: &Filter{Collection: &c.ID}})
 	if err != nil || !slices.Equal(hitIDs(got), []int64{s.carrow}) {
 		t.Fatalf("hits = %v, %v", hitIDs(got), err)
 	}
@@ -117,7 +117,7 @@ func TestSearchOutput(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
 	s := seedSearch(t, lib)
-	got, err := lib.Search(ctx, Query{Filter: &Filter{Tag: ptr("fantasy")},
+	got, err := lib.Search(ctx, Card, Query{Filter: &Filter{Tag: ptr("fantasy")},
 		Fields: []string{"name", "avatar", "missing"}, Include: []string{"tags", "lorebooks"}})
 	if err != nil {
 		t.Fatal(err)
@@ -127,7 +127,7 @@ func TestSearchOutput(t *testing.T) {
 		!slices.Equal(h.Tags, []string{"fantasy"}) || h.Lorebooks == nil {
 		t.Fatalf("hit = %+v", h)
 	}
-	plain, _ := lib.Search(ctx, Query{})
+	plain, _ := lib.Search(ctx, Card, Query{})
 	if plain.Hits[0].Fields["name"] == nil || plain.Hits[0].Tags != nil {
 		t.Fatalf("default output = %+v", plain.Hits[0])
 	}
@@ -137,11 +137,11 @@ func TestSearchPaging(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
 	s := seedSearch(t, lib)
-	first, err := lib.Search(ctx, Query{Page: Page{Size: 1}})
+	first, err := lib.Search(ctx, Card, Query{Page: Page{Size: 1}})
 	if err != nil || !slices.Equal(hitIDs(first), []int64{s.carrow}) || first.NextCursor == nil {
 		t.Fatalf("first page = %+v, %v", first, err)
 	}
-	second, err := lib.Search(ctx, Query{Page: Page{Size: 1, Cursor: first.NextCursor}})
+	second, err := lib.Search(ctx, Card, Query{Page: Page{Size: 1, Cursor: first.NextCursor}})
 	if err != nil || !slices.Equal(hitIDs(second), []int64{s.brakka}) || second.NextCursor != nil {
 		t.Fatalf("second page = %+v, %v", second, err)
 	}
@@ -162,7 +162,7 @@ func TestSearchRejectsBadQueries(t *testing.T) {
 		"bad cursor":       {Page: Page{Cursor: ptr("abc")}},
 		"bad target state": {Filter: &Filter{TargetState: &TargetState{Instance: 1, Is: "pushed"}}},
 	} {
-		if _, err := lib.Search(ctx, q); !errors.Is(err, ErrInvalid) {
+		if _, err := lib.Search(ctx, Card, q); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s: got %v, want ErrInvalid", name, err)
 		}
 	}
@@ -171,7 +171,7 @@ func TestSearchRejectsBadQueries(t *testing.T) {
 func TestSearchIDs(t *testing.T) {
 	lib := newLibrary(t)
 	s := seedSearch(t, lib)
-	got, err := lib.SearchIDs(context.Background(), Query{Text: "brakka", Page: Page{Size: 1}})
+	got, err := lib.SearchIDs(context.Background(), Card, Query{Text: "brakka", Page: Page{Size: 1}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,12 +200,12 @@ func TestSearchSort(t *testing.T) {
 		"updated":   {s.brakka, s.carrow},
 		"name":      {s.brakka, s.carrow},
 	} {
-		got, err := lib.Search(ctx, Query{Sort: sort})
+		got, err := lib.Search(ctx, Card, Query{Sort: sort})
 		if err != nil || !slices.Equal(hitIDs(got), want) {
 			t.Errorf("sort %q: hits = %v, %v; want %v", sort, hitIDs(got), err, want)
 		}
 	}
-	if _, err := lib.Search(ctx, Query{Sort: "size"}); !errors.Is(err, ErrInvalid) {
+	if _, err := lib.Search(ctx, Card, Query{Sort: "size"}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("bad sort: %v", err)
 	}
 }
@@ -214,21 +214,21 @@ func TestSearchPageNumberAndTotal(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
 	s := seedSearch(t, lib)
-	got, err := lib.Search(ctx, Query{Page: Page{Size: 1, Number: 2}})
+	got, err := lib.Search(ctx, Card, Query{Page: Page{Size: 1, Number: 2}})
 	if err != nil || !slices.Equal(hitIDs(got), []int64{s.brakka}) || got.Total != 2 {
 		t.Fatalf("page 2 = %+v, %v", got, err)
 	}
-	past, err := lib.Search(ctx, Query{Page: Page{Size: 1, Number: 9}})
+	past, err := lib.Search(ctx, Card, Query{Page: Page{Size: 1, Number: 9}})
 	if err != nil || len(past.Hits) != 0 || past.Total != 2 {
 		t.Fatalf("past the end = %+v, %v", past, err)
 	}
-	if _, err := lib.Search(ctx, Query{Page: Page{Number: 1, Cursor: ptr("1")}}); !errors.Is(err, ErrInvalid) {
+	if _, err := lib.Search(ctx, Card, Query{Page: Page{Number: 1, Cursor: ptr("1")}}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("number and cursor: %v", err)
 	}
-	if _, err := lib.Search(ctx, Query{Page: Page{Number: -1}}); !errors.Is(err, ErrInvalid) {
+	if _, err := lib.Search(ctx, Card, Query{Page: Page{Number: -1}}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("negative number: %v", err)
 	}
-	if _, err := lib.Search(ctx, Query{Page: Page{Number: 1 << 40}}); !errors.Is(err, ErrInvalid) {
+	if _, err := lib.Search(ctx, Card, Query{Page: Page{Number: 1 << 40}}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("huge number: %v", err)
 	}
 }
@@ -240,7 +240,7 @@ func TestSearchSourceFilter(t *testing.T) {
 	if _, err := lib.Cards.AddSource(ctx, s.carrow, Source{Kind: "chub", Ref: "carrow"}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := lib.Search(ctx, Query{Filter: &Filter{Source: ptr("chub")}})
+	got, err := lib.Search(ctx, Card, Query{Filter: &Filter{Source: ptr("chub")}})
 	if err != nil || !slices.Equal(hitIDs(got), []int64{s.carrow}) {
 		t.Fatalf("hits = %v, %v", hitIDs(got), err)
 	}
@@ -264,7 +264,7 @@ func TestSearchFacets(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := lib.Search(ctx, Query{Facets: []string{"tags", "collections", "targets", "sources"}})
+	got, err := lib.Search(ctx, Card, Query{Facets: []string{"tags", "collections", "targets", "sources"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,16 +278,16 @@ func TestSearchFacets(t *testing.T) {
 	}
 
 	// Counts follow the query: only Brakka is tagged fantasy and not pirate.
-	got, err = lib.Search(ctx, Query{Facets: []string{"tags"},
+	got, err = lib.Search(ctx, Card, Query{Facets: []string{"tags"},
 		Filter: &Filter{Not: &Filter{Tag: ptr("pirate")}}})
 	if err != nil || !slices.Equal(got.Facets.Tags, []TagCount{{"fantasy", 1}}) {
 		t.Fatalf("filtered facets = %+v, %v", got.Facets, err)
 	}
 
-	if plain, _ := lib.Search(ctx, Query{}); plain.Facets != nil {
+	if plain, _ := lib.Search(ctx, Card, Query{}); plain.Facets != nil {
 		t.Fatalf("facets without asking: %+v", plain.Facets)
 	}
-	if _, err := lib.Search(ctx, Query{Facets: []string{"colors"}}); !errors.Is(err, ErrInvalid) {
+	if _, err := lib.Search(ctx, Card, Query{Facets: []string{"colors"}}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("bad facet: %v", err)
 	}
 }
@@ -297,15 +297,15 @@ func TestSearchIDsFilter(t *testing.T) {
 	ctx := context.Background()
 	s := seedSearch(t, lib)
 	// Dellin is archived, so an ids filter alone still hides it.
-	got, err := lib.Search(ctx, Query{Filter: &Filter{IDs: []int64{s.carrow, s.dellin}}})
+	got, err := lib.Search(ctx, Card, Query{Filter: &Filter{IDs: []int64{s.carrow, s.dellin}}})
 	if err != nil || !slices.Equal(hitIDs(got), []int64{s.carrow}) {
 		t.Fatalf("ids = %v, %v", hitIDs(got), err)
 	}
-	ids, err := lib.SearchIDs(ctx, Query{Filter: &Filter{Or: []Filter{{IDs: []int64{s.brakka}}, {Tag: ptr("pirate")}}}})
+	ids, err := lib.SearchIDs(ctx, Card, Query{Filter: &Filter{Or: []Filter{{IDs: []int64{s.brakka}}, {Tag: ptr("pirate")}}}})
 	if err != nil || !slices.Equal(ids, []int64{s.brakka, s.carrow}) {
 		t.Fatalf("ids or tag = %v, %v", ids, err)
 	}
-	none, err := lib.SearchIDs(ctx, Query{Filter: &Filter{IDs: []int64{}}})
+	none, err := lib.SearchIDs(ctx, Card, Query{Filter: &Filter{IDs: []int64{}}})
 	if err != nil || len(none) != 0 {
 		t.Fatalf("empty ids = %v, %v", none, err)
 	}
@@ -330,13 +330,13 @@ func TestSearchLorebooks(t *testing.T) {
 
 	// Names, descriptions, entry keys, and entry content all match.
 	for _, text := range []string{"forge", "smithing", "anvil", "iron"} {
-		res, err := lib.SearchLorebooks(ctx, Query{Text: text})
+		res, err := lib.Search(ctx, Lorebook, Query{Text: text})
 		if err != nil || len(res.Hits) != 1 || res.Hits[0].ID != forge.ID {
 			t.Fatalf("text %q = %+v, %v", text, res.Hits, err)
 		}
 	}
 
-	res, err := lib.SearchLorebooks(ctx, Query{Include: []string{"cards", "targets"}, Sort: "name", Facets: []string{"targets", "sources"}})
+	res, err := lib.Search(ctx, Lorebook, Query{Include: []string{"cards", "targets"}, Sort: "name", Facets: []string{"targets", "sources"}})
 	if err != nil || res.Total != 2 || res.Hits[0].ID != forge.ID {
 		t.Fatalf("all = %+v, %v", res, err)
 	}
@@ -347,7 +347,7 @@ func TestSearchLorebooks(t *testing.T) {
 	if err := lib.Lorebooks.SetArchived(ctx, sea.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	if ids, err := lib.SearchLorebookIDs(ctx, Query{Filter: &Filter{Archived: ptr(true)}}); err != nil || !slices.Equal(ids, []int64{sea.ID}) {
+	if ids, err := lib.SearchIDs(ctx, Lorebook, Query{Filter: &Filter{Archived: ptr(true)}}); err != nil || !slices.Equal(ids, []int64{sea.ID}) {
 		t.Fatalf("archived = %v, %v", ids, err)
 	}
 
@@ -357,11 +357,11 @@ func TestSearchLorebooks(t *testing.T) {
 		{Facets: []string{"tags"}},
 		{Include: []string{"lorebooks"}},
 	} {
-		if _, err := lib.SearchLorebooks(ctx, q); !errors.Is(err, ErrInvalid) {
+		if _, err := lib.Search(ctx, Lorebook, q); !errors.Is(err, ErrInvalid) {
 			t.Errorf("lorebooks %+v: got %v, want ErrInvalid", q, err)
 		}
 	}
-	if _, err := lib.Search(ctx, Query{Include: []string{"cards"}}); !errors.Is(err, ErrInvalid) {
+	if _, err := lib.Search(ctx, Card, Query{Include: []string{"cards"}}); !errors.Is(err, ErrInvalid) {
 		t.Errorf("cards include cards: got %v, want ErrInvalid", err)
 	}
 }
@@ -382,14 +382,14 @@ func TestSearchLorebookSourcesAndBareEntries(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res, err := lib.SearchLorebooks(ctx, Query{Filter: &Filter{Source: ptr("chub")}, Facets: []string{"sources"}})
+	res, err := lib.Search(ctx, Lorebook, Query{Filter: &Filter{Source: ptr("chub")}, Facets: []string{"sources"}})
 	if err != nil || res.Total != 1 || res.Hits[0].ID != sourced.ID {
 		t.Fatalf("source filter = %+v, %v", res, err)
 	}
 	if f := res.Facets.Sources; len(f) != 1 || f[0].Kind != "chub" || f[0].Cards != 1 {
 		t.Fatalf("sources facet = %+v", f)
 	}
-	res, err = lib.SearchLorebooks(ctx, Query{Text: "bare"})
+	res, err = lib.Search(ctx, Lorebook, Query{Text: "bare"})
 	if err != nil || len(res.Hits) != 1 || res.Hits[0].ID != bare.ID || res.Hits[0].Entries == nil || *res.Hits[0].Entries != 0 {
 		t.Fatalf("bare = %+v, %v", res.Hits, err)
 	}

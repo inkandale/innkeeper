@@ -47,7 +47,7 @@ func (s *Entities) freeSlug(ctx context.Context, tx pgx.Tx, base string) (string
 	var n int
 	err := tx.QueryRow(ctx, `SELECT coalesce(max(CASE WHEN slug = $1 THEN 1
 			ELSE substring(slug from '-([0-9]{1,9})$')::int END), 0)
-		FROM `+s.k.table+` WHERE slug = $1 OR slug ~ ('^' || $1 || '-[0-9]{1,9}$')`, base).Scan(&n)
+		FROM `+s.k.Table+` WHERE slug = $1 OR slug ~ ('^' || $1 || '-[0-9]{1,9}$')`, base).Scan(&n)
 	if err != nil || n == 0 {
 		return base, err
 	}
@@ -73,12 +73,12 @@ func (s *Entities) Import(ctx context.Context, provenance, name string, e Edit) 
 	defer tx.Rollback(ctx)
 	// Two jobs can import the same item at once; without the lock both would
 	// miss the lookup and create a card each.
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, s.k.table+":"+provenance); err != nil {
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, s.k.Table+":"+provenance); err != nil {
 		return 0, false, err
 	}
 	var id int64
-	err = tx.QueryRow(ctx, `SELECT e.id FROM `+s.k.table+` e WHERE e.provenance = $1 AND EXISTS (
-		SELECT 1 FROM `+s.k.revTable+` r WHERE r.`+s.k.fk+` = e.id AND r.content_hash = $2)
+	err = tx.QueryRow(ctx, `SELECT e.id FROM `+s.k.Table+` e WHERE e.provenance = $1 AND EXISTS (
+		SELECT 1 FROM `+s.k.RevTable+` r WHERE r.`+s.k.FK+` = e.id AND r.content_hash = $2)
 		ORDER BY e.id LIMIT 1`, provenance, r.contentHash).Scan(&id)
 	if err == nil {
 		// Also on a repeat, so a run that stopped before detecting finishes.

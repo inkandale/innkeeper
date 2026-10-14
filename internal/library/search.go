@@ -106,23 +106,10 @@ type SourceCount struct {
 	Cards int    `json:"cards"`
 }
 
-// searchKind is what a search runs over: cards or lorebooks. Every query
-// calls the entity c and its head revision r.
-type searchKind struct {
-	name, table, revTable, sourceTable string
-	// col is the entity's ID column in sources and binding_status.
-	col string
-}
-
-var (
-	cardSearch     = searchKind{"card", "card", "card_revision", "card_source", "card_id"}
-	lorebookSearch = searchKind{"lorebook", "lorebook", "lorebook_revision", "lorebook_source", "lorebook_id"}
-)
-
-func (k searchKind) isCard() bool { return k.name == cardSearch.name }
-
-func (k searchKind) from() string {
-	return k.table + ` c JOIN ` + k.revTable + ` r ON r.id = c.head_revision_id`
+// from joins k's entities c to their head revisions r, as every search
+// query names them.
+func from(k *Kind) string {
+	return k.Table + ` c JOIN ` + k.RevTable + ` r ON r.id = c.head_revision_id`
 }
 
 // cardOnly names the facets and includes that need card tags, collections,
@@ -132,28 +119,28 @@ func cardOnly(name string) bool {
 }
 
 // facetSQL selects each facet's rows for the IDs in match.
-var facetSQL = map[string]func(k searchKind, match string) string{
-	"tags": func(_ searchKind, m string) string {
+var facetSQL = map[string]func(k *Kind, match string) string{
+	"tags": func(_ *Kind, m string) string {
 		return `SELECT t.name, count(*)::int FROM card_tag ct JOIN tag t ON t.id = ct.tag_id
 			WHERE ct.card_id IN (` + m + `) GROUP BY t.id ORDER BY count(*) DESC, lower(t.name) LIMIT 50`
 	},
-	"collections": func(_ searchKind, m string) string {
+	"collections": func(_ *Kind, m string) string {
 		return `SELECT co.id, co.name, count(*)::int FROM collection_card cc JOIN collection co ON co.id = cc.collection_id
 			WHERE cc.card_id IN (` + m + `) GROUP BY co.id ORDER BY lower(co.name)`
 	},
-	"targets": func(k searchKind, m string) string {
+	"targets": func(k *Kind, m string) string {
 		return `SELECT instance_id, status, count(*)::int FROM binding_status
-			WHERE ` + k.col + ` IN (` + m + `) GROUP BY 1, 2 ORDER BY 1, 2`
+			WHERE ` + k.FK + ` IN (` + m + `) GROUP BY 1, 2 ORDER BY 1, 2`
 	},
-	"sources": func(k searchKind, m string) string {
-		return `SELECT kind, count(DISTINCT ` + k.col + `)::int FROM ` + k.sourceTable + `
-			WHERE removed_at IS NULL AND ` + k.col + ` IN (` + m + `) GROUP BY kind ORDER BY kind`
+	"sources": func(k *Kind, m string) string {
+		return `SELECT kind, count(DISTINCT ` + k.FK + `)::int FROM ` + k.SourceTable + `
+			WHERE removed_at IS NULL AND ` + k.FK + ` IN (` + m + `) GROUP BY kind ORDER BY kind`
 	},
 }
 
 // facets counts the matches of cond for each facet in names.
-func (l *Library) facets(ctx context.Context, k searchKind, names []string, cond string, args []any) (*Facets, error) {
-	match := `SELECT c.id FROM ` + k.from() + ` WHERE ` + cond
+func (l *Library) facets(ctx context.Context, k *Kind, names []string, cond string, args []any) (*Facets, error) {
+	match := `SELECT c.id FROM ` + from(k) + ` WHERE ` + cond
 	f := &Facets{}
 	for _, name := range names {
 		rows, err := l.pool.Query(ctx, facetSQL[name](k, match), args...)
@@ -179,7 +166,7 @@ func (l *Library) facets(ctx context.Context, k searchKind, names []string, cond
 
 // where collects SQL conditions and their arguments.
 type where struct {
-	k    searchKind
+	k    *Kind
 	args []any
 	n    int
 }
@@ -203,7 +190,7 @@ func (w *where) filter(f Filter) (string, error) {
 	if set != 1 {
 		return "", fmt.Errorf("%w: each filter needs exactly one condition", ErrInvalid)
 	}
-	if !w.k.isCard() && (f.Tag != nil || f.Collection != nil) {
+	if w.k != Card && (f.Tag != nil || f.Collection != nil) {
 		return "", fmt.Errorf("%w: lorebooks have no tags or collections", ErrInvalid)
 	}
 	switch {
@@ -223,13 +210,13 @@ func (w *where) filter(f Filter) (string, error) {
 		return `EXISTS (SELECT 1 FROM collection_card cc
 			WHERE cc.card_id = c.id AND cc.collection_id = ` + w.arg(*f.Collection) + `)`, nil
 	case f.Source != nil:
-		return `EXISTS (SELECT 1 FROM ` + w.k.sourceTable + ` cs
-			WHERE cs.` + w.k.col + ` = c.id AND cs.kind = ` + w.arg(*f.Source) + ` AND cs.removed_at IS NULL)`, nil
+		return `EXISTS (SELECT 1 FROM ` + w.k.SourceTable + ` cs
+			WHERE cs.` + w.k.FK + ` = c.id AND cs.kind = ` + w.arg(*f.Source) + ` AND cs.removed_at IS NULL)`, nil
 	case f.TargetState != nil:
 		if !slices.Contains(targetStatuses, f.TargetState.Is) {
 			return "", fmt.Errorf("%w: target_state.is must be one of %v", ErrInvalid, targetStatuses)
 		}
-		return `EXISTS (SELECT 1 FROM binding_status bs WHERE bs.` + w.k.col + ` = c.id
+		return `EXISTS (SELECT 1 FROM binding_status bs WHERE bs.` + w.k.FK + ` = c.id
 			AND bs.instance_id = ` + w.arg(f.TargetState.Instance) + ` AND bs.status = ` + w.arg(f.TargetState.Is) + `)`, nil
 	}
 	return `((c.archived_at IS NOT NULL) = ` + w.arg(*f.Archived) + `)`, nil
@@ -263,7 +250,7 @@ func mentionsArchived(f *Filter) bool {
 
 // compile returns the WHERE condition for q over k's entity c joined to its
 // head revision r, and the placeholder holding the text query, if any.
-func compile(k searchKind, q Query) (string, *where, string, error) {
+func compile(k *Kind, q Query) (string, *where, string, error) {
 	if q.Semantic {
 		return "", nil, "", fmt.Errorf("%w: semantic search needs an embedding enricher, and none is installed", ErrInvalid)
 	}
@@ -292,21 +279,13 @@ func compile(k searchKind, q Query) (string, *where, string, error) {
 	return strings.Join(conds, " AND "), w, text, nil
 }
 
-// Search returns one page of the library's cards that match q, best match
-// first when q has text, newest first otherwise.
-func (l *Library) Search(ctx context.Context, q Query) (Results, error) {
-	return l.search(ctx, cardSearch, q)
-}
-
-// SearchLorebooks is Search over lorebooks.
-func (l *Library) SearchLorebooks(ctx context.Context, q Query) (Results, error) {
-	return l.search(ctx, lorebookSearch, q)
-}
-
+// Search returns one page of the library's entities of kind k that match q,
+// best match first when q has text, newest first otherwise.
+//
 // ponytail: the cursor is an offset, so a page can repeat or skip an item
 // that was added or archived since the last page; switch to keyset paging
 // if that matters.
-func (l *Library) search(ctx context.Context, k searchKind, q Query) (Results, error) {
+func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error) {
 	cond, w, text, err := compile(k, q)
 	if err != nil {
 		return Results{}, err
@@ -336,12 +315,12 @@ func (l *Library) search(ctx context.Context, k searchKind, q Query) (Results, e
 		fields = []string{"name"}
 	}
 	tags, books, targets, cards, entries := `NULL::text[]`, `NULL::bigint[]`, `NULL::jsonb`, `NULL::bigint[]`, `NULL::int`
-	if !k.isCard() {
+	if k != Card {
 		entries = `CASE jsonb_typeof(r.data->'entries') WHEN 'array' THEN jsonb_array_length(r.data->'entries') ELSE 0 END`
 	}
 	for _, inc := range q.Include {
-		if !k.isCard() && cardOnly(inc) || k.isCard() && inc == "cards" {
-			return Results{}, fmt.Errorf("%w: a %s search can't include %q", ErrInvalid, k.name, inc)
+		if k != Card && cardOnly(inc) || k == Card && inc == "cards" {
+			return Results{}, fmt.Errorf("%w: a %s search can't include %q", ErrInvalid, k.Name, inc)
 		}
 		switch inc {
 		case "tags":
@@ -353,13 +332,13 @@ func (l *Library) search(ctx context.Context, k searchKind, q Query) (Results, e
 			cards = `array(SELECT card_id FROM card_lorebook WHERE lorebook_id = c.id ORDER BY card_id)`
 		case "targets":
 			targets = `(SELECT jsonb_agg(jsonb_build_object('instance', instance_id, 'is', status) ORDER BY instance_id)
-				FROM binding_status WHERE ` + k.col + ` = c.id)`
+				FROM binding_status WHERE ` + k.FK + ` = c.id)`
 		default:
 			return Results{}, fmt.Errorf("%w: unknown include %q", ErrInvalid, inc)
 		}
 	}
 	for _, name := range q.Facets {
-		if facetSQL[name] == nil || !k.isCard() && cardOnly(name) {
+		if facetSQL[name] == nil || k != Card && cardOnly(name) {
 			return Results{}, fmt.Errorf("%w: unknown facet %q", ErrInvalid, name)
 		}
 	}
@@ -378,7 +357,7 @@ func (l *Library) search(ctx context.Context, k searchKind, q Query) (Results, e
 		return Results{}, fmt.Errorf("%w: unknown sort %q", ErrInvalid, q.Sort)
 	}
 	res := Results{Hits: []Hit{}}
-	if err := l.pool.QueryRow(ctx, `SELECT count(*) FROM `+k.from()+` WHERE `+cond, w.args...).Scan(&res.Total); err != nil {
+	if err := l.pool.QueryRow(ctx, `SELECT count(*) FROM `+from(k)+` WHERE `+cond, w.args...).Scan(&res.Total); err != nil {
 		return Results{}, err
 	}
 	if len(q.Facets) > 0 {
@@ -387,7 +366,7 @@ func (l *Library) search(ctx context.Context, k searchKind, q Query) (Results, e
 		}
 	}
 	sql := `SELECT c.id, c.slug, r.id, c.archived_at, r.data, r.avatar_blob, ` + tags + `, ` + books + `, ` + targets + `, ` + cards + `, ` + entries + `
-		FROM ` + k.from() + `
+		FROM ` + from(k) + `
 		WHERE ` + cond + ` ORDER BY ` + order + ` LIMIT ` + w.arg(size+1) + ` OFFSET ` + w.arg(offset)
 	rows, err := l.pool.Query(ctx, sql, w.args...)
 	if err != nil {
@@ -428,23 +407,14 @@ func (l *Library) search(ctx context.Context, k searchKind, q Query) (Results, e
 	return res, nil
 }
 
-// SearchIDs returns the IDs of every card q matches, ignoring its paging and
-// output options.
-func (l *Library) SearchIDs(ctx context.Context, q Query) ([]int64, error) {
-	return l.searchIDs(ctx, cardSearch, q)
-}
-
-// SearchLorebookIDs is SearchIDs over lorebooks.
-func (l *Library) SearchLorebookIDs(ctx context.Context, q Query) ([]int64, error) {
-	return l.searchIDs(ctx, lorebookSearch, q)
-}
-
-func (l *Library) searchIDs(ctx context.Context, k searchKind, q Query) ([]int64, error) {
+// SearchIDs returns the IDs of every entity of kind k that q matches,
+// ignoring its paging and output options.
+func (l *Library) SearchIDs(ctx context.Context, k *Kind, q Query) ([]int64, error) {
 	cond, w, _, err := compile(k, q)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := l.pool.Query(ctx, `SELECT c.id FROM `+k.from()+` WHERE `+cond+` ORDER BY c.id`, w.args...)
+	rows, err := l.pool.Query(ctx, `SELECT c.id FROM `+from(k)+` WHERE `+cond+` ORDER BY c.id`, w.args...)
 	if err != nil {
 		return nil, err
 	}

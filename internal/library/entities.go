@@ -12,22 +12,51 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/davidgibbons/innkeeper/cardhash"
+	"github.com/davidgibbons/innkeeper/internal/merge"
 )
 
-// kind holds what differs between cards and lorebooks. Their tables have the
+// Kind is what differs between cards and lorebooks. Their tables have the
 // same shape, so one implementation serves both.
-type kind struct {
-	table, revTable, fk string
-	simhash             func([]byte) (int64, bool, error)
+type Kind struct {
+	// Name is the kind in the protocol and the API; Plural is its path segment.
+	Name, Plural                 string
+	Table, RevTable, SourceTable string
+	// FK is the entity's ID column in revisions, sources, and bindings.
+	FK string
+	// Schema is how a diff splits the kind's data into fields.
+	Schema  merge.Schema
+	simhash func([]byte) (int64, bool, error)
 	// Top-level keys data may not have.
 	forbid []string
+}
+
+var (
+	Card = &Kind{Name: "card", Plural: "cards", Table: "card", RevTable: "card_revision", SourceTable: "card_source",
+		FK: "card_id", Schema: merge.Card, simhash: cardhash.CardSimhash, forbid: []string{"character_book"}}
+	Lorebook = &Kind{Name: "lorebook", Plural: "lorebooks", Table: "lorebook", RevTable: "lorebook_revision",
+		SourceTable: "lorebook_source", FK: "lorebook_id", Schema: merge.Lorebook, simhash: cardhash.LorebookSimhash}
+	// Kinds is every kind the library holds.
+	Kinds = []*Kind{Card, Lorebook}
+)
+
+// KindNamed returns the kind called name, or false if there is none.
+func KindNamed(name string) (*Kind, bool) {
+	for _, k := range Kinds {
+		if k.Name == name {
+			return k, true
+		}
+	}
+	return nil, false
 }
 
 // Entities stores one kind of versioned entity: cards or lorebooks.
 type Entities struct {
 	pool *pgxpool.Pool
-	k    kind
+	k    *Kind
 }
+
+// Kind is what this store holds.
+func (s *Entities) Kind() *Kind { return s.k }
 
 // Entity is a card or lorebook's current state.
 type Entity struct {
@@ -77,7 +106,7 @@ func scanEntity(row pgx.Row) (Entity, error) {
 }
 
 func (s *Entities) revCols() string {
-	return `id, ` + s.k.fk + `, parent_id, data, avatar_blob, overrides, content_hash, text_simhash, message, source, created_at`
+	return `id, ` + s.k.FK + `, parent_id, data, avatar_blob, overrides, content_hash, text_simhash, message, source, created_at`
 }
 
 func scanRevision(row pgx.Row) (Revision, error) {
@@ -103,7 +132,7 @@ func (s *Entities) prepare(e Edit) (revisionRow, error) {
 	}
 	for _, k := range s.k.forbid {
 		if _, ok := top[k]; ok {
-			return revisionRow{}, fmt.Errorf("%w: %s data may not contain %s", ErrInvalid, s.k.table, k)
+			return revisionRow{}, fmt.Errorf("%w: %s data may not contain %s", ErrInvalid, s.k.Table, k)
 		}
 	}
 	r := revisionRow{data: e.Data, overrides: e.Overrides, message: e.Message, source: e.Source}
@@ -132,14 +161,14 @@ func (s *Entities) prepare(e Edit) (revisionRow, error) {
 }
 
 func (s *Entities) insertRevision(ctx context.Context, tx pgx.Tx, id int64, parent *int64, r revisionRow) (Revision, error) {
-	rev, err := scanRevision(tx.QueryRow(ctx, `INSERT INTO `+s.k.revTable+` (`+s.k.fk+`, parent_id, data, avatar_blob,
+	rev, err := scanRevision(tx.QueryRow(ctx, `INSERT INTO `+s.k.RevTable+` (`+s.k.FK+`, parent_id, data, avatar_blob,
 		overrides, content_hash, text_simhash, message, source)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING `+s.revCols(),
 		id, parent, r.data, r.avatar, r.overrides, r.contentHash, r.simhash, r.message, r.source))
 	if err != nil {
 		return Revision{}, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE `+s.k.table+` SET head_revision_id = $1 WHERE id = $2`, rev.ID, id); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE `+s.k.Table+` SET head_revision_id = $1 WHERE id = $2`, rev.ID, id); err != nil {
 		return Revision{}, err
 	}
 	return rev, nil
@@ -171,7 +200,7 @@ func (s *Entities) create(ctx context.Context, tx pgx.Tx, slug, provenance strin
 		return Entity{}, Revision{}, err
 	}
 	defer sp.Rollback(ctx)
-	ent, err := scanEntity(sp.QueryRow(ctx, `INSERT INTO `+s.k.table+` (slug, provenance) VALUES ($1, $2) RETURNING `+entityCols,
+	ent, err := scanEntity(sp.QueryRow(ctx, `INSERT INTO `+s.k.Table+` (slug, provenance) VALUES ($1, $2) RETURNING `+entityCols,
 		slug, provenance))
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -210,7 +239,7 @@ func (s *Entities) UpdateTx(ctx context.Context, tx pgx.Tx, id, base int64, e Ed
 		return Revision{}, err
 	}
 	var head int64
-	if err := tx.QueryRow(ctx, `SELECT head_revision_id FROM `+s.k.table+` WHERE id = $1 FOR UPDATE`, id).Scan(&head); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT head_revision_id FROM `+s.k.Table+` WHERE id = $1 FOR UPDATE`, id).Scan(&head); err != nil {
 		return Revision{}, mapErr(err)
 	}
 	if head != base {
@@ -221,22 +250,22 @@ func (s *Entities) UpdateTx(ctx context.Context, tx pgx.Tx, id, base int64, e Ed
 
 // Get returns the entity with this ID.
 func (s *Entities) Get(ctx context.Context, id int64) (Entity, error) {
-	return scanEntity(s.pool.QueryRow(ctx, `SELECT `+entityCols+` FROM `+s.k.table+` WHERE id = $1`, id))
+	return scanEntity(s.pool.QueryRow(ctx, `SELECT `+entityCols+` FROM `+s.k.Table+` WHERE id = $1`, id))
 }
 
 // GetBySlug returns the entity with this slug.
 func (s *Entities) GetBySlug(ctx context.Context, slug string) (Entity, error) {
-	return scanEntity(s.pool.QueryRow(ctx, `SELECT `+entityCols+` FROM `+s.k.table+` WHERE slug = $1`, slug))
+	return scanEntity(s.pool.QueryRow(ctx, `SELECT `+entityCols+` FROM `+s.k.Table+` WHERE slug = $1`, slug))
 }
 
 // Revision returns one revision by its ID.
 func (s *Entities) Revision(ctx context.Context, revID int64) (Revision, error) {
-	return scanRevision(s.pool.QueryRow(ctx, `SELECT `+s.revCols()+` FROM `+s.k.revTable+` WHERE id = $1`, revID))
+	return scanRevision(s.pool.QueryRow(ctx, `SELECT `+s.revCols()+` FROM `+s.k.RevTable+` WHERE id = $1`, revID))
 }
 
 // History returns every revision of an entity, newest first.
 func (s *Entities) History(ctx context.Context, id int64) ([]Revision, error) {
-	rows, err := s.pool.Query(ctx, `SELECT `+s.revCols()+` FROM `+s.k.revTable+` WHERE `+s.k.fk+` = $1 ORDER BY id DESC`, id)
+	rows, err := s.pool.Query(ctx, `SELECT `+s.revCols()+` FROM `+s.k.RevTable+` WHERE `+s.k.FK+` = $1 ORDER BY id DESC`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +274,7 @@ func (s *Entities) History(ctx context.Context, id int64) ([]Revision, error) {
 
 // SetArchived archives or unarchives an entity.
 func (s *Entities) SetArchived(ctx context.Context, id int64, archived bool) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE `+s.k.table+`
+	tag, err := s.pool.Exec(ctx, `UPDATE `+s.k.Table+`
 		SET archived_at = CASE WHEN $2 THEN coalesce(archived_at, now()) END WHERE id = $1`, id, archived)
 	if err != nil {
 		return err

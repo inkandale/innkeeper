@@ -26,10 +26,9 @@ type searchResults struct {
 
 type searchOut struct{ Body searchResults }
 
-// search runs q over the library with run, if q asks for it, and over each
-// catalog source for kind.
-func (s *Server) search(ctx context.Context, q library.Query, kind string,
-	run func(context.Context, library.Query) (library.Results, error)) (*searchOut, error) {
+// search runs q over the library's entities of kind k, if q asks for it, and
+// over each catalog source for k.
+func (s *Server) search(ctx context.Context, k *library.Kind, q library.Query) (*searchOut, error) {
 	var catalogs []int64
 	var rest []string
 	for _, src := range q.Sources {
@@ -47,7 +46,7 @@ func (s *Server) search(ctx context.Context, q library.Query, kind string,
 	out := &searchOut{Body: searchResults{Results: library.Results{Hits: []library.Hit{}}}}
 	if len(rest) > 0 || len(catalogs) == 0 {
 		q.Sources = rest
-		res, err := run(ctx, q)
+		res, err := s.Lib.Search(ctx, k, q)
 		if err != nil {
 			return nil, s.fail(err)
 		}
@@ -57,7 +56,7 @@ func (s *Server) search(ctx context.Context, q library.Query, kind string,
 	if q.Page.Cursor != nil || q.Page.Number > 1 {
 		catalogs = nil
 	}
-	p := protocol.CatalogSearchParams{Q: q.Text, Kind: kind, Page: protocol.CatalogPage{Size: min(cmp.Or(q.Page.Size, 50), protocol.MaxCatalogPage)}}
+	p := protocol.CatalogSearchParams{Q: q.Text, Kind: k.Name, Page: protocol.CatalogPage{Size: min(cmp.Or(q.Page.Size, 50), protocol.MaxCatalogPage)}}
 	for _, id := range catalogs {
 		res, err := s.searchCatalog(ctx, id, p)
 		var se huma.StatusError
@@ -79,7 +78,7 @@ func (s *Server) searchRoutes(api huma.API) {
 			"With catalog:<id> sources, also returns each catalog's first page of cards matching text, on the first library page only.",
 		Tags: []string{"Search"}},
 		func(ctx context.Context, in *searchIn) (*searchOut, error) {
-			return s.search(ctx, in.Body, protocol.KindCard, s.Lib.Search)
+			return s.search(ctx, library.Card, in.Body)
 		})
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Read), OperationID: "search-lorebooks", Method: http.MethodPost, Path: "/lorebooks/search",
 		Summary: "Search the library's lorebooks",
@@ -88,6 +87,6 @@ func (s *Server) searchRoutes(api huma.API) {
 			"With catalog:<id> sources, also returns each catalog's first page of lorebooks matching text, on the first library page only.",
 		Tags: []string{"Search"}},
 		func(ctx context.Context, in *searchIn) (*searchOut, error) {
-			return s.search(ctx, in.Body, protocol.KindLorebook, s.Lib.SearchLorebooks)
+			return s.search(ctx, library.Lorebook, in.Body)
 		})
 }

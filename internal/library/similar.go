@@ -90,8 +90,8 @@ func (s *Entities) MatchHashes(ctx context.Context, hashes []Hashes, maxDistance
 		),
 		heads AS (
 			SELECT e.id, r.content_hash, r.text_simhash, b.avatar_phash
-			FROM `+s.k.table+` e
-			JOIN `+s.k.revTable+` r ON r.id = e.head_revision_id
+			FROM `+s.k.Table+` e
+			JOIN `+s.k.RevTable+` r ON r.id = e.head_revision_id
 			LEFT JOIN blob b ON b.sha256 = r.avatar_blob
 		)
 		SELECT DISTINCT ON (i, id) i::int, id, reason, distance FROM (

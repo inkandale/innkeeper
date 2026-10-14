@@ -64,7 +64,7 @@ func setupCaps(t *testing.T, caps []string, args ...string) *env {
 
 	q := jobs.New(pool)
 	w := &jobs.Worker{Queue: q, Log: quiet, Poll: 50 * time.Millisecond,
-		Backoff: func(int) time.Duration { return 0 }, Handlers: map[string]jobs.Handler{Kind: im.Run, IngestKind: im.RunIngest}}
+		Backoff: func(int) time.Duration { return 0 }, Handlers: map[string]jobs.Handler{Kind: im.Run, IngestKind: im.Run}}
 	wctx, cancel := context.WithCancel(ctx)
 	done := make(chan error, 1)
 	go func() { done <- w.Run(wctx) }()
@@ -223,7 +223,7 @@ func TestCancelledStartLeavesInstanceWorking(t *testing.T) {
 	e := setup(t, "-mode=slow-init")
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
-	r := &jobs.Run{Job: jobs.Job{ID: 1, Attempts: 1, InstanceID: &e.inst, Payload: json.RawMessage(`{}`)}}
+	r := &jobs.Run{Job: jobs.Job{ID: 1, Kind: Kind, Attempts: 1, InstanceID: &e.inst, Payload: json.RawMessage(`{}`)}}
 	if err := e.im.Run(ctx, r); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("run = %v, want deadline exceeded", err)
 	}

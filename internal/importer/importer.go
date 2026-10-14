@@ -76,8 +76,7 @@ type session struct {
 	im     *Importer
 	run    *jobs.Run
 	plugin string
-	// ingest marks a catalog.ingest run, which stores no items.
-	ingest bool
+	stores bool // the job's method.stores
 	ctx    context.Context
 	cancel context.CancelCauseFunc
 
@@ -88,15 +87,31 @@ type session struct {
 	err    error
 }
 
-// Run is the jobs.Handler for Kind.
-func (im *Importer) Run(ctx context.Context, r *jobs.Run) error { return im.run(ctx, r, false) }
+// method is the plugin method a job kind calls.
+type method struct {
+	name   string
+	params func(run string, p Payload, checkpoint json.RawMessage) any
+	// stores is whether the core stores the items the plugin emits. A
+	// catalog emits none; adopt adds its items one at a time.
+	stores bool
+}
 
-// RunIngest is the jobs.Handler for IngestKind.
-func (im *Importer) RunIngest(ctx context.Context, r *jobs.Run) error { return im.run(ctx, r, true) }
+var methods = map[string]method{
+	Kind: {protocol.MethodImportRun, func(run string, p Payload, checkpoint json.RawMessage) any {
+		return protocol.ImportRunParams{Run: run, Params: p.Params, Checkpoint: checkpoint}
+	}, true},
+	IngestKind: {protocol.MethodCatalogIngest, func(run string, _ Payload, checkpoint json.RawMessage) any {
+		return protocol.CatalogIngestParams{Run: run, Checkpoint: checkpoint}
+	}, false},
+}
 
-// run calls import.run, or catalog.ingest if ingest is set, on the job's
-// instance.
-func (im *Importer) run(ctx context.Context, r *jobs.Run, ingest bool) error {
+// Run is the jobs.Handler for Kind and IngestKind. It calls the kind's
+// method on the job's instance.
+func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
+	m, ok := methods[r.Kind]
+	if !ok {
+		return fmt.Errorf("importer can't run %s jobs", r.Kind)
+	}
 	if r.InstanceID == nil {
 		return fmt.Errorf("%s job has no plugin instance", r.Kind)
 	}
@@ -110,7 +125,7 @@ func (im *Importer) run(ctx context.Context, r *jobs.Run, ingest bool) error {
 	}
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
-	s := &session{im: im, run: r, plugin: inst.Manifest.Name, ingest: ingest, ctx: ctx, cancel: cancel}
+	s := &session{im: im, run: r, plugin: inst.Manifest.Name, stores: m.stores, ctx: ctx, cancel: cancel}
 	// ponytail: items re-sent after a resume count as skipped a second time.
 	_ = json.Unmarshal(r.Progress, &s.p)
 
@@ -126,21 +141,20 @@ func (im *Importer) run(ctx context.Context, r *jobs.Run, ingest bool) error {
 		im.mu.Unlock()
 	}()
 
+	// Only catalog.ingest has a result worth keeping: its counts.
+	var res protocol.CatalogIngestResult
+	var result any
+	if !m.stores {
+		result = &res
+	}
 	// ponytail: a run abandoned on shutdown or a lost lease keeps going in
 	// the plugin until it finishes or the plugin is stopped.
-	if ingest {
-		var res protocol.CatalogIngestResult
-		err = im.Registry.Call(ctx, im.Plugins, inst, protocol.MethodCatalogIngest,
-			protocol.CatalogIngestParams{Run: token, Checkpoint: r.Checkpoint}, &res)
-		if err == nil {
-			s.mu.Lock()
-			s.result = &res
-			s.mu.Unlock()
-			s.publish()
-		}
-	} else {
-		err = im.Registry.Call(ctx, im.Plugins, inst, protocol.MethodImportRun,
-			protocol.ImportRunParams{Run: token, Params: payload.Params, Checkpoint: r.Checkpoint}, nil)
+	err = im.Registry.Call(ctx, im.Plugins, inst, m.name, m.params(token, payload, r.Checkpoint), result)
+	if err == nil && result != nil {
+		s.mu.Lock()
+		s.result = &res
+		s.mu.Unlock()
+		s.publish()
 	}
 	if serr := s.failure(); serr != nil {
 		return serr
@@ -178,7 +192,7 @@ func (s *session) handle(method string, params json.RawMessage) {
 	if s.ctx.Err() != nil {
 		return
 	}
-	if s.ingest && (method == protocol.NotifyEmitCard || method == protocol.NotifyEmitLorebook) {
+	if !s.stores && (method == protocol.NotifyEmitCard || method == protocol.NotifyEmitLorebook) {
 		s.im.Log.Warn("catalog sent an item during ingest; only adopt adds catalog items", "plugin", s.plugin, "method", method)
 		return
 	}
@@ -245,7 +259,7 @@ func (s *session) count(item string, created bool, err error) {
 func (s *session) publish() {
 	s.mu.Lock()
 	var raw []byte
-	if s.ingest {
+	if !s.stores {
 		raw, _ = json.Marshal(ingestProgress{Done: s.p.Done, Total: s.p.Total, Message: s.p.Message, CatalogIngestResult: s.result})
 	} else {
 		raw, _ = json.Marshal(s.p)

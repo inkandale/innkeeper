@@ -73,7 +73,7 @@ func worker() error {
 		Concurrency: concurrency,
 		Handlers: map[string]jobs.Handler{
 			importer.Kind:              im.Run,
-			importer.IngestKind:        im.RunIngest,
+			importer.IngestKind:        im.Run,
 			bulk.ArchiveKind:           bulk.Archive(svc.lib),
 			bulk.LorebookArchiveKind:   bulk.ArchiveLorebook(svc.lib),
 			bulk.TagKind:               bulk.Tag(svc.lib),

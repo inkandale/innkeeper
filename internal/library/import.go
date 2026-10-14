@@ -209,6 +209,29 @@ func (l *Library) ImportCard(ctx context.Context, provenance, source string, car
 	return cardID, created, nil
 }
 
+// PluginItem is a card or lorebook a plugin sent.
+type PluginItem struct {
+	Kind               *Kind
+	Provenance, Source string
+	// Data is a CCv3 card or a lorebook.
+	Data json.RawMessage
+	// Avatar is a card's avatar, a file in the blob store's tmp folder, or empty.
+	Avatar string
+	// Name is a lorebook's name when its data has none.
+	Name string
+}
+
+// ImportItem adds a card as ImportCard does, or a lorebook as Import does.
+// It returns the entity's ID and whether it created it.
+func (l *Library) ImportItem(ctx context.Context, it PluginItem) (int64, bool, error) {
+	if it.Kind == Card {
+		return l.ImportCard(ctx, it.Provenance, it.Source, it.Data, it.Avatar)
+	}
+	// An avatar sent with a lorebook stays in blob_tmp until garbage collection.
+	return l.Lorebooks.Import(ctx, it.Provenance, cmp.Or(DataName(it.Data), it.Name),
+		Edit{Data: it.Data, Source: it.Source, Message: "Imported"})
+}
+
 // ImportCardTx adds a CCv3 card as a new card inside the caller's
 // transaction, with its character_book as a new linked lorebook. Unlike
 // ImportCard it always creates, since the caller asked for a new copy and its

@@ -203,7 +203,7 @@ func (s *session) handle(method string, params json.RawMessage) {
 			s.count(e.Item, false, &badItem{err})
 			break
 		}
-		created, err := s.im.ingestCard(s.ctx, s.plugin, e)
+		created, err := s.im.ingest(s.ctx, s.plugin, e.Item, library.PluginItem{Kind: library.Card, Data: e.Card, Avatar: e.Avatar})
 		s.count(e.Item, created, err)
 	case protocol.NotifyEmitLorebook:
 		var e protocol.EmitLorebook
@@ -211,7 +211,7 @@ func (s *session) handle(method string, params json.RawMessage) {
 			s.count(e.Item, false, &badItem{err})
 			break
 		}
-		created, err := s.im.ingestLorebook(s.ctx, s.plugin, e)
+		created, err := s.im.ingest(s.ctx, s.plugin, e.Item, library.PluginItem{Kind: library.Lorebook, Data: e.Lorebook, Name: "lorebook"})
 		s.count(e.Item, created, err)
 	case protocol.NotifyProgress:
 		var p protocol.Progress

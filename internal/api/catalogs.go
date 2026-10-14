@@ -1,7 +1,6 @@
 package api
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -313,23 +312,13 @@ func (s *Server) adoptCatalogItem(ctx context.Context, in *catalogItemIn) (*adop
 	if err != nil {
 		return nil, err
 	}
-	prov := fmt.Sprintf("catalog:%d:%s@%s", in.ID, in.Item, res.Version)
-	source := "plugin:" + info.Plugin
-	var ents *library.Entities
-	var id int64
-	var created bool
-	// An avatar sent with anything but a card stays in blob_tmp until garbage collection.
-	switch res.Item.Kind {
-	case protocol.KindCard:
-		ents = s.Lib.Cards
-		id, created, err = s.Lib.ImportCard(ctx, prov, source, res.Data, res.Avatar)
-	case protocol.KindLorebook:
-		ents = s.Lib.Lorebooks
-		id, created, err = s.Lib.Lorebooks.Import(ctx, prov, cmp.Or(library.DataName(res.Data), res.Item.Name),
-			library.Edit{Data: res.Data, Source: source, Message: "Adopted"})
-	default:
+	k, ok := library.KindNamed(res.Item.Kind)
+	if !ok {
 		return nil, huma.Error400BadRequest(fmt.Sprintf("can't adopt a %s; the library holds cards and lorebooks", res.Item.Kind))
 	}
+	id, created, err := s.Lib.ImportItem(ctx, library.PluginItem{Kind: k,
+		Provenance: fmt.Sprintf("catalog:%d:%s@%s", in.ID, in.Item, res.Version), Source: "plugin:" + info.Plugin,
+		Data: res.Data, Avatar: res.Avatar, Name: res.Item.Name})
 	// The error names server paths, so log it and keep it out of the body.
 	if errors.Is(err, blobstore.ErrInvalid) {
 		s.Log.Error("catalog sent a bad avatar", "catalog", info.Name, "err", err)
@@ -341,7 +330,7 @@ func (s *Server) adoptCatalogItem(ctx context.Context, in *catalogItemIn) (*adop
 	if err != nil {
 		return nil, s.fail(err)
 	}
-	out, err := s.entity(ctx, ents, id)
+	out, err := s.entity(ctx, s.Lib.Entities(k), id)
 	if err != nil {
 		return nil, err
 	}

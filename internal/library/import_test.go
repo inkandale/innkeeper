@@ -82,6 +82,28 @@ func TestImportSkipsContentSeenBefore(t *testing.T) {
 	}
 }
 
+func TestImportItemNamesALorebookWithoutOne(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	id, created, err := lib.ImportItem(ctx, PluginItem{Kind: Lorebook, Provenance: "x:1", Source: "plugin:x",
+		Data: json.RawMessage(`{"entries": []}`), Name: "Fallback"})
+	if err != nil || !created {
+		t.Fatalf("import = %v, %v", created, err)
+	}
+	if lb, _ := lib.Lorebooks.Get(ctx, id); lb.Slug != "fallback" {
+		t.Fatalf("slug = %q, want fallback", lb.Slug)
+	}
+	card := `{"spec":"chara_card_v3","spec_version":"3.0","data":{"name":"Brakka"}}`
+	id, created, err = lib.ImportItem(ctx, PluginItem{Kind: Card, Provenance: "x:2", Source: "plugin:x",
+		Data: json.RawMessage(card), Name: "Fallback"})
+	if err != nil || !created {
+		t.Fatalf("card import = %v, %v", created, err)
+	}
+	if c, _ := lib.Cards.Get(ctx, id); c.Slug != "brakka" {
+		t.Fatalf("card slug = %q, want brakka", c.Slug)
+	}
+}
+
 func TestConcurrentImportsOfOneItemMakeOneCard(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()

@@ -10,19 +10,19 @@ refs validate. That is site-specific behavior in core, and `url-import`
 already parses the same URLs, so adding a site takes a core change and a
 plugin change (the [URL import design](2026-10-13-url-import-design.md)
 says "one resolver plus one core detector"). This design moves all of it
-into plugins through a new `sources` capability. After it, adding a site
+into plugins through a new `sites` capability. After it, adding a site
 touches only a plugin.
 
 ## Decisions
 
 | Topic | Decision |
 |---|---|
-| Capability | New `sources` capability with two methods: `sources.detect` (data → sources) and `sources.parse` (URL, or kind and ref → source). No third method: a stored source already holds its page URL. |
-| Plugin | `url-import` gains `sources`. Each site file parses its URLs once, for both the fetch and detection. |
-| Which plugins | One instance per plugin that declares `sources`, the oldest one that isn't broken, in order of that instance's ID. Results are merged; the first plugin wins a conflict. |
-| Failure | Detection never fails an import, a sync, or an adopt. A plugin that errors or times out is skipped and logged. With no `sources` plugin, nothing is detected, and adding a source by URL answers 422. |
+| Capability | New `sites` capability with two methods: `sites.detect` (data → sources) and `sites.parse` (URL, or kind and ref → source). No third method: a stored source already holds its page URL. |
+| Plugin | `url-import` gains `sites`. Each site file parses its URLs once, for both the fetch and detection. |
+| Which plugins | One instance per plugin that declares `sites`, the oldest one that isn't broken, in order of that instance's ID. Results are merged; the first plugin wins a conflict. |
+| Failure | Detection never fails an import, a sync, or an adopt. A plugin that errors or times out is skipped and logged. With no `sites` plugin, nothing is detected, and adding a source by URL answers 422. |
 | Import path | Imports queue their new entities for detection, and a `detect-sources` job drains the queue. No plugin call runs inside a notification handler or an import's transaction. |
-| Sync path | Reconcile and resolve call `sources.detect` directly on the app's copy, as they call `target.get` today. |
+| Sync path | Reconcile and resolve call `sites.detect` directly on the app's copy, as they call `target.get` today. |
 | Stored rows | Unchanged. Kinds `chub`, `risu`, and `character-tavern`, and their ref forms, stay exactly as they are. |
 | API | No field or path changes. Only the wording of two 422 messages changes. |
 | Core code removed | Everything site-specific in `detect.go`; `Detect`, `ParseSourceURL`, and `ValidateSource` become calls through `internal/plugins`. |
@@ -45,7 +45,7 @@ detects; there is no backfill job today.
 
 ## Protocol
 
-Add `sources` to `protocol.Capabilities` (`protocol/manifest.go:16`). No new
+Add `sites` to `protocol.Capabilities` (`protocol/manifest.go:16`). No new
 manifest keys. Both methods are local parsing: answer within 5 seconds,
 don't contact any service, and give the same answer for any instance config.
 
@@ -62,7 +62,7 @@ Core checks every returned source with one function in `protocol`, shared
 with the contract kit, and drops one that fails, with a log line naming the
 plugin.
 
-**`sources.detect`** reads the sources a card's or lorebook's data names.
+**`sites.detect`** reads the sources a card's or lorebook's data names.
 
 | Param | Meaning |
 |---|---|
@@ -74,7 +74,7 @@ that fit the entity: a lorebook gets no RisuRealm source, and a card gets no
 chub lorebook page. Reply `-32602` if `entity` is unknown or `data` isn't an
 object.
 
-**`sources.parse`** turns what the owner typed into a source.
+**`sites.parse`** turns what the owner typed into a source.
 
 | Param | Meaning |
 |---|---|
@@ -88,7 +88,7 @@ when the kind is yours and the ref isn't valid, or when params send both or
 neither form.
 
 ```json
-{"jsonrpc": "2.0", "id": 9, "method": "sources.parse", "params": {"entity": "lorebook", "url": "https://www.chub.ai/lorebooks/u/orcs?x=1"}}
+{"jsonrpc": "2.0", "id": 9, "method": "sites.parse", "params": {"entity": "lorebook", "url": "https://www.chub.ai/lorebooks/u/orcs?x=1"}}
 {"jsonrpc": "2.0", "id": 9, "result": {"source": {"kind": "chub", "ref": "u/orcs", "url": "https://chub.ai/lorebooks/u/orcs"}}}
 ```
 
@@ -98,7 +98,7 @@ The shared code lives in `internal/plugins/sources.go`, beside
 `CodecInstance` (`plugins.go:506`), which already picks an instance by
 capability:
 
-- `(*Registry).SourcePlugins(ctx)`: for each plugin that declares `sources`,
+- `(*Registry).SourcePlugins(ctx)`: for each plugin that declares `sites`,
   its oldest working instance, ordered by that instance's ID.
 - `(*Registry).DetectSources(ctx, mgr, entity, data) []library.Source`:
   calls each with a 5-second timeout, drops invalid sources, and merges them
@@ -111,7 +111,7 @@ capability:
 
 | Case | `DetectSources` | `PUT …/sources` |
 |---|---|---|
-| No `sources` plugin | `nil` | 422 "no installed plugin recognizes that URL" (was "no known site matches that URL") |
+| No `sites` plugin | `nil` | 422 "no installed plugin recognizes that URL" (was "no known site matches that URL") |
 | Every plugin answers `null` | `nil` | 422, same message; for kind and ref, "no installed plugin knows source kind %q" (was "unknown source kind %q") |
 | Plugin errors, times out, or is broken | skipped, logged | skipped, logged; the next plugin is asked |
 | Two plugins return the same `(kind, ref)` | the first wins | the first non-null wins |
@@ -125,7 +125,7 @@ Owner-linked and removed rows are never touched, as now
 The importer handles `emit.card` on the plugin connection's reading
 goroutine (`importer/importer.go:188-191`), and a notification handler must
 not call the same connection (`protocol/jsonrpc.go:58-61`). With `url-import`
-both importing and detecting, an inline `sources.detect` from `emit.card`
+both importing and detecting, an inline `sites.detect` from `emit.card`
 would wait on a reply that goroutine can never read. So imports queue
 instead of calling:
 
@@ -137,9 +137,9 @@ instead of calling:
 3. A `detect-sources` job (a `jobs.Worker.Handlers` entry in the worker)
    reads each queued entity's head revision, calls `DetectSources`, records
    the `auto` rows, and deletes the queue row. Rows stay queued when no
-   `sources` plugin exists, or when a call failed retryably.
+   `sites` plugin exists, or when a call failed retryably.
 4. `EnqueueOnce` of that job at the end of every import job, after an adopt,
-   and when a `sources` instance is created, edited, or checked. The last
+   and when a `sites` instance is created, edited, or checked. The last
    case picks up everything imported while no plugin existed.
 
 Reconcile and resolve call `Registry.DetectSources` directly. They run in a
@@ -153,11 +153,11 @@ records given sources, for resolve's bind (`resolve.go:470`).
 
 | Path | Calls | Cost |
 |---|---|---|
-| Bulk import of N cards | N `sources.detect` calls in the job, after the import | One local JSON-RPC round trip each, under a millisecond plus encoding `data`, which the import already sent across a pipe once. 10,000 cards take seconds |
+| Bulk import of N cards | N `sites.detect` calls in the job, after the import | One local JSON-RPC round trip each, under a millisecond plus encoding `data`, which the import already sent across a pipe once. 10,000 cards take seconds |
 | Reconcile of N app items | N calls beside the N `target.get` calls it already makes | Small next to `target.get`, which goes to the app |
-| Add a source | One call per `sources` plugin | Interactive; one plugin today |
+| Add a source | One call per `sites` plugin | Interactive; one plugin today |
 
-No batch method and no cache. A batch `sources.detect_many` is an additive
+No batch method and no cache. A batch `sites.detect_many` is an additive
 method if profiling shows the round trips matter; a cache keyed by content
 hash would need invalidating on every plugin upgrade.
 
@@ -192,8 +192,8 @@ Into `url-import`, which already holds a file per site:
 | File | Change |
 |---|---|
 | `chub.go`, `risu.go`, `tavern.go` | Each exports one page parser, such as `chubPage(u) (dir, user, slug, ok)`, used by the resolver and by detection |
-| `sources.go` (new) | `sources.detect`: reads `extensions.chub` (`full_path`, and `id` decoded with `UseNumber`), then each string in `data.source` through the page parsers, plus `risurealm:{uuid}`. `sources.parse`: URL, or kind and ref |
-| `main.go` | Declares and answers `sources` |
+| `sites.go` (new) | `sites.detect`: reads `extensions.chub` (`full_path`, and `id` decoded with `UseNumber`), then each string in `data.source` through the page parsers, plus `risurealm:{uuid}`. `sites.parse`: URL, or kind and ref |
+| `main.go` | Declares and answers `sites` |
 | `plugin.toml` | `capabilities = ["import", "sources"]`, version 0.2.0 |
 | `sources_test.go` (new) | `detect_test.go`'s tables, moved verbatim, so output matches what core stored |
 
@@ -210,7 +210,7 @@ says `url-import` detects them.
 `chub-archive` needs nothing: its catalog items keep `extensions.chub`, and
 adopt queues them like any import.
 
-## Getting a `sources` plugin onto every server
+## Getting a `sites` plugin onto every server
 
 Detection needs a running instance, and today it works with no plugin at
 all. To keep that:
@@ -218,24 +218,24 @@ all. To keep that:
 - The image ships `url-import` built in: `Dockerfile:32` gains it in
   `PLUGINS`.
 - On startup, core creates one instance of each built-in plugin that
-  declares `sources` and has no required config or secrets, once. A setting
+  declares `sites` and has no required config or secrets, once. A setting
   records that it did, so an instance the owner deletes stays deleted. It
   keys on the capability, never the plugin's name.
 
 ## Contract checks
 
-`internal/contract/sources.go`, run when the manifest declares `sources`:
+`internal/contract/sites.go`, run when the manifest declares `sites`:
 
 | Check | Passes when |
 |---|---|
-| `sources.detect` answers a plain card | `{"entity": "card", "data": {"name": "Contract"}}` returns `sources: []` within 5 seconds |
-| `sources.detect` answers a plain lorebook | The same with `entity` `lorebook` and `{"entries": []}` |
-| `sources.detect` refuses bad data | `data: "x"` returns `-32602` |
-| `sources.parse` ignores a foreign URL | `https://example.invalid/contract` returns `source: null` |
-| `sources.parse` refuses bad params | Neither `url` nor `kind` returns `-32602` |
+| `sites.detect` answers a plain card | `{"entity": "card", "data": {"name": "Contract"}}` returns `sources: []` within 5 seconds |
+| `sites.detect` answers a plain lorebook | The same with `entity` `lorebook` and `{"entries": []}` |
+| `sites.detect` refuses bad data | `data: "x"` returns `-32602` |
+| `sites.parse` ignores a foreign URL | `https://example.invalid/contract` returns `source: null` |
+| `sites.parse` refuses bad params | Neither `url` nor `kind` returns `-32602` |
 | Every returned source is valid | Each reply above passes the shared `protocol` check |
 
-`internal/fakeplugin` gains a `sources` mode that recognizes
+`internal/fakeplugin` gains a `sites` mode that recognizes
 `https://fake.example/{a}/{b}` as kind `fake`, plus one bad mode per check.
 `docs/protocol.md` gains a `### sources` section and the checks in "Checking
 a plugin".
@@ -249,7 +249,7 @@ a plugin".
 | `internal/library/sources_test.go` | `DetectSources` queues and doesn't record; owner and removed rows survive the job |
 | Job test | Drains the queue; rows stay with no plugin and drain once one is created; a retryable failure keeps the row |
 | `internal/importer` | `url-import`-style fake that imports and detects on one process: the import finishes and its sources appear after the job, with no deadlock |
-| `internal/api/sources_test.go`, `mcp_test.go`, targets tests | Rewritten from chub data to the fake `sources` plugin |
+| `internal/api/sources_test.go`, `mcp_test.go`, targets tests | Rewritten from chub data to the fake `sites` plugin |
 | `url-import/sources_test.go` | `detect_test.go`'s cases, verbatim |
 
 ## Rollout
@@ -258,11 +258,11 @@ Older cores reject an unknown capability (`protocol/manifest.go:140-142`),
 so `url-import` 0.2.0 fails to load on them, `import` included. The core
 must ship first, and the protocol version stays 1.
 
-1. **Core PR 1.** `sources` capability and protocol types, `internal/plugins`
+1. **Core PR 1.** `sites` capability and protocol types, `internal/plugins`
    shared code, queue, job, callers switched, contract checks, fakeplugin,
    `docs/protocol.md`. `detect.go`'s detectors stay as the fallback used only
-   when no instance declares `sources`, so `main` keeps detecting.
-2. **Plugins PR.** `url-import` 0.2.0 with `sources`, `go.mod` pinned to PR
+   when no instance declares `sites`, so `main` keeps detecting.
+2. **Plugins PR.** `url-import` 0.2.0 with `sites`, `go.mod` pinned to PR
    1's commit. Its README and index description say which core it needs.
    Merge only after PR 1 is on core `main`, since the image builds plugins
    from `main` (`Dockerfile:23-26`).
@@ -279,22 +279,17 @@ must ship first, and the protocol version stays 1.
 | Site rules in the manifest (host lists, path templates, JSON paths) | No process call | Core becomes an interpreter for site rules, which is the same site logic in a worse form; new manifest keys that older cores reject |
 | Separate `site-sources` plugin | Detection without the fetcher | Either duplicates `url-import`'s parsers or needs a shared package for one consumer; two plugins to update per site |
 | Detect inline on import, as now | No queue or job | Deadlocks when the importing plugin is also the detecting one (see "The import path") |
-| **New `sources` capability in `url-import`, queued on import** | One place per site; works with any number of plugins; imports never wait on detection | A migration, a job, and a rollout across two repos |
+| **New `sites` capability in `url-import`, queued on import** | One place per site; works with any number of plugins; imports never wait on detection | A migration, a job, and a rollout across two repos |
 
 Recommendation: the last row.
 
-## Open questions
+## Decided
 
-1. **Built-in and auto-created instance.** Ship `url-import` in the image and
-   create its instance on startup, as above? Without it, a server with no
-   `url-import` instance stops detecting chub.ai sources on SillyTavern pulls
-   and folder imports, which works today with no setup.
-2. **Capability name.** `sources` reuses the domain word for card sources,
-   but "source" also names plugin indexes (`/plugin-sources`, "Publishing a
-   source" in `docs/protocol.md`). Keep `sources`, or pick another name such
-   as `sites`?
-3. **Lag after import.** Sources appear when the job runs, seconds after the
-   import ends, not with the card. Acceptable?
+| Question | Decision |
+|---|---|
+| Built-in plugin | The image ships `url-import`, and core creates one instance of each built-in `sites` plugin at startup, once |
+| Capability name | `sites`, since "source" already names plugin indexes |
+| Delay after import | Sources appear when the job runs, seconds after the import |
 
 ## Out of scope
 

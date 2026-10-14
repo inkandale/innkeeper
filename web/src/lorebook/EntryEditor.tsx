@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { text, tokens, type Data } from "../card/draft";
-import { ChipInput } from "./ChipInput";
+import { ChipInput } from "../card/ChipInput";
 import { asEntries, blankEntry, firstLine, isEntry, matches, moved, strings, type Entry } from "./entries";
 
 let lastUid = 0;

@@ -10,9 +10,9 @@ function json(body: unknown, status = 200) {
 }
 
 const now = new Date().toISOString();
-const data = { name: "Brakka", creator: "dg", description: "A grumpy dwarf.", alternate_greetings: ["Hail."], extensions: { depth: 4 } };
+const data = { name: "Brakka", creator: "dg", description: "A grumpy dwarf.", tags: ["dwarf"], alternate_greetings: ["Hail."], extensions: { depth: 4 } };
 const entity = {
-  id: 7, slug: "brakka", provenance: "api", created_at: now, tags: ["dwarf"], lorebooks: [3], collections: [1],
+  id: 7, slug: "brakka", provenance: "api", created_at: now, lorebooks: [3], collections: [1],
   revision: { id: 11, content_hash: "x", message: "", source: "ui", created_at: now, avatar: "ab".repeat(32), data },
 };
 
@@ -66,7 +66,6 @@ beforeEach(() => {
           head = { ...head, revision: { ...head.revision, id: head.revision.id + 1, data: body.data, avatar } };
           return json(head);
         }
-        if (path === "/api/cards/7/tags") return json(body.tags);
         return new Response(null, { status: 204 });
       }
       if (path === "/api/blobs") return json({ sha256: "cd".repeat(32), mime: "image/png", size: 3, store: "local", created_at: now }, 201);
@@ -193,10 +192,17 @@ test("the panel shows sync, lorebooks, collections, and sources", async () => {
   expect(screen.queryByRole("link", { name: "chub: dg/evil" })).not.toBeInTheDocument();
 });
 
-test("tags and collections save as they change", async () => {
+test("tags are part of the draft and save with it", async () => {
   renderAt("/cards/7");
-  await userEvent.type(await screen.findByLabelText("Add tag"), "smith{Enter}");
-  await waitFor(() => expect(puts).toContainEqual({ path: "/api/cards/7/tags", body: { tags: ["dwarf", "smith"] } }));
+  await userEvent.type(await screen.findByLabelText("Add to Tags"), "smith{Enter}");
+  expect(puts).toHaveLength(0);
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(puts).toHaveLength(1));
+  expect(puts[0]).toMatchObject({ path: "/api/cards/7", body: { base_revision_id: 11, data: { tags: ["dwarf", "smith"] } } });
+});
+
+test("collections save as they change", async () => {
+  renderAt("/cards/7");
   await userEvent.click(await screen.findByRole("checkbox", { name: "Pirates" }));
   await waitFor(() => expect(puts.map((p) => p.path)).toContain("/api/collections/2/cards/7"));
 });

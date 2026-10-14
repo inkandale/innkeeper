@@ -3,45 +3,7 @@ import { useState } from "react";
 import { api, must, mustOk, route, type Kind } from "../api/client";
 import { collectionsQuery } from "../api/queries";
 
-// These save on change: tags, collections, and sources aren't part of a revision.
-
-/** Tags lists a card's tags, with remove and add. */
-export function Tags({ id, tags }: { id: number; tags: string[] }) {
-  const qc = useQueryClient();
-  const [name, setName] = useState("");
-  const put = useMutation({
-    mutationFn: async (next: string[]) => must(await api.PUT("/cards/{id}/tags", { params: { path: { id } }, body: { tags: next } })),
-    // Pending lasts until the card refetches, so the next change builds on fresh tags.
-    onSuccess: () => {
-      setName("");
-      return qc.invalidateQueries({ queryKey: ["card", id] });
-    },
-  });
-  return (
-    <section>
-      <h2>Tags</h2>
-      <p className="chips">
-        {tags.map((t) => (
-          <span key={t} className="tag">
-            {t}
-            <button className="chip-x" aria-label={`Remove tag ${t}`} disabled={put.isPending} onClick={() => put.mutate(tags.filter((x) => x !== t))}>
-              ×
-            </button>
-          </span>
-        ))}
-      </p>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          const t = name.trim();
-          if (t && !tags.includes(t) && !put.isPending) put.mutate([...tags, t]);
-        }}
-      >
-        <input className="input" aria-label="Add tag" placeholder="Add tag" value={name} onChange={(e) => setName(e.target.value)} />
-      </form>
-    </section>
-  );
-}
+// These save on change: collections and sources aren't part of a revision.
 
 /** Collections has a box per collection, checked for the ones the card is in. */
 export function Collections({ id, member }: { id: number; member: number[] }) {

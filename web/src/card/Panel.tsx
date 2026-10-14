@@ -11,7 +11,8 @@ import { text, type Data } from "./draft";
 import { Logo, apps } from "../sync/Logo";
 import { PushPreview } from "../sync/PushPreview";
 import { reviewPath, stateLabel } from "../sync/sync";
-import { Collections, Sources, Tags } from "./Organize";
+import { ChipInput } from "./ChipInput";
+import { Collections, Sources } from "./Organize";
 
 type PanelProps = {
   card: Entity;
@@ -36,6 +37,7 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
       <Image sha={avatar} busy={avatarBusy} onAvatar={onAvatar} />
       <input className="input name" aria-label="Name" value={text(data.name)} onChange={(e) => edit("name", e.target.value)} />
       <input className="input" aria-label="Creator" placeholder="Creator" value={text(data.creator)} onChange={(e) => edit("creator", e.target.value)} />
+      <ChipInput label="Tags" values={Array.isArray(data.tags) ? data.tags.map(text) : []} onChange={(v) => edit("tags", v)} />
       <div className="row">
         <button className="button primary" disabled={!dirty || saving} onClick={onSave}>
           Save
@@ -48,7 +50,6 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
         <Archive kind="card" entity={card} />
       </div>
       <Push kind="card" id={card.id} dirty={dirty} />
-      <Tags id={card.id} tags={card.tags ?? []} />
       <Collections id={card.id} member={card.collections ?? []} />
       <Sources kind="card" id={card.id} />
       <Sync kind="card" id={card.id} />

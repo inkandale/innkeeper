@@ -27,19 +27,6 @@
   padding: 0 var(--space) var(--space);
 }
 
-.chip-input {
-  display: flex;
-  flex-wrap: wrap;
-  gap: calc(var(--space) * 0.5);
-  align-items: center;
-}
-
-.chip-input .input {
-  flex: 1;
-  min-width: 8em;
-  width: auto;
-}
-
 .input.num {
   width: 6em;
 }

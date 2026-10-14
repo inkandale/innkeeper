@@ -281,11 +281,7 @@ func (s *Server) catalogRoutes(api huma.API) {
 				return nil, huma.Error409Conflict("an ingest of this catalog is already queued or running",
 					&huma.ErrorDetail{Location: "path.id", Value: last})
 			}
-			j, err := s.Queue.Enqueue(ctx, jobs.Spec{Kind: importer.IngestKind, InstanceID: &in.ID})
-			if err != nil {
-				return nil, s.fail(err)
-			}
-			return &jobResp{Body: toJob(j)}, nil
+			return s.enqueue(ctx, jobs.Spec{Kind: importer.IngestKind, InstanceID: &in.ID})
 		})
 
 	for _, k := range library.Kinds {

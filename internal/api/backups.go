@@ -242,11 +242,7 @@ func (s *Server) backupRoutes(api huma.API) {
 			if _, err := s.backupDir(); err != nil {
 				return nil, err
 			}
-			j, err := s.Queue.Enqueue(ctx, jobs.Spec{Kind: backup.Kind(in.Body.Type)})
-			if err != nil {
-				return nil, s.fail(err)
-			}
-			return &jobResp{Body: toJob(j)}, nil
+			return s.enqueue(ctx, jobs.Spec{Kind: backup.Kind(in.Body.Type)})
 		})
 
 	huma.Register(api, huma.Operation{Metadata: destructive, OperationID: "download-backup", Method: http.MethodGet, Path: "/backups/{name}",

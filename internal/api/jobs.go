@@ -117,6 +117,15 @@ func (s *Server) usable(ctx context.Context, id int64, capability string) error 
 	return s.fail(err)
 }
 
+// enqueue queues a job and answers with it.
+func (s *Server) enqueue(ctx context.Context, spec jobs.Spec) (*jobResp, error) {
+	j, err := s.Queue.Enqueue(ctx, spec)
+	if err != nil {
+		return nil, s.fail(err)
+	}
+	return &jobResp{Body: toJob(j)}, nil
+}
+
 // job returns a job, with child counts and outcomes for a bulk job.
 func (s *Server) job(ctx context.Context, id int64) (jobOut, error) {
 	j, err := s.Queue.Get(ctx, id)
@@ -282,12 +291,8 @@ func (s *Server) jobRoutes(api huma.API) {
 			if params == nil {
 				params = json.RawMessage(`{}`)
 			}
-			j, err := s.Queue.Enqueue(ctx, jobs.Spec{Kind: importer.Kind, InstanceID: &in.Body.InstanceID,
+			return s.enqueue(ctx, jobs.Spec{Kind: importer.Kind, InstanceID: &in.Body.InstanceID,
 				Payload: importer.Payload{Params: params}})
-			if err != nil {
-				return nil, s.fail(err)
-			}
-			return &jobResp{Body: toJob(j)}, nil
 		})
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "start-bulk", Method: http.MethodPost, Path: "/bulk",

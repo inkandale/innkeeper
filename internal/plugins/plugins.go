@@ -140,7 +140,7 @@ type Dirs struct {
 // don't install. blobs is where plugins write new blobs; box seals instance
 // secrets.
 func New(pool *pgxpool.Pool, manifests map[string]*protocol.Manifest, blobs *blobstore.Store, box *secrets.Box) *Registry {
-	return &Registry{pool: pool, manifests: manifests, blobs: blobs, box: box, gen: -1, client: &http.Client{
+	return &Registry{pool: pool, manifests: manifests, blobs: blobs, box: box, gen: -1, log: slog.Default(), client: &http.Client{
 		Timeout: 5 * time.Minute,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if req.URL.Scheme != "https" {

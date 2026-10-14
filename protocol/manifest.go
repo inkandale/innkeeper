@@ -17,6 +17,9 @@ var Capabilities = []string{"import", "search", "push", "pull", "action", "enric
 
 var enrichmentTypes = []string{"text", "score", "list"}
 
+// importInputs are the import params the UI can send: file sends blob and name, url sends url.
+var importInputs = []string{"file", "url"}
+
 // Names become PostgreSQL schema and role names (plugin_<name>, with - as
 // _). 41 characters makes that 48 bytes, leaving headroom under Postgres's
 // 63-byte limit for suffixes.
@@ -43,6 +46,9 @@ type Manifest struct {
 
 	// Formats are what a codec plugin's codec.encode writes.
 	Formats []string `toml:"formats"`
+
+	// Inputs are what an import plugin takes from the UI.
+	Inputs []string `toml:"inputs"`
 
 	// Database gives the plugin a schema, plugin_<name>, and a role limited
 	// to it. The URL arrives as initialize's database_url.
@@ -183,6 +189,19 @@ func (m *Manifest) Validate() error {
 			errs = append(errs, fmt.Errorf("format %q listed twice", f))
 		}
 		seenFormats[f] = true
+	}
+	if !slices.Contains(m.Capabilities, "import") && len(m.Inputs) > 0 {
+		errs = append(errs, errors.New("inputs needs the import capability"))
+	}
+	seenInputs := map[string]bool{}
+	for _, in := range m.Inputs {
+		if !slices.Contains(importInputs, in) {
+			errs = append(errs, fmt.Errorf("input %q must be one of %v", in, importInputs))
+		}
+		if seenInputs[in] {
+			errs = append(errs, fmt.Errorf("input %q listed twice", in))
+		}
+		seenInputs[in] = true
 	}
 	return errors.Join(errs...)
 }

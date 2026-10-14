@@ -127,6 +127,28 @@ func TestFormats(t *testing.T) {
 	}
 }
 
+func TestInputs(t *testing.T) {
+	manifest := func(caps []string, inputs ...string) *Manifest {
+		return &Manifest{Name: "i", Version: "1", Protocol: Version, Command: []string{"i"}, Capabilities: caps, Inputs: inputs}
+	}
+	if err := manifest([]string{"import"}, "file", "url").Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if err := manifest([]string{"import"}).Validate(); err != nil {
+		t.Fatal(err)
+	}
+	bad := map[string]*Manifest{
+		"inputs without import": manifest([]string{"push"}, "url"),
+		"unknown input":         manifest([]string{"import"}, "folder"),
+		"listed twice":          manifest([]string{"import"}, "url", "url"),
+	}
+	for name, m := range bad {
+		if m.Validate() == nil {
+			t.Errorf("%s: no error", name)
+		}
+	}
+}
+
 func TestLoadManifestNestedConfig(t *testing.T) {
 	dir := t.TempDir()
 	toml := `name = "c"

@@ -28,6 +28,7 @@ type pluginOut struct {
 	Capabilities    []string                 `json:"capabilities"`
 	Secrets         []string                 `json:"secrets"`
 	Formats         []string                 `json:"formats,omitempty" doc:"File formats a codec plugin reads and writes"`
+	Inputs          []string                 `json:"inputs,omitempty" doc:"What an import plugin takes from the UI: file (params blob and name), url (params url), or both"`
 	Config          map[string]any           `json:"config,omitempty" doc:"JSON Schema for an instance's config"`
 	Enrichments     map[string]enrichmentOut `json:"enrichments,omitempty"`
 	Source          string                   `json:"source" doc:"Id of the source the plugin was installed from, or builtin"`
@@ -89,7 +90,7 @@ func (s *Server) instanceRoutes(api huma.API) {
 			out := &pluginsOut{Body: []pluginOut{}}
 			for _, m := range s.Registry.Manifests() {
 				p := pluginOut{Name: m.Name, Version: m.Version, Capabilities: m.Capabilities,
-					Secrets: orEmpty(m.Secrets), Formats: m.Formats, Config: m.Config,
+					Secrets: orEmpty(m.Secrets), Formats: m.Formats, Inputs: m.Inputs, Config: m.Config,
 					Source: "builtin", Builtin: s.Registry.IsBuiltin(m.Name)}
 				if in, ok := installs[m.Name]; ok {
 					p.Source, p.PreviousSource, p.PreviousVersion = in.Source, in.PreviousSource, in.PreviousVersion

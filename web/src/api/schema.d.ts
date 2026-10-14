@@ -2877,6 +2877,8 @@ export interface components {
             };
             /** @description File formats a codec plugin reads and writes */
             formats?: string[] | null;
+            /** @description What an import plugin takes from the UI: file (params blob and name), url (params url), or both */
+            inputs?: string[] | null;
             name: string;
             /** @description Source of the version a rollback returns to */
             previous_source?: string;

@@ -13,7 +13,7 @@ import (
 )
 
 // Capabilities lists every capability a plugin may declare.
-var Capabilities = []string{"import", "search", "push", "pull", "action", "enrich", "codec", "auth", "mcp", "theme", "catalog"}
+var Capabilities = []string{"import", "search", "push", "pull", "action", "enrich", "codec", "auth", "mcp", "theme", "catalog", "sites"}
 
 var enrichmentTypes = []string{"text", "score", "list"}
 

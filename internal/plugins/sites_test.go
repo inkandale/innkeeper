@@ -127,12 +127,12 @@ func TestDetectSourcesSkipsBrokenInstance(t *testing.T) {
 	}
 }
 
-func TestDetectSourcesFallsBackWithoutSitesPlugin(t *testing.T) {
+func TestDetectSourcesWithoutSitesPlugin(t *testing.T) {
 	reg, mgr := sitesRegistry(t)
 	got, err := reg.DetectSources(context.Background(), mgr, library.Card,
 		[]byte(`{"extensions": {"chub": {"id": 7, "full_path": "u/c"}}}`))
-	if err != nil || tags(got) != "chub:u/c:7" {
-		t.Fatalf("got %s, %v; want the built-in chub detector's source", tags(got), err)
+	if !errors.Is(err, ErrNoSites) || len(got) != 0 {
+		t.Fatalf("got %s, %v; want nothing and ErrNoSites", tags(got), err)
 	}
 }
 
@@ -140,14 +140,14 @@ func TestParseSource(t *testing.T) {
 	ctx := context.Background()
 	reg, mgr := sitesRegistry(t)
 
-	got, err := reg.ParseSource(ctx, mgr, library.Card, library.Source{URL: "https://chub.ai/characters/u/c"})
-	if err != nil || got.Kind != "chub" {
-		t.Fatalf("without a sites plugin: %+v, %v; want the built-in chub parser", got, err)
+	_, err := reg.ParseSource(ctx, mgr, library.Card, library.Source{URL: "https://chub.ai/characters/u/c"})
+	if !errors.Is(err, library.ErrInvalid) || !strings.Contains(err.Error(), "no installed plugin recognizes that URL") {
+		t.Fatalf("without a sites plugin: %v, want the 422 wording", err)
 	}
 
 	addSites(t, reg, "a", "A", map[string]any{"sites_tag": "A"})
 	addSites(t, reg, "b", "B", map[string]any{"sites_bad": true})
-	got, err = reg.ParseSource(ctx, mgr, library.Card, library.Source{URL: " https://fake.example/x/y "})
+	got, err := reg.ParseSource(ctx, mgr, library.Card, library.Source{URL: " https://fake.example/x/y "})
 	if err != nil || tags([]library.Source{got}) != "fake:x/y:A" {
 		t.Fatalf("by url: %+v, %v", got, err)
 	}

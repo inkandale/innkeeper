@@ -7,6 +7,7 @@ import (
 
 	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/library"
+	"github.com/davidgibbons/innkeeper/internal/plugins"
 )
 
 // DetectKind is the job kind that records the sources of the entities
@@ -18,7 +19,8 @@ const detectPage = 100
 
 // RunDetect is the jobs.Handler for DetectKind. It drains the detection
 // queue through the sites plugins. An entity a plugin failed on retryably
-// stays queued, and the job is retried.
+// stays queued, and the job is retried. With no sites plugin the whole queue
+// stays, and the job ends.
 func (im *Importer) RunDetect(ctx context.Context, r *jobs.Run) error {
 	var detected int
 	var retry error
@@ -39,6 +41,10 @@ func (im *Importer) RunDetect(ctx context.Context, r *jobs.Run) error {
 				srcs, err := im.detect(ctx, it)
 				if ctx.Err() != nil {
 					return ctx.Err()
+				}
+				// Creating, editing, or checking a sites instance runs the job again.
+				if errors.Is(err, plugins.ErrNoSites) {
+					return nil
 				}
 				if err != nil {
 					retry = err

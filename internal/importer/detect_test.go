@@ -71,7 +71,7 @@ func TestDetectKeepsAnEntityQueuedOnARetryableFailure(t *testing.T) {
 	}
 }
 
-func TestDetectFallsBackWithoutASitesPlugin(t *testing.T) {
+func TestDetectKeepsTheQueueWithoutASitesPlugin(t *testing.T) {
 	ctx := context.Background()
 	e := setup(t)
 	id, _, err := e.lib.Cards.Import(ctx, "fake:x", "X", library.Edit{Data: []byte(`{"name": "X", "extensions": {"chub": {"full_path": "u/x"}}}`), Source: "plugin:fake"})
@@ -81,7 +81,7 @@ func TestDetectFallsBackWithoutASitesPlugin(t *testing.T) {
 	if err := e.im.RunDetect(ctx, &jobs.Run{}); err != nil {
 		t.Fatal(err)
 	}
-	if got := e.sources(t, id); len(got) != 1 || got[0].Kind != "chub" || e.count(t, "source_detect") != 0 {
-		t.Fatalf("sources = %+v", got)
+	if got := e.sources(t, id); len(got) != 0 || e.count(t, "source_detect") != 1 {
+		t.Fatalf("sources = %+v, %d queued; want none and the entity still queued", got, e.count(t, "source_detect"))
 	}
 }

@@ -120,10 +120,11 @@ func TestMCPCards(t *testing.T) {
 
 func TestMCPSources(t *testing.T) {
 	e := newEnv(t)
+	e.addSites()
 	s := e.mcpClient(tier.Write)
 	var c entityOut
 	_ = json.Unmarshal([]byte(tool(t, s, "create_card", map[string]any{"data": map[string]any{"name": "Brakka"}}, false)), &c)
-	if got := tool(t, s, "add_source", map[string]any{"card_id": c.ID, "url": "https://chub.ai/characters/u/a"}, false); !strings.Contains(got, `"u/a"`) {
+	if got := tool(t, s, "add_source", map[string]any{"card_id": c.ID, "url": "https://fake.example/u/a"}, false); !strings.Contains(got, `"u/a"`) {
 		t.Fatalf("add_source = %s", got)
 	}
 	var list []struct{ ID int64 }

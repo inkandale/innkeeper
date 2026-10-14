@@ -536,16 +536,6 @@ func TestResolveLorebook(t *testing.T) {
 	}
 }
 
-func TestResolveRecordsSources(t *testing.T) {
-	e, card := resolveEnv(t)
-	e.appCard("src", map[string]any{"name": "Tova", "description": "A smith.", "first_mes": libGreeting,
-		"extensions": map[string]any{"chub": map[string]any{"full_path": "someone/tova"}}}, nil)
-	e.resolve(e.compareItem("src", card), nil, "")
-	if srcs, err := e.lib.Cards.Sources(e.ctx, card); err != nil || len(srcs) != 1 || srcs[0].Kind != "chub" {
-		t.Fatalf("sources = %+v, %v", srcs, err)
-	}
-}
-
 func TestResolveRecordsTheAppsLorebookLinks(t *testing.T) {
 	e := setup(t, map[string]any{"lorebooks": "standalone"})
 	card := e.libCard(map[string]any{"name": "Tova", "description": "A smith."})
@@ -608,8 +598,9 @@ func TestResolveRestoresAKeyTheOverrideDeletes(t *testing.T) {
 
 func TestResolveRefusedRecordsNoSources(t *testing.T) {
 	e, card := resolveEnv(t)
+	e.addSites()
 	e.appCard("src", map[string]any{"name": "Tova", "description": "A smith.", "first_mes": libGreeting,
-		"extensions": map[string]any{"chub": map[string]any{"full_path": "someone/tova"}}}, nil)
+		"source": []string{"https://fake.example/someone/tova"}}, nil)
 	c := e.compareItem("src", card)
 	if _, err := e.tryResolve(c, map[string]merge.Choice{"nope#0": merge.ChooseApp}, ""); !errors.Is(err, merge.ErrUnknownHunk) {
 		t.Fatalf("unknown hunk: %v", err)
@@ -1059,9 +1050,10 @@ func TestResolveStaleErrorNamesTheItem(t *testing.T) {
 }
 
 func TestResolveNoOpRecordsSources(t *testing.T) {
-	e := setup(t, map[string]any{"fields": []string{"name", "description", "extensions"}})
+	e := setup(t, map[string]any{"fields": []string{"name", "description", "source"}})
+	e.addSites()
 	card := e.libCard(map[string]any{"name": "Tova", "description": "A smith.",
-		"extensions": map[string]any{"chub": map[string]any{"full_path": "someone/tova"}}})
+		"source": []string{"https://fake.example/someone/tova"}})
 	b := e.push(card)
 	res := e.resolve(e.compareItem(b.RemoteID, 0), nil, "")
 	srcs, err := e.lib.Cards.Sources(e.ctx, card)

@@ -82,6 +82,7 @@ func ids(cs []Candidate) []int64 {
 
 func TestReconcileVerdicts(t *testing.T) {
 	e := setup(t, nil)
+	e.addSites()
 	bound := e.push(e.card)
 	lia := e.libCard(map[string]any{"name": "Lia", "description": liaText, "first_mes": "Sit, friend."})
 	mira := e.libCard(map[string]any{"name": "Mira", "description": miraText, "first_mes": "Who goes there?"})
@@ -89,7 +90,7 @@ func TestReconcileVerdicts(t *testing.T) {
 		"first_mes": "Ahoy."})
 	dragon := e.libCard(map[string]any{"name": "Vyr", "description": "An ancient red dragon asleep on gold.",
 		"first_mes": "Who wakes me?"})
-	if _, err := e.lib.Cards.AddSource(e.ctx, dragon, library.Source{Kind: "chub", Ref: "someone/vyr"}); err != nil {
+	if _, err := e.lib.Cards.AddSource(e.ctx, dragon, library.Source{Kind: "fake", Ref: "someone/vyr"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -101,7 +102,7 @@ func TestReconcileVerdicts(t *testing.T) {
 	renamed := strings.Replace(miraText, "leather", "red", 1)
 	e.appCard("text", map[string]any{"name": "The Keeper", "description": renamed, "first_mes": "Who goes there?"}, nil)
 	e.appCard("source", map[string]any{"name": "Lia", "description": "A tavern cat that steals fish from the kitchen.",
-		"extensions": map[string]any{"chub": map[string]any{"full_path": "someone/vyr"}}}, nil)
+		"source": []string{"https://fake.example/someone/vyr"}}, nil)
 	e.appCard("new", map[string]any{"name": "Pell", "description": "A clockwork owl that reads the stars."}, nil)
 	e.appCard("dup", map[string]any{"name": "Brakka", "description": "A dwarf smith.", "first_mes": "Hail."}, nil)
 	if err := os.WriteFile(filepath.Join(e.dir, "bad.json"), []byte("not json"), 0o644); err != nil {
@@ -366,8 +367,9 @@ func TestReconcileAvatarIngestFailure(t *testing.T) {
 
 func TestReconcileLibraryErrorFailsRun(t *testing.T) {
 	e := setup(t, nil)
+	e.addSites()
 	e.appCard("src", map[string]any{"name": "Vyr", "description": "A dragon.",
-		"extensions": map[string]any{"chub": map[string]any{"full_path": "someone/vyr"}}}, nil)
+		"source": []string{"https://fake.example/someone/vyr"}}, nil)
 	if _, err := e.pool.Exec(e.ctx, `ALTER TABLE card_source RENAME TO card_source_gone`); err != nil {
 		t.Fatal(err)
 	}
@@ -752,18 +754,19 @@ func TestReconcileLorebookIgnoresSplit(t *testing.T) {
 func TestReconcileSplitUsesUnboundCandidate(t *testing.T) {
 	e := setup(t, map[string]any{"fields": []string{"name", "description", "personality", "scenario", "first_mes",
 		"mes_example"}})
+	e.addSites()
 	taken := e.libCard(coreCard)
-	if _, err := e.lib.Cards.AddSource(e.ctx, taken, library.Source{Kind: "chub", Ref: "someone/tamsin"}); err != nil {
+	if _, err := e.lib.Cards.AddSource(e.ctx, taken, library.Source{Kind: "fake", Ref: "someone/tamsin"}); err != nil {
 		t.Fatal(err)
 	}
 	e.push(taken)
 	free := e.libCard(edited("description", "personality", "scenario"))
-	chub := map[string]any{"chub": map[string]any{"full_path": "someone/tamsin"}}
+	page := []string{"https://fake.example/someone/tamsin"}
 	// Both rank the bound card first by source; the free card decides.
 	near := edited("mes_example")
-	near["extensions"] = chub
+	near["source"] = page
 	far := edited("description", "personality", "scenario", "mes_example")
-	far["extensions"] = chub
+	far["source"] = page
 	e.appCard("like-taken", near, nil)
 	e.appCard("like-free", far, nil)
 

@@ -10,10 +10,15 @@ import (
 
 const chubCard = `{"name": "A", "extensions": {"chub": {"id": 7, "full_path": "u/a"}}}`
 
-// detect records what the built-in detectors find in chubCard, as the detect-sources job would.
+// detect records the source url-import finds in chubCard, as the detect-sources job would.
 func detect(t *testing.T, lib *Library, s *Entities, id int64) error {
 	t.Helper()
-	return lib.Detected(context.Background(), DetectItem{s.k, id}, Detect([]byte(chubCard), s.k == Lorebook))
+	dir := "characters"
+	if s.k == Lorebook {
+		dir = "lorebooks"
+	}
+	src := Source{Kind: "chub", Ref: "u/a", ExternalID: "7", URL: "https://chub.ai/" + dir + "/u/a"}
+	return lib.Detected(context.Background(), DetectItem{s.k, id}, []Source{src})
 }
 
 func TestImportQueuesDetection(t *testing.T) {

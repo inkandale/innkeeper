@@ -4,10 +4,22 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// Source is a site an item was published on.
+type Source struct {
+	ID         int64     `json:"id"`
+	Kind       string    `json:"kind"`
+	Ref        string    `json:"ref"`
+	ExternalID string    `json:"external_id,omitempty"`
+	URL        string    `json:"url,omitempty"`
+	LinkedBy   string    `json:"linked_by"`
+	CreatedAt  time.Time `json:"created_at"`
+}
 
 var sourceKindRE = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 

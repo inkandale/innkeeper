@@ -38,10 +38,11 @@ func TestReconcileJob(t *testing.T) {
 
 func TestReconcileJobFailureKeepsProgress(t *testing.T) {
 	e := setup(t, nil)
+	e.addSites()
 	e.appCard("r1", map[string]any{"name": "Pell", "description": "A clockwork owl."}, nil)
 	// The second item's source lookup fails, after the first item's progress.
 	e.appCard("r2", map[string]any{"name": "Vyr", "description": "A dragon.",
-		"extensions": map[string]any{"chub": map[string]any{"full_path": "someone/vyr"}}}, nil)
+		"source": []string{"https://fake.example/someone/vyr"}}, nil)
 	if _, err := e.pool.Exec(e.ctx, `ALTER TABLE card_source RENAME TO card_source_gone`); err != nil {
 		t.Fatal(err)
 	}

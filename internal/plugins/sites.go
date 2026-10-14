@@ -18,6 +18,9 @@ import (
 // sitesTimeout bounds each sites call, which only parses. A variable so tests can shorten it.
 var sitesTimeout = 5 * time.Second
 
+// ErrNoSites means no working instance declares sites, so nothing can be detected yet.
+var ErrNoSites = errors.New("no working sites plugin")
+
 // ErrBadSource means a sites plugin sent a source that fails protocol.Source.Validate.
 var ErrBadSource = errors.New("sites plugin sent an invalid source")
 
@@ -60,7 +63,7 @@ func fromProtocol(s protocol.Source) library.Source {
 
 // DetectSources returns the sources an entity's data names, asking every
 // sites plugin and keeping the first of two with the same kind and ref. With
-// no sites plugin it falls back to the library's own detectors.
+// no sites plugin the error is ErrNoSites.
 //
 // Detection never fails the caller's work: a plugin that fails is logged and
 // skipped, and invalid sources are dropped. The error is non-nil when ctx
@@ -71,9 +74,8 @@ func (r *Registry) DetectSources(ctx context.Context, mgr *pluginhost.Manager, k
 	if err != nil {
 		return nil, err
 	}
-	// ponytail: core's own detectors until url-import ships built in; delete them then.
 	if len(insts) == 0 {
-		return library.Detect(data, k == library.Lorebook), nil
+		return nil, ErrNoSites
 	}
 	var out []library.Source
 	var retry error
@@ -118,9 +120,6 @@ func (r *Registry) ParseSource(ctx context.Context, mgr *pluginhost.Manager, k *
 	if err != nil {
 		return library.Source{}, err
 	}
-	if len(insts) == 0 {
-		return parseFallback(in, k == library.Lorebook)
-	}
 	params := protocol.SitesParseParams{Entity: k.Name, URL: in.URL, Kind: in.Kind, Ref: in.Ref}
 	for _, inst := range insts {
 		plugin := inst.Manifest.Name
@@ -151,17 +150,4 @@ func (r *Registry) ParseSource(ctx context.Context, mgr *pluginhost.Manager, k *
 		return library.Source{}, fmt.Errorf("%w: no installed plugin recognizes that URL", library.ErrInvalid)
 	}
 	return library.Source{}, fmt.Errorf("%w: no installed plugin knows source kind %q", library.ErrInvalid, in.Kind)
-}
-
-func parseFallback(in library.Source, lorebook bool) (library.Source, error) {
-	if in.URL != "" {
-		s, err := library.ParseSourceURL(in.URL)
-		if err != nil {
-			return library.Source{}, err
-		}
-		s.ExternalID = in.ExternalID
-		in = s
-	}
-	// Rebuilt so the stored URL always matches the entity type.
-	return library.ValidateSource(in, lorebook)
 }

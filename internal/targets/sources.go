@@ -162,13 +162,14 @@ func (s *Service) checkSources(ctx context.Context, only *library.Kind, id int64
 	if err != nil {
 		return p, err
 	}
-	return p, s.checkEach(ctx, ids, &p, report, func(b Binding) error {
+	return p, s.checkEach(ctx, ids, &p, report, func(b *Binding) error {
 		if b.RemoteState != remoteChanged || !b.Autosync {
 			return nil
 		}
-		applied, err := s.applyUpdate(ctx, b)
+		applied, err := s.applyUpdate(ctx, *b)
 		if applied {
 			p.Applied++
+			b.RemoteState = remoteUnchanged
 		}
 		return err
 	})
@@ -197,6 +198,8 @@ func (s *Service) applyUpdate(ctx context.Context, b Binding) (bool, error) {
 	if (st.avatarHash != nil && *st.avatarHash != site) || hasConflict(c) {
 		return false, nil
 	}
+	// ponytail: resolve's stale check covers data only, so a site avatar changed after compareRead is accepted unreviewed;
+	// add the avatar key to the stale check (all resolve callers) if that matters.
 	_, err = s.resolve(ctx, k, Resolution{InstanceID: b.InstanceID, RemoteID: b.RemoteID, AppHash: c.AppHash,
 		BaseRevisionID: c.HeadRevisionID, AcceptedHash: c.AcceptedHash, Action: "bind", CardID: entity,
 		Default: merge.ChooseLibrary}, resolveOpts{skipLeftOut: true})

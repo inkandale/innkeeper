@@ -195,13 +195,14 @@ func (s *Service) Scan(ctx context.Context, report func(ScanProgress)) (ScanProg
 
 // checkEach checks each binding and counts what it found in p. A binding that
 // fails to check is counted, and the rest go on. then, if set, runs after
-// each check that worked, and its error counts as the binding's.
+// each check that worked, and its error counts as the binding's. then may set
+// b.RemoteState to remoteUnchanged for a change it took, so it isn't counted as waiting.
 func (s *Service) checkEach(ctx context.Context, ids []int64, p *ScanProgress, report func(ScanProgress),
-	then func(Binding) error) error {
+	then func(*Binding) error) error {
 	for _, id := range ids {
 		b, err := s.Check(ctx, id)
 		if err == nil && then != nil {
-			err = then(b)
+			err = then(&b)
 		}
 		switch {
 		case ctx.Err() != nil:

@@ -463,7 +463,9 @@ func TestReviewingASourceUpdateKeepsTheOwnersEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 	var data map[string]any
-	_ = json.Unmarshal(e.head(card).Data, &data)
+	if err := json.Unmarshal(e.head(card).Data, &data); err != nil {
+		t.Fatal(err)
+	}
 	if data["description"] != "My red dragon." || data["first_mes"] != "Begone." {
 		t.Fatalf("head = %v", data)
 	}
@@ -588,11 +590,13 @@ func TestAutosyncTakesASourceUpdateWithoutConflicts(t *testing.T) {
 		t.Fatal(err)
 	}
 	p, err := e.s.CheckSources(e.ctx, func(ScanProgress) {})
-	if err != nil || p.Applied != 1 {
+	if err != nil || p.Applied != 1 || p.Changed != 0 {
 		t.Fatalf("progress = %+v, %v", p, err)
 	}
 	var data map[string]any
-	_ = json.Unmarshal(e.head(card).Data, &data)
+	if err := json.Unmarshal(e.head(card).Data, &data); err != nil {
+		t.Fatal(err)
+	}
 	if data["description"] != "My red dragon." || data["first_mes"] != "Begone." {
 		t.Fatalf("head = %v", data)
 	}
@@ -656,7 +660,9 @@ func TestAutosyncKeepsTheCardsOwnAvatar(t *testing.T) {
 	}
 	head := e.head(card)
 	var data map[string]any
-	_ = json.Unmarshal(head.Data, &data)
+	if err := json.Unmarshal(head.Data, &data); err != nil {
+		t.Fatal(err)
+	}
 	if data["first_mes"] != "Begone." || own == nil || head.AvatarBlob == nil || *head.AvatarBlob != *own {
 		t.Fatalf("head = %v, avatar %v, want %v", data, head.AvatarBlob, own)
 	}

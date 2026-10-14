@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -109,17 +110,11 @@ type bulkIn struct {
 // usable checks that an instance exists, isn't broken, and its plugin has
 // capability.
 func (s *Server) usable(ctx context.Context, id int64, capability string) error {
-	inst, err := s.Registry.GetInstance(ctx, id)
-	if err != nil {
-		return s.fail(err)
+	inst, err := s.Registry.InstanceWith(ctx, id, capability)
+	if errors.Is(err, plugins.ErrIncapable) {
+		return huma.Error400BadRequest(fmt.Sprintf("plugin %s can't %s", inst.Manifest.Name, capability))
 	}
-	if inst.BrokenError != nil {
-		return s.fail(plugins.ErrBroken)
-	}
-	if !s.Registry.HasCapability(inst.Plugin, capability) {
-		return huma.Error400BadRequest(fmt.Sprintf("plugin %s can't %s", inst.Plugin, capability))
-	}
-	return nil
+	return s.fail(err)
 }
 
 // job returns a job, with child counts and outcomes for a bulk job.

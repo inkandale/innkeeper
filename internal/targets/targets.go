@@ -179,13 +179,12 @@ func (s *Service) stored(ctx context.Context, id int64) (stored, error) {
 // describe resolves a push plugin's instance and asks what its app stores.
 func (s *Service) describe(ctx context.Context, instanceID int64) (pluginhost.Instance, protocol.TargetInfo, error) {
 	var info protocol.TargetInfo
-	inst, err := s.reg.Instance(ctx, instanceID)
+	inst, err := s.reg.InstanceWith(ctx, instanceID, "push")
+	if errors.Is(err, plugins.ErrIncapable) {
+		return inst, info, fmt.Errorf("%w: %s", ErrCannot, inst.Manifest.Name)
+	}
 	if err != nil {
 		return inst, info, err
-	}
-	name := inst.Manifest.Name
-	if !s.reg.HasCapability(name, "push") {
-		return inst, info, fmt.Errorf("%w: %s", ErrCannot, name)
 	}
 	if err := s.reg.Call(ctx, s.plugins, inst, protocol.MethodTargetDescribe, nil, &info); err != nil {
 		return inst, info, err
@@ -193,7 +192,7 @@ func (s *Service) describe(ctx context.Context, instanceID int64) (pluginhost.In
 	if err := info.Validate(); err != nil {
 		return inst, info, fmt.Errorf("%w: target.describe: %w", ErrBadReply, err)
 	}
-	info.Pull = info.Pull && s.reg.HasCapability(name, "pull")
+	info.Pull = info.Pull && inst.Manifest.Has("pull")
 	return inst, info, nil
 }
 

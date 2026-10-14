@@ -454,3 +454,37 @@ func TestInstanceVersionFollowsPluginChange(t *testing.T) {
 		t.Fatalf("got %v, want ErrBroken", err)
 	}
 }
+
+func TestInstancesWithEveryCapability(t *testing.T) {
+	ctx := context.Background()
+	box, err := secrets.New(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := New(testdb.New(t), map[string]*protocol.Manifest{
+		"app":    {Name: "app", Capabilities: []string{"push", "pull"}},
+		"pusher": {Name: "pusher", Capabilities: []string{"push"}},
+	}, &blobstore.Store{Name: "library", Root: t.TempDir()}, box)
+	app, err := reg.CreateInstance(ctx, NewInstance{Plugin: "app", Name: "App"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pusher, err := reg.CreateInstance(ctx, NewInstance{Plugin: "pusher", Name: "Pusher"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	list, err := reg.InstancesWith(ctx, "push", "pull")
+	if err != nil || len(list) != 1 || list[0].ID != app {
+		t.Fatalf("InstancesWith(push, pull) = %+v, %v; want only %d", list, err, app)
+	}
+	if list, err := reg.InstancesWith(ctx, "push"); err != nil || len(list) != 2 {
+		t.Fatalf("InstancesWith(push) = %+v, %v; want both", list, err)
+	}
+	if _, err := reg.InstanceWith(ctx, app, "pull"); err != nil {
+		t.Fatalf("InstanceWith(app, pull): %v", err)
+	}
+	if _, err := reg.InstanceWith(ctx, pusher, "pull"); !errors.Is(err, ErrIncapable) {
+		t.Fatalf("InstanceWith(pusher, pull): %v, want ErrIncapable", err)
+	}
+}

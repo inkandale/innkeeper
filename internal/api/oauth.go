@@ -367,14 +367,13 @@ func (s *Server) revoke(w http.ResponseWriter, r *http.Request) {
 
 // loginProviders are the auth instances that can log the owner in.
 func (s *Server) loginProviders(ctx context.Context) ([]provider, error) {
-	insts, err := s.Registry.ListInstances(ctx)
+	insts, err := s.Registry.InstancesWith(ctx, "auth")
 	if err != nil {
 		return nil, err
 	}
 	var out []provider
 	for _, i := range insts {
-		m := s.Registry.Manifests()[i.Plugin]
-		if m != nil && m.Has("auth") && i.OwnerSubject != nil && i.BrokenError == nil {
+		if i.OwnerSubject != nil && i.BrokenError == nil {
 			out = append(out, provider{i.ID, i.Name, i.Plugin})
 		}
 	}

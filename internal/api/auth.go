@@ -122,16 +122,16 @@ func (s *Server) callbackURL(id int64) string {
 
 // authInstance returns an instance whose plugin can log people in.
 func (s *Server) authInstance(ctx context.Context, id int64) (pluginhost.Instance, error) {
-	inst, err := s.Registry.Instance(ctx, id)
+	inst, err := s.Registry.InstanceWith(ctx, id, "auth")
 	if errors.Is(err, plugins.ErrBroken) {
 		s.Log.Warn("login provider is broken", "instance", id, "err", err)
 		return inst, huma.Error503ServiceUnavailable("login provider unavailable")
 	}
+	if errors.Is(err, plugins.ErrIncapable) {
+		return inst, huma.Error404NotFound("no such login provider")
+	}
 	if err != nil {
 		return inst, s.fail(err)
-	}
-	if !inst.Manifest.Has("auth") {
-		return inst, huma.Error404NotFound("no such login provider")
 	}
 	return inst, nil
 }
@@ -279,18 +279,11 @@ func (s *Server) authRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{OperationID: "list-login-providers", Method: http.MethodGet,
 		Path: "/auth/providers", Summary: "List login providers", Tags: tags, Metadata: public, Security: noAuth},
 		func(ctx context.Context, _ *struct{}) (*providersOut, error) {
-			insts, err := s.Registry.ListInstances(ctx)
+			list, err := s.loginProviders(ctx)
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			out := &providersOut{Body: []provider{}}
-			for _, i := range insts {
-				m := s.Registry.Manifests()[i.Plugin]
-				if m != nil && m.Has("auth") && i.OwnerSubject != nil && i.BrokenError == nil {
-					out.Body = append(out.Body, provider{i.ID, i.Name, i.Plugin})
-				}
-			}
-			return out, nil
+			return &providersOut{Body: orEmpty(list)}, nil
 		})
 
 	huma.Register(api, huma.Operation{OperationID: "begin-login", Method: http.MethodPost,

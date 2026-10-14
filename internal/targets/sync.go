@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/jackc/pgx/v5"
 
@@ -158,17 +157,16 @@ func (s *Service) syncApps(ctx context.Context, only int64) ([]int64, error) {
 	if only != 0 {
 		return []int64{only}, nil
 	}
-	insts, err := s.reg.ListInstances(ctx)
+	insts, err := s.reg.InstancesWith(ctx, "push", "pull")
 	if err != nil {
 		return nil, err
 	}
 	var ids []int64
 	for _, in := range insts {
-		if in.BrokenError == nil && s.reg.HasCapability(in.Plugin, "push") && s.reg.HasCapability(in.Plugin, "pull") {
+		if in.BrokenError == nil {
 			ids = append(ids, in.ID)
 		}
 	}
-	slices.Sort(ids)
 	return ids, nil
 }
 

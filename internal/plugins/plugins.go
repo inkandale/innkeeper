@@ -38,6 +38,8 @@ var (
 	ErrNameTaken = errors.New("plugin instance name already in use")
 	// ErrInUse means cards are still bound to the instance.
 	ErrInUse = errors.New("plugin instance has bound cards; unbind them first")
+	// ErrIncapable means the instance's plugin lacks the capability asked for.
+	ErrIncapable = errors.New("plugin lacks the capability")
 	// ErrNoCodec means no working codec instance writes a format.
 	ErrNoCodec = errors.New("no codec plugin instance writes this format")
 )
@@ -426,6 +428,27 @@ func (r *Registry) ListInstances(ctx context.Context) ([]InstanceInfo, error) {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (InstanceInfo, error) { return r.scanInfo(row) })
+}
+
+// InstancesWith returns the instances whose plugins declare every one of
+// capabilities, oldest first.
+func (r *Registry) InstancesWith(ctx context.Context, capabilities ...string) ([]InstanceInfo, error) {
+	list, err := r.ListInstances(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return slices.DeleteFunc(list, func(i InstanceInfo) bool {
+		return slices.ContainsFunc(capabilities, func(c string) bool { return !r.HasCapability(i.Plugin, c) })
+	}), nil
+}
+
+// InstanceWith is Instance for an instance whose plugin declares capability.
+func (r *Registry) InstanceWith(ctx context.Context, id int64, capability string) (pluginhost.Instance, error) {
+	inst, err := r.Instance(ctx, id)
+	if err == nil && !inst.Manifest.Has(capability) {
+		err = fmt.Errorf("%w: plugin %s can't %s", ErrIncapable, inst.Manifest.Name, capability)
+	}
+	return inst, err
 }
 
 // Instance returns what the plugin host needs to run an instance.

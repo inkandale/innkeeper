@@ -15,7 +15,6 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
-	"github.com/davidgibbons/innkeeper/internal/plugins"
 	"github.com/davidgibbons/innkeeper/internal/tier"
 	"github.com/davidgibbons/innkeeper/protocol"
 )
@@ -105,11 +104,10 @@ func (s *Server) toolRoutes(api huma.API) {
 		Summary: "List the MCP tools plugin instances offer", Tags: tags,
 		Description: "Instances that are broken, or whose plugin doesn't answer, are left out."},
 		func(ctx context.Context, _ *struct{}) (*pluginToolsOut, error) {
-			insts, err := s.Registry.ListInstances(ctx)
+			insts, err := s.Registry.InstancesWith(ctx, "mcp")
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			insts = slices.DeleteFunc(insts, func(i plugins.InstanceInfo) bool { return !s.Registry.HasCapability(i.Plugin, "mcp") })
 			// Prefixes come from every instance's name, working or not, so a
 			// tool's name doesn't change when another instance goes down.
 			prefixes := map[string]int{}

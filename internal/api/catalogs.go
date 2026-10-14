@@ -106,10 +106,10 @@ func (s *Server) catalogCall(ctx context.Context, id int64, method string, param
 	if err != nil {
 		return info, s.fail(err)
 	}
-	if !s.Registry.HasCapability(info.Plugin, "catalog") {
+	inst, err := s.Registry.InstanceWith(ctx, id, "catalog")
+	if errors.Is(err, plugins.ErrIncapable) || errors.Is(err, plugins.ErrUnknownPlugin) {
 		return info, huma.Error404NotFound(fmt.Sprintf("instance %d is not a catalog", id))
 	}
-	inst, err := s.Registry.Instance(ctx, id)
 	if err != nil {
 		return info, s.fail(err)
 	}
@@ -126,15 +126,12 @@ func (s *Server) catalogCall(ctx context.Context, id int64, method string, param
 // catalogs lists every catalog instance with its description and newest
 // ingest. A catalog that can't describe itself gets an error instead.
 func (s *Server) catalogs(ctx context.Context) ([]catalogOut, error) {
-	list, err := s.Registry.ListInstances(ctx)
+	list, err := s.Registry.InstancesWith(ctx, "catalog")
 	if err != nil {
 		return nil, err
 	}
 	out := []catalogOut{}
 	for _, i := range list {
-		if !s.Registry.HasCapability(i.Plugin, "catalog") {
-			continue
-		}
 		c := catalogOut{ID: i.ID, Name: i.Name, Plugin: i.Plugin}
 		var info protocol.CatalogInfo
 		dctx, cancel := context.WithTimeout(ctx, describeTimeout)

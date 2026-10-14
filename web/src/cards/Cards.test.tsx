@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { Toasts } from "../shell/Toasts";
@@ -252,11 +252,53 @@ test("export offers PNG only when a codec instance writes it", async () => {
 });
 
 // answer replaces the fake response for one path.
-function answer(path: string, f: (req: Request) => Promise<Response>) {
+function answer(path: string, f: (req: Request, rest: (req: Request) => Promise<Response>) => Promise<Response>) {
   const rest = fetch;
-  vi.stubGlobal("fetch", vi.fn(async (req: Request) => (new URL(req.url).pathname === path ? f(req) : rest(req))));
+  vi.stubGlobal("fetch", vi.fn(async (req: Request) => (new URL(req.url).pathname === path ? f(req, rest) : rest(req))));
 }
 const never = () => new Promise<Response>(() => {});
+
+test("a section with no values has no header", async () => {
+  answer("/api/cards/search", async (req, rest) => {
+    const body = await req.clone().json();
+    return body.facets?.includes("sources") ? json({ hits: [], total: 0, facets: {} }) : rest(req);
+  });
+  renderCards("/cards");
+  await screen.findByRole("button", { name: /^pirate/ });
+  expect(screen.queryByRole("button", { name: "Sources" })).not.toBeInTheDocument();
+});
+
+test("no collections sends no collections count", async () => {
+  answer("/api/collections", async () => json([]));
+  renderCards("/cards");
+  await screen.findByRole("button", { name: /^pirate/ });
+  expect(searches).not.toContainEqual(expect.objectContaining({ facets: ["collections"] }));
+});
+
+test("an excluded state keeps the target rows", async () => {
+  answer("/api/cards/search", async (req, rest) => {
+    const body = await req.clone().json();
+    if (!body.facets?.includes("targets")) return rest(req);
+    return json({ hits: [], total: 5, facets: { targets: [{ instance: 2, is: "in_sync", cards: 5 }] } });
+  });
+  renderCards("/cards?f=-state:ahead");
+  expect(await screen.findByRole("button", { name: "Lumiverse 5" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Exclude not pushed" })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("a target row sums its states, over the included states only", async () => {
+  answer("/api/cards/search", async (req, rest) => {
+    const body = await req.clone().json();
+    if (!body.facets?.includes("targets")) return rest(req);
+    const targets = [{ instance: 2, is: "ahead", cards: 3 }, { instance: 2, is: "in_sync", cards: 5 }];
+    return json({ hits: [], total: 8, facets: { targets } });
+  });
+  renderCards("/cards");
+  expect(await screen.findByRole("button", { name: "Lumiverse 8" })).toBeInTheDocument();
+  cleanup();
+  renderCards("/cards?f=state:in_sync");
+  expect(await screen.findByRole("button", { name: "Lumiverse 5" })).toBeInTheDocument();
+});
 
 test("a second click while the job starts sends nothing more", async () => {
   answer("/api/bulk", async (req) => {

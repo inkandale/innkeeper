@@ -78,9 +78,9 @@
   box-shadow: none;
 }
 
-/* The row's own actions show on hover and keyboard focus; visibility keeps them out of the tab order until then. */
+/* The row's own actions show on hover and keyboard focus; opacity, not visibility, keeps them focusable from either direction. */
 .facet-act {
-  visibility: hidden;
+  opacity: 0;
   background: none;
   border: none;
   padding: 0 calc(var(--space) * 0.5);
@@ -90,7 +90,7 @@
 
 .facet:hover .facet-act,
 .facet:focus-within .facet-act {
-  visibility: visible;
+  opacity: 1;
 }
 
 .facet.included {

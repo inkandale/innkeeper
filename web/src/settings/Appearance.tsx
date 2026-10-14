@@ -27,7 +27,7 @@ export function Appearance() {
   });
 
   const themes = (plugins.data ?? []).filter((p) => p.capabilities?.includes("theme")).map((p) => p.name);
-  const failed = save.error ?? settings.error ?? plugins.error;
+  const failed = settings.error ?? plugins.error;
   const changed = picked !== null && picked !== saved;
 
   return (

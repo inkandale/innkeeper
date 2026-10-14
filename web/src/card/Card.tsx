@@ -37,6 +37,7 @@ function CardEditor({ id }: { id: number }) {
       void qc.invalidateQueries({ queryKey: ["card", id, "revisions"] });
       ed.setDraft((d) => (d && d.baseId === base.id ? { ...d, baseId: e.revision.id } : d));
     },
+    meta: { toast: false },
     onError: (e) => {
       if (e instanceof ApiError && e.status === 409) {
         // The head moved on, so the button's base is stale; refetch it.

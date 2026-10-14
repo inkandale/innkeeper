@@ -37,6 +37,7 @@ export function PushPreview(props: { kind: Kind; id: number; instance: number; n
       toast({ text: `Job ${j.id} started`, link: { to: `/settings/jobs/${j.id}`, label: "View job" } });
       onClose();
     },
+    meta: { toast: false },
     onError: (e) => {
       if (e instanceof ApiError && e.status === 409) void preview.refetch();
     },

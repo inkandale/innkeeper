@@ -94,10 +94,12 @@ export function InstanceForm({
       if (onSaved) onSaved(saved);
       else navigate("/settings/plugins");
     },
+    meta: { toast: false },
   });
 
   const check = useMutation({
     mutationFn: async (id: number) => must(await api.POST("/instances/{id}/check", { params: { path: { id } } })),
+    meta: { toast: false },
     // A check can mark the instance broken or clear that.
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ["instance", instance?.id] });

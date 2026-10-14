@@ -40,6 +40,7 @@ export function useEditor(kind: Kind, id: number) {
       setComparing(false);
       toast({ text: "Saved" });
     },
+    meta: { toast: false },
     onError: (e) => (e instanceof ApiError && e.status === 409 ? setStale(true) : toast({ text: e.message, error: true })),
   });
 

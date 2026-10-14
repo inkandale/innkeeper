@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
+import { Toasts } from "../shell/Toasts";
 import { Collections } from "./Collections";
 
 let list: { id: number; name: string; description: string; created_at: string; cards: number; avatars?: string[] }[];
@@ -32,7 +33,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 function renderCollections() {
-  const router = createMemoryRouter([{ path: "/collections", element: <Collections /> }], {
+  const router = createMemoryRouter([{ path: "/collections", element: <Toasts><Collections /></Toasts> }], {
     initialEntries: ["/collections"],
   });
   render(
@@ -66,17 +67,12 @@ test("create, rename, and delete", async () => {
   ]);
 });
 
-test("an error clears when a later action succeeds", async () => {
+test("a refused create toasts its error", async () => {
   conflict = true;
   renderCollections();
   const user = userEvent.setup();
   await user.type(await screen.findByRole("textbox", { name: "New collection" }), "Crew{Enter}");
   expect(await screen.findByText("name taken")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Rename Crew" }));
-  const name = screen.getByRole("textbox", { name: "Name" });
-  await user.clear(name);
-  await user.type(name, "Sailors{Enter}");
-  await waitFor(() => expect(screen.queryByText("name taken")).not.toBeInTheDocument());
 });
 
 test("a blank or unchanged rename sends nothing, and Escape cancels", async () => {

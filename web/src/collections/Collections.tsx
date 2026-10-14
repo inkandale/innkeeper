@@ -14,15 +14,11 @@ export function Collections() {
   const qc = useQueryClient();
   const list = useQuery(collectionsQuery);
   const [renaming, setRenaming] = useState<number | null>(null);
-  const [failed, setFailed] = useState<Error | null>(null);
   const onSuccess = () => qc.invalidateQueries({ queryKey: ["collections"] });
-  // Clear on start so an old failure never outlives a newer action.
-  const track = { onMutate: () => setFailed(null), onError: setFailed };
 
   const create = useMutation({
     mutationFn: async (name: string) => must(await api.POST("/collections", { body: { name } })),
     onSuccess,
-    ...track,
   });
   const rename = useMutation({
     mutationFn: async ({ id, name }: { id: number; name: string }) =>
@@ -31,15 +27,11 @@ export function Collections() {
       setRenaming(null);
       return onSuccess();
     },
-    ...track,
   });
   const remove = useMutation({
     mutationFn: async (id: number) => mustOk(await api.DELETE("/collections/{id}", { params: { path: { id } } })),
     onSuccess,
-    ...track,
   });
-
-  const shown = failed ?? list.error;
 
   return (
     <section className="page">
@@ -54,7 +46,7 @@ export function Collections() {
         <input className="input" name="name" aria-label="New collection" placeholder="New collection" />
         <button className="button primary">Create</button>
       </form>
-      {shown && <p className="error">{shown.message}</p>}
+      {list.error && <p className="error">{list.error.message}</p>}
       <div className="collections">
         {(list.data ?? []).map((c) => (
           <article key={c.id} className="collection">

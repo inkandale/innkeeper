@@ -364,6 +364,7 @@ function ReviewItem() {
       else if (location.key === "default") navigate("/sync");
       else navigate(-1);
     },
+    meta: { toast: false },
     onError: (e) => {
       if (e instanceof ApiError && e.status === 409) {
         // Hunk IDs may differ in the fresh comparison, so the old choices can't carry over.

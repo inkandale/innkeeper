@@ -46,6 +46,7 @@ export function BringInCards() {
   const pull = useMutation({
     mutationFn: async (instance_id: number) => track(must(await api.POST("/reconciles", { body: { instance_id } }))),
     onSuccess: (job, id) => setStarted((s) => ({ ...s, [id]: job })),
+    meta: { toast: false },
   });
   // One file at a time: avatars can be large.
   const sendFiles = async (instance_id: number, files: File[]) => {

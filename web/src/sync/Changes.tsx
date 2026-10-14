@@ -111,13 +111,11 @@ export function Changes() {
       setChecked({});
       done();
     },
-    onError: (e) => toast({ text: e.message, error: true }),
   });
 
   const unbind = useMutation({
     mutationFn: async (id: number) => must(await api.DELETE("/bindings/{id}", { params: { path: { id } } })),
     onSuccess: done,
-    onError: (e) => toast({ text: e.message, error: true }),
   });
 
   const actions = (r: ChangeRow, c: AppChange) => {

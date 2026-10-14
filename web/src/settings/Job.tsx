@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { api, must } from "../api/client";
-import { useToast } from "../shell/Toasts";
 import { age, finished, kindLabel, progressText, useJobEvents, type Job as JobT } from "./jobUtil";
 
 function Counts({ label, counts }: { label: string; counts?: Record<string, number> }) {
@@ -22,7 +21,6 @@ function Counts({ label, counts }: { label: string; counts?: Record<string, numb
 export function Job() {
   const id = Number(useParams().id);
   const qc = useQueryClient();
-  const toast = useToast();
   const job = useQuery({
     queryKey: ["job", id],
     queryFn: async () => must(await api.GET("/jobs/{id}", { params: { path: { id } } })),
@@ -41,7 +39,6 @@ export function Job() {
   const cancel = useMutation({
     mutationFn: async () => must(await api.POST("/jobs/{id}/cancel", { params: { path: { id } } })),
     onSuccess: (data) => qc.setQueryData(["job", id], data),
-    onError: (e) => toast({ text: e.message, error: true }),
   });
 
   if (job.isError) return <p className="error">{job.error.message}</p>;

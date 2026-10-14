@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider, useMutation } from "@tanstack/react-query";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -5,8 +6,12 @@ import { Toasts, useToast } from "./Toasts";
 
 function Buttons() {
   const toast = useToast();
+  const fail = useMutation({ mutationFn: () => Promise.reject(new Error("Refused")) });
+  const quiet = useMutation({ mutationFn: () => Promise.reject(new Error("Shown inline")), meta: { toast: false } });
   return (
     <>
+      <button onClick={() => fail.mutate()}>fail</button>
+      <button onClick={() => quiet.mutate()}>quiet</button>
       <button onClick={() => toast({ text: "Job 5 started", link: { to: "/settings/jobs/5", label: "View job" } })}>info</button>
       <button onClick={() => toast({ text: "Boom", error: true })}>error</button>
     </>
@@ -15,7 +20,11 @@ function Buttons() {
 
 function renderToasts() {
   const router = createMemoryRouter([{ path: "/", element: <Toasts><Buttons /></Toasts> }]);
-  render(<RouterProvider router={router} />);
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
 }
 
 test("a toast shows its text and link, and dismisses", async () => {
@@ -40,4 +49,13 @@ test("info toasts close themselves and errors stay", () => {
   } finally {
     vi.useRealTimers();
   }
+});
+
+test("a failed mutation toasts its error once, unless it opts out", async () => {
+  renderToasts();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "quiet" }));
+  await user.click(screen.getByRole("button", { name: "fail" }));
+  expect(await screen.findAllByText("Refused")).toHaveLength(1);
+  expect(screen.queryByText("Shown inline")).not.toBeInTheDocument();
 });

@@ -47,6 +47,7 @@ function PluginStep({ plugin, done, next }: { plugin: Plugin; done: InstanceInfo
   const [saved, setSaved] = useState<InstanceInfo>();
   const check = useMutation({
     mutationFn: async (id: number) => must(await api.GET("/instances/{id}/items", { params: { path: { id } } })),
+    meta: { toast: false },
   });
   const afterSave = (inst: InstanceInfo) => {
     if (!plugin.capabilities?.includes("pull")) return navigate(next);
@@ -58,6 +59,7 @@ function PluginStep({ plugin, done, next }: { plugin: Plugin; done: InstanceInfo
   const bare = !Object.keys((plugin.config as Schema | undefined)?.properties ?? {}).length && !plugin.secrets?.length;
   const create = useMutation({
     mutationFn: async () => must(await api.POST("/instances", { body: { plugin: plugin.name, name: plugin.name } })),
+    meta: { toast: false },
     onSuccess: (inst) => {
       qc.invalidateQueries({ queryKey: ["instances"] });
       afterSave(inst);

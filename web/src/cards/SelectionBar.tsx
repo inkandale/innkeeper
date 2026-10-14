@@ -51,7 +51,6 @@ export function SelectionBar(props: {
       onStarted?.(j.id);
       onClear();
     },
-    onError: (e) => toast({ text: e.message, error: true }),
   });
   const busy = start.isPending;
   const bulk = (body: Omit<Bulk, "query">) =>

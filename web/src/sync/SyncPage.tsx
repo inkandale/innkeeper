@@ -36,7 +36,6 @@ function useRun(start: () => Promise<Job>, text: string) {
       setId(j.id);
       toast({ text, link: { to: `/settings/jobs/${j.id}`, label: "View job" } });
     },
-    onError: (e) => toast({ text: e.message, error: true }),
   });
   return { start: () => run.mutate(), busy: run.isPending || id !== undefined };
 }

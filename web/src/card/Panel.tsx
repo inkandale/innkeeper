@@ -62,13 +62,11 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
 
 export function Archive({ kind, entity }: { kind: Kind; entity: Entity }) {
   const qc = useQueryClient();
-  const toast = useToast();
   const archived = !!entity.archived_at;
   const set = useMutation({
     mutationFn: async () =>
       mustOk(await api.PUT(route(kind, "/cards/{id}/archived"), { params: { path: { id: entity.id } }, body: { archived: !archived } })),
     onSuccess: () => void qc.invalidateQueries({ queryKey: [kind, entity.id] }),
-    onError: (e) => toast({ text: e.message, error: true }),
   });
   return (
     <button className={archived ? "button" : "button danger"} disabled={set.isPending} onClick={() => set.mutate()}>
@@ -117,12 +115,10 @@ export function Sync({ kind, id }: { kind: Kind; id: number }) {
   const instances = useQuery(instancesQuery);
   const name = (n: number) => instances.data?.find((i) => i.id === n)?.name ?? `#${n}`;
   const qc = useQueryClient();
-  const toast = useToast();
   const setAutosync = useMutation({
     mutationFn: async ({ id, on }: { id: number; on: boolean }) =>
       must(await api.PATCH("/bindings/{id}", { params: { path: { id } }, body: { autosync: on } })),
     onSuccess: () => qc.invalidateQueries({ queryKey: [kind, id, "bindings"] }),
-    onError: (e) => toast({ text: e.message, error: true }),
   });
   if (!bindings.data?.length) return null;
   return (
@@ -215,7 +211,6 @@ function Image({ sha, busy, onAvatar }: { sha?: string; busy: boolean; onAvatar:
       setCropping(false);
       onAvatar(s, message);
     },
-    onError: (e) => toast({ text: e.message, error: true }),
   });
   const off = busy || up.isPending;
   return (

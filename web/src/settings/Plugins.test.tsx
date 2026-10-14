@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
+import { Toasts } from "../shell/Toasts";
 import { Plugins } from "./Plugins";
 
 function json(body: unknown, status = 200) {
@@ -56,7 +57,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 function renderPlugins() {
-  const router = createMemoryRouter([{ path: "/settings/plugins", element: <Plugins /> }], {
+  const router = createMemoryRouter([{ path: "/settings/plugins", element: <Toasts><Plugins /></Toasts> }], {
     initialEntries: ["/settings/plugins"],
   });
   render(
@@ -137,7 +138,7 @@ test("adds a source", async () => {
 test("recommends plugins until one is installed", async () => {
   renderPlugins();
   await screen.findByRole("heading", { name: "sillytavern" });
-  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  expect(screen.queryByText(/comes with login/)).not.toBeInTheDocument();
 });
 
 test("recommends plugins on a fresh install", async () => {
@@ -146,5 +147,5 @@ test("recommends plugins on a fresh install", async () => {
     new URL(req.url).pathname === "/api/plugins" ? json([]) : fetch(req),
   );
   renderPlugins();
-  expect(await screen.findByRole("status")).toHaveTextContent("card-import, lumiverse, sillytavern");
+  expect(await screen.findByText(/comes with login/)).toHaveTextContent("card-import, lumiverse, sillytavern");
 });

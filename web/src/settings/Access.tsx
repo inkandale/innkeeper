@@ -29,7 +29,7 @@ export function Access() {
 
   // A token can't have more access than the credentials creating it.
   const allowed = tiers.slice(0, tiers.indexOf((me.data?.tier ?? "read") as Tier) + 1);
-  const failed = create.error ?? revokeToken.error ?? revokeGrant.error ?? tokens.error ?? grants.error ?? me.error;
+  const failed = tokens.error ?? grants.error ?? me.error;
 
   return (
     <section className="access">

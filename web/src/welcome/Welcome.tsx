@@ -15,6 +15,7 @@ export function useFinish() {
       qc.setQueryData(settingsQuery.queryKey, s);
       navigate("/cards", { replace: true });
     },
+    meta: { toast: false },
   });
 }
 

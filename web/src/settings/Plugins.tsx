@@ -57,12 +57,6 @@ export function Plugins() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["plugin-sources"] }),
   });
   const failed =
-    remove.error ??
-    install.error ??
-    uninstall.error ??
-    removeData.error ??
-    addSource.error ??
-    deleteSource.error ??
     plugins.error ??
     instances.error ??
     sources.error ??

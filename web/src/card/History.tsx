@@ -169,6 +169,7 @@ export function History({ kind = "card" }: { kind?: Kind }) {
       setParams({});
       toast({ text: `Restored revision ${r.id}` });
     },
+    meta: { toast: false },
     onError: (e) => {
       void qc.invalidateQueries({ queryKey: [kind, id, "revisions"] });
       const stale = e instanceof ApiError && e.status === 409;

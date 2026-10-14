@@ -2,14 +2,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, must, mustOk, route, type Kind } from "../api/client";
 import { collectionsQuery } from "../api/queries";
-import { useToast } from "../shell/Toasts";
 
 // These save on change: tags, collections, and sources aren't part of a revision.
 
 /** Tags lists a card's tags, with remove and add. */
 export function Tags({ id, tags }: { id: number; tags: string[] }) {
   const qc = useQueryClient();
-  const toast = useToast();
   const [name, setName] = useState("");
   const put = useMutation({
     mutationFn: async (next: string[]) => must(await api.PUT("/cards/{id}/tags", { params: { path: { id } }, body: { tags: next } })),
@@ -18,7 +16,6 @@ export function Tags({ id, tags }: { id: number; tags: string[] }) {
       setName("");
       return qc.invalidateQueries({ queryKey: ["card", id] });
     },
-    onError: (e) => toast({ text: e.message, error: true }),
   });
   return (
     <section>
@@ -49,7 +46,6 @@ export function Tags({ id, tags }: { id: number; tags: string[] }) {
 /** Collections has a box per collection, checked for the ones the card is in. */
 export function Collections({ id, member }: { id: number; member: number[] }) {
   const qc = useQueryClient();
-  const toast = useToast();
   const all = useQuery(collectionsQuery);
   const toggle = useMutation({
     mutationFn: async ({ collection, on }: { collection: number; on: boolean }) => {
@@ -58,7 +54,6 @@ export function Collections({ id, member }: { id: number; member: number[] }) {
     },
     onSuccess: () =>
       Promise.all([qc.invalidateQueries({ queryKey: ["card", id] }), qc.invalidateQueries({ queryKey: ["collections"] })]),
-    onError: (e) => toast({ text: e.message, error: true }),
   });
   if (!all.data?.length) return null;
   return (
@@ -82,27 +77,23 @@ export function Collections({ id, member }: { id: number; member: number[] }) {
 /** Sources lists the sites a card or lorebook was published on, with remove and add by URL. */
 export function Sources({ kind, id }: { kind: Kind; id: number }) {
   const qc = useQueryClient();
-  const toast = useToast();
   const [url, setUrl] = useState("");
   const list = useQuery({
     queryKey: [kind, id, "sources"],
     queryFn: async () => must(await api.GET(route(kind, "/cards/{id}/sources"), { params: { path: { id } } })),
   });
   const done = () => void qc.invalidateQueries({ queryKey: [kind, id, "sources"] });
-  const fail = (e: Error) => toast({ text: e.message, error: true });
   const add = useMutation({
     mutationFn: async (u: string) => must(await api.PUT(route(kind, "/cards/{id}/sources"), { params: { path: { id } }, body: { url: u } })),
     onSuccess: () => {
       setUrl("");
       done();
     },
-    onError: fail,
   });
   const remove = useMutation({
     mutationFn: async (sourceId: number) =>
       mustOk(await api.DELETE(route(kind, "/cards/{id}/sources/{source_id}"), { params: { path: { id, source_id: sourceId } } })),
     onSuccess: done,
-    onError: fail,
   });
   return (
     <section>

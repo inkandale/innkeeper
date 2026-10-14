@@ -29,7 +29,7 @@ WORKDIR /plugins-src
 # ponytail: no go mod tidy, so this needs innkeeper-plugins' go.sum to cover
 # everything protocol/ imports; add tidy if a build reports a missing entry.
 RUN go mod edit -replace github.com/davidgibbons/innkeeper=/core \
-    && make install DEST=/plugins PLUGINS="password-login card-codec"
+    && make install DEST=/plugins PLUGINS="password-login card-codec url-import"
 
 FROM alpine:3.23
 # pg_dump for `innkeeper backup`; tini reaps plugin processes whose groups the host kills.

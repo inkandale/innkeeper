@@ -344,10 +344,15 @@ func TestChangesListSourceUpdates(t *testing.T) {
 	e := setup(t, nil)
 	e.addUpstream(nil)
 	changed, gone, same := e.imported("vyr", vyrCard), e.imported("gone", vyrCard), e.imported("same", vyrCard)
+	paused := e.imported("paused", vyrCard)
 	e.publish("vyr", map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Begone."}, "")
+	e.publish("paused", map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Begone."}, "")
 	e.publish("same", vyrCard, "")
 	for _, c := range []int64{changed, gone, same} {
 		e.follow(c)
+	}
+	if _, err := e.s.SetPaused(e.ctx, e.follow(paused).ID, true); err != nil {
+		t.Fatal(err)
 	}
 	e.update(same, func(ed *library.Edit) { ed.Data = setField(ed.Data, "description", "My red dragon.") })
 	cards, _ := e.followedStates()

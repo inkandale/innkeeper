@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
-import { api, must, upload } from "../api/client";
+import { api, must, upload, withCapability } from "../api/client";
 import { instancesQuery, pluginsQuery } from "../api/queries";
 import { finished, progressText, useJobEvents, type Job } from "../settings/jobUtil";
 import { useFinish } from "./Welcome";
@@ -75,8 +75,7 @@ export function BringInCards() {
   const failed = plugins.error ?? instances.error;
   if (failed) return <p className="error">{failed.message}</p>;
   if (plugins.isPending || instances.isPending) return null;
-  const pulls = new Set((plugins.data ?? []).filter((p) => p.capabilities?.includes("pull")).map((p) => p.name));
-  const apps = (instances.data ?? []).filter((i) => pulls.has(i.plugin));
+  const apps = withCapability(instances.data, plugins.data, "pull");
   const importer = (instances.data ?? []).find((i) => i.plugin === "card-import");
   const urlImporter = (instances.data ?? []).find((i) => i.plugin === "url-import");
 

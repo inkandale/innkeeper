@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { api, must } from "../api/client";
+import { api, must, withCapability } from "../api/client";
 import { instancesQuery, pluginsQuery } from "../api/queries";
 import { age, finished, type Job } from "../settings/jobUtil";
 import { useToast } from "../shell/Toasts";
@@ -58,8 +58,7 @@ export function Sync() {
     queryKey: ["sync", "changes", "counts"],
     queryFn: async () => must(await api.GET("/sync/changes")),
   });
-  const caps = new Map((plugins.data ?? []).map((p) => [p.name, p.capabilities ?? []]));
-  const targets = (instances.data ?? []).filter((i) => caps.get(i.plugin)?.some((c) => c === "push" || c === "pull"));
+  const targets = withCapability(instances.data, plugins.data, "push", "pull");
   const cantCheck = targets.some((i) => stateCounts(facets.data?.facets?.targets, i.id).cant_check > 0);
 
   const refresh = useRun(async () => must(await api.POST("/scans")), "Refreshing every app…");

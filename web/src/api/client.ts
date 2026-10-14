@@ -103,3 +103,13 @@ export function canWrite(
   const codecs = new Set((plugins ?? []).filter((p) => p.capabilities?.includes("codec") && p.formats?.includes(format)).map((p) => p.name));
   return (instances ?? []).some((i) => codecs.has(i.plugin) && !i.broken_error);
 }
+
+/** withCapability returns the instances whose plugin offers any of caps. */
+export function withCapability<I extends { plugin: string }>(
+  instances: I[] | null | undefined,
+  plugins: { name: string; capabilities?: string[] | null }[] | null | undefined,
+  ...caps: string[]
+): I[] {
+  const names = new Set((plugins ?? []).filter((p) => p.capabilities?.some((c) => caps.includes(c))).map((p) => p.name));
+  return (instances ?? []).filter((i) => names.has(i.plugin));
+}

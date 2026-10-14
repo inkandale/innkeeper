@@ -1,4 +1,4 @@
-import { ApiError, loginPath, mustOk, route, safeNext, thumb, upload } from "./client";
+import { ApiError, loginPath, mustOk, route, safeNext, thumb, upload, withCapability } from "./client";
 
 test("loginPath keeps where the user was", () => {
   expect(loginPath("/cards", "?tag=elf")).toBe("/login?next=%2Fcards%3Ftag%3Delf");
@@ -52,4 +52,17 @@ test("upload sends the raw file and returns its sha256", async () => {
 test("route swaps a card path for a lorebook one", () => {
   expect(route("card", "/cards/{id}/revisions")).toBe("/cards/{id}/revisions");
   expect(route("lorebook", "/cards/{id}/revisions")).toBe("/lorebooks/{id}/revisions");
+});
+
+test("withCapability keeps instances whose plugin offers any of the capabilities", () => {
+  const plugins = [
+    { name: "app", capabilities: ["push", "pull"] },
+    { name: "puller", capabilities: ["pull"] },
+    { name: "theme", capabilities: ["theme"] },
+    { name: "bare", capabilities: null },
+  ];
+  const instances = [{ plugin: "app" }, { plugin: "puller" }, { plugin: "theme" }, { plugin: "bare" }, { plugin: "gone" }];
+  expect(withCapability(instances, plugins, "push")).toEqual([{ plugin: "app" }]);
+  expect(withCapability(instances, plugins, "push", "pull")).toEqual([{ plugin: "app" }, { plugin: "puller" }]);
+  expect(withCapability(instances, undefined, "push")).toEqual([]);
 });

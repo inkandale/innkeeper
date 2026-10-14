@@ -205,7 +205,10 @@ func (s *Server) Handler() http.Handler {
 
 // fail turns an error into an HTTP error. Unexpected errors are logged and
 // hidden from the client. A nil error stays nil.
-func (s *Server) fail(err error) error {
+func (s *Server) fail(err error) error { return s.failAs("plugin", err) }
+
+// failAs is fail, naming the plugin who in the message for a failed call.
+func (s *Server) failAs(who string, err error) error {
 	var se huma.StatusError
 	var rpcErr *protocol.Error
 	var startErr *pluginhost.StartError
@@ -235,10 +238,21 @@ func (s *Server) fail(err error) error {
 		return huma.Error422UnprocessableEntity(err.Error())
 	case errors.Is(err, plugins.ErrSource):
 		return huma.Error502BadGateway(err.Error())
-	case errors.As(err, &startErr), errors.Is(err, protocol.ErrClosed):
-		s.Log.Error("plugin failed", "err", err)
-		return huma.Error502BadGateway("plugin failed; see the server log")
-	case errors.As(err, &rpcErr), errors.Is(err, targets.ErrBadReply), errors.Is(err, export.ErrBadCodec):
+	// A plugin's error text can name files on the server, and read-tier
+	// clients see these, so it goes only to the log.
+	case errors.As(err, &rpcErr) && rpcErr.Code == protocol.CodeInvalidParams:
+		s.Log.Warn("plugin rejected the request", "plugin", who, "err", err)
+		return huma.Error400BadRequest(who + " rejected the request; see the server log")
+	case errors.As(err, &rpcErr) && rpcErr.Code == protocol.CodeRemoteNotFound:
+		s.Log.Info("plugin has no such item", "plugin", who, "err", err)
+		return huma.Error404NotFound(who + " has no such item")
+	case errors.As(err, &startErr), errors.Is(err, context.DeadlineExceeded), plugins.Retryable(err):
+		s.Log.Warn("plugin unavailable", "plugin", who, "err", err)
+		return huma.Error503ServiceUnavailable(who + " is unavailable; see the server log")
+	case errors.As(err, &rpcErr):
+		s.Log.Error("plugin failed", "plugin", who, "err", err)
+		return huma.Error502BadGateway(who + " failed; see the server log")
+	case errors.Is(err, targets.ErrBadReply), errors.Is(err, export.ErrBadCodec):
 		return huma.Error502BadGateway("plugin: " + err.Error())
 	}
 	s.Log.Error("request failed", "err", err)

@@ -121,11 +121,22 @@ func TestBulkPush(t *testing.T) {
 	e.call("POST", "/pushes", body, 202, &j)
 }
 
-func TestFailHidesStartError(t *testing.T) {
-	err := &pluginhost.StartError{Err: fmt.Errorf("initialize plugin fake: %w", protocol.NewError(-32000, "cannot open /secret", false))}
-	he := (&Server{Log: quiet}).fail(err).(huma.StatusError)
-	if he.GetStatus() != 502 || strings.Contains(he.Error(), "/secret") {
-		t.Fatalf("fail = %d %q", he.GetStatus(), he.Error())
+func TestFailHidesPluginErrorText(t *testing.T) {
+	for _, c := range []struct {
+		err    error
+		status int
+	}{
+		{&pluginhost.StartError{Err: fmt.Errorf("initialize plugin fake: %w", protocol.NewError(-32000, "cannot open /secret", false))}, 503},
+		{fmt.Errorf("target.put: %w", protocol.NewError(-32000, "cannot open /secret", false)), 502},
+		{protocol.NewError(-32000, "cannot open /secret", true), 503},
+		{protocol.NewError(protocol.CodeInvalidParams, "cannot open /secret", false), 400},
+		{protocol.NewError(protocol.CodeRemoteNotFound, "cannot open /secret", false), 404},
+		{fmt.Errorf("call: %w", context.DeadlineExceeded), 503},
+	} {
+		he := (&Server{Log: quiet}).fail(c.err).(huma.StatusError)
+		if he.GetStatus() != c.status || strings.Contains(he.Error(), "/secret") {
+			t.Errorf("fail(%v) = %d %q, want %d", c.err, he.GetStatus(), he.Error(), c.status)
+		}
 	}
 }
 

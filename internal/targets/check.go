@@ -54,8 +54,9 @@ func (s *Service) Check(ctx context.Context, id int64) (Binding, error) {
 			state, seen = remoteChanged, data
 		}
 	}
+	// "" marks a followed source checked without an avatar, so one added later is an update.
 	var accept *string
-	if avatar != "" {
+	if !b.push && (state == remoteUnchanged || state == remoteChanged) {
 		accept = &avatar
 	}
 	if err := s.record(ctx, id, b, state, seen, accept); err != nil {
@@ -110,7 +111,7 @@ func (s *Service) avatarKey(ctx context.Context, sha string) (string, error) {
 // was read. It guards on version alone: the accepted hash can't tell, because
 // a push of identical content leaves it unchanged. The guard must be a column
 // of the row, since a subquery would keep the statement's old snapshot when
-// the UPDATE waits on a push's row lock. avatar is accepted only where none was.
+// the UPDATE waits on a push's row lock. avatar fills only a NULL avatar_hash.
 func (s *Service) record(ctx context.Context, id int64, b stored, state string, seen any, avatar *string) error {
 	_, err := s.pool.Exec(ctx, `UPDATE binding SET remote_state = $2, seen_data = $3,
 		checked_at = CASE WHEN $2 = 'unknown' THEN NULL ELSE now() END,

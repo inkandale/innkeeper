@@ -500,3 +500,41 @@ func TestDismissingANewAvatarAcceptsIt(t *testing.T) {
 		t.Fatalf("after dismissing the avatar = %+v", got)
 	}
 }
+
+func TestAnAvatarAddedToASourceWithoutOneIsAnUpdate(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	card := e.imported("vyr", vyrCard)
+	e.publish("vyr", vyrCard, "")
+	if b := e.follow(card); b.RemoteState != remoteUnchanged {
+		t.Fatalf("first check = %+v", b)
+	}
+	e.publish("vyr", vyrCard, patternPNG(t, func(x, _ int) uint8 { return uint8(x / 8 % 2 * 255) }))
+	if b := e.follow(card); b.RemoteState != remoteChanged {
+		t.Fatalf("after a first avatar = %+v", b)
+	}
+}
+
+func TestDismissingAnAvatarRemovalAcceptsIt(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	card := e.imported("vyr", vyrCard)
+	stripes := patternPNG(t, func(x, _ int) uint8 { return uint8(x / 8 % 2 * 255) })
+	e.publish("vyr", vyrCard, stripes)
+	e.follow(card)
+	e.publish("vyr", vyrCard, "")
+	b := e.follow(card)
+	if b.RemoteState != remoteChanged {
+		t.Fatalf("after removing the avatar = %+v", b)
+	}
+	if _, err := e.s.Dismiss(e.ctx, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.follow(card); got.RemoteState != remoteUnchanged {
+		t.Fatalf("after dismissing the removal = %+v", got)
+	}
+	e.publish("vyr", vyrCard, stripes)
+	if got := e.follow(card); got.RemoteState != remoteChanged {
+		t.Fatalf("after the avatar came back = %+v", got)
+	}
+}

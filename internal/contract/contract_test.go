@@ -242,3 +242,45 @@ func TestCatalogIngestCheck(t *testing.T) {
 		t.Fatal("an ingest that crashed passed")
 	}
 }
+
+func TestSitesChecks(t *testing.T) {
+	callTimeout = 300 * time.Millisecond
+	t.Cleanup(func() { callTimeout = 5 * time.Second })
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"sites"}), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 10 {
+		t.Fatalf("ran %d checks, want 10", len(results))
+	}
+	if f := failed(results); len(f) > 0 {
+		t.Fatalf("checks failed: %v", f)
+	}
+
+	tests := []struct{ mode, check, wantErr string }{
+		{"sites-noisy", sitesCardName, "want none"},
+		{"sites-noisy", sitesLorebookName, "want none"},
+		{"sites-lax-data", sitesBadDataName, "got success"},
+		{"sites-claims", sitesForeignName, "want null"},
+		{"sites-lax-params", sitesBadParamName, "got success"},
+		{"sites-bad-source", sitesValidName, "https"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.mode+"/"+tt.check, func(t *testing.T) {
+			results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"sites"}, "-mode="+tt.mode), quiet)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := failed(results)[tt.check]; got == nil || !strings.Contains(got.Error(), tt.wantErr) {
+				t.Fatalf("check %q: got %v, want %q", tt.check, got, tt.wantErr)
+			}
+		})
+	}
+	results, err = Check(context.Background(), testutil.FakePluginWith(t, []string{"sites"}, "-mode=sites-noisy"), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := failed(results)[sitesValidName]; err != nil {
+		t.Fatalf("a valid unwanted source failed the validity check: %v", err)
+	}
+}

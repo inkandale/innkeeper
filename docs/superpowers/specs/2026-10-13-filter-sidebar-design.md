@@ -71,7 +71,12 @@ State rows start with the status dot from `badgeClass` in `web/src/cards/Tile.ts
 
 A section's counts ignore that section's own selections and respect every other section's. A count always means "cards you would see if you picked this".
 
-The browser computes this. Alongside the main search, each open section sends a `POST /search` with `page.size: 0`, only its own facet, and the filter built from every other section's terms. These run in parallel through React Query. `query.ts` is the one place that knows which section a term belongs to. The API gains no per-section logic.
+The browser computes this. Alongside the main search, each open section sends `POST /search` with `page.size: 1` (0 means the default size) and the filter built from every other section's terms:
+
+- Target, Tags, Sources, and Collections ask for their own facet. A Target count sums that target's rows over the included states.
+- State sends one search per state and uses its `total`. The `targets` facet counts a card once per target, so it would count a card on two targets twice.
+
+These run in parallel through React Query, and collapsed sections send nothing. `query.ts` is the one place that knows which section a term belongs to. The API gains no per-section logic.
 
 ### Tags
 

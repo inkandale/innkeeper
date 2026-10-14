@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -12,15 +11,6 @@ import (
 
 	"github.com/davidgibbons/innkeeper/internal/wire"
 )
-
-// apiCall makes one API call with a new client.
-func apiCall(cmd *cobra.Command, method, path string, body []byte) ([]byte, error) {
-	c, err := newClient(cmd)
-	if err != nil {
-		return nil, err
-	}
-	return c.do(cmd.Context(), method, path, body)
-}
 
 func autosyncCmd() *cobra.Command {
 	return &cobra.Command{Use: "autosync <binding-id> on|off",
@@ -34,11 +24,7 @@ func autosyncCmd() *cobra.Command {
 			if args[1] != "on" && args[1] != "off" {
 				return fmt.Errorf("say on or off, not %q", args[1])
 			}
-			body, err := json.Marshal(map[string]bool{"autosync": args[1] == "on"})
-			if err != nil {
-				return err
-			}
-			raw, err := apiCall(cmd, "PATCH", "/bindings/"+id, body)
+			raw, err := callAPI(cmd, "PATCH", "/bindings/"+id, map[string]bool{"autosync": args[1] == "on"})
 			if err != nil {
 				return err
 			}
@@ -131,7 +117,7 @@ func idCmd[T any](use, short, method string, path func(string) string, table fun
 			if err != nil {
 				return err
 			}
-			out, err := apiCall(cmd, method, path(id), nil)
+			out, err := callAPI(cmd, method, path(id), nil)
 			if err != nil {
 				return err
 			}
@@ -173,7 +159,7 @@ func previewCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			out, err := apiCall(cmd, "GET", "/cards/"+card+"/push-preview?instance_id="+inst, nil)
+			out, err := callAPI(cmd, "GET", "/cards/"+card+"/push-preview?instance_id="+inst, nil)
 			if err != nil {
 				return err
 			}
@@ -196,7 +182,7 @@ func unbindCmd() *cobra.Command {
 			if err := confirm(cmd, yes, "Unbind binding "+id+" and delete its push history?"); err != nil {
 				return err
 			}
-			_, err = apiCall(cmd, "DELETE", "/bindings/"+id, nil)
+			_, err = callAPI(cmd, "DELETE", "/bindings/"+id, nil)
 			return err
 		},
 	}

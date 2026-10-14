@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -440,10 +441,10 @@ func fetchComparison(ctx context.Context, c *client, path string) (wire.Comparis
 
 // printComparison prints each hunk that isn't the same on both sides, with
 // changed words marked [-library-] and {+app+}.
-func printComparison(w io.Writer, cmp wire.Comparison) {
-	fmt.Fprintf(w, "%s against card %d (revision %d, base %s)\n", cmp.RemoteID, cmp.CardID, cmp.HeadRevisionID, cmp.Base)
+func printComparison(w io.Writer, comparison wire.Comparison) {
+	fmt.Fprintf(w, "%s against card %d (revision %d, base %s)\n", comparison.RemoteID, comparison.CardID, comparison.HeadRevisionID, comparison.Base)
 	same := true
-	for _, f := range cmp.Fields {
+	for _, f := range comparison.Fields {
 		for _, h := range f.Hunks {
 			if h.Status == merge.Same {
 				continue
@@ -454,20 +455,13 @@ func printComparison(w io.Writer, cmp wire.Comparison) {
 			fmt.Fprintf(w, "  app:     %s\n", marked(h.App, h.Words, "app", "{+", "+}"))
 		}
 	}
-	if a := cmp.Avatar; a != nil {
+	if a := comparison.Avatar; a != nil {
 		same = false
-		fmt.Fprintf(w, "\navatar  differs (library %s, app %s)\n", or(a.Library, "none"), or(a.App, "none"))
+		fmt.Fprintf(w, "\navatar  differs (library %s, app %s)\n", cmp.Or(a.Library, "none"), cmp.Or(a.App, "none"))
 	}
 	if same {
 		fmt.Fprintln(w, "\nno differences")
 	}
-}
-
-func or(s, def string) string {
-	if s == "" {
-		return def
-	}
-	return s
 }
 
 // marked returns a hunk side as text: a JSON string decoded with its

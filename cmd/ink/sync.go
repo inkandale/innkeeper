@@ -23,7 +23,7 @@ func syncCmd() *cobra.Command {
 func refreshCmd() *cobra.Command {
 	return &cobra.Command{Use: "refresh", Short: "Check every app for changes; changes nothing", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			out, err := apiCall(cmd, "POST", "/scans", nil)
+			out, err := callAPI(cmd, "POST", "/scans", nil)
 			if err != nil {
 				return err
 			}
@@ -57,7 +57,7 @@ copy that differs, so review it before pushing: ink sync compare --two-way.`,
 			if len(q) > 0 {
 				path += "?" + q.Encode()
 			}
-			out, err := apiCall(cmd, "GET", path, nil)
+			out, err := callAPI(cmd, "GET", path, nil)
 			if err != nil {
 				return err
 			}
@@ -131,7 +131,7 @@ query needs a filter or text.`,
 			if err != nil {
 				return err
 			}
-			out, err := apiCall(cmd, "GET", "/cards/"+card+"/push-preview?instance_id="+inst, nil)
+			out, err := callAPI(cmd, "GET", "/cards/"+card+"/push-preview?instance_id="+inst, nil)
 			if err != nil {
 				return err
 			}
@@ -167,11 +167,7 @@ func askBulkPush(cmd *cobra.Command, inst string, query json.RawMessage, yes boo
 	if search["filter"] == nil && search["text"] == nil {
 		return "", errors.New("the query needs a filter or text; to select every card, filter on archived")
 	}
-	body, err := json.Marshal(map[string]any{"instance_id": json.Number(inst), "query": query})
-	if err != nil {
-		return "", err
-	}
-	out, err := apiCall(cmd, "POST", "/pushes/preview", body)
+	out, err := callAPI(cmd, "POST", "/pushes/preview", map[string]any{"instance_id": json.Number(inst), "query": query})
 	if err != nil {
 		return "", err
 	}

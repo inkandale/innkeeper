@@ -62,7 +62,7 @@ func TestCheckLosesToAPushOfSameContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.push(e.card)
-	if err := e.s.record(e.ctx, b.ID, old, "missing", nil); err != nil {
+	if err := e.s.record(e.ctx, b.ID, old, "missing", nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := e.s.Binding(e.ctx, b.ID); err != nil || got.Status != "in_sync" || got.RemoteState != "unchanged" {
@@ -89,7 +89,7 @@ func TestCheckLosesToAPushInFlight(t *testing.T) {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
-	go func() { done <- e.s.record(e.ctx, b.ID, old, "missing", nil) }()
+	go func() { done <- e.s.record(e.ctx, b.ID, old, "missing", nil, nil) }()
 	time.Sleep(200 * time.Millisecond)
 	if err := tx.Commit(e.ctx); err != nil {
 		t.Fatal(err)

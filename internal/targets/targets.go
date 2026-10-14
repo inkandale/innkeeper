@@ -138,6 +138,18 @@ func (s *Service) SetAutosync(ctx context.Context, id int64, on bool) (Binding, 
 	return s.Binding(ctx, id)
 }
 
+// SetPaused stops or restarts checks of a binding.
+func (s *Service) SetPaused(ctx context.Context, id int64, on bool) (Binding, error) {
+	tag, err := s.pool.Exec(ctx, `UPDATE binding SET paused = $2 WHERE id = $1`, id, on)
+	if err != nil {
+		return Binding{}, err
+	}
+	if tag.RowsAffected() == 0 {
+		return Binding{}, ErrNotFound
+	}
+	return s.Binding(ctx, id)
+}
+
 // lock serializes pushes and binds of one card or lorebook to one target, so
 // concurrent first pushes can't make two copies. It holds until tx ends.
 func lock(ctx context.Context, tx pgx.Tx, k kind, instanceID, id int64) error {
@@ -156,14 +168,19 @@ type stored struct {
 	// version is bumped by every push and resolve. Writes that must lose to
 	// one that landed meanwhile guard on it.
 	version int64
+	// push is false for a followed source; paused skips checks; avatarHash is
+	// the site's accepted avatar, nil before the first check.
+	push, paused bool
+	avatarHash   *string
 }
 
 func (s *Service) stored(ctx context.Context, id int64) (stored, error) {
 	var b stored
 	var card, lorebook *int64
 	err := s.pool.QueryRow(ctx, `SELECT instance_id, card_id, lorebook_id, remote_id, remote_state, accepted_hash,
-		accepted_data, seen_data, version FROM binding b WHERE b.id = $1`, id).
-		Scan(&b.instanceID, &card, &lorebook, &b.remoteID, &b.remoteState, &b.acceptedHash, &b.accepted, &b.seen, &b.version)
+		accepted_data, seen_data, version, push, paused, avatar_hash FROM binding b WHERE b.id = $1`, id).
+		Scan(&b.instanceID, &card, &lorebook, &b.remoteID, &b.remoteState, &b.acceptedHash, &b.accepted, &b.seen, &b.version,
+			&b.push, &b.paused, &b.avatarHash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return b, ErrNotFound
 	}

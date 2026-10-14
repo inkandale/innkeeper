@@ -138,17 +138,17 @@ func (l *Library) SameImage(ctx context.Context, a, b string) (bool, error) {
 	if a == "" || b == "" {
 		return false, nil
 	}
-	pa, err := l.pixelHash(ctx, a)
+	pa, err := l.PixelHash(ctx, a)
 	if err != nil || pa == "" {
 		return false, err
 	}
-	pb, err := l.pixelHash(ctx, b)
+	pb, err := l.PixelHash(ctx, b)
 	return pb != "" && pa == pb, err
 }
 
-// pixelHash returns the blob's pixel_hash, computing and storing it if
+// PixelHash returns the blob's pixel_hash, computing and storing it if
 // missing; "" when the blob isn't an image that decodes.
-func (l *Library) pixelHash(ctx context.Context, sha string) (string, error) {
+func (l *Library) PixelHash(ctx context.Context, sha string) (string, error) {
 	blob, err := l.Blob(ctx, sha)
 	if err != nil {
 		return "", err

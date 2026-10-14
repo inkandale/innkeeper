@@ -1,62 +1,133 @@
 package targets
 
 import (
+	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
 
 	"github.com/davidgibbons/innkeeper/internal/db"
+	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
 // Check reads a bound card or lorebook back from its app and records whether the app's
 // copy changed since the last push or resolve. If a push or resolve lands while
 // it reads, Check records nothing and returns the binding as they left it.
+// A paused binding isn't read.
 func (s *Service) Check(ctx context.Context, id int64) (Binding, error) {
 	b, err := s.stored(ctx, id)
 	if err != nil {
 		return Binding{}, err
 	}
+	if b.paused {
+		return s.Binding(ctx, id)
+	}
 	inst, info, err := s.describe(ctx, b.instanceID)
 	if err != nil {
 		return Binding{}, err
 	}
-	state, seen := remoteUnknown, any(nil)
+	state, seen, avatar := remoteUnknown, any(nil), ""
 	if info.Pull {
-		data, hash, err := s.fetch(ctx, b.k, inst, info, b.remoteID)
+		var data json.RawMessage
+		var hash string
+		if b.push {
+			data, hash, err = s.fetch(ctx, b.k, inst, info, b.remoteID)
+		} else {
+			data, hash, avatar, err = s.fetchFollowed(ctx, b.k, inst, info, b.remoteID)
+		}
 		switch {
 		case remoteNotFound(err):
 			state = remoteMissing
 		case err != nil:
+			if !b.push && ctx.Err() == nil {
+				err = errors.Join(err, s.recordFailure(ctx, id, err))
+			}
 			return Binding{}, err
-		case hash == b.acceptedHash:
+		// A followed source's first check accepts its avatar silently.
+		case hash == b.acceptedHash && (b.push || b.avatarHash == nil || *b.avatarHash == avatar):
 			state = remoteUnchanged
 		default:
 			state, seen = remoteChanged, data
 		}
 	}
-	if err := s.record(ctx, id, b, state, seen); err != nil {
+	var accept *string
+	if avatar != "" {
+		accept = &avatar
+	}
+	if err := s.record(ctx, id, b, state, seen, accept); err != nil {
 		return Binding{}, err
 	}
 	return s.Binding(ctx, id)
+}
+
+// fetchFollowed is fetch for a followed source. It also stores the site's
+// avatar as a blob and returns its avatarKey, since a new avatar is an update too.
+//
+// ponytail: stores the avatar on every check; unreferenced blobs are
+// collected after a day. Ask the plugin for a hash first if that grows.
+func (s *Service) fetchFollowed(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo,
+	remoteID string) (json.RawMessage, string, string, error) {
+	if k.isLorebook() {
+		data, hash, err := s.fetch(ctx, k, inst, info, remoteID)
+		return data, hash, "", err
+	}
+	got, err := s.getCard(ctx, inst, protocol.TargetGetParams{RemoteID: remoteID, Avatar: true})
+	if err != nil {
+		return nil, "", "", err
+	}
+	raw, err := cardData(got.Card)
+	if err != nil {
+		return nil, "", "", err
+	}
+	data, hash, err := Project(raw, k.fields(info))
+	if err != nil || got.Avatar == "" {
+		return data, hash, "", err
+	}
+	blob, err := s.lib.IngestBlob(ctx, got.Avatar)
+	if err != nil {
+		return nil, "", "", err
+	}
+	avatar, err := s.avatarKey(ctx, blob.SHA256)
+	return data, hash, avatar, err
+}
+
+// avatarKey is what a followed source's avatar is compared by: its pixels, so
+// a re-encode or new metadata isn't a change, else its bytes when it isn't an
+// image that decodes. "" for no avatar.
+func (s *Service) avatarKey(ctx context.Context, sha string) (string, error) {
+	if sha == "" {
+		return "", nil
+	}
+	pixels, err := s.lib.PixelHash(ctx, sha)
+	return cmp.Or(pixels, sha), err
 }
 
 // record stores what a check found, unless a push or resolve landed since b
 // was read. It guards on version alone: the accepted hash can't tell, because
 // a push of identical content leaves it unchanged. The guard must be a column
 // of the row, since a subquery would keep the statement's old snapshot when
-// the UPDATE waits on a push's row lock.
-func (s *Service) record(ctx context.Context, id int64, b stored, state string, seen any) error {
+// the UPDATE waits on a push's row lock. avatar is accepted only where none was.
+func (s *Service) record(ctx context.Context, id int64, b stored, state string, seen any, avatar *string) error {
 	_, err := s.pool.Exec(ctx, `UPDATE binding SET remote_state = $2, seen_data = $3,
-		checked_at = CASE WHEN $2 = 'unknown' THEN NULL ELSE now() END
-		WHERE id = $1 AND version = $4`, id, state, seen, b.version)
+		checked_at = CASE WHEN $2 = 'unknown' THEN NULL ELSE now() END,
+		avatar_hash = coalesce(avatar_hash, $5), check_failures = 0, check_error = NULL
+		WHERE id = $1 AND version = $4`, id, state, seen, b.version, avatar)
 	// Another binding took the ID while this one was missing, so the app's
 	// item there is a different one, and this binding stays missing.
 	if db.IsCode(err, db.UniqueViolation) && b.remoteState == remoteMissing {
 		return nil
 	}
+	return err
+}
+
+// recordFailure counts a failed check of a followed source.
+func (s *Service) recordFailure(ctx context.Context, id int64, cause error) error {
+	_, err := s.pool.Exec(ctx, `UPDATE binding SET check_failures = check_failures + 1, check_error = $2 WHERE id = $1`,
+		id, cause.Error())
 	return err
 }
 

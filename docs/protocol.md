@@ -30,7 +30,7 @@ Each plugin folder has a `plugin.toml`:
 | `version` | yes | The plugin's own version |
 | `protocol` | yes | Protocol version; must be `1` |
 | `command` | yes, except for themes | Program and arguments. Use `./name` for a program in the plugin folder: a relative path containing `/` is inside the folder and can't leave it, an absolute path is used as-is, and a bare name is found on `PATH` |
-| `capabilities` | yes | Any of `import`, `search`, `push`, `pull`, `action`, `enrich`, `codec`, `auth`, `mcp`, `catalog`, or `theme`. A theme lists no other capability |
+| `capabilities` | yes | Any of `import`, `search`, `push`, `pull`, `action`, `enrich`, `codec`, `auth`, `mcp`, `catalog`, `sites`, or `theme`. A theme lists no other capability |
 | `secrets` | no | Names of secrets the owner enters for each instance, in lowercase `snake_case` |
 | `config` | no | JSON Schema for instance settings; the UI renders a form from it |
 | `enrichments` | no | Keys the plugin writes, in lowercase `snake_case`. Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list` |
@@ -432,6 +432,61 @@ on either other hash, closest first.
 {"jsonrpc": "2.0", "id": 8, "result": {"items": [{"id": "chub:42", "kind": "card", "name": "Brakka", "latest_version": "3", "hashes": {"content_hash": "90b4…a1e0", "text_simhash": -6846279246937013872}}], "next": "1"}}
 ```
 
+### `sites`
+
+A `sites` plugin knows one or more sites cards are published on: how their
+data names a page, and the shape of their page URLs. The core asks it which
+sources a card or lorebook has after an import, while syncing an app, and when
+the owner adds a source by URL. Both methods only parse: answer within 5
+seconds, don't contact any service, and give the same answer for any instance
+config.
+
+A **source** in a reply:
+
+| Field | Rule |
+|---|---|
+| `kind` | The site, matching `^[a-z][a-z0-9-]*$`. Never rename a kind you have sent: stored sources, search filters, and sync matching use it |
+| `ref` | The site's ID for the page, not empty, at most 512 bytes |
+| `external_id` | Optional, at most 128 bytes |
+| `url` | The page, `https://`, at most 2048 bytes |
+
+The core drops a source that breaks these rules and logs it.
+
+**`sites.detect`** reads the sources an item's data names.
+
+| Param | Meaning |
+|---|---|
+| `entity` | `card` or `lorebook` |
+| `data` | A card's CCv3 `data` object, or a lorebook's `character_book` object |
+
+Reply with `sources`, at most 32, or `[]`. Return only sources that fit the
+entity, such as no lorebook page for a card. Reply `-32602` if `entity` is
+unknown or `data` isn't an object.
+
+**`sites.parse`** turns what the owner typed into a source.
+
+| Param | Meaning |
+|---|---|
+| `entity` | `card` or `lorebook` |
+| `url` | A page URL. Send either `url`, or `kind` and `ref` |
+| `kind`, `ref` | A source the owner named directly |
+
+Reply with `source`, the source with its canonical URL, or `null` when the URL
+or kind isn't yours. Reply `-32602`, with a message the owner can read, when
+the kind is yours and the ref isn't valid, or when params send both forms or
+neither.
+
+```json
+{"jsonrpc": "2.0", "id": 9, "method": "sites.parse", "params": {"entity": "lorebook", "url": "https://www.chub.ai/lorebooks/u/orcs?x=1"}}
+{"jsonrpc": "2.0", "id": 9, "result": {"source": {"kind": "chub", "ref": "u/orcs", "url": "https://chub.ai/lorebooks/u/orcs"}}}
+```
+
+With several `sites` plugins, the core asks the oldest working instance of
+each, in order of that instance's ID. The first source with a given `kind` and
+`ref` wins, and the first non-null `sites.parse` reply wins. A plugin that
+errors or times out is skipped and logged; detection never fails an import or
+a sync.
+
 ### `mcp`
 
 An `mcp` plugin adds tools to Innkeeper's MCP server. Each tool runs with the
@@ -489,6 +544,12 @@ It loads the manifest, then checks that:
   catalog may refuse search with an error other than `-32601`, and may then
   answer `catalog.get` and `catalog.similar` the same way; the checks that
   need an item pass
+- a `sites` plugin's `sites.detect` finds no source in a plain card
+  (`{"name": "Contract"}`) or a plain lorebook (`{"entries": []}`) and
+  refuses `data` that isn't an object with `-32602`; its `sites.parse`
+  returns `null` for `https://example.invalid/contract` and refuses params
+  with neither `url` nor `kind` with `-32602`; and every source those replies
+  hold is valid
 - `shutdown` gets a reply within 5 seconds
 - the plugin exits after `shutdown`, rather than having exited earlier
 

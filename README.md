@@ -462,7 +462,9 @@ A source is a site a card or lorebook was published on, such as its chub.ai
 page. Importing, syncing an app, and binding to an app item record the sources
 the data names: the `extensions.chub` entry that chub.ai imports leave, and
 each page URL in the card's `data.source` list, which `url-import` adds.
-Innkeeper knows chub.ai, RisuRealm, and Character Tavern.
+Innkeeper knows chub.ai, RisuRealm, and Character Tavern until you add an
+instance of a plugin with the `sites` capability; then that plugin decides. An import's sources appear a few seconds
+after it finishes, when the `detect-sources` job runs.
 
 Add or remove one yourself with the API, MCP tools, or CLI:
 

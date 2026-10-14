@@ -5,7 +5,7 @@ export function ChipInput({ label, values, onChange }: { label: string; values: 
   const [typed, setTyped] = useState("");
   const add = () => {
     const v = typed.trim();
-    if (v && !values.includes(v)) onChange([...values, v]);
+    if (v && !values.some((x) => x.toLowerCase() === v.toLowerCase())) onChange([...values, v]);
     setTyped("");
   };
   return (
@@ -21,6 +21,7 @@ export function ChipInput({ label, values, onChange }: { label: string; values: 
       <input
         className="input"
         aria-label={`Add to ${label}`}
+        placeholder={label}
         value={typed}
         onChange={(e) => setTyped(e.target.value)}
         onBlur={add}

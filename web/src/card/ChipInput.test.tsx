@@ -26,6 +26,17 @@ test("Enter and comma add a chip, × removes one, and Backspace on empty removes
   expect(screen.getByRole("status")).toHaveTextContent("anvil");
 });
 
+test("the input shows the label as its placeholder", () => {
+  render(<Harness start={[]} />);
+  expect(screen.getByLabelText("Add to Entry 1 keys")).toHaveAttribute("placeholder", "Entry 1 keys");
+});
+
+test("a duplicate differing only in case adds nothing", async () => {
+  render(<Harness start={["dwarf"]} />);
+  await userEvent.type(screen.getByLabelText("Add to Entry 1 keys"), "Dwarf{Enter}");
+  expect(screen.getByRole("status")).toHaveTextContent(/^dwarf$/);
+});
+
 test("leaving the input adds what was typed", async () => {
   render(<Harness start={[]} />);
   await userEvent.type(screen.getByLabelText("Add to Entry 1 keys"), "kraken");

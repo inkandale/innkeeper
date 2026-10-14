@@ -201,6 +201,18 @@ test("tags are part of the draft and save with it", async () => {
   expect(puts[0]).toMatchObject({ path: "/api/cards/7", body: { base_revision_id: 11, data: { tags: ["dwarf", "smith"] } } });
 });
 
+test("non-string tags are hidden and not saved back as empty tags", async () => {
+  head = { ...entity, revision: { ...entity.revision, data: { ...data, tags: ["dwarf", 3 as unknown as string] } } };
+  renderAt("/cards/7");
+  const group = await screen.findByRole("group", { name: "Tags" });
+  expect(group).toHaveTextContent("dwarf");
+  expect(within(group).getAllByRole("button")).toHaveLength(1);
+  await userEvent.type(screen.getByLabelText("Add to Tags"), "smith{Enter}");
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(puts).toHaveLength(1));
+  expect(puts[0]).toMatchObject({ body: { data: { tags: ["dwarf", "smith"] } } });
+});
+
 test("collections save as they change", async () => {
   renderAt("/cards/7");
   await userEvent.click(await screen.findByRole("checkbox", { name: "Pirates" }));

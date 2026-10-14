@@ -1,4 +1,4 @@
-import { changed, clashes, rebase, show, tokens, type Draft } from "./draft";
+import { changed, clashes, rebase, show, strings, tokens, type Draft } from "./draft";
 
 const draft: Draft = { baseId: 1, base: { a: "x", b: "x", list: ["1"] }, data: { a: "y", b: "x", list: ["1"] } };
 
@@ -31,4 +31,9 @@ test("show prints strings as they are and anything else as JSON", () => {
   expect(show("hi")).toBe("hi");
   expect(show(undefined)).toBe("");
   expect(show(["a"])).toBe('[\n  "a"\n]');
+});
+
+test("strings keeps the strings in an array", () => {
+  expect(strings(["a", 1, "b"])).toEqual(["a", "b"]);
+  expect(strings("a")).toEqual([]);
 });

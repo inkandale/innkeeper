@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { text, tokens, type Data } from "../card/draft";
 import { ChipInput } from "../card/ChipInput";
-import { asEntries, blankEntry, firstLine, isEntry, matches, moved, strings, type Entry } from "./entries";
+import { asEntries, blankEntry, firstLine, isEntry, matches, moved, type Entry } from "./entries";
+import { strings } from "../card/draft";
 
 let lastUid = 0;
 const uid = () => ++lastUid;

@@ -1,15 +1,10 @@
-import { asEntries, blankEntry, firstLine, matches, moved, strings } from "./entries";
+import { asEntries, blankEntry, firstLine, matches, moved } from "./entries";
 
 const anvil = { keys: ["anvil", "forge"], secondary_keys: ["iron"], comment: "Smithy", content: "Heavy iron.\nRings when struck." };
 
 test("asEntries keeps the objects in an array", () => {
   expect(asEntries([anvil, "junk", null])).toEqual([anvil]);
   expect(asEntries(undefined)).toEqual([]);
-});
-
-test("strings keeps the strings in an array", () => {
-  expect(strings(["a", 1, "b"])).toEqual(["a", "b"]);
-  expect(strings("a")).toEqual([]);
 });
 
 test("firstLine is the content's first line, cut at 80", () => {

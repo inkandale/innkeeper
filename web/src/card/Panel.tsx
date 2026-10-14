@@ -7,7 +7,7 @@ import { badgeClass } from "../cards/Tile";
 import { useToast } from "../shell/Toasts";
 import type { Entity } from "./Card";
 import { Crop } from "./CropDialog";
-import { text, type Data } from "./draft";
+import { strings, text, type Data } from "./draft";
 import { Logo, apps } from "../sync/Logo";
 import { PushPreview } from "../sync/PushPreview";
 import { reviewPath, stateLabel } from "../sync/sync";
@@ -37,7 +37,7 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
       <Image sha={avatar} busy={avatarBusy} onAvatar={onAvatar} />
       <input className="input name" aria-label="Name" value={text(data.name)} onChange={(e) => edit("name", e.target.value)} />
       <input className="input" aria-label="Creator" placeholder="Creator" value={text(data.creator)} onChange={(e) => edit("creator", e.target.value)} />
-      <ChipInput label="Tags" values={Array.isArray(data.tags) ? data.tags.map(text) : []} onChange={(v) => edit("tags", v)} />
+      <ChipInput label="Tags" values={strings(data.tags)} onChange={(v) => edit("tags", v)} />
       <div className="row">
         <button className="button primary" disabled={!dirty || saving} onClick={onSave}>
           Save

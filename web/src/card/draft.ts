@@ -34,5 +34,8 @@ export const tokens = (s: string) => Math.ceil(s.length / 4);
 /** text returns v if it's a string, or "". */
 export const text = (v: unknown) => (typeof v === "string" ? v : "");
 
+/** strings returns the strings in v, or none. */
+export const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : []);
+
 /** show prints a field value for reading. */
 export const show = (v: unknown) => (v === undefined ? "" : typeof v === "string" ? v : JSON.stringify(v, null, 2));

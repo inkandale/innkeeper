@@ -4,17 +4,24 @@ const entry = (name: string, category?: string, capabilities = ["push"]) => ({
   name, version: "1.0.0", protocol: 1, capabilities, description: name, versions: ["1.0.0"], category,
 });
 
-test("groupCatalog orders known categories first, then others, then Other", () => {
+test("groupCatalog orders the index's categories first, then others, then Other", () => {
   const groups = groupCatalog([
-    { source: { id: "official", url: "u" }, plugins: [
+    { source: { id: "official", url: "u" }, categories: ["Apps", "Import", "Login"], plugins: [
       entry("z-tool", "Tools"), entry("card-import", "Import", ["import"]), entry("lumiverse", "Apps"),
       entry("nameless"), entry("card-codec", "Formats", ["codec"]), entry("dark", "Themes", ["theme"]),
       entry("oidc", "Login", ["auth"]),
     ] },
-    { source: { id: "mine", url: "v" }, plugins: [entry("lumiverse", "Apps"), entry("extra", "Apps")] },
+    { source: { id: "mine", url: "v" }, categories: ["Tools", "Apps"], plugins: [entry("lumiverse", "Apps"), entry("extra", "Apps")] },
   ]);
   expect(groups.map((g) => g.category)).toEqual(["Apps", "Import", "Login", "Tools", "Other"]);
   expect(groups[0]!.plugins.map((p) => [p.name, p.source])).toEqual([["lumiverse", "official"], ["extra", "mine"]]);
+});
+
+test("groupCatalog sorts categories alphabetically when no index orders them", () => {
+  const groups = groupCatalog([
+    { source: { id: "official", url: "u" }, plugins: [entry("a", "Login"), entry("b", "Apps"), entry("c"), entry("d", "Import")] },
+  ]);
+  expect(groups.map((g) => g.category)).toEqual(["Apps", "Import", "Login", "Other"]);
 });
 
 test("wizardPlugin leaves out codecs and themes", () => {

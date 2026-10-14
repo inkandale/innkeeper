@@ -162,7 +162,48 @@ func (s *Service) checkSources(ctx context.Context, only *library.Kind, id int64
 	if err != nil {
 		return p, err
 	}
-	return p, s.checkEach(ctx, ids, &p, report, nil)
+	return p, s.checkEach(ctx, ids, &p, report, func(b Binding) error {
+		if b.RemoteState != remoteChanged || !b.Autosync {
+			return nil
+		}
+		applied, err := s.applyUpdate(ctx, b)
+		if applied {
+			p.Applied++
+		}
+		return err
+	})
+}
+
+// applyUpdate takes a followed source's change into the library, as a review
+// keeping the library side would, when no hunk conflicts and the avatar is
+// the library's. It says whether it applied.
+func (s *Service) applyUpdate(ctx context.Context, b Binding) (bool, error) {
+	lk, entity := bindingEntity(b)
+	k := targetKind(lk)
+	c, err := s.compareItem(ctx, k, b.InstanceID, b.RemoteID, entity, false)
+	if err != nil {
+		return false, err
+	}
+	// Without an ancestor avatar, a different one may be the owner's choice.
+	if c.Avatar != nil || hasConflict(c) {
+		return false, nil
+	}
+	_, err = s.resolve(ctx, k, Resolution{InstanceID: b.InstanceID, RemoteID: b.RemoteID, AppHash: c.AppHash,
+		BaseRevisionID: c.HeadRevisionID, AcceptedHash: c.AcceptedHash, Action: "bind", CardID: entity,
+		Default: merge.ChooseLibrary}, resolveOpts{skipLeftOut: true})
+	return err == nil, err
+}
+
+// hasConflict says whether any hunk of c needs the owner.
+func hasConflict(c Comparison) bool {
+	for _, f := range c.Fields {
+		for _, h := range f.Hunks {
+			if h.Status == merge.Conflict {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // Dismiss accepts the app's copy as it is now, leaving the library as it is.

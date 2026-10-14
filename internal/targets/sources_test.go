@@ -576,3 +576,62 @@ func (e *env) avatarHash(bindingID int64) *string {
 	}
 	return avatar
 }
+
+func TestAutosyncTakesASourceUpdateWithoutConflicts(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	card := e.imported("vyr", vyrCard)
+	e.update(card, func(ed *library.Edit) { ed.Data = setField(ed.Data, "description", "My red dragon.") })
+	e.publish("vyr", map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Begone."}, "")
+	b := e.follow(card)
+	if _, err := e.s.SetAutosync(e.ctx, b.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	p, err := e.s.CheckSources(e.ctx, func(ScanProgress) {})
+	if err != nil || p.Applied != 1 {
+		t.Fatalf("progress = %+v, %v", p, err)
+	}
+	var data map[string]any
+	_ = json.Unmarshal(e.head(card).Data, &data)
+	if data["description"] != "My red dragon." || data["first_mes"] != "Begone." {
+		t.Fatalf("head = %v", data)
+	}
+}
+
+func TestAutosyncLeavesAConflictingSourceUpdate(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	card := e.imported("vyr", vyrCard)
+	// Both sides rewrite the same word, so the hunk conflicts.
+	e.update(card, func(ed *library.Edit) { ed.Data = setField(ed.Data, "description", "A blue dragon.") })
+	e.publish("vyr", map[string]any{"name": "Vyr", "description": "A gold dragon.", "first_mes": "Who wakes me?"}, "")
+	b := e.follow(card)
+	if _, err := e.s.SetAutosync(e.ctx, b.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	before := e.revisions(card)
+	p, err := e.s.CheckSources(e.ctx, func(ScanProgress) {})
+	if err != nil || p.Applied != 0 || e.revisions(card) != before {
+		t.Fatalf("progress = %+v, %v; revisions %d, want %d", p, err, e.revisions(card), before)
+	}
+	if got, _ := e.s.Binding(e.ctx, b.ID); got.RemoteState != remoteChanged {
+		t.Fatalf("binding = %+v", got)
+	}
+}
+
+func TestAutosyncLeavesASourceUpdateWithADifferentAvatar(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	card := e.imported("vyr", vyrCard)
+	e.publish("vyr", map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Begone."},
+		patternPNG(t, func(x, _ int) uint8 { return uint8(x / 8 % 2 * 255) }))
+	b := e.follow(card)
+	if _, err := e.s.SetAutosync(e.ctx, b.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	before := e.revisions(card)
+	p, err := e.s.CheckSources(e.ctx, func(ScanProgress) {})
+	if err != nil || p.Applied != 0 || e.revisions(card) != before {
+		t.Fatalf("progress = %+v, %v; revisions %d, want %d", p, err, e.revisions(card), before)
+	}
+}

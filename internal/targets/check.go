@@ -134,9 +134,11 @@ func (s *Service) recordFailure(ctx context.Context, id int64, cause error) erro
 
 // ScanProgress counts what a scan found.
 type ScanProgress struct {
-	Checked int      `json:"checked"`
-	Changed int      `json:"changed"`
-	Missing int      `json:"missing"`
+	Checked int `json:"checked"`
+	Changed int `json:"changed"`
+	Missing int `json:"missing"`
+	// Applied counts followed sources whose update autosync took.
+	Applied int      `json:"applied,omitempty"`
 	Failed  int      `json:"failed"`
 	Errors  []string `json:"errors,omitempty"`
 	// NewInApp counts, by instance ID, the app items no binding uses.

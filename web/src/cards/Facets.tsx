@@ -12,6 +12,26 @@ type Row = { value: string; label: string; cards: number; dot?: string };
 
 const titles: Record<TermKind, string> = { target: "Target", state: "State", tag: "Tags", source: "Sources", collection: "Collections" };
 
+const collapsedKey = "innkeeper.facets.collapsed";
+
+// Storage can throw or be empty in private windows; the sidebar then just starts open.
+function readCollapsed(): TermKind[] {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(collapsedKey) ?? "[]");
+    return Array.isArray(v) ? v.filter((s): s is TermKind => typeof s === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCollapsed(v: TermKind[]) {
+  try {
+    localStorage.setItem(collapsedKey, JSON.stringify(v));
+  } catch {
+    // A layout preference that can't be saved isn't worth an error.
+  }
+}
+
 /** useRows runs each open section's count searches and turns the results into rows, selected values included. */
 function useRows(kind: Kind, q: CardQuery, names: Names, sections: TermKind[], open: (s: TermKind) => boolean): Partial<Record<TermKind, Row[]>> {
   const search = (body: Search, enabled: boolean) => ({
@@ -87,7 +107,20 @@ function FacetRow({ kind, row, q, onChange }: { kind: TermKind; row: Row; q: Car
 type SectionProps = { kind: TermKind; rows?: Row[]; q: CardQuery; open: boolean; onOpen: () => void; onChange: (q: CardQuery) => void };
 
 function Section({ kind, rows, q, open, onOpen, onChange }: SectionProps) {
+  const [all, setAll] = useState(false);
+  const [find, setFind] = useState("");
   const picked = q.terms.filter((t) => t.kind === kind).length;
+  const browse = kind === "tag";
+  const needle = find.trim().toLowerCase();
+  const isPicked = (r: Row) => q.terms.some((t) => t.kind === kind && t.value === r.value);
+  const listed = rows ?? [];
+  const shown = !browse
+    ? listed
+    : needle
+      ? listed.filter((r) => r.label.toLowerCase().includes(needle))
+      : all
+        ? listed
+        : listed.filter((r, i) => i < 10 || isPicked(r));
   if (open && rows?.length === 0 && picked === 0) return null;
   return (
     <section className="facet-section">
@@ -98,11 +131,21 @@ function Section({ kind, rows, q, open, onOpen, onChange }: SectionProps) {
         </button>
       </h2>
       {open && (
-        <ul className="facet-list">
-          {(rows ?? []).map((r) => (
-            <FacetRow key={r.value} kind={kind} row={r} q={q} onChange={onChange} />
-          ))}
-        </ul>
+        <>
+          {browse && (
+            <input className="input facet-find" type="search" aria-label="Find a tag" placeholder="Find a tag" value={find} onChange={(e) => setFind(e.target.value)} />
+          )}
+          <ul className="facet-list">
+            {shown.map((r) => (
+              <FacetRow key={r.value} kind={kind} row={r} q={q} onChange={onChange} />
+            ))}
+          </ul>
+          {browse && !needle && listed.length > 10 && (
+            <button className="facet-more" onClick={() => setAll(!all)}>
+              {all ? "Show fewer" : `Show all ${listed.length}`}
+            </button>
+          )}
+        </>
       )}
     </section>
   );
@@ -110,11 +153,15 @@ function Section({ kind, rows, q, open, onOpen, onChange }: SectionProps) {
 
 /** Facets is the filter sidebar: one section per term kind, each counting its values over the other sections' filters. */
 export function Facets({ kind, q, names, onChange }: { kind: Kind; q: CardQuery; names: Names; onChange: (q: CardQuery) => void }) {
-  const [collapsed, setCollapsed] = useState<TermKind[]>([]);
+  const [collapsed, setCollapsed] = useState<TermKind[]>(readCollapsed);
   const sections = sectionsFor(kind).filter((s) => s !== "collection" || names.collections.size > 0);
   const open = (s: TermKind) => !collapsed.includes(s);
   const rows = useRows(kind, q, names, sections, open);
-  const flip = (s: TermKind) => setCollapsed(open(s) ? [...collapsed, s] : collapsed.filter((x) => x !== s));
+  const flip = (s: TermKind) => {
+    const next = open(s) ? [...collapsed, s] : collapsed.filter((x) => x !== s);
+    setCollapsed(next);
+    saveCollapsed(next);
+  };
   return (
     <aside className="facets" aria-label="Filters">
       {sections.map((s) => (

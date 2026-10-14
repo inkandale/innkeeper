@@ -375,3 +375,15 @@
   border-radius: calc(var(--radius) * 0.5);
   border: 1px solid var(--bg);
 }
+
+.facet-find {
+  margin: 0 0 calc(var(--space) * 0.5);
+}
+
+.facet-more {
+  background: none;
+  border: none;
+  padding: calc(var(--space) * 0.25) var(--space);
+  color: var(--accent);
+  cursor: pointer;
+}

@@ -79,12 +79,12 @@ afterEach(() => vi.unstubAllGlobals());
 
 function renderCards(entry: string) {
   const router = createMemoryRouter([{ path: "/cards", element: <Toasts><Cards /></Toasts> }], { initialEntries: [entry] });
-  const { container } = render(
+  const { container, unmount } = render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
-  return { router, container };
+  return { router, container, unmount };
 }
 
 test("the URL becomes the search, and hits become tiles", async () => {
@@ -118,21 +118,21 @@ test("a chip removes its filter", async () => {
 test("the search box sets the text", async () => {
   const { router } = renderCards("/cards");
   const user = userEvent.setup();
-  await user.type(await screen.findByRole("searchbox"), "dwarf{Enter}");
+  await user.type(await screen.findByRole("searchbox", { name: "Search cards" }), "dwarf{Enter}");
   expect(router.state.location.search).toBe("?q=dwarf");
 });
 
 test("a new search keeps a chosen sort", async () => {
   const { router } = renderCards("/cards?sort=name");
   const user = userEvent.setup();
-  await user.type(await screen.findByRole("searchbox"), "x{Enter}");
+  await user.type(await screen.findByRole("searchbox", { name: "Search cards" }), "x{Enter}");
   expect(router.state.location.search).toBe("?q=x&sort=name");
 });
 
 test("a new search from the default sort stays default", async () => {
   const { router } = renderCards("/cards");
   const user = userEvent.setup();
-  await user.type(await screen.findByRole("searchbox"), "x{Enter}");
+  await user.type(await screen.findByRole("searchbox", { name: "Search cards" }), "x{Enter}");
   expect(router.state.location.search).toBe("?q=x");
 });
 
@@ -200,14 +200,14 @@ test("shift-click selects a range and tags it", async () => {
   await user.click(screen.getByRole("checkbox", { name: "Select Dellin" }));
   await user.keyboard("{/Shift}");
   expect(screen.getByText("3 selected")).toBeInTheDocument();
-  expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+  expect(screen.queryByRole("searchbox", { name: "Search cards" })).not.toBeInTheDocument();
 
   await user.click(screen.getByRole("button", { name: "Tag" }));
   await user.type(screen.getByRole("textbox", { name: "Tags" }), "elf, sage");
   await user.click(screen.getByRole("button", { name: "Add tags" }));
   await waitFor(() => expect(posts).toEqual([{ path: "/api/bulk", body: { query: { filter: { ids: [7, 8, 9] } }, action: "tag", tags: ["elf", "sage"] } }]));
   expect(await screen.findByRole("link", { name: "View job" })).toHaveAttribute("href", "/settings/jobs/5");
-  expect(screen.getByRole("searchbox")).toBeInTheDocument();
+  expect(screen.getByRole("searchbox", { name: "Search cards" })).toBeInTheDocument();
 });
 
 test("select all matching archives the search", async () => {
@@ -336,7 +336,7 @@ test("a facet click clears the selection, and paging keeps it", async () => {
   expect(router.state.location.search).toBe("?page=2");
   expect(screen.getByText("1 selected")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: /^pirate/ }));
-  expect(screen.getByRole("searchbox")).toBeInTheDocument();
+  expect(screen.getByRole("searchbox", { name: "Search cards" })).toBeInTheDocument();
   expect(screen.getByRole("checkbox", { name: "Select Carrow" })).not.toBeChecked();
 });
 
@@ -368,4 +368,33 @@ test("going back to a search doesn't bring its selection back", async () => {
   await user.click(screen.getByRole("button", { name: "Remove tag: pirate" }));
   expect(screen.getByRole("checkbox", { name: "Select Carrow" })).not.toBeChecked();
   expect(screen.queryByText("1 selected")).not.toBeInTheDocument();
+});
+
+const manyTags = Array.from({ length: 12 }, (_, i) => ({ name: `t${i + 1}`, cards: 20 - i }));
+
+test("tags show the ten most used, then all, and filter as you type", async () => {
+  answer("/api/cards/search", async () => json({ ...results, facets: { ...results.facets, tags: manyTags } }));
+  renderCards("/cards?f=tag:t12");
+  const user = userEvent.setup();
+  expect(await screen.findByRole("button", { name: /^t10 / })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /^t11 / })).not.toBeInTheDocument();
+  // Selected tags show even outside the top ten.
+  expect(screen.getByRole("button", { name: /^t12 / })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Show all 12" }));
+  expect(screen.getByRole("button", { name: /^t11 / })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Show fewer" }));
+  await user.type(screen.getByRole("searchbox", { name: "Find a tag" }), "t1");
+  expect(screen.getByRole("button", { name: /^t11 / })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /^t2 / })).not.toBeInTheDocument();
+});
+
+test("a collapsed section stays collapsed and shows its selection count", async () => {
+  const first = renderCards("/cards?f=tag:fantasy&f=tag:pirate");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Tags · 2" }));
+  expect(screen.getByRole("button", { name: "Tags · 2" })).toHaveAttribute("aria-expanded", "false");
+  expect(screen.queryByRole("button", { name: /^fantasy/ })).not.toBeInTheDocument();
+  first.unmount();
+  renderCards("/cards");
+  expect(await screen.findByRole("button", { name: "Tags" })).toHaveAttribute("aria-expanded", "false");
 });

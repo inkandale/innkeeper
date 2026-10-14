@@ -103,7 +103,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
             Filters
           </button>
           <form role="search" onSubmit={search}>
-            <input key={q.text} className="input" type="search" name="q" defaultValue={q.text} placeholder={`Search ${noun}`} />
+            <input key={q.text} className="input" type="search" name="q" defaultValue={q.text} placeholder={`Search ${noun}`} aria-label={`Search ${noun}`} />
           </form>
           <select
             className="input"

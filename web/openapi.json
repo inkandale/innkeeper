@@ -2523,6 +2523,10 @@
               "null"
             ]
           },
+          "icon": {
+            "description": "URL of the app's logo",
+            "type": "string"
+          },
           "inputs": {
             "description": "What an import plugin takes from the UI: file (params blob and name), url (params url), or both",
             "items": {

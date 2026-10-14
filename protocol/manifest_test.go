@@ -256,3 +256,47 @@ func TestManifestHasOnlyDeclaredCapabilities(t *testing.T) {
 		t.Fatalf("Has(pull) = %v, Has(import) = %v; want true, false", m.Has("pull"), m.Has("import"))
 	}
 }
+
+func TestManifestIcon(t *testing.T) {
+	dir := writeManifest(t, `icon = "icon.svg"`+"\n"+validManifest)
+	if err := os.WriteFile(filepath.Join(dir, "icon.svg"), []byte("<svg/>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := LoadManifest(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Icon != "icon.svg" || m.IconType() != "image/svg+xml" {
+		t.Fatalf("icon = %q, type %q", m.Icon, m.IconType())
+	}
+}
+
+func TestManifestIconErrors(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "secret.png")
+	if err := os.WriteFile(outside, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name, icon, want string
+		setup            func(dir string) error
+	}{
+		{"missing file", "icon.png", "icon", nil},
+		{"not an image", "icon.js", "icon \"icon.js\" must end in", nil},
+		{"outside folder", "../icon.png", "outside the plugin folder", nil},
+		{"symlink out", "icon.png", "icon", func(dir string) error { return os.Symlink(outside, filepath.Join(dir, "icon.png")) }},
+		{"directory", "icon.png", "icon", func(dir string) error { return os.Mkdir(filepath.Join(dir, "icon.png"), 0o755) }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := writeManifest(t, `icon = "`+tt.icon+`"`+"\n"+validManifest)
+			if tt.setup != nil {
+				if err := tt.setup(dir); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := LoadManifest(dir); err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("err = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}

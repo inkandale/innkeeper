@@ -3,6 +3,7 @@ package protocol
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -57,6 +58,10 @@ type Manifest struct {
 	// Stylesheet is a theme plugin's CSS file, inside the plugin folder.
 	Stylesheet string `toml:"stylesheet"`
 
+	// Icon is the app's logo, inside the plugin folder; its extension is
+	// one of IconTypes.
+	Icon string `toml:"icon"`
+
 	// Dir is the absolute path of the plugin's folder.
 	Dir string `toml:"-"`
 }
@@ -96,18 +101,38 @@ func LoadManifest(dir string) (*Manifest, error) {
 		return nil, fmt.Errorf("manifest %s: %w", abs, err)
 	}
 	if m.IsTheme() {
-		// OpenInRoot refuses a symlink that leaves the folder.
-		f, err := os.OpenInRoot(m.Dir, m.Stylesheet)
-		if err != nil {
+		if err := checkFile(m.Dir, m.Stylesheet); err != nil {
 			return nil, fmt.Errorf("manifest %s: stylesheet: %w", abs, err)
 		}
-		defer f.Close()
-		if st, err := f.Stat(); err != nil || !st.Mode().IsRegular() {
-			return nil, fmt.Errorf("manifest %s: stylesheet %q is not a regular file", abs, m.Stylesheet)
+	}
+	if m.Icon != "" {
+		if err := checkFile(m.Dir, m.Icon); err != nil {
+			return nil, fmt.Errorf("manifest %s: icon: %w", abs, err)
 		}
 	}
 	return &m, nil
 }
+
+// checkFile reports whether rel is a regular file in dir. OpenInRoot
+// refuses a symlink that leaves the folder.
+func checkFile(dir, rel string) error {
+	f, err := os.OpenInRoot(dir, rel)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if st, err := f.Stat(); err != nil || !st.Mode().IsRegular() {
+		return fmt.Errorf("%q is not a regular file", rel)
+	}
+	return nil
+}
+
+// IconTypes maps each icon file extension a manifest may use to its
+// content type.
+var IconTypes = map[string]string{".svg": "image/svg+xml", ".png": "image/png", ".webp": "image/webp"}
+
+// IconType is the icon's content type, or "" when there's no icon.
+func (m *Manifest) IconType() string { return IconTypes[filepath.Ext(m.Icon)] }
 
 // Validate reports every problem with the manifest at once.
 func (m *Manifest) Validate() error {
@@ -129,6 +154,13 @@ func (m *Manifest) Validate() error {
 		if !inside(m.Dir, m.CommandPath()) {
 			errs = append(errs, fmt.Errorf("command %q is outside the plugin folder", m.Command[0]))
 		}
+	}
+	switch {
+	case m.Icon == "":
+	case m.IconType() == "":
+		errs = append(errs, fmt.Errorf("icon %q must end in one of %v", m.Icon, slices.Sorted(maps.Keys(IconTypes))))
+	case filepath.IsAbs(m.Icon) || (m.Dir != "" && !inside(m.Dir, filepath.Join(m.Dir, m.Icon))):
+		errs = append(errs, fmt.Errorf("icon %q is outside the plugin folder", m.Icon))
 	}
 	if !m.IsTheme() && m.Stylesheet != "" {
 		errs = append(errs, errors.New("stylesheet needs the theme capability"))

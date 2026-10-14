@@ -192,7 +192,7 @@ func (s *Server) Handler() http.Handler {
 	api := humago.New(apiMux, config())
 	api.UseMiddleware(s.authenticate(api))
 	s.routes(api)
-	s.themeRoutes(apiMux)
+	s.fileRoutes(apiMux)
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/", http.StripPrefix("/api", apiMux))

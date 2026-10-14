@@ -84,9 +84,10 @@ func (s *Server) settingsRoutes(api huma.API) {
 		})
 }
 
-// themeRoutes serve theme stylesheets. They're public: the login page uses
-// them too, and a stylesheet holds nothing secret.
-func (s *Server) themeRoutes(mux *http.ServeMux) {
+// fileRoutes serve theme stylesheets and plugin icons. They're public: the
+// login page uses themes too, and neither holds anything secret.
+func (s *Server) fileRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /plugins/{name}/icon", s.serveIcon)
 	mux.HandleFunc("GET /theme.css", func(w http.ResponseWriter, r *http.Request) {
 		name, err := s.Registry.Theme(r.Context())
 		if err != nil {
@@ -124,22 +125,53 @@ func (s *Server) serveTheme(w http.ResponseWriter, r *http.Request, name string,
 	if name == "" {
 		return
 	}
-	// OpenInRoot keeps a symlink from serving files outside the plugin folder.
-	f, err := os.OpenInRoot(m.Dir, m.Stylesheet)
-	if err != nil {
+	if err := servePluginFile(w, r, m.Dir, m.Stylesheet); err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {
 			s.Log.Error("open theme", "theme", name, "err", err)
 		}
 		if strict {
 			http.NotFound(w, r)
 		}
-		return
 	}
-	defer f.Close()
-	st, err := f.Stat()
-	if err != nil || !st.Mode().IsRegular() {
+}
+
+// serveIcon writes the named plugin's icon. A strict CSP keeps an SVG's
+// scripts from running when the URL is opened directly.
+func (s *Server) serveIcon(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	m := s.Registry.Manifests()[name]
+	if m == nil || m.Icon == "" {
 		http.NotFound(w, r)
 		return
 	}
+	w.Header().Set("Content-Type", m.IconType())
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if err := servePluginFile(w, r, m.Dir, m.Icon); err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			s.Log.Error("open icon", "plugin", name, "err", err)
+		}
+		http.NotFound(w, r)
+	}
+}
+
+// servePluginFile writes the regular file rel inside dir, and writes nothing
+// when it returns an error. OpenInRoot keeps a symlink from serving files
+// outside the plugin folder.
+func servePluginFile(w http.ResponseWriter, r *http.Request, dir, rel string) error {
+	f, err := os.OpenInRoot(dir, rel)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	if !st.Mode().IsRegular() {
+		return fs.ErrNotExist
+	}
 	http.ServeContent(w, r, "", st.ModTime(), f)
+	return nil
 }

@@ -124,3 +124,53 @@ func TestOnboardingDone(t *testing.T) {
 		t.Fatal("PATCH didn't clear onboarding_done")
 	}
 }
+
+func TestPluginIcon(t *testing.T) {
+	e := newEnv(t)
+	m := *e.manifests["fake"]
+	m.Dir = t.TempDir()
+	m.Icon = "icon.svg"
+	if err := os.WriteFile(filepath.Join(m.Dir, "icon.svg"), []byte("<svg/>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e.manifests["fake"] = &m
+
+	var installed []struct{ Name, Icon string }
+	e.call("GET", "/plugins", nil, 200, &installed)
+	for _, p := range installed {
+		if p.Name == "fake" && p.Icon != "/api/plugins/fake/icon" {
+			t.Fatalf("fake icon = %q", p.Icon)
+		}
+	}
+
+	// Public, like theme stylesheets: a logo holds nothing secret.
+	r := e.send("GET", "/plugins/fake/icon", nil)
+	if r.Status != 200 || string(r.Body) != "<svg/>" || r.Header.Get("Content-Type") != "image/svg+xml" {
+		t.Fatalf("icon = %s %q", r, r.Header.Get("Content-Type"))
+	}
+	// Opened directly, an SVG's scripts must not run.
+	if csp := r.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "default-src 'none'") {
+		t.Fatalf("icon CSP = %q", csp)
+	}
+	if r := e.send("GET", "/plugins/missing/icon", nil); r.Status != 404 {
+		t.Fatalf("missing plugin icon = %s", r)
+	}
+}
+
+func TestPluginIconSymlinkEscape(t *testing.T) {
+	e := newEnv(t)
+	m := *e.manifests["fake"]
+	m.Dir = t.TempDir()
+	m.Icon = "icon.svg"
+	e.manifests["fake"] = &m
+	outside := filepath.Join(t.TempDir(), "secret.svg")
+	if err := os.WriteFile(outside, []byte("secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(m.Dir, "icon.svg")); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.send("GET", "/plugins/fake/icon", nil); r.Status != 404 {
+		t.Fatalf("symlinked icon = %s, want 404", r)
+	}
+}

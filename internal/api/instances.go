@@ -36,6 +36,7 @@ type pluginOut struct {
 	PreviousSource  *string                  `json:"previous_source,omitempty" doc:"Source of the version a rollback returns to"`
 	PreviousVersion *string                  `json:"previous_version,omitempty" doc:"Version a rollback returns to"`
 	Builtin         bool                     `json:"builtin" doc:"The image ships this plugin, so uninstalling falls back to that copy"`
+	Icon            string                   `json:"icon,omitempty" doc:"URL of the app's logo"`
 }
 
 type pluginsOut struct{ Body []pluginOut }
@@ -93,6 +94,9 @@ func (s *Server) instanceRoutes(api huma.API) {
 				p := pluginOut{Name: m.Name, Version: m.Version, Capabilities: m.Capabilities,
 					Secrets: orEmpty(m.Secrets), Formats: m.Formats, Inputs: m.Inputs, Config: m.Config,
 					Source: "builtin", Builtin: s.Registry.IsBuiltin(m.Name)}
+				if m.Icon != "" {
+					p.Icon = "/api/plugins/" + m.Name + "/icon"
+				}
 				if in, ok := installs[m.Name]; ok {
 					p.Source, p.PreviousSource, p.PreviousVersion = in.Source, in.PreviousSource, in.PreviousVersion
 				}

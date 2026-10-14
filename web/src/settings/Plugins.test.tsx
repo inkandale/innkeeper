@@ -39,7 +39,7 @@ beforeEach(() => {
             source: { id: "official", url: "https://example.com/index.toml" },
             plugins: [
               { name: "sillytavern", version: "0.2.0", versions: ["0.2.0", "0.1.0"], protocol: 1, capabilities: [], description: "ST" },
-              { name: "card-import", version: "0.1.0", versions: ["0.1.0"], protocol: 1, capabilities: [], description: "Import cards." },
+              { name: "card-import", version: "0.1.0", versions: ["0.1.0"], protocol: 1, capabilities: [], description: "Import cards.", recommended: true },
             ],
           },
           { source: { id: "broken", url: "https://example.org/index.toml" }, plugins: [], error: "plugin source: 404" },
@@ -101,6 +101,7 @@ test("checks sources only when asked, then offers updates and installs", async (
   await user.click(await within(st).findByRole("button", { name: "Update to 0.2.0" }));
   expect(requests).toContain("POST /api/plugins/sillytavern/install");
   expect(screen.getByText("broken: plugin source: 404")).toBeInTheDocument();
+  expect(screen.getByText(/official\/card-import/)).toHaveTextContent("official/card-import (recommended)");
   await user.click(screen.getByRole("button", { name: "Install official/card-import" }));
   expect(requests).toContain("POST /api/plugins/card-import/install");
 });
@@ -147,5 +148,5 @@ test("recommends plugins on a fresh install", async () => {
     new URL(req.url).pathname === "/api/plugins" ? json([]) : fetch(req),
   );
   renderPlugins();
-  expect(await screen.findByText(/comes with login/)).toHaveTextContent("card-import, lumiverse, sillytavern");
+  expect(await screen.findByText(/comes with login/)).toBeInTheDocument();
 });

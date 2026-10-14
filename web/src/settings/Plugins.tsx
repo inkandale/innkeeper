@@ -8,9 +8,6 @@ export type Plugin = components["schemas"]["PluginOut"];
 export type InstanceInfo = components["schemas"]["InstanceInfo"];
 type CatalogSource = components["schemas"]["CatalogSourceOut"];
 
-// Offered after the first login, while none of them is installed.
-const recommended = ["card-import", "lumiverse", "sillytavern"];
-
 export function Plugins() {
   const qc = useQueryClient();
   const plugins = useQuery(pluginsQuery);
@@ -70,7 +67,9 @@ export function Plugins() {
   const orphans = plugins.data ? all.filter((i) => !names.has(i.plugin)) : [];
   const orphanPlugins = [...new Set(orphans.map((i) => i.plugin))].sort();
   const offers = catalogOffers(catalog.data ?? [], installed);
-  const showRecommended = plugins.data !== undefined && !recommended.some((n) => names.has(n));
+  // The index that names them isn't read until asked, so this goes by what they do.
+  const showRecommended =
+    plugins.data !== undefined && !installed.some((p) => p.capabilities?.some((c) => c === "import" || c === "push"));
 
   const table = (list: InstanceInfo[]) =>
     list.length > 0 && (
@@ -116,7 +115,7 @@ export function Plugins() {
       {showRecommended && (
         <p className="created" role="status">
           Innkeeper comes with login and card downloads. Check for updates to install the importer and the app
-          targets: {recommended.join(", ")}.
+          targets.
         </p>
       )}
       {installed.map((p) => {
@@ -220,7 +219,7 @@ export function Plugins() {
                   <tr key={`${o.source}/${o.name}`}>
                     <td>
                       {o.source}/{o.name}
-                      {o.source === "official" && recommended.includes(o.name) && " (recommended)"}
+                      {o.source === "official" && o.recommended && " (recommended)"}
                     </td>
                     <td className="muted">{o.description}</td>
                     <td>
@@ -284,7 +283,7 @@ export function Plugins() {
   );
 }
 
-type Offer = { source: string; name: string; version: string; description: string };
+type Offer = { source: string; name: string; version: string; description: string; recommended?: boolean };
 
 /** catalogOffers splits what the sources list into updates for installed
  * plugins, from the source each came from, and plugins not installed. */
@@ -296,7 +295,8 @@ function catalogOffers(catalog: CatalogSource[], installed: Plugin[]) {
     for (const p of s.plugins ?? []) {
       const have = byName.get(p.name);
       if (!have) {
-        available.push({ source: s.source.id, name: p.name, version: p.version, description: p.description });
+        const { name, version, description, recommended } = p;
+        available.push({ source: s.source.id, name, version, description, recommended });
       } else if (have.source === s.source.id && p.version !== have.version) {
         // p.version is the source's newest, so anything else installed is older.
         updates.set(p.name, p.version);

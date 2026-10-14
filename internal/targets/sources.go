@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/jackc/pgx/v5"
 
@@ -138,7 +139,17 @@ func (s *Service) checkSources(ctx context.Context, only *library.Kind, id int64
 	if err != nil {
 		return p, err
 	}
+	var wanted []string
+	if only != nil {
+		if wanted, err = s.sourceKinds(ctx, only, id); err != nil {
+			return p, err
+		}
+	}
 	for inst, kinds := range followers {
+		// One card's check must not fail on a plugin that follows none of its sources.
+		if only != nil && !slices.ContainsFunc(kinds, func(kind string) bool { return slices.Contains(wanted, kind) }) {
+			continue
+		}
 		for _, lk := range library.Kinds {
 			if only != nil && lk != only {
 				continue
@@ -178,6 +189,16 @@ func (s *Service) checkSources(ctx context.Context, only *library.Kind, id int64
 		}
 		return err
 	})
+}
+
+// sourceKinds lists the kinds of the entity's sources, removed ones too: unbinding one needs its plugin.
+func (s *Service) sourceKinds(ctx context.Context, lk *library.Kind, id int64) ([]string, error) {
+	k := targetKind(lk)
+	rows, err := s.pool.Query(ctx, `SELECT DISTINCT kind FROM `+k.SourceTable+` WHERE `+k.FK+` = $1`, id)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
 // applyUpdate takes a followed source's change into the library, as a review

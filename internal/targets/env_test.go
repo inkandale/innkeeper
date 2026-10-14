@@ -74,7 +74,11 @@ func setup(t *testing.T, config map[string]any) *env {
 	upstream := *m
 	upstream.Name, upstream.Capabilities, upstream.SourceKinds = "upstream", []string{"pull"}, []string{"fake"}
 	upstream.Command = []string{m.Command[0], "-caps=pull", "-name=upstream"}
-	reg := plugins.New(pool, map[string]*protocol.Manifest{"fake": m, "sites": &sites, "upstream": &upstream}, store, box)
+	// brokenup follows "broken" sources and fails its describe; addBrokenUpstream gives it an instance.
+	brokenup := upstream
+	brokenup.Name, brokenup.SourceKinds = "brokenup", []string{"broken"}
+	brokenup.Command = []string{m.Command[0], "-caps=pull", "-name=brokenup", "-mode=bad-describe"}
+	reg := plugins.New(pool, map[string]*protocol.Manifest{"fake": m, "sites": &sites, "upstream": &upstream, "brokenup": &brokenup}, store, box)
 	mgr := pluginhost.NewManager(noCore, time.Minute, quiet)
 	t.Cleanup(mgr.Close)
 	e := &env{t: t, ctx: ctx, pool: pool, lib: lib, reg: reg, s: New(pool, lib, reg, mgr, quiet), dir: t.TempDir()}

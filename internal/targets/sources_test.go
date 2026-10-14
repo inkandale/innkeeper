@@ -295,6 +295,16 @@ func recoded(t *testing.T, path string) string {
 	return out
 }
 
+func TestACardIsCheckedThroughOnlyThePluginsThatFollowItsSources(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	if _, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: "brokenup", Name: "Broken", Config: map[string]any{"dir": e.t.TempDir()}}); err != nil {
+		t.Fatal(err)
+	}
+	card := e.imported("vyr", vyrCard)
+	e.follow(card)
+}
+
 func TestFailedChecksOfASourceAreCounted(t *testing.T) {
 	e := setup(t, nil)
 	e.addUpstream(map[string]any{"fail_get": "retryable"})

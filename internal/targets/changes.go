@@ -16,9 +16,10 @@ import (
 // before the queue shows it, so one bad hour of a site stays quiet.
 const failuresShown = 3
 
-// Changes lists every card some app needs the owner for, the cards and lorebooks
-// whose followed source changed, and the app items no card matches, from each app's latest finished reconcile and the binding
-// statuses. An entry the owner settled after that reconcile is left out.
+// Changes lists every card some app needs the owner for, the cards and
+// lorebooks whose followed source changed, and the app items no card matches,
+// from each app's latest finished reconcile and the binding statuses. An entry
+// the owner settled after that reconcile is left out.
 //
 // ponytail: built from every app's latest snapshot on each call; store the
 // rows if a library outgrows that.

@@ -12,7 +12,7 @@ const (
 	ChangeUpdate = "update"
 )
 
-// AppChange is one app's change to a card, or an app item no card matches.
+// AppChange is an app's or source's change, or an app item no card matches.
 type AppChange struct {
 	InstanceID int64  `json:"instance_id"`
 	State      string `json:"state" enum:"differs,both_changed,ahead,missing,error,new,update"`
@@ -32,7 +32,7 @@ type AppChange struct {
 	Error     string  `json:"error,omitempty"`
 }
 
-// ChangeRow is a library card, or an app item no card matches, with its changes.
+// ChangeRow is a card, a lorebook, or an unmatched app item, with its changes.
 type ChangeRow struct {
 	// CardID is 0 for an app item no card matches.
 	CardID int64 `json:"card_id,omitempty"`

@@ -16,14 +16,15 @@ TypeScript (`web/src`). Setup and tests are in the [README](README.md).
 
 ## Plugins
 
-Adding a plugin must not need a core change.
-
+- A plugin for a capability core already has (another target app, another
+  catalog site) needs no core change.
+- Something plugins couldn't do before, such as editing or a card studio,
+  is a core feature: a new capability in `protocol/` that any plugin can
+  offer. Build it once, through the shared code for loading, calling,
+  checking, and listing plugins. Don't copy another capability's code in
+  `internal/`, `web/src`, or the MCP tools; generalize the shared code.
 - Core knows plugins only through the manifest and the protocol. Never
   branch on a plugin's name.
-- A new capability reuses the shared path for loading, calling, checking,
-  and listing plugins. If supporting it means copying another capability's
-  code in `internal/`, `web/src`, or the MCP tools, generalize the shared
-  code instead.
 - Behavior specific to one app or one site belongs in its plugin.
 
 ## SOLID, applied to Go

@@ -141,8 +141,8 @@ func TestCardsSearch(t *testing.T) {
 }
 
 const brakka = `{"id": 3, "slug": "brakka", "provenance": "api", "created_at": "2026-10-07T10:00:00Z",
-	"revision": {"id": 7, "data": {"name": "Brakka", "description": "An orc"}, "created_at": "2026-10-08T10:00:00Z"},
-	"tags": ["orc"], "lorebooks": [5]}`
+	"revision": {"id": 7, "data": {"name": "Brakka", "description": "An orc", "tags": ["greenskin"]}, "created_at": "2026-10-08T10:00:00Z"},
+	"lorebooks": [5]}`
 
 func TestCardsShowAndHistory(t *testing.T) {
 	stubAPI(t, map[string]string{
@@ -153,7 +153,7 @@ func TestCardsShowAndHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Brakka", "brakka", "orc", "5", "7"} {
+	for _, want := range []string{"Brakka", "brakka", "greenskin", "5", "7"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("show lacks %q: %q", want, out)
 		}
@@ -223,7 +223,7 @@ func TestCardsEdit(t *testing.T) {
 	}
 
 	*got = nil
-	fakeEditor(t, `{"name": "Brakka", "description": "An orc"}`)
+	fakeEditor(t, `{"name": "Brakka", "description": "An orc", "tags": ["greenskin"]}`)
 	if out, err := runInk(t, "cards", "edit", "3"); err != nil || out != "no changes\n" {
 		t.Fatalf("unchanged: out = %q, err = %v", out, err)
 	}

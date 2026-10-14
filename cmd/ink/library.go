@@ -321,7 +321,6 @@ type entity struct {
 	ArchivedAt  *time.Time `json:"archived_at"`
 	CreatedAt   time.Time  `json:"created_at"`
 	Revision    revision   `json:"revision"`
-	Tags        []string   `json:"tags"`
 	Lorebooks   []int64    `json:"lorebooks"`
 	Collections []int64    `json:"collections"`
 	Cards       []int64    `json:"cards"`
@@ -338,7 +337,8 @@ type revision struct {
 
 func printEntity(w io.Writer, e entity) error {
 	var d struct {
-		Name string `json:"name"`
+		Name string   `json:"name"`
+		Tags []string `json:"tags"`
 	}
 	_ = json.Unmarshal(e.Revision.Data, &d)
 	ids := func(v []int64) string { return strings.Trim(fmt.Sprint(v), "[]") }
@@ -351,7 +351,7 @@ func printEntity(w io.Writer, e entity) error {
 		{"CREATED", e.CreatedAt.Local().Format(time.DateTime)},
 		{"REVISION", fmt.Sprintf("%d, %s", e.Revision.ID, e.Revision.CreatedAt.Local().Format(time.DateTime))},
 		{"ARCHIVED", date(e.ArchivedAt)},
-		{"TAGS", strings.Join(e.Tags, ", ")},
+		{"TAGS", strings.Join(d.Tags, ", ")},
 		{"LOREBOOKS", ids(e.Lorebooks)},
 		{"COLLECTIONS", ids(e.Collections)},
 		{"CARDS", ids(e.Cards)},

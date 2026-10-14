@@ -623,15 +623,41 @@ func TestAutosyncLeavesASourceUpdateWithADifferentAvatar(t *testing.T) {
 	e := setup(t, nil)
 	e.addUpstream(nil)
 	card := e.imported("vyr", vyrCard)
-	e.publish("vyr", map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Begone."},
-		patternPNG(t, func(x, _ int) uint8 { return uint8(x / 8 % 2 * 255) }))
+	e.publish("vyr", vyrCard, patternPNG(t, func(x, _ int) uint8 { return uint8(x / 8 % 2 * 255) }))
 	b := e.follow(card)
 	if _, err := e.s.SetAutosync(e.ctx, b.ID, true); err != nil {
 		t.Fatal(err)
 	}
+	e.publish("vyr", map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Begone."},
+		patternPNG(t, func(x, y int) uint8 { return uint8((x-32)*(x-32)+(y-32)*(y-32)) / 128 * 255 }))
 	before := e.revisions(card)
 	p, err := e.s.CheckSources(e.ctx, func(ScanProgress) {})
 	if err != nil || p.Applied != 0 || e.revisions(card) != before {
 		t.Fatalf("progress = %+v, %v; revisions %d, want %d", p, err, e.revisions(card), before)
+	}
+}
+
+func TestAutosyncKeepsTheCardsOwnAvatar(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	card := e.imported("vyr", vyrCard)
+	e.setAvatar(card, patternPNG(t, func(x, y int) uint8 { return uint8((x-32)*(x-32)+(y-32)*(y-32)) / 128 * 255 }))
+	own := e.head(card).AvatarBlob
+	stripes := patternPNG(t, func(x, _ int) uint8 { return uint8(x / 8 % 2 * 255) })
+	e.publish("vyr", vyrCard, stripes)
+	b := e.follow(card)
+	if _, err := e.s.SetAutosync(e.ctx, b.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	e.publish("vyr", map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Begone."}, stripes)
+	p, err := e.s.CheckSources(e.ctx, func(ScanProgress) {})
+	if err != nil || p.Applied != 1 {
+		t.Fatalf("progress = %+v, %v", p, err)
+	}
+	head := e.head(card)
+	var data map[string]any
+	_ = json.Unmarshal(head.Data, &data)
+	if data["first_mes"] != "Begone." || own == nil || head.AvatarBlob == nil || *head.AvatarBlob != *own {
+		t.Fatalf("head = %v, avatar %v, want %v", data, head.AvatarBlob, own)
 	}
 }

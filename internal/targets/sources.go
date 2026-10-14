@@ -175,17 +175,26 @@ func (s *Service) checkSources(ctx context.Context, only *library.Kind, id int64
 }
 
 // applyUpdate takes a followed source's change into the library, as a review
-// keeping the library side would, when no hunk conflicts and the avatar is
-// the library's. It says whether it applied.
+// keeping the library side would, when no hunk conflicts and the site's
+// avatar is the one accepted. The card keeps its own avatar. It says whether
+// it applied.
 func (s *Service) applyUpdate(ctx context.Context, b Binding) (bool, error) {
 	lk, entity := bindingEntity(b)
 	k := targetKind(lk)
-	c, err := s.compareItem(ctx, k, b.InstanceID, b.RemoteID, entity, false)
+	c, it, err := s.compareRead(ctx, k, b.InstanceID, b.RemoteID, entity, false)
 	if err != nil {
 		return false, err
 	}
-	// Without an ancestor avatar, a different one may be the owner's choice.
-	if c.Avatar != nil || hasConflict(c) {
+	st, err := s.stored(ctx, b.ID)
+	if err != nil {
+		return false, err
+	}
+	site, err := s.avatarKey(ctx, it.avatar)
+	if err != nil {
+		return false, err
+	}
+	// Only the site avatar's hash is kept, so a new one has no ancestor to merge against.
+	if (st.avatarHash != nil && *st.avatarHash != site) || hasConflict(c) {
 		return false, nil
 	}
 	_, err = s.resolve(ctx, k, Resolution{InstanceID: b.InstanceID, RemoteID: b.RemoteID, AppHash: c.AppHash,

@@ -130,7 +130,7 @@ func (im *Importer) run(ctx context.Context, r *jobs.Run, ingest bool) error {
 	// the plugin until it finishes or the plugin is stopped.
 	if ingest {
 		var res protocol.CatalogIngestResult
-		err = im.Plugins.Call(ctx, inst, protocol.MethodCatalogIngest,
+		err = im.Registry.Call(ctx, im.Plugins, inst, protocol.MethodCatalogIngest,
 			protocol.CatalogIngestParams{Run: token, Checkpoint: r.Checkpoint}, &res)
 		if err == nil {
 			s.mu.Lock()
@@ -139,28 +139,13 @@ func (im *Importer) run(ctx context.Context, r *jobs.Run, ingest bool) error {
 			s.publish()
 		}
 	} else {
-		err = im.Plugins.Call(ctx, inst, protocol.MethodImportRun,
+		err = im.Registry.Call(ctx, im.Plugins, inst, protocol.MethodImportRun,
 			protocol.ImportRunParams{Run: token, Params: payload.Params, Checkpoint: r.Checkpoint}, nil)
 	}
 	if serr := s.failure(); serr != nil {
 		return serr
 	}
-	var startErr *pluginhost.StartError
-	var rpcErr *protocol.Error
-	switch {
-	case err == nil:
-		return nil
-	case errors.As(err, &startErr) && ctx.Err() == nil:
-		if merr := im.Registry.MarkBroken(context.WithoutCancel(ctx), *r.InstanceID, inst.Version, err); merr != nil {
-			im.Log.Error("mark plugin instance broken", "instance", *r.InstanceID, "err", merr)
-		}
-		return err
-	case errors.Is(err, protocol.ErrClosed):
-		return fmt.Errorf("%w: plugin exited: %w", jobs.ErrRetry, err)
-	case errors.As(err, &rpcErr) && rpcErr.Retryable():
-		return fmt.Errorf("%w: %w", jobs.ErrRetry, err)
-	}
-	return err
+	return plugins.JobErr(err)
 }
 
 // Handle is the core handler for the plugin manager that runs imports. It

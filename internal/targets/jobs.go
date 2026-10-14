@@ -9,6 +9,7 @@ import (
 
 	"github.com/davidgibbons/innkeeper/internal/bulk"
 	"github.com/davidgibbons/innkeeper/internal/jobs"
+	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 )
 
@@ -33,24 +34,15 @@ type pushPayload struct {
 	CreateOnly bool `json:"create_only,omitempty"`
 }
 
-// EnqueuePush queues a push of one card.
-func (s *Service) EnqueuePush(ctx context.Context, q *jobs.Queue, instanceID, cardID int64, newCopy bool) (jobs.Job, error) {
-	return s.enqueuePush(ctx, q, cardKind, instanceID, cardID, newCopy)
-}
-
-// EnqueueLorebookPush queues a push of one lorebook.
-func (s *Service) EnqueueLorebookPush(ctx context.Context, q *jobs.Queue, instanceID, lorebookID int64, newCopy bool) (jobs.Job, error) {
-	return s.enqueuePush(ctx, q, lorebookKind, instanceID, lorebookID, newCopy)
-}
-
-func (s *Service) enqueuePush(ctx context.Context, q *jobs.Queue, k kind, instanceID, id int64, newCopy bool) (jobs.Job, error) {
+// EnqueuePush queues a push of one card or lorebook.
+func (s *Service) EnqueuePush(ctx context.Context, q *jobs.Queue, k *library.Kind, instanceID, id int64, newCopy bool) (jobs.Job, error) {
 	p := pushPayload{NewCopy: newCopy}
 	err := s.pool.QueryRow(ctx, `SELECT max(p.id) FROM binding b JOIN push p ON p.binding_id = b.id
-		WHERE b.instance_id = $1 AND b.`+k.col+` = $2`, instanceID, id).Scan(&p.LastPush)
+		WHERE b.instance_id = $1 AND b.`+k.FK+` = $2`, instanceID, id).Scan(&p.LastPush)
 	if err != nil {
 		return jobs.Job{}, err
 	}
-	if k.isLorebook() {
+	if k == library.Lorebook {
 		p.LorebookID = id
 	} else {
 		p.CardID = id
@@ -58,21 +50,14 @@ func (s *Service) enqueuePush(ctx context.Context, q *jobs.Queue, k kind, instan
 	return q.Enqueue(ctx, jobs.Spec{Kind: PushKind, InstanceID: &instanceID, Payload: p})
 }
 
-// EnqueueBulkPush queues a push of each card, as one bulk job. With confirm
-// from PreviewBulkPush, it returns a *StalePreviewError if the preview would
-// differ now, and each push may replace the app copy the preview counted.
-// Without it, each may replace only a copy unchanged since its last push or
-// resolve. A push whose app copy differs fails with ErrAppChanged.
-func (s *Service) EnqueueBulkPush(ctx context.Context, q *jobs.Queue, instanceID int64, cardIDs []int64, newCopy bool, confirm string) (jobs.Job, error) {
-	return s.enqueueBulkPush(ctx, q, cardKind, instanceID, cardIDs, newCopy, confirm)
-}
-
-// EnqueueBulkLorebookPush is EnqueueBulkPush for lorebooks.
-func (s *Service) EnqueueBulkLorebookPush(ctx context.Context, q *jobs.Queue, instanceID int64, lorebookIDs []int64, newCopy bool, confirm string) (jobs.Job, error) {
-	return s.enqueueBulkPush(ctx, q, lorebookKind, instanceID, lorebookIDs, newCopy, confirm)
-}
-
-func (s *Service) enqueueBulkPush(ctx context.Context, q *jobs.Queue, k kind, instanceID int64, ids []int64, newCopy bool, confirm string) (jobs.Job, error) {
+// EnqueueBulkPush queues a push of each card or lorebook, as one bulk job.
+// With confirm from PreviewBulkPush, it returns a *StalePreviewError if the
+// preview would differ now, and each push may replace the app copy the
+// preview counted. Without it, each may replace only a copy unchanged since
+// its last push or resolve. A push whose app copy differs fails with
+// ErrAppChanged.
+func (s *Service) EnqueueBulkPush(ctx context.Context, q *jobs.Queue, lk *library.Kind, instanceID int64, ids []int64, newCopy bool, confirm string) (jobs.Job, error) {
+	k := targetKind(lk)
 	ids = slices.Clone(ids)
 	slices.Sort(ids)
 	ids = slices.Compact(ids)
@@ -124,7 +109,7 @@ func (s *Service) RunPush(ctx context.Context, r *jobs.Run) error {
 	switch {
 	case errors.Is(err, errAlreadyPushed):
 		var bindingID int64
-		if err := s.pool.QueryRow(ctx, `SELECT id FROM binding WHERE instance_id = $1 AND `+k.col+` = $2`,
+		if err := s.pool.QueryRow(ctx, `SELECT id FROM binding WHERE instance_id = $1 AND `+k.FK+` = $2`,
 			*r.InstanceID, id).Scan(&bindingID); err != nil {
 			return err
 		}

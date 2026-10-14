@@ -31,10 +31,7 @@ type resolveProgress struct {
 func (s *Service) EnqueueResolve(ctx context.Context, q *jobs.Queue, rs []Resolution) (jobs.Job, error) {
 	children := make([]jobs.Spec, len(rs))
 	for i, r := range rs {
-		k := cardKind
-		if r.Kind == lorebookKind.name {
-			k = lorebookKind
-		}
+		k := kindNamed(r.Kind)
 		if r.InstanceID == 0 {
 			return jobs.Job{}, fmt.Errorf("%w: resolution %d: instance_id is required", library.ErrInvalid, i)
 		}
@@ -58,11 +55,7 @@ func (s *Service) RunResolve(ctx context.Context, run *jobs.Run) error {
 		return fmt.Errorf("resolve payload: %w", err)
 	}
 	r.InstanceID = *run.InstanceID
-	resolve := s.Resolve
-	if r.Kind == lorebookKind.name {
-		resolve = s.ResolveLorebook
-	}
-	res, err := resolve(ctx, r)
+	res, err := s.resolve(ctx, kindNamed(r.Kind), r, resolveOpts{})
 	p := resolveProgress{Outcome: r.Action, Result: &res}
 	var stale *StaleError
 	var startErr *pluginhost.StartError

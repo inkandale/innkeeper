@@ -92,7 +92,7 @@ func TestChanges(t *testing.T) {
 	}
 
 	// Binding the likely match takes it off the queue, though the snapshot is older.
-	if _, err := e.s.Bind(e.ctx, e.inst, lia, "r7"); err != nil {
+	if _, err := e.s.Bind(e.ctx, library.Card, e.inst, lia, "r7"); err != nil {
 		t.Fatal(err)
 	}
 	ch, err = e.s.Changes(e.ctx, ChangesFilter{State: ChangeDiffers})

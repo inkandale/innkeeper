@@ -131,7 +131,7 @@ func (e *env) key() string { return strconv.FormatInt(e.inst, 10) }
 
 func (e *env) push(card int64) Binding {
 	e.t.Helper()
-	b, err := e.s.Push(e.ctx, e.inst, card, false)
+	b, err := e.s.Push(e.ctx, library.Card, e.inst, card, false)
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func (e *env) check(b Binding) Binding {
 
 func (e *env) status(card int64) string {
 	e.t.Helper()
-	list, err := e.s.Bindings(e.ctx, card)
+	list, err := e.s.Bindings(e.ctx, library.Card, card)
 	if err != nil {
 		e.t.Fatal(err)
 	}

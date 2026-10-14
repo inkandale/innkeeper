@@ -189,7 +189,7 @@ func (s *Server) entity(ctx context.Context, ents *library.Entities, id int64) (
 	}
 	out := &entityResp{Body: entityOut{ID: e.ID, Slug: e.Slug, Provenance: e.Provenance, ArchivedAt: e.ArchivedAt,
 		CreatedAt: e.CreatedAt, Revision: toRevision(rev, true)}}
-	if ents == s.Lib.Cards {
+	if ents.Kind() == library.Card {
 		if out.Body.Tags, err = s.Lib.CardTags(ctx, id); err != nil {
 			return nil, s.fail(err)
 		}
@@ -200,7 +200,7 @@ func (s *Server) entity(ctx context.Context, ents *library.Entities, id int64) (
 			return nil, s.fail(err)
 		}
 	}
-	if ents == s.Lib.Lorebooks {
+	if ents.Kind() == library.Lorebook {
 		if out.Body.Cards, err = s.Lib.LorebookCards(ctx, id); err != nil {
 			return nil, s.fail(err)
 		}
@@ -222,9 +222,10 @@ func (s *Server) revisionOf(ctx context.Context, ents *library.Entities, id, rev
 
 // entityRoutes registers the routes cards and lorebooks share, under
 // /<plural>.
-func (s *Server) entityRoutes(api huma.API, ents *library.Entities, plural, singular, tag string) {
+func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
+	ents, singular := s.Lib.Entities(k), k.Name
 	tags := []string{tag}
-	base := "/" + plural
+	base := "/" + k.Plural
 	item := base + "/{id}"
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "create-" + singular, Method: http.MethodPost, Path: base,
@@ -305,10 +306,6 @@ func (s *Server) entityRoutes(api huma.API, ents *library.Entities, plural, sing
 			return &revisionResp{Body: toRevision(r, true)}, nil
 		})
 
-	schema := merge.Card
-	if ents == s.Lib.Lorebooks {
-		schema = merge.Lorebook
-	}
 	huma.Register(api, huma.Operation{OperationID: "compare-" + singular + "-revisions", Method: http.MethodGet,
 		Path: item + "/revisions/{revision_id}/compare/{other_id}", Summary: "Compare two revisions of a " + singular, Tags: tags},
 		func(ctx context.Context, in *compareRevisionsIn) (*revisionDiffOut, error) {
@@ -320,7 +317,7 @@ func (s *Server) entityRoutes(api huma.API, ents *library.Entities, plural, sing
 			if err != nil {
 				return nil, err
 			}
-			fields, err := merge.Compare(schema, a.Data, b.Data, nil)
+			fields, err := merge.Compare(k.Schema, a.Data, b.Data, nil)
 			if err != nil {
 				return nil, s.fail(err)
 			}
@@ -379,7 +376,6 @@ func (s *Server) entityRoutes(api huma.API, ents *library.Entities, plural, sing
 			if b.URL != "" && (b.Kind != "" || b.Ref != "" || b.ExternalID != "") {
 				return nil, huma.Error422UnprocessableEntity("give a url, or a kind and ref, not both")
 			}
-			lorebook := ents == s.Lib.Lorebooks
 			src := library.Source{Kind: b.Kind, Ref: b.Ref, ExternalID: b.ExternalID}
 			if b.URL != "" {
 				var err error
@@ -388,7 +384,7 @@ func (s *Server) entityRoutes(api huma.API, ents *library.Entities, plural, sing
 				}
 			}
 			// Rebuilt so the stored URL always matches the entity type.
-			src, err := library.ValidateSource(src, lorebook)
+			src, err := library.ValidateSource(src, k == library.Lorebook)
 			if err != nil {
 				return nil, huma.Error422UnprocessableEntity(err.Error())
 			}

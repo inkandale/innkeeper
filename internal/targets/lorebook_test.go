@@ -49,7 +49,7 @@ func (e *env) updateLorebook(id int64, change func(*library.Edit)) {
 
 func (e *env) pushLorebook(id int64) Binding {
 	e.t.Helper()
-	b, err := e.s.PushLorebook(e.ctx, e.inst, id, false)
+	b, err := e.s.Push(e.ctx, library.Lorebook, e.inst, id, false)
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func (e *env) pushLorebook(id int64) Binding {
 
 func (e *env) lorebookStatus(id int64) string {
 	e.t.Helper()
-	list, err := e.s.LorebookBindings(e.ctx, id)
+	list, err := e.s.Bindings(e.ctx, library.Lorebook, id)
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestPushLorebook(t *testing.T) {
 
 func TestPushLorebookNeedsStandaloneTarget(t *testing.T) {
 	e := setup(t, nil)
-	if _, err := e.s.PushLorebook(e.ctx, e.inst, e.newLorebook("Forge lore"), false); err == nil {
+	if _, err := e.s.Push(e.ctx, library.Lorebook, e.inst, e.newLorebook("Forge lore"), false); err == nil {
 		t.Fatal("pushed a lorebook to a target that embeds them")
 	}
 }
@@ -127,11 +127,11 @@ func TestLorebookOverride(t *testing.T) {
 	e.check(b)
 	// Both sides renamed it, so keep_in_app, which applies to conflicts, decides the name.
 	e.updateLorebook(lb, func(ed *library.Edit) { ed.Data = setField(ed.Data, "name", "Forge lore II") })
-	c, err := e.s.CompareLorebookItem(e.ctx, e.inst, "l1", lb)
+	c, err := e.s.CompareItem(e.ctx, library.Lorebook, e.inst, "l1", lb)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.s.ResolveLorebook(e.ctx, Resolution{InstanceID: e.inst, RemoteID: "l1", AppHash: c.AppHash,
+	if _, err := e.s.Resolve(e.ctx, library.Lorebook, Resolution{InstanceID: e.inst, RemoteID: "l1", AppHash: c.AppHash,
 		BaseRevisionID: c.HeadRevisionID, AcceptedHash: c.AcceptedHash, Action: "bind", CardID: lb, Default: merge.ChooseKeepInApp}); err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func TestCardAheadWhenItsLorebooksChange(t *testing.T) {
 	if err := os.Remove(filepath.Join(e.dir, "l1.json")); err != nil {
 		t.Fatal(err)
 	}
-	list, _ := e.s.LorebookBindings(e.ctx, lb)
+	list, _ := e.s.Bindings(e.ctx, library.Lorebook, lb)
 	e.check(list[0])
 	e.pushLorebook(e.newLorebook("Other lore")) // takes l1 again
 	if b := e.pushLorebook(lb); b.RemoteID == "l1" {

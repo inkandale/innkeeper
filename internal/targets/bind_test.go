@@ -23,7 +23,7 @@ func (e *env) appCopy(card int64) string {
 
 func (e *env) bind(card int64, remoteID string) Binding {
 	e.t.Helper()
-	b, err := e.s.Bind(e.ctx, e.inst, card, remoteID)
+	b, err := e.s.Bind(e.ctx, library.Card, e.inst, card, remoteID)
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestBindDifferingItemKeepsLibrary(t *testing.T) {
 
 func TestBindDifferingItemThenPush(t *testing.T) {
 	e, b := boundChanged(t)
-	p, err := e.s.Preview(e.ctx, e.inst, e.card)
+	p, err := e.s.Preview(e.ctx, library.Card, e.inst, e.card)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestBindCardWithStandaloneLorebooks(t *testing.T) {
 	if b.Status != "in_sync" || len(b.LastPush.LorebookRemoteIDs) != 1 {
 		t.Fatalf("binding = %+v", b)
 	}
-	lorebooks, err := e.s.LorebookBindings(e.ctx, lb)
+	lorebooks, err := e.s.Bindings(e.ctx, library.Lorebook, lb)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestBindCardWithStandaloneLorebooks(t *testing.T) {
 	if s := e.status(e.card); s != "ahead" {
 		t.Fatalf("card status after unbinding its lorebook = %s, want ahead", s)
 	}
-	lbb, err := e.s.BindLorebook(e.ctx, e.inst, lb, lorebooks[0].RemoteID)
+	lbb, err := e.s.Bind(e.ctx, library.Lorebook, e.inst, lb, lorebooks[0].RemoteID)
 	if err != nil || lbb.Status != "in_sync" || lbb.LastPush.Kind != "bind" {
 		t.Fatalf("lorebook binding = %+v, %v", lbb, err)
 	}
@@ -135,25 +135,25 @@ func TestBindRefusals(t *testing.T) {
 	other := e.newCard("Durza")
 	free := e.appCopy(other)
 	bound := e.push(e.card)
-	if _, err := e.s.Bind(e.ctx, e.inst, e.card, free); !errors.Is(err, ErrBound) {
+	if _, err := e.s.Bind(e.ctx, library.Card, e.inst, e.card, free); !errors.Is(err, ErrBound) {
 		t.Fatalf("binding a bound card: %v", err)
 	}
-	if _, err := e.s.Bind(e.ctx, e.inst, other, bound.RemoteID); !errors.Is(err, ErrBound) {
+	if _, err := e.s.Bind(e.ctx, library.Card, e.inst, other, bound.RemoteID); !errors.Is(err, ErrBound) {
 		t.Fatalf("binding to a bound app item: %v", err)
 	}
-	if _, err := e.s.Bind(e.ctx, e.inst, other, "r99"); !errors.Is(err, library.ErrNotFound) {
+	if _, err := e.s.Bind(e.ctx, library.Card, e.inst, other, "r99"); !errors.Is(err, library.ErrNotFound) {
 		t.Fatalf("binding to a missing app item: %v", err)
 	}
 	lb := e.newLorebook("Forge lore")
-	if _, err := e.s.BindLorebook(e.ctx, e.inst, lb, free); !errors.Is(err, ErrCannot) {
+	if _, err := e.s.Bind(e.ctx, library.Lorebook, e.inst, lb, free); !errors.Is(err, ErrCannot) {
 		t.Fatalf("binding a lorebook on an embedding target: %v", err)
 	}
 
 	e = setup(t, map[string]any{"pull": false})
-	if _, err := e.s.Bind(e.ctx, e.inst, e.card, e.appCopy(e.card)); !errors.Is(err, ErrCannot) {
+	if _, err := e.s.Bind(e.ctx, library.Card, e.inst, e.card, e.appCopy(e.card)); !errors.Is(err, ErrCannot) {
 		t.Fatalf("binding on a target without pull: %v", err)
 	}
-	if _, err := e.s.Items(e.ctx, e.inst); !errors.Is(err, ErrCannot) {
+	if _, err := e.s.Items(e.ctx, library.Card, e.inst); !errors.Is(err, ErrCannot) {
 		t.Fatalf("listing a target without pull: %v", err)
 	}
 }
@@ -162,7 +162,7 @@ func TestItems(t *testing.T) {
 	e := setup(t, nil)
 	free := e.appCopy(e.newCard("Durza"))
 	b := e.push(e.card)
-	items, err := e.s.Items(e.ctx, e.inst)
+	items, err := e.s.Items(e.ctx, library.Card, e.inst)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestBindLorebookDetectsSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.editRemote(b.RemoteID, "extensions", map[string]any{"chub": map[string]any{"id": 5, "full_path": "u/forge"}})
-	if _, err := e.s.BindLorebook(e.ctx, e.inst, lb, b.RemoteID); err != nil {
+	if _, err := e.s.Bind(e.ctx, library.Lorebook, e.inst, lb, b.RemoteID); err != nil {
 		t.Fatal(err)
 	}
 	got, err := e.lib.Lorebooks.Sources(e.ctx, lb)
@@ -222,7 +222,7 @@ func TestBindLeavesTheAppsWorldBooksAlone(t *testing.T) {
 	if e.lorebookCount() != 1 || e.revisions(card) != 1 || len(e.links(card)) != 0 {
 		t.Fatalf("%d lorebooks, %d revisions, links %v", e.lorebookCount(), e.revisions(card), e.links(card))
 	}
-	if lbs, err := e.s.LorebookBindings(e.ctx, forge); err != nil || len(lbs) != 0 {
+	if lbs, err := e.s.Bindings(e.ctx, library.Lorebook, forge); err != nil || len(lbs) != 0 {
 		t.Fatalf("forge bindings = %+v, %v", lbs, err)
 	}
 	// The app links world books the library card doesn't.
@@ -248,7 +248,7 @@ func TestBindChecksTheCardFirst(t *testing.T) {
 	e := setup(t, nil)
 	e.push(e.card)
 	// The item doesn't exist, so a compare would fail with not found.
-	if _, err := e.s.Bind(e.ctx, e.inst, e.card, "gone"); !errors.Is(err, ErrBound) {
+	if _, err := e.s.Bind(e.ctx, library.Card, e.inst, e.card, "gone"); !errors.Is(err, ErrBound) {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -260,11 +260,11 @@ func TestBoundAheadReviewsTwoWay(t *testing.T) {
 			if c := e.compareItem(b.RemoteID, 0); len(c.Fields) == 0 || slices.ContainsFunc(c.Fields, decidableField) {
 				t.Fatalf("with the accepted copy, the library's side is kept unasked: %+v", c.Fields)
 			}
-			c, err := e.s.CompareItemTwoWay(e.ctx, e.inst, b.RemoteID, 0)
+			c, err := e.s.CompareItemTwoWay(e.ctx, library.Card, e.inst, b.RemoteID, 0)
 			if err != nil || c.Base != "none" || c.AcceptedHash == "" {
 				t.Fatalf("comparison = %+v, %v", c, err)
 			}
-			_, err = e.s.Resolve(e.ctx, Resolution{InstanceID: e.inst, RemoteID: c.RemoteID, AppHash: c.AppHash,
+			_, err = e.s.Resolve(e.ctx, library.Card, Resolution{InstanceID: e.inst, RemoteID: c.RemoteID, AppHash: c.AppHash,
 				BaseRevisionID: c.HeadRevisionID, AcceptedHash: c.AcceptedHash, Base: "none", Action: "bind", CardID: c.CardID,
 				Choices: map[string]merge.Choice{hunk(t, c, "description"): choice}})
 			if err != nil {

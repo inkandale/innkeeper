@@ -24,13 +24,13 @@ func TestResolveWaitsForSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.s.Resolve(runCtx, Resolution{InstanceID: e.inst, RemoteID: "r2", AppHash: items["r2"].AppHash,
+	if _, err := e.s.Resolve(runCtx, library.Card, Resolution{InstanceID: e.inst, RemoteID: "r2", AppHash: items["r2"].AppHash,
 		Action: "import"}); err != nil {
 		t.Fatalf("the sync's own resolve: %v", err)
 	}
 	done := make(chan error, 1)
 	go func() {
-		_, err := e.s.Resolve(e.ctx, Resolution{InstanceID: e.inst, RemoteID: "r1", AppHash: items["r1"].AppHash,
+		_, err := e.s.Resolve(e.ctx, library.Card, Resolution{InstanceID: e.inst, RemoteID: "r1", AppHash: items["r1"].AppHash,
 			Action: "import"})
 		done <- err
 	}()
@@ -111,7 +111,7 @@ func TestSyncEveryApp(t *testing.T) {
 	if len(lia) != 1 || len(e.cardsNamed("Mira")) != 1 {
 		t.Fatalf("Lia %v, Mira %v", lia, e.cardsNamed("Mira"))
 	}
-	if bs, err := e.s.Bindings(e.ctx, lia[0]); err != nil || len(bs) != 2 {
+	if bs, err := e.s.Bindings(e.ctx, library.Card, lia[0]); err != nil || len(bs) != 2 {
 		t.Errorf("Lia bindings %d, %v", len(bs), err)
 	}
 	for _, app := range res.Apps {
@@ -199,7 +199,7 @@ func twoApps(e *env) (string, Binding) {
 	e.t.Helper()
 	e.push(e.card)
 	inst2, dir2 := e.addApp()
-	b2, err := e.s.Push(e.ctx, inst2, e.card, false)
+	b2, err := e.s.Push(e.ctx, library.Card, inst2, e.card, false)
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func twoApps(e *env) (string, Binding) {
 // bindingOfCard is e.card's binding on inst.
 func (e *env) bindingOfCard(inst int64) Binding {
 	e.t.Helper()
-	list, err := e.s.Bindings(e.ctx, e.card)
+	list, err := e.s.Bindings(e.ctx, library.Card, e.card)
 	if err != nil {
 		e.t.Fatal(err)
 	}

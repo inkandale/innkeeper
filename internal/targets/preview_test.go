@@ -10,7 +10,7 @@ import (
 
 func (e *env) preview(card int64) Preview {
 	e.t.Helper()
-	p, err := e.s.Preview(e.ctx, e.inst, card)
+	p, err := e.s.Preview(e.ctx, library.Card, e.inst, card)
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestPreviewLorebook(t *testing.T) {
 	lb := e.newLorebook("Forge lore")
 	e.pushLorebook(lb)
 	e.updateLorebook(lb, func(ed *library.Edit) { ed.Data = setField(ed.Data, "entries", newEntries) })
-	p, err := e.s.PreviewLorebook(e.ctx, e.inst, lb)
+	p, err := e.s.Preview(e.ctx, library.Lorebook, e.inst, lb)
 	if err != nil {
 		t.Fatal(err)
 	}

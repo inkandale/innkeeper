@@ -10,21 +10,14 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
-// Preview renders the card for a target without pushing it, and compares it
-// with the app's copy.
-func (s *Service) Preview(ctx context.Context, instanceID, cardID int64) (Preview, error) {
-	return s.preview(ctx, cardKind, instanceID, cardID)
-}
-
-// PreviewLorebook is Preview for a lorebook.
-func (s *Service) PreviewLorebook(ctx context.Context, instanceID, lorebookID int64) (Preview, error) {
-	return s.preview(ctx, lorebookKind, instanceID, lorebookID)
-}
-
-func (s *Service) preview(ctx context.Context, k kind, instanceID, id int64) (Preview, error) {
+// Preview renders the card or lorebook for a target without pushing it, and
+// compares it with the app's copy.
+func (s *Service) Preview(ctx context.Context, lk *library.Kind, instanceID, id int64) (Preview, error) {
+	k := targetKind(lk)
 	p, err := s.compare(ctx, k, instanceID, id)
 	if err != nil {
 		return Preview{}, err
@@ -69,7 +62,7 @@ func (s *Service) compare(ctx context.Context, k kind, instanceID, id int64) (Pr
 	var remoteID, state string
 	var app json.RawMessage
 	err = s.pool.QueryRow(ctx, `SELECT remote_id, remote_state, accepted_data FROM binding
-		WHERE instance_id = $1 AND `+k.col+` = $2`, instanceID, id).Scan(&remoteID, &state, &app)
+		WHERE instance_id = $1 AND `+k.FK+` = $2`, instanceID, id).Scan(&remoteID, &state, &app)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 		return p, nil

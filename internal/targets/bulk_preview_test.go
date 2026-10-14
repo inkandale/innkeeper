@@ -21,7 +21,7 @@ func bulkEnv(t *testing.T) (*env, int64, *jobs.Queue) {
 
 func (e *env) binding(card int64) Binding {
 	e.t.Helper()
-	list, err := e.s.Bindings(e.ctx, card)
+	list, err := e.s.Bindings(e.ctx, library.Card, card)
 	if err != nil || len(list) != 1 {
 		e.t.Fatalf("%d bindings, %v", len(list), err)
 	}
@@ -49,7 +49,7 @@ func TestBulkPushRefusesChangedCopy(t *testing.T) {
 	e.editRemote("r1", "first_mes", "Well met.")
 	e.update(other, func(ed *library.Edit) { ed.Data = setField(ed.Data, "description", "A sailor.") })
 
-	parent, err := e.s.EnqueueBulkPush(e.ctx, q, e.inst, []int64{e.card, other}, false, "")
+	parent, err := e.s.EnqueueBulkPush(e.ctx, q, library.Card, e.inst, []int64{e.card, other}, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestBulkPreview(t *testing.T) {
 	e.check(e.binding(other))
 	ids := []int64{e.card, other, unbound}
 
-	p, err := e.s.PreviewBulkPush(e.ctx, e.inst, ids)
+	p, err := e.s.PreviewBulkPush(e.ctx, library.Card, e.inst, ids)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestBulkPreview(t *testing.T) {
 	e.editRemote("r2", "first_mes", "Avast.")
 	e.check(e.binding(other))
 	var stale *StalePreviewError
-	if _, err := e.s.EnqueueBulkPush(e.ctx, q, e.inst, ids, false, p.Confirm); !errors.As(err, &stale) {
+	if _, err := e.s.EnqueueBulkPush(e.ctx, q, library.Card, e.inst, ids, false, p.Confirm); !errors.As(err, &stale) {
 		t.Fatalf("push with a stale confirm: %v", err)
 	}
 	if stale.Preview.Confirm == p.Confirm || stale.Preview.Drifted != 1 {
@@ -94,7 +94,7 @@ func TestBulkPreview(t *testing.T) {
 	}
 
 	// The new confirm replaces the drifted copy it showed.
-	parent, err := e.s.EnqueueBulkPush(e.ctx, q, e.inst, ids, false, stale.Preview.Confirm)
+	parent, err := e.s.EnqueueBulkPush(e.ctx, q, library.Card, e.inst, ids, false, stale.Preview.Confirm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,13 +110,13 @@ func TestBulkPushRefusesCopyChangedAfterPreview(t *testing.T) {
 	e, other, q := bulkEnv(t)
 	e.editRemote("r2", "first_mes", "Ahoy.")
 	e.check(e.binding(other))
-	p, err := e.s.PreviewBulkPush(e.ctx, e.inst, []int64{other})
+	p, err := e.s.PreviewBulkPush(e.ctx, library.Card, e.inst, []int64{other})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Edited again, with no check to record it.
 	e.editRemote("r2", "first_mes", "Avast.")
-	parent, err := e.s.EnqueueBulkPush(e.ctx, q, e.inst, []int64{other}, false, p.Confirm)
+	parent, err := e.s.EnqueueBulkPush(e.ctx, q, library.Card, e.inst, []int64{other}, false, p.Confirm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestBulkPushRefusesCopyChangedAfterPreview(t *testing.T) {
 func TestBulkPushLeavesCopyBoundAfterQueue(t *testing.T) {
 	e := setup(t, nil)
 	q := jobs.New(e.pool)
-	parent, err := e.s.EnqueueBulkPush(e.ctx, q, e.inst, []int64{e.card}, false, "")
+	parent, err := e.s.EnqueueBulkPush(e.ctx, q, library.Card, e.inst, []int64{e.card}, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestBulkPushLeavesCopyBoundAfterQueue(t *testing.T) {
 // checked against, so the queued push still sends a later edit.
 func TestBulkPushAfterAnotherPush(t *testing.T) {
 	e, _, q := bulkEnv(t)
-	parent, err := e.s.EnqueueBulkPush(e.ctx, q, e.inst, []int64{e.card}, false, "")
+	parent, err := e.s.EnqueueBulkPush(e.ctx, q, library.Card, e.inst, []int64{e.card}, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}

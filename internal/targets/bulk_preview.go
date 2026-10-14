@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/davidgibbons/innkeeper/cardhash"
+	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/wire"
 )
 
@@ -29,16 +30,10 @@ func (e *StalePreviewError) Error() string {
 	return "the push would differ from the preview; review the new preview"
 }
 
-// PreviewBulkPush counts how the cards stand on the target, for the owner to
-// confirm a query push.
-func (s *Service) PreviewBulkPush(ctx context.Context, instanceID int64, cardIDs []int64) (BulkPreview, error) {
-	p, _, err := s.bulkPreview(ctx, cardKind, instanceID, cardIDs)
-	return p, err
-}
-
-// PreviewBulkLorebookPush is PreviewBulkPush for lorebooks.
-func (s *Service) PreviewBulkLorebookPush(ctx context.Context, instanceID int64, lorebookIDs []int64) (BulkPreview, error) {
-	p, _, err := s.bulkPreview(ctx, lorebookKind, instanceID, lorebookIDs)
+// PreviewBulkPush counts how the cards or lorebooks stand on the target, for
+// the owner to confirm a query push.
+func (s *Service) PreviewBulkPush(ctx context.Context, k *library.Kind, instanceID int64, ids []int64) (BulkPreview, error) {
+	p, _, err := s.bulkPreview(ctx, targetKind(k), instanceID, ids)
 	return p, err
 }
 
@@ -60,10 +55,10 @@ func (s *Service) bulkPreview(ctx context.Context, k kind, instanceID int64, ids
 	ids = slices.Clone(ids)
 	slices.Sort(ids)
 	ids = slices.Compact(ids)
-	rows, err := s.pool.Query(ctx, `SELECT b.`+k.col+`, b.version, b.remote_state, b.accepted_hash, b.seen_data, s.status,
+	rows, err := s.pool.Query(ctx, `SELECT b.`+k.FK+`, b.version, b.remote_state, b.accepted_hash, b.seen_data, s.status,
 			(SELECT max(id) FROM push WHERE binding_id = b.id)
 		FROM binding b JOIN binding_status s ON s.binding_id = b.id
-		WHERE b.instance_id = $1 AND b.`+k.col+` = ANY($2) ORDER BY b.`+k.col, instanceID, ids)
+		WHERE b.instance_id = $1 AND b.`+k.FK+` = ANY($2) ORDER BY b.`+k.FK, instanceID, ids)
 	if err != nil {
 		return BulkPreview{}, nil, err
 	}
@@ -104,7 +99,7 @@ func (s *Service) bulkPreview(ctx context.Context, k kind, instanceID int64, ids
 		return BulkPreview{}, nil, err
 	}
 	p.New += len(ids) - len(bound)
-	raw, err := json.Marshal(map[string]any{"instance": instanceID, "kind": k.name, "ids": ids, "bound": list})
+	raw, err := json.Marshal(map[string]any{"instance": instanceID, "kind": k.Name, "ids": ids, "bound": list})
 	if err != nil {
 		return BulkPreview{}, nil, err
 	}

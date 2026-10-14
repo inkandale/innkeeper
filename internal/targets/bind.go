@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/merge"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/protocol"
@@ -23,17 +24,9 @@ type Item struct {
 	BindingID *int64 `json:"binding_id,omitempty"`
 }
 
-// Items lists the characters the app has.
-func (s *Service) Items(ctx context.Context, instanceID int64) ([]Item, error) {
-	return s.items(ctx, cardKind, instanceID)
-}
-
-// LorebookItems lists the lorebooks the app has.
-func (s *Service) LorebookItems(ctx context.Context, instanceID int64) ([]Item, error) {
-	return s.items(ctx, lorebookKind, instanceID)
-}
-
-func (s *Service) items(ctx context.Context, k kind, instanceID int64) ([]Item, error) {
+// Items lists the app's items of kind lk: its characters or its lorebooks.
+func (s *Service) Items(ctx context.Context, lk *library.Kind, instanceID int64) ([]Item, error) {
+	k := targetKind(lk)
 	inst, _, err := s.describePull(ctx, k, instanceID)
 	if err != nil {
 		return nil, err
@@ -42,7 +35,7 @@ func (s *Service) items(ctx context.Context, k kind, instanceID int64) ([]Item, 
 	if err := s.reg.Call(ctx, s.plugins, inst, k.list, nil, &res); err != nil {
 		return nil, err
 	}
-	rows, err := s.pool.Query(ctx, `SELECT remote_id, id FROM binding WHERE instance_id = $1 AND `+k.col+` IS NOT NULL
+	rows, err := s.pool.Query(ctx, `SELECT remote_id, id FROM binding WHERE instance_id = $1 AND `+k.FK+` IS NOT NULL
 		AND remote_state <> 'missing'`,
 		instanceID)
 	if err != nil {
@@ -67,21 +60,12 @@ func (s *Service) items(ctx context.Context, k kind, instanceID int64) ([]Item, 
 	return items, nil
 }
 
-// Bind links a card to a character the app already has, without changing
-// the library: a resolve that keeps the library's copy and skips the app's
-// linked world books. The app's copy becomes the accepted one, so the card is
-// ahead where they differ and the next push sends the library's.
-func (s *Service) Bind(ctx context.Context, instanceID, cardID int64, remoteID string) (Binding, error) {
-	return s.bindResolved(ctx, cardKind, instanceID, cardID, remoteID)
-}
-
-// BindLorebook links a lorebook to one the app already has, as Bind does for
-// cards.
-func (s *Service) BindLorebook(ctx context.Context, instanceID, lorebookID int64, remoteID string) (Binding, error) {
-	return s.bindResolved(ctx, lorebookKind, instanceID, lorebookID, remoteID)
-}
-
-func (s *Service) bindResolved(ctx context.Context, k kind, instanceID, id int64, remoteID string) (Binding, error) {
+// Bind links a card or lorebook to one the app already has, without
+// changing the library: a resolve that keeps the library's copy and skips the
+// app's linked world books. The app's copy becomes the accepted one, so the
+// entity is ahead where they differ and the next push sends the library's.
+func (s *Service) Bind(ctx context.Context, lk *library.Kind, instanceID, id int64, remoteID string) (Binding, error) {
+	k := targetKind(lk)
 	// Bind is for an unbound pair; resolve would also rebind or update one.
 	bound := func(where string, args ...any) error {
 		var b bool
@@ -92,14 +76,14 @@ func (s *Service) bindResolved(ctx context.Context, k kind, instanceID, id int64
 		}
 		return err
 	}
-	if err := bound(k.col+` = $2`, id); err != nil {
+	if err := bound(k.FK+` = $2`, id); err != nil {
 		return Binding{}, err
 	}
 	c, err := s.compareItem(ctx, k, instanceID, remoteID, id, false)
 	if err != nil {
 		return Binding{}, err
 	}
-	if err := bound(`remote_id = $2 AND `+k.col+` IS NOT NULL AND remote_state <> 'missing'`, remoteID); err != nil {
+	if err := bound(`remote_id = $2 AND `+k.FK+` IS NOT NULL AND remote_state <> 'missing'`, remoteID); err != nil {
 		return Binding{}, err
 	}
 	// The app's linked world books are left for reconcile, so bind changes nothing in the library.

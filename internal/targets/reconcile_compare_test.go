@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/merge"
 )
 
@@ -42,7 +43,7 @@ func TestCompareItem(t *testing.T) {
 	e.editRemote(bound.RemoteID, "first_mes", "Hail, traveler.")
 	e.appCard("r9", map[string]any{"name": "Brakka", "description": "A dwarf smith.", "first_mes": "Go away."}, nil)
 
-	c, err := e.s.CompareItem(e.ctx, e.inst, bound.RemoteID, 0)
+	c, err := e.s.CompareItem(e.ctx, library.Card, e.inst, bound.RemoteID, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +54,7 @@ func TestCompareItem(t *testing.T) {
 		t.Errorf("first_mes hunks = %v", got)
 	}
 
-	c, err = e.s.CompareItem(e.ctx, e.inst, "r9", e.card)
+	c, err = e.s.CompareItem(e.ctx, library.Card, e.inst, "r9", e.card)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,10 +81,10 @@ func TestCompareItem(t *testing.T) {
 
 	// A bound item set against another card has no ancestor.
 	other := e.newCard("Iko")
-	if c, err := e.s.CompareItem(e.ctx, e.inst, bound.RemoteID, other); err != nil || c.Base != "none" {
+	if c, err := e.s.CompareItem(e.ctx, library.Card, e.inst, bound.RemoteID, other); err != nil || c.Base != "none" {
 		t.Errorf("bound item vs other card = %+v, %v", c, err)
 	}
-	if _, err := e.s.CompareItem(e.ctx, e.inst, "r9", 0); !errors.Is(err, ErrNotFound) {
+	if _, err := e.s.CompareItem(e.ctx, library.Card, e.inst, "r9", 0); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unbound with card 0: err = %v", err)
 	}
 }
@@ -97,11 +98,11 @@ func TestCompareItemAvatar(t *testing.T) {
 	e.appCard("same", data, map[string]any{"avatar": stripes})
 	e.appCard("other", data, map[string]any{"avatar": rings})
 
-	c, err := e.s.CompareItem(e.ctx, e.inst, "same", e.card)
+	c, err := e.s.CompareItem(e.ctx, library.Card, e.inst, "same", e.card)
 	if err != nil || c.Avatar != nil {
 		t.Errorf("same avatar = %+v, %v", c.Avatar, err)
 	}
-	c, err = e.s.CompareItem(e.ctx, e.inst, "other", e.card)
+	c, err = e.s.CompareItem(e.ctx, library.Card, e.inst, "other", e.card)
 	if err != nil || c.Avatar == nil || c.Avatar.Library == "" || c.Avatar.App == "" ||
 		c.Avatar.PhashDistance == nil || *c.Avatar.PhashDistance == 0 {
 		t.Errorf("other avatar = %+v, %v", c.Avatar, err)
@@ -115,14 +116,14 @@ func TestCompareLorebookItem(t *testing.T) {
 	e.writeRemote("l7", map[string]any{"lorebook": map[string]any{"name": "Forge lore",
 		"entries": []any{map[string]any{"keys": []any{"forge"}, "content": "The forge is cold."}}}})
 
-	c, err := e.s.CompareLorebookItem(e.ctx, e.inst, b.RemoteID, 0)
+	c, err := e.s.CompareItem(e.ctx, library.Lorebook, e.inst, b.RemoteID, 0)
 	if err != nil || c.Base != "accepted" || c.CardID != lb {
 		t.Fatalf("bound lorebook = %+v, %v", c, err)
 	}
 	if n, _ := differing(c.Fields); n != 0 {
 		t.Errorf("in-sync lorebook differs: %v", statuses(c.Fields))
 	}
-	c, err = e.s.CompareLorebookItem(e.ctx, e.inst, "l7", lb)
+	c, err = e.s.CompareItem(e.ctx, library.Lorebook, e.inst, "l7", lb)
 	if err != nil || c.Base != "none" {
 		t.Fatalf("unbound lorebook = %+v, %v", c, err)
 	}
@@ -138,7 +139,7 @@ func TestCompareItemAvatarFailure(t *testing.T) {
 		map[string]any{"avatar": patternPNG(t, func(x, y int) uint8 { return uint8(x + y) })})
 	e.breakBlobStore()
 	// Resolve trusts this comparison, so an avatar it couldn't read is an error.
-	if _, err := e.s.CompareItem(e.ctx, e.inst, "pic", e.card); err == nil {
+	if _, err := e.s.CompareItem(e.ctx, library.Card, e.inst, "pic", e.card); err == nil {
 		t.Error("compare ignored a failed avatar ingest")
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/davidgibbons/innkeeper/internal/bulk"
+	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 	"github.com/davidgibbons/innkeeper/internal/targets"
@@ -56,7 +57,7 @@ func TestPushRoutes(t *testing.T) {
 	e.call("POST", path+"/push", map[string]any{"instance_id": e.importID}, 409, nil)
 
 	// No worker runs here, so push directly.
-	if _, err := e.s.Targets.Push(context.Background(), inst, c.ID, false); err != nil {
+	if _, err := e.s.Targets.Push(context.Background(), library.Card, inst, c.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	var list []targets.Binding
@@ -145,7 +146,7 @@ func TestBindingRequestChecks(t *testing.T) {
 	inst, _ := e.target()
 	var c entityOut
 	e.call("POST", "/cards", map[string]any{"data": map[string]any{"name": "Brakka"}}, 201, &c)
-	if _, err := e.s.Targets.Push(context.Background(), inst, c.ID, false); err != nil {
+	if _, err := e.s.Targets.Push(context.Background(), library.Card, inst, c.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	var list []targets.Binding
@@ -187,7 +188,7 @@ func TestLorebookPushRoutes(t *testing.T) {
 		t.Fatalf("preview = %+v", p)
 	}
 	// No worker runs here, so push directly.
-	if _, err := e.s.Targets.PushLorebook(context.Background(), inst, lb.ID, false); err != nil {
+	if _, err := e.s.Targets.Push(context.Background(), library.Lorebook, inst, lb.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	var list []targets.Binding
@@ -301,7 +302,7 @@ func TestBindingAutosyncRoute(t *testing.T) {
 	inst, _ := e.target()
 	var c entityOut
 	e.call("POST", "/cards", map[string]any{"data": map[string]any{"name": "Brakka", "first_mes": "Hail."}}, 201, &c)
-	b, err := e.s.Targets.Push(context.Background(), inst, c.ID, false)
+	b, err := e.s.Targets.Push(context.Background(), library.Card, inst, c.ID, false)
 	if err != nil {
 		t.Fatal(err)
 	}

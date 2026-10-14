@@ -79,37 +79,28 @@ func (s *Server) binding(b targets.Binding, err error) (*bindingOut, error) {
 	return &bindingOut{Body: b}, nil
 }
 
+// legacyItems are the paths of each kind's app items before they moved under
+// /instances/{id}/{plural}.
+var legacyItems = map[*library.Kind]string{library.Card: "items", library.Lorebook: "lorebook-items"}
+
 func (s *Server) targetRoutes(api huma.API) {
 	tags := []string{"Sync"}
 	// Cards and lorebooks have the same push routes, under their own paths.
-	type syncedKind struct {
-		name, plural, itemsPath string
-		get                     func(context.Context, int64) (library.Entity, error)
-		enqueue                 func(context.Context, *jobs.Queue, int64, int64, bool) (jobs.Job, error)
-		preview                 func(context.Context, int64, int64) (targets.Preview, error)
-		bindings                func(context.Context, int64) ([]targets.Binding, error)
-		items                   func(context.Context, int64) ([]targets.Item, error)
-		bind                    func(context.Context, int64, int64, string) (targets.Binding, error)
-	}
-	for _, k := range []syncedKind{
-		{"card", "cards", "items", s.Lib.Cards.Get, s.Targets.EnqueuePush, s.Targets.Preview, s.Targets.Bindings,
-			s.Targets.Items, s.Targets.Bind},
-		{"lorebook", "lorebooks", "lorebook-items", s.Lib.Lorebooks.Get, s.Targets.EnqueueLorebookPush, s.Targets.PreviewLorebook,
-			s.Targets.LorebookBindings, s.Targets.LorebookItems, s.Targets.BindLorebook},
-	} {
-		huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "push-" + k.name, Method: http.MethodPost, Path: "/" + k.plural + "/{id}/push",
-			Summary: "Push a " + k.name + " to a target", Tags: tags, DefaultStatus: http.StatusAccepted,
+	for _, k := range library.Kinds {
+		ents := s.Lib.Entities(k)
+		huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "push-" + k.Name, Method: http.MethodPost, Path: "/" + k.Plural + "/{id}/push",
+			Summary: "Push a " + k.Name + " to a target", Tags: tags, DefaultStatus: http.StatusAccepted,
 			Description: "Queues a push job. Pushing overwrites changes made in the app; review them first (compare, then resolve) to keep them. " +
 				"A card push creates the card's lorebooks the app doesn't have, on a target that keeps lorebooks on their own."},
 			func(ctx context.Context, in *pushIn) (*jobResp, error) {
-				if _, err := k.get(ctx, in.ID); err != nil {
+				if _, err := ents.Get(ctx, in.ID); err != nil {
 					return nil, s.fail(err)
 				}
 				if err := s.usable(ctx, in.Body.InstanceID, "push"); err != nil {
 					return nil, err
 				}
 				if in.Body.Confirm != "" {
-					p, err := k.preview(ctx, in.Body.InstanceID, in.ID)
+					p, err := s.Targets.Preview(ctx, k, in.Body.InstanceID, in.ID)
 					if err != nil {
 						return nil, s.fail(err)
 					}
@@ -118,70 +109,69 @@ func (s *Server) targetRoutes(api huma.API) {
 							&huma.ErrorDetail{Location: "body.confirm", Value: p})
 					}
 				}
-				j, err := k.enqueue(ctx, s.Queue, in.Body.InstanceID, in.ID, in.Body.NewCopy)
+				j, err := s.Targets.EnqueuePush(ctx, s.Queue, k, in.Body.InstanceID, in.ID, in.Body.NewCopy)
 				if err != nil {
 					return nil, s.fail(err)
 				}
 				return &jobResp{Body: toJob(j)}, nil
 			})
 
-		huma.Register(api, huma.Operation{OperationID: "preview-push-" + k.name, Method: http.MethodGet,
-			Path: "/" + k.plural + "/{id}/push-preview", Summary: "Show what a " + k.name + " push would send and change", Tags: tags,
+		huma.Register(api, huma.Operation{OperationID: "preview-push-" + k.Name, Method: http.MethodGet,
+			Path: "/" + k.Plural + "/{id}/push-preview", Summary: "Show what a " + k.Name + " push would send and change", Tags: tags,
 			Description: "Reads the app's copy and lists the fields the push would change there, the fields it would drop, " +
 				"and whether it would make another copy."},
 			func(ctx context.Context, in *previewIn) (*previewOut, error) {
-				if _, err := k.get(ctx, in.ID); err != nil {
+				if _, err := ents.Get(ctx, in.ID); err != nil {
 					return nil, s.fail(err)
 				}
-				p, err := k.preview(ctx, in.InstanceID, in.ID)
+				p, err := s.Targets.Preview(ctx, k, in.InstanceID, in.ID)
 				if err != nil {
 					return nil, s.fail(err)
 				}
 				return &previewOut{Body: p}, nil
 			})
 
-		huma.Register(api, huma.Operation{OperationID: "list-" + k.name + "-bindings", Method: http.MethodGet,
-			Path: "/" + k.plural + "/{id}/bindings", Summary: "List the targets a " + k.name + " is pushed to", Tags: tags},
+		huma.Register(api, huma.Operation{OperationID: "list-" + k.Name + "-bindings", Method: http.MethodGet,
+			Path: "/" + k.Plural + "/{id}/bindings", Summary: "List the targets a " + k.Name + " is pushed to", Tags: tags},
 			func(ctx context.Context, in *idIn) (*bindingsOut, error) {
-				if _, err := k.get(ctx, in.ID); err != nil {
+				if _, err := ents.Get(ctx, in.ID); err != nil {
 					return nil, s.fail(err)
 				}
-				list, err := k.bindings(ctx, in.ID)
+				list, err := s.Targets.Bindings(ctx, k, in.ID)
 				if err != nil {
 					return nil, s.fail(err)
 				}
 				return &bindingsOut{Body: orEmpty(list)}, nil
 			})
 
-		huma.Register(api, huma.Operation{OperationID: "list-" + k.name + "-items", Method: http.MethodGet,
-			Path: "/instances/{id}/" + k.itemsPath, Summary: "List the " + k.plural + " a target app has", Tags: tags,
+		huma.Register(api, huma.Operation{OperationID: "list-" + k.Name + "-items", Method: http.MethodGet,
+			Path: "/instances/{id}/" + legacyItems[k], Summary: "List the " + k.Plural + " a target app has", Tags: tags,
 			Description: "Reads the app. Each item has a binding_id if a binding already uses it."},
 			func(ctx context.Context, in *idIn) (*itemsOut, error) {
-				list, err := k.items(ctx, in.ID)
+				list, err := s.Targets.Items(ctx, k, in.ID)
 				if err != nil {
 					return nil, s.fail(err)
 				}
 				return &itemsOut{Body: orEmpty(list)}, nil
 			})
 
-		huma.Register(api, huma.Operation{OperationID: "bind-" + k.name, Method: http.MethodPost,
-			Path: "/" + k.plural + "/{id}/bind", Summary: "Bind a " + k.name + " to one the app already has", Tags: tags,
+		huma.Register(api, huma.Operation{OperationID: "bind-" + k.Name, Method: http.MethodPost,
+			Path: "/" + k.Plural + "/{id}/bind", Summary: "Bind a " + k.Name + " to one the app already has", Tags: tags,
 			Description: "Changes nothing in the app or the library. The app's copy becomes the accepted one, so the binding is ahead where the library differs, and the next push sends the library's. The app's linked world books are left for sync."},
 			func(ctx context.Context, in *bindIn) (*bindingOut, error) {
-				return s.binding(k.bind(ctx, in.Body.InstanceID, in.ID, in.Body.RemoteID))
+				return s.binding(s.Targets.Bind(ctx, k, in.Body.InstanceID, in.ID, in.Body.RemoteID))
 			})
 	}
 
 	// bulkPush selects what a query push sends and checks that the instance
 	// can take it.
-	bulkPush := func(ctx context.Context, instanceID int64, q library.Query, kind string) ([]int64, error) {
+	bulkPush := func(ctx context.Context, instanceID int64, q library.Query, k *library.Kind) ([]int64, error) {
 		if q.Filter == nil && q.Text == "" {
 			return nil, huma.Error400BadRequest("bulk actions need a filter or text; to select every card, filter on archived")
 		}
 		if err := s.usable(ctx, instanceID, "push"); err != nil {
 			return nil, err
 		}
-		k := kindNamed(kind)
 		if k == library.Lorebook {
 			// Fail now; otherwise every child job fails (and retries) on the same reason.
 			if err := s.Targets.CheckLorebookPush(ctx, instanceID); err != nil {
@@ -199,15 +189,12 @@ func (s *Server) targetRoutes(api huma.API) {
 		Summary: "Show how the cards a query push would send stand on a target", Tags: tags,
 		Description: "Counts the cards by state, as of each binding's last check, and returns the confirm value for POST /pushes."},
 		func(ctx context.Context, in *bulkPreviewIn) (*bulkPreviewOut, error) {
-			ids, err := bulkPush(ctx, in.Body.InstanceID, in.Body.Query, in.Body.Kind)
+			k := kindNamed(in.Body.Kind)
+			ids, err := bulkPush(ctx, in.Body.InstanceID, in.Body.Query, k)
 			if err != nil {
 				return nil, err
 			}
-			preview := s.Targets.PreviewBulkPush
-			if in.Body.Kind == "lorebook" {
-				preview = s.Targets.PreviewBulkLorebookPush
-			}
-			p, err := preview(ctx, in.Body.InstanceID, ids)
+			p, err := s.Targets.PreviewBulkPush(ctx, k, in.Body.InstanceID, ids)
 			if err != nil {
 				return nil, s.fail(err)
 			}
@@ -220,15 +207,12 @@ func (s *Server) targetRoutes(api huma.API) {
 			"if that copy changed since the preview, or since its last push or resolve when confirm isn't sent.",
 		Tags: tags, DefaultStatus: http.StatusAccepted},
 		func(ctx context.Context, in *bulkPushIn) (*jobResp, error) {
-			ids, err := bulkPush(ctx, in.Body.InstanceID, in.Body.Query, in.Body.Kind)
+			k := kindNamed(in.Body.Kind)
+			ids, err := bulkPush(ctx, in.Body.InstanceID, in.Body.Query, k)
 			if err != nil {
 				return nil, err
 			}
-			enqueue := s.Targets.EnqueueBulkPush
-			if in.Body.Kind == "lorebook" {
-				enqueue = s.Targets.EnqueueBulkLorebookPush
-			}
-			p, err := enqueue(ctx, s.Queue, in.Body.InstanceID, ids, in.Body.NewCopy, in.Body.Confirm)
+			p, err := s.Targets.EnqueueBulkPush(ctx, s.Queue, k, in.Body.InstanceID, ids, in.Body.NewCopy, in.Body.Confirm)
 			var stale *targets.StalePreviewError
 			if errors.As(err, &stale) {
 				return nil, huma.Error409Conflict(stale.Error(), &huma.ErrorDetail{Location: "body.confirm", Value: stale.Preview})

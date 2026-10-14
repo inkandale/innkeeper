@@ -18,7 +18,7 @@ func TestJobs(t *testing.T) {
 	q := jobs.New(e.pool)
 	wait := e.startWorker(q)
 
-	parent, err := e.s.EnqueueBulkPush(e.ctx, q, e.inst, []int64{e.card, other}, false, "")
+	parent, err := e.s.EnqueueBulkPush(e.ctx, q, library.Card, e.inst, []int64{e.card, other}, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestPushJobFailures(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			e := setup(t, map[string]any{"fail_put": mode})
 			q := jobs.New(e.pool)
-			j, err := e.s.EnqueuePush(e.ctx, q, e.inst, e.card, false)
+			j, err := e.s.EnqueuePush(e.ctx, q, library.Card, e.inst, e.card, false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -90,7 +90,7 @@ func TestPushJobFailures(t *testing.T) {
 func TestPushJobUncertainCreate(t *testing.T) {
 	e := setup(t, map[string]any{"fail_put": "crash"})
 	q := jobs.New(e.pool)
-	j, err := e.s.EnqueuePush(e.ctx, q, e.inst, e.card, false)
+	j, err := e.s.EnqueuePush(e.ctx, q, library.Card, e.inst, e.card, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,12 +104,12 @@ func TestPushJobSkipsFinishedCopy(t *testing.T) {
 	e := setup(t, map[string]any{"update": false})
 	q := jobs.New(e.pool)
 	e.push(e.card)
-	j, err := e.s.EnqueuePush(e.ctx, q, e.inst, e.card, true)
+	j, err := e.s.EnqueuePush(e.ctx, q, library.Card, e.inst, e.card, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The job ran once already and made its copy, then was run again.
-	if _, err := e.s.Push(e.ctx, e.inst, e.card, true); err != nil {
+	if _, err := e.s.Push(e.ctx, library.Card, e.inst, e.card, true); err != nil {
 		t.Fatal(err)
 	}
 	if got := e.startWorker(q)(j.ID); got.Status != jobs.StatusSucceeded || !json.Valid(got.Progress) {
@@ -126,7 +126,7 @@ func TestPushJobUpdatesAfterAnotherPush(t *testing.T) {
 	e := setup(t, nil)
 	q := jobs.New(e.pool)
 	e.push(e.card)
-	j, err := e.s.EnqueuePush(e.ctx, q, e.inst, e.card, false)
+	j, err := e.s.EnqueuePush(e.ctx, q, library.Card, e.inst, e.card, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestPushJobUpdatesAfterAnotherPush(t *testing.T) {
 func TestBulkPushDedupes(t *testing.T) {
 	e := setup(t, nil)
 	q := jobs.New(e.pool)
-	parent, err := e.s.EnqueueBulkPush(e.ctx, q, e.inst, []int64{e.card, e.card}, false, "")
+	parent, err := e.s.EnqueueBulkPush(e.ctx, q, library.Card, e.inst, []int64{e.card, e.card}, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestLorebookPushJob(t *testing.T) {
 	e := setup(t, map[string]any{"lorebooks": "standalone"})
 	lb := e.newLorebook("Forge lore")
 	q := jobs.New(e.pool)
-	j, err := e.s.EnqueueLorebookPush(e.ctx, q, e.inst, lb, false)
+	j, err := e.s.EnqueuePush(e.ctx, q, library.Lorebook, e.inst, lb, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestBulkLorebookPush(t *testing.T) {
 	e := setup(t, map[string]any{"lorebooks": "standalone"})
 	a, b := e.newLorebook("Forge lore"), e.newLorebook("Sea lore")
 	q := jobs.New(e.pool)
-	parent, err := e.s.EnqueueBulkLorebookPush(e.ctx, q, e.inst, []int64{a, b, a}, false, "")
+	parent, err := e.s.EnqueueBulkPush(e.ctx, q, library.Lorebook, e.inst, []int64{a, b, a}, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}

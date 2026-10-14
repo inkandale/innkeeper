@@ -14,6 +14,7 @@ import (
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/davidgibbons/innkeeper/internal/bulk"
+	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 	"github.com/davidgibbons/innkeeper/internal/targets"
 	"github.com/davidgibbons/innkeeper/internal/tier"
@@ -177,7 +178,7 @@ func TestMCPOtherTools(t *testing.T) {
 	tool(t, s, "get_lorebook", map[string]any{"id": lb.ID}, false)
 	tool(t, s, "unlink_lorebook", map[string]any{"card_id": c.ID, "lorebook_id": lb.ID}, false)
 
-	if _, err := e.s.Targets.Push(context.Background(), inst, c.ID, false); err != nil {
+	if _, err := e.s.Targets.Push(context.Background(), library.Card, inst, c.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	var bindings []struct{ ID int64 }

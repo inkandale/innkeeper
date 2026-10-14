@@ -166,7 +166,7 @@ func (s *Service) newInApp(ctx context.Context, instanceID int64) (int, error) {
 		}
 		var bound int
 		if err := s.pool.QueryRow(ctx, `SELECT count(DISTINCT remote_id) FROM binding
-			WHERE instance_id = $1 AND `+k.col+` IS NOT NULL AND remote_state <> 'missing' AND remote_id = ANY($2)`,
+			WHERE instance_id = $1 AND `+k.FK+` IS NOT NULL AND remote_state <> 'missing' AND remote_id = ANY($2)`,
 			instanceID, ids).Scan(&bound); err != nil {
 			return 0, err
 		}

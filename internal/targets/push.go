@@ -11,22 +11,18 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
-// Push sends a card's head revision to a target and records the push. A
-// card pushed there before is updated in place, which overwrites changes
-// made in the app. A target that can't update gets another copy, but only
-// when newCopy is set. If the app lost its copy, the push makes a new one.
-func (s *Service) Push(ctx context.Context, instanceID, cardID int64, newCopy bool) (Binding, error) {
-	return s.push(ctx, cardKind, instanceID, cardID, newCopy, rand.Text(), nil)
-}
-
-// PushLorebook sends a lorebook to a target that keeps lorebooks on their
-// own, as Push does for cards.
-func (s *Service) PushLorebook(ctx context.Context, instanceID, lorebookID int64, newCopy bool) (Binding, error) {
-	return s.push(ctx, lorebookKind, instanceID, lorebookID, newCopy, rand.Text(), nil)
+// Push sends a card's or lorebook's head revision to a target and records
+// the push. One pushed there before is updated in place, which overwrites
+// changes made in the app. A target that can't update gets another copy, but
+// only when newCopy is set. If the app lost its copy, the push makes a new
+// one. A lorebook needs a target that keeps lorebooks on their own.
+func (s *Service) Push(ctx context.Context, k *library.Kind, instanceID, id int64, newCopy bool) (Binding, error) {
+	return s.push(ctx, targetKind(k), instanceID, id, newCopy, rand.Text(), nil)
 }
 
 // pushExpect is what a queued push job saw when it was queued.
@@ -43,9 +39,9 @@ type pushExpect struct {
 // an earlier run of the job (or another push) already pushed it.
 var errAlreadyPushed = errors.New("already pushed")
 
-// push is Push or PushLorebook, except that with expect it gives up with
-// errAlreadyPushed if the entity was pushed since expect. key is the put key
-// for a create; a re-run of the same push must pass the same key.
+// push is Push, except that with expect it gives up with errAlreadyPushed
+// if the entity was pushed since expect. key is the put key for a create; a
+// re-run of the same push must pass the same key.
 func (s *Service) push(ctx context.Context, k kind, instanceID, id int64, newCopy bool, key string, expect *pushExpect) (Binding, error) {
 	inst, info, err := s.describe(ctx, instanceID)
 	if err != nil {
@@ -84,7 +80,7 @@ func (s *Service) push(ctx context.Context, k kind, instanceID, id int64, newCop
 	var remoteID, state, acceptedHash string
 	var lastPush *int64
 	err = tx.QueryRow(ctx, `SELECT remote_id, remote_state, accepted_hash, (SELECT max(id) FROM push WHERE binding_id = b.id)
-		FROM binding b WHERE instance_id = $1 AND `+k.col+` = $2`,
+		FROM binding b WHERE instance_id = $1 AND `+k.FK+` = $2`,
 		instanceID, id).Scan(&remoteID, &state, &acceptedHash, &lastPush)
 	bound := err == nil
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -169,10 +165,10 @@ func (s *Service) push(ctx context.Context, k kind, instanceID, id int64, newCop
 	ctx, cancel := context.WithTimeout(detached, 30*time.Second)
 	defer cancel()
 	var bindingID int64
-	err = tx.QueryRow(ctx, `INSERT INTO binding (instance_id, `+k.col+`, remote_id, remote_state, accepted_data,
+	err = tx.QueryRow(ctx, `INSERT INTO binding (instance_id, `+k.FK+`, remote_id, remote_state, accepted_data,
 			accepted_hash, checked_at)
 		VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $4 = 'unknown' THEN NULL ELSE now() END)
-		ON CONFLICT (instance_id, `+k.col+`) DO UPDATE SET remote_id = EXCLUDED.remote_id,
+		ON CONFLICT (instance_id, `+k.FK+`) DO UPDATE SET remote_id = EXCLUDED.remote_id,
 			remote_state = EXCLUDED.remote_state, accepted_data = EXCLUDED.accepted_data,
 			accepted_hash = EXCLUDED.accepted_hash, seen_data = NULL, checked_at = EXCLUDED.checked_at,
 			version = binding.version + 1

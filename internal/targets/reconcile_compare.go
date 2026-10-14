@@ -12,24 +12,18 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/library"
 )
 
-// CompareItem compares an app character with a library card. cardID 0 means
-// the card bound to remoteID.
-func (s *Service) CompareItem(ctx context.Context, instanceID int64, remoteID string, cardID int64) (Comparison, error) {
-	return s.compareItem(ctx, cardKind, instanceID, remoteID, cardID, false)
+// CompareItem compares an app item with a library card or lorebook. id 0
+// means the one bound to remoteID.
+func (s *Service) CompareItem(ctx context.Context, k *library.Kind, instanceID int64, remoteID string, id int64) (Comparison, error) {
+	return s.compareItem(ctx, targetKind(k), instanceID, remoteID, id, false)
 }
 
 // CompareItemTwoWay is CompareItem without the binding's accepted copy as
 // the ancestor, so every difference is the owner's choice. A bind accepts the
 // app's copy as it is, so with the ancestor the library's side of each
 // difference would be kept without asking. Resolve it with base none.
-func (s *Service) CompareItemTwoWay(ctx context.Context, instanceID int64, remoteID string, cardID int64) (Comparison, error) {
-	return s.compareItem(ctx, cardKind, instanceID, remoteID, cardID, true)
-}
-
-// CompareLorebookItem compares an app world book with a library lorebook.
-// lorebookID 0 means the lorebook bound to remoteID.
-func (s *Service) CompareLorebookItem(ctx context.Context, instanceID int64, remoteID string, lorebookID int64) (Comparison, error) {
-	return s.compareItem(ctx, lorebookKind, instanceID, remoteID, lorebookID, false)
+func (s *Service) CompareItemTwoWay(ctx context.Context, k *library.Kind, instanceID int64, remoteID string, id int64) (Comparison, error) {
+	return s.compareItem(ctx, targetKind(k), instanceID, remoteID, id, true)
 }
 
 func (s *Service) compareItem(ctx context.Context, k kind, instanceID int64, remoteID string, id int64, twoWay bool) (Comparison, error) {
@@ -109,8 +103,8 @@ type queryRower interface {
 // since an app can reuse a missing binding's ID.
 func itemBinding(ctx context.Context, q queryRower, k kind, instanceID int64, remoteID string) (boundItem, error) {
 	var b boundItem
-	err := q.QueryRow(ctx, `SELECT id, `+k.col+`, accepted_hash, remote_state, accepted_data FROM binding
-		WHERE instance_id = $1 AND remote_id = $2 AND `+k.col+` IS NOT NULL
+	err := q.QueryRow(ctx, `SELECT id, `+k.FK+`, accepted_hash, remote_state, accepted_data FROM binding
+		WHERE instance_id = $1 AND remote_id = $2 AND `+k.FK+` IS NOT NULL
 		ORDER BY remote_state = 'missing', id LIMIT 1`, instanceID, remoteID).
 		Scan(&b.id, &b.entityID, &b.acceptedHash, &b.remoteState, &b.accepted)
 	if errors.Is(err, pgx.ErrNoRows) {

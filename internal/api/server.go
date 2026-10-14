@@ -150,9 +150,9 @@ func config() huma.Config {
 func (s *Server) routes(api huma.API) {
 	s.authRoutes(api)
 	s.setupRoutes(api)
-	s.entityRoutes(api, s.Lib.Cards, "cards", "card", "Cards")
+	s.entityRoutes(api, library.Card, "Cards")
 	s.cardRoutes(api)
-	s.entityRoutes(api, s.Lib.Lorebooks, "lorebooks", "lorebook", "Lorebooks")
+	s.entityRoutes(api, library.Lorebook, "Lorebooks")
 	s.organizeRoutes(api)
 	s.searchRoutes(api)
 	s.catalogRoutes(api)

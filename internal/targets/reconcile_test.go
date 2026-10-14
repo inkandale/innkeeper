@@ -620,7 +620,7 @@ func TestReconcileReusedRemoteID(t *testing.T) {
 	if !slices.Equal(snap.Missing, []int64{deadCard}) {
 		t.Errorf("missing = %v", snap.Missing)
 	}
-	c, err := e.s.CompareItem(e.ctx, e.inst, live.RemoteID, 0)
+	c, err := e.s.CompareItem(e.ctx, library.Card, e.inst, live.RemoteID, 0)
 	if err != nil || c.CardID != e.card || c.Base != "accepted" {
 		t.Errorf("compare = %+v, %v", c, err)
 	}
@@ -641,7 +641,7 @@ func TestReconcileOnlyAMissingBinding(t *testing.T) {
 	if c := e.compareItem(b.RemoteID, 0); c.BindingID != 0 {
 		t.Errorf("comparison binding = %d", c.BindingID)
 	}
-	res, err := e.s.Resolve(e.ctx, Resolution{InstanceID: e.inst, RemoteID: b.RemoteID, AppHash: it.AppHash, Action: "import"})
+	res, err := e.s.Resolve(e.ctx, library.Card, Resolution{InstanceID: e.inst, RemoteID: b.RemoteID, AppHash: it.AppHash, Action: "import"})
 	if err != nil || res.CardID == e.card {
 		t.Fatalf("import: %+v, %v", res, err)
 	}
@@ -809,7 +809,7 @@ func TestReconcileConcurrentImportsBindOneCard(t *testing.T) {
 		t.Fatalf("first import = %+v, %v", snap.Items, err)
 	}
 	lia := e.bindingOf("r1").CardID
-	res, err := e.s.Resolve(e.ctx, Resolution{InstanceID: inst2, RemoteID: "r1", AppHash: it.AppHash, Action: "import"})
+	res, err := e.s.Resolve(e.ctx, library.Card, Resolution{InstanceID: inst2, RemoteID: "r1", AppHash: it.AppHash, Action: "import"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -917,7 +917,7 @@ func TestReconcilePullsCardWithWorldBooks(t *testing.T) {
 	// The fake app lists only cards whose IDs start with r.
 	e.appCard("r1", map[string]any{"name": "Tova", "description": "A smith."},
 		map[string]any{"lorebook_remote_ids": []string{"l1", "l2"}})
-	if _, err := e.s.Bind(e.ctx, e.inst, card, "r1"); err != nil {
+	if _, err := e.s.Bind(e.ctx, library.Card, e.inst, card, "r1"); err != nil {
 		t.Fatal(err)
 	}
 	e.editRemote("r1", "description", "A smith, edited in the app.")

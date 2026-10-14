@@ -92,7 +92,7 @@ func (s *Service) readItem(ctx context.Context, k kind, inst pluginhost.Instance
 	avatar bool) (appItem, error) {
 	it, err := s.readItemData(ctx, k, inst, info, remoteID, avatar)
 	if remoteNotFound(err) {
-		err = fmt.Errorf("%w: the app has no %s %s: %w", library.ErrNotFound, k.name, remoteID, err)
+		err = fmt.Errorf("%w: the app has no %s %s: %w", library.ErrNotFound, k.Name, remoteID, err)
 	}
 	return it, err
 }
@@ -254,7 +254,7 @@ func compare(k kind, info protocol.TargetInfo, lib, app, accepted json.RawMessag
 			return nil, err
 		}
 	}
-	return merge.Compare(k.schema(), lib, app, ancestor)
+	return merge.Compare(k.Schema, lib, app, ancestor)
 }
 
 // coreFields decide between binding to a likely match and importing a copy.
@@ -306,7 +306,7 @@ func (s *Service) verdict(ctx context.Context, k kind, inst pluginhost.Instance,
 
 	sourced := map[int64]bool{}
 	for _, src := range library.Detect(it.raw, k.isLorebook()) {
-		ids, err := k.entities(s.lib).BySource(ctx, src.Kind, src.Ref)
+		ids, err := s.lib.Entities(k.Kind).BySource(ctx, src.Kind, src.Ref)
 		if err != nil {
 			return item, it, err
 		}
@@ -557,7 +557,7 @@ items:
 			r = Resolution{InstanceID: instanceID, RemoteID: it.RemoteID, AppHash: it.AppHash,
 				BaseRevisionID: idx.byID[it.Suggested.CardID].head, Action: "bind", CardID: it.Suggested.CardID,
 				Default: merge.ChooseLibrary}
-		case it.Verdict == VerdictNew && it.Suggested.Action == "import" && !imported[k.name+":"+it.AppHash]:
+		case it.Verdict == VerdictNew && it.Suggested.Action == "import" && !imported[k.Name+":"+it.AppHash]:
 			r = Resolution{InstanceID: instanceID, RemoteID: it.RemoteID, AppHash: it.AppHash,
 				BindingID: it.BindingID, Action: "import"}
 		case it.Verdict == VerdictBound && it.AppOnly && it.Suggested.Action == "bind":
@@ -584,7 +584,7 @@ items:
 						continue items
 					}
 				}
-				if key := lorebookKind.name + ":" + n.AppHash; n.Action == "import" {
+				if key := lorebookKind.Name + ":" + n.AppHash; n.Action == "import" {
 					if imported[key] || importing[key] {
 						continue items
 					}
@@ -602,7 +602,7 @@ items:
 		it.AutoBound, it.AutoImported = res.Action == "bind" && !pull, res.Action == "import"
 		it.BindingID = res.BindingID
 		if it.AutoImported {
-			imported[k.name+":"+it.AppHash] = true
+			imported[k.Name+":"+it.AppHash] = true
 		}
 		applied[res.CardID] = true
 		if pull {
@@ -613,7 +613,7 @@ items:
 			lb, n := &it.Lorebooks[j], r.Lorebooks[j]
 			lb.AutoBound, lb.AutoImported, lb.BindingID = n.Action == "bind", n.Action == "import", lr.BindingID
 			if n.Action == "import" {
-				imported[lorebookKind.name+":"+n.AppHash] = true
+				imported[lorebookKind.Name+":"+n.AppHash] = true
 				// The next card binds the world book this one imported; books.byID predates it.
 				n = Resolution{RemoteID: n.RemoteID, AppHash: n.AppHash, Action: "bind", CardID: lr.CardID,
 					BaseRevisionID: lr.RevisionID, Default: merge.ChooseLibrary}

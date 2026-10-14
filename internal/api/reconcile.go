@@ -3,9 +3,11 @@ package api
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/targets"
 	"github.com/davidgibbons/innkeeper/internal/tier"
 )
@@ -103,7 +105,7 @@ func (s *Server) reconcileRoutes(api huma.API) {
 			if in.Base == "none" {
 				compare = s.Targets.CompareItemTwoWay
 			}
-			c, err := compare(ctx, in.ID, in.RemoteID, in.CardID)
+			c, err := compare(ctx, library.Card, in.ID, in.RemoteID, in.CardID)
 			if err != nil {
 				return nil, s.fail(err)
 			}
@@ -114,28 +116,23 @@ func (s *Server) reconcileRoutes(api huma.API) {
 		Path: "/instances/{id}/lorebook-items/{remote_id}/compare", Summary: "Compare an app world book with a library lorebook", Tags: tags,
 		Description: "Reads the app. Resolve with the comparison's app_hash, head_revision_id, and accepted_hash."},
 		func(ctx context.Context, in *compareLorebookIn) (*comparisonOut, error) {
-			c, err := s.Targets.CompareLorebookItem(ctx, in.ID, in.RemoteID, in.LorebookID)
+			c, err := s.Targets.CompareItem(ctx, library.Lorebook, in.ID, in.RemoteID, in.LorebookID)
 			if err != nil {
 				return nil, s.fail(err)
 			}
 			return &comparisonOut{Body: c}, nil
 		})
 
-	for _, k := range []struct {
-		name, itemsPath string
-		resolve         func(context.Context, targets.Resolution) (targets.ResolveResult, error)
-	}{
-		{"item", "items", s.Targets.Resolve},
-		{"lorebook-item", "lorebook-items", s.Targets.ResolveLorebook},
-	} {
-		huma.Register(api, huma.Operation{OperationID: "resolve-" + k.name, Method: http.MethodPost,
-			Path: "/instances/{id}/" + k.itemsPath + "/{remote_id}/resolve", Summary: "Bind, import, or skip an app " + k.name, Tags: tags,
+	for _, k := range library.Kinds {
+		old := strings.TrimSuffix(legacyItems[k], "s")
+		huma.Register(api, huma.Operation{OperationID: "resolve-" + old, Method: http.MethodPost,
+			Path: "/instances/{id}/" + legacyItems[k] + "/{remote_id}/resolve", Summary: "Bind, import, or skip an app " + old, Tags: tags,
 			Description: "The path sets instance_id and remote_id. Changes the library and the binding, never the app; push afterwards. " +
 				"If the app's copy, the library, or the binding changed since the comparison, returns 409 with a fresh comparison."},
 			func(ctx context.Context, in *resolveIn) (*resolveOut, error) {
 				r := in.Body
 				r.InstanceID, r.RemoteID = in.ID, in.RemoteID
-				res, err := k.resolve(ctx, r)
+				res, err := s.Targets.Resolve(ctx, k, r)
 				if err != nil {
 					return nil, s.fail(err)
 				}

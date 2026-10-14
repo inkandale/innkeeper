@@ -156,7 +156,7 @@ func TestReconcileAutoBindsExactMatches(t *testing.T) {
 			}
 			continue
 		}
-		dainBindings, err := e.s.Bindings(e.ctx, dain)
+		dainBindings, err := e.s.Bindings(e.ctx, library.Card, dain)
 		if !c1.AutoBound || c1.BindingID == 0 || e.status(tova) != "in_sync" || err != nil || len(dainBindings) != 0 {
 			t.Errorf("obvious: c1 = %+v, dain bindings %v, %v", c1, dainBindings, err)
 		}
@@ -214,7 +214,7 @@ func TestAutoBindLeavesAnItemThatChangedAfterTheRead(t *testing.T) {
 	if it := item(snap, "r1"); it.Verdict != VerdictExact || it.AutoBound {
 		t.Fatalf("r1 = %+v", it)
 	}
-	if b, err := e.s.Bindings(e.ctx, tova); err != nil || len(b) != 0 {
+	if b, err := e.s.Bindings(e.ctx, library.Card, tova); err != nil || len(b) != 0 {
 		t.Fatalf("bindings = %+v, %v", b, err)
 	}
 }
@@ -261,7 +261,7 @@ func TestAutoBindSkipsLikelyMatches(t *testing.T) {
 	if it.Verdict != VerdictLikely || it.Suggested == nil || it.Suggested.Action != "bind" || it.AutoBound {
 		t.Fatalf("r1 = %+v", it)
 	}
-	if b, _ := e.s.Bindings(e.ctx, tova); len(b) != 0 {
+	if b, _ := e.s.Bindings(e.ctx, library.Card, tova); len(b) != 0 {
 		t.Fatalf("bindings = %+v", b)
 	}
 }

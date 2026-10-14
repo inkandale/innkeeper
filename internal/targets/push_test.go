@@ -135,14 +135,14 @@ func TestPushOnlyTarget(t *testing.T) {
 func TestCreateOnlyTarget(t *testing.T) {
 	e := setup(t, map[string]any{"update": false})
 	e.push(e.card)
-	if _, err := e.s.Push(e.ctx, e.inst, e.card, false); !errors.Is(err, ErrNewCopy) {
+	if _, err := e.s.Push(e.ctx, library.Card, e.inst, e.card, false); !errors.Is(err, ErrNewCopy) {
 		t.Fatalf("second push: %v, want ErrNewCopy", err)
 	}
-	p, err := e.s.Preview(e.ctx, e.inst, e.card)
+	p, err := e.s.Preview(e.ctx, library.Card, e.inst, e.card)
 	if err != nil || !p.NewCopy {
 		t.Fatalf("preview = %+v, %v", p, err)
 	}
-	b, err := e.s.Push(e.ctx, e.inst, e.card, true)
+	b, err := e.s.Push(e.ctx, library.Card, e.inst, e.card, true)
 	if err != nil || b.RemoteID != "r2" {
 		t.Fatalf("push with new copy: %+v, %v", b, err)
 	}
@@ -180,11 +180,11 @@ func TestPushFailures(t *testing.T) {
 	for mode, retryable := range map[string]bool{"retryable": true, "fatal": false} {
 		t.Run(mode, func(t *testing.T) {
 			e := setup(t, map[string]any{"fail_put": mode})
-			_, err := e.s.Push(e.ctx, e.inst, e.card, false)
+			_, err := e.s.Push(e.ctx, library.Card, e.inst, e.card, false)
 			if err == nil || plugins.Retryable(err) != retryable {
 				t.Fatalf("push: %v, want retryable %v", err, retryable)
 			}
-			if list, _ := e.s.Bindings(e.ctx, e.card); len(list) != 0 {
+			if list, _ := e.s.Bindings(e.ctx, library.Card, e.card); len(list) != 0 {
 				t.Fatalf("a failed push left bindings: %+v", list)
 			}
 		})
@@ -193,14 +193,14 @@ func TestPushFailures(t *testing.T) {
 
 func TestPreview(t *testing.T) {
 	e := setup(t, nil)
-	p, err := e.s.Preview(e.ctx, e.inst, e.card)
+	p, err := e.s.Preview(e.ctx, library.Card, e.inst, e.card)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Equal(p.DroppedFields, []string{"scenario"}) || p.NewCopy || !strings.Contains(string(p.Card), `"Brakka"`) {
 		t.Fatalf("preview = %+v", p)
 	}
-	if _, err := e.s.Preview(e.ctx, e.inst, 999); !errors.Is(err, library.ErrNotFound) {
+	if _, err := e.s.Preview(e.ctx, library.Card, e.inst, 999); !errors.Is(err, library.ErrNotFound) {
 		t.Fatalf("missing card: %v", err)
 	}
 }
@@ -223,7 +223,7 @@ func TestConcurrentPushesNeedOneConnection(t *testing.T) {
 	errs := make(chan error, len(cards))
 	for _, c := range cards {
 		go func() {
-			_, err := s.Push(ctx, e.inst, c, false)
+			_, err := s.Push(ctx, library.Card, e.inst, c, false)
 			errs <- err
 		}()
 	}

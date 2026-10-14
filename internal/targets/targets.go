@@ -86,18 +86,9 @@ func (s *Service) Binding(ctx context.Context, id int64) (Binding, error) {
 	return scanBinding(s.pool.QueryRow(ctx, bindingQuery+` WHERE b.id = $1`, id))
 }
 
-// Bindings returns a card's bindings, oldest first.
-func (s *Service) Bindings(ctx context.Context, cardID int64) ([]Binding, error) {
-	return s.bindings(ctx, cardKind, cardID)
-}
-
-// LorebookBindings returns a lorebook's bindings, oldest first.
-func (s *Service) LorebookBindings(ctx context.Context, lorebookID int64) ([]Binding, error) {
-	return s.bindings(ctx, lorebookKind, lorebookID)
-}
-
-func (s *Service) bindings(ctx context.Context, k kind, id int64) ([]Binding, error) {
-	rows, err := s.pool.Query(ctx, bindingQuery+` WHERE b.`+k.col+` = $1 ORDER BY b.id`, id)
+// Bindings returns a card's or lorebook's bindings, oldest first.
+func (s *Service) Bindings(ctx context.Context, k *library.Kind, id int64) ([]Binding, error) {
+	rows, err := s.pool.Query(ctx, bindingQuery+` WHERE b.`+k.FK+` = $1 ORDER BY b.id`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +141,7 @@ func (s *Service) SetAutosync(ctx context.Context, id int64, on bool) (Binding, 
 // concurrent first pushes can't make two copies. It holds until tx ends.
 func lock(ctx context.Context, tx pgx.Tx, k kind, instanceID, id int64) error {
 	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
-		fmt.Sprintf("binding %d %s %d", instanceID, k.name, id))
+		fmt.Sprintf("binding %d %s %d", instanceID, k.Name, id))
 	return err
 }
 
@@ -223,7 +214,7 @@ type rendered struct {
 // instance's override applied, and for a card, linked lorebooks embedded if
 // the target takes them that way.
 func (s *Service) render(ctx context.Context, k kind, instanceID, id int64, info protocol.TargetInfo) (rendered, error) {
-	ents := k.entities(s.lib)
+	ents := s.lib.Entities(k.Kind)
 	c, err := ents.Get(ctx, id)
 	if err != nil {
 		return rendered{}, err

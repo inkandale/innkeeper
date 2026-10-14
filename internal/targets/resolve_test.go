@@ -30,7 +30,7 @@ func resolveEnv(t *testing.T) (*env, int64) {
 
 func (e *env) compareItem(remoteID string, card int64) Comparison {
 	e.t.Helper()
-	c, err := e.s.CompareItem(e.ctx, e.inst, remoteID, card)
+	c, err := e.s.CompareItem(e.ctx, library.Card, e.inst, remoteID, card)
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func (e *env) resolve(c Comparison, choices map[string]merge.Choice, def merge.C
 }
 
 func (e *env) tryResolve(c Comparison, choices map[string]merge.Choice, def merge.Choice) (ResolveResult, error) {
-	return e.s.Resolve(e.ctx, Resolution{InstanceID: e.inst, RemoteID: c.RemoteID, AppHash: c.AppHash,
+	return e.s.Resolve(e.ctx, library.Card, Resolution{InstanceID: e.inst, RemoteID: c.RemoteID, AppHash: c.AppHash,
 		BaseRevisionID: c.HeadRevisionID, AcceptedHash: c.AcceptedHash, Action: "bind", CardID: c.CardID, Choices: choices, Default: def})
 }
 
@@ -158,7 +158,7 @@ func TestResolveKeepInAppIsThisInstanceOnly(t *testing.T) {
 	if p := e.preview(card); !strings.Contains(string(p.Card), "lumiverse_ui") {
 		t.Errorf("this instance's preview = %s", p.Card)
 	}
-	p, err := e.s.Preview(e.ctx, e.otherInstance(), card)
+	p, err := e.s.Preview(e.ctx, library.Card, e.otherInstance(), card)
 	if err != nil || strings.Contains(string(p.Card), "lumiverse_ui") {
 		t.Errorf("other preview = %s, %v", p.Card, err)
 	}
@@ -290,7 +290,7 @@ func TestResolveInAPinnedFieldChangesOnlyTheOverride(t *testing.T) {
 	if field(t, head.Data, "first_mes") != libGreeting || e.override(card)["first_mes"] != want {
 		t.Fatalf("head = %s, override = %v", head.Data, e.override(card))
 	}
-	p, err := e.s.Preview(e.ctx, e.otherInstance(), card)
+	p, err := e.s.Preview(e.ctx, library.Card, e.otherInstance(), card)
 	if err != nil || !strings.Contains(string(p.Card), libGreeting) {
 		t.Errorf("other preview = %s, %v", p.Card, err)
 	}
@@ -430,7 +430,7 @@ func TestResolveRebindsACardWhoseCopyWentMissing(t *testing.T) {
 		t.Fatal(err)
 	}
 	res := e.resolve(e.compareItem("lv1", card), nil, merge.ChooseApp)
-	list, err := e.s.Bindings(e.ctx, card)
+	list, err := e.s.Bindings(e.ctx, library.Card, card)
 	if err != nil || res.BindingID != b.ID || len(list) != 1 || list[0].RemoteID != "lv1" || list[0].Status != "in_sync" {
 		t.Fatalf("result = %+v, bindings = %+v, %v", res, list, err)
 	}
@@ -441,7 +441,7 @@ func TestResolveGoneItemIsNotFound(t *testing.T) {
 	if !errors.Is(ErrNotFound, library.ErrNotFound) {
 		t.Error("targets.ErrNotFound isn't a library.ErrNotFound")
 	}
-	if _, err := e.s.CompareItem(e.ctx, e.inst, "gone", card); !errors.Is(err, library.ErrNotFound) {
+	if _, err := e.s.CompareItem(e.ctx, library.Card, e.inst, "gone", card); !errors.Is(err, library.ErrNotFound) {
 		t.Errorf("compare: %v", err)
 	}
 	c := e.compareItem("lv1", card)
@@ -502,18 +502,18 @@ func TestResolveLorebook(t *testing.T) {
 		id := fmt.Sprintf("l%d", i)
 		e.writeRemote(id, map[string]any{"lorebook": map[string]any{"name": fmt.Sprintf("Forge %d", i),
 			"description": "Old lore.", "entries": []any{map[string]any{"keys": []any{"forge"}, "content": "The forge burns hot."}}}})
-		c, err := e.s.CompareLorebookItem(e.ctx, e.inst, id, lb)
+		c, err := e.s.CompareItem(e.ctx, library.Lorebook, e.inst, id, lb)
 		if err != nil {
 			t.Fatal(err)
 		}
 		r := Resolution{InstanceID: e.inst, RemoteID: id, AppHash: c.AppHash, BaseRevisionID: c.HeadRevisionID,
 			Action: "bind", CardID: lb, Default: def}
 		r.Choices = map[string]merge.Choice{"avatar": merge.ChooseApp}
-		if _, err := e.s.ResolveLorebook(e.ctx, r); !errors.Is(err, merge.ErrUnknownHunk) {
+		if _, err := e.s.Resolve(e.ctx, library.Lorebook, r); !errors.Is(err, merge.ErrUnknownHunk) {
 			t.Errorf("avatar on a lorebook: %v", err)
 		}
 		r.Choices = nil
-		if _, err := e.s.ResolveLorebook(e.ctx, r); err != nil {
+		if _, err := e.s.Resolve(e.ctx, library.Lorebook, r); err != nil {
 			t.Fatalf("%s: %v", def, err)
 		}
 		head := e.lorebookHead(lb)
@@ -725,7 +725,7 @@ func TestResolveImportMakesANewCard(t *testing.T) {
 	match := e.libCard(map[string]any{"name": "Pell", "description": "A clockwork owl.", "first_mes": "Hoo."})
 	e.appCard("owl", data, map[string]any{"avatar": pic})
 	c := e.compareItem("owl", match)
-	res, err := e.s.Resolve(e.ctx, Resolution{InstanceID: e.inst, RemoteID: "owl", AppHash: c.AppHash, Action: "import"})
+	res, err := e.s.Resolve(e.ctx, library.Card, Resolution{InstanceID: e.inst, RemoteID: "owl", AppHash: c.AppHash, Action: "import"})
 	if err != nil || res.CardID == 0 || res.CardID == match || res.BindingID == 0 {
 		t.Fatalf("result = %+v, %v", res, err)
 	}
@@ -748,7 +748,7 @@ func TestResolveImportSplitsABoundItem(t *testing.T) {
 	e.editRemote(b.RemoteID, "description", "A different smith altogether.")
 	c := e.compareItem(b.RemoteID, 0)
 	r := Resolution{InstanceID: e.inst, RemoteID: b.RemoteID, AppHash: c.AppHash, BindingID: c.BindingID, Action: "import"}
-	res, err := e.s.Resolve(e.ctx, r)
+	res, err := e.s.Resolve(e.ctx, library.Card, r)
 	if err != nil || c.BindingID != b.ID || res.CardID == card {
 		t.Fatalf("comparison binding %d, result = %+v, %v", c.BindingID, res, err)
 	}
@@ -758,7 +758,7 @@ func TestResolveImportSplitsABoundItem(t *testing.T) {
 	cards := e.cardCount()
 	// Sent again, the import names the binding it just let go of.
 	var stale *StaleError
-	if _, err := e.s.Resolve(e.ctx, r); !errors.As(err, &stale) || stale.Comparison.BindingID != res.BindingID {
+	if _, err := e.s.Resolve(e.ctx, library.Card, r); !errors.As(err, &stale) || stale.Comparison.BindingID != res.BindingID {
 		t.Fatalf("again: err = %v", err)
 	}
 	if n := e.cardCount(); n != cards {
@@ -770,13 +770,13 @@ func TestResolveImportRepeatedIsStale(t *testing.T) {
 	e, card := resolveEnv(t)
 	c := e.compareItem("lv1", card)
 	r := Resolution{InstanceID: e.inst, RemoteID: "lv1", AppHash: c.AppHash, BindingID: c.BindingID, Action: "import"}
-	res, err := e.s.Resolve(e.ctx, r)
+	res, err := e.s.Resolve(e.ctx, library.Card, r)
 	if err != nil {
 		t.Fatal(err)
 	}
 	cards := e.cardCount()
 	var stale *StaleError
-	if _, err := e.s.Resolve(e.ctx, r); !errors.As(err, &stale) || stale.Comparison.BindingID != res.BindingID {
+	if _, err := e.s.Resolve(e.ctx, library.Card, r); !errors.As(err, &stale) || stale.Comparison.BindingID != res.BindingID {
 		t.Fatalf("again: err = %v", err)
 	}
 	if b, err := e.s.Binding(e.ctx, res.BindingID); err != nil || b.Status != "in_sync" || e.cardCount() != cards {
@@ -788,7 +788,7 @@ func TestResolveImportOfAnItemBoundSinceIsStale(t *testing.T) {
 	e, card := resolveEnv(t)
 	b := e.push(card)
 	cards := e.cardCount()
-	_, err := e.s.Resolve(e.ctx, Resolution{InstanceID: e.inst, RemoteID: b.RemoteID, AppHash: e.compareItem(b.RemoteID, 0).AppHash,
+	_, err := e.s.Resolve(e.ctx, library.Card, Resolution{InstanceID: e.inst, RemoteID: b.RemoteID, AppHash: e.compareItem(b.RemoteID, 0).AppHash,
 		Action: "import"})
 	var stale *StaleError
 	if !errors.As(err, &stale) || stale.Comparison.BindingID != b.ID {
@@ -801,20 +801,20 @@ func TestResolveImportOfAnItemBoundSinceIsStale(t *testing.T) {
 
 func TestResolveNestedImportRepeatedIsStale(t *testing.T) {
 	e, card, forge := worldBooks(t)
-	l2, err := e.s.CompareLorebookItem(e.ctx, e.inst, "l2", forge)
+	l2, err := e.s.CompareItem(e.ctx, library.Lorebook, e.inst, "l2", forge)
 	if err != nil {
 		t.Fatal(err)
 	}
 	r := e.bindTo(false, "c1", card)
 	r.Lorebooks = []Resolution{{RemoteID: "l2", Action: "import", AppHash: l2.AppHash}}
-	if _, err := e.s.Resolve(e.ctx, r); err != nil {
+	if _, err := e.s.Resolve(e.ctx, library.Card, r); err != nil {
 		t.Fatal(err)
 	}
 	books := e.lorebookCount()
 	r = e.bindTo(false, "c1", card)
 	r.Lorebooks = []Resolution{{RemoteID: "l2", Action: "import", AppHash: l2.AppHash}}
 	var stale *StaleError
-	if _, err := e.s.Resolve(e.ctx, r); !errors.As(err, &stale) || stale.Item != "lorebook:l2" {
+	if _, err := e.s.Resolve(e.ctx, library.Card, r); !errors.As(err, &stale) || stale.Item != "lorebook:l2" {
 		t.Fatalf("again: err = %v", err)
 	}
 	if n := e.lorebookCount(); n != books {
@@ -833,7 +833,7 @@ func (e *env) cardCount() int {
 
 func TestResolveSkipWritesNothing(t *testing.T) {
 	e, card := resolveEnv(t)
-	res, err := e.s.Resolve(e.ctx, Resolution{InstanceID: e.inst, RemoteID: "lv1", Action: "skip"})
+	res, err := e.s.Resolve(e.ctx, library.Card, Resolution{InstanceID: e.inst, RemoteID: "lv1", Action: "skip"})
 	if err != nil || res.Action != "skip" || e.revisions(card) != 1 || e.bindingCount() != 0 {
 		t.Fatalf("result = %+v, %v", res, err)
 	}
@@ -859,11 +859,11 @@ func worldBooks(t *testing.T) (e *env, card, forge int64) {
 // bindTo is a bind resolution from a fresh comparison.
 func (e *env) bindTo(lorebook bool, remoteID string, id int64) Resolution {
 	e.t.Helper()
-	compare := e.s.CompareItem
+	k := library.Card
 	if lorebook {
-		compare = e.s.CompareLorebookItem
+		k = library.Lorebook
 	}
-	c, err := compare(e.ctx, e.inst, remoteID, id)
+	c, err := e.s.CompareItem(e.ctx, k, e.inst, remoteID, id)
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -884,7 +884,7 @@ func TestResolveNestedWorldBooks(t *testing.T) {
 	e, card, forge := worldBooks(t)
 	r := e.bindTo(false, "c1", card)
 	r.Lorebooks = []Resolution{e.bindTo(true, "l1", forge), {RemoteID: "l2", Action: "skip"}}
-	res, err := e.s.Resolve(e.ctx, r)
+	res, err := e.s.Resolve(e.ctx, library.Card, r)
 	if err != nil || len(res.Lorebooks) != 2 || res.Lorebooks[0].CardID != forge || res.Lorebooks[1].Action != "skip" {
 		t.Fatalf("result = %+v, %v", res, err)
 	}
@@ -898,7 +898,7 @@ func TestResolveNestedWorldBooks(t *testing.T) {
 
 func TestResolveLeftOutWorldBookTakesItsSuggestion(t *testing.T) {
 	e, card, forge := worldBooks(t)
-	res, err := e.s.Resolve(e.ctx, e.bindTo(false, "c1", card))
+	res, err := e.s.Resolve(e.ctx, library.Card, e.bindTo(false, "c1", card))
 	if err != nil || len(res.Lorebooks) != 2 {
 		t.Fatalf("result = %+v, %v", res, err)
 	}
@@ -921,7 +921,7 @@ func TestResolveSharedWorldBookOnce(t *testing.T) {
 	l1 := e.bindTo(true, "l1", forge)
 	// The second would be stale if it ran, since the first binds l1.
 	r.Lorebooks = []Resolution{l1, l1, {RemoteID: "l2", Action: "skip"}}
-	res, err := e.s.Resolve(e.ctx, r)
+	res, err := e.s.Resolve(e.ctx, library.Card, r)
 	if err != nil || res.Lorebooks[0].BindingID == 0 || res.Lorebooks[0].BindingID != res.Lorebooks[1].BindingID {
 		t.Fatalf("result = %+v, %v", res, err)
 	}
@@ -938,7 +938,7 @@ func TestResolveRollsBackTogether(t *testing.T) {
 	r.Choices = map[string]merge.Choice{}
 	stale := Resolution{RemoteID: "l2", Action: "import", AppHash: "old"}
 	r.Lorebooks = []Resolution{e.bindTo(true, "l1", forge), stale}
-	_, err := e.s.Resolve(e.ctx, r)
+	_, err := e.s.Resolve(e.ctx, library.Card, r)
 	var se *StaleError
 	if !errors.As(err, &se) || se.Comparison.RemoteID != "l2" {
 		t.Fatalf("err = %v", err)
@@ -956,7 +956,7 @@ func TestResolveLorebookHasNoNestedWorldBooks(t *testing.T) {
 	e, _, forge := worldBooks(t)
 	r := e.bindTo(true, "l1", forge)
 	r.Lorebooks = []Resolution{{RemoteID: "l2", Action: "skip"}}
-	if _, err := e.s.ResolveLorebook(e.ctx, r); !errors.Is(err, library.ErrInvalid) {
+	if _, err := e.s.Resolve(e.ctx, library.Lorebook, r); !errors.Is(err, library.ErrInvalid) {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -965,11 +965,11 @@ func TestResolveImportSplitsTheCharacterBook(t *testing.T) {
 	e := setup(t, nil)
 	e.appCard("owl", map[string]any{"name": "Pell", "description": "A clockwork owl.", "character_book": map[string]any{
 		"name": "Owl lore", "entries": []any{map[string]any{"keys": []any{"owl"}, "content": "Owls hoot."}}}}, nil)
-	c, err := e.s.CompareItem(e.ctx, e.inst, "owl", e.card)
+	c, err := e.s.CompareItem(e.ctx, library.Card, e.inst, "owl", e.card)
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := e.s.Resolve(e.ctx, Resolution{InstanceID: e.inst, RemoteID: "owl", AppHash: c.AppHash, Action: "import"})
+	res, err := e.s.Resolve(e.ctx, library.Card, Resolution{InstanceID: e.inst, RemoteID: "owl", AppHash: c.AppHash, Action: "import"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -987,11 +987,11 @@ func TestResolveImportOnAStandaloneTargetIgnoresTheEmbeddedBook(t *testing.T) {
 	e.appCard("c9", map[string]any{"name": "Dain", "description": "A miner.",
 		"character_book": map[string]any{"name": "Mines", "entries": []any{map[string]any{"keys": []any{"mine"}, "content": "Dark."}}}},
 		map[string]any{"lorebook_remote_ids": []string{"l2"}})
-	it, err := e.s.CompareItem(e.ctx, e.inst, "c9", e.card)
+	it, err := e.s.CompareItem(e.ctx, library.Card, e.inst, "c9", e.card)
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := e.s.Resolve(e.ctx, Resolution{InstanceID: e.inst, RemoteID: "c9", AppHash: it.AppHash, Action: "import"})
+	res, err := e.s.Resolve(e.ctx, library.Card, Resolution{InstanceID: e.inst, RemoteID: "c9", AppHash: it.AppHash, Action: "import"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1029,7 +1029,7 @@ func TestResolveSuggestionChangedEarlierInTheCallIsAConflict(t *testing.T) {
 			first := e.bindTo(true, "l1", forge)
 			first.Default = l1.def
 			r.Lorebooks = []Resolution{first}
-			_, err := e.s.Resolve(e.ctx, r)
+			_, err := e.s.Resolve(e.ctx, library.Card, r)
 			var stale *StaleError
 			if !errors.Is(err, library.ErrConflict) || errors.As(err, &stale) ||
 				!strings.Contains(err.Error(), "world book l3") || !strings.Contains(err.Error(), "world book l1") {
@@ -1037,7 +1037,7 @@ func TestResolveSuggestionChangedEarlierInTheCallIsAConflict(t *testing.T) {
 			}
 			// An explicit choice for l3 goes through.
 			r.Lorebooks = append(r.Lorebooks, Resolution{RemoteID: "l3", Action: "skip"})
-			if _, err := e.s.Resolve(e.ctx, r); err != nil {
+			if _, err := e.s.Resolve(e.ctx, library.Card, r); err != nil {
 				t.Fatalf("with l3 chosen: %v", err)
 			}
 		})
@@ -1049,11 +1049,11 @@ func TestResolveStaleErrorNamesTheItem(t *testing.T) {
 	r := e.bindTo(false, "c1", card)
 	r.Lorebooks = []Resolution{e.bindTo(true, "l1", forge), {RemoteID: "l2", Action: "import", AppHash: "old"}}
 	var se *StaleError
-	if _, err := e.s.Resolve(e.ctx, r); !errors.As(err, &se) || se.Item != "lorebook:l2" {
+	if _, err := e.s.Resolve(e.ctx, library.Card, r); !errors.As(err, &se) || se.Item != "lorebook:l2" {
 		t.Fatalf("err = %v", err)
 	}
 	r.Lorebooks, r.AppHash = nil, "old"
-	if _, err := e.s.Resolve(e.ctx, r); !errors.As(err, &se) || se.Item != "card:c1" {
+	if _, err := e.s.Resolve(e.ctx, library.Card, r); !errors.As(err, &se) || se.Item != "card:c1" {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -1081,7 +1081,7 @@ func TestResolveLeftOutBoundWorldBook(t *testing.T) {
 		}
 		e.appCard("c1", map[string]any{"name": "Tova", "description": "A smith."},
 			map[string]any{"lorebook_remote_ids": []string{lb.RemoteID}})
-		res, err := e.s.Resolve(e.ctx, e.bindTo(false, "c1", card))
+		res, err := e.s.Resolve(e.ctx, library.Card, e.bindTo(false, "c1", card))
 		if err != nil || len(res.Lorebooks) != 1 || res.Lorebooks[0].Action != "bind" || res.Lorebooks[0].CardID != forge {
 			t.Fatalf("drift %v: result = %+v, %v", drift, res, err)
 		}
@@ -1094,7 +1094,7 @@ func TestResolveLeftOutBoundWorldBook(t *testing.T) {
 
 func TestResolveImportedWorldBookKeepsItsName(t *testing.T) {
 	e, card, _ := worldBooks(t)
-	res, err := e.s.Resolve(e.ctx, e.bindTo(false, "c1", card))
+	res, err := e.s.Resolve(e.ctx, library.Card, e.bindTo(false, "c1", card))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1108,11 +1108,11 @@ func TestResolveImportKeepsTheBookOnAStandaloneTargetThatListsIt(t *testing.T) {
 	e := setup(t, map[string]any{"lorebooks": "standalone"})
 	e.appCard("c9", map[string]any{"name": "Dain", "description": "A miner.", "character_book": map[string]any{
 		"name": "Mines", "entries": []any{map[string]any{"keys": []any{"mine"}, "content": "ONLY COPY."}}}}, nil)
-	c, err := e.s.CompareItem(e.ctx, e.inst, "c9", e.card)
+	c, err := e.s.CompareItem(e.ctx, library.Card, e.inst, "c9", e.card)
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := e.s.Resolve(e.ctx, Resolution{InstanceID: e.inst, RemoteID: "c9", AppHash: c.AppHash, Action: "import"})
+	res, err := e.s.Resolve(e.ctx, library.Card, Resolution{InstanceID: e.inst, RemoteID: "c9", AppHash: c.AppHash, Action: "import"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1128,7 +1128,7 @@ func TestResolveTwoExplicitWorldBooksOnOneLorebook(t *testing.T) {
 		"entries": []any{map[string]any{"keys": []any{"forge"}, "content": "The forge burns hot."}}}})
 	r := e.bindTo(false, "c1", card)
 	r.Lorebooks = []Resolution{e.bindTo(true, "l1", forge), e.bindTo(true, "l2", forge)}
-	_, err := e.s.Resolve(e.ctx, r)
+	_, err := e.s.Resolve(e.ctx, library.Card, r)
 	if !errors.Is(err, ErrBound) || errors.Is(err, library.ErrConflict) {
 		t.Fatalf("err = %v", err)
 	}
@@ -1149,7 +1149,7 @@ func TestResolveImportSplitLeavesAWorldBookWithTheSameID(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := e.compareItem("lv1", e.card)
-	if _, err := e.s.Resolve(e.ctx, Resolution{InstanceID: e.inst, RemoteID: "lv1", AppHash: c.AppHash, Action: "import"}); err != nil {
+	if _, err := e.s.Resolve(e.ctx, library.Card, Resolution{InstanceID: e.inst, RemoteID: "lv1", AppHash: c.AppHash, Action: "import"}); err != nil {
 		t.Fatal(err)
 	}
 	var state string

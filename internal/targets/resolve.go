@@ -26,8 +26,8 @@ func validateResolution(r Resolution, k kind) error {
 	switch {
 	case r.RemoteID == "":
 		return fmt.Errorf("%w: remote_id is required", library.ErrInvalid)
-	case r.Kind != "" && r.Kind != k.name:
-		return bad("kind must be " + k.name + " here")
+	case r.Kind != "" && r.Kind != k.Name:
+		return bad("kind must be " + k.Name + " here")
 	case r.Action == "skip":
 	case r.Action != "bind" && r.Action != "import":
 		return bad("action must be bind, import, or skip")
@@ -72,14 +72,9 @@ func (e *StaleError) Error() string {
 // avatarChoice is the choice key for a card's avatar, which isn't a hunk.
 const avatarChoice = "avatar"
 
-// Resolve applies a resolution to an app character.
-func (s *Service) Resolve(ctx context.Context, r Resolution) (ResolveResult, error) {
-	return s.resolve(ctx, cardKind, r, resolveOpts{})
-}
-
-// ResolveLorebook applies a resolution to an app world book.
-func (s *Service) ResolveLorebook(ctx context.Context, r Resolution) (ResolveResult, error) {
-	return s.resolve(ctx, lorebookKind, r, resolveOpts{})
+// Resolve applies a resolution to an app character or world book.
+func (s *Service) Resolve(ctx context.Context, k *library.Kind, r Resolution) (ResolveResult, error) {
+	return s.resolve(ctx, targetKind(k), r, resolveOpts{})
 }
 
 // resolveOpts limit a resolve nobody reviewed hunk by hunk.
@@ -158,7 +153,7 @@ func (e *staleItem) fresh(ctx context.Context, s *Service) error {
 	} else if err != nil {
 		return err
 	}
-	return &StaleError{Item: e.k.name + ":" + e.remoteID, Comparison: c}
+	return &StaleError{Item: e.k.Name + ":" + e.remoteID, Comparison: c}
 }
 
 // item applies one resolution, its world books first.
@@ -406,12 +401,12 @@ func (rs *resolver) importItem(ctx context.Context, k kind, inst pluginhost.Inst
 func (rs *resolver) exactMatch(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo,
 	instanceID int64, it appItem) (indexEntry, bool, error) {
 	if _, err := rs.tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
-		fmt.Sprintf("import %s %s", k.name, it.name)); err != nil {
+		fmt.Sprintf("import %s %s", k.Name, it.name)); err != nil {
 		return indexEntry{}, false, err
 	}
 	ents, err := rs.s.loadEntries(ctx, k, inst, info, `e.archived_at IS NULL
 		AND coalesce(r.overrides -> $1 ->> 'name', r.data ->> 'name') = $2
-		AND NOT EXISTS (SELECT 1 FROM binding WHERE instance_id = $3 AND `+k.col+` = e.id)`, it.name, instanceID)
+		AND NOT EXISTS (SELECT 1 FROM binding WHERE instance_id = $3 AND `+k.FK+` = e.id)`, it.name, instanceID)
 	if err != nil {
 		return indexEntry{}, false, err
 	}
@@ -468,8 +463,8 @@ func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.Targe
 	var headID int64
 	var headData, headOverrides json.RawMessage
 	var headAvatar *string
-	err = tx.QueryRow(ctx, `SELECT r.id, r.data, r.overrides, r.avatar_blob FROM `+k.table+` e
-		JOIN `+k.revTable+` r ON r.id = e.head_revision_id WHERE e.id = $1`, id).
+	err = tx.QueryRow(ctx, `SELECT r.id, r.data, r.overrides, r.avatar_blob FROM `+k.Table+` e
+		JOIN `+k.RevTable+` r ON r.id = e.head_revision_id WHERE e.id = $1`, id).
 		Scan(&headID, &headData, &headOverrides, &headAvatar)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return res, library.ErrNotFound
@@ -512,7 +507,7 @@ func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.Targe
 		remoteID, state, accepted string
 	}
 	err = tx.QueryRow(ctx, `SELECT id, remote_id, remote_state, accepted_hash FROM binding
-		WHERE instance_id = $1 AND `+k.col+` = $2`, r.InstanceID, id).
+		WHERE instance_id = $1 AND `+k.FK+` = $2`, r.InstanceID, id).
 		Scan(&cardBinding.id, &cardBinding.remoteID, &cardBinding.state, &cardBinding.accepted)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return res, err
@@ -550,7 +545,7 @@ func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.Targe
 	if choices, err = keepPinnedLists(k, lib, it.data, ancestor, pinned, choices, r.Default); err != nil {
 		return res, err
 	}
-	merged, patch, err := merge.Apply(k.schema(), lib, it.data, ancestor, choices, r.Default)
+	merged, patch, err := merge.Apply(k.Schema, lib, it.data, ancestor, choices, r.Default)
 	if err != nil {
 		return res, err
 	}
@@ -606,7 +601,7 @@ func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.Targe
 
 	// The app's copy is where the sources are, even if the target drops extensions,
 	// and they are facts about the item, so a no-op records them too.
-	if err := k.entities(s.lib).DetectSourcesTx(ctx, tx, id, it.raw); err != nil {
+	if err := s.lib.Entities(k.Kind).DetectSourcesTx(ctx, tx, id, it.raw); err != nil {
 		return res, err
 	}
 	if !revise && cardBinding.remoteID == r.RemoteID && cardBinding.state == remoteUnchanged &&
@@ -645,7 +640,7 @@ func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.Targe
 		if err != nil {
 			return res, err
 		}
-		rev, err := k.entities(s.lib).UpdateTx(ctx, tx, id, headID, library.Edit{Data: base, AvatarBlob: newAvatar,
+		rev, err := s.lib.Entities(k.Kind).UpdateTx(ctx, tx, id, headID, library.Edit{Data: base, AvatarBlob: newAvatar,
 			Overrides: raw, Source: "reconcile", Message: "Reconcile with " + named.Name})
 		if err != nil {
 			return res, err
@@ -658,7 +653,7 @@ func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.Targe
 				accepted_hash = $4, seen_data = NULL, checked_at = now(), version = version + 1
 			WHERE id = $1`, bindingID, r.RemoteID, accepted, acceptedHash)
 	} else {
-		err = tx.QueryRow(ctx, `INSERT INTO binding (instance_id, `+k.col+`, remote_id, remote_state, accepted_data,
+		err = tx.QueryRow(ctx, `INSERT INTO binding (instance_id, `+k.FK+`, remote_id, remote_state, accepted_data,
 				accepted_hash, checked_at)
 			VALUES ($1, $2, $3, 'unchanged', $4, $5, now()) RETURNING id`,
 			r.InstanceID, id, r.RemoteID, accepted, acceptedHash).Scan(&bindingID)
@@ -754,7 +749,7 @@ func keepPinnedLists(k kind, lib, app, ancestor json.RawMessage, pinned map[stri
 	if len(pinned) == 0 {
 		return choices, nil
 	}
-	fields, err := merge.Compare(k.schema(), lib, app, ancestor)
+	fields, err := merge.Compare(k.Schema, lib, app, ancestor)
 	if err != nil {
 		return nil, err
 	}
@@ -764,7 +759,7 @@ func keepPinnedLists(k kind, lib, app, ancestor json.RawMessage, pinned map[stri
 	}
 	for _, f := range fields {
 		// By schema, since a list the override deletes compares as a scalar.
-		if _, ok := pinned[f.Path]; !ok || k.schema()[f.Path] != merge.List {
+		if _, ok := pinned[f.Path]; !ok || k.Schema[f.Path] != merge.List {
 			continue
 		}
 		for _, h := range f.Hunks {

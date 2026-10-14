@@ -164,17 +164,6 @@ func (s *Server) lastIngest(ctx context.Context, id int64) (*jobOut, error) {
 	return &j, nil
 }
 
-// kindEntities is where the library keeps kind, or nil if it doesn't.
-func (s *Server) kindEntities(kind string) *library.Entities {
-	switch kind {
-	case protocol.KindCard:
-		return s.Lib.Cards
-	case protocol.KindLorebook:
-		return s.Lib.Lorebooks
-	}
-	return nil
-}
-
 // withMatches adds each item's library matches, with one query per kind.
 func (s *Server) withMatches(ctx context.Context, items []protocol.CatalogItem) ([]catalogHit, error) {
 	hits := make([]catalogHit, len(items))
@@ -184,8 +173,8 @@ func (s *Server) withMatches(ctx context.Context, items []protocol.CatalogItem) 
 		byKind[it.Kind] = append(byKind[it.Kind], i)
 	}
 	for kind, idx := range byKind {
-		ents := s.kindEntities(kind)
-		if ents == nil {
+		k, ok := library.KindNamed(kind)
+		if !ok {
 			continue
 		}
 		hashes := make([]library.Hashes, len(idx))
@@ -193,7 +182,7 @@ func (s *Server) withMatches(ctx context.Context, items []protocol.CatalogItem) 
 			h := items[i].Hashes
 			hashes[j] = library.Hashes{ContentHash: h.ContentHash, TextSimhash: h.TextSimhash, ImagePhash: h.ImagePhash}
 		}
-		matches, err := ents.MatchHashes(ctx, hashes, library.NearDistance)
+		matches, err := s.Lib.Entities(k).MatchHashes(ctx, hashes, library.NearDistance)
 		if err != nil {
 			return nil, err
 		}
@@ -303,16 +292,13 @@ func (s *Server) catalogRoutes(api huma.API) {
 			return &jobResp{Body: toJob(j)}, nil
 		})
 
-	for _, k := range []struct {
-		plural, kind string
-		ents         *library.Entities
-	}{{"cards", protocol.KindCard, s.Lib.Cards}, {"lorebooks", protocol.KindLorebook, s.Lib.Lorebooks}} {
-		huma.Register(api, huma.Operation{OperationID: "find-" + k.kind + "-in-catalogs", Method: http.MethodGet,
-			Path: "/" + k.plural + "/{id}/catalog-matches", Summary: "Find a " + k.kind + " in the catalogs",
+	for _, k := range library.Kinds {
+		huma.Register(api, huma.Operation{OperationID: "find-" + k.Name + "-in-catalogs", Method: http.MethodGet,
+			Path: "/" + k.Plural + "/{id}/catalog-matches", Summary: "Find a " + k.Name + " in the catalogs",
 			Description: "Asks every catalog that finds similar items for the same content, near-identical text, or a similar avatar.",
 			Tags:        tags},
 			func(ctx context.Context, in *idIn) (*catalogMatchesOut, error) {
-				return s.findInCatalogs(ctx, k.ents, k.kind, in.ID)
+				return s.findInCatalogs(ctx, k, in.ID)
 			})
 	}
 }
@@ -374,7 +360,8 @@ func (s *Server) adoptCatalogItem(ctx context.Context, in *catalogItemIn) (*adop
 // entity's head revision.
 //
 // ponytail: asks one catalog at a time; ask in parallel if many catalogs make this slow.
-func (s *Server) findInCatalogs(ctx context.Context, ents *library.Entities, kind string, id int64) (*catalogMatchesOut, error) {
+func (s *Server) findInCatalogs(ctx context.Context, k *library.Kind, id int64) (*catalogMatchesOut, error) {
+	ents := s.Lib.Entities(k)
 	e, err := ents.Get(ctx, id)
 	if err != nil {
 		return nil, s.fail(err)
@@ -401,11 +388,11 @@ func (s *Server) findInCatalogs(ctx context.Context, ents *library.Entities, kin
 			out.Body.Unreachable = append(out.Body.Unreachable, catalogRef{c.ID, c.Name, c.Error})
 			continue
 		}
-		if !c.Info.Similar || !slices.Contains(c.Info.Kinds, kind) {
+		if !c.Info.Similar || !slices.Contains(c.Info.Kinds, k.Name) {
 			continue
 		}
 		var res protocol.CatalogSimilarResult
-		params := protocol.CatalogSimilarParams{Kind: kind, Hashes: h, MaxDistance: library.NearDistance, Limit: catalogMatchLimit}
+		params := protocol.CatalogSimilarParams{Kind: k.Name, Hashes: h, MaxDistance: library.NearDistance, Limit: catalogMatchLimit}
 		if _, err := s.catalogCall(ctx, c.ID, protocol.MethodCatalogSimilar, params, &res); err != nil {
 			out.Body.Unreachable = append(out.Body.Unreachable, catalogRef{c.ID, c.Name, err.Error()})
 			continue

@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -542,4 +543,36 @@ func TestDismissingAnAvatarRemovalAcceptsIt(t *testing.T) {
 	if got := e.follow(card); got.RemoteState != remoteChanged {
 		t.Fatalf("after the avatar came back = %+v", got)
 	}
+}
+
+func TestAFollowedSourceKeepsItsAvatarWhenThePluginGainsPush(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	card := e.imported("vyr", vyrCard)
+	e.publish("vyr", vyrCard, patternPNG(t, func(x, _ int) uint8 { return uint8(x / 8 % 2 * 255) }))
+	b := e.follow(card)
+	before := e.avatarHash(b.ID)
+	m := e.reg.Manifests()["upstream"]
+	m.Capabilities = append(slices.Clone(m.Capabilities), "push")
+	c, err := e.s.CompareItem(e.ctx, library.Card, e.up, b.RemoteID, card)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.s.Resolve(e.ctx, library.Card, Resolution{InstanceID: e.up, RemoteID: b.RemoteID, AppHash: c.AppHash,
+		BaseRevisionID: c.HeadRevisionID, AcceptedHash: c.AcceptedHash, Action: "bind", CardID: card,
+		Default: merge.ChooseLibrary}); err != nil {
+		t.Fatal(err)
+	}
+	if after := e.avatarHash(b.ID); before == nil || *before == "" || after == nil || *after != *before {
+		t.Fatalf("avatar_hash = %v, want %v", after, before)
+	}
+}
+
+func (e *env) avatarHash(bindingID int64) *string {
+	e.t.Helper()
+	var avatar *string
+	if err := e.pool.QueryRow(e.ctx, `SELECT avatar_hash FROM binding WHERE id = $1`, bindingID).Scan(&avatar); err != nil {
+		e.t.Fatal(err)
+	}
+	return avatar
 }

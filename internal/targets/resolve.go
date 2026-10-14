@@ -501,16 +501,7 @@ func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.Targe
 		}
 		revisionID, res.RevisionID = rev.ID, rev.ID
 	}
-	// Stored as Check compares it, "" for none, so the next check finds it accepted.
-	var avatar *string
-	if !push {
-		key, err := s.avatarKey(ctx, it.avatar)
-		if err != nil {
-			return res, err
-		}
-		avatar = &key
-	}
-	bindingID, err := rs.saveBinding(ctx, k, r, id, cb.id, accepted, acceptedHash, avatar, push)
+	bindingID, err := rs.saveBinding(ctx, k, r, id, cb, accepted, acceptedHash, it.avatar, push)
 	if err != nil {
 		return res, err
 	}
@@ -622,6 +613,7 @@ func (rs *resolver) sameAvatar(ctx context.Context, r Resolution, it appItem, av
 type entityBinding struct {
 	id                        int64
 	remoteID, state, accepted string
+	push                      bool
 }
 
 // entityBinding reads the entity's binding on the instance, and fails with
@@ -629,9 +621,9 @@ type entityBinding struct {
 func (rs *resolver) entityBinding(ctx context.Context, k kind, instanceID, id int64,
 	remoteID string) (entityBinding, error) {
 	var b entityBinding
-	err := rs.tx.QueryRow(ctx, `SELECT id, remote_id, remote_state, accepted_hash FROM binding
+	err := rs.tx.QueryRow(ctx, `SELECT id, remote_id, remote_state, accepted_hash, push FROM binding
 		WHERE instance_id = $1 AND `+k.FK+` = $2`, instanceID, id).
-		Scan(&b.id, &b.remoteID, &b.state, &b.accepted)
+		Scan(&b.id, &b.remoteID, &b.state, &b.accepted, &b.push)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return b, err
 	}
@@ -789,12 +781,26 @@ func (rs *resolver) samePush(ctx context.Context, bindingID int64, want lastPush
 		(last.books.remoteIDs == nil) == (want.books.remoteIDs == nil), nil
 }
 
-// saveBinding points the entity's binding, or a new one, at the app item as
-// accepted, with avatar as the accepted avatar_hash, and returns its ID. push
-// is false for a new binding on a target that only follows site sources. It
-// fails with ErrBound if another binding has the item.
-func (rs *resolver) saveBinding(ctx context.Context, k kind, r Resolution, id, bindingID int64,
-	accepted json.RawMessage, acceptedHash string, avatar *string, push bool) (int64, error) {
+// saveBinding points the entity's binding cb, or a new one, at the app item as
+// accepted, with appAvatar accepted too if it follows a source, and returns its
+// ID. push is false for a new binding on a target that only follows site
+// sources. It fails with ErrBound if another binding has the item.
+func (rs *resolver) saveBinding(ctx context.Context, k kind, r Resolution, id int64, cb entityBinding,
+	accepted json.RawMessage, acceptedHash, appAvatar string, push bool) (int64, error) {
+	// A binding keeps the push it was made with, even if the plugin's capabilities change.
+	if cb.id != 0 {
+		push = cb.push
+	}
+	// Stored as Check compares it, "" for none, so the next check finds it accepted.
+	var avatar *string
+	if !push {
+		key, err := rs.s.avatarKey(ctx, appAvatar)
+		if err != nil {
+			return 0, err
+		}
+		avatar = &key
+	}
+	bindingID := cb.id
 	var err error
 	if bindingID != 0 {
 		_, err = rs.tx.Exec(ctx, `UPDATE binding SET remote_id = $2, remote_state = 'unchanged', accepted_data = $3,

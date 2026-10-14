@@ -51,6 +51,10 @@ type Manifest struct {
 	// Inputs are what an import plugin takes from the UI.
 	Inputs []string `toml:"inputs"`
 
+	// SourceKinds are the site source kinds a pull-only plugin follows: the
+	// core binds each such source to its instance as remote_id kind:ref.
+	SourceKinds []string `toml:"source_kinds"`
+
 	// Database gives the plugin a schema, plugin_<name>, and a role limited
 	// to it. The URL arrives as initialize's database_url.
 	Database bool `toml:"database"`
@@ -234,6 +238,19 @@ func (m *Manifest) Validate() error {
 			errs = append(errs, fmt.Errorf("input %q listed twice", in))
 		}
 		seenInputs[in] = true
+	}
+	if len(m.SourceKinds) > 0 && (!m.Has("pull") || m.Has("push")) {
+		errs = append(errs, errors.New("source_kinds needs the pull capability and not push"))
+	}
+	seenKinds := map[string]bool{}
+	for _, k := range m.SourceKinds {
+		if !sourceKindPattern.MatchString(k) {
+			errs = append(errs, fmt.Errorf("source kind %q must match %s", k, sourceKindPattern))
+		}
+		if seenKinds[k] {
+			errs = append(errs, fmt.Errorf("source kind %q listed twice", k))
+		}
+		seenKinds[k] = true
 	}
 	return errors.Join(errs...)
 }

@@ -300,3 +300,32 @@ func TestManifestIconErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestManifestSourceKinds(t *testing.T) {
+	base := Manifest{Name: "url-import", Version: "0.3.0", Protocol: Version, Command: []string{"./url-import"}}
+	tests := []struct {
+		name    string
+		caps    []string
+		kinds   []string
+		wantErr string
+	}{
+		{"pull-only follower", []string{"import", "sites", "pull"}, []string{"chub", "character-tavern"}, ""},
+		{"no pull", []string{"import"}, []string{"chub"}, "source_kinds needs the pull capability and not push"},
+		{"an app", []string{"push", "pull"}, []string{"chub"}, "source_kinds needs the pull capability and not push"},
+		{"bad kind", []string{"pull"}, []string{"Chub"}, `source kind "Chub"`},
+		{"twice", []string{"pull"}, []string{"chub", "chub"}, `source kind "chub" listed twice`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := base
+			m.Capabilities, m.SourceKinds = tt.caps, tt.kinds
+			err := m.Validate()
+			if tt.wantErr == "" && err != nil {
+				t.Fatalf("Validate = %v", err)
+			}
+			if tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)) {
+				t.Fatalf("Validate = %v, want %q", err, tt.wantErr)
+			}
+		})
+	}
+}

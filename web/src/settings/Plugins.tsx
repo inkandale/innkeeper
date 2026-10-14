@@ -1,13 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { api, must, mustOk } from "../api/client";
+import { instancesQuery, pluginsQuery } from "../api/queries";
 import type { components } from "../api/schema";
 
 export type Plugin = components["schemas"]["PluginOut"];
 export type InstanceInfo = components["schemas"]["InstanceInfo"];
 type CatalogSource = components["schemas"]["CatalogSourceOut"];
-
-export const pluginsQuery = { queryKey: ["plugins"], queryFn: async () => must(await api.GET("/plugins")) };
 
 // Offered after the first login, while none of them is installed.
 const recommended = ["card-import", "lumiverse", "sillytavern"];
@@ -15,7 +14,7 @@ const recommended = ["card-import", "lumiverse", "sillytavern"];
 export function Plugins() {
   const qc = useQueryClient();
   const plugins = useQuery(pluginsQuery);
-  const instances = useQuery({ queryKey: ["instances"], queryFn: async () => must(await api.GET("/instances")) });
+  const instances = useQuery(instancesQuery);
   const sources = useQuery({ queryKey: ["plugin-sources"], queryFn: async () => must(await api.GET("/plugin-sources")) });
   // Sources are read only when the owner asks, never in the background.
   const catalog = useQuery({

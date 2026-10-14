@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, must, mustOk, route, type Kind } from "../api/client";
+import { collectionsQuery } from "../api/queries";
 import { useToast } from "../shell/Toasts";
 
 // These save on change: tags, collections, and sources aren't part of a revision.
@@ -49,7 +50,7 @@ export function Tags({ id, tags }: { id: number; tags: string[] }) {
 export function Collections({ id, member }: { id: number; member: number[] }) {
   const qc = useQueryClient();
   const toast = useToast();
-  const all = useQuery({ queryKey: ["collections"], queryFn: async () => must(await api.GET("/collections")) });
+  const all = useQuery(collectionsQuery);
   const toggle = useMutation({
     mutationFn: async ({ collection, on }: { collection: number; on: boolean }) => {
       const opts = { params: { path: { id: collection, card_id: id } } };

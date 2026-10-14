@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate, useNavigate, useParams } from "react-router";
 import { api, must } from "../api/client";
+import { instancesQuery, pluginsQuery } from "../api/queries";
 import { InstanceForm } from "../settings/Instance";
-import { pluginsQuery, type InstanceInfo, type Plugin } from "../settings/Plugins";
+import { type InstanceInfo, type Plugin } from "../settings/Plugins";
 import type { Schema } from "../settings/SchemaForm";
 import { nextStep, setupPlugins } from "./wizard";
 
@@ -11,7 +12,7 @@ import { nextStep, setupPlugins } from "./wizard";
 export function SetUpPlugins() {
   const { plugin: name } = useParams();
   const plugins = useQuery(pluginsQuery);
-  const instances = useQuery({ queryKey: ["instances"], queryFn: async () => must(await api.GET("/instances")) });
+  const instances = useQuery(instancesQuery);
   const failed = plugins.error ?? instances.error;
   if (failed) return <p className="error">{failed.message}</p>;
   if (plugins.isPending || instances.isPending) return null;

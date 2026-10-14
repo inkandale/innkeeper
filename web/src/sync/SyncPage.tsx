@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { api, must } from "../api/client";
+import { instancesQuery, pluginsQuery } from "../api/queries";
 import { age, finished, type Job } from "../settings/jobUtil";
 import { useToast } from "../shell/Toasts";
 import { needsYou, stateCounts } from "./sync";
@@ -42,8 +43,8 @@ function useRun(start: () => Promise<Job>, text: string) {
 
 /** Sync lists each target app with how its cards stand, and refreshes or syncs every app at once. */
 export function Sync() {
-  const instances = useQuery({ queryKey: ["instances"], queryFn: async () => must(await api.GET("/instances")) });
-  const plugins = useQuery({ queryKey: ["plugins"], queryFn: async () => must(await api.GET("/plugins")) });
+  const instances = useQuery(instancesQuery);
+  const plugins = useQuery(pluginsQuery);
   const facets = useQuery({
     queryKey: ["search", "card", "sync-counts"],
     queryFn: async () => must(await api.POST("/cards/search", { body: { facets: ["targets"], page: { size: 1 } } })),

@@ -2,8 +2,8 @@ import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { api, must, upload } from "../api/client";
+import { instancesQuery, pluginsQuery } from "../api/queries";
 import { finished, progressText, useJobEvents, type Job } from "../settings/jobUtil";
-import { pluginsQuery } from "../settings/Plugins";
 import { useFinish } from "./Welcome";
 
 /** JobLine is one job's live status, linking to its page. */
@@ -32,7 +32,7 @@ export function BringInCards() {
   const qc = useQueryClient();
   const finish = useFinish();
   const plugins = useQuery(pluginsQuery);
-  const instances = useQuery({ queryKey: ["instances"], queryFn: async () => must(await api.GET("/instances")) });
+  const instances = useQuery(instancesQuery);
   const [started, setStarted] = useState<Record<number, number>>({});
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [pageURL, setPageURL] = useState("");

@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { createBrowserRouter, Navigate, Outlet } from "react-router";
-import { api, ApiError, must, nextKey, safeNext } from "./api/client";
+import { ApiError, nextKey, safeNext } from "./api/client";
+import { meQuery, settingsQuery } from "./api/queries";
 import { Card } from "./card/Card";
 import { History } from "./card/History";
 import { Cards } from "./cards/Cards";
@@ -29,7 +30,7 @@ import { Welcome } from "./welcome/Welcome";
 // RequireAuth checks the session. A 401 sends the browser to /login via the
 // client's middleware.
 function RequireAuth() {
-  const me = useQuery({ queryKey: ["me"], queryFn: async () => must(await api.GET("/auth/me")) });
+  const me = useQuery(meQuery);
   if (me.isPending) return null;
   // The middleware is already sending the browser to /login.
   if (me.error instanceof ApiError && me.error.status === 401) return null;
@@ -39,7 +40,7 @@ function RequireAuth() {
 
 /** Home sends an owner who hasn't finished the setup wizard to it, else goes where a redirect login asked to return, or to the cards. */
 export function Home() {
-  const settings = useQuery({ queryKey: ["settings"], queryFn: async () => must(await api.GET("/settings")) });
+  const settings = useQuery(settingsQuery);
   if (settings.isPending) return null;
   // Read and drop the saved destination either way, so it can't hijack a later visit to /.
   let next = "/";

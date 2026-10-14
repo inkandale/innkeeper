@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLayoutEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { api, ApiError, must } from "../api/client";
+import { instancesQuery } from "../api/queries";
 import type { components } from "../api/schema";
 import { badgeClass } from "../cards/Tile";
 import { useToast } from "../shell/Toasts";
@@ -35,7 +36,7 @@ export function Changes() {
     queryKey: ["sync", "changes", instance, state],
     queryFn: async () => must(await api.GET("/sync/changes", { params: { query: { instance_id: instance, state } } })),
   });
-  const instances = useQuery({ queryKey: ["instances"], queryFn: async () => must(await api.GET("/instances")) });
+  const instances = useQuery(instancesQuery);
   const name = (id: number) => instances.data?.find((i) => i.id === id)?.name ?? `#${id}`;
   // The owner's changes from the defaults.
   const [checked, setChecked] = useState<Record<string, boolean>>({});

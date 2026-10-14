@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router";
 import { api, must, route } from "../api/client";
+import { instancesQuery, collectionsQuery } from "../api/queries";
 import { Facets } from "./Facets";
 import { pageLinks } from "./pages";
 import { defaultSort, parseQuery, sizes, toggleTerm, toParams, toLorebookSearch, toSearch, type CardQuery, type Sort, type Term } from "./query";
@@ -46,8 +47,8 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
     queryFn: async () => must(await api.POST(route(kind, "/cards/search"), { body })),
     placeholderData: keepPreviousData,
   });
-  const instances = useQuery({ queryKey: ["instances"], queryFn: async () => must(await api.GET("/instances")) });
-  const collections = useQuery({ queryKey: ["collections"], queryFn: async () => must(await api.GET("/collections")) });
+  const instances = useQuery(instancesQuery);
+  const collections = useQuery(collectionsQuery);
   const names: Names = {
     instances: new Map((instances.data ?? []).map((i) => [i.id, i.name])),
     collections: new Map((collections.data ?? []).map((c) => [c.id, c.name])),

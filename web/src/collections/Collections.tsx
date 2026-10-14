@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router";
 import { api, must, mustOk, thumb } from "../api/client";
+import { collectionsQuery } from "../api/queries";
 import "./Collections.css";
 
 function nameFrom(e: FormEvent<HTMLFormElement>): string {
@@ -11,7 +12,7 @@ function nameFrom(e: FormEvent<HTMLFormElement>): string {
 
 export function Collections() {
   const qc = useQueryClient();
-  const list = useQuery({ queryKey: ["collections"], queryFn: async () => must(await api.GET("/collections")) });
+  const list = useQuery(collectionsQuery);
   const [renaming, setRenaming] = useState<number | null>(null);
   const [failed, setFailed] = useState<Error | null>(null);
   const onSuccess = () => qc.invalidateQueries({ queryKey: ["collections"] });

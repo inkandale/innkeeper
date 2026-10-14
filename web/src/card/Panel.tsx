@@ -2,6 +2,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { useState } from "react";
 import { Link } from "react-router";
 import { api, canWrite, must, mustOk, route, thumb, upload, type Kind } from "../api/client";
+import { instancesQuery, pluginsQuery } from "../api/queries";
 import { badgeClass } from "../cards/Tile";
 import { useToast } from "../shell/Toasts";
 import type { Entity } from "./Card";
@@ -26,8 +27,8 @@ export type PanelProps = {
 /** Panel is the card page's left side. */
 export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avatarBusy }: PanelProps) {
   const avatar = card.revision.avatar;
-  const instances = useQuery({ queryKey: ["instances"], queryFn: async () => must(await api.GET("/instances")) });
-  const plugins = useQuery({ queryKey: ["plugins"], queryFn: async () => must(await api.GET("/plugins")) });
+  const instances = useQuery(instancesQuery);
+  const plugins = useQuery(pluginsQuery);
   return (
     <aside className="card-aside">
       {avatar ? <img className="portrait" src={thumb(avatar, 640)} alt="" /> : <div className="portrait" />}
@@ -80,8 +81,8 @@ export function Archive({ kind, entity }: { kind: Kind; entity: Entity }) {
 export function Push({ kind, id, dirty }: { kind: Kind; id: number; dirty: boolean }) {
   const [instance, setInstance] = useState<number>();
   const [previewing, setPreviewing] = useState(false);
-  const instances = useQuery({ queryKey: ["instances"], queryFn: async () => must(await api.GET("/instances")) });
-  const plugins = useQuery({ queryKey: ["plugins"], queryFn: async () => must(await api.GET("/plugins")) });
+  const instances = useQuery(instancesQuery);
+  const plugins = useQuery(pluginsQuery);
   const pushers = new Set((plugins.data ?? []).filter((p) => p.capabilities?.includes("push")).map((p) => p.name));
   const targets = (instances.data ?? []).filter((i) => pushers.has(i.plugin));
   const instanceId = instance ?? targets[0]?.id ?? 0;
@@ -116,7 +117,7 @@ export function Sync({ kind, id }: { kind: Kind; id: number }) {
     queryKey: [kind, id, "bindings"],
     queryFn: async () => must(await api.GET(route(kind, "/cards/{id}/bindings"), { params: { path: { id } } })),
   });
-  const instances = useQuery({ queryKey: ["instances"], queryFn: async () => must(await api.GET("/instances")) });
+  const instances = useQuery(instancesQuery);
   const name = (n: number) => instances.data?.find((i) => i.id === n)?.name ?? `#${n}`;
   const qc = useQueryClient();
   const toast = useToast();

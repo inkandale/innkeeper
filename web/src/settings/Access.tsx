@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, must, mustOk } from "../api/client";
+import { meQuery } from "../api/queries";
 import type { components } from "../api/schema";
 
 type Tier = components["schemas"]["Token"]["tier"];
@@ -9,7 +10,7 @@ const when = (t?: string) => (t ? new Date(t).toLocaleString() : "never");
 
 export function Access() {
   const qc = useQueryClient();
-  const me = useQuery({ queryKey: ["me"], queryFn: async () => must(await api.GET("/auth/me")) });
+  const me = useQuery(meQuery);
   const tokens = useQuery({ queryKey: ["tokens"], queryFn: async () => must(await api.GET("/tokens")) });
   const grants = useQuery({ queryKey: ["grants"], queryFn: async () => must(await api.GET("/grants")) });
 

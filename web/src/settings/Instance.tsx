@@ -2,8 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { api, must } from "../api/client";
+import { pluginsQuery } from "../api/queries";
 import { useToast } from "../shell/Toasts";
-import { pluginsQuery, type InstanceInfo, type Plugin } from "./Plugins";
+import { type InstanceInfo, type Plugin } from "./Plugins";
 import { SchemaForm, type Schema } from "./SchemaForm";
 
 /** Instance adds an instance at /settings/plugins/:plugin/new and edits one at /settings/instances/:id. */

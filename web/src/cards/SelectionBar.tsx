@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, canWrite, must } from "../api/client";
+import { instancesQuery, pluginsQuery, collectionsQuery } from "../api/queries";
 import type { components } from "../api/schema";
 import { useToast } from "../shell/Toasts";
 import { pushSummary } from "../sync/sync";
@@ -38,9 +39,9 @@ export function SelectionBar(props: {
   const toast = useToast();
   const n = all ? total : count;
 
-  const collections = useQuery({ queryKey: ["collections"], queryFn: async () => must(await api.GET("/collections")) });
-  const instances = useQuery({ queryKey: ["instances"], queryFn: async () => must(await api.GET("/instances")) });
-  const plugins = useQuery({ queryKey: ["plugins"], queryFn: async () => must(await api.GET("/plugins")) });
+  const collections = useQuery(collectionsQuery);
+  const instances = useQuery(instancesQuery);
+  const plugins = useQuery(pluginsQuery);
   const pushers = new Set((plugins.data ?? []).filter((p) => p.capabilities?.includes("push")).map((p) => p.name));
   const targets = (instances.data ?? []).filter((i) => pushers.has(i.plugin));
 

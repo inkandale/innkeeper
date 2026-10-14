@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import { api, must, mustOk } from "../api/client";
-import { pluginsQuery } from "../settings/Plugins";
+import { pluginsQuery } from "../api/queries";
 import { groupCatalog, type Offer } from "./wizard";
 
 /** ChoosePlugins offers the catalog's plugins by category and installs the ones the owner picks. */

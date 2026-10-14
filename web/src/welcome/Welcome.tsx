@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Outlet, useNavigate } from "react-router";
 import { api, must } from "../api/client";
-import { pluginsQuery } from "../settings/Plugins";
+import { pluginsQuery, settingsQuery } from "../api/queries";
 import { setupPlugins } from "./wizard";
 import "./Welcome.css";
 
@@ -12,7 +12,7 @@ export function useFinish() {
   return useMutation({
     mutationFn: async () => must(await api.PATCH("/settings", { body: { onboarding_done: true } })),
     onSuccess: (s) => {
-      qc.setQueryData(["settings"], s);
+      qc.setQueryData(settingsQuery.queryKey, s);
       navigate("/cards", { replace: true });
     },
   });

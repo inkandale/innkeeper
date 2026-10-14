@@ -96,8 +96,14 @@ func TestTagAndCollect(t *testing.T) {
 	}
 	wait(t, q, p.ID)
 	for i, want := range [][]string{{"keep", "new"}, {"new"}} {
-		c, _ := lib.Cards.Get(ctx, ids[i])
-		rev, _ := lib.Cards.Revision(ctx, c.HeadRevisionID)
+		c, err := lib.Cards.Get(ctx, ids[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		rev, err := lib.Cards.Revision(ctx, c.HeadRevisionID)
+		if err != nil {
+			t.Fatal(err)
+		}
 		var data struct{ Tags []string }
 		if err := json.Unmarshal(rev.Data, &data); err != nil || !slices.Equal(data.Tags, want) {
 			t.Errorf("card %d tags = %v, want %v (%v)", ids[i], data.Tags, want, err)

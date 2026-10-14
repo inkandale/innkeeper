@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -188,7 +189,8 @@ func TestEditCardTagsAddsARevision(t *testing.T) {
 	ctx := context.Background()
 	avatar := putBlob(t, lib, "avatar")
 	c, _, err := lib.Cards.Create(ctx, "brakka", "upload",
-		Edit{Data: json.RawMessage(`{"name": "Brakka", "tags": ["Dwarf", "smith"]}`), AvatarBlob: avatar, Source: "ui"})
+		Edit{Data: json.RawMessage(`{"name": "Brakka", "tags": ["Dwarf", "smith"]}`),
+			Overrides: json.RawMessage(`{"7": {"name": "Brakka the Bold"}}`), AvatarBlob: avatar, Source: "ui"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,6 +204,18 @@ func TestEditCardTagsAddsARevision(t *testing.T) {
 	rev, _ := lib.Cards.Revision(ctx, head.HeadRevisionID)
 	if rev.AvatarBlob == nil || *rev.AvatarBlob != avatar || rev.Message != "Edit tags" {
 		t.Fatalf("revision = %+v", rev)
+	}
+	var overrides, wantOverrides any
+	if err := json.Unmarshal(rev.Overrides, &overrides); err != nil {
+		t.Fatal(err)
+	}
+	_ = json.Unmarshal([]byte(`{"7": {"name": "Brakka the Bold"}}`), &wantOverrides)
+	if !reflect.DeepEqual(overrides, wantOverrides) {
+		t.Fatalf("overrides = %s", rev.Overrides)
+	}
+	var data struct{ Name string }
+	if err := json.Unmarshal(rev.Data, &data); err != nil || data.Name != "Brakka" {
+		t.Fatalf("data = %s, %v", rev.Data, err)
 	}
 }
 

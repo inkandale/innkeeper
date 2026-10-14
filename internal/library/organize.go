@@ -56,10 +56,10 @@ func (l *Library) EditCardTags(ctx context.Context, cardID int64, add, remove []
 	add, remove = cleanTags(add), cleanTags(remove)
 	return pgx.BeginFunc(ctx, l.pool, func(tx pgx.Tx) error {
 		var head int64
-		if err := tx.QueryRow(ctx, `SELECT head_revision_id FROM card WHERE id = $1 FOR UPDATE`, cardID).Scan(&head); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT head_revision_id FROM `+l.Cards.Kind().Table+` WHERE id = $1 FOR UPDATE`, cardID).Scan(&head); err != nil {
 			return mapErr(err)
 		}
-		rev, err := scanRevision(tx.QueryRow(ctx, `SELECT `+l.Cards.revCols()+` FROM card_revision WHERE id = $1`, head))
+		rev, err := scanRevision(tx.QueryRow(ctx, `SELECT `+l.Cards.revCols()+` FROM `+l.Cards.Kind().RevTable+` WHERE id = $1`, head))
 		if err != nil {
 			return err
 		}

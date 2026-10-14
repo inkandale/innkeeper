@@ -257,7 +257,7 @@ func (s *Service) render(ctx context.Context, k kind, instanceID, id int64, info
 			return rendered{}, err
 		}
 	}
-	r.payload, err = json.Marshal(map[string]any{"spec": "chara_card_v3", "spec_version": "3.0", "data": r.data})
+	r.payload, err = library.WrapCard(r.data)
 	return r, err
 }
 

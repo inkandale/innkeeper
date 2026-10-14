@@ -28,6 +28,11 @@ func (l *Library) ExportCard(ctx context.Context, id int64) (json.RawMessage, er
 	if book != nil {
 		data["character_book"] = book
 	}
+	return WrapCard(data)
+}
+
+// WrapCard returns data, a card's data object, as a CCv3 card.
+func WrapCard(data any) (json.RawMessage, error) {
 	return json.Marshal(map[string]any{"spec": "chara_card_v3", "spec_version": "3.0", "data": data})
 }
 

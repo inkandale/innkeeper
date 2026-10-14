@@ -384,7 +384,7 @@ func (rs *resolver) importItem(ctx context.Context, k kind, inst pluginhost.Inst
 				return 0, 0, err
 			}
 		}
-		card, err := json.Marshal(map[string]any{"spec": "chara_card_v3", "spec_version": "3.0", "data": data})
+		card, err := library.WrapCard(data)
 		if err != nil {
 			return 0, 0, err
 		}

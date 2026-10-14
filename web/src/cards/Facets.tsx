@@ -32,6 +32,9 @@ function saveCollapsed(v: TermKind[]) {
   }
 }
 
+// The tag facet groups by lower-cased name and the API filter ignores case, so tags match that way here too.
+const sameValue = (kind: TermKind, a: string, b: string) => (kind === "tag" ? a.toLowerCase() === b.toLowerCase() : a === b);
+
 /** useRows runs each open section's count searches and turns the results into rows, selected values included. */
 function useRows(kind: Kind, q: CardQuery, names: Names, sections: TermKind[], open: (s: TermKind) => boolean): Partial<Record<TermKind, Row[]>> {
   const search = (body: Search, enabled: boolean) => ({
@@ -53,7 +56,7 @@ function useRows(kind: Kind, q: CardQuery, names: Names, sections: TermKind[], o
 
   // A selected value with no matches still gets a row, so it can be cleared.
   const withPicked = (s: TermKind, rows: Row[] | undefined, label: (v: string) => string): Row[] | undefined =>
-    rows && [...rows, ...picked(s).filter((v) => !rows.some((r) => r.value === v)).map((v) => ({ value: v, label: label(v), cards: 0 }))];
+    rows && [...rows, ...picked(s).filter((v) => !rows.some((r) => sameValue(s, r.value, v))).map((v) => ({ value: v, label: label(v), cards: 0 }))];
 
   // An excluded state is already out of the targets facet; only included states narrow the sum.
   const states = q.terms.filter((t) => t.kind === "state" && !t.not).map((t) => t.value);
@@ -82,11 +85,11 @@ function useRows(kind: Kind, q: CardQuery, names: Names, sections: TermKind[], o
 }
 
 function FacetRow({ kind, row, q, onChange }: { kind: TermKind; row: Row; q: CardQuery; onChange: (q: CardQuery) => void }) {
-  const term = q.terms.find((t) => t.kind === kind && t.value === row.value);
+  const term = q.terms.find((t) => t.kind === kind && sameValue(kind, t.value, row.value));
   const toggle = (not: boolean) => onChange(toggleTerm(q, { kind, value: row.value, not }));
   return (
     <li className={"facet" + (term ? (term.not ? " excluded" : " included") : "")}>
-      <button className="facet-pick" aria-pressed={!!term} onClick={(e: MouseEvent) => toggle(e.shiftKey)}>
+      <button className="facet-pick" aria-pressed={!!term && !term.not} onClick={(e: MouseEvent) => toggle(e.shiftKey)}>
         {row.dot && <span className={"badge " + row.dot} />}
         <span className="facet-label">
           {term?.not ? "not " : ""}
@@ -112,7 +115,7 @@ function Section({ kind, rows, q, open, onOpen, onChange }: SectionProps) {
   const picked = q.terms.filter((t) => t.kind === kind).length;
   const browse = kind === "tag";
   const needle = find.trim().toLowerCase();
-  const isPicked = (r: Row) => q.terms.some((t) => t.kind === kind && t.value === r.value);
+  const isPicked = (r: Row) => q.terms.some((t) => t.kind === kind && sameValue(kind, t.value, r.value));
   const listed = rows ?? [];
   const shown = !browse
     ? listed

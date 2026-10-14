@@ -398,3 +398,15 @@ test("a collapsed section stays collapsed and shows its selection count", async 
   renderCards("/cards");
   expect(await screen.findByRole("button", { name: "Tags" })).toHaveAttribute("aria-expanded", "false");
 });
+
+test("a tag in the URL matches its facet row in any case", async () => {
+  renderCards("/cards?f=tag:Fantasy");
+  expect(await screen.findByRole("button", { name: /^fantasy / })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getAllByRole("button", { name: /^fantasy /i })).toHaveLength(1);
+});
+
+test("an excluded row's pick button is not pressed", async () => {
+  renderCards("/cards?f=-tag:fantasy");
+  expect(await screen.findByRole("button", { name: /^not fantasy / })).toHaveAttribute("aria-pressed", "false");
+  expect(screen.getByRole("button", { name: "Exclude fantasy" })).toHaveAttribute("aria-pressed", "true");
+});

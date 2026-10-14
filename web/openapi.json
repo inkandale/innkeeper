@@ -1885,8 +1885,8 @@
             "type": "string"
           },
           "target_state": {
-            "$ref": "#/components/schemas/TargetState",
-            "description": "Is pushed to this target and stands this way. A card never pushed there matches no state."
+            "$ref": "#/components/schemas/TargetFilter",
+            "description": "Is pushed to one of instances and stands as one of states there. An empty list matches any value."
           }
         },
         "type": "object"
@@ -3490,6 +3490,35 @@
           "is",
           "cards"
         ],
+        "type": "object"
+      },
+      "TargetFilter": {
+        "additionalProperties": false,
+        "properties": {
+          "instances": {
+            "description": "Plugin instance IDs",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "maxItems": 100,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "states": {
+            "description": "in_sync, ahead, remote_changed, diverged, missing, or cant_check",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 6,
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
         "type": "object"
       },
       "TargetState": {

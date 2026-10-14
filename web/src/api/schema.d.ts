@@ -2628,8 +2628,8 @@ export interface components {
             source?: string;
             /** @description Has this tag, in any case. */
             tag?: string;
-            /** @description Is pushed to this target and stands this way. A card never pushed there matches no state. */
-            target_state?: components["schemas"]["TargetState"];
+            /** @description Is pushed to one of instances and stands as one of states there. An empty list matches any value. */
+            target_state?: components["schemas"]["TargetFilter"];
         };
         Grant: {
             client_name: string;
@@ -3207,6 +3207,12 @@ export interface components {
             /** Format: int64 */
             instance: number;
             is: string;
+        };
+        TargetFilter: {
+            /** @description Plugin instance IDs */
+            instances?: number[] | null;
+            /** @description in_sync, ahead, remote_changed, diverged, missing, or cant_check */
+            states?: string[] | null;
         };
         TargetState: {
             /**

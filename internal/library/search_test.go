@@ -153,7 +153,7 @@ func TestSearchRejectsBadQueries(t *testing.T) {
 		"huge size":        {Page: Page{Size: 501}},
 		"huge filter":      {Filter: &Filter{Or: manyTags(201)}},
 		"bad cursor":       {Page: Page{Cursor: ptr("abc")}},
-		"bad target state": {Filter: &Filter{TargetState: &TargetState{Instance: 1, Is: "pushed"}}},
+		"bad target state": {Filter: &Filter{TargetState: &TargetFilter{States: []string{"pushed"}}}},
 	} {
 		if _, err := lib.Search(ctx, Card, q); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s: got %v, want ErrInvalid", name, err)

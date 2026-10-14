@@ -66,7 +66,7 @@ function termFilter(t: Term): Filter | null {
     const instance = Number(inst);
     const is = targetStates.find((s) => s === value);
     if (!inst || !Number.isInteger(instance) || instance < 1 || !is) return null;
-    f = { target_state: { instance, is } };
+    f = { target_state: { instances: [instance], states: [is] } };
   }
   return t.not ? { not: f } : f;
 }

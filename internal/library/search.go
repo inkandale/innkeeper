@@ -36,15 +36,22 @@ type Page struct {
 // Filter is one condition on a card. Set exactly one field. Archived cards
 // are left out unless a filter mentions archived.
 type Filter struct {
-	And         []Filter     `json:"and,omitempty"`
-	Or          []Filter     `json:"or,omitempty"`
-	Not         *Filter      `json:"not,omitempty"`
-	IDs         []int64      `json:"ids,omitempty" maxItems:"10000" doc:"Is one of these cards."`
-	Tag         *string      `json:"tag,omitempty" doc:"Has this tag, in any case."`
-	Collection  *int64       `json:"collection,omitempty" doc:"Is in this collection."`
-	Source      *string      `json:"source,omitempty" doc:"Has a source of this kind, such as chub."`
-	Archived    *bool        `json:"archived,omitempty"`
-	TargetState *TargetState `json:"target_state,omitempty" doc:"Is pushed to this target and stands this way. A card never pushed there matches no state."`
+	And         []Filter      `json:"and,omitempty"`
+	Or          []Filter      `json:"or,omitempty"`
+	Not         *Filter       `json:"not,omitempty"`
+	IDs         []int64       `json:"ids,omitempty" maxItems:"10000" doc:"Is one of these cards."`
+	Tag         *string       `json:"tag,omitempty" doc:"Has this tag, in any case."`
+	Collection  *int64        `json:"collection,omitempty" doc:"Is in this collection."`
+	Source      *string       `json:"source,omitempty" doc:"Has a source of this kind, such as chub."`
+	Archived    *bool         `json:"archived,omitempty"`
+	TargetState *TargetFilter `json:"target_state,omitempty" doc:"Is pushed to one of instances and stands as one of states there. An empty list matches any value."`
+}
+
+// TargetFilter matches an entity by its bindings: one on any of Instances
+// whose status is any of States.
+type TargetFilter struct {
+	Instances []int64  `json:"instances,omitempty" maxItems:"100" doc:"Plugin instance IDs"`
+	States    []string `json:"states,omitempty" maxItems:"6" doc:"in_sync, ahead, remote_changed, diverged, missing, or cant_check"`
 }
 
 // TargetState is a card's status on one target, as GET /cards/{id}/bindings
@@ -218,11 +225,19 @@ func (w *where) filter(f Filter) (string, error) {
 		return `EXISTS (SELECT 1 FROM ` + w.k.SourceTable + ` cs
 			WHERE cs.` + w.k.FK + ` = c.id AND cs.kind = ` + w.arg(*f.Source) + ` AND cs.removed_at IS NULL)`, nil
 	case f.TargetState != nil:
-		if !slices.Contains(targetStatuses, f.TargetState.Is) {
-			return "", fmt.Errorf("%w: target_state.is must be one of %v", ErrInvalid, targetStatuses)
+		cond := `bs.` + w.k.FK + ` = c.id`
+		if len(f.TargetState.Instances) > 0 {
+			cond += ` AND bs.instance_id = ANY(` + w.arg(f.TargetState.Instances) + `)`
 		}
-		return `EXISTS (SELECT 1 FROM binding_status bs WHERE bs.` + w.k.FK + ` = c.id
-			AND bs.instance_id = ` + w.arg(f.TargetState.Instance) + ` AND bs.status = ` + w.arg(f.TargetState.Is) + `)`, nil
+		for _, s := range f.TargetState.States {
+			if !slices.Contains(targetStatuses, s) {
+				return "", fmt.Errorf("%w: target_state.states must be from %v", ErrInvalid, targetStatuses)
+			}
+		}
+		if len(f.TargetState.States) > 0 {
+			cond += ` AND bs.status = ANY(` + w.arg(f.TargetState.States) + `)`
+		}
+		return `EXISTS (SELECT 1 FROM binding_status bs WHERE ` + cond + `)`, nil
 	}
 	return `((c.archived_at IS NOT NULL) = ` + w.arg(*f.Archived) + `)`, nil
 }

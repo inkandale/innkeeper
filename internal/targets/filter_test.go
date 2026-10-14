@@ -22,22 +22,29 @@ func TestFilterTargetState(t *testing.T) {
 		}
 		return ids
 	}
-	state := func(is string) library.Filter {
-		return library.Filter{TargetState: &library.TargetState{Instance: e.inst, Is: is}}
+	match := func(instances []int64, states ...string) library.Filter {
+		return library.Filter{TargetState: &library.TargetFilter{Instances: instances, States: states}}
 	}
-	if got := search(state("ahead")); !slices.Equal(got, []int64{edited}) {
-		t.Fatalf("ahead = %v", got)
-	}
-	if got := search(state("in_sync")); !slices.Equal(got, []int64{e.card}) {
-		t.Fatalf("in_sync = %v", got)
-	}
-	other := library.Filter{TargetState: &library.TargetState{Instance: e.inst + 1000, Is: "in_sync"}}
-	if got := search(other); len(got) != 0 {
-		t.Fatalf("in_sync on another target = %v", got)
-	}
-	notInSync := state("in_sync")
-	if got := search(library.Filter{Not: &notInSync}); !slices.Equal(got, []int64{edited, unpushed}) {
-		t.Fatalf("not in_sync = %v", got)
+	here := []int64{e.inst}
+	inSyncHere := match(here, "in_sync")
+	for name, tc := range map[string]struct {
+		f    library.Filter
+		want []int64
+	}{
+		"state on a target":       {match(here, "ahead"), []int64{edited}},
+		"other state on a target": {match(here, "in_sync"), []int64{e.card}},
+		"state on another target": {match([]int64{e.inst + 1000}, "in_sync"), nil},
+		"state on any target":     {match(nil, "ahead"), []int64{edited}},
+		"any state on a target":   {match(here), []int64{e.card, edited}},
+		"pushed anywhere":         {match(nil), []int64{e.card, edited}},
+		"either of two states":    {match(here, "ahead", "in_sync"), []int64{e.card, edited}},
+		"not in sync on a target": {library.Filter{Not: &inSyncHere}, []int64{edited, unpushed}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := search(tc.f); !slices.Equal(got, tc.want) {
+				t.Fatalf("got %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 

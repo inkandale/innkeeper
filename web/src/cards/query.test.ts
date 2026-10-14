@@ -63,7 +63,7 @@ test("toSearch builds the API body", () => {
         { tag: "fantasy" },
         { not: { collection: 3 } },
         { source: "chub" },
-        { target_state: { instance: 2, is: "ahead" } },
+        { target_state: { instances: [2], states: ["ahead"] } },
       ],
     },
     page: { size: 48, number: 2 },

@@ -14,6 +14,18 @@ TypeScript (`web/src`). Setup and tests are in the [README](README.md).
    hypothetical later.
 4. Decide which test will prove the change, and write it first when you can.
 
+## Plugins
+
+Adding a plugin must not need a core change.
+
+- Core knows plugins only through the manifest and the protocol. Never
+  branch on a plugin's name.
+- A new capability reuses the shared path for loading, calling, checking,
+  and listing plugins. If supporting it means copying another capability's
+  code in `internal/`, `web/src`, or the MCP tools, generalize the shared
+  code instead.
+- Behavior specific to one app or one site belongs in its plugin.
+
 ## SOLID, applied to Go
 
 | Principle | What it means here |

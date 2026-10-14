@@ -4,6 +4,8 @@ import type { components } from "../api/schema";
 
 export type Job = components["schemas"]["JobOut"];
 
+export const jobStates: Job["status"][] = ["queued", "running", "waiting", "succeeded", "failed"];
+
 export const finished = (j: Job) => j.status === "succeeded" || j.status === "failed";
 
 /** kindLabel is a job's kind, with the action for a bulk job. */

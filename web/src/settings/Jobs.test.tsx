@@ -115,3 +115,10 @@ test("a finished export links to its zip and opens no stream", async () => {
   expect(FakeEventSource.last).toBeNull();
   expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
 });
+
+test("a bulk job filters its children by any state, waiting included", async () => {
+  renderAt("/settings/jobs/5");
+  await screen.findByText("card.tag");
+  await userEvent.setup().selectOptions(screen.getByRole("combobox", { name: "Child state" }), "waiting");
+  expect(requests).toContain("GET /api/jobs?parent=5&status=waiting");
+});

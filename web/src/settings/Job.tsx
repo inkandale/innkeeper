@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { api, must } from "../api/client";
-import { age, finished, kindLabel, progressText, useJobEvents, type Job as JobT } from "./jobUtil";
+import { age, finished, jobStates, kindLabel, progressText, useJobEvents, type Job as JobT } from "./jobUtil";
 
 function Counts({ label, counts }: { label: string; counts?: Record<string, number> }) {
   if (!counts || !Object.keys(counts).length) return null;
@@ -87,7 +87,7 @@ export function Job() {
             onChange={(e) => setChildStatus(e.target.value as JobT["status"] | "")}
           >
             <option value="">All children</option>
-            {["queued", "running", "succeeded", "failed"].map((s) => (
+            {jobStates.map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>

@@ -504,12 +504,16 @@ A source is an `index.toml` that the owner adds to Innkeeper by its
 tarball per platform:
 
 ```toml
+categories = ["Apps", "Import", "Login"]
+
 [[plugin]]
 name = "lumiverse"
 version = "0.2.0"
 protocol = 1
 capabilities = ["push", "pull", "search"]
 description = "Push and pull cards and lorebooks with a Lumiverse server."
+category = "Apps"
+recommended = true
 
 [[plugin.artifact]]
 os = "linux"
@@ -520,6 +524,10 @@ sha256 = "<hex sha256 of the tarball>"
 
 - List every version you want owners to be able to install, not only the
   newest.
+- `category` groups a plugin in the setup wizard. `categories` is the order
+  the wizard shows them in; unlisted ones follow alphabetically.
+- `recommended = true` marks a plugin the Plugins page suggests. Innkeeper
+  shows the mark only for the `official` source.
 - `os` and `arch` use Go's names, such as `linux` and `arm64`.
 - `url` may be relative to the index. An `https://` index must point at
   `https://` tarballs, and a `file://` index at local files.

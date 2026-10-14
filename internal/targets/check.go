@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/davidgibbons/innkeeper/internal/db"
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
@@ -54,7 +54,7 @@ func (s *Service) record(ctx context.Context, id int64, b stored, state string, 
 		WHERE id = $1 AND version = $4`, id, state, seen, b.version)
 	// Another binding took the ID while this one was missing, so the app's
 	// item there is a different one, and this binding stays missing.
-	if pgErr := (*pgconn.PgError)(nil); errors.As(err, &pgErr) && pgErr.Code == "23505" && b.remoteState == remoteMissing {
+	if db.IsCode(err, db.UniqueViolation) && b.remoteState == remoteMissing {
 		return nil
 	}
 	return err

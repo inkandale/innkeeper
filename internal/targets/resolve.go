@@ -11,8 +11,8 @@ import (
 	"strconv"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/davidgibbons/innkeeper/internal/db"
 	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/merge"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
@@ -788,7 +788,7 @@ func (rs *resolver) saveBinding(ctx context.Context, k kind, r Resolution, id, b
 			VALUES ($1, $2, $3, 'unchanged', $4, $5, now()) RETURNING id`,
 			r.InstanceID, id, r.RemoteID, accepted, acceptedHash).Scan(&bindingID)
 	}
-	if pgErr := (*pgconn.PgError)(nil); errors.As(err, &pgErr) && pgErr.Code == "23505" {
+	if db.IsCode(err, db.UniqueViolation) {
 		return 0, ErrBound
 	}
 	return bindingID, err

@@ -6,10 +6,10 @@ import (
 	"errors"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/davidgibbons/innkeeper/internal/blobstore"
+	"github.com/davidgibbons/innkeeper/internal/db"
 )
 
 var (
@@ -44,11 +44,10 @@ func New(pool *pgxpool.Pool, blobs *blobstore.Store) *Library {
 
 // mapErr turns a missing row or a foreign key violation into ErrNotFound.
 func mapErr(err error) error {
-	var pgErr *pgconn.PgError
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 		return ErrNotFound
-	case errors.As(err, &pgErr) && pgErr.Code == "23503":
+	case db.IsCode(err, db.ForeignKeyViolation):
 		return errors.Join(ErrNotFound, err)
 	}
 	return err

@@ -2,13 +2,13 @@ package library
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/davidgibbons/innkeeper/internal/db"
 )
 
 // cleanTags trims names and drops empty ones.
@@ -99,11 +99,10 @@ type Collection struct {
 
 // collectionErr maps constraint violations on collection.
 func collectionErr(err error) error {
-	var pgErr *pgconn.PgError
 	switch {
-	case errors.As(err, &pgErr) && pgErr.Code == "23505":
+	case db.IsCode(err, db.UniqueViolation):
 		return ErrNameTaken
-	case errors.As(err, &pgErr) && pgErr.Code == "23514":
+	case db.IsCode(err, db.CheckViolation):
 		return fmt.Errorf("%w: collection name may not be empty", ErrInvalid)
 	}
 	return mapErr(err)

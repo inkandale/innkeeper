@@ -22,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/davidgibbons/innkeeper/internal/blobstore"
+	"github.com/davidgibbons/innkeeper/internal/db"
 	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/secrets"
@@ -275,9 +276,9 @@ func checkSecret(m *protocol.Manifest, name string) error {
 func writeErr(err error) error {
 	var pgErr *pgconn.PgError
 	switch {
-	case errors.As(err, &pgErr) && pgErr.Code == "23505":
+	case db.IsCode(err, db.UniqueViolation):
 		return ErrNameTaken
-	case errors.As(err, &pgErr) && pgErr.Code == "23514":
+	case errors.As(err, &pgErr) && pgErr.Code == db.CheckViolation:
 		return fmt.Errorf("%w: %s", ErrInvalid, pgErr.ConstraintName)
 	}
 	return err

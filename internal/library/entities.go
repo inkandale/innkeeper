@@ -3,15 +3,14 @@ package library
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/davidgibbons/innkeeper/cardhash"
+	"github.com/davidgibbons/innkeeper/internal/db"
 	"github.com/davidgibbons/innkeeper/internal/merge"
 )
 
@@ -202,8 +201,7 @@ func (s *Entities) create(ctx context.Context, tx pgx.Tx, slug, provenance strin
 	defer sp.Rollback(ctx)
 	ent, err := scanEntity(sp.QueryRow(ctx, `INSERT INTO `+s.k.Table+` (slug, provenance) VALUES ($1, $2) RETURNING `+entityCols,
 		slug, provenance))
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+	if db.IsCode(err, db.UniqueViolation) {
 		return Entity{}, Revision{}, ErrSlugTaken
 	}
 	if err != nil {

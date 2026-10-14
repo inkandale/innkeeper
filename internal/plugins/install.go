@@ -22,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/davidgibbons/innkeeper/internal/db"
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
@@ -69,8 +70,7 @@ func (r *Registry) AddSource(ctx context.Context, s PluginSource) error {
 // DeleteSource removes a source that no installed plugin came from.
 func (r *Registry) DeleteSource(ctx context.Context, id string) error {
 	tag, err := r.pool.Exec(ctx, `DELETE FROM plugin_source WHERE id = $1`, id)
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+	if db.IsCode(err, db.ForeignKeyViolation) {
 		return ErrSourceInUse
 	}
 	if err != nil {

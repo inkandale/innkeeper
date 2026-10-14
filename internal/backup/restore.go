@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/davidgibbons/innkeeper/internal/blobstore"
+	"github.com/davidgibbons/innkeeper/internal/db"
 	"github.com/davidgibbons/innkeeper/internal/secrets"
 )
 
@@ -331,7 +332,7 @@ func setOf(xs []string) map[string]bool {
 // fkError explains a deferred foreign key failure.
 func fkError(err error) error {
 	var pe *pgconn.PgError
-	if !errors.As(err, &pe) || pe.Code != "23503" {
+	if !errors.As(err, &pe) || pe.Code != db.ForeignKeyViolation {
 		return err
 	}
 	if pe.TableName == "binding" {

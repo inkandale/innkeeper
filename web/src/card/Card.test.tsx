@@ -277,8 +277,8 @@ test("an upload saves a revision named Replace image", async () => {
 
 test("Export PNG hides when no codec instance writes PNG", async () => {
   renderAt("/cards/7");
-  // The Target select needs plugins and instances, so both have loaded.
-  await screen.findByRole("combobox", { name: "Target" });
+  // The target picker needs plugins and instances, so both have loaded.
+  await screen.findByRole("group", { name: "Targets" });
   expect(screen.queryByRole("link", { name: "Export PNG" })).not.toBeInTheDocument();
 });
 

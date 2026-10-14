@@ -10,6 +10,7 @@ import { Crop } from "./CropDialog";
 import { strings, text, type Data } from "./draft";
 import { Logo, apps } from "../sync/Logo";
 import { PushPreview } from "../sync/PushPreview";
+import { TargetPicker } from "../sync/TargetPicker";
 import { reviewPath, stateLabel } from "../sync/sync";
 import { ChipInput } from "./ChipInput";
 import { Collections, Sources } from "./Organize";
@@ -76,32 +77,23 @@ export function Archive({ kind, entity }: { kind: Kind; entity: Entity }) {
 
 // Push sends the saved head, so it waits for unsaved edits to be saved.
 export function Push({ kind, id, dirty }: { kind: Kind; id: number; dirty: boolean }) {
-  const [instance, setInstance] = useState<number>();
+  const [picked, setPicked] = useState<number[]>();
   const [previewing, setPreviewing] = useState(false);
   const targets = useInstancesWith("push");
-  const instanceId = instance ?? targets[0]?.id ?? 0;
   if (!targets.length) return null;
+  const chosen = targets.filter((t) => (picked ?? [targets[0]!.id]).includes(t.id));
   return (
     <div className="row">
-      <select className="input" aria-label="Target" value={instanceId} onChange={(e) => setInstance(Number(e.target.value))}>
-        {targets.map((i) => (
-          <option key={i.id} value={i.id}>
-            {i.name}
-          </option>
-        ))}
-      </select>
-      <button className="button" disabled={dirty} title={dirty ? "Save first" : undefined} onClick={() => setPreviewing(true)}>
+      <TargetPicker targets={targets} picked={chosen.map((t) => t.id)} onChange={setPicked} />
+      <button
+        className="button"
+        disabled={dirty || !chosen.length}
+        title={dirty ? "Save first" : undefined}
+        onClick={() => setPreviewing(true)}
+      >
         Push
       </button>
-      {previewing && (
-        <PushPreview
-          kind={kind}
-          id={id}
-          instance={instanceId}
-          name={targets.find((t) => t.id === instanceId)?.name ?? ""}
-          onClose={() => setPreviewing(false)}
-        />
-      )}
+      {previewing && <PushPreview kind={kind} id={id} targets={chosen} onClose={() => setPreviewing(false)} />}
     </div>
   );
 }

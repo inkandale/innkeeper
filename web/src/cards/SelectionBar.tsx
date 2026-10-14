@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, exportFormats, must } from "../api/client";
 import { collectionsQuery, instancesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
@@ -6,6 +6,7 @@ import type { components } from "../api/schema";
 import { useToast } from "../shell/Toasts";
 import { jobToast } from "../settings/jobUtil";
 import { pushSummary } from "../sync/sync";
+import { TargetPicker } from "../sync/TargetPicker";
 
 type Search = components["schemas"]["Query"];
 type Bulk = components["schemas"]["BulkInBody"];
@@ -34,7 +35,7 @@ export function SelectionBar(props: {
   const [panel, setPanel] = useState<Panel>(null);
   const [tags, setTags] = useState("");
   const [collection, setCollection] = useState<number>();
-  const [instance, setInstance] = useState<number>();
+  const [picked, setPicked] = useState<number[]>();
   const [format, setFormat] = useState("json");
   const toast = useToast();
   const n = all ? total : count;
@@ -52,17 +53,40 @@ export function SelectionBar(props: {
       onClear();
     },
   });
-  const busy = start.isPending;
   const bulk = (body: Omit<Bulk, "query">) =>
     start.mutate(async () => must(await api.POST("/bulk", { body: { query, ...kindField, ...body } })));
   const collectionId = collection ?? collections.data?.[0]?.id ?? 0;
-  const instanceId = instance ?? targets[0]?.id ?? 0;
+  const chosen = targets.filter((t) => (picked ?? [targets[0]?.id]).includes(t.id));
   // What the push does to each copy. Its confirm makes the push leave alone any copy that changes after this.
-  const preview = useQuery({
-    enabled: panel === "push" && instanceId > 0,
-    queryKey: ["push-preview", kind, instanceId, query],
-    queryFn: async () => must(await api.POST("/pushes/preview", { body: { instance_id: instanceId, query, ...kindField } })),
+  const previews = useQueries({
+    queries: chosen.map((t) => ({
+      enabled: panel === "push",
+      queryKey: ["push-preview", kind, t.id, query],
+      queryFn: async () => must(await api.POST("/pushes/preview", { body: { instance_id: t.id, query, ...kindField } })),
+    })),
   });
+  // One push job per target. A target that fails stays picked, so pushing again retries only it.
+  const push = useMutation({
+    mutationFn: async () => {
+      const failed: string[] = [];
+      for (const [i, t] of chosen.entries()) {
+        const res = await api.POST("/pushes", { body: { instance_id: t.id, query, ...kindField, confirm: previews[i]!.data!.confirm } });
+        // A 409 means the copies changed since the preview; show the new one.
+        if (res.response.status === 409) void previews[i]!.refetch();
+        try {
+          const j = must(res);
+          toast(jobToast(j));
+          onStarted?.(j.id);
+          setPicked((ids) => (ids ?? chosen.map((c) => c.id)).filter((id) => id !== t.id));
+        } catch (e) {
+          failed.push(`${t.name}: ${(e as Error).message}`);
+        }
+      }
+      if (failed.length) throw new Error(failed.join("; "));
+      onClear();
+    },
+  });
+  const busy = start.isPending || push.isPending;
   const tagList = () => tags.split(",").map((t) => t.trim()).filter(Boolean);
 
   const toggle = (p: Panel) => setPanel(panel === p ? null : p);
@@ -119,30 +143,19 @@ export function SelectionBar(props: {
               <span>Loading…</span>
             ) : targets.length ? (
               <>
-                <select className="input" aria-label="Target" value={instanceId} onChange={(e) => setInstance(Number(e.target.value))}>
-                  {targets.map((i) => (
-                    <option key={i.id} value={i.id}>
-                      {i.name}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  className="button primary"
-                  disabled={busy || !preview.data}
-                  onClick={() =>
-                    start.mutate(async () => {
-                      const body = { instance_id: instanceId, query, ...kindField, confirm: preview.data!.confirm };
-                      const res = await api.POST("/pushes", { body });
-                      // A 409 means the copies changed since the preview; show the new one.
-                      if (res.response.status === 409) void preview.refetch();
-                      return must(res);
-                    })
-                  }
-                >
+                <TargetPicker targets={targets} picked={chosen.map((t) => t.id)} onChange={setPicked} />
+                <button className="button primary" disabled={busy || !chosen.length || previews.some((p) => !p.data)} onClick={() => push.mutate()}>
                   Push {plural(n)}
                 </button>
-                {preview.data && <span className="muted">{pushSummary(preview.data)}</span>}
-                {preview.error && <span className="muted">{preview.error.message}</span>}
+                {chosen.map((t, i) => {
+                  const p = previews[i]!;
+                  return (
+                    <span key={t.id} className="muted">
+                      {chosen.length > 1 && `${t.name}: `}
+                      {p.data ? pushSummary(p.data) : p.error?.message}
+                    </span>
+                  );
+                })}
               </>
             ) : (
               <span>No target can take pushes. Add one in Settings.</span>

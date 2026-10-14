@@ -260,8 +260,7 @@ export function Changes() {
         <PushPreview
           kind="card"
           id={pushing.card}
-          instance={pushing.instance}
-          name={name(pushing.instance)}
+          targets={[{ id: pushing.instance, name: name(pushing.instance) }]}
           onClose={() => {
             setPushing(undefined);
             done();

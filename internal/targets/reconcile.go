@@ -126,11 +126,7 @@ func (s *Service) readItemData(ctx context.Context, k kind, inst pluginhost.Inst
 	if it.data, it.hash, err = Project(it.raw, k.fields(info)); err != nil {
 		return it, err
 	}
-	var named struct{ Name string }
-	if err := json.Unmarshal(it.data, &named); err != nil {
-		return it, err
-	}
-	it.name = named.Name
+	it.name = library.DataName(it.data)
 	it.simhash, err = textSimhash(k, it.data)
 	return it, err
 }

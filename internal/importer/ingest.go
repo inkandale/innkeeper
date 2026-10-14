@@ -3,7 +3,6 @@ package importer
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 
 	"github.com/davidgibbons/innkeeper/internal/blobstore"
@@ -41,13 +40,7 @@ func (im *Importer) ingestLorebook(ctx context.Context, plugin string, e protoco
 	if e.Item == "" {
 		return false, &badItem{errors.New("item is empty")}
 	}
-	var meta struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal(e.Lorebook, &meta); err != nil {
-		return false, &badItem{err}
-	}
-	_, created, err := im.Lib.Lorebooks.Import(ctx, plugin+":"+e.Item, cmp.Or(meta.Name, "lorebook"),
+	_, created, err := im.Lib.Lorebooks.Import(ctx, plugin+":"+e.Item, cmp.Or(library.DataName(e.Lorebook), "lorebook"),
 		library.Edit{Data: e.Lorebook, Source: "plugin:" + plugin, Message: "Imported"})
 	return created, invalid(err)
 }

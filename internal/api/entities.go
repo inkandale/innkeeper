@@ -167,15 +167,6 @@ type exportOut struct {
 	Body               []byte
 }
 
-// nameOf returns data.name, for making a slug.
-func nameOf(data json.RawMessage) string {
-	var d struct {
-		Name string `json:"name"`
-	}
-	_ = json.Unmarshal(data, &d)
-	return d.Name
-}
-
 // entity returns an entity with its head revision, and a card's tags and
 // lorebooks.
 func (s *Server) entity(ctx context.Context, ents *library.Entities, id int64) (*entityResp, error) {
@@ -237,7 +228,7 @@ func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
 			if in.Body.Slug != "" {
 				ent, _, err = ents.Create(ctx, in.Body.Slug, "api", e)
 			} else {
-				ent, _, err = ents.CreateFromName(ctx, nameOf(in.Body.Data), "api", e)
+				ent, _, err = ents.CreateFromName(ctx, library.DataName(in.Body.Data), "api", e)
 			}
 			if err != nil {
 				return nil, s.fail(err)

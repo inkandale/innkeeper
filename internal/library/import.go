@@ -41,6 +41,15 @@ func Slugify(name string) string {
 	return s
 }
 
+// DataName is data's name field, or "" if it has none.
+func DataName(data json.RawMessage) string {
+	var named struct {
+		Name string `json:"name"`
+	}
+	_ = json.Unmarshal(data, &named)
+	return named.Name
+}
+
 // freeSlug returns base, or base-N with N one more than the highest suffix
 // in use.
 func (s *Entities) freeSlug(ctx context.Context, tx pgx.Tx, base string) (string, error) {
@@ -157,11 +166,7 @@ func SplitCard(card json.RawMessage) (name string, data, book json.RawMessage, e
 	if data == nil {
 		return "", nil, nil, fmt.Errorf("%w: card has no data", ErrInvalid)
 	}
-	var n struct {
-		Name string `json:"name"`
-	}
-	_ = json.Unmarshal(data, &n)
-	return n.Name, data, book, nil
+	return DataName(data), data, book, nil
 }
 
 // ImportCard adds a CCv3 card from a plugin as Import does, with its
@@ -185,11 +190,7 @@ func (l *Library) ImportCard(ctx context.Context, provenance, source string, car
 	// interrupted partway leaves nothing a retry can't finish.
 	var lorebookID int64
 	if book != nil {
-		var meta struct {
-			Name string `json:"name"`
-		}
-		_ = json.Unmarshal(book, &meta)
-		lorebookID, _, err = l.Lorebooks.Import(ctx, provenance, cmp.Or(meta.Name, name+" lorebook"),
+		lorebookID, _, err = l.Lorebooks.Import(ctx, provenance, cmp.Or(DataName(book), name+" lorebook"),
 			Edit{Data: book, Source: source, Message: "Split from imported card"})
 		if err != nil {
 			return 0, false, err
@@ -224,11 +225,7 @@ func (l *Library) ImportCardTx(ctx context.Context, tx pgx.Tx, provenance, sourc
 	if err != nil || book == nil {
 		return rev, err
 	}
-	var meta struct {
-		Name string `json:"name"`
-	}
-	_ = json.Unmarshal(book, &meta)
-	lb, _, err := l.Lorebooks.CreateFromNameTx(ctx, tx, cmp.Or(meta.Name, name+" lorebook"), provenance,
+	lb, _, err := l.Lorebooks.CreateFromNameTx(ctx, tx, cmp.Or(DataName(book), name+" lorebook"), provenance,
 		Edit{Data: book, Source: source, Message: "Split from imported card"})
 	if err != nil {
 		return Revision{}, err

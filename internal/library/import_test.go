@@ -28,6 +28,19 @@ func TestSlugify(t *testing.T) {
 	}
 }
 
+func TestDataNameIsEmptyWithoutAName(t *testing.T) {
+	for data, want := range map[string]string{
+		`{"name": "Brakka", "description": "orc"}`: "Brakka",
+		`{"description": "orc"}`:                   "",
+		`["Brakka"]`:                               "",
+		`not json`:                                 "",
+	} {
+		if got := DataName(json.RawMessage(data)); got != want {
+			t.Errorf("DataName(%s) = %q, want %q", data, got, want)
+		}
+	}
+}
+
 func TestImportSkipsContentSeenBefore(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()

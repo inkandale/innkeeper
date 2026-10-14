@@ -325,11 +325,7 @@ func (s *Server) adoptCatalogItem(ctx context.Context, in *catalogItemIn) (*adop
 		id, created, err = s.Lib.ImportCard(ctx, prov, source, res.Data, res.Avatar)
 	case protocol.KindLorebook:
 		ents = s.Lib.Lorebooks
-		var meta struct {
-			Name string `json:"name"`
-		}
-		_ = json.Unmarshal(res.Data, &meta)
-		id, created, err = s.Lib.Lorebooks.Import(ctx, prov, cmp.Or(meta.Name, res.Item.Name),
+		id, created, err = s.Lib.Lorebooks.Import(ctx, prov, cmp.Or(library.DataName(res.Data), res.Item.Name),
 			library.Edit{Data: res.Data, Source: source, Message: "Adopted"})
 	default:
 		return nil, huma.Error400BadRequest(fmt.Sprintf("can't adopt a %s; the library holds cards and lorebooks", res.Item.Kind))

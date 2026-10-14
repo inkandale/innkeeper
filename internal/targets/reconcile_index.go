@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/davidgibbons/innkeeper/cardhash"
+	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/protocol"
 )
@@ -91,11 +92,8 @@ func (s *Service) loadEntries(ctx context.Context, k kind, inst pluginhost.Insta
 				return err
 			}
 		}
-		var named struct{ Name string }
-		if err := json.Unmarshal(d, &named); err != nil {
-			return err
-		}
-		ent.name, ent.norm = named.Name, normName(named.Name)
+		ent.name = library.DataName(d)
+		ent.norm = normName(ent.name)
 		if ent.data, ent.hash, err = Project(d, k.fields(info)); err != nil {
 			return err
 		}

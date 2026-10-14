@@ -140,12 +140,10 @@ func (s *Server) authInstance(ctx context.Context, id int64) (pluginhost.Instanc
 // callPlugin calls an instance's plugin. A plugin that fails to start marks
 // its instance broken.
 func (s *Server) callPlugin(ctx context.Context, id int64, inst pluginhost.Instance, method string, params, result any) error {
-	err := s.Plugins.Call(ctx, inst, method, params, result)
+	err := s.Registry.Call(ctx, s.Plugins, inst, method, params, result)
 	var startErr *pluginhost.StartError
 	if errors.As(err, &startErr) && ctx.Err() == nil {
-		if merr := s.Registry.MarkBroken(context.WithoutCancel(ctx), id, inst.Version, err); merr != nil {
-			s.Log.Error("mark plugin instance broken", "instance", id, "err", merr)
-		}
+		s.Log.Error("login provider failed to start", "instance", id, "err", err)
 		return huma.Error503ServiceUnavailable("login provider unavailable")
 	}
 	return err

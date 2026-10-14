@@ -13,10 +13,12 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 )
 
-// Job kinds. A push job's instance is the target; a scan has none.
+// Job kinds. A push job's instance is the target; a scan and a source check have none.
 const (
 	PushKind = "target.push"
 	ScanKind = "target.scan"
+	// SourceCheckKind follows and checks every site source; see CheckSources.
+	SourceCheckKind = "target.source-check"
 )
 
 // pushPayload names a card or a lorebook.
@@ -141,6 +143,15 @@ func skipPush(r *jobs.Run, bindingID int64) error {
 // RunScan is the jobs.Handler for ScanKind.
 func (s *Service) RunScan(ctx context.Context, r *jobs.Run) error {
 	_, err := s.Scan(ctx, func(p ScanProgress) {
+		raw, _ := json.Marshal(p)
+		r.SetProgress(raw)
+	})
+	return err
+}
+
+// RunSourceCheck is the jobs.Handler for SourceCheckKind.
+func (s *Service) RunSourceCheck(ctx context.Context, r *jobs.Run) error {
+	_, err := s.CheckSources(ctx, func(p ScanProgress) {
 		raw, _ := json.Marshal(p)
 		r.SetProgress(raw)
 	})

@@ -34,13 +34,13 @@ func worker() error {
 		}
 		concurrency = n
 	}
-	syncEvery := time.Hour
-	if v := os.Getenv("INNKEEPER_SYNC_EVERY"); v != "" {
-		d, err := time.ParseDuration(v)
-		if err != nil || d < 0 {
-			return fmt.Errorf("INNKEEPER_SYNC_EVERY: %q is not a duration like 1h, or 0 for no schedule", v)
-		}
-		syncEvery = d
+	syncEvery, err := everyEnv("INNKEEPER_SYNC_EVERY", time.Hour)
+	if err != nil {
+		return err
+	}
+	sourceCheckEvery, err := everyEnv("INNKEEPER_SOURCE_CHECK_EVERY", 24*time.Hour)
+	if err != nil {
+		return err
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	ctx, stop := signalContext()
@@ -88,6 +88,7 @@ func worker() error {
 			targets.ReconcileKind:      tg.RunReconcile,
 			targets.ResolveKind:        tg.RunResolve,
 			targets.SyncKind:           tg.RunSync,
+			targets.SourceCheckKind:    tg.RunSourceCheck,
 			backup.Kind(backup.Assets): backup.BackupHandler(svc.backups, svc.pool, backupOpts, backup.Assets),
 			backup.Kind(backup.Config): backup.BackupHandler(svc.backups, svc.pool, backupOpts, backup.Config),
 			backup.RestoreKind:         backup.RestoreHandler(svc.backups, restoreOpts, afterConfig),
@@ -118,6 +119,9 @@ func worker() error {
 	if syncEvery > 0 {
 		w.Schedules = append(w.Schedules, jobs.Schedule{Kind: targets.SyncKind, Every: syncEvery})
 	}
+	if sourceCheckEvery > 0 {
+		w.Schedules = append(w.Schedules, jobs.Schedule{Kind: targets.SourceCheckKind, Every: sourceCheckEvery})
+	}
 	// Plugins installed or removed through the API take effect at the next job.
 	for kind, h := range w.Handlers {
 		w.Handlers[kind] = func(ctx context.Context, r *jobs.Run) error {
@@ -132,4 +136,18 @@ func worker() error {
 	}
 	log.Info("worker started", "plugins", len(svc.registry.Manifests()), "concurrency", concurrency)
 	return w.Run(ctx)
+}
+
+// everyEnv reads a schedule from env var name: a duration such as 1h, or 0
+// for none. def is the schedule when it's unset.
+func everyEnv(name string, def time.Duration) (time.Duration, error) {
+	v := os.Getenv(name)
+	if v == "" {
+		return def, nil
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d < 0 {
+		return 0, fmt.Errorf("%s: %q is not a duration like 1h, or 0 for no schedule", name, v)
+	}
+	return d, nil
 }

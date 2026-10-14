@@ -1,7 +1,7 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
-import { api, canWrite, must, mustOk, route, thumb, upload, type Kind } from "../api/client";
+import { api, exportFormats, must, mustOk, route, thumb, upload, type Kind } from "../api/client";
 import { instancesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
 import { badgeClass } from "../cards/Tile";
 import { useToast } from "../shell/Toasts";
@@ -39,14 +39,11 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
         <button className="button primary" disabled={!dirty || saving} onClick={onSave}>
           Save
         </button>
-        <a className="button" href={`/api/cards/${card.id}/export?format=json`} download>
-          Export JSON
-        </a>
-        {canWrite("png", plugins.data, instances.data) && (
-          <a className="button" href={`/api/cards/${card.id}/export?format=png`} download>
-            Export PNG
+        {exportFormats(plugins.data, instances.data).map((f) => (
+          <a key={f} className="button" href={`/api/cards/${card.id}/export?format=${encodeURIComponent(f)}`} download>
+            Export {f.toUpperCase()}
           </a>
-        )}
+        ))}
         <Archive kind="card" entity={card} />
       </div>
       <Push kind="card" id={card.id} dirty={dirty} />

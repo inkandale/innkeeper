@@ -1,4 +1,4 @@
-import { ApiError, loginPath, mustOk, route, safeNext, thumb, upload, withCapability } from "./client";
+import { ApiError, exportFormats, loginPath, mustOk, route, safeNext, thumb, upload, withCapability } from "./client";
 
 test("loginPath keeps where the user was", () => {
   expect(loginPath("/cards", "?tag=elf")).toBe("/login?next=%2Fcards%3Ftag%3Delf");
@@ -65,4 +65,16 @@ test("withCapability keeps instances whose plugin offers any of the capabilities
   expect(withCapability(instances, plugins, "push")).toEqual([{ plugin: "app" }]);
   expect(withCapability(instances, plugins, "push", "pull")).toEqual([{ plugin: "app" }, { plugin: "puller" }]);
   expect(withCapability(instances, undefined, "push")).toEqual([]);
+});
+
+test("exportFormats lists json, then what working codec instances write", () => {
+  const plugins = [
+    { name: "card-codec", capabilities: ["codec"], formats: ["png", "json-v2"] },
+    { name: "other-codec", capabilities: ["codec"], formats: ["png", "charx"] },
+    { name: "broken-codec", capabilities: ["codec"], formats: ["yaml"] },
+    { name: "uninstanced", capabilities: ["codec"], formats: ["webp"] },
+  ];
+  const instances = [{ plugin: "card-codec" }, { plugin: "other-codec" }, { plugin: "broken-codec", broken_error: "down" }];
+  expect(exportFormats(plugins, instances)).toEqual(["json", "png", "json-v2", "charx"]);
+  expect(exportFormats(undefined, undefined)).toEqual(["json"]);
 });

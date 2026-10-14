@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, canWrite, must } from "../api/client";
+import { api, exportFormats, must } from "../api/client";
 import { collectionsQuery, instancesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
 import type { components } from "../api/schema";
 import { useToast } from "../shell/Toasts";
@@ -156,8 +156,11 @@ export function SelectionBar(props: {
           {panel === "export" && (
             <>
               <select className="input" aria-label="Format" value={format} onChange={(e) => setFormat(e.target.value)}>
-                <option value="json">JSON</option>
-                {canWrite("png", plugins.data, instances.data) && <option value="png">PNG</option>}
+                {exportFormats(plugins.data, instances.data).map((f) => (
+                  <option key={f} value={f}>
+                    {f.toUpperCase()}
+                  </option>
+                ))}
               </select>
               <button className="button primary" disabled={busy} onClick={() => bulk({ action: "export", format })}>
                 Export {plural(n)}

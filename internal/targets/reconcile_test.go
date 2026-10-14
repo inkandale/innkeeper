@@ -463,7 +463,7 @@ func TestReconcileSuggestions(t *testing.T) {
 		t.Errorf("exact candidates = %+v", it.Candidates)
 	}
 	suggested("new", "import", 0)
-	if it := suggested("dupe", "skip", 0); !strings.Contains(it.Suggested.Why, bound.RemoteID) {
+	if it := suggested("dupe", "skip", 0); !strings.Contains(it.Suggested.Why, fmt.Sprintf("#%d ", e.card)) {
 		t.Errorf("dupe why = %q", it.Suggested.Why)
 	}
 	if it := suggested("quill", "import", 0); !hasOption(it, Option{Action: "bind", CardID: quill}) ||

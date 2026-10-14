@@ -207,8 +207,7 @@ func checkAssets(t *testing.T, tg target) {
 		t.Fatalf("avatar file: %q, %v", b, err)
 	}
 	for q, want := range map[string]int{
-		`SELECT count(*) FROM card_lorebook`:                                                                      1,
-		`SELECT count(*) FROM card_tag JOIN tag ON tag.id = tag_id WHERE name = 'dwarf'`:                          1,
+		`SELECT count(*) FROM card_lorebook`: 1,
 		`SELECT count(*) FROM collection_card JOIN collection c ON c.id = collection_id WHERE name = 'Favorites'`: 1,
 		`SELECT count(*) FROM card_source WHERE ref = 'a/brakka'`:                                                 1,
 	} {
@@ -297,13 +296,13 @@ func TestRestoreBoth(t *testing.T) {
 func TestRestoreRefusesExistingData(t *testing.T) {
 	assets, _, _ := source(t)
 	tg := newTarget(t)
-	if _, err := tg.pool.Exec(context.Background(), `INSERT INTO tag (name) VALUES ('mine')`); err != nil {
+	if _, err := tg.pool.Exec(context.Background(), `INSERT INTO collection (name) VALUES ('mine')`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := tg.restore(assets, nil, false); !errors.Is(err, ErrHasData) {
 		t.Fatalf("err = %v, want ErrHasData", err)
 	}
-	if tg.count(t, `SELECT count(*) FROM card`) != 0 || tg.count(t, `SELECT count(*) FROM tag`) != 1 {
+	if tg.count(t, `SELECT count(*) FROM card`) != 0 || tg.count(t, `SELECT count(*) FROM collection`) != 1 {
 		t.Fatal("restore changed the database")
 	}
 	if es, _ := os.ReadDir(tg.store.Root); len(es) != 0 {
@@ -547,9 +546,9 @@ func TestFailedRestoreRemovesItsBlobFiles(t *testing.T) {
 
 func TestRestoreReportsMissingRows(t *testing.T) {
 	assets, _, _ := source(t)
-	// card_tag still points at the tag.
-	noTags := rebuild(t, assets, func(b map[string]string) { b["tables/tag.copy"] = "" })
-	_, err := newTarget(t).restore(noTags, nil, false)
+	// collection_card still points at the collection.
+	noCollections := rebuild(t, assets, func(b map[string]string) { b["tables/collection.copy"] = "" })
+	_, err := newTarget(t).restore(noCollections, nil, false)
 	if err == nil || !strings.Contains(err.Error(), "backup refers to rows it doesn't contain") {
 		t.Fatalf("err = %v", err)
 	}

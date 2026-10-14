@@ -1671,16 +1671,6 @@
           },
           "slug": {
             "type": "string"
-          },
-          "tags": {
-            "description": "Cards only",
-            "items": {
-              "type": "string"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
           }
         },
         "required": [
@@ -1795,7 +1785,7 @@
             ]
           },
           "tags": {
-            "description": "The 50 most used.",
+            "description": "Most used first.",
             "items": {
               "$ref": "#/components/schemas/TagCount"
             },
@@ -3477,33 +3467,6 @@
         "required": [
           "name",
           "cards"
-        ],
-        "type": "object"
-      },
-      "TagsInBody": {
-        "additionalProperties": false,
-        "properties": {
-          "$schema": {
-            "description": "A URL to the JSON Schema for this object.",
-            "examples": [
-              "/api/schemas/TagsInBody.json"
-            ],
-            "format": "uri",
-            "readOnly": true,
-            "type": "string"
-          },
-          "tags": {
-            "items": {
-              "type": "string"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "tags"
         ],
         "type": "object"
       },
@@ -5489,64 +5452,6 @@
           }
         },
         "summary": "Remove a card's source",
-        "tags": [
-          "Cards"
-        ]
-      }
-    },
-    "/cards/{id}/tags": {
-      "put": {
-        "operationId": "set-card-tags",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TagsInBody"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": [
-                    "array",
-                    "null"
-                  ]
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "default": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorModel"
-                }
-              }
-            },
-            "description": "Error"
-          }
-        },
-        "summary": "Replace a card's tags",
         "tags": [
           "Cards"
         ]

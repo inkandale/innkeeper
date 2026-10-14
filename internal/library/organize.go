@@ -24,31 +24,6 @@ func cleanTags(names []string) []string {
 	return clean
 }
 
-// SetCardTags replaces a card's tags. Tag names are trimmed and matched
-// case-insensitively; new names create tags.
-func (l *Library) SetCardTags(ctx context.Context, cardID int64, names []string) error {
-	clean := cleanTags(names)
-	tx, err := l.pool.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-	if _, err := tx.Exec(ctx, `INSERT INTO tag (name)
-		SELECT DISTINCT ON (lower(n)) n FROM unnest($1::text[]) n
-		ON CONFLICT (lower(name)) DO NOTHING`, clean); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx, `DELETE FROM card_tag WHERE card_id = $1`, cardID); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx, `INSERT INTO card_tag (card_id, tag_id)
-		SELECT $1, id FROM tag WHERE lower(name) IN (SELECT lower(n) FROM unnest($2::text[]) n)`,
-		cardID, clean); err != nil {
-		return mapErr(err)
-	}
-	return tx.Commit(ctx)
-}
-
 // EditCardTags adds and removes names in a card's data.tags as a new
 // revision. Names are trimmed and match case-insensitively; an edit that
 // changes nothing adds no revision.
@@ -107,16 +82,6 @@ func editTags(tags, add, remove []string) []string {
 
 func containsFold(list []string, s string) bool {
 	return slices.ContainsFunc(list, func(x string) bool { return strings.EqualFold(x, s) })
-}
-
-// CardTags returns a card's tag names in alphabetical order.
-func (l *Library) CardTags(ctx context.Context, cardID int64) ([]string, error) {
-	rows, err := l.pool.Query(ctx, `SELECT t.name FROM card_tag ct JOIN tag t ON t.id = ct.tag_id
-		WHERE ct.card_id = $1 ORDER BY lower(t.name)`, cardID)
-	if err != nil {
-		return nil, err
-	}
-	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
 // Collection is a named group of cards. A card can be in many.

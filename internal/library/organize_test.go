@@ -13,35 +13,6 @@ import (
 	"testing"
 )
 
-func TestCardTags(t *testing.T) {
-	lib := newLibrary(t)
-	ctx := context.Background()
-	a, _ := newCard(t, lib, "a", `{"name": "A"}`)
-	b, _ := newCard(t, lib, "b", `{"name": "B"}`)
-	if err := lib.SetCardTags(ctx, a, []string{"Fantasy", " dwarf ", "fantasy", ""}); err != nil {
-		t.Fatal(err)
-	}
-	// The first spelling of a tag wins.
-	if err := lib.SetCardTags(ctx, b, []string{"FANTASY"}); err != nil {
-		t.Fatal(err)
-	}
-	if got, _ := lib.CardTags(ctx, a); !slices.Equal(got, []string{"dwarf", "Fantasy"}) {
-		t.Fatalf("a tags = %v", got)
-	}
-	if got, _ := lib.CardTags(ctx, b); !slices.Equal(got, []string{"Fantasy"}) {
-		t.Fatalf("b tags = %v", got)
-	}
-	if err := lib.SetCardTags(ctx, a, nil); err != nil {
-		t.Fatal(err)
-	}
-	if got, _ := lib.CardTags(ctx, a); len(got) != 0 {
-		t.Fatalf("a tags after clear = %v", got)
-	}
-	if err := lib.SetCardTags(ctx, 999, []string{"x"}); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("missing card: got %v, want ErrNotFound", err)
-	}
-}
-
 func TestCollections(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()

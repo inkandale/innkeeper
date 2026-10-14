@@ -34,7 +34,7 @@ func setup(t *testing.T) (*pgxpool.Pool, *library.Library, Options) {
 	return pool, library.New(pool, store), Options{Dir: t.TempDir(), DatabaseURL: u.String(), Store: store}
 }
 
-// seed adds a card with an avatar, a lorebook, a tag, a collection, and a
+// seed adds a card with an avatar, a lorebook, a collection, and a
 // blob no revision uses. It returns the avatar's and the unused blob's hashes.
 func seed(t *testing.T, lib *library.Library) (avatar, unused string) {
 	t.Helper()
@@ -57,9 +57,6 @@ func seed(t *testing.T, lib *library.Library) (avatar, unused string) {
 		t.Fatal(err)
 	}
 	if err := lib.LinkLorebook(ctx, c.ID, b.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := lib.SetCardTags(ctx, c.ID, []string{"dwarf"}); err != nil {
 		t.Fatal(err)
 	}
 	col, err := lib.CreateCollection(ctx, "Favorites", "")
@@ -122,7 +119,7 @@ func TestWriteAssets(t *testing.T) {
 	}
 	want := map[string]int64{
 		"blob": 1, "card": 1, "card_revision": 1, "lorebook": 1, "lorebook_revision": 1, "card_lorebook": 1,
-		"tag": 1, "card_tag": 1, "collection": 1, "collection_card": 1, "card_source": 0, "lorebook_source": 0,
+		"collection": 1, "collection_card": 1, "card_source": 0, "lorebook_source": 0,
 	}
 	if len(m.Tables) != len(want) {
 		t.Fatalf("tables = %v", m.Tables)

@@ -13,7 +13,6 @@ type entityResult struct {
 	Slug        string         `json:"slug"`
 	Provenance  string         `json:"provenance"`
 	ArchivedAt  *string        `json:"archived_at"`
-	Tags        []string       `json:"tags"`
 	Lorebooks   []int64        `json:"lorebooks"`
 	Collections []int64        `json:"collections"`
 	Cards       []int64        `json:"cards"`
@@ -168,20 +167,14 @@ func TestRestoreAvatar(t *testing.T) {
 	}
 }
 
-func TestCardTagsLinksAndExport(t *testing.T) {
+func TestCardLinksAndExport(t *testing.T) {
 	e := newEnv(t)
 	c := e.createCard(`{"name": "Brakka"}`)
 	path := fmt.Sprintf("/cards/%d", c.ID)
 
-	var tags []string
-	e.call("PUT", path+"/tags", map[string]any{"tags": []string{"fantasy", "dwarf"}}, 200, &tags)
-	if strings.Join(tags, ",") != "dwarf,fantasy" {
-		t.Fatalf("tags = %v", tags)
-	}
-
 	var book entityResult
 	e.call("POST", "/lorebooks", map[string]any{"data": json.RawMessage(`{"name": "Forge", "entries": [{"keys": ["anvil"], "content": "Heavy."}]}`)}, 201, &book)
-	if book.Slug != "forge" || book.Tags != nil {
+	if book.Slug != "forge" {
 		t.Fatalf("lorebook = %+v", book)
 	}
 	e.call("PUT", fmt.Sprintf("%s/lorebooks/%d", path, book.ID), nil, 204, nil)
@@ -189,7 +182,7 @@ func TestCardTagsLinksAndExport(t *testing.T) {
 
 	var got entityResult
 	e.call("GET", path, nil, 200, &got)
-	if len(got.Tags) != 2 || len(got.Lorebooks) != 1 || got.Lorebooks[0] != book.ID {
+	if len(got.Lorebooks) != 1 || got.Lorebooks[0] != book.ID {
 		t.Fatalf("card = %+v", got)
 	}
 

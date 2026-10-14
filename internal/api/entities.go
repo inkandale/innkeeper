@@ -46,7 +46,6 @@ type entityOut struct {
 	ArchivedAt  *time.Time  `json:"archived_at,omitempty"`
 	CreatedAt   time.Time   `json:"created_at"`
 	Revision    revisionOut `json:"revision" doc:"The head revision"`
-	Tags        []string    `json:"tags,omitempty" doc:"Cards only"`
 	Lorebooks   []int64     `json:"lorebooks,omitempty" doc:"Cards only: IDs of linked lorebooks"`
 	Collections []int64     `json:"collections,omitempty" doc:"Cards only: IDs of the collections it's in"`
 	Cards       []int64     `json:"cards,omitempty" doc:"Lorebooks only: IDs of linked cards"`
@@ -114,15 +113,6 @@ type archiveIn struct {
 	}
 }
 
-type tagsIn struct {
-	ID   int64 `path:"id"`
-	Body struct {
-		Tags []string `json:"tags"`
-	}
-}
-
-type tagsOut struct{ Body []string }
-
 type sourcesOut struct{ Body []library.Source }
 
 type sourceResp struct{ Body library.Source }
@@ -167,8 +157,8 @@ type exportOut struct {
 	Body               []byte
 }
 
-// entity returns an entity with its head revision, and a card's tags and
-// lorebooks.
+// entity returns an entity with its head revision, and a card's lorebooks
+// and collections.
 func (s *Server) entity(ctx context.Context, ents *library.Entities, id int64) (*entityResp, error) {
 	e, err := ents.Get(ctx, id)
 	if err != nil {
@@ -181,9 +171,6 @@ func (s *Server) entity(ctx context.Context, ents *library.Entities, id int64) (
 	out := &entityResp{Body: entityOut{ID: e.ID, Slug: e.Slug, Provenance: e.Provenance, ArchivedAt: e.ArchivedAt,
 		CreatedAt: e.CreatedAt, Revision: toRevision(rev, true)}}
 	if ents.Kind() == library.Card {
-		if out.Body.Tags, err = s.Lib.CardTags(ctx, id); err != nil {
-			return nil, s.fail(err)
-		}
 		if out.Body.Lorebooks, err = s.Lib.CardLorebooks(ctx, id); err != nil {
 			return nil, s.fail(err)
 		}
@@ -398,22 +385,6 @@ func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
 // cardRoutes registers the routes only cards have.
 func (s *Server) cardRoutes(api huma.API) {
 	tags := []string{"Cards"}
-	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "set-card-tags", Method: http.MethodPut, Path: "/cards/{id}/tags",
-		Summary: "Replace a card's tags", Tags: tags},
-		func(ctx context.Context, in *tagsIn) (*tagsOut, error) {
-			if _, err := s.Lib.Cards.Get(ctx, in.ID); err != nil {
-				return nil, s.fail(err)
-			}
-			if err := s.Lib.SetCardTags(ctx, in.ID, in.Body.Tags); err != nil {
-				return nil, s.fail(err)
-			}
-			tags, err := s.Lib.CardTags(ctx, in.ID)
-			if err != nil {
-				return nil, s.fail(err)
-			}
-			return &tagsOut{Body: orEmpty(tags)}, nil
-		})
-
 	huma.Register(api, huma.Operation{OperationID: "list-similar-cards", Method: http.MethodGet, Path: "/cards/{id}/similar",
 		Summary: "Find likely duplicates", Description: "Same content, near-identical text, or a similar avatar; closest first.", Tags: tags},
 		func(ctx context.Context, in *similarIn) (*matchesOut, error) {

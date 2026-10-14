@@ -705,7 +705,7 @@ retention:
 
 | Type | Holds |
 |---|---|
-| `assets` | Cards, lorebooks, and their revisions; avatars; tags, collections, sources, and lorebook links |
+| `assets` | Cards, lorebooks, and their revisions; avatars; collections, sources, and lorebook links |
 | `config` | Plugin instances with their settings and encrypted secrets; plugin databases; bindings and push history; core settings |
 
 Jobs, API tokens, logins, and OAuth grants aren't backed up. After a restore,

@@ -184,7 +184,7 @@ var tools = []tool{
 		func(ctx context.Context, c caller, in searchIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", "/cards/search", in.Query)
 		}),
-	def("get_card", "Get a card: its head revision, tags, linked lorebooks, and its status on each target app.", tier.Read,
+	def("get_card", "Get a card: its head revision, linked lorebooks, and its status on each target app.", tier.Read,
 		func(ctx context.Context, c caller, in idIn) (*sdk.CallToolResult, error) {
 			return c.both(ctx, fmt.Sprintf("/cards/%d", in.ID), fmt.Sprintf("/cards/%d/bindings", in.ID))
 		}),

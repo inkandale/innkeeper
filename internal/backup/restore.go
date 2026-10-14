@@ -87,7 +87,7 @@ func stripUnrunnable(r io.Reader, size int64) (string, error) {
 // plugin schema the archive lists, destroy. Config's $1 is those schemas.
 var hasData = map[Type]string{
 	Assets: `SELECT EXISTS (SELECT FROM public.card) OR EXISTS (SELECT FROM public.lorebook)
-		OR EXISTS (SELECT FROM public.tag) OR EXISTS (SELECT FROM public.collection)`,
+		OR EXISTS (SELECT FROM public.collection)`,
 	Config: `SELECT EXISTS (SELECT FROM public.plugin_instance) OR EXISTS (SELECT FROM public.setting)
 		OR EXISTS (SELECT FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 			WHERE n.nspname = ANY($1) AND c.relkind IN ('r', 'p'))`,

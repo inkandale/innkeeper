@@ -609,23 +609,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/cards/{id}/tags": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /** Replace a card's tags */
-        put: operations["set-card-tags"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/catalogs": {
         parameters: {
             query?: never;
@@ -2569,8 +2552,6 @@ export interface components {
             /** @description The head revision */
             revision: components["schemas"]["RevisionOut"];
             slug: string;
-            /** @description Cards only */
-            tags?: string[] | null;
         };
         ErrorDetail: {
             /** @description Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id' */
@@ -2622,7 +2603,7 @@ export interface components {
         Facets: {
             collections?: components["schemas"]["CollectionCount"][] | null;
             sources?: components["schemas"]["SourceCount"][] | null;
-            /** @description The 50 most used. */
+            /** @description Most used first. */
             tags?: components["schemas"]["TagCount"][] | null;
             targets?: components["schemas"]["TargetCount"][] | null;
         };
@@ -3219,15 +3200,6 @@ export interface components {
             /** Format: int64 */
             cards: number;
             name: string;
-        };
-        TagsInBody: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example /api/schemas/TagsInBody.json
-             */
-            readonly $schema?: string;
-            tags: string[] | null;
         };
         TargetCount: {
             /** Format: int64 */
@@ -4508,41 +4480,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ErrorModel"];
-                };
-            };
-        };
-    };
-    "set-card-tags": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TagsInBody"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": string[] | null;
-                };
             };
             /** @description Error */
             default: {

@@ -18,7 +18,7 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-tools | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code | database | bad-list | bad-setup | bad-catalog | catalog-repeat | catalog-lax | catalog-no-notfound | catalog-wrong-hash | catalog-sourceless")
+	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-tools | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code | database | bad-list | bad-setup | bad-catalog | catalog-repeat | catalog-lax | catalog-no-notfound | catalog-wrong-hash | catalog-sourceless | sites-noisy | sites-lax-data | sites-claims | sites-lax-params | sites-bad-source")
 	caps := flag.String("caps", "push,pull", "comma-separated capabilities to report")
 	name := flag.String("name", "fake", "the plugin name to report")
 	flag.Parse()
@@ -128,6 +128,10 @@ func main() {
 			return codecEncode(blobTmp, params, *mode)
 		case protocol.MethodCodecDecode:
 			return codecDecode(params, *mode)
+		case protocol.MethodSitesDetect:
+			return sitesDetect(config, params, *mode)
+		case protocol.MethodSitesParse:
+			return sitesParse(config, params, *mode)
 		case protocol.MethodCatalogDescribe:
 			if *mode == "bad-catalog" {
 				return protocol.CatalogInfo{}, nil
@@ -214,10 +218,12 @@ type importOptions struct {
 	// Bad emits this card with a spec the core rejects.
 	Bad *int `json:"bad"`
 	// Lorebooks is how many standalone lorebooks to emit before the cards.
-	Lorebooks int    `json:"lorebooks"`
-	Book      bool   `json:"book"`
-	Avatar    bool   `json:"avatar"`
-	Fail      string `json:"fail"` // retryable or fatal
+	Lorebooks int  `json:"lorebooks"`
+	Book      bool `json:"book"`
+	Avatar    bool `json:"avatar"`
+	// Source gives each card a fake site page in data.source.
+	Source bool   `json:"source"`
+	Fail   string `json:"fail"` // retryable or fatal
 }
 
 func importRun(conn *protocol.Conn, blobTmp string, params json.RawMessage) (any, error) {
@@ -251,6 +257,9 @@ func importRun(conn *protocol.Conn, blobTmp string, params json.RawMessage) (any
 	}
 	for i := cp.Next; i < opts.Cards; i++ {
 		data := map[string]any{"name": fmt.Sprintf("Fake %d", i), "description": fmt.Sprintf("Card number %d.", i)}
+		if opts.Source {
+			data["source"] = []string{fmt.Sprintf("https://fake.example/u/card-%d", i)}
+		}
 		if opts.Book {
 			data["character_book"] = map[string]any{"name": fmt.Sprintf("Lore %d", i), "entries": []any{}}
 		}

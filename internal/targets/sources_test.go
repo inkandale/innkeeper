@@ -315,3 +315,112 @@ func TestAPausedSourceIsNotChecked(t *testing.T) {
 		t.Fatalf("checked again = %+v", got)
 	}
 }
+
+// followedStates maps each card or lorebook in the queue to its upstream entry's state.
+func (e *env) followedStates() (cards, lorebooks map[int64]AppChange) {
+	e.t.Helper()
+	ch, err := e.s.Changes(e.ctx, ChangesFilter{})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	cards, lorebooks = map[int64]AppChange{}, map[int64]AppChange{}
+	for _, r := range ch.Rows {
+		for _, a := range r.Apps {
+			if a.InstanceID != e.up {
+				continue
+			}
+			if r.LorebookID != 0 {
+				lorebooks[r.LorebookID] = a
+			} else {
+				cards[r.CardID] = a
+			}
+		}
+	}
+	return cards, lorebooks
+}
+
+func TestChangesListSourceUpdates(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	changed, gone, same := e.imported("vyr", vyrCard), e.imported("gone", vyrCard), e.imported("same", vyrCard)
+	e.publish("vyr", map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Begone."}, "")
+	e.publish("same", vyrCard, "")
+	for _, c := range []int64{changed, gone, same} {
+		e.follow(c)
+	}
+	e.update(same, func(ed *library.Edit) { ed.Data = setField(ed.Data, "description", "My red dragon.") })
+	cards, _ := e.followedStates()
+	if cards[changed].State != ChangeUpdate || cards[gone].State != ChangeMissing || len(cards) != 2 {
+		t.Fatalf("entries = %+v", cards)
+	}
+	srcs, _ := e.lib.Cards.Sources(e.ctx, changed)
+	if err := e.lib.Cards.RemoveSource(e.ctx, changed, srcs[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if cards, _ := e.followedStates(); len(cards) != 1 {
+		t.Fatalf("after removing a source = %+v", cards)
+	}
+}
+
+func TestChangesShowASourceThatKeepsFailing(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(map[string]any{"fail_get": "retryable"})
+	card := e.imported("vyr", vyrCard)
+	for range 2 {
+		e.follow(card)
+	}
+	if cards, _ := e.followedStates(); len(cards) != 0 {
+		t.Fatalf("after 2 failures = %+v", cards)
+	}
+	e.follow(card)
+	if cards, _ := e.followedStates(); cards[card].State != ChangeError || !strings.Contains(cards[card].Error, "app unavailable") {
+		t.Fatalf("after 3 failures = %+v", cards)
+	}
+}
+
+func TestChangesListALorebookSourceUpdate(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	lb := e.newLorebook("Forge lore")
+	if _, err := e.lib.Lorebooks.AddSource(e.ctx, lb, library.Source{Kind: "fake", Ref: "lore"}); err != nil {
+		t.Fatal(err)
+	}
+	e.writeSite("lore", map[string]any{"lorebook": map[string]any{"name": "Forge lore", "description": "Forge lore, revised.",
+		"entries": []any{map[string]any{"keys": []any{"forge"}, "content": "The forge burns hot."}}}})
+	if _, err := e.s.CheckEntitySources(e.ctx, library.Lorebook, lb); err != nil {
+		t.Fatal(err)
+	}
+	if _, books := e.followedStates(); books[lb].State != ChangeUpdate {
+		t.Fatalf("lorebook entries = %+v", books)
+	}
+}
+
+func TestChangesTellSourcesFromApps(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	card := e.imported("vyr", vyrCard)
+	e.publish("vyr", map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Begone."}, "")
+	e.follow(card)
+	e.push(e.card)
+	e.update(e.card, func(ed *library.Edit) { ed.Data = setField(ed.Data, "description", "A dwarf smith, retired.") })
+	srcs, err := e.lib.Cards.Sources(e.ctx, card)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch, err := e.s.Changes(e.ctx, ChangesFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[int64]AppChange{}
+	for _, r := range ch.Rows {
+		for _, a := range r.Apps {
+			got[r.CardID] = a
+		}
+	}
+	if a := got[card]; a.Push || a.SourceID != srcs[0].ID {
+		t.Fatalf("source entry = %+v, want push false and source %d", a, srcs[0].ID)
+	}
+	if a := got[e.card]; a.State != ChangeAhead || !a.Push || a.SourceID != 0 {
+		t.Fatalf("app entry = %+v", a)
+	}
+}

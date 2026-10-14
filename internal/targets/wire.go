@@ -38,4 +38,5 @@ const (
 	ChangeMissing     = wire.ChangeMissing
 	ChangeError       = wire.ChangeError
 	ChangeNew         = wire.ChangeNew
+	ChangeUpdate      = wire.ChangeUpdate
 )

@@ -5,14 +5,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
 )
 
-// Changes lists every card some app needs the owner for, and the app items no
-// card matches, from each app's latest finished reconcile and the binding
+// failuresShown is how many checks of a followed source must fail in a row
+// before the queue shows it, so one bad hour of a site stays quiet.
+const failuresShown = 3
+
+// Changes lists every card some app needs the owner for, the cards and lorebooks
+// whose followed source changed, and the app items no card matches, from each app's latest finished reconcile and the binding
 // statuses. An entry the owner settled after that reconcile is left out.
 //
 // ponytail: built from every app's latest snapshot on each call; store the
@@ -30,15 +35,20 @@ func (s *Service) Changes(ctx context.Context, f ChangesFilter) (Changes, error)
 	cards := map[int64]*ChangeRow{}
 	var orphans []ChangeRow
 	seen := map[[2]int64]bool{} // card and instance with a snapshot change
-	add := func(card int64, c AppChange) {
+	// count tallies c and says whether the filter keeps it.
+	count := func(c AppChange) bool {
 		if out.Counts[c.InstanceID] == nil {
 			out.Counts[c.InstanceID] = map[string]int{}
 		}
 		out.Counts[c.InstanceID][c.State]++
+		return (f.InstanceID == 0 || c.InstanceID == f.InstanceID) && (f.State == "" || c.State == f.State)
+	}
+	add := func(card int64, c AppChange) {
+		kept := count(c)
 		if card != 0 {
 			seen[[2]int64{card, c.InstanceID}] = true
 		}
-		if (f.InstanceID != 0 && c.InstanceID != f.InstanceID) || (f.State != "" && c.State != f.State) {
+		if !kept {
 			return
 		}
 		if card == 0 {
@@ -49,6 +59,18 @@ func (s *Service) Changes(ctx context.Context, f ChangesFilter) (Changes, error)
 		if r == nil {
 			r = &ChangeRow{CardID: card}
 			cards[card] = r
+		}
+		r.Apps = append(r.Apps, c)
+	}
+	books := map[int64]*ChangeRow{}
+	addBook := func(lorebook int64, c AppChange) {
+		if !count(c) {
+			return
+		}
+		r := books[lorebook]
+		if r == nil {
+			r = &ChangeRow{LorebookID: lorebook}
+			books[lorebook] = r
 		}
 		r.Apps = append(r.Apps, c)
 	}
@@ -104,7 +126,7 @@ func (s *Service) Changes(ctx context.Context, f ChangesFilter) (Changes, error)
 	}
 	for _, l := range latest {
 		for _, it := range l.snap.Items {
-			c := AppChange{InstanceID: l.inst, RemoteID: it.RemoteID, Name: it.Name, BindingID: it.BindingID,
+			c := AppChange{InstanceID: l.inst, RemoteID: it.RemoteID, Name: it.Name, BindingID: it.BindingID, Push: true,
 				JobID: l.job, AppHash: it.AppHash, Suggested: it.Suggested, Error: it.Error}
 			acc, isBound := accepted[l.inst][it.RemoteID]
 			card := int64(0)
@@ -145,7 +167,7 @@ func (s *Service) Changes(ctx context.Context, f ChangesFilter) (Changes, error)
 
 	st, err := s.pool.Query(ctx, `SELECT b.card_id, b.instance_id, b.id, b.remote_id, s.status FROM binding b
 		JOIN binding_status s ON s.binding_id = b.id JOIN card c ON c.id = b.card_id
-		WHERE c.archived_at IS NULL AND s.status IN ('ahead', 'missing') ORDER BY b.id`)
+		WHERE c.archived_at IS NULL AND b.push AND s.status IN ('ahead', 'missing') ORDER BY b.id`)
 	if err != nil {
 		return out, err
 	}
@@ -153,7 +175,45 @@ func (s *Service) Changes(ctx context.Context, f ChangesFilter) (Changes, error)
 	var status string
 	if _, err := pgx.ForEachRow(st, []any{&card, &inst, &binding, &remote, &status}, func() error {
 		if !seen[[2]int64{card, inst}] {
-			add(card, AppChange{InstanceID: inst, State: status, RemoteID: remote, BindingID: binding})
+			add(card, AppChange{InstanceID: inst, State: status, RemoteID: remote, BindingID: binding, Push: true})
+		}
+		return nil
+	}); err != nil {
+		return out, err
+	}
+
+	// Followed sources, from their last check. One the owner removed has no
+	// live source row, so it is gone from the queue before the next check unbinds it.
+	fl, err := s.pool.Query(ctx, `SELECT coalesce(b.card_id, 0), coalesce(b.lorebook_id, 0), b.instance_id, b.id, b.remote_id,
+			b.remote_state, coalesce(b.check_error, ''), src.id
+		FROM binding b LEFT JOIN card c ON c.id = b.card_id LEFT JOIN lorebook l ON l.id = b.lorebook_id
+		JOIN LATERAL (SELECT s.id FROM card_source s WHERE s.card_id = b.card_id AND s.removed_at IS NULL
+				AND s.kind || ':' || s.ref = b.remote_id
+			UNION ALL SELECT s.id FROM lorebook_source s WHERE s.lorebook_id = b.lorebook_id AND s.removed_at IS NULL
+				AND s.kind || ':' || s.ref = b.remote_id
+			LIMIT 1) src ON TRUE
+		WHERE NOT b.push AND NOT b.paused AND coalesce(c.archived_at, l.archived_at) IS NULL
+			AND (b.remote_state IN ('changed', 'missing') OR b.check_failures >= $1)
+		ORDER BY b.id`, failuresShown)
+	if err != nil {
+		return out, err
+	}
+	var book, source int64
+	var state, checkErr string
+	if _, err := pgx.ForEachRow(fl, []any{&card, &book, &inst, &binding, &remote, &state, &checkErr, &source}, func() error {
+		c := AppChange{InstanceID: inst, RemoteID: remote, BindingID: binding, SourceID: source}
+		switch state {
+		case remoteChanged:
+			c.State = ChangeUpdate
+		case remoteMissing:
+			c.State = ChangeMissing
+		default:
+			c.State, c.Error = ChangeError, checkErr
+		}
+		if book != 0 {
+			addBook(book, c)
+		} else {
+			add(card, c)
 		}
 		return nil
 	}); err != nil {
@@ -182,8 +242,22 @@ func (s *Service) Changes(ctx context.Context, f ChangesFilter) (Changes, error)
 	}); err != nil {
 		return out, err
 	}
+	lr, err := s.pool.Query(ctx, `SELECT l.id, coalesce(r.data->>'name', '') FROM lorebook l
+		JOIN lorebook_revision r ON r.id = l.head_revision_id WHERE l.id = ANY($1)`, slices.Collect(maps.Keys(books)))
+	if err != nil {
+		return out, err
+	}
+	if _, err := pgx.ForEachRow(lr, []any{&id, &name}, func() error {
+		r := books[id]
+		r.Name = name
+		named = append(named, *r)
+		return nil
+	}); err != nil {
+		return out, err
+	}
 	byName := func(a, b ChangeRow) int {
-		return cmp.Or(cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)), cmp.Compare(a.CardID, b.CardID))
+		return cmp.Or(cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)), cmp.Compare(a.CardID, b.CardID),
+			cmp.Compare(a.LorebookID, b.LorebookID))
 	}
 	slices.SortFunc(orphans, byName)
 	slices.SortFunc(named, byName)

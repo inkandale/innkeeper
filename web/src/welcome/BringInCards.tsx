@@ -3,17 +3,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { api, must, upload, withCapability } from "../api/client";
 import { instancesQuery, pluginsQuery } from "../api/queries";
-import { finished, progressText, useJobEvents, type Job } from "../settings/jobUtil";
+import { progressText, useJob, type Job } from "../settings/jobUtil";
 import { useFinish } from "./Welcome";
 
 /** JobLine is one job's live status, linking to its page. */
 function JobLine({ label, id, to }: { label: string; id: number; to: string }) {
-  const job = useQuery({
-    queryKey: ["job", id],
-    queryFn: async () => must(await api.GET("/jobs/{id}", { params: { path: { id } } })),
-  });
-  const j = job.data;
-  useJobEvents(id, !!j && !finished(j));
+  const j = useJob(id).data;
   return (
     <p>
       <Link to={to}>

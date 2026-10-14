@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef, useState, type PointerEvent } from "react";
+import { useState, type PointerEvent } from "react";
+import { useModal } from "../shell/useModal";
 import { fit, scale, type Size, type View } from "./crop";
 
 const box: Size = { w: 200, h: 300 };
@@ -23,14 +24,7 @@ export function Crop({
   const [broken, setBroken] = useState(false);
   const [view, setView] = useState<View>({ zoom: 1, dx: 0, dy: 0 });
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
-  const dialog = useRef<HTMLDialogElement>(null);
-  // showModal gives Escape and a focus trap; closing before unmount hands focus
-  // back to the Crop button. jsdom lacks both.
-  useLayoutEffect(() => {
-    const d = dialog.current;
-    d?.showModal?.();
-    return () => d?.close?.();
-  }, []);
+  const modal = useModal(() => !busy && onCancel());
   const size = img ? { w: img.naturalWidth, h: img.naturalHeight } : null;
   const set = (v: View) => size && setView(fit(size, box, v).view);
   const s = size ? scale(size, box, view.zoom) : 1;
@@ -69,14 +63,9 @@ export function Crop({
 
   return (
     <dialog
-      ref={dialog}
+      {...modal}
       className="crop"
       aria-label="Crop image"
-      onCancel={(e) => {
-        // Handle it ourselves so the parent unmounts us; the browser would only hide the dialog.
-        e.preventDefault();
-        if (!busy) onCancel();
-      }}
     >
       <div
         className="crop-box"

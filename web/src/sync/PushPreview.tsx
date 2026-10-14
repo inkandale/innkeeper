@@ -1,22 +1,16 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useLayoutEffect, useRef } from "react";
 import { api, ApiError, must, route, type Kind } from "../api/client";
 import { show } from "../card/draft";
+import { jobToast } from "../settings/jobUtil";
 import { useToast } from "../shell/Toasts";
+import { useModal } from "../shell/useModal";
 import "./Sync.css";
 
 /** PushPreview shows what pushing one card or lorebook changes in the app, and pushes once the owner confirms. */
 export function PushPreview(props: { kind: Kind; id: number; instance: number; name: string; onClose: () => void }) {
   const { kind, id, instance, name, onClose } = props;
   const toast = useToast();
-  const dialog = useRef<HTMLDialogElement>(null);
-  useLayoutEffect(() => {
-    const d = dialog.current;
-    // jsdom has no showModal.
-    if (d?.showModal) d.showModal();
-    else d?.setAttribute("open", "");
-    return () => d?.close?.();
-  }, []);
+  const modal = useModal(onClose);
   const preview = useQuery({
     queryKey: [kind, id, "push-preview", instance],
     // Read the app afresh each time: the confirm vouches for this exact preview.
@@ -34,7 +28,7 @@ export function PushPreview(props: { kind: Kind; id: number; instance: number; n
         }),
       ),
     onSuccess: (j) => {
-      toast({ text: `Job ${j.id} started`, link: { to: `/settings/jobs/${j.id}`, label: "View job" } });
+      toast(jobToast(j));
       onClose();
     },
     meta: { toast: false },
@@ -45,13 +39,9 @@ export function PushPreview(props: { kind: Kind; id: number; instance: number; n
   const changes = p?.changes ?? [];
   return (
     <dialog
-      ref={dialog}
+      {...modal}
       className="dialog"
       aria-label={`Push to ${name}`}
-      onCancel={(e) => {
-        e.preventDefault();
-        onClose();
-      }}
     >
       <h2>Push to {name}</h2>
       {preview.isError ? (

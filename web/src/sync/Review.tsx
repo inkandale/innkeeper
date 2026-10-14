@@ -5,6 +5,7 @@ import { api, ApiError, must, route, thumb, type Kind } from "../api/client";
 import type { components } from "../api/schema";
 import { show, text } from "../card/draft";
 import { entryOf } from "../card/History";
+import { useJob } from "../settings/jobUtil";
 import { useToast } from "../shell/Toasts";
 import {
   changePath,
@@ -261,11 +262,7 @@ function ReviewItem() {
   const qc = useQueryClient();
   const toast = useToast();
 
-  const job = useQuery({
-    enabled: !!jobId,
-    queryKey: ["job", jobId],
-    queryFn: async () => must(await api.GET("/jobs/{id}", { params: { path: { id: jobId } } })),
-  });
+  const job = useJob(jobId, { enabled: !!jobId, follow: false });
   const changes = useQuery({
     enabled: queue,
     queryKey: ["sync", "changes", filter.instance_id, filter.state],

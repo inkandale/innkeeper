@@ -4,6 +4,7 @@ import { api, canWrite, must } from "../api/client";
 import { collectionsQuery, instancesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
 import type { components } from "../api/schema";
 import { useToast } from "../shell/Toasts";
+import { jobToast } from "../settings/jobUtil";
 import { pushSummary } from "../sync/sync";
 
 type Search = components["schemas"]["Query"];
@@ -47,7 +48,7 @@ export function SelectionBar(props: {
   const start = useMutation({
     mutationFn: (call: () => Promise<Job>) => call(),
     onSuccess: (j) => {
-      toast({ text: `Job ${j.id} started`, link: { to: `/settings/jobs/${j.id}`, label: "View job" } });
+      toast(jobToast(j));
       onStarted?.(j.id);
       onClear();
     },

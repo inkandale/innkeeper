@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { api, must, withCapability } from "../api/client";
 import { instancesQuery, pluginsQuery } from "../api/queries";
-import { age, finished, type Job } from "../settings/jobUtil";
+import { age, finished, jobToast, useJob, type Job } from "../settings/jobUtil";
 import { useToast } from "../shell/Toasts";
 import { needsYou, stateCounts } from "./sync";
 import "./Sync.css";
@@ -13,10 +13,9 @@ function useRun(start: () => Promise<Job>, text: string) {
   const qc = useQueryClient();
   const toast = useToast();
   const [id, setId] = useState<number>();
-  const job = useQuery({
-    queryKey: ["job", id],
-    queryFn: async () => must(await api.GET("/jobs/{id}", { params: { path: { id: id! } } })),
+  const job = useJob(id ?? 0, {
     enabled: id !== undefined,
+    follow: false,
     // ponytail: polls every 2s; the job's event stream would also work but holds a connection open.
     // A job that can't be read, such as one pruned since, stops the polling.
     refetchInterval: (q) => (q.state.status === "error" || (q.state.data && finished(q.state.data)) ? false : 2000),
@@ -34,7 +33,7 @@ function useRun(start: () => Promise<Job>, text: string) {
       // The response is the job, so a joined run doesn't read as finished from an older fetch.
       qc.setQueryData(["job", j.id], j);
       setId(j.id);
-      toast({ text, link: { to: `/settings/jobs/${j.id}`, label: "View job" } });
+      toast(jobToast(j, text));
     },
   });
   return { start: () => run.mutate(), busy: run.isPending || id !== undefined };

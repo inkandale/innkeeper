@@ -1,11 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { api, ApiError, must } from "../api/client";
 import { instancesQuery } from "../api/queries";
 import type { components } from "../api/schema";
 import { badgeClass } from "../cards/Tile";
+import { jobToast } from "../settings/jobUtil";
 import { useToast } from "../shell/Toasts";
+import { useModal } from "../shell/useModal";
 import { PushPreview } from "./PushPreview";
 import { bulkResolutions, changePath, changesFilter, compareItem, pushSummary, queueReviews, reviewable, stateLabel, type AppChange, type Option } from "./sync";
 import "./Sync.css";
@@ -106,7 +108,7 @@ export function Changes() {
       return jobs;
     },
     onSuccess: (jobs) => {
-      for (const j of jobs) toast({ text: `Job ${j.id} started`, link: { to: `/settings/jobs/${j.id}`, label: "View job" } });
+      for (const j of jobs) toast(jobToast(j));
       setAsking(false);
       setChecked({});
       done();
@@ -279,23 +281,12 @@ function AskPush(props: {
   onClose: () => void;
 }) {
   const { name, previews, busy, onConfirm, onClose } = props;
-  const dialog = useRef<HTMLDialogElement>(null);
-  useLayoutEffect(() => {
-    const d = dialog.current;
-    // jsdom has no showModal.
-    if (d?.showModal) d.showModal();
-    else d?.setAttribute("open", "");
-    return () => d?.close?.();
-  }, []);
+  const modal = useModal(onClose);
   return (
     <dialog
-      ref={dialog}
+      {...modal}
       className="dialog"
       aria-label="Apply suggested"
-      onCancel={(e) => {
-        e.preventDefault();
-        onClose();
-      }}
     >
       <h2>Apply suggested</h2>
       {previews.error ? (

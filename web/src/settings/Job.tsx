@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { api, must } from "../api/client";
-import { age, finished, jobStates, kindLabel, progressText, useJobEvents, type Job as JobT } from "./jobUtil";
+import { age, finished, jobStates, kindLabel, progressText, useJob, type Job as JobT } from "./jobUtil";
 
 function Counts({ label, counts }: { label: string; counts?: Record<string, number> }) {
   if (!counts || !Object.keys(counts).length) return null;
@@ -21,12 +21,8 @@ function Counts({ label, counts }: { label: string; counts?: Record<string, numb
 export function Job() {
   const id = Number(useParams().id);
   const qc = useQueryClient();
-  const job = useQuery({
-    queryKey: ["job", id],
-    queryFn: async () => must(await api.GET("/jobs/{id}", { params: { path: { id } } })),
-  });
+  const job = useJob(id);
   const j = job.data;
-  useJobEvents(id, !!j && !finished(j));
 
   const [childStatus, setChildStatus] = useState<JobT["status"] | "">("");
   const children = useQuery({

@@ -1,6 +1,8 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type UseQueryOptions } from "@tanstack/react-query";
 import { useEffect } from "react";
+import { api, must } from "../api/client";
 import type { components } from "../api/schema";
+import type { ToastSpec } from "../shell/Toasts";
 
 export type Job = components["schemas"]["JobOut"];
 
@@ -55,3 +57,17 @@ export function useJobEvents(id: number, live: boolean) {
     return () => es.close();
   }, [id, live, qc]);
 }
+
+/** useJob reads a job; with follow, the default, it tracks the job's event stream until the job finishes. */
+export function useJob(id: number, { follow = true, ...opts }: { follow?: boolean } & Pick<UseQueryOptions<Job>, "enabled" | "refetchInterval"> = {}) {
+  const job = useQuery({
+    queryKey: ["job", id],
+    queryFn: async () => must(await api.GET("/jobs/{id}", { params: { path: { id } } })),
+    ...opts,
+  });
+  useJobEvents(id, follow && !!job.data && !finished(job.data));
+  return job;
+}
+
+/** jobToast is the toast for a job that just started, linking to its page. */
+export const jobToast = (j: Job, text = `Job ${j.id} started`): ToastSpec => ({ text, link: { to: `/settings/jobs/${j.id}`, label: "View job" } });

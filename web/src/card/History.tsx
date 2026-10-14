@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { api, ApiError, must, route, thumb, type Kind } from "../api/client";
 import type { components } from "../api/schema";
 import { useToast } from "../shell/Toasts";
+import { useModal } from "../shell/useModal";
 import { show } from "./draft";
 import "./Card.css";
 
@@ -85,24 +86,14 @@ function AvatarChoice({ head, rev, busy, onPick, onCancel }: {
   onPick: (avatar: AvatarPick) => void;
   onCancel: () => void;
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  // As in Crop: showModal gives Escape and a focus trap. jsdom lacks both.
-  useLayoutEffect(() => {
-    const d = dialog.current;
-    d?.showModal?.();
-    return () => d?.close?.();
-  }, []);
+  const modal = useModal(() => !busy && onCancel());
   const image = (sha: string | undefined, alt: string) =>
     sha ? <img className="history-thumb" src={thumb(sha, 160)} alt={alt} /> : <span className="muted">No image</span>;
   return (
     <dialog
-      ref={dialog}
+      {...modal}
       className="crop"
       aria-label="Choose an image"
-      onCancel={(e) => {
-        e.preventDefault();
-        if (!busy) onCancel();
-      }}
     >
       <p>This revision has a different image. Which one should the restore keep?</p>
       <div className="row image-choice">

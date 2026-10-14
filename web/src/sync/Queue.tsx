@@ -1,8 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
 import { Link, useParams } from "react-router";
-import { api, must } from "../api/client";
-import { finished, progressText, useJobEvents } from "../settings/jobUtil";
+import { finished, progressText, useJob } from "../settings/jobUtil";
 import { optionLabel, reviewPath, rowKey, rows, snapshotOf, type Candidate, type Item } from "./sync";
 import "./Sync.css";
 
@@ -20,9 +18,8 @@ const reasons = (c: Candidate) =>
 /** Queue is a sync run's record: every app item it found, with its verdict, match and suggestion. */
 export function Queue() {
   const id = Number(useParams().job);
-  const job = useQuery({ queryKey: ["job", id], queryFn: async () => must(await api.GET("/jobs/{id}", { params: { path: { id } } })) });
+  const job = useJob(id);
   const j = job.data;
-  useJobEvents(id, !!j && !finished(j));
   const snap = snapshotOf(j);
   const [verdict, setVerdict] = useState<string>();
 

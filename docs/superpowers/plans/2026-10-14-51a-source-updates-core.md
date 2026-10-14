@@ -2476,6 +2476,7 @@ Every binding has these new fields:
 - `paused`
 - `check_failures`
 - `check_error`, which may be absent
+- `app_hash`: the app's or site's copy as the last check saw it, when it differed. Absent otherwise
 
 `GET /{cards|lorebooks}/{id}/bindings` now includes followed sources. Split the targets panel on `push`: push bindings are apps, and `push: false` bindings are sources.
 
@@ -2491,7 +2492,7 @@ Search's target facets, target filter, and per-hit targets already leave followe
 - `AppChange.state` has a new value, `update`.
 - Every entry has `push`: true for an app's, false for a followed source's. Tell the two apart by it, not by the plugin's capabilities.
 - A followed source's entry has `instance_id` (the url-import instance), `remote_id`, `binding_id`, and `source_id`, the card's or lorebook's source row. Its state is one of:
-  - `update`
+  - `update`, with `app_hash`, the same as its binding's
   - `missing`: show "No longer on chub" with the site's name.
   - `error`: show `error`.
 - A row may carry `lorebook_id` instead of `card_id`.
@@ -2508,7 +2509,7 @@ Always send `card_id`, because several cards may follow one source.
 
 | Action | Route |
 |---|---|
-| Ignore this change | `POST /bindings/{id}/dismiss` → Binding |
+| Ignore this change | `POST /bindings/{id}/dismiss` `{"app_hash": ...}` → Binding. Send the queue entry's or binding's `app_hash`. If the site changed since, it answers 409 with a fresh comparison and ignores nothing |
 | Ignore all | `PATCH /bindings/{id}` `{"paused": true}` |
 | Check again | `PATCH /bindings/{id}` `{"paused": false}` |
 | Autosync | `PATCH /bindings/{id}` `{"autosync": true}`. Both body fields are optional now |
@@ -2516,7 +2517,7 @@ Always send `card_id`, because several cards may follow one source.
 
 **Checks**
 
-- "Check for updates" on a card or lorebook: `POST /{cards|lorebooks}/{id}/source-check` → `Binding[]`, the entity's bindings after the check.
+- "Check for updates" on a card or lorebook: `POST /{cards|lorebooks}/{id}/source-check` → `Binding[]`, the entity's bindings after the check. If a source couldn't be followed or checked, it answers with that failure's error status instead, such as 502 or 503.
 - Library-wide: `POST /source-checks` → 202 Job, kind `target.source-check`.
 - The job's progress is `ScanProgress`: `checked`, `changed`, `missing`, `failed`, `errors`, and a new `applied`.
 

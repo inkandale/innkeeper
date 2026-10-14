@@ -63,10 +63,18 @@ type bindIn struct {
 	}
 }
 
-type autosyncIn struct {
+type bindingEditIn struct {
 	ID   int64 `path:"id"`
 	Body struct {
-		Autosync bool `json:"autosync"`
+		Autosync *bool `json:"autosync,omitempty" doc:"Leave out to keep it as it is"`
+		Paused   *bool `json:"paused,omitempty" doc:"Checks skip a paused binding. Leave out to keep it as it is"`
+	}
+}
+
+type dismissIn struct {
+	ID   int64 `path:"id"`
+	Body struct {
+		AppHash string `json:"app_hash" minLength:"1" doc:"The app_hash of the change the owner saw, from the binding or the changes queue. If the app's copy changed since, the dismiss is refused with 409 and a fresh comparison."`
 	}
 }
 
@@ -132,12 +140,27 @@ func (s *Server) targetRoutes(api huma.API) {
 			})
 
 		huma.Register(api, huma.Operation{OperationID: "list-" + k.Name + "-bindings", Method: http.MethodGet,
-			Path: "/" + k.Plural + "/{id}/bindings", Summary: "List the targets a " + k.Name + " is pushed to", Tags: tags},
+			Path: "/" + k.Plural + "/{id}/bindings", Summary: "List a " + k.Name + "'s bindings: the apps it is pushed to and the site sources it follows", Tags: tags},
 			func(ctx context.Context, in *idIn) (*bindingsOut, error) {
 				if _, err := ents.Get(ctx, in.ID); err != nil {
 					return nil, s.fail(err)
 				}
 				list, err := s.Targets.Bindings(ctx, k, in.ID)
+				if err != nil {
+					return nil, s.fail(err)
+				}
+				return &bindingsOut{Body: orEmpty(list)}, nil
+			})
+
+		huma.Register(api, huma.Operation{OperationID: "check-" + k.Name + "-sources", Method: http.MethodPost,
+			Path: "/" + k.Plural + "/{id}/source-check", Summary: "Check a " + k.Name + "'s site sources for updates now", Tags: tags,
+			Description: "Follows the " + k.Name + "'s sources and reads them back, as the scheduled check does. Returns its bindings, " +
+				"or the first failure's error if a source couldn't be followed or checked."},
+			func(ctx context.Context, in *idIn) (*bindingsOut, error) {
+				if _, err := ents.Get(ctx, in.ID); err != nil {
+					return nil, s.fail(err)
+				}
+				list, err := s.Targets.CheckEntitySources(ctx, k, in.ID)
 				if err != nil {
 					return nil, s.fail(err)
 				}
@@ -235,10 +258,21 @@ func (s *Server) targetRoutes(api huma.API) {
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "update-binding", Method: http.MethodPatch,
 		Path: "/bindings/{id}", Summary: "Change a binding's settings", Tags: tags,
-		Description: "With autosync on, each sync pushes the library's copy when the card is ahead and the app's copy hasn't changed. " +
-			"Destructive, as a push is: autosync replaces the app's copy."},
-		func(ctx context.Context, in *autosyncIn) (*bindingOut, error) {
-			return s.binding(s.Targets.SetAutosync(ctx, in.ID, in.Body.Autosync))
+		Description: "With autosync on, each sync pushes the library's copy when the card is ahead and the app's copy hasn't changed; " +
+			"for a binding that follows a site source, each source check takes an update that merges without conflicts. " +
+			"A paused binding isn't checked. Destructive, as a push is: autosync replaces the app's copy."},
+		func(ctx context.Context, in *bindingEditIn) (*bindingOut, error) {
+			if in.Body.Autosync != nil {
+				if _, err := s.Targets.SetAutosync(ctx, in.ID, *in.Body.Autosync); err != nil {
+					return nil, s.fail(err)
+				}
+			}
+			if in.Body.Paused != nil {
+				if _, err := s.Targets.SetPaused(ctx, in.ID, *in.Body.Paused); err != nil {
+					return nil, s.fail(err)
+				}
+			}
+			return s.binding(s.Targets.Binding(ctx, in.ID))
 		})
 
 	huma.Register(api, huma.Operation{OperationID: "list-pushes", Method: http.MethodGet, Path: "/bindings/{id}/pushes",
@@ -262,6 +296,25 @@ func (s *Server) targetRoutes(api huma.API) {
 		Summary: "Check the app's copy for changes", Description: "Reads the card back from the app now.", Tags: tags},
 		func(ctx context.Context, in *idIn) (*bindingOut, error) {
 			return s.binding(s.Targets.Check(ctx, in.ID))
+		})
+
+	huma.Register(api, huma.Operation{OperationID: "dismiss-binding-change", Method: http.MethodPost, Path: "/bindings/{id}/dismiss",
+		Summary: "Accept the app's copy without changing the library", Tags: tags,
+		Description: "For a binding that follows a site source, ignores this change; the next one on the site shows again."},
+		func(ctx context.Context, in *dismissIn) (*bindingOut, error) {
+			return s.binding(s.Targets.Dismiss(ctx, in.ID, in.Body.AppHash))
+		})
+
+	huma.Register(api, huma.Operation{OperationID: "start-source-check", Method: http.MethodPost,
+		Path: "/source-checks", Summary: "Check every site source for updates", Tags: tags, DefaultStatus: http.StatusAccepted,
+		Description: "Follows each card's and lorebook's site sources and reads them back. With autosync on for a binding, " +
+			"takes an update that merges without conflicts. Returns the check already queued or running, if there is one."},
+		func(ctx context.Context, _ *struct{}) (*jobResp, error) {
+			j, err := s.Queue.EnqueueOnce(ctx, jobs.Spec{Kind: targets.SourceCheckKind})
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			return &jobResp{Body: toJob(j)}, nil
 		})
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Read), OperationID: "start-scan", Method: http.MethodPost,

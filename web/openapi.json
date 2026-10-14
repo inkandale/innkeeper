@@ -55,8 +55,15 @@
           "name": {
             "type": "string"
           },
+          "push": {
+            "type": "boolean"
+          },
           "remote_id": {
             "type": "string"
+          },
+          "source_id": {
+            "format": "int64",
+            "type": "integer"
           },
           "state": {
             "enum": [
@@ -65,7 +72,8 @@
               "ahead",
               "missing",
               "error",
-              "new"
+              "new",
+              "update"
             ],
             "type": "string"
           },
@@ -75,7 +83,8 @@
         },
         "required": [
           "instance_id",
-          "state"
+          "state",
+          "push"
         ],
         "type": "object"
       },
@@ -97,27 +106,6 @@
         },
         "required": [
           "archived"
-        ],
-        "type": "object"
-      },
-      "AutosyncInBody": {
-        "additionalProperties": false,
-        "properties": {
-          "$schema": {
-            "description": "A URL to the JSON Schema for this object.",
-            "examples": [
-              "/api/schemas/AutosyncInBody.json"
-            ],
-            "format": "uri",
-            "readOnly": true,
-            "type": "string"
-          },
-          "autosync": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "autosync"
         ],
         "type": "object"
       },
@@ -248,6 +236,9 @@
           "ahead": {
             "type": "boolean"
           },
+          "app_hash": {
+            "type": "string"
+          },
           "autosync": {
             "type": "boolean"
           },
@@ -263,6 +254,13 @@
               "array",
               "null"
             ]
+          },
+          "check_error": {
+            "type": "string"
+          },
+          "check_failures": {
+            "format": "int64",
+            "type": "integer"
           },
           "checked_at": {
             "format": "date-time",
@@ -286,6 +284,12 @@
           "lorebook_id": {
             "format": "int64",
             "type": "integer"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "push": {
+            "type": "boolean"
           },
           "remote_id": {
             "type": "string"
@@ -319,9 +323,35 @@
           "ahead",
           "remote_state",
           "autosync",
+          "push",
+          "paused",
+          "check_failures",
           "last_push",
           "created_at"
         ],
+        "type": "object"
+      },
+      "BindingEditInBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/BindingEditInBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "autosync": {
+            "description": "Leave out to keep it as it is",
+            "type": "boolean"
+          },
+          "paused": {
+            "description": "Checks skip a paused binding. Leave out to keep it as it is",
+            "type": "boolean"
+          }
+        },
         "type": "object"
       },
       "Blob": {
@@ -1128,6 +1158,10 @@
             "format": "int64",
             "type": "integer"
           },
+          "lorebook_id": {
+            "format": "int64",
+            "type": "integer"
+          },
           "name": {
             "type": "string"
           }
@@ -1576,6 +1610,29 @@
           "tier",
           "created_at",
           "secret"
+        ],
+        "type": "object"
+      },
+      "DismissInBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/DismissInBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "app_hash": {
+            "description": "The app_hash of the change the owner saw, from the binding or the changes queue. If the app's copy changed since, the dismiss is refused with 409 and a fresh comparison.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "app_hash"
         ],
         "type": "object"
       },
@@ -4150,7 +4207,7 @@
         ]
       },
       "patch": {
-        "description": "With autosync on, each sync pushes the library's copy when the card is ahead and the app's copy hasn't changed. Destructive, as a push is: autosync replaces the app's copy.",
+        "description": "With autosync on, each sync pushes the library's copy when the card is ahead and the app's copy hasn't changed; for a binding that follows a site source, each source check takes an update that merges without conflicts. A paused binding isn't checked. Destructive, as a push is: autosync replaces the app's copy.",
         "operationId": "update-binding",
         "parameters": [
           {
@@ -4167,7 +4224,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AutosyncInBody"
+                "$ref": "#/components/schemas/BindingEditInBody"
               }
             }
           },
@@ -4239,6 +4296,59 @@
           }
         },
         "summary": "Check the app's copy for changes",
+        "tags": [
+          "Sync"
+        ]
+      }
+    },
+    "/bindings/{id}/dismiss": {
+      "post": {
+        "description": "For a binding that follows a site source, ignores this change; the next one on the site shows again.",
+        "operationId": "dismiss-binding-change",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DismissInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Binding"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Accept the app's copy without changing the library",
         "tags": [
           "Sync"
         ]
@@ -4741,7 +4851,7 @@
             "description": "Error"
           }
         },
-        "summary": "List the targets a card is pushed to",
+        "summary": "List a card's bindings: the apps it is pushed to and the site sources it follows",
         "tags": [
           "Sync"
         ]
@@ -5339,6 +5449,55 @@
         "summary": "Find likely duplicates",
         "tags": [
           "Cards"
+        ]
+      }
+    },
+    "/cards/{id}/source-check": {
+      "post": {
+        "description": "Follows the card's sources and reads them back, as the scheduled check does. Returns its bindings, or the first failure's error if a source couldn't be followed or checked.",
+        "operationId": "check-card-sources",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Binding"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Check a card's site sources for updates now",
+        "tags": [
+          "Sync"
         ]
       }
     },
@@ -7784,7 +7943,7 @@
             "description": "Error"
           }
         },
-        "summary": "List the targets a lorebook is pushed to",
+        "summary": "List a lorebook's bindings: the apps it is pushed to and the site sources it follows",
         "tags": [
           "Sync"
         ]
@@ -8149,6 +8308,55 @@
         "summary": "Compare two revisions of a lorebook",
         "tags": [
           "Lorebooks"
+        ]
+      }
+    },
+    "/lorebooks/{id}/source-check": {
+      "post": {
+        "description": "Follows the lorebook's sources and reads them back, as the scheduled check does. Returns its bindings, or the first failure's error if a source couldn't be followed or checked.",
+        "operationId": "check-lorebook-sources",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Binding"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Check a lorebook's site sources for updates now",
+        "tags": [
+          "Sync"
         ]
       }
     },
@@ -9086,6 +9294,38 @@
         ]
       }
     },
+    "/source-checks": {
+      "post": {
+        "description": "Follows each card's and lorebook's site sources and reads them back. With autosync on for a binding, takes an update that merges without conflicts. Returns the check already queued or running, if there is one.",
+        "operationId": "start-source-check",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Check every site source for updates",
+        "tags": [
+          "Sync"
+        ]
+      }
+    },
     "/sync/changes": {
       "get": {
         "description": "One row per card with a change in some app, and app items no card matches first. Built from each app's latest sync and the binding statuses.",
@@ -9115,7 +9355,8 @@
                 "ahead",
                 "missing",
                 "error",
-                "new"
+                "new",
+                "update"
               ],
               "type": "string"
             }

@@ -162,7 +162,7 @@ export interface paths {
         head?: never;
         /**
          * Change a binding's settings
-         * @description With autosync on, each sync pushes the library's copy when the card is ahead and the app's copy hasn't changed. Destructive, as a push is: autosync replaces the app's copy.
+         * @description With autosync on, each sync pushes the library's copy when the card is ahead and the app's copy hasn't changed; for a binding that follows a site source, each source check takes an update that merges without conflicts. A paused binding isn't checked. Destructive, as a push is: autosync replaces the app's copy.
          */
         patch: operations["update-binding"];
         trace?: never;
@@ -181,6 +181,26 @@ export interface paths {
          * @description Reads the card back from the app now.
          */
         post: operations["check-binding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/bindings/{id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept the app's copy without changing the library
+         * @description For a binding that follows a site source, ignores this change; the next one on the site shows again.
+         */
+        post: operations["dismiss-binding-change"];
         delete?: never;
         options?: never;
         head?: never;
@@ -366,7 +386,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List the targets a card is pushed to */
+        /** List a card's bindings: the apps it is pushed to and the site sources it follows */
         get: operations["list-card-bindings"];
         put?: never;
         post?: never;
@@ -562,6 +582,26 @@ export interface paths {
         get: operations["list-similar-cards"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cards/{id}/source-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check a card's site sources for updates now
+         * @description Follows the card's sources and reads them back, as the scheduled check does. Returns its bindings, or the first failure's error if a source couldn't be followed or checked.
+         */
+        post: operations["check-card-sources"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1348,7 +1388,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List the targets a lorebook is pushed to */
+        /** List a lorebook's bindings: the apps it is pushed to and the site sources it follows */
         get: operations["list-lorebook-bindings"];
         put?: never;
         post?: never;
@@ -1486,6 +1526,26 @@ export interface paths {
         get: operations["compare-lorebook-revisions"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lorebooks/{id}/source-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check a lorebook's site sources for updates now
+         * @description Follows the lorebook's sources and reads them back, as the scheduled check does. Returns its bindings, or the first failure's error if a source couldn't be followed or checked.
+         */
+        post: operations["check-lorebook-sources"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1871,6 +1931,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/source-checks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check every site source for updates
+         * @description Follows each card's and lorebook's site sources and reads them back. With autosync on for a binding, takes an update that merges without conflicts. Returns the check already queued or running, if there is one.
+         */
+        post: operations["start-source-check"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sync/changes": {
         parameters: {
             query?: never;
@@ -1992,9 +2072,12 @@ export interface components {
             /** Format: int64 */
             job_id?: number;
             name?: string;
+            push: boolean;
             remote_id?: string;
+            /** Format: int64 */
+            source_id?: number;
             /** @enum {string} */
-            state: "differs" | "both_changed" | "ahead" | "missing" | "error" | "new";
+            state: "differs" | "both_changed" | "ahead" | "missing" | "error" | "new" | "update";
             suggested?: components["schemas"]["Option"];
         };
         ArchiveInBody: {
@@ -2005,15 +2088,6 @@ export interface components {
              */
             readonly $schema?: string;
             archived: boolean;
-        };
-        AutosyncInBody: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example /api/schemas/AutosyncInBody.json
-             */
-            readonly $schema?: string;
-            autosync: boolean;
         };
         AvatarDiff: {
             app?: string;
@@ -2068,10 +2142,14 @@ export interface components {
              */
             readonly $schema?: string;
             ahead: boolean;
+            app_hash?: string;
             autosync: boolean;
             /** Format: int64 */
             card_id?: number;
             changes?: components["schemas"]["Change"][] | null;
+            check_error?: string;
+            /** Format: int64 */
+            check_failures: number;
             /** Format: date-time */
             checked_at?: string;
             /** Format: date-time */
@@ -2083,11 +2161,25 @@ export interface components {
             last_push: components["schemas"]["Push"];
             /** Format: int64 */
             lorebook_id?: number;
+            paused: boolean;
+            push: boolean;
             remote_id: string;
             /** @enum {string} */
             remote_state: "unknown" | "unchanged" | "changed" | "missing";
             /** @enum {string} */
             status: "in_sync" | "ahead" | "remote_changed" | "diverged" | "missing" | "cant_check";
+        };
+        BindingEditInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/BindingEditInBody.json
+             */
+            readonly $schema?: string;
+            /** @description Leave out to keep it as it is */
+            autosync?: boolean;
+            /** @description Checks skip a paused binding. Leave out to keep it as it is */
+            paused?: boolean;
         };
         Blob: {
             /**
@@ -2345,6 +2437,8 @@ export interface components {
             apps: components["schemas"]["AppChange"][] | null;
             /** Format: int64 */
             card_id?: number;
+            /** Format: int64 */
+            lorebook_id?: number;
             name: string;
         };
         Changes: {
@@ -2523,6 +2617,16 @@ export interface components {
             /** @description Send as Authorization: Bearer <secret>. Shown only once. */
             secret: string;
             tier: string;
+        };
+        DismissInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/DismissInBody.json
+             */
+            readonly $schema?: string;
+            /** @description The app_hash of the change the owner saw, from the binding or the changes queue. If the app's copy changed since, the dismiss is refused with 409 and a fresh comparison. */
+            app_hash: string;
         };
         EnrichmentOut: {
             label: string;
@@ -3624,7 +3728,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["AutosyncInBody"];
+                "application/json": components["schemas"]["BindingEditInBody"];
             };
         };
         responses: {
@@ -3658,6 +3762,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Binding"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "dismiss-binding-change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DismissInBody"];
+            };
+        };
         responses: {
             /** @description OK */
             200: {
@@ -4389,6 +4528,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Match"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "check-card-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Binding"][] | null;
                 };
             };
             /** @description Error */
@@ -6224,6 +6394,37 @@ export interface operations {
             };
         };
     };
+    "check-lorebook-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Binding"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "list-lorebook-sources": {
         parameters: {
             query?: never;
@@ -6945,13 +7146,42 @@ export interface operations {
             };
         };
     };
+    "start-source-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "list-changes": {
         parameters: {
             query?: {
                 /** @description Only this app's changes; counts still cover every app */
                 instance_id?: number;
                 /** @description Only this state */
-                state?: "differs" | "both_changed" | "ahead" | "missing" | "error" | "new";
+                state?: "differs" | "both_changed" | "ahead" | "missing" | "error" | "new" | "update";
             };
             header?: never;
             path?: never;

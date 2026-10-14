@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -330,5 +331,134 @@ func TestScanRoute(t *testing.T) {
 	e.call("POST", "/scans", nil, 202, &b)
 	if a.Kind != targets.ScanKind || b.ID != a.ID {
 		t.Errorf("scans = %+v, %+v", a, b)
+	}
+}
+
+// upstream installs the fake as a pull-only plugin that follows fake sources,
+// with one instance. It returns the instance and the folder of site pages.
+// args are extra plugin flags, such as -mode.
+func (e *testEnv) upstream(args ...string) (int64, string) {
+	e.t.Helper()
+	up := *e.manifests["target"]
+	up.Name, up.Capabilities, up.SourceKinds = "upstream", []string{"pull"}, []string{"fake"}
+	up.Command = append([]string{up.Command[0], "-caps=pull", "-name=upstream"}, args...)
+	e.manifests["upstream"] = &up
+	dir := e.t.TempDir()
+	id, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "upstream", Name: "Sites",
+		Config: map[string]any{"dir": dir, "fields": []string{"name", "first_mes"}, "lorebooks": "standalone"}})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return id, dir
+}
+
+// followedCard creates a card with the fake source ref and publishes its site page with first_mes.
+func (e *testEnv) followedCard(dir, ref, firstMes string) entityOut {
+	e.t.Helper()
+	var c entityOut
+	e.call("POST", "/cards", map[string]any{"data": map[string]any{"name": "Vyr", "first_mes": "Who wakes me?"}}, 201, &c)
+	if _, err := e.s.Lib.Cards.AddSource(context.Background(), c.ID, library.Source{Kind: "fake", Ref: ref}); err != nil {
+		e.t.Fatal(err)
+	}
+	e.sitePage(dir, ref, firstMes)
+	return c
+}
+
+// sitePage writes a source's page on the fake site, as <dir>/fake:<ref>.json.
+func (e *testEnv) sitePage(dir, ref, firstMes string) {
+	e.t.Helper()
+	page := filepath.Join(dir, "fake:"+ref+".json")
+	raw, _ := json.Marshal(map[string]any{"spec": "chara_card_v3", "spec_version": "3.0",
+		"data": map[string]any{"name": "Vyr", "first_mes": firstMes}})
+	if err := os.MkdirAll(filepath.Dir(page), 0o755); err != nil {
+		e.t.Fatal(err)
+	}
+	if err := os.WriteFile(page, raw, 0o644); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+func TestSourceCheckRoutes(t *testing.T) {
+	e := newEnv(t)
+	_, dir := e.upstream()
+	c := e.followedCard(dir, "vyr", "Begone.")
+	var list []targets.Binding
+	e.call("POST", fmt.Sprintf("/cards/%d/source-check", c.ID), nil, 200, &list)
+	if len(list) != 1 || list[0].Push || list[0].RemoteID != "fake:vyr" || list[0].RemoteState != "changed" || list[0].AppHash == "" {
+		t.Fatalf("bindings = %+v", list)
+	}
+	var ch targets.Changes
+	e.call("GET", "/sync/changes?state=update", nil, 200, &ch)
+	if len(ch.Rows) != 1 || ch.Rows[0].CardID != c.ID || len(ch.Rows[0].Apps) != 1 ||
+		ch.Rows[0].Apps[0].State != targets.ChangeUpdate || ch.Rows[0].Apps[0].AppHash != list[0].AppHash {
+		t.Fatalf("updates = %+v", ch)
+	}
+	path := fmt.Sprintf("/bindings/%d", list[0].ID)
+	var b targets.Binding
+	e.call("POST", path+"/dismiss", map[string]any{"app_hash": list[0].AppHash}, 200, &b)
+	if b.RemoteState != "unchanged" {
+		t.Fatalf("dismissed = %+v", b)
+	}
+	e.call("PATCH", path, map[string]any{"paused": true}, 200, &b)
+	if !b.Paused || b.Autosync {
+		t.Fatalf("paused = %+v", b)
+	}
+	var a, again jobOut
+	e.call("POST", "/source-checks", nil, 202, &a)
+	e.call("POST", "/source-checks", nil, 202, &again)
+	if a.ID == 0 || a.ID != again.ID || a.Kind != targets.SourceCheckKind {
+		t.Fatalf("jobs = %+v, %+v", a, again)
+	}
+}
+
+func TestDismissingASourceThatChangedAgainIsStale(t *testing.T) {
+	e := newEnv(t)
+	_, dir := e.upstream()
+	c := e.followedCard(dir, "vyr", "Begone.")
+	var list []targets.Binding
+	e.call("POST", fmt.Sprintf("/cards/%d/source-check", c.ID), nil, 200, &list)
+	// The author changes the page again after the owner saw the first change.
+	e.sitePage(dir, "vyr", "Begone, again.")
+	path := fmt.Sprintf("/bindings/%d", list[0].ID)
+	r := e.call("POST", path+"/dismiss", map[string]any{"app_hash": list[0].AppHash}, 409, nil)
+	if !strings.Contains(string(r.Body), "Begone, again.") {
+		t.Fatalf("stale reply lacks the fresh comparison: %s", r.Body)
+	}
+	var b targets.Binding
+	e.call("GET", path, nil, 200, &b)
+	if b.RemoteState != "changed" {
+		t.Fatalf("after a stale dismiss = %+v", b)
+	}
+}
+
+func TestCheckingSourcesOfABrokenPluginFails(t *testing.T) {
+	e := newEnv(t)
+	_, dir := e.upstream("-mode=bad-describe")
+	c := e.followedCard(dir, "vyr", "Begone.")
+	e.call("POST", fmt.Sprintf("/cards/%d/source-check", c.ID), nil, 502, nil)
+}
+
+// chub refs hold a slash, so the remote_id reaches compare and resolve as %2F.
+func TestReviewingASourceWhoseRefHasASlash(t *testing.T) {
+	e := newEnv(t)
+	inst, dir := e.upstream()
+	// The fake keeps a page as <dir>/<remote_id>.json, so the slash makes a folder.
+	c := e.followedCard(dir, "alice/vyr", "Begone.")
+	var list []targets.Binding
+	e.call("POST", fmt.Sprintf("/cards/%d/source-check", c.ID), nil, 200, &list)
+	if len(list) != 1 || list[0].RemoteID != "fake:alice/vyr" || list[0].RemoteState != "changed" {
+		t.Fatalf("bindings = %+v", list)
+	}
+	item := fmt.Sprintf("/instances/%d/cards/%s", inst, url.PathEscape("fake:alice/vyr"))
+	var cmp targets.Comparison
+	e.call("GET", fmt.Sprintf("%s/compare?card_id=%d", item, c.ID), nil, 200, &cmp)
+	if cmp.RemoteID != "fake:alice/vyr" || cmp.Base != "accepted" {
+		t.Fatalf("comparison = %+v", cmp)
+	}
+	e.call("POST", item+"/resolve", map[string]any{"action": "bind", "card_id": c.ID, "app_hash": cmp.AppHash,
+		"base_revision_id": cmp.HeadRevisionID, "accepted_hash": cmp.AcceptedHash, "default": "app"}, 200, nil)
+	e.call("GET", fmt.Sprintf("/cards/%d/bindings", c.ID), nil, 200, &list)
+	if len(list) != 1 || list[0].RemoteState != "unchanged" {
+		t.Fatalf("after resolving = %+v", list)
 	}
 }

@@ -22,9 +22,9 @@ but never push.
 | Plugin | `url-import` answers `target.get` for `chub`, `risu`, and `character-tavern`, reusing its resolvers. Its manifest lists the source kinds it pulls. A new site touches only a plugin. |
 | What counts as a change | Upstream differs from `accepted_data`, the upstream copy last accepted. The owner's own edits never count. |
 | Avatar | Compared separately, by the hash of upstream's bytes against the last-seen hash. |
-| Baseline | On import, the imported content. For cards that already exist, the first revision with a `plugin:` source, else the first revision. The avatar hash is stored silently on the first check. |
+| Baseline | The entity's first revision with a `plugin:` source, else its first revision. For an imported card, that is the imported content. The avatar hash is stored silently on the first check. |
 | Pull | The existing three-way merge and resolve: head, upstream, and `accepted_data` as the ancestor. The owner can take the data, the avatar, or both. |
-| Auto-apply | Off by default. With the binding's `autosync` on, an update that merges with no conflicting hunks is applied by the check job. |
+| Auto-apply | Off by default. With the binding's `autosync` on, the check applies an update that merges with no conflicting hunks and leaves the avatar as the library's. A different avatar waits for review: there's no ancestor avatar to say whose change it is. |
 | Schedule | `INNKEEPER_SOURCE_CHECK_EVERY`, default `24h`, `0` turns it off. Plus "Check for updates" on the card page and for the whole library. |
 | Where it shows | An entry on the card's row in the changes queue, and a banner on the card page. |
 | Shared sources | Every card with the source gets its own binding. Suggesting them as variants belongs to INN-52. |
@@ -38,13 +38,13 @@ without pushing:
 | Where | Today | Change |
 |---|---|---|
 | `targets.describe` (`internal/targets/targets.go:182`) | Refuses an instance without the `push` capability | Accepts one with `pull`. Check, Bind, and resolve go through it. |
-| `binding` table | No pull-only marker | New columns: `push boolean NOT NULL DEFAULT true`, `paused boolean NOT NULL DEFAULT false`, `avatar_hash text`, `check_failures int NOT NULL DEFAULT 0` |
+| `binding` table | No pull-only marker | New columns: `push boolean NOT NULL DEFAULT true`, `paused boolean NOT NULL DEFAULT false`, `avatar_hash text`, `check_failures int NOT NULL DEFAULT 0`, `check_error text` |
 | `binding_card_remote` and `binding_lorebook_remote` indexes | One card per `(instance_id, remote_id)` | Add `WHERE push`, so cards that share a source each get a binding |
 | `binding_status` view | Any library edit since the last push makes a binding `ahead` | A binding with `push = false` is never `ahead` |
 | `targets.Check` (`check.go`) | Compares projected data only | Also fetches the avatar and compares `avatar_hash`. Skips `paused` bindings. |
 | Changes queue (`changes.go`) | `changed` comes only from sync's reconcile snapshot | A pull-only binding with `remote_state = changed` adds an `update` entry |
-| Scan | Hourly, every binding | Pull-only bindings move to their own schedule kind |
-| Source writes (`internal/library`) | Store the source row | Also create the binding on the instance that pulls the kind, if there is one |
+| Scan | Hourly, every binding | Skips pull-only bindings. A source-check job kind checks them on its own schedule |
+| Source check (`internal/targets`) | None | Before checking, binds each live source of a followed kind that has no binding, and unbinds pull-only bindings whose source was removed. Source writes stay in `internal/library`, which never calls targets |
 
 Bind writes its usual `bind` push row, so `binding_status` and the queries that
 join `push` keep working unchanged.
@@ -53,8 +53,8 @@ join `push` keep working unchanged.
 
 | Entry | Shown as | Actions |
 |---|---|---|
-| `update` | "Update on chub" | **Review**: the merge, then resolve. **Ignore this change**: resolve keeping the library side, which moves `accepted_data` to upstream. **Ignore all**: set `paused`. |
-| `missing` | "No longer on chub" | **Ignore all**, or **Remove source**: unbind and set the source's `removed_at` so detection doesn't add it back. The card is left as it is. |
+| `update` | "Update on chub" | **Review**: the merge, then resolve. **Ignore this change**: a two-way resolve keeping the library side, which moves `accepted_data` to upstream. Three-way would still take the author's edits to fields the owner never touched. **Ignore all**: set `paused`. |
+| `missing` | "No longer on chub" | **Ignore all**, or **Remove source**: set the source's `removed_at` so detection doesn't add it back. The queue drops the entry at once, and the next check unbinds it. The card is left as it is. |
 | `error` | The last error | None. Shown only after 3 failed checks in a row. |
 
 "Check again" in the card's sources panel clears `paused`. The next check
@@ -95,3 +95,6 @@ In `url-import`: `target.get` for each kind against recorded responses.
 - A library-wide setting that turns on auto-apply for every source.
 - Cheap "has it changed?" hints before fetching, such as chub's
   `lastActivityAt`.
+- Lorebooks embedded in a card's page. Reconcile already leaves
+  `character_book` out of comparisons, so a pull-only target doesn't list it
+  in `fields`. A lorebook with its own page follows its own source.

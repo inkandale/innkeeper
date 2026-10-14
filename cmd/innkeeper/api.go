@@ -28,6 +28,9 @@ func apiServer() error {
 		return err
 	}
 	defer svc.close()
+	if err := svc.createBuiltinSites(ctx, log); err != nil {
+		return err
+	}
 	mgr := pluginhost.NewManager(api.NoCore, 5*time.Minute, log)
 	defer mgr.Close()
 	go stopIdlePlugins(ctx, mgr)

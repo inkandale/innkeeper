@@ -52,6 +52,9 @@ func worker() error {
 		return err
 	}
 	defer svc.close()
+	if err := svc.createBuiltinSites(ctx, log); err != nil {
+		return err
+	}
 
 	q := jobs.New(svc.pool)
 	im := importer.New(svc.lib, svc.registry, q, log)

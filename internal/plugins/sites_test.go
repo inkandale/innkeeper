@@ -3,6 +3,8 @@ package plugins
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -182,5 +184,51 @@ func TestParseSource(t *testing.T) {
 	}
 	if _, err := reg.ParseSource(ctx, mgr, library.Card, library.Source{URL: "https://fake.example/x/y"}); !errors.Is(err, ErrBadSource) || !strings.Contains(err.Error(), "b:") {
 		t.Fatalf("invalid source: %v, want ErrBadSource naming b", err)
+	}
+}
+
+func TestCreateBuiltinSitesOnce(t *testing.T) {
+	ctx := context.Background()
+	dirs := Dirs{Builtin: t.TempDir(), Installed: t.TempDir()}
+	if err := os.Rename(testutil.FakePluginWith(t, []string{"sites"}), filepath.Join(dirs.Builtin, "fake")); err != nil {
+		t.Fatal(err)
+	}
+	sites := "protocol = 1\ncommand = [\"./x\"]\ncapabilities = [\"sites\"]\n"
+	writeManifest(t, filepath.Join(dirs.Builtin, "keyed"), "name = \"keyed\"\nversion = \"1\"\nsecrets = [\"key\"]\n"+sites)
+	writeManifest(t, filepath.Join(dirs.Builtin, "configured"), "name = \"configured\"\nversion = \"1\"\n"+sites+
+		"[config]\ntype = \"object\"\nrequired = [\"url\"]\n")
+	writeManifest(t, filepath.Join(dirs.Builtin, "login"), manifestFor("login", "1.0.0"))
+	pool := testdb.New(t)
+	api, worker := openWith(t, pool, dirs), openWith(t, pool, dirs)
+
+	// The api and the worker start at once.
+	created := make(chan int, 2)
+	for _, reg := range []*Registry{api, worker} {
+		go func() {
+			n, err := reg.CreateBuiltinSites(ctx)
+			if err != nil {
+				t.Error(err)
+			}
+			created <- n
+		}()
+	}
+	if n := <-created + <-created; n != 1 {
+		t.Fatalf("created %d instances, want 1", n)
+	}
+	list, err := api.ListInstances(ctx)
+	if err != nil || len(list) != 1 || list[0].Plugin != "fake" {
+		t.Fatalf("instances = %+v, %v; want one of fake only", list, err)
+	}
+	mgr := pluginhost.NewManager(nil, time.Minute, quiet)
+	t.Cleanup(mgr.Close)
+	if got, err := api.DetectSources(ctx, mgr, library.Card, []byte(fakePage)); err != nil || tags(got) != "fake:x/y:" {
+		t.Fatalf("detect = %s, %v; want the built-in instance's source", tags(got), err)
+	}
+
+	if err := api.DeleteInstance(ctx, list[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := worker.CreateBuiltinSites(ctx); err != nil || n != 0 {
+		t.Fatalf("after the owner deleted it: created %d, %v; want it to stay deleted", n, err)
 	}
 }

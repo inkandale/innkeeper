@@ -16,6 +16,8 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/backup"
 	"github.com/davidgibbons/innkeeper/internal/blobstore"
 	"github.com/davidgibbons/innkeeper/internal/db"
+	"github.com/davidgibbons/innkeeper/internal/importer"
+	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
@@ -70,6 +72,21 @@ func openServices(ctx context.Context, log *slog.Logger, maxConnsAtLeast int) (*
 }
 
 func (s *services) close() { s.pool.Close() }
+
+// createBuiltinSites gives a new server its built-in sites instances, and
+// detects what was queued while it had none. The api and worker both run it,
+// so either one starting first is enough.
+func (s *services) createBuiltinSites(ctx context.Context, log *slog.Logger) error {
+	n, err := s.registry.CreateBuiltinSites(ctx)
+	if err != nil {
+		return err
+	}
+	if n > 0 {
+		log.Info("created built-in sites instances", "count", n)
+		importer.EnqueueDetect(ctx, jobs.New(s.pool), log)
+	}
+	return nil
+}
 
 // openDB connects to INNKEEPER_DATABASE_URL and migrates the schema. The pool's
 // MaxConns is raised to at least maxConnsAtLeast; 0 keeps the URL's setting.

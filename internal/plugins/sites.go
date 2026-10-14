@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -150,4 +151,57 @@ func (r *Registry) ParseSource(ctx context.Context, mgr *pluginhost.Manager, k *
 		return library.Source{}, fmt.Errorf("%w: no installed plugin recognizes that URL", library.ErrInvalid)
 	}
 	return library.Source{}, fmt.Errorf("%w: no installed plugin knows source kind %q", library.ErrInvalid, in.Kind)
+}
+
+// CreateBuiltinSites creates one instance of each built-in plugin that
+// declares sites and needs no config or secrets, so a new server detects
+// sources with no setup. A setting records each plugin it ran for, so an
+// instance the owner deletes stays deleted. It returns how many it created.
+func (r *Registry) CreateBuiltinSites(ctx context.Context) (int, error) {
+	r.mu.RLock()
+	builtin := maps.Clone(r.builtin)
+	r.mu.RUnlock()
+	created := 0
+	for _, name := range slices.Sorted(maps.Keys(builtin)) {
+		m := builtin[name]
+		required, _ := m.Config["required"].([]any)
+		if !m.Has("sites") || len(m.Secrets) > 0 || len(required) > 0 {
+			continue
+		}
+		ok, err := r.createBuiltinOnce(ctx, name)
+		if err != nil {
+			return created, fmt.Errorf("create %s instance: %w", name, err)
+		}
+		if ok {
+			created++
+		}
+	}
+	return created, nil
+}
+
+// createBuiltinOnce runs in one transaction, so the api and worker starting
+// together create one instance between them.
+func (r *Registry) createBuiltinOnce(ctx context.Context, plugin string) (bool, error) {
+	sealed, err := r.box.Seal(nil)
+	if err != nil {
+		return false, err
+	}
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback(ctx)
+	tag, err := tx.Exec(ctx, `INSERT INTO setting (key, value) VALUES ($1, 'created') ON CONFLICT DO NOTHING`,
+		"builtin-instance:"+plugin)
+	if err != nil || tag.RowsAffected() == 0 {
+		return false, err
+	}
+	// An owner who already has an instance, or one by that name, needs no other.
+	tag, err = tx.Exec(ctx, `INSERT INTO plugin_instance (plugin, name, secrets)
+		SELECT $1, $1, $2 WHERE NOT EXISTS (SELECT 1 FROM plugin_instance WHERE plugin = $1)
+		ON CONFLICT (name) DO NOTHING`, plugin, sealed)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, tx.Commit(ctx)
 }

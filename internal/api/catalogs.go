@@ -17,7 +17,6 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/importer"
 	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/library"
-	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 	"github.com/davidgibbons/innkeeper/protocol"
 )
@@ -118,28 +117,11 @@ func (s *Server) catalogCall(ctx context.Context, id int64, method string, param
 	ctx, cancel := context.WithTimeout(ctx, catalogTimeout)
 	defer cancel()
 	err = s.Registry.Call(ctx, s.Plugins, inst, method, params, result)
-	var rpcErr *protocol.Error
-	var startErr *pluginhost.StartError
-	switch {
-	case err == nil:
-		return info, nil
-	case errors.As(err, &rpcErr) && rpcErr.Code == protocol.CodeInvalidParams:
-		return info, huma.Error400BadRequest(rpcErr.Message)
-	case errors.As(err, &rpcErr) && rpcErr.Code == protocol.CodeRemoteNotFound:
-		return info, huma.Error404NotFound(rpcErr.Message)
-	case errors.As(err, &startErr), errors.Is(err, protocol.ErrClosed), errors.Is(err, context.DeadlineExceeded),
-		errors.As(err, &rpcErr) && rpcErr.Retryable():
-		s.Log.Warn("catalog unavailable", "catalog", info.Name, "err", err)
-		return info, huma.Error503ServiceUnavailable(fmt.Sprintf("catalog %s is unavailable; see the server log", info.Name))
-	case errors.As(err, &rpcErr):
-		// A catalog's error can name files on the server, and read-tier clients see this.
-		s.Log.Error("catalog failed", "catalog", info.Name, "err", err)
-		return info, huma.Error502BadGateway(fmt.Sprintf("catalog %s failed; see the server log", info.Name))
-	case errors.Is(err, context.Canceled):
+	if errors.Is(err, context.Canceled) {
 		// The client went away; there is no one to answer.
 		return info, err
 	}
-	return info, s.fail(err)
+	return info, s.failAs("catalog "+info.Name, err)
 }
 
 // catalogs lists every catalog instance with its description and newest

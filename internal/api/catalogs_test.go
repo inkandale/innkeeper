@@ -96,8 +96,8 @@ func TestCatalogRoutes(t *testing.T) {
 	if item.Version != "1" {
 		t.Fatalf("version 1 = %+v", item)
 	}
-	// An ID with a slash travels escaped and reaches the plugin whole.
-	if r := e.call("GET", base+"/items/no%2Fsuch", nil, 404, nil); !strings.Contains(string(r.Body), "no item no/such") {
+	// An ID with a slash travels escaped and reaches the plugin.
+	if r := e.call("GET", base+"/items/no%2Fsuch", nil, 404, nil); !strings.Contains(string(r.Body), "has no such item") {
 		t.Fatalf("missing item: %s", r)
 	}
 }

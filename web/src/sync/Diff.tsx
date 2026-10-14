@@ -11,7 +11,7 @@ type Hunk = components["schemas"]["Hunk"];
 export type Choices = Record<string, string>;
 
 /** Sides names the two sides a comparison puts against each other. */
-export type Sides = { library: string; app: string };
+type Sides = { library: string; app: string };
 const appSides: Sides = { library: "Library", app: "App" };
 const sideLabel = (sides: Sides, s: string) => (s === "library" ? sides.library : s === "app" ? sides.app : "Both");
 
@@ -20,7 +20,7 @@ const absent = <em className="muted">absent</em>;
 const unescape = (s: string) => s.replace(/\\(.)/g, "$1");
 
 /** entryOf splits an entries hunk ID, entries[<entry>].<field>#n, into an entry label and its field. */
-export function entryOf(id: string): { entry: string; field: string } {
+function entryOf(id: string): { entry: string; field: string } {
   const m = /^entries\[((?:\\.|[^\]\\])*)\](?:\.(.*))?#\d+$/.exec(id);
   if (!m) return { entry: id, field: "" };
   const raw = unescape(m[1] ?? "").replace(/~\d+$/, "");

@@ -4,7 +4,7 @@ type CatalogSource = components["schemas"]["CatalogSourceOut"];
 type CatalogPlugin = components["schemas"]["CatalogPluginOut"];
 
 export type Offer = CatalogPlugin & { source: string };
-export type Group = { category: string; plugins: Offer[] };
+type Group = { category: string; plugins: Offer[] };
 
 // Categories the wizard knows, in the order it shows them.
 const known = ["Apps", "Import", "Login"];

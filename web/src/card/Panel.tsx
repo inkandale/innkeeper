@@ -12,7 +12,7 @@ import { PushPreview } from "../sync/PushPreview";
 import { reviewPath, stateLabel } from "../sync/sync";
 import { Collections, Sources, Tags } from "./Organize";
 
-export type PanelProps = {
+type PanelProps = {
   card: Entity;
   data: Data;
   edit: (key: string, value: unknown) => void;

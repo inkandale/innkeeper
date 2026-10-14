@@ -26,8 +26,7 @@ export function SelectionBar(props: {
   kind?: "card" | "lorebook";
 }) {
   const { count, all, total, query, onAll, onClear, onStarted, kind = "card" } = props;
-  const noun = kind === "card" ? "card" : "lorebook";
-  const plural = (n: number) => `${n} ${noun}${n === 1 ? "" : "s"}`;
+  const plural = (n: number) => `${n} ${kind}${n === 1 ? "" : "s"}`;
   // Lorebooks have no tags, collections, or bulk export.
   const actions = kind === "card" ? (["tag", "collection", "push", "archive", "export"] as const) : (["push", "archive"] as const);
   // Card calls leave kind out, as they did before it existed.
@@ -69,7 +68,7 @@ export function SelectionBar(props: {
   const toggle = (p: Panel) => setPanel(panel === p ? null : p);
   return (
     <div className="toolbar selection-bar">
-      <strong>{all ? `All ${total} matching ${noun}${total === 1 ? "" : "s"}` : `${count} selected`}</strong>
+      <strong>{all ? `All ${total} matching ${kind}${total === 1 ? "" : "s"}` : `${count} selected`}</strong>
       {!all && count < total && (
         <button className="button" onClick={onAll}>
           Select all {total} matching

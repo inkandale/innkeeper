@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import { thumb } from "../api/client";
 import type { components } from "../api/schema";
+import { text } from "../card/draft";
 import { stateLabel } from "../sync/sync";
 
 export type Hit = components["schemas"]["Hit"];
@@ -15,11 +16,7 @@ export const badgeClass: Record<string, string> = {
   cant_check: "unknown",
 };
 
-function str(v: unknown): string {
-  return typeof v === "string" ? v : "";
-}
-
-export function Badges({ hit, names }: { hit: Hit; names: Names }) {
+function Badges({ hit, names }: { hit: Hit; names: Names }) {
   return (
     <span className="badges">
       {(hit.targets ?? []).map((t) => (
@@ -37,13 +34,13 @@ export function Badges({ hit, names }: { hit: Hit; names: Names }) {
 
 // alt is empty because the name link beside the image already names the card.
 function Avatar({ hit, w }: { hit: Hit; w: 160 | 320 }) {
-  const name = str(hit.fields.name);
-  const avatar = str(hit.fields.avatar);
+  const name = text(hit.fields.name);
+  const avatar = text(hit.fields.avatar);
   if (!avatar) return <span className="avatar empty">{name.slice(0, 1)}</span>;
   return <img className="avatar" src={thumb(avatar, w)} alt="" loading="lazy" />;
 }
 
-export type PickProps = { selected: boolean; locked: boolean; onPick: (shift: boolean) => void };
+type PickProps = { selected: boolean; locked: boolean; onPick: (shift: boolean) => void };
 
 // The change event of a checkbox comes from a click, so it carries the shift key.
 function SelectBox({ hit, pick }: { hit: Hit; pick: PickProps }) {
@@ -51,7 +48,7 @@ function SelectBox({ hit, pick }: { hit: Hit; pick: PickProps }) {
     <input
       type="checkbox"
       className="select"
-      aria-label={`Select ${str(hit.fields.name)}`}
+      aria-label={`Select ${text(hit.fields.name)}`}
       checked={pick.selected}
       disabled={pick.locked}
       onChange={(e) => pick.onPick((e.nativeEvent as MouseEvent).shiftKey === true)}
@@ -73,9 +70,9 @@ export function Tile({ hit, names, pick }: { hit: Hit; names: Names; pick: PickP
           </span>}
       </Link>
       <Link to={`/cards/${hit.id}`} className="tile-name">
-        {str(hit.fields.name)}
+        {text(hit.fields.name)}
       </Link>
-      <p className="tile-description">{str(hit.fields.description)}</p>
+      <p className="tile-description">{text(hit.fields.description)}</p>
       <p className="tile-tags">
         {tags.slice(0, 3).map((t) => (
           <span key={t} className="tag">
@@ -98,7 +95,7 @@ export function Row({ hit, names, pick }: { hit: Hit; names: Names; pick: PickPr
         <Avatar hit={hit} w={160} />
       </td>
       <td>
-        <Link to={`/cards/${hit.id}`}>{str(hit.fields.name)}</Link>
+        <Link to={`/cards/${hit.id}`}>{text(hit.fields.name)}</Link>
       </td>
       <td>{(hit.tags ?? []).join(", ")}</td>
       <td>{hit.lorebooks?.length ?? 0}</td>
@@ -118,7 +115,7 @@ export function LorebookRow({ hit, names, cards, pick }: { hit: Hit; names: Name
         <SelectBox hit={hit} pick={pick} />
       </td>
       <td>
-        <Link to={`/lorebooks/${hit.id}`}>{str(hit.fields.name)}</Link>
+        <Link to={`/lorebooks/${hit.id}`}>{text(hit.fields.name)}</Link>
       </td>
       <td>
         {entries} {entries === 1 ? "entry" : "entries"}
@@ -126,7 +123,7 @@ export function LorebookRow({ hit, names, cards, pick }: { hit: Hit; names: Name
       <td className="linked">
         {(hit.cards ?? []).map((id) => {
           const card = cards.get(id);
-          const name = card ? str(card.fields.name) : `Card ${id}`;
+          const name = card ? text(card.fields.name) : `Card ${id}`;
           return (
             <Link key={id} to={`/cards/${id}`} aria-label={name} title={name}>
               {card ? <Avatar hit={card} w={160} /> : <span className="avatar empty">#</span>}

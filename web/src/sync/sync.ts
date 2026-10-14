@@ -162,7 +162,7 @@ export const reviewable = (c: AppChange) =>
   c.state === "differs" || c.state === "both_changed" || c.state === "new" || c.state === "ahead";
 
 /** QueueChange is a queue entry with its row's card, which Review compares with when there's no snapshot. */
-export type QueueChange = AppChange & { card_id?: number };
+type QueueChange = AppChange & { card_id?: number };
 
 /** queueReviews lists the queue's reviewable entries in order. */
 export const queueReviews = (rows: { card_id?: number; apps: AppChange[] | null }[]): QueueChange[] =>
@@ -174,7 +174,7 @@ export const stateLabel = (s: string) =>
   s.replaceAll("_", " ");
 
 /** ChangesFilter narrows the changes queue, as GET /sync/changes takes it. */
-export type ChangesFilter = { instance_id?: number; state?: AppChange["state"] };
+type ChangesFilter = { instance_id?: number; state?: AppChange["state"] };
 
 /** changesFilter reads the queue's filter from a URL's search params. */
 export const changesFilter = (p: URLSearchParams): ChangesFilter => ({

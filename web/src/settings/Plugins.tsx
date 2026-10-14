@@ -288,7 +288,7 @@ type Offer = { source: string; name: string; version: string; description: strin
 
 /** catalogOffers splits what the sources list into updates for installed
  * plugins, from the source each came from, and plugins not installed. */
-export function catalogOffers(catalog: CatalogSource[], installed: Plugin[]) {
+function catalogOffers(catalog: CatalogSource[], installed: Plugin[]) {
   const updates = new Map<string, string>();
   const available: Offer[] = [];
   const byName = new Map(installed.map((p) => [p.name, p]));

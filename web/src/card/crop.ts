@@ -1,7 +1,7 @@
 export type Size = { w: number; h: number };
 /** View is a zoom (1 = the image just covers the box) and the image center's offset from the box center, in screen pixels. */
 export type View = { zoom: number; dx: number; dy: number };
-export type Rect = { x: number; y: number; w: number; h: number };
+type Rect = { x: number; y: number; w: number; h: number };
 
 /** scale is how many screen pixels one image pixel takes at a zoom. */
 export const scale = (img: Size, box: Size, zoom: number) => Math.max(box.w / img.w, box.h / img.h) * zoom;

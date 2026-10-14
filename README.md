@@ -93,8 +93,8 @@ If something else already listens on port 8080, set `INNKEEPER_PORT` in
 `.env`. Docker doesn't report the clash; requests just reach the other
 program.
 
-The image builds its two built-in plugins, `password-login` and
-`card-codec`, from `innkeeper-plugins` at the branch or commit in the
+The image builds its three built-in plugins, `password-login`,
+`card-codec`, and `url-import`, from `innkeeper-plugins` at the branch or commit in the
 `PLUGINS_REF` build argument, `main` by default. A rebuild reuses its cached
 clone of `main`; pass `--build-arg PLUGINS_REF=<commit>` or build with
 `--no-cache` for newer ones. Install other plugins at runtime; see
@@ -444,15 +444,15 @@ start an import with `{"blob": "<sha256>", "name": "brakka.png"}` as its
 params.
 
 To import a card from its page on chub.ai, RisuRealm, or Character Tavern,
-install the `url-import` plugin and give it the page URL:
+give the built-in `url-import` plugin the page URL. The server creates its
+instance, named `url-import`, the first time it starts:
 
 ```bash
-ink plugins install url-import
-ink instances create url-import "From URL"
+ink instances list
 ink cards import-url <instance-id> https://chub.ai/characters/user/name
 ```
 
-The web's "Bring in cards" step has a URL field once the instance exists.
+The web's "Bring in cards" step has a URL field while the instance exists.
 Over the API, start an import with `{"url": "<page URL>"}` as its params;
 over MCP, pass `url` to `start_import`.
 
@@ -462,9 +462,15 @@ A source is a site a card or lorebook was published on, such as its chub.ai
 page. Importing, syncing an app, and binding to an app item record the sources
 the data names: the `extensions.chub` entry that chub.ai imports leave, and
 each page URL in the card's `data.source` list, which `url-import` adds.
-Innkeeper knows chub.ai, RisuRealm, and Character Tavern until you add an
-instance of a plugin with the `sites` capability; then that plugin decides. An import's sources appear a few seconds
-after it finishes, when the `detect-sources` job runs.
+Plugins with the `sites` capability decide which sites these are; the
+built-in `url-import` knows chub.ai, RisuRealm, and Character Tavern. An
+import's sources appear a few seconds after it finishes, when the
+`detect-sources` job runs.
+
+The server creates one instance of each built-in `sites` plugin that needs no
+settings, once. If you delete that instance, it stays deleted, and nothing is
+detected until a `sites` instance works again; entities imported meanwhile
+wait and are detected then.
 
 Add or remove one yourself with the API, MCP tools, or CLI:
 

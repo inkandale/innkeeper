@@ -2,6 +2,9 @@
 
 Date: 2026-10-13
 
+Status: implemented by all three rollout steps. Core no longer detects any
+site itself.
+
 ## Purpose
 
 `internal/library/detect.go` knows chub.ai, RisuRealm, and Character Tavern:

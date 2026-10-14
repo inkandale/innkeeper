@@ -485,7 +485,12 @@ With several `sites` plugins, the core asks the oldest working instance of
 each, in order of that instance's ID. The first source with a given `kind` and
 `ref` wins, and the first non-null `sites.parse` reply wins. A plugin that
 errors or times out is skipped and logged; detection never fails an import or
-a sync.
+a sync. While no `sites` instance works, imported items wait for detection
+until one does.
+
+At startup the core creates one instance of each built-in `sites` plugin whose
+manifest has no `secrets` and no `required` keys in `config`. It does this once
+per plugin, so an instance the owner deletes stays deleted.
 
 ### `mcp`
 

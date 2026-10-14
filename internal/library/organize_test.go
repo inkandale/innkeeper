@@ -57,16 +57,16 @@ func TestCollections(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if got, _ := lib.CollectionCards(ctx, fav.ID); !slices.Equal(got, []int64{a, b}) {
+	if got, _ := lib.collectionCards(ctx, fav.ID); !slices.Equal(got, []int64{a, b}) {
 		t.Fatalf("favorites = %v", got)
 	}
 	if err := lib.RemoveFromCollection(ctx, fav.ID, a); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := lib.CollectionCards(ctx, fav.ID); !slices.Equal(got, []int64{b}) {
+	if got, _ := lib.collectionCards(ctx, fav.ID); !slices.Equal(got, []int64{b}) {
 		t.Fatalf("favorites after remove = %v", got)
 	}
-	if got, _ := lib.CollectionCards(ctx, other.ID); !slices.Equal(got, []int64{a}) {
+	if got, _ := lib.collectionCards(ctx, other.ID); !slices.Equal(got, []int64{a}) {
 		t.Fatalf("other = %v", got)
 	}
 	if err := lib.AddToCollection(ctx, fav.ID, 999); !errors.Is(err, ErrNotFound) {

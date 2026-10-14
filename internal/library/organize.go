@@ -186,8 +186,8 @@ func (l *Library) RemoveFromCollection(ctx context.Context, collectionID, cardID
 	return err
 }
 
-// CollectionCards returns the IDs of a collection's cards, oldest addition first.
-func (l *Library) CollectionCards(ctx context.Context, collectionID int64) ([]int64, error) {
+// collectionCards returns the IDs of a collection's cards, oldest addition first.
+func (l *Library) collectionCards(ctx context.Context, collectionID int64) ([]int64, error) {
 	rows, err := l.pool.Query(ctx, `SELECT card_id FROM collection_card WHERE collection_id = $1
 		ORDER BY added_at, card_id`, collectionID)
 	if err != nil {

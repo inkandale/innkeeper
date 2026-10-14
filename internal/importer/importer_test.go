@@ -129,6 +129,14 @@ func (e *env) count(t *testing.T, table string) (n int) {
 	return n
 }
 
+func (e *env) slugID(t *testing.T, table, slug string) (id int64) {
+	t.Helper()
+	if err := e.pool.QueryRow(context.Background(), `SELECT id FROM `+table+` WHERE slug = $1`, slug).Scan(&id); err != nil {
+		t.Fatalf("%s %s: %v", table, slug, err)
+	}
+	return id
+}
+
 func TestImportCards(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()
@@ -142,11 +150,9 @@ func TestImportCards(t *testing.T) {
 	if n := e.count(t, "lorebook"); n != 4 {
 		t.Fatalf("%d lorebooks, want 3 split from cards and 1 standalone", n)
 	}
-	if _, err := e.lib.Lorebooks.GetBySlug(ctx, "world-0"); err != nil {
-		t.Fatalf("standalone lorebook: %v", err)
-	}
+	e.slugID(t, "lorebook", "world-0")
 
-	c, err := e.lib.Cards.GetBySlug(ctx, "fake-1")
+	c, err := e.lib.Cards.Get(ctx, e.slugID(t, "card", "fake-1"))
 	if err != nil {
 		t.Fatal(err)
 	}

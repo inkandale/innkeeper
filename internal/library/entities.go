@@ -244,11 +244,6 @@ func (s *Entities) Get(ctx context.Context, id int64) (Entity, error) {
 	return scanEntity(s.pool.QueryRow(ctx, `SELECT `+entityCols+` FROM `+s.k.Table+` WHERE id = $1`, id))
 }
 
-// GetBySlug returns the entity with this slug.
-func (s *Entities) GetBySlug(ctx context.Context, slug string) (Entity, error) {
-	return scanEntity(s.pool.QueryRow(ctx, `SELECT `+entityCols+` FROM `+s.k.Table+` WHERE slug = $1`, slug))
-}
-
 // Revision returns one revision by its ID.
 func (s *Entities) Revision(ctx context.Context, revID int64) (Revision, error) {
 	return scanRevision(s.pool.QueryRow(ctx, `SELECT `+s.revCols()+` FROM `+s.k.RevTable+` WHERE id = $1`, revID))

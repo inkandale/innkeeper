@@ -103,16 +103,20 @@ func TestTagAndCollect(t *testing.T) {
 		t.Fatal(err)
 	}
 	wait(t, q, p.ID)
-	if got, _ := lib.CollectionCards(ctx, col.ID); len(got) != 2 {
-		t.Fatalf("collected = %v", got)
+	for _, id := range ids {
+		if got, _ := lib.CardCollections(ctx, id); !slices.Equal(got, []int64{col.ID}) {
+			t.Fatalf("card %d collections = %v", id, got)
+		}
 	}
 	p, err = EnqueueCollect(ctx, q, ids[:1], col.ID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	wait(t, q, p.ID)
-	if got, _ := lib.CollectionCards(ctx, col.ID); !slices.Equal(got, ids[1:]) {
-		t.Fatalf("after uncollect = %v", got)
+	for i, want := range [][]int64{nil, {col.ID}} {
+		if got, _ := lib.CardCollections(ctx, ids[i]); !slices.Equal(got, want) {
+			t.Fatalf("after uncollect, card %d collections = %v", ids[i], got)
+		}
 	}
 }
 

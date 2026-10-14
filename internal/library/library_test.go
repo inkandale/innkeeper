@@ -55,7 +55,7 @@ func TestCreateAndUpdateCard(t *testing.T) {
 		t.Fatalf("unexpected second revision: %+v", second)
 	}
 
-	got, err := lib.Cards.GetBySlug(ctx, "brakka")
+	got, err := lib.Cards.Get(ctx, c.ID)
 	if err != nil || got.HeadRevisionID != second.ID {
 		t.Fatalf("head = %+v, %v; want revision %d", got, err, second.ID)
 	}

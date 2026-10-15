@@ -58,7 +58,12 @@ export function Sync() {
   });
   const targets = withCapability(instances.data, plugins.data, "push");
   const follows = followers(instances.data, plugins.data);
-  const updates = [...follows].reduce((n, i) => n + (changes.data?.counts[String(i)]?.update ?? 0), 0);
+  const sourceChanges = [...follows].reduce((n, i) => {
+    const c = changes.data?.counts[String(i)] ?? {};
+    return n + (c.update ?? 0) + (c.missing ?? 0) + (c.error ?? 0);
+  }, 0);
+  // Changes filters to one instance, so several sources link to every change.
+  const sourcesLink = follows.size === 1 ? `/sync/changes?instance_id=${[...follows][0]}` : "/sync/changes";
   const cantCheck = targets.some((i) => stateCounts(facets.data?.facets?.targets, i.id).cant_check > 0);
 
   const refresh = useRun(async () => must(await api.POST("/scans")), "Refreshing every app…");
@@ -85,78 +90,78 @@ export function Sync() {
         </div>
       )}
       {[facets, runs, changes].map((q, n) => q.isError && <p key={n} className="error">{q.error.message}</p>)}
+      {(!!targets.length || !!follows.size) && (
+        <p>
+          <Link to="/sync/changes">Changes</Link>
+        </p>
+      )}
       {!!targets.length && (
-        <>
-          <p>
-            <Link to="/sync/changes">Changes</Link>
-          </p>
-          <table>
-            <thead>
-              <tr>
-                <th>Target</th>
-                <th>In sync (cards)</th>
-                <th>Needs you</th>
-                <th>Not pushed</th>
-                <th>Missing</th>
-                {cantCheck && <th>Can't check</th>}
-                <th>Last sync</th>
-              </tr>
-            </thead>
-            <tbody>
-              {targets.map((i) => {
-                const c = stateCounts(facets.data?.facets?.targets, i.id);
-                const last = runs.data?.find((j) => j.instance_id === i.id);
-                const wait = facets.isPending;
-                const n = changes.data?.counts[String(i.id)] ?? {};
-                const queue = (state?: string) => `/sync/changes?instance_id=${i.id}${state ? `&state=${state}` : ""}`;
-                return (
-                  <tr key={i.id}>
-                    <td>{i.name}</td>
-                    <td>{wait ? "…" : c.in_sync}</td>
-                    {changes.data ? (
-                      <>
-                        <td>
-                          <Link to={queue()}>{needsYou(n)}</Link>
-                        </td>
-                        <td>
-                          <Link to={queue("ahead")}>{n.ahead ?? 0}</Link>
-                        </td>
-                        <td>
-                          <Link to={queue("missing")}>{n.missing ?? 0}</Link>
-                        </td>
-                      </>
+        <table>
+          <thead>
+            <tr>
+              <th>Target</th>
+              <th>In sync (cards)</th>
+              <th>Needs you</th>
+              <th>Not pushed</th>
+              <th>Missing</th>
+              {cantCheck && <th>Can't check</th>}
+              <th>Last sync</th>
+            </tr>
+          </thead>
+          <tbody>
+            {targets.map((i) => {
+              const c = stateCounts(facets.data?.facets?.targets, i.id);
+              const last = runs.data?.find((j) => j.instance_id === i.id);
+              const wait = facets.isPending;
+              const n = changes.data?.counts[String(i.id)] ?? {};
+              const queue = (state?: string) => `/sync/changes?instance_id=${i.id}${state ? `&state=${state}` : ""}`;
+              return (
+                <tr key={i.id}>
+                  <td>{i.name}</td>
+                  <td>{wait ? "…" : c.in_sync}</td>
+                  {changes.data ? (
+                    <>
+                      <td>
+                        <Link to={queue()}>{needsYou(n)}</Link>
+                      </td>
+                      <td>
+                        <Link to={queue("ahead")}>{n.ahead ?? 0}</Link>
+                      </td>
+                      <td>
+                        <Link to={queue("missing")}>{n.missing ?? 0}</Link>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td>…</td>
+                      <td>…</td>
+                      <td>…</td>
+                    </>
+                  )}
+                  {cantCheck && <td>{c.cant_check}</td>}
+                  <td>
+                    {last ? (
+                      <Link to={`/sync/reconciles/${last.id}`}>
+                        {age(last.created_at)} ago{last.status !== "succeeded" && ` (${last.status})`}
+                      </Link>
+                    ) : runs.isPending ? (
+                      "…"
                     ) : (
-                      <>
-                        <td>…</td>
-                        <td>…</td>
-                        <td>…</td>
-                      </>
+                      "Never"
                     )}
-                    {cantCheck && <td>{c.cant_check}</td>}
-                    <td>
-                      {last ? (
-                        <Link to={`/sync/reconciles/${last.id}`}>
-                          {age(last.created_at)} ago{last.status !== "succeeded" && ` (${last.status})`}
-                        </Link>
-                      ) : runs.isPending ? (
-                        "…"
-                      ) : (
-                        "Never"
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       )}
       {!!follows.size && (
         <section>
           <h2>Sources</h2>
           <div className="toolbar">
-            <Link to="/sync/changes?state=update">
-              {updates} {updates === 1 ? "update" : "updates"} on their sites
+            <Link to={sourcesLink}>
+              {sourceChanges} {sourceChanges === 1 ? "change" : "changes"} on their sites
             </Link>
             <button className="button" disabled={checkSources.busy} onClick={checkSources.start}>
               Check for updates

@@ -82,6 +82,8 @@ func (a Action) Validate() error {
 // ActionListResult is the reply to action.list.
 type ActionListResult struct {
 	Actions []Action `json:"actions"`
+	// Skills are the enabled skills a @skills/ mention can name.
+	Skills []Skill `json:"skills,omitempty"`
 }
 
 // ActionEntity is the draft a run starts from. Data is absent for a new card.

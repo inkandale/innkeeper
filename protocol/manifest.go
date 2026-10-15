@@ -14,7 +14,7 @@ import (
 )
 
 // Capabilities lists every capability a plugin may declare.
-var Capabilities = []string{"import", "search", "push", "pull", "action", "enrich", "codec", "auth", "mcp", "theme", "catalog", "sites"}
+var Capabilities = []string{"import", "search", "push", "pull", "action", "items", "enrich", "codec", "auth", "mcp", "theme", "catalog", "sites"}
 
 var enrichmentTypes = []string{"text", "score", "list"}
 
@@ -55,6 +55,9 @@ type Manifest struct {
 	// core binds each such source to its instance as remote_id kind:ref.
 	SourceKinds []string `toml:"source_kinds"`
 
+	// Items are the item types an items plugin keeps, by type name.
+	Items map[string]ItemType `toml:"items"`
+
 	// Database gives the plugin a schema, plugin_<name>, and a role limited
 	// to it. The URL arrives as initialize's database_url.
 	Database bool `toml:"database"`
@@ -92,8 +95,9 @@ func LoadManifest(dir string) (*Manifest, error) {
 	}
 	var unknown []string
 	for _, k := range md.Undecoded() {
-		// The decoder lists nested config tables as undecoded though they are in the map.
-		if k[0] != "config" {
+		// The decoder lists nested tables in a map[string]any as undecoded
+		// though they are in the map: config and each item type's schema.
+		if k[0] != "config" && !(len(k) > 2 && k[0] == "items" && k[2] == "schema") {
 			unknown = append(unknown, k.String())
 		}
 	}
@@ -238,6 +242,15 @@ func (m *Manifest) Validate() error {
 			errs = append(errs, fmt.Errorf("input %q listed twice", in))
 		}
 		seenInputs[in] = true
+	}
+	if m.Has("items") && len(m.Items) == 0 {
+		errs = append(errs, errors.New("an items plugin must declare an item type"))
+	}
+	if !m.Has("items") && len(m.Items) > 0 {
+		errs = append(errs, errors.New("items needs the items capability"))
+	}
+	for _, key := range slices.Sorted(maps.Keys(m.Items)) {
+		errs = append(errs, m.Items[key].validate(key)...)
 	}
 	if len(m.SourceKinds) > 0 && (!m.Has("pull") || m.Has("push")) {
 		errs = append(errs, errors.New("source_kinds needs the pull capability and not push"))

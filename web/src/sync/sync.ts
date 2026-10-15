@@ -1,4 +1,4 @@
-import { api, must, route, type Kind } from "../api/client";
+import { api, must, mustOk, route, type Kind } from "../api/client";
 import type { components } from "../api/schema";
 
 export type Comparison = components["schemas"]["Comparison"];
@@ -157,16 +157,16 @@ export function reviewPath(
   return `/sync/${instance}/${kind}/${encodeURIComponent(remoteId)}${q ? "?" + q : ""}`;
 }
 
-/** reviewable changes open Review; the others are pushed again, unbound, or only shown. */
+/** reviewable changes open Review; the others are pushed again, unbound, ignored, or only shown. */
 export const reviewable = (c: AppChange) =>
-  c.state === "differs" || c.state === "both_changed" || c.state === "new" || c.state === "ahead";
+  c.state === "differs" || c.state === "both_changed" || c.state === "new" || c.state === "ahead" || c.state === "update";
 
-/** QueueChange is a queue entry with its row's card, which Review compares with when there's no snapshot. */
-type QueueChange = AppChange & { card_id?: number };
+/** QueueChange is a queue entry with its row's card or lorebook, which Review compares with when there's no snapshot. */
+type QueueChange = AppChange & { card_id?: number; lorebook_id?: number };
 
 /** queueReviews lists the queue's reviewable entries in order. */
-export const queueReviews = (rows: { card_id?: number; apps: AppChange[] | null }[]): QueueChange[] =>
-  rows.flatMap((r) => (r.apps ?? []).filter(reviewable).map((c) => ({ ...c, card_id: r.card_id })));
+export const queueReviews = (rows: { card_id?: number; lorebook_id?: number; apps: AppChange[] | null }[]): QueueChange[] =>
+  rows.flatMap((r) => (r.apps ?? []).filter(reviewable).map((c) => ({ ...c, card_id: r.card_id, lorebook_id: r.lorebook_id })));
 
 /** stateLabel names a binding or queue state from the library's side. */
 export const stateLabel = (s: string) =>
@@ -191,15 +191,18 @@ export function changesPath(f: ChangesFilter = {}): string {
 /**
  * changePath reviews a change from the queue, so Review steps on to the next one within the queue's filter. A change
  * not pushed has no snapshot, so it compares with its card, and without the accepted copy: a bind accepts the app's
- * copy, which would keep the library's side of every difference unasked.
+ * copy, which would keep the library's side of every difference unasked. A source update compares three ways with its
+ * card or lorebook.
  */
 export const changePath = (c: QueueChange, f: ChangesFilter = {}) =>
-  reviewPath(
-    c.instance_id,
-    "card",
-    c.remote_id ?? "",
-    c.state === "ahead" ? { card: c.card_id, base: "none", queue: 1, ...f } : { job: c.job_id ?? 0, queue: 1, ...f },
-  );
+  c.state === "update"
+    ? reviewPath(c.instance_id, c.lorebook_id ? "lorebook" : "card", c.remote_id ?? "", { card: c.lorebook_id ?? c.card_id, queue: 1, ...f })
+    : reviewPath(
+        c.instance_id,
+        "card",
+        c.remote_id ?? "",
+        c.state === "ahead" ? { card: c.card_id, base: "none", queue: 1, ...f } : { job: c.job_id ?? 0, queue: 1, ...f },
+      );
 
 /** needsYou counts an app's changes that need a decision, from GET /sync/changes counts. */
 export const needsYou = (c: Record<string, number> = {}) => (c.differs ?? 0) + (c.both_changed ?? 0) + (c.error ?? 0) + (c.new ?? 0);
@@ -273,3 +276,46 @@ export const sentenceCount = (s: string) =>
 
 /** jsonKey is a JSON field hunk's key path, without the field's own path or the hunk number. */
 export const jsonKey = (path: string, id: string) => id.replace(/#\d+$/, "").slice(path.length + 1);
+
+/** sourceRemoteId is the remote ID of a followed source's binding: its kind and ref, as the core forms it. */
+export const sourceRemoteId = (s: { kind: string; ref: string }) => `${s.kind}:${s.ref}`;
+
+/** siteOf names a followed source's site: the kind before the remote ID's colon. */
+export const siteOf = (remoteId: string) => {
+  const i = remoteId.indexOf(":");
+  return i > 0 ? remoteId.slice(0, i) : remoteId;
+};
+
+/** sourceLabel names a followed source's queue state or binding remote_state. */
+export function sourceLabel(state: string, remoteId: string): string {
+  const site = siteOf(remoteId);
+  const labels: Record<string, string> = {
+    update: `update on ${site}`,
+    changed: `update on ${site}`,
+    missing: `no longer on ${site}`,
+    error: "check failing",
+    unchanged: "up to date",
+    unknown: "not checked yet",
+  };
+  return labels[state] ?? state;
+}
+
+/** BindingEdit is what PATCH /bindings/{id} changes; a field left out stays as it is. Only a followed source pauses. */
+export type BindingEdit = { autosync?: boolean; paused?: boolean };
+
+export async function editBinding(id: number, body: BindingEdit) {
+  return must(await api.PATCH("/bindings/{id}", { params: { path: { id } }, body }));
+}
+
+/**
+ * dismissBinding ignores a followed source's change, the one with appHash; the next one on the site shows again. The
+ * API answers 409 with a fresh comparison if the site's data changed since.
+ */
+export async function dismissBinding(id: number, appHash: string) {
+  return must(await api.POST("/bindings/{id}/dismiss", { params: { path: { id } }, body: { app_hash: appHash } }));
+}
+
+/** removeSource removes a card's or lorebook's source, as a queue entry's source_id names it; the server unbinds it at once. */
+export async function removeSource(kind: Kind, id: number, sourceId: number) {
+  mustOk(await api.DELETE(route(kind, "/cards/{id}/sources/{source_id}"), { params: { path: { id, source_id: sourceId } } }));
+}

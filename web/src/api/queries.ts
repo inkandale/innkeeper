@@ -1,5 +1,5 @@
 import { queryOptions, useQuery } from "@tanstack/react-query";
-import { api, must, withCapability } from "./client";
+import { api, followers, must, route, withCapability, type Kind } from "./client";
 
 export const instancesQuery = queryOptions({ queryKey: ["instances"], queryFn: async () => must(await api.GET("/instances")) });
 
@@ -17,3 +17,17 @@ export function useInstancesWith(...caps: string[]) {
   const plugins = useQuery(pluginsQuery);
   return withCapability(instances.data, plugins.data, ...caps);
 }
+
+/** useFollowers returns the IDs of the instances that follow site sources, empty until both lists load. */
+export function useFollowers() {
+  const instances = useQuery(instancesQuery);
+  const plugins = useQuery(pluginsQuery);
+  return followers(instances.data, plugins.data);
+}
+
+/** bindingsQuery is a card's or lorebook's bindings: the apps it is pushed to and the site sources it follows. */
+export const bindingsQuery = (kind: Kind, id: number) =>
+  queryOptions({
+    queryKey: [kind, id, "bindings"],
+    queryFn: async () => must(await api.GET(route(kind, "/cards/{id}/bindings"), { params: { path: { id } } })),
+  });

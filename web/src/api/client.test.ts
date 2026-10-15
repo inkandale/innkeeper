@@ -1,4 +1,4 @@
-import { ApiError, exportFormats, loginPath, mustOk, route, safeNext, thumb, upload, withCapability } from "./client";
+import { ApiError, exportFormats, followers, loginPath, mustOk, route, safeNext, thumb, upload, withCapability } from "./client";
 
 test("loginPath keeps where the user was", () => {
   expect(loginPath("/cards", "?tag=elf")).toBe("/login?next=%2Fcards%3Ftag%3Delf");
@@ -77,4 +77,15 @@ test("exportFormats lists json, then what working codec instances write", () => 
   const instances = [{ plugin: "card-codec" }, { plugin: "other-codec" }, { plugin: "broken-codec", broken_error: "down" }];
   expect(exportFormats(plugins, instances)).toEqual(["json", "png", "json-v2", "charx"]);
   expect(exportFormats(undefined, undefined)).toEqual(["json"]);
+});
+
+test("followers are the instances whose plugin pulls without pushing", () => {
+  const plugins = [
+    { name: "app", capabilities: ["push", "pull"] },
+    { name: "url-import", capabilities: ["import", "sites", "pull"] },
+    { name: "codec", capabilities: ["codec"] },
+  ];
+  const instances = [{ id: 1, plugin: "app" }, { id: 2, plugin: "url-import" }, { id: 3, plugin: "codec" }];
+  expect([...followers(instances, plugins)]).toEqual([2]);
+  expect(followers(instances, undefined).size).toBe(0);
 });

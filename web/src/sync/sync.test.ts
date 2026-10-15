@@ -1,4 +1,4 @@
-import { bulkResolutions, jsonKey, optionLabel, pushSummary, resolution, reviewPath, rows, sentenceCount, snapshotOf, stateCounts, wordDiff, type Comparison, type Snapshot } from "./sync";
+import { bulkResolutions, changePath, dismissBinding, jsonKey, optionLabel, pushSummary, queueReviews, resolution, reviewPath, rows, sentenceCount, siteOf, snapshotOf, sourceLabel, sourceRemoteId, stateCounts, wordDiff, type Comparison, type Snapshot } from "./sync";
 
 const cmp: Comparison = {
   instance_id: 3, remote_id: "a", card_id: 1, head_revision_id: 118, accepted_hash: "", base: "none", app_hash: "fresh", fields: [],
@@ -105,4 +105,36 @@ test("sentenceCount splits where the server's sentences() does", () => {
 test("jsonKey names a hunk by its path inside the field", () => {
   expect(jsonKey("extensions", "extensions.depth_prompt.depth#0")).toBe("depth_prompt.depth");
   expect(jsonKey("extensions", "extensions#0")).toBe("");
+});
+
+test("a followed source's state names its site", () => {
+  expect(siteOf("chub:alice/vyr")).toBe("chub");
+  expect(siteOf("odd")).toBe("odd");
+  expect(sourceRemoteId({ kind: "character-tavern", ref: "u/vyr" })).toBe("character-tavern:u/vyr");
+  expect(sourceLabel("update", "risu:abc")).toBe("update on risu");
+  expect(sourceLabel("changed", "risu:abc")).toBe("update on risu");
+  expect(sourceLabel("missing", "chub:a/b")).toBe("no longer on chub");
+  expect(sourceLabel("unchanged", "chub:a/b")).toBe("up to date");
+});
+
+test("a source update reviews against its card or lorebook, three ways", () => {
+  const c = { instance_id: 4, push: false, state: "update" as const, remote_id: "chub:alice/vyr", binding_id: 21 };
+  expect(changePath({ ...c, card_id: 8 })).toBe("/sync/4/card/chub%3Aalice%2Fvyr?card=8&queue=1");
+  expect(changePath({ ...c, lorebook_id: 9 }, { state: "update" })).toBe("/sync/4/lorebook/chub%3Aalice%2Fvyr?card=9&queue=1&state=update");
+  expect(queueReviews([{ lorebook_id: 9, apps: [c] }])).toEqual([{ ...c, card_id: undefined, lorebook_id: 9 }]);
+});
+
+test("dismissBinding sends the app_hash the owner saw", async () => {
+  let sent: { url: string; body: string } | undefined;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (req: Request) => {
+      sent = { url: req.url, body: await req.text() };
+      return new Response(JSON.stringify({ id: 21 }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }),
+  );
+  await dismissBinding(21, "site-hash");
+  expect(sent?.url).toMatch(/\/api\/bindings\/21\/dismiss$/);
+  expect(JSON.parse(sent?.body ?? "")).toEqual({ app_hash: "site-hash" });
+  vi.unstubAllGlobals();
 });

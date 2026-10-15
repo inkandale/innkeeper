@@ -112,3 +112,12 @@ export function withCapability<I extends { plugin: string }>(
   const names = new Set((plugins ?? []).filter((p) => p.capabilities?.some((c) => caps.includes(c))).map((p) => p.name));
   return (instances ?? []).filter((i) => names.has(i.plugin));
 }
+
+/** followers are the instances that follow site sources: their plugin pulls but doesn't push. */
+export function followers(
+  instances: { id: number; plugin: string }[] | null | undefined,
+  plugins: { name: string; capabilities?: string[] | null }[] | null | undefined,
+): Set<number> {
+  const pushers = new Set(withCapability(instances, plugins, "push").map((i) => i.id));
+  return new Set(withCapability(instances, plugins, "pull").filter((i) => !pushers.has(i.id)).map((i) => i.id));
+}

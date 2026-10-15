@@ -67,7 +67,7 @@ type bindingEditIn struct {
 	ID   int64 `path:"id"`
 	Body struct {
 		Autosync *bool `json:"autosync,omitempty" doc:"Leave out to keep it as it is"`
-		Paused   *bool `json:"paused,omitempty" doc:"Checks skip a paused binding. Leave out to keep it as it is"`
+		Paused   *bool `json:"paused,omitempty" doc:"Checks skip a paused binding. Only a binding that follows a site source takes it. Leave out to keep it as it is"`
 	}
 }
 
@@ -262,13 +262,14 @@ func (s *Server) targetRoutes(api huma.API) {
 			"for a binding that follows a site source, each source check takes an update that merges without conflicts. " +
 			"A paused binding isn't checked. Destructive, as a push is: autosync replaces the app's copy."},
 		func(ctx context.Context, in *bindingEditIn) (*bindingOut, error) {
-			if in.Body.Autosync != nil {
-				if _, err := s.Targets.SetAutosync(ctx, in.ID, *in.Body.Autosync); err != nil {
+			// Paused first, since only a followed binding takes it.
+			if in.Body.Paused != nil {
+				if _, err := s.Targets.SetPaused(ctx, in.ID, *in.Body.Paused); err != nil {
 					return nil, s.fail(err)
 				}
 			}
-			if in.Body.Paused != nil {
-				if _, err := s.Targets.SetPaused(ctx, in.ID, *in.Body.Paused); err != nil {
+			if in.Body.Autosync != nil {
+				if _, err := s.Targets.SetAutosync(ctx, in.ID, *in.Body.Autosync); err != nil {
 					return nil, s.fail(err)
 				}
 			}
@@ -299,8 +300,9 @@ func (s *Server) targetRoutes(api huma.API) {
 		})
 
 	huma.Register(api, huma.Operation{OperationID: "dismiss-binding-change", Method: http.MethodPost, Path: "/bindings/{id}/dismiss",
-		Summary: "Accept the app's copy without changing the library", Tags: tags,
-		Description: "For a binding that follows a site source, ignores this change; the next one on the site shows again."},
+		Summary: "Ignore a site source's change", Tags: tags,
+		Description: "Accepts the site's copy without changing the library; the next change on the site shows again. " +
+			"Only for a binding that follows a site source."},
 		func(ctx context.Context, in *dismissIn) (*bindingOut, error) {
 			return s.binding(s.Targets.Dismiss(ctx, in.ID, in.Body.AppHash))
 		})

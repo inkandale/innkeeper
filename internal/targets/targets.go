@@ -142,14 +142,17 @@ func (s *Service) SetAutosync(ctx context.Context, id int64, on bool) (Binding, 
 	return s.Binding(ctx, id)
 }
 
-// SetPaused stops or restarts checks of a binding.
+// SetPaused stops or restarts checks of a binding that follows a site source.
 func (s *Service) SetPaused(ctx context.Context, id int64, on bool) (Binding, error) {
-	tag, err := s.pool.Exec(ctx, `UPDATE binding SET paused = $2 WHERE id = $1`, id, on)
+	tag, err := s.pool.Exec(ctx, `UPDATE binding SET paused = $2 WHERE id = $1 AND NOT push`, id, on)
 	if err != nil {
 		return Binding{}, err
 	}
 	if tag.RowsAffected() == 0 {
-		return Binding{}, ErrNotFound
+		if _, err := s.Binding(ctx, id); err != nil {
+			return Binding{}, err
+		}
+		return Binding{}, fmt.Errorf("%w: only a binding that follows a site source can be paused", ErrCannot)
 	}
 	return s.Binding(ctx, id)
 }

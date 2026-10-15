@@ -366,6 +366,20 @@ func TestASourceGoneFromTheSiteIsMissing(t *testing.T) {
 	}
 }
 
+func TestAnAppBindingCantBePausedOrDismissed(t *testing.T) {
+	e := setup(t, nil)
+	b := e.push(e.card)
+	if _, err := e.s.SetPaused(e.ctx, b.ID, true); !errors.Is(err, ErrCannot) {
+		t.Errorf("pause = %v, want ErrCannot", err)
+	}
+	if _, err := e.s.Dismiss(e.ctx, b.ID, ""); !errors.Is(err, ErrCannot) {
+		t.Errorf("dismiss = %v, want ErrCannot", err)
+	}
+	if got, err := e.s.SetAutosync(e.ctx, b.ID, true); err != nil || !got.Autosync || got.Paused {
+		t.Errorf("autosync = %+v, %v", got, err)
+	}
+}
+
 func TestAPausedSourceIsNotChecked(t *testing.T) {
 	e := setup(t, nil)
 	e.addUpstream(nil)

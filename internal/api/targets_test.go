@@ -418,6 +418,25 @@ func TestReconcileAndSyncRefuseAPullOnlyTarget(t *testing.T) {
 	e.call("POST", "/syncs", map[string]any{"instance_id": inst}, 400, nil)
 }
 
+func TestAnAppBindingCantBePausedOrDismissed(t *testing.T) {
+	e := newEnv(t)
+	inst, _ := e.target()
+	var c entityOut
+	e.call("POST", "/cards", map[string]any{"data": map[string]any{"name": "Brakka"}}, 201, &c)
+	pushed, err := e.s.Targets.Push(context.Background(), library.Card, inst, c.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b targets.Binding
+	path := fmt.Sprintf("/bindings/%d", pushed.ID)
+	e.call("PATCH", path, map[string]any{"paused": true}, 400, nil)
+	e.call("POST", path+"/dismiss", map[string]any{"app_hash": "x"}, 400, nil)
+	e.call("PATCH", path, map[string]any{"autosync": true}, 200, &b)
+	if !b.Autosync || b.Paused {
+		t.Fatalf("binding = %+v", b)
+	}
+}
+
 func TestRemovingASourceUnbindsItAtOnce(t *testing.T) {
 	e := newEnv(t)
 	_, dir := e.upstream()

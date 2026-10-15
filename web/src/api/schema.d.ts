@@ -197,8 +197,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Accept the app's copy without changing the library
-         * @description For a binding that follows a site source, ignores this change; the next one on the site shows again.
+         * Ignore a site source's change
+         * @description Accepts the site's copy without changing the library; the next change on the site shows again. Only for a binding that follows a site source.
          */
         post: operations["dismiss-binding-change"];
         delete?: never;
@@ -2178,7 +2178,7 @@ export interface components {
             readonly $schema?: string;
             /** @description Leave out to keep it as it is */
             autosync?: boolean;
-            /** @description Checks skip a paused binding. Leave out to keep it as it is */
+            /** @description Checks skip a paused binding. Only a binding that follows a site source takes it. Leave out to keep it as it is */
             paused?: boolean;
         };
         Blob: {

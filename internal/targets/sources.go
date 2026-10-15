@@ -267,14 +267,17 @@ func hasConflict(c Comparison) bool {
 	return false
 }
 
-// Dismiss accepts the app's copy, leaving the library as it is. appHash is
-// the copy the owner saw; if the app's differs now, it returns a StaleError.
-// For a followed source, this is "ignore this change": the next change on
-// the site shows again.
+// Dismiss is "ignore this change" for a followed source: it accepts the
+// site's copy, leaving the library as it is, and the next change on the site
+// shows again. appHash is the copy the owner saw; if the site's differs now,
+// it returns a StaleError.
 func (s *Service) Dismiss(ctx context.Context, id int64, appHash string) (Binding, error) {
 	b, err := s.Binding(ctx, id)
 	if err != nil {
 		return Binding{}, err
+	}
+	if b.Push {
+		return Binding{}, fmt.Errorf("%w: only a change to a followed site source can be dismissed", ErrCannot)
 	}
 	lk, entity := bindingEntity(b)
 	k := targetKind(lk)

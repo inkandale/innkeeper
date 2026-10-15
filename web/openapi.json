@@ -348,7 +348,7 @@
             "type": "boolean"
           },
           "paused": {
-            "description": "Checks skip a paused binding. Leave out to keep it as it is",
+            "description": "Checks skip a paused binding. Only a binding that follows a site source takes it. Leave out to keep it as it is",
             "type": "boolean"
           }
         },
@@ -4303,7 +4303,7 @@
     },
     "/bindings/{id}/dismiss": {
       "post": {
-        "description": "For a binding that follows a site source, ignores this change; the next one on the site shows again.",
+        "description": "Accepts the site's copy without changing the library; the next change on the site shows again. Only for a binding that follows a site source.",
         "operationId": "dismiss-binding-change",
         "parameters": [
           {
@@ -4348,7 +4348,7 @@
             "description": "Error"
           }
         },
-        "summary": "Accept the app's copy without changing the library",
+        "summary": "Ignore a site source's change",
         "tags": [
           "Sync"
         ]

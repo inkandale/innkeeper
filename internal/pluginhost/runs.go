@@ -52,8 +52,8 @@ func (r *Runs) Handle(ctx context.Context, method string, params json.RawMessage
 	r.mu.Lock()
 	rn, ok := r.runs[head.Run]
 	r.mu.Unlock()
-	if !ok || rn.instance != callerInstance(ctx) {
-		r.log.Warn("plugin call for a run that is not active", "method", method, "instance", callerInstance(ctx))
+	if !ok || rn.instance != CallerInstance(ctx) {
+		r.log.Warn("plugin call for a run that is not active", "method", method, "instance", CallerInstance(ctx))
 		return nil, &protocol.Error{Code: protocol.CodeInvalidParams, Message: "no active run with this token"}
 	}
 	return rn.handler(ctx, method, params)
@@ -66,8 +66,8 @@ func fromInstance(ctx context.Context, instance string) context.Context {
 	return context.WithValue(ctx, instanceKey{}, instance)
 }
 
-// callerInstance is the instance whose plugin made the call, or "".
-func callerInstance(ctx context.Context) string {
+// CallerInstance is the instance whose plugin made the call, or "".
+func CallerInstance(ctx context.Context) string {
 	id, _ := ctx.Value(instanceKey{}).(string)
 	return id
 }

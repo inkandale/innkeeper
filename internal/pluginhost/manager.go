@@ -74,6 +74,16 @@ func (m *Manager) Start(ctx context.Context, inst Instance) error {
 	return nil
 }
 
+// Info is the instance's initialize reply, starting its plugin if needed.
+func (m *Manager) Info(ctx context.Context, inst Instance) (protocol.InitializeResult, error) {
+	e, err := m.acquire(ctx, inst)
+	if err != nil {
+		return protocol.InitializeResult{}, err
+	}
+	defer m.release(e)
+	return e.proc.Info, nil
+}
+
 func (m *Manager) acquire(ctx context.Context, inst Instance) (*entry, error) {
 	// ponytail: one lock across plugin startup, so a slow start (up to the
 	// initialize timeout) also delays other plugins' calls, releases, and

@@ -174,3 +174,14 @@ func TestOlderVersionDoesNotSupersedeNewer(t *testing.T) {
 		t.Fatal("a call with an older version made StopIdle stop the newer process")
 	}
 }
+
+func TestManagerInfoStartsThePlugin(t *testing.T) {
+	mgr, inst := newManager(t, time.Minute)
+	info, err := mgr.Info(context.Background(), inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Name != "fake" || mgr.proc(inst.key()) == nil {
+		t.Fatalf("Info = %+v, running %v", info, mgr.proc(inst.key()) != nil)
+	}
+}

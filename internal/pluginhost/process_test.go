@@ -259,3 +259,21 @@ func waitDead(t *testing.T, p *Process) {
 		t.Fatal("plugin process did not exit")
 	}
 }
+
+func TestCheckInfoRefusesServicesOutsideCapabilities(t *testing.T) {
+	info := func(caps []string, services ...string) protocol.InitializeResult {
+		return protocol.InitializeResult{Protocol: protocol.Version, Name: "p", Version: "1", Capabilities: caps, Services: services}
+	}
+	manifest := func(caps ...string) *protocol.Manifest {
+		return &protocol.Manifest{Name: "p", Version: "1", Capabilities: caps}
+	}
+	if err := checkInfo(manifest("ai"), info([]string{"ai"}, protocol.MethodAIChat)); err != nil {
+		t.Fatalf("ai plugin offering ai.chat: %v", err)
+	}
+	if err := checkInfo(manifest("ai"), info([]string{"ai"}, "ai.draw")); err == nil {
+		t.Error("an unknown service passed")
+	}
+	if err := checkInfo(manifest("action"), info([]string{"action"}, protocol.MethodAIChat)); err == nil {
+		t.Error("ai.chat from a plugin without ai passed")
+	}
+}

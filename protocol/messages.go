@@ -28,6 +28,8 @@ type InitializeResult struct {
 	Name         string   `json:"name"`
 	Version      string   `json:"version"`
 	Capabilities []string `json:"capabilities"`
+	// Services are the service methods this instance offers, for ai.
+	Services []string `json:"services,omitempty"`
 }
 
 // The import capability. The core calls import.run; until it replies, the

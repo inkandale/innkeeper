@@ -162,6 +162,11 @@ func checkInfo(m *protocol.Manifest, info protocol.InitializeResult) error {
 	if !slices.Equal(got, want) {
 		return fmt.Errorf("plugin %s reported capabilities %v; manifest declares %v", m.Name, got, want)
 	}
+	for _, s := range info.Services {
+		if c, ok := protocol.Services[s]; !ok || !m.Has(c) {
+			return fmt.Errorf("plugin %s offers %q, which isn't a service of its capabilities", m.Name, s)
+		}
+	}
 	return nil
 }
 

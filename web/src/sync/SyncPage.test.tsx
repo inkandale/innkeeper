@@ -21,11 +21,13 @@ beforeEach(() => {
         return json([
           { id: 2, name: "Lumiverse", plugin: "lumiverse" },
           { id: 3, name: "Cards folder", plugin: "folder" },
+          { id: 4, name: "URL import", plugin: "url-import" },
         ]);
       if (u.pathname === "/api/plugins")
         return json([
           { name: "lumiverse", capabilities: ["push", "pull"] },
           { name: "folder", capabilities: ["import"] },
+          { name: "url-import", capabilities: ["import", "sites", "pull"] },
         ]);
       if (u.pathname === "/api/cards/search")
         return json({
@@ -35,7 +37,7 @@ beforeEach(() => {
       if (u.pathname === "/api/jobs" && u.searchParams.get("kind") === "target.reconcile")
         return json([{ id: 5, instance_id: 2, kind: "target.reconcile", status: "succeeded", created_at: now, payload: {}, progress: { totals: { bound: 9, auto_bound: 1, auto_imported: 2, auto_pulled: 3 } } }]);
       if (u.pathname === "/api/sync/changes")
-        return json({ rows: [], counts: { "2": { differs: 2, both_changed: 1, error: 1, new: 3, ahead: 3, missing: 2 } } });
+        return json({ rows: [], counts: { "2": { differs: 2, both_changed: 1, error: 1, new: 3, ahead: 3, missing: 2 }, "4": { update: 2 } } });
       if (u.pathname === "/api/jobs/6") return json({ id: 6, kind: "x", status: "running", created_at: now, payload: {}, progress: {} });
       if (req.method === "POST" && u.pathname !== "/api/cards/search") {
         posts.push({ path: u.pathname, body: await req.json().catch(() => undefined) });
@@ -113,4 +115,14 @@ test("Refresh starts a scan", async () => {
   await userEvent.click(await screen.findByRole("button", { name: "Refresh" }));
   await waitFor(() => expect(posts).toEqual([{ path: "/api/scans", body: undefined }]));
   expect(await screen.findByText("Refreshing every app…")).toBeInTheDocument();
+});
+
+test("site sources get their own line: their updates and a check of every source", async () => {
+  renderSync();
+  const updates = await screen.findByRole("link", { name: "2 updates on their sites" });
+  expect(updates).toHaveAttribute("href", "/sync/changes?state=update");
+  expect(screen.queryByRole("row", { name: /URL import/ })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Check for updates" }));
+  await waitFor(() => expect(posts).toEqual([{ path: "/api/source-checks", body: undefined }]));
+  expect(await screen.findByText("Checking every source for updates…")).toBeInTheDocument();
 });

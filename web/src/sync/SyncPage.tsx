@@ -1,14 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { api, must, withCapability } from "../api/client";
+import { api, followers, must, withCapability } from "../api/client";
 import { instancesQuery, pluginsQuery } from "../api/queries";
 import { age, finished, jobToast, useJob, type Job } from "../settings/jobUtil";
 import { useToast } from "../shell/Toasts";
 import { needsYou, stateCounts } from "./sync";
 import "./Sync.css";
 
-/** useRun starts a job for every app and watches it until it finishes, then refreshes the page's counts. */
+/** useRun starts a job and watches it until it finishes, then refreshes the page's counts. */
 function useRun(start: () => Promise<Job>, text: string) {
   const qc = useQueryClient();
   const toast = useToast();
@@ -57,10 +57,13 @@ export function Sync() {
     queryFn: async () => must(await api.GET("/sync/changes")),
   });
   const targets = withCapability(instances.data, plugins.data, "push");
+  const follows = followers(instances.data, plugins.data);
+  const updates = [...follows].reduce((n, i) => n + (changes.data?.counts[String(i)]?.update ?? 0), 0);
   const cantCheck = targets.some((i) => stateCounts(facets.data?.facets?.targets, i.id).cant_check > 0);
 
   const refresh = useRun(async () => must(await api.POST("/scans")), "Refreshing every app…");
   const sync = useRun(async () => must(await api.POST("/syncs", { body: {} })), "Syncing every app…");
+  const checkSources = useRun(async () => must(await api.POST("/source-checks")), "Checking every source for updates…");
 
   if (instances.isError) return <p className="error page">{instances.error.message}</p>;
   return (
@@ -147,6 +150,19 @@ export function Sync() {
             </tbody>
           </table>
         </>
+      )}
+      {!!follows.size && (
+        <section>
+          <h2>Sources</h2>
+          <div className="toolbar">
+            <Link to="/sync/changes?state=update">
+              {updates} {updates === 1 ? "update" : "updates"} on their sites
+            </Link>
+            <button className="button" disabled={checkSources.busy} onClick={checkSources.start}>
+              Check for updates
+            </button>
+          </div>
+        </section>
       )}
     </section>
   );

@@ -14,8 +14,8 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/merge"
 )
 
-// followers maps each pull-only instance to the source kinds it follows. A
-// kind two plugins claim goes to the oldest working instance.
+// followers maps each working pull-only instance to the source kinds it
+// follows, maybe none. A kind two plugins claim goes to the oldest instance.
 func (s *Service) followers(ctx context.Context) (map[int64][]string, error) {
 	insts, err := s.reg.InstancesWith(ctx, "pull")
 	if err != nil {
@@ -29,6 +29,7 @@ func (s *Service) followers(ctx context.Context) (map[int64][]string, error) {
 		if in.BrokenError != nil || m == nil || m.Has("push") {
 			continue
 		}
+		out[in.ID] = []string{}
 		for _, kind := range m.SourceKinds {
 			if !claimed[kind] {
 				claimed[kind] = true
@@ -41,14 +42,14 @@ func (s *Service) followers(ctx context.Context) (map[int64][]string, error) {
 
 // follow binds each live source of kinds that has no binding on the
 // instance yet, and unbinds the instance's followed bindings whose source the
-// owner removed. only limits it to one entity; 0 means all of them. The
+// owner removed or whose kind the plugin no longer lists. only limits it to one entity; 0 means all of them. The
 // accepted copy is the entity's first revision a plugin wrote, else its
 // first, so an update published since the import shows on the first check.
 //
 // ponytail: an entity with two sources of one followed kind follows the
 // older; a binding per source needs a key wider than (instance, entity).
 func (s *Service) follow(ctx context.Context, k kind, instanceID int64, kinds []string, only int64) error {
-	_, info, err := s.describeReconcile(ctx, k, instanceID)
+	inst, info, err := s.describeReconcile(ctx, k, instanceID)
 	if k.isLorebook() && errors.Is(err, ErrCannot) {
 		// The target keeps lorebooks inside cards, so it can't follow one.
 		return nil
@@ -59,8 +60,9 @@ func (s *Service) follow(ctx context.Context, k kind, instanceID int64, kinds []
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `DELETE FROM binding b WHERE b.instance_id = $1 AND NOT b.push AND b.`+k.FK+` IS NOT NULL
 			AND ($2::bigint = 0 OR b.`+k.FK+` = $2) AND NOT EXISTS (SELECT 1 FROM `+k.SourceTable+` src
-				WHERE src.`+k.FK+` = b.`+k.FK+` AND src.removed_at IS NULL AND src.kind || ':' || src.ref = b.remote_id)`,
-			instanceID, only); err != nil {
+				WHERE src.`+k.FK+` = b.`+k.FK+` AND src.removed_at IS NULL AND src.kind || ':' || src.ref = b.remote_id
+					AND src.kind = ANY($3))`,
+			instanceID, only, inst.Manifest.SourceKinds); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx, `SELECT DISTINCT ON (src.`+k.FK+`) src.`+k.FK+`, src.kind || ':' || src.ref, e.head_revision_id,

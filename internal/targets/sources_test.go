@@ -266,6 +266,21 @@ func TestRemovingASourceStopsFollowingIt(t *testing.T) {
 	}
 }
 
+func TestAKindThePluginDropsIsNoLongerFollowed(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	card := e.imported("vyr", vyrCard)
+	e.publish("vyr", vyrCard, "")
+	e.follow(card)
+	e.reg.Manifests()["upstream"].SourceKinds = nil
+	if _, err := e.s.CheckSources(e.ctx, func(ScanProgress) {}); err != nil {
+		t.Fatal(err)
+	}
+	if list, err := e.s.Bindings(e.ctx, library.Card, card); err != nil || len(list) != 0 {
+		t.Fatalf("bindings = %+v, %v", list, err)
+	}
+}
+
 func TestScanLeavesFollowedSourcesAlone(t *testing.T) {
 	e := setup(t, nil)
 	e.addUpstream(nil)

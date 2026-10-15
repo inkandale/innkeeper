@@ -102,7 +102,7 @@ export const macroParts = (s: string, start = false) => s.split(start ? macroOrS
 ```tsx
 test("macros in a field get a highlight behind the text", async () => {
   renderAt("/cards/7");
-  await userEvent.type(await screen.findByLabelText("Description"), " {{{{}}char}}");
+  await userEvent.type(await screen.findByLabelText("Description"), " {{{{char}}");
   const mark = document.querySelector(".macro-mirror mark");
   expect(mark).toHaveTextContent("{{char}}");
 });
@@ -174,7 +174,7 @@ CSS in `Card.css`:
 }
 ```
 
-`.field > .macro` joins the existing `.field > .grow` margin rule (as `display: block`), and `.greeting > .macro { flex: 1; }`.
+`.field > .macro` gets the same width and margin as `.field > .grow`, which lorebook entries still use, and `.greeting > .macro { flex: 1; }`.
 
 - [ ] **Step 4: Run `npx vitest run src/card`** and watch everything pass, then commit `feat(web): highlight macros in card text fields`.
 

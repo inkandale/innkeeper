@@ -135,6 +135,7 @@
   white-space: pre-wrap;
   overflow-wrap: break-word;
   pointer-events: none;
+  scrollbar-gutter: stable;
 }
 
 .macro-mirror mark {
@@ -143,10 +144,12 @@
   border-radius: 3px;
 }
 
+/* Both reserve a scrollbar's width, so a scrollbar on the textarea can't make the two wrap differently. */
 .macro > textarea {
   position: relative;
   display: block;
   background: transparent;
+  scrollbar-gutter: stable;
 }
 
 .extensions,

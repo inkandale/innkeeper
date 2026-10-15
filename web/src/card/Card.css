@@ -145,6 +145,7 @@
 }
 
 /* Both reserve a scrollbar's width, so a scrollbar on the textarea can't make the two wrap differently. */
+.card-aside .input:disabled,
 .macro > textarea:disabled {
   opacity: 0.55;
   cursor: progress;

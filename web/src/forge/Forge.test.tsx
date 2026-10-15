@@ -193,3 +193,13 @@ test("a new card's Forge runs the new action from the concept", async () => {
   expect(runs[0]).toMatchObject({ action: "generate", instruction: "A dwarf smith", inputs: { point_of_view: "third" }, entity: { kind: "card" } });
   expect((runs[0] as { entity: object }).entity).not.toHaveProperty("data");
 });
+
+test("a whole-card run waits while another runs", async () => {
+  jobs = [job({ id: 5, status: "running", payload: { action: "reforge" } })];
+  renderAt("/cards/7");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: /Reforge/ }));
+  await user.type(screen.getByLabelText("Instruction"), "Robots{Enter}");
+  expect(await screen.findByText(/waiting for the run before it/)).toBeInTheDocument();
+  expect(runs).toHaveLength(0);
+});

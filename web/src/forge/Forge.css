@@ -134,6 +134,7 @@
 .forge-raw {
   font-family: ui-monospace, monospace;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   max-height: 20em;
   overflow: auto;
   background: var(--bg);
@@ -527,6 +528,11 @@
 
 .forge-bar {
   width: 30%;
+}
+
+.forge-dims td:nth-child(3) {
+  width: 3em;
+  text-align: right;
 }
 
 .forge-bar span {

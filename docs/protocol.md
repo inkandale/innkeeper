@@ -759,7 +759,7 @@ replaced, such as a skill renamed, and reply with the new one.
 | Param | Meaning |
 |---|---|
 | `type` | The record type |
-| `url` | A URL the owner typed. Send either `url`, or `path` and `name` |
+| `url` | An `http` or `https` URL the owner typed. Send either `url`, or `path` and `name` |
 | `path` | An uploaded file, directly inside `blob_tmp`. Read it; don't move or change it. The core deletes it after your reply |
 | `name` | The uploaded file's name, such as `SKILL.md` or `college.zip` |
 

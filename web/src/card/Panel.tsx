@@ -37,9 +37,7 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
     <aside className="card-aside">
       {avatar ? <img className="portrait" src={thumb(avatar, 640)} alt="" /> : <div className="portrait" />}
       <Image sha={avatar} busy={avatarBusy} onAvatar={onAvatar} />
-      <input className="input name" aria-label="Name" value={text(data.name)} onChange={(e) => edit("name", e.target.value)} />
-      <input className="input" aria-label="Creator" placeholder="Creator" value={text(data.creator)} onChange={(e) => edit("creator", e.target.value)} />
-      <ChipInput label="Tags" values={strings(data.tags)} onChange={(v) => edit("tags", v)} />
+      <Identity data={data} edit={edit} />
       <div className="row">
         <button className="button primary" disabled={!dirty || saving} onClick={onSave}>
           Save
@@ -58,6 +56,22 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
       <Lorebooks ids={card.lorebooks ?? []} />
       <Revisions kind="card" id={card.id} />
     </aside>
+  );
+}
+
+/** Identity edits the card's name, nickname, creator, version, and tags. */
+export function Identity({ data, edit }: { data: Data; edit: (key: string, value: unknown) => void }) {
+  const field = (key: string, label: string) => (
+    <input className="input" aria-label={label} placeholder={label} value={text(data[key])} onChange={(e) => edit(key, e.target.value)} />
+  );
+  return (
+    <>
+      <input className="input name" aria-label="Name" placeholder="Name" value={text(data.name)} onChange={(e) => edit("name", e.target.value)} />
+      {field("nickname", "Nickname")}
+      {field("creator", "Creator")}
+      {field("character_version", "Version")}
+      <ChipInput label="Tags" values={strings(data.tags)} onChange={(v) => edit("tags", v)} />
+    </>
   );
 }
 

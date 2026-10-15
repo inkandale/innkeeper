@@ -208,6 +208,15 @@ test("creator notes in other languages save as code and notes pairs", async () =
   expect(puts[0]).toMatchObject({ body: { data: { creator_notes_multilingual: { de: "Ein Zwerg." } } } });
 });
 
+test("nickname and version save with the card", async () => {
+  renderAt("/cards/7");
+  await userEvent.type(await screen.findByLabelText("Nickname"), "Brak");
+  await userEvent.type(screen.getByLabelText("Version"), "2");
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(puts).toHaveLength(1));
+  expect(puts[0]).toMatchObject({ body: { data: { nickname: "Brak", character_version: "2" } } });
+});
+
 test("macros in a field get a highlight behind the text", async () => {
   renderAt("/cards/7");
   // userEvent reads "{{" as one "{".

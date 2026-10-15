@@ -421,6 +421,10 @@ Phases 2 and 3 can overlap once the protocol section of
   and for warning about macros a bound app doesn't support.
 - MCP and CLI access to actions.
 - A "fix this" button on a finding that runs a field action.
+- A guided interview for a new card, modeled on
+  [The Card Architect](https://character-tavern.com/character/stranger/character_card_creator):
+  the model asks about the character, offers three concepts, then builds the
+  card. An action is one request and reply, so this needs a multi-turn run.
 
 ## Tests
 

@@ -92,12 +92,13 @@ function renderChanges(url = "/sync/changes") {
 test("one row per card, with each app's state under its column, orphans first", async () => {
   renderChanges();
   const ann = await screen.findByRole("row", { name: /Ann/ });
+  expect(screen.getByRole("columnheader", { name: "Card or lorebook" })).toBeInTheDocument();
   expect(screen.getByRole("columnheader", { name: "Lumiverse" })).toBeInTheDocument();
   expect(screen.getByRole("columnheader", { name: "Tavern" })).toBeInTheDocument();
   const rows = screen.getAllByRole("row").slice(1);
   expect(rows[0]!).toHaveTextContent("Zed (Lumiverse only)");
   expect(within(ann).getByRole("link", { name: "Ann" })).toHaveAttribute("href", "/cards/1");
-  // Checkbox, Card, Lumiverse, Tavern, Action.
+  // Checkbox, Card or lorebook, Lumiverse, Tavern, Action.
   expect(within(ann).getAllByRole("cell")[2]).toHaveTextContent("differs");
   expect(within(ann).getAllByRole("cell")[3]).toHaveTextContent("");
   const bo = screen.getByRole("row", { name: /Bo/ });
@@ -169,7 +170,7 @@ test("Review one by one keeps the filter", async () => {
 });
 
 test("nothing to do", async () => {
-  vi.stubGlobal("fetch", vi.fn(async () => json({ rows: [], counts: {} })));
+  vi.stubGlobal("fetch", vi.fn(async (req: Request) => json(new URL(req.url).pathname === "/api/sync/changes" ? { rows: [], counts: {} } : [])));
   renderChanges();
   expect(await screen.findByText("Nothing needs you.")).toBeInTheDocument();
 });
@@ -208,6 +209,7 @@ test("a followed source's entries offer review, ignoring, and removing the sourc
       const u = new URL(req.url);
       if (u.pathname === "/api/sync/changes") return json(followed);
       if (u.pathname === "/api/instances") return json([{ id: 4, name: "URL import", plugin: "url-import" }]);
+      if (u.pathname === "/api/plugins") return json([{ name: "url-import", capabilities: ["pull"] }]);
       if (req.method !== "GET") {
         sent.push({ method: req.method, path: u.pathname, ...(req.method === "DELETE" ? {} : { body: await req.json() }) });
         return req.method === "DELETE" ? new Response(null, { status: 204 }) : json({ id: 21, instance_id: 4, remote_id: "chub:alice/vyr" });
@@ -217,8 +219,9 @@ test("a followed source's entries offer review, ignoring, and removing the sourc
   );
   renderChanges();
   const vyr = await screen.findByRole("row", { name: /Vyr/ });
-  // Checkbox, Card, URL import, Action.
+  // Checkbox, Card or lorebook, URL import, Action.
   await waitFor(() => expect(within(vyr).getAllByRole("cell")[2]).toHaveTextContent("update on chub"));
+  expect(await screen.findByRole("option", { name: "URL import (source)" })).toBeInTheDocument();
   expect(within(vyr).getByRole("link", { name: "Review" })).toHaveAttribute("href", "/sync/4/card/chub%3Aalice%2Fvyr?card=8&queue=1");
   const forge = screen.getByRole("row", { name: /Forge lore/ });
   expect(within(forge).getByRole("link", { name: "Forge lore" })).toHaveAttribute("href", "/lorebooks/9");

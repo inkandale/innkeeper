@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { api, ApiError, must } from "../api/client";
-import { instancesQuery } from "../api/queries";
+import { instancesQuery, useFollowers } from "../api/queries";
 import type { components } from "../api/schema";
 import { badgeClass } from "../cards/Tile";
 import { jobToast } from "../settings/jobUtil";
@@ -60,6 +60,7 @@ export function Changes() {
   });
   const instances = useQuery(instancesQuery);
   const name = (id: number) => instances.data?.find((i) => i.id === id)?.name ?? `#${id}`;
+  const follows = useFollowers();
   // The owner's changes from the defaults.
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [pushing, setPushing] = useState<{ card: number; instance: number }>();
@@ -239,6 +240,7 @@ export function Changes() {
           {[...new Set([...Object.keys(changes.data?.counts ?? {}).map(Number), ...(instance ? [instance] : [])])].map((i) => (
             <option key={i} value={i}>
               {name(i)}
+              {follows?.has(i) && " (source)"}
             </option>
           ))}
         </select>
@@ -268,7 +270,7 @@ export function Changes() {
                 <th>
                   <span className="visually-hidden">Apply</span>
                 </th>
-                <th>Card</th>
+                <th>Card or lorebook</th>
                 {apps.map((i) => (
                   <th key={i}>{name(i)}</th>
                 ))}

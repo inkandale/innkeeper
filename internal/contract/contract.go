@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"syscall"
 	"time"
 
@@ -88,15 +89,15 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	}
 
 	suites := []struct {
-		capability string
-		run        func() []Result
+		capabilities []string
+		run          func() []Result
 	}{
-		{"push", func() []Result { return checkTarget(ctx, p, m) }},
-		{"auth", func() []Result { return []Result{{"auth.setup returns a form or -32601", checkSetup(ctx, p)}} }},
-		{"mcp", func() []Result { return []Result{{"mcp.tools returns valid tools", checkTools(ctx, p)}} }},
-		{"catalog", func() []Result { return checkCatalog(ctx, p, tmp) }},
-		{"sites", func() []Result { return checkSites(ctx, p) }},
-		{"codec", func() []Result {
+		{[]string{"push", "pull"}, func() []Result { return checkTarget(ctx, p, m) }},
+		{[]string{"auth"}, func() []Result { return []Result{{"auth.setup returns a form or -32601", checkSetup(ctx, p)}} }},
+		{[]string{"mcp"}, func() []Result { return []Result{{"mcp.tools returns valid tools", checkTools(ctx, p)}} }},
+		{[]string{"catalog"}, func() []Result { return checkCatalog(ctx, p, tmp) }},
+		{[]string{"sites"}, func() []Result { return checkSites(ctx, p) }},
+		{[]string{"codec"}, func() []Result {
 			return runChecks(ctx, p, []check{
 				{checkRoundTripName, func(ctx context.Context) error { return checkRoundTrip(ctx, p, m, tmp) }},
 				{checkRejectsName, func(ctx context.Context) error { return checkRejects(ctx, p, tmp) }},
@@ -104,7 +105,7 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 		}},
 	}
 	for _, suite := range suites {
-		if !m.Has(suite.capability) {
+		if !slices.ContainsFunc(suite.capabilities, m.Has) {
 			continue
 		}
 		results = append(results, suite.run()...)
@@ -147,14 +148,34 @@ func dead(err error, p *pluginhost.Process) bool {
 	return errors.Is(err, protocol.ErrClosed) || !p.Alive()
 }
 
-// checkTarget checks target.describe and, for a pull target, its lists.
+const checkGoneName = "a pull-only target answers -32004 for an item it doesn't have"
+
+// checkTarget checks target.describe and, for a pull target, its lists. A
+// pull-only target follows site sources, so it must also say when one is gone.
 func checkTarget(ctx context.Context, p *pluginhost.Process, m *protocol.Manifest) []Result {
 	info, err := checkDescribe(ctx, p, m)
 	results := []Result{{"target.describe returns a valid description", err}}
 	if err != nil || !info.Pull || dead(err, p) {
 		return results
 	}
-	return append(results, Result{"a pull target answers target.list and target.list_lorebooks", checkLists(ctx, p)})
+	err = checkLists(ctx, p)
+	results = append(results, Result{"a pull target answers target.list and target.list_lorebooks", err})
+	if m.Has("push") || dead(err, p) {
+		return results
+	}
+	return append(results, Result{checkGoneName, checkGone(ctx, p)})
+}
+
+// checkGone asks for a card and a lorebook no site has. The core shows -32004
+// as "no longer on the site", and anything else as a failed check.
+func checkGone(ctx context.Context, p *pluginhost.Process) error {
+	for _, method := range []string{protocol.MethodTargetGet, protocol.MethodTargetGetLorebook} {
+		err := call(ctx, p, method, protocol.TargetGetParams{RemoteID: "innkeeper-contract:none"}, nil)
+		if err := expectCode(err, protocol.CodeRemoteNotFound); err != nil {
+			return fmt.Errorf("%s: %w", method, err)
+		}
+	}
+	return nil
 }
 
 // checkTmpFile reports why path isn't a file the core would take from blob_tmp.

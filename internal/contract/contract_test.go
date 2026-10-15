@@ -284,3 +284,30 @@ func TestSitesChecks(t *testing.T) {
 		t.Fatalf("a valid unwanted source failed the validity check: %v", err)
 	}
 }
+
+func TestPullOnlyTargetChecks(t *testing.T) {
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"pull"}), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, len(results))
+	for i, r := range results {
+		names[i] = r.Name
+	}
+	if !slices.Contains(names, "a pull target answers target.list and target.list_lorebooks") || !slices.Contains(names, checkGoneName) {
+		t.Fatalf("ran %v, want the list and gone checks", names)
+	}
+	if f := failed(results); len(f) > 0 {
+		t.Fatalf("checks failed: %v", f)
+	}
+
+	Config = map[string]any{"fail_get": "retryable"}
+	t.Cleanup(func() { Config = nil })
+	results, err = Check(context.Background(), testutil.FakePluginWith(t, []string{"pull"}), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := failed(results)[checkGoneName]; got == nil || !strings.Contains(got.Error(), "-32004") {
+		t.Fatalf("a retryable error for a gone item: got %v, want an -32004 failure", got)
+	}
+}

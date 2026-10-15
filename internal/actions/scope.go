@@ -31,13 +31,13 @@ func Scope(a protocol.Action, field, kind string, base, proposal json.RawMessage
 	}
 	allowed := func(key string) bool {
 		switch {
-		case a.ReportOnly:
+		// Linked lorebooks hold a card's book; the library refuses one inside the card.
+		case a.ReportOnly, kind == protocol.ApplyCard && key == "character_book":
 			return false
 		case len(a.Fields) > 0:
 			return key == field
 		}
-		// Linked lorebooks hold a card's book; the library refuses one inside the card.
-		return kind != protocol.ApplyCard || key != "character_book"
+		return true
 	}
 	union := maps.Clone(before)
 	maps.Copy(union, after)

@@ -1434,6 +1434,44 @@
         ],
         "type": "object"
       },
+      "ContextRefs": {
+        "additionalProperties": false,
+        "properties": {
+          "cards": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "maxItems": 50,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "lorebooks": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "maxItems": 50,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "skills": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "CreateCollectionInBody": {
         "additionalProperties": false,
         "properties": {
@@ -1515,6 +1553,10 @@
           "config": {
             "additionalProperties": {},
             "type": "object"
+          },
+          "library_access": {
+            "description": "Lets an action plugin read the library while it runs an action that asks to.",
+            "type": "boolean"
           },
           "name": {
             "minLength": 1,
@@ -1736,6 +1778,30 @@
           "provenance",
           "created_at",
           "revision"
+        ],
+        "type": "object"
+      },
+      "EntityStruct": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "description": "The draft's data. Omit for a new card's action."
+          },
+          "id": {
+            "description": "The card or lorebook the draft belongs to; omit for one not saved yet",
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "card",
+              "lorebook"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
         ],
         "type": "object"
       },
@@ -2138,6 +2204,18 @@
         ],
         "type": "object"
       },
+      "ImageRefs": {
+        "additionalProperties": false,
+        "properties": {
+          "avatar": {
+            "type": "string"
+          },
+          "reference": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "ImportInBody": {
         "additionalProperties": false,
         "properties": {
@@ -2221,6 +2299,9 @@
             "format": "int64",
             "type": "integer"
           },
+          "library_access": {
+            "type": "boolean"
+          },
           "name": {
             "type": "string"
           },
@@ -2250,6 +2331,7 @@
           "name",
           "config",
           "secrets",
+          "library_access",
           "created_at",
           "updated_at"
         ],
@@ -2339,7 +2421,7 @@
           },
           "payload": {},
           "progress": {
-            "description": "An import's has done, total, message, imported, skipped, failed, and errors. A catalog ingest's has done, total, and message, and once finished, added, updated, removed, and skipped. A running reconcile's has done and total; a finished one's is the snapshot, cut to totals in job lists and streams."
+            "description": "An import's has done, total, message, imported, skipped, failed, and errors. A catalog ingest's has done, total, and message, and once finished, added, updated, removed, and skipped. A running reconcile's has done and total; a finished one's is the snapshot, cut to totals in job lists and streams. An action run's has message, done, and total, and once finished, result, which job lists and streams leave out."
           },
           "run_after": {
             "format": "date-time",
@@ -2531,6 +2613,65 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "PluginAction": {
+        "additionalProperties": false,
+        "properties": {
+          "applies": {
+            "enum": [
+              "card",
+              "lorebook",
+              "new"
+            ],
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "images": {
+            "type": "boolean"
+          },
+          "inputs": {},
+          "instance_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "instance_name": {
+            "type": "string"
+          },
+          "instruction": {
+            "type": "boolean"
+          },
+          "label": {
+            "type": "string"
+          },
+          "library": {
+            "type": "boolean"
+          },
+          "report_only": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "instance_id",
+          "instance_name",
+          "id",
+          "label",
+          "applies"
+        ],
         "type": "object"
       },
       "PluginOut": {
@@ -3459,6 +3600,55 @@
         ],
         "type": "object"
       },
+      "StartActionInBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/StartActionInBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "action": {
+            "type": "string"
+          },
+          "context": {
+            "$ref": "#/components/schemas/ContextRefs"
+          },
+          "entity": {
+            "$ref": "#/components/schemas/EntityStruct"
+          },
+          "field": {
+            "description": "For a field action: the data key it runs on",
+            "type": "string"
+          },
+          "images": {
+            "$ref": "#/components/schemas/ImageRefs"
+          },
+          "inputs": {
+            "additionalProperties": {},
+            "description": "Values for the action's inputs schema",
+            "type": "object"
+          },
+          "instance_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "instruction": {
+            "maxLength": 20000,
+            "type": "string"
+          }
+        },
+        "required": [
+          "instance_id",
+          "action",
+          "entity"
+        ],
+        "type": "object"
+      },
       "StartBackupInBody": {
         "additionalProperties": false,
         "properties": {
@@ -3745,6 +3935,10 @@
             "description": "Replaces the whole config.",
             "type": "object"
           },
+          "library_access": {
+            "description": "Lets an action plugin read the library while it runs an action that asks to.",
+            "type": "boolean"
+          },
           "name": {
             "minLength": 1,
             "type": "string"
@@ -3785,6 +3979,103 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/actions": {
+      "get": {
+        "description": "Instances that are broken, or whose plugin doesn't answer, are left out.",
+        "operationId": "list-actions",
+        "parameters": [
+          {
+            "description": "Only actions that apply to this",
+            "explode": false,
+            "in": "query",
+            "name": "applies",
+            "schema": {
+              "description": "Only actions that apply to this",
+              "enum": [
+                "card",
+                "lorebook",
+                "new"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PluginAction"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the actions plugin instances offer",
+        "tags": [
+          "Actions"
+        ]
+      }
+    },
+    "/actions/runs": {
+      "post": {
+        "description": "Queues an action job. Its progress has the plugin's message, done, and total, and when the run ends, result: the proposal cut to the action's scope, the report, raw, and warnings for each change dropped. Cancel the job to stop the run.",
+        "operationId": "start-action-run",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartActionInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Run a plugin action",
+        "tags": [
+          "Actions"
+        ]
+      }
+    },
     "/auth/logout": {
       "post": {
         "operationId": "logout",
@@ -7408,7 +7699,7 @@
     },
     "/jobs": {
       "get": {
-        "description": "Newest first. A finished reconcile's progress is cut to its totals, and an export's card_ids to a count of cards; get the job for the whole of either.",
+        "description": "Newest first. A finished reconcile's progress is cut to its totals, an export's card_ids to a count of cards, and an action run's result is left out; get the job for the whole of each.",
         "operationId": "list-jobs",
         "parameters": [
           {
@@ -7441,6 +7732,17 @@
             "name": "parent",
             "schema": {
               "description": "List this bulk job's children instead of top-level jobs",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only jobs whose payload names this card, such as its pushes and action runs",
+            "explode": false,
+            "in": "query",
+            "name": "card_id",
+            "schema": {
+              "description": "Only jobs whose payload names this card, such as its pushes and action runs",
               "format": "int64",
               "type": "integer"
             }
@@ -7590,7 +7892,7 @@
     },
     "/jobs/{id}/events": {
       "get": {
-        "description": "Server-sent events: a job event with the whole job each time it changes. The stream ends when the job finishes. A reconcile's progress and an export's card IDs are cut as in the job list; get the job for the whole of either.",
+        "description": "Server-sent events: a job event with the whole job each time it changes. The stream ends when the job finishes. A reconcile's progress, an export's card IDs, and an action run's result are cut as in the job list; get the job for the whole of each.",
         "operationId": "watch-job",
         "parameters": [
           {

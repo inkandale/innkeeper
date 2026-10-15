@@ -54,6 +54,7 @@ export function InstanceForm({
   const [initial] = useState(() => canon(instance?.config ?? {}));
   // Only typed secrets (a string) and removed ones (null) are sent.
   const [secrets, setSecrets] = useState<Record<string, string | null>>({});
+  const [libraryAccess, setLibraryAccess] = useState(instance?.library_access ?? false);
 
   const save = useMutation({
     mutationFn: async (form: FormData) => {
@@ -70,6 +71,7 @@ export function InstanceForm({
               config: cfg,
               secrets: hasSecrets ? (secrets as Record<string, string>) : undefined,
               owner_subject: owner || undefined,
+              library_access: libraryAccess || undefined,
             },
           }),
         );
@@ -83,6 +85,7 @@ export function InstanceForm({
             config: canon(cfg) !== initial ? cfg : undefined,
             secrets: hasSecrets ? secrets : undefined,
             owner_subject: owner !== undefined && owner !== (instance.owner_subject ?? "") ? owner : undefined,
+            library_access: libraryAccess !== (instance.library_access ?? false) ? libraryAccess : undefined,
           },
         }),
       );
@@ -167,6 +170,15 @@ export function InstanceForm({
             <input className="input" name="owner_subject" defaultValue={instance?.owner_subject} />
           </label>
           <small className="muted">The login that becomes the owner. Leave empty for none.</small>
+        </div>
+      )}
+      {caps.includes("action") && (
+        <div className="form-field">
+          <label className="check">
+            <span>Library access</span>
+            <input type="checkbox" checked={libraryAccess} onChange={(e) => setLibraryAccess(e.target.checked)} />
+          </label>
+          <small className="muted">Lets actions that ask for it read your cards and lorebooks while they run.</small>
         </div>
       )}
       {check.data && (check.data.ok ? <p>Works.</p> : <p className="error">Doesn't work: {check.data.error}</p>)}

@@ -4,6 +4,46 @@
  */
 
 export interface paths {
+    "/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the actions plugin instances offer
+         * @description Instances that are broken, or whose plugin doesn't answer, are left out.
+         */
+        get: operations["list-actions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/actions/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run a plugin action
+         * @description Queues an action job. Its progress has the plugin's message, done, and total, and when the run ends, result: the proposal cut to the action's scope, the report, raw, and warnings for each change dropped. Cancel the job to stop the run.
+         */
+        post: operations["start-action-run"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/logout": {
         parameters: {
             query?: never;
@@ -1218,7 +1258,7 @@ export interface paths {
         };
         /**
          * List jobs
-         * @description Newest first. A finished reconcile's progress is cut to its totals, and an export's card_ids to a count of cards; get the job for the whole of either.
+         * @description Newest first. A finished reconcile's progress is cut to its totals, an export's card_ids to a count of cards, and an action run's result is left out; get the job for the whole of each.
          */
         get: operations["list-jobs"];
         put?: never;
@@ -1275,7 +1315,7 @@ export interface paths {
         };
         /**
          * Stream a job's progress
-         * @description Server-sent events: a job event with the whole job each time it changes. The stream ends when the job finishes. A reconcile's progress and an export's card IDs are cut as in the job list; get the job for the whole of either.
+         * @description Server-sent events: a job event with the whole job each time it changes. The stream ends when the job finishes. A reconcile's progress, an export's card IDs, and an action run's result are cut as in the job list; get the job for the whole of each.
          */
         get: operations["watch-job"];
         put?: never;
@@ -2538,6 +2578,11 @@ export interface components {
                 [key: string]: string;
             };
         };
+        ContextRefs: {
+            cards?: number[] | null;
+            lorebooks?: number[] | null;
+            skills?: string[] | null;
+        };
         CreateCollectionInBody: {
             /**
              * Format: uri
@@ -2578,6 +2623,8 @@ export interface components {
             config?: {
                 [key: string]: unknown;
             };
+            /** @description Lets an action plugin read the library while it runs an action that asks to. */
+            library_access?: boolean;
             name: string;
             /** @description For a login provider: the subject that logs in as the owner. */
             owner_subject?: string;
@@ -2656,6 +2703,17 @@ export interface components {
             /** @description The head revision */
             revision: components["schemas"]["RevisionOut"];
             slug: string;
+        };
+        EntityStruct: {
+            /** @description The draft's data. Omit for a new card's action. */
+            data?: unknown;
+            /**
+             * Format: int64
+             * @description The card or lorebook the draft belongs to; omit for one not saved yet
+             */
+            id?: number;
+            /** @enum {string} */
+            kind: "card" | "lorebook";
         };
         ErrorDetail: {
             /** @description Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id' */
@@ -2796,6 +2854,10 @@ export interface components {
             status: string;
             words?: components["schemas"]["Span"][] | null;
         };
+        ImageRefs: {
+            avatar?: string;
+            reference?: string;
+        };
         ImportInBody: {
             /**
              * Format: uri
@@ -2835,6 +2897,7 @@ export interface components {
             created_at: string;
             /** Format: int64 */
             id: number;
+            library_access: boolean;
             name: string;
             owner_subject?: string;
             plugin: string;
@@ -2880,7 +2943,7 @@ export interface components {
             /** Format: int64 */
             parent_id?: number;
             payload: unknown;
-            /** @description An import's has done, total, message, imported, skipped, failed, and errors. A catalog ingest's has done, total, and message, and once finished, added, updated, removed, and skipped. A running reconcile's has done and total; a finished one's is the snapshot, cut to totals in job lists and streams. */
+            /** @description An import's has done, total, message, imported, skipped, failed, and errors. A catalog ingest's has done, total, and message, and once finished, added, updated, removed, and skipped. A running reconcile's has done and total; a finished one's is the snapshot, cut to totals in job lists and streams. An action run's has message, done, and total, and once finished, result, which job lists and streams leave out. */
             progress: unknown;
             /** Format: date-time */
             run_after: string;
@@ -2950,6 +3013,22 @@ export interface components {
             onboarding_done?: boolean;
             /** @description An installed theme plugin's name, or empty for the default theme. */
             theme?: string;
+        };
+        PluginAction: {
+            /** @enum {string} */
+            applies: "card" | "lorebook" | "new";
+            description?: string;
+            fields?: string[] | null;
+            id: string;
+            images?: boolean;
+            inputs?: unknown;
+            /** Format: int64 */
+            instance_id: number;
+            instance_name: string;
+            instruction?: boolean;
+            label: string;
+            library?: boolean;
+            report_only?: boolean;
         };
         PluginOut: {
             /** @description The image ships this plugin, so uninstalling falls back to that copy */
@@ -3278,6 +3357,27 @@ export interface components {
             /** Format: int64 */
             start: number;
         };
+        StartActionInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/StartActionInBody.json
+             */
+            readonly $schema?: string;
+            action: string;
+            context?: components["schemas"]["ContextRefs"];
+            entity: components["schemas"]["EntityStruct"];
+            /** @description For a field action: the data key it runs on */
+            field?: string;
+            images?: components["schemas"]["ImageRefs"];
+            /** @description Values for the action's inputs schema */
+            inputs?: {
+                [key: string]: unknown;
+            };
+            /** Format: int64 */
+            instance_id: number;
+            instruction?: string;
+        };
         StartBackupInBody: {
             /**
              * Format: uri
@@ -3389,6 +3489,8 @@ export interface components {
             config?: {
                 [key: string]: unknown;
             };
+            /** @description Lets an action plugin read the library while it runs an action that asks to. */
+            library_access?: boolean;
             name?: string;
             /** @description Empty clears it, which logs the owner out of this provider. */
             owner_subject?: string;
@@ -3406,6 +3508,71 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    "list-actions": {
+        parameters: {
+            query?: {
+                /** @description Only actions that apply to this */
+                applies?: "card" | "lorebook" | "new";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginAction"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "start-action-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartActionInBody"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     logout: {
         parameters: {
             query?: never;
@@ -5810,6 +5977,8 @@ export interface operations {
                 kind?: string;
                 /** @description List this bulk job's children instead of top-level jobs */
                 parent?: number;
+                /** @description Only jobs whose payload names this card, such as its pushes and action runs */
+                card_id?: number;
                 /** @description Only jobs with smaller IDs, for the next page */
                 before?: number;
                 limit?: number;

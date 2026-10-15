@@ -22,11 +22,13 @@ const st = {
   },
 };
 const login = { name: "password-login", version: "0.1.0", capabilities: ["auth"], secrets: ["password_hash"] };
+const ai = { name: "forge-ai", version: "0.1.0", capabilities: ["action"], secrets: [] };
 const broken = {
   id: 3, plugin: "sillytavern", name: "home", config: { url: "http://st", auth: "none" }, secrets: ["password"],
   broken_error: "connection refused", broken_at: now, created_at: now, updated_at: now,
 };
 const owned = { ...broken, id: 4, plugin: "password-login", name: "pw", config: {}, secrets: [], owner_subject: "me" };
+const forge = { ...broken, id: 5, plugin: "forge-ai", name: "ai", config: {}, secrets: [], broken_error: undefined, library_access: false };
 
 let sent: { method: string; path: string; body: unknown }[];
 beforeEach(() => {
@@ -35,9 +37,10 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (req: Request) => {
       const u = new URL(req.url);
-      if (u.pathname === "/api/plugins") return json([login, st]);
+      if (u.pathname === "/api/plugins") return json([login, st, ai]);
       if (req.method === "GET" && u.pathname === "/api/instances/3") return json(broken);
       if (req.method === "GET" && u.pathname === "/api/instances/4") return json(owned);
+      if (req.method === "GET" && u.pathname === "/api/instances/5") return json(forge);
       if (u.pathname === "/api/instances/3/check") {
         sent.push({ method: req.method, path: u.pathname, body: null });
         return json({ ok: false, error: "login refused" });
@@ -157,4 +160,21 @@ test("InstanceForm calls onSaved instead of going to Settings", async () => {
   await vi.waitFor(() => expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ id: 9 })));
   expect(router.state.location.pathname).toBe("/");
   expect(screen.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/welcome");
+});
+
+test("an action plugin's instance turns on Library access", async () => {
+  const user = userEvent.setup();
+  renderAt("/settings/instances/5");
+  const access = await screen.findByLabelText("Library access");
+  expect(access).not.toBeChecked();
+  await user.click(access);
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await vi.waitFor(() => expect(sent).toHaveLength(1));
+  expect(sent[0]?.body).toEqual({ name: "ai", library_access: true });
+});
+
+test("other plugins have no Library access setting", async () => {
+  renderAt("/settings/instances/3");
+  expect(await screen.findByLabelText("Name")).toBeInTheDocument();
+  expect(screen.queryByLabelText("Library access")).toBeNull();
 });

@@ -23,7 +23,8 @@ const after: [string, string][] = [
 export const fieldLabel = (key: string) =>
   [...before, ...after, ["name", "Name"], ["tags", "Tags"]].find(([k]) => k === key)?.[1] ?? key;
 
-function Section(props: { label: string; dirty?: boolean; count?: number; lock?: string; extra?: ReactNode; children: ReactNode }) {
+/** Section is one collapsible field: a header with its state and extra, then the field, disabled while locked. */
+export function Section(props: { label: string; dirty?: boolean; count?: number; lock?: string; extra?: ReactNode; children: ReactNode }) {
   return (
     <details className={props.dirty ? "field dirty" : "field"} open>
       <summary>

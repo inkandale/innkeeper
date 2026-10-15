@@ -9,8 +9,8 @@ const uid = () => ++lastUid;
 const num = (v: unknown) => (typeof v === "number" ? v : "");
 const ext = (e: Entry) => (typeof e.extensions === "object" && e.extensions !== null ? (e.extensions as Record<string, unknown>) : {});
 
-/** Entries edits a lorebook's entries: a filter, then one collapsible row per entry. */
-export function Entries({ data, base, edit }: { data: Data; base: Data; edit: (key: string, value: unknown) => void }) {
+/** Entries edits a lorebook's entries: a filter, then one collapsible row per entry. lock names the run that locks them. */
+export function Entries({ data, base, edit, lock }: { data: Data; base: Data; edit: (key: string, value: unknown) => void; lock?: string }) {
   // Non-object items in imported data aren't shown, but stay in place on save.
   const list: unknown[] = Array.isArray(data.entries) ? data.entries : [];
   const saved = new Set(asEntries(base.entries).map((e) => JSON.stringify(e)));
@@ -36,12 +36,13 @@ export function Entries({ data, base, edit }: { data: Data; base: Data; edit: (k
   };
 
   return (
-    <>
+    <fieldset className="contents" disabled={!!lock}>
       <div className="row entries-toolbar">
         <input className="input" type="search" aria-label="Filter entries" placeholder="Filter entries" value={filter} onChange={(e) => setFilter(e.target.value)} />
         <button className="button" onClick={add}>
           Add entry
         </button>
+        {lock && <span className="locked">locked while {lock} runs</span>}
       </div>
       {list.map((e, i) => {
         if (!isEntry(e) || !matches(e, filter)) return null;
@@ -113,6 +114,6 @@ export function Entries({ data, base, edit }: { data: Data; base: Data; edit: (k
           </details>
         );
       })}
-    </>
+    </fieldset>
   );
 }

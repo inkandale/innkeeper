@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { Toasts } from "../shell/Toasts";
@@ -18,17 +18,55 @@ const entity = {
   revision: { id: 21, content_hash: "x", message: "", source: "ui", created_at: now, data },
 };
 
+const decl = { applies: "lorebook", instance_id: 1, instance_name: "Local model" };
+const forgeActions = [
+  { ...decl, id: "reforge", label: "Reforge", applies: "card", instruction: true },
+  { ...decl, id: "tighten", label: "Tighten card", applies: "card", fields: ["description"] },
+  { ...decl, id: "lore", label: "Rework lore", instruction: true },
+  { ...decl, id: "tighten-lore", label: "Tighten", fields: ["description"] },
+];
+
+type JobT = { id: number; status: string; payload: { action: string; field?: string }; progress?: unknown };
+const job = (j: JobT) => ({
+  kind: "action",
+  instance_id: 1,
+  attempts: 1,
+  max_attempts: 1,
+  run_after: now,
+  created_at: now,
+  progress: null,
+  ...j,
+  payload: { ...j.payload, lorebook_id: 3, entity: { kind: "lorebook", data } },
+});
+
 let head: typeof entity;
 let bindings: unknown[];
 let puts: { path: string; body: { base_revision_id: number; data: typeof data } }[];
+let actions: unknown[];
+let jobs: ReturnType<typeof job>[];
+let runs: { action: string; entity: { kind: string; id?: number } }[];
 beforeEach(() => {
   head = entity;
   bindings = [];
   puts = [];
+  actions = [];
+  jobs = [];
+  runs = [];
+  localStorage.clear();
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
-      const path = new URL(req.url).pathname;
+      const url = new URL(req.url);
+      const path = url.pathname;
+      if (path === "/api/actions") return json(actions);
+      if (path === "/api/jobs") return json(url.searchParams.get("lorebook_id") === "3" ? jobs : []);
+      const one = /^\/api\/jobs\/(\d+)$/.exec(path);
+      if (one) return json(jobs.find((j) => j.id === Number(one[1])));
+      if (path === "/api/actions/runs") {
+        const body = await req.json();
+        runs.push(body);
+        return json(job({ id: 90, status: "queued", payload: body }), 202);
+      }
       if (req.method === "PUT" && path === "/api/lorebooks/3") {
         const body = await req.json();
         puts.push({ path, body });
@@ -130,4 +168,59 @@ test("a lorebook's followed source update shows a banner", async () => {
   renderAt("/lorebooks/3");
   expect(await screen.findByText(/Update on chub/)).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Review" })).toHaveAttribute("href", "/sync/4/lorebook/chub%3Aalice%2Fforge?card=3");
+});
+
+test("a lorebook field run locks only its field", async () => {
+  actions = forgeActions;
+  jobs = [job({ id: 5, status: "running", payload: { action: "tighten-lore", field: "description" }, progress: { message: "Tightening" } })];
+  renderAt("/lorebooks/3");
+  expect(await screen.findByText("locked while Tighten runs")).toBeInTheDocument();
+  expect(screen.getByLabelText("Description")).toBeDisabled();
+  expect(screen.getByLabelText("Entry 1 content")).toBeEnabled();
+  expect(screen.getByLabelText("Name")).toBeEnabled();
+  expect(screen.getByText("Tightening")).toBeInTheDocument();
+});
+
+test("a whole-lorebook run locks the name, the description, and the entries", async () => {
+  actions = forgeActions;
+  jobs = [job({ id: 5, status: "running", payload: { action: "lore" } })];
+  renderAt("/lorebooks/3");
+  await waitFor(() => expect(screen.getByLabelText("Entry 1 content")).toBeDisabled());
+  expect(screen.getByLabelText("Description")).toBeDisabled();
+  expect(screen.getByLabelText("Name")).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Add entry" })).toBeDisabled();
+});
+
+test("Reforge runs the lorebook's instruction action on the lorebook", async () => {
+  actions = forgeActions;
+  renderAt("/lorebooks/3");
+  await screen.findByRole("button", { name: /Reforge/ });
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Forge actions for Description" }));
+  expect(screen.getAllByRole("menuitem").map((m) => m.textContent)).toEqual(["Tighten"]);
+  await user.keyboard("{Escape}");
+  await user.keyboard("{Control>}k{/Control}");
+  const box = await screen.findByRole("combobox", { name: "Instruction" });
+  expect(box).toHaveAttribute("placeholder", expect.stringContaining("Reforge this lorebook"));
+  expect(screen.queryByText("Or change the whole lorebook")).not.toBeInTheDocument();
+  await user.type(box, "Add a hammer{Enter}");
+  await waitFor(() => expect(runs).toHaveLength(1));
+  expect(runs[0]).toMatchObject({ action: "lore", instance_id: 1, instruction: "Add a hammer", entity: { kind: "lorebook", id: 3, data } });
+});
+
+test("Review offers each changed entry, and Apply merges only the taken ones", async () => {
+  actions = forgeActions;
+  const proposal = { ...data, entries: [{ ...anvil, content: "Heavier iron." }, { keys: ["hammer"], content: "Rings." }] };
+  jobs = [job({ id: 6, status: "succeeded", payload: { action: "lore" }, progress: { result: { proposal, warnings: [] } } })];
+  renderAt("/lorebooks/3");
+  expect(await screen.findByRole("tab", { name: "Review (3)" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("radiogroup", { name: "Choice for Entry anvil" })).toBeInTheDocument();
+  expect(screen.getByText("removed")).toBeInTheDocument();
+  expect(screen.getByText("added")).toBeInTheDocument();
+  const user = userEvent.setup();
+  await user.click(within(screen.getByRole("radiogroup", { name: "Choice for Entry bellows" })).getByRole("radio", { name: "Keep mine" }));
+  await user.click(screen.getByRole("button", { name: "Apply 2 of 3 changes to draft" }));
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(puts).toHaveLength(1));
+  expect(puts[0]?.body.data.entries).toEqual([{ ...anvil, content: "Heavier iron." }, bellows, { keys: ["hammer"], content: "Rings." }]);
 });

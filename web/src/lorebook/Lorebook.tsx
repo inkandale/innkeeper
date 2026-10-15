@@ -2,11 +2,15 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router";
 import { api, must } from "../api/client";
 import { Stale } from "../card/Conflict";
-import { text } from "../card/draft";
+import { text, tokens } from "../card/draft";
+import { Section } from "../card/Fields";
 import { Sources } from "../card/Organize";
 import { Archive, Push, Revisions, Sync } from "../card/Panel";
 import { UpdateBanner } from "../card/Upstream";
 import { useEditor } from "../card/useEditor";
+import { Forge } from "../forge/Forge";
+import { useForge } from "../forge/useForge";
+import { lorebookSubject } from "./subject";
 import { Entries } from "./EntryEditor";
 import "../card/Card.css";
 import "./Lorebook.css";
@@ -19,6 +23,7 @@ export function Lorebook() {
 
 function LorebookEditor({ id }: { id: number }) {
   const ed = useEditor("lorebook", id);
+  const forge = useForge({ subject: lorebookSubject, id, data: ed.data });
   if (ed.entity.isPending) return null;
   if (ed.entity.isError) return <p className="error page">{ed.entity.error.message}</p>;
   const head = ed.entity.data;
@@ -26,13 +31,12 @@ function LorebookEditor({ id }: { id: number }) {
   return (
     <div className="card-page">
       <aside className="card-aside">
-        <input className="input name" aria-label="Name" value={text(ed.data.name)} onChange={(e) => ed.edit("name", e.target.value)} />
-        <textarea
-          className="input grow"
-          aria-label="Description"
-          placeholder="Description"
-          value={text(ed.data.description)}
-          onChange={(e) => ed.edit("description", e.target.value)}
+        <input
+          className="input name"
+          aria-label="Name"
+          value={text(ed.data.name)}
+          disabled={!!forge.lock("name")}
+          onChange={(e) => ed.edit("name", e.target.value)}
         />
         <div className="row">
           <button className="button primary" disabled={!dirty || ed.save.isPending || ed.stale} onClick={() => ed.draft && ed.save.mutate(ed.draft)}>
@@ -49,7 +53,31 @@ function LorebookEditor({ id }: { id: number }) {
       <div className="card-main">
         <UpdateBanner kind="lorebook" id={id} />
         <Stale kind="lorebook" ed={ed} />
-        <Entries data={ed.data} base={ed.draft?.base ?? ed.headData} edit={ed.edit} />
+        <Forge
+          forge={forge}
+          data={ed.data}
+          edit={ed.edit}
+          fields={(lock, extra) => (
+            <>
+              <Section
+                label="Description"
+                dirty={ed.dirty.has("description")}
+                count={tokens(text(ed.data.description))}
+                lock={lock?.("description")}
+                extra={extra?.("description")}
+              >
+                <textarea
+                  className="input grow"
+                  aria-label="Description"
+                  placeholder="Description"
+                  value={text(ed.data.description)}
+                  onChange={(e) => ed.edit("description", e.target.value)}
+                />
+              </Section>
+              <Entries data={ed.data} base={ed.draft?.base ?? ed.headData} edit={ed.edit} lock={lock?.("entries")} />
+            </>
+          )}
+        />
       </div>
     </div>
   );

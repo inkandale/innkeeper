@@ -461,6 +461,24 @@
   margin-top: 4px;
 }
 
+.forge-change {
+  display: block;
+  font-weight: normal;
+  margin-top: 4px;
+}
+
+.forge-change.added {
+  color: var(--ok);
+}
+
+.forge-change.removed {
+  color: var(--danger);
+}
+
+.forge-change.changed {
+  color: var(--drift);
+}
+
 .forge-toggle {
   display: grid;
   gap: 4px;

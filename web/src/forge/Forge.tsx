@@ -90,7 +90,7 @@ export function Forge(props: {
         field={key}
         label={label}
         // A new card has no Report tab to show a report-only action's result.
-        actions={forge.mine.filter((a) => a.fields?.includes(key) && !(isNew && a.report_only))}
+        actions={forge.mine.filter((a) => a.applies === kind && a.fields?.includes(key) && !(isNew && a.report_only))}
         disabled={!!forge.lock(key)}
         onPick={(a) => pickField(a, key)}
       />

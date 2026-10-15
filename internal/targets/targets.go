@@ -223,10 +223,18 @@ func (s *Service) describe(ctx context.Context, instanceID int64) (pluginhost.In
 // not one that only follows site sources.
 func (s *Service) describePush(ctx context.Context, instanceID int64) (pluginhost.Instance, protocol.TargetInfo, error) {
 	inst, info, err := s.describe(ctx, instanceID)
-	if err == nil && !inst.Manifest.Has("push") {
-		err = fmt.Errorf("%w: %s only follows site sources", ErrCannot, inst.Manifest.Name)
+	if err == nil {
+		err = pushCheck(inst)
 	}
 	return inst, info, err
+}
+
+// pushCheck refuses a target that only follows site sources.
+func pushCheck(inst pluginhost.Instance) error {
+	if inst.Manifest.Has("push") {
+		return nil
+	}
+	return fmt.Errorf("%w: %s only follows site sources", ErrCannot, inst.Manifest.Name)
 }
 
 // rendered is a card or lorebook as one target gets it.

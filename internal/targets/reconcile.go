@@ -68,6 +68,16 @@ func (s *Service) describeReconcile(ctx context.Context, k kind, instanceID int6
 	return inst, reconcileInfo(info), nil
 }
 
+// describeApp is describeReconcile for an app the library syncs with, so not
+// one that only follows site sources.
+func (s *Service) describeApp(ctx context.Context, instanceID int64) (pluginhost.Instance, protocol.TargetInfo, error) {
+	inst, info, err := s.describeReconcile(ctx, cardKind, instanceID)
+	if err == nil {
+		err = pushCheck(inst)
+	}
+	return inst, info, err
+}
+
 // reconcileInfo leaves character_book out of the card fields.
 func reconcileInfo(info protocol.TargetInfo) protocol.TargetInfo {
 	info.Fields = slices.DeleteFunc(slices.Clone(info.Fields), func(f string) bool { return f == "character_book" })
@@ -398,7 +408,7 @@ func (s *Service) Reconcile(ctx context.Context, p ReconcileParams, progress fun
 	}
 	snap := Snapshot{Params: p, Items: []ReconcileItem{}, Lorebooks: []ReconcileItem{}, Missing: []int64{},
 		Unpushed: []int64{}, Totals: map[string]int{}}
-	inst, info, err := s.describeReconcile(ctx, cardKind, p.InstanceID)
+	inst, info, err := s.describeApp(ctx, p.InstanceID)
 	if err != nil {
 		return snap, err
 	}

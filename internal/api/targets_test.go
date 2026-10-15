@@ -411,6 +411,13 @@ func TestSourceCheckRoutes(t *testing.T) {
 	}
 }
 
+func TestReconcileAndSyncRefuseAPullOnlyTarget(t *testing.T) {
+	e := newEnv(t)
+	inst, _ := e.upstream()
+	e.call("POST", "/reconciles", map[string]any{"instance_id": inst}, 400, nil)
+	e.call("POST", "/syncs", map[string]any{"instance_id": inst}, 400, nil)
+}
+
 func TestDismissingASourceThatChangedAgainIsStale(t *testing.T) {
 	e := newEnv(t)
 	_, dir := e.upstream()

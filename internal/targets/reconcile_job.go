@@ -11,13 +11,13 @@ import (
 )
 
 // EnqueueReconcile queues a reconcile run. Bad params and a target that
-// can't pull are refused here, so no job is queued for them.
+// can't pull or push are refused here, so no job is queued for them.
 func (s *Service) EnqueueReconcile(ctx context.Context, q *jobs.Queue, p ReconcileParams) (jobs.Job, error) {
 	p, err := withDefaults(p)
 	if err != nil {
 		return jobs.Job{}, err
 	}
-	if _, _, err := s.describeReconcile(ctx, cardKind, p.InstanceID); err != nil {
+	if _, _, err := s.describeApp(ctx, p.InstanceID); err != nil {
 		return jobs.Job{}, err
 	}
 	return q.Enqueue(ctx, jobs.Spec{Kind: ReconcileKind, InstanceID: &p.InstanceID, Payload: p})

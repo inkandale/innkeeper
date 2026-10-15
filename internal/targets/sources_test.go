@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/davidgibbons/innkeeper/internal/db"
+	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/merge"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
@@ -103,6 +104,21 @@ func TestPushRefusesAPullOnlyTarget(t *testing.T) {
 	e.addUpstream(nil)
 	if _, err := e.s.Push(e.ctx, library.Card, e.up, e.card, false); !errors.Is(err, ErrCannot) {
 		t.Fatalf("push = %v, want ErrCannot", err)
+	}
+}
+
+func TestReconcileAndSyncRefuseAPullOnlyTarget(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	q := jobs.New(e.pool)
+	if _, err := e.s.EnqueueReconcile(e.ctx, q, ReconcileParams{InstanceID: e.up}); !errors.Is(err, ErrCannot) {
+		t.Errorf("enqueue reconcile = %v, want ErrCannot", err)
+	}
+	if _, err := e.s.EnqueueSync(e.ctx, q, SyncParams{InstanceID: e.up}); !errors.Is(err, ErrCannot) {
+		t.Errorf("enqueue sync = %v, want ErrCannot", err)
+	}
+	if _, err := e.s.Reconcile(e.ctx, ReconcileParams{InstanceID: e.up}, nil); !errors.Is(err, ErrCannot) {
+		t.Errorf("reconcile = %v, want ErrCannot", err)
 	}
 }
 

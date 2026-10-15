@@ -66,7 +66,7 @@ func (s *Service) EnqueueSync(ctx context.Context, q *jobs.Queue, p SyncParams) 
 		return jobs.Job{}, fmt.Errorf("%w: apply must be obvious or none", library.ErrInvalid)
 	}
 	if p.InstanceID != 0 {
-		if _, _, err := s.describeReconcile(ctx, cardKind, p.InstanceID); err != nil {
+		if _, _, err := s.describeApp(ctx, p.InstanceID); err != nil {
 			return jobs.Job{}, err
 		}
 	}

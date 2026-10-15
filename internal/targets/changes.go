@@ -87,7 +87,7 @@ func (s *Service) Changes(ctx context.Context, f ChangesFilter) (Changes, error)
 	accepted := map[int64]map[string]live{}
 	boundNow := map[[2]int64]bool{} // card and instance
 	rows, err := s.pool.Query(ctx, `SELECT instance_id, remote_id, card_id, accepted_hash FROM binding
-		WHERE card_id IS NOT NULL AND remote_state <> 'missing'`)
+		WHERE card_id IS NOT NULL AND push AND remote_state <> 'missing'`)
 	if err != nil {
 		return out, err
 	}

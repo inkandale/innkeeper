@@ -12,6 +12,13 @@ import (
 	"testing"
 )
 
+// FakeEnrichments are the keys the fake plugin's enrich.run writes.
+const FakeEnrichments = `[enrichments]
+quality = { type = "score", range = [0, 100], label = "Quality", grid = true }
+voice = { type = "score", range = [0, 100], label = "Voice" }
+summary = { type = "text", label = "Summary" }
+`
+
 // FakePlugin builds internal/fakeplugin into a temp plugin folder and writes
 // a manifest that runs it with args. It returns the folder.
 func FakePlugin(t *testing.T, args ...string) string {
@@ -49,6 +56,9 @@ capabilities = [%s]
 		manifest += "database = true\n"
 	}
 	// Tables go last; keys after one would belong to it.
+	if slices.Contains(caps, "enrich") {
+		manifest += FakeEnrichments
+	}
 	if slices.Contains(caps, "records") {
 		manifest += `[records.notes]
 label = "Notes"

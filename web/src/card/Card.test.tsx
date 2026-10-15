@@ -42,7 +42,10 @@ let puts: { path: string; body: unknown }[];
 let patches: { path: string; body: unknown }[];
 // Whether a card-codec instance, which writes PNG, exists.
 let pngCodec: boolean;
+// Whether the URL import plugin, which follows sources, is installed.
+let followerPlugin: boolean;
 beforeEach(() => {
+  followerPlugin = true;
   followed = [];
   sent = [];
   dismissFails = undefined;
@@ -120,7 +123,11 @@ beforeEach(() => {
       if (path === "/api/instances")
         return json([{ id: 2, name: "Lumiverse", plugin: "lumiverse" }, { id: 4, name: "URL import", plugin: "url-import" }, ...(pngCodec ? [{ id: 5, name: "Codec", plugin: "card-codec" }] : [])]);
       if (path === "/api/plugins")
-        return json([{ name: "lumiverse", capabilities: ["push"] }, { name: "card-codec", capabilities: ["codec"], formats: ["png"] }]);
+        return json([
+          { name: "lumiverse", capabilities: ["push"] },
+          { name: "card-codec", capabilities: ["codec"], formats: ["png"] },
+          ...(followerPlugin ? [{ name: "url-import", capabilities: ["pull"] }] : []),
+        ]);
       if (path === "/api/collections")
         return json([
           { id: 1, name: "Favorites" },
@@ -443,6 +450,13 @@ test("Check for updates checks the card's sources now", async () => {
   await userEvent.click(await screen.findByRole("button", { name: "Check for updates" }));
   await waitFor(() => expect(sent).toEqual([{ path: "/api/cards/7/source-check", body: null }]));
   expect(await screen.findByText(/Update on chub/)).toBeInTheDocument();
+});
+
+test("no Check for updates without a plugin that follows sources", async () => {
+  followerPlugin = false;
+  renderAt("/cards/7");
+  expect(await screen.findByText("chub: dg/brakka")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Check for updates" })).not.toBeInTheDocument();
 });
 
 test("a failed check for updates shows why", async () => {

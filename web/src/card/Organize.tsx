@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, must, mustOk, route, type Kind } from "../api/client";
-import { bindingsQuery, collectionsQuery } from "../api/queries";
+import { bindingsQuery, collectionsQuery, useFollowers } from "../api/queries";
 import type { components } from "../api/schema";
 import { removeSource, sourceLabel, sourceRemoteId } from "../sync/sync";
 import { useBindingEdits } from "./Upstream";
@@ -51,6 +51,7 @@ export function Sources({ kind, id }: { kind: Kind; id: number }) {
   });
   const bindings = useQuery(bindingsQuery(kind, id));
   const edits = useBindingEdits(kind, id);
+  const followers = useFollowers();
   const done = () => void qc.invalidateQueries({ queryKey: [kind, id, "sources"] });
   const add = useMutation({
     mutationFn: async (u: string) => must(await api.PUT(route(kind, "/cards/{id}/sources"), { params: { path: { id } }, body: { url: u } })),
@@ -89,7 +90,7 @@ export function Sources({ kind, id }: { kind: Kind; id: number }) {
           );
         })}
       </ul>
-      {!!list.data?.length && (
+      {!!list.data?.length && !!followers?.size && (
         <button className="button" disabled={edits.check.isPending} onClick={() => edits.check.mutate()}>
           Check for updates
         </button>

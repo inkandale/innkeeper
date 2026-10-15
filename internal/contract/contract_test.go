@@ -367,6 +367,6 @@ func TestBadRecordsFail(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := failed(results)[checkRecordsListName]; err == nil || !strings.Contains(err.Error(), "record id") {
-		t.Fatalf("got %v, want the bad item named", err)
+		t.Fatalf("got %v, want the bad record named", err)
 	}
 }

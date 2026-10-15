@@ -61,7 +61,7 @@ func TestBulkArchiveAndWatch(t *testing.T) {
 		e.createCard(fmt.Sprintf(`{"name": %q, "tags": %s}`, name, tags))
 	}
 	w := &jobs.Worker{Queue: e.s.Queue, Log: quiet, Poll: 50 * time.Millisecond,
-		Handlers: map[string]jobs.Handler{bulk.ArchiveKind: bulk.Archive(e.s.Lib)}}
+		Handlers: map[string]jobs.Handler{bulk.ArchiveKind: bulk.Archive(e.s.Lib, e.s.Targets)}}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- w.Run(ctx) }()
@@ -124,7 +124,7 @@ func TestBulkUnarchiveLorebooks(t *testing.T) {
 	e.call("PUT", path+"/archived", map[string]any{"archived": true}, 204, nil)
 
 	w := &jobs.Worker{Queue: e.s.Queue, Log: quiet, Poll: 50 * time.Millisecond,
-		Handlers: map[string]jobs.Handler{bulk.LorebookArchiveKind: bulk.ArchiveLorebook(e.s.Lib)}}
+		Handlers: map[string]jobs.Handler{bulk.LorebookArchiveKind: bulk.ArchiveLorebook(e.s.Lib, e.s.Targets)}}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- w.Run(ctx) }()
@@ -329,7 +329,7 @@ func TestBulkTagCollectExport(t *testing.T) {
 func TestBulkLorebooks(t *testing.T) {
 	e := newEnv(t)
 	w := &jobs.Worker{Queue: e.s.Queue, Log: quiet, Poll: 50 * time.Millisecond,
-		Handlers: map[string]jobs.Handler{bulk.LorebookArchiveKind: bulk.ArchiveLorebook(e.s.Lib)}}
+		Handlers: map[string]jobs.Handler{bulk.LorebookArchiveKind: bulk.ArchiveLorebook(e.s.Lib, e.s.Targets)}}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- w.Run(ctx) }()

@@ -3,6 +3,7 @@ package bulk
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"slices"
@@ -61,9 +62,9 @@ func wait(t *testing.T, q *jobs.Queue, id int64) jobs.Job {
 func TestArchive(t *testing.T) {
 	ctx := context.Background()
 	lib, q, ids := setup(t, func(lib *library.Library) map[string]jobs.Handler {
-		return map[string]jobs.Handler{ArchiveKind: Archive(lib)}
+		return map[string]jobs.Handler{ArchiveKind: Archive(lib, nil)}
 	}, "a", "b")
-	parent, err := EnqueueArchive(ctx, q, ids, true)
+	parent, err := EnqueueArchive(ctx, q, ids, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +136,7 @@ func TestTagAndCollect(t *testing.T) {
 func TestArchiveLorebooks(t *testing.T) {
 	ctx := context.Background()
 	lib, q, _ := setup(t, func(lib *library.Library) map[string]jobs.Handler {
-		return map[string]jobs.Handler{LorebookArchiveKind: ArchiveLorebook(lib)}
+		return map[string]jobs.Handler{LorebookArchiveKind: ArchiveLorebook(lib, nil)}
 	})
 	var ids []int64
 	for _, slug := range []string{"a", "b"} {
@@ -145,7 +146,7 @@ func TestArchiveLorebooks(t *testing.T) {
 		}
 		ids = append(ids, l.ID)
 	}
-	parent, err := EnqueueLorebookArchive(ctx, q, ids, true)
+	parent, err := EnqueueLorebookArchive(ctx, q, ids, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,5 +155,26 @@ func TestArchiveLorebooks(t *testing.T) {
 		if l, _ := lib.Lorebooks.Get(ctx, id); l.ArchivedAt == nil {
 			t.Errorf("lorebook %d not archived", id)
 		}
+	}
+}
+
+// appDown is an app whose deletes fail.
+type appDown struct{}
+
+func (appDown) Unpublish(context.Context, *library.Kind, int64) error {
+	return errors.New("app unavailable")
+}
+
+func TestArchiveStaysUnarchivedWhenUnpublishFails(t *testing.T) {
+	ctx := context.Background()
+	lib, _, ids := setup(t, func(*library.Library) map[string]jobs.Handler { return nil }, "a")
+	if err := SetArchived(ctx, lib, appDown{}, library.Card, ids[0], true, true); err == nil {
+		t.Fatal("archive worked; want the app's error")
+	}
+	if c, _ := lib.Cards.Get(ctx, ids[0]); c.ArchivedAt != nil {
+		t.Fatal("card archived though its app copy wasn't deleted")
+	}
+	if err := SetArchived(ctx, lib, appDown{}, library.Card, ids[0], true, false); err != nil {
+		t.Fatalf("archive without unpublish: %v", err)
 	}
 }

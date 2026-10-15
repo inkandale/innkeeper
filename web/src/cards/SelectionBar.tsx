@@ -44,6 +44,7 @@ export function SelectionBar(props: {
   const [format, setFormat] = useState("json");
   const [enricher, setEnricher] = useState<number>();
   const [rescore, setRescore] = useState(false);
+  const [unpublish, setUnpublish] = useState(false);
   const toast = useToast();
   const n = all ? total : count;
 
@@ -171,9 +172,17 @@ export function SelectionBar(props: {
               <span>No target can take pushes. Add one in Settings.</span>
             ))}
           {panel === "archive" && (
-            <button className="button danger" disabled={busy} onClick={() => bulk({ action: "archive" })}>
-              Archive {plural(n)}
-            </button>
+            <>
+              {targets.length > 0 && (
+                <label className="check">
+                  <span>Also delete from linked apps</span>
+                  <input type="checkbox" checked={unpublish} onChange={(e) => setUnpublish(e.target.checked)} />
+                </label>
+              )}
+              <button className="button danger" disabled={busy} onClick={() => bulk({ action: "archive", unpublish })}>
+                Archive {plural(n)}
+              </button>
+            </>
           )}
           {panel === "evaluate" && (
             <>

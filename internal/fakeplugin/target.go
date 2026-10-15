@@ -21,11 +21,14 @@ type target struct {
 	Fields         []string `json:"fields"`
 	Pull           *bool    `json:"pull"`
 	Update         *bool    `json:"update"`
+	Delete         *bool    `json:"delete"`
 	Lorebooks      string   `json:"lorebooks"`
 	LorebookFields []string `json:"lorebook_fields"`
 	// FailPut makes target.put fail: retryable, fatal, or crash (the plugin
 	// exits after storing the card). Lorebook puts don't fail.
 	FailPut string `json:"fail_put"`
+	// FailDelete makes target.delete fail with a retryable error.
+	FailDelete bool `json:"fail_delete"`
 }
 
 func newTarget(config map[string]any) target {
@@ -36,7 +39,7 @@ func newTarget(config map[string]any) target {
 }
 
 func (t target) describe() protocol.TargetInfo {
-	info := protocol.TargetInfo{Fields: t.Fields, Pull: true, Update: true,
+	info := protocol.TargetInfo{Fields: t.Fields, Pull: true, Update: true, Delete: true,
 		Lorebooks: cmp.Or(t.Lorebooks, protocol.LorebooksEmbedded), LorebookFields: t.LorebookFields}
 	if len(info.Fields) == 0 {
 		info.Fields = []string{"name", "description", "first_mes", "character_book"}
@@ -49,6 +52,9 @@ func (t target) describe() protocol.TargetInfo {
 	}
 	if t.Update != nil {
 		info.Update = *t.Update
+	}
+	if t.Delete != nil {
+		info.Delete = *t.Delete
 	}
 	return info
 }
@@ -166,6 +172,25 @@ func (t target) store(prefix string, stored map[string]any, remoteID, key string
 		os.Exit(1)
 	}
 	return protocol.TargetPutResult{RemoteID: id}, nil
+}
+
+// remove deletes the stored item named by params' remote_id.
+func (t target) remove(params json.RawMessage) (any, error) {
+	if t.FailDelete {
+		return nil, protocol.NewError(-32000, "app unavailable", true)
+	}
+	if t.Dir == "" {
+		return nil, protocol.NewError(-32000, "config.dir is not set", false)
+	}
+	var p protocol.TargetDeleteParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, invalidParams(err)
+	}
+	err := os.Remove(t.path(p.RemoteID))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, protocol.NewError(protocol.CodeRemoteNotFound, "no item "+p.RemoteID, false)
+	}
+	return struct{}{}, err
 }
 
 // byKey finds the item with prefix that a put with this key created.

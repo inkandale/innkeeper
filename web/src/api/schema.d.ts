@@ -2291,6 +2291,8 @@ export interface components {
              */
             readonly $schema?: string;
             archived: boolean;
+            /** @description When archiving: also delete its copies from the apps it was pushed to. An app that can't delete keeps its copy and stays linked. */
+            unpublish?: boolean;
         };
         AvatarDiff: {
             app?: string;
@@ -2426,6 +2428,8 @@ export interface components {
             query: components["schemas"]["Query"];
             /** @description For tag and untag: the tags to add or remove. */
             tags?: string[] | null;
+            /** @description For archive: also delete each one's copies from the apps it was pushed to. An app that can't delete keeps its copy. */
+            unpublish?: boolean;
         };
         BulkPreview: {
             /**

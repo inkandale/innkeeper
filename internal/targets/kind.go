@@ -9,15 +9,16 @@ import (
 // carry it.
 type kind struct {
 	*library.Kind
-	put, get, list string
+	put, get, list, delete string
 	// fields are the data keys the target keeps for this kind.
 	fields func(protocol.TargetInfo) []string
 }
 
 var (
-	cardKind = kind{library.Card, protocol.MethodTargetPut, protocol.MethodTargetGet, protocol.MethodTargetList,
+	cardKind = kind{library.Card, protocol.MethodTargetPut, protocol.MethodTargetGet, protocol.MethodTargetList, protocol.MethodTargetDelete,
 		func(info protocol.TargetInfo) []string { return info.Fields }}
 	lorebookKind = kind{library.Lorebook, protocol.MethodTargetPutLorebook, protocol.MethodTargetGetLorebook, protocol.MethodTargetListLorebooks,
+		protocol.MethodTargetDeleteLorebook,
 		func(info protocol.TargetInfo) []string { return info.LorebookFields }}
 )
 

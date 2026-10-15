@@ -11,6 +11,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/davidgibbons/innkeeper/internal/bulk"
 	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/merge"
 	"github.com/davidgibbons/innkeeper/internal/tier"
@@ -109,7 +110,8 @@ type restoreIn struct {
 type archiveIn struct {
 	ID   int64 `path:"id"`
 	Body struct {
-		Archived bool `json:"archived"`
+		Archived  bool `json:"archived"`
+		Unpublish bool `json:"unpublish,omitempty" doc:"When archiving: also delete its copies from the apps it was pushed to. An app that can't delete keeps its copy and stays linked."`
 	}
 }
 
@@ -381,7 +383,10 @@ func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "archive-" + singular, Method: http.MethodPut,
 		Path: item + "/archived", Summary: "Archive or unarchive a " + singular, Tags: tags, DefaultStatus: http.StatusNoContent},
 		func(ctx context.Context, in *archiveIn) (*struct{}, error) {
-			return nil, s.fail(ents.SetArchived(ctx, in.ID, in.Body.Archived))
+			if in.Body.Unpublish && !in.Body.Archived {
+				return nil, huma.Error422UnprocessableEntity("unpublish only goes with archived: true")
+			}
+			return nil, s.fail(bulk.SetArchived(ctx, s.Lib, s.Targets, k, in.ID, in.Body.Archived, in.Body.Unpublish))
 		})
 }
 

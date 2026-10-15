@@ -158,7 +158,17 @@ const checkGoneName = "a pull-only target answers -32004 for an item it doesn't 
 func checkTarget(ctx context.Context, p *pluginhost.Process, m *protocol.Manifest) []Result {
 	info, err := checkDescribe(ctx, p, m)
 	results := []Result{{"target.describe returns a valid description", err}}
-	if err != nil || !info.Pull || dead(err, p) {
+	if err != nil || dead(err, p) {
+		return results
+	}
+	if info.Delete {
+		err = checkDelete(ctx, p, info)
+		results = append(results, Result{"a target that claims delete answers target.delete", err})
+		if dead(err, p) {
+			return results
+		}
+	}
+	if !info.Pull {
 		return results
 	}
 	err = checkLists(ctx, p)
@@ -180,6 +190,23 @@ func checkGone(ctx context.Context, p *pluginhost.Process, info protocol.TargetI
 	for _, method := range methods {
 		err := call(ctx, p, method, protocol.TargetGetParams{RemoteID: "innkeeper-contract:none"}, nil)
 		if err := expectCode(err, protocol.CodeRemoteNotFound); err != nil {
+			return fmt.Errorf("%s: %w", method, err)
+		}
+	}
+	return nil
+}
+
+// checkDelete deletes an item no app has, and a lorebook too if the target
+// keeps standalone ones. Without its app the target can only fail, so any
+// error but -32601 counts as an answer.
+func checkDelete(ctx context.Context, p *pluginhost.Process, info protocol.TargetInfo) error {
+	methods := []string{protocol.MethodTargetDelete}
+	if info.Lorebooks == protocol.LorebooksStandalone {
+		methods = append(methods, protocol.MethodTargetDeleteLorebook)
+	}
+	for _, method := range methods {
+		err := call(ctx, p, method, protocol.TargetDeleteParams{RemoteID: "innkeeper-contract:none"}, nil)
+		if err != nil && !answered(err) {
 			return fmt.Errorf("%s: %w", method, err)
 		}
 	}

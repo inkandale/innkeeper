@@ -19,7 +19,7 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-tools | bad-actions | bad-records | bad-enrich | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code | database | bad-list | bad-setup | bad-catalog | catalog-repeat | catalog-lax | catalog-no-notfound | catalog-wrong-hash | catalog-sourceless | sites-noisy | sites-lax-data | sites-claims | sites-lax-params | sites-bad-source")
+	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-tools | bad-actions | bad-records | bad-enrich | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code | database | bad-list | bad-setup | bad-catalog | catalog-repeat | catalog-lax | catalog-no-notfound | catalog-wrong-hash | catalog-sourceless | sites-noisy | sites-lax-data | sites-claims | sites-lax-params | sites-bad-source | no-delete")
 	caps := flag.String("caps", "push,pull", "comma-separated capabilities to report")
 	name := flag.String("name", "fake", "the plugin name to report")
 	flag.Parse()
@@ -134,6 +134,11 @@ func main() {
 			return newTarget(config).putLorebook(params)
 		case protocol.MethodTargetGetLorebook:
 			return newTarget(config).getLorebook(params)
+		case protocol.MethodTargetDelete, protocol.MethodTargetDeleteLorebook:
+			if *mode == "no-delete" {
+				return nil, protocol.MethodNotFound(method)
+			}
+			return newTarget(config).remove(params)
 		case protocol.MethodTargetList, protocol.MethodTargetListLorebooks:
 			if config["fail_list"] == "retryable" {
 				return nil, protocol.NewError(-32000, "app unavailable", true)

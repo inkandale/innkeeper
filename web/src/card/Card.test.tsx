@@ -285,6 +285,14 @@ test("the panel shows sync, lorebooks, collections, and sources", async () => {
   expect(screen.queryByRole("link", { name: "chub: dg/evil" })).not.toBeInTheDocument();
 });
 
+test("archive can also delete the card from the apps it was pushed to", async () => {
+  renderAt("/cards/7");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Also delete from Lumiverse" }));
+  await user.click(screen.getByRole("button", { name: "Archive" }));
+  await waitFor(() => expect(puts).toContainEqual({ path: "/api/cards/7/archived", body: { archived: true, unpublish: true } }));
+});
+
 test("tags are part of the draft and save with it", async () => {
   renderAt("/cards/7");
   await userEvent.type(await screen.findByLabelText("Add to Tags"), "smith{Enter}");

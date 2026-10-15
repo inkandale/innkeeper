@@ -110,6 +110,7 @@ type bulkIn struct {
 		Tags       []string      `json:"tags,omitempty" maxItems:"100" maxLength:"100" doc:"For tag and untag: the tags to add or remove."`
 		Collection int64         `json:"collection,omitempty" doc:"For collect and uncollect: the collection."`
 		Format     string        `json:"format,omitempty" doc:"For export: json (the default), or a format a codec plugin instance writes, such as png."`
+		Unpublish  bool          `json:"unpublish,omitempty" doc:"For archive: also delete each one's copies from the apps it was pushed to. An app that can't delete keeps its copy."`
 	}
 }
 
@@ -324,6 +325,9 @@ func (s *Server) jobRoutes(api huma.API) {
 			if lorebooks && b.Action != "archive" && b.Action != "unarchive" {
 				return nil, huma.Error400BadRequest("lorebooks can only be archived or unarchived in bulk; push them with POST /pushes")
 			}
+			if b.Unpublish && b.Action != "archive" {
+				return nil, huma.Error400BadRequest("unpublish only goes with archive")
+			}
 			switch b.Action {
 			case "archive", "unarchive":
 				// Select only cards the action changes; search would otherwise hide archived cards from unarchive.
@@ -366,9 +370,9 @@ func (s *Server) jobRoutes(api huma.API) {
 			switch b.Action {
 			case "archive", "unarchive":
 				if lorebooks {
-					p, err = bulk.EnqueueLorebookArchive(ctx, s.Queue, ids, b.Action == "archive")
+					p, err = bulk.EnqueueLorebookArchive(ctx, s.Queue, ids, b.Action == "archive", b.Unpublish)
 				} else {
-					p, err = bulk.EnqueueArchive(ctx, s.Queue, ids, b.Action == "archive")
+					p, err = bulk.EnqueueArchive(ctx, s.Queue, ids, b.Action == "archive", b.Unpublish)
 				}
 			case "tag":
 				p, err = bulk.EnqueueTag(ctx, s.Queue, ids, b.Tags, nil)

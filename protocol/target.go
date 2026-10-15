@@ -12,15 +12,18 @@ import (
 // lorebooks on their own also answers target.put_lorebook, and
 // target.get_lorebook if it can pull. A target that can pull also answers
 // target.list, and target.list_lorebooks, so the owner can bind an item the
-// app already has.
+// app already has. A target that can delete answers target.delete, and
+// target.delete_lorebook if it keeps lorebooks on their own.
 const (
-	MethodTargetDescribe      = "target.describe"
-	MethodTargetPut           = "target.put"
-	MethodTargetGet           = "target.get"
-	MethodTargetPutLorebook   = "target.put_lorebook"
-	MethodTargetGetLorebook   = "target.get_lorebook"
-	MethodTargetList          = "target.list"
-	MethodTargetListLorebooks = "target.list_lorebooks"
+	MethodTargetDescribe       = "target.describe"
+	MethodTargetPut            = "target.put"
+	MethodTargetGet            = "target.get"
+	MethodTargetPutLorebook    = "target.put_lorebook"
+	MethodTargetGetLorebook    = "target.get_lorebook"
+	MethodTargetList           = "target.list"
+	MethodTargetListLorebooks  = "target.list_lorebooks"
+	MethodTargetDelete         = "target.delete"
+	MethodTargetDeleteLorebook = "target.delete_lorebook"
 )
 
 // CodeRemoteNotFound is the error for an ID the plugin doesn't have: a
@@ -41,7 +44,7 @@ type TargetInfo struct {
 	Pull   bool     `json:"pull"`
 	// Update is false for a create-only app, where every put makes a new copy.
 	Update bool `json:"update"`
-	// Delete is reserved: the core doesn't delete remote cards yet.
+	// Delete is true if target.delete removes the app's copy.
 	Delete    bool   `json:"delete"`
 	Lorebooks string `json:"lorebooks"`
 	// LorebookFields are the character_book keys the app keeps. Required
@@ -76,6 +79,12 @@ type TargetPutParams struct {
 	// LorebookRemoteIDs are the card's lorebooks in the app, sorted, for a
 	// target with standalone lorebooks. The app links the card to exactly these.
 	LorebookRemoteIDs []string `json:"lorebook_remote_ids,omitempty"`
+}
+
+// TargetDeleteParams removes the app's copy of one card or lorebook. The
+// reply is empty.
+type TargetDeleteParams struct {
+	RemoteID string `json:"remote_id"`
 }
 
 // TargetPutLorebookParams sends one lorebook, a CCv3 character_book.

@@ -527,3 +527,24 @@ func TestReviewingASourceWhoseRefHasASlash(t *testing.T) {
 		t.Fatalf("after resolving = %+v", list)
 	}
 }
+
+func TestArchiveUnpublishDeletesTheAppCopy(t *testing.T) {
+	e := newEnv(t)
+	inst, dir := e.target()
+	var c entityOut
+	e.call("POST", "/cards", map[string]any{"data": map[string]any{"name": "Brakka"}}, 201, &c)
+	if _, err := e.s.Targets.Push(context.Background(), library.Card, inst, c.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	path := fmt.Sprintf("/cards/%d", c.ID)
+	e.call("PUT", path+"/archived", map[string]any{"archived": false, "unpublish": true}, 422, nil)
+	e.call("PUT", path+"/archived", map[string]any{"archived": true, "unpublish": true}, 204, nil)
+	if _, err := os.Stat(filepath.Join(dir, "r1.json")); !os.IsNotExist(err) {
+		t.Fatalf("the app still has r1: %v", err)
+	}
+	var list []targets.Binding
+	e.call("GET", path+"/bindings", nil, 200, &list)
+	if got, _ := e.s.Lib.Cards.Get(context.Background(), c.ID); got.ArchivedAt == nil || len(list) != 0 {
+		t.Fatalf("archived_at = %v, bindings = %+v", got.ArchivedAt, list)
+	}
+}

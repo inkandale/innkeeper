@@ -24,15 +24,15 @@ func failed(results []Result) map[string]error {
 	return out
 }
 
-// The check sends no config, so the fake's list methods return an error,
+// The check sends no config, so the fake's list and delete methods return an error,
 // which counts as an answer.
 func TestWellBehavedPluginPasses(t *testing.T) {
 	results, err := Check(context.Background(), testutil.FakePlugin(t), quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 6 {
-		t.Fatalf("ran %d checks, want 6", len(results))
+	if len(results) != 7 {
+		t.Fatalf("ran %d checks, want 7", len(results))
 	}
 	if f := failed(results); len(f) > 0 {
 		t.Fatalf("checks failed: %v", f)
@@ -309,6 +309,25 @@ func TestPullOnlyTargetChecks(t *testing.T) {
 	}
 	if got := failed(results)[checkGoneName]; got == nil || !strings.Contains(got.Error(), "-32004") {
 		t.Fatalf("a retryable error for a gone item: got %v, want an -32004 failure", got)
+	}
+}
+
+const checkDeleteName = "a target that claims delete answers target.delete"
+
+func TestDeleteCheckFailsATargetWithoutTheMethod(t *testing.T) {
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"push", "pull"}), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := failed(results); len(f) > 0 {
+		t.Fatalf("checks failed: %v", f)
+	}
+	results, err = Check(context.Background(), testutil.FakePluginWith(t, []string{"push", "pull"}, "-mode=no-delete"), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := failed(results)[checkDeleteName]; got == nil || !strings.Contains(got.Error(), "-32601") {
+		t.Fatalf("a target claiming delete without target.delete: got %v, want a -32601 failure", got)
 	}
 }
 

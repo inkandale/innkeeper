@@ -253,7 +253,7 @@ instance's config. Don't contact the app to answer it.
 | `fields` | The CCv3 `data` keys the app keeps, such as `name`, `description`, `first_mes`. List `character_book` if the app keeps embedded lorebooks |
 | `pull` | `true` if `target.get` works. Needs the `pull` capability |
 | `update` | `true` if a `target.put` with a `remote_id` changes that card. `false` for an app where every put makes a new copy |
-| `delete` | Reserved. The core doesn't delete cards in apps yet |
+| `delete` | `true` if `target.delete` works, and `target.delete_lorebook` for `standalone` lorebooks |
 | `lorebooks` | `embedded`: linked lorebooks arrive as `data.character_book`. `standalone`: the app keeps lorebooks on their own, sent with `target.put_lorebook`. `none`: the app has no lorebooks |
 | `lorebook_fields` | For `standalone`: the CCv3 `character_book` keys the app keeps, such as `name`, `description`, `entries` |
 
@@ -328,6 +328,12 @@ lorebooks you already have. `target.get_lorebook` needs the `pull` capability.
 Reply with `remote_id`. `target.get_lorebook` takes `remote_id` and replies
 with `lorebook`, the app's copy as a `character_book` object. Both reply with
 error `-32004` if the app no longer has `remote_id`.
+
+**`target.delete`** and **`target.delete_lorebook`** remove the app's copy
+when the owner archives a card or lorebook and asks to remove it from linked
+apps. Both take `remote_id` and reply with `{}`, or with error `-32004` if the
+app no longer has it. This deletes the owner's data in the app, so delete only
+the item named.
 
 #### Following site sources
 
@@ -864,6 +870,9 @@ It loads the manifest, then checks that:
   `target.list_lorebooks` within 5 seconds, with a `remote_id` on every item
   it returns. A target checked without its app can only return an error, so
   an error other than `-32601` counts as an answer.
+- a plugin whose `target.describe` claims `delete` answers `target.delete`,
+  and `target.delete_lorebook` if it keeps standalone lorebooks, in the same
+  way
 - a plugin that pulls without pushing answers `-32004` to `target.get` for
   `innkeeper-contract:none`, and to `target.get_lorebook` if it keeps standalone
   lorebooks

@@ -102,6 +102,10 @@
           },
           "archived": {
             "type": "boolean"
+          },
+          "unpublish": {
+            "description": "When archiving: also delete its copies from the apps it was pushed to. An app that can't delete keeps its copy and stays linked.",
+            "type": "boolean"
           }
         },
         "required": [
@@ -453,6 +457,10 @@
               "array",
               "null"
             ]
+          },
+          "unpublish": {
+            "description": "For archive: also delete each one's copies from the apps it was pushed to. An app that can't delete keeps its copy.",
+            "type": "boolean"
           }
         },
         "required": [

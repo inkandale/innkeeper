@@ -91,15 +91,35 @@ export function Identity({ data, edit, lock }: { data: Data; edit: (key: string,
 export function Archive({ kind, entity }: { kind: Kind; entity: Entity }) {
   const qc = useQueryClient();
   const archived = !!entity.archived_at;
+  const [unpublish, setUnpublish] = useState(false);
+  const bindings = useQuery(bindingsQuery(kind, entity.id));
+  const instances = useQuery(instancesQuery);
+  const linked = (bindings.data ?? [])
+    .filter((b) => b.push)
+    .map((b) => instances.data?.find((i) => i.id === b.instance_id)?.name ?? `#${b.instance_id}`);
   const set = useMutation({
     mutationFn: async () =>
-      mustOk(await api.PUT(route(kind, "/cards/{id}/archived"), { params: { path: { id: entity.id } }, body: { archived: !archived } })),
+      mustOk(
+        await api.PUT(route(kind, "/cards/{id}/archived"), {
+          params: { path: { id: entity.id } },
+          body: { archived: !archived, unpublish: !archived && unpublish },
+        }),
+      ),
     onSuccess: () => void qc.invalidateQueries({ queryKey: [kind, entity.id] }),
   });
   return (
-    <button className={archived ? "button" : "button danger"} disabled={set.isPending} onClick={() => set.mutate()}>
-      {archived ? "Unarchive" : "Archive"}
-    </button>
+    <>
+      <button className={archived ? "button" : "button danger"} disabled={set.isPending} onClick={() => set.mutate()}>
+        {archived ? "Unarchive" : "Archive"}
+      </button>
+      {!archived && linked.length > 0 && (
+        <label className="check">
+          <span>Also delete from {linked.join(", ")}</span>
+          <input type="checkbox" checked={unpublish} onChange={(e) => setUnpublish(e.target.checked)} />
+        </label>
+      )}
+      {set.error && <span className="error">{set.error.message}</span>}
+    </>
   );
 }
 

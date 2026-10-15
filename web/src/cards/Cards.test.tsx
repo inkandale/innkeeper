@@ -234,8 +234,20 @@ test("select all matching archives the search", async () => {
   expect(screen.getByRole("checkbox", { name: "Select Brakka" })).toBeChecked();
   await user.click(screen.getByRole("button", { name: "Archive" }));
   await user.click(screen.getByRole("button", { name: "Archive 49 cards" }));
-  await waitFor(() => expect(posts[0]).toEqual({ path: "/api/bulk", body: { query: { filter: { and: [{ tag: "fantasy" }] } }, action: "archive" } }));
+  await waitFor(() =>
+    expect(posts[0]).toEqual({ path: "/api/bulk", body: { query: { filter: { and: [{ tag: "fantasy" }] } }, action: "archive", unpublish: false } }),
+  );
   expect(posts[0]!.body).not.toHaveProperty("kind");
+});
+
+test("archive can also delete the cards from linked apps", async () => {
+  renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
+  await user.click(screen.getByRole("button", { name: "Archive" }));
+  await user.click(screen.getByRole("checkbox", { name: "Also delete from linked apps" }));
+  await user.click(screen.getByRole("button", { name: "Archive 1 card" }));
+  await waitFor(() => expect(posts[0]?.body).toMatchObject({ action: "archive", unpublish: true }));
 });
 
 test("push offers only targets that push", async () => {

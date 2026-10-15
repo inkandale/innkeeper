@@ -41,7 +41,7 @@ func newActionEnv(t *testing.T) *actionEnv {
 	runs := pluginhost.NewRuns(quiet)
 	mgr := pluginhost.NewManager(runs.Handle, time.Minute, quiet)
 	t.Cleanup(mgr.Close)
-	rn := &actions.Runner{Lib: e.s.Lib, Registry: e.s.Registry, Plugins: mgr, Runs: runs, API: e.s.APIHandler(), Log: quiet}
+	rn := &actions.Runner{Lib: e.s.Lib, Registry: e.s.Registry, Plugins: mgr, Runs: runs, API: e.s.APIHandler()}
 	w := &jobs.Worker{Queue: e.s.Queue, Log: quiet, Poll: 50 * time.Millisecond, Lease: 600 * time.Millisecond,
 		Handlers: map[string]jobs.Handler{actions.Kind: rn.Run}}
 	wctx, cancel := context.WithCancel(ctx)

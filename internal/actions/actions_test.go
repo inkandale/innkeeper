@@ -1,6 +1,7 @@
 package actions
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"slices"
@@ -36,6 +37,10 @@ func TestScope(t *testing.T) {
 			`{"name": "Grok", "description": "Huge.", "first_mes": "Hail."}`,
 			`{"name": "Grok", "description": "Huge.", "first_mes": "Hail."}`, nil},
 		{"a card never gets character_book", whole, "", "card", base,
+			`{"name": "Brakka", "description": "Big.", "scenario": "A cave.", "character_book": {"entries": []}}`,
+			base, []string{"character_book"}},
+		{"a field action on character_book still can't add it", protocol.Action{ID: "book", Applies: "card", Fields: []string{"character_book"}},
+			"character_book", "card", base,
 			`{"name": "Brakka", "description": "Big.", "scenario": "A cave.", "character_book": {"entries": []}}`,
 			base, []string{"character_book"}},
 		{"report-only proposal is dropped", protocol.Action{ID: "evaluate", Applies: "card", ReportOnly: true}, "", "card", base,
@@ -142,4 +147,15 @@ func sameJSON(t *testing.T, a, b json.RawMessage) bool {
 	ja, _ := json.Marshal(x)
 	jb, _ := json.Marshal(y)
 	return slices.Equal(ja, jb)
+}
+
+func TestLibraryCallEndsWithTheRun(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	s := &session{rn: &Runner{}, ctx: ctx, action: protocol.Action{ID: "lookup", Library: true}}
+	_, err := s.libraryCall(json.RawMessage(`{"name": "get_card", "arguments": {"id": 1}}`))
+	var rpcErr *protocol.Error
+	if !errors.As(err, &rpcErr) || rpcErr.Code != protocol.CodeForbidden {
+		t.Fatalf("library.call after the run stopped: %v, want -32003", err)
+	}
 }

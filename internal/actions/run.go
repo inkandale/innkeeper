@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"slices"
 	"sync"
@@ -32,7 +31,6 @@ type Runner struct {
 	Runs    *pluginhost.Runs
 	// API serves library.call's tools in process; see mcp.Call.
 	API http.Handler
-	Log *slog.Logger
 }
 
 // Run is the jobs.Handler for Kind. Every failure is final: a run costs the
@@ -71,11 +69,12 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 	if err != nil {
 		return err
 	}
-	params.Run = r.Token()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	s := &session{rn: rn, ctx: ctx, run: r, action: a, instanceID: *r.InstanceID}
-	defer rn.Runs.Add(params.Run, s.serve)()
+	var remove func()
+	params.Run, remove = rn.Runs.Add(inst.ID, s.serve)
+	defer remove()
 
 	var res protocol.ActionRunResult
 	if err := rn.Registry.Call(ctx, rn.Plugins, inst, protocol.MethodActionRun, params, &res); err != nil {
@@ -207,6 +206,10 @@ func (s *session) libraryCall(params json.RawMessage) (any, error) {
 	}
 	if !s.action.Library {
 		return nil, forbidden(fmt.Sprintf("action %s doesn't declare library", s.action.ID))
+	}
+	// Stopping a run cancels its context before the token is removed.
+	if s.ctx.Err() != nil {
+		return nil, forbidden("the run has ended")
 	}
 	if !slices.Contains(libraryTools, c.Name) {
 		return nil, forbidden(fmt.Sprintf("library.call runs only %v, not %q", libraryTools, c.Name))

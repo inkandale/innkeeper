@@ -117,3 +117,10 @@ test("with nothing installed, points back to choosing plugins", async () => {
   renderAt("/welcome/setup");
   expect(await screen.findByRole("link", { name: "Choose some first." })).toBeInTheDocument();
 });
+
+test("a plugin that pulls without pushing moves on without checking an app", async () => {
+  installed = [plugin("site-follower", ["pull"])];
+  renderAt("/welcome/setup/site-follower");
+  expect(await screen.findByText("cards step")).toBeInTheDocument();
+  expect(sent).toEqual([{ method: "POST", path: "/api/instances", body: { plugin: "site-follower", name: "site-follower" } }]);
+});

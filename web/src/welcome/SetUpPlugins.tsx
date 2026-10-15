@@ -50,7 +50,7 @@ function PluginStep({ plugin, done, next }: { plugin: Plugin; done: InstanceInfo
     meta: { toast: false },
   });
   const afterSave = (inst: InstanceInfo) => {
-    if (!plugin.capabilities?.includes("pull")) return navigate(next);
+    if (!plugin.capabilities?.includes("pull") || !plugin.capabilities.includes("push")) return navigate(next);
     setSaved(inst);
     check.mutate(inst.id);
   };

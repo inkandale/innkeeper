@@ -161,3 +161,11 @@ test("Finish ends the wizard", async () => {
   expect(await screen.findByText("cards page")).toBeInTheDocument();
   expect(sent).toEqual([{ method: "PATCH", path: "/api/settings", body: { onboarding_done: true } }]);
 });
+
+test("a plugin that only follows site sources isn't offered as an app to sync", async () => {
+  plugins = [{ ...plugin("url-import", ["import", "sites", "pull"]), inputs: ["url"] }];
+  instances = [instance(7, "url-import", "url-import")];
+  renderStep();
+  expect(await screen.findByLabelText("Import from a page URL")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Sync url-import" })).not.toBeInTheDocument();
+});

@@ -56,7 +56,7 @@ export function Sync() {
     queryKey: ["sync", "changes", "counts"],
     queryFn: async () => must(await api.GET("/sync/changes")),
   });
-  const targets = withCapability(instances.data, plugins.data, "push", "pull");
+  const targets = withCapability(instances.data, plugins.data, "push");
   const cantCheck = targets.some((i) => stateCounts(facets.data?.facets?.targets, i.id).cant_check > 0);
 
   const refresh = useRun(async () => must(await api.POST("/scans")), "Refreshing every app…");

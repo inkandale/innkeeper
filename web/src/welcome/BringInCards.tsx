@@ -71,7 +71,8 @@ export function BringInCards() {
   const failed = plugins.error ?? instances.error;
   if (failed) return <p className="error">{failed.message}</p>;
   if (plugins.isPending || instances.isPending) return null;
-  const apps = withCapability(instances.data, plugins.data, "pull");
+  // An app is read and pushed to; a plugin that only pulls follows site sources instead.
+  const apps = withCapability(withCapability(instances.data, plugins.data, "pull"), plugins.data, "push");
   const inputs = new Map((plugins.data ?? []).map((p) => [p.name, p.inputs ?? []]));
   const importers = withCapability(instances.data, plugins.data, "import");
   const importer = importers.find((i) => inputs.get(i.plugin)?.includes("file"));

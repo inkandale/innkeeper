@@ -33,11 +33,13 @@ const results = {
   },
 };
 
+let keys: unknown;
 let searches: unknown[];
 let posts: { path: string; body: unknown }[];
 let previews: unknown[];
 beforeEach(() => {
   localStorage.clear();
+  keys = { instance_id: null, keys: [] };
   searches = [];
   posts = [];
   previews = [];
@@ -50,6 +52,10 @@ beforeEach(() => {
         searches.push(body);
         if (body.page?.size === 1 && body.facets?.includes("targets"))
           return json({ hits: [], total: 1, facets: { targets: [{ instance: 2, is: "ahead", cards: 1 }] } });
+        if (body.include?.includes("enrichments")) {
+          const scores: Record<number, unknown> = { 7: { quality: { value: 78, stale: false } }, 8: { quality: { value: 40, stale: true } } };
+          return json({ ...results, hits: results.hits.map((h) => ({ ...h, enrichments: scores[h.id] })) });
+        }
         return json(results);
       }
       if (path === "/api/pushes/preview") {
@@ -60,7 +66,7 @@ beforeEach(() => {
         posts.push({ path, body: await req.json() });
         return json({ id: 11, kind: "import", status: "queued" });
       }
-      if (path === "/api/bulk" || path === "/api/pushes") {
+      if (path === "/api/bulk" || path === "/api/pushes" || path === "/api/enrichments/runs") {
         posts.push({ path, body: await req.json() });
         return json({ id: 5, kind: "bulk", status: "waiting" });
       }
@@ -69,14 +75,17 @@ beforeEach(() => {
           { id: 2, name: "Lumiverse", plugin: "lumiverse" },
           { id: 3, name: "Cards folder", plugin: "folder" },
           { id: 6, name: "url-import", plugin: "url-import" },
+          { id: 5, name: "Judge", plugin: "judge" },
         ]);
       if (path === "/api/plugins")
         return json([
           { name: "lumiverse", capabilities: ["push", "pull"] },
           { name: "folder", capabilities: ["import"] },
           { name: "url-import", capabilities: ["import"], inputs: ["url"] },
+          { name: "judge", capabilities: ["enrich"] },
         ]);
       if (path === "/api/collections") return json([{ id: 4, name: "Elves", cards: 0 }]);
+      if (path === "/api/enrichments/keys") return json(keys);
       return json([]);
     }),
   );
@@ -463,4 +472,65 @@ test("push sends one push per ticked target", async () => {
 test("New card links to the new-card page", async () => {
   renderCards("/cards");
   expect(await screen.findByRole("link", { name: "New card" })).toHaveAttribute("href", "/cards/new");
+});
+
+const scored = {
+  instance_id: 5,
+  keys: [
+    { key: "quality", label: "Quality", type: "score", range: [0, 100], grid: true },
+    { key: "summary", label: "Summary", type: "text" },
+  ],
+};
+
+test("tiles show the grid score, dimmed when stale", async () => {
+  keys = scored;
+  renderCards("/cards");
+  const fresh = await screen.findByRole("img", { name: "Quality 78" });
+  expect(fresh).not.toHaveClass("stale");
+  const stale = screen.getByRole("img", { name: "Quality 40, stale: from an older revision" });
+  expect(stale).toHaveClass("stale");
+  expect(searches).toContainEqual(expect.objectContaining({ include: ["tags", "lorebooks", "targets", "enrichments"] }));
+});
+
+test("without a score instance the grid asks for no scores", async () => {
+  renderCards("/cards");
+  await screen.findByText("Brakka");
+  expect(screen.queryByRole("img", { name: /^Quality/ })).not.toBeInTheDocument();
+  expect(searches).not.toContainEqual(expect.objectContaining({ include: expect.arrayContaining(["enrichments"]) }));
+});
+
+test("a score range filters, and Not evaluated replaces it", async () => {
+  keys = scored;
+  const { router } = renderCards("/cards");
+  const user = userEvent.setup();
+  await user.type(await screen.findByRole("spinbutton", { name: "Quality at least" }), "70");
+  await user.click(screen.getByRole("button", { name: "Apply" }));
+  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:quality:70.."]);
+  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "quality", gte: 70 }] } })));
+  expect(screen.getByRole("button", { name: "Remove score: quality 70–…" })).toBeInTheDocument();
+  await user.click(screen.getByRole("checkbox", { name: "Not evaluated" }));
+  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:quality:none"]);
+  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "quality", missing: true }] } })));
+  // Only score keys get a range.
+  expect(screen.queryByRole("spinbutton", { name: "Summary at least" })).not.toBeInTheDocument();
+});
+
+test("each score key is a sort", async () => {
+  keys = scored;
+  const { router } = renderCards("/cards");
+  const user = userEvent.setup();
+  await screen.findByRole("option", { name: "Quality" });
+  await user.selectOptions(screen.getByRole("combobox", { name: "Sort" }), "Quality");
+  expect(router.state.location.search).toBe("?sort=enrichment%3Aquality");
+  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ sort: "enrichment:quality" })));
+});
+
+test("Evaluate starts a run on the selection", async () => {
+  keys = scored;
+  renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
+  await user.click(screen.getByRole("button", { name: "Evaluate" }));
+  await user.click(screen.getByRole("button", { name: "Evaluate 1 card" }));
+  await waitFor(() => expect(posts).toEqual([{ path: "/api/enrichments/runs", body: { instance_id: 5, query: { filter: { ids: [8] } } } }]));
 });

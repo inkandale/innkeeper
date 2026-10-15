@@ -6,6 +6,7 @@ import { Logo, type App } from "../sync/Logo";
 import { stateLabel } from "../sync/sync";
 
 export type Hit = components["schemas"]["Hit"];
+type EnrichmentKey = components["schemas"]["EnrichmentKey"];
 export type Names = { instances: Map<number, string>; collections: Map<number, string>; logos: Map<number, App> };
 
 export const badgeClass: Record<string, string> = {
@@ -63,7 +64,20 @@ function SelectBox({ hit, pick }: { hit: Hit; pick: PickProps }) {
   );
 }
 
-export function Tile({ hit, names, pick }: { hit: Hit; names: Names; pick: PickProps }) {
+/** Score shows the card's value of the grid key, dimmed when it is about an older revision. */
+function Score({ hit, grid }: { hit: Hit; grid: EnrichmentKey }) {
+  const v = hit.enrichments?.[grid.key];
+  if (!v) return null;
+  const value = typeof v.value === "number" ? String(Math.round(v.value)) : String(v.value);
+  const title = v.stale ? `${grid.label} ${value}, stale: from an older revision` : `${grid.label} ${value}`;
+  return (
+    <span className={v.stale ? "score stale" : "score"} role="img" aria-label={title} title={title}>
+      {value}
+    </span>
+  );
+}
+
+export function Tile({ hit, names, pick, grid }: { hit: Hit; names: Names; pick: PickProps; grid?: EnrichmentKey }) {
   const tags = hit.tags ?? [];
   const books = hit.lorebooks?.length ?? 0;
   return (
@@ -72,6 +86,7 @@ export function Tile({ hit, names, pick }: { hit: Hit; names: Names; pick: PickP
       <Link to={`/cards/${hit.id}`} className="tile-image">
         <Avatar hit={hit} w={320} />
         <Badges hit={hit} names={names} />
+        {grid && <Score hit={hit} grid={grid} />}
         {books > 0 && <span className="lorebooks" role="img" aria-label={`${books} ${books === 1 ? "lorebook" : "lorebooks"}`}>
             <span aria-hidden="true">📖</span> {books}
           </span>}

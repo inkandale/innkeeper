@@ -2,24 +2,31 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router";
 import { api, must, route } from "../api/client";
-import { instancesQuery, collectionsQuery, pluginsQuery } from "../api/queries";
+import { instancesQuery, collectionsQuery, enrichmentKeysQuery, pluginsQuery } from "../api/queries";
 import { apps } from "../sync/Logo";
 import { stateLabel } from "../sync/sync";
 import { Facets } from "./Facets";
 import { ImportForm, importers } from "./ImportForm";
 import { pageLinks } from "./pages";
-import { defaultSort, parseQuery, sizes, toggleTerm, toParams, toLorebookSearch, toSearch, type CardQuery, type Sort, type Term } from "./query";
+import { defaultSort, parseQuery, parseScore, sizes, toggleTerm, toParams, toLorebookSearch, toSearch, type CardQuery, type Sort, type Term } from "./query";
 import { emptySelection, pick, target, type Selection } from "./selection";
 import { useJobEvents } from "../settings/jobUtil";
 import { SelectionBar } from "./SelectionBar";
 import { LorebookRow, Row, Tile, type Names } from "./Tile";
 import "./Cards.css";
 
-const sortLabels: Record<Sort, string> = { relevance: "Best match", updated: "Updated", name: "Name", created: "Created" };
+const sortLabels: Record<string, string> = { relevance: "Best match", updated: "Updated", name: "Name", created: "Created" };
+
+function scoreLabel(value: string): string {
+  const s = parseScore(value)!;
+  if (s.none) return `${s.key} not evaluated`;
+  return `${s.key} ${s.gte ?? "…"}–${s.lte ?? "…"}`;
+}
 
 function termLabel(t: Term, names: Names): string {
   const value =
-    t.kind === "collection" ? (names.collections.get(Number(t.value)) ?? "#" + t.value)
+    t.kind === "score" ? scoreLabel(t.value)
+    : t.kind === "collection" ? (names.collections.get(Number(t.value)) ?? "#" + t.value)
     : t.kind === "target" ? (names.instances.get(Number(t.value)) ?? "#" + t.value)
     : t.kind === "state" ? stateLabel(t.value)
     : t.value;
@@ -44,12 +51,22 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   useJobEvents(watching ?? 0, watching !== undefined);
   const go = (next: CardQuery) => setParams(toParams(next));
 
-  const body = kind === "card" ? toSearch(q) : toLorebookSearch(q);
+  const keys = useQuery({ ...enrichmentKeysQuery, enabled: kind === "card" });
+  const scored = keys.data?.instance_id != null;
+  const scoreKeys = (keys.data?.keys ?? []).filter((k) => k.type === "score");
+  const grid = keys.data?.keys?.find((k) => k.grid);
+  const body = kind === "card" ? toSearch(q, scored) : toLorebookSearch(q);
   const res = useQuery({
     queryKey: ["search", kind, body],
     queryFn: async () => must(await api.POST(route(kind, "/cards/search"), { body })),
     placeholderData: keepPreviousData,
+    // Waits for the keys, so the grid doesn't search once without scores and again with them.
+    enabled: kind !== "card" || !keys.isPending,
   });
+  const sorts: [Sort, string][] = [
+    ...(Object.entries(sortLabels) as [Sort, string][]),
+    ...scoreKeys.map((k): [Sort, string] => [`enrichment:${k.key}`, k.label]),
+  ];
   const instances = useQuery(instancesQuery);
   const plugins = useQuery(pluginsQuery);
   const collections = useQuery(collectionsQuery);
@@ -88,7 +105,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
 
   return (
     <div className={facetsOpen ? "cards" : "cards no-facets"}>
-      {facetsOpen && <Facets kind={kind} q={q} names={names} onChange={go} />}
+      {facetsOpen && <Facets kind={kind} q={q} names={names} scores={scoreKeys} onChange={go} />}
       {picking ? (
         <SelectionBar
           count={sel.ids.length}
@@ -114,11 +131,11 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
             value={q.sort}
             onChange={(e) => go({ ...q, sort: e.target.value as Sort, page: 1 })}
           >
-            {(Object.keys(sortLabels) as Sort[])
-              .filter((s) => s !== "relevance" || q.text || q.sort === "relevance")
-              .map((s) => (
+            {sorts
+              .filter(([s]) => s !== "relevance" || q.text || q.sort === "relevance")
+              .map(([s, label]) => (
                 <option key={s} value={s}>
-                  {sortLabels[s]}
+                  {label}
                 </option>
               ))}
           </select>
@@ -176,7 +193,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
         ) : q.view === "grid" ? (
           <div className="grid">
             {hits.map((h) => (
-              <Tile key={h.id} hit={h} names={names} pick={pickFor(h.id)} />
+              <Tile key={h.id} hit={h} names={names} pick={pickFor(h.id)} grid={grid} />
             ))}
           </div>
         ) : (

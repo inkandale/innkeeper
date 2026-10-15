@@ -1,7 +1,7 @@
 import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, exportFormats, must } from "../api/client";
-import { collectionsQuery, instancesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
+import { collectionsQuery, enrichmentKeysQuery, instancesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
 import type { components } from "../api/schema";
 import { useToast } from "../shell/Toasts";
 import { jobToast } from "../settings/jobUtil";
@@ -11,9 +11,9 @@ import { TargetPicker } from "../sync/TargetPicker";
 type Search = components["schemas"]["Query"];
 type Bulk = components["schemas"]["BulkInBody"];
 type Job = components["schemas"]["JobOut"];
-type Panel = "tag" | "collection" | "push" | "archive" | "export" | null;
+type Panel = "tag" | "collection" | "push" | "archive" | "export" | "evaluate" | null;
 
-const labels = { tag: "Tag", collection: "Collection", push: "Push", archive: "Archive", export: "Export" };
+const labels = { tag: "Tag", collection: "Collection", push: "Push", archive: "Archive", export: "Export", evaluate: "Evaluate" };
 
 /** SelectionBar replaces the toolbar while cards are picked, and starts bulk jobs on them. */
 export function SelectionBar(props: {
@@ -28,8 +28,13 @@ export function SelectionBar(props: {
 }) {
   const { count, all, total, query, onAll, onClear, onStarted, kind = "card" } = props;
   const plural = (n: number) => `${n} ${kind}${n === 1 ? "" : "s"}`;
-  // Lorebooks have no tags, collections, or bulk export.
-  const actions = kind === "card" ? (["tag", "collection", "push", "archive", "export"] as const) : (["push", "archive"] as const);
+  const enrichers = useInstancesWith("enrich");
+  const keys = useQuery({ ...enrichmentKeysQuery, enabled: kind === "card" });
+  // Lorebooks have no tags, collections, bulk export, or enrichments.
+  const actions =
+    kind === "lorebook" ? (["push", "archive"] as const)
+    : enrichers.length ? (["tag", "collection", "push", "archive", "export", "evaluate"] as const)
+    : (["tag", "collection", "push", "archive", "export"] as const);
   // Card calls leave kind out, as they did before it existed.
   const kindField = kind === "lorebook" ? { kind } : {};
   const [panel, setPanel] = useState<Panel>(null);
@@ -37,6 +42,7 @@ export function SelectionBar(props: {
   const [collection, setCollection] = useState<number>();
   const [picked, setPicked] = useState<number[]>();
   const [format, setFormat] = useState("json");
+  const [enricher, setEnricher] = useState<number>();
   const toast = useToast();
   const n = all ? total : count;
 
@@ -56,6 +62,9 @@ export function SelectionBar(props: {
   const bulk = (body: Omit<Bulk, "query">) =>
     start.mutate(async () => must(await api.POST("/bulk", { body: { query, ...kindField, ...body } })));
   const collectionId = collection ?? collections.data?.[0]?.id ?? 0;
+  const enricherId = enricher ?? keys.data?.instance_id ?? enrichers[0]?.id ?? 0;
+  const evaluate = () =>
+    start.mutate(async () => must(await api.POST("/enrichments/runs", { body: { instance_id: enricherId, query } })));
   const chosen = targets.filter((t) => (picked ?? [targets[0]?.id]).includes(t.id));
   // What the push does to each copy. Its confirm makes the push leave alone any copy that changes after this.
   const previews = useQueries({
@@ -164,6 +173,24 @@ export function SelectionBar(props: {
             <button className="button danger" disabled={busy} onClick={() => bulk({ action: "archive" })}>
               Archive {plural(n)}
             </button>
+          )}
+          {panel === "evaluate" && (
+            <>
+              {/* With one enricher there's nothing to ask. */}
+              {enrichers.length > 1 && (
+                <select className="input" aria-label="Evaluate with" value={enricherId} onChange={(e) => setEnricher(Number(e.target.value))}>
+                  {enrichers.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button className="button primary" disabled={busy || !enricherId} onClick={evaluate}>
+                Evaluate {plural(n)}
+              </button>
+              {start.error && <span className="error">{start.error.message}</span>}
+            </>
           )}
           {panel === "export" && (
             <>

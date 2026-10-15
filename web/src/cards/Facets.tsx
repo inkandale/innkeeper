@@ -1,16 +1,18 @@
 import { keepPreviousData, useQueries } from "@tanstack/react-query";
-import { useState, type MouseEvent } from "react";
+import { useState, type FormEvent, type MouseEvent } from "react";
 import { api, must, route, type Kind } from "../api/client";
 import type { components } from "../api/schema";
 import { stateLabel } from "../sync/sync";
-import { countSearch, onlyTerm, sameValue, sectionsFor, stateCountSearch, targetStates, toggleTerm, type CardQuery, type TermKind } from "./query";
+import { countSearch, onlyTerm, parseScore, sameValue, sectionsFor, setScore, stateCountSearch, targetStates, toggleTerm, type CardQuery, type TermKind } from "./query";
 import { badgeClass, type Names } from "./Tile";
 
 type Search = components["schemas"]["Query"];
 type FacetLists = components["schemas"]["Facets"];
 type Row = { value: string; label: string; cards: number; dot?: string };
 
-const titles: Record<TermKind, string> = { target: "Target", state: "State", tag: "Tags", source: "Sources", collection: "Collections" };
+const titles: Record<TermKind, string> = { target: "Target", state: "State", tag: "Tags", source: "Sources", collection: "Collections", score: "Scores" };
+
+type EnrichmentKey = components["schemas"]["EnrichmentKey"];
 
 const collapsedKey = "innkeeper.facets.collapsed";
 
@@ -151,8 +153,39 @@ function Section({ kind, rows, q, open, onOpen, onChange }: SectionProps) {
   );
 }
 
+/** ScoreFilter narrows to cards whose score instance value of key is in a range, or that have none. */
+function ScoreFilter({ k, q, onChange }: { k: EnrichmentKey; q: CardQuery; onChange: (q: CardQuery) => void }) {
+  const term = q.terms.find((t) => t.kind === "score" && parseScore(t.value)?.key === k.key);
+  const score = term ? parseScore(term.value) : undefined;
+  const [low, high] = k.range ?? [];
+  const apply = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    const num = (name: string) => (String(f.get(name) ?? "") === "" ? undefined : Number(f.get(name)));
+    onChange(setScore(q, { key: k.key, gte: num("gte"), lte: num("lte") }));
+  };
+  return (
+    <section className="facet-section">
+      <h2 className="facet-head">{k.label}</h2>
+      {/* Keyed by the term, so a cleared chip empties the boxes. */}
+      <form key={term?.value ?? ""} className="score-filter" onSubmit={apply}>
+        <input className="input" type="number" name="gte" aria-label={`${k.label} at least`} placeholder={String(low ?? "min")} min={low} max={high}
+          defaultValue={score?.gte} disabled={score?.none} />
+        <span aria-hidden="true">–</span>
+        <input className="input" type="number" name="lte" aria-label={`${k.label} at most`} placeholder={String(high ?? "max")} min={low} max={high}
+          defaultValue={score?.lte} disabled={score?.none} />
+        <button className="button" disabled={score?.none}>Apply</button>
+      </form>
+      <label className="check">
+        <input type="checkbox" checked={!!score?.none} onChange={(e) => onChange(setScore(q, { key: k.key, none: e.target.checked }))} />
+        Not evaluated
+      </label>
+    </section>
+  );
+}
+
 /** Facets is the filter sidebar: one section per term kind, each counting its values over the other sections' filters. */
-export function Facets({ kind, q, names, onChange }: { kind: Kind; q: CardQuery; names: Names; onChange: (q: CardQuery) => void }) {
+export function Facets({ kind, q, names, scores = [], onChange }: { kind: Kind; q: CardQuery; names: Names; scores?: EnrichmentKey[]; onChange: (q: CardQuery) => void }) {
   const [collapsed, setCollapsed] = useState<TermKind[]>(readCollapsed);
   const sections = sectionsFor(kind).filter((s) => s !== "collection" || names.collections.size > 0);
   const open = (s: TermKind) => !collapsed.includes(s);
@@ -166,6 +199,9 @@ export function Facets({ kind, q, names, onChange }: { kind: Kind; q: CardQuery;
     <aside className="facets" aria-label="Filters">
       {sections.map((s) => (
         <Section key={s} kind={s} rows={rows[s]} q={q} open={open(s)} onOpen={() => flip(s)} onChange={onChange} />
+      ))}
+      {scores.filter((k) => k.type === "score").map((k) => (
+        <ScoreFilter key={k.key} k={k} q={q} onChange={onChange} />
       ))}
     </aside>
   );

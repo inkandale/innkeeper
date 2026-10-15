@@ -323,6 +323,33 @@
   border-radius: 50%;
 }
 
+/* The grid key's score, bottom left, across from the lorebook count. */
+.tile-image .score {
+  position: absolute;
+  left: var(--space);
+  bottom: var(--space);
+  background: var(--bg);
+  border-radius: calc(var(--radius) * 0.5);
+  padding: 0 4px;
+  font-size: 0.85em;
+  font-weight: 700;
+}
+
+.tile-image .score.stale {
+  opacity: 0.55;
+  font-weight: 400;
+}
+
+.score-filter {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.score-filter .input {
+  width: 5em;
+}
+
 .list .badges {
   position: static;
 }

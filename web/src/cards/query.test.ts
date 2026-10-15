@@ -9,6 +9,7 @@ import {
   toParams,
   toSearch,
   sameValue,
+  setScore,
   toggleTerm,
   type CardQuery,
   type Term,
@@ -153,4 +154,25 @@ test("toLorebookSearch asks for linked cards and sync", () => {
     include: ["cards", "targets"],
     page: { size: 48, number: 2 },
   });
+});
+
+test("score terms and enrichment sorts round-trip through the URL", () => {
+  const q: CardQuery = { ...base, terms: [term("score", "quality:70..100"), term("score", "voice:none")], sort: "enrichment:quality" };
+  expect(parseQuery(toParams(q))).toEqual(q);
+  const bad = parseQuery(new URLSearchParams("f=score:quality:..&f=score:Quality:1..&sort=enrichment:Bad"));
+  expect(bad).toEqual(base);
+});
+
+test("score terms become enrichment filters, each key on its own", () => {
+  expect(filterFor([term("score", "quality:70.."), term("score", "voice:..40.5"), term("score", "summary:none", true)])).toEqual({
+    and: [{ enrichment: "quality", gte: 70 }, { enrichment: "voice", lte: 40.5 }, { not: { enrichment: "summary", missing: true } }],
+  });
+});
+
+test("setScore replaces a key's term and clears it when empty", () => {
+  let q = setScore(base, { key: "quality", gte: 70 });
+  q = setScore(q, { key: "voice", none: true });
+  q = setScore(q, { key: "quality", lte: 20 });
+  expect(q.terms).toEqual([term("score", "voice:none"), term("score", "quality:..20")]);
+  expect(setScore(q, { key: "voice" }).terms).toEqual([term("score", "quality:..20")]);
 });

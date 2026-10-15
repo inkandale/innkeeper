@@ -6,22 +6,51 @@ type TargetIs = components["schemas"]["TargetState"]["is"];
 
 // Typed from the schema so a new state fails the build here.
 export const targetStates: TargetIs[] = ["in_sync", "ahead", "remote_changed", "diverged", "missing", "cant_check"];
-/** kinds are the filter sections, in sidebar order. */
-const kinds = ["target", "state", "tag", "source", "collection"] as const;
+/** kinds are the filter sections, in sidebar order. score filters on enrichment values. */
+const kinds = ["target", "state", "tag", "source", "collection", "score"] as const;
 const sorts = ["relevance", "updated", "name", "created"] as const;
+const enrichmentSort = /^enrichment:[a-z][a-z0-9_]*$/;
+// A score term's value: key:low..high, either end optional, or key:none for cards without a value.
+const scoreValue = /^([a-z][a-z0-9_]*):(none|(\d+(?:\.\d+)?)?\.\.(\d+(?:\.\d+)?)?)$/;
 export const sizes = [24, 48, 96];
 
 export type TermKind = (typeof kinds)[number];
 /** Term is one filter: a section's value, or its negation. */
 export type Term = { kind: TermKind; value: string; not: boolean };
-export type Sort = (typeof sorts)[number];
+export type Sort = (typeof sorts)[number] | `enrichment:${string}`;
 export type CardQuery = { text: string; terms: Term[]; sort: Sort; page: number; size: number; view: "grid" | "list" };
 
 export const defaultSort = (text: string): Sort => (text ? "relevance" : "updated");
 
 /** sectionsFor lists the sidebar sections a kind of entity has; lorebooks have no tags or collections. */
 export const sectionsFor = (entity: "card" | "lorebook"): TermKind[] =>
-  entity === "card" ? [...kinds] : ["target", "state", "source"];
+  entity === "card" ? ["target", "state", "tag", "source", "collection"] : ["target", "state", "source"];
+
+/** Score is a score term's value: a range, or none for cards without a value. */
+export type Score = { key: string; gte?: number; lte?: number; none?: boolean };
+
+/** parseScore reads a score term's value, or returns undefined if it is malformed. */
+export function parseScore(value: string): Score | undefined {
+  const m = scoreValue.exec(value);
+  if (!m) return undefined;
+  if (m[2] === "none") return { key: m[1]!, none: true };
+  if (m[3] === undefined && m[4] === undefined) return undefined;
+  return { key: m[1]!, ...(m[3] !== undefined && { gte: Number(m[3]) }), ...(m[4] !== undefined && { lte: Number(m[4]) }) };
+}
+
+/** scoreTerm is the term for a score, or undefined for one with no condition. */
+export function scoreTerm(s: Score): Term | undefined {
+  if (s.none) return { kind: "score", value: `${s.key}:none`, not: false };
+  if (s.gte === undefined && s.lte === undefined) return undefined;
+  return { kind: "score", value: `${s.key}:${s.gte ?? ""}..${s.lte ?? ""}`, not: false };
+}
+
+/** setScore replaces key's score term with s's. */
+export function setScore(q: CardQuery, s: Score): CardQuery {
+  const t = scoreTerm(s);
+  const rest = q.terms.filter((x) => x.kind !== "score" || parseScore(x.value)?.key !== s.key);
+  return { ...q, terms: t ? [...rest, t] : rest, page: 1 };
+}
 
 const id = (v: string) => /^[1-9]\d*$/.test(v);
 
@@ -29,6 +58,7 @@ const id = (v: string) => /^[1-9]\d*$/.test(v);
 function valid(kind: TermKind, value: string): boolean {
   if (kind === "target" || kind === "collection") return id(value);
   if (kind === "state") return targetStates.some((s) => s === value);
+  if (kind === "score") return parseScore(value) !== undefined;
   return value !== "";
 }
 
@@ -50,7 +80,7 @@ export function parseQuery(p: URLSearchParams): CardQuery {
   return {
     text,
     terms,
-    sort: sorts.includes(sort) ? sort : defaultSort(text),
+    sort: sorts.some((s) => s === sort) || enrichmentSort.test(sort ?? "") ? sort : defaultSort(text),
     page: Number.isInteger(page) && page > 0 ? page : 1,
     size: sizes.includes(size) ? size : 48,
     view: p.get("view") === "list" ? "list" : "grid",
@@ -82,6 +112,10 @@ function condition(kind: TermKind, value: string): Filter {
       return { source: value };
     case "collection":
       return { collection: Number(value) };
+    case "score": {
+      const { key, gte, lte, none } = parseScore(value)!;
+      return none ? { enrichment: key, missing: true } : { enrichment: key, gte, lte };
+    }
   }
 }
 
@@ -98,18 +132,20 @@ export function filterFor(terms: Term[]): Filter | undefined {
     const [first, ...rest] = included(kind).map((v) => condition(kind, v));
     if (first) parts.push(rest.length ? { or: [first, ...rest] } : first);
   }
+  // Each score key narrows on its own.
+  for (const t of terms.filter((t) => t.kind === "score" && !t.not)) parts.push(condition(t.kind, t.value));
   for (const t of terms.filter((t) => t.not)) parts.push({ not: condition(t.kind, t.value) });
   return parts.length ? { and: parts } : undefined;
 }
 
-/** toSearch is the POST /api/search body for the state. */
-export function toSearch(q: CardQuery): Search {
+/** toSearch is the POST /api/search body for the state. scores adds each card's enrichment values, which needs a score instance. */
+export function toSearch(q: CardQuery, scores = false): Search {
   return {
     text: q.text || undefined,
     filter: filterFor(q.terms),
     sort: q.sort,
     fields: ["name", "avatar"],
-    include: ["tags", "lorebooks", "targets"],
+    include: ["tags", "lorebooks", "targets", ...(scores ? ["enrichments"] : [])],
     page: { size: q.size, number: q.page },
   };
 }

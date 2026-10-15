@@ -874,9 +874,11 @@ the core forwards the consumer's calls to it.
 
 **Calling.** Declare the methods in `uses`, then send them to the core with
 `instance`, the provider instance's ID from your config. The core replies
-`-32003` when your manifest doesn't declare the method, or when the instance
-doesn't offer it, and forwards everything else to the provider without
-reading it. The provider gets the same params without `instance`.
+`-32003` when your manifest doesn't declare the method, when the instance
+doesn't offer it, or when you call during your own `initialize`. It forwards
+everything else to the provider without reading it. The provider gets the
+same params without `instance`, and with `run` replaced by the core's own
+token.
 
 **`ai.chat`**
 
@@ -910,7 +912,7 @@ When the caller cancels a call, the core cancels the provider's.
 ```json
 {"jsonrpc": "2.0", "id": "c4", "method": "ai.chat", "params": {"instance": 9, "run": "mine-1", "messages": [{"role": "user", "content": "Say hello."}]}}
 {"jsonrpc": "2.0", "method": "ai.delta", "params": {"run": "mine-1", "text": "Hello"}}
-{"jsonrpc": "2.0", "id": "c4", "result": {"text": "Hello"}}
+{"jsonrpc": "2.0", "id": "c4", "result": {"text": "Hello", "model": "gpt-4o-mini"}}
 ```
 
 ## Checking a plugin

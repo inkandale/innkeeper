@@ -827,12 +827,14 @@ Reply with `results`, one per revision:
 |---|---|
 | `revision_id` | The revision, from `revisions` |
 | `values` | Values by key |
-| `meta` | An object stored with each value, such as the model and the prompt's version. Optional |
-| `error` | Why this revision has no values. Set this or `values` |
+| `meta` | An object stored with each value, such as the model and the prompt's version. Optional; at most 16 KiB |
+| `error` | Why this revision has no values, in a line. Set this or `values` |
 
 The core stores each value whose key you declared, whose type matches, and,
-for a score, that is within its range. It drops any other value and shows the
-owner a warning for each. A revision with `error`, or missing from
+for a score, that is within its range. A value must be at most 64 KiB of
+valid UTF-8 with no NUL character (`\u0000`) in any string, and so must
+`meta`. The core drops any other value or `meta` and shows the owner a
+warning for each. A revision with `error`, or missing from
 `results`, stores nothing and counts as failed; the rest of the reply still
 counts. Reply with a JSON-RPC error only when the whole call failed, such as
 a missing API key: every revision in it fails.

@@ -311,3 +311,13 @@ func TestPullOnlyTargetChecks(t *testing.T) {
 		t.Fatalf("a retryable error for a gone item: got %v, want an -32004 failure", got)
 	}
 }
+
+func TestGoneCheckSkipsGetLorebookWithoutStandaloneLorebooks(t *testing.T) {
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"pull"}), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := failed(results)[checkGoneName]; got != nil {
+		t.Fatalf("an embedded-lorebooks target failed the gone check: %v", got)
+	}
+}

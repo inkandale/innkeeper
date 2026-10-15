@@ -163,13 +163,18 @@ func checkTarget(ctx context.Context, p *pluginhost.Process, m *protocol.Manifes
 	if m.Has("push") || dead(err, p) {
 		return results
 	}
-	return append(results, Result{checkGoneName, checkGone(ctx, p)})
+	return append(results, Result{checkGoneName, checkGone(ctx, p, info)})
 }
 
-// checkGone asks for a card and a lorebook no site has. The core shows -32004
-// as "no longer on the site", and anything else as a failed check.
-func checkGone(ctx context.Context, p *pluginhost.Process) error {
-	for _, method := range []string{protocol.MethodTargetGet, protocol.MethodTargetGetLorebook} {
+// checkGone asks for a card, and a lorebook if the target keeps standalone
+// ones, that no site has. The core shows -32004 as "no longer on the site", and
+// anything else as a failed check.
+func checkGone(ctx context.Context, p *pluginhost.Process, info protocol.TargetInfo) error {
+	methods := []string{protocol.MethodTargetGet}
+	if info.Lorebooks == protocol.LorebooksStandalone {
+		methods = append(methods, protocol.MethodTargetGetLorebook)
+	}
+	for _, method := range methods {
 		err := call(ctx, p, method, protocol.TargetGetParams{RemoteID: "innkeeper-contract:none"}, nil)
 		if err := expectCode(err, protocol.CodeRemoteNotFound); err != nil {
 			return fmt.Errorf("%s: %w", method, err)

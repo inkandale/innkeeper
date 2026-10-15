@@ -566,8 +566,9 @@ It loads the manifest, then checks that:
   `target.list_lorebooks` within 5 seconds, with a `remote_id` on every item
   it returns. A target checked without its app can only return an error, so
   an error other than `-32601` counts as an answer.
-- a plugin that pulls without pushing answers `-32004` to `target.get` and
-  `target.get_lorebook` for `innkeeper-contract:none`
+- a plugin that pulls without pushing answers `-32004` to `target.get` for
+  `innkeeper-contract:none`, and to `target.get_lorebook` if it keeps standalone
+  lorebooks
 - a `codec` plugin encodes a sample card in each of its `formats` into
   `blob_tmp` with a valid extension, decodes it back, and returns an error
   when asked to decode a file that isn't a card

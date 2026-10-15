@@ -232,8 +232,12 @@ func (t target) get(params json.RawMessage, blobTmp string) (any, error) {
 }
 
 // getLorebook replies with the stored lorebook, and appends its ID to
-// get_lorebook.log so tests can count reads.
+// get_lorebook.log so tests can count reads. Only a standalone target has the
+// method.
 func (t target) getLorebook(params json.RawMessage) (any, error) {
+	if t.describe().Lorebooks != protocol.LorebooksStandalone {
+		return nil, protocol.MethodNotFound(protocol.MethodTargetGetLorebook)
+	}
 	var p protocol.TargetGetParams
 	_ = json.Unmarshal(params, &p)
 	if f, err := os.OpenFile(filepath.Join(t.Dir, "get_lorebook.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {

@@ -16,12 +16,12 @@ import (
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
-// newItemsEnv adds the fake plugin as an items plugin, notes, with one
+// newRecordsEnv adds the fake plugin as a records plugin, notes, with one
 // instance, and returns the instance and the path of its notes.
-func newItemsEnv(t *testing.T) (*testEnv, int64, string) {
+func newRecordsEnv(t *testing.T) (*testEnv, int64, string) {
 	t.Helper()
 	e := newEnv(t)
-	m, err := protocol.LoadManifest(testutil.FakePluginWith(t, []string{"items"}, "-name=notes"))
+	m, err := protocol.LoadManifest(testutil.FakePluginWith(t, []string{"records"}, "-name=notes"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,10 +31,10 @@ func newItemsEnv(t *testing.T) (*testEnv, int64, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return e, id, fmt.Sprintf("/instances/%d/items/notes", id)
+	return e, id, fmt.Sprintf("/instances/%d/records/notes", id)
 }
 
-func itemIDs(list []protocol.ItemSummary) []string {
+func recordIDs(list []protocol.RecordSummary) []string {
 	var ids []string
 	for _, s := range list {
 		ids = append(ids, s.ID)
@@ -42,56 +42,56 @@ func itemIDs(list []protocol.ItemSummary) []string {
 	return ids
 }
 
-func TestItemsRoundTrip(t *testing.T) {
-	e, _, notes := newItemsEnv(t)
-	var list []protocol.ItemSummary
+func TestRecordsRoundTrip(t *testing.T) {
+	e, _, notes := newRecordsEnv(t)
+	var list []protocol.RecordSummary
 	e.call("GET", notes, nil, 200, &list)
-	if !slices.Equal(itemIDs(list), []string{"welcome"}) {
+	if !slices.Equal(recordIDs(list), []string{"welcome"}) {
 		t.Fatalf("list = %+v", list)
 	}
-	var put itemIDOut
-	e.call("POST", notes, map[string]any{"item": map[string]any{"title": "hi", "body": "Hi."}}, 201, &put.Body)
+	var put recordIDOut
+	e.call("POST", notes, map[string]any{"record": map[string]any{"title": "hi", "body": "Hi."}}, 201, &put.Body)
 	if put.Body.ID != "hi" {
 		t.Fatalf("created %+v", put.Body)
 	}
 	var got struct {
-		ID   string         `json:"id"`
-		Item map[string]any `json:"item"`
+		ID     string         `json:"id"`
+		Record map[string]any `json:"record"`
 	}
 	e.call("GET", notes+"/hi", nil, 200, &got)
-	if got.ID != "hi" || got.Item["body"] != "Hi." {
+	if got.ID != "hi" || got.Record["body"] != "Hi." {
 		t.Fatalf("got %+v", got)
 	}
-	e.call("PUT", notes+"/hi", map[string]any{"item": map[string]any{"title": "hello"}}, 200, &put.Body)
+	e.call("PUT", notes+"/hi", map[string]any{"record": map[string]any{"title": "hello"}}, 200, &put.Body)
 	if put.Body.ID != "hello" {
 		t.Fatalf("replaced as %+v", put.Body)
 	}
 	e.call("GET", notes+"/hi", nil, 404, nil)
 	e.call("DELETE", notes+"/hello", nil, 204, nil)
 	e.call("GET", notes, nil, 200, &list)
-	if !slices.Equal(itemIDs(list), []string{"welcome"}) {
+	if !slices.Equal(recordIDs(list), []string{"welcome"}) {
 		t.Fatalf("list after delete = %+v", list)
 	}
 }
 
-func TestItemsErrors(t *testing.T) {
-	e, _, notes := newItemsEnv(t)
+func TestRecordsErrors(t *testing.T) {
+	e, _, notes := newRecordsEnv(t)
 	e.call("GET", strings.Replace(notes, "/notes", "/skills", 1), nil, 404, nil)
 	e.call("GET", notes+"/nothing", nil, 404, nil)
-	e.call("PUT", notes+"/nothing", map[string]any{"item": map[string]any{"title": "x"}}, 404, nil)
+	e.call("PUT", notes+"/nothing", map[string]any{"record": map[string]any{"title": "x"}}, 404, nil)
 	e.call("DELETE", notes+"/nothing", nil, 404, nil)
-	// The plugin's message for a bad item reaches the owner.
-	r := e.call("POST", notes, map[string]any{"item": map[string]any{"body": "untitled"}}, 400, nil)
+	// The plugin's message for a bad record reaches the owner.
+	r := e.call("POST", notes, map[string]any{"record": map[string]any{"body": "untitled"}}, 400, nil)
 	if !strings.Contains(string(r.Body), "a note needs a title") {
-		t.Fatalf("bad item: %s", r)
+		t.Fatalf("bad record: %s", r)
 	}
-	// The importer instance's plugin has no items.
-	e.call("GET", fmt.Sprintf("/instances/%d/items/notes", e.importID), nil, 400, nil)
+	// The importer instance's plugin has no records.
+	e.call("GET", fmt.Sprintf("/instances/%d/records/notes", e.importID), nil, 400, nil)
 }
 
-func TestImportItemsFromUpload(t *testing.T) {
-	e, id, notes := newItemsEnv(t)
-	var list []protocol.ItemSummary
+func TestImportRecordsFromUpload(t *testing.T) {
+	e, id, notes := newRecordsEnv(t)
+	var list []protocol.RecordSummary
 	e.call("POST", notes+"/import?name=college.md", []byte("# College"), 200, &list)
 	if len(list) != 1 || list[0].ID != "college.md" {
 		t.Fatalf("imported %+v", list)
@@ -110,9 +110,9 @@ func TestImportItemsFromUpload(t *testing.T) {
 	}
 }
 
-func TestImportItemsFromURL(t *testing.T) {
-	e, _, notes := newItemsEnv(t)
-	var list []protocol.ItemSummary
+func TestImportRecordsFromURL(t *testing.T) {
+	e, _, notes := newRecordsEnv(t)
+	var list []protocol.RecordSummary
 	e.call("POST", notes+"/import-url", map[string]any{"url": "https://example.com/skills/noir"}, 200, &list)
 	if len(list) != 1 || list[0].ID != "noir" {
 		t.Fatalf("imported %+v", list)
@@ -125,33 +125,33 @@ func TestImportItemsFromURL(t *testing.T) {
 	e.call("POST", notes+"/import", []byte("x"), 422, nil)
 }
 
-func TestItemTiers(t *testing.T) {
-	e, _, notes := newItemsEnv(t)
+func TestRecordTiers(t *testing.T) {
+	e, _, notes := newRecordsEnv(t)
 	as := func(tr tier.Tier, method, path string, body any) int {
 		return e.send(method, path, body, "Authorization", "Bearer "+e.tokenWith(tr)).Status
 	}
 	if got := as(tier.Read, "GET", notes+"/welcome", nil); got != 200 {
-		t.Fatalf("read token getting an item: %d", got)
+		t.Fatalf("read token getting a record: %d", got)
 	}
-	if got := as(tier.Read, "POST", notes, map[string]any{"item": map[string]any{"title": "x"}}); got != 403 {
-		t.Fatalf("read token creating an item: %d", got)
+	if got := as(tier.Read, "POST", notes, map[string]any{"record": map[string]any{"title": "x"}}); got != 403 {
+		t.Fatalf("read token creating a record: %d", got)
 	}
-	if got := as(tier.Write, "POST", notes, map[string]any{"item": map[string]any{"title": "x"}}); got != 201 {
-		t.Fatalf("write token creating an item: %d", got)
+	if got := as(tier.Write, "POST", notes, map[string]any{"record": map[string]any{"title": "x"}}); got != 201 {
+		t.Fatalf("write token creating a record: %d", got)
 	}
 	for _, method := range []string{"PUT", "DELETE"} {
-		if got := as(tier.Write, method, notes+"/x", map[string]any{"item": map[string]any{"title": "x"}}); got != 403 {
+		if got := as(tier.Write, method, notes+"/x", map[string]any{"record": map[string]any{"title": "x"}}); got != 403 {
 			t.Fatalf("write token %s: %d", method, got)
 		}
 	}
 }
 
-func TestPluginsListItemTypes(t *testing.T) {
-	e, _, _ := newItemsEnv(t)
+func TestPluginsListRecordTypes(t *testing.T) {
+	e, _, _ := newRecordsEnv(t)
 	var list []pluginOut
 	e.call("GET", "/plugins", nil, 200, &list)
 	i := slices.IndexFunc(list, func(p pluginOut) bool { return p.Name == "notes" })
-	notes := list[i].Items["notes"]
+	notes := list[i].Records["notes"]
 	if notes.Label != "Notes" || !slices.Equal(notes.Import, []string{"file", "url"}) || notes.Schema["type"] != "object" {
 		t.Fatalf("notes = %+v", notes)
 	}

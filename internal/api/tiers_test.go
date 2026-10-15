@@ -38,11 +38,11 @@ var tierExceptions = map[string]tier.Tier{
 	"create-instance":   tier.Destructive,
 	"update-instance":   tier.Destructive,
 	"delete-collection": tier.Destructive,
-	// The old item is gone; an import may replace items.
-	"replace-item":     tier.Destructive,
-	"delete-item":      tier.Destructive,
-	"import-item-file": tier.Destructive,
-	"import-item-url":  tier.Destructive,
+	// The old record is gone; an import may replace records.
+	"replace-record":     tier.Destructive,
+	"delete-record":      tier.Destructive,
+	"import-record-file": tier.Destructive,
+	"import-record-url":  tier.Destructive,
 	// Checks the tool's own tier itself.
 	"call-plugin-tool": tier.Read,
 	"revoke-grant":     tier.Destructive,

@@ -12,7 +12,7 @@ import (
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
-// note is the fake's one item type, notes. A note's ID is its title.
+// note is the fake's one record type, notes. A note's ID is its title.
 type note struct {
 	Title string `json:"title"`
 	Body  string `json:"body,omitempty"`
@@ -26,56 +26,56 @@ var notes = struct {
 
 func invalid(msg string) error { return protocol.NewError(protocol.CodeInvalidParams, msg, false) }
 
-func itemsCall(method string, params json.RawMessage, mode string) (any, error) {
-	// Every items method's params are a subset of these.
+func recordsCall(method string, params json.RawMessage, mode string) (any, error) {
+	// Every records method's params are a subset of these.
 	var p struct {
 		Type, ID, URL, Path, Name string
-		Item                      json.RawMessage
+		Record                    json.RawMessage
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, invalid(err.Error())
 	}
 	if p.Type != "notes" {
-		return nil, invalid("no item type " + p.Type)
+		return nil, invalid("no record type " + p.Type)
 	}
 	id := p.ID
 	notes.Lock()
 	defer notes.Unlock()
 	_, found := notes.byID[id]
 	switch method {
-	case protocol.MethodItemsList:
-		if mode == "bad-items" {
-			return protocol.ItemsListResult{Items: []protocol.ItemSummary{{Name: "No ID"}}}, nil
+	case protocol.MethodRecordsList:
+		if mode == "bad-records" {
+			return protocol.RecordsListResult{Records: []protocol.RecordSummary{{Name: "No ID"}}}, nil
 		}
-		res := protocol.ItemsListResult{Items: []protocol.ItemSummary{}}
+		res := protocol.RecordsListResult{Records: []protocol.RecordSummary{}}
 		for _, k := range slices.Sorted(maps.Keys(notes.byID)) {
-			res.Items = append(res.Items, summary(notes.byID[k]))
+			res.Records = append(res.Records, summary(notes.byID[k]))
 		}
 		return res, nil
-	case protocol.MethodItemsGet:
+	case protocol.MethodRecordsGet:
 		if !found {
 			return nil, protocol.NewError(protocol.CodeRemoteNotFound, "no note "+id, false)
 		}
 		raw, _ := json.Marshal(notes.byID[id])
-		return protocol.ItemsGetResult{Item: raw}, nil
-	case protocol.MethodItemsDelete:
+		return protocol.RecordsGetResult{Record: raw}, nil
+	case protocol.MethodRecordsDelete:
 		if !found {
 			return nil, protocol.NewError(protocol.CodeRemoteNotFound, "no note "+id, false)
 		}
 		delete(notes.byID, id)
 		return struct{}{}, nil
-	case protocol.MethodItemsPut:
+	case protocol.MethodRecordsPut:
 		if id != "" && !found {
 			return nil, protocol.NewError(protocol.CodeRemoteNotFound, "no note "+id, false)
 		}
 		var n note
-		if err := json.Unmarshal(p.Item, &n); err != nil || n.Title == "" || strings.Contains(n.Title, "/") {
+		if err := json.Unmarshal(p.Record, &n); err != nil || n.Title == "" || strings.Contains(n.Title, "/") {
 			return nil, invalid("a note needs a title without /")
 		}
 		delete(notes.byID, id)
 		notes.byID[n.Title] = n
-		return protocol.ItemsPutResult{ID: n.Title}, nil
-	case protocol.MethodItemsImport:
+		return protocol.RecordsPutResult{ID: n.Title}, nil
+	case protocol.MethodRecordsImport:
 		// The body records where the note came from, so tests can see the path.
 		n := note{Title: path.Base(p.URL), Body: p.URL}
 		if p.Path != "" {
@@ -89,11 +89,11 @@ func itemsCall(method string, params json.RawMessage, mode string) (any, error) 
 			return nil, invalid("nothing to import")
 		}
 		notes.byID[n.Title] = n
-		return protocol.ItemsImportResult{Items: []protocol.ItemSummary{summary(n)}}, nil
+		return protocol.RecordsImportResult{Records: []protocol.RecordSummary{summary(n)}}, nil
 	}
 	return nil, protocol.MethodNotFound(method)
 }
 
-func summary(n note) protocol.ItemSummary {
-	return protocol.ItemSummary{ID: n.Title, Name: n.Title, Description: n.Body}
+func summary(n note) protocol.RecordSummary {
+	return protocol.RecordSummary{ID: n.Title, Name: n.Title, Description: n.Body}
 }

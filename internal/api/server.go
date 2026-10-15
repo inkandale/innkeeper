@@ -174,7 +174,7 @@ func (s *Server) routes(api huma.API) {
 	s.reconcileRoutes(api)
 	s.toolRoutes(api)
 	s.actionRoutes(api)
-	s.itemRoutes(api)
+	s.recordRoutes(api)
 	s.settingsRoutes(api)
 	s.backupRoutes(api)
 }

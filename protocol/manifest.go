@@ -14,7 +14,7 @@ import (
 )
 
 // Capabilities lists every capability a plugin may declare.
-var Capabilities = []string{"import", "search", "push", "pull", "action", "items", "enrich", "codec", "auth", "mcp", "theme", "catalog", "sites"}
+var Capabilities = []string{"import", "search", "push", "pull", "action", "records", "enrich", "codec", "auth", "mcp", "theme", "catalog", "sites"}
 
 var enrichmentTypes = []string{"text", "score", "list"}
 
@@ -55,8 +55,8 @@ type Manifest struct {
 	// core binds each such source to its instance as remote_id kind:ref.
 	SourceKinds []string `toml:"source_kinds"`
 
-	// Items are the item types an items plugin keeps, by type name.
-	Items map[string]ItemType `toml:"items"`
+	// Records are the record types a records plugin keeps, by type name.
+	Records map[string]RecordType `toml:"records"`
 
 	// Database gives the plugin a schema, plugin_<name>, and a role limited
 	// to it. The URL arrives as initialize's database_url.
@@ -96,8 +96,8 @@ func LoadManifest(dir string) (*Manifest, error) {
 	var unknown []string
 	for _, k := range md.Undecoded() {
 		// The decoder lists nested tables in a map[string]any as undecoded
-		// though they are in the map: config and each item type's schema.
-		if k[0] != "config" && !(len(k) > 2 && k[0] == "items" && k[2] == "schema") {
+		// though they are in the map: config and each record type's schema.
+		if k[0] != "config" && !(len(k) > 2 && k[0] == "records" && k[2] == "schema") {
 			unknown = append(unknown, k.String())
 		}
 	}
@@ -243,14 +243,14 @@ func (m *Manifest) Validate() error {
 		}
 		seenInputs[in] = true
 	}
-	if m.Has("items") && len(m.Items) == 0 {
-		errs = append(errs, errors.New("an items plugin must declare an item type"))
+	if m.Has("records") && len(m.Records) == 0 {
+		errs = append(errs, errors.New("a records plugin must declare a record type"))
 	}
-	if !m.Has("items") && len(m.Items) > 0 {
-		errs = append(errs, errors.New("items needs the items capability"))
+	if !m.Has("records") && len(m.Records) > 0 {
+		errs = append(errs, errors.New("records needs the records capability"))
 	}
-	for _, key := range slices.Sorted(maps.Keys(m.Items)) {
-		errs = append(errs, m.Items[key].validate(key)...)
+	for _, key := range slices.Sorted(maps.Keys(m.Records)) {
+		errs = append(errs, m.Records[key].validate(key)...)
 	}
 	if len(m.SourceKinds) > 0 && (!m.Has("pull") || m.Has("push")) {
 		errs = append(errs, errors.New("source_kinds needs the pull capability and not push"))

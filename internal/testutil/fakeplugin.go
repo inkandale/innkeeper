@@ -49,8 +49,8 @@ capabilities = [%s]
 		manifest += "database = true\n"
 	}
 	// Tables go last; keys after one would belong to it.
-	if slices.Contains(caps, "items") {
-		manifest += `[items.notes]
+	if slices.Contains(caps, "records") {
+		manifest += `[records.notes]
 label = "Notes"
 import = ["file", "url"]
 schema = {type = "object", required = ["title"], properties = {title = {type = "string"}, body = {type = "string", contentMediaType = "text/markdown"}}}

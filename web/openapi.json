@@ -8397,6 +8397,17 @@
             }
           },
           {
+            "description": "Only top-level jobs whose payload names this lorebook, such as its action runs. Not with card_id",
+            "explode": false,
+            "in": "query",
+            "name": "lorebook_id",
+            "schema": {
+              "description": "Only top-level jobs whose payload names this lorebook, such as its action runs. Not with card_id",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
             "description": "Only jobs with smaller IDs, for the next page",
             "explode": false,
             "in": "query",

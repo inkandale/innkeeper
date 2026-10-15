@@ -17,8 +17,8 @@ var fakeInputs = json.RawMessage(`{"type": "object", "properties": {
 	"sleep_ms": {"type": "integer"}, "fail": {"type": "boolean"}, "call": {"type": "object"}}}`)
 
 // fakeActions are a field action, a whole-card action, a report-only one, a
-// new-card one, one that proposes changes outside its scope, and one that
-// reads the library.
+// new-card one, one that proposes changes outside its scope, one that reads
+// the library, and a whole-lorebook and a lorebook field action.
 func fakeActions(mode string) protocol.ActionListResult {
 	if mode == "bad-actions" {
 		return protocol.ActionListResult{Actions: []protocol.Action{{ID: "Bad ID", Label: "Bad", Applies: "card"}},
@@ -31,6 +31,8 @@ func fakeActions(mode string) protocol.ActionListResult {
 		{ID: "generate", Label: "Generate", Description: "Makes a card from a concept.", Applies: "new", Instruction: true, Images: true},
 		{ID: "sneaky", Label: "Sneaky", Description: "Changes more than its field.", Applies: "card", Fields: []string{"description"}},
 		{ID: "lookup", Label: "Look up", Description: "Reads the library.", Applies: "card", Library: true, Inputs: fakeInputs},
+		{ID: "lore", Label: "Rework lore", Description: "Reworks the entries from an instruction.", Applies: "lorebook", Instruction: true, Inputs: fakeInputs},
+		{ID: "tighten-lore", Label: "Tighten", Description: "Shortens a field.", Applies: "lorebook", Fields: []string{"description"}},
 	}, Skills: []protocol.Skill{{Name: "college", Description: "Campus life."}, {Name: "noir"}}}
 }
 
@@ -57,7 +59,7 @@ func actionRun(ctx context.Context, conn *protocol.Conn, params json.RawMessage)
 	data := map[string]any{}
 	_ = json.Unmarshal(p.Entity.Data, &data)
 	switch p.Action {
-	case "tighten":
+	case "tighten", "tighten-lore":
 		data[p.Field] = fmt.Sprintf("Tight: %v", data[p.Field])
 	case "reforge":
 		data["description"] = p.Instruction
@@ -83,6 +85,8 @@ func actionRun(ctx context.Context, conn *protocol.Conn, params json.RawMessage)
 		data[p.Field] = "Sneaky"
 		data["name"] = "Renamed"
 		data["character_book"] = map[string]any{"entries": []any{}}
+	case "lore":
+		data["entries"] = reworked(data["entries"], p.Instruction)
 	case "lookup":
 	default:
 		return nil, protocol.NewError(protocol.CodeInvalidParams, "no action "+p.Action, false)
@@ -108,4 +112,23 @@ func libraryCall(ctx context.Context, conn *protocol.Conn, run string, call json
 	}
 	text, _ := json.Marshal(out)
 	return string(text)
+}
+
+// reworked changes the first entry, removes the second, and adds one holding
+// instruction, so a run proposes each kind of entry change.
+func reworked(v any, instruction string) []any {
+	entries, _ := v.([]any)
+	var out []any
+	for i, e := range entries {
+		entry, ok := e.(map[string]any)
+		switch {
+		case i == 0 && ok:
+			entry["content"] = fmt.Sprintf("Reworked: %v", entry["content"])
+		case i == 1:
+			continue
+		}
+		out = append(out, e)
+	}
+	return append(out, map[string]any{"keys": []any{"new"}, "content": instruction, "enabled": true,
+		"insertion_order": 100, "extensions": map[string]any{}})
 }

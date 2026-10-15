@@ -654,6 +654,13 @@ The core then keeps only the changes in the action's scope:
 It drops every other change, keeping the draft's value, and warns the owner
 of each key it dropped.
 
+The owner reviews a lorebook proposal entry by entry. The Forge matches your
+`entries` to the draft's by `id`, then by identical content, then by
+identical `keys`, and shows the rest as added or removed. Keep each entry's
+`id` when you keep or change the entry, and leave `id` out of an entry you
+add. A lorebook field action's `fields` are `character_book` keys, such as
+`description`; there are no per-entry fields.
+
 A run isn't retried. Reply with an error, retryable or not, and the run fails
 with its message. When the owner stops a run, the core stops waiting and
 ignores your reply.

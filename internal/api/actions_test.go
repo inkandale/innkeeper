@@ -293,3 +293,36 @@ func TestActionRunSendsMentionedSkills(t *testing.T) {
 		t.Fatalf("raw = %q", res.Raw)
 	}
 }
+
+func TestActionRunOnLorebook(t *testing.T) {
+	e := newActionEnv(t)
+	var list []PluginAction
+	e.call("GET", "/actions?applies=lorebook", nil, 200, &list)
+	if len(list) != 2 || list[0].ID != "lore" || list[1].ID != "tighten-lore" {
+		t.Fatalf("lorebook actions = %+v", list)
+	}
+	var book entityOut
+	data := map[string]any{"name": "Forge", "entries": []any{
+		map[string]any{"id": 1, "keys": []any{"anvil"}, "content": "Heavy."},
+		map[string]any{"id": 2, "keys": []any{"bellows"}, "content": "Airy."}}}
+	e.call("POST", "/lorebooks", map[string]any{"data": data}, 201, &book)
+	j := e.start("lore", map[string]any{"instruction": "Hammers ring.", "entity": map[string]any{"kind": "lorebook", "id": book.ID, "data": data}})
+	_, proposal := e.succeeded(j.ID)
+	entries, _ := proposal["entries"].([]any)
+	if len(entries) != 2 || entries[0].(map[string]any)["content"] != "Reworked: Heavy." || entries[1].(map[string]any)["content"] != "Hammers ring." {
+		t.Fatalf("entries %v", entries)
+	}
+
+	var jobs []jobOut
+	e.call("GET", fmt.Sprintf("/jobs?kind=action&lorebook_id=%d", book.ID), nil, 200, &jobs)
+	if len(jobs) != 1 || jobs[0].ID != j.ID {
+		t.Fatalf("the lorebook's runs: %+v", jobs)
+	}
+	e.call("GET", fmt.Sprintf("/jobs?kind=action&card_id=%d", book.ID), nil, 200, &jobs)
+	if len(jobs) != 0 {
+		t.Fatalf("a card with the lorebook's ID has its runs: %+v", jobs)
+	}
+	if r := e.send("GET", fmt.Sprintf("/jobs?card_id=1&lorebook_id=%d", book.ID), nil, "Authorization", "Bearer "+e.token); r.Status != 400 {
+		t.Fatalf("both filters: %s", r)
+	}
+}

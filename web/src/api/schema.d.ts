@@ -6424,6 +6424,8 @@ export interface operations {
                 parent?: number;
                 /** @description Only top-level jobs whose payload names this card, such as its pushes and action runs */
                 card_id?: number;
+                /** @description Only top-level jobs whose payload names this lorebook, such as its action runs. Not with card_id */
+                lorebook_id?: number;
                 /** @description Only jobs with smaller IDs, for the next page */
                 before?: number;
                 limit?: number;

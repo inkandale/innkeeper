@@ -86,12 +86,13 @@ type jobResp struct{ Body jobOut }
 type jobsOut struct{ Body []jobOut }
 
 type listJobsIn struct {
-	Status string `query:"status" enum:"queued,running,waiting,succeeded,failed"`
-	Kind   string `query:"kind"`
-	Parent int64  `query:"parent" doc:"List this bulk job's children instead of top-level jobs"`
-	CardID int64  `query:"card_id" doc:"Only top-level jobs whose payload names this card, such as its pushes and action runs"`
-	Before int64  `query:"before" doc:"Only jobs with smaller IDs, for the next page"`
-	Limit  int    `query:"limit" default:"50" minimum:"1" maximum:"200"`
+	Status     string `query:"status" enum:"queued,running,waiting,succeeded,failed"`
+	Kind       string `query:"kind"`
+	Parent     int64  `query:"parent" doc:"List this bulk job's children instead of top-level jobs"`
+	CardID     int64  `query:"card_id" doc:"Only top-level jobs whose payload names this card, such as its pushes and action runs"`
+	LorebookID int64  `query:"lorebook_id" doc:"Only top-level jobs whose payload names this lorebook, such as its action runs. Not with card_id"`
+	Before     int64  `query:"before" doc:"Only jobs with smaller IDs, for the next page"`
+	Limit      int    `query:"limit" default:"50" minimum:"1" maximum:"200"`
 }
 
 type importIn struct {
@@ -214,8 +215,13 @@ func (s *Server) jobRoutes(api huma.API) {
 			if in.Parent != 0 {
 				o.Parent = &in.Parent
 			}
-			if in.CardID != 0 {
+			switch {
+			case in.CardID != 0 && in.LorebookID != 0:
+				return nil, huma.Error400BadRequest("filter by card_id or lorebook_id, not both")
+			case in.CardID != 0:
 				o.Payload = fmt.Appendf(nil, `{"card_id": %d}`, in.CardID)
+			case in.LorebookID != 0:
+				o.Payload = fmt.Appendf(nil, `{"lorebook_id": %d}`, in.LorebookID)
 			}
 			list, err := s.Queue.List(ctx, o)
 			if err != nil {

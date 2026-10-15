@@ -61,3 +61,37 @@ func TestEnrichmentCurrentAndStale(t *testing.T) {
 		t.Fatalf("a value on another card's revision was stored: %+v", list)
 	}
 }
+
+func TestEnrichmentOnAnOlderRevisionDoesNotReplaceANewerOne(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	card, first := newCard(t, lib, "brakka", `{"name": "Brakka"}`)
+	second, err := lib.Cards.Update(ctx, card, first, edit(`{"name": "Brakka", "description": "Bigger."}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	add := func(rev int64, value string) {
+		t.Helper()
+		if err := lib.AddEnrichments(ctx, 1, []NewEnrichment{{CardID: card, RevisionID: rev, Key: "quality", Value: json.RawMessage(value)}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A slow run that read the first revision finishes after a run on the head.
+	add(second.ID, "80")
+	add(first, "40")
+
+	list, err := lib.Enrichments(ctx, card, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 || string(list[0].Value) != "80" || !list[0].Current || list[0].Stale || list[1].Current {
+		t.Fatalf("values = %+v", list)
+	}
+	res, err := lib.Search(ctx, Card, Query{ScoreInstance: 1, Include: []string{"enrichments"}, Filter: &Filter{Enrichment: ptr("quality"), Gte: ptr(70.0)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Hits) != 1 || string(res.Hits[0].Enrichments["quality"].Value) != "80" {
+		t.Fatalf("search = %+v", res.Hits)
+	}
+}

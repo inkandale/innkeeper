@@ -54,10 +54,10 @@ func (l *Library) AddEnrichments(ctx context.Context, instanceID int64, vals []N
 // value that replaced it.
 func (l *Library) Enrichments(ctx context.Context, cardID int64, history bool) ([]Enrichment, error) {
 	rows, err := l.pool.Query(ctx, `SELECT instance_id, revision_id, key, value, meta, created_at, current, stale FROM (
-		SELECT e.*, row_number() OVER (PARTITION BY e.instance_id, e.key ORDER BY e.created_at DESC, e.id DESC) = 1 AS current,
+		SELECT e.*, row_number() OVER (PARTITION BY e.instance_id, e.key ORDER BY e.revision_id DESC, e.created_at DESC, e.id DESC) = 1 AS current,
 			e.revision_id <> c.head_revision_id AS stale
 		FROM enrichment e JOIN card c ON c.id = e.card_id WHERE e.card_id = $1) x
-		WHERE current OR $2 ORDER BY instance_id, key, created_at DESC, id DESC`, cardID, history)
+		WHERE current OR $2 ORDER BY instance_id, key, revision_id DESC, created_at DESC, id DESC`, cardID, history)
 	if err != nil {
 		return nil, err
 	}

@@ -162,7 +162,7 @@ func (w *where) enrichmentSQL(key string) (string, error) {
 		return "", errNoScoreInstance
 	}
 	return `(SELECT e.value FROM enrichment e WHERE e.card_id = c.id AND e.key = ` + w.arg(key) +
-		` AND e.instance_id = ` + w.arg(w.score) + ` ORDER BY e.created_at DESC, e.id DESC LIMIT 1)`, nil
+		` AND e.instance_id = ` + w.arg(w.score) + ` ORDER BY e.revision_id DESC, e.created_at DESC, e.id DESC LIMIT 1)`, nil
 }
 
 // enrichmentFilter is f's condition on its enrichment key.
@@ -433,7 +433,7 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 			enrichments = `(SELECT jsonb_object_agg(x.key, jsonb_build_object('value', x.value, 'stale', x.revision_id <> c.head_revision_id))
 				FROM (SELECT DISTINCT ON (e.key) e.key, e.value, e.revision_id FROM enrichment e
 					WHERE e.card_id = c.id AND e.instance_id = ` + w.arg(q.ScoreInstance) + `
-					ORDER BY e.key, e.created_at DESC, e.id DESC) x)`
+					ORDER BY e.key, e.revision_id DESC, e.created_at DESC, e.id DESC) x)`
 		default:
 			return Results{}, fmt.Errorf("%w: unknown include %q", ErrInvalid, inc)
 		}

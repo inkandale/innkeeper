@@ -1,5 +1,5 @@
 -- Values enrich plugins computed about card revisions. Every result is kept;
--- a key's current value for a card and instance is its newest row.
+-- a key's current value for a card and instance is its newest row on the newest revision.
 CREATE TABLE enrichment (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     card_id bigint NOT NULL REFERENCES card ON DELETE CASCADE DEFERRABLE INITIALLY IMMEDIATE,
@@ -12,4 +12,4 @@ CREATE TABLE enrichment (
     created_at timestamptz NOT NULL DEFAULT now(),
     FOREIGN KEY (revision_id, card_id) REFERENCES card_revision (id, card_id) DEFERRABLE INITIALLY IMMEDIATE
 );
-CREATE INDEX enrichment_current ON enrichment (card_id, key, instance_id, created_at DESC);
+CREATE INDEX enrichment_current ON enrichment (card_id, key, instance_id, revision_id DESC, created_at DESC);

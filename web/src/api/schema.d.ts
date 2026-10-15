@@ -2784,6 +2784,8 @@ export interface components {
             collection?: number;
             /** @description Is one of these cards. */
             ids?: number[] | null;
+            /** @description Name contains this, in any case. */
+            name?: string;
             not?: components["schemas"]["Filter"];
             or?: components["schemas"]["Filter"][] | null;
             /** @description Has a source of this kind, such as chub. */

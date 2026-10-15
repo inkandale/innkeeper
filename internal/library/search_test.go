@@ -52,9 +52,10 @@ func TestSearch(t *testing.T) {
 		"archived only":                         {Query{Filter: &Filter{Archived: ptr(true)}}, []int64{s.dellin}},
 		"archived or not": {Query{Text: "blacksmith", Filter: &Filter{Or: []Filter{
 			{Archived: ptr(true)}, {Archived: ptr(false)}}}}, []int64{s.dellin, s.brakka}},
-		"not active": {Query{Filter: &Filter{Not: &Filter{Archived: ptr(false)}}}, []int64{s.dellin}},
-		"or of tags": {Query{Filter: &Filter{Or: []Filter{{Tag: ptr("fantasy")}, {Tag: ptr("pirate")}}}}, []int64{s.carrow, s.brakka}},
-		"and":        {Query{Filter: &Filter{And: []Filter{{Tag: ptr("fantasy")}, {Tag: ptr("pirate")}}}}, []int64{}},
+		"not active":              {Query{Filter: &Filter{Not: &Filter{Archived: ptr(false)}}}, []int64{s.dellin}},
+		"or of tags":              {Query{Filter: &Filter{Or: []Filter{{Tag: ptr("fantasy")}, {Tag: ptr("pirate")}}}}, []int64{s.carrow, s.brakka}},
+		"and":                     {Query{Filter: &Filter{And: []Filter{{Tag: ptr("fantasy")}, {Tag: ptr("pirate")}}}}, []int64{}},
+		"name contains, any case": {Query{Filter: &Filter{Name: ptr("RAK")}}, []int64{s.brakka}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			got, err := lib.Search(ctx, Card, tc.q)
@@ -319,6 +320,10 @@ func TestSearchLorebooks(t *testing.T) {
 	card, _ := newCard(t, lib, "brakka", `{"name": "Brakka"}`)
 	if err := lib.LinkLorebook(ctx, card, forge.ID); err != nil {
 		t.Fatal(err)
+	}
+
+	if res, err := lib.Search(ctx, Lorebook, Query{Filter: &Filter{Name: ptr("orG")}}); err != nil || !slices.Equal(hitIDs(res), []int64{forge.ID}) {
+		t.Fatalf("name filter = %v, %v", hitIDs(res), err)
 	}
 
 	// Names, descriptions, entry keys, and entry content all match.

@@ -40,6 +40,7 @@ type Filter struct {
 	Or          []Filter      `json:"or,omitempty"`
 	Not         *Filter       `json:"not,omitempty"`
 	IDs         []int64       `json:"ids,omitempty" maxItems:"10000" doc:"Is one of these cards."`
+	Name        *string       `json:"name,omitempty" maxLength:"200" doc:"Name contains this, in any case."`
 	Tag         *string       `json:"tag,omitempty" doc:"Has this tag, in any case."`
 	Collection  *int64        `json:"collection,omitempty" doc:"Is in this collection."`
 	Source      *string       `json:"source,omitempty" doc:"Has a source of this kind, such as chub."`
@@ -198,7 +199,7 @@ func (w *where) filter(f Filter) (string, error) {
 		return "", fmt.Errorf("%w: filter has more than 200 conditions", ErrInvalid)
 	}
 	set := 0
-	for _, ok := range []bool{f.And != nil, f.Or != nil, f.Not != nil, f.IDs != nil, f.Tag != nil, f.Collection != nil, f.Source != nil, f.Archived != nil, f.TargetState != nil} {
+	for _, ok := range []bool{f.And != nil, f.Or != nil, f.Not != nil, f.IDs != nil, f.Name != nil, f.Tag != nil, f.Collection != nil, f.Source != nil, f.Archived != nil, f.TargetState != nil} {
 		if ok {
 			set++
 		}
@@ -219,6 +220,9 @@ func (w *where) filter(f Filter) (string, error) {
 		return "NOT (" + s + ")", err
 	case f.IDs != nil:
 		return `c.id = ANY(` + w.arg(f.IDs) + `)`, nil
+	case f.Name != nil:
+		// strpos, unlike LIKE, needs no escaping of % and _.
+		return `strpos(lower(r.data->>'name'), lower(` + w.arg(*f.Name) + `)) > 0`, nil
 	case f.Tag != nil:
 		return `EXISTS (SELECT 1 FROM ` + tagsOf + ` WHERE lower(t.t) = lower(` + w.arg(*f.Tag) + `))`, nil
 	case f.Collection != nil:

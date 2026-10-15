@@ -1987,6 +1987,11 @@
               "null"
             ]
           },
+          "name": {
+            "description": "Name contains this, in any case.",
+            "maxLength": 200,
+            "type": "string"
+          },
           "not": {
             "$ref": "#/components/schemas/Filter"
           },

@@ -6,6 +6,7 @@ import { useToast } from "../shell/Toasts";
 import { Stale } from "./Conflict";
 import { Fields } from "./Fields";
 import { Panel } from "./Panel";
+import { UpdateBanner } from "./Upstream";
 import { useEditor } from "./useEditor";
 import "./Card.css";
 
@@ -64,6 +65,7 @@ function CardEditor({ id }: { id: number }) {
         avatarBusy={avatar.isPending || ed.save.isPending}
       />
       <div className="card-main">
+        <UpdateBanner kind="card" id={id} />
         <Stale kind="card" ed={ed} />
         <Fields data={ed.data} dirty={ed.dirty} edit={ed.edit} />
       </div>

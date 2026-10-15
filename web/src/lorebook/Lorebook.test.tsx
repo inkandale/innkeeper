@@ -19,9 +19,11 @@ const entity = {
 };
 
 let head: typeof entity;
+let bindings: unknown[];
 let puts: { path: string; body: { base_revision_id: number; data: typeof data } }[];
 beforeEach(() => {
   head = entity;
+  bindings = [];
   puts = [];
   vi.stubGlobal(
     "fetch",
@@ -36,6 +38,7 @@ beforeEach(() => {
       if (path === "/api/lorebooks/3") return json(head);
       if (path === "/api/lorebooks/3/revisions") return json([head.revision]);
       if (path === "/api/cards/search") return json({ total: 1, hits: [{ id: 7, slug: "brakka", revision_id: 1, fields: { name: "Brakka" } }] });
+      if (path === "/api/lorebooks/3/bindings") return json(bindings);
       return json([]);
     }),
   );
@@ -117,4 +120,14 @@ test("only the row's summary starts a drag", async () => {
   const content = await screen.findByLabelText("Entry 1 content");
   expect(content.closest("[draggable='true']")).toBeNull();
   expect(document.querySelectorAll("summary[draggable='true']")).toHaveLength(2);
+});
+
+test("a lorebook's followed source update shows a banner", async () => {
+  bindings = [
+    { id: 5, instance_id: 4, remote_id: "chub:alice/forge", status: "remote_changed", ahead: false, remote_state: "changed",
+      autosync: false, push: false, paused: false, check_failures: 0, app_hash: "h" },
+  ];
+  renderAt("/lorebooks/3");
+  expect(await screen.findByText(/Update on chub/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Review" })).toHaveAttribute("href", "/sync/4/lorebook/chub%3Aalice%2Fforge?card=3");
 });

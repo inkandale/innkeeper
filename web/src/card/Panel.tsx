@@ -10,9 +10,10 @@ import { Crop } from "./CropDialog";
 import { strings, text, type Data } from "./draft";
 import { Logo, apps } from "../sync/Logo";
 import { PushPreview } from "../sync/PushPreview";
-import { editBinding, reviewPath, stateLabel } from "../sync/sync";
+import { reviewPath, stateLabel } from "../sync/sync";
 import { ChipInput } from "./ChipInput";
 import { Collections, Sources } from "./Organize";
+import { useBindingEdits } from "./Upstream";
 
 type PanelProps = {
   card: Entity;
@@ -112,17 +113,15 @@ export function Sync({ kind, id }: { kind: Kind; id: number }) {
   const plugins = useQuery(pluginsQuery);
   const logos = apps(instances.data, plugins.data);
   const name = (n: number) => instances.data?.find((i) => i.id === n)?.name ?? `#${n}`;
-  const qc = useQueryClient();
-  const setAutosync = useMutation({
-    mutationFn: ({ id, on }: { id: number; on: boolean }) => editBinding(id, { autosync: on }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: bindingsQuery(kind, id).queryKey }),
-  });
-  if (!bindings.data?.length) return null;
+  const { edit } = useBindingEdits(kind, id);
+  // Followed site sources show under Sources.
+  const pushed = (bindings.data ?? []).filter((b) => b.push);
+  if (!pushed.length) return null;
   return (
     <section>
       <h2>Sync</h2>
       <ul className="plain">
-        {bindings.data.map((b) => (
+        {pushed.map((b) => (
           <li key={b.id}>
             <span aria-hidden="true">
               <Logo app={logos.get(b.instance_id)} label={name(b.instance_id)} />
@@ -133,8 +132,8 @@ export function Sync({ kind, id }: { kind: Kind; id: number }) {
                 type="checkbox"
                 checked={b.autosync}
                 aria-label={`Autosync to ${name(b.instance_id)}`}
-                disabled={setAutosync.isPending}
-                onChange={(e) => setAutosync.mutate({ id: b.id, on: e.target.checked })}
+                disabled={edit.isPending}
+                onChange={(e) => edit.mutate({ binding: b.id, body: { autosync: e.target.checked } })}
               />{" "}
               autosync
             </label>

@@ -5,6 +5,7 @@ import { Stale } from "../card/Conflict";
 import { text } from "../card/draft";
 import { Sources } from "../card/Organize";
 import { Archive, Push, Revisions, Sync } from "../card/Panel";
+import { UpdateBanner } from "../card/Upstream";
 import { useEditor } from "../card/useEditor";
 import { Entries } from "./EntryEditor";
 import "../card/Card.css";
@@ -46,6 +47,7 @@ function LorebookEditor({ id }: { id: number }) {
         <Revisions kind="lorebook" id={id} />
       </aside>
       <div className="card-main">
+        <UpdateBanner kind="lorebook" id={id} />
         <Stale kind="lorebook" ed={ed} />
         <Entries data={ed.data} base={ed.draft?.base ?? ed.headData} edit={ed.edit} />
       </div>

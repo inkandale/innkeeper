@@ -16,7 +16,19 @@ const entity = {
   revision: { id: 11, content_hash: "x", message: "", source: "ui", created_at: now, avatar: "ab".repeat(32), data },
 };
 
+const lumiverse = { id: 1, instance_id: 2, remote_id: "r", ahead: true, remote_state: "unchanged", autosync: false, push: true, paused: false, check_failures: 0 };
+const chub = {
+  id: 2, instance_id: 4, remote_id: "chub:dg/brakka", status: "in_sync", ahead: false, remote_state: "unchanged",
+  autosync: false, push: false, paused: false, check_failures: 0, app_hash: "h1",
+};
+const chubChanged = { ...chub, status: "remote_changed", remote_state: "changed", app_hash: "h2" };
+
 let head: typeof entity;
+let followed: (typeof chub)[];
+let sent: { path: string; body: unknown }[];
+// Statuses for the next dismiss and source-check, when set.
+let dismissFails: number | undefined;
+let checkFails: number | undefined;
 let conflict: boolean;
 // The next avatar PUT gets a 409.
 let avatarConflict: boolean;
@@ -30,6 +42,10 @@ let patches: { path: string; body: unknown }[];
 // Whether a card-codec instance, which writes PNG, exists.
 let pngCodec: boolean;
 beforeEach(() => {
+  followed = [];
+  sent = [];
+  dismissFails = undefined;
+  checkFails = undefined;
   pngCodec = false;
   head = entity;
   conflict = false;
@@ -48,6 +64,21 @@ beforeEach(() => {
         const body = await req.json();
         patches.push({ path, body });
         return json({ id: 1, instance_id: 2, remote_id: "r", status: bindingStatus, ahead: true, remote_state: "unchanged", ...body });
+      }
+      if (req.method === "POST" && path === "/api/bindings/2/dismiss") {
+        sent.push({ path, body: await req.json() });
+        if (dismissFails) {
+          followed = [{ ...chubChanged, app_hash: "h3" }];
+          return json({ detail: "changed again" }, dismissFails);
+        }
+        followed = followed.map((b) => ({ ...b, status: "in_sync", remote_state: "unchanged" }));
+        return json(followed[0]);
+      }
+      if (req.method === "POST" && path === "/api/cards/7/source-check") {
+        sent.push({ path, body: null });
+        if (checkFails) return json({ detail: "chub is down" }, checkFails);
+        followed = [chubChanged];
+        return json([{ ...lumiverse, status: bindingStatus }, ...followed]);
       }
       if (req.method === "PUT") {
         // Collection PUTs have no body.
@@ -74,8 +105,7 @@ beforeEach(() => {
         return json(head);
       }
       if (path === "/api/cards/7/revisions") return json([head.revision]);
-      if (path === "/api/cards/7/bindings")
-        return json([{ id: 1, instance_id: 2, remote_id: "r", status: bindingStatus, ahead: true, remote_state: "unchanged", autosync: false }]);
+      if (path === "/api/cards/7/bindings") return json([{ ...lumiverse, status: bindingStatus }, ...followed]);
       if (path === "/api/cards/7/push") {
         pushPosts++;
         return json({ id: 9, kind: "target.push", status: "queued" }, 202);
@@ -86,7 +116,7 @@ beforeEach(() => {
         return json([{ id: 4, kind: "chub", ref: "dg/brakka", url: "https://chub.ai/characters/dg/brakka", linked_by: "user", created_at: now },
           { id: 5, kind: "chub", ref: "dg/evil", url: "javascript:alert(1)", linked_by: "user", created_at: now }]);
       if (path === "/api/instances")
-        return json([{ id: 2, name: "Lumiverse", plugin: "lumiverse" }, ...(pngCodec ? [{ id: 5, name: "Codec", plugin: "card-codec" }] : [])]);
+        return json([{ id: 2, name: "Lumiverse", plugin: "lumiverse" }, { id: 4, name: "URL import", plugin: "url-import" }, ...(pngCodec ? [{ id: 5, name: "Codec", plugin: "card-codec" }] : [])]);
       if (path === "/api/plugins")
         return json([{ name: "lumiverse", capabilities: ["push"] }, { name: "card-codec", capabilities: ["codec"], formats: ["png"] }]);
       if (path === "/api/collections")
@@ -344,4 +374,77 @@ test("Push previews before pushing", async () => {
   expect(await screen.findByText("The app's copy already matches.")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Confirm push" })).toBeInTheDocument();
   expect(pushPosts).toBe(0);
+});
+
+test("a followed source's update shows a banner that reviews it or ignores this change", async () => {
+  followed = [chubChanged];
+  renderAt("/cards/7");
+  expect(await screen.findByText(/Update on chub/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Review" })).toHaveAttribute("href", "/sync/4/card/chub%3Adg%2Fbrakka?card=7");
+  // The Sync panel lists apps it pushes to, not followed sources.
+  expect(screen.queryByText(/URL import/)).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Ignore this change" }));
+  await waitFor(() => expect(screen.queryByText(/Update on chub/)).not.toBeInTheDocument());
+  expect(sent).toEqual([{ path: "/api/bindings/2/dismiss", body: { app_hash: "h2" } }]);
+});
+
+test("ignoring a change that changed again on the site says so and shows the new one", async () => {
+  followed = [chubChanged];
+  dismissFails = 409;
+  renderAt("/cards/7");
+  await userEvent.click(await screen.findByRole("button", { name: "Ignore this change" }));
+  expect(await screen.findByText("This changed on chub again. Check the new change.")).toBeInTheDocument();
+  dismissFails = undefined;
+  await userEvent.click(screen.getByRole("button", { name: "Ignore this change" }));
+  await waitFor(() => expect(sent[1]).toEqual({ path: "/api/bindings/2/dismiss", body: { app_hash: "h3" } }));
+});
+
+test("no banner for a paused source, an unchanged one, or an app's change", async () => {
+  followed = [{ ...chubChanged, paused: true }];
+  bindingStatus = "remote_changed";
+  renderAt("/cards/7");
+  expect(await screen.findByText(/Not checking for updates/)).toBeInTheDocument();
+  expect(screen.queryByText(/Update on/)).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Ignore this change" })).not.toBeInTheDocument();
+});
+
+test("an unchanged source has no banner", async () => {
+  followed = [chub];
+  renderAt("/cards/7");
+  expect(await screen.findByText(/up to date/)).toBeInTheDocument();
+  expect(screen.queryByText(/Update on/)).not.toBeInTheDocument();
+});
+
+test("Sources show each followed source's checks, with autosync and Ignore all", async () => {
+  followed = [chub];
+  renderAt("/cards/7");
+  expect(await screen.findByText(/up to date/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("checkbox", { name: "Autosync from chub: dg/brakka" }));
+  await waitFor(() => expect(patches).toEqual([{ path: "/api/bindings/2", body: { autosync: true } }]));
+  const pause = screen.getByRole("button", { name: "Ignore all" });
+  await waitFor(() => expect(pause).toBeEnabled());
+  await userEvent.click(pause);
+  await waitFor(() => expect(patches[1]).toEqual({ path: "/api/bindings/2", body: { paused: true } }));
+});
+
+test("a paused source says so, and Check again resumes it", async () => {
+  followed = [{ ...chub, paused: true }];
+  renderAt("/cards/7");
+  expect(await screen.findByText(/Not checking for updates/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Check again" }));
+  await waitFor(() => expect(patches).toEqual([{ path: "/api/bindings/2", body: { paused: false } }]));
+});
+
+test("Check for updates checks the card's sources now", async () => {
+  renderAt("/cards/7");
+  await userEvent.click(await screen.findByRole("button", { name: "Check for updates" }));
+  await waitFor(() => expect(sent).toEqual([{ path: "/api/cards/7/source-check", body: null }]));
+  expect(await screen.findByText(/Update on chub/)).toBeInTheDocument();
+});
+
+test("a failed check for updates shows why", async () => {
+  checkFails = 502;
+  renderAt("/cards/7");
+  await userEvent.click(await screen.findByRole("button", { name: "Check for updates" }));
+  expect(await screen.findByText("chub is down")).toBeInTheDocument();
 });

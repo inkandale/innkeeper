@@ -59,6 +59,7 @@ beforeEach(() => {
       const url = new URL(req.url);
       const path = url.pathname;
       if (path === "/api/actions") return json(actions);
+      if (path === "/api/actions/skills") return json([{ name: "noir", instance_id: 1, instance_name: "Local model" }]);
       if (path === "/api/jobs") return json(url.searchParams.get("lorebook_id") === "3" ? jobs : []);
       const one = /^\/api\/jobs\/(\d+)$/.exec(path);
       if (one) return json(jobs.find((j) => j.id === Number(one[1])));
@@ -203,9 +204,17 @@ test("Reforge runs the lorebook's instruction action on the lorebook", async () 
   const box = await screen.findByRole("combobox", { name: "Instruction" });
   expect(box).toHaveAttribute("placeholder", expect.stringContaining("Reforge this lorebook"));
   expect(screen.queryByText("Or change the whole lorebook")).not.toBeInTheDocument();
-  await user.type(box, "Add a hammer{Enter}");
+  await user.type(box, "Add a hammer @skills/noir please");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Run" })).toBeEnabled());
+  await user.click(screen.getByRole("button", { name: "Run" }));
   await waitFor(() => expect(runs).toHaveLength(1));
-  expect(runs[0]).toMatchObject({ action: "lore", instance_id: 1, instruction: "Add a hammer", entity: { kind: "lorebook", id: 3, data } });
+  expect(runs[0]).toMatchObject({
+    action: "lore",
+    instance_id: 1,
+    instruction: "Add a hammer @skills/noir please",
+    context: { skills: ["noir"] },
+    entity: { kind: "lorebook", id: 3, data },
+  });
 });
 
 test("Review offers each changed entry, and Apply merges only the taken ones", async () => {

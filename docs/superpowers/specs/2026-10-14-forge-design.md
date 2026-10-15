@@ -14,8 +14,7 @@ field before it joins the draft.
 
 Without an AI plugin installed, the Forge is the plain card editor.
 
-The layout comes from a clickable prototype on branch `prototype/forge`,
-variant D.
+The layout is variant D of a clickable prototype, since deleted.
 
 ## Decisions
 

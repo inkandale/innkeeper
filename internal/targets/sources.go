@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/jackc/pgx/v5"
@@ -166,7 +167,9 @@ func (s *Service) followSources(ctx context.Context, only *library.Kind, id int6
 			return err
 		}
 	}
-	for inst, kinds := range followers {
+	// In ID order, so the first failure a check reports is the same each time.
+	for _, inst := range slices.Sorted(maps.Keys(followers)) {
+		kinds := followers[inst]
 		// One card's check must not fail on a plugin that follows none of its sources.
 		if only != nil && !slices.ContainsFunc(kinds, func(kind string) bool { return slices.Contains(wanted, kind) }) {
 			continue

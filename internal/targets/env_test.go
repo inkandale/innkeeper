@@ -78,7 +78,13 @@ func setup(t *testing.T, config map[string]any) *env {
 	brokenup := upstream
 	brokenup.Name, brokenup.SourceKinds = "brokenup", []string{"broken"}
 	brokenup.Command = []string{m.Command[0], "-caps=pull", "-name=brokenup", "-mode=bad-describe"}
-	reg := plugins.New(pool, map[string]*protocol.Manifest{"fake": m, "sites": &sites, "upstream": &upstream, "brokenup": &brokenup}, store, box)
+	// brokenagain follows "broken2" sources; an instance whose lorebooks setting is invalid fails its describe.
+	brokenagain := upstream
+	brokenagain.Name, brokenagain.SourceKinds = "brokenagain", []string{"broken2"}
+	brokenagain.Command = []string{m.Command[0], "-caps=pull", "-name=brokenagain"}
+	reg := plugins.New(pool, map[string]*protocol.Manifest{
+		"fake": m, "sites": &sites, "upstream": &upstream, "brokenup": &brokenup, "brokenagain": &brokenagain,
+	}, store, box)
 	mgr := pluginhost.NewManager(noCore, time.Minute, quiet)
 	t.Cleanup(mgr.Close)
 	e := &env{t: t, ctx: ctx, pool: pool, lib: lib, reg: reg, s: New(pool, lib, reg, mgr, quiet), dir: t.TempDir()}

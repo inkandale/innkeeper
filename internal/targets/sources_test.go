@@ -394,6 +394,29 @@ func TestACardIsCheckedThroughOnlyThePluginsThatFollowItsSources(t *testing.T) {
 	e.follow(card)
 }
 
+func TestACardsSourceCheckReportsTheFirstFollowersFailure(t *testing.T) {
+	e := setup(t, nil)
+	// Created in this order, so brokenup's instance has the lower ID; each fails its describe its own way.
+	for _, plugin := range []string{"brokenup", "brokenagain"} {
+		cfg := map[string]any{"dir": e.t.TempDir(), "lorebooks": "never"}
+		if _, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: plugin, Name: plugin, Config: cfg}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	card := e.newCard("Tova")
+	for _, kind := range []string{"broken", "broken2"} {
+		if _, err := e.lib.Cards.AddSource(e.ctx, card, library.Source{Kind: kind, Ref: "tova"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for range 10 {
+		_, err := e.s.CheckEntitySources(e.ctx, library.Card, card)
+		if err == nil || !strings.Contains(err.Error(), "fields is empty") {
+			t.Fatalf("check = %v, want brokenup's failure", err)
+		}
+	}
+}
+
 func TestFailedChecksOfASourceAreCounted(t *testing.T) {
 	e := setup(t, nil)
 	e.addUpstream(map[string]any{"fail_get": "retryable"})

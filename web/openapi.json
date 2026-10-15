@@ -7737,12 +7737,12 @@
             }
           },
           {
-            "description": "Only jobs whose payload names this card, such as its pushes and action runs",
+            "description": "Only top-level jobs whose payload names this card, such as its pushes and action runs",
             "explode": false,
             "in": "query",
             "name": "card_id",
             "schema": {
-              "description": "Only jobs whose payload names this card, such as its pushes and action runs",
+              "description": "Only top-level jobs whose payload names this card, such as its pushes and action runs",
               "format": "int64",
               "type": "integer"
             }

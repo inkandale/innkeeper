@@ -5977,7 +5977,7 @@ export interface operations {
                 kind?: string;
                 /** @description List this bulk job's children instead of top-level jobs */
                 parent?: number;
-                /** @description Only jobs whose payload names this card, such as its pushes and action runs */
+                /** @description Only top-level jobs whose payload names this card, such as its pushes and action runs */
                 card_id?: number;
                 /** @description Only jobs with smaller IDs, for the next page */
                 before?: number;

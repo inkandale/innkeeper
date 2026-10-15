@@ -22,9 +22,9 @@ test("a lorebook review has a row per added, removed, and changed entry", () => 
   const { rows } = lorebookSubject.review(start, start, proposal);
   expect(rows.map((r) => [r.label, r.change])).toEqual([
     ["Description", undefined],
-    ["Entry anvil", "changed"],
-    ["Entry bellows", "removed"],
-    ["Entry hammer", "added"],
+    ["Entry 1 · anvil", "changed"],
+    ["Entry 2 · bellows", "removed"],
+    ["Entry 3 · hammer", "added"],
   ]);
   expect(rows[1]).toMatchObject({ before: "Keys: anvil\n\nHeavy.", after: "Keys: anvil\n\nHeavier." });
   expect(rows[2]!.after).toBeUndefined();
@@ -56,4 +56,35 @@ test("an entry's other changed properties show in its text", () => {
   const start = { entries: [{ ...anvil, enabled: true }] };
   const { rows } = lorebookSubject.review(start, start, { entries: [{ ...anvil, enabled: false }] });
   expect(rows[0]!.after).toBe("Keys: anvil\n\nHeavy.\n\nenabled: false");
+});
+
+test("duplicate ids and key sets don't pair entries; unique keys still do", () => {
+  const a = { id: 0, keys: ["a"], content: "A." };
+  const b = { id: 0, keys: ["b"], content: "B." };
+  const start = { entries: [a, b] };
+  const proposal = { entries: [{ ...b, content: "B2." }, { ...a, content: "A2." }] };
+  expect(pairEntries(start.entries, proposal.entries)).toEqual([
+    [0, 1],
+    [1, 0],
+  ]);
+  const { rows, apply } = lorebookSubject.review(start, start, proposal);
+  expect(rows.map((r) => r.change)).toEqual(["changed", "changed"]);
+  expect(apply(new Set([rows[0]!.key]))).toEqual({ entries: [{ ...a, content: "A2." }, b] });
+
+  // Two entries share keys on both sides: neither keys nor ids tell them apart.
+  const x = { keys: ["k"], content: "X." };
+  const y = { keys: ["k"], content: "Y." };
+  expect(pairEntries([x, y], [{ ...y, content: "Y2." }, { ...x, content: "X2." }])).toEqual([
+    [0, -1],
+    [1, -1],
+    [-1, 0],
+    [-1, 1],
+  ]);
+});
+
+test("rows for entries with equal keys get distinct labels", () => {
+  const x = { keys: ["k"], content: "X." };
+  const y = { keys: ["k"], content: "Y." };
+  const { rows } = lorebookSubject.review({ entries: [x, y] }, { entries: [x, y] }, { entries: [{ ...y, content: "Y2." }, { ...x, content: "X2." }] });
+  expect(new Set(rows.map((r) => `${r.label} ${r.change}`)).size).toBe(4);
 });

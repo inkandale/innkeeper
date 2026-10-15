@@ -7,11 +7,6 @@ import { blocking, emptyInstruction, MentionBox, useMentions, type Instruction }
 import { contextOf } from "./mentions";
 import type { Forge } from "./useForge";
 
-const placeholders = {
-  card: "Reforge this card… e.g. make the family robots · @cards/Billy is the brother",
-  lorebook: "Reforge this lorebook… e.g. add entries for the northern clans · @cards/Billy is their chief",
-};
-
 /** Target is the action Run runs, and the field for a field action. */
 export type Target = { action: Action; field?: string };
 
@@ -78,7 +73,7 @@ export function Reforge(props: {
       {takesText && (
         <MentionBox
           label="Instruction"
-          placeholder={placeholders[kind]}
+          placeholder={forge.subject.placeholder}
           value={instruction}
           onChange={props.setInstruction}
           mentions={mentions}

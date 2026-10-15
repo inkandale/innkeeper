@@ -187,6 +187,7 @@ test("a whole-lorebook run locks the name, the description, and the entries", as
   jobs = [job({ id: 5, status: "running", payload: { action: "lore" } })];
   renderAt("/lorebooks/3");
   await waitFor(() => expect(screen.getByLabelText("Entry 1 content")).toBeDisabled());
+  expect(document.querySelectorAll("summary[draggable='true']")).toHaveLength(0);
   expect(screen.getByLabelText("Description")).toBeDisabled();
   expect(screen.getByLabelText("Name")).toBeDisabled();
   expect(screen.getByRole("button", { name: "Add entry" })).toBeDisabled();
@@ -223,13 +224,31 @@ test("Review offers each changed entry, and Apply merges only the taken ones", a
   jobs = [job({ id: 6, status: "succeeded", payload: { action: "lore" }, progress: { result: { proposal, warnings: [] } } })];
   renderAt("/lorebooks/3");
   expect(await screen.findByRole("tab", { name: "Review (3)" })).toHaveAttribute("aria-selected", "true");
-  expect(screen.getByRole("radiogroup", { name: "Choice for Entry anvil" })).toBeInTheDocument();
+  expect(screen.getByRole("radiogroup", { name: "Choice for Entry 1 · anvil (changed)" })).toBeInTheDocument();
   expect(screen.getByText("removed")).toBeInTheDocument();
   expect(screen.getByText("added")).toBeInTheDocument();
   const user = userEvent.setup();
-  await user.click(within(screen.getByRole("radiogroup", { name: "Choice for Entry bellows" })).getByRole("radio", { name: "Keep mine" }));
+  await user.click(within(screen.getByRole("radiogroup", { name: "Choice for Entry 2 · bellows (removed)" })).getByRole("radio", { name: "Keep mine" }));
   await user.click(screen.getByRole("button", { name: "Apply 2 of 3 changes to draft" }));
   await user.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() => expect(puts).toHaveLength(1));
   expect(puts[0]?.body.data.entries).toEqual([{ ...anvil, content: "Heavier iron." }, bellows, { keys: ["hammer"], content: "Rings." }]);
+});
+
+test("a plugin with only card actions shows no Forge on the lorebook page", async () => {
+  actions = forgeActions.filter((a) => a.applies === "card");
+  renderAt("/lorebooks/3");
+  await screen.findByLabelText("Entry 1 content");
+  await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.objectContaining({ url: expect.stringContaining("/api/actions") })));
+  expect(screen.queryByRole("button", { name: /Reforge/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+});
+
+test("a proposal that only reorders entries opens no Review", async () => {
+  actions = forgeActions;
+  const proposal = { ...data, entries: [bellows, anvil] };
+  jobs = [job({ id: 6, status: "succeeded", payload: { action: "lore" }, progress: { result: { proposal, warnings: [] } } })];
+  renderAt("/lorebooks/3");
+  expect(await screen.findByRole("tab", { name: "Review" })).toBeDisabled();
+  expect(screen.getByRole("tab", { name: "Fields" })).toHaveAttribute("aria-selected", "true");
 });

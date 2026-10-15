@@ -8,7 +8,7 @@ import { changed, type Data } from "./draft";
 import { Identity } from "./Panel";
 import { Forge } from "../forge/Forge";
 import { useForge } from "../forge/useForge";
-import { cardSubject } from "../forge/subject";
+import { cardSubject } from "./subject";
 import { Fields } from "./Fields";
 import "./Card.css";
 

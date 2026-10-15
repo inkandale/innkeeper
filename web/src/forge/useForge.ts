@@ -5,7 +5,7 @@ import type { components } from "../api/schema";
 import type { Data } from "../card/draft";
 import { finished, type Job } from "../settings/jobUtil";
 import type { Subject } from "./subject";
-import { changedKeys, overlaps, readSettled, scopeOf, settle as remember, lockOf, type Action, type Payload, type Progress, type Result, type Scope } from "./actions";
+import { overlaps, readSettled, scopeOf, settle as remember, lockOf, type Action, type Payload, type Progress, type Result, type Scope } from "./actions";
 
 type ContextRefs = components["schemas"]["ContextRefs"];
 
@@ -87,7 +87,7 @@ export function useForge({ subject, id, data }: { subject: Subject; id?: number;
   const list = useQuery({
     queryKey: listKey,
     enabled: id !== undefined,
-    queryFn: async () => must(await api.GET("/jobs", { params: { query: { kind: "action", ...(subject.kind === "card" ? { card_id: id } : { lorebook_id: id }), limit: 20 } } })),
+    queryFn: async () => must(await api.GET("/jobs", { params: { query: { kind: "action", ...subject.jobFilter(id), limit: 20 } } })),
   });
   const [started, setStarted] = useState<number[]>([]);
   const [settled, setSettled] = useState(readSettled);
@@ -122,7 +122,8 @@ export function useForge({ subject, id, data }: { subject: Subject; id?: number;
   const [waiting, setWaiting] = useState<Waiting[]>([]);
   const busy = [...runs.filter((r) => r.live), ...waiting];
   const lock = lockOf(busy);
-  const pending = shown.find((r) => r.job.status === "succeeded" && r.result?.proposal && changedKeys(r.start, r.result.proposal).length > 0);
+  // A proposal opens Review only when it has rows; a lorebook's entry order isn't reviewed.
+  const pending = shown.find((r) => r.job.status === "succeeded" && r.result?.proposal && subject.review(r.start, data, r.result.proposal).rows.length > 0);
   const reportRun = [...runs].reverse().find((r) => r.result?.report);
 
   // A run starts from the draft as it is when it starts, which for a waiting run is later than when it was asked for.

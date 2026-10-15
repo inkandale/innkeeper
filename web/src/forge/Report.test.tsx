@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Report } from "./Report";
-import { cardSubject } from "./subject";
+import { cardSubject } from "../card/subject";
 
 const report = {
   summary: "Strong **voice**. <b>raw</b>",

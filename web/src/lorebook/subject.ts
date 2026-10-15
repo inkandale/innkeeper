@@ -19,24 +19,46 @@ const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 const hasId = (e: Entry) => e.id !== undefined && e.id !== null;
 
 /**
- * pairEntries matches the entries in a with those in b: by id, then identical entries, then the same keys. Entries
- * with two different ids never pair. It returns index pairs in a's order, then b's unpaired ones; -1 is no partner.
- * Items that aren't entries are left out.
+ * pairEntries matches the entries in a with those in b: by id, then identical entries, then the same keys. An id or
+ * key list pairs only when it is unique among the unpaired entries on both sides, and entries with two different ids
+ * never pair. It returns index pairs in a's order, then b's unpaired ones; -1 is no partner. Items that aren't entries
+ * are left out.
  */
 export function pairEntries(a: unknown[], b: unknown[]): [number, number][] {
   const partner = new Map<number, number>();
   const taken = new Set<number>();
-  const pass = (match: (x: Entry, y: Entry) => boolean) =>
-    a.forEach((x, i) => {
-      if (!isEntry(x) || partner.has(i)) return;
-      const j = b.findIndex((y, j) => isEntry(y) && !taken.has(j) && !(hasId(x) && hasId(y) && !same(x.id, y.id)) && match(x, y));
-      if (j < 0) return;
-      partner.set(i, j);
-      taken.add(j);
-    });
-  pass((x, y) => hasId(x) && same(x.id, y.id));
-  pass(same);
-  pass((x, y) => same(strings(x.keys), strings(y.keys)));
+  const free = (list: unknown[], used: (i: number) => boolean) => list.flatMap((e, i) => (isEntry(e) && !used(i) ? [i] : []));
+  const clash = (x: Entry, y: Entry) => hasId(x) && hasId(y) && !same(x.id, y.id);
+  const link = (i: number, j: number) => {
+    partner.set(i, j);
+    taken.add(j);
+  };
+  // byIdentity pairs entries whose identity, when they have one, appears once among each side's unpaired entries.
+  const byIdentity = (identity: (e: Entry) => string | undefined) => {
+    const [xs, ys] = [free(a, (i) => partner.has(i)), free(b, (j) => taken.has(j))];
+    const count = (list: unknown[], is: number[]) => {
+      const n = new Map<string, number>();
+      for (const i of is) {
+        const k = identity(list[i] as Entry);
+        if (k !== undefined) n.set(k, (n.get(k) ?? 0) + 1);
+      }
+      return n;
+    };
+    const [na, nb] = [count(a, xs), count(b, ys)];
+    for (const i of xs) {
+      const k = identity(a[i] as Entry);
+      if (k === undefined || na.get(k) !== 1 || nb.get(k) !== 1) continue;
+      const j = ys.find((j) => identity(b[j] as Entry) === k)!;
+      if (!clash(a[i] as Entry, b[j] as Entry)) link(i, j);
+    }
+  };
+  byIdentity((e) => (hasId(e) ? JSON.stringify(e.id) : undefined));
+  // Identical entries are interchangeable, so the first free match will do.
+  for (const i of free(a, (i) => partner.has(i))) {
+    const j = free(b, (j) => taken.has(j)).find((j) => same(a[i], b[j]));
+    if (j !== undefined) link(i, j);
+  }
+  byIdentity((e) => JSON.stringify(strings(e.keys)));
   const out: [number, number][] = a.flatMap((x, i) => (isEntry(x) ? [[i, partner.get(i) ?? -1] as [number, number]] : []));
   b.forEach((y, j) => isEntry(y) && !taken.has(j) && out.push([-1, j]));
   return out;
@@ -58,6 +80,8 @@ function entryText(e: Entry, others: string[]): string {
 export const lorebookSubject: Subject = {
   kind: "lorebook",
   label,
+  jobFilter: (id) => ({ lorebook_id: id }),
+  placeholder: "Reforge this lorebook… e.g. add entries for the northern clans · @cards/Billy is their chief",
   review: (start, draft, proposal) => {
     const keys = changedKeys(start, proposal).filter((k) => k !== "entries");
     const [before, after, mine] = [list(start.entries), list(proposal.entries), list(draft.entries)];
@@ -71,7 +95,8 @@ export const lorebookSubject: Subject = {
       const others = [...new Set([...Object.keys(x ?? {}), ...Object.keys(y ?? {})])].filter((k) => !shown.has(k) && !same(x?.[k], y?.[k])).sort();
       rows.push({
         key: `entries/${s}/${p}`,
-        label: `Entry ${strings((y ?? x)!.keys).join(", ") || "(no keys)"}`,
+        // The position is the entry's in the proposal, or in the start for a removed one.
+        label: `Entry ${(y ? p : s) + 1} · ${strings((y ?? x)!.keys).join(", ") || "(no keys)"}`,
         change: !x ? "added" : !y ? "removed" : "changed",
         mine: ours && entryText(ours, others),
         before: x ? entryText(x, others) : "",

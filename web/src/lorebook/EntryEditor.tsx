@@ -53,15 +53,16 @@ export function Entries({ data, base, edit, lock }: { data: Data; base: Data; ed
             key={uids[i]}
             className={unsaved ? "field entry dirty" : "field entry"}
             open={uids[i] === opened || undefined}
-            onDragOver={(ev) => ev.preventDefault()}
-            onDrop={(ev) => {
+            // Locked entries can't be reordered.
+            onDragOver={lock ? undefined : (ev) => ev.preventDefault()}
+            onDrop={lock ? undefined : (ev) => {
               ev.preventDefault();
               if (dragging !== undefined && dragging !== i) move(dragging, i);
               setDragging(undefined);
             }}
           >
             {/* Only the summary drags, so selecting or dragging text in the fields doesn't move the entry. */}
-            <summary draggable onDragStart={() => setDragging(i)} onDragEnd={() => setDragging(undefined)}>
+            <summary draggable={!lock} onDragStart={() => setDragging(i)} onDragEnd={() => setDragging(undefined)}>
               <strong>{strings(e.keys).join(", ") || "(no keys)"}</strong>
               <span className="muted">{firstLine(e)}</span>
               {unsaved && <span className="unsaved">unsaved</span>}

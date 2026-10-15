@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Review } from "./Review";
-import { cardSubject } from "./subject";
+import { cardSubject } from "../card/subject";
 
 test("Review applies only the fields the owner takes", async () => {
   const onApply = vi.fn();

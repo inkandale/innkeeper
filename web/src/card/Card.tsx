@@ -9,7 +9,7 @@ import { UpdateBanner } from "./Upstream";
 import { useEditor } from "./useEditor";
 import { Forge } from "../forge/Forge";
 import { useForge } from "../forge/useForge";
-import { cardSubject } from "../forge/subject";
+import { cardSubject } from "./subject";
 import { Fields } from "./Fields";
 import "./Card.css";
 

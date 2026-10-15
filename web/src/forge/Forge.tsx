@@ -39,7 +39,8 @@ export function Forge(props: {
   const [panel, setPanel] = useState(false);
   const [target, setTarget] = useState<Target>();
   const [instruction, setInstruction] = useState<Instruction>(emptyInstruction);
-  const on = forge.actions.length > 0;
+  // A plugin whose actions are all for other kinds leaves this page the plain editor.
+  const on = forge.actions.some((a) => a.applies === forge.subject.kind || (isNew && a.applies === "new"));
   const name = typeof data.name === "string" ? data.name : "";
 
   const open = (t?: Target) => {

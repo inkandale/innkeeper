@@ -61,7 +61,7 @@ export function Review(props: {
                 <div className="forge-text hunks">{r.after === undefined ? absent : <Words runs={wordDiff(r.before, r.after)} />}</div>
               </td>
               <td>
-                <div className="forge-toggle" role="radiogroup" aria-label={`Choice for ${r.label}`}>
+                <div className="forge-toggle" role="radiogroup" aria-label={`Choice for ${r.label}${r.change ? ` (${r.change})` : ""}`}>
                   <label className="check">
                     <input type="radio" name={`take-${r.key}`} checked={taken.has(r.key)} onChange={() => choose(r.key, true)} /> Take proposal
                   </label>

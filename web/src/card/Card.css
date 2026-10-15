@@ -336,3 +336,8 @@
   object-fit: cover;
   border-radius: calc(var(--radius) * 0.5);
 }
+
+.lang {
+  width: 6em;
+  flex: none;
+}

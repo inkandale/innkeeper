@@ -183,6 +183,31 @@ test("alternate greetings can be added and removed", async () => {
   expect(screen.queryByLabelText("Greeting 2")).not.toBeInTheDocument();
 });
 
+test("group-only greetings save as their own list", async () => {
+  renderAt("/cards/7");
+  await userEvent.click(await screen.findByRole("button", { name: "Add group greeting" }));
+  await userEvent.type(screen.getByLabelText("Group greeting 1"), "Hello, all.");
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(puts).toHaveLength(1));
+  expect(puts[0]).toMatchObject({ body: { data: { alternate_greetings: ["Hail."], group_only_greetings: ["Hello, all."] } } });
+});
+
+test("creator notes in other languages save as code and notes pairs", async () => {
+  renderAt("/cards/7");
+  await userEvent.click(await screen.findByRole("button", { name: "Add language" }));
+  expect(screen.getByRole("button", { name: "Add language" })).toBeDisabled();
+  await userEvent.type(screen.getByLabelText("Language 1"), "de");
+  await userEvent.type(screen.getByLabelText("Notes 1"), "Ein Zwerg.");
+  await userEvent.click(screen.getByRole("button", { name: "Add language" }));
+  // A code another row has would merge the two rows, so it's refused.
+  await userEvent.type(screen.getByLabelText("Language 2"), "de");
+  expect(screen.getByLabelText("Language 2")).toHaveValue("d");
+  await userEvent.click(screen.getByRole("button", { name: "Remove language 2" }));
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(puts).toHaveLength(1));
+  expect(puts[0]).toMatchObject({ body: { data: { creator_notes_multilingual: { de: "Ein Zwerg." } } } });
+});
+
 test("macros in a field get a highlight behind the text", async () => {
   renderAt("/cards/7");
   // userEvent reads "{{" as one "{".

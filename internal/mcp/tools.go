@@ -367,8 +367,9 @@ var tools = []tool{
 			}
 			return c.call(ctx, "POST", fmt.Sprintf("/%s/%d/source-check", k.Plural, in.ID), nil)
 		}),
-	def("list_changes", "List the cards some app needs the owner for, one row per card with each app's state, and app items no card "+
-		"matches first. Built from each app's latest sync and the binding statuses; counts are by instance and state. "+
+	def("list_changes", "List the cards and lorebooks that need the owner, one row each with every app's or followed site source's state "+
+		"(a source's is update, missing, or error), and app items no card matches first. Built from each app's latest sync, the binding "+
+		"statuses, and the last source checks; counts are by instance and state. "+
 		"An ahead card may have been bound to an app copy that differs, so show the owner compare_item with two_way before pushing it.", tier.Read,
 		func(ctx context.Context, c caller, in changesIn) (*sdk.CallToolResult, error) {
 			q := url.Values{}

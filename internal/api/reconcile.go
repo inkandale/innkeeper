@@ -86,8 +86,9 @@ func (s *Server) reconcileRoutes(api huma.API) {
 		})
 
 	huma.Register(api, huma.Operation{OperationID: "list-changes", Method: http.MethodGet, Path: "/sync/changes",
-		Summary: "List the cards that need the owner", Tags: tags,
-		Description: "One row per card with a change in some app, and app items no card matches first. Built from each app's latest sync and the binding statuses."},
+		Summary: "List the cards and lorebooks that need the owner", Tags: tags,
+		Description: "One row per card or lorebook with a change in some app or followed site source (update, missing, or error), " +
+			"and app items no card matches first. Built from each app's latest sync, the binding statuses, and the last source checks."},
 		func(ctx context.Context, in *changesIn) (*changesOut, error) {
 			ch, err := s.Targets.Changes(ctx, targets.ChangesFilter{InstanceID: in.InstanceID, State: in.State})
 			if err != nil {

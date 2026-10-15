@@ -9328,7 +9328,7 @@
     },
     "/sync/changes": {
       "get": {
-        "description": "One row per card with a change in some app, and app items no card matches first. Built from each app's latest sync and the binding statuses.",
+        "description": "One row per card or lorebook with a change in some app or followed site source (update, missing, or error), and app items no card matches first. Built from each app's latest sync, the binding statuses, and the last source checks.",
         "operationId": "list-changes",
         "parameters": [
           {
@@ -9384,7 +9384,7 @@
             "description": "Error"
           }
         },
-        "summary": "List the cards that need the owner",
+        "summary": "List the cards and lorebooks that need the owner",
         "tags": [
           "Sync"
         ]

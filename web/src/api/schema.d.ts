@@ -1959,8 +1959,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List the cards that need the owner
-         * @description One row per card with a change in some app, and app items no card matches first. Built from each app's latest sync and the binding statuses.
+         * List the cards and lorebooks that need the owner
+         * @description One row per card or lorebook with a change in some app or followed site source (update, missing, or error), and app items no card matches first. Built from each app's latest sync, the binding statuses, and the last source checks.
          */
         get: operations["list-changes"];
         put?: never;

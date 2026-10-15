@@ -46,8 +46,9 @@ func (s *Service) followers(ctx context.Context) (map[int64][]string, error) {
 // accepted copy is the entity's first revision a plugin wrote, else its
 // first, so an update published since the import shows on the first check.
 //
-// ponytail: an entity with two sources of one followed kind follows the
-// older; a binding per source needs a key wider than (instance, entity).
+// ponytail: one followed binding per entity per follower instance, so a card
+// with a chub and a risu source on one instance follows only the older; a
+// binding per source needs a key wider than (instance, entity).
 func (s *Service) follow(ctx context.Context, k kind, instanceID int64, kinds []string, only int64) error {
 	inst, info, err := s.describeReconcile(ctx, k, instanceID)
 	if k.isLorebook() && errors.Is(err, ErrCannot) {

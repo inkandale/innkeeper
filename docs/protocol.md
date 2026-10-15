@@ -33,7 +33,7 @@ Each plugin folder has a `plugin.toml`:
 | `capabilities` | yes | Any of `import`, `search`, `push`, `pull`, `action`, `records`, `enrich`, `codec`, `auth`, `mcp`, `catalog`, `sites`, or `theme`. A theme lists no other capability |
 | `secrets` | no | Names of secrets the owner enters for each instance, in lowercase `snake_case` |
 | `config` | no | JSON Schema for instance settings; the UI renders a form from it |
-| `enrichments` | no | Keys the plugin writes, in lowercase `snake_case`. Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list` |
+| `enrichments` | for `enrich` | Keys the plugin writes, in lowercase `snake_case`; see [`enrich`](#enrich). Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list`. `grid = true` shows the key on the library grid, for at most one key. An `enrich` plugin must declare at least one |
 | `formats` | only for `codec` | What `codec.encode` writes, each listed once: lowercase words of letters and digits joined by single hyphens, such as `png`. A codec plugin must list at least one. `json` is taken: the core exports CCv3 JSON itself |
 | `inputs` | no; only for `import` | What the web UI may send to `import.run`, each listed once: `file` sends params `blob` and `name`, `url` sends `url`. Leave it out and the UI's upload and page URL boxes don't use the plugin |
 | `source_kinds` | no; only for `pull` without `push` | The site source kinds the plugin follows, such as `chub`, each listed once, in the same form as a source's `kind`. The core binds each source of these kinds to the plugin's instance and checks it for updates; see [Following site sources](#following-site-sources) |
@@ -786,6 +786,66 @@ a record with the same ID.
 {"jsonrpc": "2.0", "id": 11, "result": {"records": [{"id": "college", "name": "college", "description": "Campus life and classes"}]}}
 ```
 
+### `enrich`
+
+An `enrich` plugin computes values about a card revision, such as an AI's
+quality score. The core stores every result, and the library grid, filters,
+and sort use the values of the instance the owner picks under **Scores
+from**. The core sends revisions only when the owner asks, never on save.
+
+Declare each key in the manifest:
+
+```toml
+capabilities = ["enrich"]
+
+[enrichments]
+quality = { type = "score", range = [0, 100], label = "Quality", grid = true }
+voice = { type = "score", range = [0, 100], label = "Voice" }
+summary = { type = "text", label = "Summary" }
+```
+
+| Type | Value |
+|---|---|
+| `text` | A JSON string |
+| `score` | A JSON number within `range`, ends included |
+| `list` | A JSON array of strings |
+
+**`enrich.run`** computes values for up to 20 revisions.
+
+| Param | Meaning |
+|---|---|
+| `run` | Token for this call, an opaque string. Put it in every notification you send for it |
+| `revisions` | `[{"card_id", "revision_id", "data"}]`, 1 to 20 of them. `data` is CCv3 `data` without `character_book` |
+
+While it runs, send `progress` notifications with `run`, `message`, and
+optional `done` and `total`, as in `action.run`. The owner sees the latest
+message.
+
+Reply with `results`, one per revision:
+
+| Field | Meaning |
+|---|---|
+| `revision_id` | The revision, from `revisions` |
+| `values` | Values by key |
+| `meta` | An object stored with each value, such as the model and the prompt's version. Optional |
+| `error` | Why this revision has no values. Set this or `values` |
+
+The core stores each value whose key you declared, whose type matches, and,
+for a score, that is within its range. It drops any other value and shows the
+owner a warning for each. A revision with `error`, or missing from
+`results`, stores nothing and counts as failed; the rest of the reply still
+counts. Reply with a JSON-RPC error only when the whole call failed, such as
+a missing API key: every revision in it fails.
+
+A run isn't retried. When the owner stops one, the core sends `cancel` and
+keeps what earlier calls stored.
+
+```json
+{"jsonrpc": "2.0", "id": 12, "method": "enrich.run", "params": {"run": "Q4M6PCZTLGA7RJW2K5QXN3HBVY", "revisions": [{"card_id": 4, "revision_id": 812, "data": {"name": "Brakka", "description": "A towering orc."}}, {"card_id": 5, "revision_id": 813, "data": {"name": "Mira"}}]}}
+{"jsonrpc": "2.0", "method": "progress", "params": {"run": "Q4M6PCZTLGA7RJW2K5QXN3HBVY", "message": "Evaluating Brakka", "done": 0, "total": 2}}
+{"jsonrpc": "2.0", "id": 12, "result": {"results": [{"revision_id": 812, "values": {"quality": 78, "voice": 88}, "meta": {"model": "claude-opus-5-5", "prompt": "evaluate-2"}}, {"revision_id": 813, "error": "the model returned no JSON"}]}}
+```
+
 ## Checking a plugin
 
 ```bash
@@ -820,6 +880,9 @@ It loads the manifest, then checks that:
   `records.get` of the first returns an object, and `records.put` of that object
   with its `id` replies with an ID. When it lists records, `records.get` and
   `records.delete` of `innkeeper-contract:none` return `-32004`
+- an `enrich` plugin's `enrich.run` of a sample card returns, within 5
+  seconds, a result for its revision whose values are all declared and valid,
+  or an error other than `-32601`
 - a `catalog` plugin's `catalog.describe` reply is valid; `catalog.search`
   pages one item at a time without repeats and refuses an undeclared filter
   with `-32602`; `catalog.get` returns `-32004` for an unknown ID, and for the

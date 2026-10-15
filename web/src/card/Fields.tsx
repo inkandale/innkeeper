@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { show, text, tokens, type Data } from "./draft";
+import { useState, type ReactNode } from "react";
+import { same, show, text, tokens, type Data } from "./draft";
 import { MacroTextarea } from "./MacroTextarea";
 
 type Edit = (key: string, value: unknown) => void;
@@ -52,12 +52,32 @@ function Greetings({ field, label, noun, data, dirty, edit }: { field: string; l
   );
 }
 
+type Row = [code: string, notes: string];
+
+const notesByCode = (v: unknown): Record<string, string> =>
+  Object.fromEntries(Object.entries(v && typeof v === "object" ? v : {}).map(([c, n]) => [c, text(n)]));
+
 /** Translations edits creator_notes_multilingual, an object from language code to notes, as rows. */
 function Translations({ data, dirty, edit }: { data: Data; dirty: Set<string>; edit: Edit }) {
-  const value = data.creator_notes_multilingual;
-  const rows = Object.entries(value && typeof value === "object" ? value : {}).map(([c, n]): [string, string] => [c, text(n)]);
-  const set = (next: [string, string][]) => edit("creator_notes_multilingual", Object.fromEntries(next));
-  const put = (i: number, row: [string, string]) => set(rows.map((r, j) => (j === i ? row : r)));
+  const value = notesByCode(data.creator_notes_multilingual);
+  // Rows can hold what the object can't: an empty code, or a code two rows share while one is typed.
+  const [state, setState] = useState({ rows: Object.entries(value), from: value });
+  let rows = state.rows;
+  if (!same(state.from, value)) {
+    rows = Object.entries(value);
+    setState({ rows, from: value });
+  }
+  const codes = rows.map(([c]) => c).filter((c) => c);
+  const clashes = new Set(codes.filter((c, i) => codes.indexOf(c) !== i));
+  const set = (next: Row[]) => {
+    const filled = next.filter(([c]) => c);
+    const obj = Object.fromEntries(filled);
+    // Two rows with one code would become one key, losing a row's notes, so nothing is written until they differ.
+    const write = new Set(filled.map(([c]) => c)).size === filled.length && !same(obj, value);
+    setState({ rows: next, from: write ? obj : value });
+    if (write) edit("creator_notes_multilingual", obj);
+  };
+  const put = (i: number, row: Row) => set(rows.map((r, j) => (j === i ? row : r)));
   return (
     <Section label="Creator notes in other languages" dirty={dirty.has("creator_notes_multilingual")} count={tokens(rows.map(([, n]) => n).join(""))}>
       {rows.map(([code, notes], i) => (
@@ -65,16 +85,21 @@ function Translations({ data, dirty, edit }: { data: Data; dirty: Set<string>; e
           <input
             className="input lang"
             aria-label={`Language ${i + 1}`}
+            aria-invalid={clashes.has(code) || undefined}
             placeholder="Code"
             value={code}
-            // Two rows with one code would become one key, losing a row's notes.
-            onChange={(e) => rows.every(([c], j) => j === i || c !== e.target.value) && put(i, [e.target.value, notes])}
+            onChange={(e) => put(i, [e.target.value, notes])}
           />
           <MacroTextarea label={`Notes ${i + 1}`} value={notes} onChange={(v) => put(i, [code, v])} />
           <button className="button" aria-label={`Remove language ${i + 1}`} onClick={() => set(rows.filter((_, j) => j !== i))}>
             ×
           </button>
         </div>
+      ))}
+      {[...clashes].map((c) => (
+        <p key={c} className="error lang-clash">
+          Two rows have the code {c}. Their changes save once the codes differ.
+        </p>
       ))}
       <button className="button" disabled={rows.some(([c]) => c === "")} onClick={() => set([...rows, ["", ""]])}>
         Add language

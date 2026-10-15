@@ -341,3 +341,7 @@
   width: 6em;
   flex: none;
 }
+
+.lang-clash {
+  margin: 0 var(--space) var(--space);
+}

@@ -3,7 +3,8 @@ export type Data = Record<string, unknown>;
 /** Draft is unsaved edits on top of the revision they started from. */
 export type Draft = { baseId: number; base: Data; data: Data };
 
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+/** same compares two JSON values by content. */
+export const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /** changed lists the fields whose edited value differs from the base revision's. */
 export function changed(d: Draft | null): Set<string> {

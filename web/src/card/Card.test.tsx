@@ -192,20 +192,33 @@ test("group-only greetings save as their own list", async () => {
   expect(puts[0]).toMatchObject({ body: { data: { alternate_greetings: ["Hail."], group_only_greetings: ["Hello, all."] } } });
 });
 
-test("creator notes in other languages save as code and notes pairs", async () => {
+test("a language row saves only once it has a code", async () => {
   renderAt("/cards/7");
   await userEvent.click(await screen.findByRole("button", { name: "Add language" }));
   expect(screen.getByRole("button", { name: "Add language" })).toBeDisabled();
-  await userEvent.type(screen.getByLabelText("Language 1"), "de");
   await userEvent.type(screen.getByLabelText("Notes 1"), "Ein Zwerg.");
-  await userEvent.click(screen.getByRole("button", { name: "Add language" }));
-  // A code another row has would merge the two rows, so it's refused.
-  await userEvent.type(screen.getByLabelText("Language 2"), "de");
-  expect(screen.getByLabelText("Language 2")).toHaveValue("d");
-  await userEvent.click(screen.getByRole("button", { name: "Remove language 2" }));
+  expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  await userEvent.type(screen.getByLabelText("Language 1"), "de");
   await userEvent.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() => expect(puts).toHaveLength(1));
   expect(puts[0]).toMatchObject({ body: { data: { creator_notes_multilingual: { de: "Ein Zwerg." } } } });
+});
+
+test("two language rows with one code are flagged and not written until they differ", async () => {
+  renderAt("/cards/7");
+  await userEvent.click(await screen.findByRole("button", { name: "Add language" }));
+  await userEvent.type(screen.getByLabelText("Language 1"), "pt");
+  await userEvent.type(screen.getByLabelText("Notes 1"), "Um anão.");
+  await userEvent.click(screen.getByRole("button", { name: "Add language" }));
+  await userEvent.type(screen.getByLabelText("Notes 2"), "Um anão rabugento.");
+  await userEvent.type(screen.getByLabelText("Language 2"), "pt");
+  expect(screen.getByLabelText("Language 2")).toHaveAttribute("aria-invalid", "true");
+  expect(screen.getByText(/Two rows have the code pt/)).toBeInTheDocument();
+  await userEvent.type(screen.getByLabelText("Language 2"), "-BR");
+  expect(screen.getByLabelText("Language 2")).not.toHaveAttribute("aria-invalid", "true");
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(puts).toHaveLength(1));
+  expect(puts[0]).toMatchObject({ body: { data: { creator_notes_multilingual: { pt: "Um anão.", "pt-BR": "Um anão rabugento." } } } });
 });
 
 test("nickname and version save with the card", async () => {

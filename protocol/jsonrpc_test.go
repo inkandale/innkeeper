@@ -171,6 +171,79 @@ func TestCancelledCallForgetsPendingEntry(t *testing.T) {
 	}
 }
 
+func TestCancelledCallCancelsPeerHandler(t *testing.T) {
+	cancelled := make(chan struct{})
+	wait := func(ctx context.Context, _ string, _ json.RawMessage) (any, error) {
+		<-ctx.Done()
+		close(cancelled)
+		return nil, ctx.Err()
+	}
+	a, _, _ := pair(t, nil, wait)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if err := a.Call(ctx, "slow", nil, nil); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("got %v, want DeadlineExceeded", err)
+	}
+	select {
+	case <-cancelled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("peer handler ctx not cancelled after the call was abandoned")
+	}
+}
+
+func TestCancelForUnknownIDIsIgnored(t *testing.T) {
+	release := make(chan struct{})
+	waitErr := make(chan error, 1)
+	var methods []string
+	handler := func(ctx context.Context, method string, params json.RawMessage) (any, error) {
+		if method == "wait" {
+			select {
+			case <-release:
+				waitErr <- nil
+			case <-ctx.Done():
+				waitErr <- ctx.Err()
+			}
+			return nil, nil
+		}
+		methods = append(methods, method)
+		return echo(ctx, method, params)
+	}
+	pr, pw := io.Pipe()
+	out, outW := io.Pipe()
+	c := NewConn(pr, outW, handler)
+	go c.Run(context.Background())
+	t.Cleanup(func() { pw.Close(); outW.Close() })
+	replies := bufio.NewScanner(out)
+
+	io.WriteString(pw, `{"jsonrpc":"2.0","id":1,"method":"wait"}`+"\n")
+	io.WriteString(pw, `{"jsonrpc":"2.0","method":"cancel","params":{"id":2}}`+"\n")
+	// The reader handles messages in order, so this reply means the cancel was read.
+	io.WriteString(pw, `{"jsonrpc":"2.0","id":3,"method":"echo","params":1}`+"\n")
+	if !replies.Scan() {
+		t.Fatal("no response written")
+	}
+	close(release)
+	if err := <-waitErr; err != nil {
+		t.Fatalf("request 1 cancelled by a cancel for id 2: %v", err)
+	}
+	if len(methods) != 1 || methods[0] != "echo" {
+		t.Fatalf("handler saw %v, want only echo", methods)
+	}
+}
+
+func TestAnsweredRequestLeavesNoCancelEntry(t *testing.T) {
+	a, b, _ := pair(t, nil, echo)
+	if err := a.Call(context.Background(), "echo", 1, nil); err != nil {
+		t.Fatal(err)
+	}
+	b.mu.Lock()
+	n := len(b.served)
+	b.mu.Unlock()
+	if n != 0 {
+		t.Fatalf("%d served entries left after the reply", n)
+	}
+}
+
 func TestPanickingHandlerReturnsInternalError(t *testing.T) {
 	panicky := func(context.Context, string, json.RawMessage) (any, error) { panic("oops") }
 	a, _, _ := pair(t, nil, panicky)

@@ -112,6 +112,21 @@ rate limit:
 
 The core re-queues jobs that fail with a retryable error and fails the rest.
 
+## Cancelling a request
+
+When either side stops waiting for a reply, such as when the owner stops an
+action run or cancels an import, it sends a `cancel` notification with the
+request's `id`:
+
+```json
+{"jsonrpc": "2.0", "method": "cancel", "params": {"id": 7}}
+```
+
+Stop the work for that request, including calls to paid services. A reply is
+optional; the sender ignores it. Ignore a `cancel` for an `id` you aren't
+answering, since your reply may already be on its way. Plugins built on the
+Go `protocol.Conn` get this for free: the handler's context is cancelled.
+
 ## Capability methods
 
 Each capability's methods are added here as the core implements them. The

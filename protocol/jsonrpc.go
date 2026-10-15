@@ -21,6 +21,14 @@ const (
 	CodeInternalError  = -32603
 )
 
+// methodCancel is the notification a caller sends when it stops waiting for
+// a request's reply; Conn handles it itself and never passes it to Handler.
+const methodCancel = "cancel"
+
+type cancelParams struct {
+	ID json.RawMessage `json:"id"`
+}
+
 // ErrClosed is returned by calls that were pending, or started, after the
 // connection's reader stopped.
 var ErrClosed = errors.New("protocol: connection closed")
@@ -81,6 +89,9 @@ type Conn struct {
 	mu      sync.Mutex
 	pending map[int64]chan *message
 	closed  bool
+	// served cancels the handler of each request still being answered, by
+	// the request's raw JSON id.
+	served map[string]context.CancelFunc
 }
 
 // NewConn returns a connection that reads from r and writes to w. Call Run
@@ -91,12 +102,14 @@ func NewConn(r io.Reader, w io.Writer, h Handler) *Conn {
 		enc:     json.NewEncoder(w),
 		handler: h,
 		pending: map[int64]chan *message{},
+		served:  map[string]context.CancelFunc{},
 	}
 }
 
 // Run reads messages until r reaches EOF. It returns nil on EOF. Pending
 // and later calls then fail with ErrClosed, and the ctx passed to handlers
-// is cancelled.
+// is cancelled. A cancel notification cancels the ctx of one request's
+// handler.
 func (c *Conn) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -119,19 +132,27 @@ func (c *Conn) Run(ctx context.Context) error {
 			return fmt.Errorf("protocol: read: %w", err)
 		}
 		switch {
+		case m.Method == methodCancel && len(m.ID) == 0:
+			c.cancelServed(m.Params)
 		case m.Method != "" && len(m.ID) == 0:
 			// Handled inline so notifications such as emit.card and
 			// checkpoint are processed in the order they were sent.
 			_, _ = c.handle(ctx, m)
 		case m.Method != "":
-			go c.serve(ctx, m)
+			// Registered before serving so a cancel read next finds it.
+			hctx, cancel := context.WithCancel(ctx)
+			c.mu.Lock()
+			c.served[string(m.ID)] = cancel
+			c.mu.Unlock()
+			go c.serve(hctx, cancel, m)
 		default:
 			c.deliver(m)
 		}
 	}
 }
 
-// Call sends a request and waits for its response. result may be nil.
+// Call sends a request and waits for its response. result may be nil. If
+// ctx ends first, Call tells the peer to cancel the request.
 //
 // ponytail: ctx doesn't interrupt a blocked write, so a peer that stops
 // reading blocks callers until its process is killed. The plugin host kills
@@ -164,6 +185,8 @@ func (c *Conn) Call(ctx context.Context, method string, params, result any) erro
 	select {
 	case <-ctx.Done():
 		c.forget(id)
+		// In a goroutine so a peer that stopped reading can't hold up the caller.
+		go c.Notify(methodCancel, cancelParams{ID: req.ID})
 		return ctx.Err()
 	case resp, ok := <-ch:
 		if !ok {
@@ -192,9 +215,13 @@ func (c *Conn) Notify(method string, params any) error {
 	return c.write(m)
 }
 
-func (c *Conn) serve(ctx context.Context, req message) {
+func (c *Conn) serve(ctx context.Context, cancel context.CancelFunc, req message) {
 	resp := &message{JSONRPC: "2.0", ID: req.ID}
 	result, err := c.handle(ctx, req)
+	c.mu.Lock()
+	delete(c.served, string(req.ID))
+	c.mu.Unlock()
+	cancel()
 	if err == nil {
 		resp.Result, err = json.Marshal(result)
 	}
@@ -220,6 +247,21 @@ func (c *Conn) handle(ctx context.Context, req message) (result any, err error) 
 		}
 	}()
 	return c.handler(ctx, req.Method, req.Params)
+}
+
+// cancelServed cancels the handler of the request params names. Unknown ids
+// are ignored: the request may already be answered.
+func (c *Conn) cancelServed(params json.RawMessage) {
+	var p cancelParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return
+	}
+	c.mu.Lock()
+	cancel, ok := c.served[string(p.ID)]
+	c.mu.Unlock()
+	if ok {
+		cancel()
+	}
 }
 
 func (c *Conn) deliver(m message) {

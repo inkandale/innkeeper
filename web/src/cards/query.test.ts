@@ -10,6 +10,8 @@ import {
   toSearch,
   sameValue,
   setScore,
+  parseScore,
+  withoutScores,
   toggleTerm,
   type CardQuery,
   type Term,
@@ -175,4 +177,18 @@ test("setScore replaces a key's term and clears it when empty", () => {
   q = setScore(q, { key: "quality", lte: 20 });
   expect(q.terms).toEqual([term("score", "voice:none"), term("score", "quality:..20")]);
   expect(setScore(q, { key: "voice" }).terms).toEqual([term("score", "quality:..20")]);
+});
+
+test("score ranges take negative and exponent numbers", () => {
+  const q = setScore(base, { key: "mood", gte: -1, lte: 1 });
+  expect(q.terms).toEqual([term("score", "mood:-1..1")]);
+  expect(parseQuery(toParams(q))).toEqual(q);
+  expect(filterFor(q.terms)).toEqual({ and: [{ enrichment: "mood", gte: -1, lte: 1 }] });
+  expect(parseScore("mood:-2.5e-1..1E2")).toEqual({ key: "mood", gte: -0.25, lte: 100 });
+});
+
+test("withoutScores drops score terms and an enrichment sort", () => {
+  const q: CardQuery = { ...base, terms: [term("tag", "a"), term("score", "quality:1..")], sort: "enrichment:quality" };
+  expect(withoutScores(q)).toEqual({ ...base, terms: [term("tag", "a")] });
+  expect(withoutScores(base)).toBe(base);
 });

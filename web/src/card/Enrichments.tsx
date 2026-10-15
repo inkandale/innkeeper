@@ -3,15 +3,10 @@ import { useEffect, useState } from "react";
 import { api, must } from "../api/client";
 import { useInstancesWith } from "../api/queries";
 import type { components } from "../api/schema";
+import { enrichmentText } from "../cards/Tile";
 import { finished, useJob } from "../settings/jobUtil";
 
 type Value = components["schemas"]["EnrichmentValue"];
-
-function shown(v: Value): string {
-  if (typeof v.value === "number") return String(Math.round(v.value * 10) / 10);
-  if (Array.isArray(v.value)) return v.value.join(", ");
-  return String(v.value);
-}
 
 /** Enrichments lists every instance's values for the card, and reruns one on the head revision. */
 export function Enrichments({ id }: { id: number }) {
@@ -53,7 +48,7 @@ export function Enrichments({ id }: { id: number }) {
                 <div key={v.key} className={v.stale ? "stale" : undefined} title={v.stale ? "Stale: from an older revision" : undefined}>
                   <dt>{v.label}</dt>
                   <dd>
-                    {shown(v)}
+                    {enrichmentText(v.value, v.range)}
                     {v.stale && <span className="muted"> (stale)</span>}
                   </dd>
                 </div>

@@ -335,6 +335,14 @@
   font-weight: 700;
 }
 
+.tile-image .score.text {
+  max-width: calc(100% - 2 * var(--space) - 3em);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+}
+
 .tile-image .score.stale {
   opacity: 0.55;
   font-weight: 400;

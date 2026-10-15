@@ -8,7 +8,7 @@ import { stateLabel } from "../sync/sync";
 import { Facets } from "./Facets";
 import { ImportForm, importers } from "./ImportForm";
 import { pageLinks } from "./pages";
-import { defaultSort, parseQuery, parseScore, sizes, toggleTerm, toParams, toLorebookSearch, toSearch, type CardQuery, type Sort, type Term } from "./query";
+import { defaultSort, parseQuery, parseScore, withoutScores, sizes, toggleTerm, toParams, toLorebookSearch, toSearch, type CardQuery, type Sort, type Term } from "./query";
 import { emptySelection, pick, target, type Selection } from "./selection";
 import { useJobEvents } from "../settings/jobUtil";
 import { SelectionBar } from "./SelectionBar";
@@ -37,7 +37,12 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const noun = kind === "card" ? "cards" : "lorebooks";
   const Noun = kind === "card" ? "Cards" : "Lorebooks";
   const [params, setParams] = useSearchParams();
-  const q = parseQuery(params);
+  const asked = parseQuery(params);
+  const keys = useQuery({ ...enrichmentKeysQuery, enabled: kind === "card" });
+  const scored = keys.data?.instance_id != null;
+  // A link from when there was a score instance would otherwise be refused.
+  const q = keys.data && !scored ? withoutScores(asked) : asked;
+  const scoresOff = q !== asked;
   // The selection belongs to one search: paging keeps it, a new search clears it.
   const key = JSON.stringify([q.text, q.terms]);
   const [stored, setSel] = useState<Selection>(() => emptySelection(key));
@@ -51,8 +56,6 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   useJobEvents(watching ?? 0, watching !== undefined);
   const go = (next: CardQuery) => setParams(toParams(next));
 
-  const keys = useQuery({ ...enrichmentKeysQuery, enabled: kind === "card" });
-  const scored = keys.data?.instance_id != null;
   const scoreKeys = (keys.data?.keys ?? []).filter((k) => k.type === "score");
   const grid = keys.data?.keys?.find((k) => k.grid);
   const body = kind === "card" ? toSearch(q, scored) : toLorebookSearch(q);
@@ -176,6 +179,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
           </section>
         )}
         {res.isError && <p className="error">{res.error.message}</p>}
+        {scoresOff && <p className="muted">Score filters and sort are off: no instance gives scores. Pick one in Settings, under Scores from.</p>}
         {res.data && <p className="total">{total} {total === 1 ? noun.slice(0, -1) : noun}</p>}
         {res.data && q.page > last && (
           <p>

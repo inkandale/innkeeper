@@ -11,7 +11,8 @@ const kinds = ["target", "state", "tag", "source", "collection", "score"] as con
 const sorts = ["relevance", "updated", "name", "created"] as const;
 const enrichmentSort = /^enrichment:[a-z][a-z0-9_]*$/;
 // A score term's value: key:low..high, either end optional, or key:none for cards without a value.
-const scoreValue = /^([a-z][a-z0-9_]*):(none|(\d+(?:\.\d+)?)?\.\.(\d+(?:\.\d+)?)?)$/;
+const num = String.raw`-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?`;
+const scoreValue = new RegExp(String.raw`^([a-z][a-z0-9_]*):(none|(${num})?\.\.(${num})?)$`);
 export const sizes = [24, 48, 96];
 
 export type TermKind = (typeof kinds)[number];
@@ -43,6 +44,13 @@ export function scoreTerm(s: Score): Term | undefined {
   if (s.none) return { kind: "score", value: `${s.key}:none`, not: false };
   if (s.gte === undefined && s.lte === undefined) return undefined;
   return { kind: "score", value: `${s.key}:${s.gte ?? ""}..${s.lte ?? ""}`, not: false };
+}
+
+/** withoutScores drops score terms and an enrichment sort, for a library with no score instance. */
+export function withoutScores(q: CardQuery): CardQuery {
+  const terms = q.terms.filter((t) => t.kind !== "score");
+  const sort = q.sort.startsWith("enrichment:") ? defaultSort(q.text) : q.sort;
+  return terms.length === q.terms.length && sort === q.sort ? q : { ...q, terms, sort };
 }
 
 /** setScore replaces key's score term with s's. */

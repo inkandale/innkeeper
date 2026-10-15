@@ -64,14 +64,24 @@ function SelectBox({ hit, pick }: { hit: Hit; pick: PickProps }) {
   );
 }
 
+/** enrichmentText formats an enrichment value: a score to one decimal when its range spans 10 or less, else whole. */
+export function enrichmentText(value: unknown, range?: number[] | null): string {
+  if (typeof value === "number") {
+    const span = range && range.length === 2 ? range[1]! - range[0]! : Infinity;
+    return String(span <= 10 ? Math.round(value * 10) / 10 : Math.round(value));
+  }
+  if (Array.isArray(value)) return value.join(", ");
+  return String(value);
+}
+
 /** Score shows the card's value of the grid key, dimmed when it is about an older revision. */
 function Score({ hit, grid }: { hit: Hit; grid: EnrichmentKey }) {
   const v = hit.enrichments?.[grid.key];
   if (!v) return null;
-  const value = typeof v.value === "number" ? String(Math.round(v.value)) : String(v.value);
+  const value = enrichmentText(v.value, grid.range);
   const title = v.stale ? `${grid.label} ${value}, stale: from an older revision` : `${grid.label} ${value}`;
   return (
-    <span className={v.stale ? "score stale" : "score"} role="img" aria-label={title} title={title}>
+    <span className={["score", grid.type !== "score" && "text", v.stale && "stale"].filter(Boolean).join(" ")} role="img" aria-label={title} title={title}>
       {value}
     </span>
   );

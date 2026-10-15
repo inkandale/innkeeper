@@ -534,3 +534,10 @@ test("Evaluate starts a run on the selection", async () => {
   await user.click(screen.getByRole("button", { name: "Evaluate 1 card" }));
   await waitFor(() => expect(posts).toEqual([{ path: "/api/enrichments/runs", body: { instance_id: 5, query: { filter: { ids: [8] } } } }]));
 });
+
+test("without a score instance, score filters and sort in the URL are dropped with a note", async () => {
+  renderCards("/cards?f=score:quality:70..&f=tag:fantasy&sort=enrichment:quality");
+  expect(await screen.findByText(/Score filters and sort are off/)).toBeInTheDocument();
+  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ tag: "fantasy" }] }, sort: "updated" })));
+  expect(searches).not.toContainEqual(expect.objectContaining({ sort: "enrichment:quality" }));
+});

@@ -44,6 +44,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/actions/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the skills action plugin instances offer
+         * @description The skills an @skills/ mention can name, as each instance's action.list reports them. Instances that are broken, or whose plugin doesn't answer, are left out.
+         */
+        get: operations["list-action-skills"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/logout": {
         parameters: {
             query?: never;
@@ -1224,6 +1244,89 @@ export interface paths {
          */
         post: operations["resolve-lorebook-item"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/instances/{id}/records/{type}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a plugin instance's records of one type */
+        get: operations["list-records"];
+        put?: never;
+        /**
+         * Add a record to a plugin instance
+         * @description A 400 carries the plugin's reason for refusing the record.
+         */
+        post: operations["create-record"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/instances/{id}/records/{type}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import records from a file
+         * @description Send the file as application/octet-stream. Returns what was imported. A 400 carries the plugin's reason for refusing the file.
+         */
+        post: operations["import-record-file"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/instances/{id}/records/{type}/import-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import records from a URL
+         * @description Returns what was imported. A 400 carries the plugin's reason for refusing the URL.
+         */
+        post: operations["import-record-url"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/instances/{id}/records/{type}/{record}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one of a plugin instance's records */
+        get: operations["get-record"];
+        /**
+         * Replace one of a plugin instance's records
+         * @description The reply's id may differ from the path's, such as for a renamed skill. A 400 carries the plugin's reason for refusing the record.
+         */
+        put: operations["replace-record"];
+        post?: never;
+        /** Delete one of a plugin instance's records */
+        delete: operations["delete-record"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2872,6 +2975,15 @@ export interface components {
             /** @description The import plugin's settings, such as a folder path. */
             params?: unknown;
         };
+        ImportURLInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/ImportURLInBody.json
+             */
+            readonly $schema?: string;
+            url: string;
+        };
         InstallInBody: {
             /**
              * Format: uri
@@ -3054,10 +3166,21 @@ export interface components {
             previous_source?: string;
             /** @description Version a rollback returns to */
             previous_version?: string;
+            /** @description The record types a records plugin keeps, by type name */
+            records?: {
+                [key: string]: components["schemas"]["RecordTypeOut"];
+            };
             secrets: string[] | null;
             /** @description Id of the source the plugin was installed from, or builtin */
             source: string;
             version: string;
+        };
+        PluginSkill: {
+            description?: string;
+            /** Format: int64 */
+            instance_id: number;
+            instance_name: string;
+            name: string;
         };
         PluginSource: {
             /**
@@ -3179,6 +3302,51 @@ export interface components {
             match?: components["schemas"]["ReconcileMatch"];
             /** Format: int64 */
             split_fields?: number | null;
+        };
+        RecordBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/RecordBody.json
+             */
+            readonly $schema?: string;
+            /** @description The whole record, fitting the record type's schema */
+            record: {
+                [key: string]: unknown;
+            };
+        };
+        RecordOutBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/RecordOutBody.json
+             */
+            readonly $schema?: string;
+            id: string;
+            record: unknown;
+        };
+        RecordSummary: {
+            description?: string;
+            id: string;
+            name: string;
+        };
+        RecordTypeOut: {
+            /** @description What Import takes: file, url, or both */
+            import?: string[] | null;
+            label: string;
+            /** @description JSON Schema for one record */
+            schema: {
+                [key: string]: unknown;
+            };
+        };
+        RecordsPutResult: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/RecordsPutResult.json
+             */
+            readonly $schema?: string;
+            id: string;
         };
         Resolution: {
             /**
@@ -3562,6 +3730,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-action-skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginSkill"][] | null;
                 };
             };
             /** @description Error */
@@ -5924,6 +6121,251 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ResolveResult"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                /** @description A record type the plugin's manifest declares */
+                type: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordSummary"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "create-record": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                type: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordsPutResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "import-record-file": {
+        parameters: {
+            query: {
+                /** @description The file's name, such as SKILL.md */
+                name: string;
+            };
+            header?: never;
+            path: {
+                id: number;
+                type: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordSummary"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "import-record-url": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                type: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportURLInBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordSummary"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-record": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                type: string;
+                record: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordOutBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "replace-record": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                type: string;
+                record: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordsPutResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-record": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                type: string;
+                record: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {

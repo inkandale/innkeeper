@@ -65,13 +65,15 @@ func (s *Service) Check(ctx context.Context, id int64) (Binding, error) {
 	return s.Binding(ctx, id)
 }
 
-// fetchFollowed is fetch for a followed source. It also stores the site's
-// avatar as a blob and returns its avatarKey, since a new avatar is an update too.
+// fetchFollowed is fetch for a followed source, projected as review projects
+// it. It also stores the site's avatar as a blob and returns its avatarKey,
+// since a new avatar is an update too.
 //
 // ponytail: stores the avatar on every check; unreferenced blobs are
 // collected after a day. Ask the plugin for a hash first if that grows.
 func (s *Service) fetchFollowed(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo,
 	remoteID string) (json.RawMessage, string, string, error) {
+	info = reconcileInfo(info)
 	if k.isLorebook() {
 		data, hash, err := s.fetch(ctx, k, inst, info, remoteID)
 		return data, hash, "", err

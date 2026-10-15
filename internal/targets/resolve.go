@@ -435,7 +435,12 @@ func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.Targe
 	if err != nil {
 		return res, err
 	}
-	accepted, acceptedHash, err := Project(it.raw, k.fields(info))
+	// A followed source is checked as review compares it, without character_book.
+	acceptInfo := info
+	if !push {
+		acceptInfo = rinfo
+	}
+	accepted, acceptedHash, err := Project(it.raw, k.fields(acceptInfo))
 	if err != nil {
 		return res, err
 	}

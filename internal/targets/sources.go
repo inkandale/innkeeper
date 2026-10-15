@@ -48,7 +48,7 @@ func (s *Service) followers(ctx context.Context) (map[int64][]string, error) {
 // ponytail: an entity with two sources of one followed kind follows the
 // older; a binding per source needs a key wider than (instance, entity).
 func (s *Service) follow(ctx context.Context, k kind, instanceID int64, kinds []string, only int64) error {
-	_, info, err := s.describePull(ctx, k, instanceID)
+	_, info, err := s.describeReconcile(ctx, k, instanceID)
 	if k.isLorebook() && errors.Is(err, ErrCannot) {
 		// The target keeps lorebooks inside cards, so it can't follow one.
 		return nil

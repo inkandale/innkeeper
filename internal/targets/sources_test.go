@@ -213,6 +213,29 @@ func TestFollowingASourceAcceptsTheFirstPluginRevision(t *testing.T) {
 	}
 }
 
+// The library keeps a card's book apart, so a follower that lists
+// character_book compares the card without it, as review does.
+func TestAFollowedSourceWithAnEmbeddedBookIsComparedWithoutIt(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(map[string]any{"fields": []string{"name", "description", "first_mes", "character_book"}, "lorebooks": "embedded"})
+	card := e.imported("vyr", vyrCard)
+	page := maps.Clone(vyrCard)
+	page["character_book"] = map[string]any{"name": "Hoard", "entries": []any{map[string]any{"keys": []string{"gold"}, "content": "Heaps of it."}}}
+	e.publish("vyr", page, "")
+	if b := e.follow(card); b.RemoteState != remoteUnchanged {
+		t.Fatalf("first check = %+v", b)
+	}
+	page["first_mes"] = "Begone."
+	e.publish("vyr", page, "")
+	b := e.follow(card)
+	if _, err := e.s.Dismiss(e.ctx, b.ID, b.AppHash); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.follow(card); got.RemoteState != remoteUnchanged {
+		t.Fatalf("after dismissing = %+v", got)
+	}
+}
+
 func TestCardsSharingASourceEachFollowIt(t *testing.T) {
 	e := setup(t, nil)
 	e.addUpstream(nil)

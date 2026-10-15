@@ -305,6 +305,8 @@ type AIChatParams struct {
 type AIChatResult struct {
 	Text      string     `json:"text"`
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
+	// Model is the model that answered, for the consumer's records.
+	Model string `json:"model,omitempty"`
 }
 
 // AIDelta streams ai.chat's text under the call's Run token.
@@ -1336,7 +1338,7 @@ Exported names parts 2 to 4 use. Each is defined in the task named.
 - `protocol.ChatTool{Name, Description string; Parameters json.RawMessage}`
 - `protocol.ToolCall{ID, Name, Arguments string}` (`Arguments` is a JSON string)
 - `protocol.AIChatParams{ServiceCall; Messages []ChatMessage; Tools []ChatTool; Temperature *float64; MaxTokens *int}`
-- `protocol.AIChatResult{Text string; ToolCalls []ToolCall}`
+- `protocol.AIChatResult{Text string; ToolCalls []ToolCall; Model string}`
 - `protocol.AIDelta{Run, Text string}`: one piece of streamed text, in order, all before the reply
 - `protocol.AIEmbedParams{ServiceCall; Texts []string}`, `protocol.AIEmbedResult{Vectors [][]float32}`
 

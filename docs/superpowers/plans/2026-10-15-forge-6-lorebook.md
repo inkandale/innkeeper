@@ -41,8 +41,8 @@ export type Proposed = { rows: Row[]; apply: (taken: Set<string>) => Data };
 | `internal/fakeplugin/actions.go` | `lore` (whole lorebook, instruction) and `tighten-lore` (lorebook field action on `description`) |
 | `docs/protocol.md` | Entry `id`s in a lorebook proposal |
 | `web/openapi.json`, `web/src/api/schema.d.ts` | Regenerated |
-| `web/src/forge/review.ts`, `review.test.ts` | New: `Subject`, `Row`, `Proposed`, `fieldRows`, `cardSubject` |
-| `web/src/lorebook/review.ts`, `review.test.ts` | New: `pairEntries`, `lorebookSubject` |
+| `web/src/forge/subject.ts`, `subject.test.ts` | New: `Subject`, `Row`, `Proposed`, `fieldRows`, `cardSubject` |
+| `web/src/lorebook/subject.ts`, `subject.test.ts` | New: `pairEntries`, `lorebookSubject` |
 | `web/src/forge/actions.ts` | `instructionAction(list, kind)` |
 | `web/src/forge/useForge.ts` | Takes `subject` and `id`; job list by `card_id` or `lorebook_id` |
 | `web/src/forge/Forge.tsx`, `Reforge.tsx`, `Review.tsx`, `Report.tsx`, `RunHeader.tsx` | Read `forge.subject`; Forge takes a `fields` render prop |
@@ -101,14 +101,14 @@ A request with both `card_id` and `lorebook_id` matches nothing, since no payloa
 
 ### Task 4: Subjects and review rows
 
-**Files:** `web/src/forge/review.ts`, `review.test.ts`, `web/src/lorebook/review.ts`, `review.test.ts`.
+**Files:** `web/src/forge/subject.ts`, `subject.test.ts`, `web/src/lorebook/subject.ts`, `subject.test.ts`.
 
 - [ ] **Step 1: Failing tests.**
   - `cardSubject.review`: rows for changed keys only; `edited` when the draft differs from start; `apply(new Set(["description"]))` returns `{description: proposal.description}`.
   - `pairEntries`: pairs by `id` across a reorder; pairs identical id-less entries; pairs id-less entries with the same keys and changed content; leaves a new entry and a removed one unpaired.
   - `lorebookSubject.review`: start `[anvil, bellows, forge]`, proposal `[anvil′, forge, hammer]` gives rows `changed` (anvil), `removed` (bellows), `added` (hammer), plus a `description` row when it changed; taking only the added row appends hammer to the draft's entries and leaves the rest; taking the removed row drops bellows from the draft; a changed row whose draft entry was edited is `edited`; an entry the owner added during the run survives Apply.
-- [ ] **Step 2:** `npm test -- review` fails.
-- [ ] **Step 3: Implement** `fieldRows(start, draft, proposal, label, keys)` and `cardSubject` in `forge/review.ts`; `pairEntries(a, b): [number, number][]` (`-1` for no partner) and `lorebookSubject` in `lorebook/review.ts`. An entry row's text is its keys, secondary keys, then content, then any other changed property as `key: JSON`, so a toggled `enabled` still shows. Apply builds the entries from the draft's list: replace a taken changed entry's draft partner (append it if the owner deleted it), drop a taken removed entry's partner, append taken added entries.
+- [ ] **Step 2:** `npm test -- subject` fails.
+- [ ] **Step 3: Implement** `fieldRows(start, draft, proposal, label, keys)` and `cardSubject` in `forge/subject.ts`; `pairEntries(a, b): [number, number][]` (`-1` for no partner) and `lorebookSubject` in `lorebook/subject.ts`. An entry row's text is its keys, secondary keys, then content, then any other changed property as `key: JSON`, so a toggled `enabled` still shows. Apply builds the entries from the draft's list: replace a taken changed entry's draft partner (append it if the owner deleted it), drop a taken removed entry's partner, append taken added entries.
 - [ ] **Step 4:** Tests pass. Commit `feat(web): review a lorebook proposal entry by entry`.
 
 ### Task 5: The Forge takes a subject

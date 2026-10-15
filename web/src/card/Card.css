@@ -363,3 +363,26 @@
 fieldset.contents {
   display: contents;
 }
+
+.enrichment-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+
+.enrichment-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space);
+}
+
+.enrichment-list dd {
+  margin: 0;
+  font-weight: 700;
+  text-align: right;
+}
+
+.enrichment-list .stale dd {
+  opacity: 0.55;
+  font-weight: 400;
+}

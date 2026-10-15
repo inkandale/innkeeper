@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { api, must, mustOk } from "../api/client";
 import { instancesQuery, pluginsQuery } from "../api/queries";
 import type { components } from "../api/schema";
+import { ScoresFrom } from "./ScoresFrom";
 
 export type Plugin = components["schemas"]["PluginOut"];
 export type InstanceInfo = components["schemas"]["InstanceInfo"];
@@ -112,6 +113,7 @@ export function Plugins() {
           {catalog.isFetching ? "Checking…" : "Check for updates"}
         </button>
       </div>
+      <ScoresFrom />
       {showRecommended && (
         <p className="created" role="status">
           Innkeeper comes with login and card downloads. Check for updates to install the importer and the app

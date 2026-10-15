@@ -7,6 +7,7 @@ import { badgeClass } from "../cards/Tile";
 import { useToast } from "../shell/Toasts";
 import type { Entity } from "./Card";
 import { Crop } from "./CropDialog";
+import { Enrichments } from "./Enrichments";
 import { strings, text, type Data } from "./draft";
 import { Logo, apps } from "../sync/Logo";
 import { PushPreview } from "../sync/PushPreview";
@@ -55,6 +56,7 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
       <Sources kind="card" id={card.id} />
       <Sync kind="card" id={card.id} />
       <Lorebooks ids={card.lorebooks ?? []} />
+      <Enrichments id={card.id} />
       <Revisions kind="card" id={card.id} />
     </aside>
   );

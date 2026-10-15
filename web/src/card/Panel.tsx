@@ -26,10 +26,11 @@ type PanelProps = {
   /** onAvatar saves sha as the image, with message as the revision's. */
   onAvatar: (sha: string, message: string) => void;
   avatarBusy: boolean;
+  lock?: (key: string) => string | undefined;
 };
 
 /** Panel is the card page's left side. */
-export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avatarBusy }: PanelProps) {
+export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avatarBusy, lock }: PanelProps) {
   const avatar = card.revision.avatar;
   const instances = useQuery(instancesQuery);
   const plugins = useQuery(pluginsQuery);
@@ -37,7 +38,7 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
     <aside className="card-aside">
       {avatar ? <img className="portrait" src={thumb(avatar, 640)} alt="" /> : <div className="portrait" />}
       <Image sha={avatar} busy={avatarBusy} onAvatar={onAvatar} />
-      <Identity data={data} edit={edit} />
+      <Identity data={data} edit={edit} lock={lock} />
       <div className="row">
         <button className="button primary" disabled={!dirty || saving} onClick={onSave}>
           Save
@@ -60,17 +61,27 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
 }
 
 /** Identity edits the card's name, nickname, creator, version, and tags. */
-export function Identity({ data, edit }: { data: Data; edit: (key: string, value: unknown) => void }) {
-  const field = (key: string, label: string) => (
-    <input className="input" aria-label={label} placeholder={label} value={text(data[key])} onChange={(e) => edit(key, e.target.value)} />
+export function Identity({ data, edit, lock }: { data: Data; edit: (key: string, value: unknown) => void; lock?: (key: string) => string | undefined }) {
+  const locked = (key: string) => !!lock?.(key);
+  const field = (key: string, label: string, className = "input") => (
+    <input
+      className={className}
+      aria-label={label}
+      placeholder={label}
+      value={text(data[key])}
+      disabled={locked(key)}
+      onChange={(e) => edit(key, e.target.value)}
+    />
   );
   return (
     <>
-      <input className="input name" aria-label="Name" placeholder="Name" value={text(data.name)} onChange={(e) => edit("name", e.target.value)} />
+      {field("name", "Name", "input name")}
       {field("nickname", "Nickname")}
       {field("creator", "Creator")}
       {field("character_version", "Version")}
-      <ChipInput label="Tags" values={strings(data.tags)} onChange={(v) => edit("tags", v)} />
+      <fieldset className="contents" disabled={locked("tags")}>
+        <ChipInput label="Tags" values={strings(data.tags)} onChange={(v) => edit("tags", v)} />
+      </fieldset>
     </>
   );
 }

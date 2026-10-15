@@ -29,7 +29,7 @@ function entryOf(id: string): { entry: string; field: string } {
 }
 
 /** Words renders a word diff: what only the library has struck through, what only the app has marked. */
-function Words({ runs }: { runs: Run[] }) {
+export function Words({ runs }: { runs: Run[] }) {
   return <>{runs.map((r, i) => (r.op === "del" ? <del key={i}>{r.text}</del> : r.op === "ins" ? <ins key={i}>{r.text}</ins> : r.text))}</>;
 }
 

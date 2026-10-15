@@ -63,3 +63,15 @@ func (l *Library) Enrichments(ctx context.Context, cardID int64, history bool) (
 	}
 	return pgx.CollectRows(rows, pgx.RowToStructByPos[Enrichment])
 }
+
+// EnrichedRevisions returns the revisions in revIDs, of the cards in cardIDs,
+// that hold at least one value from instanceID.
+func (l *Library) EnrichedRevisions(ctx context.Context, instanceID int64, cardIDs, revIDs []int64) ([]int64, error) {
+	// card_id leads the index; revision_id alone would scan the table.
+	rows, err := l.pool.Query(ctx, `SELECT DISTINCT revision_id FROM enrichment
+		WHERE card_id = ANY($2) AND instance_id = $1 AND revision_id = ANY($3)`, instanceID, cardIDs, revIDs)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[int64])
+}

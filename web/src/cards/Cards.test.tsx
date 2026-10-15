@@ -532,7 +532,18 @@ test("Evaluate starts a run on the selection", async () => {
   await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
   await user.click(screen.getByRole("button", { name: "Evaluate" }));
   await user.click(screen.getByRole("button", { name: "Evaluate 1 card" }));
-  await waitFor(() => expect(posts).toEqual([{ path: "/api/enrichments/runs", body: { instance_id: 5, query: { filter: { ids: [8] } } } }]));
+  await waitFor(() => expect(posts).toEqual([{ path: "/api/enrichments/runs", body: { instance_id: 5, query: { filter: { ids: [8] } }, rescore: false } }]));
+});
+
+test("Evaluate re-scores cards already scored when asked", async () => {
+  keys = scored;
+  renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
+  await user.click(screen.getByRole("button", { name: "Evaluate" }));
+  await user.click(screen.getByRole("checkbox", { name: "Re-score cards already scored" }));
+  await user.click(screen.getByRole("button", { name: "Evaluate 1 card" }));
+  await waitFor(() => expect(posts).toEqual([{ path: "/api/enrichments/runs", body: { instance_id: 5, query: { filter: { ids: [8] } }, rescore: true } }]));
 });
 
 test("without a score instance, score filters and sort in the URL are dropped with a note", async () => {

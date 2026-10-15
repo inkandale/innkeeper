@@ -25,7 +25,7 @@ export function Enrichments({ id }: { id: number }) {
     if (done) void qc.invalidateQueries({ queryKey: ["card", id, "enrichments"] });
   }, [done, qc, id]);
   const start = useMutation({
-    mutationFn: async (instance_id: number) => must(await api.POST("/enrichments/runs", { body: { instance_id, card_ids: [id] } })),
+    mutationFn: async (instance_id: number) => must(await api.POST("/enrichments/runs", { body: { instance_id, card_ids: [id], rescore: true } })),
     onSuccess: (j) => setJobId(j.id),
   });
 

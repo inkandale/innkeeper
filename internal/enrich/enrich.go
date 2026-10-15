@@ -35,6 +35,8 @@ const (
 // Payload is an enrich job's payload.
 type Payload struct {
 	CardIDs []int64 `json:"card_ids"`
+	// Rescore sends cards whose head revision already holds a value from the instance.
+	Rescore bool `json:"rescore,omitempty"`
 }
 
 // Progress is an enrich job's progress, counted in cards.
@@ -42,6 +44,7 @@ type Progress struct {
 	Message  string   `json:"message,omitempty"`
 	Done     int      `json:"done"`
 	Failed   int      `json:"failed"`
+	Skipped  int      `json:"skipped"`
 	Total    int      `json:"total"`
 	Warnings []string `json:"warnings,omitempty"`
 }
@@ -71,7 +74,9 @@ type Checked struct {
 	Values []library.NewEnrichment
 	// Done and Failed count revisions: done ones stored at least one value.
 	Done, Failed int
-	Warnings     []string
+	// Skipped counts revisions not sent because they already hold a value.
+	Skipped  int
+	Warnings []string
 }
 
 // Check keeps the values in reply that decl declares with a valid value, for
@@ -193,7 +198,7 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 	batches, failedBatches := 0, 0
 	for ids := range slices.Chunk(p.CardIDs, protocol.MaxEnrichBatch) {
 		batches++
-		checked, err := rn.batch(ctx, inst, *r.InstanceID, token, ids)
+		checked, err := rn.batch(ctx, inst, *r.InstanceID, token, ids, p.Rescore)
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -206,6 +211,7 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 		} else {
 			prog.Done += checked.Done
 			prog.Failed += checked.Failed
+			prog.Skipped += checked.Skipped
 			prog.warn(checked.Warnings...)
 		}
 		publish()
@@ -220,11 +226,24 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 }
 
 // batch sends the head revisions of ids to the plugin and stores the values
-// that pass Check. A card that doesn't exist counts as failed.
-func (rn *Runner) batch(ctx context.Context, inst pluginhost.Instance, instanceID int64, token string, ids []int64) (Checked, error) {
+// that pass Check. A card that doesn't exist counts as failed. Without
+// rescore, a head that already holds a value from the instance is skipped.
+func (rn *Runner) batch(ctx context.Context, inst pluginhost.Instance, instanceID int64, token string, ids []int64, rescore bool) (Checked, error) {
 	revs, missing := rn.heads(ctx, ids)
 	if len(revs) == 0 {
 		return Checked{}, errors.New("none of its cards exist")
+	}
+	skipped := 0
+	if !rescore {
+		all := len(revs)
+		var err error
+		if revs, err = rn.unscored(ctx, instanceID, revs); err != nil {
+			return Checked{}, err
+		}
+		skipped = all - len(revs)
+		if len(revs) == 0 {
+			return Checked{Failed: len(missing), Skipped: skipped, Warnings: missing}, nil
+		}
 	}
 	var reply protocol.EnrichRunResult
 	if err := rn.Registry.Call(ctx, rn.Plugins, inst, protocol.MethodEnrichRun,
@@ -233,6 +252,7 @@ func (rn *Runner) batch(ctx context.Context, inst pluginhost.Instance, instanceI
 	}
 	checked := Check(inst.Manifest.Enrichments, revs, reply)
 	checked.Failed += len(missing)
+	checked.Skipped = skipped
 	checked.Warnings = append(missing, checked.Warnings...)
 	// One insert per revision, so a row the database refuses loses only its own revision's values.
 	for _, rev := range revs {
@@ -270,4 +290,17 @@ func (rn *Runner) heads(ctx context.Context, ids []int64) ([]protocol.EnrichRevi
 		revs = append(revs, protocol.EnrichRevision{CardID: id, RevisionID: rev.ID, Data: rev.Data})
 	}
 	return revs, missing
+}
+
+// unscored keeps the revisions in revs that hold no value from instanceID.
+func (rn *Runner) unscored(ctx context.Context, instanceID int64, revs []protocol.EnrichRevision) ([]protocol.EnrichRevision, error) {
+	cardIDs, revIDs := make([]int64, len(revs)), make([]int64, len(revs))
+	for i, rev := range revs {
+		cardIDs[i], revIDs[i] = rev.CardID, rev.RevisionID
+	}
+	scored, err := rn.Lib.EnrichedRevisions(ctx, instanceID, cardIDs, revIDs)
+	if err != nil {
+		return nil, fmt.Errorf("find scored revisions: %w", err)
+	}
+	return slices.DeleteFunc(revs, func(rev protocol.EnrichRevision) bool { return slices.Contains(scored, rev.RevisionID) }), nil
 }

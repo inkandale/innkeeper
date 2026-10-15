@@ -43,6 +43,7 @@ export function SelectionBar(props: {
   const [picked, setPicked] = useState<number[]>();
   const [format, setFormat] = useState("json");
   const [enricher, setEnricher] = useState<number>();
+  const [rescore, setRescore] = useState(false);
   const toast = useToast();
   const n = all ? total : count;
 
@@ -64,7 +65,7 @@ export function SelectionBar(props: {
   const collectionId = collection ?? collections.data?.[0]?.id ?? 0;
   const enricherId = enricher ?? keys.data?.instance_id ?? enrichers[0]?.id ?? 0;
   const evaluate = () =>
-    start.mutate(async () => must(await api.POST("/enrichments/runs", { body: { instance_id: enricherId, query } })));
+    start.mutate(async () => must(await api.POST("/enrichments/runs", { body: { instance_id: enricherId, query, rescore } })));
   const chosen = targets.filter((t) => (picked ?? [targets[0]?.id]).includes(t.id));
   // What the push does to each copy. Its confirm makes the push leave alone any copy that changes after this.
   const previews = useQueries({
@@ -186,6 +187,10 @@ export function SelectionBar(props: {
                   ))}
                 </select>
               )}
+              <label className="check">
+                <span>Re-score cards already scored</span>
+                <input type="checkbox" checked={rescore} onChange={(e) => setRescore(e.target.checked)} />
+              </label>
               <button className="button primary" disabled={busy || !enricherId} onClick={evaluate}>
                 Evaluate {plural(n)}
               </button>

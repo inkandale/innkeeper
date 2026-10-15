@@ -43,6 +43,6 @@ test("values show with stale ones marked, and Evaluate reruns on the card", asyn
   expect(screen.getByText("Voice").parentElement).toHaveClass("stale");
   expect(screen.getByText("(stale)")).toBeInTheDocument();
   await userEvent.setup().click(await screen.findByRole("button", { name: "Evaluate" }));
-  await waitFor(() => expect(runs).toEqual([{ instance_id: 5, card_ids: [7] }]));
+  await waitFor(() => expect(runs).toEqual([{ instance_id: 5, card_ids: [7], rescore: true }]));
   expect(await screen.findByRole("button", { name: "Evaluating…" })).toBeDisabled();
 });

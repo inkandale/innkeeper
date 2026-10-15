@@ -917,7 +917,7 @@ export interface paths {
         put?: never;
         /**
          * Compute enrichments for cards
-         * @description Queues an enrich job that sends each card's head revision to the instance's plugin, 20 at a time, and stores the values it returns. Its progress counts cards done and failed, with a warning for each value dropped and each card that failed. Cancel the job to stop the run.
+         * @description Queues an enrich job that sends each card's head revision to the instance's plugin, 20 at a time, and stores the values it returns. Its progress counts cards done, failed, and skipped, with a warning for each value dropped and each card that failed. Cancel the job to stop the run.
          */
         post: operations["start-enrich-run"];
         delete?: never;
@@ -3711,6 +3711,8 @@ export interface components {
             instance_id: number;
             /** @description Enriches every card the query matches, as POST /bulk selects them. Send this or card_ids. */
             query?: components["schemas"]["Query"];
+            /** @description Also send cards whose head revision already has a value from the instance. Without it, they count as skipped. */
+            rescore?: boolean;
         };
         SyncParams: {
             /**

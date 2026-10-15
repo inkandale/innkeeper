@@ -15,7 +15,7 @@ becomes the first enricher, storing its evaluate scores.
 
 | Topic | Decision |
 |---|---|
-| Runs | Only when the owner asks: a bulk action on a selection, or Evaluate on the card page. Nothing runs on save. |
+| Runs | Only when the owner asks: a bulk action on a selection, or Evaluate on the card page. Nothing runs on save. A bulk run skips a card whose head revision already has a value from the instance, unless the owner ticks "Re-score cards already scored". The card page always re-scores. |
 | Scores instance | A library setting names one `enrich` instance. The grid, filters, and sort use its values. The card page shows every instance's values. |
 | Stale values | A value on a revision that is no longer the head is stale. Filters and sort still use it; the UI marks it stale. |
 | History | Every result is kept, so results from different models and revisions can be compared. |
@@ -79,7 +79,9 @@ stale when its `revision_id` isn't the card's head.
 
 A job kind, `enrich`, with the instance as `InstanceID` and the card IDs in
 its payload. It sends the head revisions in batches of 20 and stores each
-result. Progress counts cards done and failed. A failed batch fails only its
+result. Progress counts cards done, failed, and skipped; they add up to the
+total. Each batch checks for existing values after resolving its heads, so the
+check sees the latest head. A failed batch fails only its
 cards; the job fails only when every batch does. Stop is job cancel.
 
 ### Settings
@@ -91,7 +93,7 @@ When unset and exactly one `enrich` instance exists, the core uses that one.
 
 | Method and path | Tier | Does |
 |---|---|---|
-| `POST /enrichments/runs` | write | Body: `instance_id`, `card_ids` (at most 10,000). Returns `202` with the job |
+| `POST /enrichments/runs` | write | Body: `instance_id`, `card_ids` (at most 10,000), and `rescore` (default `false`: skip cards whose head revision already has a value from the instance). Returns `202` with the job |
 | `GET /cards/{id}/enrichments` | read | Every instance's current values, each with `label`, `type`, `range`, `stale`, `meta`, and `created_at`; `?history=true` adds older rows |
 | `GET /enrichments/keys` | read | Each key the score instance's plugin declares, with its label, type, range, and `grid` |
 

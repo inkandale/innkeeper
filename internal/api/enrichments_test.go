@@ -69,8 +69,14 @@ func (e *enrichEnv) card(name, description string) int64 {
 // evaluate runs the instance on cards and waits for the job to end.
 func (e *enrichEnv) evaluate(inst int64, cards ...int64) (jobOut, enrich.Progress) {
 	e.t.Helper()
+	return e.startRun(map[string]any{"instance_id": inst, "card_ids": cards})
+}
+
+// startRun starts a run with body and waits for the job to end.
+func (e *enrichEnv) startRun(body map[string]any) (jobOut, enrich.Progress) {
+	e.t.Helper()
 	var j jobOut
-	e.call("POST", "/enrichments/runs", map[string]any{"instance_id": inst, "card_ids": cards}, 202, &j)
+	e.call("POST", "/enrichments/runs", body, 202, &j)
 	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
 		e.call("GET", fmt.Sprintf("/jobs/%d", j.ID), nil, 200, &j)
 		if j.Status == jobs.StatusSucceeded || j.Status == jobs.StatusFailed {
@@ -136,6 +142,41 @@ func TestEnrichRunStoresCheckedValues(t *testing.T) {
 		t.Fatalf("history = %+v", vals)
 	}
 	e.call("GET", "/cards/999999/enrichments", nil, 404, nil)
+}
+
+func TestEnrichRunSkipsCardsScoredOnTheirHead(t *testing.T) {
+	e := newEnrichEnv(t)
+	scored, stale, fresh := e.card("Scored", "xx"), e.card("Stale", "xx"), e.card("Fresh", "xx")
+	e.evaluate(e.instID, scored, stale)
+	var c entityOut
+	e.call("GET", fmt.Sprintf("/cards/%d", stale), nil, 200, &c)
+	e.call("PUT", fmt.Sprintf("/cards/%d", stale), map[string]any{"base_revision_id": c.Revision.ID,
+		"data": map[string]any{"name": "Stale", "description": "xxxx"}}, 200, nil)
+
+	j, p := e.evaluate(e.instID, scored, stale, fresh, 999999)
+	if j.Status != jobs.StatusSucceeded || p.Total != 4 || p.Done != 2 || p.Failed != 1 || p.Skipped != 1 {
+		t.Fatalf("job %s, progress %+v", j.Status, p)
+	}
+	var vals []enrichmentValue
+	e.call("GET", fmt.Sprintf("/cards/%d/enrichments", stale), nil, 200, &vals)
+	if len(vals) != 3 || string(vals[0].Value) != "4" || vals[0].Stale {
+		t.Fatalf("stale card's values = %+v", vals)
+	}
+
+	j, p = e.startRun(map[string]any{"instance_id": e.instID, "card_ids": []int64{scored, fresh}, "rescore": true})
+	if j.Status != jobs.StatusSucceeded || p.Total != 2 || p.Done != 2 || p.Skipped != 0 {
+		t.Fatalf("rescore: job %s, progress %+v", j.Status, p)
+	}
+	e.call("GET", fmt.Sprintf("/cards/%d/enrichments?history=true", scored), nil, 200, &vals)
+	if len(vals) != 6 {
+		t.Fatalf("scored card's history = %+v", vals)
+	}
+
+	// A run whose every card is skipped still succeeds.
+	j, p = e.evaluate(e.instID, scored, fresh)
+	if j.Status != jobs.StatusSucceeded || p.Done != 0 || p.Skipped != 2 {
+		t.Fatalf("all skipped: job %s, progress %+v", j.Status, p)
+	}
 }
 
 func TestEnrichRunKeepsABatchWithAValueTheDatabaseRefuses(t *testing.T) {

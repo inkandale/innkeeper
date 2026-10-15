@@ -122,6 +122,7 @@ type startEnrichIn struct {
 		InstanceID int64          `json:"instance_id" doc:"An enrich instance"`
 		CardIDs    []int64        `json:"card_ids,omitempty" maxItems:"10000" doc:"The cards to enrich. Send this or query."`
 		Query      *library.Query `json:"query,omitempty" doc:"Enriches every card the query matches, as POST /bulk selects them. Send this or card_ids."`
+		Rescore    bool           `json:"rescore,omitempty" doc:"Also send cards whose head revision already has a value from the instance. Without it, they count as skipped."`
 	}
 }
 
@@ -130,7 +131,7 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "start-enrich-run", Method: http.MethodPost,
 		Path: "/enrichments/runs", Summary: "Compute enrichments for cards", Tags: tags, DefaultStatus: http.StatusAccepted,
 		Description: "Queues an enrich job that sends each card's head revision to the instance's plugin, 20 at a time, and stores the values it returns. " +
-			"Its progress counts cards done and failed, with a warning for each value dropped and each card that failed. Cancel the job to stop the run."},
+			"Its progress counts cards done, failed, and skipped, with a warning for each value dropped and each card that failed. Cancel the job to stop the run."},
 		func(ctx context.Context, in *startEnrichIn) (*jobResp, error) {
 			b := in.Body
 			if (len(b.CardIDs) > 0) == (b.Query != nil) {
@@ -153,7 +154,7 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 			if len(ids) > enrich.MaxCards {
 				return nil, huma.Error400BadRequest(fmt.Sprintf("a run takes at most %d cards; this one has %d", enrich.MaxCards, len(ids)))
 			}
-			return s.enqueue(ctx, jobs.Spec{Kind: enrich.Kind, InstanceID: &b.InstanceID, Payload: enrich.Payload{CardIDs: ids}})
+			return s.enqueue(ctx, jobs.Spec{Kind: enrich.Kind, InstanceID: &b.InstanceID, Payload: enrich.Payload{CardIDs: ids, Rescore: b.Rescore}})
 		})
 
 	huma.Register(api, huma.Operation{OperationID: "get-card-enrichments", Method: http.MethodGet, Path: "/cards/{id}/enrichments",

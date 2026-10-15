@@ -31,6 +31,7 @@ func main() {
 	// calls counts each method this process has answered, for the calls method.
 	var callsMu sync.Mutex
 	calls := map[string]int{}
+	var deltas deltaLog
 	handler := func(ctx context.Context, method string, params json.RawMessage) (any, error) {
 		callsMu.Lock()
 		calls[method]++
@@ -52,6 +53,7 @@ func main() {
 				Version:      "0.0.1",
 				Capabilities: strings.Split(*caps, ","),
 			}
+			res.Services = aiServices(init.Config)
 			switch *mode {
 			case "bad-protocol":
 				res.Protocol = 99
@@ -209,6 +211,17 @@ func main() {
 				Secrets: map[string]string{"password_hash": "fake:" + p.Params["password"]},
 				Subject: "owner",
 			}, nil
+		case protocol.MethodAIChat:
+			return aiChat(ctx, conn, params, func() {
+				callsMu.Lock()
+				calls["ai.chat.cancelled"]++
+				callsMu.Unlock()
+			})
+		case protocol.NotifyAIDelta:
+			deltas.add(params)
+			return nil, nil
+		case "relay":
+			return relay(ctx, conn, params, &deltas)
 		case "freeze":
 			// A notification handler blocks the reader, so the plugin
 			// stops reading stdin, like a hung plugin.

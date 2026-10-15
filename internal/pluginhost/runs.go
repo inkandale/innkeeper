@@ -71,3 +71,13 @@ func CallerInstance(ctx context.Context) string {
 	id, _ := ctx.Value(instanceKey{}).(string)
 	return id
 }
+
+type startingKey struct{}
+
+// CallerStarting reports whether the call came from a plugin still being
+// started, while its Manager is locked. A handler that uses the Manager
+// must refuse such a call, or it waits for the start to time out.
+func CallerStarting(ctx context.Context) bool {
+	starting, _ := ctx.Value(startingKey{}).(bool)
+	return starting
+}

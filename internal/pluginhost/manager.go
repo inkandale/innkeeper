@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/davidgibbons/innkeeper/protocol"
@@ -101,9 +102,14 @@ func (m *Manager) acquire(ctx context.Context, inst Instance) (*entry, error) {
 	if !ok || !e.proc.Alive() {
 		params := inst.Params
 		params.InstanceID = inst.ID
+		var started atomic.Bool
 		// Tagged with the instance, so Runs can refuse another instance's tokens.
 		core := func(ctx context.Context, method string, params json.RawMessage) (any, error) {
-			return m.core(fromInstance(ctx, inst.ID), method, params)
+			ctx = fromInstance(ctx, inst.ID)
+			if !started.Load() {
+				ctx = context.WithValue(ctx, startingKey{}, true)
+			}
+			return m.core(ctx, method, params)
 		}
 		if m.core == nil {
 			core = nil
@@ -112,6 +118,7 @@ func (m *Manager) acquire(ctx context.Context, inst Instance) (*entry, error) {
 		if err != nil {
 			return nil, &StartError{Err: err}
 		}
+		started.Store(true)
 		e = &entry{key: key, id: inst.ID, version: version, proc: p}
 		m.running[key] = e
 	}

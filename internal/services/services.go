@@ -41,6 +41,9 @@ func (b *Broker) call(ctx context.Context, method string, params json.RawMessage
 	if err := json.Unmarshal(params, &head); err != nil || json.Unmarshal(params, &fwd) != nil {
 		return nil, protocol.NewError(protocol.CodeInvalidParams, "a service call's params must be an object", false)
 	}
+	if pluginhost.CallerStarting(ctx) {
+		return nil, forbidden("call after initialize")
+	}
 	callerID, err := strconv.ParseInt(pluginhost.CallerInstance(ctx), 10, 64)
 	if err != nil {
 		return nil, forbidden("only a plugin instance can call a service")

@@ -147,6 +147,28 @@ func TestBrokenProviderIsRefusedWithoutItsError(t *testing.T) {
 	}
 }
 
+func TestServiceCallDuringInitializeIsRefused(t *testing.T) {
+	f := setup(t)
+	id, err := f.reg.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "consumer", Name: "Eager",
+		Config: map[string]any{"chat_on_initialize": f.chatID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	eager, err := f.reg.Instance(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var code int
+	if err := f.mgr.Call(ctx, eager, "initialize-chat", nil, &code); err != nil {
+		t.Fatal(err)
+	}
+	if code != protocol.CodeForbidden {
+		t.Fatalf("ai.chat during initialize got code %d, want -32003", code)
+	}
+}
+
 func TestCancellingTheCallerCancelsTheProvider(t *testing.T) {
 	f := setup(t)
 	ctx, cancel := context.WithCancel(context.Background())

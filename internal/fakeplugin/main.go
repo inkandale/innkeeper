@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -32,6 +33,8 @@ func main() {
 	var callsMu sync.Mutex
 	calls := map[string]int{}
 	var deltas deltaLog
+	// initChatErr is how the chat_on_initialize config's ai.chat failed.
+	var initChatErr error
 	handler := func(ctx context.Context, method string, params json.RawMessage) (any, error) {
 		callsMu.Lock()
 		calls[method]++
@@ -54,6 +57,12 @@ func main() {
 				Capabilities: strings.Split(*caps, ","),
 			}
 			res.Services = aiServices(init.Config)
+			if id, ok := init.Config["chat_on_initialize"].(float64); ok {
+				initChatErr = conn.Call(ctx, protocol.MethodAIChat, protocol.AIChatParams{
+					ServiceCall: protocol.ServiceCall{Instance: int64(id)},
+					Messages:    []protocol.ChatMessage{{Role: "user", Content: "hi"}},
+				}, nil)
+			}
 			switch *mode {
 			case "bad-protocol":
 				res.Protocol = 99
@@ -220,6 +229,13 @@ func main() {
 		case protocol.NotifyAIDelta:
 			deltas.add(params)
 			return nil, nil
+		case "initialize-chat":
+			// The error code the ai.chat sent during initialize got, or 0.
+			var rpcErr *protocol.Error
+			if errors.As(initChatErr, &rpcErr) {
+				return rpcErr.Code, nil
+			}
+			return 0, nil
 		case "relay":
 			return relay(ctx, conn, params, &deltas)
 		case "freeze":

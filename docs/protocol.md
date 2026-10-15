@@ -888,7 +888,8 @@ reading it. The provider gets the same params without `instance`.
 | `tools` | `[{"name", "description", "parameters"}]`, `parameters` a JSON Schema. Optional |
 | `temperature`, `max_tokens` | Optional; the provider's defaults otherwise |
 
-Reply with `text` and, when the model called tools, `tool_calls`:
+Reply with `text`, `model` (the model that answered), and, when the model
+called tools, `tool_calls`:
 `[{"id", "name", "arguments"}]`, `arguments` a JSON string. Answer each tool
 call with a `tool` message carrying its `tool_call_id`, then call `ai.chat`
 again.

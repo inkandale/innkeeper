@@ -8,7 +8,7 @@
 
 Pieces:
 - **Protocol types** (`protocol/action.go`): declarations, run params, the reply, the report, and `library.call`, with their validation.
-- **Run router** (`pluginhost.Runs`): the worker's plugins send `progress` and `library.call` with a run token. One router, shared by the importer and actions, sends each call to the run that owns the token. The importer's own token map moves into it.
+- **Run router** (`pluginhost.Runs`): the worker's plugins send `progress` and `library.call` with a run token. One router, shared by the importer and actions, sends each call to the run that owns the token. Tokens are random, and a call counts only from the instance that owns the run, since every plugin on a Manager shares one core handler. The importer's own token map moves into it.
 - **Actions package** (`internal/actions`): the `action` job kind, its payload and progress, the start checks shared by the API and the job, scope enforcement, and `library.call`.
 - **In-process tools** (`mcp.Call`): runs one built-in MCP tool through the API handler with a tier carried in the context (`auth.InProcess`), so library reads get the API's checks exactly as `/mcp` does.
 - **API:** `GET /actions`, `POST /actions/runs`, `card_id` on `GET /jobs`, `library_access` on instances. The cache for `mcp.tools` becomes a generic per-instance list cache that `action.list` shares.
@@ -37,7 +37,7 @@ Pieces:
 | `protocol/action.go`, `protocol/action_test.go` | New: methods, types, `Action.Validate`, `Report.Validate`, `CodeForbidden` |
 | `protocol/mcp.go` | `objectSchema` shared by `Tool.Validate` and `Action.Validate` |
 | `internal/pluginhost/runs.go`, `runs_test.go` | New: `Runs` router |
-| `internal/jobs/worker.go` | `Run.Token` |
+| `internal/pluginhost/manager.go` | Tags each process's calls with its instance |
 | `internal/jobs/queue.go` | `ListOptions.Payload` containment filter |
 | `internal/importer/importer.go`, test | Use `Runs`; drop `Handle` and the token map |
 | `internal/db/migrations/0023_library_access.sql` | `plugin_instance.library_access` |
@@ -111,7 +111,7 @@ type LibraryCallParams struct { Run, Name string; Arguments json.RawMessage }
 
 **Files:** Create `internal/pluginhost/runs.go`, `runs_test.go`. Modify `internal/jobs/worker.go`, `internal/importer/importer.go`, `importer_test.go`, `cmd/innkeeper/worker.go`.
 
-- [ ] **Step 1: Failing test** `TestRunsRoutesByToken`: two handlers added under `1.1` and `2.1` each see only their own calls; after `remove()`, a call for `1.1` gets a `-32602` `*protocol.Error`; params without `run` get the same.
+- [ ] **Step 1: Failing test** `TestRunsRoutesByToken`: two runs get distinct random tokens and each sees only its own calls; another instance's call with a live token, a call after `remove()`, and params without `run` each get a `-32602` `*protocol.Error`.
 - [ ] **Step 2:** fails to compile.
 - [ ] **Step 3: Implement.**
 
@@ -124,7 +124,7 @@ func (r *Runs) Add(token string, h protocol.Handler) (remove func())
 func (r *Runs) Handle(ctx context.Context, method string, params json.RawMessage) (any, error)
 ```
 
-`jobs.Run.Token()` returns `"<id>.<attempts>"`. The importer takes `*pluginhost.Runs` in `New`, registers `session.serve` per run, and drops `Importer.Handle` and its map. The worker builds one `Runs` and passes `runs.Handle` to its manager.
+`Runs.Add(instance, h)` returns the token, from `crypto/rand.Text`, and `remove`. The Manager wraps its core handler per process to record the instance in the context. The importer takes `*pluginhost.Runs` in `New`, registers `session.serve` per run, and drops `Importer.Handle` and its map. The worker builds one `Runs` and passes `runs.Handle` to its manager.
 - [ ] **Step 4:** `$DB go test ./internal/pluginhost/ ./internal/importer/` passes.
 - [ ] **Step 5:** Commit `refactor(pluginhost): route run-token calls through one shared router`.
 

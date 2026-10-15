@@ -2,6 +2,7 @@ package pluginhost
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"log/slog"
 	"sync"
@@ -15,19 +16,27 @@ import (
 type Runs struct {
 	log  *slog.Logger
 	mu   sync.Mutex
-	runs map[string]protocol.Handler
+	runs map[string]run
+}
+
+type run struct {
+	instance string
+	handler  protocol.Handler
 }
 
 func NewRuns(log *slog.Logger) *Runs {
-	return &Runs{log: log, runs: map[string]protocol.Handler{}}
+	return &Runs{log: log, runs: map[string]run{}}
 }
 
-// Add sends calls carrying token to h until remove is called.
-func (r *Runs) Add(token string, h protocol.Handler) (remove func()) {
+// Add sends calls that carry the returned token, from instance's plugin
+// process, to h until remove is called. Every plugin on a Manager shares one
+// core handler, so the token is random and only instance may use it.
+func (r *Runs) Add(instance string, h protocol.Handler) (token string, remove func()) {
+	token = rand.Text()
 	r.mu.Lock()
-	r.runs[token] = h
+	r.runs[token] = run{instance, h}
 	r.mu.Unlock()
-	return func() {
+	return token, func() {
 		r.mu.Lock()
 		delete(r.runs, token)
 		r.mu.Unlock()
@@ -41,11 +50,24 @@ func (r *Runs) Handle(ctx context.Context, method string, params json.RawMessage
 	}
 	_ = json.Unmarshal(params, &head)
 	r.mu.Lock()
-	h := r.runs[head.Run]
+	rn, ok := r.runs[head.Run]
 	r.mu.Unlock()
-	if h == nil {
-		r.log.Warn("plugin call for a run that is not active", "method", method, "run", head.Run)
-		return nil, &protocol.Error{Code: protocol.CodeInvalidParams, Message: "no active run " + head.Run}
+	if !ok || rn.instance != callerInstance(ctx) {
+		r.log.Warn("plugin call for a run that is not active", "method", method, "instance", callerInstance(ctx))
+		return nil, &protocol.Error{Code: protocol.CodeInvalidParams, Message: "no active run with this token"}
 	}
-	return h(ctx, method, params)
+	return rn.handler(ctx, method, params)
+}
+
+type instanceKey struct{}
+
+// fromInstance marks the context of calls from instance's plugin process.
+func fromInstance(ctx context.Context, instance string) context.Context {
+	return context.WithValue(ctx, instanceKey{}, instance)
+}
+
+// callerInstance is the instance whose plugin made the call, or "".
+func callerInstance(ctx context.Context) string {
+	id, _ := ctx.Value(instanceKey{}).(string)
+	return id
 }

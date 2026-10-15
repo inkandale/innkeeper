@@ -131,8 +131,8 @@ func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
 	// ponytail: items re-sent after a resume count as skipped a second time.
 	_ = json.Unmarshal(r.Progress, &s.p)
 
-	token := r.Token()
-	defer im.Runs.Add(token, s.serve)()
+	token, remove := im.Runs.Add(inst.ID, s.serve)
+	defer remove()
 
 	// Only catalog.ingest has a result worth keeping: its counts.
 	var res protocol.CatalogIngestResult

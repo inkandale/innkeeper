@@ -124,7 +124,7 @@ plugin streams what it finds as notifications.
 
 | Param | Meaning |
 |---|---|
-| `run` | Token for this call. Put it in every notification you send for it |
+| `run` | Token for this call, an opaque string. Put it in every notification you send for it |
 | `params` | The import's settings, defined by the plugin, such as a folder path |
 | `checkpoint` | `null` on the first run. After an interruption, the last checkpoint you sent |
 
@@ -141,8 +141,8 @@ Notifications, each with `run`:
 | `checkpoint` | `checkpoint` | Any JSON value that tells you where to resume |
 
 ```json
-{"jsonrpc": "2.0", "method": "emit.card", "params": {"run": "12.1", "item": "brakka.png", "card": {"spec": "chara_card_v3", "spec_version": "3.0", "data": {"name": "Brakka"}}, "avatar": "/blobs/tmp/brakka.png"}}
-{"jsonrpc": "2.0", "method": "checkpoint", "params": {"run": "12.1", "checkpoint": {"next": "carrow.png"}}}
+{"jsonrpc": "2.0", "method": "emit.card", "params": {"run": "Q5MBGXK2YHRWZ7PJ3NCV4D6TLA", "item": "brakka.png", "card": {"spec": "chara_card_v3", "spec_version": "3.0", "data": {"name": "Brakka"}}, "avatar": "/blobs/tmp/brakka.png"}}
+{"jsonrpc": "2.0", "method": "checkpoint", "params": {"run": "Q5MBGXK2YHRWZ7PJ3NCV4D6TLA", "checkpoint": {"next": "carrow.png"}}}
 ```
 
 - Send a checkpoint after each item, or every few items. The core saves it
@@ -580,7 +580,7 @@ config. Don't contact any service to answer.
 
 | Param | Meaning |
 |---|---|
-| `run` | Token for this call. Put it in every notification and `library.call` you send for it |
+| `run` | Token for this call, an opaque string. Put it in every notification and `library.call` you send for it |
 | `action` | The action's `id` |
 | `field` | For a field action: the key it runs on, one of its `fields` |
 | `entity` | `{"kind": "card" \| "lorebook", "data": {...}}`: the owner's draft. A card's `data` is CCv3 `data` without `character_book`; a lorebook's is a `character_book`. `data` is absent for `new` |
@@ -637,8 +637,8 @@ with its message. When the owner stops a run, the core stops waiting and
 ignores your reply.
 
 ```json
-{"jsonrpc": "2.0", "id": 9, "method": "action.run", "params": {"run": "41.1", "action": "tighten", "field": "description", "entity": {"kind": "card", "data": {"name": "Brakka", "description": "A very big, very tall orc."}}, "inputs": {}, "context": {"cards": [], "lorebooks": [], "skills": []}, "images": {}}}
-{"jsonrpc": "2.0", "method": "progress", "params": {"run": "41.1", "message": "Tightening description"}}
+{"jsonrpc": "2.0", "id": 9, "method": "action.run", "params": {"run": "7RJW2K5QXN3HBVYD4M6PCZTLGA", "action": "tighten", "field": "description", "entity": {"kind": "card", "data": {"name": "Brakka", "description": "A very big, very tall orc."}}, "inputs": {}, "context": {"cards": [], "lorebooks": [], "skills": []}, "images": {}}}
+{"jsonrpc": "2.0", "method": "progress", "params": {"run": "7RJW2K5QXN3HBVYD4M6PCZTLGA", "message": "Tightening description"}}
 {"jsonrpc": "2.0", "id": 9, "result": {"proposal": {"name": "Brakka", "description": "A towering orc."}, "raw": "{\"description\": \"A towering orc.\"}"}}
 ```
 
@@ -660,10 +660,11 @@ model should see, such as an unknown card ID, comes back with
 The core refuses with error `-32003` when the action doesn't declare
 `library`, when the owner hasn't turned on **Library access** for the
 instance (it's off by default), or for any other tool. Access ends with the
-run: a call with the token of a run that has finished gets `-32602`.
+run: once the owner stops it, calls get `-32003` within a few seconds, and a
+call with the token of a run that has finished gets `-32602`.
 
 ```json
-{"jsonrpc": "2.0", "id": "c1", "method": "library.call", "params": {"run": "41.1", "name": "get_card", "arguments": {"id": 12}}}
+{"jsonrpc": "2.0", "id": "c1", "method": "library.call", "params": {"run": "7RJW2K5QXN3HBVYD4M6PCZTLGA", "name": "get_card", "arguments": {"id": 12}}}
 {"jsonrpc": "2.0", "id": "c1", "result": {"content": [{"type": "text", "text": "{\"entity\": {…}, \"bindings\": []}"}]}}
 ```
 

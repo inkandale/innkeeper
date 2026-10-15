@@ -2,6 +2,7 @@ package pluginhost
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"strconv"
 	"sync"
@@ -90,7 +91,14 @@ func (m *Manager) acquire(ctx context.Context, inst Instance) (*entry, error) {
 	if !ok || !e.proc.Alive() {
 		params := inst.Params
 		params.InstanceID = inst.ID
-		p, err := Start(ctx, inst.Manifest, params, m.core, m.log)
+		// Tagged with the instance, so Runs can refuse another instance's tokens.
+		core := func(ctx context.Context, method string, params json.RawMessage) (any, error) {
+			return m.core(fromInstance(ctx, inst.ID), method, params)
+		}
+		if m.core == nil {
+			core = nil
+		}
+		p, err := Start(ctx, inst.Manifest, params, core, m.log)
 		if err != nil {
 			return nil, &StartError{Err: err}
 		}

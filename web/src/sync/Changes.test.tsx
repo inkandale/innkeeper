@@ -11,15 +11,15 @@ function json(body: unknown, status = 200) {
 
 const changes = {
   rows: [
-    { name: "Zed (Lumiverse only)", apps: [{ instance_id: 2, state: "new", remote_id: "z", name: "Zed", job_id: 7, app_hash: "hz" }] },
+    { name: "Zed (Lumiverse only)", apps: [{ instance_id: 2, push: true, state: "new", remote_id: "z", name: "Zed", job_id: 7, app_hash: "hz" }] },
     {
       card_id: 1,
       name: "Ann",
-      apps: [{ instance_id: 2, state: "differs", remote_id: "a", name: "Ann", job_id: 7, app_hash: "ha", suggested: { action: "bind", card_id: 1 } }],
+      apps: [{ instance_id: 2, push: true, state: "differs", remote_id: "a", name: "Ann", job_id: 7, app_hash: "ha", suggested: { action: "bind", card_id: 1 } }],
     },
-    { card_id: 4, name: "Bo", apps: [{ instance_id: 3, state: "ahead", remote_id: "b", binding_id: 11 }] },
-    { card_id: 5, name: "Cy", apps: [{ instance_id: 3, state: "missing", remote_id: "c", binding_id: 12 }] },
-    { card_id: 6, name: "Di", apps: [{ instance_id: 2, state: "error", remote_id: "d", job_id: 7, error: "bad JSON" }] },
+    { card_id: 4, name: "Bo", apps: [{ instance_id: 3, push: true, state: "ahead", remote_id: "b", binding_id: 11 }] },
+    { card_id: 5, name: "Cy", apps: [{ instance_id: 3, push: true, state: "missing", remote_id: "c", binding_id: 12 }] },
+    { card_id: 6, name: "Di", apps: [{ instance_id: 2, push: true, state: "error", remote_id: "d", job_id: 7, error: "bad JSON" }] },
   ],
   counts: { "2": { new: 1, differs: 1, error: 1 }, "3": { ahead: 1, missing: 1 } },
 };

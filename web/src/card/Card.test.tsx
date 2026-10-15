@@ -34,6 +34,7 @@ let conflict: boolean;
 let avatarConflict: boolean;
 let cardGets: number;
 let bindingStatus: string;
+let appRemoteState: string;
 let pushPosts: number;
 // A save waits on gate when it's set.
 let gate: Promise<void> | undefined;
@@ -52,6 +53,7 @@ beforeEach(() => {
   avatarConflict = false;
   cardGets = 0;
   bindingStatus = "ahead";
+  appRemoteState = "unchanged";
   pushPosts = 0;
   gate = undefined;
   puts = [];
@@ -78,7 +80,7 @@ beforeEach(() => {
         sent.push({ path, body: null });
         if (checkFails) return json({ detail: "chub is down" }, checkFails);
         followed = [chubChanged];
-        return json([{ ...lumiverse, status: bindingStatus }, ...followed]);
+        return json([{ ...lumiverse, status: bindingStatus, remote_state: appRemoteState }, ...followed]);
       }
       if (req.method === "PUT") {
         // Collection PUTs have no body.
@@ -105,7 +107,7 @@ beforeEach(() => {
         return json(head);
       }
       if (path === "/api/cards/7/revisions") return json([head.revision]);
-      if (path === "/api/cards/7/bindings") return json([{ ...lumiverse, status: bindingStatus }, ...followed]);
+      if (path === "/api/cards/7/bindings") return json([{ ...lumiverse, status: bindingStatus, remote_state: appRemoteState }, ...followed]);
       if (path === "/api/cards/7/push") {
         pushPosts++;
         return json({ id: 9, kind: "target.push", status: "queued" }, 202);
@@ -399,9 +401,10 @@ test("ignoring a change that changed again on the site says so and shows the new
   await waitFor(() => expect(sent[1]).toEqual({ path: "/api/bindings/2/dismiss", body: { app_hash: "h3" } }));
 });
 
-test("no banner for a paused source, an unchanged one, or an app's change", async () => {
+test("no banner for a paused source or an app's change", async () => {
   followed = [{ ...chubChanged, paused: true }];
   bindingStatus = "remote_changed";
+  appRemoteState = "changed";
   renderAt("/cards/7");
   expect(await screen.findByText(/Not checking for updates/)).toBeInTheDocument();
   expect(screen.queryByText(/Update on/)).not.toBeInTheDocument();

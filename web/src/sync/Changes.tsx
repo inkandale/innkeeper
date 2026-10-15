@@ -184,8 +184,7 @@ export function Changes() {
   };
 
   const actions = (r: ChangeRow, c: AppChange) => {
-    // Compared with false: an app entry may leave push out.
-    if (c.push === false) return sourceActions(r, c);
+    if (!c.push) return sourceActions(r, c);
     const where = (r.apps?.length ?? 0) > 1 && <span className="muted"> {name(c.instance_id)}</span>;
     const push = (text: string) => (
       <button className="button" onClick={() => setPushing({ card: r.card_id ?? 0, instance: c.instance_id })}>
@@ -304,7 +303,7 @@ export function Changes() {
                         .map((c) => (
                           <span key={c.state}>
                             <span className={"badge " + (badgeClass[c.state] ?? "drift")} aria-hidden="true" />{" "}
-                            {c.push === false ? sourceLabel(c.state, c.remote_id ?? "") : stateLabel(c.state)}
+                            {!c.push ? sourceLabel(c.state, c.remote_id ?? "") : stateLabel(c.state)}
                           </span>
                         ))}
                     </td>

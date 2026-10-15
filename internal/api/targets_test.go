@@ -456,6 +456,26 @@ func TestRemovingASourceUnbindsItAtOnce(t *testing.T) {
 	}
 }
 
+func TestRemovingASourceUnbindsItWhenItsPluginFails(t *testing.T) {
+	e := newEnv(t)
+	inst, dir := e.upstream("-mode=bad-describe")
+	c := e.followedCard(dir, "vyr", "Begone.")
+	// The plugin can't describe itself, so no check could have bound the source.
+	if _, err := e.pool.Exec(context.Background(), `INSERT INTO binding (instance_id, card_id, remote_id, remote_state,
+		accepted_data, accepted_hash, push) VALUES ($1, $2, 'fake:vyr', 'unknown', '{}', '', false)`, inst, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	path := fmt.Sprintf("/cards/%d", c.ID)
+	var srcs []library.Source
+	e.call("GET", path+"/sources", nil, 200, &srcs)
+	e.call("DELETE", fmt.Sprintf("%s/sources/%d", path, srcs[0].ID), nil, 204, nil)
+	var list []targets.Binding
+	e.call("GET", path+"/bindings", nil, 200, &list)
+	if len(list) != 0 {
+		t.Fatalf("after removing the source = %+v", list)
+	}
+}
+
 func TestDismissingASourceThatChangedAgainIsStale(t *testing.T) {
 	e := newEnv(t)
 	_, dir := e.upstream()

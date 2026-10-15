@@ -1,7 +1,6 @@
 package targets
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/davidgibbons/innkeeper/internal/library"
 	"github.com/davidgibbons/innkeeper/internal/merge"
@@ -59,11 +59,8 @@ func (s *Service) follow(ctx context.Context, k kind, instanceID int64, kinds []
 		return err
 	}
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `DELETE FROM binding b WHERE b.instance_id = $1 AND NOT b.push AND b.`+k.FK+` IS NOT NULL
-			AND ($2::bigint = 0 OR b.`+k.FK+` = $2) AND NOT EXISTS (SELECT 1 FROM `+k.SourceTable+` src
-				WHERE src.`+k.FK+` = b.`+k.FK+` AND src.removed_at IS NULL AND src.kind || ':' || src.ref = b.remote_id
-					AND src.kind = ANY($3))`,
-			instanceID, only, inst.Manifest.SourceKinds); err != nil {
+		// Not nil, which would keep bindings of kinds the plugin dropped.
+		if err := unfollow(ctx, tx, k, instanceID, only, append([]string{}, inst.Manifest.SourceKinds...)); err != nil {
 			return err
 		}
 		rows, err := tx.Query(ctx, `SELECT DISTINCT ON (src.`+k.FK+`) src.`+k.FK+`, src.kind || ':' || src.ref, e.head_revision_id,
@@ -136,16 +133,23 @@ func (s *Service) CheckEntitySources(ctx context.Context, lk *library.Kind, id i
 	return s.Bindings(ctx, lk, id)
 }
 
-// FollowEntitySources binds and unbinds one card's or lorebook's followed
-// sources, as a check does first, and returns the first failure.
-func (s *Service) FollowEntitySources(ctx context.Context, lk *library.Kind, id int64) error {
-	var first error
-	err := s.followSources(ctx, lk, id, func(_ int64, err error) {
-		if first == nil {
-			first = err
-		}
-	})
-	return cmp.Or(err, first)
+// UnfollowRemovedSources unbinds one card's or lorebook's followed bindings
+// whose source was removed. It needs no plugin, so a broken one can't block it.
+func (s *Service) UnfollowRemovedSources(ctx context.Context, lk *library.Kind, id int64) error {
+	return unfollow(ctx, s.pool, targetKind(lk), 0, id, nil)
+}
+
+// unfollow deletes followed bindings with no live source of kinds. instanceID
+// 0 means every instance, only 0 every entity, and nil kinds any kind.
+func unfollow(ctx context.Context, db interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}, k kind, instanceID, only int64, kinds []string) error {
+	_, err := db.Exec(ctx, `DELETE FROM binding b WHERE ($1::bigint = 0 OR b.instance_id = $1) AND NOT b.push AND b.`+k.FK+` IS NOT NULL
+		AND ($2::bigint = 0 OR b.`+k.FK+` = $2) AND NOT EXISTS (SELECT 1 FROM `+k.SourceTable+` src
+			WHERE src.`+k.FK+` = b.`+k.FK+` AND src.removed_at IS NULL AND src.kind || ':' || src.ref = b.remote_id
+				AND ($3::text[] IS NULL OR src.kind = ANY($3)))`,
+		instanceID, only, kinds)
+	return err
 }
 
 // followSources runs follow on every follower instance, or with only, for one

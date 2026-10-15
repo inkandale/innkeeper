@@ -375,7 +375,7 @@ func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
 			if err := ents.RemoveSource(ctx, in.ID, in.SourceID); err != nil {
 				return nil, s.fail(err)
 			}
-			return nil, s.fail(s.Targets.FollowEntitySources(ctx, k, in.ID))
+			return nil, s.fail(s.Targets.UnfollowRemovedSources(ctx, k, in.ID))
 		})
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "archive-" + singular, Method: http.MethodPut,

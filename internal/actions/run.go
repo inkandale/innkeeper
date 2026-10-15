@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/library"
@@ -72,6 +73,8 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	s := &session{rn: rn, ctx: ctx, run: r, action: a, instanceID: *r.InstanceID}
+	// A failed save is left to the lease renewal, which saves the progress again or stops the run.
+	s.saver = &progressSaver{every: progressEvery, save: func() { _ = r.SaveProgress(ctx) }}
 	var remove func()
 	params.Run, remove = rn.Runs.Add(inst.ID, s.serve)
 	defer remove()
@@ -168,6 +171,8 @@ type session struct {
 	action     protocol.Action
 	instanceID int64
 
+	saver *progressSaver
+
 	mu sync.Mutex
 	p  Progress
 }
@@ -190,14 +195,43 @@ func (s *session) serve(_ context.Context, method string, params json.RawMessage
 	return nil, protocol.MethodNotFound(method)
 }
 
-// publish shows the run's progress to the Forge at once. A failed save is
-// left to the lease renewal, which saves the progress again or stops the run.
 func (s *session) publish() {
 	s.mu.Lock()
 	raw, _ := json.Marshal(s.p)
 	s.mu.Unlock()
 	s.run.SetProgress(raw)
-	_ = s.run.SaveProgress(s.ctx)
+	s.saver.poke()
+}
+
+// progressEvery is how often a run's progress is saved, which is how often
+// the job's event stream looks.
+const progressEvery = time.Second
+
+// progressSaver saves a run's progress soon after it changes, at most once per
+// every, away from the plugin's read loop.
+type progressSaver struct {
+	every time.Duration
+	save  func()
+
+	mu      sync.Mutex
+	last    time.Time
+	pending bool
+}
+
+// poke asks for a save: now, or once every has passed since the last one.
+func (p *progressSaver) poke() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.pending {
+		return
+	}
+	p.pending = true
+	time.AfterFunc(max(p.every-time.Since(p.last), 0), func() {
+		p.mu.Lock()
+		p.pending, p.last = false, time.Now()
+		p.mu.Unlock()
+		p.save()
+	})
 }
 
 // libraryCall runs a library tool for the plugin, if its action declared

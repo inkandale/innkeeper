@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -95,6 +96,9 @@ func (s *Server) recordRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{OperationID: "get-record", Method: http.MethodGet, Path: base + "/{record}",
 		Summary: "Get one of a plugin instance's records", Tags: tags},
 		func(ctx context.Context, in *recordIn) (*recordOut, error) {
+			if err := checkRecordPath(in.Record); err != nil {
+				return nil, err
+			}
 			var res protocol.RecordsGetResult
 			if err := s.callRecords(ctx, &recordTypeIn{in.ID, in.Type}, protocol.MethodRecordsGet, protocol.RecordRef{Type: in.Type, ID: in.Record}, &res); err != nil {
 				return nil, s.fail(err)
@@ -116,12 +120,18 @@ func (s *Server) recordRoutes(api huma.API) {
 		Path: base + "/{record}", Summary: "Replace one of a plugin instance's records", Tags: tags,
 		Description: "The reply's id may differ from the path's, such as for a renamed skill. A 400 carries the plugin's reason for refusing the record."},
 		func(ctx context.Context, in *replaceRecordIn) (*recordIDOut, error) {
+			if err := checkRecordPath(in.Record); err != nil {
+				return nil, err
+			}
 			return s.putRecord(ctx, &recordTypeIn{in.ID, in.Type}, in.Record, in.Body.Record)
 		})
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "delete-record", Method: http.MethodDelete,
 		Path: base + "/{record}", Summary: "Delete one of a plugin instance's records", Tags: tags, DefaultStatus: http.StatusNoContent},
 		func(ctx context.Context, in *recordIn) (*struct{}, error) {
+			if err := checkRecordPath(in.Record); err != nil {
+				return nil, err
+			}
 			return nil, s.fail(s.callRecords(ctx, &recordTypeIn{in.ID, in.Type}, protocol.MethodRecordsDelete, protocol.RecordRef{Type: in.Type, ID: in.Record}, nil))
 		})
 
@@ -129,8 +139,11 @@ func (s *Server) recordRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "import-record-file", Method: http.MethodPost,
 		Path: base + "/import", Summary: "Import records from a file", Tags: tags,
 		Description:  "Send the file as application/octet-stream. Returns what was imported. A 400 carries the plugin's reason for refusing the file.",
-		MaxBodyBytes: library.MaxBlobBytes + 1, BodyReadTimeout: 2 * time.Minute},
+		MaxBodyBytes: library.MaxBlobBytes, BodyReadTimeout: 2 * time.Minute},
 		func(ctx context.Context, in *importFileIn) (*recordSummariesOut, error) {
+			if strings.ContainsAny(in.Name, "/\\\x00") {
+				return nil, huma.Error400BadRequest("a file name can't hold /, \\, or NUL")
+			}
 			return s.importRecords(ctx, &recordTypeIn{in.ID, in.Type}, "file", protocol.RecordsImportParams{Type: in.Type, Name: in.Name}, in.RawBody)
 		})
 
@@ -163,6 +176,15 @@ func (s *Server) importRecords(ctx context.Context, in *recordTypeIn, input stri
 		return nil, s.recordsFail(err)
 	}
 	return &recordSummariesOut{Body: s.validSummaries(in.ID, res.Records)}, nil
+}
+
+// checkRecordPath refuses a record ID from the URL that a plugin could
+// mistake for a path, such as an encoded ../secret.
+func checkRecordPath(id string) error {
+	if err := protocol.CheckRecordID(id); err != nil {
+		return huma.Error400BadRequest(err.Error())
+	}
+	return nil
 }
 
 // recordsInstance is the instance in, if its plugin keeps in.Type.

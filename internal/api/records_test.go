@@ -85,6 +85,17 @@ func TestRecordsErrors(t *testing.T) {
 	if !strings.Contains(string(r.Body), "a note needs a title") {
 		t.Fatalf("bad record: %s", r)
 	}
+	// A create never replaces: the fake derives the ID from the title.
+	r = e.call("POST", notes, map[string]any{"record": map[string]any{"title": "welcome"}}, 400, nil)
+	if !strings.Contains(string(r.Body), "already exists") {
+		t.Fatalf("create over an existing note: %s", r)
+	}
+	// IDs that would leave the plugin's folder never reach it.
+	for _, bad := range []string{"..%2F..%2Fsecret", "%2E%2E", "%2E"} {
+		e.call("GET", notes+"/"+bad, nil, 400, nil)
+		e.call("PUT", notes+"/"+bad, map[string]any{"record": map[string]any{"title": "x"}}, 400, nil)
+		e.call("DELETE", notes+"/"+bad, nil, 400, nil)
+	}
 	// The importer instance's plugin has no records.
 	e.call("GET", fmt.Sprintf("/instances/%d/records/notes", e.importID), nil, 400, nil)
 }
@@ -123,6 +134,9 @@ func TestImportRecordsFromURL(t *testing.T) {
 		t.Fatalf("bad url: %s", r)
 	}
 	e.call("POST", notes+"/import", []byte("x"), 422, nil)
+	for _, name := range []string{"..%2Fx.md", "a%5Cb.md", "a%00.md"} {
+		e.call("POST", notes+"/import?name="+name, []byte("x"), 400, nil)
+	}
 	e.call("POST", notes+"/import-url", map[string]any{"url": "file:///etc/passwd"}, 422, nil)
 }
 

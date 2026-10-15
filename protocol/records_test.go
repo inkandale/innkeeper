@@ -65,6 +65,8 @@ func TestRecordSummaryValidate(t *testing.T) {
 		"slash":      {ID: "a/b", Name: "x"},
 		"long id":    {ID: strings.Repeat("a", 257), Name: "x"},
 		"blank name": {ID: "a", Name: " "},
+		"dot":        {ID: ".", Name: "x"},
+		"dot dot":    {ID: "..", Name: "x"},
 	} {
 		if s.Validate() == nil {
 			t.Errorf("%s: no error", name)

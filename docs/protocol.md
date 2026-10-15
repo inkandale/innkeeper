@@ -722,7 +722,8 @@ properties.body = {type = "string", title = "Instructions", contentMediaType = "
 
 Every method takes `type`, one of your record types. Reply `-32602` for a type
 you don't declare. A record's `id` is yours: not empty, at most 256 bytes, no
-`/`. Reply `-32004` for an `id` you don't have.
+`/`, and not `.` or `..`. The core refuses any other ID before it reaches
+you. Reply `-32004` for an `id` you don't have.
 
 For `records.put` and `records.import`, reply `-32602` with a message the owner
 can read when the input is wrong, such as a record that breaks your schema or
@@ -752,6 +753,10 @@ object that fits the type's schema.
 Reply with `id`, the record's ID. You may change a record's ID when it is
 replaced, such as a skill renamed, and reply with the new one.
 
+A create must never replace a record. If you derive the ID from the record,
+such as a skill's name, and a record with that ID exists, reply `-32602`
+saying so.
+
 **`records.delete`** takes `type` and `id`. Reply with `{}`.
 
 **`records.import`** turns a file or a page into records.
@@ -761,7 +766,7 @@ replaced, such as a skill renamed, and reply with the new one.
 | `type` | The record type |
 | `url` | An `http` or `https` URL the owner typed. Send either `url`, or `path` and `name` |
 | `path` | An uploaded file, directly inside `blob_tmp`. Read it; don't move or change it. The core deletes it after your reply |
-| `name` | The uploaded file's name, such as `SKILL.md` or `college.zip` |
+| `name` | The uploaded file's name, such as `SKILL.md` or `college.zip`. The owner's browser sent it, so don't trust it; never use it as a path. The core refuses a name with `/`, `\`, or NUL |
 
 Reply with `records`, a summary of each record imported. An import may replace
 a record with the same ID.
@@ -805,7 +810,7 @@ It loads the manifest, then checks that:
 - a `records` plugin's `records.list` for each type returns valid summaries with
   unique IDs, or an error other than `-32601`. When it answers with records,
   `records.get` of the first returns an object, and `records.put` of that object
-  with its `id` replies with an ID. When it answers at all, `records.get` and
+  with its `id` replies with an ID. When it lists records, `records.get` and
   `records.delete` of `innkeeper-contract:none` return `-32004`
 - a `catalog` plugin's `catalog.describe` reply is valid; `catalog.search`
   pages one item at a time without repeats and refuses an undeclared filter

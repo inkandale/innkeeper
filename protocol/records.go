@@ -66,10 +66,11 @@ func (s RecordSummary) Validate() error {
 	return errors.Join(errs...)
 }
 
-// CheckRecordID reports whether id can name a record in a URL path.
+// CheckRecordID reports whether id can name a record in a URL path, and
+// can't climb out of a folder if a plugin uses it as a file name.
 func CheckRecordID(id string) error {
-	if id == "" || len(id) > 256 || strings.Contains(id, "/") {
-		return fmt.Errorf("record id %q must be 1 to 256 bytes without /", id)
+	if id == "" || id == "." || id == ".." || len(id) > 256 || strings.Contains(id, "/") {
+		return fmt.Errorf("record id %q must be 1 to 256 bytes without /, and not . or ..", id)
 	}
 	return nil
 }

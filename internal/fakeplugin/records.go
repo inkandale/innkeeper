@@ -71,6 +71,9 @@ func recordsCall(method string, params json.RawMessage, mode string) (any, error
 		if err := json.Unmarshal(p.Record, &n); err != nil || n.Title == "" || strings.Contains(n.Title, "/") {
 			return nil, invalid("a note needs a title without /")
 		}
+		if _, taken := notes.byID[n.Title]; taken && id == "" {
+			return nil, invalid("a note titled " + n.Title + " already exists")
+		}
 		delete(notes.byID, id)
 		notes.byID[n.Title] = n
 		return protocol.RecordsPutResult{ID: n.Title}, nil

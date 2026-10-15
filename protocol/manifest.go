@@ -14,7 +14,7 @@ import (
 )
 
 // Capabilities lists every capability a plugin may declare.
-var Capabilities = []string{"import", "search", "push", "pull", "action", "records", "enrich", "codec", "auth", "mcp", "theme", "catalog", "sites", "ai"}
+var Capabilities = []string{"import", "search", "push", "pull", "action", "records", "enrich", "codec", "auth", "mcp", "theme", "catalog", "sites", "ai", "settings"}
 
 var enrichmentTypes = []string{"text", "score", "list"}
 
@@ -57,6 +57,9 @@ type Manifest struct {
 
 	// Records are the record types a records plugin keeps, by type name.
 	Records map[string]RecordType `toml:"records"`
+
+	// Settings holds the buttons a settings plugin adds to its instance form.
+	Settings Settings `toml:"settings"`
 
 	// Database gives the plugin a schema, plugin_<name>, and a role limited
 	// to it. The URL arrives as initialize's database_url.
@@ -292,7 +295,29 @@ func (m *Manifest) Validate() error {
 		}
 		seenUses[u] = true
 	}
+	if len(m.Settings.Actions) > 0 && !m.Has("settings") {
+		errs = append(errs, errors.New("settings.actions needs the settings capability"))
+	}
+	for _, id := range slices.Sorted(maps.Keys(m.Settings.Actions)) {
+		if !keyPattern.MatchString(id) {
+			errs = append(errs, fmt.Errorf("settings action %q must match %s", id, keyPattern))
+		}
+		if strings.TrimSpace(m.Settings.Actions[id].Label) == "" {
+			errs = append(errs, fmt.Errorf("settings action %q: label is required", id))
+		}
+	}
 	return errors.Join(errs...)
+}
+
+// Settings is the manifest's [settings] table.
+type Settings struct {
+	// Actions are buttons on the instance form, by id; each runs settings.run.
+	Actions map[string]SettingsAction `toml:"actions"`
+}
+
+// SettingsAction is one button on the instance form.
+type SettingsAction struct {
+	Label string `toml:"label"`
 }
 
 // CommandPath resolves the executable: relative paths containing / are

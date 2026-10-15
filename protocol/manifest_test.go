@@ -363,3 +363,41 @@ uses = ["ai.chat", "ai.embed"]`, 1)
 		t.Fatalf("ai capability: %v", err)
 	}
 }
+
+func TestManifestSettingsActions(t *testing.T) {
+	base := `
+name = "ai"
+version = "0.1.0"
+protocol = 1
+command = ["./ai"]
+`
+	m, err := LoadManifest(writeManifest(t, base+`capabilities = ["settings"]
+
+[settings.actions]
+test = { label = "Test connection" }
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Settings.Actions["test"].Label != "Test connection" {
+		t.Fatalf("actions = %+v", m.Settings.Actions)
+	}
+	for name, body := range map[string]string{
+		"no capability": `capabilities = ["action"]
+[settings.actions]
+test = { label = "Test" }
+`,
+		"no label": `capabilities = ["settings"]
+[settings.actions]
+test = {}
+`,
+		"bad key": `capabilities = ["settings"]
+[settings.actions]
+Test-It = { label = "Test" }
+`,
+	} {
+		if _, err := LoadManifest(writeManifest(t, base+body)); err == nil {
+			t.Errorf("%s: loaded", name)
+		}
+	}
+}

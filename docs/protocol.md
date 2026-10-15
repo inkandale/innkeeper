@@ -551,6 +551,122 @@ arguments. A JSON-RPC error also reaches the model as a tool error.
 {"jsonrpc": "2.0", "id": 6, "result": {"content": [{"type": "text", "text": "[\"Brakka\"]"}]}}
 ```
 
+### `action`
+
+An `action` plugin changes or judges a card or lorebook when the owner asks,
+such as an AI that rewrites a field. Each run is a job, and the owner reviews
+what it proposes before anything is saved.
+
+**`action.list`** takes no params. Reply with `actions`, each with:
+
+| Field | Meaning |
+|---|---|
+| `id` | 1 to 40 lowercase letters, digits, and hyphens, unique within the plugin |
+| `label` | Short name for buttons and menus. Not empty |
+| `description` | One line saying what it does |
+| `applies` | `card`, `lorebook`, or `new` (a card that doesn't exist yet) |
+| `fields` | For a field action: the data keys it can run on, each listed once, such as `["description", "personality"]`. Leave it out for an action on the whole entity. Not allowed with `new` |
+| `instruction` | `true` if the action's main input is free text the owner types |
+| `inputs` | A JSON Schema with `"type": "object"` for its other inputs. The UI renders a form from it |
+| `report_only` | `true` if it never proposes changes |
+| `library` | `true` if it may send `library.call` |
+| `images` | `true` if it takes images. The core sends none to an action without it |
+
+The core leaves out an action that breaks these rules, and logs it. It caches
+the list for a minute per instance, so keep it fixed for a given version and
+config. Don't contact any service to answer.
+
+**`action.run`** runs one action.
+
+| Param | Meaning |
+|---|---|
+| `run` | Token for this call. Put it in every notification and `library.call` you send for it |
+| `action` | The action's `id` |
+| `field` | For a field action: the key it runs on, one of its `fields` |
+| `entity` | `{"kind": "card" \| "lorebook", "data": {...}}`: the owner's draft. A card's `data` is CCv3 `data` without `character_book`; a lorebook's is a `character_book`. `data` is absent for `new` |
+| `instruction` | The owner's text, or absent. Mentions such as `@cards/Billy` stay as typed |
+| `inputs` | Values for `inputs`, or `{}` |
+| `context` | `{"cards": [...], "lorebooks": [...], "skills": [...]}`: what the owner attached. Cards and lorebooks are each `{"id", "name", "data"}` at their newest revision. Skills are names |
+| `images` | `{"reference": "...", "avatar": "..."}`: absolute paths in a blob store, either absent. Read them; don't move or change them |
+
+While it runs, send `progress` notifications with `run`, `message`, and
+optional `done` and `total`, as in `import`. The owner sees the latest
+message, such as "Writing personality (3 of 8)", and a bar when you send a
+total.
+
+Reply with:
+
+| Field | Meaning |
+|---|---|
+| `proposal` | The entity's complete new `data`, or absent. Include unchanged keys: a key you leave out counts as removed |
+| `report` | A report, or absent |
+| `raw` | The model's raw output, which the owner can open. Optional |
+
+A report:
+
+```json
+{
+  "summary": "Markdown text",
+  "score": 78,
+  "dimensions": [{"key": "voice", "label": "Voice", "score": 88, "comment": "…"}],
+  "findings": [
+    {"severity": "high", "text": "…", "fields": ["description", "scenario"]},
+    {"severity": "medium", "text": "…", "fields": ["scenario"], "move": {"excerpt": "…", "to": "description"}}
+  ],
+  "suggestions": ["…"]
+}
+```
+
+`summary` is required. Everything else is optional. `severity` is `high`,
+`medium`, or `low`. A finding's `text`, a dimension's `key` and `label`, and a
+move's `to` must not be empty. A reply with an invalid report, or a `proposal`
+that isn't an object, fails the run.
+
+The core then keeps only the changes in the action's scope:
+
+- A field action may change only its `field`.
+- A `card`, `lorebook`, or `new` action may change any key, except that a
+  card never gets `character_book`.
+- A `report_only` action's proposal is dropped.
+
+It drops every other change, keeping the draft's value, and warns the owner
+of each key it dropped.
+
+A run isn't retried. Reply with an error, retryable or not, and the run fails
+with its message. When the owner stops a run, the core stops waiting and
+ignores your reply.
+
+```json
+{"jsonrpc": "2.0", "id": 9, "method": "action.run", "params": {"run": "41.1", "action": "tighten", "field": "description", "entity": {"kind": "card", "data": {"name": "Brakka", "description": "A very big, very tall orc."}}, "inputs": {}, "context": {"cards": [], "lorebooks": [], "skills": []}, "images": {}}}
+{"jsonrpc": "2.0", "method": "progress", "params": {"run": "41.1", "message": "Tightening description"}}
+{"jsonrpc": "2.0", "id": 9, "result": {"proposal": {"name": "Brakka", "description": "A towering orc."}, "raw": "{\"description\": \"A towering orc.\"}"}}
+```
+
+#### Reading the library
+
+An action that declares `library: true` may send **`library.call`** to the
+core while it answers `action.run`:
+
+| Param | Meaning |
+|---|---|
+| `run` | The run's token |
+| `name` | `search_cards`, `get_card`, `get_lorebook`, or `get_history` |
+| `arguments` | The tool's arguments, as Innkeeper's MCP server takes them |
+
+The reply has `content` and `is_error`, as `mcp.call`'s does. A failure the
+model should see, such as an unknown card ID, comes back with
+`is_error: true`.
+
+The core refuses with error `-32003` when the action doesn't declare
+`library`, when the owner hasn't turned on **Library access** for the
+instance (it's off by default), or for any other tool. Access ends with the
+run: a call with the token of a run that has finished gets `-32602`.
+
+```json
+{"jsonrpc": "2.0", "id": "c1", "method": "library.call", "params": {"run": "41.1", "name": "get_card", "arguments": {"id": 12}}}
+{"jsonrpc": "2.0", "id": "c1", "result": {"content": [{"type": "text", "text": "{\"entity\": {…}, \"bindings\": []}"}]}}
+```
+
 ## Checking a plugin
 
 ```bash
@@ -575,6 +691,10 @@ It loads the manifest, then checks that:
   when asked to decode a file that isn't a card
 - an `mcp` plugin's `mcp.tools` reply has valid, unique names, valid input
   schemas, and comes within 5 seconds
+- an `action` plugin's `action.list` reply has valid actions with unique IDs,
+  and `action.run` of each, on a sample card or lorebook with the action's
+  first field and empty inputs, returns a valid reply or an error other than
+  `-32601` within 5 seconds. The check answers `library.call` with `-32601`
 - a `catalog` plugin's `catalog.describe` reply is valid; `catalog.search`
   pages one item at a time without repeats and refuses an undeclared filter
   with `-32602`; `catalog.get` returns `-32004` for an unknown ID, and for the

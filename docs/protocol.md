@@ -30,7 +30,7 @@ Each plugin folder has a `plugin.toml`:
 | `version` | yes | The plugin's own version |
 | `protocol` | yes | Protocol version; must be `1` |
 | `command` | yes, except for themes | Program and arguments. Use `./name` for a program in the plugin folder: a relative path containing `/` is inside the folder and can't leave it, an absolute path is used as-is, and a bare name is found on `PATH` |
-| `capabilities` | yes | Any of `import`, `search`, `push`, `pull`, `action`, `enrich`, `codec`, `auth`, `mcp`, `catalog`, `sites`, or `theme`. A theme lists no other capability |
+| `capabilities` | yes | Any of `import`, `search`, `push`, `pull`, `action`, `items`, `enrich`, `codec`, `auth`, `mcp`, `catalog`, `sites`, or `theme`. A theme lists no other capability |
 | `secrets` | no | Names of secrets the owner enters for each instance, in lowercase `snake_case` |
 | `config` | no | JSON Schema for instance settings; the UI renders a form from it |
 | `enrichments` | no | Keys the plugin writes, in lowercase `snake_case`. Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list` |
@@ -39,6 +39,7 @@ Each plugin folder has a `plugin.toml`:
 | `source_kinds` | no; only for `pull` without `push` | The site source kinds the plugin follows, such as `chub`, each listed once, in the same form as a source's `kind`. The core binds each source of these kinds to the plugin's instance and checks it for updates; see [Following site sources](#following-site-sources) |
 | `stylesheet` | only for `theme` | The theme's CSS file: a regular file inside the plugin folder, named `*.css`. A symlink that leaves the folder is rejected |
 | `icon` | no | The app's logo, shown wherever a card is linked to one of the plugin's instances: a regular file inside the plugin folder, named `*.svg`, `*.png`, or `*.webp`. A symlink that leaves the folder is rejected. The core serves it at `/api/plugins/<name>/icon` without login. Without an icon, the UI shows the plugin name's first letter |
+| `items` | only for `items` | The item types the plugin keeps; see [`items`](#items). An `items` plugin must declare at least one |
 | `database` | no | `true` gives the plugin its own PostgreSQL schema, `plugin_<name>` with `-` as `_`, and a login role limited to it |
 
 Unknown keys are errors.
@@ -587,9 +588,15 @@ what it proposes before anything is saved.
 | `library` | `true` if it may send `library.call` |
 | `images` | `true` if it takes images. The core sends none to an action without it |
 
-The core leaves out an action that breaks these rules, and logs it. It caches
-the list for a minute per instance, so keep it fixed for a given version and
-config. Don't contact any service to answer.
+The reply may also hold `skills`: what the owner can force on with a
+`@skills/<name>` mention, each `{"name", "description"}`. A `name` is 1 to 64
+lowercase letters, digits, and hyphens, unique within the reply;
+`description` is optional. List only the skills that are enabled. A run's
+`context.skills` holds the names the owner mentioned.
+
+The core leaves out an action or skill that breaks these rules, and logs it.
+It caches the list for a minute per instance, so keep it fixed for a given
+version and config. Don't contact any service to answer.
 
 **`action.run`** runs one action.
 
@@ -601,7 +608,7 @@ config. Don't contact any service to answer.
 | `entity` | `{"kind": "card" \| "lorebook", "data": {...}}`: the owner's draft. A card's `data` is CCv3 `data` without `character_book`; a lorebook's is a `character_book`. `data` is absent for `new` |
 | `instruction` | The owner's text, or absent. Mentions such as `@cards/Billy` stay as typed |
 | `inputs` | Values for `inputs`, or `{}` |
-| `context` | `{"cards": [...], "lorebooks": [...], "skills": [...]}`: what the owner attached. Cards and lorebooks are each `{"id", "name", "data"}` at their newest revision. Skills are names |
+| `context` | `{"cards": [...], "lorebooks": [...], "skills": [...]}`: what the owner attached. Cards and lorebooks are each `{"id", "name", "data"}` at their newest revision. Skills are the names of skills the owner mentioned; the core doesn't check them against `action.list`, so reply `-32602` for one you don't have |
 | `images` | `{"reference": "...", "avatar": "..."}`: absolute paths in a blob store, either absent. Read them; don't move or change them |
 
 While it runs, send `progress` notifications with `run`, `message`, and
@@ -683,6 +690,89 @@ call with the token of a run that has finished gets `-32602`.
 {"jsonrpc": "2.0", "id": "c1", "result": {"content": [{"type": "text", "text": "{\"entity\": {…}, \"bindings\": []}"}]}}
 ```
 
+### `items`
+
+An `items` plugin keeps data the owner manages on the instance's settings
+page, such as an AI plugin's skills. The core stores none of it: it shows a
+list, an editor, and Import for each item type, and passes each change to
+the plugin. Keep items in your own schema (`database = true`).
+
+The manifest declares each item type under `[items]`, keyed by a type name
+in lowercase `snake_case`:
+
+```toml
+capabilities = ["action", "items"]
+
+[items.skills]
+label = "Skills"
+import = ["file", "url"]
+
+[items.skills.schema]
+type = "object"
+required = ["name", "body"]
+properties.name = {type = "string", title = "Name"}
+properties.body = {type = "string", title = "Instructions", contentMediaType = "text/markdown"}
+```
+
+| Key | Required | Meaning |
+|---|---|---|
+| `label` | yes | The type's heading in the UI |
+| `schema` | yes | JSON Schema with `"type": "object"` for one item. The UI renders the editor from it, as it does `config`; a string with `contentMediaType` gets a multi-line box |
+| `import` | no | What Import offers, each listed once: `file` sends `path` and `name`, `url` sends `url`. Leave it out and the type has no Import |
+
+Every method takes `type`, one of your item types. Reply `-32602` for a type
+you don't declare. An item's `id` is yours: not empty, at most 256 bytes, no
+`/`. Reply `-32004` for an `id` you don't have.
+
+For `items.put` and `items.import`, reply `-32602` with a message the owner
+can read when the input is wrong, such as an item that breaks your schema or
+a file that isn't a skill. The core shows the owner that message.
+
+**`items.list`** takes `type`. Reply with `items`, each a summary:
+
+| Field | Meaning |
+|---|---|
+| `id` | The item's ID |
+| `name` | The name to show. Not empty |
+| `description` | One line, optional |
+
+The core leaves out a summary that breaks these rules, and logs it.
+
+**`items.get`** takes `type` and `id`. Reply with `item`, the item as an
+object that fits the type's schema.
+
+**`items.put`** creates or replaces one item.
+
+| Param | Meaning |
+|---|---|
+| `type` | The item type |
+| `id` | The item to replace, or absent to create one |
+| `item` | The whole item, an object |
+
+Reply with `id`, the item's ID. You may change an item's ID when it is
+replaced, such as a skill renamed, and reply with the new one.
+
+**`items.delete`** takes `type` and `id`. Reply with `{}`.
+
+**`items.import`** turns a file or a page into items.
+
+| Param | Meaning |
+|---|---|
+| `type` | The item type |
+| `url` | A URL the owner typed. Send either `url`, or `path` and `name` |
+| `path` | An uploaded file, directly inside `blob_tmp`. Read it; don't move or change it. The core deletes it after your reply |
+| `name` | The uploaded file's name, such as `SKILL.md` or `college.zip` |
+
+Reply with `items`, a summary of each item imported. An import may replace
+an item with the same ID.
+
+```json
+{"jsonrpc": "2.0", "id": 10, "method": "items.put", "params": {"type": "skills", "item": {"name": "college", "body": "# College\n…"}}}
+{"jsonrpc": "2.0", "id": 10, "result": {"id": "college"}}
+{"jsonrpc": "2.0", "id": 11, "method": "items.import", "params": {"type": "skills", "path": "/blobs/tmp/upload-1234", "name": "college.zip"}}
+{"jsonrpc": "2.0", "id": 11, "result": {"items": [{"id": "college", "name": "college", "description": "Campus life and classes"}]}}
+```
+
 ## Checking a plugin
 
 ```bash
@@ -711,6 +801,12 @@ It loads the manifest, then checks that:
   and `action.run` of each, on a sample card or lorebook with the action's
   first field and empty inputs, returns a valid reply or an error other than
   `-32601` within 5 seconds. The check answers `library.call` with `-32601`
+- an `action` plugin's `skills`, if any, are valid with unique names
+- an `items` plugin's `items.list` for each type returns valid summaries with
+  unique IDs, or an error other than `-32601`. When it answers with items,
+  `items.get` of the first returns an object, and `items.put` of that object
+  with its `id` replies with an ID. When it answers at all, `items.get` and
+  `items.delete` of `innkeeper-contract:none` return `-32004`
 - a `catalog` plugin's `catalog.describe` reply is valid; `catalog.search`
   pages one item at a time without repeats and refuses an undeclared filter
   with `-32602`; `catalog.get` returns `-32004` for an unknown ID, and for the

@@ -56,7 +56,7 @@ let compares: string[];
 let resolved: unknown[];
 let stale: boolean;
 let changesGets: number;
-let changes: { rows: { card_id?: number; name: string; apps: { instance_id: number; state: string; remote_id: string; job_id?: number; binding_id?: number }[] }[]; counts: object };
+let changes: { rows: { card_id?: number; lorebook_id?: number; name: string; apps: { instance_id: number; state: string; remote_id: string; job_id?: number; binding_id?: number }[] }[]; counts: object };
 const baseChanges = {
   rows: [
     { card_id: 1, name: "Ann", apps: [{ instance_id: 3, state: "differs", remote_id: "a", job_id: 5 }] },
@@ -444,4 +444,103 @@ test("prose folds an unchanged run longer than two sentences and keeps a shorter
   const folded = screen.getByText("⋯ 3 unchanged sentences").closest("details")!;
   expect(within(folded).getByText("One. Two. Three.")).toBeInTheDocument();
   expect(screen.getByText("Four. Five.").closest("details.unchanged")).toBeNull();
+});
+
+/** followSource stubs one url-import instance following chub:alice/vyr, with any extra routes, and records its calls. */
+function followSource(more: (path: string, u: URL) => Response | undefined = () => undefined) {
+  const base = fetch;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (req: Request) => {
+      const u = new URL(req.url);
+      const path = decodeURIComponent(u.pathname);
+      if (path === "/api/instances") return json([{ id: 4, name: "URL import", plugin: "url-import" }]);
+      if (path === "/api/plugins") return json([{ name: "url-import", capabilities: ["import", "sites", "pull"] }]);
+      const card = Number(u.searchParams.get("card_id"));
+      if (path === "/api/instances/4/cards/chub:alice/vyr/compare") {
+        compares.push(u.search);
+        return json({ ...cardCmp, instance_id: 4, remote_id: "chub:alice/vyr", card_id: card, accepted_hash: "acc", base: "accepted" });
+      }
+      if (path.startsWith("/api/instances/4/") && path.endsWith("/resolve")) {
+        resolved.push({ path, ...(await req.json()) });
+        return json({ remote_id: "chub:alice/vyr", action: "bind", card_id: card });
+      }
+      return more(path, u) ?? base(req);
+    }),
+  );
+}
+
+test("a followed source's update merges three ways with the site, with Bind its only action", async () => {
+  followSource();
+  // Two cards follow one source; the URL's card says which entry this is.
+  changes = {
+    rows: [
+      { card_id: 8, name: "Vyr", apps: [{ instance_id: 4, state: "update", remote_id: "chub:alice/vyr", binding_id: 21 }] },
+      { card_id: 9, name: "Vyr, rewritten", apps: [{ instance_id: 4, state: "update", remote_id: "chub:alice/vyr", binding_id: 22 }] },
+    ],
+    counts: {},
+  };
+  const router = renderReview("/sync/4/card/chub%3Aalice%2Fvyr?card=9&queue=1");
+  const user = userEvent.setup();
+  expect(await screen.findByText("2 of 2")).toBeInTheDocument();
+  expect(compares).toEqual(["?card_id=9"]);
+  expect(screen.queryByRole("radiogroup", { name: "Action" })).not.toBeInTheDocument();
+  expect(screen.getByText(/The site isn't changed/)).toBeInTheDocument();
+  await user.click(await screen.findByLabelText("chub", { selector: "[name='card:chub:alice/vyr/description#1']" }));
+  await user.click(screen.getByRole("button", { name: "Resolve" }));
+  await waitFor(() => expect(at(router)).toBe("/sync/changes"));
+  expect(resolved).toEqual([
+    expect.objectContaining({
+      path: "/api/instances/4/cards/chub:alice/vyr/resolve",
+      action: "bind",
+      card_id: 9,
+      accepted_hash: "acc",
+      choices: { "description#1": "app" },
+    }),
+  ]);
+  expect(resolved[0]).not.toHaveProperty("base");
+});
+
+test("the next card following the same source starts with fresh choices", async () => {
+  followSource();
+  changes = {
+    rows: [
+      { card_id: 8, name: "Vyr", apps: [{ instance_id: 4, state: "update", remote_id: "chub:alice/vyr", binding_id: 21 }] },
+      { card_id: 9, name: "Vyr, rewritten", apps: [{ instance_id: 4, state: "update", remote_id: "chub:alice/vyr", binding_id: 22 }] },
+    ],
+    counts: {},
+  };
+  const router = renderReview("/sync/4/card/chub%3Aalice%2Fvyr?card=8&queue=1");
+  const user = userEvent.setup();
+  expect(await screen.findByText("1 of 2")).toBeInTheDocument();
+  await user.click(await screen.findByLabelText("chub", { selector: "[name='card:chub:alice/vyr/description#1']" }));
+  await user.click(screen.getByRole("button", { name: "Resolve" }));
+  await waitFor(() => expect(at(router)).toBe("/sync/4/card/chub%3Aalice%2Fvyr?card=9&queue=1"));
+  expect(await screen.findByText("2 of 2")).toBeInTheDocument();
+  await screen.findByLabelText("chub", { selector: "[name='card:chub:alice/vyr/description#1']" });
+  await user.click(screen.getByRole("button", { name: "Resolve" }));
+  await waitFor(() => expect(resolved).toHaveLength(2));
+  expect(resolved[1]).toEqual(expect.objectContaining({ card_id: 9 }));
+  expect(resolved[1]).not.toHaveProperty("choices");
+});
+
+test("a followed lorebook's update resolves on the lorebook route with the lorebook's id", async () => {
+  followSource((path, u) =>
+    path === "/api/instances/4/lorebooks/chub:alice/vyr/compare"
+      ? json({ ...bookCmp, instance_id: 4, remote_id: "chub:alice/vyr", card_id: Number(u.searchParams.get("lorebook_id")), accepted_hash: "acc", base: "accepted" })
+      : undefined,
+  );
+  changes = {
+    rows: [{ lorebook_id: 30, name: "Vyr's world", apps: [{ instance_id: 4, state: "update", remote_id: "chub:alice/vyr", binding_id: 23 }] }],
+    counts: {},
+  };
+  renderReview("/sync/4/lorebook/chub%3Aalice%2Fvyr?card=30&queue=1");
+  const user = userEvent.setup();
+  expect(await screen.findByText("1 of 1")).toBeInTheDocument();
+  await user.click(await screen.findByLabelText("chub", { selector: "[name='book:chub:alice/vyr/description#0']" }));
+  await user.click(screen.getByRole("button", { name: "Resolve" }));
+  await waitFor(() => expect(resolved).toHaveLength(1));
+  expect(resolved[0]).toEqual(
+    expect.objectContaining({ path: "/api/instances/4/lorebooks/chub:alice/vyr/resolve", action: "bind", card_id: 30, choices: { "description#0": "app" } }),
+  );
 });

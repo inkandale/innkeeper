@@ -2,6 +2,7 @@ import { useMutation, useQueries, useQuery, useQueryClient, type UseQueryResult 
 import { useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, ApiError, must, route, type Kind } from "../api/client";
+import { useFollowers } from "../api/queries";
 import { text } from "../card/draft";
 import { useJob } from "../settings/jobUtil";
 import { useToast } from "../shell/Toasts";
@@ -17,6 +18,7 @@ import {
   resolution,
   resolveItem,
   rows,
+  siteOf,
   snapshotOf,
   type Comparison,
   type Item,
@@ -59,8 +61,11 @@ function OtherMatch({ kind, onPick }: { kind: Kind; onPick: (id: number) => void
 /** Review is the diff editor: one app item against a library card, decided hunk by hunk, with the card's world books nested. */
 export function Review() {
   const p = useParams();
-  // Stepping through the queue reuses this route, so each item starts with fresh choices.
-  return <ReviewItem key={`${p.instance}/${p.kind}/${p.remoteId}`} />;
+  const [search] = useSearchParams();
+  // Stepping through the queue reuses this route, so each item starts with fresh choices. Without a snapshot the item
+  // is its card, since several cards may follow one source.
+  const card = search.has("job") ? "" : `/${search.get("card")}`;
+  return <ReviewItem key={`${p.instance}/${p.kind}/${p.remoteId}${card}`} />;
 }
 
 function ReviewItem() {
@@ -74,6 +79,7 @@ function ReviewItem() {
   const twoWay = search.get("base") === "none";
   const queue = search.has("queue");
   const filter = changesFilter(search);
+  const followed = useFollowers().has(instance);
   const navigate = useNavigate();
   const location = useLocation();
   const qc = useQueryClient();
@@ -86,7 +92,11 @@ function ReviewItem() {
     queryFn: async () => must(await api.GET("/sync/changes", { params: { query: filter } })),
   });
   const reviews = queueReviews(changes.data?.rows ?? []);
-  const at = reviews.findIndex((c) => c.instance_id === instance && c.remote_id === remoteId);
+  // Several cards may follow one source, so a followed source's place in the queue is its card's or lorebook's.
+  const entity = Number(search.get("card"));
+  const at = reviews.findIndex(
+    (c) => c.instance_id === instance && c.remote_id === remoteId && (!followed || (c.lorebook_id ?? c.card_id) === entity),
+  );
   const next = reviews[at + 1];
   const onward = () => navigate(next ? changePath(next, filter) : changesPath(filter));
   const snap = snapshotOf(job.data);
@@ -101,12 +111,15 @@ function ReviewItem() {
   const [action, setAction] = useState<Option["action"]>();
   // Only the snapshot's options are offered: an error item can only be skipped, and a bound one shouldn't default to a duplicate import.
   // A match picked by hand adds Bind, unless the item errored.
-  const actions = (["bind", "import", "skip"] as const).filter(
-    (a) =>
-      !item ||
-      (item.options ?? []).some((o) => o.action === a) ||
-      (a === "bind" && card > 0 && item.verdict !== "error"),
-  );
+  // A followed source can only merge into its card: importing or skipping it would mean nothing.
+  const actions: Option["action"][] = followed
+    ? ["bind"]
+    : (["bind", "import", "skip"] as const).filter(
+        (a) =>
+          !item ||
+          (item.options ?? []).some((o) => o.action === a) ||
+          (a === "bind" && card > 0 && item.verdict !== "error"),
+      );
   const act =
     action ?? suggested?.action ?? (!item || item.verdict === "bound" ? "bind" : (actions[0] ?? "skip"));
   const [choices, setChoices] = useState<Choices>({});
@@ -169,7 +182,7 @@ function ReviewItem() {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["search"] });
-      toast({ text: `Resolved ${item?.name || remoteId}. Push to send the library's side to the app.` });
+      toast({ text: followed ? `Resolved ${name}.` : `Resolved ${item?.name || remoteId}. Push to send the library's side to the app.` });
       if (queue) {
         void qc.invalidateQueries({ queryKey: ["sync", "changes"] });
         onward();
@@ -211,14 +224,16 @@ function ReviewItem() {
           <h1>{name}</h1>
           {item && <span className="muted">{item.verdict}</span>}
           {at >= 0 && <span className="muted">{`${at + 1} of ${reviews.length}`}</span>}
-          <span className="row" role="radiogroup" aria-label="Action">
-            {actions.map((a) => (
-              <label key={a} className="check">
-                <input type="radio" name="action" checked={act === a} onChange={() => setAction(a)} />{" "}
-                {a === "bind" ? "Bind" : a === "import" ? "Import as new" : "Skip"}
-              </label>
-            ))}
-          </span>
+          {!followed && (
+            <span className="row" role="radiogroup" aria-label="Action">
+              {actions.map((a) => (
+                <label key={a} className="check">
+                  <input type="radio" name="action" checked={act === a} onChange={() => setAction(a)} />{" "}
+                  {a === "bind" ? "Bind" : a === "import" ? "Import as new" : "Skip"}
+                </label>
+              ))}
+            </span>
+          )}
           <button className="button primary" disabled={!ready || resolve.isPending} onClick={() => resolve.mutate()}>
             Resolve
           </button>
@@ -234,7 +249,11 @@ function ReviewItem() {
             {suggested.why && ` (${suggested.why})`}
           </p>
         )}
-        <p className="muted">Resolving changes the library and the binding, not the app. Push afterwards.</p>
+        <p className="muted">
+          {followed
+            ? "Resolving saves the merge as a new revision. The site isn't changed."
+            : "Resolving changes the library and the binding, not the app. Push afterwards."}
+        </p>
         <div className="row">
           {!!item?.candidates?.length && (
             <select className="input" aria-label="Library match" value={card} onChange={(e) => pickCard(Number(e.target.value))}>
@@ -260,6 +279,7 @@ function ReviewItem() {
             <Diff
               scope={`${kind === "card" ? "card" : "book"}:${remoteId}`}
               cmp={cmp.data}
+              sides={followed ? { library: "Library", app: siteOf(remoteId) } : undefined}
               choices={choices}
               onChoose={act === "bind" ? (id, c) => setChoices({ ...choices, [id]: c }) : undefined}
             />

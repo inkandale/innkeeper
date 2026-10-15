@@ -17,16 +17,14 @@ import (
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
-// actionList lists an instance's actions.
-var actionList = listMethod[protocol.ActionListResult, protocol.Action]{name: protocol.MethodActionList,
-	items: func(r protocol.ActionListResult) []protocol.Action { return r.Actions },
-	key:   func(a protocol.Action) string { return a.ID }, validate: protocol.Action.Validate}
-
-// actionSkills lists an instance's skills. It has its own cache, so it asks
-// the plugin for action.list separately from actionList.
-var actionSkills = listMethod[protocol.ActionListResult, protocol.Skill]{name: protocol.MethodActionList,
-	items: func(r protocol.ActionListResult) []protocol.Skill { return r.Skills },
-	key:   func(sk protocol.Skill) string { return sk.Name }, validate: protocol.Skill.Validate}
+// actionList lists an instance's actions and skills, from one reply.
+var actionList = listMethod[protocol.ActionListResult, protocol.ActionListResult]{name: protocol.MethodActionList,
+	clean: func(r protocol.ActionListResult, skip func(string, error)) protocol.ActionListResult {
+		return protocol.ActionListResult{
+			Actions: valid(r.Actions, func(a protocol.Action) string { return a.ID }, protocol.Action.Validate, skip),
+			Skills:  valid(r.Skills, func(sk protocol.Skill) string { return sk.Name }, protocol.Skill.Validate, skip),
+		}
+	}}
 
 // PluginSkill is a skill an action plugin instance offers.
 type PluginSkill struct {
@@ -77,9 +75,9 @@ func (s *Server) actionRoutes(api huma.API) {
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			out := collect(ctx, s, &s.actions, actionList, insts, func(i plugins.InstanceInfo, list []protocol.Action) []PluginAction {
+			out := collect(ctx, s, &s.actions, actionList, insts, func(i plugins.InstanceInfo, list protocol.ActionListResult) []PluginAction {
 				var out []PluginAction
-				for _, a := range list {
+				for _, a := range list.Actions {
 					if in.Applies == "" || a.Applies == in.Applies {
 						out = append(out, PluginAction{a, i.ID, i.Name})
 					}
@@ -99,9 +97,9 @@ func (s *Server) actionRoutes(api huma.API) {
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			out := collect(ctx, s, &s.skills, actionSkills, insts, func(i plugins.InstanceInfo, list []protocol.Skill) []PluginSkill {
+			out := collect(ctx, s, &s.actions, actionList, insts, func(i plugins.InstanceInfo, list protocol.ActionListResult) []PluginSkill {
 				var out []PluginSkill
-				for _, sk := range list {
+				for _, sk := range list.Skills {
 					out = append(out, PluginSkill{sk, i.ID, i.Name})
 				}
 				return out
@@ -127,7 +125,7 @@ func (s *Server) actionRoutes(api huma.API) {
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			i := slices.IndexFunc(list, func(a protocol.Action) bool { return a.ID == b.Action })
+			i := slices.IndexFunc(list.Actions, func(a protocol.Action) bool { return a.ID == b.Action })
 			if i < 0 {
 				return nil, huma.Error400BadRequest(fmt.Sprintf("instance %d has no action %q", b.InstanceID, b.Action))
 			}
@@ -143,7 +141,7 @@ func (s *Server) actionRoutes(api huma.API) {
 					return nil, err
 				}
 			}
-			if err := p.Check(list[i]); err != nil {
+			if err := p.Check(list.Actions[i]); err != nil {
 				return nil, s.fail(err)
 			}
 			for _, sha := range []string{b.Images.Reference, b.Images.Avatar} {

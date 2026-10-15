@@ -271,6 +271,19 @@ func TestListSkills(t *testing.T) {
 	if !slices.Equal(list, want) {
 		t.Fatalf("skills = %+v, want %+v", list, want)
 	}
+	// Actions and skills come from one cached action.list reply.
+	e.call("GET", "/actions", nil, 200, nil)
+	inst, err := e.s.Registry.Instance(context.Background(), e.instID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var calls int
+	if err := e.s.Registry.Call(context.Background(), e.s.Plugins, inst, "calls", protocol.MethodActionList, &calls); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("action.list called %d times, want 1", calls)
+	}
 }
 
 func TestActionRunSendsMentionedSkills(t *testing.T) {

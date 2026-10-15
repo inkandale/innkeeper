@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -27,7 +28,13 @@ func main() {
 	var blobTmp string
 	var config map[string]any
 	var databaseURL string
+	// calls counts each method this process has answered, for the calls method.
+	var callsMu sync.Mutex
+	calls := map[string]int{}
 	handler := func(ctx context.Context, method string, params json.RawMessage) (any, error) {
+		callsMu.Lock()
+		calls[method]++
+		callsMu.Unlock()
 		if config["down"] == true && strings.HasPrefix(method, "catalog.") && method != protocol.MethodCatalogDescribe {
 			return nil, protocol.NewError(-32000, "archive unavailable", true)
 		}
@@ -63,6 +70,12 @@ func main() {
 			return nil, nil
 		case "echo":
 			return params, nil
+		case "calls":
+			var name string
+			_ = json.Unmarshal(params, &name)
+			callsMu.Lock()
+			defer callsMu.Unlock()
+			return calls[name], nil
 		case "shout":
 			fmt.Fprintf(os.Stderr, "%s\nafter\n", strings.Repeat("x", 100_000))
 			return nil, nil

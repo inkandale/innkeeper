@@ -44,9 +44,10 @@ type callToolIn struct {
 type callToolOut struct{ Body protocol.MCPCallResult }
 
 // mcpTools lists an instance's MCP tools.
-var mcpTools = listMethod[protocol.MCPToolsResult, protocol.Tool]{name: protocol.MethodMCPTools,
-	items: func(r protocol.MCPToolsResult) []protocol.Tool { return r.Tools },
-	key:   func(t protocol.Tool) string { return t.Name }, validate: protocol.Tool.Validate}
+var mcpTools = listMethod[protocol.MCPToolsResult, []protocol.Tool]{name: protocol.MethodMCPTools,
+	clean: func(r protocol.MCPToolsResult, skip func(string, error)) []protocol.Tool {
+		return valid(r.Tools, func(t protocol.Tool) string { return t.Name }, protocol.Tool.Validate, skip)
+	}}
 
 func (s *Server) toolRoutes(api huma.API) {
 	tags := []string{"Plugin tools"}

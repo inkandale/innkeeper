@@ -21,27 +21,42 @@ const (
 var errListing = errors.New("still listing what this instance offers")
 
 // listMethod is a plugin method that lists what an instance offers, such as
-// mcp.tools. items picks the list from the reply R.
-type listMethod[R, T any] struct {
-	name     string
-	items    func(R) []T
-	key      func(T) string
-	validate func(T) error
+// mcp.tools. clean turns the reply R into what callers use, V, calling skip
+// for each item it leaves out.
+type listMethod[R, V any] struct {
+	name  string
+	clean func(r R, skip func(item string, err error)) V
+}
+
+// valid keeps the items that pass validate, each key once, and skips the rest.
+func valid[T any](list []T, key func(T) string, validate func(T) error, skip func(string, error)) []T {
+	var out []T
+	seen := map[string]bool{}
+	for _, it := range list {
+		if err := validate(it); err != nil || seen[key(it)] {
+			skip(key(it), err)
+			continue
+		}
+		seen[key(it)] = true
+		out = append(out, it)
+	}
+	return out
 }
 
 type cachedList struct {
 	version string
 	at      time.Time
-	items   any
+	value   any
 	err     error
 }
 
-// instanceList returns an instance's valid items, each key once, from cache
-// if its settings haven't changed in the last minute.
-func instanceList[R, T any](ctx context.Context, s *Server, cache *sync.Map, m listMethod[R, T], id int64) (pluginhost.Instance, []T, error) {
+// instanceList returns an instance's cleaned list, from cache if its settings
+// haven't changed in the last minute.
+func instanceList[R, V any](ctx context.Context, s *Server, cache *sync.Map, m listMethod[R, V], id int64) (pluginhost.Instance, V, error) {
+	var value V
 	inst, err := s.Registry.Instance(ctx, id)
 	if err != nil {
-		return inst, nil, err
+		return inst, value, err
 	}
 	if c, ok := cache.Load(id); ok {
 		c := c.(cachedList)
@@ -50,8 +65,8 @@ func instanceList[R, T any](ctx context.Context, s *Server, cache *sync.Map, m l
 			ttl = listFailedTTL
 		}
 		if c.version == inst.Version && time.Since(c.at) < ttl {
-			items, _ := c.items.([]T)
-			return inst, items, c.err
+			value, _ = c.value.(V)
+			return inst, value, c.err
 		}
 	}
 	// Requests meanwhile skip the instance rather than wait for it.
@@ -61,18 +76,11 @@ func instanceList[R, T any](ctx context.Context, s *Server, cache *sync.Map, m l
 	defer cancel()
 	var res R
 	err = s.Registry.Call(callCtx, s.Plugins, inst, m.name, nil, &res)
-	var items []T
-	seen := map[string]bool{}
-	for _, it := range m.items(res) {
-		if err := m.validate(it); err != nil || seen[m.key(it)] {
-			s.Log.Warn("skip invalid item", "instance", id, "method", m.name, "item", m.key(it), "err", err)
-			continue
-		}
-		seen[m.key(it)] = true
-		items = append(items, it)
-	}
-	cache.Store(id, cachedList{inst.Version, time.Now(), items, err})
-	return inst, items, err
+	value = m.clean(res, func(item string, err error) {
+		s.Log.Warn("skip invalid item", "instance", id, "method", m.name, "item", item, "err", err)
+	})
+	cache.Store(id, cachedList{inst.Version, time.Now(), value, err})
+	return inst, value, err
 }
 
 // eachWorking runs f for each instance that isn't broken, in parallel, and
@@ -95,8 +103,8 @@ func eachWorking(insts []plugins.InstanceInfo, f func(plugins.InstanceInfo)) {
 
 // collect gathers each working instance's list from m, turned into out items
 // by f, for the instances that answer within eachWorking's limit.
-func collect[R, T, O any](ctx context.Context, s *Server, cache *sync.Map, m listMethod[R, T], insts []plugins.InstanceInfo,
-	f func(plugins.InstanceInfo, []T) []O) []O {
+func collect[R, V, O any](ctx context.Context, s *Server, cache *sync.Map, m listMethod[R, V], insts []plugins.InstanceInfo,
+	f func(plugins.InstanceInfo, V) []O) []O {
 	var mu sync.Mutex
 	out := []O{}
 	eachWorking(insts, func(i plugins.InstanceInfo) {

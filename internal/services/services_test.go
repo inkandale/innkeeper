@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -21,10 +22,12 @@ import (
 var quiet = slog.New(slog.NewTextHandler(io.Discard, nil))
 
 type fixture struct {
+	reg                *plugins.Registry
 	mgr                *pluginhost.Manager
 	chat, embed        pluginhost.Instance
 	consumer, stranger pluginhost.Instance
 	chatID, embedID    int64
+	strangerID         int64
 }
 
 // as is the fake's manifest under another name, with one capability and uses.
@@ -67,11 +70,11 @@ func setup(t *testing.T) fixture {
 		}
 		return id, inst
 	}
-	f := fixture{mgr: mgr}
+	f := fixture{reg: reg, mgr: mgr}
 	f.chatID, f.chat = create("fake", "Chat", map[string]any{"services": []string{protocol.MethodAIChat}})
 	f.embedID, f.embed = create("fake", "Embed", map[string]any{"services": []string{protocol.MethodAIEmbed}})
 	_, f.consumer = create("consumer", "Consumer", nil)
-	_, f.stranger = create("stranger", "Stranger", nil)
+	f.strangerID, f.stranger = create("stranger", "Stranger", nil)
 	return f
 }
 
@@ -118,6 +121,30 @@ func TestProviderThatDoesntOfferTheServiceIsRefused(t *testing.T) {
 	f := setup(t)
 	_, err := f.relayChat(context.Background(), f.consumer, f.embedID, "hello")
 	wantForbidden(t, err)
+}
+
+func TestProviderWithoutTheCapabilityIsRefused(t *testing.T) {
+	f := setup(t)
+	_, err := f.relayChat(context.Background(), f.consumer, f.strangerID, "hello")
+	wantForbidden(t, err)
+}
+
+func TestMissingProviderIsRefused(t *testing.T) {
+	f := setup(t)
+	_, err := f.relayChat(context.Background(), f.consumer, f.chatID+1000, "hello")
+	wantForbidden(t, err)
+}
+
+func TestBrokenProviderIsRefusedWithoutItsError(t *testing.T) {
+	f := setup(t)
+	if err := f.reg.MarkBroken(context.Background(), f.chatID, f.chat.Version, errors.New("secret-laden failure")); err != nil {
+		t.Fatal(err)
+	}
+	_, err := f.relayChat(context.Background(), f.consumer, f.chatID, "hello")
+	wantForbidden(t, err)
+	if strings.Contains(err.Error(), "secret-laden") {
+		t.Fatalf("refusal leaks the broken error: %v", err)
+	}
 }
 
 func TestCancellingTheCallerCancelsTheProvider(t *testing.T) {

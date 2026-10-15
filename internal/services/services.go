@@ -53,7 +53,8 @@ func (b *Broker) call(ctx context.Context, method string, params json.RawMessage
 		return nil, forbidden(fmt.Sprintf("plugin %s doesn't declare %s in uses", caller.Manifest.Name, method))
 	}
 	provider, err := b.Registry.InstanceWith(ctx, head.Instance, protocol.Services[method])
-	if errors.Is(err, plugins.ErrIncapable) || errors.Is(err, plugins.ErrNotFound) {
+	if errors.Is(err, plugins.ErrIncapable) || errors.Is(err, plugins.ErrNotFound) ||
+		errors.Is(err, plugins.ErrBroken) || errors.Is(err, plugins.ErrUnknownPlugin) {
 		return nil, forbidden(fmt.Sprintf("instance %d doesn't offer %s", head.Instance, method))
 	}
 	if err != nil {

@@ -30,7 +30,7 @@ Each plugin folder has a `plugin.toml`:
 | `version` | yes | The plugin's own version |
 | `protocol` | yes | Protocol version; must be `1` |
 | `command` | yes, except for themes | Program and arguments. Use `./name` for a program in the plugin folder: a relative path containing `/` is inside the folder and can't leave it, an absolute path is used as-is, and a bare name is found on `PATH` |
-| `capabilities` | yes | Any of `import`, `search`, `push`, `pull`, `action`, `records`, `enrich`, `codec`, `auth`, `mcp`, `catalog`, `sites`, or `theme`. A theme lists no other capability |
+| `capabilities` | yes | Any of `import`, `search`, `push`, `pull`, `action`, `records`, `enrich`, `codec`, `auth`, `mcp`, `catalog`, `sites`, `ai`, or `theme`. A theme lists no other capability |
 | `secrets` | no | Names of secrets the owner enters for each instance, in lowercase `snake_case` |
 | `config` | no | JSON Schema for instance settings; the UI renders a form from it |
 | `enrichments` | for `enrich` | Keys the plugin writes, in lowercase `snake_case`; see [`enrich`](#enrich). Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list`. `grid = true` shows the key on the library grid, for at most one key. An `enrich` plugin must declare at least one |
@@ -41,6 +41,7 @@ Each plugin folder has a `plugin.toml`:
 | `icon` | no | The app's logo, shown wherever a card is linked to one of the plugin's instances: a regular file inside the plugin folder, named `*.svg`, `*.png`, or `*.webp`. A symlink that leaves the folder is rejected. The core serves it at `/api/plugins/<name>/icon` without login. Without an icon, the UI shows the plugin name's first letter |
 | `records` | only for `records` | The record types the plugin keeps; see [`records`](#records). A `records` plugin must declare at least one |
 | `database` | no | `true` gives the plugin its own PostgreSQL schema, `plugin_<name>` with `-` as `_`, and a login role limited to it |
+| `uses` | no | Service methods the plugin calls on other instances, each listed once, such as `["ai.chat"]`; see [`ai`](#ai) |
 
 Unknown keys are errors.
 
@@ -79,7 +80,10 @@ runs on the UI's origin, so install only themes you trust.
    | `database_url` | PostgreSQL URL for the plugin's role, whose `search_path` is its schema. Empty unless the manifest sets `database = true` |
 
    Reply with `protocol`, `name`, `version`, and `capabilities`. These must
-   match the manifest, or the core stops the plugin.
+   match the manifest, or the core stops the plugin. An `ai` plugin also
+   replies with `services`: the service methods this instance offers, such
+   as `["ai.chat"]`. The core stops a plugin that lists a service outside its
+   capabilities.
 
    Don't contact external services during `initialize`. Report bad
    settings on the first call that needs them.
@@ -854,6 +858,60 @@ keeps what earlier calls stored.
 {"jsonrpc": "2.0", "id": 12, "result": {"results": [{"revision_id": 812, "values": {"quality": 78, "voice": 88}, "meta": {"model": "claude-opus-5-5", "prompt": "evaluate-2"}}, {"revision_id": 813, "error": "the model returned no JSON"}]}}
 ```
 
+### `ai`
+
+An `ai` plugin offers model services to other plugins. One instance is one
+connection to a model. The owner picks which instance a consumer uses, and
+the core forwards the consumer's calls to it.
+
+| Method | Does |
+|---|---|
+| `ai.chat` | One model turn: messages and optional tools in, text and tool calls out |
+| `ai.embed` | One vector per text |
+
+**Offering.** List the methods the instance offers in initialize's
+`services`, from its config. Don't contact the model during `initialize`.
+
+**Calling.** Declare the methods in `uses`, then send them to the core with
+`instance`, the provider instance's ID from your config. The core replies
+`-32003` when your manifest doesn't declare the method, or when the instance
+doesn't offer it, and forwards everything else to the provider without
+reading it. The provider gets the same params without `instance`.
+
+**`ai.chat`**
+
+| Param | Meaning |
+|---|---|
+| `instance` | The provider instance; the core removes it before forwarding |
+| `run` | Optional token. When set, the provider streams `ai.delta` notifications and the core relays each to the caller with this token |
+| `messages` | `[{"role", "content", "parts", "tool_calls", "tool_call_id"}]`. `role` is `system`, `user`, `assistant`, or `tool`. `parts` replaces `content` for a message with images: `[{"type": "text", "text"}, {"type": "image_url", "image_url"}]`, where `image_url` may be a `data:` URL |
+| `tools` | `[{"name", "description", "parameters"}]`, `parameters` a JSON Schema. Optional |
+| `temperature`, `max_tokens` | Optional; the provider's defaults otherwise |
+
+Reply with `text` and, when the model called tools, `tool_calls`:
+`[{"id", "name", "arguments"}]`, `arguments` a JSON string. Answer each tool
+call with a `tool` message carrying its `tool_call_id`, then call `ai.chat`
+again.
+
+While it streams, the provider sends `ai.delta` with `run` and `text`, the
+next piece of the reply, in order. The caller gets every delta before the
+reply.
+
+A provider that refuses the request as invalid, such as tools for a model
+without tool support, replies `-32010`. Rate limits and timeouts are
+retryable errors.
+
+**`ai.embed`** takes `instance` and `texts`, and replies with `vectors`, one
+array of numbers per text, in order.
+
+When the caller cancels a call, the core cancels the provider's.
+
+```json
+{"jsonrpc": "2.0", "id": "c4", "method": "ai.chat", "params": {"instance": 9, "run": "mine-1", "messages": [{"role": "user", "content": "Say hello."}]}}
+{"jsonrpc": "2.0", "method": "ai.delta", "params": {"run": "mine-1", "text": "Hello"}}
+{"jsonrpc": "2.0", "id": "c4", "result": {"text": "Hello"}}
+```
+
 ## Checking a plugin
 
 ```bash
@@ -894,6 +952,9 @@ It loads the manifest, then checks that:
 - an `enrich` plugin's `enrich.run` of a sample card returns, within 5
   seconds, a result for its revision whose values are all declared and valid,
   or an error other than `-32601`
+- an `ai` plugin's `ai.chat` and `ai.embed`, for each it lists in `services`,
+  return a reply or an error other than `-32601` within 5 seconds. Checked
+  without a connection, a provider can only fail, which counts as an answer
 - a `catalog` plugin's `catalog.describe` reply is valid; `catalog.search`
   pages one item at a time without repeats and refuses an undeclared filter
   with `-32602`; `catalog.get` returns `-32004` for an unknown ID, and for the

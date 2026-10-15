@@ -128,6 +128,24 @@ func TestBulkResolveSharedWorldBook(t *testing.T) {
 	}
 }
 
+func TestReconcileBindsAnAppItemThatDiffersOnlyByAppLocalExtensions(t *testing.T) {
+	e := setup(t, map[string]any{"fields": []string{"name", "description", "extensions"}})
+	tova := e.libCard(map[string]any{"name": "Tova", "description": "A smith.", "extensions": map[string]any{"depth_prompt": "Hammer."}})
+	e.appCard("r1", map[string]any{"name": "Tova", "description": "A smith.",
+		"extensions": map[string]any{"depth_prompt": "Hammer.", "fav": true, "world": "Forge"}}, nil)
+	cards := e.cardCount()
+	snap, err := e.s.Reconcile(e.ctx, ReconcileParams{InstanceID: e.inst, Apply: ApplyObvious}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snap.Items) != 1 || snap.Items[0].Verdict != VerdictExact || !snap.Items[0].AutoBound {
+		t.Fatalf("items = %+v", snap.Items)
+	}
+	if e.cardCount() != cards || e.status(tova) != "in_sync" {
+		t.Fatalf("cards %d -> %d, status %q", cards, e.cardCount(), e.status(tova))
+	}
+}
+
 func TestReconcileAutoBindsExactMatches(t *testing.T) {
 	for _, apply := range []string{ApplyObvious, ApplyNone} {
 		e, tova, _ := worldBooks(t)

@@ -131,6 +131,9 @@ func cardOnly(name string) bool {
 	return name == "tags" || name == "collections" || name == "lorebooks"
 }
 
+// pushedStatus is binding_status for apps the library pushes to; a followed site source isn't a target.
+const pushedStatus = `(SELECT bs.* FROM binding_status bs JOIN binding b ON b.id = bs.binding_id WHERE b.push)`
+
 // facetSQL selects each facet's rows for the IDs in match.
 var facetSQL = map[string]func(k *Kind, match string) string{
 	"tags": func(k *Kind, m string) string {
@@ -142,7 +145,7 @@ var facetSQL = map[string]func(k *Kind, match string) string{
 			WHERE cc.card_id IN (` + m + `) GROUP BY co.id ORDER BY lower(co.name)`
 	},
 	"targets": func(k *Kind, m string) string {
-		return `SELECT instance_id, status, count(*)::int FROM binding_status
+		return `SELECT instance_id, status, count(*)::int FROM ` + pushedStatus + ` bs
 			WHERE ` + k.FK + ` IN (` + m + `) GROUP BY 1, 2 ORDER BY 1, 2`
 	},
 	"sources": func(k *Kind, m string) string {
@@ -237,7 +240,7 @@ func (w *where) filter(f Filter) (string, error) {
 		if len(f.TargetState.States) > 0 {
 			cond += ` AND bs.status = ANY(` + w.arg(f.TargetState.States) + `)`
 		}
-		return `EXISTS (SELECT 1 FROM binding_status bs WHERE ` + cond + `)`, nil
+		return `EXISTS (SELECT 1 FROM ` + pushedStatus + ` bs WHERE ` + cond + `)`, nil
 	}
 	return `((c.archived_at IS NOT NULL) = ` + w.arg(*f.Archived) + `)`, nil
 }
@@ -351,7 +354,7 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 			cards = `array(SELECT card_id FROM card_lorebook WHERE lorebook_id = c.id ORDER BY card_id)`
 		case "targets":
 			targets = `(SELECT jsonb_agg(jsonb_build_object('instance', instance_id, 'is', status) ORDER BY instance_id)
-				FROM binding_status WHERE ` + k.FK + ` = c.id)`
+				FROM ` + pushedStatus + ` bs WHERE ` + k.FK + ` = c.id)`
 		default:
 			return Results{}, fmt.Errorf("%w: unknown include %q", ErrInvalid, inc)
 		}

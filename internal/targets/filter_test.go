@@ -72,3 +72,25 @@ func TestSearchTargets(t *testing.T) {
 		t.Fatalf("targets facet = %+v", got.Facets.Targets)
 	}
 }
+
+func TestSearchLeavesOutFollowedSources(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	vyr := e.imported("vyr", vyrCard)
+	e.publish("vyr", map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Begone."}, "")
+	if b := e.follow(vyr); b.RemoteState != remoteChanged {
+		t.Fatalf("followed = %+v", b)
+	}
+	got, err := e.lib.Search(e.ctx, library.Card, library.Query{Include: []string{"targets"}, Facets: []string{"targets"},
+		Filter: &library.Filter{IDs: []int64{vyr}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Hits) != 1 || len(got.Hits[0].Targets) != 0 || len(got.Facets.Targets) != 0 {
+		t.Fatalf("hits = %+v, facets = %+v", got.Hits, got.Facets)
+	}
+	ids, err := e.lib.SearchIDs(e.ctx, library.Card, library.Query{Filter: &library.Filter{TargetState: &library.TargetFilter{}}})
+	if err != nil || slices.Contains(ids, vyr) {
+		t.Fatalf("pushed anywhere = %v, %v", ids, err)
+	}
+}

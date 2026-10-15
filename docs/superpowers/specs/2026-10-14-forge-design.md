@@ -349,7 +349,7 @@ repo's commit `0b2f57e`.
 |---|---|---|---|
 | `generate` | `new` | Concept, point of view, reference image, context | Generator |
 | `revise` | `card` | Instruction (`instruction: true`), context | Generator |
-| `evaluate` | `card` | Report only. The generator's seven dimensions | Generator |
+| `evaluate` | `card` | Report only. The generator's six dimensions and overall score | Generator |
 | `tighten-card` | `card` | Whole card, no inputs | New |
 | `change-pov` | `card` | Point of view | New |
 | `tighten`, `expand`, `to-prose`, `rewrite` | `card`, fields: the prose fields | Field actions; `rewrite` takes an instruction | Character Architect's presets |

@@ -1678,9 +1678,61 @@
         ],
         "type": "object"
       },
+      "EnrichmentKey": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "type": "object"
+      },
+      "EnrichmentKeysOutBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/EnrichmentKeysOutBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "instance_id": {
+            "description": "The score instance, or null when there is none.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "keys": {
+            "items": {
+              "$ref": "#/components/schemas/EnrichmentKey"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "instance_id",
+          "keys"
+        ],
+        "type": "object"
+      },
       "EnrichmentOut": {
         "additionalProperties": false,
         "properties": {
+          "grid": {
+            "description": "Whether the library grid shows this key.",
+            "type": "boolean"
+          },
           "label": {
             "type": "string"
           },
@@ -1701,6 +1753,51 @@
         "required": [
           "type",
           "label"
+        ],
+        "type": "object"
+      },
+      "EnrichmentValue": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "current": {
+            "description": "Whether this is the newest value of its key from its instance.",
+            "type": "boolean"
+          },
+          "instance_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "instance_name": {
+            "description": "Empty when the instance has been deleted.",
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "meta": {},
+          "revision_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "stale": {
+            "description": "Whether the value is about a revision that is no longer the card's head.",
+            "type": "boolean"
+          },
+          "value": {}
+        },
+        "required": [
+          "instance_id",
+          "revision_id",
+          "key",
+          "value",
+          "meta",
+          "created_at",
+          "current",
+          "stale"
         ],
         "type": "object"
       },
@@ -1975,6 +2072,15 @@
             "format": "int64",
             "type": "integer"
           },
+          "enrichment": {
+            "description": "Has a current value for this enrichment key from the score instance. With gte and lte, a number in that range; with missing, no value. Cards only.",
+            "type": "string"
+          },
+          "gte": {
+            "description": "With enrichment: the value is at least this.",
+            "format": "double",
+            "type": "number"
+          },
           "ids": {
             "description": "Is one of these cards.",
             "items": {
@@ -1986,6 +2092,15 @@
               "array",
               "null"
             ]
+          },
+          "lte": {
+            "description": "With enrichment: the value is at most this.",
+            "format": "double",
+            "type": "number"
+          },
+          "missing": {
+            "description": "With enrichment: true matches cards without a value.",
+            "type": "boolean"
           },
           "name": {
             "description": "Name contains this, in any case.",
@@ -2123,6 +2238,13 @@
               "null"
             ]
           },
+          "enrichments": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/HitEnrichment"
+            },
+            "description": "With include enrichments: the score instance's current value of each key.",
+            "type": "object"
+          },
           "entries": {
             "description": "Lorebooks only: how many entries it has.",
             "format": "int64",
@@ -2178,6 +2300,21 @@
           "slug",
           "revision_id",
           "fields"
+        ],
+        "type": "object"
+      },
+      "HitEnrichment": {
+        "additionalProperties": false,
+        "properties": {
+          "stale": {
+            "description": "Whether the value is about an older revision than the head.",
+            "type": "boolean"
+          },
+          "value": {}
+        },
+        "required": [
+          "value",
+          "stale"
         ],
         "type": "object"
       },
@@ -2449,7 +2586,7 @@
           },
           "payload": {},
           "progress": {
-            "description": "An import's has done, total, message, imported, skipped, failed, and errors. A catalog ingest's has done, total, and message, and once finished, added, updated, removed, and skipped. A running reconcile's has done and total; a finished one's is the snapshot, cut to totals in job lists and streams. An action run's has message, done, and total, and once finished, result, which job lists and streams leave out."
+            "description": "An import's has done, total, message, imported, skipped, failed, and errors. A catalog ingest's has done, total, and message, and once finished, added, updated, removed, and skipped. A running reconcile's has done and total; a finished one's is the snapshot, cut to totals in job lists and streams. An action run's has message, done, and total, and once finished, result, which job lists and streams leave out. An enrich run's has message, done, failed, total, and warnings."
           },
           "run_after": {
             "format": "date-time",
@@ -2635,6 +2772,14 @@
           "onboarding_done": {
             "description": "true once the owner finishes or skips the setup wizard; false shows it again.",
             "type": "boolean"
+          },
+          "score_instance": {
+            "description": "An enrich instance's ID, or null to clear it.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "theme": {
             "description": "An installed theme plugin's name, or empty for the default theme.",
@@ -3096,7 +3241,7 @@
             "$ref": "#/components/schemas/Filter"
           },
           "include": {
-            "description": "Extra data per hit: tags, lorebooks, targets. Lorebooks take cards and targets.",
+            "description": "Extra data per hit: tags, lorebooks, targets, enrichments (the score instance's current values). Lorebooks take cards and targets.",
             "items": {
               "type": "string"
             },
@@ -3113,13 +3258,8 @@
             "type": "boolean"
           },
           "sort": {
-            "description": "Default: relevance with text, newest first without.",
-            "enum": [
-              "relevance",
-              "updated",
-              "name",
-              "created"
-            ],
+            "description": "relevance, updated, name, created, or enrichment:\u003ckey\u003e for the score instance's value of key, highest first and cards without one last. Default: relevance with text, newest first without.",
+            "pattern": "^(relevance|updated|name|created|enrichment:[a-z][a-z0-9_]*)$",
             "type": "string"
           },
           "sources": {
@@ -3662,6 +3802,14 @@
             "description": "Whether the owner finished or skipped the setup wizard.",
             "type": "boolean"
           },
+          "score_instance": {
+            "description": "The enrich instance whose values the library grid, filters, and sort use, or null. When null and exactly one enrich instance exists, that one is used.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "theme": {
             "description": "The selected theme plugin, or empty for the default theme.",
             "type": "string"
@@ -3669,7 +3817,8 @@
         },
         "required": [
           "theme",
-          "onboarding_done"
+          "onboarding_done",
+          "score_instance"
         ],
         "type": "object"
       },
@@ -3844,6 +3993,42 @@
         },
         "required": [
           "type"
+        ],
+        "type": "object"
+      },
+      "StartEnrichInBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/StartEnrichInBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "card_ids": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "maxItems": 10000,
+            "minItems": 1,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "instance_id": {
+            "description": "An enrich instance",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "instance_id",
+          "card_ids"
         ],
         "type": "object"
       },
@@ -5402,6 +5587,65 @@
         ]
       }
     },
+    "/cards/{id}/enrichments": {
+      "get": {
+        "description": "Every instance's current value of each key, by instance and key. A stale value is about a revision that is no longer the head.",
+        "operationId": "get-card-enrichments",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Also return older values, each after the one that replaced it.",
+            "explode": false,
+            "in": "query",
+            "name": "history",
+            "schema": {
+              "description": "Also return older values, each after the one that replaced it.",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EnrichmentValue"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a card's enrichments",
+        "tags": [
+          "Enrichments"
+        ]
+      }
+    },
     "/cards/{id}/export": {
       "get": {
         "description": "Linked lorebooks are embedded as data.character_book. Formats other than json need a codec plugin instance that writes them.",
@@ -6715,6 +6959,80 @@
         "summary": "Add a card to a collection",
         "tags": [
           "Organize"
+        ]
+      }
+    },
+    "/enrichments/keys": {
+      "get": {
+        "description": "The keys the score instance's plugin declares: those that enrichment filters and sort can use. The grid key comes first, then the rest by label.",
+        "operationId": "list-enrichment-keys",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrichmentKeysOutBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the score instance's enrichment keys",
+        "tags": [
+          "Enrichments"
+        ]
+      }
+    },
+    "/enrichments/runs": {
+      "post": {
+        "description": "Queues an enrich job that sends each card's head revision to the instance's plugin, 20 at a time, and stores the values it returns. Its progress counts cards done and failed, with a warning for each value dropped and each card that failed. Cancel the job to stop the run.",
+        "operationId": "start-enrich-run",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartEnrichInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Compute enrichments for cards",
+        "tags": [
+          "Enrichments"
         ]
       }
     },

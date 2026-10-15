@@ -476,6 +476,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cards/{id}/enrichments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a card's enrichments
+         * @description Every instance's current value of each key, by instance and key. A stale value is about a revision that is no longer the head.
+         */
+        get: operations["get-card-enrichments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cards/{id}/export": {
         parameters: {
             query?: never;
@@ -861,6 +881,46 @@ export interface paths {
         post?: never;
         /** Remove a card from a collection */
         delete: operations["remove-from-collection"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/enrichments/keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the score instance's enrichment keys
+         * @description The keys the score instance's plugin declares: those that enrichment filters and sort can use. The grid key comes first, then the rest by label.
+         */
+        get: operations["list-enrichment-keys"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/enrichments/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Compute enrichments for cards
+         * @description Queues an enrich job that sends each card's head revision to the instance's plugin, 20 at a time, and stores the values it returns. Its progress counts cards done and failed, with a warning for each value dropped and each card that failed. Cancel the job to stop the run.
+         */
+        post: operations["start-enrich-run"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2778,10 +2838,46 @@ export interface components {
             /** @description The app_hash of the change the owner saw, from the binding or the changes queue. If the site's data changed since (an avatar change alone does not count), the dismiss is refused with 409 and a fresh comparison. */
             app_hash: string;
         };
+        EnrichmentKey: {
+            key: string;
+        };
+        EnrichmentKeysOutBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/EnrichmentKeysOutBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description The score instance, or null when there is none.
+             */
+            instance_id: number | null;
+            keys: components["schemas"]["EnrichmentKey"][] | null;
+        };
         EnrichmentOut: {
+            /** @description Whether the library grid shows this key. */
+            grid?: boolean;
             label: string;
             range?: number[] | null;
             type: string;
+        };
+        EnrichmentValue: {
+            /** Format: date-time */
+            created_at: string;
+            /** @description Whether this is the newest value of its key from its instance. */
+            current: boolean;
+            /** Format: int64 */
+            instance_id: number;
+            /** @description Empty when the instance has been deleted. */
+            instance_name?: string;
+            key: string;
+            meta: unknown;
+            /** Format: int64 */
+            revision_id: number;
+            /** @description Whether the value is about a revision that is no longer the card's head. */
+            stale: boolean;
+            value: unknown;
         };
         EntityOut: {
             /**
@@ -2885,8 +2981,22 @@ export interface components {
              * @description Is in this collection.
              */
             collection?: number;
+            /** @description Has a current value for this enrichment key from the score instance. With gte and lte, a number in that range; with missing, no value. Cards only. */
+            enrichment?: string;
+            /**
+             * Format: double
+             * @description With enrichment: the value is at least this.
+             */
+            gte?: number;
             /** @description Is one of these cards. */
             ids?: number[] | null;
+            /**
+             * Format: double
+             * @description With enrichment: the value is at most this.
+             */
+            lte?: number;
+            /** @description With enrichment: true matches cards without a value. */
+            missing?: boolean;
             /** @description Name contains this, in any case. */
             name?: string;
             not?: components["schemas"]["Filter"];
@@ -2933,6 +3043,10 @@ export interface components {
             archived_at?: string;
             /** @description Lorebooks with include cards: IDs of linked cards. */
             cards?: number[] | null;
+            /** @description With include enrichments: the score instance's current value of each key. */
+            enrichments?: {
+                [key: string]: components["schemas"]["HitEnrichment"];
+            };
             /**
              * Format: int64
              * @description Lorebooks only: how many entries it has.
@@ -2950,6 +3064,11 @@ export interface components {
             tags?: string[] | null;
             /** @description With include targets: how the card stands on each target it's pushed to. */
             targets?: components["schemas"]["TargetState"][] | null;
+        };
+        HitEnrichment: {
+            /** @description Whether the value is about an older revision than the head. */
+            stale: boolean;
+            value: unknown;
         };
         Hunk: {
             app?: unknown;
@@ -3058,7 +3177,7 @@ export interface components {
             /** Format: int64 */
             parent_id?: number;
             payload: unknown;
-            /** @description An import's has done, total, message, imported, skipped, failed, and errors. A catalog ingest's has done, total, and message, and once finished, added, updated, removed, and skipped. A running reconcile's has done and total; a finished one's is the snapshot, cut to totals in job lists and streams. An action run's has message, done, and total, and once finished, result, which job lists and streams leave out. */
+            /** @description An import's has done, total, message, imported, skipped, failed, and errors. A catalog ingest's has done, total, and message, and once finished, added, updated, removed, and skipped. A running reconcile's has done and total; a finished one's is the snapshot, cut to totals in job lists and streams. An action run's has message, done, and total, and once finished, result, which job lists and streams leave out. An enrich run's has message, done, failed, total, and warnings. */
             progress: unknown;
             /** Format: date-time */
             run_after: string;
@@ -3126,6 +3245,11 @@ export interface components {
             readonly $schema?: string;
             /** @description true once the owner finishes or skips the setup wizard; false shows it again. */
             onboarding_done?: boolean;
+            /**
+             * Format: int64
+             * @description An enrich instance's ID, or null to clear it.
+             */
+            score_instance?: number | null;
             /** @description An installed theme plugin's name, or empty for the default theme. */
             theme?: string;
         };
@@ -3267,16 +3391,13 @@ export interface components {
             /** @description Card data keys to return per hit, plus avatar. Default: name. */
             fields?: string[] | null;
             filter?: components["schemas"]["Filter"];
-            /** @description Extra data per hit: tags, lorebooks, targets. Lorebooks take cards and targets. */
+            /** @description Extra data per hit: tags, lorebooks, targets, enrichments (the score instance's current values). Lorebooks take cards and targets. */
             include?: string[] | null;
             page?: components["schemas"]["Page"];
             /** @description Not available yet: needs an embedding enricher. */
             semantic?: boolean;
-            /**
-             * @description Default: relevance with text, newest first without.
-             * @enum {string}
-             */
-            sort?: "relevance" | "updated" | "name" | "created";
+            /** @description relevance, updated, name, created, or enrichment:<key> for the score instance's value of key, highest first and cards without one last. Default: relevance with text, newest first without. */
+            sort?: string;
             /** @description library, or catalog:<instance id> to also search a catalog by text alone. Default: library. */
             sources?: string[] | null;
             /** @description Words to match in name, description, personality, scenario, creator notes, and first message. Supports "quoted phrases", or, and -excluded words. */
@@ -3491,6 +3612,11 @@ export interface components {
             readonly $schema?: string;
             /** @description Whether the owner finished or skipped the setup wizard. */
             onboarding_done: boolean;
+            /**
+             * Format: int64
+             * @description The enrich instance whose values the library grid, filters, and sort use, or null. When null and exactly one enrich instance exists, that one is used.
+             */
+            score_instance: number | null;
             /** @description The selected theme plugin, or empty for the default theme. */
             theme: string;
         };
@@ -3558,6 +3684,20 @@ export interface components {
             readonly $schema?: string;
             /** @enum {string} */
             type: "assets" | "config";
+        };
+        StartEnrichInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/StartEnrichInBody.json
+             */
+            readonly $schema?: string;
+            card_ids: number[] | null;
+            /**
+             * Format: int64
+             * @description An enrich instance
+             */
+            instance_id: number;
         };
         SyncParams: {
             /**
@@ -4576,6 +4716,40 @@ export interface operations {
             };
         };
     };
+    "get-card-enrichments": {
+        parameters: {
+            query?: {
+                /** @description Also return older values, each after the one that replaced it. */
+                history?: boolean;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrichmentValue"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "export-card": {
         parameters: {
             query?: {
@@ -5394,6 +5568,68 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-enrichment-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrichmentKeysOutBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "start-enrich-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartEnrichInBody"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
             };
             /** @description Error */
             default: {

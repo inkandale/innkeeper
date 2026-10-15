@@ -31,7 +31,7 @@ func kindNamed(name string) (*library.Kind, error) {
 }
 
 type searchIn struct {
-	Query map[string]any `json:"query" jsonschema:"The search query, as the API's POST /cards/search body: text, filter, sources (library, or catalog:<instance id> to search a catalog too), include, fields, page"`
+	Query map[string]any `json:"query" jsonschema:"The search query, as the API's POST /cards/search body: text, filter, sources (library, or catalog:<instance id> to search a catalog too), include, fields, sort, page. A filter or sort on an enrichment, such as {\"enrichment\": \"quality\", \"gte\": 70} or sort enrichment:quality, uses the score instance's values"`
 }
 
 type createIn struct {

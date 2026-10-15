@@ -201,7 +201,7 @@ func (s *Server) targetRoutes(api huma.API) {
 				return nil, s.fail(err)
 			}
 		}
-		ids, err := s.Lib.SearchIDs(ctx, k, q)
+		ids, err := s.searchIDs(ctx, k, q)
 		if err != nil {
 			return nil, s.fail(err)
 		}

@@ -21,6 +21,7 @@ type enrichmentOut struct {
 	Type  string    `json:"type"`
 	Label string    `json:"label"`
 	Range []float64 `json:"range,omitempty"`
+	Grid  bool      `json:"grid,omitempty" doc:"Whether the library grid shows this key."`
 }
 
 type pluginOut struct {
@@ -113,7 +114,7 @@ func (s *Server) instanceRoutes(api huma.API) {
 					if p.Enrichments == nil {
 						p.Enrichments = map[string]enrichmentOut{}
 					}
-					p.Enrichments[k] = enrichmentOut{e.Type, e.Label, e.Range}
+					p.Enrichments[k] = toEnrichmentOut(e)
 				}
 				for k, rt := range m.Records {
 					if p.Records == nil {

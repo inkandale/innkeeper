@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -16,14 +17,16 @@ import (
 type settings struct {
 	Theme          string `json:"theme" doc:"The selected theme plugin, or empty for the default theme."`
 	OnboardingDone bool   `json:"onboarding_done" doc:"Whether the owner finished or skipped the setup wizard."`
+	ScoreInstance  *int64 `json:"score_instance" doc:"The enrich instance whose values the library grid, filters, and sort use, or null. When null and exactly one enrich instance exists, that one is used."`
 }
 
 type settingsOut struct{ Body settings }
 
 type patchSettingsIn struct {
 	Body struct {
-		Theme          *string `json:"theme,omitempty" doc:"An installed theme plugin's name, or empty for the default theme."`
-		OnboardingDone *bool   `json:"onboarding_done,omitempty" doc:"true once the owner finishes or skips the setup wizard; false shows it again."`
+		Theme          *string    `json:"theme,omitempty" doc:"An installed theme plugin's name, or empty for the default theme."`
+		OnboardingDone *bool      `json:"onboarding_done,omitempty" doc:"true once the owner finishes or skips the setup wizard; false shows it again."`
+		ScoreInstance  optionalID `json:"score_instance,omitempty" doc:"An enrich instance's ID, or null to clear it."`
 	}
 }
 
@@ -46,7 +49,15 @@ func (s *Server) settings(ctx context.Context) (*settingsOut, error) {
 	if err != nil {
 		return nil, s.fail(err)
 	}
-	return &settingsOut{Body: settings{Theme: name, OnboardingDone: done == "true"}}, nil
+	out := &settingsOut{Body: settings{Theme: name, OnboardingDone: done == "true"}}
+	score, err := s.Registry.Setting(ctx, scoreInstanceSetting)
+	if err != nil {
+		return nil, s.fail(err)
+	}
+	if id, err := strconv.ParseInt(score, 10, 64); err == nil {
+		out.Body.ScoreInstance = &id
+	}
+	return out, nil
 }
 
 func (s *Server) settingsRoutes(api huma.API) {
@@ -70,6 +81,11 @@ func (s *Server) settingsRoutes(api huma.API) {
 				}
 				if err := s.Registry.SetSetting(ctx, "onboarding_done", v); err != nil {
 					return nil, s.fail(err)
+				}
+			}
+			if in.Body.ScoreInstance.Sent {
+				if err := s.setScoreInstance(ctx, in.Body.ScoreInstance.ID); err != nil {
+					return nil, err
 				}
 			}
 			return s.settings(ctx)

@@ -39,7 +39,7 @@ type jobOut struct {
 	Status      string          `json:"status" enum:"queued,running,waiting,succeeded,failed"`
 	Attempts    int             `json:"attempts"`
 	MaxAttempts int             `json:"max_attempts"`
-	Progress    json.RawMessage `json:"progress" doc:"An import's has done, total, message, imported, skipped, failed, and errors. A catalog ingest's has done, total, and message, and once finished, added, updated, removed, and skipped. A running reconcile's has done and total; a finished one's is the snapshot, cut to totals in job lists and streams. An action run's has message, done, and total, and once finished, result, which job lists and streams leave out."`
+	Progress    json.RawMessage `json:"progress" doc:"An import's has done, total, message, imported, skipped, failed, and errors. A catalog ingest's has done, total, and message, and once finished, added, updated, removed, and skipped. A running reconcile's has done and total; a finished one's is the snapshot, cut to totals in job lists and streams. An action run's has message, done, and total, and once finished, result, which job lists and streams leave out. An enrich run's has message, done, failed, total, and warnings."`
 	ParentID    *int64          `json:"parent_id,omitempty"`
 	Error       *string         `json:"error,omitempty"`
 	RunAfter    time.Time       `json:"run_after"`
@@ -358,7 +358,7 @@ func (s *Server) jobRoutes(api huma.API) {
 					}
 				}
 			}
-			ids, err := s.Lib.SearchIDs(ctx, kindNamed(b.Kind), q)
+			ids, err := s.searchIDs(ctx, kindNamed(b.Kind), q)
 			if err != nil {
 				return nil, s.fail(err)
 			}

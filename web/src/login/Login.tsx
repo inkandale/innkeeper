@@ -4,6 +4,7 @@ import { Navigate, useNavigate, useSearchParams } from "react-router";
 import { api, must, nextKey, safeNext } from "../api/client";
 import type { components } from "../api/schema";
 import { formFields, type Field } from "./fields";
+import { Mark } from "../shell/Mark";
 import "./Login.css";
 
 type Provider = components["schemas"]["Provider"];
@@ -45,6 +46,7 @@ export function Login() {
 
   return (
     <main className="login">
+      <Mark size={40} />
       <h1>Innkeeper</h1>
       {body}
     </main>

@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
 import { api, ApiError, must } from "../api/client";
 import { formFields } from "./fields";
+import { Mark } from "../shell/Mark";
 import "./Login.css";
 
 /** Setup claims a server that has no login provider yet. */
@@ -33,6 +34,7 @@ export function Setup() {
 
   return (
     <main className="login">
+      <Mark size={40} />
       <h1>Set up Innkeeper</h1>
       {body}
     </main>

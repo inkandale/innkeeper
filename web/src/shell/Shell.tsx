@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router";
 import { api } from "../api/client";
+import { Mark } from "./Mark";
 import { Toasts } from "./Toasts";
 import "./Shell.css";
 
@@ -27,7 +28,10 @@ export function Shell() {
   return (
     <div className={collapsed ? "shell collapsed" : "shell"}>
       <nav className="rail" aria-label="Sections">
-        <div className="rail-brand">Innkeeper</div>
+        <div className="rail-brand">
+          <Mark size={24} />
+          <span className="rail-label">Innkeeper</span>
+        </div>
         {sections.map((s) => (
           <NavLink key={s.to} to={s.to} aria-label={s.label}>
             <span aria-hidden="true">{s.icon}</span>

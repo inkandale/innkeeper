@@ -20,6 +20,9 @@
 }
 
 .rail-brand {
+  display: flex;
+  gap: var(--space);
+  align-items: center;
   font-weight: 700;
   padding: var(--space);
 }
@@ -43,8 +46,7 @@
   margin-top: auto;
 }
 
-.shell.collapsed .rail-label,
-.shell.collapsed .rail-brand {
+.shell.collapsed .rail-label {
   display: none;
 }
 

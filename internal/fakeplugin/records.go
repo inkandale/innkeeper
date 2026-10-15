@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"maps"
 	"os"
-	"path"
 	"slices"
 	"strings"
 	"sync"
@@ -76,8 +75,10 @@ func recordsCall(method string, params json.RawMessage, mode string) (any, error
 		notes.byID[n.Title] = n
 		return protocol.RecordsPutResult{ID: n.Title}, nil
 	case protocol.MethodRecordsImport:
-		// The body records where the note came from, so tests can see the path.
-		n := note{Title: path.Base(p.URL), Body: p.URL}
+		// The body says where the note came from, so tests can see the path.
+		// A URL's last segment is the title; one ending in / has none.
+		title, _, _ := strings.Cut(p.URL[strings.LastIndex(p.URL, "/")+1:], "?")
+		n := note{Title: title, Body: p.URL}
 		if p.Path != "" {
 			text, err := os.ReadFile(p.Path)
 			if err != nil {
@@ -85,7 +86,7 @@ func recordsCall(method string, params json.RawMessage, mode string) (any, error
 			}
 			n = note{Title: p.Name, Body: p.Path + "\n" + string(text)}
 		}
-		if n.Title == "" || n.Title == "." || n.Title == "/" {
+		if n.Title == "" {
 			return nil, invalid("nothing to import")
 		}
 		notes.byID[n.Title] = n

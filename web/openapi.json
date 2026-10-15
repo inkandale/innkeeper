@@ -2259,7 +2259,8 @@
             "type": "string"
           },
           "url": {
-            "minLength": 1,
+            "description": "An http or https URL",
+            "pattern": "^https?://",
             "type": "string"
           }
         },

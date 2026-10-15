@@ -2982,6 +2982,7 @@ export interface components {
              * @example /api/schemas/ImportURLInBody.json
              */
             readonly $schema?: string;
+            /** @description An http or https URL */
             url: string;
         };
         InstallInBody: {

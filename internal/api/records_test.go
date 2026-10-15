@@ -118,11 +118,12 @@ func TestImportRecordsFromURL(t *testing.T) {
 		t.Fatalf("imported %+v", list)
 	}
 	// The plugin's reason reaches the owner.
-	r := e.call("POST", notes+"/import-url", map[string]any{"url": "/"}, 400, nil)
+	r := e.call("POST", notes+"/import-url", map[string]any{"url": "https://example.com/"}, 400, nil)
 	if !strings.Contains(string(r.Body), "nothing to import") {
 		t.Fatalf("bad url: %s", r)
 	}
 	e.call("POST", notes+"/import", []byte("x"), 422, nil)
+	e.call("POST", notes+"/import-url", map[string]any{"url": "file:///etc/passwd"}, 422, nil)
 }
 
 func TestRecordTiers(t *testing.T) {

@@ -62,7 +62,7 @@ type importURLIn struct {
 	ID   int64  `path:"id"`
 	Type string `path:"type"`
 	Body struct {
-		URL string `json:"url" minLength:"1"`
+		URL string `json:"url" pattern:"^https?://" doc:"An http or https URL"`
 	}
 }
 
@@ -205,7 +205,7 @@ func (s *Server) putRecord(ctx context.Context, in *recordTypeIn, id string, rec
 	return out, s.recordsFail(err)
 }
 
-// recordsFail is fail, except that the owner sees why the plugin refused an
+// recordsFail is fail, except that the owner sees why the plugin refused a
 // record or an import: the owner sent it, and records.put and records.import
 // need write or above.
 func (s *Server) recordsFail(err error) error {

@@ -257,6 +257,8 @@ type NewInstance struct {
 	Secrets       map[string]string
 	OwnerSubject  *string
 	LibraryAccess bool
+	// DefaultBases maps a JSON pointer the owner just overrode to the default it replaced.
+	DefaultBases map[string]any
 }
 
 // InstanceEdit changes an instance. Nil fields stay as they are. A nil value
@@ -267,6 +269,8 @@ type InstanceEdit struct {
 	Secrets       map[string]*string
 	OwnerSubject  *string
 	LibraryAccess *bool
+	// DefaultBases maps a JSON pointer the owner just overrode to the default it replaced.
+	DefaultBases map[string]any
 }
 
 func checkSecret(m *protocol.Manifest, name string) error {
@@ -309,9 +313,10 @@ func (r *Registry) CreateInstance(ctx context.Context, n NewInstance) (int64, er
 	if n.Config == nil {
 		n.Config = map[string]any{}
 	}
+	hashes := mergeDefaultHashes(nil, n.Config, n.DefaultBases)
 	var id int64
-	err = r.pool.QueryRow(ctx, `INSERT INTO plugin_instance (plugin, name, config, secrets, owner_subject, library_access)
-		VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`, n.Plugin, n.Name, n.Config, sealed, n.OwnerSubject, n.LibraryAccess).Scan(&id)
+	err = r.pool.QueryRow(ctx, `INSERT INTO plugin_instance (plugin, name, config, secrets, owner_subject, library_access, default_hashes)
+		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`, n.Plugin, n.Name, n.Config, sealed, n.OwnerSubject, n.LibraryAccess, hashes).Scan(&id)
 	return id, writeErr(err)
 }
 
@@ -326,7 +331,8 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 	defer tx.Rollback(ctx)
 	var plugin string
 	var sealed []byte
-	err = tx.QueryRow(ctx, `SELECT plugin, secrets FROM plugin_instance WHERE id = $1 FOR UPDATE`, id).Scan(&plugin, &sealed)
+	var hashes map[string]string
+	err = tx.QueryRow(ctx, `SELECT plugin, secrets, default_hashes FROM plugin_instance WHERE id = $1 FOR UPDATE`, id).Scan(&plugin, &sealed, &hashes)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -356,10 +362,10 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 			return err
 		}
 	}
-	// An untyped nil sends SQL NULL, which keeps the current config.
-	var config any
+	// An untyped nil sends SQL NULL, which keeps the current config and hashes.
+	var config, newHashes any
 	if e.Config != nil {
-		config = e.Config
+		config, newHashes = e.Config, mergeDefaultHashes(hashes, e.Config, e.DefaultBases)
 	}
 	owner := ""
 	if e.OwnerSubject != nil {
@@ -367,9 +373,9 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 	}
 	_, err = tx.Exec(ctx, `UPDATE plugin_instance SET name = coalesce($2, name), config = coalesce($3, config),
 			secrets = $4, owner_subject = CASE WHEN $5 THEN nullif($6::text, '') ELSE owner_subject END,
-			library_access = coalesce($7, library_access),
+			library_access = coalesce($7, library_access), default_hashes = coalesce($8, default_hashes),
 			broken_error = NULL, broken_at = NULL, updated_at = now()
-		WHERE id = $1`, id, e.Name, config, sealed, e.OwnerSubject != nil, owner, e.LibraryAccess)
+		WHERE id = $1`, id, e.Name, config, sealed, e.OwnerSubject != nil, owner, e.LibraryAccess, newHashes)
 	if err != nil {
 		return writeErr(err)
 	}
@@ -425,6 +431,17 @@ func (r *Registry) scanInfo(row pgx.Row) (InstanceInfo, error) {
 // GetInstance returns one instance's settings, without secret values.
 func (r *Registry) GetInstance(ctx context.Context, id int64) (InstanceInfo, error) {
 	return r.scanInfo(r.pool.QueryRow(ctx, `SELECT `+infoCols+` FROM plugin_instance WHERE id = $1`, id))
+}
+
+// DefaultHashes returns, for each of an instance's config overrides, the
+// hash of the default it replaced, by JSON pointer.
+func (r *Registry) DefaultHashes(ctx context.Context, id int64) (map[string]string, error) {
+	var h map[string]string
+	err := r.pool.QueryRow(ctx, `SELECT default_hashes FROM plugin_instance WHERE id = $1`, id).Scan(&h)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return h, err
 }
 
 // ListInstances returns every instance, oldest first.

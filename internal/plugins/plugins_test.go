@@ -488,3 +488,37 @@ func TestInstancesWithEveryCapability(t *testing.T) {
 		t.Fatalf("InstanceWith(pusher, pull): %v, want ErrIncapable", err)
 	}
 }
+
+func TestInstanceKeepsHashOfReplacedDefault(t *testing.T) {
+	ctx := context.Background()
+	reg, _ := newRegistry(t)
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: "Fake",
+		Config: map[string]any{"p": map[string]any{"a": "mine"}}, DefaultBases: map[string]any{"/p/a": "default A"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hashes, err := reg.DefaultHashes(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hashes["/p/a"] != hashDefault("default A") {
+		t.Fatalf("after create: %v", hashes)
+	}
+
+	// A save that leaves /p/a alone keeps its base; a new override gets its own.
+	cfg := map[string]any{"p": map[string]any{"a": "mine", "b": "also mine"}}
+	if err := reg.UpdateInstance(ctx, id, InstanceEdit{Config: cfg, DefaultBases: map[string]any{"/p/b": "default B"}}); err != nil {
+		t.Fatal(err)
+	}
+	if hashes, _ = reg.DefaultHashes(ctx, id); hashes["/p/a"] != hashDefault("default A") || hashes["/p/b"] != hashDefault("default B") {
+		t.Fatalf("after adding b: %v", hashes)
+	}
+
+	// Resetting /p/a drops its hash.
+	if err := reg.UpdateInstance(ctx, id, InstanceEdit{Config: map[string]any{"p": map[string]any{"b": "also mine"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if hashes, _ = reg.DefaultHashes(ctx, id); len(hashes) != 1 || hashes["/p/b"] == "" {
+		t.Fatalf("after reset: %v", hashes)
+	}
+}

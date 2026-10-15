@@ -340,7 +340,33 @@ func TestBadActionsFail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := failed(results)[checkActionListName]; err == nil || !strings.Contains(err.Error(), "Bad ID") {
-		t.Fatalf("got %v, want the bad ID named", err)
+	if err := failed(results)[checkActionListName]; err == nil || !strings.Contains(err.Error(), "Bad ID") ||
+		!strings.Contains(err.Error(), "Bad Skill") {
+		t.Fatalf("got %v, want the bad ID and skill named", err)
+	}
+}
+
+func TestItemsPluginPasses(t *testing.T) {
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"items"}), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := failed(results); len(f) > 0 {
+		t.Fatalf("checks failed: %v", f)
+	}
+	for _, name := range []string{checkItemsListName, checkItemsRoundTripName, checkItemsGoneName} {
+		if !slices.ContainsFunc(results, func(r Result) bool { return r.Name == name }) {
+			t.Errorf("no %q check in %v", name, results)
+		}
+	}
+}
+
+func TestBadItemsFail(t *testing.T) {
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"items"}, "-mode=bad-items"), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := failed(results)[checkItemsListName]; err == nil || !strings.Contains(err.Error(), "item id") {
+		t.Fatalf("got %v, want the bad item named", err)
 	}
 }

@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	checkActionListName = "action.list returns valid actions"
+	checkActionListName = "action.list returns valid actions and skills"
 	checkActionRunsName = "action.run of each action returns a valid reply or a plugin error"
 )
 
@@ -28,6 +28,14 @@ func checkActions(ctx context.Context, p *pluginhost.Process) []Result {
 			}
 			seen[a.ID] = true
 			errs = append(errs, a.Validate())
+		}
+		seen = map[string]bool{}
+		for _, sk := range res.Skills {
+			if seen[sk.Name] {
+				errs = append(errs, fmt.Errorf("skill %q repeats", sk.Name))
+			}
+			seen[sk.Name] = true
+			errs = append(errs, sk.Validate())
 		}
 		err = errors.Join(errs...)
 	}

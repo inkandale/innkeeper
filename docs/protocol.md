@@ -324,7 +324,7 @@ changes queue.
 | Method | What to return |
 |---|---|
 | `target.describe` | `pull` true, `update` false. Leave `character_book` out of `fields`; the core doesn't compare embedded books. Set `lorebooks` to `standalone` to follow lorebook sources |
-| `target.get`, `target.get_lorebook` | The site's current copy. A card check sets `avatar`, so return the image when asked |
+| `target.get`, `target.get_lorebook` | The site's current copy. A card check sets `avatar`, so return the image when asked. Leave `lorebook_remote_ids` out of `target.get` |
 | `target.list`, `target.list_lorebooks` | `{"items": []}`. Instance checks and `innkeeper plugin check` call them |
 | `target.put`, `target.put_lorebook` | Don't implement. The core never pushes to a pull-only plugin |
 
@@ -332,6 +332,7 @@ Errors and stability:
 
 - Return `-32004` when the page is gone, private, or hides its definition.
   The core shows "no longer on the site".
+- Return `-32004` for a `remote_id` whose kind isn't in your `source_kinds`.
 - Make a timeout, a 5xx, or rate limiting retryable. The core lists a source
   with a failing check only after 3 failures in a row.
 - Return identical `data` for the described fields on every fetch of an

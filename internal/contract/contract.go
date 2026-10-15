@@ -98,6 +98,7 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 		{[]string{"action"}, func() []Result { return checkActions(ctx, p) }},
 		{[]string{"records"}, func() []Result { return checkRecords(ctx, p, m) }},
 		{[]string{"enrich"}, func() []Result { return []Result{{checkEnrichName, checkEnrich(ctx, p, m)}} }},
+		{[]string{"ai"}, func() []Result { return []Result{{checkServicesName, checkServices(ctx, p)}} }},
 		{[]string{"catalog"}, func() []Result { return checkCatalog(ctx, p, tmp) }},
 		{[]string{"sites"}, func() []Result { return checkSites(ctx, p) }},
 		{[]string{"codec"}, func() []Result {

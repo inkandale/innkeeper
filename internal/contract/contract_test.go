@@ -412,3 +412,21 @@ func TestBadEnrichFails(t *testing.T) {
 		t.Fatalf("got %v, want the undeclared key named", err)
 	}
 }
+
+func TestAIPluginAnswersItsServices(t *testing.T) {
+	t.Cleanup(func() { Config = nil })
+	for services, wantPass := range map[string]bool{"ai.chat": true, "ai.embed": false} {
+		Config = map[string]any{"services": []any{services}}
+		results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"ai"}), quiet)
+		if err != nil {
+			t.Fatal(err)
+		}
+		i := slices.IndexFunc(results, func(r Result) bool { return r.Name == checkServicesName })
+		if i < 0 {
+			t.Fatalf("%s: the ai check didn't run: %v", services, results)
+		}
+		if (results[i].Err == nil) != wantPass {
+			t.Errorf("%s: got %v, want pass %v", services, results[i].Err, wantPass)
+		}
+	}
+}

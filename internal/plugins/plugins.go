@@ -590,7 +590,12 @@ func (r *Registry) Check(ctx context.Context, mgr *pluginhost.Manager, id int64)
 // Call sends method to inst's plugin through mgr. A plugin that fails to
 // start marks the instance broken.
 func (r *Registry) Call(ctx context.Context, mgr *pluginhost.Manager, inst pluginhost.Instance, method string, params, result any) error {
-	err := mgr.Call(ctx, inst, method, params, result)
+	return r.markStartFailure(ctx, inst, mgr.Call(ctx, inst, method, params, result))
+}
+
+// markStartFailure marks inst broken when err is a failed start, and
+// returns err.
+func (r *Registry) markStartFailure(ctx context.Context, inst pluginhost.Instance, err error) error {
 	var startErr *pluginhost.StartError
 	if errors.As(err, &startErr) && ctx.Err() == nil {
 		id, perr := strconv.ParseInt(inst.ID, 10, 64)
@@ -600,6 +605,52 @@ func (r *Registry) Call(ctx context.Context, mgr *pluginhost.Manager, inst plugi
 		return errors.Join(err, perr)
 	}
 	return err
+}
+
+// Services lists the service methods inst offers, starting its plugin if
+// needed.
+func (r *Registry) Services(ctx context.Context, mgr *pluginhost.Manager, inst pluginhost.Instance) ([]string, error) {
+	info, err := mgr.Info(ctx, inst)
+	return info.Services, r.markStartFailure(ctx, inst, err)
+}
+
+// InstancesOffering lists the working instances that offer the service
+// method, oldest first, starting their plugins to ask. One that fails to
+// start is marked broken and left out.
+func (r *Registry) InstancesOffering(ctx context.Context, mgr *pluginhost.Manager, method string) ([]InstanceInfo, error) {
+	capability, ok := protocol.Services[method]
+	if !ok {
+		return nil, fmt.Errorf("%w: %q is not a service", ErrInvalid, method)
+	}
+	list, err := r.InstancesWith(ctx, capability)
+	if err != nil {
+		return nil, err
+	}
+	out := []InstanceInfo{}
+	for _, info := range list {
+		if info.BrokenError != nil {
+			continue
+		}
+		inst, err := r.Instance(ctx, info.ID)
+		if errors.Is(err, ErrBroken) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		services, err := r.Services(ctx, mgr, inst)
+		var startErr *pluginhost.StartError
+		if errors.As(err, &startErr) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if slices.Contains(services, method) {
+			out = append(out, info)
+		}
+	}
+	return out, nil
 }
 
 // Retryable reports whether a failed plugin call may work later: the plugin

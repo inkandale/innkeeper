@@ -1,6 +1,7 @@
 package plugins
 
 import (
+	"encoding/json"
 	"maps"
 	"testing"
 )
@@ -27,6 +28,9 @@ func TestLookupFollowsPointer(t *testing.T) {
 	if v, ok := lookup(config, "/a~1b"); !ok || v != 1.0 {
 		t.Errorf("/a~1b = %v, %v", v, ok)
 	}
+	if v, ok := lookup(map[string]any{"~1": "tilde"}, "/~01"); !ok || v != "tilde" {
+		t.Errorf("/~01 = %v, %v", v, ok)
+	}
 	if _, ok := lookup(config, "/prompts/missing"); ok {
 		t.Error("found a missing key")
 	}
@@ -45,8 +49,16 @@ func TestMergeDefaultHashesKeepsOldBasesForUntouchedOverrides(t *testing.T) {
 	}
 }
 
-func TestHashDefaultIgnoresKeyOrder(t *testing.T) {
-	if hashDefault(map[string]any{"a": 1, "b": 2}) != hashDefault(map[string]any{"b": 2, "a": 1}) {
-		t.Fatal("key order changed the hash")
+func TestHashDefaultMatchesCanonicalJSON(t *testing.T) {
+	if hashDefault(int64(3)) != hashDefault(float64(3)) {
+		t.Error("a TOML integer and a JSON number hash differently")
+	}
+	var fromJSON map[string]any
+	if err := json.Unmarshal([]byte(`{"b": {"y": 2, "x": [1, "s"]}, "a": 1}`), &fromJSON); err != nil {
+		t.Fatal(err)
+	}
+	fromTOML := map[string]any{"a": int64(1), "b": map[string]any{"x": []any{int64(1), "s"}, "y": int64(2)}}
+	if hashDefault(fromJSON) != hashDefault(fromTOML) {
+		t.Error("key order or number type changed the hash")
 	}
 }

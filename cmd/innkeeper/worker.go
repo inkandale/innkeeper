@@ -19,6 +19,7 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/importer"
 	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
+	iservices "github.com/davidgibbons/innkeeper/internal/services"
 	"github.com/davidgibbons/innkeeper/internal/targets"
 )
 
@@ -63,9 +64,10 @@ func worker() error {
 	q := jobs.New(svc.pool)
 	runs := pluginhost.NewRuns(log)
 	im := importer.New(svc.lib, svc.registry, q, runs, log)
-	mgr := pluginhost.NewManager(runs.Handle, 5*time.Minute, log)
+	broker := &iservices.Broker{Registry: svc.registry, Runs: runs}
+	mgr := pluginhost.NewManager(broker.Handle(runs.Handle), 5*time.Minute, log)
 	defer mgr.Close()
-	im.Plugins = mgr
+	im.Plugins, broker.Plugins = mgr, mgr
 	go stopIdlePlugins(ctx, mgr)
 
 	tg := targets.New(svc.pool, svc.lib, svc.registry, mgr, log)

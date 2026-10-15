@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { fieldLabel } from "../card/Fields";
-import { show, type Data } from "../card/draft";
+import { same, show, type Data } from "../card/draft";
 import { Words } from "../sync/Diff";
 import { wordDiff } from "../sync/sync";
 import { changedKeys } from "./actions";
@@ -22,7 +22,9 @@ export function Review(props: {
 }) {
   const { start, draft, proposal } = props;
   const rows = changedKeys(start, proposal);
-  const [taken, setTaken] = useState(() => new Set(rows));
+  // A field the owner edited during the run keeps the edit unless they take the proposal.
+  const edited = (k: string) => !same(draft[k], start[k]);
+  const [taken, setTaken] = useState(() => new Set(rows.filter((k) => !edited(k))));
   const choose = (k: string, take: boolean) =>
     setTaken((s) => {
       const next = new Set(s);
@@ -52,7 +54,10 @@ export function Review(props: {
         <tbody>
           {rows.map((k) => (
             <tr key={k} className={taken.has(k) ? "take" : "keep"}>
-              <th>{fieldLabel(k)}</th>
+              <th>
+                {fieldLabel(k)}
+                {edited(k) && <small className="muted forge-edited">You've edited this since the run started.</small>}
+              </th>
               <td>
                 <div className="forge-text">{show(draft[k]) || absent}</div>
               </td>

@@ -55,7 +55,8 @@ export function mentionsIn(text: string, picked: Picked[], lookup: (type: string
     const start = m.index;
     const from = start + type.length + 2;
     const rest = text.slice(from).split("\n")[0]!;
-    const word = m[2]!.replace(/[^\p{L}\p{N}]+$/u, "");
+    // The lookup word stops at punctuation, so "Billy's" looks up Billy.
+    const word = /^[\p{L}\p{N}_-]*/u.exec(m[2]!)![0];
     const mention = (state: Mention["state"], names: Named[] = []): Mention => {
       const name = names[0]?.name ?? word;
       return { start, end: from + name.length, type, word, name, state, id: state === "ok" ? names[0]!.id : undefined };

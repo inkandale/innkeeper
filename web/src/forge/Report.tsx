@@ -45,7 +45,7 @@ export function Report({ report, onRefine }: { report: ReportT; onRefine?: (inst
     <div className="forge-report">
       <div className="forge-rhead">
         {typeof report.score === "number" && (
-          <div className="forge-ring" style={{ "--p": pct(report.score), "--tone": tone(report.score) } as CSSProperties} aria-label={`Score ${report.score} of 100`}>
+          <div className="forge-ring" style={{ "--p": pct(report.score), "--tone": tone(report.score) } as CSSProperties} role="img" aria-label={`Score ${report.score} of 100`}>
             <span>
               {Math.round(report.score)}
               <small>/100</small>

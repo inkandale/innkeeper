@@ -42,6 +42,7 @@ export function NewCard() {
   const edit = (key: string, value: unknown) => setData((d) => ({ ...d, [key]: value }));
   const dirty = changed({ baseId: 0, base: {}, data });
   const forge = useForge({ data });
+  const forgeBusy = forge.runs.some((r) => r.live) || forge.waiting.length > 0 || !!forge.pending;
   const save = useMutation({
     mutationFn: async () => {
       const sha = avatar ? await upload(avatar) : undefined;
@@ -63,10 +64,11 @@ export function NewCard() {
           <Avatar image={avatar} onChange={setAvatar} />
           <Identity data={data} edit={edit} lock={forge.lock} />
           <div className="row">
-            <button className="button primary" disabled={!dirty.size && !avatar} onClick={() => save.mutate()}>
+            <button className="button primary" disabled={(!dirty.size && !avatar) || forgeBusy} onClick={() => save.mutate()}>
               Save
             </button>
           </div>
+          {forgeBusy && <p className="muted">Save waits for the Forge run to finish and be reviewed: the run belongs to this page, not the saved card.</p>}
         </aside>
         <div className="card-main">
           <Forge forge={forge} isNew data={data} dirty={dirty} edit={edit} avatar={avatar ?? undefined} />

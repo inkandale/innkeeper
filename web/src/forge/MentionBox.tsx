@@ -1,5 +1,5 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Mirrored } from "../card/MacroTextarea";
 import { mentionsIn, mentionTypes, suggestAt, type Mention, type Picked } from "./mentions";
 
@@ -50,7 +50,12 @@ export function MentionBox(props: {
   const [sel, setSel] = useState(0);
   const [dismissed, setDismissed] = useState(-1);
   const found = suggestAt(value.text, caret);
-  const active = found && found.at !== dismissed ? found : null;
+  // Past a resolved mention, as after a pick, the owner has moved on from it.
+  const here = mentions.find((m) => m.start === found?.at);
+  const past = here?.state === "ok" && caret > here.end;
+  const active = found && found.at !== dismissed && !past ? found : null;
+  const listId = useId();
+  const optionId = (i: number) => `${listId}-${i}`;
   const names = useQuery({
     queryKey: ["mention", "suggest", active?.type?.key, active?.query],
     enabled: !!active?.type,
@@ -109,8 +114,11 @@ export function MentionBox(props: {
         placeholder={props.placeholder}
         autoFocus={props.autoFocus}
         value={value.text}
+        role="combobox"
         aria-autocomplete="list"
         aria-expanded={!!open}
+        aria-controls={listId}
+        aria-activedescendant={open ? optionId(cur) : undefined}
         mirror={marked(value.text, shown)}
         onChange={(e) => {
           onChange({ ...value, text: e.target.value });
@@ -137,12 +145,19 @@ export function MentionBox(props: {
         }}
       />
       {open && (
-        <ul className="plain forge-suggest" role="listbox" aria-label="Mentions">
+        <ul id={listId} className="plain forge-suggest" role="listbox" aria-label="Mentions">
           {options.map((o, i) => (
-            <li key={o.key} role="option" aria-selected={i === cur} className={i === cur ? "on" : undefined}>
-              <button type="button" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onClick={() => insert(o)}>
-                {o.label} <span className="muted">{o.hint}</span>
-              </button>
+            <li
+              key={o.key}
+              id={optionId(i)}
+              role="option"
+              aria-selected={i === cur}
+              className={i === cur ? "on" : undefined}
+              // Keep the caret in the box.
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => insert(o)}
+            >
+              {o.label} <span className="muted">{o.hint}</span>
             </li>
           ))}
         </ul>

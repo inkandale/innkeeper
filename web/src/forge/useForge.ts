@@ -121,7 +121,7 @@ export function useForge({ cardId, data }: { cardId?: number; data: Data }) {
   const busy = [...runs.filter((r) => r.live), ...waiting];
   const lock = lockOf(busy);
   const pending = shown.find((r) => r.job.status === "succeeded" && r.result?.proposal && changedKeys(r.start, r.result.proposal).length > 0);
-  const report = [...runs].reverse().find((r) => r.result?.report)?.result?.report ?? undefined;
+  const reportRun = [...runs].reverse().find((r) => r.result?.report);
 
   // A run starts from the draft as it is when it starts, which for a waiting run is later than when it was asked for.
   const dataRef = useRef(data);
@@ -151,10 +151,20 @@ export function useForge({ cardId, data }: { cardId?: number; data: Data }) {
     },
   });
 
-  const start = (req: RunRequest) => {
+  /**
+   * start runs req, or holds it until the runs it overlaps finish. It resolves to whether the run started or is held;
+   * a failed start's error shows as a toast.
+   */
+  const start = async (req: RunRequest) => {
     const w: Waiting = { key: ++waitingKey, req, label: req.action.label, field: req.field, scope: scopeOf(req.action, req.field), instance: req.action.instance_name };
-    if (post.isPending || busy.some((b) => overlaps(b.scope, w.scope))) setWaiting((list) => [...list, w]);
-    else post.mutate(req);
+    if (post.isPending || busy.some((b) => overlaps(b.scope, w.scope))) {
+      setWaiting((list) => [...list, w]);
+      return true;
+    }
+    return post.mutateAsync(req).then(
+      () => true,
+      () => false,
+    );
   };
   const liveScopes = runs.filter((r) => r.live).map((r) => r.scope);
   useEffect(() => {
@@ -189,7 +199,9 @@ export function useForge({ cardId, data }: { cardId?: number; data: Data }) {
     started,
     lock,
     pending,
-    report,
+    /** report is the newest report, from the run reportId. */
+    report: reportRun?.result?.report ?? undefined,
+    reportId: reportRun?.id,
     start,
     stop: (id: number) => cancel.mutate(id),
     unwait: (key: number) => setWaiting((list) => list.filter((w) => w.key !== key)),

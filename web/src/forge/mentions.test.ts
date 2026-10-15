@@ -28,6 +28,10 @@ test("a typed mention resolves by exact name, including names with spaces", () =
   expect(contextOf(ms)).toEqual({ cards: [1], lorebooks: [9] });
 });
 
+test("a typed name followed by a possessive resolves", () => {
+  expect(mentionsIn("take @cards/Billy's sword", [], lookup)[0]).toMatchObject({ state: "ok", id: 1, name: "Billy" });
+});
+
 test("a typed name nobody has is unknown, over the typed word", () => {
   const text = "ask @cards/Bil about it";
   const [m] = mentionsIn(text, [], lookup);

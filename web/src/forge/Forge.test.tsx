@@ -20,6 +20,7 @@ const allActions = [
   { ...decl, id: "rewrite", label: "Rewrite…", fields: ["description"], instruction: true },
   { ...decl, id: "reforge", label: "Reforge", instruction: true },
   { ...decl, id: "evaluate", label: "Evaluate", report_only: true },
+  { ...decl, id: "critique", label: "Critique", fields: ["description"], report_only: true },
   { ...decl, id: "generate", label: "Forge", applies: "new", instruction: true, inputs: { type: "object", properties: { point_of_view: { type: "string", enum: ["first", "third"] } } } },
 ];
 
@@ -39,10 +40,15 @@ const job = (j: JobT) => ({
 let actions: unknown[];
 let jobs: ReturnType<typeof job>[];
 let runs: unknown[];
+// Jobs the tab started; the card's job list holds only jobs.
+let created: ReturnType<typeof job>[];
+let runFails: boolean;
 beforeEach(() => {
   actions = allActions;
   jobs = [];
   runs = [];
+  created = [];
+  runFails = false;
   localStorage.clear();
   vi.stubGlobal(
     "fetch",
@@ -53,15 +59,17 @@ beforeEach(() => {
       if (path === "/api/actions") return json(actions);
       if (path === "/api/jobs") return json(url.searchParams.get("card_id") === "7" ? jobs : []);
       const one = /^\/api\/jobs\/(\d+)$/.exec(path);
-      if (one) return json(jobs.find((j) => j.id === Number(one[1])));
+      if (one) return json([...jobs, ...created].find((j) => j.id === Number(one[1])));
       if (path === "/api/actions/runs") {
+        if (runFails) return json({ detail: "the plugin is busy" }, 503);
         const body = await req.json();
         runs.push(body);
-        return json(job({ id: 90 + runs.length, status: "queued", payload: body }), 202);
+        created.push(job({ id: 90 + runs.length, status: "running", payload: body }));
+        return json(created.at(-1), 202);
       }
       if (path === "/api/cards/search") {
         const body = await req.json();
-        const names = [{ id: 1, name: "Billy" }, { id: 2, name: "Bill" }].filter((n) => n.name.toLowerCase().includes((body.filter?.name ?? "").toLowerCase()));
+        const names = [{ id: 1, name: "Billy" }, { id: 2, name: "Bill" }, { id: 4, name: "Billy Bob" }].filter((n) => n.name.toLowerCase().includes((body.filter?.name ?? "").toLowerCase()));
         return json({ hits: names.map((n) => ({ id: n.id, slug: "", revision_id: 1, fields: { name: n.name } })), total: names.length });
       }
       return json([]);
@@ -174,7 +182,7 @@ test("an unknown mention blocks Run; a picked one sends its ID and the text as t
 
   await user.clear(box);
   await user.type(box, "@cards/Bil");
-  await user.click(await screen.findByRole("button", { name: /^Billy/ }));
+  await user.click(await screen.findByRole("option", { name: /^Billy card/ }));
   await user.type(box, "is the brother");
   expect(screen.getByRole("button", { name: "Remove Billy" })).toBeInTheDocument();
   await waitFor(() => expect(screen.getByRole("button", { name: "Run" })).toBeEnabled());
@@ -187,7 +195,7 @@ test("a new card's Forge runs the new action from the concept", async () => {
   renderAt("/cards/new");
   const user = userEvent.setup();
   await user.type(await screen.findByLabelText("Concept"), "A dwarf smith");
-  await user.selectOptions(screen.getByRole("combobox"), "third");
+  await user.selectOptions(screen.getByRole("combobox", { name: "point_of_view" }), "third");
   await user.click(screen.getByRole("button", { name: "Forge" }));
   await waitFor(() => expect(runs).toHaveLength(1));
   expect(runs[0]).toMatchObject({ action: "generate", instruction: "A dwarf smith", inputs: { point_of_view: "third" }, entity: { kind: "card" } });
@@ -202,4 +210,69 @@ test("a whole-card run waits while another runs", async () => {
   await user.type(screen.getByLabelText("Instruction"), "Robots{Enter}");
   expect(await screen.findByText(/waiting for the run before it/)).toBeInTheDocument();
   expect(runs).toHaveLength(0);
+});
+
+test("after a pick the list closes, so Enter runs instead of picking again", async () => {
+  renderAt("/cards/7");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: /Reforge/ }));
+  const box = screen.getByRole("combobox", { name: "Instruction" });
+  await user.type(box, "@cards/Bil");
+  expect(await screen.findByRole("option", { name: /^Billy card/ })).toHaveAttribute("aria-selected", "true");
+  expect(box.getAttribute("aria-activedescendant")).toBe(screen.getByRole("option", { name: /^Billy card/ }).id);
+  await user.keyboard("{Enter}");
+  expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole("button", { name: "Run" })).toBeEnabled());
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(runs).toHaveLength(1));
+  expect(runs[0]).toMatchObject({ instruction: "@cards/Billy ", context: { cards: [1] } });
+});
+
+test("the Reforge panel keeps the instruction open until the run starts", async () => {
+  runFails = true;
+  renderAt("/cards/7");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: /Reforge/ }));
+  await user.type(screen.getByLabelText("Instruction"), "Robots{Enter}");
+  expect(await screen.findByText("the plugin is busy")).toBeInTheDocument();
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(screen.getByLabelText("Instruction")).toHaveValue("Robots");
+});
+
+test("a field menu takes focus, moves with arrows, and Escape returns to its button", async () => {
+  renderAt("/cards/7");
+  const user = userEvent.setup();
+  const button = await screen.findByRole("button", { name: "Forge actions for Description" });
+  await user.click(button);
+  expect(screen.getByRole("menuitem", { name: "Tighten" })).toHaveFocus();
+  await user.keyboard("{ArrowDown}");
+  expect(screen.getByRole("menuitem", { name: "Rewrite…" })).toHaveFocus();
+  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  expect(button).toHaveFocus();
+});
+
+test("arrow keys move between tabs", async () => {
+  renderAt("/cards/7");
+  const user = userEvent.setup();
+  const fields = await screen.findByRole("tab", { name: "Fields" });
+  expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", fields.id);
+  await user.click(fields);
+  // Review is disabled with nothing to review, so the arrow skips it.
+  await user.keyboard("{ArrowRight}");
+  expect(screen.getByRole("tab", { name: "Report" })).toHaveFocus();
+  expect(screen.getByRole("tab", { name: "Report" })).toHaveAttribute("aria-selected", "true");
+});
+
+test("a new card offers no report-only actions and can't be saved while a run is out", async () => {
+  renderAt("/cards/new");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("tab", { name: "Fields" }));
+  await user.type(screen.getByLabelText("Description"), "A smith");
+  await user.click(screen.getByRole("button", { name: "Forge actions for Description" }));
+  expect(screen.queryByRole("menuitem", { name: "Critique" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("menuitem", { name: "Tighten" }));
+  await waitFor(() => expect(runs).toHaveLength(1));
+  expect(await screen.findByText(/Save waits for the Forge/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
 });

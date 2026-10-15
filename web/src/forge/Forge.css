@@ -260,20 +260,16 @@
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 }
 
-.forge-suggest button {
+.forge-suggest li {
   display: flex;
   justify-content: space-between;
   gap: var(--space);
-  width: 100%;
-  text-align: left;
-  background: none;
-  border: 0;
   padding: 4px 8px;
   border-radius: calc(var(--radius) * 0.5);
   cursor: pointer;
 }
 
-.forge-suggest .on button {
+.forge-suggest li.on {
   background: var(--surface);
   outline: 1px solid var(--accent);
 }
@@ -459,6 +455,12 @@
   padding: calc(var(--space) * 0.75);
 }
 
+.forge-edited {
+  display: block;
+  font-weight: normal;
+  margin-top: 4px;
+}
+
 .forge-toggle {
   display: grid;
   gap: 4px;
@@ -510,7 +512,6 @@
 }
 
 .forge-dims {
-  width: 100%;
   border-collapse: collapse;
   margin-top: var(--space);
 }
@@ -522,23 +523,20 @@
   font-weight: normal;
 }
 
-.forge-dims th {
-  width: 10em;
-}
-
 .forge-bar {
-  width: 30%;
-}
-
-.forge-dims td:nth-child(3) {
-  width: 3em;
-  text-align: right;
+  width: 160px;
+  min-width: 160px;
 }
 
 .forge-bar span {
   display: block;
   height: 8px;
   border-radius: 4px;
+}
+
+.forge-dims td:nth-child(3) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .forge-report h3 {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { fieldLabel, Fields } from "../card/Fields";
 import type { Data } from "../card/draft";
 import { changedKeys, instructionAction, newAction, type Action, type Report as ReportT, type Severity } from "./actions";
@@ -82,7 +82,13 @@ export function Forge(props: {
   const extra = (key: string) => (
     <>
       {forge.report && <Badges report={forge.report} field={key} onOpen={() => toReport(key)} />}
-      <FieldMenu field={key} actions={forge.mine.filter((a) => a.fields?.includes(key))} disabled={!!forge.lock(key)} onPick={(a) => pickField(a, key)} />
+      <FieldMenu
+        field={key}
+        // A new card has no Report tab to show a report-only action's result.
+        actions={forge.mine.filter((a) => a.fields?.includes(key) && !(isNew && a.report_only))}
+        disabled={!!forge.lock(key)}
+        onPick={(a) => pickField(a, key)}
+      />
     </>
   );
 
@@ -93,16 +99,38 @@ export function Forge(props: {
     : [["fields", "Fields"], ["review", `Review${pending ? ` (${reviewCount})` : ""}`], ["report", "Report"]];
   const revise = instructionAction(forge.mine);
   const shown: Tab = on ? (tab ?? (isNew ? "start" : "fields")) : "fields";
+  const tabId = (t: Tab) => `forge-tab-${t}`;
+  const usable = tabs.filter(([t]) => t !== "review" || pending).map(([t]) => t);
+  // Arrow keys move between the usable tabs, selecting as they go.
+  const arrow = (key: string) => {
+    const step = key === "ArrowRight" ? 1 : key === "ArrowLeft" ? -1 : 0;
+    if (!step) return;
+    const next = usable[(usable.indexOf(shown) + step + usable.length) % usable.length]!;
+    setTab(next);
+    document.getElementById(tabId(next))?.focus();
+  };
 
   return (
     <div className="forge">
       {on && (
-        <div className="forge-tabs" role="tablist">
-          {tabs.map(([t, label]) => (
-            <button key={t} role="tab" aria-selected={shown === t} className={shown === t ? "on" : undefined} disabled={t === "review" && !pending} onClick={() => setTab(t)}>
-              {label}
-            </button>
-          ))}
+        <div className="forge-tabs">
+          <div role="tablist" aria-label="Forge" onKeyDown={(e) => arrow(e.key)}>
+            {tabs.map(([t, label]) => (
+              <button
+                key={t}
+                id={tabId(t)}
+                role="tab"
+                aria-selected={shown === t}
+                aria-controls="forge-tabpanel"
+                tabIndex={shown === t ? 0 : -1}
+                className={shown === t ? "on" : undefined}
+                disabled={!usable.includes(t)}
+                onClick={() => setTab(t)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <button className="button primary forge-open" onClick={() => open()} title={isNew ? "Forge (Ctrl+K)" : "Reforge (Ctrl+K)"}>
             <Hammer /> {isNew ? "Forge" : "Reforge"} <kbd>⌘K</kbd>
           </button>
@@ -115,6 +143,7 @@ export function Forge(props: {
         <WaitingHeader key={w.key} w={w} onCancel={() => forge.unwait(w.key)} />
       ))}
 
+      <div id="forge-tabpanel" role={on ? "tabpanel" : undefined} aria-labelledby={on ? tabId(shown) : undefined}>
       {shown === "start" && <Start forge={forge} avatar={props.avatar} />}
       {shown === "fields" && <Fields data={data} dirty={props.dirty} edit={props.edit} lock={on ? forge.lock : undefined} extra={on ? extra : undefined} />}
       {shown === "review" && pending?.result?.proposal && (
@@ -138,7 +167,7 @@ export function Forge(props: {
       )}
       {shown === "report" &&
         (forge.report ? (
-          <Report report={forge.report} onRefine={revise && ((text) => forge.start({ action: revise, instruction: text }))} />
+          <Report key={forge.reportId} report={forge.report} onRefine={revise && ((text) => forge.start({ action: revise, instruction: text }))} />
         ) : (
           <div className="forge-empty">
             <p>No report yet.</p>
@@ -151,6 +180,7 @@ export function Forge(props: {
               ))}
           </div>
         ))}
+      </div>
 
       {panel && (
         <Reforge
@@ -186,10 +216,29 @@ function Badges({ report, field, onOpen }: { report: ReportT; field: string; onO
 /** FieldMenu is a field's hammer menu of field actions. */
 function FieldMenu({ field, actions, disabled, onPick }: { field: string; actions: Action[]; disabled: boolean; onPick: (a: Action) => void }) {
   const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (open) menu.current?.querySelector("button")?.focus();
+  }, [open]);
   if (!actions.length) return null;
+  const close = () => {
+    setOpen(false);
+    trigger.current?.focus();
+  };
+  const move = (e: ReactKeyboardEvent<HTMLSpanElement>) => {
+    const items = [...e.currentTarget.querySelectorAll("button")];
+    const at = items.indexOf(document.activeElement as HTMLButtonElement);
+    const to = { ArrowDown: at + 1, ArrowUp: at - 1, Home: 0, End: items.length - 1 }[e.key];
+    if (e.key === "Escape") close();
+    else if (to !== undefined) items[(to + items.length) % items.length]?.focus();
+    else return;
+    e.preventDefault();
+  };
   return (
     <span className="forge-menu" onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && setOpen(false)}>
       <button
+        ref={trigger}
         className="button"
         aria-label={`Forge actions for ${fieldLabel(field)}`}
         aria-haspopup="menu"
@@ -204,15 +253,16 @@ function FieldMenu({ field, actions, disabled, onPick }: { field: string; action
         <Hammer />
       </button>
       {open && (
-        <span className="forge-pop" role="menu">
+        <span ref={menu} className="forge-pop" role="menu" aria-label={`Forge actions for ${fieldLabel(field)}`} onKeyDown={move}>
           {actions.map((a) => (
             <button
               key={`${a.instance_id}/${a.id}`}
               role="menuitem"
+              tabIndex={-1}
               title={a.description}
               onClick={(e) => {
                 e.preventDefault();
-                setOpen(false);
+                close();
                 onPick(a);
               }}
             >

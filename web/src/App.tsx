@@ -4,6 +4,7 @@ import { ApiError, nextKey, safeNext } from "./api/client";
 import { meQuery, settingsQuery } from "./api/queries";
 import { Card } from "./card/Card";
 import { History } from "./card/History";
+import { NewCard } from "./card/NewCard";
 import { Cards } from "./cards/Cards";
 import { Collections } from "./collections/Collections";
 import { Login } from "./login/Login";
@@ -69,6 +70,7 @@ export const router = createBrowserRouter([
           { path: "lorebooks", element: <Cards key="lorebooks" kind="lorebook" /> },
           { path: "lorebooks/:id", element: <Lorebook /> },
           { path: "lorebooks/:id/history", element: <History kind="lorebook" /> },
+          { path: "cards/new", element: <NewCard /> },
           { path: "cards/:id", element: <Card /> },
           { path: "cards/:id/history", element: <History /> },
           { path: "collections", element: <Collections /> },

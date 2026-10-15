@@ -370,9 +370,12 @@ func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "remove-" + singular + "-source", Method: http.MethodDelete,
 		Path: item + "/sources/{source_id}", Summary: "Remove a " + singular + "'s source",
-		Description: "Detection won't add it back.", Tags: tags, DefaultStatus: http.StatusNoContent},
+		Description: "Detection won't add it back. A binding that followed it is removed too.", Tags: tags, DefaultStatus: http.StatusNoContent},
 		func(ctx context.Context, in *removeSourceIn) (*struct{}, error) {
-			return nil, s.fail(ents.RemoveSource(ctx, in.ID, in.SourceID))
+			if err := ents.RemoveSource(ctx, in.ID, in.SourceID); err != nil {
+				return nil, s.fail(err)
+			}
+			return nil, s.fail(s.Targets.FollowEntitySources(ctx, k, in.ID))
 		})
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "archive-" + singular, Method: http.MethodPut,

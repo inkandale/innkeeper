@@ -641,7 +641,7 @@ export interface paths {
         post?: never;
         /**
          * Remove a card's source
-         * @description Detection won't add it back.
+         * @description Detection won't add it back. A binding that followed it is removed too.
          */
         delete: operations["remove-card-source"];
         options?: never;
@@ -1585,7 +1585,7 @@ export interface paths {
         post?: never;
         /**
          * Remove a lorebook's source
-         * @description Detection won't add it back.
+         * @description Detection won't add it back. A binding that followed it is removed too.
          */
         delete: operations["remove-lorebook-source"];
         options?: never;

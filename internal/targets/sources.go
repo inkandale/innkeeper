@@ -1,6 +1,7 @@
 package targets
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -132,17 +133,30 @@ func (s *Service) CheckEntitySources(ctx context.Context, lk *library.Kind, id i
 	return s.Bindings(ctx, lk, id)
 }
 
-// checkSources follows and checks every entity's sources, or with only, one entity's.
-func (s *Service) checkSources(ctx context.Context, only *library.Kind, id int64, report func(ScanProgress)) (ScanProgress, error) {
-	var p ScanProgress
+// FollowEntitySources binds and unbinds one card's or lorebook's followed
+// sources, as a check does first, and returns the first failure.
+func (s *Service) FollowEntitySources(ctx context.Context, lk *library.Kind, id int64) error {
+	var first error
+	err := s.followSources(ctx, lk, id, func(_ int64, err error) {
+		if first == nil {
+			first = err
+		}
+	})
+	return cmp.Or(err, first)
+}
+
+// followSources runs follow on every follower instance, or with only, for one
+// entity on the instances that follow one of its source kinds. failed hears
+// each instance's failure; the error is only ctx's or the followers lookup's.
+func (s *Service) followSources(ctx context.Context, only *library.Kind, id int64, failed func(inst int64, err error)) error {
 	followers, err := s.followers(ctx)
 	if err != nil {
-		return p, err
+		return err
 	}
 	var wanted []string
 	if only != nil {
 		if wanted, err = s.sourceKinds(ctx, only, id); err != nil {
-			return p, err
+			return err
 		}
 	}
 	for inst, kinds := range followers {
@@ -156,11 +170,20 @@ func (s *Service) checkSources(ctx context.Context, only *library.Kind, id int64
 			}
 			if err := s.follow(ctx, targetKind(lk), inst, kinds, id); err != nil {
 				if ctx.Err() != nil {
-					return p, ctx.Err()
+					return ctx.Err()
 				}
-				p.fail(fmt.Sprintf("instance %d", inst), err)
+				failed(inst, err)
 			}
 		}
+	}
+	return nil
+}
+
+// checkSources follows and checks every entity's sources, or with only, one entity's.
+func (s *Service) checkSources(ctx context.Context, only *library.Kind, id int64, report func(ScanProgress)) (ScanProgress, error) {
+	var p ScanProgress
+	if err := s.followSources(ctx, only, id, func(inst int64, err error) { p.fail(fmt.Sprintf("instance %d", inst), err) }); err != nil {
+		return p, err
 	}
 	q := `SELECT b.id FROM binding b JOIN plugin_instance i ON i.id = b.instance_id
 		LEFT JOIN card c ON c.id = b.card_id LEFT JOIN lorebook l ON l.id = b.lorebook_id

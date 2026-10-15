@@ -418,6 +418,25 @@ func TestReconcileAndSyncRefuseAPullOnlyTarget(t *testing.T) {
 	e.call("POST", "/syncs", map[string]any{"instance_id": inst}, 400, nil)
 }
 
+func TestRemovingASourceUnbindsItAtOnce(t *testing.T) {
+	e := newEnv(t)
+	_, dir := e.upstream()
+	c := e.followedCard(dir, "vyr", "Begone.")
+	path := fmt.Sprintf("/cards/%d", c.ID)
+	var list []targets.Binding
+	e.call("POST", path+"/source-check", nil, 200, &list)
+	if len(list) != 1 {
+		t.Fatalf("bindings = %+v", list)
+	}
+	var srcs []library.Source
+	e.call("GET", path+"/sources", nil, 200, &srcs)
+	e.call("DELETE", fmt.Sprintf("%s/sources/%d", path, srcs[0].ID), nil, 204, nil)
+	e.call("GET", path+"/bindings", nil, 200, &list)
+	if len(list) != 0 {
+		t.Fatalf("after removing the source = %+v", list)
+	}
+}
+
 func TestDismissingASourceThatChangedAgainIsStale(t *testing.T) {
 	e := newEnv(t)
 	_, dir := e.upstream()

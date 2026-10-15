@@ -5602,7 +5602,7 @@
     },
     "/cards/{id}/sources/{source_id}": {
       "delete": {
-        "description": "Detection won't add it back.",
+        "description": "Detection won't add it back. A binding that followed it is removed too.",
         "operationId": "remove-card-source",
         "parameters": [
           {
@@ -8461,7 +8461,7 @@
     },
     "/lorebooks/{id}/sources/{source_id}": {
       "delete": {
-        "description": "Detection won't add it back.",
+        "description": "Detection won't add it back. A binding that followed it is removed too.",
         "operationId": "remove-lorebook-source",
         "parameters": [
           {

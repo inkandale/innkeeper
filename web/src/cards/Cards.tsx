@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { api, must, route } from "../api/client";
 import { instancesQuery, collectionsQuery, pluginsQuery } from "../api/queries";
 import { apps } from "../sync/Logo";
@@ -126,6 +126,11 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
             <button className="button" onClick={() => go({ ...q, view: q.view === "grid" ? "list" : "grid" })}>
               {q.view === "grid" ? "List view" : "Grid view"}
             </button>
+          )}
+          {kind === "card" && (
+            <Link className="button" to="/cards/new">
+              New card
+            </Link>
           )}
           {(imp.file || imp.url) && (
             <button className="button" onClick={() => setImportOpen(!importOpen)} aria-expanded={importOpen}>

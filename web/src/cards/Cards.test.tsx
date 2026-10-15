@@ -459,3 +459,8 @@ test("push sends one push per ticked target", async () => {
   );
   await waitFor(() => expect(screen.queryByText("1 selected")).not.toBeInTheDocument());
 });
+
+test("New card links to the new-card page", async () => {
+  renderCards("/cards");
+  expect(await screen.findByRole("link", { name: "New card" })).toHaveAttribute("href", "/cards/new");
+});

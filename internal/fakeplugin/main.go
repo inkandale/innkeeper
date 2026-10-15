@@ -185,6 +185,8 @@ func main() {
 			return catalogGet(blobTmp, config, params, *mode)
 		case protocol.MethodCatalogSimilar:
 			return catalogSimilar(params, *mode)
+		case protocol.MethodSettingsDefaults, protocol.MethodSettingsOptions, protocol.MethodSettingsRun:
+			return settingsCall(method, params)
 		case protocol.MethodAuthBegin:
 			return protocol.AuthBeginResult{
 				Form:  json.RawMessage(`{"type": "object", "properties": {"password": {"type": "string"}}, "required": ["password"]}`),

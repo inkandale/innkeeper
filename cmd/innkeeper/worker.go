@@ -57,8 +57,9 @@ func worker() error {
 	}
 
 	q := jobs.New(svc.pool)
-	im := importer.New(svc.lib, svc.registry, q, log)
-	mgr := pluginhost.NewManager(im.Handle, 5*time.Minute, log)
+	runs := pluginhost.NewRuns(log)
+	im := importer.New(svc.lib, svc.registry, q, runs, log)
+	mgr := pluginhost.NewManager(runs.Handle, 5*time.Minute, log)
 	defer mgr.Close()
 	im.Plugins = mgr
 	go stopIdlePlugins(ctx, mgr)

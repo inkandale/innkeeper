@@ -58,8 +58,9 @@ func setupCaps(t *testing.T, caps []string, args ...string) *env {
 	}
 	reg := plugins.New(pool, map[string]*protocol.Manifest{"fake": m}, store, box)
 	q := jobs.New(pool)
-	im := New(lib, reg, q, quiet)
-	mgr := pluginhost.NewManager(im.Handle, time.Minute, quiet)
+	runs := pluginhost.NewRuns(quiet)
+	im := New(lib, reg, q, runs, quiet)
+	mgr := pluginhost.NewManager(runs.Handle, time.Minute, quiet)
 	t.Cleanup(mgr.Close)
 	im.Plugins = mgr
 

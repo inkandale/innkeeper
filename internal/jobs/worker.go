@@ -74,6 +74,11 @@ func (r *Run) currentProgress() json.RawMessage {
 	return r.progress
 }
 
+// Token names this attempt of the job, for plugin calls about it. It
+// includes the attempt, so calls from an abandoned earlier attempt can't
+// reach this one.
+func (r *Run) Token() string { return fmt.Sprintf("%d.%d", r.ID, r.Attempts) }
+
 // SaveCheckpoint saves where a retry should resume, along with the current
 // progress. The retry finds it in Run.Checkpoint.
 func (r *Run) SaveCheckpoint(ctx context.Context, cp json.RawMessage) error {

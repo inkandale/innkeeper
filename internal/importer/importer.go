@@ -41,16 +41,15 @@ type Importer struct {
 	Registry *plugins.Registry
 	// Queue gets a DetectKind job after each import.
 	Queue *jobs.Queue
-	// Plugins runs the import and catalog plugins. Its core handler must be Handle.
+	// Plugins runs the import and catalog plugins. Its core handler must be
+	// Runs.Handle.
 	Plugins *pluginhost.Manager
+	Runs    *pluginhost.Runs
 	Log     *slog.Logger
-
-	mu   sync.Mutex
-	runs map[string]*session
 }
 
-func New(lib *library.Library, reg *plugins.Registry, q *jobs.Queue, log *slog.Logger) *Importer {
-	return &Importer{Lib: lib, Registry: reg, Queue: q, Log: log, runs: map[string]*session{}}
+func New(lib *library.Library, reg *plugins.Registry, q *jobs.Queue, runs *pluginhost.Runs, log *slog.Logger) *Importer {
+	return &Importer{Lib: lib, Registry: reg, Queue: q, Runs: runs, Log: log}
 }
 
 // progress is an import job's progress. Done, Total, and Message come from
@@ -132,17 +131,8 @@ func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
 	// ponytail: items re-sent after a resume count as skipped a second time.
 	_ = json.Unmarshal(r.Progress, &s.p)
 
-	// The token includes the attempt, so notifications from an abandoned
-	// earlier attempt can't reach this one.
-	token := fmt.Sprintf("%d.%d", r.ID, r.Attempts)
-	im.mu.Lock()
-	im.runs[token] = s
-	im.mu.Unlock()
-	defer func() {
-		im.mu.Lock()
-		delete(im.runs, token)
-		im.mu.Unlock()
-	}()
+	token := r.Token()
+	defer im.Runs.Add(token, s.serve)()
 
 	// Only catalog.ingest has a result worth keeping: its counts.
 	var res protocol.CatalogIngestResult
@@ -176,27 +166,15 @@ func EnqueueDetect(ctx context.Context, q *jobs.Queue, log *slog.Logger) {
 	}
 }
 
-// Handle is the core handler for the plugin manager that runs imports. It
-// sends each notification to the run its run token names.
-func (im *Importer) Handle(_ context.Context, method string, params json.RawMessage) (any, error) {
+// serve answers the plugin's calls for this run: the notifications an
+// import or ingest sends.
+func (s *session) serve(_ context.Context, method string, params json.RawMessage) (any, error) {
 	switch method {
 	case protocol.NotifyEmitCard, protocol.NotifyEmitLorebook, protocol.NotifyProgress, protocol.NotifyCheckpoint:
-	default:
-		return nil, protocol.MethodNotFound(method)
-	}
-	var head struct {
-		Run string `json:"run"`
-	}
-	_ = json.Unmarshal(params, &head)
-	im.mu.Lock()
-	s := im.runs[head.Run]
-	im.mu.Unlock()
-	if s == nil {
-		im.Log.Warn("notification for a run that is not active", "method", method, "run", head.Run)
+		s.handle(method, params)
 		return nil, nil
 	}
-	s.handle(method, params)
-	return nil, nil
+	return nil, protocol.MethodNotFound(method)
 }
 
 // handle runs on the plugin connection's reading goroutine, so notifications

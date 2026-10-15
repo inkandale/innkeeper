@@ -11,9 +11,14 @@ function json(body: unknown, status = 200) {
 
 const now = new Date().toISOString();
 let posts: { path: string; body: unknown }[];
+// POST /cards waits on gate when it's set, and fails when failCreate is set.
+let gate: Promise<void> | undefined;
+let failCreate: boolean;
 beforeEach(() => {
   localStorage.clear();
   posts = [];
+  gate = undefined;
+  failCreate = false;
   // jsdom has no object URLs.
   vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:avatar");
   vi.spyOn(URL, "revokeObjectURL").mockReturnValue();
@@ -28,6 +33,8 @@ beforeEach(() => {
       if (path === "/api/cards" && req.method === "POST") {
         const body = await req.json();
         posts.push({ path, body });
+        await gate;
+        if (failCreate) return json({ detail: "the database is down" }, 500);
         return json(
           { id: 9, slug: "brakka", provenance: "api", created_at: now, revision: { id: 1, content_hash: "x", message: "", source: "ui", created_at: now, data: body.data } },
           201,
@@ -107,4 +114,27 @@ test("the page works when storage is blocked", async () => {
   await userEvent.type(screen.getByLabelText("Name"), "Brakka");
   await userEvent.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() => expect(router.state.location.pathname).toBe("/cards/9"));
+});
+
+test("the form is read-only while the first Save runs", async () => {
+  let release!: () => void;
+  gate = new Promise((r) => (release = r));
+  const router = renderNew();
+  await userEvent.type(screen.getByLabelText("Name"), "Brakka");
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(screen.getByLabelText("Description")).toBeDisabled());
+  expect(screen.getByLabelText("Name")).toBeDisabled();
+  release();
+  await waitFor(() => expect(router.state.location.pathname).toBe("/cards/9"));
+});
+
+test("a failed save keeps the draft and stays on the new card", async () => {
+  failCreate = true;
+  const router = renderNew();
+  await userEvent.type(screen.getByLabelText("Name"), "Brakka");
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(await screen.findByText("the database is down")).toBeInTheDocument();
+  expect(router.state.location.pathname).toBe("/cards/new");
+  expect(JSON.parse(localStorage.getItem("innkeeper.newCard")!)).toEqual({ name: "Brakka" });
+  expect(screen.getByLabelText("Name")).toBeEnabled();
 });

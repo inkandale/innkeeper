@@ -345,3 +345,7 @@
 .lang-clash {
   margin: 0 var(--space) var(--space);
 }
+
+fieldset.contents {
+  display: contents;
+}

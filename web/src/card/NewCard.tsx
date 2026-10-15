@@ -55,24 +55,27 @@ export function NewCard() {
   });
   return (
     <div className="card-page">
-      <aside className="card-aside">
-        <Avatar image={avatar} busy={save.isPending} onChange={setAvatar} />
-        <Identity data={data} edit={edit} />
-        <div className="row">
-          <button className="button primary" disabled={(!dirty.size && !avatar) || save.isPending} onClick={() => save.mutate()}>
-            Save
-          </button>
+      {/* Read-only while saving: Save sends the data as it was, then clears the draft. */}
+      <fieldset className="contents" disabled={save.isPending}>
+        <aside className="card-aside">
+          <Avatar image={avatar} onChange={setAvatar} />
+          <Identity data={data} edit={edit} />
+          <div className="row">
+            <button className="button primary" disabled={!dirty.size && !avatar} onClick={() => save.mutate()}>
+              Save
+            </button>
+          </div>
+        </aside>
+        <div className="card-main">
+          <Fields data={data} dirty={dirty} edit={edit} />
         </div>
-      </aside>
-      <div className="card-main">
-        <Fields data={data} dirty={dirty} edit={edit} />
-      </div>
+      </fieldset>
     </div>
   );
 }
 
 /** Avatar picks the new card's image and crops it, holding it until Save uploads it. */
-function Avatar({ image, busy, onChange }: { image: Blob | null; busy: boolean; onChange: (b: Blob) => void }) {
+function Avatar({ image, onChange }: { image: Blob | null; onChange: (b: Blob) => void }) {
   const toast = useToast();
   const [cropping, setCropping] = useState(false);
   const [src, setSrc] = useState<string>();
@@ -92,7 +95,6 @@ function Avatar({ image, busy, onChange }: { image: Blob | null; busy: boolean; 
             type="file"
             accept="image/png,image/jpeg,image/webp"
             className="visually-hidden"
-            disabled={busy}
             onChange={(e) => {
               const f = e.target.files?.[0];
               e.target.value = "";
@@ -101,7 +103,7 @@ function Avatar({ image, busy, onChange }: { image: Blob | null; busy: boolean; 
           />
         </label>
         {src && (
-          <button className="button" disabled={busy} onClick={() => setCropping(true)}>
+          <button className="button" onClick={() => setCropping(true)}>
             Crop
           </button>
         )}

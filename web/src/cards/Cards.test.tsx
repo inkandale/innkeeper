@@ -508,7 +508,7 @@ test("a score range filters, and Not evaluated replaces it", async () => {
   expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:quality:70.."]);
   await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "quality", gte: 70 }] } })));
   expect(screen.getByRole("button", { name: "Remove score: quality 70–…" })).toBeInTheDocument();
-  await user.click(screen.getByRole("checkbox", { name: "Not evaluated" }));
+  await user.click(screen.getByRole("checkbox", { name: "Quality not evaluated" }));
   expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:quality:none"]);
   await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "quality", missing: true }] } })));
   // Only score keys get a range.

@@ -177,7 +177,8 @@ function ScoreFilter({ k, q, onChange }: { k: EnrichmentKey; q: CardQuery; onCha
         <button className="button" disabled={score?.none}>Apply</button>
       </form>
       <label className="check">
-        <input type="checkbox" checked={!!score?.none} onChange={(e) => onChange(setScore(q, { key: k.key, none: e.target.checked }))} />
+        <input type="checkbox" aria-label={`${k.label} not evaluated`} checked={!!score?.none}
+          onChange={(e) => onChange(setScore(q, { key: k.key, none: e.target.checked }))} />
         Not evaluated
       </label>
     </section>

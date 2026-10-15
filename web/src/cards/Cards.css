@@ -347,7 +347,8 @@
 }
 
 .score-filter .input {
-  width: 5em;
+  width: 4.5em;
+  min-width: 0;
 }
 
 .list .badges {

@@ -62,8 +62,14 @@ func actionRun(ctx context.Context, conn *protocol.Conn, params json.RawMessage)
 	case "evaluate":
 		// Report-only, yet it proposes a rename the core must drop.
 		data["name"] = "Renamed"
-		res.Report = &protocol.Report{Summary: "Needs work.", Findings: []protocol.Finding{
-			{Severity: "high", Text: "Too short.", Fields: []string{"description"}}}}
+		score := 64.0
+		res.Report = &protocol.Report{Summary: "Needs work.", Score: &score,
+			Dimensions: []protocol.ReportDimension{{Key: "voice", Label: "Voice", Score: 80, Comment: "Distinct."}},
+			Findings: []protocol.Finding{
+				{Severity: "high", Text: "Too short.", Fields: []string{"description", "personality"}},
+				{Severity: "medium", Text: "Belongs in the description.", Fields: []string{"personality"},
+					Move: &protocol.FindingMove{Excerpt: "Gruff", To: "description"}}},
+			Suggestions: []string{"Give the card a rival."}}
 	case "generate":
 		data = map[string]any{"name": "Generated", "description": p.Instruction}
 		images, _ := json.Marshal(p.Images)

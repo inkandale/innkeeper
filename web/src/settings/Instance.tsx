@@ -5,6 +5,7 @@ import { api, must } from "../api/client";
 import { pluginsQuery } from "../api/queries";
 import { useToast } from "../shell/Toasts";
 import { type InstanceInfo, type Plugin } from "./Plugins";
+import { Records } from "./Records";
 import { SchemaForm, type Schema } from "./SchemaForm";
 
 /** Instance adds an instance at /settings/plugins/:plugin/new and edits one at /settings/instances/:id. */
@@ -22,7 +23,13 @@ export function Instance() {
   const name = inst.data?.plugin ?? pluginName;
   const plugin = plugins.data?.find((p) => p.name === name);
   if (!plugin) return <p className="error">No plugin named {name} is installed.</p>;
-  return <InstanceForm key={inst.data?.id ?? name} plugin={plugin} instance={inst.data} />;
+  const saved = inst.data;
+  return (
+    <>
+      <InstanceForm key={saved?.id ?? name} plugin={plugin} instance={saved} />
+      {saved && Object.entries(plugin.records ?? {}).map(([type, rt]) => <Records key={type} instance={saved.id} type={type} recordType={rt} />)}
+    </>
+  );
 }
 
 /** canon is v as JSON with object keys sorted, so edits that move a key don't count as changes. */

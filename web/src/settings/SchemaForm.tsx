@@ -6,6 +6,8 @@ export type Schema = {
   title?: string;
   description?: string;
   enum?: unknown[];
+  /** Any media type marks a string as long text, edited in a multi-line box. */
+  contentMediaType?: string;
   properties?: Record<string, Schema>;
   required?: string[];
 };
@@ -28,7 +30,7 @@ const fits: Record<string, (v: unknown) => boolean> = {
 };
 
 /**
- * SchemaForm renders inputs for a JSON Schema: string, number, integer,
+ * SchemaForm renders inputs for a JSON Schema: string (long text with contentMediaType), number, integer,
  * boolean, string enum, and objects with properties. Anything else is raw JSON.
  */
 export function SchemaForm({ schema, label, value, onChange, required }: Props) {
@@ -74,6 +76,10 @@ export function SchemaForm({ schema, label, value, onChange, required }: Props) 
           <option key={e}>{e}</option>
         ))}
       </select>
+    );
+  } else if (known && t === "string" && schema.contentMediaType) {
+    control = (
+      <textarea className="input" rows={8} required={required} value={(value as string) ?? ""} onChange={(e) => onChange(e.target.value || undefined)} />
     );
   } else if (known && t === "string") {
     control = (

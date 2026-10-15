@@ -76,3 +76,12 @@ test("clearing a nested object's last field removes the object", async () => {
   await user.clear(screen.getByLabelText("Rate"));
   expect(value()).toBeNull();
 });
+
+test("a string with a media type is a multi-line box", async () => {
+  const user = userEvent.setup();
+  render(<Harness schema={{ type: "object", properties: { body: { type: "string", title: "Body", contentMediaType: "text/markdown" } } }} />);
+  const box = screen.getByLabelText("Body");
+  expect(box.tagName).toBe("TEXTAREA");
+  await user.type(box, "a{Enter}b");
+  expect(value()).toEqual({ body: "a\nb" });
+});

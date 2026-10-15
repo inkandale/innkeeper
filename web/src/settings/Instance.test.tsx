@@ -22,7 +22,10 @@ const st = {
   },
 };
 const login = { name: "password-login", version: "0.1.0", capabilities: ["auth"], secrets: ["password_hash"] };
-const ai = { name: "forge-ai", version: "0.1.0", capabilities: ["action"], secrets: [] };
+const ai = {
+  name: "forge-ai", version: "0.1.0", capabilities: ["action", "records"], secrets: [],
+  records: { skills: { label: "Skills", schema: { type: "object", properties: { name: { type: "string" } } } } },
+};
 const broken = {
   id: 3, plugin: "sillytavern", name: "home", config: { url: "http://st", auth: "none" }, secrets: ["password"],
   broken_error: "connection refused", broken_at: now, created_at: now, updated_at: now,
@@ -41,6 +44,7 @@ beforeEach(() => {
       if (req.method === "GET" && u.pathname === "/api/instances/3") return json(broken);
       if (req.method === "GET" && u.pathname === "/api/instances/4") return json(owned);
       if (req.method === "GET" && u.pathname === "/api/instances/5") return json(forge);
+      if (req.method === "GET" && u.pathname === "/api/instances/5/records/skills") return json([{ id: "noir", name: "noir" }]);
       if (u.pathname === "/api/instances/3/check") {
         sent.push({ method: req.method, path: u.pathname, body: null });
         return json({ ok: false, error: "login refused" });
@@ -177,4 +181,16 @@ test("other plugins have no Library access setting", async () => {
   renderAt("/settings/instances/3");
   expect(await screen.findByLabelText("Name")).toBeInTheDocument();
   expect(screen.queryByLabelText("Library access")).toBeNull();
+});
+
+test("a saved instance of a records plugin lists each record type", async () => {
+  renderAt("/settings/instances/5");
+  expect(await screen.findByRole("heading", { name: "Skills" })).toBeInTheDocument();
+  expect(await screen.findByText("noir")).toBeInTheDocument();
+});
+
+test("a new instance shows no records until it's saved", async () => {
+  renderAt("/settings/plugins/forge-ai/new");
+  await screen.findByLabelText("Name");
+  expect(screen.queryByRole("heading", { name: "Skills" })).not.toBeInTheDocument();
 });

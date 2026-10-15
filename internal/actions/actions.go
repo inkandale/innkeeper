@@ -38,9 +38,9 @@ type Payload struct {
 
 // ContextRefs is what the owner attached to a run.
 type ContextRefs struct {
-	Cards     []int64  `json:"cards,omitempty"`
-	Lorebooks []int64  `json:"lorebooks,omitempty"`
-	Skills    []string `json:"skills,omitempty"`
+	Cards     []int64  `json:"cards,omitempty" maxItems:"50"`
+	Lorebooks []int64  `json:"lorebooks,omitempty" maxItems:"50"`
+	Skills    []string `json:"skills,omitempty" maxItems:"50"`
 }
 
 // ImageRefs are blob SHA-256s, or empty.

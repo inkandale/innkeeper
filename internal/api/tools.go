@@ -14,7 +14,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/davidgibbons/innkeeper/internal/pluginhost"
+	"github.com/davidgibbons/innkeeper/internal/plugins"
 	"github.com/davidgibbons/innkeeper/internal/tier"
 	"github.com/davidgibbons/innkeeper/protocol"
 )
@@ -44,59 +44,10 @@ type callToolIn struct {
 
 type callToolOut struct{ Body protocol.MCPCallResult }
 
-// How long an instance's tool list, or its failure to list them, is reused.
-const (
-	toolsTTL       = time.Minute
-	toolsFailedTTL = 30 * time.Second
-)
-
-// errListing means a request is already asking the plugin for its tools.
-var errListing = errors.New("still listing this instance's tools")
-
-type cachedTools struct {
-	version string
-	at      time.Time
-	tools   []protocol.Tool
-	err     error
-}
-
-// instanceTools returns an instance's valid tools, from the cache if its
-// settings haven't changed in the last minute.
-func (s *Server) instanceTools(ctx context.Context, id int64) (pluginhost.Instance, []protocol.Tool, error) {
-	inst, err := s.Registry.Instance(ctx, id)
-	if err != nil {
-		return inst, nil, err
-	}
-	if c, ok := s.tools.Load(id); ok {
-		c := c.(cachedTools)
-		ttl := toolsTTL
-		if c.err != nil {
-			ttl = toolsFailedTTL
-		}
-		if c.version == inst.Version && time.Since(c.at) < ttl {
-			return inst, c.tools, c.err
-		}
-	}
-	// Requests meanwhile skip the instance rather than wait for it.
-	s.tools.Store(id, cachedTools{inst.Version, time.Now(), nil, errListing})
-	// Detached from ctx, so a caller giving up doesn't cache a failure.
-	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-	defer cancel()
-	var res protocol.MCPToolsResult
-	err = s.Registry.Call(callCtx, s.Plugins, inst, protocol.MethodMCPTools, nil, &res)
-	var tools []protocol.Tool
-	seen := map[string]bool{}
-	for _, t := range res.Tools {
-		if err := t.Validate(); err != nil || seen[t.Name] {
-			s.Log.Warn("skip plugin tool", "instance", id, "tool", t.Name, "err", err)
-			continue
-		}
-		seen[t.Name] = true
-		tools = append(tools, t)
-	}
-	s.tools.Store(id, cachedTools{inst.Version, time.Now(), tools, err})
-	return inst, tools, err
-}
+// mcpTools lists an instance's MCP tools.
+var mcpTools = listMethod[protocol.MCPToolsResult, protocol.Tool]{name: protocol.MethodMCPTools,
+	items: func(r protocol.MCPToolsResult) []protocol.Tool { return r.Tools },
+	key:   func(t protocol.Tool) string { return t.Name }, validate: protocol.Tool.Validate}
 
 func (s *Server) toolRoutes(api huma.API) {
 	tags := []string{"Plugin tools"}
@@ -114,40 +65,25 @@ func (s *Server) toolRoutes(api huma.API) {
 			for _, i := range insts {
 				prefixes[toolPrefix(i.Name)]++
 			}
-			// Instances answer in parallel. The listing stops waiting after 3
-			// seconds, leaving out slow ones; their calls finish in the
-			// background and fill the cache.
 			var mu sync.Mutex
 			out := []PluginTool{}
-			var wg sync.WaitGroup
-			for _, i := range insts {
-				if i.BrokenError != nil {
-					continue
+			eachWorking(insts, func(i plugins.InstanceInfo) {
+				_, tools, err := instanceList(ctx, s, &s.tools, mcpTools, i.ID)
+				if err != nil {
+					s.Log.Warn("list plugin tools", "instance", i.ID, "err", err)
+					return
 				}
-				wg.Go(func() {
-					_, tools, err := s.instanceTools(ctx, i.ID)
-					if err != nil {
-						s.Log.Warn("list plugin tools", "instance", i.ID, "err", err)
-						return
-					}
-					prefix := toolPrefix(i.Name)
-					if prefixes[prefix] > 1 {
-						prefix = fmt.Sprintf("%s_%d", prefix, i.ID)
-					}
-					mu.Lock()
-					defer mu.Unlock()
-					for _, t := range tools {
-						out = append(out, PluginTool{i.ID, i.Name, t.Name, t.Description, t.InputSchema,
-							t.EffectiveTier(), prefix + "_" + t.Name})
-					}
-				})
-			}
-			done := make(chan struct{})
-			go func() { wg.Wait(); close(done) }()
-			select {
-			case <-done:
-			case <-time.After(3 * time.Second):
-			}
+				prefix := toolPrefix(i.Name)
+				if prefixes[prefix] > 1 {
+					prefix = fmt.Sprintf("%s_%d", prefix, i.ID)
+				}
+				mu.Lock()
+				defer mu.Unlock()
+				for _, t := range tools {
+					out = append(out, PluginTool{i.ID, i.Name, t.Name, t.Description, t.InputSchema,
+						t.EffectiveTier(), prefix + "_" + t.Name})
+				}
+			})
 			mu.Lock()
 			defer mu.Unlock()
 			out = slices.Clone(out)
@@ -163,7 +99,7 @@ func (s *Server) toolRoutes(api huma.API) {
 			if err := s.usable(ctx, in.ID, "mcp"); err != nil {
 				return nil, err
 			}
-			inst, tools, err := s.instanceTools(ctx, in.ID)
+			inst, tools, err := instanceList(ctx, s, &s.tools, mcpTools, in.ID)
 			if errors.Is(err, errListing) {
 				return nil, huma.Error503ServiceUnavailable("the plugin is busy listing its tools; try again shortly")
 			}

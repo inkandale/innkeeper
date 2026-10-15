@@ -15,6 +15,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
+	"github.com/davidgibbons/innkeeper/internal/actions"
 	"github.com/davidgibbons/innkeeper/internal/auth"
 	"github.com/davidgibbons/innkeeper/internal/backup"
 	"github.com/davidgibbons/innkeeper/internal/export"
@@ -61,8 +62,9 @@ type Server struct {
 	// login provider. Empty until needed.
 	setupMu   sync.Mutex
 	setupCode string
-	// tools caches each plugin instance's MCP tools, by instance version.
-	tools sync.Map
+	// tools and actions cache each plugin instance's MCP tools and actions,
+	// by instance version.
+	tools, actions sync.Map
 	// lastPrune is when OAuth clients were last pruned, in Unix seconds.
 	lastPrune atomic.Int64
 }
@@ -171,6 +173,7 @@ func (s *Server) routes(api huma.API) {
 	s.targetRoutes(api)
 	s.reconcileRoutes(api)
 	s.toolRoutes(api)
+	s.actionRoutes(api)
 	s.settingsRoutes(api)
 	s.backupRoutes(api)
 }
@@ -256,7 +259,7 @@ func (s *Server) failAs(who string, err error) error {
 		// The stored error can hold paths and plugin output, so it stays out of the response.
 		return huma.Error409Conflict("plugin instance is broken; fix its settings first")
 	case errors.Is(err, library.ErrInvalid), errors.Is(err, plugins.ErrInvalid), errors.Is(err, plugins.ErrUnknownPlugin),
-		errors.Is(err, targets.ErrCannot), errors.Is(err, plugins.ErrNoCodec):
+		errors.Is(err, targets.ErrCannot), errors.Is(err, plugins.ErrNoCodec), errors.Is(err, actions.ErrInvalid):
 		return huma.Error400BadRequest(err.Error())
 	case errors.Is(err, merge.ErrUnknownHunk), errors.Is(err, merge.ErrBadChoice):
 		return huma.Error422UnprocessableEntity(err.Error())

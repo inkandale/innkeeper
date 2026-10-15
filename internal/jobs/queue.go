@@ -351,6 +351,8 @@ type ListOptions struct {
 	// Parent lists that parent's children. Without it, List returns only
 	// top-level jobs.
 	Parent *int64
+	// Payload lists only jobs whose payload contains it, as jsonb @> does.
+	Payload json.RawMessage
 	// Before returns only jobs with smaller IDs, for paging.
 	Before int64
 	// Limit defaults to 50.
@@ -365,8 +367,8 @@ func (q *Queue) List(ctx context.Context, o ListOptions) ([]Job, error) {
 	rows, err := q.pool.Query(ctx, `SELECT `+jobCols+` FROM job
 		WHERE ($1::text = '' OR status = $1) AND ($2::text = '' OR kind = $2)
 			AND parent_id IS NOT DISTINCT FROM $3::bigint AND ($4::bigint = 0 OR id < $4)
-			AND ($6::bigint = 0 OR instance_id = $6)
-		ORDER BY id DESC LIMIT $5`, o.Status, o.Kind, o.Parent, o.Before, o.Limit, o.Instance)
+			AND ($6::bigint = 0 OR instance_id = $6) AND ($7::jsonb IS NULL OR payload @> $7::jsonb)
+		ORDER BY id DESC LIMIT $5`, o.Status, o.Kind, o.Parent, o.Before, o.Limit, o.Instance, o.Payload)
 	if err != nil {
 		return nil, err
 	}

@@ -13,6 +13,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/davidgibbons/innkeeper/internal/actions"
 	"github.com/davidgibbons/innkeeper/internal/bulk"
 	"github.com/davidgibbons/innkeeper/internal/importer"
 	"github.com/davidgibbons/innkeeper/internal/jobs"
@@ -37,7 +38,7 @@ type jobOut struct {
 	Status      string          `json:"status" enum:"queued,running,waiting,succeeded,failed"`
 	Attempts    int             `json:"attempts"`
 	MaxAttempts int             `json:"max_attempts"`
-	Progress    json.RawMessage `json:"progress" doc:"An import's has done, total, message, imported, skipped, failed, and errors. A catalog ingest's has done, total, and message, and once finished, added, updated, removed, and skipped. A running reconcile's has done and total; a finished one's is the snapshot, cut to totals in job lists and streams."`
+	Progress    json.RawMessage `json:"progress" doc:"An import's has done, total, message, imported, skipped, failed, and errors. A catalog ingest's has done, total, and message, and once finished, added, updated, removed, and skipped. A running reconcile's has done and total; a finished one's is the snapshot, cut to totals in job lists and streams. An action run's has message, done, and total, and once finished, result, which job lists and streams leave out."`
 	ParentID    *int64          `json:"parent_id,omitempty"`
 	Error       *string         `json:"error,omitempty"`
 	RunAfter    time.Time       `json:"run_after"`
@@ -54,8 +55,8 @@ func toJob(j jobs.Job) jobOut {
 }
 
 // summary is a job as lists and streams show it: a finished reconcile's
-// snapshot is cut to its totals, and an export's card IDs to a count. Get the
-// job for the whole of either.
+// snapshot is cut to its totals, an export's card IDs to a count, and an
+// action run's result is left out. Get the job for the whole of each.
 func summary(j jobOut) jobOut {
 	switch j.Kind {
 	case targets.ReconcileKind:
@@ -65,6 +66,8 @@ func summary(j jobOut) jobOut {
 		if json.Unmarshal(j.Progress, &snap) == nil && snap.Totals != nil {
 			j.Progress, _ = json.Marshal(map[string]any{"totals": snap.Totals})
 		}
+	case actions.Kind:
+		j.Progress = actions.ListProgress(j.Progress)
 	case bulk.ExportKind:
 		var p struct {
 			CardIDs []int64 `json:"card_ids"`
@@ -85,6 +88,7 @@ type listJobsIn struct {
 	Status string `query:"status" enum:"queued,running,waiting,succeeded,failed"`
 	Kind   string `query:"kind"`
 	Parent int64  `query:"parent" doc:"List this bulk job's children instead of top-level jobs"`
+	CardID int64  `query:"card_id" doc:"Only jobs whose payload names this card, such as its pushes and action runs"`
 	Before int64  `query:"before" doc:"Only jobs with smaller IDs, for the next page"`
 	Limit  int    `query:"limit" default:"50" minimum:"1" maximum:"200"`
 }
@@ -202,12 +206,15 @@ func (s *Server) watch(hc huma.Context, j jobOut) {
 func (s *Server) jobRoutes(api huma.API) {
 	tags := []string{"Jobs"}
 	huma.Register(api, huma.Operation{OperationID: "list-jobs", Method: http.MethodGet, Path: "/jobs",
-		Summary: "List jobs", Description: "Newest first. A finished reconcile's progress is cut to its totals, and an export's card_ids to a count of cards; " +
-			"get the job for the whole of either.", Tags: tags},
+		Summary: "List jobs", Description: "Newest first. A finished reconcile's progress is cut to its totals, an export's card_ids to a count of cards, " +
+			"and an action run's result is left out; get the job for the whole of each.", Tags: tags},
 		func(ctx context.Context, in *listJobsIn) (*jobsOut, error) {
 			o := jobs.ListOptions{Status: in.Status, Kind: in.Kind, Before: in.Before, Limit: in.Limit}
 			if in.Parent != 0 {
 				o.Parent = &in.Parent
+			}
+			if in.CardID != 0 {
+				o.Payload = fmt.Appendf(nil, `{"card_id": %d}`, in.CardID)
 			}
 			list, err := s.Queue.List(ctx, o)
 			if err != nil {
@@ -257,7 +264,7 @@ func (s *Server) jobRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{OperationID: "watch-job", Method: http.MethodGet, Path: "/jobs/{id}/events",
 		Summary: "Stream a job's progress",
 		Description: "Server-sent events: a job event with the whole job each time it changes. The stream ends when the job " +
-			"finishes. A reconcile's progress and an export's card IDs are cut as in the job list; get the job for the whole of either.",
+			"finishes. A reconcile's progress, an export's card IDs, and an action run's result are cut as in the job list; get the job for the whole of each.",
 		Tags: tags,
 		Responses: map[string]*huma.Response{"200": {Description: "A stream of job events",
 			Content: map[string]*huma.MediaType{"text/event-stream": {}}}}},

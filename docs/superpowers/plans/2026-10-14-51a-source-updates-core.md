@@ -13,7 +13,7 @@ Pieces:
 - **Following sources:** a source-check job binds each live source of a followed kind to that plugin's instance, with `remote_id` `kind:ref`. The binding's accepted copy is the entity's first revision that a plugin imported. The job then checks every such binding.
 - **Bindings:** `push = false` marks these bindings. They are never ahead, may share a `remote_id`, and compare the site's avatar by its pixels (`blob.pixel_hash`), so a re-encode isn't an update.
 - **Changes queue:** they appear as `update`, `missing`, or `error` entries, marked `push: false` with their source's ID. Review, "ignore this change" (`Dismiss`), pause, and autosync reuse compare, resolve, and the existing binding flags.
-- **Search and `ink plugin check`:** search's targets leave followed sources out, and the check kit checks a pull-only plugin's target methods.
+- **Search and `innkeeper plugin check`:** search's targets leave followed sources out, and the check kit checks a pull-only plugin's target methods.
 
 **Tech Stack:** Go, pgx, PostgreSQL migrations, Huma, MCP Go SDK.
 
@@ -2273,7 +2273,7 @@ git commit -m "fix(search): leave followed site sources out of targets"
 
 ---
 
-### Task 13: `ink plugin check` checks a pull-only plugin
+### Task 13: `innkeeper plugin check` checks a pull-only plugin
 
 The check kit runs its target checks only for `push`, so a pull-only plugin's `target.describe` and lists go unchecked, and nothing checks the `-32004` the core relies on to mark a source gone.
 
@@ -2408,12 +2408,12 @@ changes in the changes queue.
   source check sets `avatar`, so return the image when asked.
 - Errors: return `-32004` when the page is gone, private, or hides its
   definition. The core shows that as "no longer on the site", and
-  `ink plugin check` asks for an item no site has and wants `-32004`. Make a
+  `innkeeper plugin check` asks for an item no site has and wants `-32004`. Make a
   timeout, a 5xx, or rate limiting retryable. The core shows a source only
   after 3 failed checks in a row.
 - Avatars are compared by their pixels, so re-encoding one isn't an update.
 - `target.list` and `target.list_lorebooks`: return no items. Instance checks
-  and `ink plugin check` call them.
+  and `innkeeper plugin check` call them.
 - Space out requests to one site yourself; the core checks sources one at a time.
 ```
 
@@ -2462,7 +2462,7 @@ Run: `git diff origin/main --stat` and read the whole diff. Look for:
 | `target.list`, `target.list_lorebooks` | `{"items": []}` |
 | `target.put`, `target.put_lorebook` | Not implemented; method not found |
 | Stable output | Two fetches of an unchanged page must return identical `data` for the listed fields, or every check flags an update. Drop volatile values, such as view counts in `extensions.chub`, before replying. Avatars are compared by pixel hash, so only the picture itself must be stable |
-| `ink plugin check` | Checks `target.describe`, both lists, and that `target.get` answers `-32004` for `innkeeper-contract:none`, as does `target.get_lorebook` when `lorebooks` is `standalone` (Task 13) |
+| `innkeeper plugin check` | Checks `target.describe`, both lists, and that `target.get` answers `-32004` for `innkeeper-contract:none`, as does `target.get_lorebook` when `lorebooks` is `standalone` (Task 13) |
 | Pacing | Space requests per host; the core checks one source at a time |
 
 ### 51c: web
@@ -2480,10 +2480,10 @@ Every binding has these new fields:
 
 `GET /{cards|lorebooks}/{id}/bindings` now includes followed sources. Split the targets panel on `push`: push bindings are apps, and `push: false` bindings are sources.
 
-The url-import instance now has the `pull` capability. Places that pick "apps" by `pull` must also require `push`:
-- `web/src/welcome/BringInCards.tsx`
-- `web/src/welcome/SetUpPlugins.tsx`
-- `web/src/sync/SyncPage.tsx`
+The url-import instance now has the `pull` capability, so a place that picks apps by `pull` must also require `push`:
+- `web/src/welcome/BringInCards.tsx` and `web/src/welcome/SetUpPlugins.tsx` require both.
+- `web/src/sync/SyncPage.tsx`, `web/src/card/Panel.tsx`, and `web/src/cards/SelectionBar.tsx` pick targets by `push` alone.
+- Sync (`syncApps` in `internal/targets/sync.go`) visits instances with both.
 
 These changes must merge before or with 51b, or url-import shows up as an app.
 

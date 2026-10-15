@@ -26,7 +26,7 @@ but never push.
 | Pull | The existing three-way merge and resolve: head, upstream, and `accepted_data` as the ancestor. The owner can take the data, the avatar, or both. |
 | Auto-apply | Off by default. With the binding's `autosync` on, the check applies an update that merges with no conflicting hunks and leaves the avatar as the library's. A different avatar waits for review: there's no ancestor avatar to say whose change it is. |
 | Schedule | `INNKEEPER_SOURCE_CHECK_EVERY`, default `24h`, `0` turns it off. Plus "Check for updates" on the card page and for the whole library. |
-| Where it shows | An entry on the card's row in the changes queue, and a banner on the card page. |
+| Where it shows | An entry on the card's or lorebook's row in the changes queue; a banner on the card page and the lorebook page; the Sync page's Sources line, with its count and a library-wide "Check for updates"; and the Sources panel, with Ignore all, Check again, and autosync for each source. |
 | Shared sources | Every card with the source gets its own binding. An entity has at most one followed binding per follower instance, so a card with a chub and a risu source on one instance follows only the older. Suggesting cards as variants belongs to INN-52. |
 | MCP | List pending source updates and start a check. No pull tool. |
 
@@ -45,10 +45,10 @@ without pushing:
 | `targets.Check` (`check.go`) | Compares projected data only | Also fetches the avatar and compares its pixel hash with `avatar_hash`. Skips `paused` bindings. |
 | Changes queue (`changes.go`) | `changed` comes only from sync's reconcile snapshot | A pull-only binding with `remote_state = changed` adds an `update` entry carrying `app_hash`. Every entry carries `push`, and a source's entry its `source_id`. A row may carry `lorebook_id` instead of `card_id`. Paused bindings and removed sources are left out |
 | Search (`internal/library/search.go`) | Target facets, filter, and per-hit targets read every binding | They read push bindings only, so a followed source isn't a target |
-| `ink plugin check` (`internal/contract`) | Checks target methods only for `push` | Also for `pull`, and a pull-only plugin must answer `-32004` for an item it doesn't have: from `target.get`, and from `target.get_lorebook` only when `lorebooks` is `standalone` |
+| `innkeeper plugin check` (`internal/contract`) | Checks target methods only for `push` | Also for `pull`, and a pull-only plugin must answer `-32004` for an item it doesn't have: from `target.get`, and from `target.get_lorebook` only when `lorebooks` is `standalone` |
 | Scan | Hourly, every binding | Skips pull-only bindings. A source-check job kind checks them on its own schedule |
 | Source check (`internal/targets`) | None | Before checking, binds each live source of a followed kind that has no binding, and unbinds pull-only bindings whose source was removed or whose kind the plugin no longer lists. A card's "Check for updates" follows only through plugins that follow one of its source kinds, removed ones included, and answers with the first failure's error status. Progress has an `applied` count. Source writes stay in `internal/library`, which never calls targets |
-| Remove source (`internal/api`) | Sets `removed_at` | Also runs the entity's follow step, so its followed binding is deleted at once |
+| Remove source (`internal/api`) | Sets `removed_at` | Also deletes the entity's followed bindings that no longer have a live source, at once and without calling a plugin, so it works while the plugin is down |
 | Pause and dismiss | Any binding | Only a followed binding; an app binding is refused with `ErrCannot`. Autosync stays settable on both |
 
 Bind writes its usual `bind` push row, so `binding_status` and the queries that

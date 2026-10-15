@@ -183,6 +183,13 @@ test("alternate greetings can be added and removed", async () => {
   expect(screen.queryByLabelText("Greeting 2")).not.toBeInTheDocument();
 });
 
+test("macros in a field get a highlight behind the text", async () => {
+  renderAt("/cards/7");
+  // userEvent reads "{{" as one "{".
+  await userEvent.type(await screen.findByLabelText("Description"), " {{{{char}}");
+  expect(document.querySelector(".macro-mirror mark")).toHaveTextContent("{{char}}");
+});
+
 test("leaving with unsaved edits asks first", async () => {
   const ask = vi.spyOn(window, "confirm").mockReturnValue(false);
   const router = renderAt("/cards/7");

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { show, text, tokens, type Data } from "./draft";
+import { MacroTextarea } from "./MacroTextarea";
 
 const before: [string, string][] = [
   ["description", "Description"],
@@ -32,7 +33,7 @@ export function Fields({ data, dirty, edit }: { data: Data; dirty: Set<string>; 
   const greetings = Array.isArray(data.alternate_greetings) ? data.alternate_greetings.map(text) : [];
   const area = ([key, label]: [string, string]) => (
     <Section key={key} label={label} dirty={dirty.has(key)} count={tokens(text(data[key]))}>
-      <textarea className="input grow" aria-label={label} value={text(data[key])} onChange={(e) => edit(key, e.target.value)} />
+      <MacroTextarea label={label} value={text(data[key])} onChange={(v) => edit(key, v)} start={key === "mes_example"} />
     </Section>
   );
   return (
@@ -41,11 +42,10 @@ export function Fields({ data, dirty, edit }: { data: Data; dirty: Set<string>; 
       <Section label="Alternate greetings" dirty={dirty.has("alternate_greetings")} count={tokens(greetings.join(""))}>
         {greetings.map((g, i) => (
           <div key={i} className="greeting">
-            <textarea
-              className="input grow"
-              aria-label={`Greeting ${i + 1}`}
+            <MacroTextarea
+              label={`Greeting ${i + 1}`}
               value={g}
-              onChange={(e) => edit("alternate_greetings", greetings.map((x, j) => (j === i ? e.target.value : x)))}
+              onChange={(v) => edit("alternate_greetings", greetings.map((x, j) => (j === i ? v : x)))}
             />
             <button
               className="button"

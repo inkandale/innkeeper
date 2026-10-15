@@ -111,6 +111,44 @@
   align-items: start;
 }
 
+.field > .macro {
+  width: calc(100% - var(--space) * 2);
+  margin: 0 var(--space) var(--space);
+}
+
+.greeting > .macro {
+  flex: 1;
+}
+
+/* The mirror sits behind the transparent textarea with the same box and wrapping, so its marks line up with the text. */
+.macro {
+  position: relative;
+  background: var(--bg);
+  border-radius: calc(var(--radius) * 0.75);
+}
+
+.macro-mirror {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  color: transparent;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  pointer-events: none;
+}
+
+.macro-mirror mark {
+  color: transparent;
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 3px;
+}
+
+.macro > textarea {
+  position: relative;
+  display: block;
+  background: transparent;
+}
+
 .extensions,
 .conflict pre {
   white-space: pre-wrap;

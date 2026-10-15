@@ -65,6 +65,9 @@ func (s *Server) authenticate(api huma.API) func(huma.Context, func(huma.Context
 // none that are valid, and whether they are an OAuth access token. A
 // logged-in browser is the owner, so it has every tier.
 func (s *Server) authorized(ctx huma.Context) (t tier.Tier, oauth bool, err error) {
+	if t := auth.InProcessTier(ctx.Context()); t != 0 {
+		return t, false, nil
+	}
 	if h := ctx.Header("Authorization"); h != "" {
 		token, ok := strings.CutPrefix(h, "Bearer ")
 		if !ok {

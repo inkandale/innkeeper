@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/auth"
@@ -18,12 +19,15 @@ import (
 
 	iauth "github.com/davidgibbons/innkeeper/internal/auth"
 	"github.com/davidgibbons/innkeeper/internal/tier"
+	"github.com/davidgibbons/innkeeper/protocol"
 )
 
-// tool is one MCP tool: what it needs, and how it adds itself to a server.
+// tool is one MCP tool: what it needs, how it adds itself to a server, and
+// how Call runs it.
 type tool struct {
 	tier tier.Tier
 	add  func(s *sdk.Server, api http.Handler, t *sdk.Tool)
+	call func(ctx context.Context, c caller, args json.RawMessage) (*sdk.CallToolResult, error)
 	meta sdk.Tool
 }
 
@@ -31,6 +35,15 @@ type tool struct {
 // API calls through c.
 func def[In any](name, description string, t tier.Tier, run func(ctx context.Context, c caller, in In) (*sdk.CallToolResult, error)) tool {
 	return tool{tier: t, meta: sdk.Tool{Name: name, Description: description},
+		call: func(ctx context.Context, c caller, args json.RawMessage) (*sdk.CallToolResult, error) {
+			var in In
+			if len(args) > 0 {
+				if err := json.Unmarshal(args, &in); err != nil {
+					return nil, fmt.Errorf("arguments: %w", err)
+				}
+			}
+			return run(ctx, c, in)
+		},
 		add: func(s *sdk.Server, api http.Handler, meta *sdk.Tool) {
 			sdk.AddTool(s, meta, func(ctx context.Context, req *sdk.CallToolRequest, in In) (*sdk.CallToolResult, any, error) {
 				// The token the SDK verified, in the form the API takes.
@@ -64,7 +77,9 @@ func (c caller) do(ctx context.Context, method, path string, body any) (reply, e
 		}
 	}
 	req := httptest.NewRequestWithContext(iauth.ViaMCP(ctx), method, path, bytes.NewReader(b))
-	req.Header.Set("Authorization", c.auth)
+	if c.auth != "" {
+		req.Header.Set("Authorization", c.auth)
+	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -99,6 +114,30 @@ func result(r reply) *sdk.CallToolResult {
 func annotations(t tier.Tier) *sdk.ToolAnnotations {
 	destructive := t == tier.Destructive
 	return &sdk.ToolAnnotations{ReadOnlyHint: t == tier.Read, DestructiveHint: &destructive}
+}
+
+// Call runs the built-in tool name in process through api, with tier t and
+// no credentials. A tool that needs more than t, or doesn't exist, is an
+// error; a failure the model should see comes back with IsError.
+func Call(ctx context.Context, api http.Handler, t tier.Tier, name string, args json.RawMessage) (protocol.MCPCallResult, error) {
+	i := slices.IndexFunc(tools, func(tl tool) bool { return tl.meta.Name == name })
+	if i < 0 {
+		return protocol.MCPCallResult{}, fmt.Errorf("no tool %s", name)
+	}
+	if !t.Allows(tools[i].tier) {
+		return protocol.MCPCallResult{}, fmt.Errorf("tool %s needs %s; this caller has %s", name, tools[i].tier, t)
+	}
+	res, err := tools[i].call(iauth.InProcess(ctx, t), caller{api: api}, args)
+	if err != nil {
+		res = &sdk.CallToolResult{IsError: true, Content: []sdk.Content{&sdk.TextContent{Text: err.Error()}}}
+	}
+	out := protocol.MCPCallResult{IsError: res.IsError, Content: []protocol.MCPContent{}}
+	for _, c := range res.Content {
+		if text, ok := c.(*sdk.TextContent); ok {
+			out.Content = append(out.Content, protocol.MCPContent{Type: "text", Text: text.Text})
+		}
+	}
+	return out, nil
 }
 
 // New returns the /mcp handler. api is the API's handler, which tools call.

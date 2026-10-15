@@ -275,6 +275,21 @@ func ViaMCP(ctx context.Context) context.Context { return context.WithValue(ctx,
 // FromMCP reports whether ctx is marked by ViaMCP.
 func FromMCP(ctx context.Context) bool { return ctx.Value(viaMCPKey{}) == true }
 
+type inProcessKey struct{}
+
+// InProcess marks a request the core makes to its own API with tier t and no
+// credentials, such as a plugin's library.call. No HTTP request can carry the
+// mark.
+func InProcess(ctx context.Context, t tier.Tier) context.Context {
+	return context.WithValue(ctx, inProcessKey{}, t)
+}
+
+// InProcessTier is the tier InProcess marked ctx with, or 0.
+func InProcessTier(ctx context.Context) tier.Tier {
+	t, _ := ctx.Value(inProcessKey{}).(tier.Tier)
+	return t
+}
+
 // ClientCount is how many OAuth clients are registered.
 func (a *Auth) ClientCount(ctx context.Context) (int, error) {
 	var n int

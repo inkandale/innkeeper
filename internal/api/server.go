@@ -184,16 +184,22 @@ func Spec() ([]byte, error) {
 	return json.MarshalIndent(api.OpenAPI(), "", "  ")
 }
 
-// Handler returns the HTTP handler for every route: the API under /api,
-// OAuth and MCP at the root, and UI for everything else.
-func (s *Server) Handler() http.Handler {
-	s.loginSlot = make(chan struct{}, 1)
+// APIHandler serves the API without its /api prefix, for callers in the
+// core's own processes, such as the MCP tools.
+func (s *Server) APIHandler() *http.ServeMux {
 	apiMux := http.NewServeMux()
 	api := humago.New(apiMux, config())
 	api.UseMiddleware(s.authenticate(api))
 	s.routes(api)
 	s.fileRoutes(apiMux)
+	return apiMux
+}
 
+// Handler returns the HTTP handler for every route: the API under /api,
+// OAuth and MCP at the root, and UI for everything else.
+func (s *Server) Handler() http.Handler {
+	s.loginSlot = make(chan struct{}, 1)
+	apiMux := s.APIHandler()
 	mux := http.NewServeMux()
 	mux.Handle("/api/", http.StripPrefix("/api", apiMux))
 	// Browsers arrive here from a login provider; it isn't part of the API.

@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/davidgibbons/innkeeper/internal/bulk"
 	"github.com/davidgibbons/innkeeper/internal/library"
+	"github.com/davidgibbons/innkeeper/internal/mcp"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 	"github.com/davidgibbons/innkeeper/internal/targets"
 	"github.com/davidgibbons/innkeeper/internal/tier"
@@ -354,5 +356,27 @@ func TestCheckSourcesTool(t *testing.T) {
 	e.call("POST", "/cards", map[string]any{"data": map[string]any{"name": "Vyr"}}, 201, &c)
 	if got := tool(t, s, "check_sources", map[string]any{"id": c.ID}, false); !strings.HasPrefix(got, "[") {
 		t.Fatalf("check_sources for one card = %s", got)
+	}
+}
+
+func TestMCPCallInProcess(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	var c entityOut
+	e.call("POST", "/cards", map[string]any{"data": map[string]any{"name": "Brakka"}}, 201, &c)
+	h := e.s.APIHandler()
+
+	res, err := mcp.Call(ctx, h, tier.Read, "get_card", json.RawMessage(fmt.Sprintf(`{"id": %d}`, c.ID)))
+	if err != nil || res.IsError || len(res.Content) != 1 || !strings.Contains(res.Content[0].Text, "Brakka") {
+		t.Fatalf("get_card = %+v, %v", res, err)
+	}
+	if res, err = mcp.Call(ctx, h, tier.Read, "get_card", json.RawMessage(`{"id": 999999}`)); err != nil || !res.IsError {
+		t.Fatalf("get_card of a missing card = %+v, %v; want a tool error", res, err)
+	}
+	if _, err := mcp.Call(ctx, h, tier.Read, "create_card", json.RawMessage(`{"data": {"name": "X"}}`)); err == nil || !strings.Contains(err.Error(), "write") {
+		t.Fatalf("create_card with read = %v, want an error naming its tier", err)
+	}
+	if _, err := mcp.Call(ctx, h, tier.Read, "no_such_tool", nil); err == nil {
+		t.Fatal("an unknown tool ran")
 	}
 }

@@ -35,7 +35,7 @@ Innkeeper is split into four sub-projects, each with its own spec:
 | Repositories | Core in `innkeeper`. All plugins in `innkeeper-plugins`, listed in an index file. |
 | API | REST described by one OpenAPI spec, plus SSE for streams. No GraphQL. |
 | Interfaces | Web UI, MCP server, CLI, all clients of the HTTP API. |
-| Language | Core in Go. Web UI in React and TypeScript, with a client generated from the OpenAPI spec. Each plugin picks its own: Go for the codec, importer, targets, and catalogs; Python for AI actions and enrichers. |
+| Language | Core in Go. Web UI in React and TypeScript, with a client generated from the OpenAPI spec. Each plugin picks its own: Go for the codec, importer, targets, catalogs, and the AI plugin ([Forge design](2026-10-14-forge-design.md)). |
 | Core libraries | `pgx` for PostgreSQL, Huma for the OpenAPI spec, the official MCP Go SDK. River for the job queue if its job metadata supports checkpointing while a job runs; otherwise our own `job` table. |
 
 ## Architecture

@@ -6,6 +6,7 @@ import { instancesQuery, collectionsQuery, pluginsQuery } from "../api/queries";
 import { apps } from "../sync/Logo";
 import { stateLabel } from "../sync/sync";
 import { Facets } from "./Facets";
+import { ImportForm, importers } from "./ImportForm";
 import { pageLinks } from "./pages";
 import { defaultSort, parseQuery, sizes, toggleTerm, toParams, toLorebookSearch, toSearch, type CardQuery, type Sort, type Term } from "./query";
 import { emptySelection, pick, target, type Selection } from "./selection";
@@ -37,6 +38,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   if (stored.key !== key) setSel(emptySelection(key));
   const sel = stored.key === key ? stored : emptySelection(key);
   const [facetsOpen, setFacetsOpen] = useState(true);
+  const [importOpen, setImportOpen] = useState(false);
   // The bar unmounts once its job starts, so the page follows the job and reloads when it ends.
   const [watching, setWatching] = useState<number>();
   useJobEvents(watching ?? 0, watching !== undefined);
@@ -56,6 +58,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
     collections: new Map((collections.data ?? []).map((c) => [c.id, c.name])),
     logos: apps(instances.data, plugins.data),
   };
+  const imp = importers(instances.data, plugins.data);
 
   const search = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -124,6 +127,11 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
               {q.view === "grid" ? "List view" : "Grid view"}
             </button>
           )}
+          {(imp.file || imp.url) && (
+            <button className="button" onClick={() => setImportOpen(!importOpen)} aria-expanded={importOpen}>
+              Import {noun}
+            </button>
+          )}
           <div className="chips">
             {q.terms.map((t) => (
               <button
@@ -139,6 +147,12 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
         </div>
       )}
       <div className="results">
+        {/* Hidden, not unmounted, so closing it keeps the started imports listed. */}
+        {(imp.file || imp.url) && (
+          <section className="import-panel" aria-label={`Import ${noun}`} hidden={!importOpen}>
+            <ImportForm {...imp} />
+          </section>
+        )}
         {res.isError && <p className="error">{res.error.message}</p>}
         {res.data && <p className="total">{total} {total === 1 ? noun.slice(0, -1) : noun}</p>}
         {res.data && q.page > last && (

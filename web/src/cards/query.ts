@@ -108,7 +108,7 @@ export function toSearch(q: CardQuery): Search {
     text: q.text || undefined,
     filter: filterFor(q.terms),
     sort: q.sort,
-    fields: ["name", "description", "avatar"],
+    fields: ["name", "avatar"],
     include: ["tags", "lorebooks", "targets"],
     page: { size: q.size, number: q.page },
   };

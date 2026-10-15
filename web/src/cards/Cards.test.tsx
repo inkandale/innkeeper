@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { Toasts } from "../shell/Toasts";
@@ -56,6 +56,10 @@ beforeEach(() => {
         previews.push(await req.json());
         return json({ total: 1, new: 0, ahead: 1, in_sync: 0, cant_check: 0, drifted: 0, confirm: "q1" });
       }
+      if (path === "/api/imports") {
+        posts.push({ path, body: await req.json() });
+        return json({ id: 11, kind: "import", status: "queued" });
+      }
       if (path === "/api/bulk" || path === "/api/pushes") {
         posts.push({ path, body: await req.json() });
         return json({ id: 5, kind: "bulk", status: "waiting" });
@@ -64,11 +68,13 @@ beforeEach(() => {
         return json([
           { id: 2, name: "Lumiverse", plugin: "lumiverse" },
           { id: 3, name: "Cards folder", plugin: "folder" },
+          { id: 6, name: "url-import", plugin: "url-import" },
         ]);
       if (path === "/api/plugins")
         return json([
           { name: "lumiverse", capabilities: ["push", "pull"] },
           { name: "folder", capabilities: ["import"] },
+          { name: "url-import", capabilities: ["import"], inputs: ["url"] },
         ]);
       if (path === "/api/collections") return json([{ id: 4, name: "Elves", cards: 0 }]);
       return json([]);
@@ -228,8 +234,8 @@ test("push offers only targets that push", async () => {
   const user = userEvent.setup();
   await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
   await user.click(screen.getByRole("button", { name: "Push" }));
-  const target = await screen.findByRole("combobox", { name: "Target" });
-  expect(Array.from((target as HTMLSelectElement).options).map((o) => o.text)).toEqual(["Lumiverse"]);
+  const targets = await screen.findByRole("group", { name: "Targets" });
+  expect(within(targets).getAllByRole("checkbox").map((c) => c.closest("label")!.textContent!.trim())).toEqual(["Lumiverse"]);
   expect(await screen.findByText("1 not pushed")).toBeInTheDocument();
   expect(previews).toEqual([{ instance_id: 2, query: { filter: { ids: [8] } } }]);
   await user.click(screen.getByRole("button", { name: "Push 1 card" }));
@@ -245,7 +251,7 @@ test("export offers PNG only when a codec instance writes it", async () => {
   await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
   // Push's target list waits for plugins and instances, so both have loaded.
   await user.click(screen.getByRole("button", { name: "Push" }));
-  await screen.findByRole("combobox", { name: "Target" });
+  await screen.findByRole("group", { name: "Targets" });
   await user.click(screen.getByRole("button", { name: "Export" }));
   const format = screen.getByRole("combobox", { name: "Format" });
   expect(Array.from((format as HTMLSelectElement).options).map((o) => o.text)).toEqual(["JSON"]);
@@ -409,4 +415,47 @@ test("an excluded row's pick button is not pressed", async () => {
   renderCards("/cards?f=-tag:fantasy");
   expect(await screen.findByRole("button", { name: /^not fantasy / })).toHaveAttribute("aria-pressed", "false");
   expect(screen.getByRole("button", { name: "Exclude fantasy" })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("Import cards opens the importer and imports a page URL", async () => {
+  vi.stubGlobal("EventSource", class { addEventListener() {} close() {} });
+  renderCards("/cards");
+  const open = await screen.findByRole("button", { name: "Import cards" });
+  expect(screen.getByLabelText("Import from a page URL")).not.toBeVisible();
+  await userEvent.click(open);
+  await userEvent.type(screen.getByLabelText("Import from a page URL"), "https://chub.ai/characters/u/brakka");
+  await userEvent.click(screen.getByRole("button", { name: "Import" }));
+  await waitFor(() =>
+    expect(posts).toEqual([{ path: "/api/imports", body: { instance_id: 6, params: { url: "https://chub.ai/characters/u/brakka" } } }]),
+  );
+  expect(await screen.findByRole("link", { name: /brakka/ })).toHaveAttribute("href", "/settings/jobs/11");
+});
+
+test("push sends one push per ticked target", async () => {
+  answer("/api/instances", async () =>
+    json([
+      { id: 2, name: "Lumiverse", plugin: "lumiverse" },
+      { id: 5, name: "SillyTavern", plugin: "sillytavern" },
+    ]),
+  );
+  answer("/api/plugins", async () =>
+    json([
+      { name: "lumiverse", capabilities: ["push", "pull"] },
+      { name: "sillytavern", capabilities: ["push"] },
+    ]),
+  );
+  renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
+  await user.click(screen.getByRole("button", { name: "Push" }));
+  await user.click(await screen.findByRole("checkbox", { name: "SillyTavern" }));
+  expect(await screen.findByText(/SillyTavern: 1 not pushed/)).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Push 1 card" }));
+  await waitFor(() =>
+    expect(posts).toEqual([
+      { path: "/api/pushes", body: { instance_id: 2, query: { filter: { ids: [8] } }, confirm: "q1" } },
+      { path: "/api/pushes", body: { instance_id: 5, query: { filter: { ids: [8] } }, confirm: "q1" } },
+    ]),
+  );
+  await waitFor(() => expect(screen.queryByText("1 selected")).not.toBeInTheDocument());
 });

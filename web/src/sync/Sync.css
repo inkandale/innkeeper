@@ -116,3 +116,12 @@ dialog.dialog h2 {
 .sync .badge {
   display: inline-block;
 }
+
+.targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}

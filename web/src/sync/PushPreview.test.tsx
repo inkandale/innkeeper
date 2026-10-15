@@ -16,25 +16,27 @@ const preview = {
 
 let gets: number;
 let pushes: unknown[];
-let conflict: boolean;
+let conflictFor: number | undefined;
 let current: typeof preview;
 beforeEach(() => {
   gets = 0;
   pushes = [];
-  conflict = false;
+  conflictFor = undefined;
   current = preview;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
       const u = new URL(req.url);
-      if (u.pathname === "/api/cards/7/push-preview" && u.searchParams.get("instance_id") === "2") {
+      if (u.pathname === "/api/cards/7/push-preview") {
         gets++;
-        return json(current);
+        const id = u.searchParams.get("instance_id");
+        return json(id === "2" ? current : { ...current, confirm: "c" + id });
       }
       if (u.pathname === "/api/cards/7/push") {
-        pushes.push(await req.json());
-        if (conflict) {
-          conflict = false;
+        const body = (await req.json()) as { instance_id: number };
+        pushes.push(body);
+        if (conflictFor === body.instance_id) {
+          conflictFor = undefined;
           return json({ detail: "the push would differ from the preview" }, 409);
         }
         return json({ id: 9, kind: "target.push", status: "queued" }, 202);
@@ -45,9 +47,12 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function renderPreview(onClose = vi.fn()) {
+const lumiverse = { id: 2, name: "Lumiverse" };
+const tavern = { id: 3, name: "SillyTavern" };
+
+function renderPreview(onClose = vi.fn(), targets = [lumiverse]) {
   const router = createMemoryRouter(
-    [{ path: "/", element: <Toasts><PushPreview kind="card" id={7} instance={2} name="Lumiverse" onClose={onClose} /></Toasts> }],
+    [{ path: "/", element: <Toasts><PushPreview kind="card" id={7} targets={targets} onClose={onClose} /></Toasts> }],
   );
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -68,7 +73,7 @@ test("shows what changes in the app and pushes with the preview's confirm", asyn
 });
 
 test("a push that would differ reloads the preview", async () => {
-  conflict = true;
+  conflictFor = 2;
   const onClose = renderPreview();
   await userEvent.click(await screen.findByRole("button", { name: "Confirm push" }));
   await waitFor(() => expect(gets).toBe(2));
@@ -82,4 +87,32 @@ test("a copy the app can't update is pushed as new", async () => {
   await userEvent.click(await screen.findByRole("button", { name: "Confirm push" }));
   await waitFor(() => expect(onClose).toHaveBeenCalled());
   expect(pushes).toEqual([{ instance_id: 2, confirm: "c1", new_copy: true }]);
+});
+
+test("pushes to every target with each one's confirm", async () => {
+  const onClose = renderPreview(vi.fn(), [lumiverse, tavern]);
+  expect(await screen.findByRole("heading", { name: "Push to 2 apps" })).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "SillyTavern" })).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole("button", { name: "Confirm push" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: "Confirm push" }));
+  await waitFor(() => expect(onClose).toHaveBeenCalled());
+  expect(pushes).toEqual([{ instance_id: 2, confirm: "c1" }, { instance_id: 3, confirm: "c3" }]);
+});
+
+test("a target that fails keeps the dialog open, and confirming again pushes only it", async () => {
+  conflictFor = 3;
+  const onClose = renderPreview(vi.fn(), [lumiverse, tavern]);
+  await waitFor(() => expect(screen.getByRole("button", { name: "Confirm push" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: "Confirm push" }));
+  expect(await screen.findByText(/Check the new preview/)).toBeInTheDocument();
+  expect(screen.getByText("Pushed.")).toBeInTheDocument();
+  expect(onClose).not.toHaveBeenCalled();
+  await waitFor(() => expect(screen.getByRole("button", { name: "Confirm push" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: "Confirm push" }));
+  await waitFor(() => expect(onClose).toHaveBeenCalled());
+  expect(pushes).toEqual([
+    { instance_id: 2, confirm: "c1" },
+    { instance_id: 3, confirm: "c3" },
+    { instance_id: 3, confirm: "c3" },
+  ]);
 });

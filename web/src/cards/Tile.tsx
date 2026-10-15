@@ -79,7 +79,6 @@ export function Tile({ hit, names, pick }: { hit: Hit; names: Names; pick: PickP
       <Link to={`/cards/${hit.id}`} className="tile-name">
         {text(hit.fields.name)}
       </Link>
-      <p className="tile-description">{text(hit.fields.description)}</p>
       <p className="tile-tags">
         {tags.slice(0, 3).map((t) => (
           <span key={t} className="tag">

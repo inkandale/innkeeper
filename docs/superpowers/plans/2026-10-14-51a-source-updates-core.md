@@ -2462,7 +2462,7 @@ Run: `git diff origin/main --stat` and read the whole diff. Look for:
 | `target.list`, `target.list_lorebooks` | `{"items": []}` |
 | `target.put`, `target.put_lorebook` | Not implemented; method not found |
 | Stable output | Two fetches of an unchanged page must return identical `data` for the listed fields, or every check flags an update. Drop volatile values, such as view counts in `extensions.chub`, before replying. Avatars are compared by pixel hash, so only the picture itself must be stable |
-| `ink plugin check` | Checks `target.describe`, both lists, and that `target.get` and `target.get_lorebook` answer `-32004` for `innkeeper-contract:none` (Task 13) |
+| `ink plugin check` | Checks `target.describe`, both lists, and that `target.get` answers `-32004` for `innkeeper-contract:none`, as does `target.get_lorebook` when `lorebooks` is `standalone` (Task 13) |
 | Pacing | Space requests per host; the core checks one source at a time |
 
 ### 51c: web
@@ -2485,6 +2485,8 @@ The url-import instance now has the `pull` capability. Places that pick "apps" b
 - `web/src/welcome/SetUpPlugins.tsx`
 - `web/src/sync/SyncPage.tsx`
 
+These changes must merge before or with 51b, or url-import shows up as an app.
+
 Search's target facets, target filter, and per-hit targets already leave followed sources out (Task 12).
 
 **Changes queue (`GET /sync/changes`)**
@@ -2496,29 +2498,32 @@ Search's target facets, target filter, and per-hit targets already leave followe
   - `missing`: show "No longer on chub" with the site's name.
   - `error`: show `error`.
 - A row may carry `lorebook_id` instead of `card_id`.
+- `counts` include the url-import instance's `update`, `missing`, and `error` tallies.
 - The `state` query parameter accepts `update`.
 
 **Reviewing an update**
 
 1. Compare with `GET /instances/{instance_id}/cards/{remote_id}/compare?card_id={card_id}`, or `.../lorebooks/{remote_id}/compare?lorebook_id={lorebook_id}`. Path-escape `remote_id`: it contains `:` and `/` (Task 10 tests `%2F`).
-2. Resolve with `POST /instances/{instance_id}/cards/{remote_id}/resolve`. The body is the Resolution, with `action: "bind"` and the comparison's hashes.
+2. Resolve with `POST /instances/{instance_id}/cards/{remote_id}/resolve`, or `.../lorebooks/{remote_id}/resolve`. The body is the Resolution, with `action: "bind"` and the comparison's hashes.
 
-Always send `card_id`, because several cards may follow one source.
+Always send `card_id`, because several cards may follow one source. For a lorebook, `card_id` holds the lorebook's ID.
 
 **Owner actions**
 
 | Action | Route |
 |---|---|
-| Ignore this change | `POST /bindings/{id}/dismiss` `{"app_hash": ...}` → Binding. Send the queue entry's or binding's `app_hash`. If the site's data changed since (an avatar change alone does not count), it answers 409 with a fresh comparison and ignores nothing |
+| Ignore this change | `POST /bindings/{id}/dismiss` `{"app_hash": ...}` → Binding. Send the queue entry's or binding's `app_hash`. If the site's data changed since (an avatar change alone does not count), it answers 409 with a fresh three-way comparison and ignores nothing |
 | Ignore all | `PATCH /bindings/{id}` `{"paused": true}` |
 | Check again | `PATCH /bindings/{id}` `{"paused": false}` |
 | Autosync | `PATCH /bindings/{id}` `{"autosync": true}`. Both body fields are optional now |
-| Remove source | The existing `DELETE /{cards|lorebooks}/{id}/sources/{source_id}`, with the entry's `source_id`. The queue entry disappears straight away |
+| Remove source | The existing `DELETE /{cards|lorebooks}/{id}/sources/{source_id}`, with the entry's `source_id`. The followed binding and its queue entry go away at once |
+
+Pause and dismiss answer 400 for an app binding (`push: true`).
 
 **Checks**
 
 - "Check for updates" on a card or lorebook: `POST /{cards|lorebooks}/{id}/source-check` → `Binding[]`, the entity's bindings after the check. If a source couldn't be followed or checked, it answers with that failure's error status instead, such as 502 or 503.
 - Library-wide: `POST /source-checks` → 202 Job, kind `target.source-check`.
-- The job's progress is `ScanProgress`: `checked`, `changed`, `missing`, `failed`, `errors`, and a new `applied`.
+- The job's progress is `ScanProgress`: `checked`, `changed`, `missing`, `failed`, `errors`, and a new `applied`, which is absent when 0.
 
-**Card page banner:** a binding with `push: false` and `remote_state: "changed"`.
+**Card page banner:** shown when a binding has `push === false && !paused && remote_state === "changed"`.

@@ -94,6 +94,10 @@ func TestManifestErrors(t *testing.T) {
 		{"two grid keys", `summary = { type = "text", label = "AI summary" }`,
 			`summary = { type = "text", label = "AI summary", grid = true }
 extra = { type = "text", label = "Extra", grid = true }`, "at most one enrichment can set grid"},
+		{"unknown use", `secrets = ["api_key"]`, `secrets = ["api_key"]
+uses = ["ai.draw"]`, `uses "ai.draw"`},
+		{"duplicate use", `secrets = ["api_key"]`, `secrets = ["api_key"]
+uses = ["ai.chat", "ai.chat"]`, `uses "ai.chat" listed twice`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -341,5 +345,21 @@ func TestEnrichNeedsEnrichments(t *testing.T) {
 	m.Enrichments = map[string]Enrichment{"quality": {Type: "score", Label: "Quality", Range: []float64{0, 100}, Grid: true}}
 	if err := m.Validate(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestManifestUses(t *testing.T) {
+	body := strings.Replace(validManifest, `secrets = ["api_key"]`, `secrets = ["api_key"]
+uses = ["ai.chat", "ai.embed"]`, 1)
+	m, err := LoadManifest(writeManifest(t, body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(m.Uses, ",") != "ai.chat,ai.embed" {
+		t.Fatalf("Uses = %v", m.Uses)
+	}
+	ai := &Manifest{Name: "a", Version: "1", Protocol: Version, Command: []string{"a"}, Capabilities: []string{"ai"}}
+	if err := ai.Validate(); err != nil {
+		t.Fatalf("ai capability: %v", err)
 	}
 }

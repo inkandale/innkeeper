@@ -14,7 +14,7 @@ import (
 )
 
 // Capabilities lists every capability a plugin may declare.
-var Capabilities = []string{"import", "search", "push", "pull", "action", "records", "enrich", "codec", "auth", "mcp", "theme", "catalog", "sites"}
+var Capabilities = []string{"import", "search", "push", "pull", "action", "records", "enrich", "codec", "auth", "mcp", "theme", "catalog", "sites", "ai"}
 
 var enrichmentTypes = []string{"text", "score", "list"}
 
@@ -61,6 +61,9 @@ type Manifest struct {
 	// Database gives the plugin a schema, plugin_<name>, and a role limited
 	// to it. The URL arrives as initialize's database_url.
 	Database bool `toml:"database"`
+
+	// Uses are the service methods the plugin calls on other instances.
+	Uses []string `toml:"uses"`
 
 	// Stylesheet is a theme plugin's CSS file, inside the plugin folder.
 	Stylesheet string `toml:"stylesheet"`
@@ -278,6 +281,16 @@ func (m *Manifest) Validate() error {
 			errs = append(errs, fmt.Errorf("source kind %q listed twice", k))
 		}
 		seenKinds[k] = true
+	}
+	seenUses := map[string]bool{}
+	for _, u := range m.Uses {
+		if _, ok := Services[u]; !ok {
+			errs = append(errs, fmt.Errorf("uses %q must be one of %v", u, slices.Sorted(maps.Keys(Services))))
+		}
+		if seenUses[u] {
+			errs = append(errs, fmt.Errorf("uses %q listed twice", u))
+		}
+		seenUses[u] = true
 	}
 	return errors.Join(errs...)
 }

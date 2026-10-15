@@ -27,8 +27,8 @@ export function lockOf(runs: { scope: Scope; label: string }[]): (key: string) =
   return (key) => runs.find((r) => r.scope === "all" || r.scope.includes(key))?.label;
 }
 
-/** instructionAction is the whole-card action the Reforge panel's instruction box runs. */
-export const instructionAction = (list: Action[]) => list.find((a) => a.applies === "card" && !a.fields?.length && a.instruction);
+/** instructionAction is the whole-entity action on kind that the Reforge panel's instruction box runs. */
+export const instructionAction = (list: Action[], kind: string) => list.find((a) => a.applies === kind && !a.fields?.length && a.instruction);
 
 /** newAction is the action the Start tab's Forge runs. */
 export const newAction = (list: Action[]) => list.find((a) => a.applies === "new");

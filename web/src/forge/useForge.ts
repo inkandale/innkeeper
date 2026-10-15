@@ -4,6 +4,7 @@ import { api, must, upload } from "../api/client";
 import type { components } from "../api/schema";
 import type { Data } from "../card/draft";
 import { finished, type Job } from "../settings/jobUtil";
+import type { Subject } from "./subject";
 import { changedKeys, overlaps, readSettled, scopeOf, settle as remember, lockOf, type Action, type Payload, type Progress, type Result, type Scope } from "./actions";
 
 type ContextRefs = components["schemas"]["ContextRefs"];
@@ -18,7 +19,7 @@ export type RunRequest = {
   images?: { reference?: Blob | string; avatar?: Blob | string };
 };
 
-/** Run is an action job on this card, as the Forge shows it. */
+/** Run is an action job on this entity, as the Forge shows it. */
 export type Run = {
   id: number;
   job: Job;
@@ -60,11 +61,12 @@ async function sha(image: Blob | string | undefined) {
 let waitingKey = 0;
 
 /**
- * useForge holds a card's Forge: the actions on offer, the chosen model setup (an action instance), and the card's
- * runs, found from the job list so they survive a reload. data is the draft a run starts from. cardId is undefined
- * for a new card, whose runs live only in this tab.
+ * useForge holds an entity's Forge: the actions on offer, the chosen model setup (an action instance), and the
+ * entity's runs, found from the job list so they survive a reload. data is the draft a run starts from. id is
+ * undefined for a new card, whose runs live only in this tab.
  */
-export function useForge({ cardId, data }: { cardId?: number; data: Data }) {
+export function useForge({ subject, id, data }: { subject: Subject; id?: number; data: Data }) {
+  const listKey = ["jobs", "action", subject.kind, id];
   const qc = useQueryClient();
   const actionList = useQuery({ queryKey: ["actions"], queryFn: async () => must(await api.GET("/actions")) });
   const actions = actionList.data ?? [];
@@ -83,9 +85,9 @@ export function useForge({ cardId, data }: { cardId?: number; data: Data }) {
   const nameOf = (id: number | undefined) => instances.find((i) => i.id === id)?.name ?? `instance ${id}`;
 
   const list = useQuery({
-    queryKey: ["jobs", "action", cardId],
-    enabled: cardId !== undefined,
-    queryFn: async () => must(await api.GET("/jobs", { params: { query: { kind: "action", card_id: cardId, limit: 20 } } })),
+    queryKey: listKey,
+    enabled: id !== undefined,
+    queryFn: async () => must(await api.GET("/jobs", { params: { query: { kind: "action", ...(subject.kind === "card" ? { card_id: id } : { lorebook_id: id }), limit: 20 } } })),
   });
   const [started, setStarted] = useState<number[]>([]);
   const [settled, setSettled] = useState(readSettled);
@@ -135,7 +137,7 @@ export function useForge({ cardId, data }: { cardId?: number; data: Data }) {
             instance_id: action.instance_id,
             action: action.id,
             field,
-            entity: { kind: "card", id: cardId, data: action.applies === "new" ? undefined : dataRef.current },
+            entity: { kind: subject.kind, id, data: action.applies === "new" ? undefined : dataRef.current },
             instruction,
             inputs: inputs as Record<string, unknown> | undefined,
             context,
@@ -147,7 +149,7 @@ export function useForge({ cardId, data }: { cardId?: number; data: Data }) {
     onSuccess: (job) => {
       qc.setQueryData(["job", job.id], job);
       setStarted((s) => [...s, job.id]);
-      void qc.invalidateQueries({ queryKey: ["jobs", "action", cardId] });
+      void qc.invalidateQueries({ queryKey: listKey });
     },
   });
 
@@ -179,7 +181,7 @@ export function useForge({ cardId, data }: { cardId?: number; data: Data }) {
     mutationFn: async (id: number) => must(await api.POST("/jobs/{id}/cancel", { params: { path: { id } } })),
     onSuccess: (job) => {
       qc.setQueryData(["job", job.id], job);
-      void qc.invalidateQueries({ queryKey: ["jobs", "action", cardId] });
+      void qc.invalidateQueries({ queryKey: listKey });
     },
   });
   const settle = (id: number) => {
@@ -188,6 +190,7 @@ export function useForge({ cardId, data }: { cardId?: number; data: Data }) {
   };
 
   return {
+    subject,
     actions,
     /** mine are the chosen model setup's actions. */
     mine: actions.filter((a) => a.instance_id === instance?.id),

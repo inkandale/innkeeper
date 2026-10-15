@@ -1,30 +1,25 @@
 import { useState } from "react";
-import { fieldLabel } from "../card/Fields";
-import { same, show, type Data } from "../card/draft";
+import type { Data } from "../card/draft";
 import { Words } from "../sync/Diff";
 import { wordDiff } from "../sync/sync";
-import { changedKeys } from "./actions";
+import type { Proposed } from "./subject";
 
 const absent = <em className="muted">(empty)</em>;
 
 /**
- * Review puts a proposal against the draft, one row per field it changes, its word diff taken against start, the data
- * the run began from. onApply gets the taken fields.
+ * Review puts a proposal against the draft, one row per change, each word diff taken against the data the run began
+ * from. onApply gets the draft changes the taken rows make.
  */
 export function Review(props: {
   title: string;
-  start: Data;
-  draft: Data;
-  proposal: Data;
+  proposed: Proposed;
   warnings?: string[] | null;
   onApply: (changes: Data) => void;
   onDiscard: () => void;
 }) {
-  const { start, draft, proposal } = props;
-  const rows = changedKeys(start, proposal);
-  // A field the owner edited during the run keeps the edit unless they take the proposal.
-  const edited = (k: string) => !same(draft[k], start[k]);
-  const [taken, setTaken] = useState(() => new Set(rows.filter((k) => !edited(k))));
+  const { rows, apply } = props.proposed;
+  // A row the owner edited during the run keeps the edit unless they take the proposal.
+  const [taken, setTaken] = useState(() => new Set(rows.filter((r) => !r.edited).map((r) => r.key)));
   const choose = (k: string, take: boolean) =>
     setTaken((s) => {
       const next = new Set(s);
@@ -52,27 +47,26 @@ export function Review(props: {
           </tr>
         </thead>
         <tbody>
-          {rows.map((k) => (
-            <tr key={k} className={taken.has(k) ? "take" : "keep"}>
+          {rows.map((r) => (
+            <tr key={r.key} className={taken.has(r.key) ? "take" : "keep"}>
               <th>
-                {fieldLabel(k)}
-                {edited(k) && <small className="muted forge-edited">You've edited this since the run started.</small>}
+                {r.label}
+                {r.change && <small className={`forge-change ${r.change}`}>{r.change}</small>}
+                {r.edited && <small className="muted forge-edited">You've edited this since the run started.</small>}
               </th>
               <td>
-                <div className="forge-text">{show(draft[k]) || absent}</div>
+                <div className="forge-text">{r.mine || absent}</div>
               </td>
               <td>
-                <div className="forge-text hunks">
-                  {proposal[k] === undefined ? absent : <Words runs={wordDiff(show(start[k]), show(proposal[k]))} />}
-                </div>
+                <div className="forge-text hunks">{r.after === undefined ? absent : <Words runs={wordDiff(r.before, r.after)} />}</div>
               </td>
               <td>
-                <div className="forge-toggle" role="radiogroup" aria-label={`Choice for ${fieldLabel(k)}`}>
+                <div className="forge-toggle" role="radiogroup" aria-label={`Choice for ${r.label}`}>
                   <label className="check">
-                    <input type="radio" name={`take-${k}`} checked={taken.has(k)} onChange={() => choose(k, true)} /> Take proposal
+                    <input type="radio" name={`take-${r.key}`} checked={taken.has(r.key)} onChange={() => choose(r.key, true)} /> Take proposal
                   </label>
                   <label className="check">
-                    <input type="radio" name={`take-${k}`} checked={!taken.has(k)} onChange={() => choose(k, false)} /> Keep mine
+                    <input type="radio" name={`take-${r.key}`} checked={!taken.has(r.key)} onChange={() => choose(r.key, false)} /> Keep mine
                   </label>
                 </div>
               </td>
@@ -81,11 +75,7 @@ export function Review(props: {
         </tbody>
       </table>
       <div className="forge-footer">
-        <button
-          className="button primary"
-          disabled={!taken.size}
-          onClick={() => props.onApply(Object.fromEntries(rows.filter((k) => taken.has(k)).map((k) => [k, proposal[k]])))}
-        >
+        <button className="button primary" disabled={!taken.size} onClick={() => props.onApply(apply(taken))}>
           Apply {taken.size} of {rows.length} changes to draft
         </button>
         <button className="button" onClick={props.onDiscard}>

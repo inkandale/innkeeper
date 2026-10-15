@@ -9,6 +9,8 @@ import { UpdateBanner } from "./Upstream";
 import { useEditor } from "./useEditor";
 import { Forge } from "../forge/Forge";
 import { useForge } from "../forge/useForge";
+import { cardSubject } from "../forge/subject";
+import { Fields } from "./Fields";
 import "./Card.css";
 
 export type Entity = components["schemas"]["EntityOut"];
@@ -23,7 +25,7 @@ function CardEditor({ id }: { id: number }) {
   const qc = useQueryClient();
   const toast = useToast();
   const ed = useEditor("card", id);
-  const forge = useForge({ cardId: id, data: ed.data });
+  const forge = useForge({ subject: cardSubject, id, data: ed.data });
 
   // An image change saves at once, on the head. A draft started from that
   // head moves onto the new revision, since its data didn't change.
@@ -70,7 +72,13 @@ function CardEditor({ id }: { id: number }) {
       <div className="card-main">
         <UpdateBanner kind="card" id={id} />
         <Stale kind="card" ed={ed} />
-        <Forge forge={forge} data={ed.data} dirty={ed.dirty} edit={ed.edit} avatar={head.revision.avatar} />
+        <Forge
+          forge={forge}
+          data={ed.data}
+          edit={ed.edit}
+          fields={(lock, extra) => <Fields data={ed.data} dirty={ed.dirty} edit={ed.edit} lock={lock} extra={extra} />}
+          avatar={head.revision.avatar}
+        />
       </div>
     </div>
   );

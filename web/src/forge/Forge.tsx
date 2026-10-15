@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { fieldLabel, Fields } from "../card/Fields";
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import type { Data } from "../card/draft";
-import { changedKeys, instructionAction, newAction, type Action, type Report as ReportT, type Severity } from "./actions";
+import { instructionAction, newAction, type Action, type Report as ReportT, type Severity } from "./actions";
 import { Hammer } from "./Hammer";
 import { ActionOptions, asks, imagesOf, ModelPicker, noOptions, type Options } from "./Inputs";
 import { blocking, emptyInstruction, MentionBox, useMentions, type Instruction } from "./MentionBox";
@@ -17,20 +16,25 @@ type Tab = "start" | "fields" | "review" | "report";
 
 const severities: Severity[] = ["high", "medium", "low"];
 
+/** Lock returns the label of the run that locks a data key, if one does. */
+export type Lock = (key: string) => string | undefined;
+
 /**
- * Forge is the card page's main column: the Fields tab, and with an action plugin, Review, Report, the Reforge panel,
- * and the runs. A new card, without cardId, has a Start tab instead of Report. avatar is the current avatar: a blob
+ * Forge is a card or lorebook page's main column: the Fields tab, and with an action plugin, Review, Report, the
+ * Reforge panel, and the runs. fields renders the Fields tab; with an action plugin it gets the locks and extra, a
+ * text field's header additions. A new card has a Start tab instead of Report. avatar is the current avatar: a blob
  * SHA, or a new card's file.
  */
 export function Forge(props: {
   forge: ForgeState;
   isNew?: boolean;
   data: Data;
-  dirty: Set<string>;
   edit: (key: string, value: unknown) => void;
+  fields: (lock?: Lock, extra?: (key: string) => ReactNode) => ReactNode;
   avatar?: Blob | string;
 }) {
   const { forge, data, isNew } = props;
+  const { kind, label } = forge.subject;
   const [tab, setTab] = useState<Tab>();
   const [panel, setPanel] = useState(false);
   const [target, setTarget] = useState<Target>();
@@ -81,9 +85,10 @@ export function Forge(props: {
   const pickField = (a: Action, key: string) => (asks(a) || a.images ? open({ action: a, field: key }) : forge.start({ action: a, field: key }));
   const extra = (key: string) => (
     <>
-      {forge.report && <Badges report={forge.report} field={key} onOpen={() => toReport(key)} />}
+      {forge.report && <Badges report={forge.report} field={key} label={label} onOpen={() => toReport(key)} />}
       <FieldMenu
         field={key}
+        label={label}
         // A new card has no Report tab to show a report-only action's result.
         actions={forge.mine.filter((a) => a.fields?.includes(key) && !(isNew && a.report_only))}
         disabled={!!forge.lock(key)}
@@ -93,11 +98,12 @@ export function Forge(props: {
   );
 
   const pending = forge.pending;
-  const reviewCount = pending ? changedKeys(pending.start, pending.result?.proposal ?? {}).length : 0;
+  const proposed = pending?.result?.proposal && forge.subject.review(pending.start, data, pending.result.proposal);
+  const reviewCount = proposed ? proposed.rows.length : 0;
   const tabs: [Tab, string][] = isNew
     ? [["start", "Start"], ["fields", "Fields"], ["review", `Review${pending ? ` (${reviewCount})` : ""}`]]
     : [["fields", "Fields"], ["review", `Review${pending ? ` (${reviewCount})` : ""}`], ["report", "Report"]];
-  const revise = instructionAction(forge.mine);
+  const revise = instructionAction(forge.mine, kind);
   const shown: Tab = on ? (tab ?? (isNew ? "start" : "fields")) : "fields";
   const tabId = (t: Tab) => `forge-tab-${t}`;
   const usable = tabs.filter(([t]) => t !== "review" || pending).map(([t]) => t);
@@ -137,23 +143,21 @@ export function Forge(props: {
         </div>
       )}
       {forge.runs.map((r) => (
-        <RunHeader key={r.id} run={r} onStop={() => forge.stop(r.id)} onDismiss={() => forge.settle(r.id)} />
+        <RunHeader key={r.id} run={r} label={label} onStop={() => forge.stop(r.id)} onDismiss={() => forge.settle(r.id)} />
       ))}
       {forge.waiting.map((w) => (
-        <WaitingHeader key={w.key} w={w} onCancel={() => forge.unwait(w.key)} />
+        <WaitingHeader key={w.key} w={w} label={label} onCancel={() => forge.unwait(w.key)} />
       ))}
 
       <div id="forge-tabpanel" role={on ? "tabpanel" : undefined} aria-labelledby={on ? tabId(shown) : undefined}>
       {shown === "start" && <Start forge={forge} avatar={props.avatar} />}
-      {shown === "fields" && <Fields data={data} dirty={props.dirty} edit={props.edit} lock={on ? forge.lock : undefined} extra={on ? extra : undefined} />}
-      {shown === "review" && pending?.result?.proposal && (
+      {shown === "fields" && (on ? props.fields(forge.lock, extra) : props.fields())}
+      {shown === "review" && pending && proposed && (
         <Review
           key={pending.id}
-          title={pending.field ? `${pending.label} on ${fieldLabel(pending.field)}` : pending.label}
-          start={pending.start}
-          draft={data}
-          proposal={pending.result.proposal}
-          warnings={pending.result.warnings}
+          title={pending.field ? `${pending.label} on ${label(pending.field)}` : pending.label}
+          proposed={proposed}
+          warnings={pending.result?.warnings}
           onApply={(changes) => {
             for (const [k, v] of Object.entries(changes)) props.edit(k, v);
             forge.settle(pending.id);
@@ -167,12 +171,12 @@ export function Forge(props: {
       )}
       {shown === "report" &&
         (forge.report ? (
-          <Report key={forge.reportId} report={forge.report} onRefine={revise && ((text) => forge.start({ action: revise, instruction: text }))} />
+          <Report key={forge.reportId} report={forge.report} subject={forge.subject} onRefine={revise && ((text) => forge.start({ action: revise, instruction: text }))} />
         ) : (
           <div className="forge-empty">
             <p>No report yet.</p>
             {forge.mine
-              .filter((a) => a.applies === "card" && a.report_only)
+              .filter((a) => a.applies === kind && a.report_only)
               .map((a) => (
                 <button key={a.id} className="button primary" onClick={() => (asks(a) ? open({ action: a }) : forge.start({ action: a }))}>
                   <Hammer /> {a.label}
@@ -199,13 +203,13 @@ export function Forge(props: {
 }
 
 /** Badges counts a field's findings per severity; each opens the Report at them. */
-function Badges({ report, field, onOpen }: { report: ReportT; field: string; onOpen: () => void }) {
+function Badges({ report, field, label, onOpen }: { report: ReportT; field: string; label: (key: string) => string; onOpen: () => void }) {
   const mine = report.findings?.filter((f) => f.fields?.includes(field)) ?? [];
   return severities.map((s) => {
     const n = mine.filter((f) => f.severity === s).length;
     return (
       n > 0 && (
-        <button key={s} className={`forge-badge ${s}`} aria-label={`${n} ${s} finding${n === 1 ? "" : "s"} on ${fieldLabel(field)}`} onClick={onOpen}>
+        <button key={s} className={`forge-badge ${s}`} aria-label={`${n} ${s} finding${n === 1 ? "" : "s"} on ${label(field)}`} onClick={onOpen}>
           {n > 1 ? `${n} ${s}` : s}
         </button>
       )
@@ -214,7 +218,9 @@ function Badges({ report, field, onOpen }: { report: ReportT; field: string; onO
 }
 
 /** FieldMenu is a field's hammer menu of field actions. */
-function FieldMenu({ field, actions, disabled, onPick }: { field: string; actions: Action[]; disabled: boolean; onPick: (a: Action) => void }) {
+function FieldMenu(props: { field: string; label: (key: string) => string; actions: Action[]; disabled: boolean; onPick: (a: Action) => void }) {
+  const { field, actions, disabled, onPick } = props;
+  const name = props.label(field);
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLSpanElement>(null);
@@ -240,7 +246,7 @@ function FieldMenu({ field, actions, disabled, onPick }: { field: string; action
       <button
         ref={trigger}
         className="button"
-        aria-label={`Forge actions for ${fieldLabel(field)}`}
+        aria-label={`Forge actions for ${name}`}
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={disabled}
@@ -253,7 +259,7 @@ function FieldMenu({ field, actions, disabled, onPick }: { field: string; action
         <Hammer />
       </button>
       {open && (
-        <span ref={menu} className="forge-pop" role="menu" aria-label={`Forge actions for ${fieldLabel(field)}`} onKeyDown={move}>
+        <span ref={menu} className="forge-pop" role="menu" aria-label={`Forge actions for ${name}`} onKeyDown={move}>
           {actions.map((a) => (
             <button
               key={`${a.instance_id}/${a.id}`}

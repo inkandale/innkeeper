@@ -8,6 +8,8 @@ import { changed, type Data } from "./draft";
 import { Identity } from "./Panel";
 import { Forge } from "../forge/Forge";
 import { useForge } from "../forge/useForge";
+import { cardSubject } from "../forge/subject";
+import { Fields } from "./Fields";
 import "./Card.css";
 
 const draftKey = "innkeeper.newCard";
@@ -41,7 +43,7 @@ export function NewCard() {
   useEffect(() => writeDraft(data), [data]);
   const edit = (key: string, value: unknown) => setData((d) => ({ ...d, [key]: value }));
   const dirty = changed({ baseId: 0, base: {}, data });
-  const forge = useForge({ data });
+  const forge = useForge({ subject: cardSubject, data });
   const forgeBusy = forge.runs.some((r) => r.live) || forge.waiting.length > 0 || !!forge.pending;
   const save = useMutation({
     mutationFn: async () => {
@@ -71,7 +73,14 @@ export function NewCard() {
           {forgeBusy && <p className="muted">Save waits for the Forge run to finish and be reviewed: the run belongs to this page, not the saved card.</p>}
         </aside>
         <div className="card-main">
-          <Forge forge={forge} isNew data={data} dirty={dirty} edit={edit} avatar={avatar ?? undefined} />
+          <Forge
+            forge={forge}
+            isNew
+            data={data}
+            edit={edit}
+            fields={(lock, extra) => <Fields data={data} dirty={dirty} edit={edit} lock={lock} extra={extra} />}
+            avatar={avatar ?? undefined}
+          />
         </div>
       </fieldset>
     </div>

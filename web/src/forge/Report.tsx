@@ -1,7 +1,7 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import Markdown from "react-markdown";
-import { fieldLabel } from "../card/Fields";
 import { refineInstruction, type Finding, type Report as ReportT } from "./actions";
+import type { Subject } from "./subject";
 
 const tone = (n: number) => (n >= 80 ? "var(--ok)" : n >= 60 ? "var(--drift)" : "var(--danger)");
 const pct = (n: number) => Math.max(0, Math.min(100, n));
@@ -16,7 +16,8 @@ export function reportAnchor(report: ReportT, key: string): string | undefined {
  * Report shows an evaluation: score, summary, dimensions, findings by field, and suggestions. Refine runs onRefine with
  * the ticked items as an instruction; without refine, there is no action to run it.
  */
-export function Report({ report, onRefine }: { report: ReportT; onRefine?: (instruction: string) => void }) {
+export function Report({ report, subject, onRefine }: { report: ReportT; subject: Subject; onRefine?: (instruction: string) => void }) {
+  const { label } = subject;
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const tick = (id: string) =>
     setTicked((t) => {
@@ -37,7 +38,7 @@ export function Report({ report, onRefine }: { report: ReportT; onRefine?: (inst
       refineInstruction(
         findings.filter((x) => ticked.has(x.id)).map((x) => x.f),
         suggestions.filter((x) => ticked.has(x.id)).map((x) => x.s),
-        fieldLabel,
+        label,
       ),
     );
 
@@ -75,9 +76,9 @@ export function Report({ report, onRefine }: { report: ReportT; onRefine?: (inst
       {groups.size > 0 && <h3>Findings</h3>}
       {[...groups].map(([k, list]) => (
         <section key={k} id={`report-${k}`} className="field forge-section">
-          <h4>{k ? fieldLabel(k) : "The whole card"}</h4>
+          <h4>{k ? label(k) : `The whole ${subject.kind}`}</h4>
           {list.map(({ f, id }) => (
-            <FindingRow key={id} f={f} check={check(id)} />
+            <FindingRow key={id} f={f} check={check(id)} label={label} />
           ))}
         </section>
       ))}
@@ -99,17 +100,17 @@ export function Report({ report, onRefine }: { report: ReportT; onRefine?: (inst
   );
 }
 
-function FindingRow({ f, check }: { f: Finding; check: ReactNode }) {
+function FindingRow({ f, check, label }: { f: Finding; check: ReactNode; label: (key: string) => string }) {
   return (
     <label className="forge-check">
       {check}
       <span className={`forge-sev ${f.severity}`}>{f.severity}</span>
       <span>
         {f.text}
-        {(f.fields?.length ?? 0) > 1 && <span className="muted"> Also: {f.fields!.slice(1).map(fieldLabel).join(", ")}.</span>}
+        {(f.fields?.length ?? 0) > 1 && <span className="muted"> Also: {f.fields!.slice(1).map(label).join(", ")}.</span>}
         {f.move && (
           <span className="forge-move">
-            Move “{f.move.excerpt}” to {fieldLabel(f.move.to)}
+            Move “{f.move.excerpt}” to {label(f.move.to)}
           </span>
         )}
       </span>

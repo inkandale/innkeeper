@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Review } from "./Review";
+import { cardSubject } from "./subject";
 
 test("Review applies only the fields the owner takes", async () => {
   const onApply = vi.fn();
@@ -8,9 +9,7 @@ test("Review applies only the fields the owner takes", async () => {
   render(
     <Review
       title="Reforge"
-      start={start}
-      draft={start}
-      proposal={{ name: "Brakka", description: "A tall dwarf.", scenario: "A cold forge." }}
+      proposed={cardSubject.review(start, start, { name: "Brakka", description: "A tall dwarf.", scenario: "A cold forge." })}
       warnings={["dropped the change to name: outside the action's scope"]}
       onApply={onApply}
       onDiscard={() => {}}
@@ -29,9 +28,7 @@ test("a field edited since the run started defaults to Keep mine", async () => {
   render(
     <Review
       title="Reforge"
-      start={start}
-      draft={{ ...start, description: "A grumpy dwarf." }}
-      proposal={{ description: "A tall dwarf.", scenario: "A cold forge." }}
+      proposed={cardSubject.review(start, { ...start, description: "A grumpy dwarf." }, { description: "A tall dwarf.", scenario: "A cold forge." })}
       onApply={onApply}
       onDiscard={() => {}}
     />,

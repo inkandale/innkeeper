@@ -32,9 +32,11 @@ test("scopes overlap on a shared key, and the whole card overlaps any field", ()
   expect(overlaps(["description"], ["description"])).toBe(true);
 });
 
-test("the instruction box runs the whole-card action with an instruction, not a field one", () => {
-  expect(instructionAction([rewrite, tighten, revise, generate])?.id).toBe("revise");
-  expect(instructionAction([rewrite, tighten])).toBeUndefined();
+test("the instruction box runs the entity's whole action with an instruction, not a field one", () => {
+  const lore = { ...revise, id: "lore", applies: "lorebook" as const };
+  expect(instructionAction([rewrite, tighten, lore, revise, generate], "card")?.id).toBe("revise");
+  expect(instructionAction([rewrite, tighten, revise, lore], "lorebook")?.id).toBe("lore");
+  expect(instructionAction([rewrite, tighten], "card")).toBeUndefined();
   expect(newAction([revise, generate])?.id).toBe("generate");
 });
 

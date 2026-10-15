@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { fieldLabel } from "../card/Fields";
 import { useModal } from "../shell/useModal";
 import { instructionAction, type Action } from "./actions";
 import { Hammer } from "./Hammer";
@@ -8,12 +7,17 @@ import { blocking, emptyInstruction, MentionBox, useMentions, type Instruction }
 import { contextOf } from "./mentions";
 import type { Forge } from "./useForge";
 
+const placeholders = {
+  card: "Reforge this card… e.g. make the family robots · @cards/Billy is the brother",
+  lorebook: "Reforge this lorebook… e.g. add entries for the northern clans · @cards/Billy is their chief",
+};
+
 /** Target is the action Run runs, and the field for a field action. */
 export type Target = { action: Action; field?: string };
 
 /**
- * Reforge is the panel for changing the whole card: the instruction box, which runs the card's revise action, and the
- * other whole-card actions. target, when set, is another action to run instead, such as a field action with inputs.
+ * Reforge is the panel for changing the whole entity: the instruction box, which runs its revise action, and the
+ * other whole-entity actions. target, when set, is another action to run instead, such as a field action with inputs.
  */
 export function Reforge(props: {
   forge: Forge;
@@ -27,9 +31,10 @@ export function Reforge(props: {
 }) {
   const { forge, target, instruction } = props;
   const modal = useModal(props.onClose);
-  const revise = instructionAction(forge.mine);
+  const { kind, label } = forge.subject;
+  const revise = instructionAction(forge.mine, kind);
   const current: Target | undefined = target ?? (revise && { action: revise });
-  const others = forge.mine.filter((a) => a.applies === "card" && !a.fields?.length && a !== revise);
+  const others = forge.mine.filter((a) => a.applies === kind && !a.fields?.length && a !== revise);
   const mentions = useMentions(instruction, forge.instance?.id);
   const [options, setOptions] = useState<Options>(noOptions);
   // The panel stays open, with its instruction, until the run has started.
@@ -59,11 +64,11 @@ export function Reforge(props: {
     <dialog className="forge-panel" aria-label={`Reforge ${props.name}`} {...modal}>
       <div className="forge-panel-head">
         <Hammer />
-        <strong>Reforge {props.name || "this card"}</strong>
+        <strong>Reforge {props.name || `this ${kind}`}</strong>
         {target && (
           <span className="forge-target muted">
             Runs <strong>{target.action.label}</strong>
-            {target.field && ` on ${fieldLabel(target.field)}`}
+            {target.field && ` on ${label(target.field)}`}
             <button className="forge-x" aria-label="Back to the instruction" onClick={() => choose(undefined)}>
               ×
             </button>
@@ -73,7 +78,7 @@ export function Reforge(props: {
       {takesText && (
         <MentionBox
           label="Instruction"
-          placeholder="Reforge this card… e.g. make the family robots · @cards/Billy is the brother"
+          placeholder={placeholders[kind]}
           value={instruction}
           onChange={props.setInstruction}
           mentions={mentions}
@@ -85,7 +90,7 @@ export function Reforge(props: {
       {current && <ActionOptions action={current.action} value={options} onChange={setOptions} hasAvatar={!!props.avatar} />}
       {others.length > 0 && (
         <>
-          <div className="forge-group">Or change the whole card</div>
+          <div className="forge-group">Or change the whole {kind}</div>
           <ul className="plain forge-presets">
             {others.map((a) => (
               <li key={a.id}>

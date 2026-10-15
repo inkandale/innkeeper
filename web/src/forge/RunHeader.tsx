@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { fieldLabel } from "../card/Fields";
 import { useJobEvents } from "../settings/jobUtil";
 import type { Progress } from "./actions";
 import { Hammer } from "./Hammer";
 import type { Run, Waiting } from "./useForge";
 
-const title = (r: { label: string; field?: string }) => (r.field ? `${r.label} · ${fieldLabel(r.field)}` : r.label);
+// title names a run, with its field named by label.
+const title = (r: { label: string; field?: string }, label: (key: string) => string) => (r.field ? `${r.label} · ${label(r.field)}` : r.label);
 
 /** useNow is the time, updated every second while on. */
 function useNow(on: boolean) {
@@ -19,7 +19,7 @@ function useNow(on: boolean) {
 }
 
 /** RunHeader shows a run: while it runs, its progress and Stop; once it ends, how it ended, its raw response, and dismiss. */
-export function RunHeader({ run, onStop, onDismiss }: { run: Run; onStop: () => void; onDismiss: () => void }) {
+export function RunHeader({ run, label, onStop, onDismiss }: { run: Run; label: (key: string) => string; onStop: () => void; onDismiss: () => void }) {
   useJobEvents(run.id, run.live);
   const now = useNow(run.live);
   const { job } = run;
@@ -32,7 +32,7 @@ export function RunHeader({ run, onStop, onDismiss }: { run: Run; onStop: () => 
       <div className={job.status === "failed" ? "forge-last error" : "forge-last"}>
         <Hammer />
         <span>
-          {title(run)} {outcome}
+          {title(run, label)} {outcome}
         </span>
         <button className="forge-x" aria-label={`Dismiss ${run.label}`} onClick={onDismiss}>
           ×
@@ -51,7 +51,7 @@ export function RunHeader({ run, onStop, onDismiss }: { run: Run; onStop: () => 
     <div className="forge-progress running" role="status">
       <div className="row">
         <Hammer />
-        <strong>{title(run)}</strong>
+        <strong>{title(run, label)}</strong>
         <span className="muted">on {run.instance}</span>
         <span className="forge-elapsed muted">{seconds}s</span>
         <button className="button" onClick={onStop}>
@@ -65,12 +65,12 @@ export function RunHeader({ run, onStop, onDismiss }: { run: Run; onStop: () => 
 }
 
 /** WaitingHeader shows a run held until the runs it overlaps finish. */
-export function WaitingHeader({ w, onCancel }: { w: Waiting; onCancel: () => void }) {
+export function WaitingHeader({ w, label, onCancel }: { w: Waiting; label: (key: string) => string; onCancel: () => void }) {
   return (
     <div className="forge-progress" role="status">
       <div className="row">
         <Hammer />
-        <strong>{title(w)}</strong>
+        <strong>{title(w, label)}</strong>
         <span className="muted">on {w.instance}, waiting for the run before it</span>
         <button className="button forge-elapsed" onClick={onCancel}>
           Cancel

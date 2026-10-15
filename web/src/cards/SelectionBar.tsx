@@ -175,7 +175,7 @@ export function SelectionBar(props: {
             <>
               {targets.length > 0 && (
                 <label className="check">
-                  <span>Also delete from linked apps</span>
+                  <span>Also delete from linked apps, chats included</span>
                   <input type="checkbox" checked={unpublish} onChange={(e) => setUnpublish(e.target.checked)} />
                 </label>
               )}

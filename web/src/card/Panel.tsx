@@ -114,7 +114,7 @@ export function Archive({ kind, entity }: { kind: Kind; entity: Entity }) {
       </button>
       {!archived && linked.length > 0 && (
         <label className="check">
-          <span>Also delete from {linked.join(", ")}</span>
+          <span>Also delete from {linked.join(", ")}, chats included</span>
           <input type="checkbox" checked={unpublish} onChange={(e) => setUnpublish(e.target.checked)} />
         </label>
       )}

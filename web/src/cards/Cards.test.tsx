@@ -245,7 +245,7 @@ test("archive can also delete the cards from linked apps", async () => {
   const user = userEvent.setup();
   await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
   await user.click(screen.getByRole("button", { name: "Archive" }));
-  await user.click(screen.getByRole("checkbox", { name: "Also delete from linked apps" }));
+  await user.click(screen.getByRole("checkbox", { name: "Also delete from linked apps, chats included" }));
   await user.click(screen.getByRole("button", { name: "Archive 1 card" }));
   await waitFor(() => expect(posts[0]?.body).toMatchObject({ action: "archive", unpublish: true }));
 });

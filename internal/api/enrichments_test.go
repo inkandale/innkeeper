@@ -138,6 +138,24 @@ func TestEnrichRunStoresCheckedValues(t *testing.T) {
 	e.call("GET", "/cards/999999/enrichments", nil, 404, nil)
 }
 
+func TestEnrichRunKeepsABatchWithAValueTheDatabaseRefuses(t *testing.T) {
+	e := newEnrichEnv(t)
+	nul, good := e.card("Nul", "xx"), e.card("Good", "xxx")
+	j, p := e.evaluate(e.instID, nul, good)
+	if j.Status != jobs.StatusSucceeded || p.Done != 2 || p.Failed != 0 {
+		t.Fatalf("job %s, progress %+v", j.Status, p)
+	}
+	var vals []enrichmentValue
+	e.call("GET", fmt.Sprintf("/cards/%d/enrichments", nul), nil, 200, &vals)
+	if len(vals) != 2 || vals[0].Key != "quality" || string(vals[0].Meta) != "{}" {
+		t.Fatalf("nul card's values = %+v", vals)
+	}
+	e.call("GET", fmt.Sprintf("/cards/%d/enrichments", good), nil, 200, &vals)
+	if len(vals) != 3 {
+		t.Fatalf("good card's values = %+v", vals)
+	}
+}
+
 func TestEnrichRunOverAQuery(t *testing.T) {
 	e := newEnrichEnv(t)
 	a, b := e.card("Brakka", "x"), e.card("Carrow", "x")

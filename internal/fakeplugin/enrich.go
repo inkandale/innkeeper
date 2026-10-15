@@ -13,7 +13,8 @@ import (
 // enrichRun writes the keys testutil.FakeEnrichments declares.
 // quality is the description's length, at most 100. A card whose name holds
 // "fail" gets an error, "skip" is left out of the reply, "bad" gets an
-// undeclared key, a string voice, and quality 150, and "slow" takes a second.
+// undeclared key, a string voice, and quality 150, "nul" gets a NUL in its
+// summary and meta, and "slow" takes a second.
 func enrichRun(ctx context.Context, conn *protocol.Conn, params json.RawMessage, mode string) (any, error) {
 	var p protocol.EnrichRunParams
 	if err := json.Unmarshal(params, &p); err != nil {
@@ -45,6 +46,9 @@ func enrichRun(ctx context.Context, conn *protocol.Conn, params json.RawMessage,
 			r = protocol.EnrichResult{RevisionID: rev.RevisionID, Error: "the model returned no JSON"}
 		case strings.Contains(name, "skip"):
 			continue
+		case strings.Contains(name, "nul"):
+			r.Values["summary"] = json.RawMessage(`"a\u0000b"`)
+			r.Meta = json.RawMessage(`{"model": "\u0000"}`)
 		case strings.Contains(name, "bad"):
 			r.Values = map[string]json.RawMessage{"mood": json.RawMessage(`"grim"`), "voice": json.RawMessage(`"loud"`),
 				"quality": json.RawMessage("150"), "summary": json.RawMessage(`"Bad."`)}

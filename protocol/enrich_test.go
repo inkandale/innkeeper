@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -29,10 +30,28 @@ func TestEnrichmentCheck(t *testing.T) {
 		{list, `["a", 1]`, false},
 		{list, `"a"`, false},
 		{list, `null`, false},
+		{text, `"a\u0000b"`, false},
+		{list, `["ok", "\u0000"]`, false},
+		{text, "\"\xff\"", false},
+		{text, `"` + strings.Repeat("x", MaxEnrichValue) + `"`, false},
+		{text, `"\\u0000 is fine escaped"`, true},
 	}
 	for _, tt := range tests {
 		if err := tt.e.Check(json.RawMessage(tt.value)); (err == nil) != tt.ok {
 			t.Errorf("%s Check(%s) = %v, want ok %v", tt.e.Type, tt.value, err, tt.ok)
+		}
+	}
+}
+
+func TestCheckMeta(t *testing.T) {
+	for meta, ok := range map[string]bool{
+		`{"model": "m"}`:      true,
+		`"m"`:                 false,
+		`{"model": "\u0000"}`: false,
+		`{"x": "` + strings.Repeat("x", MaxEnrichMeta) + `"}`: false,
+	} {
+		if err := CheckMeta(json.RawMessage(meta)); (err == nil) != ok {
+			t.Errorf("CheckMeta(%.40s) = %v, want ok %v", meta, err, ok)
 		}
 	}
 }

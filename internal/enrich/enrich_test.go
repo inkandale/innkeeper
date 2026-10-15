@@ -43,11 +43,19 @@ func TestCheck(t *testing.T) {
 	if got.Done != 2 || got.Failed != 3 {
 		t.Errorf("done %d, failed %d; want 2 and 3", got.Done, got.Failed)
 	}
-	for _, w := range []string{"Bad: dropped meta", "Bad: dropped mood, which the plugin doesn't declare", "Bad: dropped quality: 150 is outside",
+	for _, w := range []string{"Bad: dropped meta: it isn't an object", "Bad: dropped mood, which the plugin doesn't declare", "Bad: dropped quality: 150 is outside",
 		"Failing: the model returned no JSON", "Junk: dropped summary", "Junk: no valid values", "Skipped: the plugin sent no result",
 		"revision 9", "revision 1"} {
 		if !slices.ContainsFunc(got.Warnings, func(s string) bool { return strings.Contains(s, w) }) {
 			t.Errorf("no warning with %q in %q", w, got.Warnings)
 		}
+	}
+}
+
+func TestCheckCutsLongPluginErrors(t *testing.T) {
+	sent := []protocol.EnrichRevision{{CardID: 1, RevisionID: 1, Data: json.RawMessage(`{"name": "Long"}`)}}
+	got := Check(nil, sent, protocol.EnrichRunResult{Results: []protocol.EnrichResult{{RevisionID: 1, Error: strings.Repeat("é", 1000)}}})
+	if len(got.Warnings) != 1 || len(got.Warnings[0]) > maxWarning+len("Long: …") {
+		t.Fatalf("warnings = %d bytes", len(got.Warnings[0]))
 	}
 }

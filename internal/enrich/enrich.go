@@ -11,6 +11,7 @@ import (
 	"maps"
 	"slices"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/library"
@@ -25,8 +26,11 @@ const Kind = "enrich"
 // MaxCards is the most cards one run takes.
 const MaxCards = 10_000
 
-// maxWarnings bounds the warnings a job's progress keeps.
-const maxWarnings = 100
+// maxWarnings and maxWarning bound the warnings a job's progress keeps.
+const (
+	maxWarnings = 100
+	maxWarning  = 300
+)
 
 // Payload is an enrich job's payload.
 type Payload struct {
@@ -45,9 +49,20 @@ type Progress struct {
 func (p *Progress) warn(msgs ...string) {
 	for _, m := range msgs {
 		if len(p.Warnings) < maxWarnings {
-			p.Warnings = append(p.Warnings, m)
+			p.Warnings = append(p.Warnings, cut(m, maxWarning))
 		}
 	}
+}
+
+// cut shortens s to at most n bytes, on a rune boundary.
+func cut(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n] + "…"
 }
 
 // Checked is what an enrich.run reply yields once checked against the
@@ -79,14 +94,15 @@ func Check(decl map[string]protocol.Enrichment, sent []protocol.EnrichRevision, 
 		name := library.DataName(rev.Data)
 		if res.Error != "" {
 			out.Failed++
-			out.Warnings = append(out.Warnings, fmt.Sprintf("%s: %s", name, res.Error))
+			out.Warnings = append(out.Warnings, fmt.Sprintf("%s: %s", name, cut(res.Error, maxWarning)))
 			continue
 		}
 		meta := res.Meta
-		var obj map[string]json.RawMessage
-		if len(meta) > 0 && (json.Unmarshal(meta, &obj) != nil || obj == nil) {
-			out.Warnings = append(out.Warnings, fmt.Sprintf("%s: dropped meta, which isn't an object", name))
-			meta = nil
+		if len(meta) > 0 {
+			if err := protocol.CheckMeta(meta); err != nil {
+				out.Warnings = append(out.Warnings, fmt.Sprintf("%s: dropped meta: %v", name, err))
+				meta = nil
+			}
 		}
 		stored := 0
 		for _, key := range slices.Sorted(maps.Keys(res.Values)) {
@@ -218,7 +234,22 @@ func (rn *Runner) batch(ctx context.Context, inst pluginhost.Instance, instanceI
 	checked := Check(inst.Manifest.Enrichments, revs, reply)
 	checked.Failed += len(missing)
 	checked.Warnings = append(missing, checked.Warnings...)
-	return checked, rn.Lib.AddEnrichments(ctx, instanceID, checked.Values)
+	// One insert per revision, so a row the database refuses loses only its own revision's values.
+	for _, rev := range revs {
+		vals := slices.DeleteFunc(slices.Clone(checked.Values), func(v library.NewEnrichment) bool { return v.RevisionID != rev.RevisionID })
+		if len(vals) == 0 {
+			continue
+		}
+		if err := rn.Lib.AddEnrichments(ctx, instanceID, vals); err != nil {
+			if ctx.Err() != nil {
+				return Checked{}, err
+			}
+			checked.Done--
+			checked.Failed++
+			checked.Warnings = append(checked.Warnings, fmt.Sprintf("%s: storing its values failed: %v", library.DataName(rev.Data), err))
+		}
+	}
+	return checked, nil
 }
 
 // heads returns the head revision of each card in ids, and a warning for

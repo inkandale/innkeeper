@@ -370,3 +370,26 @@ func TestBadRecordsFail(t *testing.T) {
 		t.Fatalf("got %v, want the bad record named", err)
 	}
 }
+
+func TestEnrichPluginPasses(t *testing.T) {
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"enrich"}), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := failed(results); len(f) > 0 {
+		t.Fatalf("checks failed: %v", f)
+	}
+	if !slices.ContainsFunc(results, func(r Result) bool { return r.Name == checkEnrichName }) {
+		t.Errorf("no enrich check in %v", results)
+	}
+}
+
+func TestBadEnrichFails(t *testing.T) {
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"enrich"}, "-mode=bad-enrich"), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := failed(results)[checkEnrichName]; err == nil || !strings.Contains(err.Error(), "mood isn't declared") {
+		t.Fatalf("got %v, want the undeclared key named", err)
+	}
+}

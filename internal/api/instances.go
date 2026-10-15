@@ -54,21 +54,23 @@ type checkOut struct{ Body checkResult }
 
 type createInstanceIn struct {
 	Body struct {
-		Plugin       string            `json:"plugin"`
-		Name         string            `json:"name" minLength:"1"`
-		Config       map[string]any    `json:"config,omitempty"`
-		Secrets      map[string]string `json:"secrets,omitempty" doc:"Write-only. Responses list only the names that are set."`
-		OwnerSubject *string           `json:"owner_subject,omitempty" doc:"For a login provider: the subject that logs in as the owner."`
+		Plugin        string            `json:"plugin"`
+		Name          string            `json:"name" minLength:"1"`
+		Config        map[string]any    `json:"config,omitempty"`
+		Secrets       map[string]string `json:"secrets,omitempty" doc:"Write-only. Responses list only the names that are set."`
+		OwnerSubject  *string           `json:"owner_subject,omitempty" doc:"For a login provider: the subject that logs in as the owner."`
+		LibraryAccess bool              `json:"library_access,omitempty" doc:"Lets an action plugin read the library while it runs an action that asks to."`
 	}
 }
 
 type updateInstanceIn struct {
 	ID   int64 `path:"id"`
 	Body struct {
-		Name         *string            `json:"name,omitempty" minLength:"1"`
-		Config       map[string]any     `json:"config,omitempty" doc:"Replaces the whole config."`
-		Secrets      map[string]*string `json:"secrets,omitempty" doc:"Sets each secret named; null removes it. Secrets not named stay."`
-		OwnerSubject *string            `json:"owner_subject,omitempty" doc:"Empty clears it, which logs the owner out of this provider."`
+		Name          *string            `json:"name,omitempty" minLength:"1"`
+		Config        map[string]any     `json:"config,omitempty" doc:"Replaces the whole config."`
+		Secrets       map[string]*string `json:"secrets,omitempty" doc:"Sets each secret named; null removes it. Secrets not named stay."`
+		OwnerSubject  *string            `json:"owner_subject,omitempty" doc:"Empty clears it, which logs the owner out of this provider."`
+		LibraryAccess *bool              `json:"library_access,omitempty" doc:"Lets an action plugin read the library while it runs an action that asks to."`
 	}
 }
 
@@ -129,7 +131,7 @@ func (s *Server) instanceRoutes(api huma.API) {
 				return nil, err
 			}
 			id, err := s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: in.Body.Plugin, Name: in.Body.Name,
-				Config: in.Body.Config, Secrets: in.Body.Secrets, OwnerSubject: in.Body.OwnerSubject})
+				Config: in.Body.Config, Secrets: in.Body.Secrets, OwnerSubject: in.Body.OwnerSubject, LibraryAccess: in.Body.LibraryAccess})
 			if err != nil {
 				return nil, s.fail(err)
 			}
@@ -154,7 +156,7 @@ func (s *Server) instanceRoutes(api huma.API) {
 				return nil, err
 			}
 			err = s.Registry.UpdateInstance(ctx, in.ID, plugins.InstanceEdit{Name: in.Body.Name, Config: in.Body.Config,
-				Secrets: in.Body.Secrets, OwnerSubject: in.Body.OwnerSubject})
+				Secrets: in.Body.Secrets, OwnerSubject: in.Body.OwnerSubject, LibraryAccess: in.Body.LibraryAccess})
 			if err != nil {
 				return nil, s.fail(err)
 			}

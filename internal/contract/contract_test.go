@@ -321,3 +321,26 @@ func TestGoneCheckSkipsGetLorebookWithoutStandaloneLorebooks(t *testing.T) {
 		t.Fatalf("an embedded-lorebooks target failed the gone check: %v", got)
 	}
 }
+
+func TestActionPluginPasses(t *testing.T) {
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"action"}), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := failed(results); len(f) > 0 {
+		t.Fatalf("checks failed: %v", f)
+	}
+	if !slices.ContainsFunc(results, func(r Result) bool { return r.Name == checkActionRunsName }) {
+		t.Fatalf("no action run check in %v", results)
+	}
+}
+
+func TestBadActionsFail(t *testing.T) {
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"action"}, "-mode=bad-actions"), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := failed(results)[checkActionListName]; err == nil || !strings.Contains(err.Error(), "Bad ID") {
+		t.Fatalf("got %v, want the bad ID named", err)
+	}
+}

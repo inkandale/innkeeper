@@ -95,6 +95,7 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 		{[]string{"push", "pull"}, func() []Result { return checkTarget(ctx, p, m) }},
 		{[]string{"auth"}, func() []Result { return []Result{{"auth.setup returns a form or -32601", checkSetup(ctx, p)}} }},
 		{[]string{"mcp"}, func() []Result { return []Result{{"mcp.tools returns valid tools", checkTools(ctx, p)}} }},
+		{[]string{"action"}, func() []Result { return checkActions(ctx, p) }},
 		{[]string{"catalog"}, func() []Result { return checkCatalog(ctx, p, tmp) }},
 		{[]string{"sites"}, func() []Result { return checkSites(ctx, p) }},
 		{[]string{"codec"}, func() []Result {

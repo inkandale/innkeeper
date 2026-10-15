@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -91,8 +92,9 @@ type enrichmentKeysOut struct {
 
 type startEnrichIn struct {
 	Body struct {
-		InstanceID int64   `json:"instance_id" doc:"An enrich instance"`
-		CardIDs    []int64 `json:"card_ids" minItems:"1" maxItems:"10000"`
+		InstanceID int64          `json:"instance_id" doc:"An enrich instance"`
+		CardIDs    []int64        `json:"card_ids,omitempty" maxItems:"10000" doc:"The cards to enrich. Send this or query."`
+		Query      *library.Query `json:"query,omitempty" doc:"Enriches every card the query matches, as POST /bulk selects them. Send this or card_ids."`
 	}
 }
 
@@ -103,13 +105,27 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 		Description: "Queues an enrich job that sends each card's head revision to the instance's plugin, 20 at a time, and stores the values it returns. " +
 			"Its progress counts cards done and failed, with a warning for each value dropped and each card that failed. Cancel the job to stop the run."},
 		func(ctx context.Context, in *startEnrichIn) (*jobResp, error) {
-			if len(in.Body.CardIDs) > enrich.MaxCards {
-				return nil, huma.Error400BadRequest("a run takes at most 10,000 cards")
+			b := in.Body
+			if (len(b.CardIDs) > 0) == (b.Query != nil) {
+				return nil, huma.Error400BadRequest("send card_ids or query")
 			}
-			if _, err := s.usable(ctx, in.Body.InstanceID, "enrich"); err != nil {
+			if _, err := s.usable(ctx, b.InstanceID, "enrich"); err != nil {
 				return nil, err
 			}
-			return s.enqueue(ctx, jobs.Spec{Kind: enrich.Kind, InstanceID: &in.Body.InstanceID, Payload: enrich.Payload{CardIDs: in.Body.CardIDs}})
+			ids := b.CardIDs
+			if b.Query != nil {
+				var err error
+				if ids, err = s.searchIDs(ctx, library.Card, *b.Query); err != nil {
+					return nil, s.fail(err)
+				}
+			}
+			if len(ids) == 0 {
+				return nil, huma.Error400BadRequest("the query matches no cards")
+			}
+			if len(ids) > enrich.MaxCards {
+				return nil, huma.Error400BadRequest(fmt.Sprintf("a run takes at most %d cards; this one has %d", enrich.MaxCards, len(ids)))
+			}
+			return s.enqueue(ctx, jobs.Spec{Kind: enrich.Kind, InstanceID: &b.InstanceID, Payload: enrich.Payload{CardIDs: ids}})
 		})
 
 	huma.Register(api, huma.Operation{OperationID: "get-card-enrichments", Method: http.MethodGet, Path: "/cards/{id}/enrichments",

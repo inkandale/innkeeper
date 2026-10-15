@@ -138,6 +138,19 @@ func TestEnrichRunStoresCheckedValues(t *testing.T) {
 	e.call("GET", "/cards/999999/enrichments", nil, 404, nil)
 }
 
+func TestEnrichRunOverAQuery(t *testing.T) {
+	e := newEnrichEnv(t)
+	a, b := e.card("Brakka", "x"), e.card("Carrow", "x")
+	e.card("Dellin", "x")
+	var j jobOut
+	e.call("POST", "/enrichments/runs", map[string]any{"instance_id": e.instID,
+		"query": map[string]any{"filter": map[string]any{"ids": []int64{a, b}}}}, 202, &j)
+	var p enrich.Payload
+	if err := json.Unmarshal(j.Payload, &p); err != nil || !slices.Equal(p.CardIDs, []int64{a, b}) {
+		t.Fatalf("payload = %s, %v", j.Payload, err)
+	}
+}
+
 func TestEnrichRunFailsWhenEveryBatchFails(t *testing.T) {
 	e := newEnrichEnv(t)
 	j, p := e.evaluate(e.instID, 999998, 999999)
@@ -151,9 +164,11 @@ func TestStartEnrichRunRejects(t *testing.T) {
 	id := e.card("Brakka", "x")
 	auth := []string{"Authorization", "Bearer " + e.token}
 	for name, body := range map[string]map[string]any{
-		"no cards":        {"instance_id": e.instID, "card_ids": []int64{}},
-		"too many cards":  {"instance_id": e.instID, "card_ids": make([]int64, enrich.MaxCards+1)},
-		"not an enricher": {"instance_id": e.importID, "card_ids": []int64{id}},
+		"no cards":                 {"instance_id": e.instID, "card_ids": []int64{}},
+		"ids and a query":          {"instance_id": e.instID, "card_ids": []int64{id}, "query": map[string]any{}},
+		"a query matching nothing": {"instance_id": e.instID, "query": map[string]any{"filter": map[string]any{"name": "nobody"}}},
+		"too many cards":           {"instance_id": e.instID, "card_ids": make([]int64, enrich.MaxCards+1)},
+		"not an enricher":          {"instance_id": e.importID, "card_ids": []int64{id}},
 	} {
 		if r := e.send("POST", "/enrichments/runs", body, auth...); r.Status != 400 && r.Status != 422 {
 			t.Errorf("%s: %s", name, r)

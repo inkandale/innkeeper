@@ -23,6 +23,7 @@
 - An `enrich` plugin must declare at least one key, as a `records` plugin must declare a type.
 - A `list` value is an array of strings.
 - An interrupted run is not retried, as an action run isn't: each call costs the owner money.
+- `POST /enrichments/runs` takes `query` as an alternative to `card_ids`, as `POST /bulk` does, so Evaluate works on "all matching" without the UI fetching IDs. The 10,000 limit applies to the cards either one selects.
 - `sort` loses its enum for a pattern, since `enrichment:<key>` names any key.
 
 ## File map

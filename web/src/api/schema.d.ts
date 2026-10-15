@@ -3692,12 +3692,15 @@ export interface components {
              * @example /api/schemas/StartEnrichInBody.json
              */
             readonly $schema?: string;
-            card_ids: number[] | null;
+            /** @description The cards to enrich. Send this or query. */
+            card_ids?: number[] | null;
             /**
              * Format: int64
              * @description An enrich instance
              */
             instance_id: number;
+            /** @description Enriches every card the query matches, as POST /bulk selects them. Send this or card_ids. */
+            query?: components["schemas"]["Query"];
         };
         SyncParams: {
             /**

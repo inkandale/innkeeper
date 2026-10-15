@@ -4009,12 +4009,12 @@
             "type": "string"
           },
           "card_ids": {
+            "description": "The cards to enrich. Send this or query.",
             "items": {
               "format": "int64",
               "type": "integer"
             },
             "maxItems": 10000,
-            "minItems": 1,
             "type": [
               "array",
               "null"
@@ -4024,11 +4024,14 @@
             "description": "An enrich instance",
             "format": "int64",
             "type": "integer"
+          },
+          "query": {
+            "$ref": "#/components/schemas/Query",
+            "description": "Enriches every card the query matches, as POST /bulk selects them. Send this or card_ids."
           }
         },
         "required": [
-          "instance_id",
-          "card_ids"
+          "instance_id"
         ],
         "type": "object"
       },

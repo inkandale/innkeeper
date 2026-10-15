@@ -74,7 +74,7 @@ func setup(t *testing.T, config map[string]any) *env {
 	upstream := *m
 	upstream.Name, upstream.Capabilities, upstream.SourceKinds = "upstream", []string{"pull"}, []string{"fake"}
 	upstream.Command = []string{m.Command[0], "-caps=pull", "-name=upstream"}
-	// brokenup follows "broken" sources and fails its describe; addBrokenUpstream gives it an instance.
+	// brokenup follows "broken" sources and fails its describe; the test creates its instance inline.
 	brokenup := upstream
 	brokenup.Name, brokenup.SourceKinds = "brokenup", []string{"broken"}
 	brokenup.Command = []string{m.Command[0], "-caps=pull", "-name=brokenup", "-mode=bad-describe"}

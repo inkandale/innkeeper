@@ -356,7 +356,7 @@ var tools = []tool{
 		}),
 	def("check_sources", "Check the sites cards and lorebooks came from, such as chub.ai, for updates. With id, checks that one "+
 		"now and returns its bindings; without, starts a job. An update shows in list_changes with state update; review it "+
-		"with compare_item and resolve_item, passing the card's id.", tier.Write,
+		"with compare_item and resolve_item, passing the card's or lorebook's id (and kind).", tier.Write,
 		func(ctx context.Context, c caller, in sourceCheckIn) (*sdk.CallToolResult, error) {
 			if in.ID == 0 {
 				return c.call(ctx, "POST", "/source-checks", nil)

@@ -329,3 +329,28 @@ func TestWireFormat(t *testing.T) {
 		t.Fatalf("response = %s, want %s", got, want)
 	}
 }
+
+func TestHandlerCanNotifyItsPeer(t *testing.T) {
+	got := make(chan string, 1)
+	ha := func(_ context.Context, method string, params json.RawMessage) (any, error) {
+		var s string
+		_ = json.Unmarshal(params, &s)
+		got <- method + ":" + s
+		return nil, nil
+	}
+	hb := func(ctx context.Context, method string, _ json.RawMessage) (any, error) {
+		return nil, Peer(ctx).Notify("note", "hi")
+	}
+	a, _, _ := pair(t, ha, hb)
+	if err := a.Call(context.Background(), "hello", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case s := <-got:
+		if s != "note:hi" {
+			t.Fatalf("peer got %q", s)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the notification never arrived")
+	}
+}

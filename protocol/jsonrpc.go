@@ -112,6 +112,7 @@ func NewConn(r io.Reader, w io.Writer, h Handler) *Conn {
 // handler.
 func (c *Conn) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
+	ctx = context.WithValue(ctx, peerKey{}, c)
 	defer cancel()
 	defer c.closePending()
 	for {
@@ -149,6 +150,15 @@ func (c *Conn) Run(ctx context.Context) error {
 			c.deliver(m)
 		}
 	}
+}
+
+type peerKey struct{}
+
+// Peer is the connection the handler's call came in on, so a handler can
+// notify the caller; nil outside a handler.
+func Peer(ctx context.Context) *Conn {
+	c, _ := ctx.Value(peerKey{}).(*Conn)
+	return c
 }
 
 // Call sends a request and waits for its response. result may be nil. If

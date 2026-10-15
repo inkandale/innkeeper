@@ -88,7 +88,7 @@ type listJobsIn struct {
 	Status string `query:"status" enum:"queued,running,waiting,succeeded,failed"`
 	Kind   string `query:"kind"`
 	Parent int64  `query:"parent" doc:"List this bulk job's children instead of top-level jobs"`
-	CardID int64  `query:"card_id" doc:"Only jobs whose payload names this card, such as its pushes and action runs"`
+	CardID int64  `query:"card_id" doc:"Only top-level jobs whose payload names this card, such as its pushes and action runs"`
 	Before int64  `query:"before" doc:"Only jobs with smaller IDs, for the next page"`
 	Limit  int    `query:"limit" default:"50" minimum:"1" maximum:"200"`
 }

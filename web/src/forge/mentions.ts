@@ -1,9 +1,19 @@
 import { api, must, route, type Kind } from "../api/client";
+import type { components } from "../api/schema";
 
-export type Named = { id: number; name: string };
+/** Named is an item a mention can name. A skill's id is its name. */
+export type Named = { id: number | string; name: string; description?: string };
 
-/** MentionType is what can follow @: its key, as in @cards/, and how its names are found. */
-export type MentionType = { key: "cards" | "lorebooks"; noun: string; find: (name: string, size: number) => Promise<Named[]> };
+/**
+ * MentionType is what can follow @: its key, as in @cards/, and how its names are found. ofInstance types' names
+ * belong to the chosen model setup, so find gets its instance ID.
+ */
+export type MentionType = {
+  key: "cards" | "lorebooks" | "skills";
+  noun: string;
+  ofInstance?: boolean;
+  find: (name: string, size: number, instance?: number) => Promise<Named[]>;
+};
 
 // findNamed lists a kind's names that contain name, in any case.
 async function findNamed(kind: Kind, name: string, size: number): Promise<Named[]> {
@@ -15,9 +25,19 @@ async function findNamed(kind: Kind, name: string, size: number): Promise<Named[
   return (res.hits ?? []).map((h) => ({ id: h.id, name: typeof h.fields.name === "string" ? h.fields.name : "" }));
 }
 
+// findSkills lists the instance's skills whose names contain name, in any case.
+async function findSkills(name: string, size: number, instance?: number): Promise<Named[]> {
+  const skills = must(await api.GET("/actions/skills")) ?? [];
+  return skills
+    .filter((s) => s.instance_id === instance && s.name.toLowerCase().includes(name.toLowerCase()))
+    .slice(0, size)
+    .map((s) => ({ id: s.name, name: s.name, description: s.description }));
+}
+
 export const mentionTypes: MentionType[] = [
   { key: "cards", noun: "card", find: (q, n) => findNamed("card", q, n) },
   { key: "lorebooks", noun: "lorebook", find: (q, n) => findNamed("lorebook", q, n) },
+  { key: "skills", noun: "skill", ofInstance: true, find: findSkills },
 ];
 
 const typeOf = (key: string) => mentionTypes.find((t) => t.key === key);
@@ -29,7 +49,7 @@ export type Picked = Named & { type: string };
  * Mention is one @type/name in a text, from start to end. state is ok with id, unknown, ambiguous (two items share the
  * name), or pending while the lookup for word runs.
  */
-export type Mention = { start: number; end: number; type: string; word: string; name: string; state: "ok" | "unknown" | "ambiguous" | "pending"; id?: number };
+export type Mention = { start: number; end: number; type: string; word: string; name: string; state: "ok" | "unknown" | "ambiguous" | "pending"; id?: number | string };
 
 const mentionRe = /(?<=^|\s)@([a-z]+)\/(\S*)/g;
 
@@ -77,15 +97,15 @@ export function mentionsIn(text: string, picked: Picked[], lookup: (type: string
   return out;
 }
 
-/** contextOf is a run's context: the IDs the resolved mentions name, by type. */
-export function contextOf(mentions: Mention[]): Partial<Record<MentionType["key"], number[]>> {
-  const out: Partial<Record<MentionType["key"], number[]>> = {};
+/** contextOf is a run's context: the IDs, or skill names, the resolved mentions name, by type. */
+export function contextOf(mentions: Mention[]): components["schemas"]["ContextRefs"] {
+  const out: Partial<Record<MentionType["key"], (number | string)[]>> = {};
   for (const m of mentions) {
     if (m.state !== "ok" || m.id === undefined) continue;
     const ids = (out[m.type as MentionType["key"]] ??= []);
     if (!ids.includes(m.id)) ids.push(m.id);
   }
-  return out;
+  return out as components["schemas"]["ContextRefs"];
 }
 
 /**

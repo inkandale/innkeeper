@@ -279,7 +279,7 @@ function FieldMenu({ field, actions, disabled, onPick }: { field: string; action
 function Start({ forge, avatar }: { forge: ForgeState; avatar?: Blob | string }) {
   const [concept, setConcept] = useState<Instruction>(emptyInstruction);
   const [options, setOptions] = useState<Options>(noOptions);
-  const mentions = useMentions(concept);
+  const mentions = useMentions(concept, forge.instance?.id);
   const action = newAction(forge.mine);
   if (!action) return <p className="muted">This model setup has no action for a new card. Pick another, or type the fields by hand.</p>;
   const ready = (!action.instruction || concept.text.trim() !== "") && blocking(mentions).length === 0;
@@ -301,6 +301,7 @@ function Start({ forge, avatar }: { forge: ForgeState; avatar?: Blob | string })
           value={concept}
           onChange={setConcept}
           mentions={mentions}
+          instance={forge.instance?.id}
           onEnter={() => ready && run()}
         />
       )}

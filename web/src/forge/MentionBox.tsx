@@ -13,13 +13,16 @@ const typeOf = (key: string) => mentionTypes.find((t) => t.key === key)!;
 // ponytail: a typed name resolves among the first 100 names containing its first word; pick it from the list past that.
 const lookupSize = 100;
 
-/** useMentions resolves the mentions in an instruction, looking typed names up by their first word. */
-export function useMentions({ text, picked }: Instruction): Mention[] {
+/**
+ * useMentions resolves the mentions in an instruction, looking typed names up by their first word. instance is the
+ * chosen model setup, whose skills a skill mention can name.
+ */
+export function useMentions({ text, picked }: Instruction, instance: number | undefined): Mention[] {
   const words = [...new Map(mentionsIn(text, picked, () => undefined).filter((m) => m.state === "pending").map((m) => [`${m.type}/${m.word}`, m])).values()];
   const found = useQueries({
     queries: words.map((m) => ({
-      queryKey: ["mention", m.type, m.word],
-      queryFn: () => typeOf(m.type).find(m.word, lookupSize),
+      queryKey: ["mention", m.type, m.word, typeOf(m.type).ofInstance ? instance : null],
+      queryFn: () => typeOf(m.type).find(m.word, lookupSize, instance),
       staleTime: 30_000,
     })),
   });
@@ -32,8 +35,9 @@ export const blocking = (mentions: Mention[]) => mentions.filter((m) => m.state 
 type Option = { key: string; label: string; hint: string; insert: string; pick?: Picked };
 
 /**
- * MentionBox is an instruction box where @ starts a mention of a card or lorebook. Picking from the list records the
- * item's ID; unknown and ambiguous mentions are underlined in red. Enter calls onEnter; Shift+Enter adds a line.
+ * MentionBox is an instruction box where @ starts a mention of a card, lorebook, or skill. Picking from the list
+ * records the item's ID; unknown and ambiguous mentions are underlined in red. Enter calls onEnter; Shift+Enter adds a
+ * line.
  */
 export function MentionBox(props: {
   label: string;
@@ -41,6 +45,7 @@ export function MentionBox(props: {
   value: Instruction;
   onChange: (v: Instruction) => void;
   mentions: Mention[];
+  instance: number | undefined;
   onEnter?: () => void;
   autoFocus?: boolean;
 }) {
@@ -57,9 +62,9 @@ export function MentionBox(props: {
   const listId = useId();
   const optionId = (i: number) => `${listId}-${i}`;
   const names = useQuery({
-    queryKey: ["mention", "suggest", active?.type?.key, active?.query],
+    queryKey: ["mention", "suggest", active?.type?.key, active?.query, active?.type?.ofInstance ? props.instance : null],
     enabled: !!active?.type,
-    queryFn: () => active!.type!.find(active!.query, 8),
+    queryFn: () => active!.type!.find(active!.query, 8, props.instance),
     staleTime: 30_000,
   });
   const options: Option[] = !active
@@ -71,9 +76,10 @@ export function MentionBox(props: {
       : (names.data ?? []).map((n) => ({
           key: String(n.id),
           label: n.name,
-          hint: `${active.type!.noun} #${n.id}`,
+          hint: n.description ?? (typeof n.id === "number" ? `${active.type!.noun} #${n.id}` : active.type!.noun),
           insert: `@${active.type!.key}/${n.name} `,
-          pick: { ...n, type: active.type!.key },
+          // A skill isn't picked by ID: its name resolves against whichever model setup is chosen when Run is pressed.
+          pick: active.type!.ofInstance ? undefined : { ...n, type: active.type!.key },
         }));
   const open = active && options.length > 0 ? active : null;
   const cur = Math.min(sel, options.length - 1);
@@ -165,7 +171,11 @@ export function MentionBox(props: {
       {bad.map((m) => (
         <p key={m.start} className="error forge-bad">
           @{m.type}/{m.word}:{" "}
-          {m.state === "unknown" ? `no ${typeOf(m.type).noun} has this name.` : `more than one ${typeOf(m.type).noun} has this name; pick one from the list.`}
+          {m.state === "unknown"
+            ? typeOf(m.type).ofInstance
+              ? `this model setup has no ${typeOf(m.type).noun} by this name.`
+              : `no ${typeOf(m.type).noun} has this name.`
+            : `more than one ${typeOf(m.type).noun} has this name; pick one from the list.`}
         </p>
       ))}
       {ok.length > 0 && (

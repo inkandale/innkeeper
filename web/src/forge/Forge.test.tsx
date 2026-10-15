@@ -38,6 +38,11 @@ const job = (j: JobT) => ({
 });
 
 let actions: unknown[];
+const skills = [
+  { name: "college", description: "Campus life.", instance_id: 1, instance_name: "Local model" },
+  { name: "noir", instance_id: 1, instance_name: "Local model" },
+  { name: "space", description: "Ships and stations.", instance_id: 2, instance_name: "Cloud model" },
+];
 let jobs: ReturnType<typeof job>[];
 let runs: unknown[];
 // Jobs the tab started; the card's job list holds only jobs.
@@ -57,6 +62,7 @@ beforeEach(() => {
       const path = url.pathname;
       if (path === "/api/cards/7") return json(entity);
       if (path === "/api/actions") return json(actions);
+      if (path === "/api/actions/skills") return json(skills);
       if (path === "/api/jobs") return json(url.searchParams.get("card_id") === "7" ? jobs : []);
       const one = /^\/api\/jobs\/(\d+)$/.exec(path);
       if (one) return json([...jobs, ...created].find((j) => j.id === Number(one[1])));
@@ -275,4 +281,60 @@ test("a new card offers no report-only actions and can't be saved while a run is
   await waitFor(() => expect(runs).toHaveLength(1));
   expect(await screen.findByText(/Save waits for the Forge/)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+});
+
+test("skill autocomplete offers the chosen model setup's skills, and a picked skill's name goes in context", async () => {
+  renderAt("/cards/7");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: /Reforge/ }));
+  const box = screen.getByLabelText("Instruction");
+  await user.type(box, "@skills/");
+  expect(await screen.findByRole("option", { name: "college Campus life." })).toBeInTheDocument();
+  expect(screen.getByRole("option", { name: "noir skill" })).toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: /space/ })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("option", { name: "college Campus life." }));
+  await user.type(box, "tone");
+  expect(await screen.findByRole("button", { name: "Remove college" })).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole("button", { name: "Run" })).toBeEnabled());
+  await user.click(screen.getByRole("button", { name: "Run" }));
+  await waitFor(() => expect(runs).toHaveLength(1));
+  expect(runs[0]).toMatchObject({ instruction: "@skills/college tone", context: { skills: ["college"] } });
+});
+
+test("a typed skill name resolves, and one the model setup lacks blocks Run", async () => {
+  renderAt("/cards/7");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: /Reforge/ }));
+  const box = screen.getByLabelText("Instruction");
+  await user.type(box, "@skills/space ");
+  expect(await screen.findByText(/this model setup has no skill by this name/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Run" })).toBeDisabled();
+
+  await user.clear(box);
+  await user.type(box, "@skills/noir please");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Run" })).toBeEnabled());
+  await user.click(screen.getByRole("button", { name: "Run" }));
+  await waitFor(() => expect(runs).toHaveLength(1));
+  expect(runs[0]).toMatchObject({ context: { skills: ["noir"] } });
+});
+
+test("switching the model setup turns a skill it lacks unknown on the Start concept", async () => {
+  actions = [...allActions, { ...allActions.at(-1)!, instance_id: 2, instance_name: "Cloud model" }];
+  renderAt("/cards/new");
+  const user = userEvent.setup();
+  const box = await screen.findByLabelText("Concept");
+  await user.type(box, "@skills/col");
+  await user.click(await screen.findByRole("option", { name: "college Campus life." }));
+  await user.type(box, "a dean");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Forge" })).toBeEnabled());
+
+  await user.selectOptions(screen.getByRole("combobox", { name: "Model setup" }), "2");
+  expect(await screen.findByText(/this model setup has no skill by this name/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Forge" })).toBeDisabled();
+
+  await user.selectOptions(screen.getByRole("combobox", { name: "Model setup" }), "1");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Forge" })).toBeEnabled());
+  await user.click(screen.getByRole("button", { name: "Forge" }));
+  await waitFor(() => expect(runs).toHaveLength(1));
+  expect(runs[0]).toMatchObject({ instance_id: 1, action: "generate", context: { skills: ["college"] } });
 });

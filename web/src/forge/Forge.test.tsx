@@ -176,19 +176,19 @@ test("an unknown mention blocks Run; a picked one sends its ID and the text as t
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: /Reforge/ }));
   const box = screen.getByLabelText("Instruction");
-  await user.type(box, "ask @cards/Nobody now");
+  await user.type(box, "@cards/Nobody ");
   expect(await screen.findByText(/no card has this name/)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Run" })).toBeDisabled();
 
   await user.clear(box);
   await user.type(box, "@cards/Bil");
   await user.click(await screen.findByRole("option", { name: /^Billy card/ }));
-  await user.type(box, "is the brother");
+  await user.type(box, "is");
   expect(screen.getByRole("button", { name: "Remove Billy" })).toBeInTheDocument();
   await waitFor(() => expect(screen.getByRole("button", { name: "Run" })).toBeEnabled());
   await user.click(screen.getByRole("button", { name: "Run" }));
   await waitFor(() => expect(runs).toHaveLength(1));
-  expect(runs[0]).toMatchObject({ action: "reforge", instruction: "@cards/Billy is the brother", context: { cards: [1] } });
+  expect(runs[0]).toMatchObject({ action: "reforge", instruction: "@cards/Billy is", context: { cards: [1] } });
 });
 
 test("a new card's Forge runs the new action from the concept", async () => {

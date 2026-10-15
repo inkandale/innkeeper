@@ -2,7 +2,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { useState } from "react";
 import { Link } from "react-router";
 import { api, exportFormats, must, mustOk, route, thumb, upload, type Kind } from "../api/client";
-import { instancesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
+import { bindingsQuery, instancesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
 import { badgeClass } from "../cards/Tile";
 import { useToast } from "../shell/Toasts";
 import type { Entity } from "./Card";
@@ -10,7 +10,7 @@ import { Crop } from "./CropDialog";
 import { strings, text, type Data } from "./draft";
 import { Logo, apps } from "../sync/Logo";
 import { PushPreview } from "../sync/PushPreview";
-import { reviewPath, stateLabel } from "../sync/sync";
+import { editBinding, reviewPath, stateLabel } from "../sync/sync";
 import { ChipInput } from "./ChipInput";
 import { Collections, Sources } from "./Organize";
 
@@ -107,19 +107,15 @@ export function Push({ kind, id, dirty }: { kind: Kind; id: number; dirty: boole
 }
 
 export function Sync({ kind, id }: { kind: Kind; id: number }) {
-  const bindings = useQuery({
-    queryKey: [kind, id, "bindings"],
-    queryFn: async () => must(await api.GET(route(kind, "/cards/{id}/bindings"), { params: { path: { id } } })),
-  });
+  const bindings = useQuery(bindingsQuery(kind, id));
   const instances = useQuery(instancesQuery);
   const plugins = useQuery(pluginsQuery);
   const logos = apps(instances.data, plugins.data);
   const name = (n: number) => instances.data?.find((i) => i.id === n)?.name ?? `#${n}`;
   const qc = useQueryClient();
   const setAutosync = useMutation({
-    mutationFn: async ({ id, on }: { id: number; on: boolean }) =>
-      must(await api.PATCH("/bindings/{id}", { params: { path: { id } }, body: { autosync: on } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: [kind, id, "bindings"] }),
+    mutationFn: ({ id, on }: { id: number; on: boolean }) => editBinding(id, { autosync: on }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: bindingsQuery(kind, id).queryKey }),
   });
   if (!bindings.data?.length) return null;
   return (

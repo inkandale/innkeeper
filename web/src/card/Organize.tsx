@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, must, mustOk, route, type Kind } from "../api/client";
 import { collectionsQuery } from "../api/queries";
+import { removeSource } from "../sync/sync";
 
 // These save on change: collections and sources aren't part of a revision.
 
@@ -53,8 +54,7 @@ export function Sources({ kind, id }: { kind: Kind; id: number }) {
     },
   });
   const remove = useMutation({
-    mutationFn: async (sourceId: number) =>
-      mustOk(await api.DELETE(route(kind, "/cards/{id}/sources/{source_id}"), { params: { path: { id, source_id: sourceId } } })),
+    mutationFn: (sourceId: number) => removeSource(kind, id, sourceId),
     onSuccess: done,
   });
   return (

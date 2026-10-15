@@ -230,7 +230,7 @@ func main() {
 			deltas.add(params)
 			return nil, nil
 		case "initialize-chat":
-			// The error code the ai.chat sent during initialize got, or 0.
+			// The error code of the ai.chat made during initialize, or 0.
 			var rpcErr *protocol.Error
 			if errors.As(initChatErr, &rpcErr) {
 				return rpcErr.Code, nil

@@ -42,7 +42,7 @@ func (b *Broker) call(ctx context.Context, method string, params json.RawMessage
 		return nil, protocol.NewError(protocol.CodeInvalidParams, "a service call's params must be an object", false)
 	}
 	if pluginhost.CallerStarting(ctx) {
-		return nil, forbidden("call after initialize")
+		return nil, forbidden("a plugin can't call a service during initialize")
 	}
 	callerID, err := strconv.ParseInt(pluginhost.CallerInstance(ctx), 10, 64)
 	if err != nil {

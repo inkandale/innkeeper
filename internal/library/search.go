@@ -19,11 +19,16 @@ type Query struct {
 	Semantic bool     `json:"semantic,omitempty" doc:"Not available yet: needs an embedding enricher."`
 	Filter   *Filter  `json:"filter,omitempty"`
 	Sources  []string `json:"sources,omitempty" doc:"library, or catalog:<instance id> to also search a catalog by text alone. Default: library."`
-	Include  []string `json:"include,omitempty" doc:"Extra data per hit: tags, lorebooks, targets. Lorebooks take cards and targets."`
+	Include  []string `json:"include,omitempty" doc:"Extra data per hit: tags, lorebooks, targets, enrichments (the score instance's current values). Lorebooks take cards and targets."`
 	Fields   []string `json:"fields,omitempty" doc:"Card data keys to return per hit, plus avatar. Default: name."`
-	Sort     string   `json:"sort,omitempty" enum:"relevance,updated,name,created" doc:"Default: relevance with text, newest first without."`
+	Sort     string   `json:"sort,omitempty" pattern:"^(relevance|updated|name|created|enrichment:[a-z][a-z0-9_]*)$" doc:"relevance, updated, name, created, or enrichment:<key> for the score instance's value of key, highest first and cards without one last. Default: relevance with text, newest first without."`
 	Facets   []string `json:"facets,omitempty" doc:"Counts to return over every match: tags, collections, targets, sources. Lorebooks take targets and sources."`
 	Page     Page     `json:"page,omitempty"`
+
+	// ScoreInstance is the enrich instance whose values enrichment filters,
+	// sort, and include use, or 0 for none. The caller resolves it from the
+	// score_instance setting.
+	ScoreInstance int64 `json:"-"`
 }
 
 // Page selects one page of results, by cursor or by number.
@@ -46,6 +51,10 @@ type Filter struct {
 	Source      *string       `json:"source,omitempty" doc:"Has a source of this kind, such as chub."`
 	Archived    *bool         `json:"archived,omitempty"`
 	TargetState *TargetFilter `json:"target_state,omitempty" doc:"Is pushed to one of instances and stands as one of states there. An empty list matches any value."`
+	Enrichment  *string       `json:"enrichment,omitempty" doc:"Has a current value for this enrichment key from the score instance. With gte and lte, a number in that range; with missing, no value. Cards only."`
+	Gte         *float64      `json:"gte,omitempty" doc:"With enrichment: the value is at least this."`
+	Lte         *float64      `json:"lte,omitempty" doc:"With enrichment: the value is at most this."`
+	Missing     *bool         `json:"missing,omitempty" doc:"With enrichment: true matches cards without a value."`
 }
 
 // TargetFilter matches an entity by its bindings: one on any of Instances
@@ -76,6 +85,14 @@ type Hit struct {
 	Targets    []TargetState  `json:"targets,omitempty" doc:"With include targets: how the card stands on each target it's pushed to."`
 	Cards      []int64        `json:"cards,omitempty" doc:"Lorebooks with include cards: IDs of linked cards."`
 	Entries    *int           `json:"entries,omitempty" doc:"Lorebooks only: how many entries it has."`
+	// Enrichments are keyed by enrichment key.
+	Enrichments map[string]HitEnrichment `json:"enrichments,omitempty" doc:"With include enrichments: the score instance's current value of each key."`
+}
+
+// HitEnrichment is a card's current value of one enrichment key.
+type HitEnrichment struct {
+	Value json.RawMessage `json:"value"`
+	Stale bool            `json:"stale" doc:"Whether the value is about an older revision than the head."`
 }
 
 // Results is one page of hits.
@@ -129,7 +146,49 @@ const tagsOf = `LATERAL (SELECT e #>> '{}' AS t, ord FROM jsonb_array_elements(
 // cardOnly names the facets and includes that need card tags, collections,
 // or linked lorebooks.
 func cardOnly(name string) bool {
-	return name == "tags" || name == "collections" || name == "lorebooks"
+	return name == "tags" || name == "collections" || name == "lorebooks" || name == "enrichments"
+}
+
+// errNoScoreInstance refuses an enrichment filter, sort, or include.
+var errNoScoreInstance = fmt.Errorf("%w: enrichment filters, sort, and include need a score instance; pick one in Settings under Scores from", ErrInvalid)
+
+// enrichmentSQL is the current value of key from the score instance for card
+// c, or NULL, as a jsonb expression.
+func (w *where) enrichmentSQL(key string) (string, error) {
+	if w.k != Card {
+		return "", fmt.Errorf("%w: lorebooks have no enrichments", ErrInvalid)
+	}
+	if w.score == 0 {
+		return "", errNoScoreInstance
+	}
+	return `(SELECT e.value FROM enrichment e WHERE e.card_id = c.id AND e.key = ` + w.arg(key) +
+		` AND e.instance_id = ` + w.arg(w.score) + ` ORDER BY e.created_at DESC, e.id DESC LIMIT 1)`, nil
+}
+
+// enrichmentFilter is f's condition on its enrichment key.
+func (w *where) enrichmentFilter(f Filter) (string, error) {
+	if f.Missing != nil && (f.Gte != nil || f.Lte != nil) {
+		return "", fmt.Errorf("%w: an enrichment filter takes missing or a range, not both", ErrInvalid)
+	}
+	cur, err := w.enrichmentSQL(*f.Enrichment)
+	if err != nil {
+		return "", err
+	}
+	if f.Missing != nil && *f.Missing {
+		return cur + ` IS NULL`, nil
+	}
+	if f.Gte == nil && f.Lte == nil {
+		return cur + ` IS NOT NULL`, nil
+	}
+	num := `CASE WHEN jsonb_typeof(v.value) = 'number' THEN v.value::numeric END`
+	conds := []string{num + ` IS NOT NULL`}
+	if f.Gte != nil {
+		conds = append(conds, num+` >= `+w.arg(*f.Gte))
+	}
+	if f.Lte != nil {
+		conds = append(conds, num+` <= `+w.arg(*f.Lte))
+	}
+	return `EXISTS (SELECT 1 FROM (SELECT ` + cur + ` AS value) v WHERE ` + strings.Join(conds, " AND ") + `)`, nil
 }
 
 // pushedStatus is binding_status for apps the library pushes to; a followed site source isn't a target.
@@ -183,9 +242,10 @@ func (l *Library) facets(ctx context.Context, k *Kind, names []string, cond stri
 
 // where collects SQL conditions and their arguments.
 type where struct {
-	k    *Kind
-	args []any
-	n    int
+	k     *Kind
+	score int64 // the score instance, or 0
+	args  []any
+	n     int
 }
 
 func (w *where) arg(v any) string {
@@ -199,13 +259,16 @@ func (w *where) filter(f Filter) (string, error) {
 		return "", fmt.Errorf("%w: filter has more than 200 conditions", ErrInvalid)
 	}
 	set := 0
-	for _, ok := range []bool{f.And != nil, f.Or != nil, f.Not != nil, f.IDs != nil, f.Name != nil, f.Tag != nil, f.Collection != nil, f.Source != nil, f.Archived != nil, f.TargetState != nil} {
+	for _, ok := range []bool{f.And != nil, f.Or != nil, f.Not != nil, f.IDs != nil, f.Name != nil, f.Tag != nil, f.Collection != nil, f.Source != nil, f.Archived != nil, f.TargetState != nil, f.Enrichment != nil} {
 		if ok {
 			set++
 		}
 	}
 	if set != 1 {
 		return "", fmt.Errorf("%w: each filter needs exactly one condition", ErrInvalid)
+	}
+	if f.Enrichment == nil && (f.Gte != nil || f.Lte != nil || f.Missing != nil) {
+		return "", fmt.Errorf("%w: gte, lte, and missing go with enrichment", ErrInvalid)
 	}
 	if w.k != Card && (f.Tag != nil || f.Collection != nil) {
 		return "", fmt.Errorf("%w: lorebooks have no tags or collections", ErrInvalid)
@@ -231,6 +294,8 @@ func (w *where) filter(f Filter) (string, error) {
 	case f.Source != nil:
 		return `EXISTS (SELECT 1 FROM ` + w.k.SourceTable + ` cs
 			WHERE cs.` + w.k.FK + ` = c.id AND cs.kind = ` + w.arg(*f.Source) + ` AND cs.removed_at IS NULL)`, nil
+	case f.Enrichment != nil:
+		return w.enrichmentFilter(f)
 	case f.TargetState != nil:
 		cond := `bs.` + w.k.FK + ` = c.id`
 		if len(f.TargetState.Instances) > 0 {
@@ -286,7 +351,7 @@ func compile(k *Kind, q Query) (string, *where, string, error) {
 			return "", nil, "", fmt.Errorf("%w: unknown source %q", ErrInvalid, s)
 		}
 	}
-	w := &where{k: k}
+	w := &where{k: k, score: q.ScoreInstance}
 	conds := []string{"TRUE"}
 	if q.Filter != nil {
 		s, err := w.filter(*q.Filter)
@@ -337,11 +402,13 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 	case q.Page.Number > 0:
 		offset = (q.Page.Number - 1) * size
 	}
+	// Includes and sort add arguments that the count and facets don't use.
+	condArgs := slices.Clone(w.args)
 	fields := q.Fields
 	if len(fields) == 0 {
 		fields = []string{"name"}
 	}
-	tags, books, targets, cards, entries := `NULL::text[]`, `NULL::bigint[]`, `NULL::jsonb`, `NULL::bigint[]`, `NULL::int`
+	tags, books, targets, cards, entries, enrichments := `NULL::text[]`, `NULL::bigint[]`, `NULL::jsonb`, `NULL::bigint[]`, `NULL::int`, `NULL::jsonb`
 	if k != Card {
 		entries = `CASE jsonb_typeof(r.data->'entries') WHEN 'array' THEN jsonb_array_length(r.data->'entries') ELSE 0 END`
 	}
@@ -359,6 +426,14 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 		case "targets":
 			targets = `(SELECT jsonb_agg(jsonb_build_object('instance', instance_id, 'is', status) ORDER BY instance_id)
 				FROM ` + pushedStatus + ` bs WHERE ` + k.FK + ` = c.id)`
+		case "enrichments":
+			if q.ScoreInstance == 0 {
+				return Results{}, errNoScoreInstance
+			}
+			enrichments = `(SELECT jsonb_object_agg(x.key, jsonb_build_object('value', x.value, 'stale', x.revision_id <> c.head_revision_id))
+				FROM (SELECT DISTINCT ON (e.key) e.key, e.value, e.revision_id FROM enrichment e
+					WHERE e.card_id = c.id AND e.instance_id = ` + w.arg(q.ScoreInstance) + `
+					ORDER BY e.key, e.created_at DESC, e.id DESC) x)`
 		default:
 			return Results{}, fmt.Errorf("%w: unknown include %q", ErrInvalid, inc)
 		}
@@ -380,18 +455,26 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 		order = "lower(r.data->>'name'), c.id"
 	case "created":
 	default:
-		return Results{}, fmt.Errorf("%w: unknown sort %q", ErrInvalid, q.Sort)
+		key, ok := strings.CutPrefix(q.Sort, "enrichment:")
+		if !ok {
+			return Results{}, fmt.Errorf("%w: unknown sort %q", ErrInvalid, q.Sort)
+		}
+		cur, err := w.enrichmentSQL(key)
+		if err != nil {
+			return Results{}, err
+		}
+		order = cur + " DESC NULLS LAST, c.id DESC"
 	}
 	res := Results{Hits: []Hit{}}
-	if err := l.pool.QueryRow(ctx, `SELECT count(*) FROM `+from(k)+` WHERE `+cond, w.args...).Scan(&res.Total); err != nil {
+	if err := l.pool.QueryRow(ctx, `SELECT count(*) FROM `+from(k)+` WHERE `+cond, condArgs...).Scan(&res.Total); err != nil {
 		return Results{}, err
 	}
 	if len(q.Facets) > 0 {
-		if res.Facets, err = l.facets(ctx, k, q.Facets, cond, w.args); err != nil {
+		if res.Facets, err = l.facets(ctx, k, q.Facets, cond, condArgs); err != nil {
 			return Results{}, err
 		}
 	}
-	sql := `SELECT c.id, c.slug, r.id, c.archived_at, r.data, r.avatar_blob, ` + tags + `, ` + books + `, ` + targets + `, ` + cards + `, ` + entries + `
+	sql := `SELECT c.id, c.slug, r.id, c.archived_at, r.data, r.avatar_blob, ` + tags + `, ` + books + `, ` + targets + `, ` + cards + `, ` + entries + `, ` + enrichments + `
 		FROM ` + from(k) + `
 		WHERE ` + cond + ` ORDER BY ` + order + ` LIMIT ` + w.arg(size+1) + ` OFFSET ` + w.arg(offset)
 	rows, err := l.pool.Query(ctx, sql, w.args...)
@@ -401,7 +484,7 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 	var h Hit
 	var data []byte
 	var avatar *string
-	_, err = pgx.ForEachRow(rows, []any{&h.ID, &h.Slug, &h.RevisionID, &h.ArchivedAt, &data, &avatar, &h.Tags, &h.Lorebooks, &h.Targets, &h.Cards, &h.Entries},
+	_, err = pgx.ForEachRow(rows, []any{&h.ID, &h.Slug, &h.RevisionID, &h.ArchivedAt, &data, &avatar, &h.Tags, &h.Lorebooks, &h.Targets, &h.Cards, &h.Entries, &h.Enrichments},
 		func() error {
 			var all map[string]any
 			if err := json.Unmarshal(data, &all); err != nil {

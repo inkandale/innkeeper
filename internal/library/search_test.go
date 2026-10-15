@@ -149,7 +149,7 @@ func TestSearchRejectsBadQueries(t *testing.T) {
 		"no condition":     {Filter: &Filter{Not: &Filter{}}},
 		"semantic":         {Semantic: true},
 		"catalog source":   {Sources: []string{"catalog:chub-archive"}},
-		"bad include":      {Include: []string{"enrichments"}},
+		"bad include":      {Include: []string{"summaries"}},
 		"negative size":    {Page: Page{Size: -1}},
 		"huge size":        {Page: Page{Size: 501}},
 		"huge filter":      {Filter: &Filter{Or: manyTags(201)}},
@@ -425,5 +425,89 @@ func TestSearchIgnoresNonStringTags(t *testing.T) {
 	}
 	if !slices.Equal(got.Hits[0].Tags, []string{"fantasy"}) {
 		t.Fatalf("include tags = %v", got.Hits[0].Tags)
+	}
+}
+
+func TestSearchEnrichments(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	s := seedSearch(t, lib)
+	const score, other = 7, 8
+	heads := map[int64]int64{}
+	for _, id := range []int64{s.brakka, s.carrow} {
+		c, err := lib.Cards.Get(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		heads[id] = c.HeadRevisionID
+	}
+	add := func(inst, card int64, value string) {
+		t.Helper()
+		if err := lib.AddEnrichments(ctx, inst, []NewEnrichment{{CardID: card, RevisionID: heads[card], Key: "quality", Value: json.RawMessage(value)}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add(score, s.brakka, "40")
+	add(score, s.brakka, "90") // newer, so current
+	add(other, s.carrow, "95")
+	// Carrow's next revision makes this value stale.
+	add(score, s.carrow, "70")
+	if _, err := lib.Cards.Update(ctx, s.carrow, heads[s.carrow], edit(`{"name": "Carrow", "description": "Changed."}`)); err != nil {
+		t.Fatal(err)
+	}
+	quality := ptr("quality")
+	for name, tc := range map[string]struct {
+		q    Query
+		want []int64
+	}{
+		"range uses the current value":     {Query{Filter: &Filter{Enrichment: quality, Gte: ptr(80.0)}}, []int64{s.brakka}},
+		"range ends are included":          {Query{Filter: &Filter{Enrichment: quality, Gte: ptr(70.0), Lte: ptr(70.0)}}, []int64{s.carrow}},
+		"only the score instance's values": {Query{Filter: &Filter{Enrichment: quality, Gte: ptr(91.0)}}, []int64{}},
+		"has a value":                      {Query{Filter: &Filter{Enrichment: quality}}, []int64{s.carrow, s.brakka}},
+		"missing":                          {Query{Filter: &Filter{Enrichment: ptr("voice"), Missing: ptr(true)}}, []int64{s.carrow, s.brakka}},
+		"sort highest first":               {Query{Sort: "enrichment:quality"}, []int64{s.brakka, s.carrow}},
+		"no value sorts last":              {Query{Sort: "enrichment:quality", Filter: &Filter{Archived: ptr(true)}}, []int64{s.dellin}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			tc.q.ScoreInstance = score
+			got, err := lib.Search(ctx, Card, tc.q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(hitIDs(got), tc.want) {
+				t.Fatalf("hits = %v, want %v", hitIDs(got), tc.want)
+			}
+		})
+	}
+
+	got, err := lib.Search(ctx, Card, Query{Include: []string{"enrichments"}, Sort: "enrichment:quality", ScoreInstance: score,
+		Filter: &Filter{Or: []Filter{{Archived: ptr(true)}, {Archived: ptr(false)}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ids := hitIDs(got); !slices.Equal(ids, []int64{s.brakka, s.carrow, s.dellin}) {
+		t.Fatalf("sorted = %v", ids)
+	}
+	b, c, d := got.Hits[0].Enrichments["quality"], got.Hits[1].Enrichments["quality"], got.Hits[2].Enrichments
+	if string(b.Value) != "90" || b.Stale || string(c.Value) != "70" || !c.Stale || d != nil {
+		t.Fatalf("includes = %+v, %+v, %+v", b, c, d)
+	}
+
+	for name, q := range map[string]Query{
+		"filter without a score instance":  {Filter: &Filter{Enrichment: quality}},
+		"sort without a score instance":    {Sort: "enrichment:quality"},
+		"include without a score instance": {Include: []string{"enrichments"}},
+		"gte without enrichment":           {Filter: &Filter{Gte: ptr(1.0)}, ScoreInstance: score},
+		"missing and a range":              {Filter: &Filter{Enrichment: quality, Missing: ptr(true), Lte: ptr(1.0)}, ScoreInstance: score},
+	} {
+		if _, err := lib.Search(ctx, Card, q); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: got %v, want ErrInvalid", name, err)
+		}
+	}
+	if _, err := lib.Search(ctx, Lorebook, Query{Filter: &Filter{Enrichment: quality}, ScoreInstance: score}); !errors.Is(err, ErrInvalid) {
+		t.Errorf("lorebook filter: got %v, want ErrInvalid", err)
+	}
+	if ids, err := lib.SearchIDs(ctx, Card, Query{Filter: &Filter{Enrichment: quality, Lte: ptr(75.0)}, ScoreInstance: score}); err != nil || !slices.Equal(ids, []int64{s.carrow}) {
+		t.Errorf("SearchIDs = %v, %v", ids, err)
 	}
 }

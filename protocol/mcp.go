@@ -47,13 +47,18 @@ func (t Tool) Validate() error {
 	if !toolName.MatchString(t.Name) {
 		return fmt.Errorf("tool name %q must be 1 to 40 lowercase letters, digits, and underscores", t.Name)
 	}
-	var schema struct {
-		Type string `json:"type"`
-	}
-	if err := json.Unmarshal(t.InputSchema, &schema); err != nil || schema.Type != "object" {
+	if !objectSchema(t.InputSchema) {
 		return fmt.Errorf("tool %s: input_schema must be a JSON Schema with type object", t.Name)
 	}
 	return nil
+}
+
+// objectSchema reports whether raw is a JSON Schema with type object.
+func objectSchema(raw json.RawMessage) bool {
+	var schema struct {
+		Type string `json:"type"`
+	}
+	return json.Unmarshal(raw, &schema) == nil && schema.Type == "object"
 }
 
 // MCPToolsResult is the reply to mcp.tools.

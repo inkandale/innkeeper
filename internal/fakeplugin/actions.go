@@ -1,0 +1,100 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/davidgibbons/innkeeper/protocol"
+)
+
+// fakeInputs are the inputs any fake action reads. Call makes that
+// library.call and puts the reply, or the error, in raw.
+var fakeInputs = json.RawMessage(`{"type": "object", "properties": {
+	"sleep_ms": {"type": "integer"}, "fail": {"type": "boolean"}, "call": {"type": "object"}}}`)
+
+// fakeActions are a field action, a whole-card action, a report-only one, a
+// new-card one, one that proposes changes outside its scope, and one that
+// reads the library.
+func fakeActions(mode string) protocol.ActionListResult {
+	if mode == "bad-actions" {
+		return protocol.ActionListResult{Actions: []protocol.Action{{ID: "Bad ID", Label: "Bad", Applies: "card"}}}
+	}
+	return protocol.ActionListResult{Actions: []protocol.Action{
+		{ID: "tighten", Label: "Tighten", Description: "Shortens a field.", Applies: "card", Fields: []string{"description", "personality"}},
+		{ID: "reforge", Label: "Reforge", Description: "Rewrites the card from an instruction.", Applies: "card", Instruction: true, Inputs: fakeInputs},
+		{ID: "evaluate", Label: "Evaluate", Description: "Scores the card.", Applies: "card", ReportOnly: true},
+		{ID: "generate", Label: "Generate", Description: "Makes a card from a concept.", Applies: "new", Instruction: true, Images: true},
+		{ID: "sneaky", Label: "Sneaky", Description: "Changes more than its field.", Applies: "card", Fields: []string{"description"}},
+		{ID: "lookup", Label: "Look up", Description: "Reads the library.", Applies: "card", Library: true, Inputs: fakeInputs},
+	}}
+}
+
+func actionRun(ctx context.Context, conn *protocol.Conn, params json.RawMessage) (any, error) {
+	var p protocol.ActionRunParams
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, protocol.NewError(protocol.CodeInvalidParams, err.Error(), false)
+	}
+	var in struct {
+		SleepMS int             `json:"sleep_ms"`
+		Fail    bool            `json:"fail"`
+		Call    json.RawMessage `json:"call"`
+	}
+	_ = json.Unmarshal(p.Inputs, &in)
+	_ = conn.Notify(protocol.NotifyProgress, protocol.Progress{Run: p.Run, Message: "Running " + p.Action, Done: 1, Total: 2})
+	time.Sleep(time.Duration(in.SleepMS) * time.Millisecond)
+	if in.Fail {
+		return nil, protocol.NewError(-32000, "the model refused", true)
+	}
+	var res protocol.ActionRunResult
+	if len(in.Call) > 0 {
+		res.Raw = libraryCall(ctx, conn, p.Run, in.Call)
+	}
+	data := map[string]any{}
+	_ = json.Unmarshal(p.Entity.Data, &data)
+	switch p.Action {
+	case "tighten":
+		data[p.Field] = fmt.Sprintf("Tight: %v", data[p.Field])
+	case "reforge":
+		data["description"] = p.Instruction
+	case "evaluate":
+		// Report-only, yet it proposes a rename the core must drop.
+		data["name"] = "Renamed"
+		res.Report = &protocol.Report{Summary: "Needs work.", Findings: []protocol.Finding{
+			{Severity: "high", Text: "Too short.", Fields: []string{"description"}}}}
+	case "generate":
+		data = map[string]any{"name": "Generated", "description": p.Instruction}
+		images, _ := json.Marshal(p.Images)
+		res.Raw = string(images)
+	case "sneaky":
+		data[p.Field] = "Sneaky"
+		data["name"] = "Renamed"
+		data["character_book"] = map[string]any{"entries": []any{}}
+	case "lookup":
+	default:
+		return nil, protocol.NewError(protocol.CodeInvalidParams, "no action "+p.Action, false)
+	}
+	res.Proposal, _ = json.Marshal(data)
+	return res, nil
+}
+
+// libraryCall sends call, a library.call's name and arguments, and returns
+// the reply's text or the error.
+func libraryCall(ctx context.Context, conn *protocol.Conn, run string, call json.RawMessage) string {
+	var params protocol.LibraryCallParams
+	_ = json.Unmarshal(call, &params)
+	params.Run = run
+	var out protocol.MCPCallResult
+	err := conn.Call(ctx, protocol.MethodLibraryCall, params, &out)
+	var rpcErr *protocol.Error
+	if errors.As(err, &rpcErr) {
+		return fmt.Sprintf("error %d: %s", rpcErr.Code, rpcErr.Message)
+	}
+	if err != nil {
+		return "error: " + err.Error()
+	}
+	text, _ := json.Marshal(out)
+	return string(text)
+}

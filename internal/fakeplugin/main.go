@@ -18,7 +18,7 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-tools | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code | database | bad-list | bad-setup | bad-catalog | catalog-repeat | catalog-lax | catalog-no-notfound | catalog-wrong-hash | catalog-sourceless | sites-noisy | sites-lax-data | sites-claims | sites-lax-params | sites-bad-source")
+	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-tools | bad-actions | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code | database | bad-list | bad-setup | bad-catalog | catalog-repeat | catalog-lax | catalog-no-notfound | catalog-wrong-hash | catalog-sourceless | sites-noisy | sites-lax-data | sites-claims | sites-lax-params | sites-bad-source")
 	caps := flag.String("caps", "push,pull", "comma-separated capabilities to report")
 	name := flag.String("name", "fake", "the plugin name to report")
 	flag.Parse()
@@ -101,6 +101,10 @@ func main() {
 			return mcpTools(*mode), nil
 		case protocol.MethodMCPCall:
 			return mcpCall(params)
+		case protocol.MethodActionList:
+			return fakeActions(*mode), nil
+		case protocol.MethodActionRun:
+			return actionRun(ctx, conn, params)
 		case protocol.MethodTargetPut:
 			return newTarget(config).put(params)
 		case protocol.MethodTargetGet:

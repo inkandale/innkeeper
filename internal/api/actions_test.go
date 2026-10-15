@@ -15,6 +15,7 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 	"github.com/davidgibbons/innkeeper/internal/tier"
+	"github.com/davidgibbons/innkeeper/protocol"
 )
 
 // actionEnv adds the fake plugin as an action plugin, forge, with one
@@ -258,5 +259,24 @@ func TestActionRunFailsWithoutRetry(t *testing.T) {
 	j, p := e.finished(e.start("reforge", map[string]any{"inputs": map[string]any{"fail": true}}).ID)
 	if j.Status != jobs.StatusFailed || j.Error == nil || !strings.Contains(*j.Error, "the model refused") || j.Attempts != 1 || p.Result != nil {
 		t.Fatalf("job %+v", j)
+	}
+}
+
+func TestListSkills(t *testing.T) {
+	e := newActionEnv(t)
+	var list []PluginSkill
+	e.call("GET", "/actions/skills", nil, 200, &list)
+	want := []PluginSkill{{protocol.Skill{Name: "college", Description: "Campus life."}, e.instID, "Forge"},
+		{protocol.Skill{Name: "noir"}, e.instID, "Forge"}}
+	if !slices.Equal(list, want) {
+		t.Fatalf("skills = %+v, want %+v", list, want)
+	}
+}
+
+func TestActionRunSendsMentionedSkills(t *testing.T) {
+	e := newActionEnv(t)
+	j := e.start("reforge", map[string]any{"instruction": "use @skills/noir", "context": map[string]any{"skills": []string{"noir"}}})
+	if res, _ := e.succeeded(j.ID); res.Raw != "skills: noir" {
+		t.Fatalf("raw = %q", res.Raw)
 	}
 }

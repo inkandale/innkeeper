@@ -62,9 +62,9 @@ type Server struct {
 	// login provider. Empty until needed.
 	setupMu   sync.Mutex
 	setupCode string
-	// tools and actions cache each plugin instance's MCP tools and actions,
-	// by instance version.
-	tools, actions sync.Map
+	// tools, actions, and skills cache each plugin instance's MCP tools,
+	// actions, and skills, by instance version.
+	tools, actions, skills sync.Map
 	// lastPrune is when OAuth clients were last pruned, in Unix seconds.
 	lastPrune atomic.Int64
 }
@@ -174,6 +174,7 @@ func (s *Server) routes(api huma.API) {
 	s.reconcileRoutes(api)
 	s.toolRoutes(api)
 	s.actionRoutes(api)
+	s.itemRoutes(api)
 	s.settingsRoutes(api)
 	s.backupRoutes(api)
 }

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"time"
 
@@ -90,4 +91,26 @@ func eachWorking(insts []plugins.InstanceInfo, f func(plugins.InstanceInfo)) {
 	case <-done:
 	case <-time.After(3 * time.Second):
 	}
+}
+
+// collect gathers each working instance's list from m, turned into out items
+// by f, for the instances that answer within eachWorking's limit.
+func collect[R, T, O any](ctx context.Context, s *Server, cache *sync.Map, m listMethod[R, T], insts []plugins.InstanceInfo,
+	f func(plugins.InstanceInfo, []T) []O) []O {
+	var mu sync.Mutex
+	out := []O{}
+	eachWorking(insts, func(i plugins.InstanceInfo) {
+		_, list, err := instanceList(ctx, s, cache, m, i.ID)
+		if err != nil {
+			s.Log.Warn("list from plugin", "instance", i.ID, "method", m.name, "err", err)
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		out = append(out, f(i, list)...)
+	})
+	// Instances still listing append later; the caller gets what is here now.
+	mu.Lock()
+	defer mu.Unlock()
+	return slices.Clone(out)
 }

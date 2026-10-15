@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -65,28 +64,18 @@ func (s *Server) toolRoutes(api huma.API) {
 			for _, i := range insts {
 				prefixes[toolPrefix(i.Name)]++
 			}
-			var mu sync.Mutex
-			out := []PluginTool{}
-			eachWorking(insts, func(i plugins.InstanceInfo) {
-				_, tools, err := instanceList(ctx, s, &s.tools, mcpTools, i.ID)
-				if err != nil {
-					s.Log.Warn("list plugin tools", "instance", i.ID, "err", err)
-					return
-				}
+			out := collect(ctx, s, &s.tools, mcpTools, insts, func(i plugins.InstanceInfo, tools []protocol.Tool) []PluginTool {
 				prefix := toolPrefix(i.Name)
 				if prefixes[prefix] > 1 {
 					prefix = fmt.Sprintf("%s_%d", prefix, i.ID)
 				}
-				mu.Lock()
-				defer mu.Unlock()
+				var out []PluginTool
 				for _, t := range tools {
 					out = append(out, PluginTool{i.ID, i.Name, t.Name, t.Description, t.InputSchema,
 						t.EffectiveTier(), prefix + "_" + t.Name})
 				}
+				return out
 			})
-			mu.Lock()
-			defer mu.Unlock()
-			out = slices.Clone(out)
 			slices.SortFunc(out, func(a, b PluginTool) int { return strings.Compare(a.MCPName, b.MCPName) })
 			return &pluginToolsOut{Body: out}, nil
 		})
@@ -96,7 +85,7 @@ func (s *Server) toolRoutes(api huma.API) {
 		Path: "/instances/{id}/tools/{name}", Summary: "Run a plugin instance's MCP tool", Tags: tags,
 		Description: "Needs the tier the tool declares. A failure the tool reports comes back with is_error set."},
 		func(ctx context.Context, in *callToolIn) (*callToolOut, error) {
-			if err := s.usable(ctx, in.ID, "mcp"); err != nil {
+			if _, err := s.usable(ctx, in.ID, "mcp"); err != nil {
 				return nil, err
 			}
 			inst, tools, err := instanceList(ctx, s, &s.tools, mcpTools, in.ID)

@@ -59,14 +59,19 @@ type ItemSummary struct {
 
 // Validate checks what the UI needs to list and address the item.
 func (s ItemSummary) Validate() error {
-	var errs []error
-	if s.ID == "" || len(s.ID) > 256 || strings.Contains(s.ID, "/") {
-		errs = append(errs, fmt.Errorf("item id %q must be 1 to 256 bytes without /", s.ID))
-	}
+	errs := []error{CheckItemID(s.ID)}
 	if strings.TrimSpace(s.Name) == "" {
 		errs = append(errs, fmt.Errorf("item %s: name is empty", s.ID))
 	}
 	return errors.Join(errs...)
+}
+
+// CheckItemID reports whether id can name an item in a URL path.
+func CheckItemID(id string) error {
+	if id == "" || len(id) > 256 || strings.Contains(id, "/") {
+		return fmt.Errorf("item id %q must be 1 to 256 bytes without /", id)
+	}
+	return nil
 }
 
 // ItemsListParams lists one item type.

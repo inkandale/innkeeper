@@ -18,6 +18,7 @@ import (
 	"github.com/davidgibbons/innkeeper/internal/importer"
 	"github.com/davidgibbons/innkeeper/internal/jobs"
 	"github.com/davidgibbons/innkeeper/internal/library"
+	"github.com/davidgibbons/innkeeper/internal/pluginhost"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 	"github.com/davidgibbons/innkeeper/internal/targets"
 	"github.com/davidgibbons/innkeeper/internal/tier"
@@ -112,13 +113,13 @@ type bulkIn struct {
 }
 
 // usable checks that an instance exists, isn't broken, and its plugin has
-// capability.
-func (s *Server) usable(ctx context.Context, id int64, capability string) error {
+// capability, and returns it.
+func (s *Server) usable(ctx context.Context, id int64, capability string) (pluginhost.Instance, error) {
 	inst, err := s.Registry.InstanceWith(ctx, id, capability)
 	if errors.Is(err, plugins.ErrIncapable) {
-		return huma.Error400BadRequest(fmt.Sprintf("plugin %s can't %s", inst.Manifest.Name, capability))
+		return inst, huma.Error400BadRequest(fmt.Sprintf("plugin %s can't %s", inst.Manifest.Name, capability))
 	}
-	return s.fail(err)
+	return inst, s.fail(err)
 }
 
 // enqueue queues a job and answers with it.
@@ -291,7 +292,7 @@ func (s *Server) jobRoutes(api huma.API) {
 				}
 				return nil, huma.Error400BadRequest(fmt.Sprintf("plugin %s can't import", inst.Plugin))
 			}
-			if err := s.usable(ctx, in.Body.InstanceID, "import"); err != nil {
+			if _, err := s.usable(ctx, in.Body.InstanceID, "import"); err != nil {
 				return nil, err
 			}
 			params := in.Body.Params

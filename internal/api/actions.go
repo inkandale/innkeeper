@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
-	"sync"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -22,6 +21,21 @@ import (
 var actionList = listMethod[protocol.ActionListResult, protocol.Action]{name: protocol.MethodActionList,
 	items: func(r protocol.ActionListResult) []protocol.Action { return r.Actions },
 	key:   func(a protocol.Action) string { return a.ID }, validate: protocol.Action.Validate}
+
+// actionSkills lists an instance's skills. It has its own cache, so it asks
+// the plugin for action.list separately from actionList.
+var actionSkills = listMethod[protocol.ActionListResult, protocol.Skill]{name: protocol.MethodActionList,
+	items: func(r protocol.ActionListResult) []protocol.Skill { return r.Skills },
+	key:   func(sk protocol.Skill) string { return sk.Name }, validate: protocol.Skill.Validate}
+
+// PluginSkill is a skill an action plugin instance offers.
+type PluginSkill struct {
+	protocol.Skill
+	InstanceID   int64  `json:"instance_id"`
+	InstanceName string `json:"instance_name"`
+}
+
+type skillsOut struct{ Body []PluginSkill }
 
 // PluginAction is an action a plugin instance offers.
 type PluginAction struct {
@@ -63,27 +77,37 @@ func (s *Server) actionRoutes(api huma.API) {
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			var mu sync.Mutex
-			out := []PluginAction{}
-			eachWorking(insts, func(i plugins.InstanceInfo) {
-				_, list, err := instanceList(ctx, s, &s.actions, actionList, i.ID)
-				if err != nil {
-					s.Log.Warn("list plugin actions", "instance", i.ID, "err", err)
-					return
-				}
-				mu.Lock()
-				defer mu.Unlock()
+			out := collect(ctx, s, &s.actions, actionList, insts, func(i plugins.InstanceInfo, list []protocol.Action) []PluginAction {
+				var out []PluginAction
 				for _, a := range list {
 					if in.Applies == "" || a.Applies == in.Applies {
 						out = append(out, PluginAction{a, i.ID, i.Name})
 					}
 				}
+				return out
 			})
-			mu.Lock()
-			defer mu.Unlock()
-			out = slices.Clone(out)
 			slices.SortStableFunc(out, func(a, b PluginAction) int { return int(a.InstanceID - b.InstanceID) })
 			return &actionsOut{Body: out}, nil
+		})
+
+	huma.Register(api, huma.Operation{OperationID: "list-action-skills", Method: http.MethodGet, Path: "/actions/skills",
+		Summary: "List the skills action plugin instances offer", Tags: tags,
+		Description: "The skills an @skills/ mention can name, as each instance's action.list reports them. " +
+			"Instances that are broken, or whose plugin doesn't answer, are left out."},
+		func(ctx context.Context, _ *struct{}) (*skillsOut, error) {
+			insts, err := s.Registry.InstancesWith(ctx, "action")
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			out := collect(ctx, s, &s.skills, actionSkills, insts, func(i plugins.InstanceInfo, list []protocol.Skill) []PluginSkill {
+				var out []PluginSkill
+				for _, sk := range list {
+					out = append(out, PluginSkill{sk, i.ID, i.Name})
+				}
+				return out
+			})
+			slices.SortStableFunc(out, func(a, b PluginSkill) int { return int(a.InstanceID - b.InstanceID) })
+			return &skillsOut{Body: out}, nil
 		})
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "start-action-run", Method: http.MethodPost,
@@ -93,7 +117,7 @@ func (s *Server) actionRoutes(api huma.API) {
 			"Cancel the job to stop the run."},
 		func(ctx context.Context, in *startActionIn) (*jobResp, error) {
 			b := in.Body
-			if err := s.usable(ctx, b.InstanceID, "action"); err != nil {
+			if _, err := s.usable(ctx, b.InstanceID, "action"); err != nil {
 				return nil, err
 			}
 			_, list, err := instanceList(ctx, s, &s.actions, actionList, b.InstanceID)

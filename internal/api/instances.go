@@ -32,11 +32,18 @@ type pluginOut struct {
 	Inputs          []string                 `json:"inputs,omitempty" doc:"What an import plugin takes from the UI: file (params blob and name), url (params url), or both"`
 	Config          map[string]any           `json:"config,omitempty" doc:"JSON Schema for an instance's config"`
 	Enrichments     map[string]enrichmentOut `json:"enrichments,omitempty"`
+	Items           map[string]itemTypeOut   `json:"items,omitempty" doc:"The item types an items plugin keeps, by type name"`
 	Source          string                   `json:"source" doc:"Id of the source the plugin was installed from, or builtin"`
 	PreviousSource  *string                  `json:"previous_source,omitempty" doc:"Source of the version a rollback returns to"`
 	PreviousVersion *string                  `json:"previous_version,omitempty" doc:"Version a rollback returns to"`
 	Builtin         bool                     `json:"builtin" doc:"The image ships this plugin, so uninstalling falls back to that copy"`
 	Icon            string                   `json:"icon,omitempty" doc:"URL of the app's logo"`
+}
+
+type itemTypeOut struct {
+	Label  string         `json:"label"`
+	Schema map[string]any `json:"schema" doc:"JSON Schema for one item"`
+	Import []string       `json:"import,omitempty" doc:"What Import takes: file, url, or both"`
 }
 
 type pluginsOut struct{ Body []pluginOut }
@@ -107,6 +114,12 @@ func (s *Server) instanceRoutes(api huma.API) {
 						p.Enrichments = map[string]enrichmentOut{}
 					}
 					p.Enrichments[k] = enrichmentOut{e.Type, e.Label, e.Range}
+				}
+				for k, it := range m.Items {
+					if p.Items == nil {
+						p.Items = map[string]itemTypeOut{}
+					}
+					p.Items[k] = itemTypeOut{it.Label, it.Schema, it.Import}
 				}
 				out.Body = append(out.Body, p)
 			}

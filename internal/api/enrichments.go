@@ -4,8 +4,8 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -22,39 +22,66 @@ import (
 
 const scoreInstanceSetting = "score_instance"
 
-// scoreInstance is the enrich instance whose values the grid, filters, and
-// sort use: the score_instance setting while it names an enrich instance,
-// else the only enrich instance, else 0.
-func (s *Server) scoreInstance(ctx context.Context) (int64, error) {
+// scoreSetting is the score_instance setting while it names an enrich
+// instance, or nil, and the enrich instances.
+func (s *Server) scoreSetting(ctx context.Context) (*plugins.InstanceInfo, []plugins.InstanceInfo, error) {
 	v, err := s.Registry.Setting(ctx, scoreInstanceSetting)
 	if err != nil {
-		return 0, err
+		return nil, nil, err
 	}
 	insts, err := s.Registry.InstancesWith(ctx, "enrich")
 	if err != nil {
-		return 0, err
+		return nil, nil, err
 	}
-	if id, err := strconv.ParseInt(v, 10, 64); err == nil &&
-		slices.ContainsFunc(insts, func(i plugins.InstanceInfo) bool { return i.ID == id }) {
-		return id, nil
+	id, err := strconv.ParseInt(v, 10, 64)
+	if i := slices.IndexFunc(insts, func(i plugins.InstanceInfo) bool { return i.ID == id }); err == nil && i >= 0 {
+		return &insts[i], insts, nil
 	}
-	if len(insts) == 1 {
-		return insts[0].ID, nil
-	}
-	return 0, nil
+	return nil, insts, nil
 }
 
-// withScores sets q's score instance.
-func (s *Server) withScores(ctx context.Context, q *library.Query) error {
-	id, err := s.scoreInstance(ctx)
-	q.ScoreInstance = id
-	return err
+// scoreInstance is the enrich instance whose values the grid, filters, and
+// sort use: the score_instance setting while it names an enrich instance,
+// else the only enrich instance, else nil.
+func (s *Server) scoreInstance(ctx context.Context) (*plugins.InstanceInfo, error) {
+	set, insts, err := s.scoreSetting(ctx)
+	if set != nil || err != nil {
+		return set, err
+	}
+	if len(insts) == 1 {
+		return &insts[0], nil
+	}
+	return nil, nil
+}
+
+// withScores sets q's score instance, if q uses enrichments, and returns its
+// plugin's declarations.
+func (s *Server) withScores(ctx context.Context, q *library.Query) (map[string]protocol.Enrichment, error) {
+	if !q.UsesEnrichments() {
+		return nil, nil
+	}
+	inst, err := s.scoreInstance(ctx)
+	if inst == nil {
+		return nil, err
+	}
+	q.ScoreInstance = inst.ID
+	return s.Registry.Manifests()[inst.Plugin].Enrichments, nil
+}
+
+// shownOnHits keeps the enrichments that hits carry: score keys and the grid key.
+func shownOnHits(hits []library.Hit, decl map[string]protocol.Enrichment) {
+	for _, h := range hits {
+		maps.DeleteFunc(h.Enrichments, func(k string, _ library.HitEnrichment) bool {
+			d := decl[k]
+			return d.Type != "score" && !d.Grid
+		})
+	}
 }
 
 // searchIDs is library.SearchIDs with the score instance, for a bulk
 // selection.
 func (s *Server) searchIDs(ctx context.Context, k *library.Kind, q library.Query) ([]int64, error) {
-	if err := s.withScores(ctx, &q); err != nil {
+	if _, err := s.withScores(ctx, &q); err != nil {
 		return nil, err
 	}
 	return s.Lib.SearchIDs(ctx, k, q)
@@ -122,6 +149,7 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 			if len(ids) == 0 {
 				return nil, huma.Error400BadRequest("the query matches no cards")
 			}
+			ids = slices.Compact(slices.Sorted(slices.Values(ids)))
 			if len(ids) > enrich.MaxCards {
 				return nil, huma.Error400BadRequest(fmt.Sprintf("a run takes at most %d cards; this one has %d", enrich.MaxCards, len(ids)))
 			}
@@ -165,19 +193,15 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 		func(ctx context.Context, _ *struct{}) (*enrichmentKeysOut, error) {
 			out := &enrichmentKeysOut{}
 			out.Body.Keys = []enrichmentKey{}
-			id, err := s.scoreInstance(ctx)
+			inst, err := s.scoreInstance(ctx)
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			if id == 0 {
+			if inst == nil {
 				return out, nil
 			}
-			info, err := s.Registry.GetInstance(ctx, id)
-			if err != nil {
-				return nil, s.fail(err)
-			}
-			out.Body.InstanceID = &id
-			for k, e := range s.Registry.Manifests()[info.Plugin].Enrichments {
+			out.Body.InstanceID = &inst.ID
+			for k, e := range s.Registry.Manifests()[inst.Plugin].Enrichments {
 				out.Body.Keys = append(out.Body.Keys, enrichmentKey{k, toEnrichmentOut(e)})
 			}
 			slices.SortFunc(out.Body.Keys, func(a, b enrichmentKey) int {
@@ -214,11 +238,13 @@ func (s *Server) setScoreInstance(ctx context.Context, id *int64) error {
 	if id == nil {
 		return s.Registry.SetSetting(ctx, scoreInstanceSetting, "")
 	}
-	if _, err := s.Registry.InstanceWith(ctx, *id, "enrich"); err != nil && !errors.Is(err, plugins.ErrBroken) {
-		if errors.Is(err, plugins.ErrIncapable) {
-			return huma.Error400BadRequest(err.Error())
-		}
+	// A broken instance may be picked, once it is an enrich instance; it may be fixed later.
+	info, err := s.Registry.GetInstance(ctx, *id)
+	if err != nil {
 		return s.fail(err)
+	}
+	if !s.Registry.HasCapability(info.Plugin, "enrich") {
+		return huma.Error400BadRequest(fmt.Sprintf("plugin %s can't enrich", info.Plugin))
 	}
 	return s.Registry.SetSetting(ctx, scoreInstanceSetting, strconv.FormatInt(*id, 10))
 }

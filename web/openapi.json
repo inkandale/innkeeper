@@ -3285,7 +3285,7 @@
             "$ref": "#/components/schemas/Filter"
           },
           "include": {
-            "description": "Extra data per hit: tags, lorebooks, targets, enrichments (the score instance's current values). Lorebooks take cards and targets.",
+            "description": "Extra data per hit: tags, lorebooks, targets, enrichments (the score instance's current values of its score keys and grid key). Lorebooks take cards and targets.",
             "items": {
               "type": "string"
             },

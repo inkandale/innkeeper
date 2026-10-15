@@ -19,7 +19,7 @@ type Query struct {
 	Semantic bool     `json:"semantic,omitempty" doc:"Not available yet: needs an embedding enricher."`
 	Filter   *Filter  `json:"filter,omitempty"`
 	Sources  []string `json:"sources,omitempty" doc:"library, or catalog:<instance id> to also search a catalog by text alone. Default: library."`
-	Include  []string `json:"include,omitempty" doc:"Extra data per hit: tags, lorebooks, targets, enrichments (the score instance's current values). Lorebooks take cards and targets."`
+	Include  []string `json:"include,omitempty" doc:"Extra data per hit: tags, lorebooks, targets, enrichments (the score instance's current values of its score keys and grid key). Lorebooks take cards and targets."`
 	Fields   []string `json:"fields,omitempty" doc:"Card data keys to return per hit, plus avatar. Default: name."`
 	Sort     string   `json:"sort,omitempty" pattern:"^(relevance|updated|name|created|enrichment:[a-z][a-z0-9_]*)$" doc:"relevance, updated, name, created, or enrichment:<key> for the score instance's value of key, highest first and cards without one last. Default: relevance with text, newest first without."`
 	Facets   []string `json:"facets,omitempty" doc:"Counts to return over every match: tags, collections, targets, sources. Lorebooks take targets and sources."`
@@ -514,6 +514,23 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 		res.NextCursor = &next
 	}
 	return res, nil
+}
+
+// UsesEnrichments reports whether q filters, sorts, or includes by
+// enrichment, and so needs ScoreInstance.
+func (q Query) UsesEnrichments() bool {
+	return strings.HasPrefix(q.Sort, "enrichment:") || slices.Contains(q.Include, "enrichments") || filtersEnrichments(q.Filter)
+}
+
+func filtersEnrichments(f *Filter) bool {
+	if f == nil {
+		return false
+	}
+	if f.Enrichment != nil || filtersEnrichments(f.Not) {
+		return true
+	}
+	return slices.ContainsFunc(f.And, func(g Filter) bool { return filtersEnrichments(&g) }) ||
+		slices.ContainsFunc(f.Or, func(g Filter) bool { return filtersEnrichments(&g) })
 }
 
 // SearchIDs returns the IDs of every entity of kind k that q matches,

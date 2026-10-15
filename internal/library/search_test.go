@@ -511,3 +511,18 @@ func TestSearchEnrichments(t *testing.T) {
 		t.Errorf("SearchIDs = %v, %v", ids, err)
 	}
 }
+
+func TestQueryUsesEnrichments(t *testing.T) {
+	for q, want := range map[*Query]bool{
+		{}:                                 false,
+		{Sort: "name"}:                     false,
+		{Sort: "enrichment:quality"}:       true,
+		{Include: []string{"enrichments"}}: true,
+		{Filter: &Filter{Or: []Filter{{Tag: ptr("a")}, {Not: &Filter{Enrichment: ptr("quality")}}}}}: true,
+		{Filter: &Filter{And: []Filter{{Tag: ptr("a")}}}}:                                            false,
+	} {
+		if got := q.UsesEnrichments(); got != want {
+			t.Errorf("%+v: %v, want %v", *q, got, want)
+		}
+	}
+}

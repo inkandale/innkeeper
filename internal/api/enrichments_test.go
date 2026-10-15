@@ -167,6 +167,25 @@ func TestEnrichRunOverAQuery(t *testing.T) {
 	if err := json.Unmarshal(j.Payload, &p); err != nil || !slices.Equal(p.CardIDs, []int64{a, b}) {
 		t.Fatalf("payload = %s, %v", j.Payload, err)
 	}
+	e.call("POST", "/enrichments/runs", map[string]any{"instance_id": e.instID, "card_ids": []int64{b, a, b}}, 202, &j)
+	if err := json.Unmarshal(j.Payload, &p); err != nil || !slices.Equal(p.CardIDs, []int64{a, b}) {
+		t.Fatalf("payload with repeats = %s, %v", j.Payload, err)
+	}
+}
+
+func TestSettingsForgetADeletedScoreInstance(t *testing.T) {
+	e := newEnrichEnv(t)
+	second, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "judge", Name: "Second"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.call("PATCH", "/settings", map[string]any{"score_instance": second}, 200, nil)
+	e.call("DELETE", fmt.Sprintf("/instances/%d", second), nil, 204, nil)
+	var s settings
+	e.call("GET", "/settings", nil, 200, &s)
+	if s.ScoreInstance != nil {
+		t.Fatalf("settings = %+v", s)
+	}
 }
 
 func TestEnrichRunFailsWhenEveryBatchFails(t *testing.T) {
@@ -230,8 +249,8 @@ func TestEnrichmentSearchUsesTheScoreInstance(t *testing.T) {
 	if got := ids(res); !slices.Equal(got, []int64{high, low, none}) {
 		t.Fatalf("sorted = %v", got)
 	}
-	if v := res.Hits[0].Enrichments["quality"]; string(v.Value) != "90" || v.Stale {
-		t.Fatalf("included = %+v", res.Hits[0].Enrichments)
+	if v := res.Hits[0].Enrichments["quality"]; string(v.Value) != "90" || v.Stale || len(res.Hits[0].Enrichments) != 2 {
+		t.Fatalf("included = %+v, want the score keys only", res.Hits[0].Enrichments)
 	}
 
 	// A second instance with no setting leaves no score instance.
@@ -261,6 +280,8 @@ func TestEnrichmentSearchUsesTheScoreInstance(t *testing.T) {
 	if got := ids(e.search(map[string]any{"filter": quality}, 200)); !slices.Equal(got, []int64{high}) {
 		t.Fatalf("first instance's gte 50 = %v", got)
 	}
+	e.call("PATCH", "/settings", map[string]any{"score_instance": e.importID}, 400, nil)
+	e.markBroken(e.importID, "boom")
 	e.call("PATCH", "/settings", map[string]any{"score_instance": e.importID}, 400, nil)
 	e.call("PATCH", "/settings", map[string]any{"score_instance": 999999}, 404, nil)
 	e.call("PATCH", "/settings", map[string]any{"theme": ""}, 200, &s)

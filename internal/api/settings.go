@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -50,12 +49,13 @@ func (s *Server) settings(ctx context.Context) (*settingsOut, error) {
 		return nil, s.fail(err)
 	}
 	out := &settingsOut{Body: settings{Theme: name, OnboardingDone: done == "true"}}
-	score, err := s.Registry.Setting(ctx, scoreInstanceSetting)
+	// A deleted instance, or one whose plugin no longer enriches, reads as unset.
+	score, _, err := s.scoreSetting(ctx)
 	if err != nil {
 		return nil, s.fail(err)
 	}
-	if id, err := strconv.ParseInt(score, 10, 64); err == nil {
-		out.Body.ScoreInstance = &id
+	if score != nil {
+		out.Body.ScoreInstance = &score.ID
 	}
 	return out, nil
 }

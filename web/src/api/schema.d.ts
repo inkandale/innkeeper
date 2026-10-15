@@ -3401,7 +3401,7 @@ export interface components {
             /** @description Card data keys to return per hit, plus avatar. Default: name. */
             fields?: string[] | null;
             filter?: components["schemas"]["Filter"];
-            /** @description Extra data per hit: tags, lorebooks, targets, enrichments (the score instance's current values). Lorebooks take cards and targets. */
+            /** @description Extra data per hit: tags, lorebooks, targets, enrichments (the score instance's current values of its score keys and grid key). Lorebooks take cards and targets. */
             include?: string[] | null;
             page?: components["schemas"]["Page"];
             /** @description Not available yet: needs an embedding enricher. */

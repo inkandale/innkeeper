@@ -313,6 +313,35 @@ Reply with `remote_id`. `target.get_lorebook` takes `remote_id` and replies
 with `lorebook`, the app's copy as a `character_book` object. Both reply with
 error `-32004` if the app no longer has `remote_id`.
 
+#### Following site sources
+
+A plugin with `pull`, no `push`, and `source_kinds` follows site sources. The
+core binds each live source of those kinds to the plugin's oldest working
+instance. The `remote_id` is `kind:ref`, such as `chub:alice/vyr`. The core
+checks each source on a schedule and offers the author's changes in the
+changes queue.
+
+| Method | What to return |
+|---|---|
+| `target.describe` | `pull` true, `update` false. Leave `character_book` out of `fields`; the core doesn't compare embedded books. Set `lorebooks` to `standalone` to follow lorebook sources |
+| `target.get`, `target.get_lorebook` | The site's current copy. A card check sets `avatar`, so return the image when asked |
+| `target.list`, `target.list_lorebooks` | `{"items": []}`. Instance checks and `innkeeper plugin check` call them |
+| `target.put`, `target.put_lorebook` | Don't implement. The core never pushes to a pull-only plugin |
+
+Errors and stability:
+
+- Return `-32004` when the page is gone, private, or hides its definition.
+  The core shows "no longer on the site".
+- Make a timeout, a 5xx, or rate limiting retryable. The core lists a source
+  with a failing check only after 3 failures in a row.
+- Return identical `data` for the described fields on every fetch of an
+  unchanged page, or every check reports an update. Drop volatile values,
+  such as view counts.
+- The core compares avatars by their pixels, so re-encoding one isn't an
+  update.
+- The core checks sources one at a time. Space out requests to one site
+  yourself.
+
 ### `codec`
 
 A codec reads and writes card files in the formats its manifest lists.
@@ -531,12 +560,14 @@ It loads the manifest, then checks that:
 
 - the `initialize` reply matches the manifest
 - an unknown method returns `-32601` within 5 seconds
-- a `push` plugin's `target.describe` reply is valid, and claims `pull` only
+- a `push` or `pull` plugin's `target.describe` reply is valid, and claims `pull` only
   if the manifest declares it
-- a `push` plugin that claims `pull` answers `target.list` and
+- a plugin whose `target.describe` claims `pull` answers `target.list` and
   `target.list_lorebooks` within 5 seconds, with a `remote_id` on every item
   it returns. A target checked without its app can only return an error, so
   an error other than `-32601` counts as an answer.
+- a plugin that pulls without pushing answers `-32004` to `target.get` and
+  `target.get_lorebook` for `innkeeper-contract:none`
 - a `codec` plugin encodes a sample card in each of its `formats` into
   `blob_tmp` with a valid extension, decodes it back, and returns an error
   when asked to decode a file that isn't a card

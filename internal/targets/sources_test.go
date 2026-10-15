@@ -236,6 +236,41 @@ func TestAFollowedSourceWithAnEmbeddedBookIsComparedWithoutIt(t *testing.T) {
 	}
 }
 
+// SillyTavern's favorite star and world link are app state the library drops.
+var appLocal = map[string]any{"fav": false, "world": "X"}
+
+func TestAppLocalExtensionsOnASourceAreNotAnUpdate(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(map[string]any{"fields": []string{"name", "description", "first_mes", "extensions"}})
+	page := maps.Clone(vyrCard)
+	page["extensions"] = appLocal
+	raw, _ := json.Marshal(map[string]any{"spec": "chara_card_v3", "spec_version": "3.0", "data": page})
+	card, _, err := e.lib.ImportCard(e.ctx, "upload", "plugin:upstream", raw, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.lib.Cards.AddSource(e.ctx, card, library.Source{Kind: "fake", Ref: "vyr"}); err != nil {
+		t.Fatal(err)
+	}
+	e.publish("vyr", page, "")
+	if b := e.follow(card); b.RemoteState != remoteUnchanged {
+		t.Fatalf("binding = %+v", b)
+	}
+}
+
+func TestAppLocalExtensionsInAnAppAreNotAChange(t *testing.T) {
+	e := setup(t, map[string]any{"fields": []string{"name", "description", "first_mes", "extensions"}})
+	b := e.push(e.card)
+	e.editRemote(b.RemoteID, "extensions", appLocal)
+	if got := e.check(b); got.RemoteState != remoteUnchanged {
+		t.Fatalf("binding = %+v", got)
+	}
+	e.editRemote(b.RemoteID, "extensions", map[string]any{"fav": true, "depth_prompt": map[string]any{"prompt": "Speak softly."}})
+	if got := e.check(b); got.RemoteState != remoteChanged {
+		t.Fatalf("after a real extension change = %+v", got)
+	}
+}
+
 func TestCardsSharingASourceEachFollowIt(t *testing.T) {
 	e := setup(t, nil)
 	e.addUpstream(nil)

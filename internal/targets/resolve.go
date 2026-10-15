@@ -222,8 +222,8 @@ func (rs *resolver) item(ctx context.Context, k kind, r Resolution) (ResolveResu
 			return res, err
 		}
 		res.RevisionID = r.BaseRevisionID
-		// The new copy came from the app, so only what import left out differs,
-		// like SillyTavern's favorite star: app state this app keeps.
+		// The new copy came from the app, so only what import left out
+		// differs, and this app keeps it.
 		r.Choices, r.Default, r.AcceptedHash = nil, merge.ChooseKeepInApp, ""
 	}
 	bound, err := rs.bind(ctx, k, info, rinfo, it, r, id, inst.Manifest.Has("push"))

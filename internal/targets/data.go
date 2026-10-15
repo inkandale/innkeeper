@@ -70,18 +70,26 @@ func object(raw json.RawMessage) (map[string]json.RawMessage, error) {
 	return m, nil
 }
 
-// cardData returns a CCv3 card's data object.
+// cardData returns a CCv3 card's data object without the app-local
+// extensions the library drops, so they never count as changes. It keeps
+// character_book, which embedded lorebooks are read from.
 func cardData(card json.RawMessage) (json.RawMessage, error) {
-	var c struct {
-		Data json.RawMessage `json:"data"`
-	}
-	if err := json.Unmarshal(card, &c); err != nil {
-		return nil, err
-	}
-	if _, err := object(c.Data); err != nil {
+	data, book, err := cardhash.CardData(card)
+	if err != nil {
 		return nil, fmt.Errorf("card data: %w", err)
 	}
-	return c.Data, nil
+	if data == nil {
+		return nil, errors.New("card data: not a JSON object")
+	}
+	if book == nil {
+		return data, nil
+	}
+	m, err := object(data)
+	if err != nil {
+		return nil, err
+	}
+	m["character_book"] = book
+	return json.Marshal(m)
 }
 
 // Project keeps only the fields a target stores, and hashes the result, so

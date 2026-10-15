@@ -713,7 +713,7 @@ func TestResolveImportMakesANewCard(t *testing.T) {
 	pic := patternPNG(t, func(x, y int) uint8 { return uint8(x + y) })
 	data := map[string]any{"name": "Pell", "description": "A clockwork owl.", "first_mes": "Hoo.",
 		"extensions": map[string]any{"fav": true}}
-	match := e.libCard(map[string]any{"name": "Pell", "description": "A clockwork owl.", "first_mes": "Hoo."})
+	match := e.libCard(map[string]any{"name": "Pell", "description": "A brass owl.", "first_mes": "Hoo."})
 	e.appCard("owl", data, map[string]any{"avatar": pic})
 	c := e.compareItem("owl", match)
 	res, err := e.s.Resolve(e.ctx, library.Card, Resolution{InstanceID: e.inst, RemoteID: "owl", AppHash: c.AppHash, Action: "import"})
@@ -724,7 +724,7 @@ func TestResolveImportMakesANewCard(t *testing.T) {
 	if head.AvatarBlob == nil || *head.AvatarBlob != c.Avatar.App || field(t, head.Data, "first_mes") != "Hoo." {
 		t.Errorf("head = %+v", head)
 	}
-	// The favorite star is app state: kept for this app, out of the card.
+	// The favorite star is app state, out of the card.
 	if ext, _ := field(t, head.Data, "extensions").(map[string]any); ext["fav"] != nil {
 		t.Errorf("base extensions = %v", ext)
 	}

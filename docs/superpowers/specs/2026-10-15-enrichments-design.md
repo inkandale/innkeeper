@@ -67,11 +67,13 @@ Reply:
 
 `enrichment`: `id`, `card_id`, `revision_id`, `instance_id`, `key`, `value`
 (JSON), `meta` (JSON), `created_at`. Indexed on `(card_id, key, instance_id,
-created_at desc)`. Deleting an instance keeps its rows; deleting a card
-deletes them.
+revision_id desc, created_at desc)`. Deleting an instance keeps its rows;
+deleting a card deletes them.
 
-The **current value** of a key for a card and instance is its newest row. It
-is stale when its `revision_id` isn't the card's head.
+The **current value** of a key for a card and instance is its row on the
+newest revision, the newest row if there are several. A run that finishes
+late on an older revision doesn't replace a value on a newer one. A value is
+stale when its `revision_id` isn't the card's head.
 
 ### Job
 
@@ -99,8 +101,9 @@ When unset and exactly one `enrich` instance exists, the core uses that one.
   whose current value from the score instance is in range. `{"enrichment":
   "quality", "missing": true}` matches cards with no value.
 - **Sort:** `enrichment:quality`, highest first. Cards without a value go last.
-- **Include:** `enrichments` adds the score instance's current values to each
-  hit, with `stale`.
+- **Include:** `enrichments` adds the score instance's current values of its
+  `score` keys and its `grid` key to each hit, with `stale`. Other keys stay
+  on the card's enrichments route.
 
 All three use the score instance only. Without one, an enrichment filter or
 sort is a `400`.

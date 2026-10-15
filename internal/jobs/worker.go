@@ -74,6 +74,12 @@ func (r *Run) currentProgress() json.RawMessage {
 	return r.progress
 }
 
+// SaveProgress saves the current progress now, for a job whose watchers
+// shouldn't wait for the next lease renewal.
+func (r *Run) SaveProgress(ctx context.Context) error {
+	return r.q.touch(ctx, &r.Job, r.worker, r.lease, r.currentProgress(), nil)
+}
+
 // SaveCheckpoint saves where a retry should resume, along with the current
 // progress. The retry finds it in Run.Checkpoint.
 func (r *Run) SaveCheckpoint(ctx context.Context, cp json.RawMessage) error {

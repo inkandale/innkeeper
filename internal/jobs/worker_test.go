@@ -166,6 +166,28 @@ func TestRetryResumesFromCheckpoint(t *testing.T) {
 	}
 }
 
+func TestSaveProgressWritesBeforeTheNextRenewal(t *testing.T) {
+	q := newQueue(t)
+	saved, release := make(chan error), make(chan struct{})
+	startWorker(t, &Worker{Queue: q, Lease: time.Minute, Handlers: map[string]Handler{
+		"test": func(ctx context.Context, r *Run) error {
+			r.SetProgress(json.RawMessage(`{"message": "Writing"}`))
+			saved <- r.SaveProgress(ctx)
+			<-release
+			return nil
+		},
+	}})
+	j, _ := q.Enqueue(context.Background(), Spec{Kind: "test"})
+	if err := <-saved; err != nil {
+		t.Fatal(err)
+	}
+	got, err := q.Get(context.Background(), j.ID)
+	close(release)
+	if err != nil || got.Status != StatusRunning || string(got.Progress) != `{"message": "Writing"}` {
+		t.Fatalf("job = %+v, %v", got, err)
+	}
+}
+
 func TestLostLeaseCancelsHandler(t *testing.T) {
 	q := newQueue(t)
 	started, cancelled := make(chan struct{}), make(chan struct{})

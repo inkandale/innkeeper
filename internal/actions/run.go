@@ -190,11 +190,14 @@ func (s *session) serve(_ context.Context, method string, params json.RawMessage
 	return nil, protocol.MethodNotFound(method)
 }
 
+// publish shows the run's progress to the Forge at once. A failed save is
+// left to the lease renewal, which saves the progress again or stops the run.
 func (s *session) publish() {
 	s.mu.Lock()
 	raw, _ := json.Marshal(s.p)
 	s.mu.Unlock()
 	s.run.SetProgress(raw)
+	_ = s.run.SaveProgress(s.ctx)
 }
 
 // libraryCall runs a library tool for the plugin, if its action declared

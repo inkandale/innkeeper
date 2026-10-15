@@ -1681,12 +1681,34 @@
       "EnrichmentKey": {
         "additionalProperties": false,
         "properties": {
+          "grid": {
+            "description": "Whether the library grid shows this key.",
+            "type": "boolean"
+          },
           "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "range": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "type": {
             "type": "string"
           }
         },
         "required": [
-          "key"
+          "key",
+          "type",
+          "label"
         ],
         "type": "object"
       },
@@ -1767,6 +1789,10 @@
             "description": "Whether this is the newest value of its key from its instance.",
             "type": "boolean"
           },
+          "grid": {
+            "description": "Whether the library grid shows this key.",
+            "type": "boolean"
+          },
           "instance_id": {
             "format": "int64",
             "type": "integer"
@@ -1778,7 +1804,20 @@
           "key": {
             "type": "string"
           },
+          "label": {
+            "type": "string"
+          },
           "meta": {},
+          "range": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "revision_id": {
             "format": "int64",
             "type": "integer"
@@ -1786,6 +1825,9 @@
           "stale": {
             "description": "Whether the value is about a revision that is no longer the card's head.",
             "type": "boolean"
+          },
+          "type": {
+            "type": "string"
           },
           "value": {}
         },
@@ -1797,7 +1839,9 @@
           "meta",
           "created_at",
           "current",
-          "stale"
+          "stale",
+          "type",
+          "label"
         ],
         "type": "object"
       },

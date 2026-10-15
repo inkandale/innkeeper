@@ -2839,7 +2839,12 @@ export interface components {
             app_hash: string;
         };
         EnrichmentKey: {
+            /** @description Whether the library grid shows this key. */
+            grid?: boolean;
             key: string;
+            label: string;
+            range?: number[] | null;
+            type: string;
         };
         EnrichmentKeysOutBody: {
             /**
@@ -2867,16 +2872,21 @@ export interface components {
             created_at: string;
             /** @description Whether this is the newest value of its key from its instance. */
             current: boolean;
+            /** @description Whether the library grid shows this key. */
+            grid?: boolean;
             /** Format: int64 */
             instance_id: number;
             /** @description Empty when the instance has been deleted. */
             instance_name?: string;
             key: string;
+            label: string;
             meta: unknown;
+            range?: number[] | null;
             /** Format: int64 */
             revision_id: number;
             /** @description Whether the value is about a revision that is no longer the card's head. */
             stale: boolean;
+            type: string;
             value: unknown;
         };
         EntityOut: {

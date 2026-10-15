@@ -60,14 +60,14 @@ func (s *Server) searchIDs(ctx context.Context, k *library.Kind, q library.Query
 	return s.Lib.SearchIDs(ctx, k, q)
 }
 
-func toEnrichmentOut(e protocol.Enrichment) enrichmentOut {
-	return enrichmentOut{Type: e.Type, Label: e.Label, Range: e.Range, Grid: e.Grid}
+func toEnrichmentOut(e protocol.Enrichment) EnrichmentOut {
+	return EnrichmentOut{Type: e.Type, Label: e.Label, Range: e.Range, Grid: e.Grid}
 }
 
 // enrichmentValue is a stored value with its key's declaration.
 type enrichmentValue struct {
 	library.Enrichment
-	enrichmentOut
+	EnrichmentOut
 	InstanceName string `json:"instance_name,omitempty" doc:"Empty when the instance has been deleted."`
 }
 
@@ -80,7 +80,7 @@ type cardEnrichmentsOut struct{ Body []enrichmentValue }
 
 type enrichmentKey struct {
 	Key string `json:"key"`
-	enrichmentOut
+	EnrichmentOut
 }
 
 type enrichmentKeysOut struct {
@@ -145,12 +145,12 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 			}
 			out := &cardEnrichmentsOut{Body: []enrichmentValue{}}
 			for _, v := range vals {
-				ev := enrichmentValue{Enrichment: v, enrichmentOut: enrichmentOut{Label: v.Key}}
+				ev := enrichmentValue{Enrichment: v, EnrichmentOut: EnrichmentOut{Label: v.Key}}
 				if i := slices.IndexFunc(insts, func(i plugins.InstanceInfo) bool { return i.ID == v.InstanceID }); i >= 0 {
 					ev.InstanceName = insts[i].Name
 					if m := s.Registry.Manifests()[insts[i].Plugin]; m != nil {
 						if d, ok := m.Enrichments[v.Key]; ok {
-							ev.enrichmentOut = toEnrichmentOut(d)
+							ev.EnrichmentOut = toEnrichmentOut(d)
 						}
 					}
 				}

@@ -17,7 +17,8 @@ import (
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
-type enrichmentOut struct {
+// EnrichmentOut is how a plugin declares an enrichment key.
+type EnrichmentOut struct {
 	Type  string    `json:"type"`
 	Label string    `json:"label"`
 	Range []float64 `json:"range,omitempty"`
@@ -32,7 +33,7 @@ type pluginOut struct {
 	Formats         []string                 `json:"formats,omitempty" doc:"File formats a codec plugin reads and writes"`
 	Inputs          []string                 `json:"inputs,omitempty" doc:"What an import plugin takes from the UI: file (params blob and name), url (params url), or both"`
 	Config          map[string]any           `json:"config,omitempty" doc:"JSON Schema for an instance's config"`
-	Enrichments     map[string]enrichmentOut `json:"enrichments,omitempty"`
+	Enrichments     map[string]EnrichmentOut `json:"enrichments,omitempty"`
 	Records         map[string]recordTypeOut `json:"records,omitempty" doc:"The record types a records plugin keeps, by type name"`
 	Source          string                   `json:"source" doc:"Id of the source the plugin was installed from, or builtin"`
 	PreviousSource  *string                  `json:"previous_source,omitempty" doc:"Source of the version a rollback returns to"`
@@ -112,7 +113,7 @@ func (s *Server) instanceRoutes(api huma.API) {
 				}
 				for k, e := range m.Enrichments {
 					if p.Enrichments == nil {
-						p.Enrichments = map[string]enrichmentOut{}
+						p.Enrichments = map[string]EnrichmentOut{}
 					}
 					p.Enrichments[k] = toEnrichmentOut(e)
 				}

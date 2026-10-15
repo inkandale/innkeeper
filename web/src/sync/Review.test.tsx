@@ -501,6 +501,38 @@ test("a followed source's update merges three ways with the site, with Bind its 
   expect(resolved[0]).not.toHaveProperty("base");
 });
 
+test("a followed source shows nothing to skip while the instances load, then resolves as a bind", async () => {
+  followSource();
+  const stubbed = fetch;
+  let release = () => {};
+  const loaded = new Promise<void>((r) => (release = r));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (req: Request) => {
+      if (new URL(req.url).pathname === "/api/instances") await loaded;
+      return stubbed(req);
+    }),
+  );
+  changes = {
+    rows: [
+      { card_id: 8, name: "Vyr", apps: [{ instance_id: 4, state: "update", remote_id: "chub:alice/vyr", binding_id: 21 }] },
+      { card_id: 9, name: "Vyr, rewritten", apps: [{ instance_id: 4, state: "update", remote_id: "chub:alice/vyr", binding_id: 22 }] },
+    ],
+    counts: {},
+  };
+  const router = renderReview("/sync/4/card/chub%3Aalice%2Fvyr?card=9&queue=1");
+  const user = userEvent.setup();
+  await waitFor(() => expect(compares).toHaveLength(1));
+  expect(screen.queryByLabelText("Skip")).not.toBeInTheDocument();
+  expect(screen.queryByText("1 of 2")).not.toBeInTheDocument();
+  release();
+  expect(await screen.findByText("2 of 2")).toBeInTheDocument();
+  await user.click(await screen.findByLabelText("chub", { selector: "[name='card:chub:alice/vyr/description#1']" }));
+  await user.click(screen.getByRole("button", { name: "Resolve" }));
+  await waitFor(() => expect(at(router)).toBe("/sync/changes"));
+  expect(resolved).toEqual([expect.objectContaining({ action: "bind", card_id: 9 })]);
+});
+
 test("the next card following the same source starts with fresh choices", async () => {
   followSource();
   changes = {

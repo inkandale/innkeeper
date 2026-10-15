@@ -79,7 +79,8 @@ function ReviewItem() {
   const twoWay = search.get("base") === "none";
   const queue = search.has("queue");
   const filter = changesFilter(search);
-  const followed = useFollowers().has(instance);
+  const follows = useFollowers();
+  const followed = !!follows?.has(instance);
   const navigate = useNavigate();
   const location = useLocation();
   const qc = useQueryClient();
@@ -120,8 +121,9 @@ function ReviewItem() {
           (item.options ?? []).some((o) => o.action === a) ||
           (a === "bind" && card > 0 && item.verdict !== "error"),
       );
-  const act =
-    action ?? suggested?.action ?? (!item || item.verdict === "bound" ? "bind" : (actions[0] ?? "skip"));
+  const act = followed
+    ? "bind"
+    : (action ?? suggested?.action ?? (!item || item.verdict === "bound" ? "bind" : (actions[0] ?? "skip")));
   const [choices, setChoices] = useState<Choices>({});
   const [afterStale, setAfterStale] = useState(false);
   const nested = kind === "card" ? (item?.lorebooks ?? []) : [];
@@ -214,7 +216,8 @@ function ReviewItem() {
   // A drift review has no snapshot item, so it takes the library card's name.
   const name = item?.name || text(cmp.data?.fields?.find((f) => f.path === "name")?.hunks?.map((h) => text(h.library)).join("")) || remoteId;
 
-  if (jobId && job.isPending) return <p className="page">Loading…</p>;
+  // Until the instances load, a followed source would show as an app item, with Skip and the wrong queue position.
+  if (!follows || (jobId && job.isPending)) return <p className="page">Loading…</p>;
   if (job.isError) return <p className="error page">{job.error.message}</p>;
   return (
     <div className="review">

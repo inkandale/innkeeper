@@ -18,10 +18,11 @@ export function useInstancesWith(...caps: string[]) {
   return withCapability(instances.data, plugins.data, ...caps);
 }
 
-/** useFollowers returns the IDs of the instances that follow site sources, empty until both lists load. */
+/** useFollowers returns the IDs of the instances that follow site sources, undefined while either list loads. */
 export function useFollowers() {
   const instances = useQuery(instancesQuery);
   const plugins = useQuery(pluginsQuery);
+  if (instances.isPending || plugins.isPending) return undefined;
   return followers(instances.data, plugins.data);
 }
 

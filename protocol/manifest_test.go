@@ -91,6 +91,9 @@ func TestManifestErrors(t *testing.T) {
 		{"bad enrichment key", `summary = {`, `"bad key!" = {`, `enrichment key "bad key!"`},
 		{"enrichment without label", `, label = "AI summary"`, ``, "label is required"},
 		{"nan range", `range = [1, 5]`, `range = [nan, nan]`, "score needs range"},
+		{"two grid keys", `summary = { type = "text", label = "AI summary" }`,
+			`summary = { type = "text", label = "AI summary", grid = true }
+extra = { type = "text", label = "Extra", grid = true }`, "at most one enrichment can set grid"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -327,5 +330,16 @@ func TestManifestSourceKinds(t *testing.T) {
 				t.Fatalf("Validate = %v, want %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestEnrichNeedsEnrichments(t *testing.T) {
+	m := &Manifest{Name: "judge", Version: "1", Protocol: Version, Command: []string{"judge"}, Capabilities: []string{"enrich"}}
+	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "an enrich plugin must declare enrichments") {
+		t.Fatalf("got %v", err)
+	}
+	m.Enrichments = map[string]Enrichment{"quality": {Type: "score", Label: "Quality", Range: []float64{0, 100}, Grid: true}}
+	if err := m.Validate(); err != nil {
+		t.Fatal(err)
 	}
 }

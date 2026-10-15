@@ -79,6 +79,8 @@ type Enrichment struct {
 	Type  string    `toml:"type"`
 	Label string    `toml:"label"`
 	Range []float64 `toml:"range"`
+	// Grid shows the key on the library grid. At most one key sets it.
+	Grid bool `toml:"grid"`
 }
 
 // LoadManifest reads and validates dir/plugin.toml. Unknown keys are errors,
@@ -209,6 +211,18 @@ func (m *Manifest) Validate() error {
 		if e.Type == "score" && (len(e.Range) != 2 || !(e.Range[0] < e.Range[1])) {
 			errs = append(errs, fmt.Errorf("enrichment %q: score needs range = [low, high]", key))
 		}
+	}
+	grids := 0
+	for _, e := range m.Enrichments {
+		if e.Grid {
+			grids++
+		}
+	}
+	if grids > 1 {
+		errs = append(errs, errors.New("at most one enrichment can set grid"))
+	}
+	if m.Has("enrich") && len(m.Enrichments) == 0 {
+		errs = append(errs, errors.New("an enrich plugin must declare enrichments"))
 	}
 	hasCodec := m.Has("codec")
 	if hasCodec && len(m.Formats) == 0 {

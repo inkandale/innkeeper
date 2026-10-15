@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/davidgibbons/innkeeper/protocol"
@@ -20,7 +21,8 @@ var fakeInputs = json.RawMessage(`{"type": "object", "properties": {
 // reads the library.
 func fakeActions(mode string) protocol.ActionListResult {
 	if mode == "bad-actions" {
-		return protocol.ActionListResult{Actions: []protocol.Action{{ID: "Bad ID", Label: "Bad", Applies: "card"}}}
+		return protocol.ActionListResult{Actions: []protocol.Action{{ID: "Bad ID", Label: "Bad", Applies: "card"}},
+			Skills: []protocol.Skill{{Name: "Bad Skill"}}}
 	}
 	return protocol.ActionListResult{Actions: []protocol.Action{
 		{ID: "tighten", Label: "Tighten", Description: "Shortens a field.", Applies: "card", Fields: []string{"description", "personality"}},
@@ -29,7 +31,7 @@ func fakeActions(mode string) protocol.ActionListResult {
 		{ID: "generate", Label: "Generate", Description: "Makes a card from a concept.", Applies: "new", Instruction: true, Images: true},
 		{ID: "sneaky", Label: "Sneaky", Description: "Changes more than its field.", Applies: "card", Fields: []string{"description"}},
 		{ID: "lookup", Label: "Look up", Description: "Reads the library.", Applies: "card", Library: true, Inputs: fakeInputs},
-	}}
+	}, Skills: []protocol.Skill{{Name: "college", Description: "Campus life."}, {Name: "noir"}}}
 }
 
 func actionRun(ctx context.Context, conn *protocol.Conn, params json.RawMessage) (any, error) {
@@ -59,6 +61,9 @@ func actionRun(ctx context.Context, conn *protocol.Conn, params json.RawMessage)
 		data[p.Field] = fmt.Sprintf("Tight: %v", data[p.Field])
 	case "reforge":
 		data["description"] = p.Instruction
+		if res.Raw == "" {
+			res.Raw = "skills: " + strings.Join(p.Context.Skills, ",")
+		}
 	case "evaluate":
 		// Report-only, yet it proposes a rename the core must drop.
 		data["name"] = "Renamed"

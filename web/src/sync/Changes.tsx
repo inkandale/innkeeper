@@ -9,14 +9,31 @@ import { jobToast } from "../settings/jobUtil";
 import { useToast } from "../shell/Toasts";
 import { useModal } from "../shell/useModal";
 import { PushPreview } from "./PushPreview";
-import { bulkResolutions, changePath, changesFilter, compareItem, pushSummary, queueReviews, reviewable, stateLabel, type AppChange, type Option } from "./sync";
+import {
+  bulkResolutions,
+  changePath,
+  changesFilter,
+  compareItem,
+  dismissBinding,
+  editBinding,
+  pushSummary,
+  queueReviews,
+  removeSource,
+  reviewable,
+  siteOf,
+  sourceLabel,
+  stateLabel,
+  type AppChange,
+  type Option,
+} from "./sync";
 import "./Sync.css";
 
 type ChangeRow = components["schemas"]["ChangeRow"];
 type Job = components["schemas"]["JobOut"];
 
-const states = ["differs", "both_changed", "new", "error", "ahead", "missing"] as const;
-const rowKey = (r: ChangeRow) => (r.card_id ? `card/${r.card_id}` : `app/${r.apps?.[0]?.instance_id}/${r.apps?.[0]?.remote_id}`);
+const states = ["differs", "both_changed", "new", "error", "ahead", "missing", "update"] as const;
+const rowKey = (r: ChangeRow) =>
+  r.card_id ? `card/${r.card_id}` : r.lorebook_id ? `lorebook/${r.lorebook_id}` : `app/${r.apps?.[0]?.instance_id}/${r.apps?.[0]?.remote_id}`;
 /** applicable entries are what Apply suggested settles: a review with a suggestion, or a push. */
 const applicable = (c: AppChange) => (reviewable(c) && !!c.suggested) || c.state === "ahead";
 
@@ -27,7 +44,10 @@ function group<T>(xs: T[], inst: (x: T) => number): Map<number, T[]> {
   return m;
 }
 
-/** Changes lists every card some app needs the owner for, one row per card, and settles the checked ones. */
+/**
+ * Changes lists every card some app needs the owner for, and every card or lorebook whose followed source changed, one
+ * row each, and settles the checked ones.
+ */
 export function Changes() {
   const qc = useQueryClient();
   const toast = useToast();
@@ -120,7 +140,52 @@ export function Changes() {
     onSuccess: done,
   });
 
+  // A followed source has no app copy to push or unbind: its owner ignores the change, stops checking, or drops the source.
+  const source = useMutation({
+    mutationFn: async ({ r, c, act }: { r: ChangeRow; c: AppChange; act: "dismiss" | "pause" | "remove" }) => {
+      const binding = c.binding_id ?? 0;
+      if (act === "dismiss") await dismissBinding(binding, c.app_hash ?? "");
+      else if (act === "pause") await editBinding(binding, { paused: true });
+      else if (r.lorebook_id) await removeSource("lorebook", r.lorebook_id, c.source_id ?? 0);
+      else await removeSource("card", r.card_id ?? 0, c.source_id ?? 0);
+    },
+    onSuccess: done,
+    meta: { toast: false },
+    onError: (e, { r, c }) => {
+      const stale = e instanceof ApiError && e.status === 409;
+      if (stale) done();
+      toast({ text: stale ? `${r.name} changed on ${siteOf(c.remote_id ?? "")} again. Check the new change.` : e.message, error: true });
+    },
+  });
+
+  const sourceActions = (r: ChangeRow, c: AppChange) => {
+    const button = (text: string, act: "dismiss" | "pause" | "remove") => (
+      <button className="button" disabled={source.isPending} onClick={() => source.mutate({ r, c, act })}>
+        {text}
+      </button>
+    );
+    switch (c.state) {
+      case "update":
+        return (
+          <>
+            <Link to={changePath({ ...c, card_id: r.card_id, lorebook_id: r.lorebook_id }, filter)}>Review</Link>{" "}
+            {button("Ignore this change", "dismiss")} {button("Ignore all", "pause")}
+          </>
+        );
+      case "missing":
+        return (
+          <>
+            {button("Ignore all", "pause")} {button("Remove source", "remove")}
+          </>
+        );
+      default:
+        return <span className="error">{c.error}</span>;
+    }
+  };
+
   const actions = (r: ChangeRow, c: AppChange) => {
+    // Compared with false: an app entry may leave push out.
+    if (c.push === false) return sourceActions(r, c);
     const where = (r.apps?.length ?? 0) > 1 && <span className="muted"> {name(c.instance_id)}</span>;
     const push = (text: string) => (
       <button className="button" onClick={() => setPushing({ card: r.card_id ?? 0, instance: c.instance_id })}>
@@ -223,14 +288,23 @@ export function Changes() {
                       onChange={(e) => setChecked({ ...checked, [rowKey(r)]: e.target.checked })}
                     />
                   </td>
-                  <td>{r.card_id ? <Link to={`/cards/${r.card_id}`}>{r.name}</Link> : r.name}</td>
+                  <td>
+                    {r.card_id ? (
+                      <Link to={`/cards/${r.card_id}`}>{r.name}</Link>
+                    ) : r.lorebook_id ? (
+                      <Link to={`/lorebooks/${r.lorebook_id}`}>{r.name}</Link>
+                    ) : (
+                      r.name
+                    )}
+                  </td>
                   {apps.map((i) => (
                     <td key={i}>
                       {(r.apps ?? [])
                         .filter((c) => c.instance_id === i)
                         .map((c) => (
                           <span key={c.state}>
-                            <span className={"badge " + (badgeClass[c.state] ?? "drift")} aria-hidden="true" /> {stateLabel(c.state)}
+                            <span className={"badge " + (badgeClass[c.state] ?? "drift")} aria-hidden="true" />{" "}
+                            {c.push === false ? sourceLabel(c.state, c.remote_id ?? "") : stateLabel(c.state)}
                           </span>
                         ))}
                     </td>

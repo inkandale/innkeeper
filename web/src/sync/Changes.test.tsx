@@ -24,6 +24,21 @@ const changes = {
   counts: { "2": { new: 1, differs: 1, error: 1 }, "3": { ahead: 1, missing: 1 } },
 };
 const cmp = { instance_id: 2, remote_id: "a", card_id: 1, head_revision_id: 118, accepted_hash: "", base: "none", app_hash: "ha", fields: [] };
+const followed = {
+  rows: [
+    {
+      lorebook_id: 9,
+      name: "Forge lore",
+      apps: [{ instance_id: 4, state: "missing", remote_id: "chub:alice/forge", binding_id: 22, push: false, source_id: 30 }],
+    },
+    {
+      card_id: 8,
+      name: "Vyr",
+      apps: [{ instance_id: 4, state: "update", remote_id: "chub:alice/vyr", binding_id: 21, push: false, source_id: 31, app_hash: "hv" }],
+    },
+  ],
+  counts: { "4": { update: 1, missing: 1 } },
+};
 
 let queries: URLSearchParams[];
 let posts: { path: string; body: unknown }[];
@@ -182,4 +197,71 @@ test("Unbind asks first, and deletes the binding only once confirmed", async () 
   ask.mockReturnValue(true);
   await userEvent.click(within(cy).getByRole("button", { name: /Unbind/ }));
   await waitFor(() => expect(deletes).toEqual(["/api/bindings/12"]));
+});
+
+test("a followed source's entries offer review, ignoring, and removing the source", async () => {
+  const base = fetch;
+  const sent: { method: string; path: string; body?: unknown }[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (req: Request) => {
+      const u = new URL(req.url);
+      if (u.pathname === "/api/sync/changes") return json(followed);
+      if (u.pathname === "/api/instances") return json([{ id: 4, name: "URL import", plugin: "url-import" }]);
+      if (req.method !== "GET") {
+        sent.push({ method: req.method, path: u.pathname, ...(req.method === "DELETE" ? {} : { body: await req.json() }) });
+        return req.method === "DELETE" ? new Response(null, { status: 204 }) : json({ id: 21, instance_id: 4, remote_id: "chub:alice/vyr" });
+      }
+      return base(req);
+    }),
+  );
+  renderChanges();
+  const vyr = await screen.findByRole("row", { name: /Vyr/ });
+  // Checkbox, Card, URL import, Action.
+  await waitFor(() => expect(within(vyr).getAllByRole("cell")[2]).toHaveTextContent("update on chub"));
+  expect(within(vyr).getByRole("link", { name: "Review" })).toHaveAttribute("href", "/sync/4/card/chub%3Aalice%2Fvyr?card=8&queue=1");
+  const forge = screen.getByRole("row", { name: /Forge lore/ });
+  expect(within(forge).getByRole("link", { name: "Forge lore" })).toHaveAttribute("href", "/lorebooks/9");
+  expect(within(forge).getAllByRole("cell")[2]).toHaveTextContent("no longer on chub");
+  expect(within(forge).queryByRole("button", { name: /Push again|Unbind/ })).not.toBeInTheDocument();
+
+  const click = async (row: HTMLElement, name: string) => {
+    const b = within(row).getByRole("button", { name });
+    await waitFor(() => expect(b).toBeEnabled());
+    await userEvent.click(b);
+  };
+  await click(vyr, "Ignore this change");
+  await click(vyr, "Ignore all");
+  await click(forge, "Remove source");
+  await waitFor(() =>
+    expect(sent).toEqual([
+      { method: "POST", path: "/api/bindings/21/dismiss", body: { app_hash: "hv" } },
+      { method: "PATCH", path: "/api/bindings/21", body: { paused: true } },
+      { method: "DELETE", path: "/api/lorebooks/9/sources/30" },
+    ]),
+  );
+});
+
+test("ignoring a change the site has changed again reloads the queue and says so", async () => {
+  const base = fetch;
+  let loads = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (req: Request) => {
+      const u = new URL(req.url);
+      if (u.pathname === "/api/sync/changes") {
+        loads++;
+        return json(followed);
+      }
+      if (u.pathname === "/api/instances") return json([{ id: 4, name: "URL import", plugin: "url-import" }]);
+      if (u.pathname === "/api/bindings/21/dismiss") return json({ detail: "the site changed", status: 409 }, 409);
+      return base(req);
+    }),
+  );
+  renderChanges();
+  const vyr = await screen.findByRole("row", { name: /Vyr/ });
+  await userEvent.click(within(vyr).getByRole("button", { name: "Ignore this change" }));
+  expect(await screen.findByText("Vyr changed on chub again. Check the new change.")).toBeInTheDocument();
+  expect(screen.queryByText("the site changed")).not.toBeInTheDocument();
+  await waitFor(() => expect(loads).toBe(2));
 });

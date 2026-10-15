@@ -16,7 +16,7 @@ export function reportAnchor(report: ReportT, key: string): string | undefined {
  * Report shows an evaluation: score, summary, dimensions, findings by field, and suggestions. Refine runs onRefine with
  * the ticked items as an instruction; without refine, there is no action to run it.
  */
-export function Report({ report, busy, onRefine }: { report: ReportT; busy: boolean; onRefine?: (instruction: string) => void }) {
+export function Report({ report, onRefine }: { report: ReportT; onRefine?: (instruction: string) => void }) {
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const tick = (id: string) =>
     setTicked((t) => {
@@ -90,7 +90,7 @@ export function Report({ report, busy, onRefine }: { report: ReportT; busy: bool
       ))}
       {onRefine && (findings.length > 0 || suggestions.length > 0) && (
         <div className="forge-footer">
-          <button className="button primary" disabled={!ticked.size || busy} onClick={refine}>
+          <button className="button primary" disabled={!ticked.size} onClick={refine}>
             Refine with {ticked.size} selected
           </button>
         </div>

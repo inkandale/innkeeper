@@ -4,7 +4,7 @@ import { useModal } from "../shell/useModal";
 import { instructionAction, type Action } from "./actions";
 import { Hammer } from "./Hammer";
 import { ActionOptions, asks, imagesOf, ModelPicker, noOptions, type Options } from "./Inputs";
-import { blocking, MentionBox, useMentions, type Instruction } from "./MentionBox";
+import { blocking, emptyInstruction, MentionBox, useMentions, type Instruction } from "./MentionBox";
 import { contextOf } from "./mentions";
 import type { Forge } from "./useForge";
 
@@ -47,7 +47,7 @@ export function Reforge(props: {
       context: t.action.instruction ? contextOf(mentions) : undefined,
       images: imagesOf(t.action, o, props.avatar),
     });
-    if (t.action.instruction) props.setInstruction({ text: "", picked: [] });
+    if (t.action.instruction) props.setInstruction(emptyInstruction);
     props.onClose();
   };
 

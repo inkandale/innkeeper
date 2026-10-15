@@ -16,7 +16,7 @@ const report = {
 
 test("Refine builds its instruction from the ticked findings and suggestions", async () => {
   const onRefine = vi.fn();
-  const { container } = render(<Report report={report} busy={false} onRefine={onRefine} />);
+  const { container } = render(<Report report={report} onRefine={onRefine} />);
   expect(screen.getByText("voice").tagName).toBe("STRONG");
   expect(container.querySelector("b")).toBeNull();
   expect(screen.getByText(/Also: Scenario/)).toBeInTheDocument();

@@ -4,10 +4,11 @@ import { api, ApiError, must } from "../api/client";
 import type { components } from "../api/schema";
 import { useToast } from "../shell/Toasts";
 import { Stale } from "./Conflict";
-import { Fields } from "./Fields";
 import { Panel } from "./Panel";
 import { UpdateBanner } from "./Upstream";
 import { useEditor } from "./useEditor";
+import { Forge } from "../forge/Forge";
+import { useForge } from "../forge/useForge";
 import "./Card.css";
 
 export type Entity = components["schemas"]["EntityOut"];
@@ -22,6 +23,7 @@ function CardEditor({ id }: { id: number }) {
   const qc = useQueryClient();
   const toast = useToast();
   const ed = useEditor("card", id);
+  const forge = useForge({ cardId: id, data: ed.data });
 
   // An image change saves at once, on the head. A draft started from that
   // head moves onto the new revision, since its data didn't change.
@@ -63,11 +65,12 @@ function CardEditor({ id }: { id: number }) {
         onSave={() => ed.draft && ed.save.mutate(ed.draft)}
         onAvatar={(sha, message) => avatar.mutate({ sha, message, base: head.revision })}
         avatarBusy={avatar.isPending || ed.save.isPending}
+        lock={forge.lock}
       />
       <div className="card-main">
         <UpdateBanner kind="card" id={id} />
         <Stale kind="card" ed={ed} />
-        <Fields data={ed.data} dirty={ed.dirty} edit={ed.edit} />
+        <Forge forge={forge} data={ed.data} dirty={ed.dirty} edit={ed.edit} avatar={head.revision.avatar} />
       </div>
     </div>
   );

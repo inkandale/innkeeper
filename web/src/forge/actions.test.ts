@@ -1,4 +1,4 @@
-import { changedKeys, instructionAction, lockOf, newAction, overlaps, refineInstruction, scopeOf, type Action } from "./forge";
+import { changedKeys, instructionAction, lockOf, newAction, overlaps, refineInstruction, scopeOf, type Action } from "./actions";
 
 const act = (a: Partial<Action> & { id: string }): Action => ({ label: a.id, applies: "card", instance_id: 1, instance_name: "Local", ...a });
 const tighten = act({ id: "tighten", label: "Tighten", fields: ["description", "personality"] });

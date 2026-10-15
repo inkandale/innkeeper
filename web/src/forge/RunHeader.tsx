@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { fieldLabel } from "../card/Fields";
 import { useJobEvents } from "../settings/jobUtil";
-import type { Progress } from "./forge";
+import type { Progress } from "./actions";
 import { Hammer } from "./Hammer";
 import type { Run, Waiting } from "./useForge";
 

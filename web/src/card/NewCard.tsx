@@ -5,8 +5,9 @@ import { api, must, upload } from "../api/client";
 import { useToast } from "../shell/Toasts";
 import { Crop } from "./CropDialog";
 import { changed, type Data } from "./draft";
-import { Fields } from "./Fields";
 import { Identity } from "./Panel";
+import { Forge } from "../forge/Forge";
+import { useForge } from "../forge/useForge";
 import "./Card.css";
 
 const draftKey = "innkeeper.newCard";
@@ -40,6 +41,7 @@ export function NewCard() {
   useEffect(() => writeDraft(data), [data]);
   const edit = (key: string, value: unknown) => setData((d) => ({ ...d, [key]: value }));
   const dirty = changed({ baseId: 0, base: {}, data });
+  const forge = useForge({ data });
   const save = useMutation({
     mutationFn: async () => {
       const sha = avatar ? await upload(avatar) : undefined;
@@ -59,7 +61,7 @@ export function NewCard() {
       <fieldset className="contents" disabled={save.isPending}>
         <aside className="card-aside">
           <Avatar image={avatar} onChange={setAvatar} />
-          <Identity data={data} edit={edit} />
+          <Identity data={data} edit={edit} lock={forge.lock} />
           <div className="row">
             <button className="button primary" disabled={!dirty.size && !avatar} onClick={() => save.mutate()}>
               Save
@@ -67,7 +69,7 @@ export function NewCard() {
           </div>
         </aside>
         <div className="card-main">
-          <Fields data={data} dirty={dirty} edit={edit} />
+          <Forge forge={forge} isNew data={data} dirty={dirty} edit={edit} avatar={avatar ?? undefined} />
         </div>
       </fieldset>
     </div>

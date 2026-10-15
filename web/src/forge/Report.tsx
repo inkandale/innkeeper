@@ -1,7 +1,7 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import Markdown from "react-markdown";
 import { fieldLabel } from "../card/Fields";
-import { refineInstruction, type Finding, type Report as ReportT } from "./forge";
+import { refineInstruction, type Finding, type Report as ReportT } from "./actions";
 
 const tone = (n: number) => (n >= 80 ? "var(--ok)" : n >= 60 ? "var(--drift)" : "var(--danger)");
 const pct = (n: number) => Math.max(0, Math.min(100, n));

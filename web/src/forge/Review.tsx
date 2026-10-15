@@ -3,7 +3,7 @@ import { fieldLabel } from "../card/Fields";
 import { show, type Data } from "../card/draft";
 import { Words } from "../sync/Diff";
 import { wordDiff } from "../sync/sync";
-import { changedKeys } from "./forge";
+import { changedKeys } from "./actions";
 
 const absent = <em className="muted">(empty)</em>;
 

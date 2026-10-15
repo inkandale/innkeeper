@@ -26,6 +26,8 @@
 - `POST /enrichments/runs` takes `query` as an alternative to `card_ids`, as `POST /bulk` does, so Evaluate works on "all matching" without the UI fetching IDs. The 10,000 limit applies to the cards either one selects.
 - `sort` loses its enum for a pattern, since `enrichment:<key>` names any key.
 
+**Known limit:** `enrichment.instance_id` has no foreign key, so deleted instances keep their results. A config restore that recreates instances can give a new instance an old ID, and that instance then shows the old instance's results as its own.
+
 ## File map
 
 | File | Change |

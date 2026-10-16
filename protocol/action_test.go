@@ -25,6 +25,8 @@ func TestActionValidate(t *testing.T) {
 		{"new card", Action{ID: "generate", Label: "Generate", Applies: "new", Images: true}, ""},
 		{"capital id", with(func(a *Action) { a.ID = "Tighten" }), "id"},
 		{"long id", with(func(a *Action) { a.ID = strings.Repeat("a", 41) }), "id"},
+		{"whole-card field action", with(func(a *Action) { a.WholeCard = true }), ""},
+		{"whole card without fields", Action{ID: "tighten-card", Label: "Tighten", Applies: "card", WholeCard: true}, "whole_card"},
 		{"no label", with(func(a *Action) { a.Label = " " }), "label"},
 		{"unknown applies", with(func(a *Action) { a.Applies = "scene" }), "applies"},
 		{"fields on new", with(func(a *Action) { a.Applies = "new" }), "fields"},

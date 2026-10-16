@@ -40,6 +40,9 @@ type Action struct {
 	// Fields are the data keys a field action runs on. Empty for an action
 	// on the whole entity.
 	Fields []string `json:"fields,omitempty"`
+	// WholeCard means a field action also runs on the whole entity, changing
+	// any of its Fields.
+	WholeCard bool `json:"whole_card,omitempty"`
 	// Instruction means the action's main input is text the owner types.
 	Instruction bool `json:"instruction,omitempty"`
 	// Inputs is a JSON Schema object for the action's other inputs.
@@ -65,6 +68,9 @@ func (a Action) Validate() error {
 	}
 	if len(a.Fields) > 0 && a.Applies == ApplyNew {
 		errs = append(errs, fmt.Errorf("action %s: fields can't go with applies new", a.ID))
+	}
+	if a.WholeCard && len(a.Fields) == 0 {
+		errs = append(errs, fmt.Errorf("action %s: whole_card needs fields", a.ID))
 	}
 	for i, f := range a.Fields {
 		if f == "" {

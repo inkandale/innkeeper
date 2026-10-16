@@ -60,7 +60,7 @@ All commands run from `web/`.
 
 ```ts
 import type { Job } from "../settings/jobUtil";
-import { ingestSummary, itemPath, libraryLabel, type CatalogHit } from "./archive";
+import { ingestSummary, itemPath, libraryMatch, type CatalogHit } from "./archive";
 
 const hit = (library: CatalogHit["library"]): CatalogHit => ({
   id: "a", kind: "card", name: "A", latest_version: "1", hashes: { content_hash: "0".repeat(64) }, library,
@@ -75,11 +75,11 @@ test("itemPath keeps an item ID with a slash in one segment", () => {
   expect(itemPath(2, "sub/a.png")).toBe("/archives/2/items/sub%2Fa.png");
 });
 
-test("libraryLabel says In library for a content match, Similar for a near one, and nothing without matches", () => {
-  expect(libraryLabel(hit([{ id: 1, reason: "text", distance: 3 }, { id: 2, reason: "content", distance: 0 }]))).toBe("In library");
-  expect(libraryLabel(hit([{ id: 1, reason: "avatar", distance: 5 }]))).toBe("Similar in library");
-  expect(libraryLabel(hit([]))).toBeUndefined();
-  expect(libraryLabel(hit(null))).toBeUndefined();
+test("libraryMatch names the content match even when a nearer-sorted text match comes first", () => {
+  expect(libraryMatch(hit([{ id: 1, reason: "text", distance: 0 }, { id: 2, reason: "content", distance: 0 }]))).toEqual({ label: "In library", id: 2 });
+  expect(libraryMatch(hit([{ id: 1, reason: "avatar", distance: 5 }, { id: 3, reason: "text", distance: 6 }]))).toEqual({ label: "Similar in library", id: 1 });
+  expect(libraryMatch(hit([]))).toBeUndefined();
+  expect(libraryMatch(hit(null))).toBeUndefined();
 });
 
 test("ingestSummary gives a finished ingest's counts, a running one's progress, and a failed one's error", () => {
@@ -110,18 +110,19 @@ export type FilterValues = Record<string, unknown>;
 /** itemPath is an item's page. Item IDs can hold "/", so the ID is escaped into one segment. */
 export const itemPath = (catalog: number, item: string) => `/archives/${catalog}/items/${encodeURIComponent(item)}`;
 
-/** libraryLabel says how a result matches the library: In library for the same content, Similar in library for a near match. */
-export function libraryLabel(hit: CatalogHit): string | undefined {
+/** libraryMatch is the library item a result links to: the same-content match if any, else the first near match. */
+export function libraryMatch(hit: CatalogHit): { label: string; id: number } | undefined {
   const matches = hit.library ?? [];
-  if (!matches.length) return undefined;
-  return matches.some((m) => m.reason === "content") ? "In library" : "Similar in library";
+  const best = matches.find((m) => m.reason === "content") ?? matches[0];
+  if (!best) return undefined;
+  return { label: best.reason === "content" ? "In library" : "Similar in library", id: best.id };
 }
 
 /** thumbnailSrc is the image URL for a catalog item's inline base64 JPEG. */
 export const thumbnailSrc = (thumbnail: string) => `data:image/jpeg;base64,${thumbnail}`;
 
 const counts = ["added", "updated", "removed", "skipped"] as const;
-const capitalized = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+export const capitalized = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** ingestSummary is an ingest job's state: its counts once it succeeds, its progress while it runs, its error if it failed. */
 export function ingestSummary(j: Job): string {
@@ -318,16 +319,18 @@ const hits = [
 
 let searches: URL[];
 let searchResponse: () => Response;
+let catalogsResponse: () => Response;
 let ingests: number;
 beforeEach(() => {
   searches = [];
   ingests = 0;
   searchResponse = () => json({ catalog_id: 1, items: hits });
+  catalogsResponse = () => json([{ id: 1, name: "chub", plugin: "chub-archive", info, last_ingest: ingestJob }]);
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
       const url = new URL(req.url);
-      if (url.pathname === "/api/catalogs") return json([{ id: 1, name: "chub", plugin: "chub-archive", info, last_ingest: ingestJob }]);
+      if (url.pathname === "/api/catalogs") return catalogsResponse();
       if (url.pathname === "/api/catalogs/1/search") {
         searches.push(url);
         return searchResponse();
@@ -397,6 +400,13 @@ test("a catalog that is down shows its error on the page", async () => {
   expect(await screen.findByText("catalog chub is not answering")).toBeInTheDocument();
 });
 
+test("a catalog that can't describe itself shows its error and is not searched", async () => {
+  catalogsResponse = () => json([{ id: 1, name: "chub", plugin: "chub-archive", error: "plugin exited" }]);
+  renderAt("/archives");
+  expect(await screen.findByText("plugin exited")).toBeInTheDocument();
+  expect(searches).toHaveLength(0);
+});
+
 test("the ingest line shows the last run's counts and starts a new run", async () => {
   renderAt("/archives");
   expect(await screen.findByText("Succeeded: 3 added, 1 updated, 0 removed, 2 skipped")).toBeInTheDocument();
@@ -445,7 +455,7 @@ import { api, must } from "../api/client";
 import { catalogsQuery } from "../api/queries";
 import { finished, jobToast, useJob } from "../settings/jobUtil";
 import { useToast } from "../shell/Toasts";
-import { ingestSummary, itemPath, libraryLabel, thumbnailSrc, type Catalog, type CatalogHit, type FilterValues } from "./archive";
+import { ingestSummary, itemPath, capitalized, libraryMatch, thumbnailSrc, type Catalog, type CatalogHit, type FilterValues } from "./archive";
 import { FilterBar } from "./FilterBar";
 import "../cards/Cards.css";
 import "./Archives.css";
@@ -460,7 +470,7 @@ function readFilters(raw: string | null): FilterValues {
   }
 }
 
-const plural = (kind: string) => kind.charAt(0).toUpperCase() + kind.slice(1) + "s";
+const plural = (kind: string) => capitalized(kind) + "s";
 
 /** Archives is the Archive page. The catalog, kind, search text, and filters live in the URL. */
 export function Archives() {
@@ -585,7 +595,7 @@ function Search({ catalog, info, params, go }: SearchProps) {
 
 function ArchiveTile({ catalog, hit }: { catalog: number; hit: CatalogHit }) {
   const to = itemPath(catalog, hit.id);
-  const match = libraryLabel(hit);
+  const match = libraryMatch(hit);
   const tags = hit.tags ?? [];
   return (
     <article className="tile">
@@ -601,8 +611,8 @@ function ArchiveTile({ catalog, hit }: { catalog: number; hit: CatalogHit }) {
       </Link>
       {hit.author && <p className="muted">{hit.author}</p>}
       {match && (
-        <Link className="library-match" to={`/${hit.kind}s/${hit.library![0]!.id}`}>
-          {match}
+        <Link className="library-match" to={`/${hit.kind}s/${match.id}`}>
+          {match.label}
         </Link>
       )}
       <p className="tile-tags">
@@ -668,12 +678,17 @@ function IngestStatus({ catalog }: { catalog: Catalog }) {
 .archive-text {
   white-space: pre-wrap;
 }
+
+.archive-item .portrait {
+  width: auto;
+  max-width: 240px;
+}
 ```
 
 - [ ] **Step 5: Run the tests to check they pass**
 
 Run: `npx vitest run src/archives/Archives.test.tsx`
-Expected: PASS, 6 tests.
+Expected: PASS, 7 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -754,6 +769,7 @@ test("the item view reads an escaped item ID and shows the card", async () => {
   expect(await screen.findByRole("heading", { name: "Brakka" })).toBeInTheDocument();
   expect(screen.getByText("Forge master v2.")).toBeInTheDocument();
   expect(gets[0]!.searchParams.has("version")).toBe(false);
+  expect(screen.getByRole("link", { name: "Back to the archive" })).toHaveAttribute("href", "/archives?catalog=1&kind=card");
 });
 
 test("Adopt copies the picked version and then links to the library card", async () => {
@@ -780,6 +796,7 @@ test("a lorebook item lists its entries and adopts into the library's lorebooks"
   renderAt("/archives/1/items/forge.json");
   expect(await screen.findByRole("heading", { name: "1 entry" })).toBeInTheDocument();
   expect(screen.getByText("anvil")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Back to the archive" })).toHaveAttribute("href", "/archives?catalog=1&kind=lorebook");
   expect(screen.getByText("Heavy iron.")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Adopt" }));
   expect(await screen.findByRole("link", { name: "Open in library" })).toHaveAttribute("href", "/lorebooks/12");
@@ -832,7 +849,7 @@ function ItemView({ catalog, item, version, pick }: ItemProps) {
   return (
     <section className="page archive-item">
       <p>
-        <Link to={`/archives?catalog=${catalog}`}>Back to the archive</Link>
+        <Link to={`/archives?catalog=${catalog}&kind=${g.item.kind}`}>Back to the archive</Link>
       </p>
       {g.item.thumbnail && <img className="portrait" src={thumbnailSrc(g.item.thumbnail)} alt="" />}
       <h1>{g.item.name}</h1>
@@ -1014,9 +1031,9 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function renderPanel(kind: "card" | "lorebook") {
+function renderPanel(kind: "card" | "lorebook", client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <QueryClientProvider client={client}>
       <MemoryRouter>
         <FoundInArchives kind={kind} id={7} />
       </MemoryRouter>
@@ -1039,9 +1056,12 @@ test("the panel lists matches by archive, links each to its item, and names arch
 
 test("the panel is hidden when no archive has the entry", async () => {
   body = { matches: [], unreachable: [] };
-  const { container } = renderPanel("lorebook");
-  await vi.waitFor(() => expect(paths).toEqual(["/api/lorebooks/7/catalog-matches"]));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const { container } = renderPanel("lorebook", client);
+  // Wait for the answer, not just the request: the panel is empty while loading too.
+  await vi.waitFor(() => expect(client.getQueryState(["lorebook", 7, "catalog-matches"])?.status).toBe("success"));
   expect(container).toBeEmptyDOMElement();
+  expect(paths).toEqual(["/api/lorebooks/7/catalog-matches"]);
 });
 ```
 

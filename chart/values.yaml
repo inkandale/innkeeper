@@ -60,6 +60,9 @@ resources:
 
 # Added to both containers.
 extraEnv: []
+# Mounted in both containers, such as a folder a catalog plugin reads.
+extraVolumes: []
+extraVolumeMounts: []
 
 podAnnotations: {}
 nodeSelector: {}

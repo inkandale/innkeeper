@@ -131,7 +131,9 @@ helm install innkeeper oci://ghcr.io/davidgibbons/charts/innkeeper --version <ve
 ```
 
 `values.yaml` lists the rest: storage, resources, `extraEnv`, pod
-annotations, and [scheduled backups](#backup-and-restore). Create the first token with
+annotations, and [scheduled backups](#backup-and-restore). `extraVolumes` and
+`extraVolumeMounts` mount folders that a plugin reads, such as a catalog's
+archive, into both containers. Create the first token with
 `kubectl exec deploy/innkeeper -c api -- innkeeper token create admin destructive`.
 
 ## First login

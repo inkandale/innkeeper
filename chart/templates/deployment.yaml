@@ -84,6 +84,9 @@ spec:
             - name: backups
               mountPath: /backups
             {{- end }}
+            {{- with $.Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
         {{- end }}
       volumes:
         - name: blobs
@@ -98,4 +101,7 @@ spec:
         - name: backups
           persistentVolumeClaim:
             claimName: {{ .Release.Name }}-backups
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
         {{- end }}

@@ -8,6 +8,7 @@ import "./Shell.css";
 const sections = [
   { to: "/cards", label: "Cards", icon: "▣" },
   { to: "/lorebooks", label: "Lorebooks", icon: "📖" },
+  { to: "/archives", label: "Archive", icon: "🗄" },
   { to: "/collections", label: "Collections", icon: "🗂" },
   { to: "/sync", label: "Sync", icon: "⇅" },
   { to: "/settings", label: "Settings", icon: "⚙" },

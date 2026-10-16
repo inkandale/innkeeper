@@ -3190,6 +3190,11 @@ export interface components {
             tag?: string;
             /** @description Is pushed to one of instances and stands as one of states there. An empty list matches any value. */
             target_state?: components["schemas"]["TargetFilter"];
+            /**
+             * Format: int64
+             * @description Is this card or lorebook, or a variant below it at any depth.
+             */
+            variant_of_root?: number;
         };
         ForkInBody: {
             /**

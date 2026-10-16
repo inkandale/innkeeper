@@ -2256,6 +2256,11 @@
           "target_state": {
             "$ref": "#/components/schemas/TargetFilter",
             "description": "Is pushed to one of instances and stands as one of states there. An empty list matches any value."
+          },
+          "variant_of_root": {
+            "description": "Is this card or lorebook, or a variant below it at any depth.",
+            "format": "int64",
+            "type": "integer"
           }
         },
         "type": "object"

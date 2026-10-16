@@ -82,7 +82,7 @@ All generic, driven by the schema and an optional `settings` capability.
   its `title`. Top-level fields that aren't objects, and the secrets, go on
   a first tab named **General**. Deeper objects stay fieldsets.
 - **Checkbox group.** An array of string enum renders as checkboxes.
-- **Instance picker.** A string with `format = "instance"` and
+- **Instance picker.** An integer with `format = "instance"` and
   `x-offers = "<service>"`, such as `ai.chat`, is a dropdown of instances
   that offer that service.
 

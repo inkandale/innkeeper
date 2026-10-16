@@ -41,20 +41,21 @@ type Page struct {
 // Filter is one condition on a card. Set exactly one field. Archived cards
 // are left out unless a filter mentions archived.
 type Filter struct {
-	And         []Filter      `json:"and,omitempty"`
-	Or          []Filter      `json:"or,omitempty"`
-	Not         *Filter       `json:"not,omitempty"`
-	IDs         []int64       `json:"ids,omitempty" maxItems:"10000" doc:"Is one of these cards."`
-	Name        *string       `json:"name,omitempty" maxLength:"200" doc:"Name contains this, in any case."`
-	Tag         *string       `json:"tag,omitempty" doc:"Has this tag, in any case."`
-	Collection  *int64        `json:"collection,omitempty" doc:"Is in this collection."`
-	Source      *string       `json:"source,omitempty" doc:"Has a source of this kind, such as chub."`
-	Archived    *bool         `json:"archived,omitempty"`
-	TargetState *TargetFilter `json:"target_state,omitempty" doc:"Is pushed to one of instances and stands as one of states there. An empty list matches any value."`
-	Enrichment  *string       `json:"enrichment,omitempty" doc:"Has a current value for this enrichment key from the score instance. With gte and lte, a number in that range; with missing, no value. Cards only."`
-	Gte         *float64      `json:"gte,omitempty" doc:"With enrichment: the value is at least this."`
-	Lte         *float64      `json:"lte,omitempty" doc:"With enrichment: the value is at most this."`
-	Missing     *bool         `json:"missing,omitempty" doc:"With enrichment: true matches cards without a value."`
+	And           []Filter      `json:"and,omitempty"`
+	Or            []Filter      `json:"or,omitempty"`
+	Not           *Filter       `json:"not,omitempty"`
+	IDs           []int64       `json:"ids,omitempty" maxItems:"10000" doc:"Is one of these cards."`
+	Name          *string       `json:"name,omitempty" maxLength:"200" doc:"Name contains this, in any case."`
+	Tag           *string       `json:"tag,omitempty" doc:"Has this tag, in any case."`
+	Collection    *int64        `json:"collection,omitempty" doc:"Is in this collection."`
+	Source        *string       `json:"source,omitempty" doc:"Has a source of this kind, such as chub."`
+	Archived      *bool         `json:"archived,omitempty"`
+	TargetState   *TargetFilter `json:"target_state,omitempty" doc:"Is pushed to one of instances and stands as one of states there. An empty list matches any value."`
+	VariantOfRoot *int64        `json:"variant_of_root,omitempty" doc:"Is this card or lorebook, or a variant below it at any depth."`
+	Enrichment    *string       `json:"enrichment,omitempty" doc:"Has a current value for this enrichment key from the score instance. With gte and lte, a number in that range; with missing, no value. Cards only."`
+	Gte           *float64      `json:"gte,omitempty" doc:"With enrichment: the value is at least this."`
+	Lte           *float64      `json:"lte,omitempty" doc:"With enrichment: the value is at most this."`
+	Missing       *bool         `json:"missing,omitempty" doc:"With enrichment: true matches cards without a value."`
 }
 
 // TargetFilter matches an entity by its bindings: one on any of Instances
@@ -259,7 +260,7 @@ func (w *where) filter(f Filter) (string, error) {
 		return "", fmt.Errorf("%w: filter has more than 200 conditions", ErrInvalid)
 	}
 	set := 0
-	for _, ok := range []bool{f.And != nil, f.Or != nil, f.Not != nil, f.IDs != nil, f.Name != nil, f.Tag != nil, f.Collection != nil, f.Source != nil, f.Archived != nil, f.TargetState != nil, f.Enrichment != nil} {
+	for _, ok := range []bool{f.And != nil, f.Or != nil, f.Not != nil, f.IDs != nil, f.Name != nil, f.Tag != nil, f.Collection != nil, f.Source != nil, f.Archived != nil, f.TargetState != nil, f.Enrichment != nil, f.VariantOfRoot != nil} {
 		if ok {
 			set++
 		}
@@ -296,6 +297,12 @@ func (w *where) filter(f Filter) (string, error) {
 			WHERE cs.` + w.k.FK + ` = c.id AND cs.kind = ` + w.arg(*f.Source) + ` AND cs.removed_at IS NULL)`, nil
 	case f.Enrichment != nil:
 		return w.enrichmentFilter(f)
+	case f.VariantOfRoot != nil:
+		return `c.id IN (WITH RECURSIVE down AS (
+				SELECT id FROM ` + w.k.Table + ` WHERE id = ` + w.arg(*f.VariantOfRoot) + `
+				UNION ALL
+				SELECT x.id FROM ` + w.k.Table + ` x JOIN down ON x.variant_of_id = down.id)
+			SELECT id FROM down)`, nil
 	case f.TargetState != nil:
 		cond := `bs.` + w.k.FK + ` = c.id`
 		if len(f.TargetState.Instances) > 0 {

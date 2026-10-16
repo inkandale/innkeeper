@@ -526,3 +526,22 @@ func TestQueryUsesEnrichments(t *testing.T) {
 		}
 	}
 }
+
+func TestSearchVariantOfRoot(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	root, _ := newCard(t, lib, "root", `{"name": "Root"}`)
+	child, _ := newCard(t, lib, "child", `{"name": "Child"}`)
+	grand, _ := newCard(t, lib, "grand", `{"name": "Grand"}`)
+	newCard(t, lib, "other", `{"name": "Other"}`)
+	setVariantOf(t, lib.Cards, child, root)
+	setVariantOf(t, lib.Cards, grand, child)
+	got, err := lib.Search(ctx, Card, Query{Filter: &Filter{VariantOfRoot: ptr(child)}})
+	if err != nil || !slices.Equal(hitIDs(got), []int64{grand, child}) {
+		t.Fatalf("below child = %v, %v", hitIDs(got), err)
+	}
+	got, err = lib.Search(ctx, Card, Query{Filter: &Filter{VariantOfRoot: ptr(root)}})
+	if err != nil || !slices.Equal(hitIDs(got), []int64{grand, child, root}) {
+		t.Fatalf("below root = %v, %v", hitIDs(got), err)
+	}
+}

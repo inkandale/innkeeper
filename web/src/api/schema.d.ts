@@ -1951,6 +1951,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/plugins/{name}/settings/defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a plugin's config defaults */
+        get: operations["get-plugin-defaults"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/plugins/{name}/settings/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** List the choices for a config field */
+        post: operations["get-plugin-options"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/plugins/{name}/settings/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run a button on the instance form
+         * @description Such as Test connection, against the unsaved draft.
+         */
+        post: operations["run-plugin-setting"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/pushes": {
         parameters: {
             query?: never;
@@ -2790,6 +2844,10 @@ export interface components {
             config?: {
                 [key: string]: unknown;
             };
+            /** @description For each JSON pointer the owner just overrode, the default it replaced, so the form can mark it once the default changes. */
+            default_bases?: {
+                [key: string]: unknown;
+            };
             /** @description Lets an action plugin read the library while it runs an action that asks to. */
             library_access?: boolean;
             name: string;
@@ -2831,6 +2889,19 @@ export interface components {
             /** @description Send as Authorization: Bearer <secret>. Shown only once. */
             secret: string;
             tier: string;
+        };
+        Defaults: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/Defaults.json
+             */
+            readonly $schema?: string;
+            defaults: {
+                [key: string]: unknown;
+            };
+            /** @description JSON pointers of overrides whose default changed after they were saved. */
+            updated: string[] | null;
         };
         DismissInBody: {
             /**
@@ -3236,6 +3307,29 @@ export interface components {
             card_id?: number;
             why?: string;
         };
+        OptionsInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/OptionsInBody.json
+             */
+            readonly $schema?: string;
+            /** @description The form's unsaved config */
+            config?: {
+                [key: string]: unknown;
+            };
+            /** @description JSON pointer to the config field */
+            field: string;
+            /**
+             * Format: int64
+             * @description An instance of this plugin whose saved secrets the draft starts from
+             */
+            instance?: number;
+            /** @description Typed secrets; null removes a saved one. Write-only. */
+            secrets?: {
+                [key: string]: string | null;
+            };
+        };
         Page: {
             /** @description next_cursor from the previous page. */
             cursor?: string | null;
@@ -3310,6 +3404,10 @@ export interface components {
                 [key: string]: components["schemas"]["RecordTypeOut"];
             };
             secrets: string[] | null;
+            /** @description Buttons the instance form shows: label by action id, run with POST /plugins/{name}/settings/run */
+            settings_actions?: {
+                [key: string]: string;
+            };
             /** @description Id of the source the plugin was installed from, or builtin */
             source: string;
             version: string;
@@ -3599,6 +3697,29 @@ export interface components {
             parent_id?: number;
             source: string;
         };
+        RunSettingInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/RunSettingInBody.json
+             */
+            readonly $schema?: string;
+            /** @description One of the plugin's settings_actions */
+            action: string;
+            /** @description The form's unsaved config */
+            config?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Format: int64
+             * @description An instance of this plugin whose saved secrets the draft starts from
+             */
+            instance?: number;
+            /** @description Typed secrets; null removes a saved one. Write-only. */
+            secrets?: {
+                [key: string]: string | null;
+            };
+        };
         SearchResults: {
             /**
              * Format: uri
@@ -3633,6 +3754,37 @@ export interface components {
             score_instance: number | null;
             /** @description The selected theme plugin, or empty for the default theme. */
             theme: string;
+        };
+        SettingsCheck: {
+            /** Format: int64 */
+            latency_ms?: number;
+            message?: string;
+            name: string;
+            ok: boolean;
+        };
+        SettingsOption: {
+            label?: string;
+            value: string;
+        };
+        SettingsOptionsResult: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/SettingsOptionsResult.json
+             */
+            readonly $schema?: string;
+            options: components["schemas"]["SettingsOption"][] | null;
+        };
+        SettingsRunResult: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/SettingsRunResult.json
+             */
+            readonly $schema?: string;
+            checks?: components["schemas"]["SettingsCheck"][] | null;
+            message?: string;
+            ok: boolean;
         };
         SetupPlugin: {
             /** @description JSON Schema of the fields to ask for. */
@@ -3817,6 +3969,10 @@ export interface components {
             readonly $schema?: string;
             /** @description Replaces the whole config. */
             config?: {
+                [key: string]: unknown;
+            };
+            /** @description For each JSON pointer the owner just overrode, the default it replaced, so the form can mark it once the default changes. */
+            default_bases?: {
                 [key: string]: unknown;
             };
             /** @description Lets an action plugin read the library while it runs an action that asks to. */
@@ -5783,7 +5939,10 @@ export interface operations {
     };
     "list-instances": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Only instances that offer this service, such as ai.chat */
+                offers?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -7647,6 +7806,110 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-plugin-defaults": {
+        parameters: {
+            query?: {
+                /** @description Also list this instance's overrides whose default changed */
+                instance?: number;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Defaults"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-plugin-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OptionsInBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsOptionsResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "run-plugin-setting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunSettingInBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsRunResult"];
+                };
             };
             /** @description Error */
             default: {

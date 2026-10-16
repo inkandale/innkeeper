@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"strings"
 )
 
@@ -50,6 +51,17 @@ func hashDefault(v any) string {
 	b, _ := json.Marshal(v)
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
+}
+
+// checkBases refuses a base whose key isn't a JSON pointer, which lookup
+// would otherwise read as one.
+func checkBases(bases map[string]any) error {
+	for p := range bases {
+		if !strings.HasPrefix(p, "/") {
+			return fmt.Errorf("%w: default_bases key %q is not a JSON pointer", ErrInvalid, p)
+		}
+	}
+	return nil
 }
 
 // mergeDefaultHashes is the hash of the default each override in config

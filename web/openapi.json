@@ -1562,6 +1562,11 @@
             "additionalProperties": {},
             "type": "object"
           },
+          "default_bases": {
+            "additionalProperties": {},
+            "description": "For each JSON pointer the owner just overrode, the default it replaced, so the form can mark it once the default changes.",
+            "type": "object"
+          },
           "library_access": {
             "description": "Lets an action plugin read the library while it runs an action that asks to.",
             "type": "boolean"
@@ -1660,6 +1665,39 @@
           "tier",
           "created_at",
           "secret"
+        ],
+        "type": "object"
+      },
+      "Defaults": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/Defaults.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "defaults": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "updated": {
+            "description": "JSON pointers of overrides whose default changed after they were saved.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "defaults",
+          "updated"
         ],
         "type": "object"
       },
@@ -2782,6 +2820,48 @@
         ],
         "type": "object"
       },
+      "OptionsInBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/OptionsInBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "config": {
+            "additionalProperties": {},
+            "description": "The form's unsaved config",
+            "type": "object"
+          },
+          "field": {
+            "description": "JSON pointer to the config field",
+            "type": "string"
+          },
+          "instance": {
+            "description": "An instance of this plugin whose saved secrets the draft starts from",
+            "format": "int64",
+            "type": "integer"
+          },
+          "secrets": {
+            "additionalProperties": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "Typed secrets; null removes a saved one. Write-only.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "type": "object"
+      },
       "Page": {
         "additionalProperties": false,
         "properties": {
@@ -2976,6 +3056,13 @@
               "array",
               "null"
             ]
+          },
+          "settings_actions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Buttons the instance form shows: label by action id, run with POST /plugins/{name}/settings/run",
+            "type": "object"
           },
           "source": {
             "description": "Id of the source the plugin was installed from, or builtin",
@@ -3789,6 +3876,48 @@
         ],
         "type": "object"
       },
+      "RunSettingInBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/RunSettingInBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "action": {
+            "description": "One of the plugin's settings_actions",
+            "type": "string"
+          },
+          "config": {
+            "additionalProperties": {},
+            "description": "The form's unsaved config",
+            "type": "object"
+          },
+          "instance": {
+            "description": "An instance of this plugin whose saved secrets the draft starts from",
+            "format": "int64",
+            "type": "integer"
+          },
+          "secrets": {
+            "additionalProperties": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "description": "Typed secrets; null removes a saved one. Write-only.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
       "SearchResults": {
         "additionalProperties": false,
         "properties": {
@@ -3871,6 +4000,104 @@
           "theme",
           "onboarding_done",
           "score_instance"
+        ],
+        "type": "object"
+      },
+      "SettingsCheck": {
+        "additionalProperties": false,
+        "properties": {
+          "latency_ms": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "ok"
+        ],
+        "type": "object"
+      },
+      "SettingsOption": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "type": "object"
+      },
+      "SettingsOptionsResult": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/SettingsOptionsResult.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/SettingsOption"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "options"
+        ],
+        "type": "object"
+      },
+      "SettingsRunResult": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/SettingsRunResult.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/SettingsCheck"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
         ],
         "type": "object"
       },
@@ -4350,6 +4577,11 @@
           "config": {
             "additionalProperties": {},
             "description": "Replaces the whole config.",
+            "type": "object"
+          },
+          "default_bases": {
+            "additionalProperties": {},
+            "description": "For each JSON pointer the owner just overrode, the default it replaced, so the form can mark it once the default changes.",
             "type": "object"
           },
           "library_access": {
@@ -7245,6 +7477,18 @@
     "/instances": {
       "get": {
         "operationId": "list-instances",
+        "parameters": [
+          {
+            "description": "Only instances that offer this service, such as ai.chat",
+            "explode": false,
+            "in": "query",
+            "name": "offers",
+            "schema": {
+              "description": "Only instances that offer this service, such as ai.chat",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -10170,6 +10414,161 @@
           }
         },
         "summary": "Install or update a plugin",
+        "tags": [
+          "Plugins"
+        ]
+      }
+    },
+    "/plugins/{name}/settings/defaults": {
+      "get": {
+        "operationId": "get-plugin-defaults",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Also list this instance's overrides whose default changed",
+            "explode": false,
+            "in": "query",
+            "name": "instance",
+            "schema": {
+              "description": "Also list this instance's overrides whose default changed",
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Defaults"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a plugin's config defaults",
+        "tags": [
+          "Plugins"
+        ]
+      }
+    },
+    "/plugins/{name}/settings/options": {
+      "post": {
+        "operationId": "get-plugin-options",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OptionsInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsOptionsResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List the choices for a config field",
+        "tags": [
+          "Plugins"
+        ]
+      }
+    },
+    "/plugins/{name}/settings/run": {
+      "post": {
+        "description": "Such as Test connection, against the unsaved draft.",
+        "operationId": "run-plugin-setting",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunSettingInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsRunResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Run a button on the instance form",
         "tags": [
           "Plugins"
         ]

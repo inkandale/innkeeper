@@ -2,8 +2,6 @@ package api
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/davidgibbons/innkeeper/internal/auth"
 	"github.com/davidgibbons/innkeeper/internal/plugins"
 	"github.com/davidgibbons/innkeeper/internal/tier"
 )
@@ -116,22 +113,7 @@ func TestInstanceCheck(t *testing.T) {
 // even a destructive one for the API can't touch them; an API token can.
 func TestOAuthClientsCantChangeLogins(t *testing.T) {
 	e := newEnv(t)
-	ctx := context.Background()
-	c, err := e.s.Auth.RegisterClient(ctx, "ink", []string{redirect})
-	if err != nil {
-		t.Fatal(err)
-	}
-	verifier := strings.Repeat("x", 50)
-	sum := sha256.Sum256([]byte(verifier))
-	code, err := e.s.Auth.Approve(ctx, c.ID, tier.Destructive, auth.ResourceAPI, redirect, base64.RawURLEncoding.EncodeToString(sum[:]))
-	if err != nil {
-		t.Fatal(err)
-	}
-	toks, err := e.s.Auth.RedeemCode(ctx, c.ID, code, redirect, verifier)
-	if err != nil {
-		t.Fatal(err)
-	}
-	oauth, token := "Bearer "+toks.Access, "Bearer "+e.tokenWith(tier.Destructive)
+	oauth, token := "Bearer "+e.oauthToken(tier.Destructive), "Bearer "+e.tokenWith(tier.Destructive)
 	login := map[string]any{"plugin": "fake", "name": "Login 2", "config": map[string]any{}}
 	owned := map[string]any{"plugin": "vault", "name": "Owned", "owner_subject": "me"}
 	for _, body := range []map[string]any{login, owned} {

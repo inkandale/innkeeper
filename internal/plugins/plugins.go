@@ -306,6 +306,9 @@ func (r *Registry) CreateInstance(ctx context.Context, n NewInstance) (int64, er
 			return 0, err
 		}
 	}
+	if err := checkBases(n.DefaultBases); err != nil {
+		return 0, err
+	}
 	sealed, err := r.box.Seal(n.Secrets)
 	if err != nil {
 		return 0, err
@@ -324,6 +327,9 @@ func (r *Registry) CreateInstance(ctx context.Context, n NewInstance) (int64, er
 // next call starts its plugin with the new settings. Changing the owner,
 // config, or secrets also ends the instance's login sessions.
 func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit) error {
+	if err := checkBases(e.DefaultBases); err != nil {
+		return err
+	}
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return err

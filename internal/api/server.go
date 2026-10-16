@@ -168,6 +168,7 @@ func (s *Server) routes(api huma.API) {
 	s.searchRoutes(api)
 	s.catalogRoutes(api)
 	s.instanceRoutes(api)
+	s.pluginSettingsRoutes(api)
 	s.pluginStoreRoutes(api)
 	s.jobRoutes(api)
 	s.targetRoutes(api)

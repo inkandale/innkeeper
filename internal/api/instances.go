@@ -40,6 +40,7 @@ type pluginOut struct {
 	PreviousVersion *string                  `json:"previous_version,omitempty" doc:"Version a rollback returns to"`
 	Builtin         bool                     `json:"builtin" doc:"The image ships this plugin, so uninstalling falls back to that copy"`
 	Icon            string                   `json:"icon,omitempty" doc:"URL of the app's logo"`
+	SettingsActions map[string]string        `json:"settings_actions,omitempty" doc:"Buttons the instance form shows: label by action id, run with POST /plugins/{name}/settings/run"`
 }
 
 type recordTypeOut struct {
@@ -69,6 +70,7 @@ type createInstanceIn struct {
 		Secrets       map[string]string `json:"secrets,omitempty" doc:"Write-only. Responses list only the names that are set."`
 		OwnerSubject  *string           `json:"owner_subject,omitempty" doc:"For a login provider: the subject that logs in as the owner."`
 		LibraryAccess bool              `json:"library_access,omitempty" doc:"Lets an action plugin read the library while it runs an action that asks to."`
+		DefaultBases  map[string]any    `json:"default_bases,omitempty" doc:"For each JSON pointer the owner just overrode, the default it replaced, so the form can mark it once the default changes."`
 	}
 }
 
@@ -80,7 +82,12 @@ type updateInstanceIn struct {
 		Secrets       map[string]*string `json:"secrets,omitempty" doc:"Sets each secret named; null removes it. Secrets not named stay."`
 		OwnerSubject  *string            `json:"owner_subject,omitempty" doc:"Empty clears it, which logs the owner out of this provider."`
 		LibraryAccess *bool              `json:"library_access,omitempty" doc:"Lets an action plugin read the library while it runs an action that asks to."`
+		DefaultBases  map[string]any     `json:"default_bases,omitempty" doc:"For each JSON pointer the owner just overrode, the default it replaced, so the form can mark it once the default changes."`
 	}
+}
+
+type listInstancesIn struct {
+	Offers string `query:"offers" doc:"Only instances that offer this service, such as ai.chat"`
 }
 
 func (s *Server) instance(ctx context.Context, id int64) (*instanceOut, error) {
@@ -123,6 +130,12 @@ func (s *Server) instanceRoutes(api huma.API) {
 					}
 					p.Records[k] = recordTypeOut{rt.Label, rt.Schema, rt.Import}
 				}
+				for id, a := range m.Settings.Actions {
+					if p.SettingsActions == nil {
+						p.SettingsActions = map[string]string{}
+					}
+					p.SettingsActions[id] = a.Label
+				}
 				out.Body = append(out.Body, p)
 			}
 			slices.SortFunc(out.Body, func(a, b pluginOut) int { return strings.Compare(a.Name, b.Name) })
@@ -131,8 +144,11 @@ func (s *Server) instanceRoutes(api huma.API) {
 
 	huma.Register(api, huma.Operation{OperationID: "list-instances", Method: http.MethodGet, Path: "/instances",
 		Summary: "List plugin instances", Tags: tags},
-		func(ctx context.Context, _ *struct{}) (*instancesOut, error) {
+		func(ctx context.Context, in *listInstancesIn) (*instancesOut, error) {
 			list, err := s.Registry.ListInstances(ctx)
+			if in.Offers != "" {
+				list, err = s.Registry.InstancesOffering(ctx, s.Plugins, in.Offers)
+			}
 			if err != nil {
 				return nil, s.fail(err)
 			}
@@ -146,7 +162,8 @@ func (s *Server) instanceRoutes(api huma.API) {
 				return nil, err
 			}
 			id, err := s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: in.Body.Plugin, Name: in.Body.Name,
-				Config: in.Body.Config, Secrets: in.Body.Secrets, OwnerSubject: in.Body.OwnerSubject, LibraryAccess: in.Body.LibraryAccess})
+				Config: in.Body.Config, Secrets: in.Body.Secrets, OwnerSubject: in.Body.OwnerSubject, LibraryAccess: in.Body.LibraryAccess,
+				DefaultBases: in.Body.DefaultBases})
 			if err != nil {
 				return nil, s.fail(err)
 			}
@@ -171,7 +188,7 @@ func (s *Server) instanceRoutes(api huma.API) {
 				return nil, err
 			}
 			err = s.Registry.UpdateInstance(ctx, in.ID, plugins.InstanceEdit{Name: in.Body.Name, Config: in.Body.Config,
-				Secrets: in.Body.Secrets, OwnerSubject: in.Body.OwnerSubject, LibraryAccess: in.Body.LibraryAccess})
+				Secrets: in.Body.Secrets, OwnerSubject: in.Body.OwnerSubject, LibraryAccess: in.Body.LibraryAccess, DefaultBases: in.Body.DefaultBases})
 			if err != nil {
 				return nil, s.fail(err)
 			}

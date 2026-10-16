@@ -2,12 +2,15 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/davidgibbons/innkeeper/internal/auth"
 	"github.com/davidgibbons/innkeeper/internal/tier"
 )
 
@@ -35,9 +38,12 @@ var tierExceptions = map[string]tier.Tier{
 	"uninstall-plugin":     tier.Destructive,
 	"remove-plugin-data":   tier.Destructive,
 	// Instance settings decide what a plugin reaches and who can log in.
-	"create-instance":   tier.Destructive,
-	"update-instance":   tier.Destructive,
-	"delete-collection": tier.Destructive,
+	"create-instance": tier.Destructive,
+	"update-instance": tier.Destructive,
+	// A draft can send an instance's saved secrets to any address.
+	"get-plugin-options": tier.Destructive,
+	"run-plugin-setting": tier.Destructive,
+	"delete-collection":  tier.Destructive,
 	// The old record is gone; an import may replace records.
 	"replace-record":     tier.Destructive,
 	"delete-record":      tier.Destructive,
@@ -60,6 +66,27 @@ func (e *testEnv) tokenWith(t tier.Tier) string {
 		e.t.Fatal(err)
 	}
 	return secret
+}
+
+// oauthToken is an OAuth client's access token for the API with tier t.
+func (e *testEnv) oauthToken(t tier.Tier) string {
+	e.t.Helper()
+	ctx := context.Background()
+	c, err := e.s.Auth.RegisterClient(ctx, "ink", []string{redirect})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	verifier := strings.Repeat("x", 50)
+	sum := sha256.Sum256([]byte(verifier))
+	code, err := e.s.Auth.Approve(ctx, c.ID, t, auth.ResourceAPI, redirect, base64.RawURLEncoding.EncodeToString(sum[:]))
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	toks, err := e.s.Auth.RedeemCode(ctx, c.ID, code, redirect, verifier)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return toks.Access
 }
 
 // TestOperationTiers reads the OpenAPI spec, so it covers operations added

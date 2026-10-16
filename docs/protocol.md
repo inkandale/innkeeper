@@ -617,6 +617,7 @@ what it proposes before anything is saved.
 | `description` | One line saying what it does |
 | `applies` | `card`, `lorebook`, or `new` (a card that doesn't exist yet) |
 | `fields` | For a field action: the data keys it can run on, each listed once, such as `["description", "personality"]`. Leave it out for an action on the whole entity. Not allowed with `new` |
+| `whole_card` | With `fields`: `true` if the action also runs on the whole entity, on all its `fields` at once. The UI offers it in each field's menu and with the whole-entity actions |
 | `instruction` | `true` if the action's main input is free text the owner types |
 | `inputs` | A JSON Schema with `"type": "object"` for its other inputs. The UI renders a form from it |
 | `report_only` | `true` if it never proposes changes |
@@ -639,7 +640,7 @@ version and config. Don't contact any service to answer.
 |---|---|
 | `run` | Token for this call, an opaque string. Put it in every notification and `library.call` you send for it |
 | `action` | The action's `id` |
-| `field` | For a field action: the key it runs on, one of its `fields` |
+| `field` | For a field action: the key it runs on, one of its `fields`. Absent for a `whole_card` action run on the whole entity |
 | `entity` | `{"kind": "card" \| "lorebook", "data": {...}}`: the owner's draft. A card's `data` is CCv3 `data` without `character_book`; a lorebook's is a `character_book`. `data` is absent for `new` |
 | `instruction` | The owner's text, or absent. Mentions such as `@cards/Billy` stay as typed |
 | `inputs` | Values for `inputs`, or `{}` |
@@ -681,7 +682,8 @@ that isn't an object, fails the run.
 
 The core then keeps only the changes in the action's scope:
 
-- A field action may change only its `field`.
+- A field action may change only its `field`. Run without a field, a
+  `whole_card` action may change any of its `fields`.
 - A `card`, `lorebook`, or `new` action may change any key, except that a
   card never gets `character_book`.
 - A `report_only` action's proposal is dropped.

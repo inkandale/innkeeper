@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { api, exportFormats, must, mustOk, route, thumb, upload, type Kind } from "../api/client";
 import { bindingsQuery, instancesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
+import { FoundInArchives } from "../archives/FoundInArchives";
 import { badgeClass } from "../cards/Tile";
 import { useToast } from "../shell/Toasts";
 import type { Entity } from "./Card";
@@ -56,6 +57,7 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
       <Push kind="card" id={card.id} dirty={dirty} />
       <Collections id={card.id} member={card.collections ?? []} />
       <Sources kind="card" id={card.id} />
+      <FoundInArchives kind="card" id={card.id} />
       <Sync kind="card" id={card.id} />
       <Lorebooks ids={card.lorebooks ?? []} />
       <Enrichments id={card.id} />

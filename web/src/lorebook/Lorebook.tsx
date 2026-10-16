@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router";
 import { api, must } from "../api/client";
+import { FoundInArchives } from "../archives/FoundInArchives";
 import { Stale } from "../card/Conflict";
 import { text, tokens } from "../card/draft";
 import { Section } from "../card/Fields";
@@ -50,6 +51,7 @@ function LorebookEditor({ id }: { id: number }) {
         <Sync kind="lorebook" id={id} />
         <LinkedCards ids={head.cards ?? []} />
         <Sources kind="lorebook" id={id} />
+        <FoundInArchives kind="lorebook" id={id} />
         <Variants kind="lorebook" entity={head} />
         <Revisions kind="lorebook" id={id} />
       </aside>

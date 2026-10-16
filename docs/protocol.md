@@ -1055,6 +1055,16 @@ It loads the manifest, then checks that:
 - an `ai` plugin's `ai.chat` and `ai.embed`, for each it lists in `services`,
   return a reply or an error other than `-32601` within 5 seconds. Checked
   without a connection, a provider can only fail, which counts as an answer
+- a plugin that declares `uses` runs with the provider plugin in
+  `INNKEEPER_PROVIDER_PLUGIN` behind the core's service broker, and the
+  provider talks to a fake OpenAI-compatible server. Its config fields with
+  `format = "instance"` point at the provider. Running its actions and
+  `enrich.run`: a service call gets the provider's reply; the reply's two
+  streamed pieces reach the plugin as `ai.delta`; a tool call the model makes
+  comes back with the same id, name, and arguments, and a `tool` message
+  answering it; and cancelling the plugin's call ends the provider's request
+  within 5 seconds. A tool call's `extra` isn't checked, because the OpenAI
+  format has no field for it
 - a `catalog` plugin's `catalog.describe` reply is valid; `catalog.search`
   pages one item at a time without repeats and refuses an undeclared filter
   with `-32602`; `catalog.get` returns `-32004` for an unknown ID, and for the
@@ -1077,6 +1087,15 @@ It exits non-zero if any check fails. For a plugin with `database = true`,
 set `INNKEEPER_PLUGIN_DATABASE_URL` to send a test database as `database_url`.
 Set `INNKEEPER_PLUGIN_CONFIG` to a JSON object to send it as the instance
 config, such as a catalog's test data.
+
+For a plugin that declares `uses`, set `INNKEEPER_PROVIDER_PLUGIN` to the
+provider's plugin folder and `INNKEEPER_PROVIDER_CONFIG` to its instance
+config. The check replaces `${INNKEEPER_FAKE_AI_URL}` in that config with its
+fake server's URL:
+
+```json
+{"provider": "openai-compatible", "base_url": "${INNKEEPER_FAKE_AI_URL}", "model": "contract"}
+```
 
 ## Publishing a source
 

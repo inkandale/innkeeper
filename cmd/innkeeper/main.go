@@ -60,6 +60,8 @@ func run(args []string) error {
 func pluginCheck(dir string) error {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	contract.DatabaseURL = os.Getenv("INNKEEPER_PLUGIN_DATABASE_URL")
+	contract.Provider = os.Getenv("INNKEEPER_PROVIDER_PLUGIN")
+	contract.ProviderConfig = os.Getenv("INNKEEPER_PROVIDER_CONFIG")
 	if s := os.Getenv("INNKEEPER_PLUGIN_CONFIG"); s != "" {
 		if err := json.Unmarshal([]byte(s), &contract.Config); err != nil {
 			return fmt.Errorf("INNKEEPER_PLUGIN_CONFIG: %w", err)

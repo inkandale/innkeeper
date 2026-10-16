@@ -3784,6 +3784,10 @@
           },
           "remote_id": {
             "type": "string"
+          },
+          "variant_of": {
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [

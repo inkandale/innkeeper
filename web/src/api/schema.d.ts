@@ -3744,6 +3744,8 @@ export interface components {
             kind?: "card" | "lorebook";
             lorebooks?: components["schemas"]["Resolution"][] | null;
             remote_id?: string;
+            /** Format: int64 */
+            variant_of?: number;
         };
         ResolutionsInBody: {
             /**

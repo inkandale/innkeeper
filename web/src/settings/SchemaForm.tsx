@@ -1,4 +1,4 @@
-import { createContext, useContext, useId, useState, type ReactNode } from "react";
+import { createContext, useContext, useId, useRef, useState, type ReactNode } from "react";
 
 /** Schema is the part of JSON Schema the form renders. */
 export type Schema = {
@@ -54,8 +54,9 @@ const fits: Record<string, (v: unknown) => boolean> = {
 /** pointerKey escapes a property name for a JSON pointer. */
 const pointerKey = (k: string) => k.replaceAll("~", "~0").replaceAll("/", "~1");
 
-/** same compares JSON values; config values have no cycles or functions. */
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+/** same compares JSON values, ignoring the order of a string array (a set of choices); config values have no cycles. */
+const same = (a: unknown, b: unknown) => JSON.stringify(unordered(a)) === JSON.stringify(unordered(b));
+const unordered = (v: unknown) => (Array.isArray(v) && v.every((e) => typeof e === "string") ? [...v].sort() : v);
 
 /**
  * SchemaForm renders inputs for a JSON Schema: string (long text with contentMediaType), number, integer,
@@ -67,6 +68,9 @@ export function SchemaForm({ schema, label, value, onChange, required, path = ""
   // Above the object branch's early return, so every render calls the same hooks.
   const [options, setOptions] = useState<{ value: string; label?: string }[]>([]);
   const [optionsError, setOptionsError] = useState<string>();
+  const [loadingOptions, setLoadingOptions] = useState(false);
+  // Only the latest lookup's answer is shown.
+  const lookup = useRef(0);
   const listId = useId();
   const title = schema.title ?? label;
   const t = schema.type ?? "";
@@ -108,6 +112,9 @@ export function SchemaForm({ schema, label, value, onChange, required, path = ""
   const shown = value ?? def;
   // Typing the default back is no override.
   const set = (v: unknown) => onChange(hasDefault && v !== undefined && same(v, def) ? undefined : v);
+  // With a default, emptying a field is an override; Reset is the way back to the default.
+  const emptied = (empty: unknown) => (hasDefault ? empty : undefined);
+  const loadOptions = schema["x-options"] && known && t === "string" ? helpers.loadOptions : undefined;
 
   let control: ReactNode;
   if (known && t === "integer" && schema.format === "instance" && schema["x-offers"] && helpers.instances) {
@@ -134,7 +141,7 @@ export function SchemaForm({ schema, label, value, onChange, required, path = ""
               checked={picked.includes(choice)}
               onChange={(e) => {
                 const next = choices.filter((c) => (c === choice ? e.target.checked : picked.includes(c)));
-                set(next.length > 0 ? next : undefined);
+                set(next.length > 0 ? next : emptied([]));
               }}
             />
             <span>{choice}</span>
@@ -155,15 +162,15 @@ export function SchemaForm({ schema, label, value, onChange, required, path = ""
       </select>
     );
   } else if (known && t === "string" && schema.contentMediaType) {
-    control = <textarea className="input" rows={8} required={required} value={(shown as string) ?? ""} onChange={(e) => set(e.target.value || undefined)} />;
+    control = <textarea className="input" rows={8} required={required} value={(shown as string) ?? ""} onChange={(e) => set(e.target.value || emptied(""))} />;
   } else if (known && t === "string") {
     control = (
       <input
         className="input"
         required={required}
-        list={schema["x-options"] ? listId : undefined}
+        list={loadOptions ? listId : undefined}
         value={(shown as string) ?? ""}
-        onChange={(e) => set(e.target.value || undefined)}
+        onChange={(e) => set(e.target.value || emptied(""))}
       />
     );
   } else if (known && (t === "number" || t === "integer")) {
@@ -182,7 +189,23 @@ export function SchemaForm({ schema, label, value, onChange, required, path = ""
   } else {
     control = <RawJson value={value} onChange={onChange} required={required} />;
   }
-  const loadOptions = schema["x-options"] && known && t === "string" ? helpers.loadOptions : undefined;
+  const load = (fetchOptions: NonNullable<FormHelpers["loadOptions"]>) => {
+    const id = ++lookup.current;
+    setLoadingOptions(true);
+    fetchOptions(path)
+      .then(
+        (o) => {
+          if (id !== lookup.current) return;
+          setOptions(o);
+          setOptionsError(undefined);
+        },
+        (e: unknown) => {
+          if (id !== lookup.current) return;
+          setOptionsError(String((e as Error | undefined)?.message ?? e));
+        },
+      )
+      .finally(() => id === lookup.current && setLoadingOptions(false));
+  };
   return (
     <div className="form-field">
       <label className={t === "boolean" && known ? "check" : undefined}>
@@ -200,15 +223,9 @@ export function SchemaForm({ schema, label, value, onChange, required, path = ""
             type="button"
             className="button"
             aria-label={`Load choices for ${title}`}
-            onClick={() =>
-              loadOptions(path).then(
-                (o) => {
-                  setOptions(o);
-                  setOptionsError(undefined);
-                },
-                (e: Error) => setOptionsError(e.message),
-              )
-            }
+            disabled={loadingOptions}
+            aria-busy={loadingOptions}
+            onClick={() => load(loadOptions)}
           >
             Load choices
           </button>

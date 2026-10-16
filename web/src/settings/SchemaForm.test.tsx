@@ -172,3 +172,54 @@ test("format instance picks from the instances offering the service", async () =
   await user.selectOptions(screen.getByLabelText("Connection"), "Local LLM");
   expect(value()).toEqual({ connection: 7 });
 });
+
+const kindsWithDefault: Schema = {
+  type: "object",
+  properties: { kinds: { type: "array", title: "Kinds", items: { type: "string", enum: ["chat", "embed"] } } },
+};
+
+test("unchecking the last default choice is an empty override", async () => {
+  const user = userEvent.setup();
+  render(<WithHelpers schema={kindsWithDefault} initial={{}} helpers={{ defaults: { "/kinds": ["chat"] } }} />);
+  await user.click(screen.getByLabelText("chat"));
+  expect(value()).toEqual({ kinds: [] });
+  expect(screen.getByLabelText("chat")).not.toBeChecked();
+  expect(screen.getByRole("button", { name: "Reset Kinds" })).toBeInTheDocument();
+});
+
+test("picking a default's choices in another order is no override", async () => {
+  const user = userEvent.setup();
+  render(<WithHelpers schema={kindsWithDefault} initial={{}} helpers={{ defaults: { "/kinds": ["embed", "chat"] } }} />);
+  await user.click(screen.getByLabelText("chat"));
+  await user.click(screen.getByLabelText("chat"));
+  expect(value()).toBeNull();
+});
+
+test("clearing a defaulted field is an empty override", async () => {
+  const user = userEvent.setup();
+  render(<WithHelpers schema={prompts} initial={{}} helpers={{ defaults: { "/prompts/greet": "Hello" } }} />);
+  await user.clear(screen.getByLabelText("Greet"));
+  expect(value()).toEqual({ prompts: { greet: "" } });
+  expect(screen.getByLabelText("Greet")).toHaveValue("");
+  expect(screen.getByRole("button", { name: "Reset Greet" })).toBeInTheDocument();
+});
+
+test("load choices is disabled while loading and shows a thrown non-error", async () => {
+  const user = userEvent.setup();
+  let fail!: (reason: unknown) => void;
+  const loadOptions = vi.fn(() => new Promise<{ value: string }[]>((_, reject) => (fail = reject)));
+  const model: Schema = { type: "object", properties: { model: { type: "string", title: "Model", "x-options": true } } };
+  render(<WithHelpers schema={model} initial={{}} helpers={{ loadOptions }} />);
+  const button = screen.getByRole("button", { name: "Load choices for Model" });
+  await user.click(button);
+  expect(button).toBeDisabled();
+  fail("no route");
+  expect(await screen.findByRole("alert")).toHaveTextContent("no route");
+  expect(button).toBeEnabled();
+});
+
+test("an x-options field without a loader has no datalist", () => {
+  const model: Schema = { type: "object", properties: { model: { type: "string", title: "Model", "x-options": true } } };
+  render(<Harness schema={model} initial={{}} />);
+  expect(screen.getByLabelText("Model")).not.toHaveAttribute("list");
+});

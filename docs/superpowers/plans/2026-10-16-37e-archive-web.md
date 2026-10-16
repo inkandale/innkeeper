@@ -337,6 +337,7 @@ beforeEach(() => {
         return json({ ...ingestJob, id: 5, status: "queued", progress: {} }, 202);
       }
       if (url.pathname === "/api/jobs/4") return json(ingestJob);
+      if (url.pathname === "/api/jobs/5") return json({ ...ingestJob, id: 5, status: "queued", progress: {} });
       return json([]);
     }),
   );
@@ -402,6 +403,21 @@ test("the ingest line shows the last run's counts and starts a new run", async (
   await userEvent.click(screen.getByRole("button", { name: "Ingest" }));
   await waitFor(() => expect(ingests).toBe(1));
   expect(await screen.findByText("Ingest started")).toBeInTheDocument();
+  expect(await screen.findByText("Queued")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Ingest" })).toBeDisabled();
+});
+
+test("More fetches the next page with the cursor", async () => {
+  searchResponse = () =>
+    searches.at(-1)!.searchParams.get("cursor") === "c2"
+      ? json({ catalog_id: 1, items: [hits[1]] })
+      : json({ catalog_id: 1, items: [hits[0]], next: "c2" });
+  renderAt("/archives");
+  await screen.findByText("Brakka");
+  await userEvent.click(screen.getByRole("button", { name: "More" }));
+  expect(await screen.findByText("Tessa")).toBeInTheDocument();
+  expect(searches.at(-1)!.searchParams.get("cursor")).toBe("c2");
+  expect(screen.getByText("Brakka")).toBeInTheDocument();
 });
 ```
 
@@ -507,7 +523,8 @@ type SearchProps = {
 
 function Search({ catalog, info, params, go }: SearchProps) {
   const kinds = info.kinds ?? [];
-  const kind = params.get("kind") ?? kinds[0] ?? "";
+  const asked = params.get("kind");
+  const kind = asked && kinds.includes(asked) ? asked : (kinds[0] ?? "");
   const q = params.get("q") ?? "";
   const filters = readFilters(params.get("filters"));
   const filtersParam = Object.keys(filters).length ? JSON.stringify(filters) : undefined;
@@ -603,9 +620,6 @@ function ArchiveTile({ catalog, hit }: { catalog: number; hit: CatalogHit }) {
 function IngestStatus({ catalog }: { catalog: Catalog }) {
   const qc = useQueryClient();
   const toast = useToast();
-  const last = catalog.last_ingest;
-  const job = useJob(last?.id ?? 0, { enabled: !!last });
-  const current = job.data ?? last;
   const start = useMutation({
     mutationFn: async () => must(await api.POST("/catalogs/{id}/ingest", { params: { path: { id: catalog.id } } })),
     onSuccess: (j) => {
@@ -613,6 +627,10 @@ function IngestStatus({ catalog }: { catalog: Catalog }) {
       void qc.invalidateQueries({ queryKey: ["catalogs"] });
     },
   });
+  // Follow the run just started; the catalogs list can take a while to refetch.
+  const latest = start.data ?? catalog.last_ingest;
+  const job = useJob(latest?.id ?? 0, { enabled: !!latest });
+  const current = job.data ?? latest;
   return (
     <span className="ingest-status">
       {current ? <Link to={`/settings/jobs/${current.id}`}>{ingestSummary(current)}</Link> : <span className="muted">Never ingested</span>}{" "}
@@ -655,7 +673,7 @@ function IngestStatus({ catalog }: { catalog: Catalog }) {
 - [ ] **Step 5: Run the tests to check they pass**
 
 Run: `npx vitest run src/archives/Archives.test.tsx`
-Expected: PASS, 5 tests.
+Expected: PASS, 6 tests.
 
 - [ ] **Step 6: Commit**
 

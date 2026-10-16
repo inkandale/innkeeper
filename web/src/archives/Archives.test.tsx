@@ -54,6 +54,7 @@ beforeEach(() => {
         return json({ ...ingestJob, id: 5, status: "queued", progress: {} }, 202);
       }
       if (url.pathname === "/api/jobs/4") return json(ingestJob);
+      if (url.pathname === "/api/jobs/5") return json({ ...ingestJob, id: 5, status: "queued", progress: {} });
       return json([]);
     }),
   );
@@ -119,4 +120,19 @@ test("the ingest line shows the last run's counts and starts a new run", async (
   await userEvent.click(screen.getByRole("button", { name: "Ingest" }));
   await waitFor(() => expect(ingests).toBe(1));
   expect(await screen.findByText("Ingest started")).toBeInTheDocument();
+  expect(await screen.findByText("Queued")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Ingest" })).toBeDisabled();
+});
+
+test("More fetches the next page with the cursor", async () => {
+  searchResponse = () =>
+    searches.at(-1)!.searchParams.get("cursor") === "c2"
+      ? json({ catalog_id: 1, items: [hits[1]] })
+      : json({ catalog_id: 1, items: [hits[0]], next: "c2" });
+  renderAt("/archives");
+  await screen.findByText("Brakka");
+  await userEvent.click(screen.getByRole("button", { name: "More" }));
+  expect(await screen.findByText("Tessa")).toBeInTheDocument();
+  expect(searches.at(-1)!.searchParams.get("cursor")).toBe("c2");
+  expect(screen.getByText("Brakka")).toBeInTheDocument();
 });

@@ -82,7 +82,8 @@ type SearchProps = {
 
 function Search({ catalog, info, params, go }: SearchProps) {
   const kinds = info.kinds ?? [];
-  const kind = params.get("kind") ?? kinds[0] ?? "";
+  const asked = params.get("kind");
+  const kind = asked && kinds.includes(asked) ? asked : (kinds[0] ?? "");
   const q = params.get("q") ?? "";
   const filters = readFilters(params.get("filters"));
   const filtersParam = Object.keys(filters).length ? JSON.stringify(filters) : undefined;
@@ -178,9 +179,6 @@ function ArchiveTile({ catalog, hit }: { catalog: number; hit: CatalogHit }) {
 function IngestStatus({ catalog }: { catalog: Catalog }) {
   const qc = useQueryClient();
   const toast = useToast();
-  const last = catalog.last_ingest;
-  const job = useJob(last?.id ?? 0, { enabled: !!last });
-  const current = job.data ?? last;
   const start = useMutation({
     mutationFn: async () => must(await api.POST("/catalogs/{id}/ingest", { params: { path: { id: catalog.id } } })),
     onSuccess: (j) => {
@@ -188,6 +186,10 @@ function IngestStatus({ catalog }: { catalog: Catalog }) {
       void qc.invalidateQueries({ queryKey: ["catalogs"] });
     },
   });
+  // Follow the run just started; the catalogs list can take a while to refetch.
+  const latest = start.data ?? catalog.last_ingest;
+  const job = useJob(latest?.id ?? 0, { enabled: !!latest });
+  const current = job.data ?? latest;
   return (
     <span className="ingest-status">
       {current ? <Link to={`/settings/jobs/${current.id}`}>{ingestSummary(current)}</Link> : <span className="muted">Never ingested</span>}{" "}

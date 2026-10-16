@@ -99,6 +99,12 @@ func TestForkCopiesTagsAndLinksButNotSources(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if _, err := lib.pool.Exec(ctx, `WITH i AS (INSERT INTO plugin_instance (plugin, name) VALUES ('fake', 'fake') RETURNING id)
+		INSERT INTO binding (instance_id, card_id, remote_id, remote_state, accepted_data, accepted_hash)
+		SELECT i.id, $1, 'r1', 'unchanged', '{}', 'h' FROM i`, id); err != nil {
+		t.Fatal(err)
+	}
+
 	v, err := lib.Cards.Fork(ctx, id, "ui")
 	if err != nil {
 		t.Fatal(err)

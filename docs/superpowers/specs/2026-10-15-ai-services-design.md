@@ -35,7 +35,7 @@ blank "additions" fields that hide the prompts they add to. This spec:
 ### Provider
 
 A plugin declares `capabilities = ["ai"]`. Its `initialize` result lists the
-services the instance offers, such as `["chat", "embed"]`. Core keeps that
+services the instance offers, by method, such as `["ai.chat", "ai.embed"]`. Core keeps that
 list with the running instance.
 
 | Method | Does |
@@ -100,9 +100,10 @@ Long text already renders as a textarea through `contentMediaType`.
 
 ### Settings calls
 
-The `settings` capability is stateless. Core starts the plugin and sends a
-`settings.*` call in place of `initialize`, passing the unsaved draft config
-and the secrets: the saved ones merged with any typed but not yet saved. The
+The `settings` capability is stateless. Core runs a separate process for it,
+initialized with an empty config, and each `settings.*` call carries the
+unsaved draft config and the secrets: the saved ones merged with any typed
+but not yet saved. The
 owner can list models and test a connection before saving. Secrets never go
 back to the browser.
 
@@ -112,9 +113,10 @@ back to the browser.
 | `settings.options` | Choices for one field, given its pointer. A field marked `x-options = true` is a dropdown that also accepts free text. |
 | `settings.run` | Runs a button declared in the manifest, such as `[settings.actions] test = { label = "Test connection" }`. Returns pass or fail, a message, and one row per check. |
 
-API: `POST /plugins/{id}/settings/defaults`, `/options`, and `/run`. Each
-takes the draft config and an optional instance id, whose saved secrets are
-merged in.
+API: `GET /plugins/{name}/settings/defaults?instance=` sends no secrets.
+`POST /plugins/{name}/settings/options` and `/run` take the draft config and
+an optional instance id, whose saved secrets are merged in; they need the
+destructive tier.
 
 ### Tests
 

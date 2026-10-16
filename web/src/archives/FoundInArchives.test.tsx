@@ -22,9 +22,9 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function renderPanel(kind: "card" | "lorebook") {
+function renderPanel(kind: "card" | "lorebook", client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <QueryClientProvider client={client}>
       <MemoryRouter>
         <FoundInArchives kind={kind} id={7} />
       </MemoryRouter>
@@ -47,7 +47,10 @@ test("the panel lists matches by archive, links each to its item, and names arch
 
 test("the panel is hidden when no archive has the entry", async () => {
   body = { matches: [], unreachable: [] };
-  const { container } = renderPanel("lorebook");
-  await vi.waitFor(() => expect(paths).toEqual(["/api/lorebooks/7/catalog-matches"]));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const { container } = renderPanel("lorebook", client);
+  // Wait for the answer, not just the request: the panel is empty while loading too.
+  await vi.waitFor(() => expect(client.getQueryState(["lorebook", 7, "catalog-matches"])?.status).toBe("success"));
   expect(container).toBeEmptyDOMElement();
+  expect(paths).toEqual(["/api/lorebooks/7/catalog-matches"]);
 });

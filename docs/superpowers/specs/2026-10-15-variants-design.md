@@ -45,7 +45,7 @@ One plan, in three slices that each merge on their own:
 
 ## Model
 
-Migration `0025_variants.sql`:
+Migration `0027_variants.sql`:
 
 - `variant_of_id bigint REFERENCES card(id)` on `card`, and the same on
   `lorebook` against `lorebook(id)`. Both are `DEFERRABLE INITIALLY

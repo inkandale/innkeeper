@@ -4,7 +4,7 @@ import { api, must } from "../api/client";
 import { catalogsQuery } from "../api/queries";
 import { finished, jobToast, useJob } from "../settings/jobUtil";
 import { useToast } from "../shell/Toasts";
-import { ingestSummary, itemPath, libraryLabel, thumbnailSrc, type Catalog, type CatalogHit, type FilterValues } from "./archive";
+import { ingestSummary, itemPath, capitalized, libraryMatch, thumbnailSrc, type Catalog, type CatalogHit, type FilterValues } from "./archive";
 import { FilterBar } from "./FilterBar";
 import "../cards/Cards.css";
 import "./Archives.css";
@@ -19,7 +19,7 @@ function readFilters(raw: string | null): FilterValues {
   }
 }
 
-const plural = (kind: string) => kind.charAt(0).toUpperCase() + kind.slice(1) + "s";
+const plural = (kind: string) => capitalized(kind) + "s";
 
 /** Archives is the Archive page. The catalog, kind, search text, and filters live in the URL. */
 export function Archives() {
@@ -144,7 +144,7 @@ function Search({ catalog, info, params, go }: SearchProps) {
 
 function ArchiveTile({ catalog, hit }: { catalog: number; hit: CatalogHit }) {
   const to = itemPath(catalog, hit.id);
-  const match = libraryLabel(hit);
+  const match = libraryMatch(hit);
   const tags = hit.tags ?? [];
   return (
     <article className="tile">
@@ -160,8 +160,8 @@ function ArchiveTile({ catalog, hit }: { catalog: number; hit: CatalogHit }) {
       </Link>
       {hit.author && <p className="muted">{hit.author}</p>}
       {match && (
-        <Link className="library-match" to={`/${hit.kind}s/${hit.library![0]!.id}`}>
-          {match}
+        <Link className="library-match" to={`/${hit.kind}s/${match.id}`}>
+          {match.label}
         </Link>
       )}
       <p className="tile-tags">

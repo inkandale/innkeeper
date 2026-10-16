@@ -36,7 +36,7 @@ function ItemView({ catalog, item, version, pick }: ItemProps) {
   return (
     <section className="page archive-item">
       <p>
-        <Link to={`/archives?catalog=${catalog}`}>Back to the archive</Link>
+        <Link to={`/archives?catalog=${catalog}&kind=${g.item.kind}`}>Back to the archive</Link>
       </p>
       {g.item.thumbnail && <img className="portrait" src={thumbnailSrc(g.item.thumbnail)} alt="" />}
       <h1>{g.item.name}</h1>

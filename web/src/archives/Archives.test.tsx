@@ -35,16 +35,18 @@ const hits = [
 
 let searches: URL[];
 let searchResponse: () => Response;
+let catalogsResponse: () => Response;
 let ingests: number;
 beforeEach(() => {
   searches = [];
   ingests = 0;
   searchResponse = () => json({ catalog_id: 1, items: hits });
+  catalogsResponse = () => json([{ id: 1, name: "chub", plugin: "chub-archive", info, last_ingest: ingestJob }]);
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
       const url = new URL(req.url);
-      if (url.pathname === "/api/catalogs") return json([{ id: 1, name: "chub", plugin: "chub-archive", info, last_ingest: ingestJob }]);
+      if (url.pathname === "/api/catalogs") return catalogsResponse();
       if (url.pathname === "/api/catalogs/1/search") {
         searches.push(url);
         return searchResponse();
@@ -112,6 +114,13 @@ test("a catalog that is down shows its error on the page", async () => {
   searchResponse = () => json({ status: 503, detail: "catalog chub is not answering" }, 503, "application/problem+json");
   renderAt("/archives");
   expect(await screen.findByText("catalog chub is not answering")).toBeInTheDocument();
+});
+
+test("a catalog that can't describe itself shows its error and is not searched", async () => {
+  catalogsResponse = () => json([{ id: 1, name: "chub", plugin: "chub-archive", error: "plugin exited" }]);
+  renderAt("/archives");
+  expect(await screen.findByText("plugin exited")).toBeInTheDocument();
+  expect(searches).toHaveLength(0);
 });
 
 test("the ingest line shows the last run's counts and starts a new run", async () => {

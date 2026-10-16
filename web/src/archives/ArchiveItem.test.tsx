@@ -59,6 +59,7 @@ test("the item view reads an escaped item ID and shows the card", async () => {
   expect(await screen.findByRole("heading", { name: "Brakka" })).toBeInTheDocument();
   expect(screen.getByText("Forge master v2.")).toBeInTheDocument();
   expect(gets[0]!.searchParams.has("version")).toBe(false);
+  expect(screen.getByRole("link", { name: "Back to the archive" })).toHaveAttribute("href", "/archives?catalog=1&kind=card");
 });
 
 test("Adopt copies the picked version and then links to the library card", async () => {
@@ -85,6 +86,7 @@ test("a lorebook item lists its entries and adopts into the library's lorebooks"
   renderAt("/archives/1/items/forge.json");
   expect(await screen.findByRole("heading", { name: "1 entry" })).toBeInTheDocument();
   expect(screen.getByText("anvil")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Back to the archive" })).toHaveAttribute("href", "/archives?catalog=1&kind=lorebook");
   expect(screen.getByText("Heavy iron.")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Adopt" }));
   expect(await screen.findByRole("link", { name: "Open in library" })).toHaveAttribute("href", "/lorebooks/12");

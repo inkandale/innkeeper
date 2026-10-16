@@ -1,5 +1,5 @@
 import type { Job } from "../settings/jobUtil";
-import { ingestSummary, itemPath, libraryLabel, type CatalogHit } from "./archive";
+import { ingestSummary, itemPath, libraryMatch, type CatalogHit } from "./archive";
 
 const hit = (library: CatalogHit["library"]): CatalogHit => ({
   id: "a", kind: "card", name: "A", latest_version: "1", hashes: { content_hash: "0".repeat(64) }, library,
@@ -14,11 +14,11 @@ test("itemPath keeps an item ID with a slash in one segment", () => {
   expect(itemPath(2, "sub/a.png")).toBe("/archives/2/items/sub%2Fa.png");
 });
 
-test("libraryLabel says In library for a content match, Similar for a near one, and nothing without matches", () => {
-  expect(libraryLabel(hit([{ id: 1, reason: "text", distance: 3 }, { id: 2, reason: "content", distance: 0 }]))).toBe("In library");
-  expect(libraryLabel(hit([{ id: 1, reason: "avatar", distance: 5 }]))).toBe("Similar in library");
-  expect(libraryLabel(hit([]))).toBeUndefined();
-  expect(libraryLabel(hit(null))).toBeUndefined();
+test("libraryMatch names the content match even when a nearer-sorted text match comes first", () => {
+  expect(libraryMatch(hit([{ id: 1, reason: "text", distance: 0 }, { id: 2, reason: "content", distance: 0 }]))).toEqual({ label: "In library", id: 2 });
+  expect(libraryMatch(hit([{ id: 1, reason: "avatar", distance: 5 }, { id: 3, reason: "text", distance: 6 }]))).toEqual({ label: "Similar in library", id: 1 });
+  expect(libraryMatch(hit([]))).toBeUndefined();
+  expect(libraryMatch(hit(null))).toBeUndefined();
 });
 
 test("ingestSummary gives a finished ingest's counts, a running one's progress, and a failed one's error", () => {

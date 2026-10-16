@@ -10,18 +10,19 @@ export type FilterValues = Record<string, unknown>;
 /** itemPath is an item's page. Item IDs can hold "/", so the ID is escaped into one segment. */
 export const itemPath = (catalog: number, item: string) => `/archives/${catalog}/items/${encodeURIComponent(item)}`;
 
-/** libraryLabel says how a result matches the library: In library for the same content, Similar in library for a near match. */
-export function libraryLabel(hit: CatalogHit): string | undefined {
+/** libraryMatch is the library item a result links to: the same-content match if any, else the first near match. */
+export function libraryMatch(hit: CatalogHit): { label: string; id: number } | undefined {
   const matches = hit.library ?? [];
-  if (!matches.length) return undefined;
-  return matches.some((m) => m.reason === "content") ? "In library" : "Similar in library";
+  const best = matches.find((m) => m.reason === "content") ?? matches[0];
+  if (!best) return undefined;
+  return { label: best.reason === "content" ? "In library" : "Similar in library", id: best.id };
 }
 
 /** thumbnailSrc is the image URL for a catalog item's inline base64 JPEG. */
 export const thumbnailSrc = (thumbnail: string) => `data:image/jpeg;base64,${thumbnail}`;
 
 const counts = ["added", "updated", "removed", "skipped"] as const;
-const capitalized = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+export const capitalized = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** ingestSummary is an ingest job's state: its counts once it succeeds, its progress while it runs, its error if it failed. */
 export function ingestSummary(j: Job): string {

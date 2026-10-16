@@ -545,3 +545,85 @@ func TestSearchVariantOfRoot(t *testing.T) {
 		t.Fatalf("below root = %v, %v", hitIDs(got), err)
 	}
 }
+
+func TestSearchGroupsFamilies(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	root, _ := newCard(t, lib, "root", `{"name": "Root", "description": "An elf."}`)
+	child, _ := newCard(t, lib, "child", `{"name": "Child", "description": "An elf."}`)
+	grand, grandRev := newCard(t, lib, "grand", `{"name": "Grand", "description": "A dwarf smith."}`)
+	solo, soloRev := newCard(t, lib, "solo", `{"name": "Solo", "description": "A dwarf smith."}`)
+	setVariantOf(t, lib.Cards, child, root)
+	setVariantOf(t, lib.Cards, grand, child)
+	if err := lib.Cards.SetArchived(ctx, root, true); err != nil {
+		t.Fatal(err)
+	}
+	families := func(r Results) []Family {
+		t.Helper()
+		var out []Family
+		for _, h := range r.Hits {
+			if h.Family == nil {
+				t.Fatalf("hit %d has no family", h.ID)
+			}
+			out = append(out, *h.Family)
+		}
+		return out
+	}
+
+	all, err := lib.Search(ctx, Card, Query{Group: "family"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The root is archived, so the face is the shallowest live member.
+	if !slices.Equal(hitIDs(all), []int64{solo, child}) || all.Total != 2 {
+		t.Fatalf("hits = %v, total %d", hitIDs(all), all.Total)
+	}
+	if f := families(all)[1]; f.RootID != root || f.Size != 2 || !slices.Equal(f.Matched, []int64{child, grand}) {
+		t.Fatalf("family = %+v", f)
+	}
+
+	text, err := lib.Search(ctx, Card, Query{Group: "family", Text: "dwarf"})
+	if err != nil || !slices.Equal(hitIDs(text), []int64{solo, child}) || !slices.Equal(families(text)[1].Matched, []int64{grand}) {
+		t.Fatalf("text: hits = %v, %v", hitIDs(text), err)
+	}
+
+	first, err := lib.Search(ctx, Card, Query{Group: "family", Page: Page{Size: 1}})
+	if err != nil || !slices.Equal(hitIDs(first), []int64{solo}) || first.Total != 2 || first.NextCursor == nil || *first.NextCursor != "1" {
+		t.Fatalf("page 1 = %+v, %v", first, err)
+	}
+	second, err := lib.Search(ctx, Card, Query{Group: "family", Page: Page{Size: 1, Number: 2}})
+	if err != nil || !slices.Equal(hitIDs(second), []int64{child}) || second.Total != 2 || second.NextCursor != nil {
+		t.Fatalf("page 2 = %+v, %v", second, err)
+	}
+
+	archived, err := lib.Search(ctx, Card, Query{Group: "family", Filter: &Filter{Archived: ptr(true)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Under the archived filter, size counts every member.
+	if f := families(archived); !slices.Equal(hitIDs(archived), []int64{child}) || f[0].Size != 3 || !slices.Equal(f[0].Matched, []int64{root}) {
+		t.Fatalf("archived: hits = %v, families %+v", hitIDs(archived), f)
+	}
+
+	// An enrichment sort places the family by its best match, grand, though the face is child.
+	const score = 7
+	if err := lib.AddEnrichments(ctx, score, []NewEnrichment{
+		{CardID: grand, RevisionID: grandRev, Key: "quality", Value: json.RawMessage("90")},
+		{CardID: solo, RevisionID: soloRev, Key: "quality", Value: json.RawMessage("40")},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sorted, err := lib.Search(ctx, Card, Query{Group: "family", Sort: "enrichment:quality", Include: []string{"enrichments"},
+		Filter: &Filter{Enrichment: ptr("quality")}, Facets: []string{"tags"}, ScoreInstance: score})
+	if err != nil || !slices.Equal(hitIDs(sorted), []int64{child, solo}) || sorted.Hits[0].Enrichments != nil || string(sorted.Hits[1].Enrichments["quality"].Value) != "40" {
+		t.Fatalf("enrichment sort: hits = %v, %v", hitIDs(sorted), err)
+	}
+
+	plain, err := lib.Search(ctx, Card, Query{})
+	if err != nil || len(plain.Hits) != 3 || plain.Hits[0].Family != nil {
+		t.Fatalf("ungrouped = %+v, %v", plain, err)
+	}
+	if _, err := lib.Search(ctx, Card, Query{Group: "tree"}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("unknown group: %v", err)
+	}
+}

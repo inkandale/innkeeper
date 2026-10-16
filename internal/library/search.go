@@ -24,6 +24,7 @@ type Query struct {
 	Sort     string   `json:"sort,omitempty" pattern:"^(relevance|updated|name|created|enrichment:[a-z][a-z0-9_]*)$" doc:"relevance, updated, name, created, or enrichment:<key> for the score instance's value of key, highest first and cards without one last. Default: relevance with text, newest first without."`
 	Facets   []string `json:"facets,omitempty" doc:"Counts to return over every match: tags, collections, targets, sources. Lorebooks take targets and sources."`
 	Page     Page     `json:"page,omitempty"`
+	Group    string   `json:"group,omitempty" enum:"family" doc:"family returns one hit per family of variants: its face, with the family's matches. Paging and total count families; facets count cards or lorebooks."`
 
 	// ScoreInstance is the enrich instance whose values enrichment filters,
 	// sort, and include use, or 0 for none. The caller resolves it from the
@@ -88,6 +89,16 @@ type Hit struct {
 	Entries    *int           `json:"entries,omitempty" doc:"Lorebooks only: how many entries it has."`
 	// Enrichments are keyed by enrichment key.
 	Enrichments map[string]HitEnrichment `json:"enrichments,omitempty" doc:"With include enrichments: the score instance's current value of each key."`
+	Family      *Family                  `json:"family,omitempty" doc:"With group family: the family this hit is the face of."`
+}
+
+// Family is a grouped hit's family of variants.
+type Family struct {
+	RootID int64 `json:"root_id"`
+	// Size counts live members, or every member when the filter mentions archived.
+	Size int `json:"size"`
+	// Matched are the members the query matched, which may not include the face.
+	Matched []int64 `json:"matched"`
 }
 
 // HitEnrichment is a card's current value of one enrichment key.
@@ -378,8 +389,49 @@ func compile(k *Kind, q Query) (string, *where, string, error) {
 	return strings.Join(conds, " AND "), w, text, nil
 }
 
+// familiesOf is a WITH clause whose fam holds each family with a match for
+// cond: its root, its best match's place under order, and its matches.
+func familiesOf(k *Kind, cond, order string) string {
+	return `WITH RECURSIVE m AS (
+		SELECT c.id, row_number() OVER (ORDER BY ` + order + `) AS pos FROM ` + from(k) + ` WHERE ` + cond + `
+	), up AS (
+		SELECT m.id AS member, e.id, e.variant_of_id FROM m JOIN ` + k.Table + ` e ON e.id = m.id
+		UNION ALL
+		SELECT up.member, p.id, p.variant_of_id FROM up JOIN ` + k.Table + ` p ON p.id = up.variant_of_id
+	), fam AS (
+		SELECT up.id AS root_id, min(m.pos) AS pos, array_agg(m.id ORDER BY m.id) AS matched
+		FROM up JOIN m ON m.id = up.member WHERE up.variant_of_id IS NULL GROUP BY up.id
+	)`
+}
+
+// familyPage follows familiesOf: it selects cols for one page of fam's
+// faces, best placed first, then each family's root, size, and matches. The
+// face is the shallowest live member, then the oldest, then the lowest ID;
+// with no live member, the root. all counts archived members in size.
+func familyPage(k *Kind, cols string, all bool, limit, offset string) string {
+	size := `count(*) FILTER (WHERE e.archived_at IS NULL)::int`
+	if all {
+		size = `count(*)::int`
+	}
+	return `, pg AS (
+		SELECT * FROM fam ORDER BY pos LIMIT ` + limit + ` OFFSET ` + offset + `
+	), down AS (
+		SELECT pg.root_id, pg.root_id AS id, 0 AS depth FROM pg
+		UNION ALL
+		SELECT down.root_id, e.id, down.depth + 1 FROM down JOIN ` + k.Table + ` e ON e.variant_of_id = down.id
+	), face AS (
+		SELECT pg.root_id, pg.pos, pg.matched, f.id, f.size FROM pg CROSS JOIN LATERAL (
+			SELECT (array_agg(e.id ORDER BY e.archived_at IS NOT NULL, d.depth, e.created_at, e.id))[1] AS id, ` + size + ` AS size
+			FROM down d JOIN ` + k.Table + ` e ON e.id = d.id WHERE d.root_id = pg.root_id
+		) f
+	)
+	SELECT ` + cols + `, face.root_id, face.size, face.matched
+	FROM face JOIN ` + from(k) + ` ON c.id = face.id ORDER BY face.pos`
+}
+
 // Search returns one page of the library's entities of kind k that match q,
-// best match first when q has text, newest first otherwise.
+// best match first when q has text, newest first otherwise. With q.Group
+// family, a page holds one hit per family, placed by its best match.
 //
 // ponytail: the cursor is an offset, so a page can repeat or skip an item
 // that was added or archived since the last page; switch to keyset paging
@@ -472,27 +524,45 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 		}
 		order = cur + " DESC NULLS LAST, c.id DESC"
 	}
+	if q.Group != "" && q.Group != "family" {
+		return Results{}, fmt.Errorf("%w: unknown group %q", ErrInvalid, q.Group)
+	}
 	res := Results{Hits: []Hit{}}
-	if err := l.pool.QueryRow(ctx, `SELECT count(*) FROM `+from(k)+` WHERE `+cond, condArgs...).Scan(&res.Total); err != nil {
-		return Results{}, err
+	count := `SELECT count(*) FROM ` + from(k) + ` WHERE ` + cond
+	if q.Group == "family" {
+		// The count ignores order, whose sort arguments aren't in condArgs.
+		count = familiesOf(k, cond, "c.id") + ` SELECT count(*) FROM fam`
+	}
+	if err := l.pool.QueryRow(ctx, count, condArgs...).Scan(&res.Total); err != nil {
+		return Results{}, fmt.Errorf("count matches: %w", err)
 	}
 	if len(q.Facets) > 0 {
 		if res.Facets, err = l.facets(ctx, k, q.Facets, cond, condArgs); err != nil {
 			return Results{}, err
 		}
 	}
-	sql := `SELECT c.id, c.slug, r.id, c.archived_at, r.data, r.avatar_blob, ` + tags + `, ` + books + `, ` + targets + `, ` + cards + `, ` + entries + `, ` + enrichments + `
-		FROM ` + from(k) + `
-		WHERE ` + cond + ` ORDER BY ` + order + ` LIMIT ` + w.arg(size+1) + ` OFFSET ` + w.arg(offset)
+	cols := `c.id, c.slug, r.id, c.archived_at, r.data, r.avatar_blob, ` + tags + `, ` + books + `, ` + targets + `, ` + cards + `, ` + entries + `, ` + enrichments
+	limit, skip := w.arg(size+1), w.arg(offset)
+	sql := `SELECT ` + cols + `, NULL::bigint, NULL::int, NULL::bigint[] FROM ` + from(k) + `
+		WHERE ` + cond + ` ORDER BY ` + order + ` LIMIT ` + limit + ` OFFSET ` + skip
+	if q.Group == "family" {
+		sql = familiesOf(k, cond, order) + familyPage(k, cols, mentionsArchived(q.Filter), limit, skip)
+	}
 	rows, err := l.pool.Query(ctx, sql, w.args...)
 	if err != nil {
-		return Results{}, err
+		return Results{}, fmt.Errorf("search %s: %w", k.Plural, err)
 	}
 	var h Hit
 	var data []byte
 	var avatar *string
-	_, err = pgx.ForEachRow(rows, []any{&h.ID, &h.Slug, &h.RevisionID, &h.ArchivedAt, &data, &avatar, &h.Tags, &h.Lorebooks, &h.Targets, &h.Cards, &h.Entries, &h.Enrichments},
+	var rootID *int64
+	var famSize *int
+	var matched []int64
+	_, err = pgx.ForEachRow(rows, []any{&h.ID, &h.Slug, &h.RevisionID, &h.ArchivedAt, &data, &avatar, &h.Tags, &h.Lorebooks, &h.Targets, &h.Cards, &h.Entries, &h.Enrichments, &rootID, &famSize, &matched},
 		func() error {
+			if rootID != nil {
+				h.Family = &Family{RootID: *rootID, Size: *famSize, Matched: matched}
+			}
 			var all map[string]any
 			if err := json.Unmarshal(data, &all); err != nil {
 				return err

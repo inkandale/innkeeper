@@ -58,9 +58,11 @@ const confInst = { ...broken, id: 6, plugin: "conf", name: "c", config: { url: "
 let sent: { method: string; path: string; body: unknown }[];
 // Set to hold the conf plugin's defaults until it resolves.
 let defaultsHeld: Promise<void> | undefined;
+let defaultsFetches: number;
 beforeEach(() => {
   sent = [];
   defaultsHeld = undefined;
+  defaultsFetches = 0;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
@@ -76,6 +78,7 @@ beforeEach(() => {
       }
       if (req.method === "GET" && u.pathname === "/api/instances/6") return json(confInst);
       if (u.pathname === "/api/plugins/conf/settings/defaults") {
+        defaultsFetches++;
         await defaultsHeld;
         return json({ defaults: { "/prompts/greet": "Hello" }, updated: [] });
       }
@@ -304,4 +307,25 @@ test("save waits for the defaults, so the bases are never skipped", async () => 
   expect(await screen.findByRole("button", { name: "Save" })).toBeDisabled();
   release();
   await vi.waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeEnabled());
+});
+
+test("saving refetches the defaults, so a saved override's update mark is current", async () => {
+  const user = userEvent.setup();
+  const onSaved = vi.fn();
+  const router = createMemoryRouter(
+    [{ path: "/", element: <InstanceForm plugin={{ ...conf, source: "official", builtin: false } satisfies Plugin} instance={{ ...confInst, library_access: false }} onSaved={onSaved} /> }],
+    { initialEntries: ["/"] },
+  );
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <Toasts>
+        <RouterProvider router={router} />
+      </Toasts>
+    </QueryClientProvider>,
+  );
+  await vi.waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeEnabled());
+  expect(defaultsFetches).toBe(1);
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await vi.waitFor(() => expect(onSaved).toHaveBeenCalled());
+  await vi.waitFor(() => expect(defaultsFetches).toBe(2));
 });

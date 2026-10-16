@@ -180,6 +180,7 @@ export function InstanceForm({
     onSuccess: (saved) => {
       qc.setQueryData(["instance", saved.id], saved);
       qc.invalidateQueries({ queryKey: ["instances"] });
+      qc.invalidateQueries({ queryKey: ["plugin-defaults", plugin.name] });
       toast({ text: `Saved ${saved.name}.` });
       if (onSaved) onSaved(saved);
       else navigate("/settings/plugins");
@@ -313,8 +314,8 @@ export function InstanceForm({
             <div role="status" className={run.data.ok ? undefined : "error"}>
               {run.data.message && <p>{run.data.message}</p>}
               <ul>
-                {(run.data.checks ?? []).map((c) => (
-                  <li key={c.name}>
+                {(run.data.checks ?? []).map((c, i) => (
+                  <li key={i}>
                     {c.ok ? "✓" : "✗"} {c.name}
                     {c.latency_ms ? ` — ${c.latency_ms} ms` : ""}
                     {c.message ? `: ${c.message}` : ""}

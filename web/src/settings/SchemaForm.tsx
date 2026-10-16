@@ -19,7 +19,7 @@ export type Schema = {
   required?: string[];
 };
 
-/** FormHelpers is what fields need from the form around them; every part is optional. */
+/** FormHelpers is what fields need from the form around them. */
 export type FormHelpers = {
   /** Defaults by JSON pointer: the schema's and the plugin's. */
   defaults: Record<string, unknown>;

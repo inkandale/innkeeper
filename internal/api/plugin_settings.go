@@ -112,7 +112,7 @@ func (s *Server) draftGuard(ctx context.Context, d DraftIn) error {
 }
 
 // settingsFail is fail, except a plugin's own error message reaches the
-// owner: only the destructive tier can make these calls.
+// owner: options and run need destructive, and defaults sends no secrets.
 func (s *Server) settingsFail(err error) error {
 	var rpcErr *protocol.Error
 	switch {

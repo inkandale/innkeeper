@@ -483,6 +483,38 @@ ink lorebooks sources add 5 https://chub.ai/lorebooks/user/name
 
 A removed source stays removed: detection won't add it back.
 
+## Variants
+
+A **variant** is a card or lorebook that records the one it came from, such as
+an NSFW rewrite or an author's v2. A **family** is a card and every variant
+below it. The link only organizes the library: editing a card never changes its
+variants, and exports and app pushes leave the link out.
+
+| To | API | MCP tool |
+|---|---|---|
+| Copy a card into a new variant | `POST /cards/{id}/variants` | `fork_card` |
+| Link a card to its parent | `PUT /cards/{id}/variant_of` `{"id": <parent>}` | `set_variant_of` |
+| Unlink it | `DELETE /cards/{id}/variant_of` | `set_variant_of` with `variant_of` null |
+
+Lorebooks have the same routes under `/lorebooks`, and the MCP tools take
+`kind: "lorebook"`. A fork copies the content, image, overrides, collections,
+and linked lorebooks, but not sources or app bindings. A link that would make a
+card its own ancestor fails with 409.
+
+Search takes three options for families:
+
+- `group: "family"` returns one hit per family, showing its shallowest live
+  member, with `family: {root_id, size, matched}`. Paging and `total` count
+  families. The library list groups by default; "Ungroup variants" turns it
+  off.
+- The `variant_of_root: <id>` filter returns a family's members.
+- The `shares_source: true` filter finds cards that share a source with another
+  card, which are often variants. Select them and use "Make variants of…".
+
+When reviewing a sync, "Import as variant of this" imports the app item as a
+new card linked to the compared card. In the API, that is `variant_of` on an
+`import` resolution.
+
 ## Sync
 
 The image ships a target for [Lumiverse](https://github.com/prolix-oc/Lumiverse).

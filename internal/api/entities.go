@@ -41,15 +41,17 @@ func toRevision(r library.Revision, full bool) revisionOut {
 }
 
 type entityOut struct {
-	ID          int64       `json:"id"`
-	Slug        string      `json:"slug"`
-	Provenance  string      `json:"provenance"`
-	ArchivedAt  *time.Time  `json:"archived_at,omitempty"`
-	CreatedAt   time.Time   `json:"created_at"`
-	Revision    revisionOut `json:"revision" doc:"The head revision"`
-	Lorebooks   []int64     `json:"lorebooks,omitempty" doc:"Cards only: IDs of linked lorebooks"`
-	Collections []int64     `json:"collections,omitempty" doc:"Cards only: IDs of the collections it's in"`
-	Cards       []int64     `json:"cards,omitempty" doc:"Lorebooks only: IDs of linked cards"`
+	ID          int64               `json:"id"`
+	Slug        string              `json:"slug"`
+	Provenance  string              `json:"provenance"`
+	ArchivedAt  *time.Time          `json:"archived_at,omitempty"`
+	CreatedAt   time.Time           `json:"created_at"`
+	Revision    revisionOut         `json:"revision" doc:"The head revision"`
+	Lorebooks   []int64             `json:"lorebooks,omitempty" doc:"Cards only: IDs of linked lorebooks"`
+	Collections []int64             `json:"collections,omitempty" doc:"Cards only: IDs of the collections it's in"`
+	Cards       []int64             `json:"cards,omitempty" doc:"Lorebooks only: IDs of linked cards"`
+	VariantOf   *library.EntityRef  `json:"variant_of,omitempty" doc:"The card or lorebook this is a variant of. Absent for none."`
+	Variants    []library.EntityRef `json:"variants" doc:"Its direct variants, oldest first"`
 }
 
 type entityResp struct{ Body entityOut }
@@ -112,6 +114,20 @@ type archiveIn struct {
 	Body struct {
 		Archived  bool `json:"archived"`
 		Unpublish bool `json:"unpublish,omitempty" doc:"When archiving: also delete its copies from the apps it was pushed to. An app that can't delete keeps its copy and stays linked."`
+	}
+}
+
+type forkIn struct {
+	ID   int64 `path:"id"`
+	Body struct {
+		Source string `json:"source,omitempty" enum:"ui,mcp" default:"ui"`
+	}
+}
+
+type variantOfIn struct {
+	ID   int64 `path:"id"`
+	Body struct {
+		ID int64 `json:"id" doc:"The card or lorebook, of the same kind, that this is a variant of"`
 	}
 }
 
@@ -185,6 +201,14 @@ func (s *Server) entity(ctx context.Context, ents *library.Entities, id int64) (
 			return nil, s.fail(err)
 		}
 	}
+	if out.Body.VariantOf, err = ents.Parent(ctx, id); err != nil {
+		return nil, s.fail(err)
+	}
+	variants, err := ents.Variants(ctx, id)
+	if err != nil {
+		return nil, s.fail(err)
+	}
+	out.Body.Variants = orEmpty(variants)
 	return out, nil
 }
 
@@ -387,6 +411,32 @@ func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
 				return nil, huma.Error422UnprocessableEntity("unpublish only goes with archived: true")
 			}
 			return nil, s.fail(bulk.SetArchived(ctx, s.Lib, s.Targets, k, in.ID, in.Body.Archived, in.Body.Unpublish))
+		})
+
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "fork-" + singular, Method: http.MethodPost,
+		Path: item + "/variants", Summary: "Make a variant of a " + singular,
+		Description: "Copies the head revision, and a card's collections and lorebook links, into a new " + singular +
+			" that is a variant of this one. Sources and bindings aren't copied.", Tags: tags, DefaultStatus: http.StatusCreated},
+		func(ctx context.Context, in *forkIn) (*entityResp, error) {
+			v, err := ents.Fork(ctx, in.ID, in.Body.Source)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			return s.entity(ctx, ents, v.ID)
+		})
+
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "set-" + singular + "-variant-of", Method: http.MethodPut,
+		Path: item + "/variant_of", Summary: "Make a " + singular + " a variant of another",
+		Description: "Makes no revision. A link that would make it its own ancestor returns 409.", Tags: tags, DefaultStatus: http.StatusNoContent},
+		func(ctx context.Context, in *variantOfIn) (*struct{}, error) {
+			return nil, s.fail(ents.SetVariantOf(ctx, in.ID, &in.Body.ID))
+		})
+
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "unset-" + singular + "-variant-of", Method: http.MethodDelete,
+		Path: item + "/variant_of", Summary: "Unlink a " + singular + " from the one it is a variant of",
+		Description: "Makes no revision.", Tags: tags, DefaultStatus: http.StatusNoContent},
+		func(ctx context.Context, in *idIn) (*struct{}, error) {
+			return nil, s.fail(ents.SetVariantOf(ctx, in.ID, nil))
 		})
 }
 

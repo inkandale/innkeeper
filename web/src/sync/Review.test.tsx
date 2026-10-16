@@ -576,3 +576,13 @@ test("a followed lorebook's update resolves on the lorebook route with the loreb
     expect.objectContaining({ path: "/api/instances/4/lorebooks/chub:alice/vyr/resolve", action: "bind", card_id: 30, choices: { "description#0": "app" } }),
   );
 });
+
+test("Import as variant of this sends the compared card as variant_of", async () => {
+  renderReview();
+  const user = userEvent.setup();
+  await screen.findByRole("radiogroup", { name: "Keep for description#1" });
+  await user.click(within(screen.getByRole("radiogroup", { name: "Action" })).getByLabelText("Import as variant of this"));
+  await user.click(screen.getByRole("button", { name: "Resolve" }));
+  await screen.findByText("Queue page");
+  expect(resolved[0]).toMatchObject({ remote_id: "a", action: "import", variant_of: 1 });
+});

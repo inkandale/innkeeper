@@ -1,5 +1,5 @@
 import { useMutation, useQueries, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, ApiError, must, route, type Kind } from "../api/client";
 import { CardPicker } from "../cards/CardPicker";
@@ -79,6 +79,7 @@ function ReviewItem() {
     0;
 
   const [action, setAction] = useState<Option["action"]>();
+  const [asVariant, setAsVariant] = useState(false);
   // Only the snapshot's options are offered: an error item can only be skipped, and a bound one shouldn't default to a duplicate import.
   // A match picked by hand adds Bind, unless the item errored.
   // A followed source can only merge into its card: importing or skipping it would mean nothing.
@@ -133,6 +134,7 @@ function ReviewItem() {
       { replace: true },
     );
     if (item?.verdict !== "error") setAction("bind");
+    setAsVariant(false);
     setChoices({});
   };
 
@@ -142,6 +144,7 @@ function ReviewItem() {
       // binding. A 409's reloaded comparison, or a drift review's, is what they saw instead; it omits binding_id when unbound.
       const bindingId = item && !(afterStale && cmp.data) ? (item.binding_id ?? 0) : (cmp.data?.binding_id ?? 0);
       const body = resolution(remoteId, cmp.data?.app_hash ?? item?.app_hash ?? "", act, cmp.data, choices, bindingId);
+      if (act === "import" && asVariant) body.variant_of = card;
       const books = nested.flatMap((lb, i) => {
         const o = nestedPick(lb);
         return o
@@ -199,10 +202,34 @@ function ReviewItem() {
           {!followed && (
             <span className="row" role="radiogroup" aria-label="Action">
               {actions.map((a) => (
-                <label key={a} className="check">
-                  <input type="radio" name="action" checked={act === a} onChange={() => setAction(a)} />{" "}
-                  {a === "bind" ? "Bind" : a === "import" ? "Import as new" : "Skip"}
-                </label>
+                <Fragment key={a}>
+                  <label className="check">
+                    <input
+                      type="radio"
+                      name="action"
+                      checked={act === a && !(a === "import" && asVariant)}
+                      onChange={() => {
+                        setAction(a);
+                        setAsVariant(false);
+                      }}
+                    />{" "}
+                    {a === "bind" ? "Bind" : a === "import" ? "Import as new" : "Skip"}
+                  </label>
+                  {a === "import" && card > 0 && (
+                    <label className="check">
+                      <input
+                        type="radio"
+                        name="action"
+                        checked={act === "import" && asVariant}
+                        onChange={() => {
+                          setAction("import");
+                          setAsVariant(true);
+                        }}
+                      />{" "}
+                      Import as variant of this
+                    </label>
+                  )}
+                </Fragment>
               ))}
             </span>
           )}

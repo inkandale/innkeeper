@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"testing"
+	"time"
 )
 
 type searchCards struct{ brakka, carrow, dellin int64 }
@@ -654,5 +655,25 @@ func TestSearchSharesSource(t *testing.T) {
 	}
 	if got, err = lib.Search(ctx, Card, q); err != nil || len(got.Hits) != 0 {
 		t.Fatalf("after removing the shared source = %v, %v", hitIDs(got), err)
+	}
+}
+
+func TestSearchTerminatesOnAVariantCycle(t *testing.T) {
+	lib := newLibrary(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	a, _ := newCard(t, lib, "a", `{"name": "A"}`)
+	b, _ := newCard(t, lib, "b", `{"name": "B"}`)
+	tail, _ := newCard(t, lib, "tail", `{"name": "Tail"}`)
+	setVariantOf(t, lib.Cards, tail, b)
+	// SetVariantOf refuses a cycle, but a restored backup could hold one.
+	if _, err := lib.pool.Exec(ctx, `UPDATE card SET variant_of_id = CASE id WHEN $1::bigint THEN $2::bigint ELSE $1::bigint END WHERE id IN ($1, $2)`, a, b); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lib.Search(ctx, Card, Query{Group: "family"}); err != nil {
+		t.Fatalf("grouped search: %v", err)
+	}
+	if _, err := lib.Search(ctx, Card, Query{Filter: &Filter{VariantOfRoot: ptr(a)}}); err != nil {
+		t.Fatalf("variant_of_root: %v", err)
 	}
 }

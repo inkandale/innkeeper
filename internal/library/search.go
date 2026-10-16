@@ -312,7 +312,7 @@ func (w *where) filter(f Filter) (string, error) {
 	case f.VariantOfRoot != nil:
 		return `c.id IN (WITH RECURSIVE down AS (
 				SELECT id FROM ` + w.k.Table + ` WHERE id = ` + w.arg(*f.VariantOfRoot) + `
-				UNION ALL
+				UNION
 				SELECT x.id FROM ` + w.k.Table + ` x JOIN down ON x.variant_of_id = down.id)
 			SELECT id FROM down)`, nil
 	case f.SharesSource != nil:
@@ -401,7 +401,7 @@ func familiesOf(k *Kind, cond, order string) string {
 		SELECT c.id, row_number() OVER (ORDER BY ` + order + `) AS pos FROM ` + from(k) + ` WHERE ` + cond + `
 	), up AS (
 		SELECT m.id AS member, e.id, e.variant_of_id FROM m JOIN ` + k.Table + ` e ON e.id = m.id
-		UNION ALL
+		UNION
 		SELECT up.member, p.id, p.variant_of_id FROM up JOIN ` + k.Table + ` p ON p.id = up.variant_of_id
 	), fam AS (
 		SELECT up.id AS root_id, min(m.pos) AS pos, array_agg(m.id ORDER BY m.id) AS matched
@@ -424,7 +424,7 @@ func familyPage(k *Kind, cols string, all bool, limit, offset string) string {
 		SELECT pg.root_id, pg.root_id AS id, 0 AS depth FROM pg
 		UNION ALL
 		SELECT down.root_id, e.id, down.depth + 1 FROM down JOIN ` + k.Table + ` e ON e.variant_of_id = down.id
-	), face AS (
+	) CYCLE id SET is_cycle USING path, face AS (
 		SELECT pg.root_id, pg.pos, pg.matched, f.id, f.size FROM pg CROSS JOIN LATERAL (
 			SELECT (array_agg(e.id ORDER BY e.archived_at IS NOT NULL, d.depth, e.created_at, e.id))[1] AS id, ` + size + ` AS size
 			FROM down d JOIN ` + k.Table + ` e ON e.id = d.id WHERE d.root_id = pg.root_id

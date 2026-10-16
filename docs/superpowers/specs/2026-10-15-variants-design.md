@@ -48,19 +48,21 @@ One plan, in three slices that each merge on their own:
 Migration `0025_variants.sql`:
 
 - `variant_of_id bigint REFERENCES card(id)` on `card`, and the same on
-  `lorebook` against `lorebook(id)`.
+  `lorebook` against `lorebook(id)`. Both are `DEFERRABLE INITIALLY
+  IMMEDIATE`, because restore defers foreign key checks.
 - A partial index on each, `WHERE variant_of_id IS NOT NULL`.
 
 In `internal/library`:
 
 - `ErrVariantCycle` joins the sentinel errors and `Server.failAs` maps it to
   409.
-- `Entities.SetVariantOf(ctx, k, id, parent)` sets the link, or clears it when
+- `Entities.SetVariantOf(ctx, id, parent)` sets the link, or clears it when
   `parent` is nil. In one transaction it walks up from `parent` with a
   recursive CTE and returns `ErrVariantCycle` if it reaches `id`. Linking an
   entity to itself is a cycle. A parent that doesn't exist in the same kind's
   table is `ErrNotFound`.
-- `Entities.Fork(ctx, k, id)` creates a variant from the head revision:
+- `Entities.Fork(ctx, id, source)` creates a variant from the head revision.
+  `source` is the revision source, `ui` or `mcp`.
 
   | Copied | Not copied |
   |---|---|
@@ -72,7 +74,8 @@ In `internal/library`:
   The slug is `freeSlug(<slug>-variant)`, giving `-variant`, then
   `-variant-2`. The name is unchanged. The first revision's message is
   `Variant of <slug> at r<rev>`. The new entity's `variant_of_id` is the
-  source entity.
+  source entity, and its provenance is `variant`, so import dedupe never
+  matches it against the source's provenance.
 
 ## API
 
@@ -86,7 +89,7 @@ For each kind, under its plural path (`/cards`, `/lorebooks`):
 
 The wire `Card` and `Lorebook` from GET gain:
 
-- `variant_of`: `{id, slug, name}` of the parent, or null.
+- `variant_of`: `{id, slug, name}` of the parent, omitted when there is none.
 - `variants`: the direct children, in the same shape.
 
 Search hits don't carry these; grouped search has its own `family` field.
@@ -121,7 +124,9 @@ source table.
 
 The wire resolution for `action: import` gains an optional `variant_of`. The
 library import sets `variant_of_id` in the same transaction as it creates the
-entity. `variant_of` on any other action is `ErrInvalid` (400).
+entity. If import dedupe finds an exact copy instead, the item binds to that
+copy and no link is set. `variant_of` on any other action is `ErrInvalid`
+(400).
 
 Reconcile never suggests a variant, and autosync is unchanged.
 
@@ -158,7 +163,8 @@ new", pre-filled with the candidate being compared.
 
 **Bulk "Make variants of…":** a `SelectionBar` action that opens
 `CardPicker`. When every selected entity shares a source, the picker is
-pre-filled with the oldest. The client sends one `PUT …/variant_of` per
+pre-filled with the oldest (lowest `id`). It's hidden under "Select all
+matching", where the client has no list of IDs. The client sends one `PUT …/variant_of` per
 selected entity, skipping the chosen parent, and lists each failure, such as
 a 409 cycle, by name.
 

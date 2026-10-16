@@ -61,7 +61,7 @@ func (p Payload) Check(a protocol.Action) error {
 		return fmt.Errorf("%w: card_id goes only with a card, and lorebook_id with a lorebook", ErrInvalid)
 	case len(a.Fields) == 0 && p.Field != "":
 		return fmt.Errorf("%w: %s runs on the whole %s, not a field", ErrInvalid, a.ID, kind)
-	case len(a.Fields) > 0 && !slices.Contains(a.Fields, p.Field):
+	case len(a.Fields) > 0 && !slices.Contains(a.Fields, p.Field) && (p.Field != "" || !a.WholeCard):
 		return fmt.Errorf("%w: %s runs on the field %v, not %q", ErrInvalid, a.ID, a.Fields, p.Field)
 	case !a.Images && p.Images != ImageRefs{}:
 		return fmt.Errorf("%w: %s takes no images", ErrInvalid, a.ID)

@@ -12,9 +12,9 @@ import (
 )
 
 // Scope keeps the changes proposal makes to base that action a may make, and
-// returns a warning per key it dropped. field is the run's field, and kind
-// the entity's. A nil base is a new card's empty draft. A report-only
-// action's proposal is dropped whole.
+// returns a warning per key it dropped. field is the run's field, or "" for
+// the whole entity; kind is the entity's. A nil base is a new card's empty
+// draft. A report-only action's proposal is dropped whole.
 func Scope(a protocol.Action, field, kind string, base, proposal json.RawMessage) (json.RawMessage, []string, error) {
 	if len(proposal) == 0 || string(proposal) == "null" {
 		return nil, nil, nil
@@ -34,8 +34,10 @@ func Scope(a protocol.Action, field, kind string, base, proposal json.RawMessage
 		// Linked lorebooks hold a card's book; the library refuses one inside the card.
 		case a.ReportOnly, kind == protocol.ApplyCard && key == "character_book":
 			return false
-		case len(a.Fields) > 0:
+		case len(a.Fields) > 0 && field != "":
 			return key == field
+		case len(a.Fields) > 0:
+			return slices.Contains(a.Fields, key)
 		}
 		return true
 	}

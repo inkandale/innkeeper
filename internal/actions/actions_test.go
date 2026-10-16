@@ -14,6 +14,7 @@ import (
 func TestScope(t *testing.T) {
 	field := protocol.Action{ID: "tighten", Applies: "card", Fields: []string{"description"}}
 	whole := protocol.Action{ID: "reforge", Applies: "card"}
+	both := protocol.Action{ID: "tighten", Applies: "card", Fields: []string{"description", "scenario"}, WholeCard: true}
 	base := `{"name": "Brakka", "description": "Big.", "scenario": "A cave."}`
 	tests := []struct {
 		name         string
@@ -29,6 +30,12 @@ func TestScope(t *testing.T) {
 			`{"name": "Brakka", "description": "Huge.", "scenario": "A cave."}`, []string{"name"}},
 		{"field action can't remove another field", field, "description", "card", base,
 			`{"name": "Brakka", "description": "Huge."}`,
+			`{"name": "Brakka", "description": "Huge.", "scenario": "A cave."}`, []string{"scenario"}},
+		{"whole-card field action changes its fields and drops a rename", both, "", "card", base,
+			`{"name": "Grok", "description": "Huge.", "scenario": "A pit."}`,
+			`{"name": "Brakka", "description": "Huge.", "scenario": "A pit."}`, []string{"name"}},
+		{"whole-card field action on one field keeps to it", both, "description", "card", base,
+			`{"name": "Brakka", "description": "Huge.", "scenario": "A pit."}`,
 			`{"name": "Brakka", "description": "Huge.", "scenario": "A cave."}`, []string{"scenario"}},
 		{"key order and spacing are no change", field, "description", "card", base,
 			`{"scenario":"A cave.","description":"Big.","name":"Brakka"}`,
@@ -83,6 +90,7 @@ func TestScopeRejectsANonObjectProposal(t *testing.T) {
 
 func TestPayloadCheck(t *testing.T) {
 	field := protocol.Action{ID: "tighten", Applies: "card", Fields: []string{"description"}}
+	both := protocol.Action{ID: "tighten", Applies: "card", Fields: []string{"description"}, WholeCard: true}
 	card := protocol.ActionEntity{Kind: "card", Data: raw(`{"name": "Brakka"}`)}
 	tests := []struct {
 		name    string
@@ -97,6 +105,9 @@ func TestPayloadCheck(t *testing.T) {
 		{"field not offered", field, Payload{Field: "scenario", Entity: card}, "scenario"},
 		{"field action without a field", field, Payload{Entity: card}, "field"},
 		{"field on a whole-card action", protocol.Action{Applies: "card"}, Payload{Field: "description", Entity: card}, "field"},
+		{"whole-card field action without a field", both, Payload{Entity: card}, ""},
+		{"whole-card field action on its field", both, Payload{Field: "description", Entity: card}, ""},
+		{"whole-card field action on another field", both, Payload{Field: "scenario", Entity: card}, "scenario"},
 		{"images not taken", field, Payload{Field: "description", Entity: card, Images: ImageRefs{Avatar: "ab"}}, "images"},
 		{"data not an object", protocol.Action{Applies: "card"}, Payload{Entity: protocol.ActionEntity{Kind: "card", Data: raw(`"x"`)}}, "object"},
 		{"card without data", protocol.Action{Applies: "card"}, Payload{Entity: protocol.ActionEntity{Kind: "card"}}, "object"},

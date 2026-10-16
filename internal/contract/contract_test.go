@@ -430,3 +430,50 @@ func TestAIPluginAnswersItsServices(t *testing.T) {
 		}
 	}
 }
+
+// provide makes the fake an ai.chat provider that streams from the check's
+// model server.
+func provide(t *testing.T) {
+	Provider = testutil.FakePluginWith(t, []string{"ai"})
+	ProviderConfig = `{"services": ["ai.chat"], "base_url": "${INNKEEPER_FAKE_AI_URL}"}`
+	t.Cleanup(func() { Provider, ProviderConfig = "", "" })
+}
+
+func TestConsumerCallsAProviderThroughTheBroker(t *testing.T) {
+	provide(t)
+	results, err := Check(context.Background(), testutil.FakeConsumer(t), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := failed(results); len(f) > 0 {
+		t.Fatalf("checks failed: %v", f)
+	}
+	for _, name := range []string{checkProviderName, checkReplyName, checkDeltasName, checkToolsName, checkCancelName} {
+		if !slices.ContainsFunc(results, func(r Result) bool { return r.Name == name }) {
+			t.Errorf("check %q didn't run", name)
+		}
+	}
+}
+
+func TestConsumerThatDropsTheToolCallFails(t *testing.T) {
+	provide(t)
+	results, err := Check(context.Background(), testutil.FakeConsumer(t, "-mode=drop-tool-call"), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = failed(results)[checkToolsName]
+	if err == nil || !strings.Contains(err.Error(), "without the assistant message") {
+		t.Fatalf("got %v, want the missing call named", err)
+	}
+}
+
+func TestUsesWithoutAProviderFails(t *testing.T) {
+	results, err := Check(context.Background(), testutil.FakeConsumer(t), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = failed(results)[checkProviderName]
+	if err == nil || !strings.Contains(err.Error(), "INNKEEPER_PROVIDER_PLUGIN") {
+		t.Fatalf("got %v, want INNKEEPER_PROVIDER_PLUGIN named", err)
+	}
+}

@@ -50,10 +50,7 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	if m.IsTheme() {
 		return []Result{{"theme stylesheet is readable", nil}}, nil
 	}
-	secrets := map[string]string{}
-	for _, s := range m.Secrets {
-		secrets[s] = "contract-check"
-	}
+	secrets := checkSecrets(m)
 	// root is the blob store; a codec writes its files to blob_tmp, which is
 	// <root>/tmp as in a real store.
 	root, err := os.MkdirTemp("", "innkeeper-check-")
@@ -118,6 +115,10 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 		}
 	}
 
+	if len(m.Uses) > 0 {
+		results = append(results, checkUses(ctx, m, params, log)...)
+	}
+
 	callCtx, cancel = context.WithTimeout(ctx, callTimeout)
 	err = p.Call(callCtx, protocol.MethodShutdown, nil, nil)
 	cancel()
@@ -126,6 +127,15 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	}
 	results = append(results, Result{"answers shutdown", err})
 	return append(results, Result{"exits after shutdown", p.Stop()}), nil
+}
+
+// checkSecrets gives each secret the manifest declares a placeholder value.
+func checkSecrets(m *protocol.Manifest) map[string]string {
+	secrets := map[string]string{}
+	for _, s := range m.Secrets {
+		secrets[s] = "contract-check"
+	}
+	return secrets
 }
 
 // check is one named check against a running plugin.

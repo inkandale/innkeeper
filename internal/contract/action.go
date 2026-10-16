@@ -52,27 +52,9 @@ var sampleLorebook = json.RawMessage(`{"name": "Contract Check", "entries": []}`
 // plugin checked without its config, such as an AI without a model, may only
 // fail, so an error other than -32601 counts as an answer.
 func checkActionRuns(ctx context.Context, p *pluginhost.Process, list []protocol.Action) error {
-	var card struct {
-		Data json.RawMessage `json:"data"`
-	}
-	if err := json.Unmarshal(sampleCard, &card); err != nil {
-		return err
-	}
 	for _, a := range list {
-		params := protocol.ActionRunParams{Run: "contract-check", Action: a.ID, Inputs: json.RawMessage(`{}`),
-			Entity:  protocol.ActionEntity{Kind: protocol.ApplyCard, Data: card.Data},
-			Context: protocol.ActionContext{Cards: []protocol.ContextItem{}, Lorebooks: []protocol.ContextItem{}, Skills: []string{}}}
-		switch a.Applies {
-		case protocol.ApplyNew:
-			params.Entity.Data = nil
-		case protocol.ApplyLorebook:
-			params.Entity = protocol.ActionEntity{Kind: protocol.ApplyLorebook, Data: sampleLorebook}
-		}
-		if len(a.Fields) > 0 {
-			params.Field = a.Fields[0]
-		}
 		var res protocol.ActionRunResult
-		err := call(ctx, p, protocol.MethodActionRun, params, &res)
+		err := call(ctx, p, protocol.MethodActionRun, actionRunParams(a), &res)
 		var rpcErr *protocol.Error
 		switch {
 		case errors.As(err, &rpcErr) && rpcErr.Code != protocol.CodeMethodNotFound:
@@ -90,4 +72,25 @@ func checkActionRuns(ctx context.Context, p *pluginhost.Process, list []protocol
 		}
 	}
 	return nil
+}
+
+// actionRunParams runs a on a sample entity with its first field and no inputs.
+func actionRunParams(a protocol.Action) protocol.ActionRunParams {
+	var card struct {
+		Data json.RawMessage `json:"data"`
+	}
+	_ = json.Unmarshal(sampleCard, &card)
+	params := protocol.ActionRunParams{Run: "contract-check", Action: a.ID, Inputs: json.RawMessage(`{}`),
+		Entity:  protocol.ActionEntity{Kind: protocol.ApplyCard, Data: card.Data},
+		Context: protocol.ActionContext{Cards: []protocol.ContextItem{}, Lorebooks: []protocol.ContextItem{}, Skills: []string{}}}
+	switch a.Applies {
+	case protocol.ApplyNew:
+		params.Entity.Data = nil
+	case protocol.ApplyLorebook:
+		params.Entity = protocol.ActionEntity{Kind: protocol.ApplyLorebook, Data: sampleLorebook}
+	}
+	if len(a.Fields) > 0 {
+		params.Field = a.Fields[0]
+	}
+	return params
 }

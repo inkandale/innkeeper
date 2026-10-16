@@ -606,3 +606,11 @@ test("grouped, select all matching names no count, since total counts families",
     expect(posts[0]).toEqual({ path: "/api/bulk", body: { query: { filter: { and: [{ tag: "fantasy" }] } }, action: "archive", unpublish: false } }),
   );
 });
+
+test("Shares a source filters the list", async () => {
+  const { router } = renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Shares a source" }));
+  expect(router.state.location.search).toBe("?shared=1");
+  await waitFor(() => expect(mainSearches().at(-1)).toMatchObject({ filter: { and: [{ shares_source: true }] } }));
+});

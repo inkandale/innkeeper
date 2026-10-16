@@ -17,7 +17,7 @@ import {
   type Term,
 } from "./query";
 
-const base: CardQuery = { text: "", terms: [], sort: "updated", page: 1, size: 48, view: "grid" };
+const base: CardQuery = { text: "", terms: [], sort: "updated", page: 1, size: 48, view: "grid", shared: false };
 const term = (kind: Term["kind"], value: string, not = false): Term => ({ kind, value, not });
 
 test("an empty URL is the default query", () => {
@@ -32,6 +32,7 @@ test("a query round-trips through the URL", () => {
     page: 3,
     size: 96,
     view: "list",
+    shared: true,
   };
   expect(parseQuery(toParams(q))).toEqual(q);
 });
@@ -191,4 +192,11 @@ test("withoutScores drops score terms and an enrichment sort", () => {
   const q: CardQuery = { ...base, terms: [term("tag", "a"), term("score", "quality:1..")], sort: "enrichment:quality" };
   expect(withoutScores(q)).toEqual({ ...base, terms: [term("tag", "a")] });
   expect(withoutScores(base)).toBe(base);
+});
+
+test("Shares a source is shared=1 in the URL and a shares_source filter", () => {
+  const q = { ...base, shared: true };
+  expect(toParams(q).toString()).toBe("shared=1");
+  expect(toSearch(q).filter).toEqual({ and: [{ shares_source: true }] });
+  expect(countSearch(q, "tag").filter).toEqual({ and: [{ shares_source: true }] });
 });

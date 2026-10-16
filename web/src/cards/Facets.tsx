@@ -198,6 +198,9 @@ export function Facets({ kind, q, names, scores = [], onChange }: { kind: Kind; 
   };
   return (
     <aside className="facets" aria-label="Filters">
+      <label className="check">
+        <input type="checkbox" checked={q.shared} onChange={(e) => onChange({ ...q, shared: e.target.checked, page: 1 })} /> Shares a source
+      </label>
       {sections.map((s) => (
         <Section key={s} kind={s} rows={rows[s]} q={q} open={open(s)} onOpen={() => flip(s)} onChange={onChange} />
       ))}

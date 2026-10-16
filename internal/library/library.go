@@ -21,6 +21,8 @@ var (
 	ErrInvalid = errors.New("invalid data")
 	// ErrNameTaken means another collection has this name.
 	ErrNameTaken = errors.New("name already in use")
+	// ErrVariantCycle means a variant link would make an entity its own ancestor.
+	ErrVariantCycle = errors.New("a variant can't be its own ancestor")
 )
 
 // Library is the core's card and lorebook store.

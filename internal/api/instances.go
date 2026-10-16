@@ -145,9 +145,12 @@ func (s *Server) instanceRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{OperationID: "list-instances", Method: http.MethodGet, Path: "/instances",
 		Summary: "List plugin instances", Tags: tags},
 		func(ctx context.Context, in *listInstancesIn) (*instancesOut, error) {
-			list, err := s.Registry.ListInstances(ctx)
+			var list []plugins.InstanceInfo
+			var err error
 			if in.Offers != "" {
 				list, err = s.Registry.InstancesOffering(ctx, s.Plugins, in.Offers)
+			} else {
+				list, err = s.Registry.ListInstances(ctx)
 			}
 			if err != nil {
 				return nil, s.fail(err)

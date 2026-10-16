@@ -167,27 +167,40 @@ func (r *Registry) RunSetting(ctx context.Context, mgr *pluginhost.Manager, plug
 	redact := redactor(draft.Secrets)
 	res.Message = redact(res.Message)
 	for i := range res.Checks {
+		res.Checks[i].Name = redact(res.Checks[i].Name)
 		res.Checks[i].Message = redact(res.Checks[i].Message)
 	}
 	return res, redactError(err, redact)
 }
 
 // redactor replaces each secret in a plugin's reply, which goes to the
-// browser, with "[redacted]".
+// browser, with "[redacted]". Best effort: it matches secrets literally.
+// Overlapping or adjacent matches become one "[redacted]".
 func redactor(secrets map[string]string) func(string) string {
-	var values []string
-	for _, v := range secrets {
-		if v != "" {
-			values = append(values, v)
+	return func(s string) string {
+		covered := make([]bool, len(s))
+		for _, v := range secrets {
+			for from := 0; v != ""; {
+				i := strings.Index(s[from:], v)
+				if i < 0 {
+					break
+				}
+				for j := from + i; j < from+i+len(v); j++ {
+					covered[j] = true
+				}
+				from += i + 1
+			}
 		}
+		var out strings.Builder
+		for i := 0; i < len(s); i++ {
+			if !covered[i] {
+				out.WriteByte(s[i])
+			} else if i == 0 || !covered[i-1] {
+				out.WriteString("[redacted]")
+			}
+		}
+		return out.String()
 	}
-	// Longest first, so a secret inside another doesn't leave the rest showing.
-	slices.SortFunc(values, func(a, b string) int { return len(b) - len(a) })
-	var pairs []string
-	for _, v := range values {
-		pairs = append(pairs, v, "[redacted]")
-	}
-	return strings.NewReplacer(pairs...).Replace
 }
 
 // redactError redacts the message of a plugin's RPC error in place.

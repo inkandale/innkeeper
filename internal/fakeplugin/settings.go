@@ -40,7 +40,7 @@ func settingsCall(method string, params json.RawMessage, mode string) (any, erro
 			return nil, protocol.NewError(protocol.CodeInvalidParams, err.Error(), false)
 		}
 		if key := p.Secrets["api_key"]; p.Action == "echo" {
-			return protocol.SettingsRunResult{Message: "sent " + key, Checks: []protocol.SettingsCheck{{Name: "echo", Message: "got " + key}}}, nil
+			return protocol.SettingsRunResult{Message: "sent " + key, Checks: []protocol.SettingsCheck{{Name: "echo " + key, Message: "got " + key}}}, nil
 		}
 		if p.Action != "test" {
 			return nil, protocol.NewError(protocol.CodeInvalidParams, "unknown action", false)

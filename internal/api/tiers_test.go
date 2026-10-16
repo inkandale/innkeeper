@@ -27,10 +27,11 @@ var tierExceptions = map[string]tier.Tier{
 	"push-cards":          tier.Destructive,
 	"unbind":              tier.Destructive,
 	// Autosync pushes unattended, replacing the app's copy.
-	"update-binding":  tier.Destructive,
-	"delete-instance": tier.Destructive,
-	"create-token":    tier.Destructive,
-	"revoke-token":    tier.Destructive,
+	"update-binding":    tier.Destructive,
+	"delete-instance":   tier.Destructive,
+	"create-token":      tier.Destructive,
+	"revoke-token":      tier.Destructive,
+	"delete-collection": tier.Destructive,
 	// Plugins run as code inside Innkeeper.
 	"add-plugin-source":    tier.Destructive,
 	"delete-plugin-source": tier.Destructive,
@@ -43,7 +44,6 @@ var tierExceptions = map[string]tier.Tier{
 	// A draft can send an instance's saved secrets to any address.
 	"get-plugin-options": tier.Destructive,
 	"run-plugin-setting": tier.Destructive,
-	"delete-collection":  tier.Destructive,
 	// The old record is gone; an import may replace records.
 	"replace-record":     tier.Destructive,
 	"delete-record":      tier.Destructive,

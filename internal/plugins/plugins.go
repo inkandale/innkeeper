@@ -439,17 +439,6 @@ func (r *Registry) GetInstance(ctx context.Context, id int64) (InstanceInfo, err
 	return r.scanInfo(r.pool.QueryRow(ctx, `SELECT `+infoCols+` FROM plugin_instance WHERE id = $1`, id))
 }
 
-// DefaultHashes returns, for each of an instance's config overrides, the
-// hash of the default it replaced, by JSON pointer.
-func (r *Registry) DefaultHashes(ctx context.Context, id int64) (map[string]string, error) {
-	var h map[string]string
-	err := r.pool.QueryRow(ctx, `SELECT default_hashes FROM plugin_instance WHERE id = $1`, id).Scan(&h)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, ErrNotFound
-	}
-	return h, err
-}
-
 // ListInstances returns every instance, oldest first.
 func (r *Registry) ListInstances(ctx context.Context) ([]InstanceInfo, error) {
 	rows, err := r.pool.Query(ctx, `SELECT `+infoCols+` FROM plugin_instance ORDER BY id`)

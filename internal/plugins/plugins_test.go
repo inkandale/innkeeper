@@ -492,39 +492,43 @@ func TestInstancesWithEveryCapability(t *testing.T) {
 func TestInstanceKeepsHashOfReplacedDefault(t *testing.T) {
 	ctx := context.Background()
 	reg, _ := newRegistry(t)
+	reg.manifests["fake"].Config = map[string]any{"type": "object", "properties": map[string]any{
+		"p": map[string]any{"type": "object", "properties": map[string]any{
+			"a": map[string]any{"type": "string", "default": "new A"},
+			"b": map[string]any{"type": "string", "default": "new B"},
+		}},
+	}}
+	updated := func(id int64) []string {
+		t.Helper()
+		got, err := reg.Defaults(ctx, nil, "fake", &id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got.Updated
+	}
 	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: "Fake",
-		Config: map[string]any{"p": map[string]any{"a": "mine"}}, DefaultBases: map[string]any{"/p/a": "default A"}})
+		Config: map[string]any{"p": map[string]any{"a": "mine"}}, DefaultBases: map[string]any{"/p/a": "old A"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	hashes, err := reg.DefaultHashes(ctx, id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if hashes["/p/a"] != hashDefault("default A") {
-		t.Fatalf("after create: %v", hashes)
+	if got := updated(id); !slices.Equal(got, []string{"/p/a"}) {
+		t.Fatalf("after create: updated = %v", got)
 	}
 
 	// A save that leaves /p/a alone keeps its base; a new override gets its own.
 	cfg := map[string]any{"p": map[string]any{"a": "mine", "b": "also mine"}}
-	if err := reg.UpdateInstance(ctx, id, InstanceEdit{Config: cfg, DefaultBases: map[string]any{"/p/b": "default B"}}); err != nil {
+	if err := reg.UpdateInstance(ctx, id, InstanceEdit{Config: cfg, DefaultBases: map[string]any{"/p/b": "new B"}}); err != nil {
 		t.Fatal(err)
 	}
-	if hashes, err = reg.DefaultHashes(ctx, id); err != nil {
-		t.Fatal(err)
-	}
-	if hashes["/p/a"] != hashDefault("default A") || hashes["/p/b"] != hashDefault("default B") {
-		t.Fatalf("after adding b: %v", hashes)
+	if got := updated(id); !slices.Equal(got, []string{"/p/a"}) {
+		t.Fatalf("after adding b: updated = %v", got)
 	}
 
 	// Resetting /p/a drops its hash.
 	if err := reg.UpdateInstance(ctx, id, InstanceEdit{Config: map[string]any{"p": map[string]any{"b": "also mine"}}}); err != nil {
 		t.Fatal(err)
 	}
-	if hashes, err = reg.DefaultHashes(ctx, id); err != nil {
-		t.Fatal(err)
-	}
-	if len(hashes) != 1 || hashes["/p/b"] == "" {
-		t.Fatalf("after reset: %v", hashes)
+	if got := updated(id); len(got) != 0 {
+		t.Fatalf("after reset: updated = %v", got)
 	}
 }

@@ -164,7 +164,7 @@ func TestSettingsCallsRedactSecretsThePluginEchoes(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if res.Message != "sent [redacted]" || res.Checks[0].Message != "got [redacted]" {
+		if res.Message != "sent [redacted]" || res.Checks[0].Message != "got [redacted]" || res.Checks[0].Name != "echo [redacted]" {
 			t.Errorf("%s: run = %+v", name, res)
 		}
 		opts, err := reg.Options(ctx, mgr, "conf", "/echo", d)
@@ -179,5 +179,21 @@ func TestSettingsCallsRedactSecretsThePluginEchoes(t *testing.T) {
 		if !errors.As(err, &rpcErr) || rpcErr.Message != "bad key [redacted]" || strings.Contains(err.Error(), key) {
 			t.Errorf("%s: options error = %v", name, err)
 		}
+	}
+}
+
+func TestRedactorHidesOverlappingSecretsWhole(t *testing.T) {
+	for _, tt := range []struct{ in, want string }{
+		{"abcdef", "[redacted]"},
+		{"xabcdefx", "x[redacted]x"},
+		{"abcd and cdef", "[redacted] and [redacted]"},
+		{"ab", "ab"},
+	} {
+		if got := redactor(map[string]string{"a": "abcd", "b": "cdef", "c": ""})(tt.in); got != tt.want {
+			t.Errorf("redact(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+	if got := redactor(map[string]string{"a": "abc", "b": "abcdef"})("abcdef"); got != "[redacted]" {
+		t.Errorf("nested secret: %q", got)
 	}
 }

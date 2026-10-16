@@ -7,6 +7,7 @@ import (
 	"maps"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -59,7 +60,7 @@ func (r *Registry) draft(ctx context.Context, m *protocol.Manifest, d Draft) (pr
 		var sealed []byte
 		err := r.pool.QueryRow(ctx, `SELECT plugin, secrets FROM plugin_instance WHERE id = $1`, *d.Instance).Scan(&plugin, &sealed)
 		if errors.Is(err, pgx.ErrNoRows) {
-			return out, ErrNotFound
+			return out, fmt.Errorf("%w: instance %d", ErrNotFound, *d.Instance)
 		}
 		if err != nil {
 			return out, err
@@ -92,6 +93,20 @@ func (r *Registry) Defaults(ctx context.Context, mgr *pluginhost.Manager, plugin
 	if !ok {
 		return Defaults{}, fmt.Errorf("%w: %s", ErrUnknownPlugin, plugin)
 	}
+	var hashes map[string]string
+	if instance != nil {
+		var owner string
+		err := r.pool.QueryRow(ctx, `SELECT plugin, default_hashes FROM plugin_instance WHERE id = $1`, *instance).Scan(&owner, &hashes)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Defaults{}, fmt.Errorf("%w: instance %d", ErrNotFound, *instance)
+		}
+		if err != nil {
+			return Defaults{}, err
+		}
+		if owner != plugin {
+			return Defaults{}, fmt.Errorf("%w: instance %d belongs to %s, not %s", ErrInvalid, *instance, owner, plugin)
+		}
+	}
 	out := Defaults{Defaults: schemaDefaults(m.Config), Updated: []string{}}
 	if m.Has("settings") {
 		inst, err := r.settingsInstance(ctx, plugin)
@@ -105,20 +120,6 @@ func (r *Registry) Defaults(ctx context.Context, mgr *pluginhost.Manager, plugin
 			return out, err
 		}
 		maps.Copy(out.Defaults, res.Defaults)
-	}
-	if instance == nil {
-		return out, nil
-	}
-	info, err := r.GetInstance(ctx, *instance)
-	if err != nil {
-		return out, err
-	}
-	if info.Plugin != plugin {
-		return out, fmt.Errorf("%w: instance %d belongs to %s, not %s", ErrInvalid, *instance, info.Plugin, plugin)
-	}
-	hashes, err := r.DefaultHashes(ctx, *instance)
-	if err != nil {
-		return out, err
 	}
 	for p, h := range hashes {
 		if d, ok := out.Defaults[p]; ok && hashDefault(d) != h {
@@ -141,7 +142,11 @@ func (r *Registry) Options(ctx context.Context, mgr *pluginhost.Manager, plugin,
 		return res, err
 	}
 	err = mgr.Call(ctx, inst, protocol.MethodSettingsOptions, protocol.SettingsOptionsParams{SettingsDraft: draft, Field: pointer}, &res)
-	return res, err
+	redact := redactor(draft.Secrets)
+	for i, o := range res.Options {
+		res.Options[i] = protocol.SettingsOption{Value: redact(o.Value), Label: redact(o.Label)}
+	}
+	return res, redactError(err, redact)
 }
 
 // RunSetting runs one of the plugin's settings.actions against the draft.
@@ -159,5 +164,37 @@ func (r *Registry) RunSetting(ctx context.Context, mgr *pluginhost.Manager, plug
 		return res, err
 	}
 	err = mgr.Call(ctx, inst, protocol.MethodSettingsRun, protocol.SettingsRunParams{SettingsDraft: draft, Action: action}, &res)
-	return res, err
+	redact := redactor(draft.Secrets)
+	res.Message = redact(res.Message)
+	for i := range res.Checks {
+		res.Checks[i].Message = redact(res.Checks[i].Message)
+	}
+	return res, redactError(err, redact)
+}
+
+// redactor replaces each secret in a plugin's reply, which goes to the
+// browser, with "[redacted]".
+func redactor(secrets map[string]string) func(string) string {
+	var values []string
+	for _, v := range secrets {
+		if v != "" {
+			values = append(values, v)
+		}
+	}
+	// Longest first, so a secret inside another doesn't leave the rest showing.
+	slices.SortFunc(values, func(a, b string) int { return len(b) - len(a) })
+	var pairs []string
+	for _, v := range values {
+		pairs = append(pairs, v, "[redacted]")
+	}
+	return strings.NewReplacer(pairs...).Replace
+}
+
+// redactError redacts the message of a plugin's RPC error in place.
+func redactError(err error, redact func(string) string) error {
+	var rpcErr *protocol.Error
+	if errors.As(err, &rpcErr) {
+		rpcErr.Message = redact(rpcErr.Message)
+	}
+	return err
 }

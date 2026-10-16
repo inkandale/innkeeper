@@ -510,7 +510,10 @@ func TestInstanceKeepsHashOfReplacedDefault(t *testing.T) {
 	if err := reg.UpdateInstance(ctx, id, InstanceEdit{Config: cfg, DefaultBases: map[string]any{"/p/b": "default B"}}); err != nil {
 		t.Fatal(err)
 	}
-	if hashes, _ = reg.DefaultHashes(ctx, id); hashes["/p/a"] != hashDefault("default A") || hashes["/p/b"] != hashDefault("default B") {
+	if hashes, err = reg.DefaultHashes(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if hashes["/p/a"] != hashDefault("default A") || hashes["/p/b"] != hashDefault("default B") {
 		t.Fatalf("after adding b: %v", hashes)
 	}
 
@@ -518,7 +521,10 @@ func TestInstanceKeepsHashOfReplacedDefault(t *testing.T) {
 	if err := reg.UpdateInstance(ctx, id, InstanceEdit{Config: map[string]any{"p": map[string]any{"b": "also mine"}}}); err != nil {
 		t.Fatal(err)
 	}
-	if hashes, _ = reg.DefaultHashes(ctx, id); len(hashes) != 1 || hashes["/p/b"] == "" {
+	if hashes, err = reg.DefaultHashes(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if len(hashes) != 1 || hashes["/p/b"] == "" {
 		t.Fatalf("after reset: %v", hashes)
 	}
 }

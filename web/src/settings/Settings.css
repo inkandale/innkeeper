@@ -166,3 +166,12 @@
 .records li > button:first-of-type {
   margin-left: auto;
 }
+
+.checks {
+  border: none;
+  padding: 0;
+}
+
+.button.reset {
+  margin-top: calc(var(--space) / 2);
+}

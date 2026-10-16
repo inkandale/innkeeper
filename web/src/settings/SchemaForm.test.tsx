@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { SchemaForm, type Schema } from "./SchemaForm";
+import { FormContext, SchemaForm, type FormHelpers, type Schema } from "./SchemaForm";
 
 function Harness({ schema, initial }: { schema: Schema; initial?: unknown }) {
   const [v, setV] = useState<unknown>(initial);
@@ -84,4 +84,91 @@ test("a string with a media type is a multi-line box", async () => {
   expect(box.tagName).toBe("TEXTAREA");
   await user.type(box, "a{Enter}b");
   expect(value()).toEqual({ body: "a\nb" });
+});
+
+function WithHelpers({ schema, initial, helpers }: { schema: Schema; initial?: unknown; helpers: Partial<FormHelpers> }) {
+  return (
+    <FormContext.Provider value={{ defaults: {}, updated: new Set(), ...helpers }}>
+      <Harness schema={schema} initial={initial} />
+    </FormContext.Provider>
+  );
+}
+
+const prompts: Schema = {
+  type: "object",
+  properties: { prompts: { type: "object", properties: { greet: { type: "string", title: "Greet", contentMediaType: "text/plain" } } } },
+};
+
+test("a field shows its default, and typing it back drops the override", async () => {
+  const user = userEvent.setup();
+  render(<WithHelpers schema={prompts} initial={{}} helpers={{ defaults: { "/prompts/greet": "Hello" } }} />);
+  const box = screen.getByLabelText("Greet");
+  expect(box).toHaveValue("Hello");
+  expect(screen.queryByRole("button", { name: "Reset Greet" })).toBeNull();
+  await user.type(box, "!");
+  expect(value()).toEqual({ prompts: { greet: "Hello!" } });
+  await user.type(box, "{Backspace}");
+  expect(value()).toBeNull();
+});
+
+test("reset clears an override and the updated mark shows on it", async () => {
+  const user = userEvent.setup();
+  render(
+    <WithHelpers
+      schema={prompts}
+      initial={{ prompts: { greet: "Yo" } }}
+      helpers={{ defaults: { "/prompts/greet": "Hello" }, updated: new Set(["/prompts/greet"]) }}
+    />,
+  );
+  expect(screen.getByText("Default updated")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Reset Greet" }));
+  expect(value()).toBeNull();
+  expect(screen.getByLabelText("Greet")).toHaveValue("Hello");
+  expect(screen.queryByText("Default updated")).toBeNull();
+});
+
+test("an array of string enum is a checkbox group", async () => {
+  const user = userEvent.setup();
+  const kinds: Schema = { type: "object", properties: { kinds: { type: "array", title: "Kinds", items: { type: "string", enum: ["chat", "embed"] } } } };
+  render(<Harness schema={kinds} initial={{}} />);
+  expect(screen.getByRole("group", { name: "Kinds" })).toBeInTheDocument();
+  await user.click(screen.getByLabelText("embed"));
+  await user.click(screen.getByLabelText("chat"));
+  expect(value()).toEqual({ kinds: ["chat", "embed"] });
+  await user.click(screen.getByLabelText("chat"));
+  await user.click(screen.getByLabelText("embed"));
+  expect(value()).toBeNull();
+});
+
+test("x-options loads choices into a datalist and still takes free text", async () => {
+  const user = userEvent.setup();
+  const loadOptions = vi.fn(async () => [{ value: "m1", label: "Model one" }]);
+  const model: Schema = { type: "object", properties: { model: { type: "string", title: "Model", "x-options": true } } };
+  const { container } = render(<WithHelpers schema={model} initial={{}} helpers={{ loadOptions }} />);
+  await user.click(screen.getByRole("button", { name: "Load choices for Model" }));
+  expect(loadOptions).toHaveBeenCalledWith("/model");
+  expect(container.querySelector("datalist option")).toHaveAttribute("value", "m1");
+  await user.type(screen.getByLabelText("Model"), "custom");
+  expect(value()).toEqual({ model: "custom" });
+});
+
+test("a failed choices lookup shows its message", async () => {
+  const user = userEvent.setup();
+  const loadOptions = vi.fn(async () => {
+    throw new Error("server down");
+  });
+  const model: Schema = { type: "object", properties: { model: { type: "string", title: "Model", "x-options": true } } };
+  render(<WithHelpers schema={model} initial={{}} helpers={{ loadOptions }} />);
+  await user.click(screen.getByRole("button", { name: "Load choices for Model" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("server down");
+});
+
+test("format instance picks from the instances offering the service", async () => {
+  const user = userEvent.setup();
+  const instances = vi.fn(() => [{ id: 7, name: "Local LLM" }]);
+  const conn: Schema = { type: "object", properties: { connection: { type: "integer", title: "Connection", format: "instance", "x-offers": "ai.chat" } } };
+  render(<WithHelpers schema={conn} initial={{}} helpers={{ instances }} />);
+  expect(instances).toHaveBeenCalledWith("ai.chat");
+  await user.selectOptions(screen.getByLabelText("Connection"), "Local LLM");
+  expect(value()).toEqual({ connection: 7 });
 });

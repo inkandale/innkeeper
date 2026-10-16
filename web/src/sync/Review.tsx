@@ -2,6 +2,7 @@ import { useMutation, useQueries, useQuery, useQueryClient, type UseQueryResult 
 import { useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, ApiError, must, route, type Kind } from "../api/client";
+import { CardPicker } from "../cards/CardPicker";
 import { useFollowers } from "../api/queries";
 import { text } from "../card/draft";
 import { useJob } from "../settings/jobUtil";
@@ -25,38 +26,6 @@ import {
   type Option,
 } from "./sync";
 import "./Sync.css";
-
-function OtherMatch({ kind, onPick }: { kind: Kind; onPick: (id: number) => void }) {
-  const [text, setText] = useState("");
-  const [q, setQ] = useState("");
-  const hits = useQuery({
-    enabled: !!q,
-    queryKey: ["search", kind, "other-match", q],
-    queryFn: async () => {
-      const body = { text: q, page: { size: 10 } };
-      return must(await api.POST(route(kind, "/cards/search"), { body }));
-    },
-  });
-  return (
-    <form
-      className="row"
-      role="search"
-      onSubmit={(e) => {
-        e.preventDefault();
-        setQ(text.trim());
-      }}
-    >
-      <input className="input" aria-label="Other match" placeholder="Other match…" value={text} onChange={(e) => setText(e.target.value)} />
-      <button className="button">Search</button>
-      {hits.data && !hits.data.hits?.length && <span className="muted">No matches</span>}
-      {(hits.data?.hits ?? []).map((h) => (
-        <button key={h.id} type="button" className="button" onClick={() => onPick(h.id)}>
-          {String(h.fields?.name ?? "#" + h.id)}
-        </button>
-      ))}
-    </form>
-  );
-}
 
 /** Review is the diff editor: one app item against a library card, decided hunk by hunk, with the card's world books nested. */
 export function Review() {
@@ -269,7 +238,7 @@ function ReviewItem() {
               ))}
             </select>
           )}
-          <OtherMatch kind={kind} onPick={pickCard} />
+          <CardPicker kind={kind} label="Other match" onPick={pickCard} />
         </div>
         {card === 0 ? (
           <p>No library match. Find one above, or import it.</p>

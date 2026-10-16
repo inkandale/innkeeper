@@ -131,7 +131,7 @@ func (s *modelServer) chat(w http.ResponseWriter, r *http.Request) {
 	s.requests++
 	hold := s.hold
 	s.hold = false
-	callTool := s.toolName == "" && len(req.Tools) > 0
+	callTool := !hold && s.toolName == "" && len(req.Tools) > 0
 	if callTool {
 		s.toolName = req.Tools[0].Function.Name
 	}

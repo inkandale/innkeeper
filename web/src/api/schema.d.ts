@@ -3151,6 +3151,13 @@ export interface components {
             tags?: components["schemas"]["TagCount"][] | null;
             targets?: components["schemas"]["TargetCount"][] | null;
         };
+        Family: {
+            matched: number[] | null;
+            /** Format: int64 */
+            root_id: number;
+            /** Format: int64 */
+            size: number;
+        };
         Field: {
             hunks: components["schemas"]["Hunk"][] | null;
             kind: string;
@@ -3253,6 +3260,8 @@ export interface components {
              * @description Lorebooks only: how many entries it has.
              */
             entries?: number;
+            /** @description With group family: the family this hit is the face of. */
+            family?: components["schemas"]["Family"];
             fields: {
                 [key: string]: unknown;
             };
@@ -3620,6 +3629,11 @@ export interface components {
             /** @description Card data keys to return per hit, plus avatar. Default: name. */
             fields?: string[] | null;
             filter?: components["schemas"]["Filter"];
+            /**
+             * @description family returns one hit per family of variants: its face, with the family's matches. Paging and total count families; facets count cards or lorebooks.
+             * @enum {string}
+             */
+            group?: "family";
             /** @description Extra data per hit: tags, lorebooks, targets, enrichments (the score instance's current values of its score keys and grid key). Lorebooks take cards and targets. */
             include?: string[] | null;
             page?: components["schemas"]["Page"];

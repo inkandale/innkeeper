@@ -19,7 +19,7 @@ export type TermKind = (typeof kinds)[number];
 /** Term is one filter: a section's value, or its negation. */
 export type Term = { kind: TermKind; value: string; not: boolean };
 export type Sort = (typeof sorts)[number] | `enrichment:${string}`;
-export type CardQuery = { text: string; terms: Term[]; sort: Sort; page: number; size: number; view: "grid" | "list"; shared: boolean };
+export type CardQuery = { text: string; terms: Term[]; sort: Sort; page: number; size: number; view: "grid" | "list"; sharesSource: boolean };
 
 export const defaultSort = (text: string): Sort => (text ? "relevance" : "updated");
 
@@ -92,7 +92,7 @@ export function parseQuery(p: URLSearchParams): CardQuery {
     page: Number.isInteger(page) && page > 0 ? page : 1,
     size: sizes.includes(size) ? size : 48,
     view: p.get("view") === "list" ? "list" : "grid",
-    shared: p.get("shared") === "1",
+    sharesSource: p.get("shared") === "1",
   };
 }
 
@@ -105,7 +105,7 @@ export function toParams(q: CardQuery): URLSearchParams {
   if (q.page !== 1) p.set("page", String(q.page));
   if (q.size !== 48) p.set("size", String(q.size));
   if (q.view !== "grid") p.set("view", q.view);
-  if (q.shared) p.set("shared", "1");
+  if (q.sharesSource) p.set("shared", "1");
   return p;
 }
 
@@ -129,8 +129,8 @@ function condition(kind: TermKind, value: string): Filter {
   }
 }
 
-/** filterFor ANDs the sections: a section's included values OR together, and each excluded value is its own NOT. shared adds shares_source. */
-export function filterFor(terms: Term[], shared = false): Filter | undefined {
+/** filterFor ANDs the sections: a section's included values OR together, and each excluded value is its own NOT. sharesSource adds shares_source. */
+export function filterFor(terms: Term[], sharesSource = false): Filter | undefined {
   const included = (kind: TermKind) => terms.filter((t) => t.kind === kind && !t.not).map((t) => t.value);
   const parts: Filter[] = [];
   // One target_state for both sections, so a state applies to the selected targets.
@@ -144,7 +144,7 @@ export function filterFor(terms: Term[], shared = false): Filter | undefined {
   }
   // Each score key narrows on its own.
   for (const t of terms.filter((t) => t.kind === "score" && !t.not)) parts.push(condition(t.kind, t.value));
-  if (shared) parts.push({ shares_source: true });
+  if (sharesSource) parts.push({ shares_source: true });
   for (const t of terms.filter((t) => t.not)) parts.push({ not: condition(t.kind, t.value) });
   return parts.length ? { and: parts } : undefined;
 }
@@ -153,7 +153,7 @@ export function filterFor(terms: Term[], shared = false): Filter | undefined {
 export function toSearch(q: CardQuery, scores = false): Search {
   return {
     text: q.text || undefined,
-    filter: filterFor(q.terms, q.shared),
+    filter: filterFor(q.terms, q.sharesSource),
     sort: q.sort,
     fields: ["name", "avatar"],
     include: ["tags", "lorebooks", "targets", ...(scores ? ["enrichments"] : [])],
@@ -172,7 +172,7 @@ const facetOf = { target: "targets", tag: "tags", source: "sources", collection:
 export function countSearch(q: CardQuery, section: keyof typeof facetOf): Search {
   return {
     text: q.text || undefined,
-    filter: filterFor(q.terms.filter((t) => t.kind !== section), q.shared),
+    filter: filterFor(q.terms.filter((t) => t.kind !== section), q.sharesSource),
     facets: [facetOf[section]],
     page: { size: 1 },
   };
@@ -181,7 +181,7 @@ export function countSearch(q: CardQuery, section: keyof typeof facetOf): Search
 /** stateCountSearch counts the matches in one state; the targets facet can't, as it counts a card once per target. */
 export function stateCountSearch(q: CardQuery, is: TargetIs): Search {
   const terms: Term[] = [...q.terms.filter((t) => t.kind !== "state"), { kind: "state", value: is, not: false }];
-  return { text: q.text || undefined, filter: filterFor(terms, q.shared), page: { size: 1 } };
+  return { text: q.text || undefined, filter: filterFor(terms, q.sharesSource), page: { size: 1 } };
 }
 
 // The tag facet groups by lower-cased name and the API filter ignores case, so tags match that way here too.

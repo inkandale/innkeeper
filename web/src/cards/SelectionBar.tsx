@@ -18,7 +18,6 @@ const labels = { tag: "Tag", collection: "Collection", push: "Push", archive: "A
 
 /** SelectionBar replaces the toolbar while cards are picked, and starts bulk jobs on them. */
 export function SelectionBar(props: {
-  count: number;
   all: boolean;
   /** total is left out when the list groups variants, since it then counts families. */
   total?: number;
@@ -30,7 +29,7 @@ export function SelectionBar(props: {
   onStarted?: (job: number) => void;
   kind?: "card" | "lorebook";
 }) {
-  const { count, all, total, query, ids, nameOf, onAll, onClear, onStarted, kind = "card" } = props;
+  const { all, total, query, ids, nameOf, onAll, onClear, onStarted, kind = "card" } = props;
   const plural = (n?: number) => (n === undefined ? `all matching ${kind}s` : `${n} ${kind}${n === 1 ? "" : "s"}`);
   const enrichers = useInstancesWith("enrich");
   const keys = useQuery({ ...enrichmentKeysQuery, enabled: kind === "card" });
@@ -52,6 +51,7 @@ export function SelectionBar(props: {
   const [rescore, setRescore] = useState(false);
   const [unpublish, setUnpublish] = useState(false);
   const toast = useToast();
+  const count = ids.length;
   const n = all ? total : count;
 
   const collections = useQuery(collectionsQuery);

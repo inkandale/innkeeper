@@ -3,13 +3,13 @@ import { useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router";
 import { api, must, route } from "../api/client";
 import { instancesQuery, collectionsQuery, enrichmentKeysQuery, pluginsQuery } from "../api/queries";
+import { text } from "../card/draft";
 import { apps } from "../sync/Logo";
 import { stateLabel } from "../sync/sync";
 import { Facets } from "./Facets";
 import { ImportForm, importers } from "./ImportForm";
 import { pageLinks } from "./pages";
 import { defaultSort, parseQuery, parseScore, withoutScores, sizes, toggleTerm, toParams, toLorebookSearch, toSearch, type CardQuery, type Sort, type Term } from "./query";
-import { text } from "../card/draft";
 import { emptySelection, pick, target, type Selection } from "./selection";
 import { useJobEvents } from "../settings/jobUtil";
 import { SelectionBar } from "./SelectionBar";
@@ -132,7 +132,6 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
       {facetsOpen && <Facets kind={kind} q={q} names={names} scores={scoreKeys} onChange={go} />}
       {picking ? (
         <SelectionBar
-          count={sel.ids.length}
           all={sel.all}
           total={ungrouped ? total : undefined}
           kind={kind}

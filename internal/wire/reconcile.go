@@ -139,6 +139,9 @@ type Resolution struct {
 	Action    string `json:"action" enum:"bind,import,skip"`
 	// CardID is any library card or lorebook for bind; 0 means the bound one.
 	CardID int64 `json:"card_id,omitempty"`
+	// VariantOf is, for import, the library card or lorebook the new one is a
+	// variant of; 0 for none.
+	VariantOf int64 `json:"variant_of,omitempty"`
 	// Choices maps hunk IDs, and avatar, to a choice.
 	Choices map[string]merge.Choice `json:"choices,omitempty"`
 	// Base is the comparison's base. None resolves without the accepted copy

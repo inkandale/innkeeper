@@ -1169,3 +1169,37 @@ func TestResolveImportSplitLeavesAWorldBookWithTheSameID(t *testing.T) {
 		t.Errorf("world book binding = %s, %v", state, err)
 	}
 }
+
+func TestResolveImportAsVariantLinksTheNewCard(t *testing.T) {
+	e, card := resolveEnv(t)
+	c := e.compareItem("lv1", card)
+	res, err := e.s.Resolve(e.ctx, library.Card, Resolution{InstanceID: e.inst, RemoteID: "lv1", AppHash: c.AppHash,
+		Action: "import", VariantOf: card})
+	if err != nil || res.CardID == 0 || res.CardID == card {
+		t.Fatalf("result = %+v, %v", res, err)
+	}
+	if p, err := e.lib.Cards.Parent(e.ctx, res.CardID); err != nil || p == nil || p.ID != card {
+		t.Fatalf("parent = %+v, %v", p, err)
+	}
+}
+
+func TestResolveVariantOfNeedsAnImport(t *testing.T) {
+	e, card := resolveEnv(t)
+	c := e.compareItem("lv1", card)
+	_, err := e.s.Resolve(e.ctx, library.Card, Resolution{InstanceID: e.inst, RemoteID: "lv1", AppHash: c.AppHash,
+		BaseRevisionID: c.HeadRevisionID, Action: "bind", CardID: card, VariantOf: card})
+	if !errors.Is(err, library.ErrInvalid) {
+		t.Fatalf("bind with variant_of: %v, want ErrInvalid", err)
+	}
+}
+
+func TestResolveImportAsVariantOfAMissingCardImportsNothing(t *testing.T) {
+	e, card := resolveEnv(t)
+	c := e.compareItem("lv1", card)
+	cards := e.cardCount()
+	_, err := e.s.Resolve(e.ctx, library.Card, Resolution{InstanceID: e.inst, RemoteID: "lv1", AppHash: c.AppHash,
+		Action: "import", VariantOf: 999999})
+	if !errors.Is(err, library.ErrNotFound) || e.cardCount() != cards {
+		t.Fatalf("err = %v, %d cards, want ErrNotFound and %d", err, e.cardCount(), cards)
+	}
+}

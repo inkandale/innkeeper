@@ -28,6 +28,8 @@ func validateResolution(r Resolution, k kind) error {
 		return fmt.Errorf("%w: remote_id is required", library.ErrInvalid)
 	case r.Kind != "" && r.Kind != k.Name:
 		return bad("kind must be " + k.Name + " here")
+	case r.VariantOf != 0 && r.Action != "import":
+		return bad("variant_of needs action import")
 	case r.Action == "skip":
 	case r.Action != "bind" && r.Action != "import":
 		return bad("action must be bind, import, or skip")
@@ -220,6 +222,11 @@ func (rs *resolver) item(ctx context.Context, k kind, r Resolution) (ResolveResu
 	if r.Action == "import" {
 		if id, r.BaseRevisionID, err = rs.importItem(ctx, k, inst, info, r, it, stale); err != nil {
 			return res, err
+		}
+		if r.VariantOf != 0 {
+			if err := s.lib.Entities(k.Kind).SetVariantOfTx(ctx, rs.tx, id, &r.VariantOf); err != nil {
+				return res, fmt.Errorf("link %s as a variant of %d: %w", r.RemoteID, r.VariantOf, err)
+			}
 		}
 		res.RevisionID = r.BaseRevisionID
 		// The new copy came from the app, so only what import left out

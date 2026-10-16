@@ -19,7 +19,8 @@ const labels = { tag: "Tag", collection: "Collection", push: "Push", archive: "A
 export function SelectionBar(props: {
   count: number;
   all: boolean;
-  total: number;
+  /** total is left out when the list groups variants, since it then counts families. */
+  total?: number;
   query: Search;
   onAll: () => void;
   onClear: () => void;
@@ -27,7 +28,7 @@ export function SelectionBar(props: {
   kind?: "card" | "lorebook";
 }) {
   const { count, all, total, query, onAll, onClear, onStarted, kind = "card" } = props;
-  const plural = (n: number) => `${n} ${kind}${n === 1 ? "" : "s"}`;
+  const plural = (n?: number) => (n === undefined ? `all matching ${kind}s` : `${n} ${kind}${n === 1 ? "" : "s"}`);
   const enrichers = useInstancesWith("enrich");
   const keys = useQuery({ ...enrichmentKeysQuery, enabled: kind === "card" });
   // Lorebooks have no tags, collections, bulk export, or enrichments.
@@ -103,10 +104,10 @@ export function SelectionBar(props: {
   const toggle = (p: Panel) => setPanel(panel === p ? null : p);
   return (
     <div className="toolbar selection-bar">
-      <strong>{all ? `All ${total} matching ${kind}${total === 1 ? "" : "s"}` : `${count} selected`}</strong>
-      {!all && count < total && (
+      <strong>{all ? (total === undefined ? `All matching ${kind}s` : `All ${total} matching ${kind}${total === 1 ? "" : "s"}`) : `${count} selected`}</strong>
+      {!all && (total === undefined || count < total) && (
         <button className="button" onClick={onAll}>
-          Select all {total} matching
+          Select all {total === undefined ? "" : `${total} `}matching
         </button>
       )}
       <button className="button" onClick={onClear}>

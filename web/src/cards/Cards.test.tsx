@@ -37,12 +37,14 @@ let keys: unknown;
 let searches: unknown[];
 let posts: { path: string; body: unknown }[];
 let previews: unknown[];
+let family: unknown;
 beforeEach(() => {
   localStorage.clear();
   keys = { instance_id: null, keys: [] };
   searches = [];
   posts = [];
   previews = [];
+  family = undefined;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
@@ -56,7 +58,7 @@ beforeEach(() => {
           const scores: Record<number, unknown> = { 7: { quality: { value: 78, stale: false } }, 8: { quality: { value: 40, stale: true } } };
           return json({ ...results, hits: results.hits.map((h) => ({ ...h, enrichments: scores[h.id] })) });
         }
-        return json(results);
+        return json(family ? { ...results, hits: [{ ...results.hits[0]!, family }, ...results.hits.slice(1)] } : results);
       }
       if (path === "/api/pushes/preview") {
         previews.push(await req.json());
@@ -226,6 +228,7 @@ test("shift-click selects a range and tags it", async () => {
 });
 
 test("select all matching archives the search", async () => {
+  localStorage.setItem("innkeeper.library.ungrouped", "true");
   renderCards("/cards?f=tag:fantasy");
   const user = userEvent.setup();
   await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
@@ -563,4 +566,42 @@ test("without a score instance, score filters and sort in the URL are dropped wi
   expect(await screen.findByText(/Score filters and sort are off/)).toBeInTheDocument();
   await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ tag: "fantasy" }] }, sort: "updated" })));
   expect(searches).not.toContainEqual(expect.objectContaining({ sort: "enrichment:quality" }));
+});
+
+const mainSearches = () => searches.filter((s) => (s as { page?: { size?: number } }).page?.size === 48);
+
+test("variants group by default, and a family row expands to its members", async () => {
+  family = { root_id: 7, size: 3, matched: [7, 9] };
+  renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "+2 variants" }));
+  expect(mainSearches()[0]).toMatchObject({ group: "family" });
+  const list = await screen.findByRole("list", { name: "Variants of Brakka" });
+  expect(searches).toContainEqual({ filter: { variant_of_root: 7 }, fields: ["name"], page: { size: 500 } });
+  expect(await within(list).findByRole("link", { name: "Carrow" })).toHaveAttribute("href", "/cards/8");
+  expect(within(list).getAllByText("matched")).toHaveLength(2);
+});
+
+test("Ungroup variants drops the grouping and is remembered", async () => {
+  const { unmount } = renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Ungroup variants" }));
+  await waitFor(() => expect(mainSearches().at(-1)).not.toHaveProperty("group"));
+  expect(localStorage.getItem("innkeeper.library.ungrouped")).toBe("true");
+  unmount();
+  renderCards("/cards");
+  expect(await screen.findByRole("button", { name: "Ungroup variants" })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("grouped, select all matching names no count, since total counts families", async () => {
+  renderCards("/cards?f=tag:fantasy");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
+  await user.click(screen.getByRole("button", { name: "Select all matching" }));
+  expect(screen.getByText("All matching cards")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Archive" }));
+  await user.click(screen.getByRole("button", { name: "Archive all matching cards" }));
+  await waitFor(() =>
+    expect(posts[0]).toEqual({ path: "/api/bulk", body: { query: { filter: { and: [{ tag: "fantasy" }] } }, action: "archive", unpublish: false } }),
+  );
 });

@@ -4,6 +4,7 @@ import type { components } from "../api/schema";
 import { text } from "../card/draft";
 import { Logo, type App } from "../sync/Logo";
 import { stateLabel } from "../sync/sync";
+import { Family } from "./Family";
 
 export type Hit = components["schemas"]["Hit"];
 type EnrichmentKey = components["schemas"]["EnrichmentKey"];
@@ -104,6 +105,7 @@ export function Tile({ hit, names, pick, grid }: { hit: Hit; names: Names; pick:
       <Link to={`/cards/${hit.id}`} className="tile-name">
         {text(hit.fields.name)}
       </Link>
+      <Family kind="card" hit={hit} />
       <p className="tile-tags">
         {tags.slice(0, 3).map((t) => (
           <span key={t} className="tag">
@@ -127,6 +129,7 @@ export function Row({ hit, names, pick }: { hit: Hit; names: Names; pick: PickPr
       </td>
       <td>
         <Link to={`/cards/${hit.id}`}>{text(hit.fields.name)}</Link>
+        <Family kind="card" hit={hit} />
       </td>
       <td>{(hit.tags ?? []).join(", ")}</td>
       <td>{hit.lorebooks?.length ?? 0}</td>
@@ -147,6 +150,7 @@ export function LorebookRow({ hit, names, cards, pick }: { hit: Hit; names: Name
       </td>
       <td>
         <Link to={`/lorebooks/${hit.id}`}>{text(hit.fields.name)}</Link>
+        <Family kind="lorebook" hit={hit} />
       </td>
       <td>
         {entries} {entries === 1 ? "entry" : "entries"}

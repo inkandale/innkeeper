@@ -17,6 +17,25 @@ import "./Cards.css";
 
 const sortLabels: Record<string, string> = { relevance: "Best match", updated: "Updated", name: "Name", created: "Created" };
 
+const ungroupedKey = "innkeeper.library.ungrouped";
+
+// Storage can throw or be empty in private windows; the list then groups, as by default.
+function readUngrouped(): boolean {
+  try {
+    return localStorage.getItem(ungroupedKey) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function saveUngrouped(v: boolean) {
+  try {
+    localStorage.setItem(ungroupedKey, String(v));
+  } catch {
+    // A view preference that can't be saved isn't worth an error.
+  }
+}
+
 function scoreLabel(value: string): string {
   const s = parseScore(value)!;
   if (s.none) return `${s.key} not evaluated`;
@@ -51,6 +70,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const sel = stored.key === key ? stored : emptySelection(key);
   const [facetsOpen, setFacetsOpen] = useState(true);
   const [importOpen, setImportOpen] = useState(false);
+  const [ungrouped, setUngrouped] = useState(readUngrouped);
   // The bar unmounts once its job starts, so the page follows the job and reloads when it ends.
   const [watching, setWatching] = useState<number>();
   useJobEvents(watching ?? 0, watching !== undefined);
@@ -58,7 +78,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
 
   const scoreKeys = (keys.data?.keys ?? []).filter((k) => k.type === "score");
   const grid = keys.data?.keys?.find((k) => k.grid);
-  const body = kind === "card" ? toSearch(q, scored) : toLorebookSearch(q);
+  const body = { ...(kind === "card" ? toSearch(q, scored) : toLorebookSearch(q)), ...(ungrouped ? {} : { group: "family" as const }) };
   const res = useQuery({
     queryKey: ["search", kind, body],
     queryFn: async () => must(await api.POST(route(kind, "/cards/search"), { body })),
@@ -113,7 +133,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
         <SelectionBar
           count={sel.ids.length}
           all={sel.all}
-          total={total}
+          total={ungrouped ? total : undefined}
           kind={kind}
           query={target(sel, body)}
           onAll={() => setSel({ ...sel, all: true })}
@@ -142,6 +162,16 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
                 </option>
               ))}
           </select>
+          <button
+            className="button"
+            aria-pressed={ungrouped}
+            onClick={() => {
+              setUngrouped(!ungrouped);
+              saveUngrouped(!ungrouped);
+            }}
+          >
+            Ungroup variants
+          </button>
           {kind === "card" && (
             <button className="button" onClick={() => go({ ...q, view: q.view === "grid" ? "list" : "grid" })}>
               {q.view === "grid" ? "List view" : "Grid view"}

@@ -175,3 +175,24 @@
 .button.reset {
   margin-top: calc(var(--space) / 2);
 }
+
+.instance-tabs {
+  display: flex;
+  gap: calc(var(--space) * 1.5);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space);
+}
+
+.instance-tabs [role="tab"] {
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: var(--space) 0;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.instance-tabs [role="tab"].on {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}

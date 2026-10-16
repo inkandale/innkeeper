@@ -32,6 +32,18 @@ const broken = {
 };
 const owned = { ...broken, id: 4, plugin: "password-login", name: "pw", config: {}, secrets: [], owner_subject: "me" };
 const forge = { ...broken, id: 5, plugin: "forge-ai", name: "ai", config: {}, secrets: [], broken_error: undefined, library_access: false };
+const conf = {
+  name: "conf", version: "0.1.0", capabilities: ["settings"], secrets: ["api_key"],
+  settings_actions: { test: "Test connection" },
+  config: {
+    type: "object",
+    properties: {
+      url: { type: "string", title: "URL" },
+      prompts: { type: "object", title: "Prompts", properties: { greet: { type: "string", title: "Greet", contentMediaType: "text/plain" } } },
+    },
+  },
+};
+const confInst = { ...broken, id: 6, plugin: "conf", name: "c", config: { url: "http://x" }, secrets: ["api_key"], broken_error: undefined };
 
 let sent: { method: string; path: string; body: unknown }[];
 beforeEach(() => {
@@ -40,7 +52,7 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (req: Request) => {
       const u = new URL(req.url);
-      if (u.pathname === "/api/plugins") return json([login, st, ai]);
+      if (u.pathname === "/api/plugins") return json([login, st, ai, conf]);
       if (req.method === "GET" && u.pathname === "/api/instances/3") return json(broken);
       if (req.method === "GET" && u.pathname === "/api/instances/4") return json(owned);
       if (req.method === "GET" && u.pathname === "/api/instances/5") return json(forge);
@@ -48,6 +60,14 @@ beforeEach(() => {
       if (u.pathname === "/api/instances/3/check") {
         sent.push({ method: req.method, path: u.pathname, body: null });
         return json({ ok: false, error: "login refused" });
+      }
+      if (req.method === "GET" && u.pathname === "/api/instances/6") return json(confInst);
+      if (u.pathname === "/api/plugins/conf/settings/defaults") return json({ defaults: { "/prompts/greet": "Hello" }, updated: [] });
+      if (u.pathname.endsWith("/settings/defaults")) return json({ defaults: {}, updated: [] });
+      if (u.pathname === "/api/plugins/conf/settings/run") {
+        const body = await req.json();
+        sent.push({ method: req.method, path: u.pathname, body });
+        return json({ ok: false, message: "The key was refused.", checks: [{ name: "chat", ok: false, latency_ms: 12 }] });
       }
       const body = await req.json();
       sent.push({ method: req.method, path: u.pathname, body });
@@ -193,4 +213,51 @@ test("a new instance shows no records until it's saved", async () => {
   renderAt("/settings/plugins/forge-ai/new");
   await screen.findByLabelText("Name");
   expect(screen.queryByRole("heading", { name: "Skills" })).not.toBeInTheDocument();
+});
+
+test("an object in the config gets its own tab, and the default shows there", async () => {
+  const user = userEvent.setup();
+  renderAt("/settings/instances/6");
+  expect(await screen.findByRole("tab", { name: "General" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByLabelText("URL")).toBeVisible();
+  await user.click(screen.getByRole("tab", { name: "Prompts" }));
+  expect(screen.getByLabelText("Greet")).toHaveValue("Hello");
+  expect(screen.getByLabelText("URL")).not.toBeVisible();
+});
+
+test("arrow keys move between the instance form's tabs", async () => {
+  const user = userEvent.setup();
+  renderAt("/settings/instances/6");
+  await user.click(await screen.findByRole("tab", { name: "General" }));
+  await user.keyboard("{ArrowRight}");
+  expect(screen.getByRole("tab", { name: "Prompts" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("tab", { name: "Prompts" })).toHaveFocus();
+  await user.keyboard("{ArrowRight}");
+  expect(screen.getByRole("tab", { name: "General" })).toHaveAttribute("aria-selected", "true");
+});
+
+test("saving an override sends the default it replaced", async () => {
+  const user = userEvent.setup();
+  renderAt("/settings/instances/6");
+  await user.click(await screen.findByRole("tab", { name: "Prompts" }));
+  await user.type(screen.getByLabelText("Greet"), "!");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await vi.waitFor(() => expect(sent.some((s) => s.method === "PATCH")).toBe(true));
+  const patch = sent.find((s) => s.method === "PATCH");
+  expect(patch?.body).toMatchObject({
+    config: { url: "http://x", prompts: { greet: "Hello!" } },
+    default_bases: { "/prompts/greet": "Hello" },
+  });
+});
+
+test("a settings button runs against the draft and shows each check", async () => {
+  const user = userEvent.setup();
+  renderAt("/settings/instances/6");
+  await user.type(await screen.findByLabelText("api_key"), "nope");
+  await user.click(screen.getByRole("button", { name: "Test connection" }));
+  expect(await screen.findByText("The key was refused.")).toBeInTheDocument();
+  expect(screen.getByText(/chat/)).toHaveTextContent("12 ms");
+  expect(screen.queryByText(/nope/)).not.toBeInTheDocument();
+  const run = sent.find((s) => s.path === "/api/plugins/conf/settings/run");
+  expect(run?.body).toEqual({ action: "test", instance: 6, config: { url: "http://x" }, secrets: { api_key: "nope" } });
 });

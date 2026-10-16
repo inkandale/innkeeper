@@ -210,7 +210,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
         )}
         {res.isError && <p className="error">{res.error.message}</p>}
         {scoresOff && <p className="muted">Score filters and sort are off: no instance gives scores. Pick one in Settings, under Scores from.</p>}
-        {res.data && <p className="total">{total} {total === 1 ? noun.slice(0, -1) : noun}</p>}
+        {res.data && <p className="total">{total} {ungrouped ? (total === 1 ? noun.slice(0, -1) : noun) : total === 1 ? "result" : "results"}</p>}
         {res.data && q.page > last && (
           <p>
             No {noun} on this page. <button className="button" onClick={() => go({ ...q, page: last })}>Go to page {last}</button>

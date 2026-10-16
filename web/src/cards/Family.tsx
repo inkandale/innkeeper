@@ -27,9 +27,11 @@ function Members({ kind, name, rootId, matched }: { kind: Kind; name: string; ro
     queryKey: ["search", kind, body],
     queryFn: async () => must(await api.POST(route(kind, "/cards/search"), { body })),
   });
+  if (members.isPending) return <p className="muted">Loading…</p>;
+  if (members.isError) return <p className="error">{members.error.message}</p>;
   return (
     <ul className="plain" aria-label={`Variants of ${name}`}>
-      {(members.data?.hits ?? []).map((m) => (
+      {(members.data.hits ?? []).map((m) => (
         <li key={m.id}>
           <Link to={`/${kind}s/${m.id}`}>{text(m.fields.name) || m.slug}</Link>
           {matched.includes(m.id) && <span className="muted"> matched</span>}

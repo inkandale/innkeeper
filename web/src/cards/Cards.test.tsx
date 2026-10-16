@@ -110,7 +110,7 @@ test("the URL becomes the search, and hits become tiles", async () => {
   expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ tag: "fantasy" }] }, page: { size: 48, number: 2 } }));
   expect(screen.getByText("+1")).toBeInTheDocument();
   expect(screen.getByTitle("Lumiverse: not pushed")).toBeInTheDocument();
-  expect(screen.getByText("49 cards")).toBeInTheDocument();
+  expect(screen.getByText("49 results")).toBeInTheDocument();
   expect(container.querySelector("img")).toHaveAttribute("src", `/api/blobs/${"ab".repeat(32)}?w=320`);
 });
 
@@ -588,6 +588,7 @@ test("Ungroup variants drops the grouping and is remembered", async () => {
   await user.click(await screen.findByRole("button", { name: "Ungroup variants" }));
   await waitFor(() => expect(mainSearches().at(-1)).not.toHaveProperty("group"));
   expect(localStorage.getItem("innkeeper.library.ungrouped")).toBe("true");
+  expect(screen.getByText("49 cards")).toBeInTheDocument();
   unmount();
   renderCards("/cards");
   expect(await screen.findByRole("button", { name: "Ungroup variants" })).toHaveAttribute("aria-pressed", "true");

@@ -11,7 +11,7 @@ type Hunk = components["schemas"]["Hunk"];
 export type Choices = Record<string, string>;
 
 /** Sides names the two sides a comparison puts against each other. */
-type Sides = { library: string; app: string };
+export type Sides = { library: string; app: string };
 const appSides: Sides = { library: "Library", app: "App" };
 const sideLabel = (sides: Sides, s: string) => (s === "library" ? sides.library : s === "app" ? sides.app : "Both");
 
@@ -28,14 +28,17 @@ function entryOf(id: string): { entry: string; field: string } {
   return { entry, field: unescape(m[2] ?? "") };
 }
 
-/** Words renders a word diff: what only the library has struck through, what only the app has marked. */
+/** Words renders a word diff: what only the dropped side has struck through, what only the kept side has marked. */
 export function Words({ runs }: { runs: Run[] }) {
   return <>{runs.map((r, i) => (r.op === "del" ? <del key={i}>{r.text}</del> : r.op === "ins" ? <ins key={i}>{r.text}</ins> : r.text))}</>;
 }
 
-/** HunkText shows one changed hunk, in one column or as a Library | App pair. */
-function HunkText({ hunk, inline }: { hunk: Hunk; inline: boolean }) {
-  const runs = wordDiff(show(hunk.library), show(hunk.app));
+/** HunkText shows one changed hunk, in one column or as a Library | App pair, marking the side kept. */
+function HunkText({ hunk, inline, keep = "app" }: { hunk: Hunk; inline: boolean; keep?: string }) {
+  const libraryKept = keep === "library";
+  const runs = libraryKept ? wordDiff(show(hunk.app), show(hunk.library)) : wordDiff(show(hunk.library), show(hunk.app));
+  const kept = (r: Run) => r.op !== "del";
+  const dropped = (r: Run) => r.op !== "ins";
   if (inline)
     return (
       <p className="hunks">
@@ -44,8 +47,8 @@ function HunkText({ hunk, inline }: { hunk: Hunk; inline: boolean }) {
     );
   return (
     <>
-      <p className="hunks">{hunk.library === undefined ? absent : <Words runs={runs.filter((r) => r.op !== "ins")} />}</p>
-      <p className="hunks">{hunk.app === undefined ? absent : <Words runs={runs.filter((r) => r.op !== "del")} />}</p>
+      <p className="hunks">{hunk.library === undefined ? absent : <Words runs={runs.filter(libraryKept ? kept : dropped)} />}</p>
+      <p className="hunks">{hunk.app === undefined ? absent : <Words runs={runs.filter(libraryKept ? dropped : kept)} />}</p>
     </>
   );
 }
@@ -65,7 +68,7 @@ function HunkChoice(props: {
   return (
     <div className={inline ? "hunk-pair inline decide" : "hunk-pair decide"}>
       {label && <span className="muted">{label}</span>}
-      <HunkText hunk={hunk} inline={inline} />
+      <HunkText hunk={hunk} inline={inline} keep={onChoose && choice} />
       {onChoose && (
         <span className="row" role="radiogroup" aria-label={`Keep for ${hunk.id}`}>
           {keeps.map((s) => (
@@ -150,9 +153,9 @@ function FieldChoices(props: { scope: string; field: Field; sides: Sides; choice
         <div key={h.id} className={inline(h) ? "hunk-pair inline" : "hunk-pair"}>
           <span className="muted">
             {label(h) && `${label(h)} · `}
-            {h.status === "auto_app" ? "App's change, merged" : "Library's change, kept"}
+            {h.status === "auto_app" ? `${sides.app}'s change, merged` : `${sides.library}'s change, kept`}
           </span>
-          <HunkText hunk={h} inline={inline(h)} />
+          <HunkText hunk={h} inline={inline(h)} keep={onChoose && (h.status === "auto_library" ? "library" : "app")} />
         </div>,
       );
   }
@@ -185,8 +188,19 @@ export function Diff(props: {
   const { scope, cmp, sides = appSides, choices = {}, onChoose } = props;
   const fields = cmp.fields ?? [];
   const a = cmp.avatar;
+  const decided = [...fields.flatMap((f) => (f.hunks ?? []).filter(decidable).map((h) => h.id)), ...(a?.app ? ["avatar"] : [])];
   return (
     <>
+      {onChoose && decided.length > 0 && (
+        <div className="row">
+          <span className="muted">Keep all:</span>
+          {(["library", "app"] as const).map((s) => (
+            <button key={s} className="button" onClick={() => decided.forEach((id) => onChoose(id, s))}>
+              {sideLabel(sides, s)}
+            </button>
+          ))}
+        </div>
+      )}
       {a && (
         <div className="hunk-pair">
           <div>

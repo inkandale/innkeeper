@@ -154,6 +154,28 @@ test("binds with the chosen side of each hunk, and the nested world book's", asy
   ]);
 });
 
+test("Keep all picks one side for every hunk, labelled with the app's name", async () => {
+  const base = fetch;
+  vi.stubGlobal("fetch", async (req: Request) =>
+    new URL(req.url).pathname === "/api/instances" ? json([{ id: 3, name: "Lumiverse", plugin: "lumiverse" }]) : base(req),
+  );
+  renderReview();
+  const user = userEvent.setup();
+  const card = await screen.findByRole("region", { name: "Ann" });
+  await user.click(await within(card).findByRole("button", { name: "Lumiverse" }));
+  const book = screen.getByRole("region", { name: "World book Ann's world" });
+  await within(book).findByRole("radiogroup", { name: "Keep for description#0" });
+  await user.click(within(book).getByRole("button", { name: "Lumiverse" }));
+  await user.click(screen.getByRole("button", { name: "Resolve" }));
+  expect(await screen.findByText("Queue page")).toBeInTheDocument();
+  expect(resolved).toEqual([
+    expect.objectContaining({
+      choices: { "description#1": "app", "tags#0": "app" },
+      lorebooks: [expect.objectContaining({ choices: { "description#0": "app" } })],
+    }),
+  ]);
+});
+
 function importWithNewerComparison() {
   const [ann] = snap.items!;
   progress = { ...snap, items: [{ ...ann!, binding_id: 3, lorebooks: [{ ...ann!.lorebooks![0]!, binding_id: 4 }] }] };
@@ -382,13 +404,17 @@ test("a suggested import compares with the first unbound match and shows the dif
   expect(screen.queryByRole("radiogroup", { name: "Keep for description#1" })).not.toBeInTheDocument();
 });
 
-test("a prose change reads in one column, with removed words struck and added ones marked", async () => {
+test("a prose change reads in one column, with the dropped side's words struck and the kept side's marked", async () => {
   cardBody = {
     ...cardCmp,
     fields: [{ path: "first_mes", kind: "prose", hunks: [{ id: "first_mes#0", status: "conflict", library: "The storm is “crazy” here.", app: "The storm is “wild” here." }] }],
   };
   renderReview();
-  const block = (await screen.findByRole("radiogroup", { name: "Keep for first_mes#0" })).parentElement!;
+  const group = await screen.findByRole("radiogroup", { name: "Keep for first_mes#0" });
+  const block = group.parentElement!;
+  expect(within(block).getByText("“wild”", { selector: "del" })).toBeInTheDocument();
+  expect(within(block).getByText("“crazy”", { selector: "ins" })).toBeInTheDocument();
+  await userEvent.setup().click(within(group).getByLabelText("App"));
   expect(within(block).getByText("“crazy”", { selector: "del" })).toBeInTheDocument();
   expect(within(block).getByText("“wild”", { selector: "ins" })).toBeInTheDocument();
   // One column: the shared words appear once, not once per side.
@@ -403,8 +429,8 @@ test("a JSON change names its key and diffs its words side by side", async () =>
   renderReview();
   const block = (await screen.findByRole("radiogroup", { name: "Keep for extensions.talkativeness#0" })).parentElement!;
   expect(within(block).getByText("talkativeness")).toBeInTheDocument();
-  expect(within(block).getByText("0.5", { selector: "del" })).toBeInTheDocument();
-  expect(within(block).getByText("0.7", { selector: "ins" })).toBeInTheDocument();
+  expect(within(block).getByText("0.5", { selector: "ins" })).toBeInTheDocument();
+  expect(within(block).getByText("0.7", { selector: "del" })).toBeInTheDocument();
 });
 
 test("a JSON field folds its unchanged keys, each still labelled", async () => {

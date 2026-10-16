@@ -3,11 +3,11 @@ import { Fragment, useState } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { api, ApiError, must, route, type Kind } from "../api/client";
 import { CardPicker } from "../cards/CardPicker";
-import { useFollowers } from "../api/queries";
+import { instancesQuery, useFollowers } from "../api/queries";
 import { text } from "../card/draft";
 import { useJob } from "../settings/jobUtil";
 import { useToast } from "../shell/Toasts";
-import { Diff, type Choices } from "./Diff";
+import { Diff, type Choices, type Sides } from "./Diff";
 import {
   changePath,
   changesFilter,
@@ -50,6 +50,8 @@ function ReviewItem() {
   const filter = changesFilter(search);
   const follows = useFollowers();
   const followed = !!follows?.has(instance);
+  const appName = useQuery(instancesQuery).data?.find((i) => i.id === instance)?.name;
+  const sides = { library: "Library", app: followed ? siteOf(remoteId) : appName || "App" };
   const navigate = useNavigate();
   const location = useLocation();
   const qc = useQueryClient();
@@ -278,9 +280,9 @@ function ReviewItem() {
             <Diff
               scope={`${kind === "card" ? "card" : "book"}:${remoteId}`}
               cmp={cmp.data}
-              sides={followed ? { library: "Library", app: siteOf(remoteId) } : undefined}
+              sides={sides}
               choices={choices}
-              onChoose={act === "bind" ? (id, c) => setChoices({ ...choices, [id]: c }) : undefined}
+              onChoose={act === "bind" ? (id, c) => setChoices((cur) => ({ ...cur, [id]: c })) : undefined}
             />
           )
         )}
@@ -294,12 +296,13 @@ function ReviewItem() {
               lb={lb}
               pick={nestedPick(lb)}
               cmp={nestedCmps[i]}
+              sides={sides}
               choices={own}
               onPick={(key) => {
                 setNestedPicks({ ...nestedPicks, [lb.remote_id]: key });
                 setNestedChoices({ ...nestedChoices, [lb.remote_id]: {} });
               }}
-              onChoose={(id, c) => setNestedChoices({ ...nestedChoices, [lb.remote_id]: { ...own, [id]: c } })}
+              onChoose={(id, c) => setNestedChoices((cur) => ({ ...cur, [lb.remote_id]: { ...cur[lb.remote_id], [id]: c } }))}
             />
           );
         })}
@@ -312,11 +315,12 @@ function NestedLorebook(props: {
   lb: Item;
   pick?: Option;
   cmp?: UseQueryResult<Comparison>;
+  sides: Sides;
   choices: Choices;
   onPick: (key: string) => void;
   onChoose: (id: string, c: string) => void;
 }) {
-  const { lb, pick, cmp, choices, onPick, onChoose } = props;
+  const { lb, pick, cmp, sides, choices, onPick, onChoose } = props;
   return (
     <section className="nested-item" aria-label={`World book ${lb.name || lb.remote_id}`}>
       <h2>
@@ -335,7 +339,7 @@ function NestedLorebook(props: {
       )}
       {pick?.action === "bind" &&
         (cmp?.data ? (
-          <Diff scope={`book:${lb.remote_id}`} cmp={cmp.data} choices={choices} onChoose={onChoose} />
+          <Diff scope={`book:${lb.remote_id}`} cmp={cmp.data} sides={sides} choices={choices} onChoose={onChoose} />
         ) : cmp?.isError ? (
           <p className="error">{cmp.error.message}</p>
         ) : (

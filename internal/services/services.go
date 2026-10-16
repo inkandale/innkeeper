@@ -16,9 +16,18 @@ import (
 	"github.com/davidgibbons/innkeeper/protocol"
 )
 
+// Registry is what the Broker needs to know about instances and to call
+// them. *plugins.Registry is the production one.
+type Registry interface {
+	Instance(ctx context.Context, id int64) (pluginhost.Instance, error)
+	InstanceWith(ctx context.Context, id int64, capability string) (pluginhost.Instance, error)
+	Services(ctx context.Context, mgr *pluginhost.Manager, inst pluginhost.Instance) ([]string, error)
+	Call(ctx context.Context, mgr *pluginhost.Manager, inst pluginhost.Instance, method string, params, result any) error
+}
+
 // Broker answers service calls for the plugins on one Manager.
 type Broker struct {
-	Registry *plugins.Registry
+	Registry Registry
 	// Plugins runs the providers; its core handler must be Handle's.
 	Plugins *pluginhost.Manager
 	// Runs carries the providers' notifications back to the call.

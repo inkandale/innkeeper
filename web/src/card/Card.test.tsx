@@ -65,6 +65,10 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (req: Request) => {
       const path = new URL(req.url).pathname;
+      if (req.method === "DELETE") {
+        sent.push({ path, body: null });
+        return new Response(null, { status: 204 });
+      }
       if (req.method === "PATCH") {
         const body = await req.json();
         patches.push({ path, body });
@@ -526,4 +530,12 @@ test("a failed check for updates shows why", async () => {
   renderAt("/cards/7");
   await userEvent.click(await screen.findByRole("button", { name: "Check for updates" }));
   expect(await screen.findByText("chub is down")).toBeInTheDocument();
+});
+
+test("the card page's × unlinks it from the card it is a variant of", async () => {
+  head = { ...entity, variant_of: { id: 2, slug: "old-brakka", name: "Old Brakka" } } as typeof entity;
+  renderAt("/cards/7");
+  expect(await screen.findByRole("link", { name: "Old Brakka" })).toHaveAttribute("href", "/cards/2");
+  await userEvent.click(screen.getByRole("button", { name: "Unlink from Old Brakka" }));
+  await waitFor(() => expect(sent).toContainEqual({ path: "/api/cards/7/variant_of", body: null }));
 });

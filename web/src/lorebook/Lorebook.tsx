@@ -6,6 +6,7 @@ import { text, tokens } from "../card/draft";
 import { Section } from "../card/Fields";
 import { Sources } from "../card/Organize";
 import { Archive, Push, Revisions, Sync } from "../card/Panel";
+import { VariantOf, Variants } from "../card/Variants";
 import { UpdateBanner } from "../card/Upstream";
 import { useEditor } from "../card/useEditor";
 import { Forge } from "../forge/Forge";
@@ -38,6 +39,7 @@ function LorebookEditor({ id }: { id: number }) {
           disabled={!!forge.lock("name")}
           onChange={(e) => ed.edit("name", e.target.value)}
         />
+        <VariantOf kind="lorebook" entity={head} />
         <div className="row">
           <button className="button primary" disabled={!dirty || ed.save.isPending || ed.stale} onClick={() => ed.draft && ed.save.mutate(ed.draft)}>
             Save
@@ -48,6 +50,7 @@ function LorebookEditor({ id }: { id: number }) {
         <Sync kind="lorebook" id={id} />
         <LinkedCards ids={head.cards ?? []} />
         <Sources kind="lorebook" id={id} />
+        <Variants kind="lorebook" entity={head} />
         <Revisions kind="lorebook" id={id} />
       </aside>
       <div className="card-main">

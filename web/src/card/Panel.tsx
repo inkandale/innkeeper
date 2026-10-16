@@ -16,6 +16,7 @@ import { reviewPath, stateLabel } from "../sync/sync";
 import { ChipInput } from "./ChipInput";
 import { Collections, Sources } from "./Organize";
 import { useBindingEdits } from "./Upstream";
+import { VariantOf, Variants } from "./Variants";
 
 type PanelProps = {
   card: Entity;
@@ -40,6 +41,7 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
       {avatar ? <img className="portrait" src={thumb(avatar, 640)} alt="" /> : <div className="portrait" />}
       <Image sha={avatar} busy={avatarBusy} onAvatar={onAvatar} />
       <Identity data={data} edit={edit} lock={lock} />
+      <VariantOf kind="card" entity={card} />
       <div className="row">
         <button className="button primary" disabled={!dirty || saving} onClick={onSave}>
           Save
@@ -57,6 +59,7 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
       <Sync kind="card" id={card.id} />
       <Lorebooks ids={card.lorebooks ?? []} />
       <Enrichments id={card.id} />
+      <Variants kind="card" entity={card} />
       <Revisions kind="card" id={card.id} />
     </aside>
   );

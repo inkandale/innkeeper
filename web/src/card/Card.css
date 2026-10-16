@@ -1,0 +1,388 @@
+.card-page,
+.history {
+  display: grid;
+  grid-template-areas: "aside main";
+  grid-template-columns: minmax(240px, 300px) 1fr;
+  gap: calc(var(--space) * 2);
+  padding: calc(var(--space) * 2);
+  align-items: start;
+}
+
+.card-aside {
+  grid-area: aside;
+  position: sticky;
+  top: 0;
+  max-height: 100vh;
+  overflow: auto;
+  display: grid;
+  gap: var(--space);
+}
+
+.card-aside h2 {
+  font-size: 0.85em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: var(--space) 0 calc(var(--space) * 0.5);
+}
+
+.card-main {
+  grid-area: main;
+  min-width: 0;
+}
+
+.portrait {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.input.name {
+  font-size: 1.3em;
+  font-weight: 600;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--space) * 0.5);
+  align-items: center;
+}
+
+.plain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+.field {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  margin-bottom: var(--space);
+}
+
+.field summary {
+  display: flex;
+  gap: var(--space);
+  align-items: baseline;
+  padding: var(--space);
+  cursor: pointer;
+}
+
+.field.dirty {
+  border-left: 3px solid var(--accent);
+}
+
+.unsaved {
+  color: var(--accent);
+  font-size: 0.85em;
+}
+
+.tokens {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+.field > .contents > .grow,
+.field > .contents > .greeting,
+.field > .contents > .button,
+.field > .contents > pre {
+  display: flex;
+  width: calc(100% - var(--space) * 2);
+  margin: 0 var(--space) var(--space);
+}
+
+.grow {
+  field-sizing: content;
+  min-height: 4lh;
+  resize: vertical;
+}
+
+.greeting {
+  gap: calc(var(--space) * 0.5);
+  align-items: start;
+}
+
+.field > .contents > .macro {
+  width: calc(100% - var(--space) * 2);
+  margin: 0 var(--space) var(--space);
+}
+
+.greeting > .macro {
+  flex: 1;
+}
+
+/* The mirror sits behind the transparent textarea with the same box and wrapping, so its marks line up with the text. */
+.macro {
+  position: relative;
+  background: var(--bg);
+  border-radius: calc(var(--radius) * 0.75);
+}
+
+.macro-mirror {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  color: transparent;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  pointer-events: none;
+  scrollbar-gutter: stable;
+}
+
+.macro-mirror mark {
+  color: transparent;
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 3px;
+}
+
+/* Both reserve a scrollbar's width, so a scrollbar on the textarea can't make the two wrap differently. */
+.card-aside .input:disabled,
+.macro > textarea:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.locked {
+  color: var(--accent);
+  font-size: 0.85em;
+}
+
+.macro > textarea {
+  position: relative;
+  display: block;
+  background: transparent;
+  scrollbar-gutter: stable;
+}
+
+.extensions,
+.conflict pre {
+  white-space: pre-wrap;
+  overflow: auto;
+  background: var(--bg);
+  border-radius: calc(var(--radius) * 0.75);
+  padding: var(--space);
+}
+
+@media (max-width: 720px) {
+  .card-page,
+  .history {
+    grid-template-areas: "aside" "main";
+    grid-template-columns: 1fr;
+  }
+
+  .card-aside {
+    position: static;
+    max-height: none;
+  }
+}
+
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space);
+  align-items: center;
+  padding: var(--space);
+  margin-bottom: var(--space);
+  border: 1px solid var(--drift);
+  border-radius: var(--radius);
+}
+
+.conflict {
+  margin-bottom: calc(var(--space) * 2);
+}
+
+.conflict-field {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space);
+  margin-bottom: var(--space);
+}
+
+.conflict-field h3 {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--space) * 0.5);
+  margin: 0 0 calc(var(--space) * 0.5);
+}
+
+.chip-input {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--space) * 0.5);
+  align-items: center;
+}
+
+.chip-input .input {
+  flex: 1;
+  min-width: 8em;
+  width: auto;
+}
+
+.chip-x {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 calc(var(--space) * 0.5);
+}
+
+.check {
+  display: block;
+}
+
+.card-aside .badge {
+  display: inline-block;
+  position: static;
+}
+
+.card-aside .logo {
+  vertical-align: middle;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The input is visually hidden, so show its focus on the label. */
+.file-button {
+  position: relative;
+}
+
+.file-button:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.crop::backdrop {
+  background: rgb(0 0 0 / 0.6);
+}
+
+.crop[open] {
+  display: grid;
+  gap: var(--space);
+  padding: calc(var(--space) * 2);
+  color: var(--text);
+  background: var(--surface);
+  border: none;
+  border-radius: var(--radius);
+}
+
+.crop-box {
+  position: relative;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  background: var(--bg);
+}
+
+.crop-box img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  max-width: none;
+  user-select: none;
+}
+
+.revision {
+  display: grid;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: calc(var(--radius) * 0.5);
+  padding: calc(var(--space) * 0.5) var(--space);
+  cursor: pointer;
+}
+
+.revision:hover,
+.revision[aria-current="true"] {
+  background: var(--surface-2);
+}
+
+.hunks {
+  white-space: pre-wrap;
+}
+
+.hunks del {
+  background: color-mix(in srgb, var(--danger) 30%, transparent);
+}
+
+.hunks ins {
+  background: color-mix(in srgb, var(--ok) 30%, transparent);
+}
+
+.hunks.blocks > span,
+.hunks.blocks del,
+.hunks.blocks ins {
+  display: block;
+}
+
+.image-choice > div {
+  display: grid;
+  gap: var(--space);
+  justify-items: center;
+}
+
+.history-thumb {
+  width: 80px;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: calc(var(--radius) * 0.5);
+}
+
+.lang {
+  width: 6em;
+  flex: none;
+}
+
+.lang-clash {
+  margin: 0 var(--space) var(--space);
+}
+
+fieldset.contents {
+  display: contents;
+}
+
+.enrichment-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+
+.enrichment-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space);
+}
+
+.enrichment-list dd {
+  margin: 0;
+  font-weight: 700;
+  text-align: right;
+}
+
+.enrichment-list .stale dd {
+  opacity: 0.55;
+  font-weight: 400;
+}

@@ -1,0 +1,8 @@
+.mark {
+  flex: none;
+}
+
+/* A class, not a style attribute: the CSP blocks inline styles. */
+.mark-card {
+  fill: var(--accent);
+}

@@ -1,0 +1,123 @@
+import createClient, { type Middleware } from "openapi-fetch";
+import type { paths } from "./schema";
+
+/** loginPath is the login page URL that returns to path and search. */
+export function loginPath(path: string, search: string): string {
+  if (path === "/login") return path + search;
+  return "/login?next=" + encodeURIComponent(path + search);
+}
+
+/** safeNext returns next if it's a path on this site, or "/". */
+export function safeNext(next: string | null): string {
+  if (!next) return "/";
+  // Parse, as the browser will: it strips tabs and newlines, so prefix checks miss "/\t/evil".
+  try {
+    const u = new URL(next, window.location.origin);
+    return u.origin === window.location.origin ? u.pathname + u.search + u.hash : "/";
+  } catch {
+    return "/"; // Unparseable, like "http://[".
+  }
+}
+
+/** nextKey is the sessionStorage key where a redirect login saves where to land. */
+export const nextKey = "innkeeper.next";
+
+// Any 401 means the session is gone, so go log in and come back. A failed
+// login is also a 401, so login calls are left to the login page.
+const toLogin: Middleware = {
+  onResponse({ request, response }) {
+    const path = new URL(request.url).pathname;
+    const loginCall = path.startsWith("/api/auth/") && path !== "/api/auth/me";
+    if (response.status === 401 && !loginCall && window.location.pathname !== "/login") {
+      window.location.assign(loginPath(window.location.pathname, window.location.search));
+    }
+  },
+};
+
+// fetch is looked up per call, not bound once, so tests can stub it. The
+// base URL is absolute because Request rejects relative URLs outside a browser.
+export const api = createClient<paths>({
+  baseUrl: new URL("/api", window.location.origin).href,
+  fetch: (req) => globalThis.fetch(req),
+});
+api.use(toLogin);
+
+/** ApiError carries the API's problem detail. */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    detail: string,
+  ) {
+    super(detail);
+  }
+}
+
+/** must returns a response's data, or throws its error as an ApiError. */
+export function must<T>(res: { data?: T; error?: unknown; response: Response }): T {
+  if (res.error !== undefined || res.data === undefined) {
+    const detail = (res.error as { detail?: string } | undefined)?.detail ?? res.response.statusText;
+    throw new ApiError(res.response.status, detail);
+  }
+  return res.data;
+}
+
+/** mustOk throws a failed response's error as an ApiError, for calls with no body, like a 204. */
+export function mustOk(res: { error?: unknown; response: Response }): void {
+  if (res.error !== undefined || !res.response.ok) {
+    const detail = (res.error as { detail?: string } | undefined)?.detail ?? res.response.statusText;
+    throw new ApiError(res.response.status, detail);
+  }
+}
+
+/** thumb is the URL of a blob's image resized to w pixels wide. */
+export function thumb(sha: string, w: 160 | 320 | 640 = 320): string {
+  return `/api/blobs/${sha}?w=${w}`;
+}
+
+/** upload stores a file as a blob and returns its sha256. */
+export async function upload(file: Blob): Promise<string> {
+  const res = await api.POST("/blobs", {
+    // The schema types a binary body as string; send the bytes as they are.
+    body: file as unknown as string,
+    bodySerializer: (b) => b,
+    headers: { "Content-Type": "application/octet-stream" },
+  });
+  return must(res).sha256;
+}
+
+/** Kind is what a library page shows. */
+export type Kind = "card" | "lorebook";
+
+/** route is a card route's path for kind. Lorebook routes have the same shapes, so they keep the card path's types. */
+export function route<P extends `/cards/${string}` | `/instances/{id}/cards${string}`>(kind: Kind, path: P): P {
+  return (kind === "card" ? path : path.replace("/cards", "/lorebooks")) as P;
+}
+
+/** exportFormats are the formats export can write: json always, and each format a working codec plugin instance lists, as the server picks one. */
+export function exportFormats(
+  plugins: { name: string; capabilities?: string[] | null; formats?: string[] | null }[] | null | undefined,
+  instances: { plugin: string; broken_error?: string | null }[] | null | undefined,
+): string[] {
+  const working = new Set((instances ?? []).filter((i) => !i.broken_error).map((i) => i.plugin));
+  const codecs = (plugins ?? []).filter((p) => p.capabilities?.includes("codec") && working.has(p.name));
+  return [...new Set(["json", ...codecs.flatMap((p) => p.formats ?? [])])];
+}
+
+/** withCapability returns the instances whose plugin offers any of caps. */
+export function withCapability<I extends { plugin: string }>(
+  instances: I[] | null | undefined,
+  plugins: { name: string; capabilities?: string[] | null }[] | null | undefined,
+  ...caps: string[]
+): I[] {
+  const names = new Set((plugins ?? []).filter((p) => p.capabilities?.some((c) => caps.includes(c))).map((p) => p.name));
+  return (instances ?? []).filter((i) => names.has(i.plugin));
+}
+
+/** followers are the instances that follow site sources: their plugin pulls but doesn't push. */
+export function followers(
+  instances: { id: number; plugin: string }[] | null | undefined,
+  plugins: { name: string; capabilities?: string[] | null }[] | null | undefined,
+): Set<number> {
+  const pushers = new Set(withCapability(instances, plugins, "push").map((i) => i.id));
+  return new Set(withCapability(instances, plugins, "pull").filter((i) => !pushers.has(i.id)).map((i) => i.id));
+}

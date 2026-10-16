@@ -1,0 +1,81 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      INNKEEPER_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # pg_dump must match the pg18 service; the runner ships an older client.
+      - name: Install the PostgreSQL 18 client
+        run: |
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-18
+          echo /usr/lib/postgresql/18/bin >> "$GITHUB_PATH"
+      - run: go vet ./...
+      # ink must build where people run it, not only on the server's platform.
+      - run: |
+          for target in darwin/arm64 windows/amd64; do
+            GOOS=${target%/*} GOARCH=${target#*/} go build -o /dev/null ./cmd/ink
+          done
+      - run: go test -race ./...
+
+  chart:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@v5
+      - run: helm lint chart --strict --set database.secretName=db --set secretsKey.secretName=key --set ingress.enabled=true --set ingress.host=innkeeper.example.com
+      - run: helm lint chart --strict --set database.secretName=db --set secretsKey.secretName=key --set backup.persistence.enabled=true --set backup.assets.every=24h --set backup.config.every=7d
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      # The generated client must match the API.
+      - run: npm run gen && git diff --exit-code -- openapi.json src/api/schema.d.ts
+      - run: npm run typecheck
+      - run: npm test
+      - run: npx vite build

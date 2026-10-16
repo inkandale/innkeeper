@@ -1,0 +1,93 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useBlocker } from "react-router";
+import { api, ApiError, must, route, type Kind } from "../api/client";
+import { useToast } from "../shell/Toasts";
+import { changed, rebase, type Data, type Draft } from "./draft";
+
+/** useEditor loads a card or lorebook and holds its unsaved edits, its save, and the stale-save flow. */
+export function useEditor(kind: Kind, id: number) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const entity = useQuery({
+    queryKey: [kind, id],
+    queryFn: async () => must(await api.GET(route(kind, "/cards/{id}"), { params: { path: { id } } })),
+  });
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [stale, setStale] = useState(false);
+  const [comparing, setComparing] = useState(false);
+  const dirty = changed(draft);
+  useLeaveGuard(dirty.size > 0);
+
+  const save = useMutation({
+    mutationFn: async (d: Draft) =>
+      must(
+        await api.PUT(route(kind, "/cards/{id}"), {
+          params: { path: { id } },
+          body: { base_revision_id: d.baseId, data: d.data, source: "ui" },
+        }),
+      ),
+    onSuccess: (e, sent) => {
+      qc.setQueryData([kind, id], e);
+      void qc.invalidateQueries({ queryKey: [kind, id, "revisions"] });
+      // Keep edits typed while the save was in flight, on top of the new head.
+      setDraft((cur) => {
+        if (!cur || cur === sent) return null;
+        const next = rebase(cur, e.revision.id, (e.revision.data ?? {}) as Data);
+        return changed(next).size ? next : null;
+      });
+      setStale(false);
+      setComparing(false);
+      toast({ text: "Saved" });
+    },
+    meta: { toast: false },
+    onError: (e) => (e instanceof ApiError && e.status === 409 ? setStale(true) : toast({ text: e.message, error: true })),
+  });
+
+  const head = entity.data;
+  const headData = (head?.revision.data ?? {}) as Data;
+  const edit = (key: string, value: unknown) =>
+    setDraft((cur) => {
+      if (!head) return cur;
+      const d = cur ?? { baseId: head.revision.id, base: headData, data: headData };
+      return { ...d, data: { ...d.data, [key]: value } };
+    });
+  const reload = () => {
+    setDraft(null);
+    setStale(false);
+    setComparing(false);
+    void entity.refetch();
+  };
+  const compare = async () => {
+    await entity.refetch();
+    setComparing(true);
+  };
+  // Keep moves the draft onto the head that beat it, so Save can go ahead.
+  const keep = () => {
+    if (draft && head) setDraft(rebase(draft, head.revision.id, headData));
+    setStale(false);
+    setComparing(false);
+  };
+  const use = (key: string) => setDraft((cur) => cur && { ...cur, data: { ...cur.data, [key]: headData[key] } });
+
+  return { entity, headData, data: draft?.data ?? headData, draft, setDraft, dirty, edit, save, stale, comparing, reload, compare, keep, use };
+}
+
+export type Editor = ReturnType<typeof useEditor>;
+
+// useLeaveGuard asks before leaving the page while on is true: in the app
+// through the router, and on reload or close through the browser.
+function useLeaveGuard(on: boolean) {
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => on && currentLocation.pathname !== nextLocation.pathname);
+  useEffect(() => {
+    if (blocker.state !== "blocked") return;
+    if (window.confirm("Leave without saving your edits?")) blocker.proceed();
+    else blocker.reset();
+  }, [blocker]);
+  useEffect(() => {
+    if (!on) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [on]);
+}

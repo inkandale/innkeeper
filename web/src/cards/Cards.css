@@ -1,0 +1,421 @@
+.cards {
+  display: grid;
+  grid-template-areas: "facets toolbar" "facets main";
+  grid-template-columns: var(--facets-width) 1fr;
+  grid-template-rows: auto 1fr;
+  min-height: 100%;
+}
+
+.cards.no-facets {
+  grid-template-areas: "toolbar" "main";
+  grid-template-columns: 1fr;
+  grid-template-rows: auto 1fr;
+}
+
+.facets {
+  grid-area: facets;
+  padding: var(--space);
+  border-right: 1px solid var(--border);
+  overflow: auto;
+}
+
+.facet-section h2 {
+  margin: calc(var(--space) * 1.5) 0 calc(var(--space) * 0.5);
+}
+
+.facet-head {
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0 var(--space);
+  font-size: 0.85em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: left;
+  cursor: pointer;
+}
+
+.facet-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.facet {
+  display: flex;
+  align-items: center;
+  border-radius: calc(var(--radius) * 0.5);
+}
+
+.facet:hover,
+.facet:focus-within {
+  background: var(--surface-2);
+}
+
+.facet-pick {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--space) * 0.5);
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: calc(var(--space) * 0.25 * var(--density)) var(--space);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.facet-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.facet .badge {
+  flex: none;
+  box-shadow: none;
+}
+
+/* The row's own actions show on hover and keyboard focus; opacity, not visibility, keeps them focusable from either direction. */
+.facet-act {
+  opacity: 0;
+  background: none;
+  border: none;
+  padding: 0 calc(var(--space) * 0.5);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.facet:hover .facet-act,
+.facet:focus-within .facet-act {
+  opacity: 1;
+}
+
+.facet.included {
+  color: var(--accent);
+}
+
+.facet.excluded .facet-label {
+  color: var(--drift);
+  text-decoration: line-through;
+}
+
+.facet .count {
+  color: var(--text-muted);
+}
+
+.toolbar {
+  grid-area: toolbar;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space);
+  align-items: center;
+  padding: var(--space) calc(var(--space) * 2);
+  border-bottom: 1px solid var(--border);
+}
+
+.toolbar form {
+  flex: 1 1 200px;
+}
+
+.toolbar select {
+  width: auto;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--space) * 0.5);
+  flex-basis: 100%;
+}
+
+.chips:empty {
+  display: none;
+}
+
+.chip {
+  background: var(--surface-2);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 0 var(--space);
+  cursor: pointer;
+}
+
+.chip.excluded {
+  border-color: var(--danger);
+}
+
+.selection-bar .actions {
+  display: flex;
+  gap: var(--space);
+  margin-left: auto;
+}
+
+.bulk-panel {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space);
+}
+
+.button.danger {
+  background: var(--danger);
+  color: var(--accent-text);
+}
+
+.results {
+  grid-area: main;
+  padding: calc(var(--space) * 2);
+}
+
+.total {
+  color: var(--text-muted);
+  margin: 0 0 var(--space);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--tile-width), 1fr));
+  gap: calc(var(--space) * 2);
+}
+
+.tile {
+  position: relative;
+  min-width: 0;
+}
+
+.tile .select {
+  position: absolute;
+  top: calc(var(--space) * 0.75);
+  left: calc(var(--space) * 0.75);
+  z-index: 1;
+  width: 18px;
+  height: 18px;
+}
+
+.tile.selected .tile-image {
+  outline: 2px solid var(--accent);
+}
+
+.tile-image {
+  position: relative;
+  display: block;
+  text-decoration: none;
+}
+
+.tile .avatar {
+  display: block;
+  width: 100%;
+  aspect-ratio: var(--tile-aspect);
+  object-fit: cover;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.avatar.empty {
+  display: grid;
+  place-items: center;
+  font-size: 2em;
+  color: var(--text-muted);
+}
+
+.badges {
+  position: absolute;
+  top: var(--space);
+  right: var(--space);
+  display: flex;
+  gap: 4px;
+}
+
+.badge {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+.badge.ok { background: var(--ok); }
+.badge.ahead { background: var(--ahead); }
+.badge.drift { background: var(--drift); }
+.badge.unknown { background: var(--unknown); }
+
+.logo,
+.attention {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--bg);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.logo {
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.attention {
+  background: var(--drift);
+  color: var(--bg);
+}
+
+.lorebooks {
+  position: absolute;
+  right: var(--space);
+  bottom: var(--space);
+  background: var(--bg);
+  border-radius: calc(var(--radius) * 0.5);
+  padding: 0 4px;
+  font-size: 0.85em;
+}
+
+.tile-name {
+  display: block;
+  margin-top: var(--space);
+  font-weight: 600;
+  text-decoration: none;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tile-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+}
+
+.tag {
+  background: var(--surface-2);
+  border-radius: calc(var(--radius) * 0.5);
+  padding: 0 6px;
+  font-size: 0.8em;
+}
+
+.list {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.list td {
+  padding: calc(var(--space) * 0.5);
+  border-bottom: 1px solid var(--border);
+}
+
+.list .avatar {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+/* The grid key's score, bottom left, across from the lorebook count. */
+.tile-image .score {
+  position: absolute;
+  left: var(--space);
+  bottom: var(--space);
+  background: var(--bg);
+  border-radius: calc(var(--radius) * 0.5);
+  padding: 0 4px;
+  font-size: 0.85em;
+  font-weight: 700;
+}
+
+.tile-image .score.text {
+  max-width: calc(100% - 2 * var(--space) - 3em);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+}
+
+.tile-image .score.stale {
+  opacity: 0.55;
+  font-weight: 400;
+}
+
+.score-filter {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.score-filter .input {
+  width: 4.5em;
+  min-width: 0;
+}
+
+.list .badges {
+  position: static;
+}
+
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--space) * 0.5);
+  align-items: center;
+  margin-top: calc(var(--space) * 2);
+}
+
+.pager select {
+  width: auto;
+  margin-left: auto;
+}
+
+@media (max-width: 640px) {
+  .cards {
+    grid-template-areas: "toolbar" "facets" "main";
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr;
+  }
+
+  .facets {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    max-height: 40dvh;
+  }
+}
+
+.list .linked a {
+  display: inline-block;
+  margin-right: calc(var(--space) * -0.5);
+}
+
+.list .linked .avatar {
+  width: 24px;
+  height: 36px;
+  border-radius: calc(var(--radius) * 0.5);
+  border: 1px solid var(--bg);
+}
+
+.facet-find {
+  margin: 0 0 calc(var(--space) * 0.5);
+}
+
+.facet-more {
+  background: none;
+  border: none;
+  padding: calc(var(--space) * 0.25) var(--space);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.import-panel {
+  margin-bottom: calc(var(--space) * 2);
+  padding-bottom: var(--space);
+  border-bottom: 1px solid var(--border);
+}

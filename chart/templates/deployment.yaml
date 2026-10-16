@@ -1,0 +1,107 @@
+{{- $env := list
+  (dict "name" "INNKEEPER_DATABASE_URL" "valueFrom" (dict "secretKeyRef" (dict "name" (required "database.secretName is required" .Values.database.secretName) "key" .Values.database.key)))
+  (dict "name" "INNKEEPER_SECRETS_KEY" "valueFrom" (dict "secretKeyRef" (dict "name" (required "secretsKey.secretName is required" .Values.secretsKey.secretName) "key" .Values.secretsKey.key)))
+  (dict "name" "INNKEEPER_PUBLIC_URL" "value" .Values.publicUrl)
+  (dict "name" "INNKEEPER_WORKER_CONCURRENCY" "value" (toString .Values.worker.concurrency))
+}}
+{{- if .Values.backup.persistence.enabled }}
+{{- $env = append $env (dict "name" "INNKEEPER_BACKUP_DIR" "value" "/backups") }}
+{{- end }}
+{{- range $type := list "assets" "config" }}
+{{- $b := index $.Values.backup $type }}
+{{- if $b.every }}
+{{- if not $.Values.backup.persistence.enabled }}
+{{- fail (printf "backup.%s.every needs backup.persistence.enabled=true" $type) }}
+{{- end }}
+{{- $env = append $env (dict "name" (printf "INNKEEPER_BACKUP_%s_EVERY" ($type | upper)) "value" $b.every) }}
+{{- $env = append $env (dict "name" (printf "INNKEEPER_BACKUP_%s_KEEP" ($type | upper)) "value" (toString $b.keep)) }}
+{{- end }}
+{{- end }}
+{{- $env = concat $env .Values.extraEnv }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels: {{- include "innkeeper.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  # The blob volume is ReadWriteOncePod, so the old pod must stop first.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {{- include "innkeeper.labels" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "innkeeper.labels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        runAsNonRoot: true
+        fsGroup: 10001
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        {{- range $cmd := list "api" "worker" }}
+        - name: {{ $cmd }}
+          image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          args: [{{ $cmd }}]
+          env: {{- toYaml $env | nindent 12 }}
+          {{- if eq $cmd "api" }}
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: http
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 30
+          {{- end }}
+          resources: {{- toYaml (index $.Values.resources $cmd) | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: blobs
+              mountPath: /data/blobs
+            - name: plugins
+              mountPath: /data/plugins
+            - name: tmp
+              mountPath: /tmp
+            {{- if $.Values.backup.persistence.enabled }}
+            - name: backups
+              mountPath: /backups
+            {{- end }}
+            {{- with $.Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+        {{- end }}
+      volumes:
+        - name: blobs
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-blobs
+        - name: plugins
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-plugins
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.backup.persistence.enabled }}
+        - name: backups
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-backups
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}

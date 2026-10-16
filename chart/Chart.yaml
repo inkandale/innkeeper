@@ -1,0 +1,6 @@
+apiVersion: v2
+name: innkeeper
+description: Character card library with sync to chat apps
+type: application
+version: 1.0.0
+appVersion: 1.0.0

@@ -1,0 +1,198 @@
+.settings {
+  padding: calc(var(--space) * 2);
+}
+
+.tabs {
+  display: flex;
+  gap: calc(var(--space) * 2);
+  margin-bottom: calc(var(--space) * 2);
+  border-bottom: 1px solid var(--border);
+}
+
+.tabs a {
+  padding: var(--space) 0;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.tabs a.active {
+  color: var(--text);
+  border-bottom: 2px solid var(--accent);
+}
+
+.settings table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: calc(var(--space) * 2);
+}
+
+.settings th,
+.settings td {
+  padding: calc(var(--space) * 0.75);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.state.succeeded { color: var(--ok); }
+.state.failed { color: var(--danger); }
+.state.running { color: var(--ahead); }
+
+.job dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: calc(var(--space) * 0.5) calc(var(--space) * 2);
+}
+
+.job dd {
+  margin: 0;
+}
+
+.plugin {
+  margin-bottom: calc(var(--space) * 3);
+}
+
+.plugin header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space);
+}
+
+.plugin h2 {
+  margin: 0;
+  font-size: 1.1em;
+}
+
+.caps {
+  display: flex;
+  gap: calc(var(--space) * 0.5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.caps li {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 var(--space);
+  font-size: 0.85em;
+}
+
+.plugin header > :last-child {
+  margin-left: auto;
+}
+
+.instance-form,
+.appearance {
+  max-width: 640px;
+}
+
+.form-field {
+  margin-bottom: calc(var(--space) * 1.5);
+}
+
+.form-field > label {
+  display: grid;
+  gap: calc(var(--space) * 0.5);
+}
+
+/* The native required attribute drives the marker. */
+.form-field > label:has(:required) > span::after {
+  content: " *";
+  color: var(--danger);
+}
+
+.schema-object {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 0 0 calc(var(--space) * 1.5);
+}
+
+/* The root config object needs no frame of its own. */
+.instance-form > .schema-object {
+  border: 0;
+  padding: 0;
+}
+
+.created {
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: var(--space);
+  margin-bottom: calc(var(--space) * 2);
+}
+
+.created code {
+  display: block;
+  word-break: break-all;
+  margin-bottom: var(--space);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space);
+}
+
+.records {
+  max-width: 640px;
+  margin-top: calc(var(--space) * 3);
+}
+
+.records > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.records ul {
+  list-style: none;
+  padding: 0;
+}
+
+.records li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space);
+  padding: calc(var(--space) * 0.5) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.records li > small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.records li > button:first-of-type {
+  margin-left: auto;
+}
+
+.checks {
+  border: none;
+  padding: 0;
+}
+
+.button.reset {
+  margin-top: calc(var(--space) / 2);
+}
+
+.instance-tabs {
+  display: flex;
+  gap: calc(var(--space) * 1.5);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space);
+}
+
+.instance-tabs [role="tab"] {
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: var(--space) 0;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.instance-tabs [role="tab"].on {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}

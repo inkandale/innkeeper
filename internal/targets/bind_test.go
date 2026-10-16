@@ -1,0 +1,287 @@
+package targets
+
+import (
+	"errors"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/inkandale/innkeeper/internal/library"
+	"github.com/inkandale/innkeeper/internal/merge"
+)
+
+// appCopy pushes card and unbinds it, leaving a copy the app has but the
+// library doesn't know about. It returns the copy's remote ID.
+func (e *env) appCopy(card int64) string {
+	e.t.Helper()
+	b := e.push(card)
+	if err := e.s.Unbind(e.ctx, b.ID); err != nil {
+		e.t.Fatal(err)
+	}
+	return b.RemoteID
+}
+
+func (e *env) bind(card int64, remoteID string) Binding {
+	e.t.Helper()
+	b, err := e.s.Bind(e.ctx, library.Card, e.inst, card, remoteID)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return b
+}
+
+func TestBindMatchingItem(t *testing.T) {
+	e := setup(t, nil)
+	b := e.bind(e.card, e.appCopy(e.card))
+	if b.Status != "in_sync" || b.LastPush.Kind != "bind" || b.LastPush.RevisionID != e.head(e.card).ID {
+		t.Fatalf("binding = %+v", b)
+	}
+	pushes, err := e.s.Pushes(e.ctx, b.ID)
+	if err != nil || len(pushes) != 1 || pushes[0].Kind != "bind" {
+		t.Fatalf("pushes = %+v, %v", pushes, err)
+	}
+}
+
+// boundChanged binds the card to an app copy whose description differs. The
+// app's copy is accepted as it is, so the library is ahead.
+func boundChanged(t *testing.T) (*env, Binding) {
+	e := setup(t, nil)
+	remoteID := e.appCopy(e.card)
+	e.editRemote(remoteID, "description", "A tired smith.")
+	b := e.bind(e.card, remoteID)
+	if b.Status != "ahead" || b.RemoteState != "unchanged" || len(b.Changes) != 0 || b.LastPush.Kind != "bind" {
+		t.Fatalf("binding = %+v", b)
+	}
+	return e, b
+}
+
+func TestBindDifferingItemKeepsLibrary(t *testing.T) {
+	e, _ := boundChanged(t)
+	if field(t, e.head(e.card).Data, "description") != "A dwarf smith." || e.revisions(e.card) != 1 {
+		t.Fatalf("head = %s", e.head(e.card).Data)
+	}
+}
+
+func TestBindDifferingItemThenPush(t *testing.T) {
+	e, b := boundChanged(t)
+	p, err := e.s.Preview(e.ctx, library.Card, e.inst, e.card)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.Replaces || len(p.Changes) != 1 || p.Changes[0].Field != "description" ||
+		string(p.Changes[0].After) != `"A dwarf smith."` {
+		t.Fatalf("preview = %+v", p)
+	}
+	b = e.push(e.card)
+	if b.Status != "in_sync" || b.LastPush.Kind != "push" || e.remoteData(b.RemoteID)["description"] != "A dwarf smith." {
+		t.Fatalf("binding = %+v", b)
+	}
+}
+
+func TestBindThenLibraryChanges(t *testing.T) {
+	e := setup(t, nil)
+	b := e.bind(e.card, e.appCopy(e.card))
+	e.update(e.card, func(ed *library.Edit) { ed.Data = setField(ed.Data, "first_mes", "Well met.") })
+	if s := e.status(e.card); s != "ahead" {
+		t.Fatalf("status = %s, want ahead", s)
+	}
+	e.editRemote(b.RemoteID, "description", "A tired smith.")
+	if b = e.check(b); b.Status != "diverged" {
+		t.Fatalf("status = %s, want diverged", b.Status)
+	}
+}
+
+func TestBindCardWithStandaloneLorebooks(t *testing.T) {
+	e := setup(t, map[string]any{"lorebooks": "standalone"})
+	lb := e.newLorebook("Forge lore")
+	e.link(e.card, lb)
+	// The app links its copy to the lorebook's bound copy, as the library does.
+	b := e.bind(e.card, e.appCopy(e.card))
+	if b.Status != "in_sync" || len(b.LastPush.LorebookRemoteIDs) != 1 {
+		t.Fatalf("binding = %+v", b)
+	}
+	lorebooks, err := e.s.Bindings(e.ctx, library.Lorebook, lb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.s.Unbind(e.ctx, lorebooks[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if s := e.status(e.card); s != "ahead" {
+		t.Fatalf("card status after unbinding its lorebook = %s, want ahead", s)
+	}
+	lbb, err := e.s.Bind(e.ctx, library.Lorebook, e.inst, lb, lorebooks[0].RemoteID)
+	if err != nil || lbb.Status != "in_sync" || lbb.LastPush.Kind != "bind" {
+		t.Fatalf("lorebook binding = %+v, %v", lbb, err)
+	}
+	if s := e.status(e.card); s != "in_sync" {
+		t.Fatalf("card status = %s, want in_sync", s)
+	}
+}
+
+func TestBindCardWithoutReportedLinks(t *testing.T) {
+	e := setup(t, map[string]any{"lorebooks": "standalone"})
+	lb := e.newLorebook("Forge lore")
+	e.link(e.card, lb)
+	remoteID := e.appCopy(e.card)
+	e.forgetLinks(remoteID)
+	if b := e.bind(e.card, remoteID); b.Status != "ahead" || b.RemoteState != "unchanged" {
+		t.Fatalf("binding = %+v", b)
+	}
+}
+
+func TestBindRefusals(t *testing.T) {
+	e := setup(t, nil)
+	other := e.newCard("Durza")
+	free := e.appCopy(other)
+	bound := e.push(e.card)
+	if _, err := e.s.Bind(e.ctx, library.Card, e.inst, e.card, free); !errors.Is(err, ErrBound) {
+		t.Fatalf("binding a bound card: %v", err)
+	}
+	if _, err := e.s.Bind(e.ctx, library.Card, e.inst, other, bound.RemoteID); !errors.Is(err, ErrBound) {
+		t.Fatalf("binding to a bound app item: %v", err)
+	}
+	if _, err := e.s.Bind(e.ctx, library.Card, e.inst, other, "r99"); !errors.Is(err, library.ErrNotFound) {
+		t.Fatalf("binding to a missing app item: %v", err)
+	}
+	lb := e.newLorebook("Forge lore")
+	if _, err := e.s.Bind(e.ctx, library.Lorebook, e.inst, lb, free); !errors.Is(err, ErrCannot) {
+		t.Fatalf("binding a lorebook on an embedding target: %v", err)
+	}
+
+	e = setup(t, map[string]any{"pull": false})
+	if _, err := e.s.Bind(e.ctx, library.Card, e.inst, e.card, e.appCopy(e.card)); !errors.Is(err, ErrCannot) {
+		t.Fatalf("binding on a target without pull: %v", err)
+	}
+	if _, err := e.s.Items(e.ctx, library.Card, e.inst); !errors.Is(err, ErrCannot) {
+		t.Fatalf("listing a target without pull: %v", err)
+	}
+}
+
+func TestItems(t *testing.T) {
+	e := setup(t, nil)
+	free := e.appCopy(e.newCard("Durza"))
+	b := e.push(e.card)
+	items, err := e.s.Items(e.ctx, library.Card, e.inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("items = %+v", items)
+	}
+	for _, it := range items {
+		switch {
+		case it.RemoteID == free && it.Name == "Durza" && it.BindingID == nil:
+		case it.RemoteID == b.RemoteID && it.Name == "Brakka" && it.BindingID != nil && *it.BindingID == b.ID:
+		default:
+			t.Fatalf("item = %+v", it)
+		}
+	}
+}
+
+func TestBindDetectsSources(t *testing.T) {
+	e := setup(t, nil)
+	e.addSites()
+	remoteID := e.appCopy(e.card)
+	e.editRemote(remoteID, "source", []string{"https://fake.example/u/a"})
+	e.bind(e.card, remoteID)
+	got, err := e.lib.Cards.Sources(e.ctx, e.card)
+	if err != nil || len(got) != 1 || got[0].Ref != "u/a" || got[0].LinkedBy != "auto" {
+		t.Fatalf("sources = %+v, %v", got, err)
+	}
+}
+
+func TestBindLorebookDetectsSources(t *testing.T) {
+	e := setup(t, map[string]any{"lorebooks": "standalone"})
+	e.addSites()
+	lb := e.newLorebook("Forge lore")
+	b := e.pushLorebook(lb)
+	if err := e.s.Unbind(e.ctx, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	e.editRemote(b.RemoteID, "source", []string{"https://fake.example/u/forge"})
+	if _, err := e.s.Bind(e.ctx, library.Lorebook, e.inst, lb, b.RemoteID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := e.lib.Lorebooks.Sources(e.ctx, lb)
+	if err != nil || len(got) != 1 || got[0].URL != "https://fake.example/u/forge" {
+		t.Fatalf("sources = %+v, %v", got, err)
+	}
+}
+
+func (e *env) lorebookCount() int {
+	e.t.Helper()
+	var n int
+	if err := e.pool.QueryRow(e.ctx, `SELECT count(*) FROM lorebook`).Scan(&n); err != nil {
+		e.t.Fatal(err)
+	}
+	return n
+}
+
+func TestBindLeavesTheAppsWorldBooksAlone(t *testing.T) {
+	e, card, forge := worldBooks(t)
+	b := e.bind(card, "c1")
+	if e.lorebookCount() != 1 || e.revisions(card) != 1 || len(e.links(card)) != 0 {
+		t.Fatalf("%d lorebooks, %d revisions, links %v", e.lorebookCount(), e.revisions(card), e.links(card))
+	}
+	if lbs, err := e.s.Bindings(e.ctx, library.Lorebook, forge); err != nil || len(lbs) != 0 {
+		t.Fatalf("forge bindings = %+v, %v", lbs, err)
+	}
+	// The app links world books the library card doesn't.
+	if b.Status != "ahead" || strings.Join(b.LastPush.LorebookRemoteIDs, ",") != "l1,l2" {
+		t.Fatalf("binding = %+v", b)
+	}
+}
+
+func TestBindLeavesADriftedWorldBookAlone(t *testing.T) {
+	e, card, forge := worldBooks(t)
+	lb := e.pushLorebook(forge)
+	e.editRemote(lb.RemoteID, "description", "APP EDIT.")
+	e.link(card, forge)
+	e.appCard("c2", map[string]any{"name": "Tova", "description": "A smith."},
+		map[string]any{"lorebook_remote_ids": []string{lb.RemoteID}})
+	e.bind(card, "c2")
+	if h, err := e.lib.Lorebooks.History(e.ctx, forge); err != nil || len(h) != 1 {
+		t.Fatalf("Forge has %d revisions, %v", len(h), err)
+	}
+}
+
+func TestBindChecksTheCardFirst(t *testing.T) {
+	e := setup(t, nil)
+	e.push(e.card)
+	// The item doesn't exist, so a compare would fail with not found.
+	if _, err := e.s.Bind(e.ctx, library.Card, e.inst, e.card, "gone"); !errors.Is(err, ErrBound) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestBoundAheadReviewsTwoWay(t *testing.T) {
+	for name, choice := range map[string]merge.Choice{"library": merge.ChooseLibrary, "app": merge.ChooseApp} {
+		t.Run(name, func(t *testing.T) {
+			e, b := boundChanged(t)
+			if c := e.compareItem(b.RemoteID, 0); len(c.Fields) == 0 || slices.ContainsFunc(c.Fields, decidableField) {
+				t.Fatalf("with the accepted copy, the library's side is kept unasked: %+v", c.Fields)
+			}
+			c, err := e.s.CompareItemTwoWay(e.ctx, library.Card, e.inst, b.RemoteID, 0)
+			if err != nil || c.Base != "none" || c.AcceptedHash == "" {
+				t.Fatalf("comparison = %+v, %v", c, err)
+			}
+			_, err = e.s.Resolve(e.ctx, library.Card, Resolution{InstanceID: e.inst, RemoteID: c.RemoteID, AppHash: c.AppHash,
+				BaseRevisionID: c.HeadRevisionID, AcceptedHash: c.AcceptedHash, Base: "none", Action: "bind", CardID: c.CardID,
+				Choices: map[string]merge.Choice{hunk(t, c, "description"): choice}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := map[merge.Choice]string{merge.ChooseLibrary: "ahead", merge.ChooseApp: "in_sync"}[choice]
+			if s := e.status(e.card); s != want {
+				t.Fatalf("status = %s, want %s", s, want)
+			}
+		})
+	}
+}
+
+func decidableField(f merge.Field) bool {
+	return slices.ContainsFunc(f.Hunks, func(h merge.Hunk) bool {
+		return h.Status == merge.Conflict || h.Status == merge.LibraryOnly || h.Status == merge.AppOnly
+	})
+}

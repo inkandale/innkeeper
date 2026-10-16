@@ -1,0 +1,32 @@
+.entries-toolbar {
+  margin-bottom: var(--space);
+}
+
+.entries-toolbar .input[type="search"] {
+  flex: 1;
+}
+
+.entry summary strong {
+  white-space: nowrap;
+}
+
+.entry summary .muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.entry summary[draggable="true"] {
+  cursor: grab;
+}
+
+.entry-body {
+  display: grid;
+  gap: var(--space);
+  padding: 0 var(--space) var(--space);
+}
+
+.input.num {
+  width: 6em;
+}

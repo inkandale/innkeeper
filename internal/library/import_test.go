@@ -1,0 +1,183 @@
+package library
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"slices"
+	"sync"
+	"testing"
+
+	"github.com/inkandale/innkeeper/cardhash"
+)
+
+func TestSlugify(t *testing.T) {
+	for name, want := range map[string]string{
+		"Brakka":                    "brakka",
+		"  Sir Reginald, the 3rd! ": "sir-reginald-the-3rd",
+		"Zoë--Ann":                  "zo-ann",
+		"花子":                        "untitled",
+		"":                          "untitled",
+	} {
+		if got := Slugify(name); got != want {
+			t.Errorf("Slugify(%q) = %q, want %q", name, got, want)
+		}
+	}
+	long := Slugify("a234567890 b234567890 c234567890 d234567890 e234567890 f2345678 gg")
+	if len(long) > maxSlugLen || long[len(long)-1] == '-' {
+		t.Errorf("long slug %q", long)
+	}
+}
+
+func TestDataNameIsEmptyWithoutAName(t *testing.T) {
+	for data, want := range map[string]string{
+		`{"name": "Brakka", "description": "orc"}`: "Brakka",
+		`{"description": "orc"}`:                   "",
+		`["Brakka"]`:                               "",
+		`not json`:                                 "",
+	} {
+		if got := DataName(json.RawMessage(data)); got != want {
+			t.Errorf("DataName(%s) = %q, want %q", data, got, want)
+		}
+	}
+}
+
+func TestImportSkipsContentSeenBefore(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	e := Edit{Data: json.RawMessage(`{"name": "Brakka"}`), Source: "plugin:folder"}
+
+	id, created, err := lib.Cards.Import(ctx, "folder:brakka.png", "Brakka", e)
+	if err != nil || !created {
+		t.Fatalf("first import = %d, %v, %v", id, created, err)
+	}
+	again, created, err := lib.Cards.Import(ctx, "folder:brakka.png", "Brakka", e)
+	if err != nil || created || again != id {
+		t.Fatalf("second import = %d, %v, %v; want existing %d", again, created, err, id)
+	}
+
+	// Still skipped after the owner edits the card.
+	c, _ := lib.Cards.Get(ctx, id)
+	if _, err := lib.Cards.Update(ctx, id, c.HeadRevisionID, Edit{Data: json.RawMessage(`{"name": "Brakka!"}`), Source: "ui"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, created, _ := lib.Cards.Import(ctx, "folder:brakka.png", "Brakka", e); created {
+		t.Fatal("re-import after an edit created a card")
+	}
+
+	// The same content from another source is a different card, with a free slug.
+	other, created, err := lib.Cards.Import(ctx, "folder:copy.png", "Brakka", e)
+	if err != nil || !created {
+		t.Fatalf("import from another source = %v, %v", created, err)
+	}
+	if c, _ := lib.Cards.Get(ctx, other); c.Slug != "brakka-2" {
+		t.Fatalf("slug = %q, want brakka-2", c.Slug)
+	}
+	third, _, _ := lib.Cards.Import(ctx, "folder:third.png", "Brakka", e)
+	if c, _ := lib.Cards.Get(ctx, third); c.Slug != "brakka-3" {
+		t.Fatalf("slug = %q, want brakka-3", c.Slug)
+	}
+
+	if _, _, err := lib.Cards.Import(ctx, "folder:list.json", "List", Edit{Data: json.RawMessage(`[]`), Source: "plugin:folder"}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("import of a JSON array: %v, want ErrInvalid", err)
+	}
+}
+
+func TestImportItemNamesALorebookWithoutOne(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	id, created, err := lib.ImportItem(ctx, PluginItem{Kind: Lorebook, Provenance: "x:1", Source: "plugin:x",
+		Data: json.RawMessage(`{"entries": []}`), Name: "Fallback"})
+	if err != nil || !created {
+		t.Fatalf("import = %v, %v", created, err)
+	}
+	if lb, _ := lib.Lorebooks.Get(ctx, id); lb.Slug != "fallback" {
+		t.Fatalf("slug = %q, want fallback", lb.Slug)
+	}
+	card := `{"spec":"chara_card_v3","spec_version":"3.0","data":{"name":"Brakka"}}`
+	id, created, err = lib.ImportItem(ctx, PluginItem{Kind: Card, Provenance: "x:2", Source: "plugin:x",
+		Data: json.RawMessage(card), Name: "Fallback"})
+	if err != nil || !created {
+		t.Fatalf("card import = %v, %v", created, err)
+	}
+	if c, _ := lib.Cards.Get(ctx, id); c.Slug != "brakka" {
+		t.Fatalf("card slug = %q, want brakka", c.Slug)
+	}
+}
+
+func TestConcurrentImportsOfOneItemMakeOneCard(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	e := Edit{Data: json.RawMessage(`{"name": "Brakka"}`), Source: "plugin:folder"}
+	ids := make(chan int64, 8)
+	var wg sync.WaitGroup
+	for range cap(ids) {
+		wg.Go(func() {
+			id, _, err := lib.Cards.Import(ctx, "folder:brakka.png", "Brakka", e)
+			if err != nil {
+				t.Error(err)
+			}
+			ids <- id
+		})
+	}
+	wg.Wait()
+	close(ids)
+	first := <-ids
+	for id := range ids {
+		if id != first {
+			t.Fatalf("imports made cards %d and %d", first, id)
+		}
+	}
+}
+
+func TestImportCardQueuesCardAndLorebook(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	card := `{"spec":"chara_card_v3","spec_version":"3.0","data":{"name":"A","character_book":{"name":"L","entries":[]}}}`
+	var id int64
+	for range 2 {
+		var err error
+		if id, _, err = lib.ImportCard(ctx, "plugin:x:1", "plugin:x", []byte(card), ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	books, err := lib.CardLorebooks(ctx, id)
+	if err != nil || len(books) != 1 {
+		t.Fatalf("lorebooks = %v, %v", books, err)
+	}
+	// A standalone lorebook import queues too.
+	lb, _, err := lib.Lorebooks.Import(ctx, "plugin:x:2", "M", Edit{Data: []byte(`{"name":"M","entries":[]}`), Source: "plugin:x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	q, err := lib.DetectQueue(ctx, DetectItem{}, 10)
+	want := []DetectItem{{Card, id}, {Lorebook, books[0]}, {Lorebook, lb}}
+	if err != nil || !slices.Equal(q, want) {
+		t.Fatalf("queue = %+v, %v; want %+v", q, err, want)
+	}
+}
+
+func TestSplitCardDropsAppLocalExtensions(t *testing.T) {
+	split := func(ext string) map[string]any {
+		t.Helper()
+		_, data, _, err := SplitCard(json.RawMessage(`{"spec":"chara_card_v3","data":{"name":"Piko","extensions":` + ext + `}}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var d map[string]any
+		_ = json.Unmarshal(data, &d)
+		return d
+	}
+	d := split(`{"fav":true,"world":"Dwarves","depth_prompt":{"depth":4},"talkativeness":"0.5"}`)
+	if ext, _ := json.Marshal(d["extensions"]); string(ext) != `{"depth_prompt":{"depth":4},"talkativeness":"0.5"}` {
+		t.Fatalf("extensions = %s", ext)
+	}
+	// Only app-local keys leave {}, which hashes like no extensions at all.
+	only, _ := json.Marshal(split(`{"fav":false,"world":""}`))
+	none, _ := json.Marshal(map[string]any{"name": "Piko"})
+	h1, err1 := cardhash.ContentHash(only)
+	h2, err2 := cardhash.ContentHash(none)
+	if err := errors.Join(err1, err2); err != nil || h1 != h2 {
+		t.Fatalf("%s hashes %s, want %s (%v)", only, h1, h2, err)
+	}
+}

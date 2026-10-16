@@ -1,0 +1,74 @@
+import { useQuery, useQueryClient, type UseQueryOptions } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { api, must } from "../api/client";
+import type { components } from "../api/schema";
+import type { ToastSpec } from "../shell/Toasts";
+
+export type Job = components["schemas"]["JobOut"];
+
+export const jobStates: Job["status"][] = ["queued", "running", "waiting", "succeeded", "failed"];
+
+export const finished = (j: Job) => j.status === "succeeded" || j.status === "failed";
+
+/** kindLabel is a job's kind, with the action for a bulk job. */
+export function kindLabel(j: Job): string {
+  const action = (j.payload as { action?: unknown } | null)?.action;
+  return j.kind === "bulk" && typeof action === "string" ? `bulk ${action}` : j.kind;
+}
+
+/** progressText is "done of total" from a bulk job's children or a job's progress, plus any skipped, or "". */
+export function progressText(j: Job): string {
+  if (j.children) {
+    const counts = Object.values(j.children);
+    const total = counts.reduce((a, b) => a + b, 0);
+    return `${(j.children.succeeded ?? 0) + (j.children.failed ?? 0)} of ${total}`;
+  }
+  const p = j.progress as { done?: unknown; total?: unknown; skipped?: unknown } | null;
+  if (typeof p?.done !== "number" || typeof p.total !== "number") return "";
+  return typeof p.skipped === "number" && p.skipped > 0 ? `${p.done} of ${p.total}, ${p.skipped} skipped` : `${p.done} of ${p.total}`;
+}
+
+/** age is how long ago t was: 30s, 45m, 10h, 4d. */
+export function age(t: string, now = Date.now()): string {
+  const s = Math.max(0, Math.round((now - Date.parse(t)) / 1000));
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  return `${Math.floor(s / 86400)}d`;
+}
+
+/** useJobEvents keeps the ["job", id] query current from the job's event stream while live. */
+export function useJobEvents(id: number, live: boolean) {
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (!live) return;
+    const es = new EventSource(`/api/jobs/${id}/events`);
+    es.addEventListener("job", (e) => {
+      const j = JSON.parse((e as MessageEvent<string>).data) as Job;
+      qc.setQueryData(["job", id], j);
+      if (finished(j)) {
+        es.close();
+        // Streams cut a reconcile's snapshot, so fetch the whole job once it's done.
+        void qc.invalidateQueries({ queryKey: ["job", id] });
+        void qc.invalidateQueries({ queryKey: ["jobs"] });
+        // A finished bulk job can change what any search shows.
+        void qc.invalidateQueries({ queryKey: ["search"] });
+      }
+    });
+    return () => es.close();
+  }, [id, live, qc]);
+}
+
+/** useJob reads a job; with follow, the default, it tracks the job's event stream until the job finishes. */
+export function useJob(id: number, { follow = true, ...opts }: { follow?: boolean } & Pick<UseQueryOptions<Job>, "enabled" | "refetchInterval"> = {}) {
+  const job = useQuery({
+    queryKey: ["job", id],
+    queryFn: async () => must(await api.GET("/jobs/{id}", { params: { path: { id } } })),
+    ...opts,
+  });
+  useJobEvents(id, follow && !!job.data && !finished(job.data));
+  return job;
+}
+
+/** jobToast is the toast for a job that just started, linking to its page. */
+export const jobToast = (j: Job, text = `Job ${j.id} started`): ToastSpec => ({ text, link: { to: `/settings/jobs/${j.id}`, label: "View job" } });

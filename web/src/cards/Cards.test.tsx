@@ -38,6 +38,7 @@ let searches: unknown[];
 let posts: { path: string; body: unknown }[];
 let previews: unknown[];
 let family: unknown;
+let puts: { path: string; body: unknown }[];
 beforeEach(() => {
   localStorage.clear();
   keys = { instance_id: null, keys: [] };
@@ -45,10 +46,15 @@ beforeEach(() => {
   posts = [];
   previews = [];
   family = undefined;
+  puts = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
       const path = new URL(req.url).pathname;
+      if (req.method === "PUT") {
+        puts.push({ path, body: await req.json() });
+        return new Response(null, { status: 204 });
+      }
       if (path === "/api/cards/search") {
         const body = await req.json();
         searches.push(body);
@@ -613,4 +619,22 @@ test("Shares a source filters the list", async () => {
   await user.click(await screen.findByRole("checkbox", { name: "Shares a source" }));
   expect(router.state.location.search).toBe("?shared=1");
   await waitFor(() => expect(mainSearches().at(-1)).toMatchObject({ filter: { and: [{ shares_source: true }] } }));
+});
+
+test("Make variants of… links each picked card to the chosen one", async () => {
+  renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
+  await user.click(screen.getByRole("checkbox", { name: "Select Dellin" }));
+  await user.click(screen.getByRole("button", { name: "Make variants of…" }));
+  await user.type(screen.getByRole("textbox", { name: "Parent" }), "Brakka");
+  await user.click(screen.getByRole("button", { name: "Search" }));
+  await user.click(await screen.findByRole("button", { name: "Brakka" }));
+  await user.click(screen.getByRole("button", { name: "Make variants" }));
+  await waitFor(() =>
+    expect(puts).toEqual([
+      { path: "/api/cards/8/variant_of", body: { id: 7 } },
+      { path: "/api/cards/9/variant_of", body: { id: 7 } },
+    ]),
+  );
 });

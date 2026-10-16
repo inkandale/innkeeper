@@ -9,6 +9,7 @@ import { Facets } from "./Facets";
 import { ImportForm, importers } from "./ImportForm";
 import { pageLinks } from "./pages";
 import { defaultSort, parseQuery, parseScore, withoutScores, sizes, toggleTerm, toParams, toLorebookSearch, toSearch, type CardQuery, type Sort, type Term } from "./query";
+import { text } from "../card/draft";
 import { emptySelection, pick, target, type Selection } from "./selection";
 import { useJobEvents } from "../settings/jobUtil";
 import { SelectionBar } from "./SelectionBar";
@@ -136,6 +137,8 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
           total={ungrouped ? total : undefined}
           kind={kind}
           query={target(sel, body)}
+          ids={sel.ids}
+          nameOf={new Map(hits.map((h) => [h.id, text(h.fields.name)]))}
           onAll={() => setSel({ ...sel, all: true })}
           onClear={() => setSel(emptySelection(key))}
           onStarted={setWatching}

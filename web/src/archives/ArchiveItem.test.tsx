@@ -23,6 +23,13 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (req: Request) => {
       const url = new URL(req.url);
+      if (url.pathname === "/api/catalogs/1/items/forge.json") {
+        const lorebook = { ...item, id: "forge.json", kind: "lorebook", name: "Forge" };
+        return json({ item: lorebook, version: "1", versions: [{ version: "1" }], data: { name: "Forge", entries: [{ keys: ["anvil"], content: "Heavy iron." }] } });
+      }
+      if (req.method === "POST" && url.pathname === "/api/catalogs/1/items/forge.json/adopt") {
+        return json({ id: 12, slug: "forge", provenance: "catalog:1:forge.json@1", created_at: now, revision: { id: 1, content_hash: "x", message: "", source: "plugin:folder", created_at: now, data: {} } }, 201);
+      }
       if (url.pathname === "/api/catalogs/1/items/sub%2Fbrakka.png") {
         gets.push(url);
         const v = url.searchParams.get("version") ?? "2";
@@ -72,4 +79,13 @@ test("picking another version after adopting offers Adopt again", async () => {
   await screen.findByRole("link", { name: "Open in library" });
   await userEvent.selectOptions(screen.getByLabelText("Version"), "1");
   await waitFor(() => expect(screen.getByRole("button", { name: "Adopt" })).toBeInTheDocument());
+});
+
+test("a lorebook item lists its entries and adopts into the library's lorebooks", async () => {
+  renderAt("/archives/1/items/forge.json");
+  expect(await screen.findByRole("heading", { name: "1 entry" })).toBeInTheDocument();
+  expect(screen.getByText("anvil")).toBeInTheDocument();
+  expect(screen.getByText("Heavy iron.")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Adopt" }));
+  expect(await screen.findByRole("link", { name: "Open in library" })).toHaveAttribute("href", "/lorebooks/12");
 });

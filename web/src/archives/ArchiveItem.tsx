@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from "react-router";
 import { api, must } from "../api/client";
 import { strings, text, type Data } from "../card/draft";
 import { thumbnailSrc } from "./archive";
+import "../card/Card.css";
 import "../cards/Cards.css";
 import "./Archives.css";
 

@@ -21,3 +21,8 @@
 .archive-text {
   white-space: pre-wrap;
 }
+
+.archive-item .portrait {
+  width: auto;
+  max-width: 240px;
+}

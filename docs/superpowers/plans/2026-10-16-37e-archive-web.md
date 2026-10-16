@@ -718,6 +718,13 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (req: Request) => {
       const url = new URL(req.url);
+      if (url.pathname === "/api/catalogs/1/items/forge.json") {
+        const lorebook = { ...item, id: "forge.json", kind: "lorebook", name: "Forge" };
+        return json({ item: lorebook, version: "1", versions: [{ version: "1" }], data: { name: "Forge", entries: [{ keys: ["anvil"], content: "Heavy iron." }] } });
+      }
+      if (req.method === "POST" && url.pathname === "/api/catalogs/1/items/forge.json/adopt") {
+        return json({ id: 12, slug: "forge", provenance: "catalog:1:forge.json@1", created_at: now, revision: { id: 1, content_hash: "x", message: "", source: "plugin:folder", created_at: now, data: {} } }, 201);
+      }
       if (url.pathname === "/api/catalogs/1/items/sub%2Fbrakka.png") {
         gets.push(url);
         const v = url.searchParams.get("version") ?? "2";
@@ -768,6 +775,15 @@ test("picking another version after adopting offers Adopt again", async () => {
   await userEvent.selectOptions(screen.getByLabelText("Version"), "1");
   await waitFor(() => expect(screen.getByRole("button", { name: "Adopt" })).toBeInTheDocument());
 });
+
+test("a lorebook item lists its entries and adopts into the library's lorebooks", async () => {
+  renderAt("/archives/1/items/forge.json");
+  expect(await screen.findByRole("heading", { name: "1 entry" })).toBeInTheDocument();
+  expect(screen.getByText("anvil")).toBeInTheDocument();
+  expect(screen.getByText("Heavy iron.")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Adopt" }));
+  expect(await screen.findByRole("link", { name: "Open in library" })).toHaveAttribute("href", "/lorebooks/12");
+});
 ```
 
 - [ ] **Step 2: Run the tests to check they fail**
@@ -783,6 +799,7 @@ import { Link, useParams, useSearchParams } from "react-router";
 import { api, must } from "../api/client";
 import { strings, text, type Data } from "../card/draft";
 import { thumbnailSrc } from "./archive";
+import "../card/Card.css";
 import "../cards/Cards.css";
 import "./Archives.css";
 
@@ -903,12 +920,12 @@ function Preview({ kind, data }: { kind: string; data: unknown }) {
 }
 ```
 
-`text` and `strings` come from `web/src/card/draft.ts`, which the card page already uses to read untyped card data. `.tag` and `.tile-tags` come from `Cards.css`.
+`text` and `strings` come from `web/src/card/draft.ts`, which the card page already uses to read untyped card data. `.portrait` comes from `Card.css`, sized there for the card aside, so `Archives.css` caps it at 240px inside `.archive-item`. `.tag` and `.tile-tags` come from `Cards.css`.
 
 - [ ] **Step 4: Run the tests to check they pass**
 
 Run: `npx vitest run src/archives/ArchiveItem.test.tsx`
-Expected: PASS, 3 tests. If the first test fails on the request path, react-router or openapi-fetch didn't round-trip `%2F`. Check `useParams` gives `sub/brakka.png` before changing `itemPath`.
+Expected: PASS, 4 tests. If the first test fails on the request path, react-router or openapi-fetch didn't round-trip `%2F`. Check `useParams` gives `sub/brakka.png` before changing `itemPath`.
 
 - [ ] **Step 5: Commit**
 

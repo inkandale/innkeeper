@@ -1957,6 +1957,20 @@
           },
           "slug": {
             "type": "string"
+          },
+          "variant_of": {
+            "$ref": "#/components/schemas/EntityRef",
+            "description": "The card or lorebook this is a variant of. Absent for none."
+          },
+          "variants": {
+            "description": "Its direct variants, oldest first",
+            "items": {
+              "$ref": "#/components/schemas/EntityRef"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           }
         },
         "required": [
@@ -1964,7 +1978,29 @@
           "slug",
           "provenance",
           "created_at",
-          "revision"
+          "revision",
+          "variants"
+        ],
+        "type": "object"
+      },
+      "EntityRef": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "name"
         ],
         "type": "object"
       },
@@ -2220,6 +2256,29 @@
           "target_state": {
             "$ref": "#/components/schemas/TargetFilter",
             "description": "Is pushed to one of instances and stands as one of states there. An empty list matches any value."
+          }
+        },
+        "type": "object"
+      },
+      "ForkInBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/ForkInBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "source": {
+            "default": "ui",
+            "enum": [
+              "ui",
+              "mcp"
+            ],
+            "type": "string"
           }
         },
         "type": "object"
@@ -4611,6 +4670,29 @@
           }
         },
         "type": "object"
+      },
+      "VariantOfInBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/VariantOfInBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "id": {
+            "description": "The card or lorebook, of the same kind, that this is a variant of",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -6680,6 +6762,139 @@
           }
         },
         "summary": "Remove a card's source",
+        "tags": [
+          "Cards"
+        ]
+      }
+    },
+    "/cards/{id}/variant_of": {
+      "delete": {
+        "description": "Makes no revision.",
+        "operationId": "unset-card-variant-of",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Unlink a card from the one it is a variant of",
+        "tags": [
+          "Cards"
+        ]
+      },
+      "put": {
+        "description": "Makes no revision. A link that would make it its own ancestor returns 409.",
+        "operationId": "set-card-variant-of",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VariantOfInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Make a card a variant of another",
+        "tags": [
+          "Cards"
+        ]
+      }
+    },
+    "/cards/{id}/variants": {
+      "post": {
+        "description": "Copies the head revision, and a card's collections and lorebook links, into a new card that is a variant of this one. Sources and bindings aren't copied.",
+        "operationId": "fork-card",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForkInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Make a variant of a card",
         "tags": [
           "Cards"
         ]
@@ -10085,6 +10300,139 @@
           }
         },
         "summary": "Remove a lorebook's source",
+        "tags": [
+          "Lorebooks"
+        ]
+      }
+    },
+    "/lorebooks/{id}/variant_of": {
+      "delete": {
+        "description": "Makes no revision.",
+        "operationId": "unset-lorebook-variant-of",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Unlink a lorebook from the one it is a variant of",
+        "tags": [
+          "Lorebooks"
+        ]
+      },
+      "put": {
+        "description": "Makes no revision. A link that would make it its own ancestor returns 409.",
+        "operationId": "set-lorebook-variant-of",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VariantOfInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Make a lorebook a variant of another",
+        "tags": [
+          "Lorebooks"
+        ]
+      }
+    },
+    "/lorebooks/{id}/variants": {
+      "post": {
+        "description": "Copies the head revision, and a card's collections and lorebook links, into a new lorebook that is a variant of this one. Sources and bindings aren't copied.",
+        "operationId": "fork-lorebook",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForkInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Make a variant of a lorebook",
         "tags": [
           "Lorebooks"
         ]

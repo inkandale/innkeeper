@@ -729,6 +729,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cards/{id}/variant_of": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Make a card a variant of another
+         * @description Makes no revision. A link that would make it its own ancestor returns 409.
+         */
+        put: operations["set-card-variant-of"];
+        post?: never;
+        /**
+         * Unlink a card from the one it is a variant of
+         * @description Makes no revision.
+         */
+        delete: operations["unset-card-variant-of"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cards/{id}/variants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make a variant of a card
+         * @description Copies the head revision, and a card's collections and lorebook links, into a new card that is a variant of this one. Sources and bindings aren't copied.
+         */
+        post: operations["fork-card"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/catalogs": {
         parameters: {
             query?: never;
@@ -1791,6 +1835,50 @@ export interface paths {
          * @description Detection won't add it back. A binding that followed it is removed too.
          */
         delete: operations["remove-lorebook-source"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lorebooks/{id}/variant_of": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Make a lorebook a variant of another
+         * @description Makes no revision. A link that would make it its own ancestor returns 409.
+         */
+        put: operations["set-lorebook-variant-of"];
+        post?: never;
+        /**
+         * Unlink a lorebook from the one it is a variant of
+         * @description Makes no revision.
+         */
+        delete: operations["unset-lorebook-variant-of"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lorebooks/{id}/variants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Make a variant of a lorebook
+         * @description Copies the head revision, and a card's collections and lorebook links, into a new lorebook that is a variant of this one. Sources and bindings aren't copied.
+         */
+        post: operations["fork-lorebook"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2987,6 +3075,16 @@ export interface components {
             /** @description The head revision */
             revision: components["schemas"]["RevisionOut"];
             slug: string;
+            /** @description The card or lorebook this is a variant of. Absent for none. */
+            variant_of?: components["schemas"]["EntityRef"];
+            /** @description Its direct variants, oldest first */
+            variants: components["schemas"]["EntityRef"][] | null;
+        };
+        EntityRef: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            slug: string;
         };
         EntityStruct: {
             /** @description The draft's data. Omit for a new card's action. */
@@ -3092,6 +3190,19 @@ export interface components {
             tag?: string;
             /** @description Is pushed to one of instances and stands as one of states there. An empty list matches any value. */
             target_state?: components["schemas"]["TargetFilter"];
+        };
+        ForkInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/ForkInBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * @default ui
+             * @enum {string}
+             */
+            source: "ui" | "mcp";
         };
         Grant: {
             client_name: string;
@@ -3985,6 +4096,19 @@ export interface components {
             secrets?: {
                 [key: string]: string | null;
             };
+        };
+        VariantOfInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/VariantOfInBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description The card or lorebook, of the same kind, that this is a variant of
+             */
+            id: number;
         };
     };
     responses: never;
@@ -5373,6 +5497,103 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "set-card-variant-of": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VariantOfInBody"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "unset-card-variant-of": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "fork-card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForkInBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityOut"];
+                };
             };
             /** @description Error */
             default: {
@@ -7540,6 +7761,103 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "set-lorebook-variant-of": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VariantOfInBody"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "unset-lorebook-variant-of": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "fork-lorebook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForkInBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityOut"];
+                };
             };
             /** @description Error */
             default: {

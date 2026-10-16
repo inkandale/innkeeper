@@ -3191,6 +3191,8 @@ export interface components {
             name?: string;
             not?: components["schemas"]["Filter"];
             or?: components["schemas"]["Filter"][] | null;
+            /** @description Has a source, by kind and ref, that another card or lorebook of the same kind also has. */
+            shares_source?: boolean;
             /** @description Has a source of this kind, such as chub. */
             source?: string;
             /** @description Has this tag, in any case. */

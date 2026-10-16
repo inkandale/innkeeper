@@ -2274,6 +2274,10 @@
               "null"
             ]
           },
+          "shares_source": {
+            "description": "Has a source, by kind and ref, that another card or lorebook of the same kind also has.",
+            "type": "boolean"
+          },
           "source": {
             "description": "Has a source of this kind, such as chub.",
             "type": "string"

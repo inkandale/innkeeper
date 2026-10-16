@@ -55,6 +55,8 @@ type ToolCall struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	Arguments string `json:"arguments"`
+	// Extra is provider data the consumer sends back unchanged with the call, such as Gemini's thought signature.
+	Extra json.RawMessage `json:"extra,omitempty"`
 }
 
 // AIChatParams is one model turn.

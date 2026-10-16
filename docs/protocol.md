@@ -919,9 +919,10 @@ token.
 
 Reply with `text`, `model` (the model that answered), and, when the model
 called tools, `tool_calls`:
-`[{"id", "name", "arguments"}]`, `arguments` a JSON string. Answer each tool
-call with a `tool` message carrying its `tool_call_id`, then call `ai.chat`
-again.
+`[{"id", "name", "arguments", "extra"}]`, `arguments` a JSON string. `extra`
+is optional provider data, such as Gemini's thought signature. Put the tool
+calls on the next `assistant` message unchanged, `extra` included, answer each
+with a `tool` message carrying its `tool_call_id`, then call `ai.chat` again.
 
 While it streams, the provider sends `ai.delta` with `run` and `text`, the
 next piece of the reply, in order. The caller gets every delta before the

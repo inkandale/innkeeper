@@ -338,3 +338,14 @@ test("switching the model setup turns a skill it lacks unknown on the Start conc
   await waitFor(() => expect(runs).toHaveLength(1));
   expect(runs[0]).toMatchObject({ instance_id: 1, action: "generate", context: { skills: ["college"] } });
 });
+
+test("the Reforge panel offers a whole-card field action, run without a field", async () => {
+  actions = [...allActions, { ...decl, id: "expand", label: "Expand", description: "Add detail.", fields: ["description", "personality"], whole_card: true }];
+  renderAt("/cards/7");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: /Reforge/ }));
+  await user.click(screen.getByRole("button", { name: /Expand/ }));
+  await waitFor(() => expect(runs).toHaveLength(1));
+  expect(runs[0]).toMatchObject({ action: "expand" });
+  expect(runs[0]).not.toHaveProperty("field");
+});

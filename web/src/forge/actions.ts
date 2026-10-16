@@ -15,7 +15,9 @@ export type Payload = { action: string; field?: string; entity: { kind: string; 
 /** Scope is the keys a run may change: a field, the whole entity, or nothing for a report. */
 export type Scope = "all" | string[];
 
-export const scopeOf = (a: Action | undefined, field?: string): Scope => (a?.report_only ? [] : field ? [field] : "all");
+/** scopeOf is the keys a run may change: its field, a whole-card field action's fields, everything, or nothing for a report. */
+export const scopeOf = (a: Action | undefined, field?: string): Scope =>
+  a?.report_only ? [] : field ? [field] : a?.fields?.length ? a.fields : "all";
 
 const empty = (s: Scope) => s !== "all" && s.length === 0;
 
@@ -27,8 +29,14 @@ export function lockOf(runs: { scope: Scope; label: string }[]): (key: string) =
   return (key) => runs.find((r) => r.scope === "all" || r.scope.includes(key))?.label;
 }
 
+/** whole reports whether a runs on the whole entity: no fields, or fields with whole_card. */
+const whole = (a: Action) => !a.fields?.length || !!a.whole_card;
+
+/** wholeActions are the actions on kind that run on the whole entity, in order. */
+export const wholeActions = (list: Action[], kind: string) => list.filter((a) => a.applies === kind && whole(a));
+
 /** instructionAction is the whole-entity action on kind that the Reforge panel's instruction box runs. */
-export const instructionAction = (list: Action[], kind: string) => list.find((a) => a.applies === kind && !a.fields?.length && a.instruction);
+export const instructionAction = (list: Action[], kind: string) => wholeActions(list, kind).find((a) => a.instruction);
 
 /** newAction is the action the Start tab's Forge runs. */
 export const newAction = (list: Action[]) => list.find((a) => a.applies === "new");

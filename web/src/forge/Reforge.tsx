@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useModal } from "../shell/useModal";
-import { instructionAction, type Action } from "./actions";
+import { instructionAction, wholeActions, type Action } from "./actions";
 import { Hammer } from "./Hammer";
 import { ActionOptions, asks, imagesOf, ModelPicker, noOptions, type Options } from "./Inputs";
 import { blocking, emptyInstruction, MentionBox, useMentions, type Instruction } from "./MentionBox";
@@ -29,7 +29,7 @@ export function Reforge(props: {
   const { kind, label } = forge.subject;
   const revise = instructionAction(forge.mine, kind);
   const current: Target | undefined = target ?? (revise && { action: revise });
-  const others = forge.mine.filter((a) => a.applies === kind && !a.fields?.length && a !== revise);
+  const others = wholeActions(forge.mine, kind).filter((a) => a !== revise);
   const mentions = useMentions(instruction, forge.instance?.id);
   const [options, setOptions] = useState<Options>(noOptions);
   // The panel stays open, with its instruction, until the run has started.

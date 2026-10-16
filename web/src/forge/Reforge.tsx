@@ -89,7 +89,7 @@ export function Reforge(props: {
           <ul className="plain forge-presets">
             {others.map((a) => (
               <li key={a.id}>
-                <button className={target?.action.id === a.id ? "on" : undefined} disabled={starting} onClick={() => (asks(a) || a.images ? choose({ action: a }) : void run({ action: a }, noOptions))}>
+                <button className={target?.action.id === a.id && !target.field ? "on" : undefined} disabled={starting} onClick={() => (asks(a) || a.images ? choose({ action: a }) : void run({ action: a }, noOptions))}>
                   <strong>{a.label}</strong>
                   <span className="muted">{a.description}</span>
                 </button>

@@ -108,6 +108,7 @@ beforeEach(() => {
         }
         return new Response(null, { status: 204 });
       }
+      if (req.method === "POST" && path === "/api/cards/search") return json({ hits: [{ id: 9, fields: { name: "Young Brakka" } }], total: 1 });
       if (path === "/api/blobs") return json({ sha256: "cd".repeat(32), mime: "image/png", size: 3, store: "local", created_at: now }, 201);
       if (path === "/api/cards/7") {
         cardGets++;
@@ -538,4 +539,12 @@ test("the card page's × unlinks it from the card it is a variant of", async () 
   expect(await screen.findByRole("link", { name: "Old Brakka" })).toHaveAttribute("href", "/cards/2");
   await userEvent.click(screen.getByRole("button", { name: "Unlink from Old Brakka" }));
   await waitFor(() => expect(sent).toContainEqual({ path: "/api/cards/7/variant_of", body: null }));
+});
+
+test("Link existing makes the picked card a variant of this one", async () => {
+  renderAt("/cards/7");
+  await userEvent.click(await screen.findByRole("button", { name: "Link existing…" }));
+  await userEvent.type(screen.getByRole("textbox", { name: "Find a variant" }), "brakka{Enter}");
+  await userEvent.click(await screen.findByRole("button", { name: "Young Brakka" }));
+  await waitFor(() => expect(puts).toContainEqual({ path: "/api/cards/9/variant_of", body: { id: 7 } }));
 });

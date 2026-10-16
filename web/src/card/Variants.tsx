@@ -70,7 +70,7 @@ export function Variants({ kind, entity }: { kind: Kind; entity: Entity }) {
           Link existing…
         </button>
       </div>
-      {linking && <CardPicker kind={kind} label="Find a variant" onPick={(id) => link.mutate(id)} />}
+      {linking && <CardPicker kind={kind} label="Find a variant" onPick={(id) => !link.isPending && link.mutate(id)} />}
     </section>
   );
 }

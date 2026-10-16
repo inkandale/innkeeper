@@ -1,0 +1,23 @@
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.filter-bar .range {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+
+.ingest-status {
+  margin-left: auto;
+}
+
+.library-match {
+  font-size: 0.85em;
+}
+
+.archive-text {
+  white-space: pre-wrap;
+}

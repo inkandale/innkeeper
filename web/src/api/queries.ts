@@ -16,6 +16,7 @@ export const enrichmentKeysQuery = queryOptions({
 });
 
 export const settingsQuery = queryOptions({ queryKey: ["settings"], queryFn: async () => must(await api.GET("/settings")) });
+export const catalogsQuery = queryOptions({ queryKey: ["catalogs"], queryFn: async () => must(await api.GET("/catalogs")) });
 
 /** useInstancesWith returns the instances whose plugin offers any of caps, empty until both lists load. */
 export function useInstancesWith(...caps: string[]) {

@@ -20,7 +20,7 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-tools | bad-actions | bad-records | bad-enrich | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code | database | bad-list | bad-setup | bad-catalog | catalog-repeat | catalog-lax | catalog-no-notfound | catalog-wrong-hash | catalog-sourceless | sites-noisy | sites-lax-data | sites-claims | sites-lax-params | sites-bad-source | no-delete | settings-no-defaults")
+	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-tools | bad-actions | bad-records | bad-enrich | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code | database | bad-list | bad-setup | bad-catalog | catalog-repeat | catalog-lax | catalog-no-notfound | catalog-wrong-hash | catalog-sourceless | sites-noisy | sites-lax-data | sites-claims | sites-lax-params | sites-bad-source | no-delete | settings-no-defaults | drop-tool-call")
 	caps := flag.String("caps", "push,pull", "comma-separated capabilities to report")
 	name := flag.String("name", "fake", "the plugin name to report")
 	flag.Parse()
@@ -128,7 +128,7 @@ func main() {
 		case protocol.MethodActionList:
 			return fakeActions(*mode), nil
 		case protocol.MethodActionRun:
-			return actionRun(ctx, conn, params)
+			return actionRun(ctx, conn, params, config, *mode)
 		case protocol.MethodEnrichRun:
 			return enrichRun(ctx, conn, params, *mode)
 		case protocol.MethodRecordsList, protocol.MethodRecordsGet, protocol.MethodRecordsPut,
@@ -223,6 +223,9 @@ func main() {
 				Subject: "owner",
 			}, nil
 		case protocol.MethodAIChat:
+			if base, ok := config["base_url"].(string); ok {
+				return openAIChat(ctx, conn, base, params)
+			}
 			return aiChat(ctx, conn, params, func() {
 				callsMu.Lock()
 				calls["ai.chat.cancelled"]++

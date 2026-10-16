@@ -36,7 +36,7 @@ func fakeActions(mode string) protocol.ActionListResult {
 	}, Skills: []protocol.Skill{{Name: "college", Description: "Campus life."}, {Name: "noir"}}}
 }
 
-func actionRun(ctx context.Context, conn *protocol.Conn, params json.RawMessage) (any, error) {
+func actionRun(ctx context.Context, conn *protocol.Conn, params json.RawMessage, config map[string]any, mode string) (any, error) {
 	var p protocol.ActionRunParams
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, protocol.NewError(protocol.CodeInvalidParams, err.Error(), false)
@@ -51,6 +51,11 @@ func actionRun(ctx context.Context, conn *protocol.Conn, params json.RawMessage)
 	time.Sleep(time.Duration(in.SleepMS) * time.Millisecond)
 	if in.Fail {
 		return nil, protocol.NewError(-32000, "the model refused", true)
+	}
+	if id, ok := config["connection"].(float64); ok {
+		if err := chatWithTool(ctx, conn, p.Run, int64(id), mode); err != nil {
+			return nil, err
+		}
 	}
 	var res protocol.ActionRunResult
 	if len(in.Call) > 0 {

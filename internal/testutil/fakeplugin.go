@@ -71,3 +71,29 @@ schema = {type = "object", required = ["title"], properties = {title = {type = "
 	}
 	return dir
 }
+
+// FakeConsumer is an action fake that declares uses = ["ai.chat"]. Its
+// actions call ai.chat on the instance its connection config names.
+func FakeConsumer(t *testing.T, args ...string) string {
+	t.Helper()
+	dir := FakePluginWith(t, []string{"action"}, args...)
+	f, err := os.OpenFile(filepath.Join(dir, "plugin.toml"), os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	_, err = f.WriteString(`uses = ["ai.chat"]
+
+[config]
+type = "object"
+
+[config.properties.connection]
+type = "integer"
+format = "instance"
+x-offers = "ai.chat"
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}

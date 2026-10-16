@@ -30,9 +30,9 @@ Each plugin folder has a `plugin.toml`:
 | `version` | yes | The plugin's own version |
 | `protocol` | yes | Protocol version; must be `1` |
 | `command` | yes, except for themes | Program and arguments. Use `./name` for a program in the plugin folder: a relative path containing `/` is inside the folder and can't leave it, an absolute path is used as-is, and a bare name is found on `PATH` |
-| `capabilities` | yes | Any of `import`, `search`, `push`, `pull`, `action`, `records`, `enrich`, `codec`, `auth`, `mcp`, `catalog`, `sites`, `ai`, or `theme`. A theme lists no other capability |
+| `capabilities` | yes | Any of `import`, `search`, `push`, `pull`, `action`, `records`, `enrich`, `codec`, `auth`, `mcp`, `catalog`, `sites`, `ai`, `settings`, or `theme`. A theme lists no other capability |
 | `secrets` | no | Names of secrets the owner enters for each instance, in lowercase `snake_case` |
-| `config` | no | JSON Schema for instance settings; the UI renders a form from it |
+| `config` | no | JSON Schema for instance settings; the UI renders a form from it. See [The config form](#the-config-form) |
 | `enrichments` | for `enrich` | Keys the plugin writes, in lowercase `snake_case`; see [`enrich`](#enrich). Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list`. `grid = true` shows the key on the library grid, for at most one key. An `enrich` plugin must declare at least one |
 | `formats` | only for `codec` | What `codec.encode` writes, each listed once: lowercase words of letters and digits joined by single hyphens, such as `png`. A codec plugin must list at least one. `json` is taken: the core exports CCv3 JSON itself |
 | `inputs` | no; only for `import` | What the web UI may send to `import.run`, each listed once: `file` sends params `blob` and `name`, `url` sends `url`. Leave it out and the UI's upload and page URL boxes don't use the plugin |
@@ -42,6 +42,7 @@ Each plugin folder has a `plugin.toml`:
 | `records` | only for `records` | The record types the plugin keeps; see [`records`](#records). A `records` plugin must declare at least one |
 | `database` | no | `true` gives the plugin its own PostgreSQL schema, `plugin_<name>` with `-` as `_`, and a login role limited to it |
 | `uses` | no | Service methods the plugin calls on other instances, each listed once, such as `["ai.chat"]`; see [`ai`](#ai) |
+| `settings` | no; only for `settings` | Buttons on the instance form, under `[settings.actions]`, each keyed by an ID matching `^[a-z][a-z0-9_]*$` with a required `label`; see [`settings`](#settings) |
 
 Unknown keys are errors.
 
@@ -64,6 +65,30 @@ can override any custom property the UI defines on `:root` and any page's
 
 Themes can't run script: the UI's CSP is `script-src 'self'`. Their CSS still
 runs on the UI's origin, so install only themes you trust.
+
+### The config form
+
+The UI renders the instance form from `config`. Each top-level property that
+is an object with `properties` gets its own tab, titled by its `title`; the
+other properties, the secrets, and the [`settings`](#settings) buttons go on
+**General**.
+
+| Schema | Renders as |
+|---|---|
+| `string`, `number`, `integer`, `boolean` | A text box, number box, or checkbox |
+| `string` with `enum` | A drop-down |
+| `string` with `contentMediaType` | A multi-line box, whatever the media type |
+| `string` with `"x-options": true` | A text box with **Load choices**, which asks the plugin for suggestions with `settings.options`. Needs the `settings` capability |
+| `integer` with `"format": "instance"` and `"x-offers": "<method>"` | A drop-down of the working instances that offer that service, such as `ai.chat`. The value is the instance's ID |
+| `array` whose `items` is a `string` with `enum` | A checkbox per choice |
+| `object` with `properties` | A group of its properties |
+
+Anything else, or a saved value of the wrong type, is edited as raw JSON.
+
+A field with a `default` shows it until the owner changes it, and then offers
+**Reset**. A field left at its default, or typed back to it, is absent from
+the saved config, so apply your defaults yourself. When a default changes
+after the owner overrode it, the field says **Default updated**.
 
 ## Lifecycle
 
@@ -914,6 +939,75 @@ When the caller cancels a call, the core cancels the provider's.
 {"jsonrpc": "2.0", "method": "ai.delta", "params": {"run": "mine-1", "text": "Hello"}}
 {"jsonrpc": "2.0", "id": "c4", "result": {"text": "Hello", "model": "gpt-4o-mini"}}
 ```
+
+### `settings`
+
+A `settings` plugin helps the owner fill in its [config form](#the-config-form):
+defaults too long or too changeable for the manifest, choices for a field, and
+buttons such as **Test connection**. Declare the buttons in the manifest:
+
+```toml
+capabilities = ["ai", "settings"]
+
+[settings.actions]
+test = { label = "Test connection" }
+```
+
+The core sends these calls to a separate process of the plugin, started with
+an empty config and no secrets, so `initialize` must succeed with an empty
+config. The core replaces that process when the plugin's install changes.
+Keep nothing between calls: `settings.options` and `settings.run` each carry
+the form's unsaved draft.
+
+| Draft param | Meaning |
+|---|---|
+| `config` | The form's unsaved config |
+| `secrets` | The saved secrets with the owner's typed changes on top, by name |
+
+**`settings.defaults`** takes no params. Reply with `defaults`, values by JSON
+pointer into the config, such as `{"/prompts/tighten": "Make it shorter."}`.
+They replace the schema's `default` at the same pointer. Reply `-32601` if
+you have none.
+
+**`settings.options`** takes the draft and `field`, the JSON pointer of an
+`x-options` field. Reply with `options`, each `{"value", "label"}`; `label`
+is optional and defaults to `value`. When you can't list choices yet, reply
+with an error saying why, such as "set the URL first".
+
+**`settings.run`** takes the draft and `action`, one of your
+`settings.actions` IDs; the core refuses any other. Reply with:
+
+| Field | Meaning |
+|---|---|
+| `ok` | `true` if it passed |
+| `message` | A line for the owner. Optional |
+| `checks` | The report's rows, each `{"name", "ok", "message", "latency_ms"}`; `message` and `latency_ms` are optional |
+
+A failed test is `ok: false`, not an error. Reply with an error only when the
+action couldn't run.
+
+The owner sees your error messages. The core replaces each secret's value in
+your replies and error messages with `[redacted]`, but it matches values
+literally, so an encoded or partial secret gets through. Don't echo secrets.
+
+```json
+{"jsonrpc": "2.0", "id": 14, "method": "settings.run", "params": {"action": "test", "config": {"url": "https://api.example.com"}, "secrets": {"api_key": "…"}}}
+{"jsonrpc": "2.0", "id": 14, "result": {"ok": false, "message": "The key was refused.", "checks": [{"name": "chat", "ok": false, "latency_ms": 212}]}}
+```
+
+The UI reaches these calls through the API:
+
+| Route | Tier | Does |
+|---|---|---|
+| `GET /api/plugins/{name}/settings/defaults?instance=<id>` | `read` | Replies with `defaults`, the schema's and the plugin's, and `updated`: the pointers of the instance's overrides whose default changed since they were saved. `instance` is optional. Sends the plugin no secrets |
+| `POST /api/plugins/{name}/settings/options` | `destructive` | Takes `field` and the draft: `config`, `secrets` (`null` removes a saved one), and optionally `instance`, the saved instance of this plugin whose secrets the draft starts from |
+| `POST /api/plugins/{name}/settings/run` | `destructive` | Takes `action` and the draft, as for options |
+
+Options and run need `destructive` because a draft can send the saved
+secrets to any address. `POST /api/instances` and `PATCH /api/instances/{id}`
+take `default_bases`: for each pointer the owner just overrode, the default it
+replaced, which is how `updated` knows. `GET /api/instances?offers=<method>`
+lists the working instances that offer a service, for the instance picker.
 
 ## Checking a plugin
 

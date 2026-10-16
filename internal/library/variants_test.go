@@ -2,9 +2,11 @@ package library
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -72,7 +74,16 @@ func TestClearingAVariantLinkMakesNoRevision(t *testing.T) {
 func TestForkCopiesTagsAndLinksButNotSources(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
-	id, head := newCard(t, lib, "brakka", `{"name": "Brakka", "tags": ["dwarf"]}`)
+	avatar, err := lib.PutBlob(ctx, strings.NewReader("avatar bytes"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, srcRev, err := lib.Cards.Create(ctx, "brakka", "upload", Edit{Data: json.RawMessage(`{"name": "Brakka", "tags": ["dwarf"]}`),
+		AvatarBlob: avatar.SHA256, Overrides: json.RawMessage(`{"7": {"name": "Brak"}}`), Source: "ui"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, head := src.ID, srcRev.ID
 	col, err := lib.CreateCollection(ctx, "Smiths", "")
 	if err != nil {
 		t.Fatal(err)
@@ -99,6 +110,9 @@ func TestForkCopiesTagsAndLinksButNotSources(t *testing.T) {
 	if err != nil || rev.Message != fmt.Sprintf("Variant of brakka at r%d", head) || rev.Source != "ui" {
 		t.Fatalf("revision = %+v, %v", rev, err)
 	}
+	if rev.AvatarBlob == nil || *rev.AvatarBlob != avatar.SHA256 || string(rev.Overrides) != string(srcRev.Overrides) {
+		t.Errorf("avatar = %v, overrides = %s", rev.AvatarBlob, rev.Overrides)
+	}
 	if tags := headTags(t, lib, v.ID); !slices.Equal(tags, []string{"dwarf"}) {
 		t.Errorf("tags = %v", tags)
 	}
@@ -124,8 +138,11 @@ func TestForkCopiesTagsAndLinksButNotSources(t *testing.T) {
 		t.Fatalf("second fork = %+v, %v", again, err)
 	}
 	lv, err := lib.Lorebooks.Fork(ctx, book, "mcp")
-	if err != nil || lv.Slug != "forge-variant" {
+	if err != nil || lv.Slug != "forge-variant" || lv.Provenance != "variant" {
 		t.Fatalf("lorebook fork = %+v, %v", lv, err)
+	}
+	if p, err := lib.Lorebooks.Parent(ctx, lv.ID); err != nil || p == nil || p.ID != book {
+		t.Errorf("lorebook parent = %+v, %v", p, err)
 	}
 }
 

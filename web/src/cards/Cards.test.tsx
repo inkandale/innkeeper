@@ -621,20 +621,20 @@ test("Shares a source filters the list", async () => {
   await waitFor(() => expect(mainSearches().at(-1)).toMatchObject({ filter: { and: [{ shares_source: true }] } }));
 });
 
-test("Make variants of… links each picked card to the chosen one", async () => {
+test("Set parent… recommends the oldest pick and links the others to the chosen one", async () => {
   renderCards("/cards");
   const user = userEvent.setup();
   await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
   await user.click(screen.getByRole("checkbox", { name: "Select Dellin" }));
-  await user.click(screen.getByRole("button", { name: "Make variants of…" }));
-  await user.type(screen.getByRole("textbox", { name: "Parent" }), "Brakka");
-  await user.click(screen.getByRole("button", { name: "Search" }));
-  await user.click(await screen.findByRole("button", { name: "Brakka" }));
-  await user.click(screen.getByRole("button", { name: "Make variants" }));
+  await user.click(screen.getByRole("checkbox", { name: "Select Brakka" }));
+  await user.click(screen.getByRole("button", { name: "Set parent…" }));
+  expect(screen.getByRole("radio", { name: "Brakka (recommended)" })).toBeChecked();
+  await user.click(screen.getByRole("radio", { name: "Carrow" }));
+  await user.click(screen.getByRole("button", { name: "Set parent" }));
   await waitFor(() =>
     expect(puts).toEqual([
-      { path: "/api/cards/8/variant_of", body: { id: 7 } },
-      { path: "/api/cards/9/variant_of", body: { id: 7 } },
+      { path: "/api/cards/9/variant_of", body: { id: 8 } },
+      { path: "/api/cards/7/variant_of", body: { id: 8 } },
     ]),
   );
 });

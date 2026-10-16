@@ -137,7 +137,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
           kind={kind}
           query={target(sel, body)}
           ids={sel.ids}
-          nameOf={new Map(hits.map((h) => [h.id, text(h.fields.name)]))}
+          shown={new Map(hits.map((h) => [h.id, { id: h.id, name: text(h.fields.name), family: h.family }]))}
           onAll={() => setSel({ ...sel, all: true })}
           onClear={() => setSel(emptySelection(key))}
           onStarted={setWatching}

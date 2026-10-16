@@ -4,7 +4,7 @@ import { api, exportFormats, must } from "../api/client";
 import { collectionsQuery, enrichmentKeysQuery, instancesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
 import type { components } from "../api/schema";
 import { useToast } from "../shell/Toasts";
-import { MakeVariants } from "./MakeVariants";
+import { SetParent, type Picked } from "./SetParent";
 import { jobToast } from "../settings/jobUtil";
 import { pushSummary } from "../sync/sync";
 import { TargetPicker } from "../sync/TargetPicker";
@@ -12,9 +12,9 @@ import { TargetPicker } from "../sync/TargetPicker";
 type Search = components["schemas"]["Query"];
 type Bulk = components["schemas"]["BulkInBody"];
 type Job = components["schemas"]["JobOut"];
-type Panel = "tag" | "collection" | "push" | "archive" | "export" | "evaluate" | "variants" | null;
+type Panel = "tag" | "collection" | "push" | "archive" | "export" | "evaluate" | "parent" | null;
 
-const labels = { tag: "Tag", collection: "Collection", push: "Push", archive: "Archive", export: "Export", evaluate: "Evaluate", variants: "Make variants of…" };
+const labels = { tag: "Tag", collection: "Collection", push: "Push", archive: "Archive", export: "Export", evaluate: "Evaluate", parent: "Set parent…" };
 
 /** SelectionBar replaces the toolbar while cards are picked, and starts bulk jobs on them. */
 export function SelectionBar(props: {
@@ -23,13 +23,14 @@ export function SelectionBar(props: {
   total?: number;
   query: Search;
   ids: number[];
-  nameOf: Map<number, string>;
+  /** shown is the picked entries on this page, by ID. */
+  shown: Map<number, Picked>;
   onAll: () => void;
   onClear: () => void;
   onStarted?: (job: number) => void;
   kind?: "card" | "lorebook";
 }) {
-  const { all, total, query, ids, nameOf, onAll, onClear, onStarted, kind = "card" } = props;
+  const { all, total, query, ids, shown, onAll, onClear, onStarted, kind = "card" } = props;
   const plural = (n?: number) => (n === undefined ? `all matching ${kind}s` : `${n} ${kind}${n === 1 ? "" : "s"}`);
   const enrichers = useInstancesWith("enrich");
   const keys = useQuery({ ...enrichmentKeysQuery, enabled: kind === "card" });
@@ -38,8 +39,8 @@ export function SelectionBar(props: {
     kind === "lorebook" ? (["push", "archive"] as const)
     : enrichers.length ? (["tag", "collection", "push", "archive", "export", "evaluate"] as const)
     : (["tag", "collection", "push", "archive", "export"] as const);
-  // Make variants sends one call per picked entity, so it needs the IDs "Select all matching" doesn't have.
-  const actions = all ? base : ([...base, "variants"] as const);
+  // Set parent sends one call per picked entity, so it needs the IDs "Select all matching" doesn't have.
+  const actions = all ? base : ([...base, "parent"] as const);
   // Card calls leave kind out, as they did before it existed.
   const kindField = kind === "lorebook" ? { kind } : {};
   const [panel, setPanel] = useState<Panel>(null);
@@ -125,7 +126,10 @@ export function SelectionBar(props: {
           </button>
         ))}
       </span>
-      {panel && (
+      {panel === "parent" && (
+        <SetParent kind={kind} picked={ids.map((id) => shown.get(id) ?? { id, name: `#${id}` })} onClose={() => setPanel(null)} onDone={onClear} />
+      )}
+      {panel && panel !== "parent" && (
         <div className="bulk-panel">
           {panel === "tag" && (
             <>
@@ -212,7 +216,6 @@ export function SelectionBar(props: {
               {start.error && <span className="error">{start.error.message}</span>}
             </>
           )}
-          {panel === "variants" && <MakeVariants kind={kind} ids={ids} nameOf={nameOf} onDone={onClear} />}
           {panel === "export" && (
             <>
               <select className="input" aria-label="Format" value={format} onChange={(e) => setFormat(e.target.value)}>

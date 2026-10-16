@@ -87,7 +87,7 @@ func TestMCPToolsByTier(t *testing.T) {
 	}
 	read, write, all := names(tier.Read), names(tier.Write), names(tier.Destructive)
 	if !slices.Contains(read, "search_cards") || slices.Contains(read, "create_card") || slices.Contains(write, "push") ||
-		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 36 ||
+		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 38 ||
 		!slices.Contains(read, "refresh") || slices.Contains(write, "set_autosync") || !slices.Contains(all, "set_autosync") {
 		t.Fatalf("read %v\nwrite %v\nall %v", read, write, all)
 	}
@@ -378,5 +378,30 @@ func TestMCPCallInProcess(t *testing.T) {
 	}
 	if _, err := mcp.Call(ctx, h, tier.Read, "no_such_tool", nil); err == nil {
 		t.Fatal("an unknown tool ran")
+	}
+}
+
+func TestMCPVariants(t *testing.T) {
+	e := newEnv(t)
+	s := e.mcpClient(tier.Write)
+	var c entityOut
+	if err := json.Unmarshal([]byte(tool(t, s, "create_card", map[string]any{"data": map[string]any{"name": "Brakka"}}, false)), &c); err != nil {
+		t.Fatal(err)
+	}
+	var v entityOut
+	if err := json.Unmarshal([]byte(tool(t, s, "fork_card", map[string]any{"id": c.ID}, false)), &v); err != nil {
+		t.Fatal(err)
+	}
+	if v.Slug != "brakka-variant" || v.VariantOf == nil || v.VariantOf.ID != c.ID || v.Revision.Source != "mcp" {
+		t.Fatalf("fork_card = %+v", v)
+	}
+	if got := tool(t, s, "set_variant_of", map[string]any{"id": c.ID, "variant_of": v.ID}, true); !strings.HasPrefix(got, "409") {
+		t.Fatalf("cycle = %s", got)
+	}
+	tool(t, s, "set_variant_of", map[string]any{"kind": "card", "id": v.ID, "variant_of": nil}, false)
+	var after entityOut
+	e.call("GET", fmt.Sprintf("/cards/%d", v.ID), nil, 200, &after)
+	if after.VariantOf != nil {
+		t.Fatalf("after unlinking = %+v", after.VariantOf)
 	}
 }

@@ -60,6 +60,17 @@ type restoreIn struct {
 	Avatar         string `json:"avatar,omitempty" jsonschema:"keep (default) keeps the head's image; revision takes the old revision's, even none"`
 }
 
+type forkIn struct {
+	Kind string `json:"kind,omitempty" jsonschema:"card or lorebook; default card"`
+	ID   int64  `json:"id"`
+}
+
+type variantOfIn struct {
+	Kind      string `json:"kind,omitempty" jsonschema:"card or lorebook; default card"`
+	ID        int64  `json:"id"`
+	VariantOf *int64 `json:"variant_of,omitempty" jsonschema:"The card or lorebook of the same kind it is a variant of; null or left out unlinks it"`
+}
+
 type previewIn struct {
 	Kind       string `json:"kind" jsonschema:"card or lorebook"`
 	ID         int64  `json:"id"`
@@ -237,6 +248,28 @@ var tools = []tool{
 			}
 			return c.call(ctx, "POST", fmt.Sprintf("/%s/%d/restore", k.Plural, in.ID),
 				map[string]any{"revision_id": in.RevisionID, "base_revision_id": in.BaseRevisionID, "avatar": cmp.Or(in.Avatar, "keep"), "source": "mcp"})
+		}),
+	def("fork_card", "Make a variant of a card or lorebook: a new one with the head revision's content, image, and overrides, "+
+		"and a card's collections and linked lorebooks, but not its sources or app bindings. Returns the new one.", tier.Write,
+		func(ctx context.Context, c caller, in forkIn) (*sdk.CallToolResult, error) {
+			k, err := kindNamed(cmp.Or(in.Kind, library.Card.Name))
+			if err != nil {
+				return nil, err
+			}
+			return c.call(ctx, "POST", fmt.Sprintf("/%s/%d/variants", k.Plural, in.ID), map[string]any{"source": "mcp"})
+		}),
+	def("set_variant_of", "Record that a card or lorebook is a variant of another of the same kind, or unlink it with variant_of null. "+
+		"Refuses a link that would make it its own ancestor. Changes no content.", tier.Write,
+		func(ctx context.Context, c caller, in variantOfIn) (*sdk.CallToolResult, error) {
+			k, err := kindNamed(cmp.Or(in.Kind, library.Card.Name))
+			if err != nil {
+				return nil, err
+			}
+			path := fmt.Sprintf("/%s/%d/variant_of", k.Plural, in.ID)
+			if in.VariantOf == nil {
+				return c.call(ctx, "DELETE", path, nil)
+			}
+			return c.call(ctx, "PUT", path, map[string]any{"id": *in.VariantOf})
 		}),
 	def("preview_push", "Show what pushing a card or lorebook to a target app would do: the fields it would change in the app, "+
 		"with the app's value as before and the pushed one as after, fields it would drop, and lorebooks it would create. "+

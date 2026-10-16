@@ -97,6 +97,9 @@ func TestSettingsCallsRefuseAnotherPluginsInstance(t *testing.T) {
 	if _, err := reg.RunSetting(ctx, mgr, "conf", "test", Draft{Instance: &id}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("err = %v, want ErrInvalid", err)
 	}
+	if _, err := reg.Defaults(ctx, mgr, "conf", &id); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("defaults: %v, want ErrInvalid", err)
+	}
 	if _, err := reg.RunSetting(ctx, mgr, "conf", "deploy", Draft{}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("undeclared action: %v, want ErrInvalid", err)
 	}

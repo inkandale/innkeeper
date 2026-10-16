@@ -109,6 +109,13 @@ func (r *Registry) Defaults(ctx context.Context, mgr *pluginhost.Manager, plugin
 	if instance == nil {
 		return out, nil
 	}
+	info, err := r.GetInstance(ctx, *instance)
+	if err != nil {
+		return out, err
+	}
+	if info.Plugin != plugin {
+		return out, fmt.Errorf("%w: instance %d belongs to %s, not %s", ErrInvalid, *instance, info.Plugin, plugin)
+	}
 	hashes, err := r.DefaultHashes(ctx, *instance)
 	if err != nil {
 		return out, err

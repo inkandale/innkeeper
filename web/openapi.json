@@ -2968,6 +2968,9 @@
           },
           "report_only": {
             "type": "boolean"
+          },
+          "whole_card": {
+            "type": "boolean"
           }
         },
         "required": [

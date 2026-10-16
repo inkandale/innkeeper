@@ -3376,6 +3376,7 @@ export interface components {
             label: string;
             library?: boolean;
             report_only?: boolean;
+            whole_card?: boolean;
         };
         PluginOut: {
             /** @description The image ships this plugin, so uninstalling falls back to that copy */

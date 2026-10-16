@@ -627,3 +627,32 @@ func TestSearchGroupsFamilies(t *testing.T) {
 		t.Fatalf("unknown group: %v", err)
 	}
 }
+
+func TestSearchSharesSource(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	s := seedSearch(t, lib)
+	other, _ := newCard(t, lib, "other", `{"name": "Other"}`)
+	add := func(id int64, ref string) Source {
+		t.Helper()
+		src, err := lib.Cards.AddSource(ctx, id, Source{Kind: "chub", Ref: ref})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return src
+	}
+	add(s.brakka, "dg/brakka")
+	shared := add(other, "dg/brakka")
+	add(s.carrow, "dg/carrow")
+	q := Query{Filter: &Filter{SharesSource: ptr(true)}}
+	got, err := lib.Search(ctx, Card, q)
+	if err != nil || !slices.Equal(hitIDs(got), []int64{other, s.brakka}) {
+		t.Fatalf("hits = %v, %v", hitIDs(got), err)
+	}
+	if err := lib.Cards.RemoveSource(ctx, other, shared.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got, err = lib.Search(ctx, Card, q); err != nil || len(got.Hits) != 0 {
+		t.Fatalf("after removing the shared source = %v, %v", hitIDs(got), err)
+	}
+}

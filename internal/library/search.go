@@ -53,6 +53,7 @@ type Filter struct {
 	Archived      *bool         `json:"archived,omitempty"`
 	TargetState   *TargetFilter `json:"target_state,omitempty" doc:"Is pushed to one of instances and stands as one of states there. An empty list matches any value."`
 	VariantOfRoot *int64        `json:"variant_of_root,omitempty" doc:"Is this card or lorebook, or a variant below it at any depth."`
+	SharesSource  *bool         `json:"shares_source,omitempty" doc:"Has a source, by kind and ref, that another card or lorebook of the same kind also has."`
 	Enrichment    *string       `json:"enrichment,omitempty" doc:"Has a current value for this enrichment key from the score instance. With gte and lte, a number in that range; with missing, no value. Cards only."`
 	Gte           *float64      `json:"gte,omitempty" doc:"With enrichment: the value is at least this."`
 	Lte           *float64      `json:"lte,omitempty" doc:"With enrichment: the value is at most this."`
@@ -271,7 +272,7 @@ func (w *where) filter(f Filter) (string, error) {
 		return "", fmt.Errorf("%w: filter has more than 200 conditions", ErrInvalid)
 	}
 	set := 0
-	for _, ok := range []bool{f.And != nil, f.Or != nil, f.Not != nil, f.IDs != nil, f.Name != nil, f.Tag != nil, f.Collection != nil, f.Source != nil, f.Archived != nil, f.TargetState != nil, f.Enrichment != nil, f.VariantOfRoot != nil} {
+	for _, ok := range []bool{f.And != nil, f.Or != nil, f.Not != nil, f.IDs != nil, f.Name != nil, f.Tag != nil, f.Collection != nil, f.Source != nil, f.Archived != nil, f.TargetState != nil, f.Enrichment != nil, f.VariantOfRoot != nil, f.SharesSource != nil} {
 		if ok {
 			set++
 		}
@@ -314,6 +315,10 @@ func (w *where) filter(f Filter) (string, error) {
 				UNION ALL
 				SELECT x.id FROM ` + w.k.Table + ` x JOIN down ON x.variant_of_id = down.id)
 			SELECT id FROM down)`, nil
+	case f.SharesSource != nil:
+		return `(EXISTS (SELECT 1 FROM ` + w.k.SourceTable + ` s1 JOIN ` + w.k.SourceTable + ` s2
+			ON s2.kind = s1.kind AND s2.ref = s1.ref AND s2.` + w.k.FK + ` <> s1.` + w.k.FK + ` AND s2.removed_at IS NULL
+			WHERE s1.` + w.k.FK + ` = c.id AND s1.removed_at IS NULL)) = ` + w.arg(*f.SharesSource), nil
 	case f.TargetState != nil:
 		cond := `bs.` + w.k.FK + ` = c.id`
 		if len(f.TargetState.Instances) > 0 {

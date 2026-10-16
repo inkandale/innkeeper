@@ -3,6 +3,7 @@ package library
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 )
@@ -65,5 +66,72 @@ func TestClearingAVariantLinkMakesNoRevision(t *testing.T) {
 	}
 	if e, err := lib.Cards.Get(ctx, b); err != nil || e.HeadRevisionID != head {
 		t.Fatalf("head = %+v, %v; want revision %d", e, err, head)
+	}
+}
+
+func TestForkCopiesTagsAndLinksButNotSources(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	id, head := newCard(t, lib, "brakka", `{"name": "Brakka", "tags": ["dwarf"]}`)
+	col, err := lib.CreateCollection(ctx, "Smiths", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.AddToCollection(ctx, col.ID, id); err != nil {
+		t.Fatal(err)
+	}
+	book := newLorebook(t, lib, "forge")
+	if err := lib.LinkLorebook(ctx, id, book); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lib.Cards.AddSource(ctx, id, Source{Kind: "chub", Ref: "dg/brakka"}); err != nil {
+		t.Fatal(err)
+	}
+
+	v, err := lib.Cards.Fork(ctx, id, "ui")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Slug != "brakka-variant" || v.Provenance != "variant" {
+		t.Fatalf("fork = %+v", v)
+	}
+	rev, err := lib.Cards.Revision(ctx, v.HeadRevisionID)
+	if err != nil || rev.Message != fmt.Sprintf("Variant of brakka at r%d", head) || rev.Source != "ui" {
+		t.Fatalf("revision = %+v, %v", rev, err)
+	}
+	if tags := headTags(t, lib, v.ID); !slices.Equal(tags, []string{"dwarf"}) {
+		t.Errorf("tags = %v", tags)
+	}
+	if cols, err := lib.CardCollections(ctx, v.ID); err != nil || !slices.Equal(cols, []int64{col.ID}) {
+		t.Errorf("collections = %v, %v", cols, err)
+	}
+	if books, err := lib.CardLorebooks(ctx, v.ID); err != nil || !slices.Equal(books, []int64{book}) {
+		t.Errorf("lorebooks = %v, %v", books, err)
+	}
+	if srcs, err := lib.Cards.Sources(ctx, v.ID); err != nil || len(srcs) != 0 {
+		t.Errorf("sources = %v, %v", srcs, err)
+	}
+	var bindings int
+	if err := lib.pool.QueryRow(ctx, `SELECT count(*) FROM binding WHERE card_id = $1`, v.ID).Scan(&bindings); err != nil || bindings != 0 {
+		t.Errorf("bindings = %d, %v", bindings, err)
+	}
+	if p, err := lib.Cards.Parent(ctx, v.ID); err != nil || p == nil || p.ID != id {
+		t.Errorf("parent = %+v, %v", p, err)
+	}
+
+	again, err := lib.Cards.Fork(ctx, id, "ui")
+	if err != nil || again.Slug != "brakka-variant-2" {
+		t.Fatalf("second fork = %+v, %v", again, err)
+	}
+	lv, err := lib.Lorebooks.Fork(ctx, book, "mcp")
+	if err != nil || lv.Slug != "forge-variant" {
+		t.Fatalf("lorebook fork = %+v, %v", lv, err)
+	}
+}
+
+func TestForkOfAMissingEntityIsNotFound(t *testing.T) {
+	lib := newLibrary(t)
+	if _, err := lib.Cards.Fork(context.Background(), 999999, "ui"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("got %v, want ErrNotFound", err)
 	}
 }

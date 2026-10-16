@@ -78,3 +78,41 @@ func (s *Entities) refs(ctx context.Context, cond string, id int64) ([]EntityRef
 	}
 	return pgx.CollectRows(rows, pgx.RowToStructByPos[EntityRef])
 }
+
+// Fork creates a variant of entity id from its head revision: its data,
+// avatar, and overrides, and the kind's links, but not its sources or
+// bindings. A shared source is reconcile's strongest match signal, so
+// copying one would make the two hard to tell apart. source is the new
+// revision's source, ui or mcp.
+func (s *Entities) Fork(ctx context.Context, id int64, source string) (Entity, error) {
+	var ent Entity
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		from, err := scanEntity(tx.QueryRow(ctx, `SELECT `+entityCols+` FROM `+s.k.Table+` WHERE id = $1`, id))
+		if err != nil {
+			return fmt.Errorf("load %s %d: %w", s.k.Name, id, err)
+		}
+		head, err := scanRevision(tx.QueryRow(ctx, `SELECT `+s.revCols()+` FROM `+s.k.RevTable+` WHERE id = $1`, from.HeadRevisionID))
+		if err != nil {
+			return fmt.Errorf("load head of %s %d: %w", s.k.Name, id, err)
+		}
+		e := Edit{Data: head.Data, Overrides: head.Overrides, Source: source,
+			Message: fmt.Sprintf("Variant of %s at r%d", from.Slug, head.ID)}
+		if head.AvatarBlob != nil {
+			e.AvatarBlob = *head.AvatarBlob
+		}
+		r, err := s.prepare(e)
+		if err != nil {
+			return err
+		}
+		if ent, _, err = s.createFree(ctx, tx, from.Slug+"-variant", "variant", r); err != nil {
+			return fmt.Errorf("create variant of %s %d: %w", s.k.Name, id, err)
+		}
+		for _, q := range s.k.forkCopies {
+			if _, err := tx.Exec(ctx, q, id, ent.ID); err != nil {
+				return fmt.Errorf("copy links of %s %d: %w", s.k.Name, id, err)
+			}
+		}
+		return s.SetVariantOfTx(ctx, tx, ent.ID, &id)
+	})
+	return ent, err
+}

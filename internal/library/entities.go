@@ -27,11 +27,17 @@ type Kind struct {
 	simhash func([]byte) (int64, bool, error)
 	// Top-level keys data may not have.
 	forbid []string
+	// forkCopies copy the kind's links from entity $1 to its new variant $2.
+	forkCopies []string
 }
 
 var (
 	Card = &Kind{Name: "card", Plural: "cards", Table: "card", RevTable: "card_revision", SourceTable: "card_source",
-		FK: "card_id", Schema: merge.Card, simhash: cardhash.CardSimhash, forbid: []string{"character_book"}}
+		FK: "card_id", Schema: merge.Card, simhash: cardhash.CardSimhash, forbid: []string{"character_book"},
+		forkCopies: []string{
+			`INSERT INTO collection_card (collection_id, card_id) SELECT collection_id, $2 FROM collection_card WHERE card_id = $1`,
+			`INSERT INTO card_lorebook (card_id, lorebook_id) SELECT $2, lorebook_id FROM card_lorebook WHERE card_id = $1`,
+		}}
 	Lorebook = &Kind{Name: "lorebook", Plural: "lorebooks", Table: "lorebook", RevTable: "lorebook_revision",
 		SourceTable: "lorebook_source", FK: "lorebook_id", Schema: merge.Lorebook, simhash: cardhash.LorebookSimhash}
 	// Kinds is every kind the library holds.

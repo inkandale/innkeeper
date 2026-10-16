@@ -94,7 +94,7 @@ func (s *Entities) Import(ctx context.Context, provenance, name string, e Edit) 
 		return 0, false, err
 	}
 	if created {
-		ent, _, err := s.createFromName(ctx, tx, name, provenance, r)
+		ent, _, err := s.createFree(ctx, tx, Slugify(name), provenance, r)
 		if err != nil {
 			return 0, false, err
 		}
@@ -124,13 +124,14 @@ func (s *Entities) CreateFromNameTx(ctx context.Context, tx pgx.Tx, name, proven
 	if err != nil {
 		return Entity{}, Revision{}, err
 	}
-	return s.createFromName(ctx, tx, name, provenance, r)
+	return s.createFree(ctx, tx, Slugify(name), provenance, r)
 }
 
-func (s *Entities) createFromName(ctx context.Context, tx pgx.Tx, name, provenance string, r revisionRow) (Entity, Revision, error) {
+// createFree creates an entity with base as its slug, or base-N if that's taken.
+func (s *Entities) createFree(ctx context.Context, tx pgx.Tx, base, provenance string, r revisionRow) (Entity, Revision, error) {
 	// Retried because another writer can take the same slug first.
 	for range 5 {
-		slug, err := s.freeSlug(ctx, tx, Slugify(name))
+		slug, err := s.freeSlug(ctx, tx, base)
 		if err != nil {
 			return Entity{}, Revision{}, err
 		}

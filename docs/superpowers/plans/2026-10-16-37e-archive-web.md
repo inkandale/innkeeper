@@ -160,6 +160,7 @@ The filter bar has no test of its own: Task 3's page tests drive it through the 
 - [ ] **Step 1: Write the component**
 
 ```tsx
+import { useState } from "react";
 import type { CatalogFilter, FilterValues } from "./archive";
 
 /** FilterBar shows an input for each filter a catalog declares. An emptied filter is dropped, since the catalog refuses empty values. */
@@ -196,7 +197,7 @@ function FilterInput({ filter, value, set }: InputProps) {
         </select>
       );
     case "text":
-      return <TextFilter filter={filter} value={value} set={set} />;
+      return <DraftInput label={filter.label} applied={typeof value === "string" ? value : ""} onApply={(s) => set(s || undefined)} />;
     case "date_range":
       return <RangeFilter filter={filter} value={value} set={set} ends={["from", "to"]} type="date" />;
     case "number_range":
@@ -206,19 +207,26 @@ function FilterInput({ filter, value, set }: InputProps) {
   }
 }
 
-// A text filter applies on Enter or leaving the box, not on every keystroke, so typing doesn't search per letter.
-function TextFilter({ filter, value, set }: InputProps) {
-  const current = typeof value === "string" ? value : "";
-  const apply = (s: string) => s.trim() !== current && set(s.trim() || undefined);
+// Applies on Enter or leaving the box, not on every keystroke, so typing doesn't search per letter
+// (and a half-typed range end never reaches the server).
+function DraftInput({ label, applied, type = "text", onApply }: { label: string; applied: string; type?: "text" | "date" | "number"; onApply: (v: string) => void }) {
+  const [draft, setDraft] = useState(applied);
+  const [synced, setSynced] = useState(applied);
+  if (applied !== synced) {
+    setSynced(applied);
+    setDraft(applied);
+  }
+  const apply = () => draft.trim() !== applied && onApply(draft.trim());
   return (
     <input
-      key={current}
       className="input"
-      aria-label={filter.label}
-      placeholder={filter.label}
-      defaultValue={current}
-      onBlur={(e) => apply(e.target.value)}
-      onKeyDown={(e) => e.key === "Enter" && apply(e.currentTarget.value)}
+      type={type}
+      aria-label={label}
+      placeholder={type === "date" ? undefined : label}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={apply}
+      onKeyDown={(e) => e.key === "Enter" && apply()}
     />
   );
 }
@@ -234,14 +242,12 @@ function RangeFilter({ filter, value, set, ends, type }: InputProps & { ends: [s
   return (
     <span className="range">
       {ends.map((end) => (
-        <input
+        <DraftInput
           key={end}
-          className="input"
+          label={`${filter.label} ${end}`}
           type={type}
-          aria-label={`${filter.label} ${end}`}
-          placeholder={`${filter.label} ${end}`}
-          value={range[end] === undefined ? "" : String(range[end])}
-          onChange={(e) => setEnd(end, e.target.value)}
+          applied={range[end] === undefined ? "" : String(range[end])}
+          onApply={(raw) => setEnd(end, raw)}
         />
       ))}
     </span>
@@ -357,13 +363,14 @@ test("the filter bar comes from describe, and its values go in the search's filt
   await userEvent.selectOptions(screen.getByLabelText("Site"), "chub");
   await waitFor(() => expect(lastFilters()).toEqual({ site: "chub" }));
 
-  await userEvent.type(screen.getByLabelText("Rating min"), "4");
+  await userEvent.type(screen.getByLabelText("Rating min"), "4{Enter}");
   await waitFor(() => expect(lastFilters()).toEqual({ site: "chub", rating: { min: 4 } }));
 
   await userEvent.type(screen.getByLabelText("Tag"), "elf{Enter}");
   await waitFor(() => expect(lastFilters()).toEqual({ site: "chub", rating: { min: 4 }, tag: "elf" }));
 
   await userEvent.clear(screen.getByLabelText("Rating min"));
+  await userEvent.type(screen.getByLabelText("Rating min"), "{Enter}");
   await waitFor(() => expect(lastFilters()).toEqual({ site: "chub", tag: "elf" }));
   expect(screen.getByLabelText("Added from")).toHaveAttribute("type", "date");
 });

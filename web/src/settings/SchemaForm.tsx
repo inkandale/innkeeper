@@ -52,7 +52,9 @@ const fits: Record<string, (v: unknown) => boolean> = {
 };
 
 /** pointerKey escapes a property name for a JSON pointer. */
-const pointerKey = (k: string) => k.replaceAll("~", "~0").replaceAll("/", "~1");
+export const pointerKey = (k: string) => k.replaceAll("~", "~0").replaceAll("/", "~1");
+/** unpointerKey undoes pointerKey. */
+export const unpointerKey = (k: string) => k.replaceAll("~1", "/").replaceAll("~0", "~");
 
 /** same compares JSON values, ignoring the order of a string array (a set of choices); config values have no cycles. */
 const same = (a: unknown, b: unknown) => JSON.stringify(unordered(a)) === JSON.stringify(unordered(b));

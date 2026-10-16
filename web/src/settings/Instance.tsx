@@ -6,7 +6,7 @@ import { pluginsQuery } from "../api/queries";
 import { useToast } from "../shell/Toasts";
 import { type InstanceInfo, type Plugin } from "./Plugins";
 import { Records } from "./Records";
-import { FormContext, SchemaForm, type Schema } from "./SchemaForm";
+import { FormContext, pointerKey, SchemaForm, unpointerKey, type Schema } from "./SchemaForm";
 
 /** Instance adds an instance at /settings/plugins/:plugin/new and edits one at /settings/instances/:id. */
 export function Instance() {
@@ -44,7 +44,7 @@ function at(v: unknown, pointer: string): unknown {
   return pointer
     .split("/")
     .slice(1)
-    .map((k) => k.replaceAll("~1", "/").replaceAll("~0", "~"))
+    .map(unpointerKey)
     .reduce<unknown>((o, k) => (o && typeof o === "object" ? (o as Record<string, unknown>)[k] : undefined), v);
 }
 
@@ -204,9 +204,10 @@ export function InstanceForm({
         e.preventDefault();
         save.mutate(new FormData(e.currentTarget));
       }}
-      // A required field on a hidden tab would block the save without showing why, so open its tab.
+      // A required field on a hidden tab would block the save without showing why, so open the first one's tab.
       onInvalidCapture={(e) => {
-        const panel = (e.target as HTMLElement).closest('[role="tabpanel"]');
+        const first = e.currentTarget.querySelector("input:invalid, textarea:invalid, select:invalid");
+        const panel = first?.closest('[role="tabpanel"]');
         if (panel) setTab(panel.id.replace("panel-", ""));
       }}
     >
@@ -309,7 +310,7 @@ export function InstanceForm({
             </div>
           )}
           {run.data && (
-            <div className={run.data.ok ? undefined : "error"}>
+            <div role="status" className={run.data.ok ? undefined : "error"}>
               {run.data.message && <p>{run.data.message}</p>}
               <ul>
                 {(run.data.checks ?? []).map((c) => (
@@ -329,7 +330,7 @@ export function InstanceForm({
             <SchemaForm
               schema={{ ...s, title: "" }}
               label=""
-              path={`/${k.replaceAll("~", "~0").replaceAll("/", "~1")}`}
+              path={`/${pointerKey(k)}`}
               value={(config as Record<string, unknown> | undefined)?.[k]}
               onChange={(v) =>
                 setConfig((c: unknown) => {
@@ -346,7 +347,8 @@ export function InstanceForm({
       {check.error && <p className="error">{check.error.message}</p>}
       {save.error && <p className="error">{save.error.message}</p>}
       <div className="actions">
-        <button className="button primary" disabled={save.isPending}>
+        {/* Saving before the defaults load would leave out the bases of the overrides. */}
+        <button className="button primary" disabled={save.isPending || defaults.isPending}>
           Save
         </button>
         {instance && (

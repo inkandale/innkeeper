@@ -43,16 +43,29 @@ const conf = {
     },
   },
 };
+const required = {
+  name: "required", version: "0.1.0", capabilities: [], secrets: [],
+  config: {
+    type: "object", required: ["url"],
+    properties: {
+      url: { type: "string", title: "URL" },
+      prompts: { type: "object", title: "Prompts", required: ["greet"], properties: { greet: { type: "string", title: "Greet" } } },
+    },
+  },
+};
 const confInst = { ...broken, id: 6, plugin: "conf", name: "c", config: { url: "http://x" }, secrets: ["api_key"], broken_error: undefined };
 
 let sent: { method: string; path: string; body: unknown }[];
+// Set to hold the conf plugin's defaults until it resolves.
+let defaultsHeld: Promise<void> | undefined;
 beforeEach(() => {
   sent = [];
+  defaultsHeld = undefined;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
       const u = new URL(req.url);
-      if (u.pathname === "/api/plugins") return json([login, st, ai, conf]);
+      if (u.pathname === "/api/plugins") return json([login, st, ai, conf, required]);
       if (req.method === "GET" && u.pathname === "/api/instances/3") return json(broken);
       if (req.method === "GET" && u.pathname === "/api/instances/4") return json(owned);
       if (req.method === "GET" && u.pathname === "/api/instances/5") return json(forge);
@@ -62,7 +75,10 @@ beforeEach(() => {
         return json({ ok: false, error: "login refused" });
       }
       if (req.method === "GET" && u.pathname === "/api/instances/6") return json(confInst);
-      if (u.pathname === "/api/plugins/conf/settings/defaults") return json({ defaults: { "/prompts/greet": "Hello" }, updated: [] });
+      if (u.pathname === "/api/plugins/conf/settings/defaults") {
+        await defaultsHeld;
+        return json({ defaults: { "/prompts/greet": "Hello" }, updated: [] });
+      }
       if (u.pathname.endsWith("/settings/defaults")) return json({ defaults: {}, updated: [] });
       if (u.pathname === "/api/plugins/conf/settings/run") {
         const body = await req.json();
@@ -255,9 +271,37 @@ test("a settings button runs against the draft and shows each check", async () =
   renderAt("/settings/instances/6");
   await user.type(await screen.findByLabelText("api_key"), "nope");
   await user.click(screen.getByRole("button", { name: "Test connection" }));
-  expect(await screen.findByText("The key was refused.")).toBeInTheDocument();
+  expect((await screen.findByText("The key was refused.")).closest('[role="status"]')).toHaveTextContent("12 ms");
   expect(screen.getByText(/chat/)).toHaveTextContent("12 ms");
   expect(screen.queryByText(/nope/)).not.toBeInTheDocument();
   const run = sent.find((s) => s.path === "/api/plugins/conf/settings/run");
   expect(run?.body).toEqual({ action: "test", instance: 6, config: { url: "http://x" }, secrets: { api_key: "nope" } });
+});
+
+test("a required field on a hidden tab opens that tab on save", async () => {
+  const user = userEvent.setup();
+  renderAt("/settings/plugins/required/new");
+  await user.type(await screen.findByLabelText("Name"), "r");
+  await user.type(screen.getByLabelText("URL"), "http://x");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  expect(screen.getByRole("tab", { name: "Prompts" })).toHaveAttribute("aria-selected", "true");
+  expect(sent).toEqual([]);
+});
+
+test("with invalid fields on two tabs, save opens the first", async () => {
+  const user = userEvent.setup();
+  renderAt("/settings/plugins/required/new");
+  await user.type(await screen.findByLabelText("Name"), "r");
+  await user.click(screen.getByRole("tab", { name: "Prompts" }));
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  expect(screen.getByRole("tab", { name: "General" })).toHaveAttribute("aria-selected", "true");
+});
+
+test("save waits for the defaults, so the bases are never skipped", async () => {
+  let release!: () => void;
+  defaultsHeld = new Promise((r) => (release = r));
+  renderAt("/settings/instances/6");
+  expect(await screen.findByRole("button", { name: "Save" })).toBeDisabled();
+  release();
+  await vi.waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeEnabled());
 });

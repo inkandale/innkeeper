@@ -57,8 +57,9 @@ type Importer struct {
 	Log     *slog.Logger
 }
 
-func New(lib *library.Library, reg *plugins.Registry, q *jobs.Queue, runs *pluginhost.Runs, log *slog.Logger) *Importer {
-	return &Importer{Lib: lib, Registry: reg, Queue: q, Runs: runs, Log: log}
+func New(lib *library.Library, reg *plugins.Registry, q *jobs.Queue, mgr *pluginhost.Manager, runs *pluginhost.Runs,
+	tg *targets.Service, log *slog.Logger) *Importer {
+	return &Importer{Lib: lib, Registry: reg, Queue: q, Plugins: mgr, Runs: runs, Targets: tg, Log: log}
 }
 
 // progress is an import job's progress. Done, Total, and Message come from

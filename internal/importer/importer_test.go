@@ -61,14 +61,12 @@ func setupCaps(t *testing.T, caps []string, args ...string) *env {
 	reg := plugins.New(pool, map[string]*protocol.Manifest{"fake": m}, store, box)
 	q := jobs.New(pool)
 	runs := pluginhost.NewRuns(quiet)
-	im := New(lib, reg, q, runs, quiet)
 	// As the worker wires it, so plugin calls go through the real broker.
 	broker := &iservices.Broker{Registry: reg, Runs: runs}
 	mgr := pluginhost.NewManager(broker.Handle(runs.Handle), time.Minute, quiet)
 	broker.Plugins = mgr
 	t.Cleanup(mgr.Close)
-	im.Plugins = mgr
-	im.Targets = targets.New(pool, lib, reg, mgr, quiet)
+	im := New(lib, reg, q, mgr, runs, targets.New(pool, lib, reg, mgr, quiet), quiet)
 
 	w := &jobs.Worker{Queue: q, Log: quiet, Poll: 50 * time.Millisecond,
 		Backoff: func(int) time.Duration { return 0 }, Handlers: map[string]jobs.Handler{Kind: im.Run, IngestKind: im.Run, DetectKind: im.RunDetect}}

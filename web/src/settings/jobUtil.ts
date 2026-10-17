@@ -51,8 +51,9 @@ export function useJobEvents(id: number, live: boolean) {
         // Streams cut a reconcile's snapshot, so fetch the whole job once it's done.
         void qc.invalidateQueries({ queryKey: ["job", id] });
         void qc.invalidateQueries({ queryKey: ["jobs"] });
-        // A finished bulk job can change what any search shows.
+        // A finished job, like a bulk action or a library delete, can change any search or library count.
         void qc.invalidateQueries({ queryKey: ["search"] });
+        void qc.invalidateQueries({ queryKey: ["libraries"] });
       }
     });
     return () => es.close();

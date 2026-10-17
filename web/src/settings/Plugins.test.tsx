@@ -38,6 +38,8 @@ beforeEach(() => {
           { name: "url-import", version: "0.3.0", capabilities: ["import"], secrets: [], source: "builtin", builtin: true,
             config: { type: "object", properties: { delay: { type: "integer" } } },
             category: "Import", multiple_instances: false, status: "ready" },
+          { name: "pnglike", version: "0.4.0", capabilities: ["codec"], secrets: [], source: "builtin", builtin: true,
+            category: "Formats", multiple_instances: false, status: "ready" },
         ]);
       if (u.pathname === "/api/plugin-sources") return json([{ id: "official", url: "https://example.com/index.toml" }]);
       if (u.pathname === "/api/plugin-catalog")
@@ -55,7 +57,7 @@ beforeEach(() => {
       if (u.pathname === "/api/instances")
         return json([
           inst(1, "sillytavern", "home"), inst(2, "sillytavern", "work", "connection refused"),
-          inst(3, "gone", "old"), inst(4, "url-import", "url-import"),
+          inst(3, "gone", "old"), inst(4, "url-import", "url-import"), inst(5, "pnglike", "pnglike"),
         ]);
       if (req.method === "DELETE" && u.pathname === "/api/instances/1")
         return json({ title: "Conflict", status: 409, detail: "instance in use" }, 409);
@@ -119,6 +121,9 @@ test("rolls back, uninstalls, and removes data only after typing the name", asyn
   const user = userEvent.setup();
   renderPlugins();
   const st = (await screen.findByRole("heading", { name: "sillytavern" })).closest("article")!;
+  const menu = document.getElementById(within(st).getByRole("button", { name: "More for sillytavern" }).getAttribute("popovertarget")!)!;
+  expect(within(menu).getByRole("button", { name: "Roll back to 0.0.9" })).toBeInTheDocument();
+  expect(within(menu).getByRole("button", { name: "Uninstall" })).toBeInTheDocument();
   await user.click(within(st).getByRole("button", { name: "Roll back to 0.0.9" }));
   expect(requests).toContain("POST /api/plugins/sillytavern/install");
   await user.click(within(st).getByRole("button", { name: "Uninstall" }));
@@ -178,4 +183,14 @@ test("a singleton shows its status and one action, never Add instance", async ()
   const url = screen.getByRole("heading", { name: "url-import" }).closest("article")!;
   expect(within(url).getByText("Ready")).toBeInTheDocument();
   expect(within(url).getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/settings/instances/4");
+});
+
+test("a singleton with no settings still links to its instance and can delete it", async () => {
+  const user = userEvent.setup();
+  renderPlugins();
+  const card = (await screen.findByRole("heading", { name: "pnglike" })).closest("article")!;
+  expect(within(card).getByText("0.4.0 · built in")).toBeInTheDocument();
+  expect(within(card).getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/settings/instances/5");
+  await user.click(within(card).getByRole("button", { name: "Delete pnglike" }));
+  expect(requests).toContain("DELETE /api/instances/5");
 });

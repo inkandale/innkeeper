@@ -27,7 +27,7 @@ export function Plugins() {
   };
   const remove = useMutation({
     mutationFn: async (id: number) => mustOk(await api.DELETE("/instances/{id}", { params: { path: { id } } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["instances"] }),
+    onSuccess: changed,
   });
   const install = useMutation({
     mutationFn: async (v: { name: string; source: string; version: string }) =>
@@ -109,14 +109,14 @@ export function Plugins() {
     // A singleton keeps instances made before it was one; list them so they can be deleted.
     const listed = p.multiple_instances || list.length > 1;
     const broken = list.find((i) => i.broken_error);
-    const hasSettings = (p.secrets?.length ?? 0) > 0 || p.config !== undefined;
+    const only = !listed && list.length === 1 ? list[0] : undefined;
     const canUninstall = p.source !== "builtin";
     return (
       <article key={p.name} className="plugin">
         <header>
           <div className="about">
             <h3>{p.name}</h3>{" "}
-            <span className="muted">{p.source === "builtin" ? p.version : `${p.source}/${p.version}`}</span>
+            <span className="muted">{p.source === "builtin" ? `${p.version} · built in` : `${p.source}/${p.version}`}</span>
             {p.description && <p className="muted">{p.description}</p>}
           </div>
           {!listed && p.status === "ready" && <span className="state succeeded">Ready</span>}
@@ -146,18 +146,25 @@ export function Plugins() {
               Set up
             </Link>
           ) : (
-            list.length === 1 &&
-            hasSettings && (
-              <Link className="button" to={`/settings/instances/${list[0]!.id}`}>
+            only && (
+              <Link className="button" to={`/settings/instances/${only.id}`}>
                 Settings
               </Link>
             )
           )}
-          {(canUninstall || (prevSource && prevVersion)) && (
+          {(canUninstall || only || (prevSource && prevVersion)) && (
             <Menu label={`More for ${p.name}`}>
               {prevSource && prevVersion && (
                 <button disabled={busy} onClick={() => install.mutate({ name: p.name, source: prevSource, version: prevVersion })}>
                   Roll back to {prevVersion}
+                </button>
+              )}
+              {only && (
+                <button
+                  aria-label={`Delete ${only.name}`}
+                  onClick={() => confirm(`Delete ${only.name}? Its jobs stay, and logins through it end.`) && remove.mutate(only.id)}
+                >
+                  Delete
                 </button>
               )}
               {canUninstall && (

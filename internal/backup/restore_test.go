@@ -609,3 +609,51 @@ func TestValidSHA(t *testing.T) {
 		}
 	}
 }
+
+func TestRestoreKeepsLibraries(t *testing.T) {
+	pool, lib, o := setup(t)
+	ctx := context.Background()
+	if _, err := lib.RenameLibrary(ctx, library.DefaultLibrary, "Main"); err != nil {
+		t.Fatal(err)
+	}
+	archiveLib, err := lib.CreateLibrary(ctx, "Archive")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, _, err := lib.Cards.Create(ctx, archiveLib.ID, "gone", "upload", library.Edit{Data: json.RawMessage(`{"name": "Gone"}`), Source: "ui"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	col, err := lib.CreateCollection(ctx, archiveLib.ID, "Crew", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.AddToCollection(ctx, col.ID, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	assets := archive(t, pool, Assets, o)
+
+	for _, replace := range []bool{false, true} {
+		tg := newTarget(t)
+		if replace {
+			if _, err := tg.lib.CreateLibrary(ctx, "Archive"); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := tg.restore(assets, nil, replace); err != nil {
+			t.Fatalf("replace %v: %v", replace, err)
+		}
+		libs, err := tg.lib.Libraries(ctx)
+		if err != nil || len(libs) != 2 || libs[0].Name != "Main" || libs[1].ID != archiveLib.ID || libs[1].Name != "Archive" || libs[1].Cards != 1 {
+			t.Fatalf("replace %v: libraries = %+v, %v", replace, libs, err)
+		}
+		cols, err := tg.lib.Collections(ctx, archiveLib.ID)
+		if err != nil || len(cols) != 1 || cols[0].Cards != 1 {
+			t.Fatalf("replace %v: collections = %+v, %v", replace, cols, err)
+		}
+		next, err := tg.lib.CreateLibrary(ctx, "Later")
+		if err != nil || next.ID <= archiveLib.ID {
+			t.Fatalf("replace %v: next library = %+v, %v", replace, next, err)
+		}
+	}
+}

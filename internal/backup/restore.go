@@ -157,7 +157,8 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (res Result, er
 	if exists && !o.Replace {
 		return Result{}, ErrHasData
 	}
-	if exists {
+	// An empty database still has library 1, which the archive's library rows replace.
+	if exists || m.Type == Assets {
 		if err := clearType(ctx, tx, m.Type); err != nil {
 			return Result{}, fmt.Errorf("clear %s: %w", m.Type, err)
 		}

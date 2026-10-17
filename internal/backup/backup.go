@@ -33,13 +33,14 @@ var Types = []Type{Assets, Config}
 // tables lists each type's tables in load order. Jobs, tokens, sessions and
 // OAuth grants are never backed up.
 var tables = map[Type][]string{
-	Assets: {"blob", "card", "card_revision", "lorebook", "lorebook_revision", "card_lorebook",
+	Assets: {"blob", "library", "card", "card_revision", "lorebook", "lorebook_revision", "card_lorebook",
 		"collection", "collection_card", "card_source", "lorebook_source", "enrichment"},
 	Config: {"plugin_instance", "setting", "binding", "push"},
 }
 
-// referencedBlobs limits the blob copy to avatars of revisions. Revisions are
-// never deleted, so their files can't vanish mid-backup.
+// referencedBlobs limits the blob copy to avatars of revisions. Deleting a
+// library deletes revisions, so an assets backup holds off blob cleanup until
+// it has copied the files.
 const referencedBlobs = `sha256 IN (SELECT avatar_blob FROM card_revision UNION SELECT avatar_blob FROM lorebook_revision)`
 
 const timeFormat = "20060102T150405.000000Z"
@@ -111,10 +112,17 @@ func Write(ctx context.Context, pool *pgxpool.Pool, t Type, o Options) (Info, er
 	if err := os.Mkdir(filepath.Join(part, "tables"), 0o700); err != nil {
 		return Info{}, err
 	}
+	if t == Assets {
+		// Blob cleanup and restore take this lock exclusively, so the listed
+		// files stay until they are copied, even if their revisions are deleted.
+		if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock_shared(hashtext('innkeeper-restore'))`); err != nil {
+			return Info{}, err
+		}
+		defer conn.Exec(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock_shared(hashtext('innkeeper-restore'))`)
+	}
 	if err := snapshot(ctx, conn, t, o, part, &m); err != nil {
 		return Info{}, err
 	}
-	// After the snapshot ends: revisions are immutable, so listed blobs stay.
 	for _, sha := range m.Blobs {
 		src, err := o.Store.Path(sha)
 		if err != nil {

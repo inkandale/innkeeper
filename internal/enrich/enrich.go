@@ -43,8 +43,8 @@ type Payload struct {
 }
 
 // batches returns the payload's cards a batch at a time, reading a query's
-// from the library as it goes, and the card count.
-func (p Payload) batches(ctx context.Context, lib *library.Library) (next func() ([]int64, error), total int, err error) {
+// from the library as it goes and stopping at max cards, and the card count.
+func (p Payload) batches(ctx context.Context, lib *library.Library, max int) (next func() ([]int64, error), total int, err error) {
 	if p.Query == nil {
 		chunks := slices.Collect(slices.Chunk(p.CardIDs, protocol.MaxEnrichBatch))
 		return func() ([]int64, error) {
@@ -61,12 +61,19 @@ func (p Payload) batches(ctx context.Context, lib *library.Library) (next func()
 	if total, err = lib.CountMatches(ctx, library.Card, q); err != nil {
 		return nil, 0, err
 	}
+	// Cards added since the run was queued may push the query past the cap it was checked against.
+	total = min(total, max)
 	var after int64
+	read := 0
 	return func() ([]int64, error) {
-		ids, err := lib.SearchIDsAfter(ctx, library.Card, q, after, protocol.MaxEnrichBatch)
+		if read >= max {
+			return nil, nil
+		}
+		ids, err := lib.SearchIDsAfter(ctx, library.Card, q, after, min(protocol.MaxEnrichBatch, max-read))
 		if len(ids) > 0 {
 			after = ids[len(ids)-1]
 		}
+		read += len(ids)
 		return ids, err
 	}, total, nil
 }
@@ -198,7 +205,7 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 	if err != nil {
 		return err
 	}
-	next, total, err := p.batches(ctx, rn.Lib)
+	next, total, err := p.batches(ctx, rn.Lib, MaxCards)
 	if err != nil {
 		return err
 	}

@@ -22,6 +22,10 @@ worker:
 
 # Blob store, shared by the API and worker containers.
 persistence:
+  blobs:
+    # false mounts no blob volume, for a store elsewhere: mount it with
+    # extraVolumes and extraVolumeMounts, and set INNKEEPER_BLOB_DIR in extraEnv.
+    enabled: true
   size: 5Gi
   storageClass: ""
   accessModes: [ReadWriteOncePod]
@@ -60,7 +64,7 @@ resources:
 
 # Added to both containers.
 extraEnv: []
-# Mounted in both containers, such as a folder a catalog plugin reads.
+# Mounted in both containers, such as a folder an import plugin reads.
 extraVolumes: []
 extraVolumeMounts: []
 

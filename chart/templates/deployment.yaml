@@ -18,6 +18,14 @@
 {{- end }}
 {{- end }}
 {{- $env = concat $env .Values.extraEnv }}
+{{- $blobs := .Values.persistence.blobs.enabled }}
+{{- if not $blobs }}
+{{- $names := list }}
+{{- range $env }}{{ $names = append $names .name }}{{ end }}
+{{- if not (has "INNKEEPER_BLOB_DIR" $names) }}
+{{- fail "persistence.blobs.enabled=false needs INNKEEPER_BLOB_DIR in extraEnv" }}
+{{- end }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -74,8 +82,10 @@ spec:
             capabilities:
               drop: [ALL]
           volumeMounts:
+            {{- if $blobs }}
             - name: blobs
               mountPath: /data/blobs
+            {{- end }}
             - name: plugins
               mountPath: /data/plugins
             - name: tmp
@@ -89,9 +99,11 @@ spec:
             {{- end }}
         {{- end }}
       volumes:
+        {{- if $blobs }}
         - name: blobs
           persistentVolumeClaim:
             claimName: {{ .Release.Name }}-blobs
+        {{- end }}
         - name: plugins
           persistentVolumeClaim:
             claimName: {{ .Release.Name }}-plugins

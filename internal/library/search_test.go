@@ -2,6 +2,7 @@ package library
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -589,7 +590,7 @@ func TestSearchGroupsFamilies(t *testing.T) {
 	}
 
 	first, err := lib.Search(ctx, Card, Query{Group: "family", Page: Page{Size: 1}})
-	if err != nil || !slices.Equal(hitIDs(first), []int64{solo}) || first.Total != 2 || first.NextCursor == nil || *first.NextCursor != "1" {
+	if err != nil || !slices.Equal(hitIDs(first), []int64{solo}) || first.Total != 2 || first.NextCursor == nil {
 		t.Fatalf("page 1 = %+v, %v", first, err)
 	}
 	second, err := lib.Search(ctx, Card, Query{Group: "family", Page: Page{Size: 1, Number: 2}})
@@ -675,5 +676,207 @@ func TestSearchTerminatesOnAVariantCycle(t *testing.T) {
 	}
 	if _, err := lib.Search(ctx, Card, Query{Filter: &Filter{VariantOfRoot: ptr(a)}}); err != nil {
 		t.Fatalf("variant_of_root: %v", err)
+	}
+}
+
+func TestSearchStaysInLibrary(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	mine, _ := newCard(t, lib, "mine", `{"name": "Brakka", "description": "A dwarf.", "tags": ["dwarf"]}`)
+	theirs, _ := newCard(t, lib, "theirs", `{"name": "Brakka", "description": "A dwarf.", "tags": ["dwarf"]}`)
+	archive := newLibraryRow(t, lib, "Archive")
+	moveCard(t, lib, theirs, archive)
+
+	for name, tc := range map[string]struct {
+		library int64
+		want    int64
+	}{"default": {0, mine}, "archive": {archive, theirs}} {
+		q := Query{Library: tc.library, Text: "dwarf", Facets: []string{"tags"}}
+		res, err := lib.Search(ctx, Card, q)
+		if err != nil || !slices.Equal(hitIDs(res), []int64{tc.want}) || res.Total != 1 || res.Facets.Tags[0].Cards != 1 {
+			t.Fatalf("%s: search = %+v, %v", name, res, err)
+		}
+		q.Group = "family"
+		if res, err = lib.Search(ctx, Card, q); err != nil || !slices.Equal(hitIDs(res), []int64{tc.want}) || res.Total != 1 {
+			t.Fatalf("%s: family search = %+v, %v", name, res, err)
+		}
+		if ids, err := lib.SearchIDs(ctx, Card, q); err != nil || !slices.Equal(ids, []int64{tc.want}) {
+			t.Fatalf("%s: SearchIDs = %v, %v", name, ids, err)
+		}
+	}
+}
+
+func TestCursorStableWhileInserting(t *testing.T) {
+	ctx := context.Background()
+	type card struct{ slug, data string }
+	for name, tc := range map[string]struct {
+		q             Query
+		cards         []card
+		before, after []card // inserted after page 1, sorting before and after its last hit
+	}{
+		"created": {
+			q:      Query{},
+			cards:  []card{{"a", `{"name": "A"}`}, {"b", `{"name": "B"}`}, {"c", `{"name": "C"}`}, {"d", `{"name": "D"}`}, {"e", `{"name": "E"}`}},
+			before: []card{{"new", `{"name": "New"}`}},
+		},
+		"updated": {
+			q:      Query{Sort: "updated"},
+			cards:  []card{{"a", `{"name": "A"}`}, {"b", `{"name": "B"}`}, {"c", `{"name": "C"}`}, {"d", `{"name": "D"}`}, {"e", `{"name": "E"}`}},
+			before: []card{{"new", `{"name": "New"}`}},
+		},
+		"name, nameless last": {
+			q:      Query{Sort: "name"},
+			cards:  []card{{"b", `{"name": "Brakka"}`}, {"c", `{"name": "carrow"}`}, {"d", `{"name": "Dellin"}`}, {"e", `{"name": "Erra"}`}, {"x", `{"description": "No name."}`}},
+			before: []card{{"aaron", `{"name": "Aaron"}`}},
+			after:  []card{{"zed", `{"name": "Zed"}`}},
+		},
+		"relevance": {
+			q: Query{Text: "dwarf"},
+			cards: []card{{"a", `{"name": "A", "description": "A dwarf."}`}, {"b", `{"name": "B", "description": "A dwarf who fights."}`},
+				{"c", `{"name": "C", "description": "A dwarf, a dwarf."}`}, {"d", `{"name": "D", "description": "A tall dwarf."}`}, {"e", `{"name": "E", "description": "Dwarf."}`}},
+			before: []card{{"top", `{"name": "Dwarf", "description": "A dwarf, a dwarf, a dwarf."}`}},
+			after:  []card{{"low", `{"name": "Low", "first_mes": "I once met a dwarf somewhere far away from here, a long time ago."}`}},
+		},
+		"family": {
+			q:      Query{Group: "family"},
+			cards:  []card{{"a", `{"name": "A"}`}, {"b", `{"name": "B"}`}, {"c", `{"name": "C"}`}, {"d", `{"name": "D"}`}, {"e", `{"name": "E"}`}},
+			before: []card{{"new", `{"name": "New"}`}},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			lib := newLibrary(t)
+			ids := map[string]int64{}
+			add := func(cs []card) {
+				for _, c := range cs {
+					ids[c.slug], _ = newCard(t, lib, c.slug, c.data)
+				}
+			}
+			add(tc.cards)
+			q := tc.q
+			q.Page.Size = 2
+			page, err := lib.Search(ctx, Card, q)
+			if err != nil || page.NextCursor == nil {
+				t.Fatalf("page 1 = %+v, %v", page, err)
+			}
+			got := hitIDs(page)
+			add(tc.before)
+			add(tc.after)
+			for page.NextCursor != nil {
+				q.Page.Cursor = page.NextCursor
+				if page, err = lib.Search(ctx, Card, q); err != nil {
+					t.Fatal(err)
+				}
+				got = append(got, hitIDs(page)...)
+			}
+			// Paging sees everything a fresh search does except what sorts before page 1's end.
+			all, err := lib.Search(ctx, Card, tc.q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			end := slices.Index(hitIDs(all), got[1])
+			wantAll := []int64{}
+			for i, id := range hitIDs(all) {
+				isBefore := slices.ContainsFunc(tc.before, func(c card) bool { return ids[c.slug] == id })
+				if isBefore && i >= end {
+					t.Fatalf("%d doesn't sort before page 1's end: %v", id, hitIDs(all))
+				}
+				if !isBefore {
+					wantAll = append(wantAll, id)
+				}
+			}
+			if !slices.Equal(got, wantAll) {
+				t.Fatalf("paged = %v, want %v (ids %v)", got, wantAll, ids)
+			}
+		})
+	}
+}
+
+func TestCursorRejectsOtherSort(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	seedSearch(t, lib)
+	page, err := lib.Search(ctx, Card, Query{Sort: "name", Page: Page{Size: 1}})
+	if err != nil || page.NextCursor == nil {
+		t.Fatalf("page = %+v, %v", page, err)
+	}
+	if _, err := lib.Search(ctx, Card, Query{Page: Page{Cursor: page.NextCursor}}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("name cursor on created sort: %v", err)
+	}
+}
+
+func TestCursorPagesEnrichmentSort(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	const score = 7
+	ids := make([]int64, 5)
+	var values []NewEnrichment
+	for i, v := range []string{"90", "40", "40", "", ""} {
+		var rev int64
+		ids[i], rev = newCard(t, lib, fmt.Sprintf("c%d", i), fmt.Sprintf(`{"name": "C%d"}`, i))
+		if v != "" {
+			values = append(values, NewEnrichment{CardID: ids[i], RevisionID: rev, Key: "quality", Value: json.RawMessage(v)})
+		}
+	}
+	if err := lib.AddEnrichments(ctx, score, values); err != nil {
+		t.Fatal(err)
+	}
+	q := Query{Sort: "enrichment:quality", ScoreInstance: score, Page: Page{Size: 2}}
+	got := []int64{}
+	for {
+		page, err := lib.Search(ctx, Card, q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, hitIDs(page)...)
+		if page.NextCursor == nil {
+			break
+		}
+		q.Page.Cursor = page.NextCursor
+	}
+	// Ties and cards without a value go newest first.
+	if want := []int64{ids[0], ids[2], ids[1], ids[4], ids[3]}; !slices.Equal(got, want) {
+		t.Fatalf("paged = %v, want %v", got, want)
+	}
+}
+
+// bulkCards inserts n cards in library 1 with SQL, far faster than Create.
+// data is a SQL expression for each card's data, over the series value g.
+func bulkCards(t testing.TB, lib *Library, n int, data string) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := lib.pool.Exec(ctx, `WITH c AS (
+			INSERT INTO card (slug, provenance) SELECT 'bulk-' || g, 'upload' FROM generate_series(1, $1) g RETURNING id, substr(slug, 6)::int AS g
+		)
+		INSERT INTO card_revision (card_id, data, content_hash, source) SELECT id, `+data+`, md5(id::text), 'ui' FROM c`, n); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lib.pool.Exec(ctx, `UPDATE card c SET head_revision_id = r.id FROM card_revision r
+		WHERE c.head_revision_id IS NULL AND r.card_id = c.id`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFacetCountsStopAtCap(t *testing.T) {
+	lib := newLibrary(t)
+	bulkCards(t, lib, facetCap+5, `'{"name": "Bulk", "tags": ["bulk"]}'::jsonb`)
+	res, err := lib.Search(context.Background(), Card, Query{Facets: []string{"tags"}})
+	if err != nil || len(res.Facets.Tags) != 1 || res.Facets.Tags[0].Cards != facetCap+1 || res.Total != facetCap+5 {
+		t.Fatalf("results = total %d, facets %+v, %v", res.Total, res.Facets, err)
+	}
+}
+
+func TestCursorRejectsOutOfRangeRank(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	seedSearch(t, lib)
+	for _, rank := range []string{"1e-50", "1e39"} {
+		cursor := base64.RawURLEncoding.EncodeToString([]byte(`[` + rank + `, 5]`))
+		if _, err := lib.Search(ctx, Card, Query{Text: "dwarf", Page: Page{Cursor: &cursor}}); !errors.Is(err, ErrInvalid) {
+			t.Errorf("rank %s: %v", rank, err)
+		}
+	}
+	cursor := base64.RawURLEncoding.EncodeToString([]byte(`[1e-45, 5]`))
+	if _, err := lib.Search(ctx, Card, Query{Text: "dwarf", Page: Page{Cursor: &cursor}}); err != nil {
+		t.Errorf("smallest real: %v", err)
 	}
 }

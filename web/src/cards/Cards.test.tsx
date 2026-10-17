@@ -26,7 +26,7 @@ const results = {
   ],
   facets: {
     tags: [
-      { name: "fantasy", cards: 40 },
+      { name: "fantasy", cards: 1001 },
       { name: "pirate", cards: 9 },
     ],
     targets: [{ instance: 2, is: "ahead", cards: 1 }],
@@ -177,6 +177,11 @@ test("the exclude button excludes a value", async () => {
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: "Exclude pirate" }));
   expect(router.state.location.search).toBe("?f=-tag%3Apirate");
+});
+
+test("a count past the facet cap shows 1,000+", async () => {
+  renderCards("/cards");
+  expect(await screen.findByRole("button", { name: /^fantasy/ })).toHaveTextContent("fantasy 1,000+");
 });
 
 test("a section's counts leave out its own selections", async () => {

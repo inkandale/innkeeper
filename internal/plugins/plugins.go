@@ -257,20 +257,26 @@ type InstanceInfo struct {
 // Usable reports whether anything may use the instance.
 func (i InstanceInfo) Usable() bool { return i.BrokenError == nil && !i.Disabled }
 
-// Status sums up a plugin and its instances for the Plugins page: broken if
-// any instance is, instances for a plugin that allows many, and otherwise
-// ready or needs_setup.
+// Status sums up a plugin's instances for the Plugins page, in the same words
+// as an instance's status: a broken or unset instance shows first, and a
+// plugin is disabled only when every instance is.
 func Status(m *protocol.Manifest, instances []InstanceInfo) string {
-	if slices.ContainsFunc(instances, func(i InstanceInfo) bool { return i.BrokenError != nil }) {
-		return "broken"
+	has := func(s string) bool {
+		return slices.ContainsFunc(instances, func(i InstanceInfo) bool { return i.Status == s })
 	}
 	switch {
-	case m.AllowsManyInstances():
-		return "instances"
-	case m.IsTheme(), len(instances) > 0:
+	case m.IsTheme():
 		return "ready"
+	case len(instances) == 0:
+		return "needs_setup"
+	case has("broken"):
+		return "broken"
+	case has("needs_setup"):
+		return "needs_setup"
+	case !has("ready"):
+		return "disabled"
 	}
-	return "needs_setup"
+	return "ready"
 }
 
 // NewInstance is a new instance's settings.

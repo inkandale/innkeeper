@@ -576,8 +576,10 @@ func TestCreateInstanceRejectsSecondSingleton(t *testing.T) {
 }
 
 func TestPluginStatus(t *testing.T) {
-	broken := "connection refused"
-	ok, bad := InstanceInfo{ID: 1}, InstanceInfo{ID: 2, BrokenError: &broken}
+	ok := InstanceInfo{ID: 1, Status: "ready"}
+	bad := InstanceInfo{ID: 2, Status: "broken"}
+	unset := InstanceInfo{ID: 3, Status: "needs_setup"}
+	off := InstanceInfo{ID: 4, Status: "disabled"}
 	solo := &protocol.Manifest{Name: "solo", Capabilities: []string{"import"}}
 	many := &protocol.Manifest{Name: "many", Capabilities: []string{"push"}, MultipleInstances: true}
 	theme := &protocol.Manifest{Name: "dusk", Capabilities: []string{"theme"}}
@@ -587,13 +589,14 @@ func TestPluginStatus(t *testing.T) {
 		instances []InstanceInfo
 		want      string
 	}{
-		{"singleton with no instance", solo, nil, "needs_setup"},
-		{"singleton with a working instance", solo, []InstanceInfo{ok}, "ready"},
-		{"singleton with two legacy instances", solo, []InstanceInfo{ok, {ID: 3}}, "ready"},
-		{"singleton with a broken instance", solo, []InstanceInfo{bad}, "broken"},
-		{"multi with none", many, nil, "instances"},
-		{"multi with one broken", many, []InstanceInfo{ok, bad}, "broken"},
 		{"theme", theme, nil, "ready"},
+		{"singleton with no instance", solo, nil, "needs_setup"},
+		{"multi with no instance", many, nil, "needs_setup"},
+		{"one ready", solo, []InstanceInfo{ok}, "ready"},
+		{"broken wins", many, []InstanceInfo{ok, unset, bad}, "broken"},
+		{"needs setup beats ready", many, []InstanceInfo{ok, unset}, "needs_setup"},
+		{"all disabled", many, []InstanceInfo{off, off}, "disabled"},
+		{"one disabled, one ready", many, []InstanceInfo{off, ok}, "ready"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

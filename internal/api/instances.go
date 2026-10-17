@@ -31,7 +31,7 @@ type pluginOut struct {
 	Description       string                   `json:"description,omitempty"`
 	Category          string                   `json:"category,omitempty" doc:"The group the Plugins page shows the plugin under"`
 	MultipleInstances bool                     `json:"multiple_instances" doc:"The owner may create more than one instance"`
-	Status            string                   `json:"status" enum:"ready,needs_setup,broken,instances" doc:"broken: an instance is broken. needs_setup: a singleton with no instance. ready: a singleton with a working instance, or a theme. instances: the plugin allows many; see its instances."`
+	Status            string                   `json:"status" enum:"ready,needs_setup,broken,disabled" doc:"Sums up the plugin's instances: broken or needs_setup if any instance is, disabled if every one is, needs_setup with none. A theme is ready."`
 	Capabilities      []string                 `json:"capabilities"`
 	Secrets           []string                 `json:"secrets"`
 	Formats           []string                 `json:"formats,omitempty" doc:"File formats a codec plugin reads and writes"`

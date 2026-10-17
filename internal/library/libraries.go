@@ -54,6 +54,13 @@ func (l *Library) GetLibrary(ctx context.Context, id int64) (LibrarySummary, err
 	return s, mapErr(err)
 }
 
+// HasLibrary says whether library id exists, without GetLibrary's counts.
+func (l *Library) HasLibrary(ctx context.Context, id int64) (bool, error) {
+	var ok bool
+	err := l.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM library WHERE id = $1)`, id).Scan(&ok)
+	return ok, err
+}
+
 // CreateLibrary adds an empty library.
 func (l *Library) CreateLibrary(ctx context.Context, name string) (LibrarySummary, error) {
 	var id int64

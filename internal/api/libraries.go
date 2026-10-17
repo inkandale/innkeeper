@@ -3,7 +3,6 @@ package api
 import (
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -48,12 +47,12 @@ type libraryQuery struct {
 // doesn't exist.
 func (s *Server) checkLibrary(ctx context.Context, id int64) (int64, error) {
 	id = cmp.Or(id, library.DefaultLibrary)
-	_, err := s.Lib.GetLibrary(ctx, id)
-	if errors.Is(err, library.ErrNotFound) {
-		return 0, huma.Error422UnprocessableEntity(fmt.Sprintf("library %d doesn't exist", id))
-	}
+	ok, err := s.Lib.HasLibrary(ctx, id)
 	if err != nil {
 		return 0, s.fail(err)
+	}
+	if !ok {
+		return 0, huma.Error422UnprocessableEntity(fmt.Sprintf("library %d doesn't exist", id))
 	}
 	return id, nil
 }

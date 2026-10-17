@@ -274,7 +274,7 @@ var tools = []tool{
 			return c.call(ctx, "POST", fmt.Sprintf("/%s/%d/variants", k.Plural, in.ID), map[string]any{"source": "mcp", "library": in.Library})
 		}),
 	def("set_variant_of", "Record that a card or lorebook is a variant of another of the same kind, or unlink it with variant_of null. "+
-		"Refuses a link that would make it its own ancestor. Changes no content.", tier.Write,
+		"Refuses a link that would make it its own ancestor, or to one in another library. Changes no content.", tier.Write,
 		func(ctx context.Context, c caller, in variantOfIn) (*sdk.CallToolResult, error) {
 			k, err := kindNamed(cmp.Or(in.Kind, library.Card.Name))
 			if err != nil {

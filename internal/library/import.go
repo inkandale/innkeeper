@@ -269,7 +269,7 @@ type importBinding struct {
 	autosync                            bool
 }
 
-// importEntity stores e as the entity with it's provenance in its library:
+// importEntity stores e as the entity with it.Provenance in it.LibraryID:
 // a new entity, nothing if a revision already has e's content, a new head if
 // the entity is as last imported, or else a pending update in its import
 // binding. The binding is targets' row, written here so an import is one
@@ -397,7 +397,7 @@ func (l *Library) bindImport(ctx context.Context, tx pgx.Tx, k *Kind, it PluginI
 	return bindingID, err
 }
 
-// detectUnless queues the entity for source detection unless it says to skip it.
+// detectUnless queues the entity for source detection unless it.SkipDetect is set.
 func (s *Entities) detectUnless(ctx context.Context, tx pgx.Tx, it PluginItem, id int64) error {
 	if it.SkipDetect {
 		return nil

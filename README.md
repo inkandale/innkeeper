@@ -138,7 +138,14 @@ annotations, and [scheduled backups](#backup-and-restore). `extraVolumes` and
 dump, into both containers. To keep blobs elsewhere, such as on a NAS share,
 set `persistence.blobs.enabled=false`, mount the share with those two, and set
 `INNKEEPER_BLOB_DIR` in `extraEnv`; the chart then creates no blob volume, and
-refuses to render without `INNKEEPER_BLOB_DIR`. Create the first token with
+refuses to render without `INNKEEPER_BLOB_DIR`.
+
+> **Warning:** on an existing release, `persistence.blobs.enabled=false`
+> deletes the blobs PVC and, with most storage classes, every blob in it.
+> Scale the deployment to 0 and copy the blob directory to the new location
+> first.
+
+Create the first token with
 `kubectl exec deploy/innkeeper -c api -- innkeeper token create admin destructive`.
 
 ## First login

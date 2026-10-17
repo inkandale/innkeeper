@@ -25,6 +25,8 @@ persistence:
   blobs:
     # false mounts no blob volume, for a store elsewhere: mount it with
     # extraVolumes and extraVolumeMounts, and set INNKEEPER_BLOB_DIR in extraEnv.
+    # On an existing release, false deletes the blobs PVC and its blobs: copy
+    # the blob directory to the new location first.
     enabled: true
   size: 5Gi
   storageClass: ""

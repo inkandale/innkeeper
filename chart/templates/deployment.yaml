@@ -33,7 +33,7 @@ metadata:
   labels: {{- include "innkeeper.labels" . | nindent 4 }}
 spec:
   replicas: 1
-  # The blob volume is ReadWriteOncePod, so the old pod must stop first.
+  # The volumes are ReadWriteOncePod, so the old pod must stop first.
   strategy:
     type: Recreate
   selector:

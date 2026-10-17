@@ -1,6 +1,6 @@
 # Plugin singletons and the Plugins page design
 
-Date: 2026-10-16.
+Date: 2026-10-16. Ticket: INN-64.
 
 ## Purpose
 

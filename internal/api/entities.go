@@ -64,6 +64,7 @@ type createEntityIn struct {
 		Avatar  string          `json:"avatar,omitempty" doc:"sha256 of an uploaded blob"`
 		Message string          `json:"message,omitempty"`
 		Source  string          `json:"source,omitempty" enum:"ui,mcp" default:"ui"`
+		Library int64           `json:"library,omitempty" doc:"The library to create it in; default 1"`
 	}
 }
 
@@ -121,7 +122,8 @@ type archiveIn struct {
 type forkIn struct {
 	ID   int64 `path:"id"`
 	Body struct {
-		Source string `json:"source,omitempty" enum:"ui,mcp" default:"ui"`
+		Source  string `json:"source,omitempty" enum:"ui,mcp" default:"ui"`
+		Library int64  `json:"library,omitempty" doc:"The library to create it in; default the original's"`
 	}
 }
 
@@ -157,6 +159,8 @@ type similarIn struct {
 }
 
 type matchesOut struct{ Body []library.Match }
+
+type hashMatchesOut struct{ Body []library.HashMatch }
 
 type linkIn struct {
 	ID         int64 `path:"id"`
@@ -236,13 +240,16 @@ func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "create-" + singular, Method: http.MethodPost, Path: base,
 		Summary: "Create a " + singular, Tags: tags, DefaultStatus: http.StatusCreated},
 		func(ctx context.Context, in *createEntityIn) (*entityResp, error) {
+			lib, err := s.checkLibrary(ctx, in.Body.Library)
+			if err != nil {
+				return nil, err
+			}
 			e := library.Edit{Data: in.Body.Data, AvatarBlob: in.Body.Avatar, Message: in.Body.Message, Source: in.Body.Source}
 			var ent library.Entity
-			var err error
 			if in.Body.Slug != "" {
-				ent, _, err = ents.Create(ctx, library.DefaultLibrary, in.Body.Slug, "api", e)
+				ent, _, err = ents.Create(ctx, lib, in.Body.Slug, "api", e)
 			} else {
-				ent, _, err = ents.CreateFromName(ctx, library.DefaultLibrary, library.DataName(in.Body.Data), "api", e)
+				ent, _, err = ents.CreateFromName(ctx, lib, library.DataName(in.Body.Data), "api", e)
 			}
 			if err != nil {
 				return nil, s.fail(err)
@@ -417,9 +424,18 @@ func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "fork-" + singular, Method: http.MethodPost,
 		Path: item + "/variants", Summary: "Make a variant of a " + singular,
 		Description: "Copies the head revision, and a card's collections and lorebook links, into a new " + singular +
-			" that is a variant of this one. Sources and bindings aren't copied.", Tags: tags, DefaultStatus: http.StatusCreated},
+			" that is a variant of this one. Sources and bindings aren't copied; the new one gets a source of kind " + library.ForkSourceKind +
+			" whose ref is this one's ID. Forked into another library, it isn't a variant and gets no collections.",
+			Tags: tags, DefaultStatus: http.StatusCreated},
 		func(ctx context.Context, in *forkIn) (*entityResp, error) {
-			v, err := ents.Fork(ctx, in.ID, 0, in.Body.Source)
+			lib := in.Body.Library
+			if lib != 0 {
+				var err error
+				if lib, err = s.checkLibrary(ctx, lib); err != nil {
+					return nil, err
+				}
+			}
+			v, err := ents.Fork(ctx, in.ID, lib, in.Body.Source)
 			if err != nil {
 				return nil, s.fail(err)
 			}
@@ -428,9 +444,23 @@ func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "set-" + singular + "-variant-of", Method: http.MethodPut,
 		Path: item + "/variant_of", Summary: "Make a " + singular + " a variant of another",
-		Description: "Makes no revision. A link that would make it its own ancestor returns 409.", Tags: tags, DefaultStatus: http.StatusNoContent},
+		Description: "Makes no revision. A link that would make it its own ancestor returns 409; one to another library, 400.", Tags: tags, DefaultStatus: http.StatusNoContent},
 		func(ctx context.Context, in *variantOfIn) (*struct{}, error) {
 			return nil, s.fail(ents.SetVariantOf(ctx, in.ID, &in.Body.ID))
+		})
+
+	huma.Register(api, huma.Operation{OperationID: "list-" + singular + "-in-other-libraries", Method: http.MethodGet,
+		Path: item + "/in-other-libraries", Summary: "Find a " + singular + " in other libraries",
+		Description: "The " + k.Plural + " in other libraries with the same content, near-identical text, or a similar avatar; closest first.", Tags: tags},
+		func(ctx context.Context, in *similarIn) (*hashMatchesOut, error) {
+			if _, err := ents.Get(ctx, in.ID); err != nil {
+				return nil, s.fail(err)
+			}
+			m, err := ents.InOtherLibraries(ctx, in.ID, in.MaxDistance)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			return &hashMatchesOut{Body: orEmpty(m)}, nil
 		})
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "unset-" + singular + "-variant-of", Method: http.MethodDelete,

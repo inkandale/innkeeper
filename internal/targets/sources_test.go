@@ -310,7 +310,7 @@ func TestAKindThePluginDropsIsNoLongerFollowed(t *testing.T) {
 	e.publish("vyr", vyrCard, "")
 	e.follow(card)
 	e.reg.Manifests()["upstream"].SourceKinds = nil
-	if _, err := e.s.CheckSources(e.ctx, func(ScanProgress) {}); err != nil {
+	if _, err := e.s.CheckSources(e.ctx, library.DefaultLibrary, func(ScanProgress) {}); err != nil {
 		t.Fatal(err)
 	}
 	if list, err := e.s.Bindings(e.ctx, library.Card, card); err != nil || len(list) != 0 {
@@ -747,7 +747,7 @@ func TestAutosyncTakesASourceUpdateWithoutConflicts(t *testing.T) {
 	if _, err := e.s.SetAutosync(e.ctx, b.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	p, err := e.s.CheckSources(e.ctx, func(ScanProgress) {})
+	p, err := e.s.CheckSources(e.ctx, library.DefaultLibrary, func(ScanProgress) {})
 	if err != nil || p.Applied != 1 || p.Changed != 0 {
 		t.Fatalf("progress = %+v, %v", p, err)
 	}
@@ -772,7 +772,7 @@ func TestAutosyncLeavesAConflictingSourceUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := e.revisions(card)
-	p, err := e.s.CheckSources(e.ctx, func(ScanProgress) {})
+	p, err := e.s.CheckSources(e.ctx, library.DefaultLibrary, func(ScanProgress) {})
 	if err != nil || p.Applied != 0 || e.revisions(card) != before {
 		t.Fatalf("progress = %+v, %v; revisions %d, want %d", p, err, e.revisions(card), before)
 	}
@@ -793,7 +793,7 @@ func TestAutosyncLeavesASourceUpdateWithADifferentAvatar(t *testing.T) {
 	e.publish("vyr", map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Begone."},
 		patternPNG(t, func(x, y int) uint8 { return uint8((x-32)*(x-32)+(y-32)*(y-32)) / 128 * 255 }))
 	before := e.revisions(card)
-	p, err := e.s.CheckSources(e.ctx, func(ScanProgress) {})
+	p, err := e.s.CheckSources(e.ctx, library.DefaultLibrary, func(ScanProgress) {})
 	if err != nil || p.Applied != 0 || e.revisions(card) != before {
 		t.Fatalf("progress = %+v, %v; revisions %d, want %d", p, err, e.revisions(card), before)
 	}
@@ -812,7 +812,7 @@ func TestAutosyncKeepsTheCardsOwnAvatar(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.publish("vyr", map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Begone."}, stripes)
-	p, err := e.s.CheckSources(e.ctx, func(ScanProgress) {})
+	p, err := e.s.CheckSources(e.ctx, library.DefaultLibrary, func(ScanProgress) {})
 	if err != nil || p.Applied != 1 {
 		t.Fatalf("progress = %+v, %v", p, err)
 	}
@@ -823,5 +823,29 @@ func TestAutosyncKeepsTheCardsOwnAvatar(t *testing.T) {
 	}
 	if data["first_mes"] != "Begone." || own == nil || head.AvatarBlob == nil || *head.AvatarBlob != *own {
 		t.Fatalf("head = %v, avatar %v, want %v", data, head.AvatarBlob, own)
+	}
+}
+
+func TestSourceCheckStaysInItsLibrary(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	here := e.imported("vyr", vyrCard)
+	there := e.imported("vyr", vyrCard)
+	archive, err := e.lib.CreateLibrary(e.ctx, "Archive")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.pool.Exec(e.ctx, `UPDATE card SET library_id = $1 WHERE id = $2`, archive.ID, there); err != nil {
+		t.Fatal(err)
+	}
+	e.publish("vyr", vyrCard, "")
+	p, err := e.s.CheckSources(e.ctx, archive.ID, func(ScanProgress) {})
+	if err != nil || p.Checked != 1 {
+		t.Fatalf("progress = %+v, %v", p, err)
+	}
+	for card, want := range map[int64]int{here: 0, there: 1} {
+		if list, err := e.s.Bindings(e.ctx, library.Card, card); err != nil || len(list) != want {
+			t.Fatalf("card %d bindings = %+v, %v; want %d", card, list, err, want)
+		}
 	}
 }

@@ -32,11 +32,43 @@ const (
 	maxWarning  = 300
 )
 
-// Payload is an enrich job's payload.
+// Payload is an enrich job's payload: CardIDs, or the cards Query matches.
 type Payload struct {
-	CardIDs []int64 `json:"card_ids"`
+	CardIDs []int64        `json:"card_ids,omitempty"`
+	Query   *library.Query `json:"query,omitempty"`
+	// ScoreInstance is the Query's score instance, which its JSON leaves out.
+	ScoreInstance int64 `json:"score_instance,omitempty"`
 	// Rescore sends cards whose head revision already holds a value from the instance.
 	Rescore bool `json:"rescore,omitempty"`
+}
+
+// batches returns the payload's cards a batch at a time, reading a query's
+// from the library as it goes, and the card count.
+func (p Payload) batches(ctx context.Context, lib *library.Library) (next func() ([]int64, error), total int, err error) {
+	if p.Query == nil {
+		chunks := slices.Collect(slices.Chunk(p.CardIDs, protocol.MaxEnrichBatch))
+		return func() ([]int64, error) {
+			if len(chunks) == 0 {
+				return nil, nil
+			}
+			ids := chunks[0]
+			chunks = chunks[1:]
+			return ids, nil
+		}, len(p.CardIDs), nil
+	}
+	q := *p.Query
+	q.ScoreInstance = p.ScoreInstance
+	if total, err = lib.CountMatches(ctx, library.Card, q); err != nil {
+		return nil, 0, err
+	}
+	var after int64
+	return func() ([]int64, error) {
+		ids, err := lib.SearchIDsAfter(ctx, library.Card, q, after, protocol.MaxEnrichBatch)
+		if len(ids) > 0 {
+			after = ids[len(ids)-1]
+		}
+		return ids, err
+	}, total, nil
 }
 
 // Progress is an enrich job's progress, counted in cards.
@@ -166,8 +198,12 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 	if err != nil {
 		return err
 	}
+	next, total, err := p.batches(ctx, rn.Lib)
+	if err != nil {
+		return err
+	}
 	var mu sync.Mutex
-	prog := Progress{Total: len(p.CardIDs)}
+	prog := Progress{Total: total}
 	publish := func() {
 		raw, _ := json.Marshal(prog)
 		r.SetProgress(raw)
@@ -189,7 +225,14 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 
 	var lastErr error
 	batches, failedBatches := 0, 0
-	for ids := range slices.Chunk(p.CardIDs, protocol.MaxEnrichBatch) {
+	for {
+		ids, err := next()
+		if err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			break
+		}
 		batches++
 		checked, err := rn.batch(ctx, inst, *r.InstanceID, token, ids, p.Rescore)
 		if ctx.Err() != nil {

@@ -28,8 +28,7 @@ type Query struct {
 	Page     Page     `json:"page,omitempty"`
 	Group    string   `json:"group,omitempty" enum:"family" doc:"family returns one hit per family of variants: its face, with the family's matches. Paging and total count families; facets count cards or lorebooks."`
 
-	// Library is the library to search, or 0 for DefaultLibrary.
-	Library int64 `json:"-"`
+	Library int64 `json:"library,omitempty" doc:"The library to search; default 1."`
 
 	// ScoreInstance is the enrich instance whose values enrichment filters,
 	// sort, and include use, or 0 for none. The caller resolves it from the
@@ -729,13 +728,31 @@ func filtersEnrichments(f *Filter) bool {
 // SearchIDs returns the IDs of every entity of kind k that q matches,
 // ignoring its paging and output options.
 func (l *Library) SearchIDs(ctx context.Context, k *Kind, q Query) ([]int64, error) {
+	return l.SearchIDsAfter(ctx, k, q, 0, 0)
+}
+
+// SearchIDsAfter is SearchIDs for the IDs above after, in order, at most
+// limit of them; limit 0 means all.
+func (l *Library) SearchIDsAfter(ctx context.Context, k *Kind, q Query, after int64, limit int) ([]int64, error) {
 	cond, w, _, err := compile(k, q)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := l.pool.Query(ctx, `SELECT c.id FROM `+from(k)+` WHERE `+cond+` ORDER BY c.id`, w.args...)
+	rows, err := l.pool.Query(ctx, `SELECT c.id FROM `+from(k)+` WHERE `+cond+` AND c.id > `+w.arg(after)+`
+		ORDER BY c.id LIMIT nullif(`+w.arg(limit)+`, 0)`, w.args...)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, pgx.RowTo[int64])
+}
+
+// CountMatches returns how many entities of kind k q matches.
+func (l *Library) CountMatches(ctx context.Context, k *Kind, q Query) (int, error) {
+	cond, w, _, err := compile(k, q)
+	if err != nil {
+		return 0, err
+	}
+	var n int
+	err = l.pool.QueryRow(ctx, `SELECT count(*) FROM `+from(k)+` WHERE `+cond, w.args...).Scan(&n)
+	return n, err
 }

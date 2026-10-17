@@ -199,17 +199,27 @@ func TestEnrichRunKeepsABatchWithAValueTheDatabaseRefuses(t *testing.T) {
 
 func TestEnrichRunOverAQuery(t *testing.T) {
 	e := newEnrichEnv(t)
-	a, b := e.card("Brakka", "x"), e.card("Carrow", "x")
-	e.card("Dellin", "x")
-	var j jobOut
-	e.call("POST", "/enrichments/runs", map[string]any{"instance_id": e.instID,
-		"query": map[string]any{"filter": map[string]any{"ids": []int64{a, b}}}}, 202, &j)
-	var p enrich.Payload
-	if err := json.Unmarshal(j.Payload, &p); err != nil || !slices.Equal(p.CardIDs, []int64{a, b}) {
+	a := e.card("Brakka", "x")
+	archive := e.createLibrary("Archive")
+	var b, c entityResult
+	e.call("POST", "/cards", map[string]any{"data": map[string]any{"name": "Carrow", "description": "x"}, "library": archive.ID}, 201, &b)
+	e.call("POST", "/cards", map[string]any{"data": map[string]any{"name": "Dellin", "description": "x"}, "library": archive.ID}, 201, &c)
+	j, p := e.startRun(map[string]any{"instance_id": e.instID, "query": map[string]any{"library": archive.ID}})
+	var payload enrich.Payload
+	if err := json.Unmarshal(j.Payload, &payload); err != nil || payload.CardIDs != nil || payload.Query == nil || payload.Query.Library != archive.ID {
 		t.Fatalf("payload = %s, %v", j.Payload, err)
 	}
-	e.call("POST", "/enrichments/runs", map[string]any{"instance_id": e.instID, "card_ids": []int64{b, a, b}}, 202, &j)
-	if err := json.Unmarshal(j.Payload, &p); err != nil || !slices.Equal(p.CardIDs, []int64{a, b}) {
+	if j.Status != "succeeded" || p.Total != 2 || p.Done != 2 {
+		t.Fatalf("job = %s, progress = %+v", j.Status, p)
+	}
+	for card, want := range map[int64]bool{a: false, b.ID: true, c.ID: true} {
+		vals, err := e.s.Lib.Enrichments(context.Background(), card, false)
+		if err != nil || (len(vals) > 0) != want {
+			t.Errorf("card %d values = %+v, %v; want some: %v", card, vals, err, want)
+		}
+	}
+	e.call("POST", "/enrichments/runs", map[string]any{"instance_id": e.instID, "card_ids": []int64{b.ID, a, b.ID}}, 202, &j)
+	if err := json.Unmarshal(j.Payload, &payload); err != nil || !slices.Equal(payload.CardIDs, []int64{a, b.ID}) {
 		t.Fatalf("payload with repeats = %s, %v", j.Payload, err)
 	}
 }

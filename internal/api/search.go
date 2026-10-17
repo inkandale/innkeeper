@@ -43,6 +43,10 @@ func (s *Server) search(ctx context.Context, k *library.Kind, q library.Query) (
 		}
 		catalogs = append(catalogs, id)
 	}
+	var err error
+	if q.Library, err = s.checkLibrary(ctx, q.Library); err != nil {
+		return nil, err
+	}
 	out := &searchOut{Body: searchResults{Results: library.Results{Hits: []library.Hit{}}}}
 	if len(rest) > 0 || len(catalogs) == 0 {
 		q.Sources = rest

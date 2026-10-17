@@ -87,7 +87,7 @@ func TestMCPToolsByTier(t *testing.T) {
 	}
 	read, write, all := names(tier.Read), names(tier.Write), names(tier.Destructive)
 	if !slices.Contains(read, "search_cards") || slices.Contains(read, "create_card") || slices.Contains(write, "push") ||
-		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 38 ||
+		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 39 ||
 		!slices.Contains(read, "refresh") || slices.Contains(write, "set_autosync") || !slices.Contains(all, "set_autosync") {
 		t.Fatalf("read %v\nwrite %v\nall %v", read, write, all)
 	}
@@ -403,5 +403,39 @@ func TestMCPVariants(t *testing.T) {
 	e.call("GET", fmt.Sprintf("/cards/%d", v.ID), nil, 200, &after)
 	if after.VariantOf != nil {
 		t.Fatalf("after unlinking = %+v", after.VariantOf)
+	}
+}
+
+func TestMCPLibraries(t *testing.T) {
+	e := newEnv(t)
+	archive := e.createLibrary("Archive")
+	s := e.mcpClient(tier.Destructive)
+	var libs []library.LibrarySummary
+	if err := json.Unmarshal([]byte(tool(t, s, "list_libraries", map[string]any{}, false)), &libs); err != nil || len(libs) != 2 {
+		t.Fatalf("list_libraries = %+v, %v", libs, err)
+	}
+	var c, b, f entityOut
+	if err := json.Unmarshal([]byte(tool(t, s, "create_card", map[string]any{"data": map[string]any{"name": "Brakka"}, "library": archive.ID}, false)), &c); err != nil || c.LibraryID != archive.ID {
+		t.Fatalf("create_card = %+v, %v", c, err)
+	}
+	if err := json.Unmarshal([]byte(tool(t, s, "create_lorebook", map[string]any{"data": map[string]any{"name": "Lore", "entries": []any{}}, "library": archive.ID}, false)), &b); err != nil || b.LibraryID != archive.ID {
+		t.Fatalf("create_lorebook = %+v, %v", b, err)
+	}
+	if got := tool(t, s, "search_cards", map[string]any{"query": map[string]any{}}, false); strings.Contains(got, "Brakka") {
+		t.Fatalf("default search = %s", got)
+	}
+	if got := tool(t, s, "search_cards", map[string]any{"library": archive.ID}, false); !strings.Contains(got, "Brakka") {
+		t.Fatalf("archive search = %s", got)
+	}
+	if err := json.Unmarshal([]byte(tool(t, s, "fork_card", map[string]any{"id": c.ID, "library": library.DefaultLibrary}, false)), &f); err != nil || f.LibraryID != library.DefaultLibrary {
+		t.Fatalf("fork_card = %+v, %v", f, err)
+	}
+	var j jobOut
+	if err := json.Unmarshal([]byte(tool(t, s, "start_import", map[string]any{"instance_id": e.importID, "library": archive.ID}, false)), &j); err != nil ||
+		!strings.Contains(string(j.Payload), fmt.Sprintf(`"library":%d`, archive.ID)) {
+		t.Fatalf("start_import = %+v, %v", j, err)
+	}
+	if got := tool(t, s, "create_card", map[string]any{"data": map[string]any{"name": "X"}, "library": 999}, true); !strings.HasPrefix(got, "422") {
+		t.Fatalf("missing library = %s", got)
 	}
 }

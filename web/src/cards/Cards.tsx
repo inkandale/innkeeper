@@ -12,6 +12,7 @@ import { pageLinks } from "./pages";
 import { defaultSort, parseQuery, parseScore, withoutScores, sizes, toggleTerm, toParams, toLorebookSearch, toSearch, type CardQuery, type Sort, type Term } from "./query";
 import { emptySelection, pick, target, type Selection } from "./selection";
 import { useJobEvents } from "../settings/jobUtil";
+import { useLibrary, withLibrary } from "../shell/library";
 import { SelectionBar } from "./SelectionBar";
 import { LorebookRow, Row, Tile, type Names } from "./Tile";
 import "./Cards.css";
@@ -57,14 +58,14 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const noun = kind === "card" ? "cards" : "lorebooks";
   const Noun = kind === "card" ? "Cards" : "Lorebooks";
   const [params, setParams] = useSearchParams();
-  const asked = parseQuery(params);
+  const asked = parseQuery(params, useLibrary());
   const keys = useQuery({ ...enrichmentKeysQuery, enabled: kind === "card" });
   const scored = keys.data?.instance_id != null;
   // A link from when there was a score instance would otherwise be refused.
   const q = keys.data && !scored ? withoutScores(asked) : asked;
   const scoresOff = q !== asked;
   // The selection belongs to one search: paging keeps it, a new search clears it.
-  const key = JSON.stringify([q.text, q.terms]);
+  const key = JSON.stringify([q.library, q.text, q.terms]);
   const [stored, setSel] = useState<Selection>(() => emptySelection(key));
   // Reset rather than hide, so going back to an earlier search doesn't revive its picks.
   if (stored.key !== key) setSel(emptySelection(key));
@@ -93,7 +94,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   ];
   const instances = useQuery(instancesQuery);
   const plugins = useQuery(pluginsQuery);
-  const collections = useQuery(collectionsQuery);
+  const collections = useQuery(collectionsQuery(q.library));
   const names: Names = {
     instances: new Map((instances.data ?? []).map((i) => [i.id, i.name])),
     collections: new Map((collections.data ?? []).map((c) => [c.id, c.name])),
@@ -112,7 +113,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const hits = res.data?.hits ?? [];
   // Linked cards' names and avatars for the lorebook rows, in one search.
   const linkedIds = kind === "lorebook" ? [...new Set(hits.flatMap((h) => h.cards ?? []))].slice(0, 500) : [];
-  const linkedBody = { filter: { ids: linkedIds }, fields: ["name", "avatar"], page: { size: 500 } };
+  const linkedBody = { library: q.library, filter: { ids: linkedIds }, fields: ["name", "avatar"], page: { size: 500 } };
   const linked = useQuery({
     queryKey: ["search", "card", linkedBody],
     enabled: linkedIds.length > 0,
@@ -135,6 +136,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
           all={sel.all}
           total={ungrouped ? total : undefined}
           kind={kind}
+          library={q.library}
           query={target(sel, body)}
           ids={sel.ids}
           shown={new Map(hits.map((h) => [h.id, { id: h.id, name: text(h.fields.name), family: h.family }]))}
@@ -180,7 +182,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
             </button>
           )}
           {kind === "card" && (
-            <Link className="button" to="/cards/new">
+            <Link className="button" to={withLibrary("/cards/new", q.library)}>
               New card
             </Link>
           )}
@@ -207,7 +209,8 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
         {/* Hidden, not unmounted, so closing it keeps the started imports listed. */}
         {(imp.file || imp.url) && (
           <section className="import-panel" aria-label={`Import ${noun}`} hidden={!importOpen}>
-            <ImportForm {...imp} />
+            {/* Keyed by library, so a switch clears the imports listed for the old one. */}
+            <ImportForm key={q.library} {...imp} library={q.library} />
           </section>
         )}
         {res.isError && <p className="error">{res.error.message}</p>}

@@ -81,6 +81,10 @@ func shownOnHits(hits []library.Hit, decl map[string]protocol.Enrichment) {
 // searchIDs is library.SearchIDs with the score instance, for a bulk
 // selection.
 func (s *Server) searchIDs(ctx context.Context, k *library.Kind, q library.Query) ([]int64, error) {
+	var err error
+	if q.Library, err = s.checkLibrary(ctx, q.Library); err != nil {
+		return nil, err
+	}
 	if _, err := s.withScores(ctx, &q); err != nil {
 		return nil, err
 	}
@@ -140,21 +144,34 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 			if _, err := s.usable(ctx, b.InstanceID, "enrich"); err != nil {
 				return nil, err
 			}
-			ids := b.CardIDs
+			p := enrich.Payload{Rescore: b.Rescore}
+			n := 0
 			if b.Query != nil {
+				// The job reads the query's cards as it goes, so the payload holds the query, not its IDs.
+				q := *b.Query
 				var err error
-				if ids, err = s.searchIDs(ctx, library.Card, *b.Query); err != nil {
+				if q.Library, err = s.checkLibrary(ctx, q.Library); err != nil {
+					return nil, err
+				}
+				if _, err := s.withScores(ctx, &q); err != nil {
 					return nil, s.fail(err)
 				}
+				if n, err = s.Lib.CountMatches(ctx, library.Card, q); err != nil {
+					return nil, s.fail(err)
+				}
+				q.Page = library.Page{}
+				p.Query, p.ScoreInstance = &q, q.ScoreInstance
+			} else {
+				p.CardIDs = slices.Compact(slices.Sorted(slices.Values(b.CardIDs)))
+				n = len(p.CardIDs)
 			}
-			if len(ids) == 0 {
+			if n == 0 {
 				return nil, huma.Error400BadRequest("the query matches no cards")
 			}
-			ids = slices.Compact(slices.Sorted(slices.Values(ids)))
-			if len(ids) > enrich.MaxCards {
-				return nil, huma.Error400BadRequest(fmt.Sprintf("a run takes at most %d cards; this one has %d", enrich.MaxCards, len(ids)))
+			if n > enrich.MaxCards {
+				return nil, huma.Error400BadRequest(fmt.Sprintf("a run takes at most %d cards; this one has %d", enrich.MaxCards, n))
 			}
-			return s.enqueue(ctx, jobs.Spec{Kind: enrich.Kind, InstanceID: &b.InstanceID, Payload: enrich.Payload{CardIDs: ids, Rescore: b.Rescore}})
+			return s.enqueue(ctx, jobs.Spec{Kind: enrich.Kind, InstanceID: &b.InstanceID, Payload: p})
 		})
 
 	huma.Register(api, huma.Operation{OperationID: "get-card-enrichments", Method: http.MethodGet, Path: "/cards/{id}/enrichments",

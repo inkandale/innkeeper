@@ -6,6 +6,7 @@ import { CardPicker } from "../cards/CardPicker";
 import { instancesQuery, useFollowers } from "../api/queries";
 import { text } from "../card/draft";
 import { useJob } from "../settings/jobUtil";
+import { useLibrary } from "../shell/library";
 import { useToast } from "../shell/Toasts";
 import { Diff, type Choices, type Sides } from "./Diff";
 import {
@@ -39,6 +40,7 @@ export function Review() {
 
 function ReviewItem() {
   const params = useParams();
+  const library = useLibrary();
   const instance = Number(params.instance);
   // lorebook-items is the segment links had before they named the kind.
   const kind: Kind = params.kind === "lorebook" || params.kind === "lorebook-items" ? "lorebook" : "card";
@@ -267,7 +269,7 @@ function ReviewItem() {
               ))}
             </select>
           )}
-          <CardPicker kind={kind} label="Other match" onPick={pickCard} />
+          <CardPicker kind={kind} library={library} label="Other match" onPick={pickCard} />
         </div>
         {card === 0 ? (
           <p>No library match. Find one above, or import it.</p>

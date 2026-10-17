@@ -166,6 +166,7 @@ func (s *Server) routes(api huma.API) {
 	s.entityRoutes(api, library.Lorebook, "Lorebooks")
 	s.organizeRoutes(api)
 	s.searchRoutes(api)
+	s.libraryRoutes(api)
 	s.catalogRoutes(api)
 	s.instanceRoutes(api)
 	s.pluginSettingsRoutes(api)

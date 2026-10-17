@@ -13,11 +13,11 @@ import (
 func TestCreateFromName(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
-	a, _, err := lib.Cards.CreateFromName(ctx, "Brakka Ironfist", "api", edit(`{"name": "Brakka Ironfist"}`))
+	a, _, err := lib.Cards.CreateFromName(ctx, DefaultLibrary, "Brakka Ironfist", "api", edit(`{"name": "Brakka Ironfist"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, _, err := lib.Cards.CreateFromName(ctx, "Brakka Ironfist", "api", edit(`{"name": "Brakka Ironfist"}`))
+	b, _, err := lib.Cards.CreateFromName(ctx, DefaultLibrary, "Brakka Ironfist", "api", edit(`{"name": "Brakka Ironfist"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func TestOverridesMustBeAnObject(t *testing.T) {
 	lib := newLibrary(t)
 	e := edit(`{"name": "A"}`)
 	e.Overrides = json.RawMessage(`[]`)
-	if _, _, err := lib.Cards.Create(context.Background(), "a", "api", e); !errors.Is(err, ErrInvalid) {
+	if _, _, err := lib.Cards.Create(context.Background(), DefaultLibrary, "a", "api", e); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("got %v, want ErrInvalid", err)
 	}
 }
@@ -44,7 +44,7 @@ func TestTags(t *testing.T) {
 	if err := lib.Cards.SetArchived(ctx, retired, true); err != nil {
 		t.Fatal(err)
 	}
-	got, err := lib.Tags(ctx)
+	got, err := lib.Tags(ctx, DefaultLibrary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,24 +58,24 @@ func TestCollectionManagement(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
 	card, _ := newCard(t, lib, "a", `{"name": "A"}`)
-	c, err := lib.CreateCollection(ctx, "Favorites", "")
+	c, err := lib.CreateCollection(ctx, DefaultLibrary, "Favorites", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := lib.CreateCollection(ctx, "Favorites", ""); !errors.Is(err, ErrNameTaken) {
+	if _, err := lib.CreateCollection(ctx, DefaultLibrary, "Favorites", ""); !errors.Is(err, ErrNameTaken) {
 		t.Fatalf("duplicate name: %v", err)
 	}
 	if err := lib.AddToCollection(ctx, c.ID, card); err != nil {
 		t.Fatal(err)
 	}
-	other, err := lib.CreateCollection(ctx, "Other", "")
+	other, err := lib.CreateCollection(ctx, DefaultLibrary, "Other", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := lib.UpdateCollection(ctx, other.ID, &c.Name, nil); !errors.Is(err, ErrNameTaken) {
 		t.Fatalf("rename to taken name: %v", err)
 	}
-	if _, err := lib.CreateCollection(ctx, "", ""); !errors.Is(err, ErrInvalid) {
+	if _, err := lib.CreateCollection(ctx, DefaultLibrary, "", ""); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("empty name: %v", err)
 	}
 	if err := lib.DeleteCollection(ctx, other.ID); err != nil {
@@ -85,7 +85,7 @@ func TestCollectionManagement(t *testing.T) {
 	if _, err := lib.UpdateCollection(ctx, c.ID, &name, &desc); err != nil {
 		t.Fatal(err)
 	}
-	list, err := lib.Collections(ctx)
+	list, err := lib.Collections(ctx, DefaultLibrary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestExportCardEmbedsLorebooks(t *testing.T) {
 		`{"name": "Forge", "entries": [{"keys": ["anvil"], "content": "Heavy."}]}`,
 		`{"name": "Clan", "entries": [{"keys": ["clan"], "content": "Ironfist."}]}`,
 	} {
-		lb, _, err := lib.Lorebooks.Create(ctx, []string{"forge", "clan"}[i], "api", edit(data))
+		lb, _, err := lib.Lorebooks.Create(ctx, DefaultLibrary, []string{"forge", "clan"}[i], "api", edit(data))
 		if err != nil {
 			t.Fatal(err)
 		}

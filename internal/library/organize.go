@@ -92,6 +92,7 @@ func containsFold(list []string, s string) bool {
 // Collection is a named group of cards. A card can be in many.
 type Collection struct {
 	ID          int64     `json:"id"`
+	LibraryID   int64     `json:"library_id"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -113,12 +114,12 @@ func collectionErr(err error) error {
 	return mapErr(err)
 }
 
-// CreateCollection adds an empty collection.
-func (l *Library) CreateCollection(ctx context.Context, name, description string) (Collection, error) {
+// CreateCollection adds an empty collection to libraryID.
+func (l *Library) CreateCollection(ctx context.Context, libraryID int64, name, description string) (Collection, error) {
 	var c Collection
-	err := l.pool.QueryRow(ctx, `INSERT INTO collection (name, description) VALUES ($1, $2)
-		RETURNING id, name, description, created_at`, name, description).
-		Scan(&c.ID, &c.Name, &c.Description, &c.CreatedAt)
+	err := l.pool.QueryRow(ctx, `INSERT INTO collection (library_id, name, description) VALUES ($1, $2, $3)
+		RETURNING id, library_id, name, description, created_at`, libraryID, name, description).
+		Scan(&c.ID, &c.LibraryID, &c.Name, &c.Description, &c.CreatedAt)
 	return c, collectionErr(err)
 }
 
@@ -127,8 +128,8 @@ func (l *Library) CreateCollection(ctx context.Context, name, description string
 func (l *Library) UpdateCollection(ctx context.Context, id int64, name, description *string) (Collection, error) {
 	var c Collection
 	err := l.pool.QueryRow(ctx, `UPDATE collection SET name = coalesce($2, name), description = coalesce($3, description)
-		WHERE id = $1 RETURNING id, name, description, created_at`, id, name, description).
-		Scan(&c.ID, &c.Name, &c.Description, &c.CreatedAt)
+		WHERE id = $1 RETURNING id, library_id, name, description, created_at`, id, name, description).
+		Scan(&c.ID, &c.LibraryID, &c.Name, &c.Description, &c.CreatedAt)
 	return c, collectionErr(err)
 }
 
@@ -144,16 +145,17 @@ func (l *Library) DeleteCollection(ctx context.Context, id int64) error {
 	return nil
 }
 
-// Collections returns every collection with its unarchived card count and mosaic avatars, by name.
-func (l *Library) Collections(ctx context.Context) ([]Collection, error) {
-	rows, err := l.pool.Query(ctx, `SELECT c.id, c.name, c.description, c.created_at, count(cc.card_id) FILTER (WHERE k.archived_at IS NULL)::int,
+// Collections returns libraryID's collections with their unarchived card counts and mosaic avatars, by name.
+func (l *Library) Collections(ctx context.Context, libraryID int64) ([]Collection, error) {
+	rows, err := l.pool.Query(ctx, `SELECT c.id, c.library_id, c.name, c.description, c.created_at, count(cc.card_id) FILTER (WHERE k.archived_at IS NULL)::int,
 			array(SELECT r.avatar_blob FROM collection_card m
 				JOIN card k ON k.id = m.card_id JOIN card_revision r ON r.id = k.head_revision_id
 				WHERE m.collection_id = c.id AND r.avatar_blob IS NOT NULL AND k.archived_at IS NULL
 				ORDER BY m.added_at, m.card_id LIMIT 4)
 		FROM collection c LEFT JOIN collection_card cc ON cc.collection_id = c.id
 		LEFT JOIN card k ON k.id = cc.card_id
-		GROUP BY c.id ORDER BY lower(c.name)`)
+		WHERE c.library_id = $1
+		GROUP BY c.id ORDER BY lower(c.name)`, libraryID)
 	if err != nil {
 		return nil, err
 	}
@@ -166,20 +168,30 @@ type TagCount struct {
 	Cards int    `json:"cards"`
 }
 
-// Tags returns every tag on an active card with its card count,
+// Tags returns every tag on an active card in libraryID with its card count,
 // alphabetically. Spellings that differ only in case count as one.
-func (l *Library) Tags(ctx context.Context) ([]TagCount, error) {
+func (l *Library) Tags(ctx context.Context, libraryID int64) ([]TagCount, error) {
 	rows, err := l.pool.Query(ctx, `SELECT min(t.t), count(DISTINCT c.id)::int FROM `+from(Card)+`, `+tagsOf+`
-		WHERE c.archived_at IS NULL GROUP BY lower(t.t) ORDER BY lower(t.t)`)
+		WHERE c.library_id = $1 AND c.archived_at IS NULL GROUP BY lower(t.t) ORDER BY lower(t.t)`, libraryID)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, pgx.RowToStructByPos[TagCount])
 }
 
-// AddToCollection adds a card to a collection. Adding it twice is a no-op.
+// AddToCollection adds a card to a collection of its library. Adding it
+// twice is a no-op.
 func (l *Library) AddToCollection(ctx context.Context, collectionID, cardID int64) error {
-	_, err := l.pool.Exec(ctx, `INSERT INTO collection_card (collection_id, card_id) VALUES ($1, $2)
+	var same bool
+	err := l.pool.QueryRow(ctx, `SELECT co.library_id = c.library_id FROM collection co, card c WHERE co.id = $1 AND c.id = $2`,
+		collectionID, cardID).Scan(&same)
+	switch {
+	case err != nil:
+		return mapErr(err)
+	case !same:
+		return fmt.Errorf("%w: card %d is in another library than collection %d", ErrInvalid, cardID, collectionID)
+	}
+	_, err = l.pool.Exec(ctx, `INSERT INTO collection_card (collection_id, card_id) VALUES ($1, $2)
 		ON CONFLICT DO NOTHING`, collectionID, cardID)
 	return mapErr(err)
 }

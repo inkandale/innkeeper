@@ -11,12 +11,15 @@ function json(body: unknown, status = 200) {
 
 const now = new Date().toISOString();
 let posts: { path: string; body: unknown }[];
+let searchBodies: unknown[];
 beforeEach(() => {
+  searchBodies = [];
   posts = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
       const u = new URL(req.url);
+      if (u.pathname === "/api/libraries") return new Response(JSON.stringify([1, 2, 3].map((id) => ({ id, name: `Library ${id}`, cards: 0, lorebooks: 0, created_at: "2026-10-01T00:00:00Z" }))), { headers: { "Content-Type": "application/json" } });
       if (u.pathname === "/api/instances")
         return json([
           { id: 2, name: "Lumiverse", plugin: "lumiverse" },
@@ -29,6 +32,7 @@ beforeEach(() => {
           { name: "folder", capabilities: ["import"] },
           { name: "url-import", capabilities: ["import", "sites", "pull"] },
         ]);
+      if (u.pathname === "/api/cards/search") searchBodies.push(await req.clone().json());
       if (u.pathname === "/api/cards/search")
         return json({
           hits: [], total: 10,
@@ -40,7 +44,7 @@ beforeEach(() => {
         return json({ rows: [], counts: { "2": { differs: 2, both_changed: 1, error: 1, new: 3, ahead: 3, missing: 2 }, "4": { update: 2, missing: 1, error: 1 } } });
       if (u.pathname === "/api/jobs/6") return json({ id: 6, kind: "x", status: "running", created_at: now, payload: {}, progress: {} });
       if (req.method === "POST" && u.pathname !== "/api/cards/search") {
-        posts.push({ path: u.pathname, body: await req.json().catch(() => undefined) });
+        posts.push({ path: u.pathname + u.search, body: await req.json().catch(() => undefined) });
         return json({ id: 6, kind: "x", status: "queued", created_at: now, payload: {}, progress: {} }, 202);
       }
       return json([]);
@@ -117,14 +121,17 @@ test("Refresh starts a scan", async () => {
   expect(await screen.findByText("Refreshing every app…")).toBeInTheDocument();
 });
 
-test("site sources get their own line: their changes and a check of every source", async () => {
+test("site sources get their own line: their changes and a check of every source in the last library used", async () => {
+  localStorage.setItem("innkeeper.library", "2");
   renderSync();
   const updates = await screen.findByRole("link", { name: "4 changes on their sites" });
   expect(updates).toHaveAttribute("href", "/sync/changes?instance_id=4");
   expect(screen.queryByRole("row", { name: /URL import/ })).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Check for updates" }));
-  await waitFor(() => expect(posts).toEqual([{ path: "/api/source-checks", body: undefined }]));
-  expect(await screen.findByText("Checking every source for updates…")).toBeInTheDocument();
+  await waitFor(() => expect(posts).toEqual([{ path: "/api/source-checks?library=2", body: undefined }]));
+  expect(searchBodies).toContainEqual(expect.objectContaining({ library: 2, facets: ["targets"] }));
+  expect(await screen.findByText("Checking every source in Library 2 for updates…")).toBeInTheDocument();
+  localStorage.clear();
 });
 
 test("with only site sources, the Changes link still shows", async () => {

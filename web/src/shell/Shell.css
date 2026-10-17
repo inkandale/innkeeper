@@ -46,8 +46,13 @@
   margin-top: auto;
 }
 
-.shell.collapsed .rail-label {
+.shell.collapsed .rail-label,
+.shell.collapsed .rail-library {
   display: none;
+}
+
+.rail-library {
+  min-width: 0;
 }
 
 .page {

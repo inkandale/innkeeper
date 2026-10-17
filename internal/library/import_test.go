@@ -225,7 +225,7 @@ func TestImportAdoptsCardImportedBeforeBindings(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
 	_, imp := importer(t, lib)
-	c, rev, err := lib.Cards.Create(ctx, "brakka", "folder:brakka.png", Edit{Data: json.RawMessage(`{"name": "Brakka"}`),
+	c, rev, err := lib.Cards.Create(ctx, DefaultLibrary, "brakka", "folder:brakka.png", Edit{Data: json.RawMessage(`{"name": "Brakka"}`),
 		Source: "plugin:folder", Message: "Imported"})
 	if err != nil {
 		t.Fatal(err)

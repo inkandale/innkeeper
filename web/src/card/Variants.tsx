@@ -1,7 +1,8 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { api, must, mustOk, route, type Kind } from "../api/client";
+import { librariesQuery } from "../api/queries";
 import { CardPicker } from "../cards/CardPicker";
 import type { Entity } from "./Card";
 
@@ -31,14 +32,17 @@ export function VariantOf({ kind, entity }: { kind: Kind; entity: Entity }) {
   );
 }
 
-/** Variants lists the direct variants, forks a new one, or links an existing one as a variant of this. */
+/** Variants lists the direct variants, forks a new one here or into any library, or links an existing one as a variant of this. */
 export function Variants({ kind, entity }: { kind: Kind; entity: Entity }) {
   const refresh = useRefresh(kind);
   const navigate = useNavigate();
   const [linking, setLinking] = useState(false);
+  const [forking, setForking] = useState(false);
+  const libraries = useQuery({ ...librariesQuery, enabled: forking });
   const fork = useMutation({
-    mutationFn: async () =>
-      must(await api.POST(route(kind, "/cards/{id}/variants"), { params: { path: { id: entity.id } }, body: { source: "ui" } })),
+    mutationFn: async (library?: number) =>
+      must(await api.POST(route(kind, "/cards/{id}/variants"), { params: { path: { id: entity.id } }, body: { source: "ui", library } })),
+    meta: { toast: false },
     onSuccess: (v) => {
       void refresh();
       navigate(`/${kind}s/${v.id}`);
@@ -63,14 +67,27 @@ export function Variants({ kind, entity }: { kind: Kind; entity: Entity }) {
         ))}
       </ul>
       <div className="row">
-        <button className="button" disabled={fork.isPending} onClick={() => fork.mutate()}>
+        <button className="button" disabled={fork.isPending} onClick={() => fork.mutate(undefined)}>
           New variant
+        </button>
+        <button className="button" aria-expanded={forking} onClick={() => setForking(!forking)}>
+          Fork into…
         </button>
         <button className="button" aria-expanded={linking} onClick={() => setLinking(!linking)}>
           Link existing…
         </button>
       </div>
-      {linking && <CardPicker kind={kind} label="Find a variant" onPick={(id) => !link.isPending && link.mutate(id)} />}
+      {forking && (
+        <div className="row" role="group" aria-label="Fork into">
+          {(libraries.data ?? []).map((l) => (
+            <button key={l.id} className="button" disabled={fork.isPending} onClick={() => fork.mutate(l.id)}>
+              {l.name}
+            </button>
+          ))}
+        </div>
+      )}
+      {fork.error && <p className="error">{fork.error.message}</p>}
+      {linking && <CardPicker kind={kind} library={entity.library_id} label="Find a variant" onPick={(id) => !link.isPending && link.mutate(id)} />}
     </section>
   );
 }

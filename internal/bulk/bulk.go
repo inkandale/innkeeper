@@ -1,10 +1,12 @@
 // Package bulk holds bulk actions: a parent job with one child job per card,
-// and the export job.
+// the export job, and the job that deletes a library.
 package bulk
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
@@ -17,7 +19,32 @@ const (
 	TagKind             = "card.tag"
 	CollectKind         = "card.collect"
 	LorebookArchiveKind = "lorebook.archive"
+	DeleteLibraryKind   = "library.delete"
 )
+
+// DeleteLibraryPayload is a DeleteLibraryKind job's payload.
+type DeleteLibraryPayload struct {
+	Library int64 `json:"library"`
+}
+
+// DeleteLibrary is the jobs.Handler for DeleteLibraryKind. Its progress
+// counts the cards and lorebooks deleted.
+func DeleteLibrary(lib *library.Library) jobs.Handler {
+	return func(ctx context.Context, r *jobs.Run) error {
+		var p DeleteLibraryPayload
+		if err := json.Unmarshal(r.Payload, &p); err != nil {
+			return err
+		}
+		err := lib.DeleteLibrary(ctx, p.Library, func(n int) {
+			r.SetProgress(fmt.Appendf(nil, `{"deleted": %d}`, n))
+		})
+		// A run that finished before its job was marked done finds nothing left.
+		if errors.Is(err, library.ErrNotFound) {
+			return nil
+		}
+		return err
+	}
+}
 
 type archivePayload struct {
 	CardID    int64 `json:"card_id"`

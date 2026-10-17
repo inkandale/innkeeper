@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useFollowLibrary } from "../shell/library";
 import { useParams } from "react-router";
 import { api, ApiError, must } from "../api/client";
 import type { components } from "../api/schema";
@@ -25,7 +26,8 @@ function CardEditor({ id }: { id: number }) {
   const qc = useQueryClient();
   const toast = useToast();
   const ed = useEditor("card", id);
-  const forge = useForge({ subject: cardSubject, id, data: ed.data });
+  const forge = useForge({ subject: cardSubject, id, data: ed.data, library: ed.entity.data?.library_id ?? 1 });
+  useFollowLibrary(ed.entity.data?.library_id);
 
   // An image change saves at once, on the head. A draft started from that
   // head moves onto the new revision, since its data didn't change.

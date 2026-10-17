@@ -182,13 +182,13 @@ func TestCatalogAdopt(t *testing.T) {
 	for _, it := range page.Items {
 		got[it.ID] = it.Library
 	}
-	if m := got["brakka"]; len(m) == 0 || m[0] != (library.HashMatch{ID: c.ID, Reason: "content"}) {
+	if m := got["brakka"]; len(m) == 0 || m[0] != (library.HashMatch{ID: c.ID, LibraryID: library.DefaultLibrary, Reason: "content"}) {
 		t.Fatalf("brakka matches = %+v", m)
 	}
-	if m := got["carrow"]; len(m) != 1 || m[0] != (library.HashMatch{ID: near.ID, Reason: "text"}) {
+	if m := got["carrow"]; len(m) != 1 || m[0] != (library.HashMatch{ID: near.ID, LibraryID: library.DefaultLibrary, Reason: "text"}) {
 		t.Fatalf("carrow matches = %+v", m)
 	}
-	if m := got["forge-lore"]; len(m) != 1 || m[0] != (library.HashMatch{ID: lb.ID, Reason: "content"}) {
+	if m := got["forge-lore"]; len(m) != 1 || m[0] != (library.HashMatch{ID: lb.ID, LibraryID: library.DefaultLibrary, Reason: "content"}) {
 		t.Fatalf("forge-lore matches = %+v", m)
 	}
 }

@@ -36,8 +36,8 @@ export function JobLine({ label, id, to }: { label: string; id: number; to: stri
 /** Upload is a file or page URL sent to an importer, and its job. */
 type Upload = { key: number; name: string; job?: number; error?: string };
 
-/** ImportForm imports uploaded files and page URLs, and lists each one's job. */
-export function ImportForm({ file, url }: Importers) {
+/** ImportForm imports uploaded files and page URLs into library, and lists each one's job. */
+export function ImportForm({ file, url, library }: Importers & { library: number }) {
   const qc = useQueryClient();
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [pageURL, setPageURL] = useState("");
@@ -55,7 +55,7 @@ export function ImportForm({ file, url }: Importers) {
     for (const [i, f] of files.entries()) {
       let u: Upload = added[i]!;
       try {
-        u = { ...u, job: track(must(await api.POST("/imports", { body: { instance_id, params: { blob: await upload(f), name: f.name } } }))) };
+        u = { ...u, job: track(must(await api.POST("/imports", { body: { instance_id, library, params: { blob: await upload(f), name: f.name } } }))) };
       } catch (e) {
         u = { ...u, error: (e as Error).message };
       }
@@ -66,7 +66,7 @@ export function ImportForm({ file, url }: Importers) {
     let u: Upload = { key: nextKey.current++, name: page };
     setUploads((all) => [...all, u]);
     try {
-      u = { ...u, job: track(must(await api.POST("/imports", { body: { instance_id, params: { url: page } } }))) };
+      u = { ...u, job: track(must(await api.POST("/imports", { body: { instance_id, library, params: { url: page } } }))) };
     } catch (e) {
       u = { ...u, error: (e as Error).message };
     }

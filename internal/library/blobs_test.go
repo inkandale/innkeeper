@@ -37,7 +37,7 @@ func TestPutBlob(t *testing.T) {
 	}
 
 	// A card can use the image as its avatar.
-	if _, _, err := lib.Cards.Create(ctx, "a", "upload", Edit{Data: []byte(`{"name": "A"}`), Source: "ui", AvatarBlob: img.SHA256}); err != nil {
+	if _, _, err := lib.Cards.Create(ctx, DefaultLibrary, "a", "upload", Edit{Data: []byte(`{"name": "A"}`), Source: "ui", AvatarBlob: img.SHA256}); err != nil {
 		t.Fatal(err)
 	}
 }

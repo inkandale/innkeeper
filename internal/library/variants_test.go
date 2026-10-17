@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -78,13 +79,13 @@ func TestForkCopiesTagsAndLinksButNotSources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	src, srcRev, err := lib.Cards.Create(ctx, "brakka", "upload", Edit{Data: json.RawMessage(`{"name": "Brakka", "tags": ["dwarf"]}`),
+	src, srcRev, err := lib.Cards.Create(ctx, DefaultLibrary, "brakka", "upload", Edit{Data: json.RawMessage(`{"name": "Brakka", "tags": ["dwarf"]}`),
 		AvatarBlob: avatar.SHA256, Overrides: json.RawMessage(`{"7": {"name": "Brak"}}`), Source: "ui"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	id, head := src.ID, srcRev.ID
-	col, err := lib.CreateCollection(ctx, "Smiths", "")
+	col, err := lib.CreateCollection(ctx, DefaultLibrary, "Smiths", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +106,7 @@ func TestForkCopiesTagsAndLinksButNotSources(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	v, err := lib.Cards.Fork(ctx, id, "ui")
+	v, err := lib.Cards.Fork(ctx, id, 0, "ui")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,8 +129,10 @@ func TestForkCopiesTagsAndLinksButNotSources(t *testing.T) {
 	if books, err := lib.CardLorebooks(ctx, v.ID); err != nil || !slices.Equal(books, []int64{book}) {
 		t.Errorf("lorebooks = %v, %v", books, err)
 	}
-	if srcs, err := lib.Cards.Sources(ctx, v.ID); err != nil || len(srcs) != 0 {
-		t.Errorf("sources = %v, %v", srcs, err)
+	// Only the link to the original, not the original's chub source.
+	if srcs, err := lib.Cards.Sources(ctx, v.ID); err != nil || len(srcs) != 1 ||
+		srcs[0].Kind != ForkSourceKind || srcs[0].Ref != strconv.FormatInt(id, 10) {
+		t.Errorf("sources = %+v, %v", srcs, err)
 	}
 	var bindings int
 	if err := lib.pool.QueryRow(ctx, `SELECT count(*) FROM binding WHERE card_id = $1`, v.ID).Scan(&bindings); err != nil || bindings != 0 {
@@ -139,11 +142,11 @@ func TestForkCopiesTagsAndLinksButNotSources(t *testing.T) {
 		t.Errorf("parent = %+v, %v", p, err)
 	}
 
-	again, err := lib.Cards.Fork(ctx, id, "ui")
+	again, err := lib.Cards.Fork(ctx, id, 0, "ui")
 	if err != nil || again.Slug != "brakka-variant-2" {
 		t.Fatalf("second fork = %+v, %v", again, err)
 	}
-	lv, err := lib.Lorebooks.Fork(ctx, book, "mcp")
+	lv, err := lib.Lorebooks.Fork(ctx, book, 0, "mcp")
 	if err != nil || lv.Slug != "forge-variant" || lv.Provenance != "variant" {
 		t.Fatalf("lorebook fork = %+v, %v", lv, err)
 	}
@@ -154,7 +157,7 @@ func TestForkCopiesTagsAndLinksButNotSources(t *testing.T) {
 
 func TestForkOfAMissingEntityIsNotFound(t *testing.T) {
 	lib := newLibrary(t)
-	if _, err := lib.Cards.Fork(context.Background(), 999999, "ui"); !errors.Is(err, ErrNotFound) {
+	if _, err := lib.Cards.Fork(context.Background(), 999999, 0, "ui"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("got %v, want ErrNotFound", err)
 	}
 }

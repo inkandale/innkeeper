@@ -65,7 +65,7 @@ let waitingKey = 0;
  * entity's runs, found from the job list so they survive a reload. data is the draft a run starts from. id is
  * undefined for a new card, whose runs live only in this tab.
  */
-export function useForge({ subject, id, data }: { subject: Subject; id?: number; data: Data }) {
+export function useForge({ subject, id, data, library }: { subject: Subject; id?: number; data: Data; library: number }) {
   const listKey = ["jobs", "action", subject.kind, id];
   const qc = useQueryClient();
   const actionList = useQuery({ queryKey: ["actions"], queryFn: async () => must(await api.GET("/actions")) });
@@ -192,6 +192,8 @@ export function useForge({ subject, id, data }: { subject: Subject; id?: number;
 
   return {
     subject,
+    /** library holds the cards and lorebooks a mention can name. */
+    library,
     actions,
     /** mine are the chosen model setup's actions. */
     mine: actions.filter((a) => a.instance_id === instance?.id),

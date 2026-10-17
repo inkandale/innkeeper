@@ -15,8 +15,8 @@ test("itemPath keeps an item ID with a slash in one segment", () => {
 });
 
 test("libraryMatch names the content match even when a nearer-sorted text match comes first", () => {
-  expect(libraryMatch(hit([{ id: 1, reason: "text", distance: 0 }, { id: 2, reason: "content", distance: 0 }]))).toEqual({ label: "In library", id: 2 });
-  expect(libraryMatch(hit([{ id: 1, reason: "avatar", distance: 5 }, { id: 3, reason: "text", distance: 6 }]))).toEqual({ label: "Similar in library", id: 1 });
+  expect(libraryMatch(hit([{ id: 1, library_id: 1, reason: "text", distance: 0 }, { id: 2, library_id: 1, reason: "content", distance: 0 }]))).toEqual({ label: "In library", id: 2 });
+  expect(libraryMatch(hit([{ id: 1, library_id: 1, reason: "avatar", distance: 5 }, { id: 3, library_id: 1, reason: "text", distance: 6 }]))).toEqual({ label: "Similar in library", id: 1 });
   expect(libraryMatch(hit([]))).toBeUndefined();
   expect(libraryMatch(hit(null))).toBeUndefined();
 });

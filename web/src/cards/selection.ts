@@ -19,8 +19,9 @@ export function pick(s: Selection, id: number, shift: boolean, page: number[]): 
 
 /** target is the bulk query for a selection: the picked IDs, or the search without paging. */
 export function target(s: Selection, search: Search): Search {
-  if (!s.all) return { filter: { ids: s.ids } };
-  if (search.text || search.filter) return { text: search.text, filter: search.filter };
+  const library = search.library;
+  if (!s.all) return { library, filter: { ids: s.ids } };
+  if (search.text || search.filter) return { library, text: search.text, filter: search.filter };
   // /bulk refuses a query with no filter or text, so name every unarchived card.
-  return { filter: { archived: false } };
+  return { library, filter: { archived: false } };
 }

@@ -17,15 +17,16 @@ import {
   type Term,
 } from "./query";
 
-const base: CardQuery = { text: "", terms: [], sort: "updated", page: 1, size: 48, view: "grid", sharesSource: false };
+const base: CardQuery = { library: 1, text: "", terms: [], sort: "updated", page: 1, size: 48, view: "grid", sharesSource: false };
 const term = (kind: Term["kind"], value: string, not = false): Term => ({ kind, value, not });
 
 test("an empty URL is the default query", () => {
-  expect(parseQuery(new URLSearchParams())).toEqual(base);
+  expect(parseQuery(new URLSearchParams(), 1)).toEqual(base);
 });
 
 test("a query round-trips through the URL", () => {
   const q: CardQuery = {
+    library: 2,
     text: "dwarf smith",
     terms: [term("tag", "fantasy"), term("tag", "a:b", true), term("target", "2"), term("state", "ahead"), term("collection", "4")],
     sort: "name",
@@ -34,27 +35,33 @@ test("a query round-trips through the URL", () => {
     view: "list",
     sharesSource: true,
   };
-  expect(parseQuery(toParams(q))).toEqual(q);
+  expect(parseQuery(toParams(q), 1)).toEqual(q);
 });
 
-test("defaults stay out of the URL", () => {
-  expect(toParams(base).toString()).toBe("");
-  expect(toParams({ ...base, text: "x", sort: "relevance" }).toString()).toBe("q=x");
+test("defaults stay out of the URL, but the library is always named", () => {
+  expect(toParams(base).toString()).toBe("library=1");
+  expect(toParams({ ...base, text: "x", sort: "relevance" }).toString()).toBe("q=x&library=1");
+});
+
+test("without ?library= the query is in the given library", () => {
+  expect(parseQuery(new URLSearchParams(), 3).library).toBe(3);
+  expect(parseQuery(new URLSearchParams("library=2"), 3).library).toBe(2);
+  expect(parseQuery(new URLSearchParams("library=x"), 3).library).toBe(3);
 });
 
 test("text searches default to relevance", () => {
-  expect(parseQuery(new URLSearchParams("q=x")).sort).toBe("relevance");
-  expect(parseQuery(new URLSearchParams("q=x&sort=name")).sort).toBe("name");
+  expect(parseQuery(new URLSearchParams("q=x"), 1).sort).toBe("relevance");
+  expect(parseQuery(new URLSearchParams("q=x&sort=name"), 1).sort).toBe("name");
 });
 
 test("bad values fall back to defaults", () => {
-  const q = parseQuery(new URLSearchParams("page=-2&size=7&sort=size&view=x&f=color:red&f=nocolon"));
+  const q = parseQuery(new URLSearchParams("page=-2&size=7&sort=size&view=x&f=color:red&f=nocolon"), 1);
   expect(q).toEqual(base);
 });
 
 test("terms with values their section can't take are dropped, including old target links", () => {
   const bad = ["target:2:ahead", "target:0", "target:x", "state:pushed", "collection:", "collection:-1", "tag:", "source:"];
-  const q = parseQuery(new URLSearchParams(bad.map((f) => ["f", f])));
+  const q = parseQuery(new URLSearchParams(bad.map((f) => ["f", f])), 1);
   expect(q.terms).toEqual([]);
 });
 
@@ -89,6 +96,7 @@ test("selected targets and states share one target_state", () => {
 test("toSearch builds the API body", () => {
   const body = toSearch({ ...base, text: "dwarf", terms: [term("tag", "fantasy")], page: 2 });
   expect(body).toMatchObject({
+    library: 1,
     text: "dwarf",
     sort: "updated",
     filter: { and: [{ tag: "fantasy" }] },
@@ -100,6 +108,7 @@ test("toSearch builds the API body", () => {
 test("a section's count search leaves out the section's own terms", () => {
   const q = { ...base, text: "dwarf", terms: [term("tag", "fantasy"), term("source", "chub"), term("state", "ahead")] };
   expect(countSearch(q, "tag")).toEqual({
+    library: 1,
     text: "dwarf",
     filter: { and: [{ target_state: { states: ["ahead"] } }, { source: "chub" }] },
     facets: ["tags"],
@@ -111,6 +120,7 @@ test("a section's count search leaves out the section's own terms", () => {
 test("a state's count search swaps in that state and keeps the selected targets", () => {
   const q = { ...base, terms: [term("target", "2"), term("state", "ahead"), term("tag", "fantasy")] };
   expect(stateCountSearch(q, "in_sync")).toEqual({
+    library: 1,
     filter: { and: [{ target_state: { instances: [2], states: ["in_sync"] } }, { tag: "fantasy" }] },
     page: { size: 1 },
   });
@@ -148,7 +158,7 @@ test("lorebooks have no tag or collection sections", () => {
 });
 
 test("toLorebookSearch asks for linked cards and sync", () => {
-  const q = parseQuery(new URLSearchParams("q=anvil&f=source:chub&page=2"));
+  const q = parseQuery(new URLSearchParams("q=anvil&f=source:chub&page=2"), 1);
   expect(toLorebookSearch(q)).toMatchObject({
     text: "anvil",
     filter: { and: [{ source: "chub" }] },
@@ -161,8 +171,8 @@ test("toLorebookSearch asks for linked cards and sync", () => {
 
 test("score terms and enrichment sorts round-trip through the URL", () => {
   const q: CardQuery = { ...base, terms: [term("score", "quality:70..100"), term("score", "voice:none")], sort: "enrichment:quality" };
-  expect(parseQuery(toParams(q))).toEqual(q);
-  const bad = parseQuery(new URLSearchParams("f=score:quality:..&f=score:Quality:1..&sort=enrichment:Bad"));
+  expect(parseQuery(toParams(q), 1)).toEqual(q);
+  const bad = parseQuery(new URLSearchParams("f=score:quality:..&f=score:Quality:1..&sort=enrichment:Bad"), 1);
   expect(bad).toEqual(base);
 });
 
@@ -183,7 +193,7 @@ test("setScore replaces a key's term and clears it when empty", () => {
 test("score ranges take negative and exponent numbers", () => {
   const q = setScore(base, { key: "mood", gte: -1, lte: 1 });
   expect(q.terms).toEqual([term("score", "mood:-1..1")]);
-  expect(parseQuery(toParams(q))).toEqual(q);
+  expect(parseQuery(toParams(q), 1)).toEqual(q);
   expect(filterFor(q.terms)).toEqual({ and: [{ enrichment: "mood", gte: -1, lte: 1 }] });
   expect(parseScore("mood:-2.5e-1..1E2")).toEqual({ key: "mood", gte: -0.25, lte: 100 });
 });
@@ -196,7 +206,7 @@ test("withoutScores drops score terms and an enrichment sort", () => {
 
 test("Shares a source is shared=1 in the URL and a shares_source filter", () => {
   const q = { ...base, sharesSource: true };
-  expect(toParams(q).toString()).toBe("shared=1");
+  expect(toParams(q).toString()).toBe("shared=1&library=1");
   expect(toSearch(q).filter).toEqual({ and: [{ shares_source: true }] });
   expect(countSearch(q, "tag").filter).toEqual({ and: [{ shares_source: true }] });
 });

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -33,7 +34,7 @@ func (l *Library) SimilarCards(ctx context.Context, cardID int64, maxDistance in
 			LEFT JOIN blob b ON b.sha256 = r.avatar_blob
 			WHERE c.id = $2
 		)
-		SELECT m.* FROM q CROSS JOIN LATERAL (`+nearSQL(Card)+`) m
+		SELECT m.id, m.reason, m.distance FROM q CROSS JOIN LATERAL (`+nearSQL(Card, "=")+`) m
 		ORDER BY distance, id, reason`, maxDistance, cardID)
 	if err != nil {
 		return nil, err
@@ -41,26 +42,57 @@ func (l *Library) SimilarCards(ctx context.Context, cardID int64, maxDistance in
 	return pgx.CollectRows(rows, pgx.RowToStructByPos[Match])
 }
 
-// nearSQL selects (id, reason, distance) for one probe row q (content_hash,
-// text_simhash, image_phash, library_id, self): the entities of k in q's
-// library, except self, whose head revision has the same content_hash or a
-// hash within $1 bits. Candidates come from shared hash bands, which find
-// every hash within NearDistance bits. Run it in a LATERAL join so each
-// probe drives its own index lookups.
-func nearSQL(k *Kind) string {
+// nearSQL selects (id, library_id, reason, distance) for one probe row q
+// (content_hash, text_simhash, image_phash, library_id, self): the entities
+// of k, except self, whose library compares to q's by op (= or <>) and whose
+// head revision has the same content_hash or a hash within $1 bits.
+// Candidates come from shared hash bands, which find every hash within
+// NearDistance bits. Run it in a LATERAL join so each probe drives its own
+// index lookups.
+func nearSQL(k *Kind, op string) string {
 	head := ` JOIN ` + k.Table + ` e ON e.id = r.` + k.FK + ` AND e.head_revision_id = r.id
-		WHERE e.library_id = q.library_id AND e.id <> q.self AND `
+		WHERE e.library_id ` + op + ` q.library_id AND e.id <> q.self AND `
 	return `
-		SELECT e.id, 'content' AS reason, 0 AS distance
+		SELECT e.id, e.library_id, 'content' AS reason, 0 AS distance
 		FROM ` + k.RevTable + ` r` + head + `r.content_hash = q.content_hash
 		UNION ALL
-		SELECT e.id, 'text', bit_count((r.text_simhash # q.text_simhash)::bit(64))::int
+		SELECT e.id, e.library_id, 'text', bit_count((r.text_simhash # q.text_simhash)::bit(64))::int
 		FROM ` + k.RevTable + ` r` + head + `r.text_bands && hash_bands(q.text_simhash)
 			AND bit_count((r.text_simhash # q.text_simhash)::bit(64)) <= $1
 		UNION ALL
-		SELECT e.id, 'avatar', bit_count((b.avatar_phash # q.image_phash)::bit(64))::int
+		SELECT e.id, e.library_id, 'avatar', bit_count((b.avatar_phash # q.image_phash)::bit(64))::int
 		FROM blob b JOIN ` + k.RevTable + ` r ON r.avatar_blob = b.sha256` + head + `b.phash_bands && hash_bands(q.image_phash)
 			AND bit_count((b.avatar_phash # q.image_phash)::bit(64)) <= $1`
+}
+
+// maxOtherMatches is the most matches InOtherLibraries returns; an archive
+// can hold thousands of copies of a popular card.
+const maxOtherMatches = 50
+
+// InOtherLibraries returns up to maxOtherMatches entities in libraries other
+// than id's whose head revision is like id's, within maxDistance bits,
+// closest first. An entity that matches more than one way is listed once, by
+// its closest reason.
+func (s *Entities) InOtherLibraries(ctx context.Context, id int64, maxDistance int) ([]HashMatch, error) {
+	if maxDistance > NearDistance {
+		return nil, errWideDistance
+	}
+	rows, err := s.pool.Query(ctx, `
+		WITH q AS (
+			SELECT r.content_hash, r.text_simhash, b.avatar_phash AS image_phash, e.library_id, e.id AS self
+			FROM `+s.k.Table+` e
+			JOIN `+s.k.RevTable+` r ON r.id = e.head_revision_id
+			LEFT JOIN blob b ON b.sha256 = r.avatar_blob
+			WHERE e.id = $2
+		)
+		SELECT * FROM (
+			SELECT DISTINCT ON (m.id) m.id, m.library_id, m.reason, m.distance FROM q CROSS JOIN LATERAL (`+nearSQL(s.k, "<>")+`) m
+			ORDER BY m.id, m.distance, m.reason <> 'content') best
+		ORDER BY distance, id LIMIT `+strconv.Itoa(maxOtherMatches), maxDistance, id)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[HashMatch])
 }
 
 var errWideDistance = fmt.Errorf("%w: similar lookup finds at most %d differing bits", ErrInvalid, NearDistance)
@@ -76,11 +108,13 @@ type Hashes struct {
 	ImagePhash  *int64
 }
 
-// HashMatch is a library card or lorebook that matches an outside item.
+// HashMatch is a card or lorebook that matches an outside item or another
+// library's entity.
 type HashMatch struct {
-	ID       int64  `json:"id"`
-	Reason   string `json:"reason" enum:"content,text,avatar"`
-	Distance int    `json:"distance"`
+	ID        int64  `json:"id"`
+	LibraryID int64  `json:"library_id"`
+	Reason    string `json:"reason" enum:"content,text,avatar"`
+	Distance  int    `json:"distance"`
 }
 
 // MatchHashes returns, for each of hashes, the entities in library whose
@@ -106,8 +140,8 @@ func (s *Entities) MatchHashes(ctx context.Context, library int64, hashes []Hash
 			SELECT q.*, $5::bigint AS library_id, 0 AS self
 			FROM unnest($2::text[], $3::bigint[], $4::bigint[]) WITH ORDINALITY AS q (content_hash, text_simhash, image_phash, i)
 		)
-		SELECT DISTINCT ON (i, id) i::int, id, reason, distance FROM q CROSS JOIN LATERAL (`+nearSQL(s.k)+`) m
-		ORDER BY i, id, distance, reason <> 'content'`, maxDistance, content, text, image, library)
+		SELECT DISTINCT ON (i, m.id) i::int, m.id, m.library_id, m.reason, m.distance FROM q CROSS JOIN LATERAL (`+nearSQL(s.k, "=")+`) m
+		ORDER BY i, m.id, m.distance, m.reason <> 'content'`, maxDistance, content, text, image, library)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +149,7 @@ func (s *Entities) MatchHashes(ctx context.Context, library int64, hashes []Hash
 	for rows.Next() {
 		var i int
 		var m HashMatch
-		if err := rows.Scan(&i, &m.ID, &m.Reason, &m.Distance); err != nil {
+		if err := rows.Scan(&i, &m.ID, &m.LibraryID, &m.Reason, &m.Distance); err != nil {
 			return nil, err
 		}
 		// WITH ORDINALITY counts from 1.

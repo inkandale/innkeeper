@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { api, must, upload } from "../api/client";
+import { useLibrary } from "../shell/library";
 import { useToast } from "../shell/Toasts";
 import { Crop } from "./CropDialog";
 import { changed, type Data } from "./draft";
@@ -37,18 +38,19 @@ function writeDraft(d: Data | null) {
 export function NewCard() {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const library = useLibrary();
   const [data, setData] = useState(readDraft);
   // The avatar stays in memory: a cropped PNG can outgrow localStorage.
   const [avatar, setAvatar] = useState<Blob | null>(null);
   useEffect(() => writeDraft(data), [data]);
   const edit = (key: string, value: unknown) => setData((d) => ({ ...d, [key]: value }));
   const dirty = changed({ baseId: 0, base: {}, data });
-  const forge = useForge({ subject: cardSubject, data });
+  const forge = useForge({ subject: cardSubject, data, library });
   const forgeBusy = forge.runs.some((r) => r.live) || forge.waiting.length > 0 || !!forge.pending;
   const save = useMutation({
     mutationFn: async () => {
       const sha = avatar ? await upload(avatar) : undefined;
-      return must(await api.POST("/cards", { body: { data, avatar: sha, source: "ui" } }));
+      return must(await api.POST("/cards", { body: { data, avatar: sha, source: "ui", library } }));
     },
     onSuccess: (card) => {
       writeDraft(null);

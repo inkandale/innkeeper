@@ -30,7 +30,7 @@ export function Reforge(props: {
   const revise = instructionAction(forge.mine, kind);
   const current: Target | undefined = target ?? (revise && { action: revise });
   const others = wholeActions(forge.mine, kind).filter((a) => a !== revise);
-  const mentions = useMentions(instruction, forge.instance?.id);
+  const mentions = useMentions(instruction, forge.instance?.id, forge.library);
   const [options, setOptions] = useState<Options>(noOptions);
   // The panel stays open, with its instruction, until the run has started.
   const [starting, setStarting] = useState(false);
@@ -78,6 +78,7 @@ export function Reforge(props: {
           onChange={props.setInstruction}
           mentions={mentions}
           instance={forge.instance?.id}
+          library={forge.library}
           autoFocus
           onEnter={() => current && ready && void run(current, options)}
         />

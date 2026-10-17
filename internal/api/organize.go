@@ -26,6 +26,7 @@ type createCollectionIn struct {
 	Body struct {
 		Name        string `json:"name" minLength:"1"`
 		Description string `json:"description,omitempty"`
+		Library     int64  `json:"library,omitempty" doc:"The library its cards come from; default 1"`
 	}
 }
 
@@ -56,9 +57,13 @@ type blobIn struct {
 func (s *Server) organizeRoutes(api huma.API) {
 	tags := []string{"Organize"}
 	huma.Register(api, huma.Operation{OperationID: "list-tags", Method: http.MethodGet, Path: "/tags",
-		Summary: "List tags with card counts", Tags: tags},
-		func(ctx context.Context, _ *struct{}) (*tagCountsOut, error) {
-			t, err := s.Lib.Tags(ctx)
+		Summary: "List a library's tags with card counts", Tags: tags},
+		func(ctx context.Context, in *libraryQuery) (*tagCountsOut, error) {
+			lib, err := s.checkLibrary(ctx, in.Library)
+			if err != nil {
+				return nil, err
+			}
+			t, err := s.Lib.Tags(ctx, lib)
 			if err != nil {
 				return nil, s.fail(err)
 			}
@@ -66,9 +71,13 @@ func (s *Server) organizeRoutes(api huma.API) {
 		})
 
 	huma.Register(api, huma.Operation{OperationID: "list-collections", Method: http.MethodGet, Path: "/collections",
-		Summary: "List collections with card counts", Tags: tags},
-		func(ctx context.Context, _ *struct{}) (*collectionsOut, error) {
-			c, err := s.Lib.Collections(ctx)
+		Summary: "List a library's collections with card counts", Tags: tags},
+		func(ctx context.Context, in *libraryQuery) (*collectionsOut, error) {
+			lib, err := s.checkLibrary(ctx, in.Library)
+			if err != nil {
+				return nil, err
+			}
+			c, err := s.Lib.Collections(ctx, lib)
 			if err != nil {
 				return nil, s.fail(err)
 			}
@@ -76,9 +85,13 @@ func (s *Server) organizeRoutes(api huma.API) {
 		})
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "create-collection", Method: http.MethodPost, Path: "/collections",
-		Summary: "Create a collection", Tags: tags, DefaultStatus: http.StatusCreated},
+		Summary: "Create a collection", Description: "Names are unique within a library.", Tags: tags, DefaultStatus: http.StatusCreated},
 		func(ctx context.Context, in *createCollectionIn) (*collectionOut, error) {
-			c, err := s.Lib.CreateCollection(ctx, in.Body.Name, in.Body.Description)
+			lib, err := s.checkLibrary(ctx, in.Body.Library)
+			if err != nil {
+				return nil, err
+			}
+			c, err := s.Lib.CreateCollection(ctx, lib, in.Body.Name, in.Body.Description)
 			if err != nil {
 				return nil, s.fail(err)
 			}
@@ -102,7 +115,8 @@ func (s *Server) organizeRoutes(api huma.API) {
 		})
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "add-to-collection", Method: http.MethodPut,
-		Path: "/collections/{id}/cards/{card_id}", Summary: "Add a card to a collection", Tags: tags, DefaultStatus: http.StatusNoContent},
+		Path: "/collections/{id}/cards/{card_id}", Summary: "Add a card to a collection",
+		Description: "The card must be in the collection's library.", Tags: tags, DefaultStatus: http.StatusNoContent},
 		func(ctx context.Context, in *collectionCardIn) (*struct{}, error) {
 			return nil, s.fail(s.Lib.AddToCollection(ctx, in.ID, in.CardID))
 		})

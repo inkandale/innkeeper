@@ -308,11 +308,16 @@ func (s *Server) targetRoutes(api huma.API) {
 		})
 
 	huma.Register(api, huma.Operation{OperationID: "start-source-check", Method: http.MethodPost,
-		Path: "/source-checks", Summary: "Check every site source for updates", Tags: tags, DefaultStatus: http.StatusAccepted,
-		Description: "Follows each card's and lorebook's site sources and reads them back. With autosync on for a binding, " +
-			"takes an update that merges without conflicts. Returns the check already queued or running, if there is one."},
-		func(ctx context.Context, _ *struct{}) (*jobResp, error) {
-			j, err := s.Queue.EnqueueOnce(ctx, jobs.Spec{Kind: targets.SourceCheckKind})
+		Path: "/source-checks", Summary: "Check a library's site sources for updates", Tags: tags, DefaultStatus: http.StatusAccepted,
+		Description: "Follows the site sources of each card and lorebook in the library and reads them back. With autosync on for a binding, " +
+			"takes an update that merges without conflicts. Returns the check already queued or running, if there is one, even for another library."},
+		func(ctx context.Context, in *libraryQuery) (*jobResp, error) {
+			lib, err := s.checkLibrary(ctx, in.Library)
+			if err != nil {
+				return nil, err
+			}
+			// ponytail: a start joins a running check of another library; match on the payload if owners check several.
+			j, err := s.Queue.EnqueueOnce(ctx, jobs.Spec{Kind: targets.SourceCheckKind, Payload: targets.SourceCheckPayload{Library: lib}})
 			if err != nil {
 				return nil, s.fail(err)
 			}

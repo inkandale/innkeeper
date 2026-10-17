@@ -31,12 +31,14 @@ func kindNamed(name string) (*library.Kind, error) {
 }
 
 type searchIn struct {
-	Query map[string]any `json:"query" jsonschema:"The search query, as the API's POST /cards/search body: text, filter, sources (library, or catalog:<instance id> to search a catalog too), include, fields, sort, page. A filter or sort on an enrichment, such as {\"enrichment\": \"quality\", \"gte\": 70} or sort enrichment:quality, uses the score instance's values"`
+	Query   map[string]any `json:"query,omitempty" jsonschema:"The search query, as the API's POST /cards/search body: text, filter, sources (library, or catalog:<instance id> to search a catalog too), include, fields, sort, page. A filter or sort on an enrichment, such as {\"enrichment\": \"quality\", \"gte\": 70} or sort enrichment:quality, uses the score instance's values"`
+	Library int64          `json:"library,omitempty" jsonschema:"A library ID from list_libraries; default 1"`
 }
 
 type createIn struct {
 	Data    map[string]any `json:"data" jsonschema:"The CCv3 data object. A card's may not contain character_book; create a lorebook and link it instead."`
 	Message string         `json:"message,omitempty" jsonschema:"What changed, for the history"`
+	Library int64          `json:"library,omitempty" jsonschema:"A library ID from list_libraries; default 1"`
 }
 
 type updateIn struct {
@@ -61,8 +63,9 @@ type restoreIn struct {
 }
 
 type forkIn struct {
-	Kind string `json:"kind,omitempty" jsonschema:"card or lorebook; default card"`
-	ID   int64  `json:"id"`
+	Kind    string `json:"kind,omitempty" jsonschema:"card or lorebook; default card"`
+	ID      int64  `json:"id"`
+	Library int64  `json:"library,omitempty" jsonschema:"A library ID from list_libraries; default the original's"`
 }
 
 type variantOfIn struct {
@@ -123,6 +126,7 @@ type importIn struct {
 	InstanceID int64  `json:"instance_id" jsonschema:"An instance of an import plugin"`
 	Path       string `json:"path,omitempty" jsonschema:"A subfolder of the instance's folder; empty for all of it"`
 	URL        string `json:"url,omitempty" jsonschema:"A card's or lorebook's page URL, for a url-import instance"`
+	Library    int64  `json:"library,omitempty" jsonschema:"A library ID from list_libraries; default 1"`
 }
 
 type instanceIn struct {
@@ -196,8 +200,18 @@ type none struct{}
 
 // tools are every built-in tool, each the API call it names.
 var tools = []tool{
-	def("search_cards", "Search the library's cards by text and filters. Returns matching cards.", tier.Read,
+	def("list_libraries", "List the libraries, each with how many cards and lorebooks it holds. Library 1 is the default.", tier.Read,
+		func(ctx context.Context, c caller, _ none) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "GET", "/libraries", nil)
+		}),
+	def("search_cards", "Search a library's cards by text and filters. Returns matching cards.", tier.Read,
 		func(ctx context.Context, c caller, in searchIn) (*sdk.CallToolResult, error) {
+			if in.Query == nil {
+				in.Query = map[string]any{}
+			}
+			if in.Library != 0 {
+				in.Query["library"] = in.Library
+			}
 			return c.call(ctx, "POST", "/cards/search", in.Query)
 		}),
 	def("get_card", "Get a card: its head revision, linked lorebooks, and its status on each target app.", tier.Read,
@@ -218,11 +232,11 @@ var tools = []tool{
 		}),
 	def("create_card", "Create a card from a CCv3 data object.", tier.Write,
 		func(ctx context.Context, c caller, in createIn) (*sdk.CallToolResult, error) {
-			return c.call(ctx, "POST", "/cards", map[string]any{"data": in.Data, "message": in.Message, "source": "mcp"})
+			return c.call(ctx, "POST", "/cards", map[string]any{"data": in.Data, "message": in.Message, "source": "mcp", "library": in.Library})
 		}),
 	def("create_lorebook", "Create a lorebook from a CCv3 character_book object.", tier.Write,
 		func(ctx context.Context, c caller, in createIn) (*sdk.CallToolResult, error) {
-			return c.call(ctx, "POST", "/lorebooks", map[string]any{"data": in.Data, "message": in.Message, "source": "mcp"})
+			return c.call(ctx, "POST", "/lorebooks", map[string]any{"data": in.Data, "message": in.Message, "source": "mcp", "library": in.Library})
 		}),
 	def("update_card", "Save a new revision of a card. Send the whole data object, based on the head revision you read.", tier.Write,
 		func(ctx context.Context, c caller, in updateIn) (*sdk.CallToolResult, error) {
@@ -250,16 +264,17 @@ var tools = []tool{
 				map[string]any{"revision_id": in.RevisionID, "base_revision_id": in.BaseRevisionID, "avatar": cmp.Or(in.Avatar, "keep"), "source": "mcp"})
 		}),
 	def("fork_card", "Make a variant of a card or lorebook: a new one with the head revision's content, image, and overrides, "+
-		"and a card's collections and linked lorebooks, but not its sources or app bindings. Returns the new one.", tier.Write,
+		"and a card's collections and linked lorebooks, but not its sources or app bindings. Returns the new one. "+
+		"Forked into another library, it isn't a variant and gets no collections.", tier.Write,
 		func(ctx context.Context, c caller, in forkIn) (*sdk.CallToolResult, error) {
 			k, err := kindNamed(cmp.Or(in.Kind, library.Card.Name))
 			if err != nil {
 				return nil, err
 			}
-			return c.call(ctx, "POST", fmt.Sprintf("/%s/%d/variants", k.Plural, in.ID), map[string]any{"source": "mcp"})
+			return c.call(ctx, "POST", fmt.Sprintf("/%s/%d/variants", k.Plural, in.ID), map[string]any{"source": "mcp", "library": in.Library})
 		}),
 	def("set_variant_of", "Record that a card or lorebook is a variant of another of the same kind, or unlink it with variant_of null. "+
-		"Refuses a link that would make it its own ancestor. Changes no content.", tier.Write,
+		"Refuses a link that would make it its own ancestor, or to one in another library. Changes no content.", tier.Write,
 		func(ctx context.Context, c caller, in variantOfIn) (*sdk.CallToolResult, error) {
 			k, err := kindNamed(cmp.Or(in.Kind, library.Card.Name))
 			if err != nil {
@@ -364,7 +379,7 @@ var tools = []tool{
 	def("start_import", "Import cards and lorebooks from an import plugin instance, such as a folder, or one card from its page URL "+
 		"with url-import. To bring in an app's items, use start_sync.", tier.Write,
 		func(ctx context.Context, c caller, in importIn) (*sdk.CallToolResult, error) {
-			body := map[string]any{"instance_id": in.InstanceID}
+			body := map[string]any{"instance_id": in.InstanceID, "library": in.Library}
 			params := map[string]any{}
 			if in.Path != "" {
 				params["path"] = in.Path

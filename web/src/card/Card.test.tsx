@@ -12,7 +12,7 @@ function json(body: unknown, status = 200) {
 const now = new Date().toISOString();
 const data = { name: "Brakka", creator: "dg", description: "A grumpy dwarf.", tags: ["dwarf"], alternate_greetings: ["Hail."], extensions: { depth: 4 } };
 const entity = {
-  id: 7, slug: "brakka", provenance: "api", created_at: now, lorebooks: [3], collections: [1],
+  id: 7, slug: "brakka", provenance: "api", created_at: now, lorebooks: [3], collections: [1], library_id: 1,
   revision: { id: 11, content_hash: "x", message: "", source: "ui", created_at: now, avatar: "ab".repeat(32), data },
 };
 
@@ -108,6 +108,21 @@ beforeEach(() => {
         }
         return new Response(null, { status: 204 });
       }
+      if (req.method === "POST" && path === "/api/cards/7/variants") {
+        const body = await req.json();
+        sent.push({ path, body });
+        if (body.library === 3) return json({ detail: "library 3 doesn't exist" }, 422);
+        return json({ ...entity, id: 30, library_id: 2 }, 201);
+      }
+      if (path === "/api/libraries")
+        return json([
+          { id: 1, name: "Main", cards: 1, lorebooks: 1, created_at: now },
+          { id: 2, name: "Chub archive", cards: 5, lorebooks: 0, created_at: now },
+          { id: 3, name: "Gone", cards: 0, lorebooks: 0, created_at: now },
+        ]);
+      if (path === "/api/cards/7/in-other-libraries") return json([{ id: 21, library_id: 2, reason: "content", distance: 0 }]);
+      if (req.method === "POST" && path === "/api/cards/search" && (await req.clone().json()).library === 2)
+        return json({ hits: [{ id: 21, fields: { name: "Brakka (archived)" } }], total: 1 });
       if (req.method === "POST" && path === "/api/cards/search") return json({ hits: [{ id: 9, fields: { name: "Young Brakka" } }], total: 1 });
       if (path === "/api/blobs") return json({ sha256: "cd".repeat(32), mime: "image/png", size: 3, store: "local", created_at: now }, 201);
       if (path === "/api/cards/7") {
@@ -150,6 +165,7 @@ function renderAt(entry: string) {
     [
       { path: "/cards/:id", element: <Toasts><Card /></Toasts> },
       { path: "/cards/:id/history", element: <p>History</p> },
+      { path: "/cards/30", element: <p>Forked card</p> },
     ],
     { initialEntries: [entry] },
   );
@@ -547,4 +563,40 @@ test("Link existing makes the picked card a variant of this one", async () => {
   await userEvent.type(screen.getByRole("textbox", { name: "Find a variant" }), "brakka{Enter}");
   await userEvent.click(await screen.findByRole("button", { name: "Young Brakka" }));
   await waitFor(() => expect(puts).toContainEqual({ path: "/api/cards/9/variant_of", body: { id: 7 } }));
+});
+
+test("the panel names the card's library", async () => {
+  renderAt("/cards/7");
+  expect(await screen.findByText("Library: Main")).toBeInTheDocument();
+});
+
+test("Fork into… lists every library and opens the fork made in the chosen one", async () => {
+  const router = renderAt("/cards/7");
+  await userEvent.click(await screen.findByRole("button", { name: "Fork into…" }));
+  const choices = await screen.findByRole("group", { name: "Fork into" });
+  expect(within(choices).getByRole("button", { name: "Main" })).toBeInTheDocument();
+  await userEvent.click(await within(choices).findByRole("button", { name: "Chub archive" }));
+  await waitFor(() => expect(router.state.location.pathname).toBe("/cards/30"));
+  expect(sent).toContainEqual({ path: "/api/cards/7/variants", body: { source: "ui", library: 2 } });
+});
+
+test("In other libraries links each match and names its library", async () => {
+  renderAt("/cards/7");
+  expect(await screen.findByRole("heading", { name: "In other libraries" })).toBeInTheDocument();
+  expect(await screen.findByRole("link", { name: "Brakka (archived)" })).toHaveAttribute("href", "/cards/21");
+  expect(screen.getByText("in Chub archive")).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Found in archives" })).not.toBeInTheDocument();
+});
+
+test("a fork that fails says why", async () => {
+  renderAt("/cards/7");
+  await userEvent.click(await screen.findByRole("button", { name: "Fork into…" }));
+  await userEvent.click(await within(await screen.findByRole("group", { name: "Fork into" })).findByRole("button", { name: "Gone" }));
+  expect(await screen.findByText("library 3 doesn't exist")).toBeInTheDocument();
+});
+
+test("the card's library goes in the URL, so the switcher and rail follow it", async () => {
+  head = { ...entity, library_id: 2 };
+  const router = renderAt("/cards/7");
+  await waitFor(() => expect(router.state.location.search).toBe("?library=2"));
 });

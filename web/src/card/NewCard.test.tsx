@@ -26,6 +26,7 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (req: Request) => {
       const path = new URL(req.url).pathname;
+      if (path === "/api/libraries") return new Response(JSON.stringify([1, 2, 3].map((id) => ({ id, name: `Library ${id}`, cards: 0, lorebooks: 0, created_at: "2026-10-01T00:00:00Z" }))), { headers: { "Content-Type": "application/json" } });
       if (path === "/api/blobs") {
         posts.push({ path, body: await req.text() });
         return json({ sha256: "cd".repeat(32), mime: "image/png", size: 3, store: "local", created_at: now }, 201);
@@ -55,7 +56,7 @@ function renderNew() {
       { path: "/cards/new", element: <Toasts><NewCard /></Toasts> },
       { path: "/cards/:id", element: <p>Card page</p> },
     ],
-    { initialEntries: ["/cards/new"] },
+    { initialEntries: ["/cards/new?library=2"] },
   );
   render(
     <QueryClientProvider client={new QueryClient()}>
@@ -84,7 +85,7 @@ test("the first Save uploads the avatar, creates the card, clears the draft, and
   await waitFor(() => expect(router.state.location.pathname).toBe("/cards/9"));
   expect(posts).toEqual([
     { path: "/api/blobs", body: "png" },
-    { path: "/api/cards", body: { data: { name: "Brakka" }, avatar: "cd".repeat(32), source: "ui" } },
+    { path: "/api/cards", body: { data: { name: "Brakka" }, avatar: "cd".repeat(32), source: "ui", library: 2 } },
   ]);
   expect(localStorage.getItem("innkeeper.newCard")).toBeNull();
 });

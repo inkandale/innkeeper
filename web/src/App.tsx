@@ -23,6 +23,7 @@ import { Appearance } from "./settings/Appearance";
 import { Instance } from "./settings/Instance";
 import { Job } from "./settings/Job";
 import { Jobs } from "./settings/Jobs";
+import { Libraries } from "./settings/Libraries";
 import { Plugins } from "./settings/Plugins";
 import { Settings } from "./settings/Settings";
 import { BringInCards } from "./welcome/BringInCards";
@@ -90,6 +91,7 @@ export const router = createBrowserRouter([
               { path: "plugins", element: <Plugins /> },
               { path: "plugins/:plugin/new", element: <Instance /> },
               { path: "instances/:id", element: <Instance /> },
+              { path: "libraries", element: <Libraries /> },
               { path: "jobs", element: <Jobs /> },
               { path: "jobs/:id", element: <Job /> },
               { path: "access", element: <Access /> },

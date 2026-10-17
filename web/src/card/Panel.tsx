@@ -2,13 +2,13 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { useState } from "react";
 import { Link } from "react-router";
 import { api, exportFormats, must, mustOk, route, thumb, upload, type Kind } from "../api/client";
-import { bindingsQuery, instancesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
-import { FoundInArchives } from "../archives/FoundInArchives";
+import { bindingsQuery, instancesQuery, librariesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
 import { badgeClass } from "../cards/Tile";
 import { useToast } from "../shell/Toasts";
 import type { Entity } from "./Card";
 import { Crop } from "./CropDialog";
 import { Enrichments } from "./Enrichments";
+import { OtherLibraries } from "./OtherLibraries";
 import { strings, text, type Data } from "./draft";
 import { Logo, apps } from "../sync/Logo";
 import { PushPreview } from "../sync/PushPreview";
@@ -43,6 +43,7 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
       <Image sha={avatar} busy={avatarBusy} onAvatar={onAvatar} />
       <Identity data={data} edit={edit} lock={lock} />
       <VariantOf kind="card" entity={card} />
+      <LibraryName id={card.library_id} />
       <div className="row">
         <button className="button primary" disabled={!dirty || saving} onClick={onSave}>
           Save
@@ -55,9 +56,9 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
         <Archive kind="card" entity={card} />
       </div>
       <Push kind="card" id={card.id} dirty={dirty} />
-      <Collections id={card.id} member={card.collections ?? []} />
+      <Collections id={card.id} library={card.library_id} member={card.collections ?? []} />
       <Sources kind="card" id={card.id} />
-      <FoundInArchives kind="card" id={card.id} />
+      <OtherLibraries kind="card" id={card.id} />
       <Sync kind="card" id={card.id} />
       <Lorebooks ids={card.lorebooks ?? []} />
       <Enrichments id={card.id} />
@@ -65,6 +66,12 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
       <Revisions kind="card" id={card.id} />
     </aside>
   );
+}
+
+/** LibraryName names the library a card or lorebook is in. */
+export function LibraryName({ id }: { id: number }) {
+  const library = useQuery(librariesQuery).data?.find((l) => l.id === id);
+  return library ? <p className="muted">Library: {library.name}</p> : null;
 }
 
 /** Identity edits the card's name, nickname, creator, version, and tags. */

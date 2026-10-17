@@ -25,7 +25,7 @@ var (
 	ErrSlugTaken = errors.New("slug already in use")
 	// ErrInvalid means an edit's data is not a valid card or lorebook.
 	ErrInvalid = errors.New("invalid data")
-	// ErrNameTaken means another collection has this name.
+	// ErrNameTaken means another collection or library has this name.
 	ErrNameTaken = errors.New("name already in use")
 	// ErrVariantCycle means a variant link would make an entity its own ancestor.
 	ErrVariantCycle = errors.New("a variant can't be its own ancestor")

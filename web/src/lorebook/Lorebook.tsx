@@ -1,12 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
+import { useFollowLibrary } from "../shell/library";
 import { Link, useParams } from "react-router";
 import { api, must } from "../api/client";
-import { FoundInArchives } from "../archives/FoundInArchives";
 import { Stale } from "../card/Conflict";
 import { text, tokens } from "../card/draft";
 import { Section } from "../card/Fields";
+import { OtherLibraries } from "../card/OtherLibraries";
 import { Sources } from "../card/Organize";
-import { Archive, Push, Revisions, Sync } from "../card/Panel";
+import { Archive, LibraryName, Push, Revisions, Sync } from "../card/Panel";
 import { VariantOf, Variants } from "../card/Variants";
 import { UpdateBanner } from "../card/Upstream";
 import { useEditor } from "../card/useEditor";
@@ -25,7 +26,8 @@ export function Lorebook() {
 
 function LorebookEditor({ id }: { id: number }) {
   const ed = useEditor("lorebook", id);
-  const forge = useForge({ subject: lorebookSubject, id, data: ed.data });
+  const forge = useForge({ subject: lorebookSubject, id, data: ed.data, library: ed.entity.data?.library_id ?? 1 });
+  useFollowLibrary(ed.entity.data?.library_id);
   if (ed.entity.isPending) return null;
   if (ed.entity.isError) return <p className="error page">{ed.entity.error.message}</p>;
   const head = ed.entity.data;
@@ -41,6 +43,7 @@ function LorebookEditor({ id }: { id: number }) {
           onChange={(e) => ed.edit("name", e.target.value)}
         />
         <VariantOf kind="lorebook" entity={head} />
+        <LibraryName id={head.library_id} />
         <div className="row">
           <button className="button primary" disabled={!dirty || ed.save.isPending || ed.stale} onClick={() => ed.draft && ed.save.mutate(ed.draft)}>
             Save
@@ -49,9 +52,9 @@ function LorebookEditor({ id }: { id: number }) {
         </div>
         <Push kind="lorebook" id={id} dirty={dirty} />
         <Sync kind="lorebook" id={id} />
-        <LinkedCards ids={head.cards ?? []} />
+        <LinkedCards ids={head.cards ?? []} library={head.library_id} />
         <Sources kind="lorebook" id={id} />
-        <FoundInArchives kind="lorebook" id={id} />
+        <OtherLibraries kind="lorebook" id={id} />
         <Variants kind="lorebook" entity={head} />
         <Revisions kind="lorebook" id={id} />
       </aside>
@@ -88,8 +91,8 @@ function LorebookEditor({ id }: { id: number }) {
   );
 }
 
-function LinkedCards({ ids }: { ids: number[] }) {
-  const body = { filter: { ids }, fields: ["name"], page: { size: 500 } };
+function LinkedCards({ ids, library }: { ids: number[]; library: number }) {
+  const body = { library, filter: { ids }, fields: ["name"], page: { size: 500 } };
   const cards = useQuery({
     queryKey: ["search", "card", body],
     enabled: ids.length > 0,

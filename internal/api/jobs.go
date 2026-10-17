@@ -99,6 +99,7 @@ type importIn struct {
 	Body struct {
 		InstanceID int64           `json:"instance_id"`
 		Params     json.RawMessage `json:"params,omitempty" doc:"The import plugin's settings, such as a folder path."`
+		Library    int64           `json:"library,omitempty" doc:"The library to import into; default 1"`
 	}
 }
 
@@ -302,12 +303,16 @@ func (s *Server) jobRoutes(api huma.API) {
 			if _, err := s.usable(ctx, in.Body.InstanceID, "import"); err != nil {
 				return nil, err
 			}
+			lib, err := s.checkLibrary(ctx, in.Body.Library)
+			if err != nil {
+				return nil, err
+			}
 			params := in.Body.Params
 			if params == nil {
 				params = json.RawMessage(`{}`)
 			}
 			return s.enqueue(ctx, jobs.Spec{Kind: importer.Kind, InstanceID: &in.Body.InstanceID,
-				Payload: importer.Payload{Params: params}})
+				Payload: importer.Payload{Params: params, Library: lib}})
 		})
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "start-bulk", Method: http.MethodPost, Path: "/bulk",
@@ -345,7 +350,11 @@ func (s *Server) jobRoutes(api huma.API) {
 					return nil, huma.Error400BadRequest("tags can't be blank")
 				}
 			case "collect", "uncollect":
-				cols, err := s.Lib.Collections(ctx)
+				lib, err := s.checkLibrary(ctx, q.Library)
+				if err != nil {
+					return nil, err
+				}
+				cols, err := s.Lib.Collections(ctx, lib)
 				if err != nil {
 					return nil, s.fail(err)
 				}

@@ -47,19 +47,19 @@ func seed(t *testing.T, lib *library.Library) (avatar, unused string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, _, err := lib.Cards.Create(ctx, "brakka", "upload",
+	c, _, err := lib.Cards.Create(ctx, library.DefaultLibrary, "brakka", "upload",
 		library.Edit{Data: json.RawMessage(`{"name": "Brakka"}`), AvatarBlob: a.SHA256, Source: "ui"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, _, err := lib.Lorebooks.Create(ctx, "lore", "upload", library.Edit{Data: json.RawMessage(`{"name": "Lore", "entries": []}`), Source: "ui"})
+	b, _, err := lib.Lorebooks.Create(ctx, library.DefaultLibrary, "lore", "upload", library.Edit{Data: json.RawMessage(`{"name": "Lore", "entries": []}`), Source: "ui"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := lib.LinkLorebook(ctx, c.ID, b.ID); err != nil {
 		t.Fatal(err)
 	}
-	col, err := lib.CreateCollection(ctx, "Favorites", "")
+	col, err := lib.CreateCollection(ctx, library.DefaultLibrary, "Favorites", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestWriteAssets(t *testing.T) {
 		t.Fatalf("blobs = %v, want only the avatar", m.Blobs)
 	}
 	want := map[string]int64{
-		"blob": 1, "card": 1, "card_revision": 1, "lorebook": 1, "lorebook_revision": 1, "card_lorebook": 1,
+		"blob": 1, "library": 1, "card": 1, "card_revision": 1, "lorebook": 1, "lorebook_revision": 1, "card_lorebook": 1,
 		"collection": 1, "collection_card": 1, "card_source": 0, "lorebook_source": 0, "enrichment": 0,
 	}
 	if len(m.Tables) != len(want) {

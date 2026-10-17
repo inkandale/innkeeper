@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -43,14 +44,15 @@ func (s *Service) followers(ctx context.Context) (map[int64][]string, error) {
 
 // follow binds each live source of kinds that has no binding on the
 // instance yet, and unbinds the instance's followed bindings whose source the
-// owner removed or whose kind the plugin no longer lists. only limits it to one entity; 0 means all of them. The
+// owner removed or whose kind the plugin no longer lists. libraryID limits the binding to one library's entities, and only to
+// one entity; 0 means all of them. The
 // accepted copy is the entity's first revision a plugin wrote, else its
 // first, so an update published since the import shows on the first check.
 //
 // ponytail: one followed binding per entity per follower instance, so a card
 // with a chub and a risu source on one instance follows only the older; a
 // binding per source needs a key wider than (instance, entity).
-func (s *Service) follow(ctx context.Context, k kind, instanceID int64, kinds []string, only int64) error {
+func (s *Service) follow(ctx context.Context, k kind, instanceID int64, kinds []string, libraryID, only int64) error {
 	inst, info, err := s.describeReconcile(ctx, k, instanceID)
 	if k.isLorebook() && errors.Is(err, ErrCannot) {
 		// The target keeps lorebooks inside cards, so it can't follow one.
@@ -69,8 +71,9 @@ func (s *Service) follow(ctx context.Context, k kind, instanceID int64, kinds []
 					ORDER BY r.source LIKE 'plugin:%' DESC, r.id LIMIT 1)
 			FROM `+k.SourceTable+` src JOIN `+k.Table+` e ON e.id = src.`+k.FK+`
 			WHERE src.removed_at IS NULL AND src.kind = ANY($2) AND e.archived_at IS NULL AND ($3::bigint = 0 OR src.`+k.FK+` = $3)
+				AND ($4::bigint = 0 OR e.library_id = $4)
 				AND NOT EXISTS (SELECT 1 FROM binding b WHERE b.instance_id = $1 AND b.`+k.FK+` = src.`+k.FK+` AND NOT b.imported)
-			ORDER BY src.`+k.FK+`, src.id`, instanceID, kinds, only)
+			ORDER BY src.`+k.FK+`, src.id`, instanceID, kinds, only, libraryID)
 		if err != nil {
 			return err
 		}
@@ -114,17 +117,18 @@ func (s *Service) follow(ctx context.Context, k kind, instanceID int64, kinds []
 	})
 }
 
-// CheckSources binds the sources that pull-only plugins follow, then checks
-// each followed binding that isn't paused. report gets the progress after each binding.
-func (s *Service) CheckSources(ctx context.Context, report func(ScanProgress)) (ScanProgress, error) {
-	return s.checkSources(ctx, nil, 0, report)
+// CheckSources binds the sources that pull-only plugins follow in libraryID,
+// then checks each of its followed bindings that isn't paused. report gets the
+// progress after each binding.
+func (s *Service) CheckSources(ctx context.Context, libraryID int64, report func(ScanProgress)) (ScanProgress, error) {
+	return s.checkSources(ctx, libraryID, nil, 0, report)
 }
 
 // CheckEntitySources is CheckSources for one card or lorebook, now. It
 // returns the entity's bindings, or the first error of a follow or check
 // that failed, since the owner asked and is waiting on the answer.
 func (s *Service) CheckEntitySources(ctx context.Context, lk *library.Kind, id int64) ([]Binding, error) {
-	p, err := s.checkSources(ctx, lk, id, func(ScanProgress) {})
+	p, err := s.checkSources(ctx, 0, lk, id, func(ScanProgress) {})
 	if err != nil {
 		return nil, err
 	}
@@ -154,10 +158,11 @@ func unfollow(ctx context.Context, db interface {
 	return err
 }
 
-// followSources runs follow on every follower instance, or with only, for one
-// entity on the instances that follow one of its source kinds. failed hears
-// each instance's failure; the error is only ctx's or the followers lookup's.
-func (s *Service) followSources(ctx context.Context, only *library.Kind, id int64, failed func(inst int64, err error)) error {
+// followSources runs follow on every follower instance for libraryID's
+// entities, or with only, for one entity on the instances that follow one of
+// its source kinds. failed hears each instance's failure; the error is only
+// ctx's or the followers lookup's.
+func (s *Service) followSources(ctx context.Context, libraryID int64, only *library.Kind, id int64, failed func(inst int64, err error)) error {
 	followers, err := s.followers(ctx)
 	if err != nil {
 		return err
@@ -179,7 +184,7 @@ func (s *Service) followSources(ctx context.Context, only *library.Kind, id int6
 			if only != nil && lk != only {
 				continue
 			}
-			if err := s.follow(ctx, targetKind(lk), inst, kinds, id); err != nil {
+			if err := s.follow(ctx, targetKind(lk), inst, kinds, libraryID, id); err != nil {
 				if ctx.Err() != nil {
 					return ctx.Err()
 				}
@@ -190,30 +195,27 @@ func (s *Service) followSources(ctx context.Context, only *library.Kind, id int6
 	return nil
 }
 
-// checkSources follows and checks every entity's sources, or with only, one entity's.
-func (s *Service) checkSources(ctx context.Context, only *library.Kind, id int64, report func(ScanProgress)) (ScanProgress, error) {
+// sourceCheckPage is how many bindings a source check reads at a time.
+const sourceCheckPage = 500
+
+// checkSources follows and checks the sources of every entity in libraryID,
+// or with only, one entity's, whatever its library.
+func (s *Service) checkSources(ctx context.Context, libraryID int64, only *library.Kind, id int64, report func(ScanProgress)) (ScanProgress, error) {
 	var p ScanProgress
-	if err := s.followSources(ctx, only, id, func(inst int64, err error) { p.fail(fmt.Sprintf("instance %d", inst), err) }); err != nil {
+	if err := s.followSources(ctx, libraryID, only, id, func(inst int64, err error) { p.fail(fmt.Sprintf("instance %d", inst), err) }); err != nil {
 		return p, err
 	}
 	q := `SELECT b.id FROM binding b JOIN plugin_instance i ON i.id = b.instance_id
 		LEFT JOIN card c ON c.id = b.card_id LEFT JOIN lorebook l ON l.id = b.lorebook_id
 		WHERE NOT b.push AND NOT b.paused AND i.broken_error IS NULL AND coalesce(c.archived_at, l.archived_at) IS NULL
-			AND (NOT b.imported OR (b.remote_state = 'changed' AND b.autosync))`
-	var args []any
+			AND (NOT b.imported OR (b.remote_state = 'changed' AND b.autosync))
+			AND b.id > $1 AND ($2::bigint = 0 OR coalesce(c.library_id, l.library_id) = $2)`
+	args := []any{int64(0), libraryID}
 	if only != nil {
-		q += ` AND b.` + only.FK + ` = $1`
+		q += ` AND b.` + only.FK + ` = $3`
 		args = append(args, id)
 	}
-	rows, err := s.pool.Query(ctx, q+` ORDER BY b.id`, args...)
-	if err != nil {
-		return p, err
-	}
-	ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
-	if err != nil {
-		return p, err
-	}
-	return p, s.checkEach(ctx, ids, &p, report, func(b *Binding) error {
+	then := func(b *Binding) error {
 		if b.RemoteState != remoteChanged || !b.Autosync {
 			return nil
 		}
@@ -223,7 +225,21 @@ func (s *Service) checkSources(ctx context.Context, only *library.Kind, id int64
 			b.RemoteState = remoteUnchanged
 		}
 		return err
-	})
+	}
+	for {
+		rows, err := s.pool.Query(ctx, q+` ORDER BY b.id LIMIT `+strconv.Itoa(sourceCheckPage), args...)
+		if err != nil {
+			return p, err
+		}
+		ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+		if err != nil || len(ids) == 0 {
+			return p, err
+		}
+		if err := s.checkEach(ctx, ids, &p, report, then); err != nil {
+			return p, err
+		}
+		args[0] = ids[len(ids)-1]
+	}
 }
 
 // sourceKinds lists the kinds of the entity's sources, removed ones too: unbinding one needs its plugin.

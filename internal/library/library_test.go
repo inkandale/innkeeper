@@ -22,7 +22,7 @@ func edit(data string) Edit {
 // newCard creates a card with the given data and returns its ID and head revision ID.
 func newCard(t *testing.T, lib *Library, slug, data string) (int64, int64) {
 	t.Helper()
-	c, rev, err := lib.Cards.Create(context.Background(), slug, "upload", edit(data))
+	c, rev, err := lib.Cards.Create(context.Background(), DefaultLibrary, slug, "upload", edit(data))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func newCard(t *testing.T, lib *Library, slug, data string) (int64, int64) {
 func TestCreateAndUpdateCard(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
-	c, first, err := lib.Cards.Create(ctx, "brakka", "upload", edit(`{"name": "Brakka", "description": "A dwarf."}`))
+	c, first, err := lib.Cards.Create(ctx, DefaultLibrary, "brakka", "upload", edit(`{"name": "Brakka", "description": "A dwarf."}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestCreateValidation(t *testing.T) {
 		"missing avatar": {"x", Edit{Data: json.RawMessage(`{}`), Source: "ui", AvatarBlob: "00"}, ErrNotFound},
 	}
 	for name, c := range cases {
-		_, _, err := lib.Cards.Create(ctx, c.slug, "upload", c.e)
+		_, _, err := lib.Cards.Create(ctx, DefaultLibrary, c.slug, "upload", c.e)
 		if err == nil || (c.want != nil && !errors.Is(err, c.want)) {
 			t.Errorf("%s: got %v, want error %v", name, err, c.want)
 		}
@@ -132,7 +132,7 @@ func TestSetArchived(t *testing.T) {
 func TestLorebooks(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
-	b, rev, err := lib.Lorebooks.Create(ctx, "dwarf-lore", "upload",
+	b, rev, err := lib.Lorebooks.Create(ctx, DefaultLibrary, "dwarf-lore", "upload",
 		edit(`{"name": "Dwarf lore", "entries": [{"keys": ["forge"], "content": "The forge never cools."}]}`))
 	if err != nil {
 		t.Fatal(err)
@@ -144,7 +144,7 @@ func TestLorebooks(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Cards and lorebooks have separate slug namespaces.
-	if _, _, err := lib.Cards.Create(ctx, "dwarf-lore", "upload", edit(`{"name": "x"}`)); err != nil {
+	if _, _, err := lib.Cards.Create(ctx, DefaultLibrary, "dwarf-lore", "upload", edit(`{"name": "x"}`)); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -173,11 +173,11 @@ func TestUpdateTxRollbackLeavesHead(t *testing.T) {
 func TestEntitiesStartInDefaultLibrary(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
-	c, _, err := lib.Cards.Create(ctx, "brakka", "upload", edit(`{"name": "Brakka"}`))
+	c, _, err := lib.Cards.Create(ctx, DefaultLibrary, "brakka", "upload", edit(`{"name": "Brakka"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, _, err := lib.Lorebooks.Create(ctx, "dwarf-lore", "upload", edit(`{"name": "Dwarf lore", "entries": []}`))
+	b, _, err := lib.Lorebooks.Create(ctx, DefaultLibrary, "dwarf-lore", "upload", edit(`{"name": "Dwarf lore", "entries": []}`))
 	if err != nil {
 		t.Fatal(err)
 	}

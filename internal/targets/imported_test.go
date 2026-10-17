@@ -136,7 +136,7 @@ func TestAutosyncLeavesAConflictingImportUpdate(t *testing.T) {
 	e.importVersion(inst, map[string]any{"name": "Vyr", "description": "A gold dragon.", "first_mes": "Who wakes me?"})
 	before := e.revisions(card)
 	// A source check is how autosync catches up with an update recorded before it was on.
-	p, err := e.s.CheckSources(e.ctx, func(ScanProgress) {})
+	p, err := e.s.CheckSources(e.ctx, library.DefaultLibrary, func(ScanProgress) {})
 	if err != nil || p.Applied != 0 || p.Failed != 0 || e.revisions(card) != before {
 		t.Fatalf("progress = %+v, %v", p, err)
 	}
@@ -153,7 +153,7 @@ func TestSourceCheckAppliesAWaitingImportUpdate(t *testing.T) {
 	if _, err := e.s.SetAutosync(e.ctx, b.ID, true); err != nil {
 		t.Fatal(err)
 	}
-	p, err := e.s.CheckSources(e.ctx, func(ScanProgress) {})
+	p, err := e.s.CheckSources(e.ctx, library.DefaultLibrary, func(ScanProgress) {})
 	if err != nil || p.Applied != 1 || p.Failed != 0 {
 		t.Fatalf("progress = %+v, %v", p, err)
 	}
@@ -174,7 +174,7 @@ func TestImportBindingSitsBesideAFollowedSource(t *testing.T) {
 		t.Fatalf("followed binding = %+v", b)
 	}
 	// The source check neither reads nor drops the import binding.
-	if _, err := e.s.CheckSources(e.ctx, func(ScanProgress) {}); err != nil {
+	if _, err := e.s.CheckSources(e.ctx, library.DefaultLibrary, func(ScanProgress) {}); err != nil {
 		t.Fatal(err)
 	}
 	if b := e.importBinding(got.ID); b.RemoteID != "archive:vyr" || b.RemoteState != remoteUnchanged {

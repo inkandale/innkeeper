@@ -2,15 +2,25 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, must, route, type Kind } from "../api/client";
 
-/** CardPicker searches the library's cards or lorebooks by text and offers each hit to pick. label names its search box. */
-export function CardPicker({ kind, label, onPick }: { kind: Kind; label: string; onPick: (id: number, name: string) => void }) {
+/** CardPicker searches a library's cards or lorebooks by text and offers each hit to pick. label names its search box. */
+export function CardPicker({
+  kind,
+  label,
+  onPick,
+  library,
+}: {
+  kind: Kind;
+  label: string;
+  onPick: (id: number, name: string) => void;
+  library: number;
+}) {
   const [text, setText] = useState("");
   const [q, setQ] = useState("");
   const hits = useQuery({
     enabled: !!q,
-    queryKey: ["search", kind, "picker", q],
+    queryKey: ["search", kind, "picker", library, q],
     queryFn: async () => {
-      const body = { text: q, page: { size: 10 } };
+      const body = { library, text: q, page: { size: 10 } };
       return must(await api.POST(route(kind, "/cards/search"), { body }));
     },
   });

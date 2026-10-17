@@ -96,7 +96,7 @@ func TestSearchCollection(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
 	s := seedSearch(t, lib)
-	c, err := lib.CreateCollection(ctx, "Crew", "")
+	c, err := lib.CreateCollection(ctx, DefaultLibrary, "Crew", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +249,7 @@ func TestSearchFacets(t *testing.T) {
 	if err := lib.EditCardTags(ctx, s.carrow, []string{"fantasy"}, nil); err != nil {
 		t.Fatal(err)
 	}
-	crew, err := lib.CreateCollection(ctx, "Crew", "")
+	crew, err := lib.CreateCollection(ctx, DefaultLibrary, "Crew", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,12 +310,12 @@ func TestSearchIDsFilter(t *testing.T) {
 func TestSearchLorebooks(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
-	forge, _, err := lib.Lorebooks.Create(ctx, "forge", "upload", edit(`{"name": "Forge", "description": "Smithing lore.",
+	forge, _, err := lib.Lorebooks.Create(ctx, DefaultLibrary, "forge", "upload", edit(`{"name": "Forge", "description": "Smithing lore.",
 		"entries": [{"keys": ["anvil"], "content": "Heavy iron."}, {"keys": ["bellows"], "content": "Pumps air."}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	sea, _, err := lib.Lorebooks.Create(ctx, "sea", "upload", edit(`{"name": "Sea", "entries": [{"keys": ["kraken"], "content": "Many arms."}]}`))
+	sea, _, err := lib.Lorebooks.Create(ctx, DefaultLibrary, "sea", "upload", edit(`{"name": "Sea", "entries": [{"keys": ["kraken"], "content": "Many arms."}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,12 +369,12 @@ func TestSearchLorebooks(t *testing.T) {
 func TestSearchLorebookSourcesAndBareEntries(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
-	sourced, _, err := lib.Lorebooks.Create(ctx, "sourced", "upload", edit(`{"name": "Sourced", "entries": []}`))
+	sourced, _, err := lib.Lorebooks.Create(ctx, DefaultLibrary, "sourced", "upload", edit(`{"name": "Sourced", "entries": []}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Missing entries count as none, and searching them doesn't fail.
-	bare, _, err := lib.Lorebooks.Create(ctx, "bare", "upload", edit(`{"name": "Bare"}`))
+	bare, _, err := lib.Lorebooks.Create(ctx, DefaultLibrary, "bare", "upload", edit(`{"name": "Bare"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -417,7 +417,7 @@ func TestSearchIgnoresNonStringTags(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
 	newCard(t, lib, "n", `{"name": "N", "tags": ["fantasy", null, 3]}`)
-	tags, err := lib.Tags(ctx)
+	tags, err := lib.Tags(ctx, DefaultLibrary)
 	if err != nil || len(tags) != 1 || tags[0].Name != "fantasy" {
 		t.Fatalf("Tags = %v, %v", tags, err)
 	}

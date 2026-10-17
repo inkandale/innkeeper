@@ -10,10 +10,10 @@ type Binding = components["schemas"]["Binding"];
 
 // These save on change: collections and sources aren't part of a revision.
 
-/** Collections has a box per collection, checked for the ones the card is in. */
-export function Collections({ id, member }: { id: number; member: number[] }) {
+/** Collections has a box per collection in the card's library, checked for the ones the card is in. */
+export function Collections({ id, library, member }: { id: number; library: number; member: number[] }) {
   const qc = useQueryClient();
-  const all = useQuery(collectionsQuery);
+  const all = useQuery(collectionsQuery(library));
   const toggle = useMutation({
     mutationFn: async ({ collection, on }: { collection: number; on: boolean }) => {
       const opts = { params: { path: { id: collection, card_id: id } } };

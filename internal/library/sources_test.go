@@ -78,7 +78,7 @@ func TestDetectQueuePages(t *testing.T) {
 
 func newLorebook(t *testing.T, lib *Library, slug string) int64 {
 	t.Helper()
-	l, _, err := lib.Lorebooks.Create(context.Background(), slug, "upload", edit(`{"name": "L"}`))
+	l, _, err := lib.Lorebooks.Create(context.Background(), DefaultLibrary, slug, "upload", edit(`{"name": "L"}`))
 	if err != nil {
 		t.Fatal(err)
 	}

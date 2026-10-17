@@ -28,8 +28,7 @@ type Query struct {
 	Page     Page     `json:"page,omitempty"`
 	Group    string   `json:"group,omitempty" enum:"family" doc:"family returns one hit per family of variants: its face, with the family's matches. Paging and total count families; facets count cards or lorebooks."`
 
-	// Library is the library to search, or 0 for DefaultLibrary.
-	Library int64 `json:"-"`
+	Library int64 `json:"library,omitempty" doc:"The library to search; default 1."`
 
 	// ScoreInstance is the enrich instance whose values enrichment filters,
 	// sort, and include use, or 0 for none. The caller resolves it from the
@@ -58,7 +57,7 @@ type Filter struct {
 	Archived      *bool         `json:"archived,omitempty"`
 	TargetState   *TargetFilter `json:"target_state,omitempty" doc:"Is pushed to one of instances and stands as one of states there. An empty list matches any value."`
 	VariantOfRoot *int64        `json:"variant_of_root,omitempty" doc:"Is this card or lorebook, or a variant below it at any depth."`
-	SharesSource  *bool         `json:"shares_source,omitempty" doc:"Has a source, by kind and ref, that another card or lorebook of the same kind also has."`
+	SharesSource  *bool         `json:"shares_source,omitempty" doc:"Has a source, by kind and ref, that another card or lorebook of the same kind also has. A fork's link to its original doesn't count."`
 	Enrichment    *string       `json:"enrichment,omitempty" doc:"Has a current value for this enrichment key from the score instance. With gte and lte, a number in that range; with missing, no value. Cards only."`
 	Gte           *float64      `json:"gte,omitempty" doc:"With enrichment: the value is at least this."`
 	Lte           *float64      `json:"lte,omitempty" doc:"With enrichment: the value is at most this."`
@@ -236,7 +235,7 @@ var facetSQL = map[string]func(k *Kind, cond string) string{
 	},
 	"sources": func(k *Kind, cond string) string {
 		return `SELECT kind, least(count(DISTINCT ` + k.FK + `), ` + capped + `)::int FROM ` + k.SourceTable + `
-			WHERE removed_at IS NULL AND ` + k.FK + ` IN (` + matching(k, cond) + `) GROUP BY kind ORDER BY kind`
+			WHERE removed_at IS NULL AND kind <> '` + ForkSourceKind + `' AND ` + k.FK + ` IN (` + matching(k, cond) + `) GROUP BY kind ORDER BY kind`
 	},
 }
 
@@ -330,7 +329,7 @@ func (w *where) filter(f Filter) (string, error) {
 	case f.SharesSource != nil:
 		return `(EXISTS (SELECT 1 FROM ` + w.k.SourceTable + ` s1 JOIN ` + w.k.SourceTable + ` s2
 			ON s2.kind = s1.kind AND s2.ref = s1.ref AND s2.` + w.k.FK + ` <> s1.` + w.k.FK + ` AND s2.removed_at IS NULL
-			WHERE s1.` + w.k.FK + ` = c.id AND s1.removed_at IS NULL)) = ` + w.arg(*f.SharesSource), nil
+			WHERE s1.` + w.k.FK + ` = c.id AND s1.removed_at IS NULL AND s1.kind <> '` + ForkSourceKind + `')) = ` + w.arg(*f.SharesSource), nil
 	case f.TargetState != nil:
 		cond := `bs.` + w.k.FK + ` = c.id`
 		if len(f.TargetState.Instances) > 0 {
@@ -729,13 +728,31 @@ func filtersEnrichments(f *Filter) bool {
 // SearchIDs returns the IDs of every entity of kind k that q matches,
 // ignoring its paging and output options.
 func (l *Library) SearchIDs(ctx context.Context, k *Kind, q Query) ([]int64, error) {
+	return l.SearchIDsAfter(ctx, k, q, 0, 0)
+}
+
+// SearchIDsAfter is SearchIDs for the IDs above after, in order, at most
+// limit of them; limit 0 means all.
+func (l *Library) SearchIDsAfter(ctx context.Context, k *Kind, q Query, after int64, limit int) ([]int64, error) {
 	cond, w, _, err := compile(k, q)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := l.pool.Query(ctx, `SELECT c.id FROM `+from(k)+` WHERE `+cond+` ORDER BY c.id`, w.args...)
+	rows, err := l.pool.Query(ctx, `SELECT c.id FROM `+from(k)+` WHERE `+cond+` AND c.id > `+w.arg(after)+`
+		ORDER BY c.id LIMIT nullif(`+w.arg(limit)+`, 0)`, w.args...)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, pgx.RowTo[int64])
+}
+
+// CountMatches returns how many entities of kind k q matches.
+func (l *Library) CountMatches(ctx context.Context, k *Kind, q Query) (int, error) {
+	cond, w, _, err := compile(k, q)
+	if err != nil {
+		return 0, err
+	}
+	var n int
+	err = l.pool.QueryRow(ctx, `SELECT count(*) FROM `+from(k)+` WHERE `+cond, w.args...).Scan(&n)
+	return n, err
 }

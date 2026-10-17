@@ -1,6 +1,9 @@
-import { useState } from "react";
-import { NavLink, Outlet } from "react-router";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { api } from "../api/client";
+import { librariesQuery } from "../api/queries";
+import { rememberLibrary, useLibrary, withLibrary } from "./library";
 import { Mark } from "./Mark";
 import { Toasts } from "./Toasts";
 import "./Shell.css";
@@ -24,8 +27,44 @@ async function logout() {
   }
 }
 
+// Pages that show one library; switching keeps the page, anywhere else opens Cards.
+const listPages = ["/cards", "/lorebooks", "/collections", "/sync"];
+
+/** LibrarySwitcher picks the current library, and remembers it once the list confirms it exists. */
+function LibrarySwitcher() {
+  const libraries = useQuery(librariesQuery);
+  const library = useLibrary();
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const loaded = !!libraries.data;
+  useEffect(() => {
+    if (loaded) rememberLibrary(library);
+  }, [loaded, library]);
+  if (!libraries.data) return null;
+  return (
+    <select
+      className="input rail-library"
+      aria-label="Library"
+      value={library}
+      onChange={(e) => {
+        const id = Number(e.target.value);
+        rememberLibrary(id);
+        // Filters name collections and targets of the old library, so they're dropped.
+        void navigate(withLibrary(listPages.includes(pathname) ? pathname : "/cards", id));
+      }}
+    >
+      {libraries.data.map((l) => (
+        <option key={l.id} value={l.id}>
+          {l.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export function Shell() {
   const [collapsed, setCollapsed] = useState(false);
+  const library = useLibrary();
   return (
     <div className={collapsed ? "shell collapsed" : "shell"}>
       <nav className="rail" aria-label="Sections">
@@ -33,8 +72,9 @@ export function Shell() {
           <Mark size={24} />
           <span className="rail-label">Innkeeper</span>
         </div>
+        <LibrarySwitcher />
         {sections.map((s) => (
-          <NavLink key={s.to} to={s.to} aria-label={s.label}>
+          <NavLink key={s.to} to={withLibrary(s.to, library)} aria-label={s.label}>
             <span aria-hidden="true">{s.icon}</span>
             <span className="rail-label">{s.label}</span>
           </NavLink>

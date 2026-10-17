@@ -47,7 +47,7 @@ func TestPushCreatesThenUpdates(t *testing.T) {
 
 func TestPushAppliesOverrideAndEmbedsLorebooks(t *testing.T) {
 	e := setup(t, nil)
-	lb, _, err := e.lib.Lorebooks.Create(e.ctx, "forge-lore", "upload", library.Edit{Source: "ui",
+	lb, _, err := e.lib.Lorebooks.Create(e.ctx, library.DefaultLibrary, "forge-lore", "upload", library.Edit{Source: "ui",
 		Data: json.RawMessage(`{"name": "Forge lore", "entries": [{"keys": ["anvil"], "content": "Old iron."}]}`)})
 	if err != nil {
 		t.Fatal(err)
@@ -89,7 +89,7 @@ func TestLinkingALorebookMakesTheCardAhead(t *testing.T) {
 	if b := e.push(e.card); b.Status != "in_sync" {
 		t.Fatalf("first push: %+v", b)
 	}
-	lb, _, err := e.lib.Lorebooks.Create(e.ctx, "forge-lore", "upload", library.Edit{Source: "ui",
+	lb, _, err := e.lib.Lorebooks.Create(e.ctx, library.DefaultLibrary, "forge-lore", "upload", library.Edit{Source: "ui",
 		Data: json.RawMessage(`{"name": "Forge lore", "entries": [{"keys": ["anvil"], "content": "Old iron."}]}`)})
 	if err != nil {
 		t.Fatal(err)
@@ -108,7 +108,7 @@ func TestLinkingALorebookMakesTheCardAhead(t *testing.T) {
 
 func TestPushOnlyTarget(t *testing.T) {
 	e := setup(t, map[string]any{"pull": false, "lorebooks": "none"})
-	lb, _, err := e.lib.Lorebooks.Create(e.ctx, "forge-lore", "upload", library.Edit{Source: "ui",
+	lb, _, err := e.lib.Lorebooks.Create(e.ctx, library.DefaultLibrary, "forge-lore", "upload", library.Edit{Source: "ui",
 		Data: json.RawMessage(`{"name": "Forge lore", "entries": []}`)})
 	if err != nil {
 		t.Fatal(err)

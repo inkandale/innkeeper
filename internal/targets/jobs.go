@@ -1,6 +1,7 @@
 package targets
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -17,7 +18,7 @@ import (
 const (
 	PushKind = "target.push"
 	ScanKind = "target.scan"
-	// SourceCheckKind follows and checks every site source; see CheckSources.
+	// SourceCheckKind follows and checks one library's site sources; see CheckSources.
 	SourceCheckKind = "target.source-check"
 )
 
@@ -149,9 +150,19 @@ func (s *Service) RunScan(ctx context.Context, r *jobs.Run) error {
 	return err
 }
 
+// SourceCheckPayload is a SourceCheckKind job's payload.
+type SourceCheckPayload struct {
+	// Library is the library to check; 0 means library.DefaultLibrary.
+	Library int64 `json:"library,omitempty"`
+}
+
 // RunSourceCheck is the jobs.Handler for SourceCheckKind.
 func (s *Service) RunSourceCheck(ctx context.Context, r *jobs.Run) error {
-	_, err := s.CheckSources(ctx, func(p ScanProgress) {
+	var p SourceCheckPayload
+	if err := json.Unmarshal(r.Payload, &p); err != nil {
+		return fmt.Errorf("source check payload: %w", err)
+	}
+	_, err := s.CheckSources(ctx, cmp.Or(p.Library, library.DefaultLibrary), func(p ScanProgress) {
 		raw, _ := json.Marshal(p)
 		r.SetProgress(raw)
 	})

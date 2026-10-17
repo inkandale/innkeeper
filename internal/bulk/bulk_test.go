@@ -25,7 +25,7 @@ func setup(t *testing.T, handlers func(*library.Library) map[string]jobs.Handler
 	lib := library.New(pool, &blobstore.Store{Name: "library", Root: t.TempDir()})
 	var ids []int64
 	for _, slug := range slugs {
-		c, _, err := lib.Cards.Create(ctx, slug, "upload", library.Edit{Data: []byte(`{"name": "x"}`), Source: "ui"})
+		c, _, err := lib.Cards.Create(ctx, library.DefaultLibrary, slug, "upload", library.Edit{Data: []byte(`{"name": "x"}`), Source: "ui"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -86,7 +86,7 @@ func TestTagAndCollect(t *testing.T) {
 		library.Edit{Data: []byte(`{"name": "x", "tags": ["old", "keep"]}`), Source: "ui"}); err != nil {
 		t.Fatal(err)
 	}
-	col, err := lib.CreateCollection(ctx, "Fantasy", "")
+	col, err := lib.CreateCollection(ctx, library.DefaultLibrary, "Fantasy", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestArchiveLorebooks(t *testing.T) {
 	})
 	var ids []int64
 	for _, slug := range []string{"a", "b"} {
-		l, _, err := lib.Lorebooks.Create(ctx, slug, "upload", library.Edit{Data: []byte(`{"name": "x", "entries": []}`), Source: "ui"})
+		l, _, err := lib.Lorebooks.Create(ctx, library.DefaultLibrary, slug, "upload", library.Edit{Data: []byte(`{"name": "x", "entries": []}`), Source: "ui"})
 		if err != nil {
 			t.Fatal(err)
 		}

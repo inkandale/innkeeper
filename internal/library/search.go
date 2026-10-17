@@ -3,6 +3,7 @@ package library
 import (
 	"cmp"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -399,22 +400,25 @@ func compile(k *Kind, q Query) (string, *where, string, error) {
 }
 
 // familiesOf is a WITH clause whose fam holds each family with a match for
-// cond: its root, its best match's place under order, and its matches.
-func familiesOf(k *Kind, cond, order string) string {
+// cond: its root, its best match's place under o and cursor, whether every
+// match comes after the page cursor (after), and its matches.
+func familiesOf(k *Kind, cond string, o order, after string) string {
 	return `WITH RECURSIVE m AS (
-		SELECT c.id, row_number() OVER (ORDER BY ` + order + `) AS pos FROM ` + from(k) + ` WHERE ` + cond + `
+		SELECT c.id, row_number() OVER (ORDER BY ` + o.sql() + `) AS pos, ` + after + ` AS after, ` + o.cursor() + ` AS cur
+		FROM ` + from(k) + ` WHERE ` + cond + `
 	), up AS (
 		SELECT m.id AS member, e.id, e.variant_of_id FROM m JOIN ` + k.Table + ` e ON e.id = m.id
 		UNION
 		SELECT up.member, p.id, p.variant_of_id FROM up JOIN ` + k.Table + ` p ON p.id = up.variant_of_id
 	), fam AS (
-		SELECT up.id AS root_id, min(m.pos) AS pos, array_agg(m.id ORDER BY m.id) AS matched
+		SELECT up.id AS root_id, min(m.pos) AS pos, bool_and(m.after) AS after, (array_agg(m.cur ORDER BY m.pos))[1] AS cur,
+			array_agg(m.id ORDER BY m.id) AS matched
 		FROM up JOIN m ON m.id = up.member WHERE up.variant_of_id IS NULL GROUP BY up.id
 	)`
 }
 
 // familyPage follows familiesOf: it selects cols for one page of fam's
-// faces, best placed first, then each family's root, size, and matches. The
+// faces after the cursor, best placed first, then each family's root, size, and matches. The
 // face is the shallowest live member, then the oldest, then the lowest ID;
 // with no live member, the root. all counts archived members in size.
 func familyPage(k *Kind, cols string, all bool, limit, offset string) string {
@@ -423,28 +427,111 @@ func familyPage(k *Kind, cols string, all bool, limit, offset string) string {
 		size = `count(*)::int`
 	}
 	return `, pg AS (
-		SELECT * FROM fam ORDER BY pos LIMIT ` + limit + ` OFFSET ` + offset + `
+		SELECT * FROM fam WHERE after ORDER BY pos LIMIT ` + limit + ` OFFSET ` + offset + `
 	), down AS (
 		SELECT pg.root_id, pg.root_id AS id, 0 AS depth FROM pg
 		UNION ALL
 		SELECT down.root_id, e.id, down.depth + 1 FROM down JOIN ` + k.Table + ` e ON e.variant_of_id = down.id
 	) CYCLE id SET is_cycle USING path, face AS (
-		SELECT pg.root_id, pg.pos, pg.matched, f.id, f.size FROM pg CROSS JOIN LATERAL (
+		SELECT pg.root_id, pg.pos, pg.cur, pg.matched, f.id, f.size FROM pg CROSS JOIN LATERAL (
 			SELECT (array_agg(e.id ORDER BY e.archived_at IS NOT NULL, d.depth, e.created_at, e.id))[1] AS id, ` + size + ` AS size
 			FROM down d JOIN ` + k.Table + ` e ON e.id = d.id WHERE d.root_id = pg.root_id
 		) f
 	)
-	SELECT ` + cols + `, face.root_id, face.size, face.matched
+	SELECT ` + cols + `, face.root_id, face.size, face.matched, face.cur
 	FROM face JOIN ` + from(k) + ` ON c.id = face.id ORDER BY face.pos`
+}
+
+// sortKey is an expression a search sorts by, and the SQL type a cursor
+// value is cast back to.
+type sortKey struct{ expr, typ string }
+
+// order sorts by keys and then c.id, all descending or all ascending, so
+// one row comparison resumes after a cursor. Keys are never null, since a
+// null would make the comparison null.
+type order struct {
+	keys []sortKey
+	desc bool
+}
+
+func (o order) all() []sortKey { return append(slices.Clone(o.keys), sortKey{"c.id", "bigint"}) }
+
+func (o order) sql() string {
+	dir := ""
+	if o.desc {
+		dir = " DESC"
+	}
+	parts := []string{}
+	for _, k := range o.all() {
+		parts = append(parts, k.expr+dir)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// cursor is a row's position under o, as a jsonb array of its keys.
+func (o order) cursor() string {
+	parts := []string{}
+	for _, k := range o.all() {
+		parts = append(parts, k.expr)
+	}
+	return "jsonb_build_array(" + strings.Join(parts, ", ") + ")"
+}
+
+var errBadCursor = fmt.Errorf("%w: bad cursor; send next_cursor from a search with the same sort", ErrInvalid)
+
+// after is the condition that a row comes after cursor under o.
+func (o order) after(w *where, cursor string) (string, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(cursor)
+	var vals []json.RawMessage
+	keys := o.all()
+	if err != nil || json.Unmarshal(raw, &vals) != nil || len(vals) != len(keys) {
+		return "", errBadCursor
+	}
+	c := w.arg(string(raw))
+	lhs, rhs := []string{}, []string{}
+	for i, k := range keys {
+		if !cursorValueIs(k.typ, vals[i]) {
+			return "", errBadCursor
+		}
+		lhs = append(lhs, k.expr)
+		if k.typ == "jsonb" {
+			rhs = append(rhs, fmt.Sprintf("(%s::jsonb -> %d)", c, i))
+		} else {
+			rhs = append(rhs, fmt.Sprintf("(%s::jsonb ->> %d)::%s", c, i, k.typ))
+		}
+	}
+	op := " > "
+	if o.desc {
+		op = " < "
+	}
+	return "(" + strings.Join(lhs, ", ") + ")" + op + "(" + strings.Join(rhs, ", ") + ")", nil
+}
+
+// cursorValueIs reports whether v casts to typ. Only jsonb may be JSON null.
+func cursorValueIs(typ string, v json.RawMessage) bool {
+	if typ == "jsonb" {
+		return true
+	}
+	if string(v) == "null" {
+		return false
+	}
+	var dst any
+	switch typ {
+	case "real":
+		dst = new(float32)
+	case "bigint":
+		dst = new(int64)
+	case "boolean":
+		dst = new(bool)
+	case "text":
+		dst = new(string)
+	}
+	return json.Unmarshal(v, dst) == nil
 }
 
 // Search returns one page of the library's entities of kind k that match q,
 // best match first when q has text, newest first otherwise. With q.Group
 // family, a page holds one hit per family, placed by its best match.
-//
-// ponytail: the cursor is an offset, so a page can repeat or skip an item
-// that was added or archived since the last page; switch to keyset paging
-// if that matters.
 func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error) {
 	cond, w, text, err := compile(k, q)
 	if err != nil {
@@ -461,10 +548,6 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 	switch {
 	case q.Page.Cursor != nil && q.Page.Number != 0:
 		return Results{}, fmt.Errorf("%w: send a page cursor or a page number, not both", ErrInvalid)
-	case q.Page.Cursor != nil:
-		if offset, err = strconv.Atoi(*q.Page.Cursor); err != nil || offset < 0 {
-			return Results{}, fmt.Errorf("%w: bad cursor", ErrInvalid)
-		}
 	case q.Page.Number < 0 || q.Page.Number > 1_000_000:
 		return Results{}, fmt.Errorf("%w: page number must be 1 to 1000000", ErrInvalid)
 	case q.Page.Number > 0:
@@ -511,16 +594,17 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 			return Results{}, fmt.Errorf("%w: unknown facet %q", ErrInvalid, name)
 		}
 	}
-	order := "c.id DESC"
+	o := order{desc: true}
 	switch q.Sort {
 	case "", "relevance":
 		if text != "" {
-			order = "ts_rank(r.search, websearch_to_tsquery('english', " + text + ")) DESC, c.id DESC"
+			o.keys = []sortKey{{"ts_rank(r.search, websearch_to_tsquery('english', " + text + "))", "real"}}
 		}
 	case "updated":
-		order = "c.head_revision_id DESC, c.id DESC"
+		o.keys = []sortKey{{"c.head_revision_id", "bigint"}}
 	case "name":
-		order = "lower(r.data->>'name'), c.id"
+		name := "lower(r.data->>'name')"
+		o = order{keys: []sortKey{{name + " IS NULL", "boolean"}, {"coalesce(" + name + ", '')", "text"}}}
 	case "created":
 	default:
 		key, ok := strings.CutPrefix(q.Sort, "enrichment:")
@@ -531,7 +615,13 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 		if err != nil {
 			return Results{}, err
 		}
-		order = cur + " DESC NULLS LAST, c.id DESC"
+		o.keys = []sortKey{{cur + " IS NOT NULL", "boolean"}, {"coalesce(" + cur + ", 'null')", "jsonb"}}
+	}
+	after := "TRUE"
+	if q.Page.Cursor != nil {
+		if after, err = o.after(w, *q.Page.Cursor); err != nil {
+			return Results{}, err
+		}
 	}
 	if q.Group != "" && q.Group != "family" {
 		return Results{}, fmt.Errorf("%w: unknown group %q", ErrInvalid, q.Group)
@@ -540,7 +630,7 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 	count := `SELECT count(*) FROM ` + from(k) + ` WHERE ` + cond
 	if q.Group == "family" {
 		// The count ignores order, whose sort arguments aren't in condArgs.
-		count = familiesOf(k, cond, "c.id") + ` SELECT count(*) FROM fam`
+		count = familiesOf(k, cond, order{}, "TRUE") + ` SELECT count(*) FROM fam`
 	}
 	if err := l.pool.QueryRow(ctx, count, condArgs...).Scan(&res.Total); err != nil {
 		return Results{}, fmt.Errorf("count matches: %w", err)
@@ -552,10 +642,10 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 	}
 	cols := `c.id, c.slug, r.id, c.archived_at, r.data, r.avatar_blob, ` + tags + `, ` + books + `, ` + targets + `, ` + cards + `, ` + entries + `, ` + enrichments
 	limit, skip := w.arg(size+1), w.arg(offset)
-	sql := `SELECT ` + cols + `, NULL::bigint, NULL::int, NULL::bigint[] FROM ` + from(k) + `
-		WHERE ` + cond + ` ORDER BY ` + order + ` LIMIT ` + limit + ` OFFSET ` + skip
+	sql := `SELECT ` + cols + `, NULL::bigint, NULL::int, NULL::bigint[], ` + o.cursor() + ` FROM ` + from(k) + `
+		WHERE ` + cond + ` AND ` + after + ` ORDER BY ` + o.sql() + ` LIMIT ` + limit + ` OFFSET ` + skip
 	if q.Group == "family" {
-		sql = familiesOf(k, cond, order) + familyPage(k, cols, mentionsArchived(q.Filter), limit, skip)
+		sql = familiesOf(k, cond, o, after) + familyPage(k, cols, mentionsArchived(q.Filter), limit, skip)
 	}
 	rows, err := l.pool.Query(ctx, sql, w.args...)
 	if err != nil {
@@ -567,8 +657,12 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 	var rootID *int64
 	var famSize *int
 	var matched []int64
-	_, err = pgx.ForEachRow(rows, []any{&h.ID, &h.Slug, &h.RevisionID, &h.ArchivedAt, &data, &avatar, &h.Tags, &h.Lorebooks, &h.Targets, &h.Cards, &h.Entries, &h.Enrichments, &rootID, &famSize, &matched},
+	var cur, next string
+	_, err = pgx.ForEachRow(rows, []any{&h.ID, &h.Slug, &h.RevisionID, &h.ArchivedAt, &data, &avatar, &h.Tags, &h.Lorebooks, &h.Targets, &h.Cards, &h.Entries, &h.Enrichments, &rootID, &famSize, &matched, &cur},
 		func() error {
+			if len(res.Hits) == size-1 {
+				next = base64.RawURLEncoding.EncodeToString([]byte(cur))
+			}
 			if rootID != nil {
 				h.Family = &Family{RootID: *rootID, Size: *famSize, Matched: matched}
 			}
@@ -596,7 +690,6 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 	}
 	if len(res.Hits) > size {
 		res.Hits = res.Hits[:size]
-		next := strconv.Itoa(offset + size)
 		res.NextCursor = &next
 	}
 	return res, nil

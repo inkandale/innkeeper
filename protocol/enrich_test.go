@@ -55,3 +55,22 @@ func TestCheckMeta(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckValuesDropsUndeclaredAndInvalid(t *testing.T) {
+	decl := map[string]Enrichment{
+		"rating": {Type: "score", Label: "Rating", Range: []float64{0, 5}},
+		"stars":  {Type: "score", Label: "Stars", Range: []float64{0, 5}},
+	}
+	kept, problems := CheckValues(decl, map[string]json.RawMessage{
+		"rating": json.RawMessage(`4.5`),
+		"stars":  json.RawMessage(`9`),
+		"views":  json.RawMessage(`120`),
+	})
+	if len(kept) != 1 || string(kept["rating"]) != `4.5` {
+		t.Fatalf("kept = %v", kept)
+	}
+	want := []string{"dropped stars: 9 is outside 0 to 5", "dropped views, which the plugin doesn't declare"}
+	if strings.Join(problems, "|") != strings.Join(want, "|") {
+		t.Fatalf("problems = %q, want %q", problems, want)
+	}
+}

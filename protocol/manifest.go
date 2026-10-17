@@ -51,6 +51,10 @@ type Manifest struct {
 	// Inputs are what an import plugin takes from the UI.
 	Inputs []string `toml:"inputs"`
 
+	// Bulk makes the core store an import's cards a checkpoint at a time, in
+	// one transaction, without queuing source detection.
+	Bulk bool `toml:"bulk"`
+
 	// SourceKinds are the site source kinds a pull-only plugin follows: the
 	// core binds each such source to its instance as remote_id kind:ref.
 	SourceKinds []string `toml:"source_kinds"`
@@ -262,6 +266,9 @@ func (m *Manifest) Validate() error {
 			errs = append(errs, fmt.Errorf("format %q listed twice", f))
 		}
 		seenFormats[f] = true
+	}
+	if !m.Has("import") && m.Bulk {
+		errs = append(errs, errors.New("bulk needs the import capability"))
 	}
 	if !m.Has("import") && len(m.Inputs) > 0 {
 		errs = append(errs, errors.New("inputs needs the import capability"))

@@ -161,6 +161,7 @@ func TestLibraryParameter(t *testing.T) {
 		{"GET", "/tags?library=999", nil},
 		{"POST", "/source-checks?library=999", nil},
 		{"POST", "/bulk", map[string]any{"action": "tag", "tags": []string{"x"}, "query": map[string]any{"text": "Brakka", "library": 999}}},
+		{"POST", "/bulk", map[string]any{"action": "collect", "collection": col.ID, "query": map[string]any{"text": "Brakka", "library": 999}}},
 	} {
 		e.call(req.method, req.path, req.body, 422, nil)
 	}

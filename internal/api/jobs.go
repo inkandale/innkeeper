@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -351,7 +350,11 @@ func (s *Server) jobRoutes(api huma.API) {
 					return nil, huma.Error400BadRequest("tags can't be blank")
 				}
 			case "collect", "uncollect":
-				cols, err := s.Lib.Collections(ctx, cmp.Or(q.Library, library.DefaultLibrary))
+				lib, err := s.checkLibrary(ctx, q.Library)
+				if err != nil {
+					return nil, err
+				}
+				cols, err := s.Lib.Collections(ctx, lib)
 				if err != nil {
 					return nil, s.fail(err)
 				}

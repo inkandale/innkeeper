@@ -7,3 +7,8 @@ if (!("EventSource" in globalThis)) {
     close() {}
   } as unknown as typeof EventSource;
 }
+
+// jsdom hides closed popovers, so tests couldn't find their items. Show them; real browsers do the hiding.
+const style = document.createElement("style");
+style.textContent = "[popover] { display: block !important; }";
+document.head.append(style);

@@ -105,3 +105,50 @@
 .toast.error {
   border-color: var(--danger);
 }
+
+.menu-button {
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-muted);
+  padding: 0 var(--space);
+  cursor: pointer;
+}
+
+.menu-button:hover {
+  border-color: var(--border);
+}
+
+.menu {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  padding: calc(var(--space) * 0.5);
+}
+
+.menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  color: inherit;
+  padding: calc(var(--space) * 0.5) var(--space);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.menu button:hover {
+  background: var(--bg);
+}
+
+/* Browsers without anchor positioning show the popover centered. */
+@supports (position-area: bottom) {
+  .menu {
+    margin: 0;
+    inset: auto;
+    position-area: bottom span-left;
+    position-try-fallbacks: flip-block;
+  }
+}

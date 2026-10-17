@@ -113,8 +113,8 @@ func (s *Server) catalogs(ctx context.Context) ([]catalogOut, error) {
 	return out, nil
 }
 
-// withMatches adds each item's library matches, with one query per kind.
-func (s *Server) withMatches(ctx context.Context, items []protocol.CatalogItem) ([]catalogHit, error) {
+// withMatches adds each item's matches in library lib, with one query per kind.
+func (s *Server) withMatches(ctx context.Context, lib int64, items []protocol.CatalogItem) ([]catalogHit, error) {
 	hits := make([]catalogHit, len(items))
 	byKind := map[string][]int{}
 	for i, it := range items {
@@ -131,7 +131,7 @@ func (s *Server) withMatches(ctx context.Context, items []protocol.CatalogItem) 
 			h := items[i].Hashes
 			hashes[j] = library.Hashes{ContentHash: h.ContentHash, TextSimhash: h.TextSimhash, ImagePhash: h.ImagePhash}
 		}
-		matches, err := s.Lib.Entities(k).MatchHashes(ctx, library.DefaultLibrary, hashes, library.NearDistance)
+		matches, err := s.Lib.Entities(k).MatchHashes(ctx, lib, hashes, library.NearDistance)
 		if err != nil {
 			return nil, err
 		}
@@ -142,13 +142,13 @@ func (s *Server) withMatches(ctx context.Context, items []protocol.CatalogItem) 
 	return hits, nil
 }
 
-// searchCatalog returns one page from a catalog with its library matches.
-func (s *Server) searchCatalog(ctx context.Context, id int64, p protocol.CatalogSearchParams) (catalogResults, error) {
+// searchCatalog returns one page from a catalog with its matches in library lib.
+func (s *Server) searchCatalog(ctx context.Context, id, lib int64, p protocol.CatalogSearchParams) (catalogResults, error) {
 	var page protocol.CatalogSearchResult
 	if _, err := s.catalogCall(ctx, id, protocol.MethodCatalogSearch, p, &page); err != nil {
 		return catalogResults{}, err
 	}
-	hits, err := s.withMatches(ctx, page.Items)
+	hits, err := s.withMatches(ctx, lib, page.Items)
 	if err != nil {
 		return catalogResults{}, s.fail(err)
 	}
@@ -177,7 +177,7 @@ func (s *Server) catalogRoutes(api huma.API) {
 					return nil, huma.Error400BadRequest("filters must be a JSON object: " + err.Error())
 				}
 			}
-			res, err := s.searchCatalog(ctx, in.ID, p)
+			res, err := s.searchCatalog(ctx, in.ID, library.DefaultLibrary, p)
 			if err != nil {
 				return nil, err
 			}

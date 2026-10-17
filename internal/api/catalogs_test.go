@@ -164,3 +164,27 @@ func TestSearchCatalogSources(t *testing.T) {
 	e.call("POST", "/search", map[string]any{"sources": []string{fmt.Sprintf("catalog:%d", e.importID)}}, 400, nil)
 	e.call("POST", "/search", map[string]any{"sources": []string{"chub"}}, 400, nil)
 }
+
+// A catalog source in a search matches against the searched library.
+func TestSearchCatalogSourcesMatchTheQueryLibrary(t *testing.T) {
+	e := newEnv(t)
+	inst := e.catalog("Archive", nil)
+	archive := e.createLibrary("Archive")
+	data := map[string]any{"name": "Carrow", "description": "A cheerful elven bard who sings of the sea."}
+	e.createCard(`{"name": "Carrow", "description": "A cheerful elven bard who sings of the sea."}`)
+	var there entityResult
+	e.call("POST", "/cards", map[string]any{"data": data, "library": archive.ID}, 201, &there)
+
+	var res searchResults
+	e.call("POST", "/search", map[string]any{"library": archive.ID, "sources": []string{fmt.Sprintf("catalog:%d", inst)}}, 200, &res)
+	var carrow []library.HashMatch
+	for _, it := range res.Catalogs[0].Items {
+		if it.ID == "carrow" {
+			carrow = it.Library
+		}
+	}
+	want := []library.HashMatch{{ID: there.ID, LibraryID: archive.ID, Reason: "content"}}
+	if !slices.Equal(carrow, want) {
+		t.Fatalf("carrow matches = %+v, want %+v", carrow, want)
+	}
+}

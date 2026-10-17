@@ -20,7 +20,6 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/inkandale/innkeeper/internal/db"
 	"github.com/inkandale/innkeeper/protocol"
@@ -413,12 +412,7 @@ func (r *Registry) RemoveData(ctx context.Context, name string) error {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	_, err = tx.Exec(ctx, `DELETE FROM plugin_instance WHERE plugin = $1`, name)
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.ConstraintName == "binding_instance_id_fkey" {
-		return ErrInUse
-	}
-	if err != nil {
+	if _, err := deleteInstances(ctx, tx, "plugin", name); err != nil {
 		return err
 	}
 	var database string

@@ -83,13 +83,13 @@ func instanceList[R, V any](ctx context.Context, s *Server, cache *sync.Map, m l
 	return inst, value, err
 }
 
-// eachWorking runs f for each instance that isn't broken, in parallel, and
+// eachWorking runs f for each usable instance, in parallel, and
 // returns when all finish or after 3 seconds. Slow ones finish in the
 // background and fill the list caches.
 func eachWorking(insts []plugins.InstanceInfo, f func(plugins.InstanceInfo)) {
 	var wg sync.WaitGroup
 	for _, i := range insts {
-		if i.BrokenError == nil {
+		if i.Usable() {
 			wg.Go(func() { f(i) })
 		}
 	}

@@ -163,7 +163,7 @@ func (s *Service) syncApps(ctx context.Context, only int64) ([]int64, error) {
 	}
 	var ids []int64
 	for _, in := range insts {
-		if in.BrokenError == nil {
+		if in.Usable() {
 			ids = append(ids, in.ID)
 		}
 	}

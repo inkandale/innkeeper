@@ -150,7 +150,7 @@ func (s *Service) Scan(ctx context.Context, report func(ScanProgress)) (ScanProg
 	// Includes 'unknown' bindings, so a target that gains pull gets checked.
 	// Followed sources are CheckSources' job, on their own schedule.
 	rows, err := s.pool.Query(ctx, `SELECT b.id FROM binding b JOIN plugin_instance i ON i.id = b.instance_id
-		WHERE i.broken_error IS NULL AND b.push ORDER BY b.id`)
+		WHERE i.broken_error IS NULL AND NOT i.disabled AND b.push ORDER BY b.id`)
 	if err != nil {
 		return p, err
 	}

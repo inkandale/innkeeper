@@ -34,7 +34,9 @@ var (
 	ErrUnknownPlugin = errors.New("plugin is not installed")
 	// ErrBroken means the instance's plugin failed to start. It stays broken
 	// until the owner changes the instance or a check starts it.
-	ErrBroken    = errors.New("plugin instance is broken")
+	ErrBroken = errors.New("plugin instance is broken")
+	// ErrDisabled means the owner disabled the instance; nothing uses it until they enable it.
+	ErrDisabled  = errors.New("plugin instance is disabled")
 	ErrInvalid   = errors.New("invalid plugin instance")
 	ErrNameTaken = errors.New("plugin instance name already in use")
 	// ErrInUse means cards are still bound to the instance.
@@ -299,6 +301,7 @@ type InstanceEdit struct {
 	Secrets       map[string]*string
 	OwnerSubject  *string
 	LibraryAccess *bool
+	Disabled      *bool
 	// DefaultBases maps a JSON pointer the owner just overrode to the default it replaced.
 	DefaultBases map[string]any
 }
@@ -438,12 +441,12 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 	_, err = tx.Exec(ctx, `UPDATE plugin_instance SET name = coalesce($2, name), config = coalesce($3, config),
 			secrets = $4, owner_subject = CASE WHEN $5 THEN nullif($6::text, '') ELSE owner_subject END,
 			library_access = coalesce($7, library_access), default_hashes = coalesce($8, default_hashes),
-			broken_error = NULL, broken_at = NULL, updated_at = now()
-		WHERE id = $1`, id, e.Name, config, sealed, e.OwnerSubject != nil, owner, e.LibraryAccess, newHashes)
+			disabled = coalesce($9, disabled), broken_error = NULL, broken_at = NULL, updated_at = now()
+		WHERE id = $1`, id, e.Name, config, sealed, e.OwnerSubject != nil, owner, e.LibraryAccess, newHashes, e.Disabled)
 	if err != nil {
 		return writeErr(err)
 	}
-	if e.OwnerSubject != nil || e.Config != nil || e.Secrets != nil {
+	if e.OwnerSubject != nil || e.Config != nil || e.Secrets != nil || e.Disabled != nil {
 		if _, err := tx.Exec(ctx, `DELETE FROM session WHERE instance_id = $1`, id); err != nil {
 			return err
 		}
@@ -560,39 +563,50 @@ func (r *Registry) InstanceWith(ctx context.Context, id int64, capability string
 
 // Instance returns what the plugin host needs to run an instance.
 func (r *Registry) Instance(ctx context.Context, id int64) (pluginhost.Instance, error) {
-	inst, broken, err := r.load(ctx, id)
-	if err == nil && broken != nil {
-		return pluginhost.Instance{}, fmt.Errorf("%w: %s", ErrBroken, *broken)
+	inst, st, err := r.load(ctx, id)
+	switch {
+	case err != nil:
+		return inst, err
+	case st.disabled:
+		return pluginhost.Instance{}, fmt.Errorf("%w: %d", ErrDisabled, id)
+	case st.broken != nil:
+		return pluginhost.Instance{}, fmt.Errorf("%w: %s", ErrBroken, *st.broken)
 	}
-	return inst, err
+	return inst, nil
 }
 
-// load is Instance without the broken check; broken is the stored error.
-func (r *Registry) load(ctx context.Context, id int64) (inst pluginhost.Instance, broken *string, err error) {
+// state is what Instance refuses an instance for.
+type state struct {
+	broken   *string
+	disabled bool
+}
+
+// load is Instance without the broken and disabled checks.
+func (r *Registry) load(ctx context.Context, id int64) (inst pluginhost.Instance, st state, err error) {
 	var plugin string
 	var config map[string]any
 	var sealed []byte
 	var updated time.Time
-	err = r.pool.QueryRow(ctx, `SELECT pi.plugin, pi.config, pi.secrets, pi.broken_error,
+	err = r.pool.QueryRow(ctx, `SELECT pi.plugin, pi.config, pi.secrets, pi.broken_error, pi.disabled,
 			greatest(pi.updated_at, coalesce(p.changed_at, pi.updated_at))
 		FROM plugin_instance pi LEFT JOIN plugin_install p ON p.name = pi.plugin WHERE pi.id = $1`, id).
-		Scan(&plugin, &config, &sealed, &broken, &updated)
+		Scan(&plugin, &config, &sealed, &st.broken, &st.disabled, &updated)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return inst, nil, ErrNotFound
+		return inst, st, ErrNotFound
 	}
 	if err != nil {
-		return inst, nil, err
+		return inst, st, err
 	}
 	m, ok := r.manifest(plugin)
 	if !ok {
-		return inst, nil, fmt.Errorf("%w: %s", ErrUnknownPlugin, plugin)
+		return inst, st, fmt.Errorf("%w: %s", ErrUnknownPlugin, plugin)
 	}
 	secrets, err := r.box.Open(sealed)
 	if err != nil {
-		return inst, nil, err
+		return inst, st, err
 	}
 	if err := os.MkdirAll(r.blobs.TmpDir(), 0o755); err != nil {
-		return inst, nil, err
+		return inst, st, err
 	}
 	return pluginhost.Instance{
 		ID:       strconv.FormatInt(id, 10),
@@ -605,7 +619,7 @@ func (r *Registry) load(ctx context.Context, id int64) (inst pluginhost.Instance
 			BlobTmp:     r.blobs.TmpDir(),
 			DatabaseURL: r.dsn(plugin),
 		},
-	}, broken, nil
+	}, st, nil
 }
 
 // CodecInstance returns the oldest working instance of a codec plugin that
@@ -615,7 +629,7 @@ func (r *Registry) CodecInstance(ctx context.Context, format string) (pluginhost
 		ID     int64
 		Plugin string
 	}
-	rows, err := r.pool.Query(ctx, `SELECT id, plugin FROM plugin_instance WHERE broken_error IS NULL ORDER BY id`)
+	rows, err := r.pool.Query(ctx, `SELECT id, plugin FROM plugin_instance WHERE broken_error IS NULL AND NOT disabled ORDER BY id`)
 	if err != nil {
 		return pluginhost.Instance{}, err
 	}
@@ -659,7 +673,7 @@ func (r *Registry) setBroken(ctx context.Context, id int64, version string, caus
 // app's cards, which tests its address and login. problem says why the
 // instance doesn't work; err means the check itself failed.
 func (r *Registry) Check(ctx context.Context, mgr *pluginhost.Manager, id int64) (problem, err error) {
-	inst, broken, err := r.load(ctx, id)
+	inst, st, err := r.load(ctx, id)
 	if errors.Is(err, ErrUnknownPlugin) {
 		return err, nil
 	}
@@ -672,7 +686,7 @@ func (r *Registry) Check(ctx context.Context, mgr *pluginhost.Manager, id int64)
 	} else if err != nil {
 		return nil, err
 	}
-	if broken != nil {
+	if st.broken != nil {
 		if err := r.setBroken(ctx, id, inst.Version, nil); err != nil {
 			return nil, err
 		}
@@ -729,11 +743,11 @@ func (r *Registry) InstancesOffering(ctx context.Context, mgr *pluginhost.Manage
 	}
 	out := []InstanceInfo{}
 	for _, info := range list {
-		if info.BrokenError != nil {
+		if !info.Usable() {
 			continue
 		}
 		inst, err := r.Instance(ctx, info.ID)
-		if errors.Is(err, ErrBroken) {
+		if errors.Is(err, ErrBroken) || errors.Is(err, ErrDisabled) {
 			continue
 		}
 		if err != nil {

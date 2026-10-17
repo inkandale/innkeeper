@@ -645,3 +645,40 @@ func TestInstanceStatus(t *testing.T) {
 		}
 	}
 }
+
+func TestDisabledInstanceIsSkipped(t *testing.T) {
+	ctx := context.Background()
+	box, err := secrets.New(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool := testdb.New(t)
+	reg := New(pool, map[string]*protocol.Manifest{
+		"codec": {Name: "codec", Version: "1", Capabilities: []string{"codec"}, Formats: []string{"png"}},
+	}, &blobstore.Store{Name: "library", Root: t.TempDir()}, box)
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "codec", Name: "codec"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	disabled := true
+	if err := reg.UpdateInstance(ctx, id, InstanceEdit{Disabled: &disabled}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.Instance(ctx, id); !errors.Is(err, ErrDisabled) {
+		t.Fatalf("Instance: err = %v, want ErrDisabled", err)
+	}
+	if _, err := reg.CodecInstance(ctx, "png"); !errors.Is(err, ErrNoCodec) {
+		t.Fatalf("CodecInstance: err = %v, want ErrNoCodec", err)
+	}
+	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "codec", Name: "codec 2"}); !errors.Is(err, ErrSingleton) {
+		t.Fatalf("second instance while disabled: err = %v, want ErrSingleton", err)
+	}
+
+	enabled := false
+	if err := reg.UpdateInstance(ctx, id, InstanceEdit{Disabled: &enabled}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.CodecInstance(ctx, "png"); err != nil {
+		t.Fatalf("after Enable: CodecInstance err = %v", err)
+	}
+}

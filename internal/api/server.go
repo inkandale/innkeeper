@@ -260,6 +260,8 @@ func (s *Server) failAs(who string, err error) error {
 		errors.Is(err, targets.ErrNewCopy),
 		errors.Is(err, targets.ErrBound):
 		return huma.Error409Conflict(err.Error())
+	case errors.Is(err, plugins.ErrDisabled):
+		return huma.Error409Conflict("plugin instance is disabled; enable it first")
 	case errors.Is(err, plugins.ErrBroken):
 		// The stored error can hold paths and plugin output, so it stays out of the response.
 		return huma.Error409Conflict("plugin instance is broken; fix its settings first")

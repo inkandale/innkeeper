@@ -126,7 +126,7 @@ func (s *Server) callbackURL(id int64) string {
 // authInstance returns an instance whose plugin can log people in.
 func (s *Server) authInstance(ctx context.Context, id int64) (pluginhost.Instance, error) {
 	inst, err := s.Registry.InstanceWith(ctx, id, "auth")
-	if errors.Is(err, plugins.ErrBroken) {
+	if errors.Is(err, plugins.ErrBroken) || errors.Is(err, plugins.ErrDisabled) {
 		s.Log.Warn("login provider is broken", "instance", id, "err", err)
 		return inst, huma.Error503ServiceUnavailable("login provider unavailable")
 	}

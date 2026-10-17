@@ -28,7 +28,7 @@ func (s *Service) followers(ctx context.Context) (map[int64][]string, error) {
 	out := map[int64][]string{}
 	for _, in := range insts {
 		m := manifests[in.Plugin]
-		if in.BrokenError != nil || m == nil || m.Has("push") {
+		if !in.Usable() || m == nil || m.Has("push") {
 			continue
 		}
 		out[in.ID] = []string{}
@@ -207,7 +207,7 @@ func (s *Service) checkSources(ctx context.Context, libraryID int64, only *libra
 	}
 	q := `SELECT b.id FROM binding b JOIN plugin_instance i ON i.id = b.instance_id
 		LEFT JOIN card c ON c.id = b.card_id LEFT JOIN lorebook l ON l.id = b.lorebook_id
-		WHERE NOT b.push AND NOT b.paused AND i.broken_error IS NULL AND coalesce(c.archived_at, l.archived_at) IS NULL
+		WHERE NOT b.push AND NOT b.paused AND i.broken_error IS NULL AND NOT i.disabled AND coalesce(c.archived_at, l.archived_at) IS NULL
 			AND (NOT b.imported OR (b.remote_state = 'changed' AND b.autosync))
 			AND b.id > $1 AND ($2::bigint = 0 OR coalesce(c.library_id, l.library_id) = $2)`
 	args := []any{int64(0), libraryID}

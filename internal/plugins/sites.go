@@ -35,12 +35,12 @@ func (r *Registry) SitesInstances(ctx context.Context) ([]pluginhost.Instance, e
 	var out []pluginhost.Instance
 	seen := map[string]bool{}
 	for _, i := range list {
-		if i.BrokenError != nil || seen[i.Plugin] {
+		if !i.Usable() || seen[i.Plugin] {
 			continue
 		}
 		inst, err := r.Instance(ctx, i.ID)
 		// Broken or deleted since the list was read.
-		if errors.Is(err, ErrBroken) || errors.Is(err, ErrNotFound) {
+		if errors.Is(err, ErrBroken) || errors.Is(err, ErrDisabled) || errors.Is(err, ErrNotFound) {
 			continue
 		}
 		if err != nil {

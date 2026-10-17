@@ -682,3 +682,53 @@ func TestDisabledInstanceIsSkipped(t *testing.T) {
 		t.Fatalf("after Enable: CodecInstance err = %v", err)
 	}
 }
+
+func TestConcurrentDisablesKeepOneLogin(t *testing.T) {
+	ctx := context.Background()
+	box, err := secrets.New(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := New(testdb.New(t), map[string]*protocol.Manifest{
+		"login": {Name: "login", Version: "1", Capabilities: []string{"auth"}},
+	}, &blobstore.Store{Name: "library", Root: t.TempDir()}, box)
+	owner, disabled := "owner", true
+	// The race window is narrow, so repeat with fresh pairs of logins.
+	for round := range 30 {
+		if _, err := reg.pool.Exec(ctx, `DELETE FROM plugin_instance`); err != nil {
+			t.Fatal(err)
+		}
+		var ids []int64
+		for _, name := range []string{"a", "b"} {
+			id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "login", Name: name, OwnerSubject: &owner})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ids = append(ids, id)
+		}
+		start := make(chan struct{})
+		errs := make(chan error, len(ids))
+		for _, id := range ids {
+			go func() {
+				<-start
+				errs <- reg.UpdateInstance(ctx, id, InstanceEdit{Disabled: &disabled})
+			}()
+		}
+		close(start)
+		var refused int
+		for range ids {
+			if err := <-errs; errors.Is(err, ErrLastLogin) {
+				refused++
+			} else if err != nil {
+				t.Fatal(err)
+			}
+		}
+		var usable int
+		if err := reg.pool.QueryRow(ctx, `SELECT count(*) FROM plugin_instance WHERE NOT disabled`).Scan(&usable); err != nil {
+			t.Fatal(err)
+		}
+		if refused != 1 || usable != 1 {
+			t.Fatalf("round %d: %d refused, %d usable logins, want 1 and 1", round, refused, usable)
+		}
+	}
+}

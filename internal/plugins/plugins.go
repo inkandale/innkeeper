@@ -425,6 +425,10 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 		return err
 	}
 	if e.Disabled != nil && *e.Disabled && r.HasCapability(plugin, "auth") && usable {
+		// One lock for every login disable, so two of them can't each see the other as the survivor.
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('login-providers'))`); err != nil {
+			return err
+		}
 		var others int
 		err := tx.QueryRow(ctx, `SELECT count(*) FROM plugin_instance
 			WHERE id <> $1 AND plugin = ANY($2) AND owner_subject IS NOT NULL AND broken_error IS NULL AND NOT disabled`,

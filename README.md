@@ -470,10 +470,11 @@ built-in `url-import` knows chub.ai, RisuRealm, and Character Tavern. An
 import's sources appear a few seconds after it finishes, when the
 `detect-sources` job runs.
 
-The server creates one instance of each built-in `sites` plugin that needs no
-settings, once. If you delete that instance, it stays deleted, and nothing is
-detected until a `sites` instance works again; entities imported meanwhile
-wait and are detected then.
+At startup and after an install, the server creates the instance of every
+plugin that allows one instance, isn't a theme or login plugin, and needs no
+secrets or required settings. An instance you delete stays deleted. Until a
+`sites` instance works, nothing is detected; imported entities wait and are
+detected then.
 
 Add or remove one yourself with the API, MCP tools, or CLI:
 

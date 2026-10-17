@@ -574,9 +574,9 @@ errors or times out is skipped and logged; detection never fails an import or
 a sync. While no `sites` instance works, imported items wait for detection
 until one does.
 
-At startup the core creates one instance of each built-in `sites` plugin whose
-manifest has no `secrets` and no `required` keys in `config`. It does this once
-per plugin, so an instance the owner deletes stays deleted.
+At startup and after an install, the core creates the instance of every plugin
+that allows one instance, isn't a theme or `auth` plugin, and has no `secrets`
+and no `required` keys in `config`. An instance the owner deletes stays deleted.
 
 ### `mcp`
 

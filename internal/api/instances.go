@@ -124,7 +124,7 @@ func (s *Server) instanceRoutes(api huma.API) {
 				p := pluginOut{Name: m.Name, Version: m.Version, Capabilities: m.Capabilities,
 					Secrets: orEmpty(m.Secrets), Formats: m.Formats, Inputs: m.Inputs, Config: m.Config,
 					Source: "builtin", Builtin: s.Registry.IsBuiltin(m.Name),
-					Description: m.Description, Category: m.Category, MultipleInstances: m.MultipleInstances,
+					Description: m.Description, Category: m.Category, MultipleInstances: m.AllowsManyInstances(),
 					Status: plugins.Status(m, byPlugin[m.Name])}
 				if m.Icon != "" {
 					p.Icon = "/api/plugins/" + m.Name + "/icon"

@@ -73,6 +73,31 @@ func TestBootstrapWithHashCreatesTheLogin(t *testing.T) {
 	}
 }
 
+func TestBootstrapReplacesBrokenSingletonLogin(t *testing.T) {
+	e := unclaimedEnv(t)
+	e.manifests["password-login"].MultipleInstances = false
+	ctx := context.Background()
+	if _, err := e.s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: "password-login", Name: "Old login"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.s.Bootstrap(ctx, validHash); err != nil {
+		t.Fatal(err)
+	}
+	insts, err := e.s.Registry.ListInstances(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, i := range insts {
+		if i.Plugin == "password-login" {
+			n++
+		}
+	}
+	if n != 2 {
+		t.Fatalf("%d login instances, want 2", n)
+	}
+}
+
 func TestBootstrapRejectsABadHash(t *testing.T) {
 	e := unclaimedEnv(t)
 	err := e.s.Bootstrap(context.Background(), "hunter2")

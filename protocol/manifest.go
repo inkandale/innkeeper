@@ -347,6 +347,9 @@ func (m *Manifest) CommandPath() string {
 // Has reports whether the plugin declares capability.
 func (m *Manifest) Has(capability string) bool { return slices.Contains(m.Capabilities, capability) }
 
+// AllowsManyInstances reports whether the owner may create more than one instance. Login plugins always may, so setup can replace a broken login.
+func (m *Manifest) AllowsManyInstances() bool { return m.MultipleInstances || m.Has("auth") }
+
 // IsTheme reports whether the plugin is a theme: a stylesheet and no process.
 func (m *Manifest) IsTheme() bool { return m.Has("theme") }
 

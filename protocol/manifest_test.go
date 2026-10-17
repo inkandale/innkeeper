@@ -421,3 +421,19 @@ func TestManifestDescriptionIsOneLine(t *testing.T) {
 		t.Fatalf("err = %v, want description must be one line", err)
 	}
 }
+
+func TestAllowsManyInstances(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		m    Manifest
+		want bool
+	}{
+		{"plain", Manifest{Capabilities: []string{"push"}}, false},
+		{"flagged", Manifest{Capabilities: []string{"push"}, MultipleInstances: true}, true},
+		{"login without the flag", Manifest{Capabilities: []string{"auth"}}, true},
+	} {
+		if got := c.m.AllowsManyInstances(); got != c.want {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
+	}
+}

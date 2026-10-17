@@ -164,7 +164,7 @@ func (r *Registry) EnsureSingletons(ctx context.Context) ([]string, error) {
 	for _, name := range slices.Sorted(maps.Keys(manifests)) {
 		m := manifests[name]
 		required, _ := m.Config["required"].([]any)
-		if m.MultipleInstances || m.IsTheme() || m.Has("auth") || len(m.Secrets) > 0 || len(required) > 0 {
+		if m.AllowsManyInstances() || m.IsTheme() || len(m.Secrets) > 0 || len(required) > 0 {
 			continue
 		}
 		ok, err := r.createSingletonOnce(ctx, name)

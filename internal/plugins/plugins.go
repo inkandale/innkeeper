@@ -259,7 +259,7 @@ func Status(m *protocol.Manifest, instances []InstanceInfo) string {
 		return "broken"
 	}
 	switch {
-	case m.MultipleInstances:
+	case m.AllowsManyInstances():
 		return "instances"
 	case m.IsTheme(), len(instances) > 0:
 		return "ready"
@@ -350,7 +350,7 @@ func (r *Registry) CreateInstance(ctx context.Context, n NewInstance) (int64, er
 	if err := lockPlugin(ctx, tx, n.Plugin); err != nil {
 		return 0, err
 	}
-	if !m.MultipleInstances {
+	if !m.AllowsManyInstances() {
 		var exists bool
 		err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM plugin_instance WHERE plugin = $1)`, n.Plugin).Scan(&exists)
 		if err != nil {

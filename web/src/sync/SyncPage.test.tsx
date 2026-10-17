@@ -11,7 +11,9 @@ function json(body: unknown, status = 200) {
 
 const now = new Date().toISOString();
 let posts: { path: string; body: unknown }[];
+let searchBodies: unknown[];
 beforeEach(() => {
+  searchBodies = [];
   posts = [];
   vi.stubGlobal(
     "fetch",
@@ -30,6 +32,7 @@ beforeEach(() => {
           { name: "folder", capabilities: ["import"] },
           { name: "url-import", capabilities: ["import", "sites", "pull"] },
         ]);
+      if (u.pathname === "/api/cards/search") searchBodies.push(await req.clone().json());
       if (u.pathname === "/api/cards/search")
         return json({
           hits: [], total: 10,
@@ -126,6 +129,7 @@ test("site sources get their own line: their changes and a check of every source
   expect(screen.queryByRole("row", { name: /URL import/ })).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Check for updates" }));
   await waitFor(() => expect(posts).toEqual([{ path: "/api/source-checks?library=2", body: undefined }]));
+  expect(searchBodies).toContainEqual(expect.objectContaining({ library: 2, facets: ["targets"] }));
   expect(await screen.findByText("Checking every source for updates…")).toBeInTheDocument();
   localStorage.clear();
 });

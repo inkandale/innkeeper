@@ -44,9 +44,10 @@ function useRun(start: () => Promise<Job>, text: string) {
 export function Sync() {
   const instances = useQuery(instancesQuery);
   const plugins = useQuery(pluginsQuery);
+  const library = useLibrary();
   const facets = useQuery({
-    queryKey: ["search", "card", "sync-counts"],
-    queryFn: async () => must(await api.POST("/cards/search", { body: { facets: ["targets"], page: { size: 1 } } })),
+    queryKey: ["search", "card", "sync-counts", library],
+    queryFn: async () => must(await api.POST("/cards/search", { body: { library, facets: ["targets"], page: { size: 1 } } })),
   });
   const runs = useQuery({
     queryKey: ["jobs", "target.reconcile"],
@@ -69,7 +70,6 @@ export function Sync() {
 
   const refresh = useRun(async () => must(await api.POST("/scans")), "Refreshing every app…");
   const sync = useRun(async () => must(await api.POST("/syncs", { body: {} })), "Syncing every app…");
-  const library = useLibrary();
   const checkSources = useRun(
     async () => must(await api.POST("/source-checks", { params: { query: { library } } })),
     "Checking every source for updates…",

@@ -6,7 +6,7 @@ import { text, tokens } from "../card/draft";
 import { Section } from "../card/Fields";
 import { OtherLibraries } from "../card/OtherLibraries";
 import { Sources } from "../card/Organize";
-import { Archive, Push, Revisions, Sync } from "../card/Panel";
+import { Archive, LibraryName, Push, Revisions, Sync } from "../card/Panel";
 import { VariantOf, Variants } from "../card/Variants";
 import { UpdateBanner } from "../card/Upstream";
 import { useEditor } from "../card/useEditor";
@@ -25,7 +25,7 @@ export function Lorebook() {
 
 function LorebookEditor({ id }: { id: number }) {
   const ed = useEditor("lorebook", id);
-  const forge = useForge({ subject: lorebookSubject, id, data: ed.data });
+  const forge = useForge({ subject: lorebookSubject, id, data: ed.data, library: ed.entity.data?.library_id ?? 1 });
   if (ed.entity.isPending) return null;
   if (ed.entity.isError) return <p className="error page">{ed.entity.error.message}</p>;
   const head = ed.entity.data;
@@ -41,6 +41,7 @@ function LorebookEditor({ id }: { id: number }) {
           onChange={(e) => ed.edit("name", e.target.value)}
         />
         <VariantOf kind="lorebook" entity={head} />
+        <LibraryName id={head.library_id} />
         <div className="row">
           <button className="button primary" disabled={!dirty || ed.save.isPending || ed.stale} onClick={() => ed.draft && ed.save.mutate(ed.draft)}>
             Save

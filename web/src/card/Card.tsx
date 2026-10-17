@@ -25,7 +25,7 @@ function CardEditor({ id }: { id: number }) {
   const qc = useQueryClient();
   const toast = useToast();
   const ed = useEditor("card", id);
-  const forge = useForge({ subject: cardSubject, id, data: ed.data });
+  const forge = useForge({ subject: cardSubject, id, data: ed.data, library: ed.entity.data?.library_id ?? 1 });
 
   // An image change saves at once, on the head. A draft started from that
   // head moves onto the new revision, since its data didn't change.

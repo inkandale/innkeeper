@@ -6,27 +6,27 @@ export type Named = { id: number | string; name: string; description?: string };
 
 /**
  * MentionType is what can follow @: its key, as in @cards/, and how its names are found. ofInstance types' names
- * belong to the chosen model setup, so find gets its instance ID.
+ * belong to the chosen model setup, the others to the library being edited; find gets both.
  */
 export type MentionType = {
   key: "cards" | "lorebooks" | "skills";
   noun: string;
   ofInstance?: boolean;
-  find: (name: string, size: number, instance?: number) => Promise<Named[]>;
+  find: (name: string, size: number, scope: { instance?: number; library: number }) => Promise<Named[]>;
 };
 
 // findNamed lists a kind's names that contain name, in any case.
-async function findNamed(kind: Kind, name: string, size: number): Promise<Named[]> {
+async function findNamed(kind: Kind, name: string, size: number, library: number): Promise<Named[]> {
   const res = must(
     await api.POST(route(kind, "/cards/search"), {
-      body: { filter: name ? { name } : undefined, fields: ["name"], sort: "name", page: { size } },
+      body: { library, filter: name ? { name } : undefined, fields: ["name"], sort: "name", page: { size } },
     }),
   );
   return (res.hits ?? []).map((h) => ({ id: h.id, name: typeof h.fields.name === "string" ? h.fields.name : "" }));
 }
 
 // findSkills lists the instance's skills whose names contain name, in any case.
-async function findSkills(name: string, size: number, instance?: number): Promise<Named[]> {
+async function findSkills(name: string, size: number, { instance }: { instance?: number }): Promise<Named[]> {
   const skills = must(await api.GET("/actions/skills")) ?? [];
   return skills
     .filter((s) => s.instance_id === instance && s.name.toLowerCase().includes(name.toLowerCase()))
@@ -35,8 +35,8 @@ async function findSkills(name: string, size: number, instance?: number): Promis
 }
 
 export const mentionTypes: MentionType[] = [
-  { key: "cards", noun: "card", find: (q, n) => findNamed("card", q, n) },
-  { key: "lorebooks", noun: "lorebook", find: (q, n) => findNamed("lorebook", q, n) },
+  { key: "cards", noun: "card", find: (q, n, { library }) => findNamed("card", q, n, library) },
+  { key: "lorebooks", noun: "lorebook", find: (q, n, { library }) => findNamed("lorebook", q, n, library) },
   { key: "skills", noun: "skill", ofInstance: true, find: findSkills },
 ];
 

@@ -37,14 +37,13 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
   const avatar = card.revision.avatar;
   const instances = useQuery(instancesQuery);
   const plugins = useQuery(pluginsQuery);
-  const library = useQuery(librariesQuery).data?.find((l) => l.id === card.library_id);
   return (
     <aside className="card-aside">
       {avatar ? <img className="portrait" src={thumb(avatar, 640)} alt="" /> : <div className="portrait" />}
       <Image sha={avatar} busy={avatarBusy} onAvatar={onAvatar} />
       <Identity data={data} edit={edit} lock={lock} />
       <VariantOf kind="card" entity={card} />
-      {library && <p className="muted">Library: {library.name}</p>}
+      <LibraryName id={card.library_id} />
       <div className="row">
         <button className="button primary" disabled={!dirty || saving} onClick={onSave}>
           Save
@@ -67,6 +66,12 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
       <Revisions kind="card" id={card.id} />
     </aside>
   );
+}
+
+/** LibraryName names the library a card or lorebook is in. */
+export function LibraryName({ id }: { id: number }) {
+  const library = useQuery(librariesQuery).data?.find((l) => l.id === id);
+  return library ? <p className="muted">Library: {library.name}</p> : null;
 }
 
 /** Identity edits the card's name, nickname, creator, version, and tags. */

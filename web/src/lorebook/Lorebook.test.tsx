@@ -14,7 +14,7 @@ const anvil = { keys: ["anvil"], content: "Heavy iron.\nRings when struck.", ena
 const bellows = { keys: ["bellows"], content: "Pumps air.", enabled: true, insertion_order: 100, extensions: { depth: 4 } };
 const data = { name: "Forge", description: "Smithing lore.", entries: [anvil, bellows] };
 const entity = {
-  id: 3, slug: "forge", provenance: "api", created_at: now, cards: [7],
+  id: 3, slug: "forge", provenance: "api", created_at: now, cards: [7], library_id: 2,
   revision: { id: 21, content_hash: "x", message: "", source: "ui", created_at: now, data },
 };
 
@@ -74,6 +74,7 @@ beforeEach(() => {
         head = { ...head, revision: { ...head.revision, id: head.revision.id + 1, data: body.data } };
         return json(head);
       }
+      if (path === "/api/libraries") return json([{ id: 1, name: "Main", cards: 0, lorebooks: 0, created_at: now }, { id: 2, name: "Chub archive", cards: 0, lorebooks: 1, created_at: now }]);
       if (path === "/api/lorebooks/3") return json(head);
       if (path === "/api/lorebooks/3/revisions") return json([head.revision]);
       if (path === "/api/cards/search") return json({ total: 1, hits: [{ id: 7, slug: "brakka", revision_id: 1, fields: { name: "Brakka" } }] });
@@ -138,6 +139,11 @@ test("keys, flags, depth, add, move, and delete", async () => {
     { ...bellows, constant: true, extensions: { depth: 2 } },
     { keys: [], content: "New lore.", enabled: true, insertion_order: 100, position: "before_char", extensions: {} },
   ]);
+});
+
+test("the panel names the lorebook's library", async () => {
+  renderAt("/lorebooks/3");
+  expect(await screen.findByText("Library: Chub archive")).toBeInTheDocument();
 });
 
 test("the panel links to history", async () => {

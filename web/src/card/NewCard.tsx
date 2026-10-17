@@ -45,7 +45,7 @@ export function NewCard() {
   useEffect(() => writeDraft(data), [data]);
   const edit = (key: string, value: unknown) => setData((d) => ({ ...d, [key]: value }));
   const dirty = changed({ baseId: 0, base: {}, data });
-  const forge = useForge({ subject: cardSubject, data });
+  const forge = useForge({ subject: cardSubject, data, library });
   const forgeBusy = forge.runs.some((r) => r.live) || forge.waiting.length > 0 || !!forge.pending;
   const save = useMutation({
     mutationFn: async () => {

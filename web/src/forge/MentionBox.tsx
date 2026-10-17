@@ -15,14 +15,14 @@ const lookupSize = 100;
 
 /**
  * useMentions resolves the mentions in an instruction, looking typed names up by their first word. instance is the
- * chosen model setup, whose skills a skill mention can name.
+ * chosen model setup, whose skills a skill mention can name; library holds the cards and lorebooks a mention can name.
  */
-export function useMentions({ text, picked }: Instruction, instance: number | undefined): Mention[] {
+export function useMentions({ text, picked }: Instruction, instance: number | undefined, library: number): Mention[] {
   const words = [...new Map(mentionsIn(text, picked, () => undefined).filter((m) => m.state === "pending").map((m) => [`${m.type}/${m.word}`, m])).values()];
   const found = useQueries({
     queries: words.map((m) => ({
-      queryKey: ["mention", m.type, m.word, typeOf(m.type).ofInstance ? instance : null],
-      queryFn: () => typeOf(m.type).find(m.word, lookupSize, instance),
+      queryKey: ["mention", m.type, m.word, typeOf(m.type).ofInstance ? instance : library],
+      queryFn: () => typeOf(m.type).find(m.word, lookupSize, { instance, library }),
       staleTime: 30_000,
     })),
   });
@@ -46,6 +46,7 @@ export function MentionBox(props: {
   onChange: (v: Instruction) => void;
   mentions: Mention[];
   instance: number | undefined;
+  library: number;
   onEnter?: () => void;
   autoFocus?: boolean;
 }) {
@@ -62,9 +63,9 @@ export function MentionBox(props: {
   const listId = useId();
   const optionId = (i: number) => `${listId}-${i}`;
   const names = useQuery({
-    queryKey: ["mention", "suggest", active?.type?.key, active?.query, active?.type?.ofInstance ? props.instance : null],
+    queryKey: ["mention", "suggest", active?.type?.key, active?.query, active?.type?.ofInstance ? props.instance : props.library],
     enabled: !!active?.type,
-    queryFn: () => active!.type!.find(active!.query, 8, props.instance),
+    queryFn: () => active!.type!.find(active!.query, 8, { instance: props.instance, library: props.library }),
     staleTime: 30_000,
   });
   const options: Option[] = !active

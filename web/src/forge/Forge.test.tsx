@@ -12,7 +12,7 @@ function json(body: unknown, status = 200) {
 
 const now = new Date().toISOString();
 const data = { name: "Brakka", description: "A grumpy dwarf.", personality: "Gruff." };
-const entity = { id: 7, slug: "brakka", provenance: "api", created_at: now, revision: { id: 11, content_hash: "x", message: "", source: "ui", created_at: now, data } };
+const entity = { id: 7, slug: "brakka", provenance: "api", created_at: now, library_id: 2, revision: { id: 11, content_hash: "x", message: "", source: "ui", created_at: now, data } };
 
 const decl = { applies: "card", instance_id: 1, instance_name: "Local model" };
 const allActions = [
@@ -48,7 +48,9 @@ let runs: unknown[];
 // Jobs the tab started; the card's job list holds only jobs.
 let created: ReturnType<typeof job>[];
 let runFails: boolean;
+let mentionSearches: unknown[];
 beforeEach(() => {
+  mentionSearches = [];
   actions = allActions;
   jobs = [];
   runs = [];
@@ -75,6 +77,7 @@ beforeEach(() => {
       }
       if (path === "/api/cards/search") {
         const body = await req.json();
+        mentionSearches.push(body);
         const names = [{ id: 1, name: "Billy" }, { id: 2, name: "Bill" }, { id: 4, name: "Billy Bob" }].filter((n) => n.name.toLowerCase().includes((body.filter?.name ?? "").toLowerCase()));
         return json({ hits: names.map((n) => ({ id: n.id, slug: "", revision_id: 1, fields: { name: n.name } })), total: names.length });
       }
@@ -195,6 +198,9 @@ test("an unknown mention blocks Run; a picked one sends its ID and the text as t
   await user.click(screen.getByRole("button", { name: "Run" }));
   await waitFor(() => expect(runs).toHaveLength(1));
   expect(runs[0]).toMatchObject({ action: "reforge", instruction: "@cards/Billy is", context: { cards: [1] } });
+  // Mentions name items in the card's own library.
+  expect(mentionSearches.length).toBeGreaterThan(0);
+  expect(mentionSearches.every((b) => (b as { library?: number }).library === 2)).toBe(true);
 });
 
 test("a new card's Forge runs the new action from the concept", async () => {

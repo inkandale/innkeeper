@@ -2,13 +2,13 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { useState } from "react";
 import { Link } from "react-router";
 import { api, exportFormats, must, mustOk, route, thumb, upload, type Kind } from "../api/client";
-import { bindingsQuery, instancesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
-import { FoundInArchives } from "../archives/FoundInArchives";
+import { bindingsQuery, instancesQuery, librariesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
 import { badgeClass } from "../cards/Tile";
 import { useToast } from "../shell/Toasts";
 import type { Entity } from "./Card";
 import { Crop } from "./CropDialog";
 import { Enrichments } from "./Enrichments";
+import { OtherLibraries } from "./OtherLibraries";
 import { strings, text, type Data } from "./draft";
 import { Logo, apps } from "../sync/Logo";
 import { PushPreview } from "../sync/PushPreview";
@@ -37,12 +37,14 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
   const avatar = card.revision.avatar;
   const instances = useQuery(instancesQuery);
   const plugins = useQuery(pluginsQuery);
+  const library = useQuery(librariesQuery).data?.find((l) => l.id === card.library_id);
   return (
     <aside className="card-aside">
       {avatar ? <img className="portrait" src={thumb(avatar, 640)} alt="" /> : <div className="portrait" />}
       <Image sha={avatar} busy={avatarBusy} onAvatar={onAvatar} />
       <Identity data={data} edit={edit} lock={lock} />
       <VariantOf kind="card" entity={card} />
+      {library && <p className="muted">Library: {library.name}</p>}
       <div className="row">
         <button className="button primary" disabled={!dirty || saving} onClick={onSave}>
           Save
@@ -57,7 +59,7 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
       <Push kind="card" id={card.id} dirty={dirty} />
       <Collections id={card.id} library={card.library_id} member={card.collections ?? []} />
       <Sources kind="card" id={card.id} />
-      <FoundInArchives kind="card" id={card.id} />
+      <OtherLibraries kind="card" id={card.id} />
       <Sync kind="card" id={card.id} />
       <Lorebooks ids={card.lorebooks ?? []} />
       <Enrichments id={card.id} />

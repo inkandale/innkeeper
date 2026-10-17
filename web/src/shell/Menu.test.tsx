@@ -13,6 +13,8 @@ test("opens its items from the ⋯ button and runs the one clicked", async () =>
   const button = screen.getByRole("button", { name: "More for sillytavern" });
   const list = document.getElementById(button.getAttribute("popovertarget")!)!;
   expect(list).toHaveAttribute("popover", "auto");
-  await user.click(screen.getByRole("button", { name: "Uninstall" }));
+  const item = screen.getByRole("button", { name: "Uninstall" });
+  expect(item.closest("[popover]")).toBe(list);
+  await user.click(item);
   expect(run).toHaveBeenCalled();
 });

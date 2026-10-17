@@ -37,6 +37,7 @@ export function ChoosePlugins() {
     onSuccess: (failed) => {
       setErrors(failed);
       qc.invalidateQueries({ queryKey: ["plugins"] });
+      qc.invalidateQueries({ queryKey: ["instances"] });
       if (Object.keys(failed).length === 0) navigate("/welcome/setup");
     },
   });

@@ -97,7 +97,7 @@ function FacetRow({ kind, row, q, onChange }: { kind: TermKind; row: Row; q: Car
           {term?.not ? "not " : ""}
           {row.label}
         </span>{" "}
-        <span className="count">{row.cards > facetCap ? "1,000+" : row.cards}</span>
+        <span className="count">{row.cards > facetCap ? `${facetCap.toLocaleString()}+` : row.cards}</span>
       </button>
       <button className="facet-act" aria-label={`Only ${row.label}`} onClick={() => onChange(onlyTerm(q, { kind, value: row.value, not: false }))}>
         only

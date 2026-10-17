@@ -87,3 +87,34 @@ func TestHasCapability(t *testing.T) {
 		t.Fatal("HasCapability is wrong")
 	}
 }
+
+func TestCheckRefusesDisabledInstance(t *testing.T) {
+	ctx := context.Background()
+	m, err := protocol.LoadManifest(testutil.FakePlugin(t, "-mode=wrong-version"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	box, err := secrets.New(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &blobstore.Store{Name: "library", Root: t.TempDir()}
+	reg := New(testdb.New(t), map[string]*protocol.Manifest{"fake": m}, store, box)
+	mgr := pluginhost.NewManager(nil, time.Minute, quiet)
+	t.Cleanup(mgr.Close)
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: "Fake"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	disabled := true
+	if err := reg.UpdateInstance(ctx, id, InstanceEdit{Disabled: &disabled}); err != nil {
+		t.Fatal(err)
+	}
+	if problem, err := reg.Check(ctx, mgr, id); !errors.Is(err, ErrDisabled) || problem != nil {
+		t.Fatalf("Check: problem = %v, err = %v, want ErrDisabled", problem, err)
+	}
+	got, err := reg.GetInstance(ctx, id)
+	if err != nil || got.BrokenError != nil {
+		t.Fatalf("after Check: broken = %v, err = %v; the plugin must not have started", got.BrokenError, err)
+	}
+}

@@ -714,6 +714,9 @@ func (r *Registry) Check(ctx context.Context, mgr *pluginhost.Manager, id int64)
 	if err != nil {
 		return nil, err
 	}
+	if st.disabled {
+		return nil, fmt.Errorf("%w: %d", ErrDisabled, id)
+	}
 	var startErr *pluginhost.StartError
 	if err := mgr.Start(ctx, inst); errors.As(err, &startErr) && ctx.Err() == nil {
 		return err, r.MarkBroken(context.WithoutCancel(ctx), id, inst.Version, err)

@@ -677,3 +677,30 @@ func TestSearchTerminatesOnAVariantCycle(t *testing.T) {
 		t.Fatalf("variant_of_root: %v", err)
 	}
 }
+
+func TestSearchStaysInLibrary(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	mine, _ := newCard(t, lib, "mine", `{"name": "Brakka", "description": "A dwarf.", "tags": ["dwarf"]}`)
+	theirs, _ := newCard(t, lib, "theirs", `{"name": "Brakka", "description": "A dwarf.", "tags": ["dwarf"]}`)
+	archive := newLibraryRow(t, lib, "Archive")
+	moveCard(t, lib, theirs, archive)
+
+	for name, tc := range map[string]struct {
+		library int64
+		want    int64
+	}{"default": {0, mine}, "archive": {archive, theirs}} {
+		q := Query{Library: tc.library, Text: "dwarf", Facets: []string{"tags"}}
+		res, err := lib.Search(ctx, Card, q)
+		if err != nil || !slices.Equal(hitIDs(res), []int64{tc.want}) || res.Total != 1 || res.Facets.Tags[0].Cards != 1 {
+			t.Fatalf("%s: search = %+v, %v", name, res, err)
+		}
+		q.Group = "family"
+		if res, err = lib.Search(ctx, Card, q); err != nil || !slices.Equal(hitIDs(res), []int64{tc.want}) || res.Total != 1 {
+			t.Fatalf("%s: family search = %+v, %v", name, res, err)
+		}
+		if ids, err := lib.SearchIDs(ctx, Card, q); err != nil || !slices.Equal(ids, []int64{tc.want}) {
+			t.Fatalf("%s: SearchIDs = %v, %v", name, ids, err)
+		}
+	}
+}

@@ -1,6 +1,7 @@
 package library
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -25,6 +26,9 @@ type Query struct {
 	Facets   []string `json:"facets,omitempty" doc:"Counts to return over every match: tags, collections, targets, sources. Lorebooks take targets and sources."`
 	Page     Page     `json:"page,omitempty"`
 	Group    string   `json:"group,omitempty" enum:"family" doc:"family returns one hit per family of variants: its face, with the family's matches. Paging and total count families; facets count cards or lorebooks."`
+
+	// Library is the library to search, or 0 for DefaultLibrary.
+	Library int64 `json:"-"`
 
 	// ScoreInstance is the enrich instance whose values enrichment filters,
 	// sort, and include use, or 0 for none. The caller resolves it from the
@@ -375,7 +379,7 @@ func compile(k *Kind, q Query) (string, *where, string, error) {
 		}
 	}
 	w := &where{k: k, score: q.ScoreInstance}
-	conds := []string{"TRUE"}
+	conds := []string{"c.library_id = " + w.arg(cmp.Or(q.Library, DefaultLibrary))}
 	if q.Filter != nil {
 		s, err := w.filter(*q.Filter)
 		if err != nil {

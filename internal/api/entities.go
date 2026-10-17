@@ -451,7 +451,7 @@ func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
 
 	huma.Register(api, huma.Operation{OperationID: "list-" + singular + "-in-other-libraries", Method: http.MethodGet,
 		Path: item + "/in-other-libraries", Summary: "Find a " + singular + " in other libraries",
-		Description: "The " + k.Plural + " in other libraries with the same content, near-identical text, or a similar avatar; closest first.", Tags: tags},
+		Description: "Up to 50 " + k.Plural + " in other libraries with the same content, near-identical text, or a similar avatar; closest first.", Tags: tags},
 		func(ctx context.Context, in *similarIn) (*hashMatchesOut, error) {
 			if _, err := ents.Get(ctx, in.ID); err != nil {
 				return nil, s.fail(err)

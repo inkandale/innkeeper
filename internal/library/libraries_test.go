@@ -350,3 +350,22 @@ func TestForkLinkIsNotASharedSource(t *testing.T) {
 		t.Errorf("sources facet = %+v", all.Facets.Sources)
 	}
 }
+
+func TestInOtherLibrariesStopsAtFifty(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	archive, err := lib.CreateLibrary(ctx, "Archive")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, _ := newCard(t, lib, "brakka", `{"name": "Brakka"}`)
+	for i := range 51 {
+		if _, _, err := lib.Cards.Create(ctx, archive.ID, "copy-"+strconv.Itoa(i), "upload", edit(`{"name": "Brakka"}`)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := lib.Cards.InOtherLibraries(ctx, id, NearDistance)
+	if err != nil || len(got) != 50 {
+		t.Fatalf("got %d matches, %v; want 50", len(got), err)
+	}
+}

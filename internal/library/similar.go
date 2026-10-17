@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -64,9 +65,14 @@ func nearSQL(k *Kind, op string) string {
 			AND bit_count((b.avatar_phash # q.image_phash)::bit(64)) <= $1`
 }
 
-// InOtherLibraries returns the entities in libraries other than id's whose
-// head revision is like id's, within maxDistance bits, closest first. An
-// entity that matches more than one way is listed once, by its closest reason.
+// maxOtherMatches is the most matches InOtherLibraries returns; an archive
+// can hold thousands of copies of a popular card.
+const maxOtherMatches = 50
+
+// InOtherLibraries returns up to maxOtherMatches entities in libraries other
+// than id's whose head revision is like id's, within maxDistance bits,
+// closest first. An entity that matches more than one way is listed once, by
+// its closest reason.
 func (s *Entities) InOtherLibraries(ctx context.Context, id int64, maxDistance int) ([]HashMatch, error) {
 	if maxDistance > NearDistance {
 		return nil, errWideDistance
@@ -82,7 +88,7 @@ func (s *Entities) InOtherLibraries(ctx context.Context, id int64, maxDistance i
 		SELECT * FROM (
 			SELECT DISTINCT ON (m.id) m.id, m.library_id, m.reason, m.distance FROM q CROSS JOIN LATERAL (`+nearSQL(s.k, "<>")+`) m
 			ORDER BY m.id, m.distance, m.reason <> 'content') best
-		ORDER BY distance, id`, maxDistance, id)
+		ORDER BY distance, id LIMIT `+strconv.Itoa(maxOtherMatches), maxDistance, id)
 	if err != nil {
 		return nil, err
 	}

@@ -295,11 +295,12 @@ func TestUpdateInstanceEndsSessions(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	name, owner, key := "Other", "owner", "k"
+	name, owner, key, off := "Other", "owner", "k", true
 	edits := map[string]InstanceEdit{
-		"owner":   {OwnerSubject: &owner},
-		"config":  {Config: map[string]any{"a": 1}},
-		"secrets": {Secrets: map[string]*string{"api_key": &key}},
+		"disabled": {Disabled: &off},
+		"owner":    {OwnerSubject: &owner},
+		"config":   {Config: map[string]any{"a": 1}},
+		"secrets":  {Secrets: map[string]*string{"api_key": &key}},
 	}
 	addSession()
 	if err := reg.UpdateInstance(ctx, id, InstanceEdit{Name: &name}); err != nil || sessions() != 1 {
@@ -666,6 +667,9 @@ func TestDisabledInstanceIsSkipped(t *testing.T) {
 	}
 	if _, err := reg.Instance(ctx, id); !errors.Is(err, ErrDisabled) {
 		t.Fatalf("Instance: err = %v, want ErrDisabled", err)
+	}
+	if _, err := reg.InstanceWith(ctx, id, "codec"); !errors.Is(err, ErrDisabled) {
+		t.Fatalf("InstanceWith: err = %v, want ErrDisabled", err)
 	}
 	if _, err := reg.CodecInstance(ctx, "png"); !errors.Is(err, ErrNoCodec) {
 		t.Fatalf("CodecInstance: err = %v, want ErrNoCodec", err)

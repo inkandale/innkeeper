@@ -216,3 +216,23 @@ func TestBrokenLoginProviderHidesError(t *testing.T) {
 		t.Fatalf("begin with broken provider: %s", r)
 	}
 }
+
+func TestDisabledLoginProviderIsNotListed(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	owner, disabled := "owner", true
+	second, err := e.s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: "fake", Name: "Second", OwnerSubject: &owner})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.s.Registry.UpdateInstance(ctx, e.loginID, plugins.InstanceEdit{Disabled: &disabled}); err != nil {
+		t.Fatal(err)
+	}
+	var providers []provider
+	if r := e.send("GET", "/auth/providers", nil); r.Status != 200 || json.Unmarshal(r.Body, &providers) != nil {
+		t.Fatalf("providers: %s", r)
+	}
+	if len(providers) != 1 || providers[0].ID != second {
+		t.Fatalf("providers = %+v, want only the enabled login %d", providers, second)
+	}
+}

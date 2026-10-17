@@ -38,6 +38,11 @@ func TestInstancesOfferingListsOnlyInstancesThatOfferTheService(t *testing.T) {
 	}
 	chat := create("Chat", protocol.MethodAIChat)
 	create("Embed", protocol.MethodAIEmbed)
+	off := create("Off", protocol.MethodAIChat)
+	disabled := true
+	if err := reg.UpdateInstance(ctx, off, InstanceEdit{Disabled: &disabled}); err != nil {
+		t.Fatal(err)
+	}
 
 	got, err := reg.InstancesOffering(ctx, mgr, protocol.MethodAIChat)
 	if err != nil {

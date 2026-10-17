@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -229,5 +230,20 @@ func TestEnsureSingletons(t *testing.T) {
 	}
 	if names, err := worker.EnsureSingletons(ctx); err != nil || len(names) != 0 {
 		t.Fatalf("after the owner deleted it: created %v, %v; want it to stay deleted", names, err)
+	}
+}
+
+func TestSitesInstancesSkipsDisabledInstance(t *testing.T) {
+	ctx := context.Background()
+	reg, _ := sitesRegistry(t)
+	old := addSites(t, reg, "a", "A", nil)
+	next := addSites(t, reg, "a", "A2", nil)
+	disabled := true
+	if err := reg.UpdateInstance(ctx, old, InstanceEdit{Disabled: &disabled}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := reg.SitesInstances(ctx)
+	if err != nil || len(got) != 1 || got[0].ID != strconv.FormatInt(next, 10) {
+		t.Fatalf("SitesInstances = %+v, %v; want only instance %d", got, err, next)
 	}
 }

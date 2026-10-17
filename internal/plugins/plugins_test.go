@@ -571,6 +571,7 @@ func TestPluginStatus(t *testing.T) {
 	}{
 		{"singleton with no instance", solo, nil, "needs_setup"},
 		{"singleton with a working instance", solo, []InstanceInfo{ok}, "ready"},
+		{"singleton with two legacy instances", solo, []InstanceInfo{ok, {ID: 3}}, "ready"},
 		{"singleton with a broken instance", solo, []InstanceInfo{bad}, "broken"},
 		{"multi with none", many, nil, "instances"},
 		{"multi with one broken", many, []InstanceInfo{ok, bad}, "broken"},

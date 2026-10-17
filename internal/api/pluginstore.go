@@ -112,7 +112,8 @@ func (s *Server) pluginStoreRoutes(api huma.API) {
 			}
 			created, err := s.Registry.EnsureSingletons(ctx)
 			if err != nil {
-				return nil, s.fail(err)
+				// The install succeeded; the next startup retries the instances.
+				s.Log.Error("create singleton instances after install", "plugin", in.Name, "err", err)
 			}
 			for _, p := range created {
 				s.detectWith(ctx, p)

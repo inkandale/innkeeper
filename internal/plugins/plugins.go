@@ -442,7 +442,9 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 // DeleteInstance removes an instance. Its jobs stay, without an instance,
 // and logins through it end. It returns ErrInUse while cards are bound to it.
 func (r *Registry) DeleteInstance(ctx context.Context, id int64) error {
-	tag, err := r.pool.Exec(ctx, `DELETE FROM plugin_instance WHERE id = $1`, id)
+	// Import bindings only record what an importer last sent, so they don't keep it.
+	tag, err := r.pool.Exec(ctx, `WITH b AS (DELETE FROM binding WHERE instance_id = $1 AND imported)
+		DELETE FROM plugin_instance WHERE id = $1`, id)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.ConstraintName == "binding_instance_id_fkey" {
 		return ErrInUse

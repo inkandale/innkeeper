@@ -257,6 +257,24 @@ func TestDeleteInstanceWithBindings(t *testing.T) {
 	}
 }
 
+func TestDeleteImporterDropsItsImportBindings(t *testing.T) {
+	ctx := context.Background()
+	reg, _ := newRegistry(t)
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: "Fake"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = reg.pool.Exec(ctx, `WITH c AS (INSERT INTO card (slug, provenance) VALUES ('a', 'fake:a') RETURNING id)
+		INSERT INTO binding (instance_id, card_id, remote_id, remote_state, accepted_data, accepted_hash, push, imported)
+		SELECT $1, id, 'fake:a', 'unchanged', '{}', '', false, true FROM c`, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.DeleteInstance(ctx, id); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+}
+
 func TestUpdateInstanceEndsSessions(t *testing.T) {
 	ctx := context.Background()
 	reg, _ := newRegistry(t)

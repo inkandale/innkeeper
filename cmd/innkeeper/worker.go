@@ -57,7 +57,7 @@ func worker() error {
 		return err
 	}
 	defer svc.close()
-	if err := svc.createBuiltinSites(ctx, log); err != nil {
+	if err := svc.ensureSingletons(ctx, log); err != nil {
 		return err
 	}
 

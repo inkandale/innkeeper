@@ -153,35 +153,34 @@ func (r *Registry) ParseSource(ctx context.Context, mgr *pluginhost.Manager, k *
 	return library.Source{}, fmt.Errorf("%w: no installed plugin knows source kind %q", library.ErrInvalid, in.Kind)
 }
 
-// CreateBuiltinSites creates one instance of each built-in plugin that
-// declares sites and needs no config or secrets, so a new server detects
-// sources with no setup. A setting records each plugin it ran for, so an
-// instance the owner deletes stays deleted. It returns how many it created.
-func (r *Registry) CreateBuiltinSites(ctx context.Context) (int, error) {
-	r.mu.RLock()
-	builtin := maps.Clone(r.builtin)
-	r.mu.RUnlock()
-	created := 0
-	for _, name := range slices.Sorted(maps.Keys(builtin)) {
-		m := builtin[name]
+// EnsureSingletons creates the instance of each loaded singleton plugin that
+// needs no setup, so it works as soon as it's installed. Themes have no
+// instance, and a login instance decides who signs in, so neither is made.
+// A setting records each plugin it ran for, so an instance the owner
+// deletes stays deleted. It returns the plugins it created instances for.
+func (r *Registry) EnsureSingletons(ctx context.Context) ([]string, error) {
+	manifests := r.Manifests()
+	var created []string
+	for _, name := range slices.Sorted(maps.Keys(manifests)) {
+		m := manifests[name]
 		required, _ := m.Config["required"].([]any)
-		if !m.Has("sites") || len(m.Secrets) > 0 || len(required) > 0 {
+		if m.MultipleInstances || m.IsTheme() || m.Has("auth") || len(m.Secrets) > 0 || len(required) > 0 {
 			continue
 		}
-		ok, err := r.createBuiltinOnce(ctx, name)
+		ok, err := r.createSingletonOnce(ctx, name)
 		if err != nil {
 			return created, fmt.Errorf("create %s instance: %w", name, err)
 		}
 		if ok {
-			created++
+			created = append(created, name)
 		}
 	}
 	return created, nil
 }
 
-// createBuiltinOnce runs in one transaction, so the api and worker starting
+// createSingletonOnce runs in one transaction, so the api and worker starting
 // together create one instance between them.
-func (r *Registry) createBuiltinOnce(ctx context.Context, plugin string) (bool, error) {
+func (r *Registry) createSingletonOnce(ctx context.Context, plugin string) (bool, error) {
 	sealed, err := r.box.Seal(nil)
 	if err != nil {
 		return false, err
@@ -191,6 +190,10 @@ func (r *Registry) createBuiltinOnce(ctx context.Context, plugin string) (bool, 
 		return false, err
 	}
 	defer tx.Rollback(ctx)
+	if err := lockPlugin(ctx, tx, plugin); err != nil {
+		return false, err
+	}
+	// The key predates singletons; renaming it would recreate deleted instances.
 	tag, err := tx.Exec(ctx, `INSERT INTO setting (key, value) VALUES ($1, 'created') ON CONFLICT DO NOTHING`,
 		"builtin-instance:"+plugin)
 	if err != nil || tag.RowsAffected() == 0 {

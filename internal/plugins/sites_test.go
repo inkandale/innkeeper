@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -187,48 +188,46 @@ func TestParseSource(t *testing.T) {
 	}
 }
 
-func TestCreateBuiltinSitesOnce(t *testing.T) {
+func TestEnsureSingletons(t *testing.T) {
 	ctx := context.Background()
 	dirs := Dirs{Builtin: t.TempDir(), Installed: t.TempDir()}
 	if err := os.Rename(testutil.FakePluginWith(t, []string{"sites"}), filepath.Join(dirs.Builtin, "fake")); err != nil {
 		t.Fatal(err)
 	}
-	sites := "protocol = 1\ncommand = [\"./x\"]\ncapabilities = [\"sites\"]\n"
-	writeManifest(t, filepath.Join(dirs.Builtin, "keyed"), "name = \"keyed\"\nversion = \"1\"\nsecrets = [\"key\"]\n"+sites)
-	writeManifest(t, filepath.Join(dirs.Builtin, "configured"), "name = \"configured\"\nversion = \"1\"\n"+sites+
+	// The fake allows many instances; this one is a singleton with no setup.
+	head := "version = \"1\"\nprotocol = 1\ncommand = [\"./x\"]\n"
+	writeManifest(t, filepath.Join(dirs.Builtin, "solo"), "name = \"solo\"\n"+head+"capabilities = [\"codec\"]\nformats = [\"png\"]\n")
+	writeManifest(t, filepath.Join(dirs.Builtin, "keyed"), "name = \"keyed\"\n"+head+"capabilities = [\"import\"]\nsecrets = [\"key\"]\n")
+	writeManifest(t, filepath.Join(dirs.Builtin, "configured"), "name = \"configured\"\n"+head+"capabilities = [\"import\"]\n"+
 		"[config]\ntype = \"object\"\nrequired = [\"url\"]\n")
-	writeManifest(t, filepath.Join(dirs.Builtin, "login"), manifestFor("login", "1.0.0"))
+	writeManifest(t, filepath.Join(dirs.Builtin, "login"), "name = \"login\"\n"+head+"capabilities = [\"auth\"]\n")
+	writeManifest(t, filepath.Join(dirs.Builtin, "many"), "name = \"many\"\n"+head+"capabilities = [\"import\"]\nmultiple_instances = true\n")
 	pool := testdb.New(t)
 	api, worker := openWith(t, pool, dirs), openWith(t, pool, dirs)
 
 	// The api and the worker start at once.
-	created := make(chan int, 2)
+	created := make(chan []string, 2)
 	for _, reg := range []*Registry{api, worker} {
 		go func() {
-			n, err := reg.CreateBuiltinSites(ctx)
+			names, err := reg.EnsureSingletons(ctx)
 			if err != nil {
 				t.Error(err)
 			}
-			created <- n
+			created <- names
 		}()
 	}
-	if n := <-created + <-created; n != 1 {
-		t.Fatalf("created %d instances, want 1", n)
+	if got := slices.Sorted(slices.Values(append(<-created, <-created...))); !slices.Equal(got, []string{"solo"}) {
+		t.Fatalf("created %v, want [solo]", got)
 	}
 	list, err := api.ListInstances(ctx)
-	if err != nil || len(list) != 1 || list[0].Plugin != "fake" {
-		t.Fatalf("instances = %+v, %v; want one of fake only", list, err)
-	}
-	mgr := pluginhost.NewManager(nil, time.Minute, quiet)
-	t.Cleanup(mgr.Close)
-	if got, err := api.DetectSources(ctx, mgr, library.Card, []byte(fakePage)); err != nil || tags(got) != "fake:x/y:" {
-		t.Fatalf("detect = %s, %v; want the built-in instance's source", tags(got), err)
+	if err != nil || len(list) != 1 || list[0].Plugin != "solo" {
+		t.Fatalf("instances = %+v, %v; want one of solo only", list, err)
 	}
 
 	if err := api.DeleteInstance(ctx, list[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	if n, err := worker.CreateBuiltinSites(ctx); err != nil || n != 0 {
-		t.Fatalf("after the owner deleted it: created %d, %v; want it to stay deleted", n, err)
+	if names, err := worker.EnsureSingletons(ctx); err != nil || len(names) != 0 {
+		t.Fatalf("after the owner deleted it: created %v, %v; want it to stay deleted", names, err)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"syscall"
 	"time"
 
@@ -73,16 +74,18 @@ func openServices(ctx context.Context, log *slog.Logger, maxConnsAtLeast int) (*
 
 func (s *services) close() { s.pool.Close() }
 
-// createBuiltinSites gives a new server its built-in sites instances, and
-// detects what was queued while it had none. The api and worker both run it,
-// so either one starting first is enough.
-func (s *services) createBuiltinSites(ctx context.Context, log *slog.Logger) error {
-	n, err := s.registry.CreateBuiltinSites(ctx)
+// ensureSingletons creates the instances singleton plugins need, and detects
+// sources if a sites plugin got one. The api and worker both run it, so
+// either one starting first is enough.
+func (s *services) ensureSingletons(ctx context.Context, log *slog.Logger) error {
+	created, err := s.registry.EnsureSingletons(ctx)
 	if err != nil {
 		return err
 	}
-	if n > 0 {
-		log.Info("created built-in sites instances", "count", n)
+	if len(created) > 0 {
+		log.Info("created singleton plugin instances", "plugins", created)
+	}
+	if slices.ContainsFunc(created, func(p string) bool { return s.registry.HasCapability(p, "sites") }) {
 		importer.EnqueueDetect(ctx, jobs.New(s.pool), log)
 	}
 	return nil

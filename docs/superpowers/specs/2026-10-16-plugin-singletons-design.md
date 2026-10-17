@@ -21,7 +21,7 @@ plugin's status.
 | Who decides | The manifest. `multiple_instances = true` allows more than one instance; without it, a plugin has at most one. It is a field beside `database`, not a capability, because each capability names protocol methods the plugin answers. |
 | Second instance of a singleton | `Registry.CreateInstance` refuses it with `plugins.ErrSingleton`; the API returns 409. The API, the MCP `create_instance` tool, and the UI all go through `CreateInstance`. |
 | Instance on install | A singleton with no required config and no secrets gets its instance at startup, for every loaded plugin, and after `POST /plugins/{name}/install`. Running at startup over every plugin gives existing servers the instances they lack. Themes get none. |
-| Login plugins | Never created automatically. A login instance decides who can sign in, so the owner always sets one up deliberately. |
+| Login plugins | Always allow many instances, with or without the flag (`Manifest.AllowsManyInstances`), because setup creates a new login when the only one is broken or has no owner. Never created automatically: a login instance decides who can sign in, so the owner always sets one up deliberately. |
 | Deleted instance | Stays deleted. The `builtin-instance:<name>` setting that `CreateBuiltinSites` already writes records each plugin the core created an instance for. The key keeps its name so existing servers keep that record. |
 | Existing extra instances | A server with two or more instances of a plugin that is now a singleton keeps them. The page stops offering to add more. |
 | Description and category | New manifest fields `description` and `category`. `index.toml` already has both, and the setup wizard groups by `category`; installed plugins now carry their own. The plugins repo's `indexcheck` requires each to match the manifest. |
@@ -48,8 +48,6 @@ In the plugins repo, these set `multiple_instances = true`:
 | ai | One per model provider |
 | folder | One per indexed folder |
 | chub-archive | One per takeout dump |
-| password-login | Setup creates a new login when the only one is broken or has no owner; a singleton would lock the owner out |
-
 Every plugin gets the `description` and `category` its `index.toml` entry
 already has, and each changed plugin's version is bumped in both files.
 

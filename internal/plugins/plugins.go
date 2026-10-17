@@ -549,7 +549,7 @@ func (r *Registry) instanceStatus(i InstanceInfo) string {
 	}
 	m, ok := r.manifest(i.Plugin)
 	if !ok {
-		return "ready"
+		return "broken"
 	}
 	required, _ := m.Config["required"].([]any)
 	for _, k := range required {

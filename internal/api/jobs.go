@@ -115,8 +115,8 @@ type bulkIn struct {
 	}
 }
 
-// usable checks that an instance exists, isn't broken, and its plugin has
-// capability, and returns it.
+// usable checks that an instance exists, isn't broken or disabled, and its
+// plugin has capability, and returns it.
 func (s *Server) usable(ctx context.Context, id int64, capability string) (pluginhost.Instance, error) {
 	inst, err := s.Registry.InstanceWith(ctx, id, capability)
 	if errors.Is(err, plugins.ErrIncapable) {

@@ -636,7 +636,11 @@ func TestInstanceStatus(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE plugin_instance SET disabled = true, broken_error = 'boom' WHERE id = $1`, off); err != nil {
 		t.Fatal(err)
 	}
-	for id, want := range map[int64]string{ready: "ready", missing: "needs_setup", broken: "broken", off: "disabled"} {
+	var ghost int64
+	if err := pool.QueryRow(ctx, `INSERT INTO plugin_instance (plugin, name) VALUES ('ghost', 'ghost') RETURNING id`).Scan(&ghost); err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[int64]string{ready: "ready", missing: "needs_setup", broken: "broken", off: "disabled", ghost: "broken"} {
 		got, err := reg.GetInstance(ctx, id)
 		if err != nil {
 			t.Fatal(err)

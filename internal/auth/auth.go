@@ -110,7 +110,7 @@ func (a *Auth) CreateSession(ctx context.Context, instanceID int64, subject stri
 	secret, h := newSecret("")
 	tag, err := a.pool.Exec(ctx, `INSERT INTO session (token_hash, instance_id, subject, expires_at)
 		SELECT $1, id, $3, now() + make_interval(secs => $4) FROM plugin_instance
-		WHERE id = $2 AND owner_subject = $3`, h, instanceID, subject, SessionTTL.Seconds())
+		WHERE id = $2 AND owner_subject = $3 AND NOT disabled`, h, instanceID, subject, SessionTTL.Seconds())
 	if err != nil {
 		return "", err
 	}

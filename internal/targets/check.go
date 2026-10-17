@@ -141,9 +141,9 @@ type ScanProgress struct {
 // maxErrors is how many check errors a scan's progress keeps.
 const maxErrors = 20
 
-// Scan checks every binding on a target that can pull, except on broken
-// instances. A binding that fails to check is counted, and the scan goes on.
-// It then counts each app's items that no binding uses. report gets the
+// Scan checks every binding on a target that can pull, except on broken or
+// disabled instances. A binding that fails to check is counted, and the scan
+// goes on. It then counts each app's items that no binding uses. report gets the
 // progress after each binding and each app.
 func (s *Service) Scan(ctx context.Context, report func(ScanProgress)) (ScanProgress, error) {
 	var p ScanProgress

@@ -76,6 +76,15 @@ func TestSessions(t *testing.T) {
 	if _, err := a.CreateSession(ctx, inst+1, "owner"); !errors.Is(err, ErrNotOwner) {
 		t.Fatalf("login through missing instance: %v", err)
 	}
+	if _, err := pool.Exec(ctx, `UPDATE plugin_instance SET disabled = true`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.CreateSession(ctx, inst, "owner"); !errors.Is(err, ErrNotOwner) {
+		t.Fatalf("login through disabled instance: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE plugin_instance SET disabled = false`); err != nil {
+		t.Fatal(err)
+	}
 	secret, err := a.CreateSession(ctx, inst, "owner")
 	if err != nil {
 		t.Fatal(err)

@@ -53,7 +53,7 @@ The `instances` value goes; whether a plugin allows many stays in `multiple_inst
 
 - A migration adds `disabled boolean NOT NULL DEFAULT false` to `plugin_instance`.
 - `PATCH /instances/{id}` takes `disabled`; `InstanceEdit` gains `Disabled *bool`. The MCP `update_instance` tool passes it through.
-- Every lookup that chooses an instance to use skips a disabled one, as it skips a broken one: `Registry.Instance` and `InstanceWith` return a new sentinel `plugins.ErrDisabled`, and `InstancesWith`, `CodecInstance`, `SitesInstances`, `InstancesOffering`, `settingsInstance`, the targets' followers, and `loginProviders` leave disabled instances out. The plan lists each call site found by grep.
+- Every lookup that chooses an instance to use skips a disabled one, as it skips a broken one: `Registry.Instance` and `InstanceWith` return a new sentinel `plugins.ErrDisabled`, and `CodecInstance`, `SitesInstances`, `InstancesOffering`, `settingsInstance`, the targets' followers, and `loginProviders` leave disabled instances out. `InstancesWith` lists every instance with the capability; each caller filters with `InstanceInfo.Usable()`. The plan lists each call site found by grep.
 - A job on a disabled instance fails with `ErrDisabled`; the API returns 409 for it, as for `ErrBroken`.
 - Disabling a login instance ends its sessions, as changing its owner does.
 - Disabling the last instance that `loginProviders` would list returns 409 with `plugins.ErrLastLogin`.

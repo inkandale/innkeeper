@@ -110,9 +110,11 @@ button, and a ⋯ menu.
 
 | Status | Shown | Primary button |
 |---|---|---|
-| `ready` | Ready | Update to *x*, else Settings if the plugin has config or secrets |
+| `ready` | Ready | Settings, if the plugin has config or secrets |
 | `needs_setup` | Needs setup | Set up, which opens the new-instance form |
-| `broken` | Broken, with the error | Settings |
+| `broken` | Broken, with the error | Settings, if the plugin has config or secrets |
+
+**Update to *x*** shows beside it whenever an update is available.
 
 Settings links to the instance page. For a singleton with more than one
 instance left from before this change, the card lists them as a

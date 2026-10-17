@@ -1,6 +1,6 @@
 image:
   repository: ghcr.io/inkandale/innkeeper
-  # Empty runs the release matching the chart's appVersion. `latest` follows main.
+  # Empty runs the release matching the chart's appVersion. `latest` follows develop.
   tag: ""
   pullPolicy: IfNotPresent
 

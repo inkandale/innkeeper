@@ -71,6 +71,7 @@ func worker() error {
 	go stopIdlePlugins(ctx, mgr)
 
 	tg := targets.New(svc.pool, svc.lib, svc.registry, mgr, log)
+	im.Targets = tg
 	// Serves library.call's tools in process; nothing listens on it.
 	tools := &api.Server{Lib: svc.lib, Queue: q, Registry: svc.registry, Auth: auth.New(svc.pool), Targets: tg, Plugins: mgr, Log: log}
 	runner := &actions.Runner{Lib: svc.lib, Registry: svc.registry, Plugins: mgr, Runs: runs, API: tools.APIHandler()}

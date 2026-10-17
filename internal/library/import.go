@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/inkandale/innkeeper/cardhash"
+	"github.com/inkandale/innkeeper/internal/blobstore"
 )
 
 const maxSlugLen = 60
@@ -234,6 +235,30 @@ func (l *Library) ImportItemTx(ctx context.Context, tx pgx.Tx, it PluginItem) (I
 	}
 	card.Autosync = append(lorebook.Autosync, card.Autosync...)
 	return card, nil
+}
+
+// ImportBatch stores items in one transaction, each as ImportItemTx does,
+// then runs then in it with what each item did. An item refused as invalid
+// fails alone, with its error in errs; any other failure rolls everything back.
+func (l *Library) ImportBatch(ctx context.Context, items []PluginItem, then func(tx pgx.Tx, got []Imported, errs []error) error) error {
+	got, errs := make([]Imported, len(items)), make([]error, len(items))
+	return pgx.BeginFunc(ctx, l.pool, func(tx pgx.Tx) error {
+		for i, it := range items {
+			// A savepoint, so a refused item leaves the transaction usable.
+			err := pgx.BeginFunc(ctx, tx, func(sp pgx.Tx) (err error) {
+				got[i], err = l.ImportItemTx(ctx, sp, it)
+				return err
+			})
+			if errors.Is(err, ErrInvalid) || errors.Is(err, blobstore.ErrInvalid) {
+				errs[i] = err
+				continue
+			}
+			if err != nil {
+				return fmt.Errorf("store %s: %w", it.Provenance, err)
+			}
+		}
+		return then(tx, got, errs)
+	})
 }
 
 // importBinding is an entity's import binding on the importing instance.

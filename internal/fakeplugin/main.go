@@ -285,6 +285,14 @@ type importOptions struct {
 	// Source gives each card a fake site page in data.source.
 	Source bool   `json:"source"`
 	Fail   string `json:"fail"` // retryable or fatal
+	// Text is added to each card's description, so a second run changes them.
+	Text string `json:"text"`
+	// Version, Created, and Values go on each emit.card.
+	Version string                     `json:"version"`
+	Created time.Time                  `json:"created"`
+	Values  map[string]json.RawMessage `json:"values"`
+	// CheckpointEvery sends a checkpoint after every this many cards; 0 means 1.
+	CheckpointEvery int `json:"checkpoint_every"`
 }
 
 func importRun(conn *protocol.Conn, blobTmp string, params json.RawMessage) (any, error) {
@@ -317,7 +325,7 @@ func importRun(conn *protocol.Conn, blobTmp string, params json.RawMessage) (any
 		_ = conn.Notify(protocol.NotifyEmitLorebook, protocol.EmitLorebook{Run: p.Run, Item: fmt.Sprintf("world-%d", i), Lorebook: book})
 	}
 	for i := cp.Next; i < opts.Cards; i++ {
-		data := map[string]any{"name": fmt.Sprintf("Fake %d", i), "description": fmt.Sprintf("Card number %d.", i)}
+		data := map[string]any{"name": fmt.Sprintf("Fake %d", i), "description": fmt.Sprintf("Card number %d.%s", i, opts.Text)}
 		if opts.Source {
 			data["source"] = []string{fmt.Sprintf("https://fake.example/u/card-%d", i)}
 		}
@@ -329,7 +337,8 @@ func importRun(conn *protocol.Conn, blobTmp string, params json.RawMessage) (any
 			card["spec"] = "chara_card_v2"
 		}
 		raw, _ := json.Marshal(card)
-		e := protocol.EmitCard{Run: p.Run, Item: fmt.Sprintf("card-%d", i), Card: raw}
+		e := protocol.EmitCard{Run: p.Run, Item: fmt.Sprintf("card-%d", i), Card: raw, Version: opts.Version,
+			Created: opts.Created, Values: opts.Values}
 		if opts.Avatar {
 			e.Avatar = filepath.Join(blobTmp, fmt.Sprintf("avatar-%d", i))
 			if err := os.WriteFile(e.Avatar, fmt.Appendf(nil, "avatar %d", i), 0o644); err != nil {
@@ -341,8 +350,10 @@ func importRun(conn *protocol.Conn, blobTmp string, params json.RawMessage) (any
 			os.Exit(5)
 		}
 		_ = conn.Notify(protocol.NotifyProgress, protocol.Progress{Run: p.Run, Done: int64(i + 1), Total: int64(opts.Cards)})
-		next, _ := json.Marshal(map[string]int{"next": i + 1})
-		_ = conn.Notify(protocol.NotifyCheckpoint, protocol.Checkpoint{Run: p.Run, Checkpoint: next})
+		if (i+1)%max(opts.CheckpointEvery, 1) == 0 {
+			next, _ := json.Marshal(map[string]int{"next": i + 1})
+			_ = conn.Notify(protocol.NotifyCheckpoint, protocol.Checkpoint{Run: p.Run, Checkpoint: next})
+		}
 	}
 	return struct{}{}, nil
 }

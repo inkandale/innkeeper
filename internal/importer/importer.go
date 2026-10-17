@@ -5,17 +5,22 @@
 package importer
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
 	"github.com/inkandale/innkeeper/internal/plugins"
+	"github.com/inkandale/innkeeper/internal/targets"
 	"github.com/inkandale/innkeeper/protocol"
 )
 
@@ -33,6 +38,8 @@ const maxErrors = 20
 // Payload is an import job's payload. Params go to the plugin unchanged.
 type Payload struct {
 	Params json.RawMessage `json:"params"`
+	// Library is where the items go; 0 means library.DefaultLibrary.
+	Library int64 `json:"library,omitempty"`
 }
 
 // Importer runs import and catalog ingest jobs.
@@ -45,6 +52,8 @@ type Importer struct {
 	// Runs.Handle.
 	Plugins *pluginhost.Manager
 	Runs    *pluginhost.Runs
+	// Targets applies an import's waiting updates whose binding has autosync on.
+	Targets *targets.Service
 	Log     *slog.Logger
 }
 
@@ -55,13 +64,19 @@ func New(lib *library.Library, reg *plugins.Registry, q *jobs.Queue, runs *plugi
 // progress is an import job's progress. Done, Total, and Message come from
 // the plugin; the counts are the core's.
 type progress struct {
-	Done     int64    `json:"done,omitempty"`
-	Total    int64    `json:"total,omitempty"`
-	Message  string   `json:"message,omitempty"`
-	Imported int64    `json:"imported"`
-	Skipped  int64    `json:"skipped"`
-	Failed   int64    `json:"failed"`
-	Errors   []string `json:"errors,omitempty"`
+	Done     int64  `json:"done,omitempty"`
+	Total    int64  `json:"total,omitempty"`
+	Message  string `json:"message,omitempty"`
+	Imported int64  `json:"imported"`
+	// Revised counts items that became a new revision of their card.
+	Revised int64 `json:"revised"`
+	// Pending counts items left as a source update on a card the owner edited.
+	Pending int64    `json:"pending"`
+	Skipped int64    `json:"skipped"`
+	Failed  int64    `json:"failed"`
+	Errors  []string `json:"errors,omitempty"`
+	// Warnings are problems that cost an item part of what it sent, such as an undeclared value.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // ingestProgress is a catalog ingest's progress: Done, Total, and Message
@@ -81,6 +96,13 @@ type session struct {
 	stores bool // the job's method.stores
 	ctx    context.Context
 	cancel context.CancelCauseFunc
+	// library and instance are where items go and which instance sent them.
+	library, instance int64
+	// bulk stores items a checkpoint at a time; buf holds those since the last.
+	bulk bool
+	buf  []library.PluginItem
+	// decl is the plugin's [enrichments], which values must match.
+	decl map[string]protocol.Enrichment
 
 	mu sync.Mutex
 	p  progress
@@ -127,7 +149,9 @@ func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
 	}
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
-	s := &session{im: im, run: r, plugin: inst.Manifest.Name, stores: m.stores, ctx: ctx, cancel: cancel}
+	s := &session{im: im, run: r, plugin: inst.Manifest.Name, stores: m.stores, ctx: ctx, cancel: cancel,
+		library: cmp.Or(payload.Library, library.DefaultLibrary), instance: *r.InstanceID, bulk: m.stores && inst.Manifest.Bulk,
+		decl: inst.Manifest.Enrichments}
 	// ponytail: items re-sent after a resume count as skipped a second time.
 	_ = json.Unmarshal(r.Progress, &s.p)
 
@@ -143,7 +167,11 @@ func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
 	// ponytail: a run abandoned on shutdown or a lost lease keeps going in
 	// the plugin until it finishes or the plugin is stopped.
 	err = im.Registry.Call(ctx, im.Plugins, inst, m.name, m.params(token, payload, r.Checkpoint), result)
-	if m.stores {
+	if err == nil && len(s.buf) > 0 {
+		// Items sent after the last checkpoint.
+		s.flush(nil)
+	}
+	if m.stores && !s.bulk {
 		EnqueueDetect(ctx, im.Queue, im.Log)
 	}
 	if err == nil && result != nil {
@@ -192,19 +220,22 @@ func (s *session) handle(method string, params json.RawMessage) {
 	case protocol.NotifyEmitCard:
 		var e protocol.EmitCard
 		if err := json.Unmarshal(params, &e); err != nil {
-			s.count(e.Item, false, &badItem{err})
+			s.count(e.Item, library.Imported{}, &badItem{err})
 			break
 		}
-		created, err := s.im.ingest(s.ctx, s.plugin, e.Item, library.PluginItem{Kind: library.Card, Data: e.Card, Avatar: e.Avatar})
-		s.count(e.Item, created, err)
+		values, problems := protocol.CheckValues(s.decl, e.Values)
+		for _, p := range problems {
+			s.warn(e.Item + ": " + p)
+		}
+		s.store(e.Item, library.PluginItem{Kind: library.Card, Data: e.Card, Avatar: e.Avatar, Version: e.Version,
+			Created: e.Created, Values: values})
 	case protocol.NotifyEmitLorebook:
 		var e protocol.EmitLorebook
 		if err := json.Unmarshal(params, &e); err != nil {
-			s.count(e.Item, false, &badItem{err})
+			s.count(e.Item, library.Imported{}, &badItem{err})
 			break
 		}
-		created, err := s.im.ingest(s.ctx, s.plugin, e.Item, library.PluginItem{Kind: library.Lorebook, Data: e.Lorebook, Name: "lorebook"})
-		s.count(e.Item, created, err)
+		s.store(e.Item, library.PluginItem{Kind: library.Lorebook, Data: e.Lorebook, Name: "lorebook"})
 	case protocol.NotifyProgress:
 		var p protocol.Progress
 		if json.Unmarshal(params, &p) == nil {
@@ -218,6 +249,10 @@ func (s *session) handle(method string, params json.RawMessage) {
 			s.fail(fmt.Errorf("plugin sent an invalid checkpoint: %w", err))
 			return
 		}
+		if s.bulk {
+			s.flush(c.Checkpoint)
+			return
+		}
 		s.publish()
 		if err := s.run.SaveCheckpoint(s.ctx, c.Checkpoint); err != nil {
 			s.fail(retryable(err))
@@ -227,7 +262,64 @@ func (s *session) handle(method string, params json.RawMessage) {
 	s.publish()
 }
 
-func (s *session) count(item string, created bool, err error) {
+// store stores an item the plugin emitted under its ID for the item, or in
+// bulk mode, buffers it until the next checkpoint.
+func (s *session) store(item string, it library.PluginItem) {
+	if item == "" {
+		s.count(item, library.Imported{}, &badItem{errors.New("item is empty")})
+		return
+	}
+	it.LibraryID, it.InstanceID, it.SkipDetect = s.library, s.instance, s.bulk
+	it.Provenance, it.Source = s.plugin+":"+item, "plugin:"+s.plugin
+	if s.bulk {
+		s.buf = append(s.buf, it)
+		return
+	}
+	got, err := s.im.Lib.ImportItem(s.ctx, it)
+	s.count(item, got, invalid(err))
+	s.autosync(got.Autosync)
+}
+
+// flush stores the buffered items and saves cp, which may be nil, in one
+// transaction.
+func (s *session) flush(cp json.RawMessage) {
+	items := s.buf
+	s.buf = nil
+	var auto []int64
+	err := s.im.Lib.ImportBatch(s.ctx, items, func(tx pgx.Tx, got []library.Imported, errs []error) error {
+		for i, it := range items {
+			s.count(strings.TrimPrefix(it.Provenance, s.plugin+":"), got[i], invalid(errs[i]))
+			auto = append(auto, got[i].Autosync...)
+		}
+		s.publish()
+		return s.run.SaveCheckpointTx(s.ctx, tx, cp)
+	})
+	if err != nil {
+		s.fail(retryable(err))
+		return
+	}
+	s.autosync(auto)
+}
+
+// autosync applies each waiting update an import left on a binding with
+// autosync on. One that fails stays in the changes queue.
+func (s *session) autosync(bindings []int64) {
+	for _, id := range bindings {
+		if _, err := s.im.Targets.ApplyUpdate(s.ctx, id); err != nil {
+			s.warn(fmt.Sprintf("autosync of binding %d: %v", id, err))
+		}
+	}
+}
+
+func (s *session) warn(msg string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.p.Warnings) < maxErrors {
+		s.p.Warnings = append(s.p.Warnings, msg)
+	}
+}
+
+func (s *session) count(item string, got library.Imported, err error) {
 	var bad *badItem
 	if err != nil && !errors.As(err, &bad) {
 		s.fail(retryable(fmt.Errorf("store %q: %w", item, err)))
@@ -241,8 +333,12 @@ func (s *session) count(item string, created bool, err error) {
 		if len(s.p.Errors) < maxErrors {
 			s.p.Errors = append(s.p.Errors, fmt.Sprintf("%s: %v", item, bad.err))
 		}
-	case created:
+	case got.Outcome == library.Created:
 		s.p.Imported++
+	case got.Outcome == library.Revised:
+		s.p.Revised++
+	case got.Outcome == library.Pending:
+		s.p.Pending++
 	default:
 		s.p.Skipped++
 	}

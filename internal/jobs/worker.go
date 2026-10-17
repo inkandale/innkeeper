@@ -77,13 +77,19 @@ func (r *Run) currentProgress() json.RawMessage {
 // SaveProgress saves the current progress now, for a job whose watchers
 // shouldn't wait for the next lease renewal.
 func (r *Run) SaveProgress(ctx context.Context) error {
-	return r.q.touch(ctx, &r.Job, r.worker, r.lease, r.currentProgress(), nil)
+	return r.q.touch(ctx, r.q.pool, &r.Job, r.worker, r.lease, r.currentProgress(), nil)
 }
 
 // SaveCheckpoint saves where a retry should resume, along with the current
 // progress. The retry finds it in Run.Checkpoint.
 func (r *Run) SaveCheckpoint(ctx context.Context, cp json.RawMessage) error {
-	return r.q.touch(ctx, &r.Job, r.worker, r.lease, r.currentProgress(), cp)
+	return r.q.touch(ctx, r.q.pool, &r.Job, r.worker, r.lease, r.currentProgress(), cp)
+}
+
+// SaveCheckpointTx is SaveCheckpoint inside the caller's transaction, so the
+// checkpoint commits with the work done before it.
+func (r *Run) SaveCheckpointTx(ctx context.Context, tx pgx.Tx, cp json.RawMessage) error {
+	return r.q.touch(ctx, tx, &r.Job, r.worker, r.lease, r.currentProgress(), cp)
 }
 
 func backoff(attempt int) time.Duration {
@@ -285,7 +291,7 @@ func (w *Worker) heartbeat(ctx context.Context, cancel context.CancelCauseFunc, 
 			return
 		case <-t.C:
 		}
-		err := r.q.touch(ctx, &r.Job, r.worker, r.lease, r.currentProgress(), nil)
+		err := r.q.touch(ctx, r.q.pool, &r.Job, r.worker, r.lease, r.currentProgress(), nil)
 		if errors.Is(err, ErrLeaseLost) {
 			cancel(ErrLeaseLost)
 			return

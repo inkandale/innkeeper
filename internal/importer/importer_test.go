@@ -18,6 +18,8 @@ import (
 	"github.com/inkandale/innkeeper/internal/pluginhost"
 	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/internal/secrets"
+	iservices "github.com/inkandale/innkeeper/internal/services"
+	"github.com/inkandale/innkeeper/internal/targets"
 	"github.com/inkandale/innkeeper/internal/testdb"
 	"github.com/inkandale/innkeeper/internal/testutil"
 	"github.com/inkandale/innkeeper/protocol"
@@ -60,9 +62,13 @@ func setupCaps(t *testing.T, caps []string, args ...string) *env {
 	q := jobs.New(pool)
 	runs := pluginhost.NewRuns(quiet)
 	im := New(lib, reg, q, runs, quiet)
-	mgr := pluginhost.NewManager(runs.Handle, time.Minute, quiet)
+	// As the worker wires it, so plugin calls go through the real broker.
+	broker := &iservices.Broker{Registry: reg, Runs: runs}
+	mgr := pluginhost.NewManager(broker.Handle(runs.Handle), time.Minute, quiet)
+	broker.Plugins = mgr
 	t.Cleanup(mgr.Close)
 	im.Plugins = mgr
+	im.Targets = targets.New(pool, lib, reg, mgr, quiet)
 
 	w := &jobs.Worker{Queue: q, Log: quiet, Poll: 50 * time.Millisecond,
 		Backoff: func(int) time.Duration { return 0 }, Handlers: map[string]jobs.Handler{Kind: im.Run, IngestKind: im.Run, DetectKind: im.RunDetect}}
@@ -86,8 +92,13 @@ func setupCaps(t *testing.T, caps []string, args ...string) *env {
 // run imports with params and returns the finished job and its progress.
 func (e *env) run(t *testing.T, params string) (jobs.Job, progress) {
 	t.Helper()
+	return e.runPayload(t, Payload{Params: json.RawMessage(params)})
+}
+
+func (e *env) runPayload(t *testing.T, payload Payload) (jobs.Job, progress) {
+	t.Helper()
 	ctx := context.Background()
-	j, err := e.q.Enqueue(ctx, jobs.Spec{Kind: Kind, InstanceID: &e.inst, Payload: Payload{Params: json.RawMessage(params)}})
+	j, err := e.q.Enqueue(ctx, jobs.Spec{Kind: Kind, InstanceID: &e.inst, Payload: payload})
 	if err != nil {
 		t.Fatal(err)
 	}

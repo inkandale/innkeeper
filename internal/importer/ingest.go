@@ -1,7 +1,6 @@
 package importer
 
 import (
-	"context"
 	"errors"
 
 	"github.com/inkandale/innkeeper/internal/blobstore"
@@ -21,15 +20,4 @@ func invalid(err error) error {
 		return &badItem{err}
 	}
 	return err
-}
-
-// ingest stores an item the plugin emitted under its ID for the item. It
-// returns whether the item is new.
-func (im *Importer) ingest(ctx context.Context, plugin, item string, it library.PluginItem) (bool, error) {
-	if item == "" {
-		return false, &badItem{errors.New("item is empty")}
-	}
-	it.Provenance, it.Source = plugin+":"+item, "plugin:"+plugin
-	got, err := im.Lib.ImportItem(ctx, it)
-	return got.Outcome == library.Created, invalid(err)
 }

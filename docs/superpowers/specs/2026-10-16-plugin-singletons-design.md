@@ -20,23 +20,25 @@ plugin's status.
 |---|---|
 | Who decides | The manifest. `multiple_instances = true` allows more than one instance; without it, a plugin has at most one. It is a field beside `database`, not a capability, because each capability names protocol methods the plugin answers. |
 | Second instance of a singleton | `Registry.CreateInstance` refuses it with `plugins.ErrSingleton`; the API returns 409. The API, the MCP `create_instance` tool, and the UI all go through `CreateInstance`. |
-| Instance on install | A singleton with no required config and no secrets gets its instance at startup (built-in plugins) and after `POST /plugins/{name}/install`. Themes still get none. |
-| Deleted instance | Stays deleted. The `builtin-instance:<name>` setting that `CreateBuiltinSites` already writes records each plugin the core created an instance for. |
+| Instance on install | A singleton with no required config and no secrets gets its instance at startup, for every loaded plugin, and after `POST /plugins/{name}/install`. Running at startup over every plugin gives existing servers the instances they lack. Themes get none. |
+| Login plugins | Never created automatically. A login instance decides who can sign in, so the owner always sets one up deliberately. |
+| Deleted instance | Stays deleted. The `builtin-instance:<name>` setting that `CreateBuiltinSites` already writes records each plugin the core created an instance for. The key keeps its name so existing servers keep that record. |
 | Existing extra instances | A server with two or more instances of a plugin that is now a singleton keeps them. The page stops offering to add more. |
-| Description | New manifest field `description`, one line. The catalog index already has one; installed plugins now carry their own. |
+| Description and category | New manifest fields `description` and `category`. `index.toml` already has both, and the setup wizard groups by `category`; installed plugins now carry their own. The plugins repo's `indexcheck` requires each to match the manifest. |
 | Status | `PluginOut.status` is computed by the core, so the UI shows it without recomputing. |
-| Groups | The page groups plugins by capability. The mapping lives in `Plugins.tsx`; core never learns plugin names. |
+| Groups | The page groups plugins by `category`, as the setup wizard does. Core never learns plugin names. |
 | Display names | Out of scope. The page shows the manifest `name`. |
 
 ## Manifest
 
-Two new fields in `protocol.Manifest`, documented in the manifest table in
+Three new fields in `protocol.Manifest`, documented in the manifest table in
 `docs/protocol.md`:
 
 | Field | Type | Meaning |
 |---|---|---|
-| `multiple_instances` | bool, default false | The owner may create more than one instance |
-| `description` | string | One line saying what the plugin does, shown on the Plugins page |
+| `multiple_instances` | bool, default false | The owner may create more than one instance. A theme can't set it |
+| `description` | string, one line | What the plugin does, shown on the Plugins page |
+| `category` | string | The group the Plugins page and the setup wizard show the plugin under, such as `Apps` |
 
 In the plugins repo, these set `multiple_instances = true`:
 
@@ -47,24 +49,27 @@ In the plugins repo, these set `multiple_instances = true`:
 | folder | One per indexed folder |
 | chub-archive | One per takeout dump |
 
-Every plugin gets a `description`, and each changed plugin's version is
-bumped.
+Every plugin gets the `description` and `category` its `index.toml` entry
+already has, and each changed plugin's version is bumped in both files.
 
 ## Core
 
 ### Creating instances
 
-`CreateInstance` checks the manifest and the count of existing instances in
-the same transaction as the insert, so two concurrent requests can't both
-create a singleton's instance.
+`CreateInstance` takes a transaction-scoped advisory lock on the plugin's
+name, counts its instances, and inserts, so two concurrent requests can't
+both create a singleton's instance. The automatic creation below takes the
+same lock.
 
 `CreateBuiltinSites` becomes `EnsureSingletons`, which runs over every
-installed plugin rather than built-in `sites` plugins only. A plugin
-qualifies when it is a singleton, is not a theme, and has no secrets and no
-required config. For each one, `createBuiltinOnce` runs as now: one
+loaded plugin rather than built-in `sites` plugins only. A plugin qualifies
+when it is a singleton, is not a theme or a login plugin, and has no secrets
+and no required config. For each one, `createBuiltinOnce` runs as now: one
 transaction that writes the setting and inserts the instance unless the
-plugin already has one. The startup call site keeps its place; the install
-handler calls it for the installed plugin after the install succeeds.
+plugin already has one. It returns the plugins it created instances for.
+The startup call site keeps its place, and the install handler calls it
+after an install succeeds. Either one queues a source detect when a created
+plugin has `sites`, as now.
 
 ### Plugin status
 
@@ -85,20 +90,10 @@ A theme's status is `ready`. `broken` wins over the others.
 
 1. A summary line: how many plugins are installed, have updates, and need
    setup.
-2. One card per plugin, under group headings. A plugin goes in the first
-   group whose capabilities it has:
-
-   | Group | Capabilities |
-   |---|---|
-   | Apps | push |
-   | AI | ai, action, enrich, records |
-   | Archives | catalog |
-   | Import & sites | import, sites, pull |
-   | Login | auth |
-   | Appearance | theme |
-   | Other | anything else |
-
-   Empty groups are not shown.
+2. One card per plugin, under a heading for its `category`. A plugin with
+   no category goes under Other. Groups sort alphabetically, with Other
+   last. Today's categories are AI, Apps, Archives, Formats, Import, and
+   Login.
 3. Plugins whose instances outlive an uninstall go in a **Not installed**
    group.
 4. **Available** plugins show as dashed cards with **Install**, after the
@@ -142,12 +137,15 @@ Go, against a real PostgreSQL:
 
 - `TestCreateInstanceRejectsSecondSingleton`: returns `ErrSingleton`; a
   `multiple_instances` plugin accepts a second.
-- `TestInstallCreatesSingletonInstance`: installing a singleton with no
-  setup creates its instance; one with a required config key does not.
-- `TestDeletedSingletonInstanceStaysDeleted`: after a delete, startup and a
-  reinstall don't create it again.
+- `TestEnsureSingletons`: creates an instance for a singleton with no setup;
+  skips one with a secret, one with required config, a login plugin, and a
+  `multiple_instances` plugin; the api and the worker running it at once
+  create one instance; a deleted instance stays deleted.
+- `TestPluginStore` (API): installing a plugin creates its instance.
 - `TestPluginStatus`: one case per `status` value, plus `broken` winning.
-- `protocol` manifest tests for the two new fields.
+- `protocol` manifest tests for the three new fields.
+- `indexcheck` in the plugins repo: a mismatched `description` or
+  `category` fails.
 
 Web, in `Plugins.test.tsx`:
 

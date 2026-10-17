@@ -13,3 +13,11 @@ ALTER TABLE blob ADD COLUMN phash_bands int[] GENERATED ALWAYS AS (hash_bands(av
 CREATE INDEX ON card_revision USING gin (text_bands);
 CREATE INDEX ON lorebook_revision USING gin (text_bands);
 CREATE INDEX ON blob USING gin (phash_bands);
+
+-- Search filters on library first, then sorts newest or last updated first.
+DROP INDEX card_library_id_idx;
+DROP INDEX lorebook_library_id_idx;
+CREATE INDEX ON card (library_id, id);
+CREATE INDEX ON card (library_id, head_revision_id, id);
+CREATE INDEX ON lorebook (library_id, id);
+CREATE INDEX ON lorebook (library_id, head_revision_id, id);

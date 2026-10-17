@@ -27,13 +27,13 @@ func (l *Library) SimilarCards(ctx context.Context, cardID int64, maxDistance in
 	}
 	rows, err := l.pool.Query(ctx, `
 		WITH q AS (
-			SELECT 1 AS i, r.content_hash, r.text_simhash, b.avatar_phash AS image_phash, c.library_id, c.id AS self
+			SELECT r.content_hash, r.text_simhash, b.avatar_phash AS image_phash, c.library_id, c.id AS self
 			FROM card c
 			JOIN card_revision r ON r.id = c.head_revision_id
 			LEFT JOIN blob b ON b.sha256 = r.avatar_blob
 			WHERE c.id = $2
 		)
-		SELECT id, reason, distance FROM (`+nearSQL(Card)+`) m
+		SELECT m.* FROM q CROSS JOIN LATERAL (`+nearSQL(Card)+`) m
 		ORDER BY distance, id, reason`, maxDistance, cardID)
 	if err != nil {
 		return nil, err
@@ -41,25 +41,25 @@ func (l *Library) SimilarCards(ctx context.Context, cardID int64, maxDistance in
 	return pgx.CollectRows(rows, pgx.RowToStructByPos[Match])
 }
 
-// nearSQL selects (i, id, reason, distance) for each probe in the CTE q (i,
-// content_hash, text_simhash, image_phash, library_id, self): the entities
-// of k in the probe's library, except self, whose head revision has the same
-// content_hash or a hash within $1 bits. Candidates come from shared hash
-// bands, which find every hash within NearDistance bits and no farther.
+// nearSQL selects (id, reason, distance) for one probe row q (content_hash,
+// text_simhash, image_phash, library_id, self): the entities of k in q's
+// library, except self, whose head revision has the same content_hash or a
+// hash within $1 bits. Candidates come from shared hash bands, which find
+// every hash within NearDistance bits. Run it in a LATERAL join so each
+// probe drives its own index lookups.
 func nearSQL(k *Kind) string {
 	head := ` JOIN ` + k.Table + ` e ON e.id = r.` + k.FK + ` AND e.head_revision_id = r.id
-		WHERE e.library_id = q.library_id AND e.id <> q.self`
+		WHERE e.library_id = q.library_id AND e.id <> q.self AND `
 	return `
-		SELECT q.i, e.id, 'content' AS reason, 0 AS distance
-		FROM q JOIN ` + k.RevTable + ` r ON r.content_hash = q.content_hash` + head + `
+		SELECT e.id, 'content' AS reason, 0 AS distance
+		FROM ` + k.RevTable + ` r` + head + `r.content_hash = q.content_hash
 		UNION ALL
-		SELECT q.i, e.id, 'text', bit_count((r.text_simhash # q.text_simhash)::bit(64))::int
-		FROM q JOIN ` + k.RevTable + ` r ON r.text_bands && hash_bands(q.text_simhash)` + head + `
+		SELECT e.id, 'text', bit_count((r.text_simhash # q.text_simhash)::bit(64))::int
+		FROM ` + k.RevTable + ` r` + head + `r.text_bands && hash_bands(q.text_simhash)
 			AND bit_count((r.text_simhash # q.text_simhash)::bit(64)) <= $1
 		UNION ALL
-		SELECT q.i, e.id, 'avatar', bit_count((b.avatar_phash # q.image_phash)::bit(64))::int
-		FROM q JOIN blob b ON b.phash_bands && hash_bands(q.image_phash)
-		JOIN ` + k.RevTable + ` r ON r.avatar_blob = b.sha256` + head + `
+		SELECT e.id, 'avatar', bit_count((b.avatar_phash # q.image_phash)::bit(64))::int
+		FROM blob b JOIN ` + k.RevTable + ` r ON r.avatar_blob = b.sha256` + head + `b.phash_bands && hash_bands(q.image_phash)
 			AND bit_count((b.avatar_phash # q.image_phash)::bit(64)) <= $1`
 }
 
@@ -106,7 +106,7 @@ func (s *Entities) MatchHashes(ctx context.Context, library int64, hashes []Hash
 			SELECT q.*, $5::bigint AS library_id, 0 AS self
 			FROM unnest($2::text[], $3::bigint[], $4::bigint[]) WITH ORDINALITY AS q (content_hash, text_simhash, image_phash, i)
 		)
-		SELECT DISTINCT ON (i, id) i::int, id, reason, distance FROM (`+nearSQL(s.k)+`) m
+		SELECT DISTINCT ON (i, id) i::int, id, reason, distance FROM q CROSS JOIN LATERAL (`+nearSQL(s.k)+`) m
 		ORDER BY i, id, distance, reason <> 'content'`, maxDistance, content, text, image, library)
 	if err != nil {
 		return nil, err

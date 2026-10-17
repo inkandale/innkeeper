@@ -217,32 +217,34 @@ const pushedStatus = `(SELECT bs.* FROM binding_status bs JOIN binding b ON b.id
 
 var capped = strconv.Itoa(facetCap + 1)
 
-// facetSQL selects each facet's rows for the IDs in match.
-var facetSQL = map[string]func(k *Kind, match string) string{
-	"tags": func(k *Kind, m string) string {
+// matching selects the IDs of k's entities that match cond.
+func matching(k *Kind, cond string) string { return `SELECT c.id FROM ` + from(k) + ` WHERE ` + cond }
+
+// facetSQL selects each facet's rows for the entities that match cond.
+var facetSQL = map[string]func(k *Kind, cond string) string{
+	"tags": func(k *Kind, cond string) string {
 		return `SELECT min(t.t), least(count(DISTINCT c.id), ` + capped + `)::int FROM ` + from(k) + `, ` + tagsOf + `
-			WHERE c.id IN (` + m + `) GROUP BY lower(t.t) ORDER BY count(DISTINCT c.id) DESC, lower(t.t)`
+			WHERE ` + cond + ` GROUP BY lower(t.t) ORDER BY count(DISTINCT c.id) DESC, lower(t.t)`
 	},
-	"collections": func(_ *Kind, m string) string {
+	"collections": func(k *Kind, cond string) string {
 		return `SELECT co.id, co.name, least(count(*), ` + capped + `)::int FROM collection_card cc JOIN collection co ON co.id = cc.collection_id
-			WHERE cc.card_id IN (` + m + `) GROUP BY co.id ORDER BY lower(co.name)`
+			WHERE cc.card_id IN (` + matching(k, cond) + `) GROUP BY co.id ORDER BY lower(co.name)`
 	},
-	"targets": func(k *Kind, m string) string {
+	"targets": func(k *Kind, cond string) string {
 		return `SELECT instance_id, status, least(count(*), ` + capped + `)::int FROM ` + pushedStatus + ` bs
-			WHERE ` + k.FK + ` IN (` + m + `) GROUP BY 1, 2 ORDER BY 1, 2`
+			WHERE ` + k.FK + ` IN (` + matching(k, cond) + `) GROUP BY 1, 2 ORDER BY 1, 2`
 	},
-	"sources": func(k *Kind, m string) string {
+	"sources": func(k *Kind, cond string) string {
 		return `SELECT kind, least(count(DISTINCT ` + k.FK + `), ` + capped + `)::int FROM ` + k.SourceTable + `
-			WHERE removed_at IS NULL AND ` + k.FK + ` IN (` + m + `) GROUP BY kind ORDER BY kind`
+			WHERE removed_at IS NULL AND ` + k.FK + ` IN (` + matching(k, cond) + `) GROUP BY kind ORDER BY kind`
 	},
 }
 
 // facets counts the matches of cond for each facet in names.
 func (l *Library) facets(ctx context.Context, k *Kind, names []string, cond string, args []any) (*Facets, error) {
-	match := `SELECT c.id FROM ` + from(k) + ` WHERE ` + cond
 	f := &Facets{}
 	for _, name := range names {
-		rows, err := l.pool.Query(ctx, facetSQL[name](k, match), args...)
+		rows, err := l.pool.Query(ctx, facetSQL[name](k, cond), args...)
 		if err != nil {
 			return nil, err
 		}
@@ -423,9 +425,10 @@ func familiesOf(k *Kind, cond string, o order, after string) string {
 }
 
 // familyPage follows familiesOf: it selects cols for one page of fam's
-// faces after the cursor, best placed first, then each family's root, size, and matches. The
-// face is the shallowest live member, then the oldest, then the lowest ID;
-// with no live member, the root. all counts archived members in size.
+// faces after the cursor, best placed first, then each family's root, size,
+// matches, and cursor. The face is the shallowest live member, then the
+// oldest, then the lowest ID; with no live member, the root. all counts
+// archived members in size.
 func familyPage(k *Kind, cols string, all bool, limit, offset string) string {
 	size := `count(*) FILTER (WHERE e.archived_at IS NULL)::int`
 	if all {

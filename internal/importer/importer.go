@@ -101,6 +101,10 @@ type session struct {
 	// bulk stores items a checkpoint at a time; buf holds those since the last.
 	bulk bool
 	buf  []library.PluginItem
+	// autosync holds stored updates for autosync to try once the plugin call
+	// returns: applying one waits for a running sync, which must not stall
+	// reading the plugin's notifications.
+	autosync []int64
 	// decl is the plugin's [enrichments], which values must match.
 	decl map[string]protocol.Enrichment
 
@@ -171,6 +175,7 @@ func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
 		// Items sent after the last checkpoint.
 		s.flush(nil)
 	}
+	s.applyAutosync()
 	if m.stores && !s.bulk {
 		EnqueueDetect(ctx, im.Queue, im.Log)
 	}
@@ -277,7 +282,7 @@ func (s *session) store(item string, it library.PluginItem) {
 	}
 	got, err := s.im.Lib.ImportItem(s.ctx, it)
 	s.count(item, got, invalid(err))
-	s.autosync(got.Autosync)
+	s.autosync = append(s.autosync, got.Autosync...)
 }
 
 // flush stores the buffered items and saves cp, which may be nil, in one
@@ -285,30 +290,28 @@ func (s *session) store(item string, it library.PluginItem) {
 func (s *session) flush(cp json.RawMessage) {
 	items := s.buf
 	s.buf = nil
-	var auto []int64
 	err := s.im.Lib.ImportBatch(s.ctx, items, func(tx pgx.Tx, got []library.Imported, errs []error) error {
 		for i, it := range items {
 			s.count(strings.TrimPrefix(it.Provenance, s.plugin+":"), got[i], invalid(errs[i]))
-			auto = append(auto, got[i].Autosync...)
+			s.autosync = append(s.autosync, got[i].Autosync...)
 		}
 		s.publish()
 		return s.run.SaveCheckpointTx(s.ctx, tx, cp)
 	})
 	if err != nil {
 		s.fail(retryable(err))
-		return
 	}
-	s.autosync(auto)
 }
 
-// autosync applies each waiting update an import left on a binding with
-// autosync on. One that fails stays in the changes queue.
-func (s *session) autosync(bindings []int64) {
-	for _, id := range bindings {
+// applyAutosync applies each waiting update the import left on a binding
+// with autosync on. One that fails stays in the changes queue.
+func (s *session) applyAutosync() {
+	for _, id := range s.autosync {
 		if _, err := s.im.Targets.ApplyUpdate(s.ctx, id); err != nil {
 			s.warn(fmt.Sprintf("autosync of binding %d: %v", id, err))
 		}
 	}
+	s.publish()
 }
 
 func (s *session) warn(msg string) {

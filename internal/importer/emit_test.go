@@ -3,10 +3,12 @@ package importer
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/inkandale/innkeeper/internal/jobs"
+	"github.com/inkandale/innkeeper/internal/library"
 )
 
 func TestEmitCardFieldsThroughTheBroker(t *testing.T) {
@@ -86,5 +88,57 @@ func TestBulkImportResumesWithoutDuplicates(t *testing.T) {
 	}
 	if n := e.count(t, "source_detect"); n != 0 {
 		t.Fatalf("bulk import queued %d entities for detection", n)
+	}
+}
+
+func TestAutosyncWaitsForASyncWithoutStallingTheImport(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	e.run(t, `{"cards": 2}`)
+	card := e.slugID(t, "card", "fake-0")
+	c, _ := e.lib.Cards.Get(ctx, card)
+	if _, err := e.lib.Cards.Update(ctx, card, c.HeadRevisionID, library.Edit{Source: "ui",
+		Data: json.RawMessage(`{"name": "Fake 0", "description": "Card number 0.", "personality": "Bold."}`)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.pool.Exec(ctx, `UPDATE binding SET autosync = true WHERE card_id = $1 AND imported`, card); err != nil {
+		t.Fatal(err)
+	}
+	// A running sync holds this lock, and applying an update waits for it.
+	conn, err := e.pool.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock(hashtextextended('innkeeper-sync', 0))`); err != nil {
+		t.Fatal(err)
+	}
+	j, err := e.q.Enqueue(ctx, jobs.Spec{Kind: Kind, InstanceID: &e.inst, Payload: Payload{Params: json.RawMessage(`{"cards": 2, "text": " Again."}`)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The card after the pending one is stored and checkpointed while the sync runs.
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		got, err := e.q.Get(ctx, j.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got.Checkpoint) == `{"next": 2}` || string(got.Checkpoint) == `{"next":2}` {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("import stalled behind the sync at checkpoint %s", got.Checkpoint)
+		}
+	}
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_unlock(hashtextextended('innkeeper-sync', 0))`); err != nil {
+		t.Fatal(err)
+	}
+	if done := e.wait(t, j.ID); done.Status != jobs.StatusSucceeded {
+		t.Fatalf("job %s: %s", done.Status, errText(done))
+	}
+	c, _ = e.lib.Cards.Get(ctx, card)
+	head, _ := e.lib.Cards.Revision(ctx, c.HeadRevisionID)
+	if !strings.Contains(string(head.Data), "Again.") || !strings.Contains(string(head.Data), "Bold.") {
+		t.Fatalf("autosync didn't merge the update: %s", head.Data)
 	}
 }

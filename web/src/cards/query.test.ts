@@ -21,7 +21,7 @@ const base: CardQuery = { library: 1, text: "", terms: [], sort: "updated", page
 const term = (kind: Term["kind"], value: string, not = false): Term => ({ kind, value, not });
 
 test("an empty URL is the default query", () => {
-  expect(parseQuery(new URLSearchParams())).toEqual(base);
+  expect(parseQuery(new URLSearchParams(), 1)).toEqual(base);
 });
 
 test("a query round-trips through the URL", () => {
@@ -35,7 +35,7 @@ test("a query round-trips through the URL", () => {
     view: "list",
     sharesSource: true,
   };
-  expect(parseQuery(toParams(q))).toEqual(q);
+  expect(parseQuery(toParams(q), 1)).toEqual(q);
 });
 
 test("defaults stay out of the URL, but the library is always named", () => {
@@ -50,18 +50,18 @@ test("without ?library= the query is in the given library", () => {
 });
 
 test("text searches default to relevance", () => {
-  expect(parseQuery(new URLSearchParams("q=x")).sort).toBe("relevance");
-  expect(parseQuery(new URLSearchParams("q=x&sort=name")).sort).toBe("name");
+  expect(parseQuery(new URLSearchParams("q=x"), 1).sort).toBe("relevance");
+  expect(parseQuery(new URLSearchParams("q=x&sort=name"), 1).sort).toBe("name");
 });
 
 test("bad values fall back to defaults", () => {
-  const q = parseQuery(new URLSearchParams("page=-2&size=7&sort=size&view=x&f=color:red&f=nocolon"));
+  const q = parseQuery(new URLSearchParams("page=-2&size=7&sort=size&view=x&f=color:red&f=nocolon"), 1);
   expect(q).toEqual(base);
 });
 
 test("terms with values their section can't take are dropped, including old target links", () => {
   const bad = ["target:2:ahead", "target:0", "target:x", "state:pushed", "collection:", "collection:-1", "tag:", "source:"];
-  const q = parseQuery(new URLSearchParams(bad.map((f) => ["f", f])));
+  const q = parseQuery(new URLSearchParams(bad.map((f) => ["f", f])), 1);
   expect(q.terms).toEqual([]);
 });
 
@@ -158,7 +158,7 @@ test("lorebooks have no tag or collection sections", () => {
 });
 
 test("toLorebookSearch asks for linked cards and sync", () => {
-  const q = parseQuery(new URLSearchParams("q=anvil&f=source:chub&page=2"));
+  const q = parseQuery(new URLSearchParams("q=anvil&f=source:chub&page=2"), 1);
   expect(toLorebookSearch(q)).toMatchObject({
     text: "anvil",
     filter: { and: [{ source: "chub" }] },
@@ -171,8 +171,8 @@ test("toLorebookSearch asks for linked cards and sync", () => {
 
 test("score terms and enrichment sorts round-trip through the URL", () => {
   const q: CardQuery = { ...base, terms: [term("score", "quality:70..100"), term("score", "voice:none")], sort: "enrichment:quality" };
-  expect(parseQuery(toParams(q))).toEqual(q);
-  const bad = parseQuery(new URLSearchParams("f=score:quality:..&f=score:Quality:1..&sort=enrichment:Bad"));
+  expect(parseQuery(toParams(q), 1)).toEqual(q);
+  const bad = parseQuery(new URLSearchParams("f=score:quality:..&f=score:Quality:1..&sort=enrichment:Bad"), 1);
   expect(bad).toEqual(base);
 });
 
@@ -193,7 +193,7 @@ test("setScore replaces a key's term and clears it when empty", () => {
 test("score ranges take negative and exponent numbers", () => {
   const q = setScore(base, { key: "mood", gte: -1, lte: 1 });
   expect(q.terms).toEqual([term("score", "mood:-1..1")]);
-  expect(parseQuery(toParams(q))).toEqual(q);
+  expect(parseQuery(toParams(q), 1)).toEqual(q);
   expect(filterFor(q.terms)).toEqual({ and: [{ enrichment: "mood", gte: -1, lte: 1 }] });
   expect(parseScore("mood:-2.5e-1..1E2")).toEqual({ key: "mood", gte: -0.25, lte: 100 });
 });

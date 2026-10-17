@@ -11,14 +11,17 @@ function json(body: unknown, status = 200) {
 
 const now = new Date().toISOString();
 let calls: string[];
+let refuse: { status: number; detail: string } | undefined;
 beforeEach(() => {
   calls = [];
+  refuse = undefined;
   localStorage.clear();
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
       const path = new URL(req.url).pathname;
       if (req.method !== "GET") calls.push(`${req.method} ${path} ${await req.text()}`);
+      if (req.method !== "GET" && refuse) return json({ detail: refuse.detail }, refuse.status);
       if (path === "/api/libraries" && req.method === "GET")
         return json([
           { id: 1, name: "Library", cards: 12, lorebooks: 1, created_at: now },
@@ -81,4 +84,26 @@ test("a wrong name deletes nothing", async () => {
   renderLibraries();
   await userEvent.click(await screen.findByRole("button", { name: "Delete Chub archive" }));
   expect(calls).toEqual([]);
+});
+
+test("a refused create says why", async () => {
+  refuse = { status: 409, detail: "a library named Drafts already exists" };
+  renderLibraries();
+  await userEvent.type(await screen.findByRole("textbox", { name: "New library" }), "Drafts{Enter}");
+  expect(await screen.findByText("a library named Drafts already exists")).toBeInTheDocument();
+});
+
+test("a refused delete says why", async () => {
+  refuse = { status: 409, detail: "a delete is already running" };
+  vi.stubGlobal("prompt", () => "Chub archive");
+  renderLibraries();
+  await userEvent.click(await screen.findByRole("button", { name: "Delete Chub archive" }));
+  expect(await screen.findByText("a delete is already running")).toBeInTheDocument();
+});
+
+test("a mistyped name says nothing was deleted", async () => {
+  vi.stubGlobal("prompt", () => "chub");
+  renderLibraries();
+  await userEvent.click(await screen.findByRole("button", { name: "Delete Chub archive" }));
+  expect(screen.getByText("That isn't Chub archive's name, so nothing was deleted.")).toBeInTheDocument();
 });

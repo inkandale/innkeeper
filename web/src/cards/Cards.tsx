@@ -65,7 +65,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const q = keys.data && !scored ? withoutScores(asked) : asked;
   const scoresOff = q !== asked;
   // The selection belongs to one search: paging keeps it, a new search clears it.
-  const key = JSON.stringify([q.text, q.terms]);
+  const key = JSON.stringify([q.library, q.text, q.terms]);
   const [stored, setSel] = useState<Selection>(() => emptySelection(key));
   // Reset rather than hide, so going back to an earlier search doesn't revive its picks.
   if (stored.key !== key) setSel(emptySelection(key));
@@ -209,7 +209,8 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
         {/* Hidden, not unmounted, so closing it keeps the started imports listed. */}
         {(imp.file || imp.url) && (
           <section className="import-panel" aria-label={`Import ${noun}`} hidden={!importOpen}>
-            <ImportForm {...imp} library={q.library} />
+            {/* Keyed by library, so a switch clears the imports listed for the old one. */}
+            <ImportForm key={q.library} {...imp} library={q.library} />
           </section>
         )}
         {res.isError && <p className="error">{res.error.message}</p>}

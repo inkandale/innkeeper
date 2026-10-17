@@ -7,12 +7,12 @@ export function CardPicker({
   kind,
   label,
   onPick,
-  library = 1,
+  library,
 }: {
   kind: Kind;
   label: string;
   onPick: (id: number, name: string) => void;
-  library?: number;
+  library: number;
 }) {
   const [text, setText] = useState("");
   const [q, setQ] = useState("");

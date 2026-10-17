@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useFollowLibrary } from "../shell/library";
 import { Link, useParams } from "react-router";
 import { api, must } from "../api/client";
 import { Stale } from "../card/Conflict";
@@ -26,6 +27,7 @@ export function Lorebook() {
 function LorebookEditor({ id }: { id: number }) {
   const ed = useEditor("lorebook", id);
   const forge = useForge({ subject: lorebookSubject, id, data: ed.data, library: ed.entity.data?.library_id ?? 1 });
+  useFollowLibrary(ed.entity.data?.library_id);
   if (ed.entity.isPending) return null;
   if (ed.entity.isError) return <p className="error page">{ed.entity.error.message}</p>;
   const head = ed.entity.data;

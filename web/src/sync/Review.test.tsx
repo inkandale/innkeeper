@@ -53,6 +53,7 @@ const bookCmp = {
 let progress: Snapshot;
 let cardBody: typeof cardCmp;
 let compares: string[];
+let pickerSearches: unknown[];
 let resolved: unknown[];
 let stale: boolean;
 let changesGets: number;
@@ -109,6 +110,7 @@ beforeEach(() => {
         }
         return json({ remote_id: "a", action: "bind", card_id: 1 });
       }
+      if (u.pathname === "/api/cards/search") pickerSearches.push(await req.clone().json());
       if (u.pathname === "/api/cards/search") return json({ total: 1, hits: [{ id: 77, slug: "belle", revision_id: 1, fields: { name: "Belle" } }] });
       return json({}, 404);
     }),
@@ -256,13 +258,17 @@ test("a stale resolve reloads the comparison", async () => {
   expect(await screen.findByText(/compare again/)).toBeInTheDocument();
 });
 
-test("Other match compares with any library card", async () => {
+test("Other match compares with any card in the current library", async () => {
+  pickerSearches = [];
+  localStorage.setItem("innkeeper.library", "2");
   renderReview();
   const user = userEvent.setup();
   await user.type(await screen.findByRole("textbox", { name: "Other match" }), "Bel");
   await user.click(screen.getByRole("button", { name: "Search" }));
   await user.click(await screen.findByRole("button", { name: "Belle" }));
   await waitFor(() => expect(compares).toContain("77"));
+  expect(pickerSearches).toContainEqual(expect.objectContaining({ library: 2, text: "Bel" }));
+  localStorage.clear();
 });
 
 test("a drift review compares with the named card", async () => {

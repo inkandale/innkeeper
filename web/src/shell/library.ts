@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { useSearchParams } from "react-router";
 import { librariesQuery } from "../api/queries";
 
@@ -32,6 +33,22 @@ export function useLibrary(): number {
   const libraries = useQuery(librariesQuery).data;
   const library = libraryParam(params) ?? rememberedLibrary();
   return libraries && !libraries.some((l) => l.id === library) ? 1 : library;
+}
+
+/** useFollowLibrary puts library in the URL, so the switcher and rail follow the card or lorebook being viewed. */
+export function useFollowLibrary(library: number | undefined) {
+  const [params, setParams] = useSearchParams();
+  const named = libraryParam(params);
+  useEffect(() => {
+    if (library && named !== library)
+      setParams(
+        (p) => {
+          p.set("library", String(library));
+          return p;
+        },
+        { replace: true },
+      );
+  }, [library, named, setParams]);
 }
 
 /** withLibrary adds ?library= to an app path, keeping any query it has. */

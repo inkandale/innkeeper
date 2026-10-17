@@ -107,6 +107,13 @@ describe("library switcher", () => {
     expect(localStorage.getItem("innkeeper.library")).toBe("2");
   });
 
+  test("choosing a library on Sync stays on Sync", async () => {
+    const router = renderShell("/sync?library=1");
+    await screen.findByRole("option", { name: "Chub archive" });
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Library" }), "2");
+    expect(router.state.location.pathname + router.state.location.search).toBe("/sync?library=2");
+  });
+
   test("choosing a library from a card page opens its cards", async () => {
     const router = renderShell("/cards/7");
     await screen.findByRole("option", { name: "Chub archive" });

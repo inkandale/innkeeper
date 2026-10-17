@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { Toasts } from "../shell/Toasts";
@@ -664,4 +664,27 @@ test("without ?library= the page opens the last library used", async () => {
   renderCards("/cards");
   await screen.findByText("Brakka");
   expect(searches).toContainEqual(expect.objectContaining({ library: 3, fields: ["name", "avatar"] }));
+});
+
+test("switching library clears a select-all, so a bulk action can't hit the new library", async () => {
+  localStorage.setItem("innkeeper.library.ungrouped", "true");
+  const { router } = renderCards("/cards?f=tag:fantasy&library=1");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
+  await user.click(screen.getByRole("button", { name: "Select all 49 matching" }));
+  expect(screen.getByText("All 49 matching cards")).toBeInTheDocument();
+  await act(() => router.navigate("/cards?f=tag:fantasy&library=2"));
+  expect(screen.queryByText("All 49 matching cards")).not.toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "Select Carrow" })).not.toBeChecked();
+});
+
+test("switching library clears the imports listed for the old one", async () => {
+  vi.stubGlobal("EventSource", class { addEventListener() {} close() {} });
+  const { router } = renderCards("/cards?library=1");
+  await userEvent.click(await screen.findByRole("button", { name: "Import cards" }));
+  await userEvent.type(screen.getByLabelText("Import from a page URL"), "https://chub.ai/characters/u/brakka");
+  await userEvent.click(screen.getByRole("button", { name: "Import" }));
+  expect(await screen.findByText(/^https:\/\/chub.ai\/characters\/u\/brakka/)).toBeInTheDocument();
+  await act(() => router.navigate("/cards?library=2"));
+  expect(screen.queryByText(/^https:\/\/chub.ai\/characters\/u\/brakka/)).not.toBeInTheDocument();
 });

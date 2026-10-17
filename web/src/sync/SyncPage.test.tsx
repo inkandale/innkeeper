@@ -130,7 +130,7 @@ test("site sources get their own line: their changes and a check of every source
   await userEvent.click(screen.getByRole("button", { name: "Check for updates" }));
   await waitFor(() => expect(posts).toEqual([{ path: "/api/source-checks?library=2", body: undefined }]));
   expect(searchBodies).toContainEqual(expect.objectContaining({ library: 2, facets: ["targets"] }));
-  expect(await screen.findByText("Checking every source for updates…")).toBeInTheDocument();
+  expect(await screen.findByText("Checking every source in Library 2 for updates…")).toBeInTheDocument();
   localStorage.clear();
 });
 

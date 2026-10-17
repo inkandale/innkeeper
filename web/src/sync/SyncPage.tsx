@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { api, followers, must, withCapability } from "../api/client";
-import { instancesQuery, pluginsQuery } from "../api/queries";
+import { instancesQuery, librariesQuery, pluginsQuery } from "../api/queries";
 import { age, finished, jobToast, useJob, type Job } from "../settings/jobUtil";
 import { useLibrary } from "../shell/library";
 import { useToast } from "../shell/Toasts";
@@ -45,6 +45,7 @@ export function Sync() {
   const instances = useQuery(instancesQuery);
   const plugins = useQuery(pluginsQuery);
   const library = useLibrary();
+  const libraryName = useQuery(librariesQuery).data?.find((l) => l.id === library)?.name ?? `library ${library}`;
   const facets = useQuery({
     queryKey: ["search", "card", "sync-counts", library],
     queryFn: async () => must(await api.POST("/cards/search", { body: { library, facets: ["targets"], page: { size: 1 } } })),
@@ -72,7 +73,7 @@ export function Sync() {
   const sync = useRun(async () => must(await api.POST("/syncs", { body: {} })), "Syncing every app…");
   const checkSources = useRun(
     async () => must(await api.POST("/source-checks", { params: { query: { library } } })),
-    "Checking every source for updates…",
+    `Checking every source in ${libraryName} for updates…`,
   );
 
   if (instances.isError) return <p className="error page">{instances.error.message}</p>;

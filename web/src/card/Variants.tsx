@@ -42,6 +42,7 @@ export function Variants({ kind, entity }: { kind: Kind; entity: Entity }) {
   const fork = useMutation({
     mutationFn: async (library?: number) =>
       must(await api.POST(route(kind, "/cards/{id}/variants"), { params: { path: { id: entity.id } }, body: { source: "ui", library } })),
+    meta: { toast: false },
     onSuccess: (v) => {
       void refresh();
       navigate(`/${kind}s/${v.id}`);
@@ -85,6 +86,7 @@ export function Variants({ kind, entity }: { kind: Kind; entity: Entity }) {
           ))}
         </div>
       )}
+      {fork.error && <p className="error">{fork.error.message}</p>}
       {linking && <CardPicker kind={kind} library={entity.library_id} label="Find a variant" onPick={(id) => !link.isPending && link.mutate(id)} />}
     </section>
   );

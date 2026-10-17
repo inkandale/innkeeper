@@ -19,15 +19,18 @@ export function Libraries() {
   const [renaming, setRenaming] = useState<number | null>(null);
   // Delete jobs started here, by library.
   const [deleting, setDeleting] = useState<Record<number, number>>({});
+  const [mistyped, setMistyped] = useState<string>();
   const onSuccess = () => qc.invalidateQueries({ queryKey: ["libraries"] });
 
   const create = useMutation({
     mutationFn: async (name: string) => must(await api.POST("/libraries", { body: { name } })),
+    meta: { toast: false },
     onSuccess,
   });
   const rename = useMutation({
     mutationFn: async ({ id, name }: { id: number; name: string }) =>
       must(await api.PATCH("/libraries/{id}", { params: { path: { id } }, body: { name } })),
+    meta: { toast: false },
     onSuccess: () => {
       setRenaming(null);
       return onSuccess();
@@ -36,12 +39,15 @@ export function Libraries() {
   const remove = useMutation({
     mutationFn: async ({ id, confirm }: { id: number; confirm: string }) =>
       must(await api.DELETE("/libraries/{id}", { params: { path: { id } }, body: { confirm } })),
+    meta: { toast: false },
     onSuccess: (job, { id }) => {
       setDeleting((d) => ({ ...d, [id]: job.id }));
       // The switcher would otherwise open a library that's gone.
       if (rememberedLibrary() === id) rememberLibrary(1);
     },
   });
+
+  const failed = list.error ?? create.error ?? rename.error ?? remove.error;
 
   return (
     <section>
@@ -57,7 +63,8 @@ export function Libraries() {
           Create
         </button>
       </form>
-      {list.error && <p className="error">{list.error.message}</p>}
+      {failed && <p className="error">{failed.message}</p>}
+      {mistyped && <p className="error">{mistyped}</p>}
       <ul className="plain">
         {(list.data ?? []).map((l) => (
           <li key={l.id}>
@@ -96,7 +103,9 @@ export function Libraries() {
                       const typed = prompt(
                         `Delete ${l.name} with its ${count(l.cards, "card")} and ${count(l.lorebooks, "lorebook")}? This can't be undone. Type ${l.name} to confirm.`,
                       );
+                      setMistyped(undefined);
                       if (typed === l.name) remove.mutate({ id: l.id, confirm: typed });
+                      else if (typed !== null) setMistyped(`That isn't ${l.name}'s name, so nothing was deleted.`);
                     }}
                   >
                     Delete

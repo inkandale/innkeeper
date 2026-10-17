@@ -27,8 +27,8 @@ async function logout() {
   }
 }
 
-// Pages that list one library's items; switching keeps the page, anywhere else opens Cards.
-const listPages = ["/cards", "/lorebooks", "/collections"];
+// Pages that show one library; switching keeps the page, anywhere else opens Cards.
+const listPages = ["/cards", "/lorebooks", "/collections", "/sync"];
 
 /** LibrarySwitcher picks the current library, and remembers it once the list confirms it exists. */
 function LibrarySwitcher() {

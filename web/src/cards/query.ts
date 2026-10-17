@@ -81,7 +81,7 @@ function valid(kind: TermKind, value: string): boolean {
 }
 
 /** parseQuery reads the Cards page state from its URL, ignoring anything malformed; library is used when the URL names none. */
-export function parseQuery(p: URLSearchParams, library = 1): CardQuery {
+export function parseQuery(p: URLSearchParams, library: number): CardQuery {
   const terms: Term[] = [];
   for (const raw of p.getAll("f")) {
     const not = raw.startsWith("-");

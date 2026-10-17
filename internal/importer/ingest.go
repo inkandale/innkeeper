@@ -30,6 +30,6 @@ func (im *Importer) ingest(ctx context.Context, plugin, item string, it library.
 		return false, &badItem{errors.New("item is empty")}
 	}
 	it.Provenance, it.Source = plugin+":"+item, "plugin:"+plugin
-	_, created, err := im.Lib.ImportItem(ctx, it)
-	return created, invalid(err)
+	got, err := im.Lib.ImportItem(ctx, it)
+	return got.Outcome == library.Created, invalid(err)
 }

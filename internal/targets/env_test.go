@@ -82,8 +82,12 @@ func setup(t *testing.T, config map[string]any) *env {
 	brokenagain := upstream
 	brokenagain.Name, brokenagain.SourceKinds = "brokenagain", []string{"broken2"}
 	brokenagain.Command = []string{m.Command[0], "-caps=pull", "-name=brokenagain"}
+	// archive is the fake as an import-only plugin, which can't be asked for an item again.
+	archive := *m
+	archive.Name, archive.Capabilities = "archive", []string{"import"}
+	archive.Command = []string{m.Command[0], "-caps=import", "-name=archive"}
 	reg := plugins.New(pool, map[string]*protocol.Manifest{
-		"fake": m, "sites": &sites, "upstream": &upstream, "brokenup": &brokenup, "brokenagain": &brokenagain,
+		"fake": m, "sites": &sites, "upstream": &upstream, "brokenup": &brokenup, "brokenagain": &brokenagain, "archive": &archive,
 	}, store, box)
 	mgr := pluginhost.NewManager(noCore, time.Minute, quiet)
 	t.Cleanup(mgr.Close)

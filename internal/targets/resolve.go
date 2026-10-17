@@ -174,9 +174,14 @@ func (rs *resolver) item(ctx context.Context, k kind, r Resolution) (ResolveResu
 		return done, nil
 	}
 	s := rs.s
-	inst, info, err := s.describePull(ctx, k, r.InstanceID)
+	inst, info, it, imported, err := s.importedItem(ctx, rs.tx, k, r.InstanceID, r.RemoteID, r.CardID)
 	if err != nil {
 		return res, err
+	}
+	if !imported {
+		if inst, info, err = s.describePull(ctx, k, r.InstanceID); err != nil {
+			return res, err
+		}
 	}
 	rinfo := reconcileInfo(info)
 	id := r.CardID
@@ -192,9 +197,10 @@ func (rs *resolver) item(ctx context.Context, k kind, r Resolution) (ResolveResu
 		}
 	}
 	stale := &staleItem{k: k, instanceID: r.InstanceID, remoteID: r.RemoteID, id: id}
-	it, err := s.readItem(ctx, k, inst, rinfo, r.RemoteID, true)
-	if err != nil {
-		return res, err
+	if !imported {
+		if it, err = s.readItem(ctx, k, inst, rinfo, r.RemoteID, true); err != nil {
+			return res, err
+		}
 	}
 	if it.avatarErr != nil {
 		return res, fmt.Errorf("app avatar: %w", it.avatarErr)
@@ -474,7 +480,7 @@ func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.Targe
 	if err != nil {
 		return res, err
 	}
-	cb, err := rs.entityBinding(ctx, k, r.InstanceID, id, r.RemoteID)
+	cb, err := rs.entityBinding(ctx, k, r.InstanceID, id, r.RemoteID, it.imported)
 	if err != nil {
 		return res, err
 	}
@@ -628,13 +634,14 @@ type entityBinding struct {
 	push                      bool
 }
 
-// entityBinding reads the entity's binding on the instance, and fails with
-// ErrBound if it binds a different app item that isn't missing.
+// entityBinding reads the entity's binding on the instance, its import
+// binding when imported, and fails with ErrBound if it binds a different app
+// item that isn't missing.
 func (rs *resolver) entityBinding(ctx context.Context, k kind, instanceID, id int64,
-	remoteID string) (entityBinding, error) {
+	remoteID string, imported bool) (entityBinding, error) {
 	var b entityBinding
 	err := rs.tx.QueryRow(ctx, `SELECT id, remote_id, remote_state, accepted_hash, push FROM binding
-		WHERE instance_id = $1 AND `+k.FK+` = $2`, instanceID, id).
+		WHERE instance_id = $1 AND `+k.FK+` = $2 AND imported = $3`, instanceID, id, imported).
 		Scan(&b.id, &b.remoteID, &b.state, &b.accepted, &b.push)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return b, err
@@ -806,7 +813,7 @@ func (rs *resolver) saveBinding(ctx context.Context, k kind, r Resolution, id in
 	// Stored as Check compares it, "" for none, so the next check finds it accepted.
 	var avatar *string
 	if !push {
-		key, err := rs.s.avatarKey(ctx, appAvatar)
+		key, err := rs.s.lib.AvatarKey(ctx, appAvatar)
 		if err != nil {
 			return 0, err
 		}
@@ -816,7 +823,7 @@ func (rs *resolver) saveBinding(ctx context.Context, k kind, r Resolution, id in
 	var err error
 	if bindingID != 0 {
 		_, err = rs.tx.Exec(ctx, `UPDATE binding SET remote_id = $2, remote_state = 'unchanged', accepted_data = $3,
-				accepted_hash = $4, seen_data = NULL, checked_at = now(), version = version + 1,
+				accepted_hash = $4, seen_data = NULL, seen_avatar = NULL, checked_at = now(), version = version + 1,
 				avatar_hash = $5, check_failures = 0, check_error = NULL
 			WHERE id = $1`, bindingID, r.RemoteID, accepted, acceptedHash, avatar)
 	} else {

@@ -2503,6 +2503,7 @@ export interface components {
             created_at: string;
             /** Format: int64 */
             id: number;
+            imported: boolean;
             /** Format: int64 */
             instance_id: number;
             last_push: components["schemas"]["Push"];

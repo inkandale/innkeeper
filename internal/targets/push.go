@@ -168,7 +168,7 @@ func (s *Service) push(ctx context.Context, k kind, instanceID, id int64, newCop
 	err = tx.QueryRow(ctx, `INSERT INTO binding (instance_id, `+k.FK+`, remote_id, remote_state, accepted_data,
 			accepted_hash, checked_at)
 		VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $4 = 'unknown' THEN NULL ELSE now() END)
-		ON CONFLICT (instance_id, `+k.FK+`) DO UPDATE SET remote_id = EXCLUDED.remote_id,
+		ON CONFLICT (instance_id, `+k.FK+`, imported) DO UPDATE SET remote_id = EXCLUDED.remote_id,
 			remote_state = EXCLUDED.remote_state, accepted_data = EXCLUDED.accepted_data,
 			accepted_hash = EXCLUDED.accepted_hash, seen_data = NULL, checked_at = EXCLUDED.checked_at,
 			version = binding.version + 1

@@ -1,6 +1,7 @@
 package library
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"io"
@@ -144,6 +145,17 @@ func (l *Library) SameImage(ctx context.Context, a, b string) (bool, error) {
 	}
 	pb, err := l.PixelHash(ctx, b)
 	return pb != "" && pa == pb, err
+}
+
+// AvatarKey is what an avatar is compared by across imports and source
+// checks: its pixels, so a re-encode isn't a change, else its sha256 when it
+// isn't an image that decodes. "" for no avatar.
+func (l *Library) AvatarKey(ctx context.Context, sha string) (string, error) {
+	if sha == "" {
+		return "", nil
+	}
+	pixels, err := l.PixelHash(ctx, sha)
+	return cmp.Or(pixels, sha), err
 }
 
 // PixelHash returns the blob's pixel_hash, computing and storing it if

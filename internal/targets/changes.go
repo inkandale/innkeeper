@@ -185,18 +185,18 @@ func (s *Service) Changes(ctx context.Context, f ChangesFilter) (Changes, error)
 		return out, err
 	}
 
-	// Followed sources, from their last check. One the owner removed has no
+	// Followed sources from their last check, and import updates. A source the owner removed has no
 	// live source row, so it is gone from the queue before the next check unbinds it.
 	fl, err := s.pool.Query(ctx, `SELECT coalesce(b.card_id, 0), coalesce(b.lorebook_id, 0), b.instance_id, b.id, b.remote_id,
-			b.remote_state, coalesce(b.check_error, ''), src.id, b.seen_data
+			b.remote_state, coalesce(b.check_error, ''), coalesce(src.id, 0), b.seen_data
 		FROM binding b LEFT JOIN card c ON c.id = b.card_id LEFT JOIN lorebook l ON l.id = b.lorebook_id
-		JOIN LATERAL (SELECT s.id FROM card_source s WHERE s.card_id = b.card_id AND s.removed_at IS NULL
+		LEFT JOIN LATERAL (SELECT s.id FROM card_source s WHERE s.card_id = b.card_id AND s.removed_at IS NULL
 				AND s.kind || ':' || s.ref = b.remote_id
 			UNION ALL SELECT s.id FROM lorebook_source s WHERE s.lorebook_id = b.lorebook_id AND s.removed_at IS NULL
 				AND s.kind || ':' || s.ref = b.remote_id
 			LIMIT 1) src ON TRUE
 		WHERE NOT b.push AND NOT b.paused AND coalesce(c.archived_at, l.archived_at) IS NULL
-			AND (b.remote_state IN ('changed', 'missing') OR b.check_failures >= $1)
+			AND (src.id IS NOT NULL OR b.imported) AND (b.remote_state IN ('changed', 'missing') OR b.check_failures >= $1)
 		ORDER BY b.id`, failuresShown)
 	if err != nil {
 		return out, err

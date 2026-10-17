@@ -9,7 +9,7 @@ import (
 )
 
 // CollectGarbage deletes blobs in this library's store that no revision
-// references, and leftover files in its tmp and staging folders. It only
+// or waiting import update references, and leftover files in its tmp and staging folders. It only
 // touches what is older than grace, which keeps it clear of imports in
 // flight. It returns how many blobs and leftover files it deleted.
 //
@@ -31,6 +31,7 @@ func (l *Library) CollectGarbage(ctx context.Context, grace time.Duration) (blob
 		WHERE store = $1 AND created_at < now() - make_interval(secs => $2)
 			AND NOT EXISTS (SELECT 1 FROM card_revision WHERE avatar_blob = b.sha256)
 			AND NOT EXISTS (SELECT 1 FROM lorebook_revision WHERE avatar_blob = b.sha256)
+			AND NOT EXISTS (SELECT 1 FROM binding WHERE seen_avatar = b.sha256)
 		RETURNING sha256`, l.blobs.Name, grace.Seconds())
 	if err != nil {
 		return 0, 0, err

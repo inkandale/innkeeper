@@ -153,3 +153,15 @@ func TestBulkBatchThatFailsToCommitIsNotCounted(t *testing.T) {
 		t.Fatalf("progress counts %d imported, but %d cards were stored", p.Imported, n)
 	}
 }
+
+func TestBulkImportSkipsAnOlderVersionSentLater(t *testing.T) {
+	e := setup(t, "-mode=bulk")
+	e.run(t, `{"cards": 2, "created": "2024-03-01T00:00:00Z"}`)
+	j, p := e.run(t, `{"cards": 2, "text": " Older.", "created": "2024-01-01T00:00:00Z"}`)
+	if j.Status != jobs.StatusSucceeded || p.Skipped != 2 || p.Revised != 0 {
+		t.Fatalf("job %s, progress %+v", j.Status, p)
+	}
+	if n := e.count(t, "card_revision"); n != 2 {
+		t.Fatalf("%d revisions, want 2", n)
+	}
+}

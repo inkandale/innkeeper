@@ -823,7 +823,8 @@ func (rs *resolver) saveBinding(ctx context.Context, k kind, r Resolution, id in
 	var err error
 	if bindingID != 0 {
 		_, err = rs.tx.Exec(ctx, `UPDATE binding SET remote_id = $2, remote_state = 'unchanged', accepted_data = $3,
-				accepted_hash = $4, seen_data = NULL, seen_avatar = NULL, checked_at = now(), version = version + 1,
+				accepted_hash = $4, accepted_created = seen_created, seen_data = NULL, seen_avatar = NULL, seen_created = NULL,
+				checked_at = now(), version = version + 1,
 				avatar_hash = $5, check_failures = 0, check_error = NULL
 			WHERE id = $1`, bindingID, r.RemoteID, accepted, acceptedHash, avatar)
 	} else {

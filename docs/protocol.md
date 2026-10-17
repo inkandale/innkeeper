@@ -203,6 +203,8 @@ Notifications, each with `run`:
   the owner edited the card since the last import: then it waits in the
   changes queue as an update to review, merged against the last imported
   version.
+- A version whose `created` is older than the last one stored or waiting for
+  that item is skipped, so a version sent out of order can't replace a newer one.
 - A value whose key the manifest doesn't declare, or that doesn't fit its
   type or range, is dropped with a warning in the job's progress. The card
   is still stored. Values are stored only when the card changed.

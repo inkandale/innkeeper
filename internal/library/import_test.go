@@ -356,3 +356,41 @@ func TestImportOfTheAcceptedVersionWithdrawsAPendingUpdate(t *testing.T) {
 		t.Fatalf("binding = %s, %v; want the update withdrawn", state, seen)
 	}
 }
+
+func TestImportOfAnOlderVersionAfterANewerOneIsSkipped(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	_, imp := importer(t, lib)
+	at := func(month time.Month) func(*PluginItem) {
+		return func(it *PluginItem) { it.Created = time.Date(2024, month, 1, 0, 0, 0, 0, time.UTC) }
+	}
+	v2 := imp("brakka.png", `{"name": "Brakka", "description": "v2"}`, at(3))
+	if got := imp("brakka.png", `{"name": "Brakka", "description": "v1"}`, at(1)); got.Outcome != Unchanged {
+		t.Fatalf("older version = %+v, want it skipped", got)
+	}
+	if c, _ := lib.Cards.Get(ctx, v2.ID); c.HeadRevisionID != v2.RevisionID {
+		t.Fatal("an older version became the head")
+	}
+	// Nor does it wait as an update on an edited card, or replace a newer waiting one.
+	if _, err := lib.Cards.Update(ctx, v2.ID, v2.RevisionID, edit(`{"name": "Brakka the Bold", "description": "v2"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if got := imp("brakka.png", `{"name": "Brakka", "description": "v1"}`, at(1)); got.Outcome != Unchanged {
+		t.Fatalf("older version on an edited card = %+v", got)
+	}
+	if got := imp("brakka.png", `{"name": "Brakka", "description": "v4"}`, at(5)); got.Outcome != Pending {
+		t.Fatalf("newer version = %+v", got)
+	}
+	if got := imp("brakka.png", `{"name": "Brakka", "description": "v3"}`, at(4)); got.Outcome != Unchanged {
+		t.Fatalf("version older than the waiting one = %+v", got)
+	}
+	var seen string
+	if err := lib.pool.QueryRow(ctx, `SELECT seen_data->>'description' FROM binding WHERE card_id = $1 AND imported`, v2.ID).
+		Scan(&seen); err != nil || seen != "v4" {
+		t.Fatalf("waiting update = %q, %v", seen, err)
+	}
+	// Without a date, order is the plugin's.
+	if got := imp("brakka.png", `{"name": "Brakka", "description": "v0"}`); got.Outcome != Pending {
+		t.Fatalf("undated version = %+v", got)
+	}
+}

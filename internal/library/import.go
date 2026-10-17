@@ -267,6 +267,8 @@ type importBinding struct {
 	acceptedHash, avatarKey, seenAvatar string
 	seen                                json.RawMessage
 	autosync                            bool
+	// newest is the later of the source's dates for the accepted and waiting copies, if either has one.
+	newest *time.Time
 }
 
 // importEntity stores e as the entity with it.Provenance in it.LibraryID:
@@ -300,7 +302,7 @@ func (l *Library) importEntity(ctx context.Context, tx pgx.Tx, s *Entities, it P
 		if err != nil {
 			return Imported{}, err
 		}
-		if _, err := l.bindImport(ctx, tx, s.k, it, ent.ID, rev.ID, e.Data, r.contentHash, e.AvatarBlob); err != nil {
+		if _, err := l.bindImport(ctx, tx, s.k, it, ent.ID, rev.ID, e.Data, r.contentHash, e.AvatarBlob, it.Created); err != nil {
 			return Imported{}, err
 		}
 		return Imported{ID: ent.ID, Outcome: Created, RevisionID: rev.ID}, s.detectUnless(ctx, tx, it, ent.ID)
@@ -323,6 +325,10 @@ func (l *Library) importEntity(ctx context.Context, tx pgx.Tx, s *Entities, it P
 	if r.contentHash == b.acceptedHash && newKey == b.avatarKey {
 		return out, withdrawUpdate(ctx, tx, s.k, it, out.ID, r.contentHash, newKey)
 	}
+	// A source may send versions out of order; an older one never replaces a newer.
+	if b.newest != nil && !it.Created.IsZero() && it.Created.Before(*b.newest) {
+		return out, nil
+	}
 	if b.seen != nil {
 		seenHash, err := cardhash.ContentHash(b.seen)
 		if err != nil {
@@ -339,8 +345,8 @@ func (l *Library) importEntity(ctx context.Context, tx pgx.Tx, s *Entities, it P
 	// Data and avatar merge apart: the owner's avatar survives a text update.
 	ownAvatar := headKey != b.avatarKey
 	if headHash != b.acceptedHash || (ownAvatar && newKey != b.avatarKey) {
-		_, err := tx.Exec(ctx, `UPDATE binding SET seen_data = $2, seen_avatar = nullif($3, ''), remote_state = 'changed',
-			checked_at = now() WHERE id = $1`, b.id, e.Data, e.AvatarBlob)
+		_, err := tx.Exec(ctx, `UPDATE binding SET seen_data = $2, seen_avatar = nullif($3, ''), seen_created = $4,
+			remote_state = 'changed', checked_at = now() WHERE id = $1`, b.id, e.Data, e.AvatarBlob, dated(it.Created))
 		out.Outcome = Pending
 		if b.autosync {
 			out.Autosync = []int64{b.id}
@@ -357,9 +363,10 @@ func (l *Library) importEntity(ctx context.Context, tx pgx.Tx, s *Entities, it P
 	if err != nil {
 		return Imported{}, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE binding SET accepted_data = $2, accepted_hash = $3, avatar_hash = $4,
-			seen_data = NULL, seen_avatar = NULL, remote_state = 'unchanged', checked_at = now(), version = version + 1
-		WHERE id = $1`, b.id, e.Data, r.contentHash, newKey); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE binding SET accepted_data = $2, accepted_hash = $3, avatar_hash = $4, accepted_created = $5,
+			seen_data = NULL, seen_avatar = NULL, seen_created = NULL, remote_state = 'unchanged', checked_at = now(),
+			version = version + 1
+		WHERE id = $1`, b.id, e.Data, r.contentHash, newKey, dated(it.Created)); err != nil {
 		return Imported{}, err
 	}
 	out.Outcome, out.RevisionID = Revised, rev.ID
@@ -369,7 +376,8 @@ func (l *Library) importEntity(ctx context.Context, tx pgx.Tx, s *Entities, it P
 // withdrawUpdate drops the entity's waiting update when the item is the
 // accepted copy again, since the source took its change back.
 func withdrawUpdate(ctx context.Context, tx pgx.Tx, k *Kind, it PluginItem, id int64, hash, avatarKey string) error {
-	_, err := tx.Exec(ctx, `UPDATE binding SET seen_data = NULL, seen_avatar = NULL, remote_state = 'unchanged', checked_at = now()
+	_, err := tx.Exec(ctx, `UPDATE binding SET seen_data = NULL, seen_avatar = NULL, seen_created = NULL, remote_state = 'unchanged',
+			checked_at = now()
 		WHERE instance_id = $1 AND `+k.FK+` = $2 AND imported AND remote_state = 'changed'
 			AND accepted_hash = $3 AND coalesce(avatar_hash, '') = $4`, it.InstanceID, id, hash, avatarKey)
 	return err
@@ -380,9 +388,10 @@ func withdrawUpdate(ctx context.Context, tx pgx.Tx, k *Kind, it PluginItem, id i
 // revision this plugin wrote, else the first.
 func (l *Library) importBinding(ctx context.Context, tx pgx.Tx, s *Entities, it PluginItem, id, head int64) (importBinding, error) {
 	var b importBinding
-	err := tx.QueryRow(ctx, `SELECT id, accepted_hash, coalesce(avatar_hash, ''), seen_data, coalesce(seen_avatar, ''), autosync
+	err := tx.QueryRow(ctx, `SELECT id, accepted_hash, coalesce(avatar_hash, ''), seen_data, coalesce(seen_avatar, ''), autosync,
+			greatest(accepted_created, seen_created)
 		FROM binding WHERE instance_id = $1 AND `+s.k.FK+` = $2 AND imported FOR UPDATE`, it.InstanceID, id).
-		Scan(&b.id, &b.acceptedHash, &b.avatarKey, &b.seen, &b.seenAvatar, &b.autosync)
+		Scan(&b.id, &b.acceptedHash, &b.avatarKey, &b.seen, &b.seenAvatar, &b.autosync, &b.newest)
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return b, mapErr(err)
 	}
@@ -397,28 +406,37 @@ func (l *Library) importBinding(ctx context.Context, tx pgx.Tx, s *Entities, it 
 	if b.avatarKey, err = l.AvatarKey(ctx, avatar); err != nil {
 		return b, err
 	}
-	b.id, err = l.bindImport(ctx, tx, s.k, it, id, head, data, b.acceptedHash, avatar)
+	// No date: an earlier core stored the revision's import time, not the source's.
+	b.id, err = l.bindImport(ctx, tx, s.k, it, id, head, data, b.acceptedHash, avatar, time.Time{})
 	return b, err
 }
 
 // bindImport adds the entity's import binding with data as the accepted copy.
 func (l *Library) bindImport(ctx context.Context, tx pgx.Tx, k *Kind, it PluginItem, id, head int64,
-	data json.RawMessage, hash, avatar string) (int64, error) {
+	data json.RawMessage, hash, avatar string, created time.Time) (int64, error) {
 	key, err := l.AvatarKey(ctx, avatar)
 	if err != nil {
 		return 0, err
 	}
 	var bindingID int64
 	if err := tx.QueryRow(ctx, `INSERT INTO binding (instance_id, `+k.FK+`, remote_id, remote_state, accepted_data,
-			accepted_hash, avatar_hash, checked_at, push, imported)
-		VALUES ($1, $2, $3, 'unchanged', $4, $5, $6, now(), false, true) RETURNING id`,
-		it.InstanceID, id, it.Provenance, data, hash, key).Scan(&bindingID); err != nil {
+			accepted_hash, avatar_hash, accepted_created, checked_at, push, imported)
+		VALUES ($1, $2, $3, 'unchanged', $4, $5, $6, $7, now(), false, true) RETURNING id`,
+		it.InstanceID, id, it.Provenance, data, hash, key, dated(created)).Scan(&bindingID); err != nil {
 		return 0, mapErr(err)
 	}
 	// binding_status needs a push row; a pull-only binding is never ahead of it.
 	_, err = tx.Exec(ctx, `INSERT INTO push (binding_id, kind, revision_id, pushed_hash, remote_id) VALUES ($1, 'bind', $2, $3, $4)`,
 		bindingID, head, hash, it.Provenance)
 	return bindingID, err
+}
+
+// dated is t, or nil for no date.
+func dated(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
 }
 
 // detectUnless queues the entity for source detection unless it.SkipDetect is set.

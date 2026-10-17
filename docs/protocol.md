@@ -33,8 +33,9 @@ Each plugin folder has a `plugin.toml`:
 | `capabilities` | yes | Any of `import`, `search`, `push`, `pull`, `action`, `records`, `enrich`, `codec`, `auth`, `mcp`, `catalog`, `sites`, `ai`, `settings`, or `theme`. A theme lists no other capability |
 | `secrets` | no | Names of secrets the owner enters for each instance, in lowercase `snake_case` |
 | `config` | no | JSON Schema for instance settings; the UI renders a form from it. See [The config form](#the-config-form) |
-| `enrichments` | for `enrich` | Keys the plugin writes, in lowercase `snake_case`; see [`enrich`](#enrich). Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list`. `grid = true` shows the key on the library grid, for at most one key. An `enrich` plugin must declare at least one |
+| `enrichments` | for `enrich` | Keys the plugin writes, in lowercase `snake_case`; see [`enrich`](#enrich), and `emit.card`'s `values` under [`import`](#import). Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list`. `grid = true` shows the key on the library grid, for at most one key. An `enrich` plugin must declare at least one |
 | `formats` | only for `codec` | What `codec.encode` writes, each listed once: lowercase words of letters and digits joined by single hyphens, such as `png`. A codec plugin must list at least one. `json` is taken: the core exports CCv3 JSON itself |
+| `bulk` | no; only for `import` | `true` for imports of large sources, such as a site dump. The core stores the cards sent between two checkpoints, about 1,000, in one transaction with the second checkpoint, and doesn't queue them for source detection |
 | `inputs` | no; only for `import` | What the web UI may send to `import.run`, each listed once: `file` sends params `blob` and `name`, `url` sends `url`. Leave it out and the UI's upload and page URL boxes don't use the plugin |
 | `source_kinds` | no; only for `pull` without `push` | The site source kinds the plugin follows, such as `chub`, each listed once, in the same form as a source's `kind`. The core binds each source of these kinds to the plugin's instance and checks it for updates; see [Following site sources](#following-site-sources) |
 | `stylesheet` | only for `theme` | The theme's CSS file: a regular file inside the plugin folder, named `*.css`. A symlink that leaves the folder is rejected |
@@ -183,7 +184,7 @@ Notifications, each with `run`:
 
 | Method | Params | Meaning |
 |---|---|---|
-| `emit.card` | `item`, `card`, `avatar` | One card. `item` is your stable ID for the source, such as a file path. `card` is a CCv3 card (`spec` must be `chara_card_v3`). `avatar` is optional: a file you wrote to `blob_tmp` |
+| `emit.card` | `item`, `card`, `avatar`, `version`, `created`, `values` | One card. `item` is your stable ID for the source, such as a file path. `card` is a CCv3 card (`spec` must be `chara_card_v3`). The rest are optional. `avatar` is a file you wrote to `blob_tmp`. `version` is the source's label for this version, stored as the revision's message. `created` is the source's date for it, an RFC 3339 time, stored as the revision's date. `values` maps keys your manifest's `enrichments` declares to values, stored as enrichments from your instance |
 | `emit.lorebook` | `item`, `lorebook` | One standalone lorebook, a CCv3 `character_book` |
 | `progress` | `done`, `total`, `message` | How far you've got. `total` and `message` are optional |
 | `checkpoint` | `checkpoint` | Any JSON value that tells you where to resume |
@@ -195,9 +196,16 @@ Notifications, each with `run`:
 
 - Send a checkpoint after each item, or every few items. The core saves it
   only after storing everything you sent before it.
-- After a resume you may send items again. The core skips an item whose
-  `item` and content it has imported before, so importing the same source
-  twice adds nothing.
+- One `item` is one card in the import's library, so send each version of
+  an item in order, oldest first. A version the card already has adds
+  nothing, so importing the same source twice, or items sent again after a
+  resume, adds nothing. A new version becomes the card's new revision, unless
+  the owner edited the card since the last import: then it waits in the
+  changes queue as an update to review, merged against the last imported
+  version.
+- A value whose key the manifest doesn't declare, or that doesn't fit its
+  type or range, is dropped with a warning in the job's progress. The card
+  is still stored. Values are stored only when the card changed.
 - An embedded `character_book` becomes a separate lorebook linked to the card.
 - A card the core can't read counts as failed. The import goes on.
 - The core moves each `avatar` file into its blob store, so don't reuse the

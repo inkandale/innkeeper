@@ -106,9 +106,11 @@ Compose keeps blobs and installed plugins in one volume at `/data`.
 
 ## Kubernetes
 
-Every push to `main` publishes `ghcr.io/inkandale/innkeeper:latest` and
-`:sha-<commit>`, for amd64 only. Releases come from release-please: merging
-its release PR tags `v<version>`, publishes the image as `:<version>` and
+Work lands on `develop`. Every push to `develop` publishes
+`ghcr.io/inkandale/innkeeper:latest` and `:sha-<commit>`, for amd64 only.
+Merging `develop` into `main` updates release-please's release PR, so merge
+with a merge commit, not a squash, to keep each commit's type. Merging the
+release PR tags `v<version>`, publishes the image as `:<version>` and
 `:<major>.<minor>`, and publishes the Helm chart in `chart/` to
 `oci://ghcr.io/inkandale/charts/innkeeper`. The chart's `version` and
 `appVersion` both follow the release, and the chart runs the image matching

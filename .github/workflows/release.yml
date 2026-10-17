@@ -2,7 +2,7 @@ name: release
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   workflow_dispatch:
 
 permissions:
@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   release-please:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -23,8 +24,10 @@ jobs:
         uses: googleapis/release-please-action@v5
 
   # Runs here rather than on the tag: a tag pushed with GITHUB_TOKEN starts no workflows.
+  # develop builds :latest; main builds only a release.
   image:
     needs: release-please
+    if: ${{ !cancelled() && (github.ref == 'refs/heads/develop' || needs.release-please.outputs.created == 'true') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -44,12 +47,12 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/develop' }}
             type=sha,prefix=sha-
             type=semver,pattern={{version}},value=${{ needs.release-please.outputs.version }},enable=${{ needs.release-please.outputs.created == 'true' }}
             type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-please.outputs.version }},enable=${{ needs.release-please.outputs.created == 'true' }}
-      # Building main's commit rather than "main" keeps the layer cache from
-      # reusing an older clone.
+      # Building the plugins' main commit rather than "main" keeps the layer
+      # cache from reusing an older clone.
       - id: plugins
         run: |
           ref=$(git ls-remote https://github.com/inkandale/innkeeper-plugins.git refs/heads/main | cut -f1)

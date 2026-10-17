@@ -2322,7 +2322,7 @@
             ]
           },
           "shares_source": {
-            "description": "Has a source, by kind and ref, that another card or lorebook of the same kind also has.",
+            "description": "Has a source, by kind and ref, that another card or lorebook of the same kind also has. A fork's link to its original doesn't count.",
             "type": "boolean"
           },
           "source": {
@@ -6337,7 +6337,7 @@
     },
     "/cards/{id}/in-other-libraries": {
       "get": {
-        "description": "The cards in other libraries with the same content, near-identical text, or a similar avatar; closest first.",
+        "description": "Up to 50 cards in other libraries with the same content, near-identical text, or a similar avatar; closest first.",
         "operationId": "list-card-in-other-libraries",
         "parameters": [
           {
@@ -10284,7 +10284,7 @@
     },
     "/lorebooks/{id}/in-other-libraries": {
       "get": {
-        "description": "The lorebooks in other libraries with the same content, near-identical text, or a similar avatar; closest first.",
+        "description": "Up to 50 lorebooks in other libraries with the same content, near-identical text, or a similar avatar; closest first.",
         "operationId": "list-lorebook-in-other-libraries",
         "parameters": [
           {

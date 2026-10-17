@@ -525,7 +525,7 @@ export interface paths {
         };
         /**
          * Find a card in other libraries
-         * @description The cards in other libraries with the same content, near-identical text, or a similar avatar; closest first.
+         * @description Up to 50 cards in other libraries with the same content, near-identical text, or a similar avatar; closest first.
          */
         get: operations["list-card-in-other-libraries"];
         put?: never;
@@ -1748,7 +1748,7 @@ export interface paths {
         };
         /**
          * Find a lorebook in other libraries
-         * @description The lorebooks in other libraries with the same content, near-identical text, or a similar avatar; closest first.
+         * @description Up to 50 lorebooks in other libraries with the same content, near-identical text, or a similar avatar; closest first.
          */
         get: operations["list-lorebook-in-other-libraries"];
         put?: never;
@@ -3313,7 +3313,7 @@ export interface components {
             name?: string;
             not?: components["schemas"]["Filter"];
             or?: components["schemas"]["Filter"][] | null;
-            /** @description Has a source, by kind and ref, that another card or lorebook of the same kind also has. */
+            /** @description Has a source, by kind and ref, that another card or lorebook of the same kind also has. A fork's link to its original doesn't count. */
             shares_source?: boolean;
             /** @description Has a source of this kind, such as chub. */
             source?: string;

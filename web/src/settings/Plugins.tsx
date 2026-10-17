@@ -29,6 +29,11 @@ export function Plugins() {
     mutationFn: async (id: number) => mustOk(await api.DELETE("/instances/{id}", { params: { path: { id } } })),
     onSuccess: changed,
   });
+  const setDisabled = useMutation({
+    mutationFn: async (v: { id: number; disabled: boolean }) =>
+      mustOk(await api.PATCH("/instances/{id}", { params: { path: { id: v.id } }, body: { disabled: v.disabled } })),
+    onSuccess: changed,
+  });
   const install = useMutation({
     mutationFn: async (v: { name: string; source: string; version: string }) =>
       mustOk(
@@ -76,26 +81,31 @@ export function Plugins() {
   const needSetup = installed.filter((p) => p.status === "needs_setup").length;
   const addURL = (p: Plugin) => `/settings/plugins/${encodeURIComponent(p.name)}/new`;
 
+  const instanceActions = (i: InstanceInfo) => (
+    <>
+      <button
+        aria-label={`${i.disabled ? "Enable" : "Disable"} ${i.name}`}
+        disabled={setDisabled.isPending}
+        onClick={() => setDisabled.mutate({ id: i.id, disabled: !i.disabled })}
+      >
+        {i.disabled ? "Enable" : "Disable"}
+      </button>
+      <button
+        aria-label={`Delete instance ${i.name}`}
+        onClick={() => confirm(`Delete ${i.name}? Its jobs stay, and logins through it end.`) && remove.mutate(i.id)}
+      >
+        Delete instance
+      </button>
+    </>
+  );
+
   const instanceRows = (list: InstanceInfo[]) => (
     <ul className="instances">
       {list.map((i) => (
         <li key={i.id}>
           <Link to={`/settings/instances/${i.id}`}>{i.name}</Link>
-          {i.broken_error ? (
-            <span className="state failed">
-              Broken: <span>{i.broken_error}</span>
-            </span>
-          ) : (
-            <span className="state succeeded">Working</span>
-          )}
-          <Menu label={`More for ${i.name}`}>
-            <button
-              aria-label={`Delete ${i.name}`}
-              onClick={() => confirm(`Delete ${i.name}? Its jobs stay, and logins through it end.`) && remove.mutate(i.id)}
-            >
-              Delete
-            </button>
-          </Menu>
+          <StatusText status={i.status} error={i.broken_error} />
+          <Menu label={`More for ${i.name}`}>{instanceActions(i)}</Menu>
         </li>
       ))}
     </ul>
@@ -107,9 +117,8 @@ export function Plugins() {
     const prevSource = p.previous_source;
     const prevVersion = p.previous_version;
     // A singleton keeps instances made before it was one; list them so they can be deleted.
-    const listed = p.multiple_instances || list.length > 1;
-    const broken = list.find((i) => i.broken_error);
-    const only = !listed && list.length === 1 ? list[0] : undefined;
+    const listed = list.length > 1;
+    const only = list.length === 1 ? list[0] : undefined;
     const canUninstall = p.source !== "builtin";
     return (
       <article key={p.name} className="plugin">
@@ -119,13 +128,7 @@ export function Plugins() {
             <span className="muted">{p.source === "builtin" ? `${p.version} · built in` : `${p.source}/${p.version}`}</span>
             {p.description && <p className="muted">{p.description}</p>}
           </div>
-          {!listed && p.status === "ready" && <span className="state succeeded">Ready</span>}
-          {!listed && p.status === "needs_setup" && <span className="state setup">Needs setup</span>}
-          {!listed && broken && (
-            <span className="state failed">
-              Broken: <span>{broken.broken_error}</span>
-            </span>
-          )}
+          {!listed && <StatusText status={p.status} error={only?.broken_error} />}
           {update && (
             <button
               className="button primary"
@@ -137,20 +140,24 @@ export function Plugins() {
           )}
           {p.capabilities?.includes("theme") ? (
             <Link to="/settings/appearance">Select in Appearance</Link>
-          ) : p.multiple_instances ? (
-            <Link className="button" to={addURL(p)}>
-              Add instance
-            </Link>
-          ) : p.status === "needs_setup" ? (
-            <Link className="button primary" to={addURL(p)}>
-              Set up
-            </Link>
           ) : (
-            only && (
-              <Link className="button" to={`/settings/instances/${only.id}`}>
-                Settings
-              </Link>
-            )
+            <>
+              {only && (
+                <Link className="button" to={`/settings/instances/${only.id}`}>
+                  Settings
+                </Link>
+              )}
+              {!only && !listed && !p.multiple_instances && (
+                <Link className="button primary" to={addURL(p)}>
+                  Set up
+                </Link>
+              )}
+              {p.multiple_instances && (
+                <Link className={list.length === 0 ? "button primary" : "button"} to={addURL(p)}>
+                  Add instance
+                </Link>
+              )}
+            </>
           )}
           {(canUninstall || only || (prevSource && prevVersion)) && (
             <Menu label={`More for ${p.name}`}>
@@ -159,14 +166,7 @@ export function Plugins() {
                   Roll back to {prevVersion}
                 </button>
               )}
-              {only && (
-                <button
-                  aria-label={`Delete ${only.name}`}
-                  onClick={() => confirm(`Delete ${only.name}? Its jobs stay, and logins through it end.`) && remove.mutate(only.id)}
-                >
-                  Delete
-                </button>
-              )}
+              {only && instanceActions(only)}
               {canUninstall && (
                 <button
                   disabled={busy}
@@ -184,7 +184,7 @@ export function Plugins() {
             </Menu>
           )}
         </header>
-        {listed && (list.length > 0 ? instanceRows(list) : <p className="muted">No instances yet.</p>)}
+        {listed && instanceRows(list)}
       </article>
     );
   };
@@ -326,6 +326,28 @@ export function Plugins() {
         </form>
       </details>
     </section>
+  );
+}
+
+const statusWords = {
+  ready: ["Ready", "succeeded"],
+  needs_setup: ["Needs setup", "setup"],
+  broken: ["Broken", "failed"],
+  disabled: ["Disabled", "disabled"],
+} as const;
+
+/** StatusText shows a plugin's or instance's status in the page's four words. */
+function StatusText({ status, error }: { status: keyof typeof statusWords; error?: string | null }) {
+  const [word, tone] = statusWords[status];
+  return (
+    <span className={`state ${tone}`}>
+      {word}
+      {status === "broken" && error && (
+        <>
+          : <span>{error}</span>
+        </>
+      )}
+    </span>
   );
 }
 

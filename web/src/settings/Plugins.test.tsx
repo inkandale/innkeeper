@@ -10,20 +10,24 @@ function json(body: unknown, status = 200) {
 }
 
 const now = new Date().toISOString();
-const inst = (id: number, plugin: string, name: string, broken?: string) => ({
+const inst = (id: number, plugin: string, name: string, broken?: string, status?: string) => ({
   id, plugin, name, config: {}, secrets: [], created_at: now, updated_at: now,
+  disabled: status === "disabled", status: status ?? (broken ? "broken" : "ready"),
   ...(broken ? { broken_error: broken, broken_at: now } : {}),
 });
 
 let requests: string[];
+let bodies: string[];
 beforeEach(() => {
   requests = [];
+  bodies = [];
   vi.stubGlobal("confirm", () => true);
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
       const u = new URL(req.url);
       requests.push(`${req.method} ${u.pathname}`);
+      bodies.push(await req.clone().text());
       if (u.pathname === "/api/plugins")
         return json([
           { name: "dusk", version: "1.0.0", capabilities: ["theme"], secrets: [], source: "builtin", builtin: true,
@@ -35,6 +39,10 @@ beforeEach(() => {
           },
           { name: "card-codec", version: "0.2.0", capabilities: ["codec"], secrets: [], source: "builtin", builtin: true,
             category: "Formats", multiple_instances: false, status: "needs_setup" },
+          { name: "solo-app", version: "0.1.0", capabilities: ["push"], secrets: [], source: "official", builtin: false,
+            category: "Apps", multiple_instances: true, status: "ready" },
+          { name: "paused", version: "0.1.0", capabilities: ["push"], secrets: [], source: "official", builtin: false,
+            category: "Apps", multiple_instances: true, status: "disabled" },
           { name: "url-import", version: "0.3.0", capabilities: ["import"], secrets: [], source: "builtin", builtin: true,
             config: { type: "object", properties: { delay: { type: "integer" } } },
             category: "Import", multiple_instances: false, status: "ready" },
@@ -58,6 +66,7 @@ beforeEach(() => {
         return json([
           inst(1, "sillytavern", "home"), inst(2, "sillytavern", "work", "connection refused"),
           inst(3, "gone", "old"), inst(4, "url-import", "url-import"), inst(5, "pnglike", "pnglike"),
+          inst(6, "solo-app", "office"), inst(7, "paused", "napping", undefined, "disabled"),
         ]);
       if (req.method === "DELETE" && u.pathname === "/api/instances/1")
         return json({ title: "Conflict", status: 409, detail: "instance in use" }, 409);
@@ -95,9 +104,9 @@ test("lists plugins with their instances and status", async () => {
 test("delete asks, calls the API, and shows a refusal", async () => {
   const user = userEvent.setup();
   renderPlugins();
-  await user.click(await screen.findByRole("button", { name: "Delete work" }));
+  await user.click(await screen.findByRole("button", { name: "Delete instance work" }));
   expect(requests).toContain("DELETE /api/instances/2");
-  await user.click(screen.getByRole("button", { name: "Delete home" }));
+  await user.click(screen.getByRole("button", { name: "Delete instance home" }));
   expect(await screen.findByText("instance in use")).toBeInTheDocument();
 });
 
@@ -191,6 +200,48 @@ test("a singleton with no settings still links to its instance and can delete it
   const card = (await screen.findByRole("heading", { name: "pnglike" })).closest("article")!;
   expect(within(card).getByText("0.4.0 · built in")).toBeInTheDocument();
   expect(within(card).getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/settings/instances/5");
-  await user.click(within(card).getByRole("button", { name: "Delete pnglike" }));
+  await user.click(within(card).getByRole("button", { name: "Delete instance pnglike" }));
   expect(requests).toContain("DELETE /api/instances/5");
+});
+
+test("a many-instance plugin with one instance is one line", async () => {
+  renderPlugins();
+  const solo = (await screen.findByRole("heading", { name: "solo-app" })).closest("article")!;
+  expect(solo.querySelector(".instances")).toBeNull();
+  expect(within(solo).getByText("Ready")).toBeInTheDocument();
+  expect(within(solo).getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/settings/instances/6");
+  expect(within(solo).getByRole("link", { name: "Add instance" })).toBeInTheDocument();
+  const menu = document.getElementById(within(solo).getByRole("button", { name: "More for solo-app" }).getAttribute("popovertarget")!)!;
+  expect(within(menu).getByRole("button", { name: "Disable office" })).toBeInTheDocument();
+  expect(within(menu).getByRole("button", { name: "Delete instance office" })).toBeInTheDocument();
+});
+
+test("two instances are listed, each with its own menu, and no one is Working", async () => {
+  renderPlugins();
+  const st = (await screen.findByRole("heading", { name: "sillytavern" })).closest("article")!;
+  expect(st.querySelectorAll(".instances li")).toHaveLength(2);
+  expect(within(st).getByRole("button", { name: "More for home" })).toBeInTheDocument();
+  expect(within(st).getByRole("button", { name: "More for work" })).toBeInTheDocument();
+  expect(screen.queryByText("Working")).toBeNull();
+});
+
+test("Disable sends the flag, and a disabled instance offers Enable", async () => {
+  const user = userEvent.setup();
+  renderPlugins();
+  await user.click(await screen.findByRole("button", { name: "Disable office" }));
+  expect(requests).toContain("PATCH /api/instances/6");
+  expect(bodies[requests.indexOf("PATCH /api/instances/6")]).toBe('{"disabled":true}');
+  const paused = screen.getByRole("heading", { name: "paused" }).closest("article")!;
+  expect(within(paused).getByText("Disabled")).toBeInTheDocument();
+  expect(within(paused).getByRole("button", { name: "Enable napping" })).toBeInTheDocument();
+});
+
+test("Delete instance asks, then calls the API", async () => {
+  const user = userEvent.setup();
+  const ask = vi.fn(() => true);
+  vi.stubGlobal("confirm", ask);
+  renderPlugins();
+  await user.click(await screen.findByRole("button", { name: "Delete instance office" }));
+  expect(ask).toHaveBeenCalled();
+  expect(requests).toContain("DELETE /api/instances/6");
 });

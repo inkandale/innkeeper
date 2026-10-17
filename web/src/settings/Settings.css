@@ -109,6 +109,7 @@
 }
 
 .state.setup { color: var(--drift); }
+.state.disabled { color: var(--text-muted); }
 
 .plugin-sources {
   margin-top: calc(var(--space) * 3);

@@ -21,7 +21,7 @@ func TestCollectGarbage(t *testing.T) {
 		return b
 	}
 	orphan, kept, recent := put("orphan"), put("kept"), put("recent")
-	if _, _, err := lib.Cards.Create(ctx, "a", "upload", Edit{Data: []byte(`{"name": "A"}`), AvatarBlob: kept.SHA256, Source: "ui"}); err != nil {
+	if _, _, err := lib.Cards.Create(ctx, DefaultLibrary, "a", "upload", Edit{Data: []byte(`{"name": "A"}`), AvatarBlob: kept.SHA256, Source: "ui"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := lib.pool.Exec(ctx, `UPDATE blob SET created_at = now() - interval '2 days' WHERE sha256 <> $1`, recent.SHA256); err != nil {

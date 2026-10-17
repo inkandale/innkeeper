@@ -228,7 +228,7 @@ func TestRestoreAssets(t *testing.T) {
 		t.Fatalf("result = %+v", res)
 	}
 	checkAssets(t, tg)
-	c, _, err := tg.lib.Cards.Create(context.Background(), "new", "upload",
+	c, _, err := tg.lib.Cards.Create(context.Background(), library.DefaultLibrary, "new", "upload",
 		library.Edit{Data: json.RawMessage(`{"name": "New"}`), Source: "ui"})
 	if err != nil {
 		t.Fatal(err)
@@ -313,7 +313,7 @@ func TestRestoreRefusesExistingData(t *testing.T) {
 func TestRestoreReplaceAssets(t *testing.T) {
 	assets, _, _ := source(t)
 	tg := newTarget(t)
-	if _, _, err := tg.lib.Cards.Create(context.Background(), "other", "upload",
+	if _, _, err := tg.lib.Cards.Create(context.Background(), library.DefaultLibrary, "other", "upload",
 		library.Edit{Data: json.RawMessage(`{"name": "Other"}`), Source: "ui"}); err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +339,7 @@ func TestRestoreReplaceKeepsBindingsWhole(t *testing.T) {
 	seed(t, lib)
 	assets := archive(t, pool, Assets, o)
 	// A second card, absent from the archive, with a binding.
-	c, _, err := lib.Cards.Create(ctx, "later", "upload", library.Edit{Data: json.RawMessage(`{"name": "Later"}`), Source: "ui"})
+	c, _, err := lib.Cards.Create(ctx, library.DefaultLibrary, "later", "upload", library.Edit{Data: json.RawMessage(`{"name": "Later"}`), Source: "ui"})
 	if err != nil {
 		t.Fatal(err)
 	}

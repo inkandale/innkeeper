@@ -17,7 +17,7 @@ func (e *env) newLorebook(name string) int64 {
 	e.t.Helper()
 	data := fmt.Sprintf(`{"name": %q, "description": "Forge lore.", "scan_depth": 4,
 		"entries": [{"keys": ["forge"], "content": "The forge burns hot."}]}`, name)
-	lb, _, err := e.lib.Lorebooks.CreateFromName(e.ctx, name, "upload", library.Edit{Data: json.RawMessage(data), Source: "ui"})
+	lb, _, err := e.lib.Lorebooks.CreateFromName(e.ctx, library.DefaultLibrary, name, "upload", library.Edit{Data: json.RawMessage(data), Source: "ui"})
 	if err != nil {
 		e.t.Fatal(err)
 	}

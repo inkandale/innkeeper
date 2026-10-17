@@ -67,12 +67,16 @@ func (s *Entities) freeSlug(ctx context.Context, tx pgx.Tx, base string) (string
 	return fmt.Sprintf("%s-%d", base, n+1), nil
 }
 
-// CreateFromName creates an entity with a free slug made from name.
-func (s *Entities) CreateFromName(ctx context.Context, name, provenance string, e Edit) (Entity, Revision, error) {
+// CreateFromName creates an entity in libraryID with a free slug made from name.
+func (s *Entities) CreateFromName(ctx context.Context, libraryID int64, name, provenance string, e Edit) (Entity, Revision, error) {
+	r, err := s.prepare(e)
+	if err != nil {
+		return Entity{}, Revision{}, err
+	}
 	var ent Entity
 	var rev Revision
-	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) (err error) {
-		ent, rev, err = s.CreateFromNameTx(ctx, tx, name, provenance, e)
+	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) (err error) {
+		ent, rev, err = s.createFree(ctx, tx, Slugify(name), libraryID, provenance, r)
 		return err
 	})
 	return ent, rev, err

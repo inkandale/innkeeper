@@ -106,7 +106,7 @@ func setup(t *testing.T, config map[string]any) *env {
 func (e *env) newCard(name string) int64 {
 	e.t.Helper()
 	data := fmt.Sprintf(`{"name": %q, "description": "A dwarf smith.", "first_mes": "Hail.", "scenario": "A forge."}`, name)
-	c, _, err := e.lib.Cards.CreateFromName(e.ctx, name, "upload", library.Edit{Data: json.RawMessage(data), Source: "ui"})
+	c, _, err := e.lib.Cards.CreateFromName(e.ctx, library.DefaultLibrary, name, "upload", library.Edit{Data: json.RawMessage(data), Source: "ui"})
 	if err != nil {
 		e.t.Fatal(err)
 	}

@@ -18,11 +18,11 @@ func TestCollections(t *testing.T) {
 	ctx := context.Background()
 	a, _ := newCard(t, lib, "a", `{"name": "A"}`)
 	b, _ := newCard(t, lib, "b", `{"name": "B"}`)
-	fav, err := lib.CreateCollection(ctx, "Favorites", "")
+	fav, err := lib.CreateCollection(ctx, DefaultLibrary, "Favorites", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := lib.CreateCollection(ctx, "Other", "")
+	other, err := lib.CreateCollection(ctx, DefaultLibrary, "Other", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestLorebookLinks(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
 	card, _ := newCard(t, lib, "a", `{"name": "A"}`)
-	book, _, err := lib.Lorebooks.Create(ctx, "lore", "upload", edit(`{"entries": []}`))
+	book, _, err := lib.Lorebooks.Create(ctx, DefaultLibrary, "lore", "upload", edit(`{"entries": []}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestCollectionAvatars(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := lib.CreateCollection(ctx, "Crew", "")
+	c, err := lib.CreateCollection(ctx, DefaultLibrary, "Crew", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestCollectionAvatars(t *testing.T) {
 		if i > 0 {
 			ed.AvatarBlob = img.SHA256
 		}
-		card, _, err := lib.Cards.Create(ctx, fmt.Sprintf("sailor-%d", i), "upload", ed)
+		card, _, err := lib.Cards.Create(ctx, DefaultLibrary, fmt.Sprintf("sailor-%d", i), "upload", ed)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -108,7 +108,7 @@ func TestCollectionAvatars(t *testing.T) {
 			archived = card.ID
 		}
 	}
-	list, err := lib.Collections(ctx)
+	list, err := lib.Collections(ctx, DefaultLibrary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestCollectionAvatars(t *testing.T) {
 	if err := lib.Cards.SetArchived(ctx, archived, true); err != nil {
 		t.Fatal(err)
 	}
-	list, err = lib.Collections(ctx)
+	list, err = lib.Collections(ctx, DefaultLibrary)
 	if err != nil || list[0].Cards != 5 {
 		t.Fatalf("after archive = %+v, %v", list, err)
 	}
@@ -159,7 +159,7 @@ func TestEditCardTagsAddsARevision(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
 	avatar := putBlob(t, lib, "avatar")
-	c, _, err := lib.Cards.Create(ctx, "brakka", "upload",
+	c, _, err := lib.Cards.Create(ctx, DefaultLibrary, "brakka", "upload",
 		Edit{Data: json.RawMessage(`{"name": "Brakka", "tags": ["Dwarf", "smith"]}`),
 			Overrides: json.RawMessage(`{"7": {"name": "Brakka the Bold"}}`), AvatarBlob: avatar, Source: "ui"})
 	if err != nil {
@@ -232,11 +232,11 @@ func TestCardCollections(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
 	a, _ := newCard(t, lib, "a", `{"name": "A"}`)
-	fav, err := lib.CreateCollection(ctx, "Favorites", "")
+	fav, err := lib.CreateCollection(ctx, DefaultLibrary, "Favorites", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := lib.CreateCollection(ctx, "Other", "")
+	other, err := lib.CreateCollection(ctx, DefaultLibrary, "Other", "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -29,14 +29,23 @@ type Kind struct {
 	forbid []string
 	// forkCopies copy the kind's links from entity $1 to its new variant $2.
 	forkCopies []string
+	// deleteLinks delete the rows only this kind hangs off entities $1.
+	deleteLinks []string
 }
 
 var (
 	Card = &Kind{Name: "card", Plural: "cards", Table: "card", RevTable: "card_revision", SourceTable: "card_source",
 		FK: "card_id", Schema: merge.Card, simhash: cardhash.CardSimhash, forbid: []string{"character_book"},
 		forkCopies: []string{
-			`INSERT INTO collection_card (collection_id, card_id) SELECT collection_id, $2 FROM collection_card WHERE card_id = $1`,
+			// Only collections of the variant's library, which a fork into another library doesn't share.
+			`INSERT INTO collection_card (collection_id, card_id) SELECT cc.collection_id, $2 FROM collection_card cc
+				JOIN collection co ON co.id = cc.collection_id
+				WHERE cc.card_id = $1 AND co.library_id = (SELECT library_id FROM card WHERE id = $2)`,
 			`INSERT INTO card_lorebook (card_id, lorebook_id) SELECT $2, lorebook_id FROM card_lorebook WHERE card_id = $1`,
+		},
+		deleteLinks: []string{
+			`DELETE FROM enrichment WHERE card_id = ANY($1)`,
+			`DELETE FROM collection_card WHERE card_id = ANY($1)`,
 		}}
 	Lorebook = &Kind{Name: "lorebook", Plural: "lorebooks", Table: "lorebook", RevTable: "lorebook_revision",
 		SourceTable: "lorebook_source", FK: "lorebook_id", Schema: merge.Lorebook, simhash: cardhash.LorebookSimhash}
@@ -186,8 +195,8 @@ func (s *Entities) insertRevision(ctx context.Context, tx pgx.Tx, id int64, pare
 	return rev, nil
 }
 
-// Create adds a new entity with e as its first revision.
-func (s *Entities) Create(ctx context.Context, slug, provenance string, e Edit) (Entity, Revision, error) {
+// Create adds a new entity in libraryID with e as its first revision.
+func (s *Entities) Create(ctx context.Context, libraryID int64, slug, provenance string, e Edit) (Entity, Revision, error) {
 	r, err := s.prepare(e)
 	if err != nil {
 		return Entity{}, Revision{}, err
@@ -195,7 +204,7 @@ func (s *Entities) Create(ctx context.Context, slug, provenance string, e Edit) 
 	var ent Entity
 	var rev Revision
 	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) (err error) {
-		ent, rev, err = s.create(ctx, tx, slug, DefaultLibrary, provenance, r)
+		ent, rev, err = s.create(ctx, tx, slug, libraryID, provenance, r)
 		return err
 	})
 	return ent, rev, err

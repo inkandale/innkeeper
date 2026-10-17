@@ -13,7 +13,7 @@ import (
 func TestCardJSON(t *testing.T) {
 	ctx := context.Background()
 	lib := library.New(testdb.New(t), &blobstore.Store{Name: "library", Root: t.TempDir()})
-	c, _, err := lib.Cards.Create(ctx, "brakka", "upload", library.Edit{Data: []byte(`{"name": "Brakka"}`), Source: "ui"})
+	c, _, err := lib.Cards.Create(ctx, library.DefaultLibrary, "brakka", "upload", library.Edit{Data: []byte(`{"name": "Brakka"}`), Source: "ui"})
 	if err != nil {
 		t.Fatal(err)
 	}

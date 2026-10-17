@@ -58,7 +58,7 @@ func (s *Server) organizeRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{OperationID: "list-tags", Method: http.MethodGet, Path: "/tags",
 		Summary: "List tags with card counts", Tags: tags},
 		func(ctx context.Context, _ *struct{}) (*tagCountsOut, error) {
-			t, err := s.Lib.Tags(ctx)
+			t, err := s.Lib.Tags(ctx, library.DefaultLibrary)
 			if err != nil {
 				return nil, s.fail(err)
 			}
@@ -68,7 +68,7 @@ func (s *Server) organizeRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{OperationID: "list-collections", Method: http.MethodGet, Path: "/collections",
 		Summary: "List collections with card counts", Tags: tags},
 		func(ctx context.Context, _ *struct{}) (*collectionsOut, error) {
-			c, err := s.Lib.Collections(ctx)
+			c, err := s.Lib.Collections(ctx, library.DefaultLibrary)
 			if err != nil {
 				return nil, s.fail(err)
 			}
@@ -78,7 +78,7 @@ func (s *Server) organizeRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "create-collection", Method: http.MethodPost, Path: "/collections",
 		Summary: "Create a collection", Tags: tags, DefaultStatus: http.StatusCreated},
 		func(ctx context.Context, in *createCollectionIn) (*collectionOut, error) {
-			c, err := s.Lib.CreateCollection(ctx, in.Body.Name, in.Body.Description)
+			c, err := s.Lib.CreateCollection(ctx, library.DefaultLibrary, in.Body.Name, in.Body.Description)
 			if err != nil {
 				return nil, s.fail(err)
 			}

@@ -47,19 +47,19 @@ func seed(t *testing.T, lib *library.Library) (avatar, unused string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, _, err := lib.Cards.Create(ctx, "brakka", "upload",
+	c, _, err := lib.Cards.Create(ctx, library.DefaultLibrary, "brakka", "upload",
 		library.Edit{Data: json.RawMessage(`{"name": "Brakka"}`), AvatarBlob: a.SHA256, Source: "ui"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, _, err := lib.Lorebooks.Create(ctx, "lore", "upload", library.Edit{Data: json.RawMessage(`{"name": "Lore", "entries": []}`), Source: "ui"})
+	b, _, err := lib.Lorebooks.Create(ctx, library.DefaultLibrary, "lore", "upload", library.Edit{Data: json.RawMessage(`{"name": "Lore", "entries": []}`), Source: "ui"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := lib.LinkLorebook(ctx, c.ID, b.ID); err != nil {
 		t.Fatal(err)
 	}
-	col, err := lib.CreateCollection(ctx, "Favorites", "")
+	col, err := lib.CreateCollection(ctx, library.DefaultLibrary, "Favorites", "")
 	if err != nil {
 		t.Fatal(err)
 	}

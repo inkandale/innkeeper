@@ -89,7 +89,7 @@ func (e *env) writeSite(ref string, item map[string]any) {
 func (e *env) imported(ref string, data map[string]any) int64 {
 	e.t.Helper()
 	raw, _ := json.Marshal(data)
-	c, _, err := e.lib.Cards.CreateFromName(e.ctx, data["name"].(string), "upload", library.Edit{Data: raw, Source: "plugin:upstream"})
+	c, _, err := e.lib.Cards.CreateFromName(e.ctx, library.DefaultLibrary, data["name"].(string), "upload", library.Edit{Data: raw, Source: "plugin:upstream"})
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -196,7 +196,7 @@ func TestFollowingASourceAcceptsTheFirstPluginRevision(t *testing.T) {
 	e.addUpstream(nil)
 	draft := map[string]any{"name": "Vyr", "description": "A dragon, someday.", "first_mes": "..."}
 	raw, _ := json.Marshal(draft)
-	c, _, err := e.lib.Cards.CreateFromName(e.ctx, "Vyr", "upload", library.Edit{Data: raw, Source: "ui"})
+	c, _, err := e.lib.Cards.CreateFromName(e.ctx, library.DefaultLibrary, "Vyr", "upload", library.Edit{Data: raw, Source: "ui"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -345,7 +345,7 @@ func (s *Server) jobRoutes(api huma.API) {
 					return nil, huma.Error400BadRequest("tags can't be blank")
 				}
 			case "collect", "uncollect":
-				cols, err := s.Lib.Collections(ctx)
+				cols, err := s.Lib.Collections(ctx, library.DefaultLibrary)
 				if err != nil {
 					return nil, s.fail(err)
 				}

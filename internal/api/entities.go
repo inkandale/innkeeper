@@ -240,9 +240,9 @@ func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
 			var ent library.Entity
 			var err error
 			if in.Body.Slug != "" {
-				ent, _, err = ents.Create(ctx, in.Body.Slug, "api", e)
+				ent, _, err = ents.Create(ctx, library.DefaultLibrary, in.Body.Slug, "api", e)
 			} else {
-				ent, _, err = ents.CreateFromName(ctx, library.DataName(in.Body.Data), "api", e)
+				ent, _, err = ents.CreateFromName(ctx, library.DefaultLibrary, library.DataName(in.Body.Data), "api", e)
 			}
 			if err != nil {
 				return nil, s.fail(err)
@@ -419,7 +419,7 @@ func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
 		Description: "Copies the head revision, and a card's collections and lorebook links, into a new " + singular +
 			" that is a variant of this one. Sources and bindings aren't copied.", Tags: tags, DefaultStatus: http.StatusCreated},
 		func(ctx context.Context, in *forkIn) (*entityResp, error) {
-			v, err := ents.Fork(ctx, in.ID, in.Body.Source)
+			v, err := ents.Fork(ctx, in.ID, 0, in.Body.Source)
 			if err != nil {
 				return nil, s.fail(err)
 			}

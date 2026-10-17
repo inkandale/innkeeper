@@ -54,7 +54,7 @@ func TestMatchHashes(t *testing.T) {
 		t.Fatal(err)
 	}
 	// orig matches by content and by text, and is listed once, by content.
-	if len(got) != 2 || len(got[0]) != 2 || got[0][0] != (HashMatch{orig, "content", 0}) ||
+	if len(got) != 2 || len(got[0]) != 2 || got[0][0] != (HashMatch{orig, DefaultLibrary, "content", 0}) ||
 		got[0][1].ID != edited || got[0][1].Reason != "text" || len(got[1]) != 0 {
 		t.Fatalf("matches = %+v", got)
 	}
@@ -91,7 +91,7 @@ func avatarCard(t *testing.T, lib *Library, i int, phash int64) int64 {
 	if _, err := lib.pool.Exec(ctx, `INSERT INTO blob (sha256, size, mime, store, avatar_phash) VALUES ($1, 1, 'image/png', 'library', $2)`, sha, phash); err != nil {
 		t.Fatal(err)
 	}
-	c, _, err := lib.Cards.Create(ctx, fmt.Sprintf("avatar-%d", i), "upload", Edit{Data: json.RawMessage(fmt.Sprintf(`{"name": "Avatar %d"}`, i)), AvatarBlob: sha, Source: "ui"})
+	c, _, err := lib.Cards.Create(ctx, DefaultLibrary, fmt.Sprintf("avatar-%d", i), "upload", Edit{Data: json.RawMessage(fmt.Sprintf(`{"name": "Avatar %d"}`, i)), AvatarBlob: sha, Source: "ui"})
 	if err != nil {
 		t.Fatal(err)
 	}

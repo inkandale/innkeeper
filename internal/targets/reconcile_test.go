@@ -32,7 +32,7 @@ const (
 func (e *env) libCard(data map[string]any) int64 {
 	e.t.Helper()
 	raw, _ := json.Marshal(data)
-	c, _, err := e.lib.Cards.CreateFromName(e.ctx, data["name"].(string), "upload", library.Edit{Data: raw, Source: "ui"})
+	c, _, err := e.lib.Cards.CreateFromName(e.ctx, library.DefaultLibrary, data["name"].(string), "upload", library.Edit{Data: raw, Source: "ui"})
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -294,7 +294,7 @@ func TestReconcileRanking(t *testing.T) {
 
 func TestReconcileEmptyNames(t *testing.T) {
 	e := setup(t, nil)
-	c, _, err := e.lib.Cards.CreateFromName(e.ctx, "Nameless", "upload",
+	c, _, err := e.lib.Cards.CreateFromName(e.ctx, library.DefaultLibrary, "Nameless", "upload",
 		library.Edit{Data: json.RawMessage(`{"name": "", "description": "A shadow at the edge of the map."}`), Source: "ui"})
 	if err != nil {
 		t.Fatal(err)
@@ -504,7 +504,7 @@ func TestReconcileInstance(t *testing.T) {
 	}
 	iko := e.newCard("Iko")
 	forge := e.newLorebook("Forge lore")
-	sea, _, err := e.lib.Lorebooks.CreateFromName(e.ctx, "Sea lore", "upload", library.Edit{Source: "ui",
+	sea, _, err := e.lib.Lorebooks.CreateFromName(e.ctx, library.DefaultLibrary, "Sea lore", "upload", library.Edit{Source: "ui",
 		Data: json.RawMessage(`{"name": "Sea lore", "entries": [{"keys": ["tide"], "content": "Tides rise twice a day."}]}`)})
 	if err != nil {
 		t.Fatal(err)
@@ -727,7 +727,7 @@ func TestReconcileUnlistedLinkGrowsTotal(t *testing.T) {
 
 func TestReconcileLorebookIgnoresSplit(t *testing.T) {
 	e := setup(t, map[string]any{"lorebooks": "standalone"})
-	sea, _, err := e.lib.Lorebooks.CreateFromName(e.ctx, "Sea lore", "upload", library.Edit{Source: "ui",
+	sea, _, err := e.lib.Lorebooks.CreateFromName(e.ctx, library.DefaultLibrary, "Sea lore", "upload", library.Edit{Source: "ui",
 		Data: json.RawMessage(`{"name": "Sea lore", "description": "Old tales.",
 			"entries": [{"keys": ["tide"], "content": "Tides rise twice a day."}]}`)})
 	if err != nil {

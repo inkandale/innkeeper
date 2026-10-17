@@ -62,7 +62,7 @@ func (s *Service) compare(ctx context.Context, k kind, instanceID, id int64) (Pr
 	var remoteID, state string
 	var app json.RawMessage
 	err = s.pool.QueryRow(ctx, `SELECT remote_id, remote_state, accepted_data FROM binding
-		WHERE instance_id = $1 AND `+k.FK+` = $2`, instanceID, id).Scan(&remoteID, &state, &app)
+		WHERE instance_id = $1 AND `+k.FK+` = $2 AND NOT imported`, instanceID, id).Scan(&remoteID, &state, &app)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 		return p, nil

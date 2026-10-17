@@ -255,3 +255,14 @@ func TestImportAfterKeepingTheLibraryAvatarRevisesTheCard(t *testing.T) {
 		t.Fatalf("v3 again = %+v", got)
 	}
 }
+
+func TestBindBesideAnImportBinding(t *testing.T) {
+	e := setup(t, nil)
+	e.addUpstream(nil)
+	got := e.importVersion(e.up, vyrCard)
+	e.publish("vyr", vyrCard, "")
+	b, err := e.s.Bind(e.ctx, library.Card, e.up, got.ID, "fake:vyr")
+	if err != nil || b.RemoteID != "fake:vyr" || b.Imported {
+		t.Fatalf("bind = %+v, %v", b, err)
+	}
+}

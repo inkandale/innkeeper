@@ -426,7 +426,7 @@ func (rs *resolver) exactMatch(ctx context.Context, k kind, inst pluginhost.Inst
 	}
 	ents, err := rs.s.loadEntries(ctx, k, inst, info, `e.archived_at IS NULL
 		AND coalesce(r.overrides -> $1 ->> 'name', r.data ->> 'name') = $2
-		AND NOT EXISTS (SELECT 1 FROM binding WHERE instance_id = $3 AND `+k.FK+` = e.id)`, it.name, instanceID)
+		AND NOT EXISTS (SELECT 1 FROM binding WHERE instance_id = $3 AND `+k.FK+` = e.id AND NOT imported)`, it.name, instanceID)
 	if err != nil {
 		return indexEntry{}, false, err
 	}

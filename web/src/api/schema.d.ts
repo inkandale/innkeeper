@@ -516,6 +516,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cards/{id}/in-other-libraries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Find a card in other libraries
+         * @description The cards in other libraries with the same content, near-identical text, or a similar avatar; closest first.
+         */
+        get: operations["list-card-in-other-libraries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cards/{id}/lorebooks/{lorebook_id}": {
         parameters: {
             query?: never;
@@ -739,7 +759,7 @@ export interface paths {
         get?: never;
         /**
          * Make a card a variant of another
-         * @description Makes no revision. A link that would make it its own ancestor returns 409.
+         * @description Makes no revision. A link that would make it its own ancestor returns 409; one to another library, 400.
          */
         put: operations["set-card-variant-of"];
         post?: never;
@@ -764,7 +784,7 @@ export interface paths {
         put?: never;
         /**
          * Make a variant of a card
-         * @description Copies the head revision, and a card's collections and lorebook links, into a new card that is a variant of this one. Sources and bindings aren't copied.
+         * @description Copies the head revision, and a card's collections and lorebook links, into a new card that is a variant of this one. Sources and bindings aren't copied; the new one gets a source of kind innkeeper whose ref is this one's ID. Forked into another library, it isn't a variant and gets no collections.
          */
         post: operations["fork-card"];
         delete?: never;
@@ -880,10 +900,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List collections with card counts */
+        /** List a library's collections with card counts */
         get: operations["list-collections"];
         put?: never;
-        /** Create a collection */
+        /**
+         * Create a collection
+         * @description Names are unique within a library.
+         */
         post: operations["create-collection"];
         delete?: never;
         options?: never;
@@ -920,7 +943,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Add a card to a collection */
+        /**
+         * Add a card to a collection
+         * @description The card must be in the collection's library.
+         */
         put: operations["add-to-collection"];
         post?: never;
         /** Remove a card from a collection */
@@ -1533,6 +1559,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/libraries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List libraries
+         * @description Oldest first, with how many cards and lorebooks each holds, archived ones included.
+         */
+        get: operations["list-libraries"];
+        put?: never;
+        /**
+         * Create a library
+         * @description A taken name returns 409.
+         */
+        post: operations["create-library"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/libraries/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete a library with its cards and lorebooks
+         * @description Queues a job that deletes the library's cards and lorebooks, with their history, bindings, and sources, then its collections and the library. This can't be undone. confirm must be the library's name. Library 1 can't be deleted. The next blob cleanup removes images nothing else uses.
+         */
+        delete: operations["delete-library"];
+        options?: never;
+        head?: never;
+        /**
+         * Rename a library
+         * @description A taken name returns 409.
+         */
+        patch: operations["rename-library"];
+        trace?: never;
+    };
     "/lorebooks": {
         parameters: {
             query?: never;
@@ -1657,6 +1731,26 @@ export interface paths {
          * @description Asks every catalog that finds similar items for the same content, near-identical text, or a similar avatar.
          */
         get: operations["find-lorebook-in-catalogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lorebooks/{id}/in-other-libraries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Find a lorebook in other libraries
+         * @description The lorebooks in other libraries with the same content, near-identical text, or a similar avatar; closest first.
+         */
+        get: operations["list-lorebook-in-other-libraries"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1850,7 +1944,7 @@ export interface paths {
         get?: never;
         /**
          * Make a lorebook a variant of another
-         * @description Makes no revision. A link that would make it its own ancestor returns 409.
+         * @description Makes no revision. A link that would make it its own ancestor returns 409; one to another library, 400.
          */
         put: operations["set-lorebook-variant-of"];
         post?: never;
@@ -1875,7 +1969,7 @@ export interface paths {
         put?: never;
         /**
          * Make a variant of a lorebook
-         * @description Copies the head revision, and a card's collections and lorebook links, into a new lorebook that is a variant of this one. Sources and bindings aren't copied.
+         * @description Copies the head revision, and a card's collections and lorebook links, into a new lorebook that is a variant of this one. Sources and bindings aren't copied; the new one gets a source of kind innkeeper whose ref is this one's ID. Forked into another library, it isn't a variant and gets no collections.
          */
         post: operations["fork-lorebook"];
         delete?: never;
@@ -2286,8 +2380,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Check every site source for updates
-         * @description Follows each card's and lorebook's site sources and reads them back. With autosync on for a binding, takes an update that merges without conflicts. Returns the check already queued or running, if there is one.
+         * Check a library's site sources for updates
+         * @description Follows the site sources of each card and lorebook in the library and reads them back. With autosync on for a binding, takes an update that merges without conflicts. Returns the check already queued or running, if there is one, even for another library.
          */
         post: operations["start-source-check"];
         delete?: never;
@@ -2343,7 +2437,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List tags with card counts */
+        /** List a library's tags with card counts */
         get: operations["list-tags"];
         put?: never;
         post?: never;
@@ -2845,6 +2939,8 @@ export interface components {
             description: string;
             /** Format: int64 */
             id: number;
+            /** Format: int64 */
+            library_id: number;
             name: string;
         };
         CollectionCount: {
@@ -2901,6 +2997,11 @@ export interface components {
              */
             readonly $schema?: string;
             description?: string;
+            /**
+             * Format: int64
+             * @description The library its cards come from; default 1
+             */
+            library?: number;
             name: string;
         };
         CreateEntityInBody: {
@@ -2914,6 +3015,11 @@ export interface components {
             avatar?: string;
             /** @description The CCv3 data object. A card's may not contain character_book; link a lorebook instead. */
             data: unknown;
+            /**
+             * Format: int64
+             * @description The library to create it in; default 1
+             */
+            library?: number;
             message?: string;
             /** @description Default: made from data.name */
             slug?: string;
@@ -2991,6 +3097,16 @@ export interface components {
             };
             /** @description JSON pointers of overrides whose default changed after they were saved. */
             updated: string[] | null;
+        };
+        DeleteLibraryInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/DeleteLibraryInBody.json
+             */
+            readonly $schema?: string;
+            /** @description The library's exact name */
+            confirm: string;
         };
         DismissInBody: {
             /**
@@ -3219,6 +3335,11 @@ export interface components {
              */
             readonly $schema?: string;
             /**
+             * Format: int64
+             * @description The library to create it in; default the original's
+             */
+            library?: number;
+            /**
              * @default ui
              * @enum {string}
              */
@@ -3240,6 +3361,8 @@ export interface components {
             distance: number;
             /** Format: int64 */
             id: number;
+            /** Format: int64 */
+            library_id: number;
             /** @enum {string} */
             reason: "content" | "text" | "avatar";
         };
@@ -3309,6 +3432,11 @@ export interface components {
             readonly $schema?: string;
             /** Format: int64 */
             instance_id: number;
+            /**
+             * Format: int64
+             * @description The library to import into; default 1
+             */
+            library?: number;
             /** @description The import plugin's settings, such as a folder path. */
             params?: unknown;
         };
@@ -3401,6 +3529,32 @@ export interface components {
             run_after: string;
             /** @enum {string} */
             status: "queued" | "running" | "waiting" | "succeeded" | "failed";
+        };
+        LibraryNameInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/LibraryNameInBody.json
+             */
+            readonly $schema?: string;
+            name: string;
+        };
+        LibrarySummary: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/LibrarySummary.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            cards: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            lorebooks: number;
+            name: string;
         };
         MCPCallResult: {
             /**
@@ -3654,6 +3808,11 @@ export interface components {
             group?: "family";
             /** @description Extra data per hit: tags, lorebooks, targets, enrichments (the score instance's current values of its score keys and grid key). Lorebooks take cards and targets. */
             include?: string[] | null;
+            /**
+             * Format: int64
+             * @description The library to search; default 1.
+             */
+            library?: number;
             page?: components["schemas"]["Page"];
             /** @description Not available yet: needs an embedding enricher. */
             semantic?: boolean;
@@ -3730,6 +3889,15 @@ export interface components {
              */
             readonly $schema?: string;
             id: string;
+        };
+        RenameLibraryInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/RenameLibraryInBody.json
+             */
+            readonly $schema?: string;
+            name: string;
         };
         Resolution: {
             /**
@@ -5129,6 +5297,40 @@ export interface operations {
             };
         };
     };
+    "list-card-in-other-libraries": {
+        parameters: {
+            query?: {
+                /** @description Most differing hash bits to count as similar */
+                max_distance?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HashMatch"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "link-lorebook": {
         parameters: {
             query?: never;
@@ -5833,7 +6035,10 @@ export interface operations {
     };
     "list-collections": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The library; default 1 */
+                library?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -7225,6 +7430,138 @@ export interface operations {
             };
         };
     };
+    "list-libraries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibrarySummary"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "create-library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryNameInBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibrarySummary"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteLibraryInBody"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "rename-library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameLibraryInBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibrarySummary"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "create-lorebook": {
         parameters: {
             query?: never;
@@ -7474,6 +7811,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CatalogMatches"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-lorebook-in-other-libraries": {
+        parameters: {
+            query?: {
+                /** @description Most differing hash bits to count as similar */
+                max_distance?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HashMatch"][] | null;
                 };
             };
             /** @description Error */
@@ -8641,7 +9012,10 @@ export interface operations {
     };
     "start-source-check": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The library; default 1 */
+                library?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -8737,7 +9111,10 @@ export interface operations {
     };
     "list-tags": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The library; default 1 */
+                library?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;

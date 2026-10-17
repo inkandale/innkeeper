@@ -4085,7 +4085,8 @@
             ]
           },
           "facets": {
-            "$ref": "#/components/schemas/Facets"
+            "$ref": "#/components/schemas/Facets",
+            "description": "Counts stop at 1001, meaning more than 1,000."
           },
           "hits": {
             "items": {
@@ -6616,7 +6617,7 @@
               "default": 8,
               "description": "Most differing hash bits to count as similar",
               "format": "int64",
-              "maximum": 32,
+              "maximum": 8,
               "minimum": 0,
               "type": "integer"
             }

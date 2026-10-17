@@ -16,6 +16,9 @@ type EnrichmentKey = components["schemas"]["EnrichmentKey"];
 
 const collapsedKey = "innkeeper.facets.collapsed";
 
+// The API stops each facet count at facetCap + 1.
+const facetCap = 1000;
+
 // Storage can throw or be empty in private windows; the sidebar then just starts open.
 function readCollapsed(): TermKind[] {
   try {
@@ -94,7 +97,7 @@ function FacetRow({ kind, row, q, onChange }: { kind: TermKind; row: Row; q: Car
           {term?.not ? "not " : ""}
           {row.label}
         </span>{" "}
-        <span className="count">{row.cards}</span>
+        <span className="count">{row.cards > facetCap ? "1,000+" : row.cards}</span>
       </button>
       <button className="facet-act" aria-label={`Only ${row.label}`} onClick={() => onChange(onlyTerm(q, { kind, value: row.value, not: false }))}>
         only

@@ -118,8 +118,11 @@ type Results struct {
 	Hits       []Hit   `json:"hits"`
 	NextCursor *string `json:"next_cursor,omitempty"`
 	Total      int     `json:"total" doc:"How many match."`
-	Facets     *Facets `json:"facets,omitempty"`
+	Facets     *Facets `json:"facets,omitempty" doc:"Counts stop at 1001, meaning more than 1,000."`
 }
+
+// facetCap is the most a facet counts; a count of facetCap+1 means more.
+const facetCap = 1000
 
 // Facets counts the matching cards per value. Only the facets asked for are set.
 type Facets struct {
@@ -212,22 +215,24 @@ func (w *where) enrichmentFilter(f Filter) (string, error) {
 // pushedStatus is binding_status for apps the library pushes to; a followed site source isn't a target.
 const pushedStatus = `(SELECT bs.* FROM binding_status bs JOIN binding b ON b.id = bs.binding_id WHERE b.push)`
 
+var capped = strconv.Itoa(facetCap + 1)
+
 // facetSQL selects each facet's rows for the IDs in match.
 var facetSQL = map[string]func(k *Kind, match string) string{
 	"tags": func(k *Kind, m string) string {
-		return `SELECT min(t.t), count(DISTINCT c.id)::int FROM ` + from(k) + `, ` + tagsOf + `
+		return `SELECT min(t.t), least(count(DISTINCT c.id), ` + capped + `)::int FROM ` + from(k) + `, ` + tagsOf + `
 			WHERE c.id IN (` + m + `) GROUP BY lower(t.t) ORDER BY count(DISTINCT c.id) DESC, lower(t.t)`
 	},
 	"collections": func(_ *Kind, m string) string {
-		return `SELECT co.id, co.name, count(*)::int FROM collection_card cc JOIN collection co ON co.id = cc.collection_id
+		return `SELECT co.id, co.name, least(count(*), ` + capped + `)::int FROM collection_card cc JOIN collection co ON co.id = cc.collection_id
 			WHERE cc.card_id IN (` + m + `) GROUP BY co.id ORDER BY lower(co.name)`
 	},
 	"targets": func(k *Kind, m string) string {
-		return `SELECT instance_id, status, count(*)::int FROM ` + pushedStatus + ` bs
+		return `SELECT instance_id, status, least(count(*), ` + capped + `)::int FROM ` + pushedStatus + ` bs
 			WHERE ` + k.FK + ` IN (` + m + `) GROUP BY 1, 2 ORDER BY 1, 2`
 	},
 	"sources": func(k *Kind, m string) string {
-		return `SELECT kind, count(DISTINCT ` + k.FK + `)::int FROM ` + k.SourceTable + `
+		return `SELECT kind, least(count(DISTINCT ` + k.FK + `), ` + capped + `)::int FROM ` + k.SourceTable + `
 			WHERE removed_at IS NULL AND ` + k.FK + ` IN (` + m + `) GROUP BY kind ORDER BY kind`
 	},
 }

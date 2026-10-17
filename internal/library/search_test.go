@@ -838,3 +838,28 @@ func TestCursorPagesEnrichmentSort(t *testing.T) {
 	}
 }
 
+// bulkCards inserts n cards in library 1 with SQL, far faster than Create.
+// data is a SQL expression for each card's data, over the series value g.
+func bulkCards(t testing.TB, lib *Library, n int, data string) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := lib.pool.Exec(ctx, `WITH c AS (
+			INSERT INTO card (slug, provenance) SELECT 'bulk-' || g, 'upload' FROM generate_series(1, $1) g RETURNING id, substr(slug, 6)::int AS g
+		)
+		INSERT INTO card_revision (card_id, data, content_hash, source) SELECT id, `+data+`, md5(id::text), 'ui' FROM c`, n); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lib.pool.Exec(ctx, `UPDATE card c SET head_revision_id = r.id FROM card_revision r
+		WHERE c.head_revision_id IS NULL AND r.card_id = c.id`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFacetCountsStopAtCap(t *testing.T) {
+	lib := newLibrary(t)
+	bulkCards(t, lib, facetCap+5, `'{"name": "Bulk", "tags": ["bulk"]}'::jsonb`)
+	res, err := lib.Search(context.Background(), Card, Query{Facets: []string{"tags"}})
+	if err != nil || len(res.Facets.Tags) != 1 || res.Facets.Tags[0].Cards != facetCap+1 || res.Total != facetCap+5 {
+		t.Fatalf("results = total %d, facets %+v, %v", res.Total, res.Facets, err)
+	}
+}

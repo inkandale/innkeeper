@@ -134,8 +134,18 @@ helm install innkeeper oci://ghcr.io/inkandale/charts/innkeeper --version <versi
 
 `values.yaml` lists the rest: storage, resources, `extraEnv`, pod
 annotations, and [scheduled backups](#backup-and-restore). `extraVolumes` and
-`extraVolumeMounts` mount folders that a plugin reads, such as a catalog's
-archive, into both containers. Create the first token with
+`extraVolumeMounts` mount folders that a plugin reads, such as an import's
+dump, into both containers. To keep blobs elsewhere, such as on a NAS share,
+set `persistence.blobs.enabled=false`, mount the share with those two, and set
+`INNKEEPER_BLOB_DIR` in `extraEnv`; the chart then creates no blob volume, and
+refuses to render without `INNKEEPER_BLOB_DIR`.
+
+> **Warning:** on an existing release, `persistence.blobs.enabled=false`
+> deletes the blobs PVC and, with most storage classes, every blob in it.
+> Scale the deployment to 0 and copy the blob directory to the new location
+> first.
+
+Create the first token with
 `kubectl exec deploy/innkeeper -c api -- innkeeper token create admin destructive`.
 
 ## First login

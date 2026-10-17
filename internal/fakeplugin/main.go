@@ -174,17 +174,11 @@ func main() {
 			if *mode == "bad-catalog" {
 				return protocol.CatalogInfo{}, nil
 			}
-			info := catalogInfo
-			info.Ingest = config["no_ingest"] != true
-			return info, nil
-		case protocol.MethodCatalogIngest:
-			return catalogIngest(conn, config, params)
+			return catalogInfo, nil
 		case protocol.MethodCatalogSearch:
 			return catalogSearch(params, *mode)
 		case protocol.MethodCatalogGet:
 			return catalogGet(blobTmp, config, params, *mode)
-		case protocol.MethodCatalogSimilar:
-			return catalogSimilar(params, *mode)
 		case protocol.MethodSettingsDefaults, protocol.MethodSettingsOptions, protocol.MethodSettingsRun:
 			return settingsCall(method, params, *mode)
 		case protocol.MethodAuthBegin:

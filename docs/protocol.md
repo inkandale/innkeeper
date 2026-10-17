@@ -440,15 +440,14 @@ letters and digits. The core moves the file, so don't reuse the path.
 
 ### `catalog`
 
-A catalog serves a collection of cards and lorebooks the owner searches and
-adopts from, without putting them in the library. An **ingested** catalog
-copies its source into its own schema (`database = true`) and answers
-`catalog.ingest`. A **pass-through** catalog forwards each call to a remote
-site and stores nothing.
+A catalog lets the owner search a remote site's cards and lorebooks without
+putting them in a library. It forwards each call to the site and stores
+nothing. To copy a source into Innkeeper, write an [`import`](#import) plugin
+instead.
 
 Every item has an `id` you assign that never changes, a `kind` in lowercase
 `snake_case`, and one or more versions, each named by a string you choose.
-The core adopts kinds `card` and `lorebook`.
+The core matches kinds `card` and `lorebook` against the library.
 Reply with error `-32004` for an ID or version you don't have. Check params
 before reaching your source, so a bad request gets `-32602` even when the
 source is down.
@@ -460,8 +459,6 @@ source is down.
 | `kinds` | The kinds you hold, such as `["card", "lorebook"]` |
 | `filters` | The filters `catalog.search` accepts. Each has `name` (lowercase `snake_case`), `label`, `type`, and, for `enum` only, `options`: a list of `{value, label}` |
 | `sorts` | The orders `catalog.search` accepts, each `{value, label}`. The first is the default |
-| `ingest` | `true` if you answer `catalog.ingest` |
-| `similar` | `true` if you answer `catalog.similar` |
 
 | Filter `type` | Value in a search |
 |---|---|
@@ -498,30 +495,13 @@ cursor for the following page, or empty on the last. Each item has:
 |---|---|
 | `id` | The item |
 | `version` | A version name, or empty for the latest |
-| `avatar` | `true` to write the card's image to `blob_tmp`. Adopt and `innkeeper plugin check` set it |
+| `avatar` | `true` to write the card's image to `blob_tmp`. `innkeeper plugin check` sets it |
 
 Reply with `item` (as in search), `version`, `versions` (newest first, each
 `{version, created}`, with `created` in RFC 3339 if you know it), `data` (a
 CCv3 card for a card, a CCv3 `character_book` for a lorebook), and `avatar`,
 the file you wrote to `blob_tmp`, or empty. The core moves the file, so don't
 reuse the path.
-
-**`catalog.similar`** finds near-duplicates of a library item.
-
-| Param | Meaning |
-|---|---|
-| `kind` | The kind to search |
-| `hashes` | The library item's hashes |
-| `max_distance` | The most bits `text_simhash` or `image_phash` may differ by |
-| `limit` | The most items to return, 1 to 100 |
-
-Reply with `items` that share `content_hash` or fall within `max_distance`
-on either other hash, closest first.
-
-**`catalog.ingest`** copies your source into your schema. It takes `run` and
-`checkpoint` and sends `progress` and `checkpoint` notifications, all as in
-`import.run`. Reply with the counts `added`, `updated`, `removed`, and
-`skipped`. Search keeps serving what you have while an ingest runs.
 
 ```json
 {"jsonrpc": "2.0", "id": 8, "method": "catalog.search", "params": {"q": "dwarf", "kind": "card", "filters": {"site": "chub"}, "page": {"size": 1}}}
@@ -1082,11 +1062,9 @@ It loads the manifest, then checks that:
   pages one item at a time without repeats and refuses an undeclared filter
   with `-32602`; `catalog.get` returns `-32004` for an unknown ID, and for the
   first search result returns data that hashes to its `content_hash` and, if
-  it returns an avatar, one inside `blob_tmp`; and, if it claims `similar`,
-  `catalog.similar` finds that item by its own hashes. Without `INNKEEPER_PLUGIN_CONFIG`, a
+  it returns an avatar, one inside `blob_tmp`. Without `INNKEEPER_PLUGIN_CONFIG`, a
   catalog may refuse search with an error other than `-32601`, and may then
-  answer `catalog.get` and `catalog.similar` the same way; the checks that
-  need an item pass
+  answer `catalog.get` the same way; the checks that need an item pass
 - a `sites` plugin's `sites.detect` finds no source in a plain card
   (`{"name": "Contract"}`) or a plain lorebook (`{"entries": []}`) and
   refuses `data` that isn't an object with `-32602`; its `sites.parse`

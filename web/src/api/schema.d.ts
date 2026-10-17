@@ -456,26 +456,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/cards/{id}/catalog-matches": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Find a card in the catalogs
-         * @description Asks every catalog that finds similar items for the same content, near-identical text, or a similar avatar.
-         */
-        get: operations["find-card-in-catalogs"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/cards/{id}/enrichments": {
         parameters: {
             query?: never;
@@ -802,31 +782,11 @@ export interface paths {
         };
         /**
          * List catalogs
-         * @description Every instance of a catalog plugin, with its description and newest ingest job.
+         * @description Every instance of a catalog plugin, with its description.
          */
         get: operations["list-catalogs"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/catalogs/{id}/ingest": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Ingest a catalog's source
-         * @description Queues a catalog.ingest job. Returns 409 while an earlier ingest of the catalog is unfinished.
-         */
-        post: operations["start-catalog-ingest"];
         delete?: never;
         options?: never;
         head?: never;
@@ -847,26 +807,6 @@ export interface paths {
         get: operations["get-catalog-item"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/catalogs/{id}/items/{item}/adopt": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Adopt a catalog item into the library
-         * @description Copies one version in as a new card or lorebook; a card's character_book becomes a linked lorebook. Returns 201 with the new entry, or 200 with the one an earlier adopt of the same version made.
-         */
-        post: operations["adopt-catalog-item"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1711,26 +1651,6 @@ export interface paths {
         };
         /** List a lorebook's bindings: the apps it is pushed to and the site sources it follows */
         get: operations["list-lorebook-bindings"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/lorebooks/{id}/catalog-matches": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Find a lorebook in the catalogs
-         * @description Asks every catalog that finds similar items for the same content, near-identical text, or a similar avatar.
-         */
-        get: operations["find-lorebook-in-catalogs"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2779,9 +2699,7 @@ export interface components {
         };
         CatalogInfo: {
             filters: components["schemas"]["CatalogFilter"][] | null;
-            ingest: boolean;
             kinds: string[] | null;
-            similar: boolean;
             sorts: components["schemas"]["CatalogOption"][] | null;
         };
         CatalogItem: {
@@ -2795,24 +2713,6 @@ export interface components {
             tags?: string[] | null;
             thumbnail?: string;
         };
-        CatalogMatch: {
-            catalog: string;
-            /** Format: int64 */
-            catalog_id: number;
-            items: components["schemas"]["CatalogItem"][] | null;
-        };
-        CatalogMatches: {
-            /**
-             * Format: uri
-             * @description A URL to the JSON Schema for this object.
-             * @example /api/schemas/CatalogMatches.json
-             */
-            readonly $schema?: string;
-            /** @description One per catalog with matches */
-            matches: components["schemas"]["CatalogMatch"][] | null;
-            /** @description Catalogs that didn't answer, which may hold more matches */
-            unreachable: components["schemas"]["CatalogRef"][] | null;
-        };
         CatalogOption: {
             label: string;
             value: string;
@@ -2822,10 +2722,8 @@ export interface components {
             error?: string;
             /** Format: int64 */
             id: number;
-            /** @description The catalog's kinds, filters, and sorts, and whether it ingests and finds similar items */
+            /** @description The catalog's kinds, filters, and sorts */
             info?: components["schemas"]["CatalogInfo"];
-            /** @description The newest catalog.ingest job */
-            last_ingest?: components["schemas"]["JobOut"];
             name: string;
             plugin: string;
         };
@@ -2840,12 +2738,6 @@ export interface components {
             released?: string;
             version: string;
             versions: string[] | null;
-        };
-        CatalogRef: {
-            error: string;
-            /** Format: int64 */
-            id: number;
-            name: string;
         };
         CatalogResults: {
             /**
@@ -3523,7 +3415,7 @@ export interface components {
             /** Format: int64 */
             parent_id?: number;
             payload: unknown;
-            /** @description An import's has done, total, message, imported, skipped, failed, and errors. A catalog ingest's has done, total, and message, and once finished, added, updated, removed, and skipped. A running reconcile's has done and total; a finished one's is the snapshot, cut to totals in job lists and streams. An action run's has message, done, and total, and once finished, result, which job lists and streams leave out. An enrich run's has message, done, failed, total, and warnings. */
+            /** @description An import's has done, total, message, imported, skipped, failed, and errors. A running reconcile's has done and total; a finished one's is the snapshot, cut to totals in job lists and streams. An action run's has message, done, and total, and once finished, result, which job lists and streams leave out. An enrich run's has message, done, failed, total, and warnings. */
             progress: unknown;
             /** Format: date-time */
             run_after: string;
@@ -5193,37 +5085,6 @@ export interface operations {
             };
         };
     };
-    "find-card-in-catalogs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CatalogMatches"];
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ErrorModel"];
-                };
-            };
-        };
-    };
     "get-card-enrichments": {
         parameters: {
             query?: {
@@ -5877,37 +5738,6 @@ export interface operations {
             };
         };
     };
-    "start-catalog-ingest": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Accepted */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["JobOut"];
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ErrorModel"];
-                };
-            };
-        };
-    };
     "get-catalog-item": {
         parameters: {
             query?: {
@@ -5931,51 +5761,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CatalogGetResult"];
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ErrorModel"];
-                };
-            };
-        };
-    };
-    "adopt-catalog-item": {
-        parameters: {
-            query?: {
-                /** @description Default: the latest */
-                version?: string;
-            };
-            header?: never;
-            path: {
-                id: number;
-                /** @description The catalog's item ID, with / escaped as %2F */
-                item: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description An earlier adopt's entry */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EntityOut"];
-                };
-            };
-            /** @description Created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EntityOut"];
                 };
             };
             /** @description Error */
@@ -7780,37 +7565,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Binding"][] | null;
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ErrorModel"];
-                };
-            };
-        };
-    };
-    "find-lorebook-in-catalogs": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CatalogMatches"];
                 };
             };
             /** @description Error */

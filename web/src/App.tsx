@@ -2,8 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { createBrowserRouter, Navigate, Outlet } from "react-router";
 import { ApiError, nextKey, safeNext } from "./api/client";
 import { meQuery, settingsQuery } from "./api/queries";
-import { ArchiveItem } from "./archives/ArchiveItem";
-import { Archives } from "./archives/Archives";
 import { Card } from "./card/Card";
 import { History } from "./card/History";
 import { NewCard } from "./card/NewCard";
@@ -73,8 +71,6 @@ export const router = createBrowserRouter([
           { path: "lorebooks", element: <Cards key="lorebooks" kind="lorebook" /> },
           { path: "lorebooks/:id", element: <Lorebook /> },
           { path: "lorebooks/:id/history", element: <History kind="lorebook" /> },
-          { path: "archives", element: <Archives /> },
-          { path: "archives/:catalog/items/:item", element: <ArchiveItem /> },
           { path: "cards/new", element: <NewCard /> },
           { path: "cards/:id", element: <Card /> },
           { path: "cards/:id/history", element: <History /> },

@@ -181,13 +181,16 @@ Each step ships on its own. Step 5 is in innkeeper-plugins; the rest are core.
 Each step is its own Forgejo PR. Never change an app spec and its source path
 in one push.
 
-1. Mount the `innkeeper-archive` share at `/data` in both containers, beside
-   the `blobs` volume.
-2. Scale the deployment to 0, copy the blob directory to `/data/blobs`, set
-   `INNKEEPER_BLOB_DIR` to it, scale back up, and check that avatars load.
-   This needs no core change and can happen before build step 1.
-3. Remove the `blobs` volume, its Velero annotation, and the `/chub-archive`
-   mount. The NAS's own snapshots now cover blobs.
+1. Mount the `innkeeper-archive` share at `/nas` in both containers with
+   `extraVolumes` and `extraVolumeMounts`. Not `/data`: the chart already
+   mounts `/data/blobs` and `/data/plugins`.
+2. Scale the deployment to 0, copy the blob directory to `/nas/blobs`, set
+   `INNKEEPER_BLOB_DIR=/nas/blobs` in `extraEnv`, scale back up, and check
+   that avatars load. This needs no core change and can happen before build
+   step 1.
+3. Set `persistence.blobs.enabled=false`, which drops the `blobs` volume and
+   its claim, and remove its Velero annotation and the `/chub-archive` mount.
+   The NAS's own snapshots now cover blobs.
 4. After build step 5, create a "Chub archive" library and import into it from
    `/takeout`. Then remove the `takeout` mount.
 

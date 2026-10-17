@@ -52,6 +52,18 @@ func TestCatalogInfoValidate(t *testing.T) {
 	}
 }
 
+// A catalog written before ingest and similar were removed still describes itself validly.
+func TestCatalogInfoIgnoresRemovedFields(t *testing.T) {
+	raw := `{"kinds": ["card"], "filters": [], "sorts": [{"value": "name", "label": "Name"}], "ingest": true, "similar": true}`
+	var c CatalogInfo
+	if err := json.Unmarshal([]byte(raw), &c); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+}
+
 func filters(kv ...string) map[string]json.RawMessage {
 	out := map[string]json.RawMessage{}
 	for i := 0; i < len(kv); i += 2 {

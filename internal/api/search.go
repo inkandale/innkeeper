@@ -67,7 +67,7 @@ func (s *Server) search(ctx context.Context, k *library.Kind, q library.Query) (
 	}
 	p := protocol.CatalogSearchParams{Q: q.Text, Kind: k.Name, Page: protocol.CatalogPage{Size: min(cmp.Or(q.Page.Size, 50), protocol.MaxCatalogPage)}}
 	for _, id := range catalogs {
-		res, err := s.searchCatalog(ctx, id, p)
+		res, err := s.searchCatalog(ctx, id, q.Library, p)
 		var se huma.StatusError
 		switch {
 		case errors.As(err, &se) && se.GetStatus() == http.StatusNotFound:

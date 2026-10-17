@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
-	"github.com/inkandale/innkeeper/internal/importer"
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/protocol"
@@ -51,7 +51,7 @@ func TestCatalogRoutes(t *testing.T) {
 	for _, c := range list {
 		got[c.ID] = c
 	}
-	if len(list) != 3 || got[inst].Name != "Archive" || got[inst].Info == nil || !got[inst].Info.Ingest || got[inst].LastIngest != nil {
+	if len(list) != 3 || got[inst].Name != "Archive" || got[inst].Info == nil {
 		t.Fatalf("catalogs = %+v", list)
 	}
 	// describe doesn't reach the source, so a catalog that is down still answers it.
@@ -102,147 +102,27 @@ func TestCatalogRoutes(t *testing.T) {
 	}
 }
 
-func TestCatalogIngestRoute(t *testing.T) {
+// A catalog item shows the library cards with its content or near its text.
+func TestCatalogSearchMatchesLibrary(t *testing.T) {
 	e := newEnv(t)
 	inst := e.catalog("Archive", nil)
-	static := e.catalog("Static", map[string]any{"no_ingest": true})
-
-	var j jobOut
-	e.call("POST", fmt.Sprintf("/catalogs/%d/ingest", inst), nil, 202, &j)
-	if j.Kind != importer.IngestKind || j.InstanceID == nil || *j.InstanceID != inst {
-		t.Fatalf("job = %+v", j)
-	}
-	// Nothing runs jobs here, so the first ingest is still queued.
-	e.call("POST", fmt.Sprintf("/catalogs/%d/ingest", inst), nil, 409, nil)
-	// A finished ingest no longer blocks a new one.
-	if err := e.s.Queue.Cancel(context.Background(), j.ID); err != nil {
-		t.Fatal(err)
-	}
-	var j2 jobOut
-	e.call("POST", fmt.Sprintf("/catalogs/%d/ingest", inst), nil, 202, &j2)
-	if j2.ID == j.ID {
-		t.Fatalf("second ingest reused job %d", j.ID)
-	}
-	if r := e.call("POST", fmt.Sprintf("/catalogs/%d/ingest", static), nil, 400, nil); !strings.Contains(string(r.Body), "doesn't ingest") {
-		t.Fatalf("static: %s", r)
-	}
-
-	var list []catalogOut
-	e.call("GET", "/catalogs", nil, 200, &list)
-	last := map[int64]*jobOut{}
-	for _, c := range list {
-		last[c.ID] = c.LastIngest
-	}
-	if last[inst] == nil || last[inst].ID != j2.ID || last[static] != nil {
-		t.Fatalf("last ingests = %+v", last)
-	}
-}
-
-func TestCatalogAdopt(t *testing.T) {
-	e := newEnv(t)
-	inst := e.catalog("Archive", nil)
-	base := fmt.Sprintf("/catalogs/%d", inst)
-
-	var c entityOut
-	e.call("POST", base+"/items/brakka/adopt", nil, 201, &c)
-	if c.Provenance != fmt.Sprintf("catalog:%d:brakka@2", inst) || c.Revision.Source != "plugin:catalog" ||
-		len(c.Lorebooks) != 1 || c.Revision.Avatar == nil {
-		t.Fatalf("adopted %+v", c)
-	}
-	var jobs int
-	var queued bool
-	if err := e.pool.QueryRow(context.Background(), `SELECT (SELECT count(*) FROM job WHERE kind = 'detect-sources'),
-		EXISTS (SELECT 1 FROM source_detect WHERE kind = 'card' AND entity_id = $1)`, c.ID).Scan(&jobs, &queued); err != nil || jobs != 1 || !queued {
-		t.Fatalf("detect jobs %d, card queued %v, %v; want the adopted card queued for detection", jobs, queued, err)
-	}
-	for _, path := range []string{"/items/brakka/adopt", "/items/brakka/adopt?version=2"} {
-		var again entityOut
-		e.call("POST", base+path, nil, 200, &again)
-		if again.ID != c.ID {
-			t.Fatalf("%s adopted again as %d, want %d", path, again.ID, c.ID)
-		}
-	}
-	var old entityOut
-	e.call("POST", base+"/items/brakka/adopt?version=1", nil, 201, &old)
-	if old.ID == c.ID || old.Provenance != fmt.Sprintf("catalog:%d:brakka@1", inst) {
-		t.Fatalf("version 1 = %+v", old)
-	}
-	e.call("POST", base+"/items/brakka/adopt?version=9", nil, 404, nil)
-	e.call("POST", base+"/items/nobody/adopt", nil, 404, nil)
-
-	var lb entityOut
-	e.call("POST", base+"/items/forge-lore/adopt", nil, 201, &lb)
-	e.call("GET", fmt.Sprintf("/lorebooks/%d", lb.ID), nil, 200, nil)
-
-	// near has carrow's text but not its content.
+	same := e.createCard(`{"name": "Carrow", "description": "A cheerful elven bard who sings of the sea."}`)
 	near := e.createCard(`{"name": "Carrow Two", "description": "A cheerful elven bard who sings of the sea."}`)
+
 	var page catalogResults
-	e.call("GET", base+"/search", nil, 200, &page)
+	e.call("GET", fmt.Sprintf("/catalogs/%d/search?kind=card", inst), nil, 200, &page)
 	got := map[string][]library.HashMatch{}
 	for _, it := range page.Items {
 		got[it.ID] = it.Library
 	}
-	if m := got["brakka"]; len(m) == 0 || m[0] != (library.HashMatch{ID: c.ID, LibraryID: library.DefaultLibrary, Reason: "content"}) {
+	want := []library.HashMatch{{ID: same.ID, LibraryID: library.DefaultLibrary, Reason: "content"},
+		{ID: near.ID, LibraryID: library.DefaultLibrary, Reason: "text"}}
+	if m := got["carrow"]; !slices.Equal(m, want) {
+		t.Fatalf("carrow matches = %+v, want %+v", m, want)
+	}
+	if m := got["brakka"]; len(m) != 0 {
 		t.Fatalf("brakka matches = %+v", m)
 	}
-	if m := got["carrow"]; len(m) != 1 || m[0] != (library.HashMatch{ID: near.ID, LibraryID: library.DefaultLibrary, Reason: "text"}) {
-		t.Fatalf("carrow matches = %+v", m)
-	}
-	if m := got["forge-lore"]; len(m) != 1 || m[0] != (library.HashMatch{ID: lb.ID, LibraryID: library.DefaultLibrary, Reason: "content"}) {
-		t.Fatalf("forge-lore matches = %+v", m)
-	}
-}
-
-// An avatar path the blob store refuses is the catalog's fault, and the
-// path stays out of the reply.
-func TestCatalogAdoptBadAvatar(t *testing.T) {
-	e := newEnv(t)
-	inst := e.catalog("Archive", map[string]any{"bad_avatar": true})
-	r := e.call("POST", fmt.Sprintf("/catalogs/%d/items/brakka/adopt", inst), nil, 502, nil)
-	if strings.Contains(string(r.Body), "/etc/hosts") {
-		t.Fatalf("body leaks the path: %s", r.Body)
-	}
-	var cards, lorebooks int
-	if err := e.pool.QueryRow(context.Background(),
-		`SELECT (SELECT count(*) FROM card), (SELECT count(*) FROM lorebook)`).Scan(&cards, &lorebooks); err != nil {
-		t.Fatal(err)
-	}
-	if cards != 0 || lorebooks != 0 {
-		t.Fatalf("left %d cards and %d lorebooks behind", cards, lorebooks)
-	}
-}
-
-func TestCatalogMatches(t *testing.T) {
-	e := newEnv(t)
-	up := e.catalog("Archive", nil)
-	down := e.catalog("Down", map[string]any{"down": true})
-	broken := e.catalog("Broken", nil)
-	e.markBroken(broken, "bad config")
-	near := e.createCard(`{"name": "Carrow Two", "description": "A cheerful elven bard who sings of the sea."}`)
-
-	var out catalogMatches
-	e.call("GET", fmt.Sprintf("/cards/%d/catalog-matches", near.ID), nil, 200, &out)
-	if len(out.Matches) != 1 || out.Matches[0].CatalogID != up || out.Matches[0].Catalog != "Archive" ||
-		len(out.Matches[0].Items) != 1 || out.Matches[0].Items[0].ID != "carrow" {
-		t.Fatalf("matches = %+v", out.Matches)
-	}
-	unreachable := map[int64]catalogRef{}
-	for _, c := range out.Unreachable {
-		unreachable[c.ID] = c
-	}
-	if len(out.Unreachable) != 2 || !strings.Contains(unreachable[down].Error, "catalog Down is unavailable") ||
-		unreachable[broken].Name != "Broken" || unreachable[broken].Error == "" {
-		t.Fatalf("unreachable = %+v", out.Unreachable)
-	}
-
-	var lb entityOut
-	e.call("POST", fmt.Sprintf("/catalogs/%d/items/forge-lore/adopt", up), nil, 201, &lb)
-	var lbOut catalogMatches
-	e.call("GET", fmt.Sprintf("/lorebooks/%d/catalog-matches", lb.ID), nil, 200, &lbOut)
-	if len(lbOut.Matches) != 1 || lbOut.Matches[0].Items[0].ID != "forge-lore" {
-		t.Fatalf("lorebook matches = %+v", lbOut.Matches)
-	}
-	e.call("GET", "/cards/999999/catalog-matches", nil, 404, nil)
 }
 
 func TestSearchCatalogSources(t *testing.T) {
@@ -283,4 +163,28 @@ func TestSearchCatalogSources(t *testing.T) {
 	e.call("POST", "/search", map[string]any{"sources": []string{"catalog:x"}}, 400, nil)
 	e.call("POST", "/search", map[string]any{"sources": []string{fmt.Sprintf("catalog:%d", e.importID)}}, 400, nil)
 	e.call("POST", "/search", map[string]any{"sources": []string{"chub"}}, 400, nil)
+}
+
+// A catalog source in a search matches against the searched library.
+func TestSearchCatalogSourcesMatchTheQueryLibrary(t *testing.T) {
+	e := newEnv(t)
+	inst := e.catalog("Archive", nil)
+	archive := e.createLibrary("Archive")
+	data := map[string]any{"name": "Carrow", "description": "A cheerful elven bard who sings of the sea."}
+	e.createCard(`{"name": "Carrow", "description": "A cheerful elven bard who sings of the sea."}`)
+	var there entityResult
+	e.call("POST", "/cards", map[string]any{"data": data, "library": archive.ID}, 201, &there)
+
+	var res searchResults
+	e.call("POST", "/search", map[string]any{"library": archive.ID, "sources": []string{fmt.Sprintf("catalog:%d", inst)}}, 200, &res)
+	var carrow []library.HashMatch
+	for _, it := range res.Catalogs[0].Items {
+		if it.ID == "carrow" {
+			carrow = it.Library
+		}
+	}
+	want := []library.HashMatch{{ID: there.ID, LibraryID: archive.ID, Reason: "content"}}
+	if !slices.Equal(carrow, want) {
+		t.Fatalf("carrow matches = %+v, want %+v", carrow, want)
+	}
 }

@@ -55,6 +55,8 @@ jobs:
       - uses: azure/setup-helm@v5
       - run: helm lint chart --strict --set database.secretName=db --set secretsKey.secretName=key --set ingress.enabled=true --set ingress.host=innkeeper.example.com
       - run: helm lint chart --strict --set database.secretName=db --set secretsKey.secretName=key --set backup.persistence.enabled=true --set backup.assets.every=24h --set backup.config.every=7d
+      - run: helm lint chart --strict --set database.secretName=db --set secretsKey.secretName=key --set persistence.blobs.enabled=false --set 'extraEnv[0].name=INNKEEPER_BLOB_DIR' --set 'extraEnv[0].value=/nas/blobs'
+      - run: "! helm template t chart --set database.secretName=db --set secretsKey.secretName=key --set persistence.blobs.enabled=false"
 
   web:
     runs-on: ubuntu-latest

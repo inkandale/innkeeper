@@ -780,9 +780,6 @@
               "null"
             ]
           },
-          "ingest": {
-            "type": "boolean"
-          },
           "kinds": {
             "items": {
               "type": "string"
@@ -791,9 +788,6 @@
               "array",
               "null"
             ]
-          },
-          "similar": {
-            "type": "boolean"
           },
           "sorts": {
             "items": {
@@ -808,9 +802,7 @@
         "required": [
           "kinds",
           "filters",
-          "sorts",
-          "ingest",
-          "similar"
+          "sorts"
         ],
         "type": "object"
       },
@@ -861,72 +853,6 @@
         ],
         "type": "object"
       },
-      "CatalogMatch": {
-        "additionalProperties": false,
-        "properties": {
-          "catalog": {
-            "type": "string"
-          },
-          "catalog_id": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/CatalogItem"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "catalog_id",
-          "catalog",
-          "items"
-        ],
-        "type": "object"
-      },
-      "CatalogMatches": {
-        "additionalProperties": false,
-        "properties": {
-          "$schema": {
-            "description": "A URL to the JSON Schema for this object.",
-            "examples": [
-              "/api/schemas/CatalogMatches.json"
-            ],
-            "format": "uri",
-            "readOnly": true,
-            "type": "string"
-          },
-          "matches": {
-            "description": "One per catalog with matches",
-            "items": {
-              "$ref": "#/components/schemas/CatalogMatch"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "unreachable": {
-            "description": "Catalogs that didn't answer, which may hold more matches",
-            "items": {
-              "$ref": "#/components/schemas/CatalogRef"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "matches",
-          "unreachable"
-        ],
-        "type": "object"
-      },
       "CatalogOption": {
         "additionalProperties": false,
         "properties": {
@@ -956,11 +882,7 @@
           },
           "info": {
             "$ref": "#/components/schemas/CatalogInfo",
-            "description": "The catalog's kinds, filters, and sorts, and whether it ingests and finds similar items"
-          },
-          "last_ingest": {
-            "$ref": "#/components/schemas/JobOut",
-            "description": "The newest catalog.ingest job"
+            "description": "The catalog's kinds, filters, and sorts"
           },
           "name": {
             "type": "string"
@@ -1027,27 +949,6 @@
           "protocol",
           "capabilities",
           "description"
-        ],
-        "type": "object"
-      },
-      "CatalogRef": {
-        "additionalProperties": false,
-        "properties": {
-          "error": {
-            "type": "string"
-          },
-          "id": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "name": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "error"
         ],
         "type": "object"
       },
@@ -2839,7 +2740,7 @@
           },
           "payload": {},
           "progress": {
-            "description": "An import's has done, total, message, imported, skipped, failed, and errors. A catalog ingest's has done, total, and message, and once finished, added, updated, removed, and skipped. A running reconcile's has done and total; a finished one's is the snapshot, cut to totals in job lists and streams. An action run's has message, done, and total, and once finished, result, which job lists and streams leave out. An enrich run's has message, done, failed, total, and warnings."
+            "description": "An import's has done, total, message, imported, skipped, failed, and errors. A running reconcile's has done and total; a finished one's is the snapshot, cut to totals in job lists and streams. An action run's has message, done, and total, and once finished, result, which job lists and streams leave out. An enrich run's has message, done, failed, total, and warnings."
           },
           "run_after": {
             "format": "date-time",
@@ -6149,49 +6050,6 @@
         ]
       }
     },
-    "/cards/{id}/catalog-matches": {
-      "get": {
-        "description": "Asks every catalog that finds similar items for the same content, near-identical text, or a similar avatar.",
-        "operationId": "find-card-in-catalogs",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CatalogMatches"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "default": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorModel"
-                }
-              }
-            },
-            "description": "Error"
-          }
-        },
-        "summary": "Find a card in the catalogs",
-        "tags": [
-          "Catalogs"
-        ]
-      }
-    },
     "/cards/{id}/enrichments": {
       "get": {
         "description": "Every instance's current value of each key, by instance and key. A stale value is about a revision that is no longer the head.",
@@ -7194,7 +7052,7 @@
     },
     "/catalogs": {
       "get": {
-        "description": "Every instance of a catalog plugin, with its description and newest ingest job.",
+        "description": "Every instance of a catalog plugin, with its description.",
         "operationId": "list-catalogs",
         "responses": {
           "200": {
@@ -7225,49 +7083,6 @@
           }
         },
         "summary": "List catalogs",
-        "tags": [
-          "Catalogs"
-        ]
-      }
-    },
-    "/catalogs/{id}/ingest": {
-      "post": {
-        "description": "Queues a catalog.ingest job. Returns 409 while an earlier ingest of the catalog is unfinished.",
-        "operationId": "start-catalog-ingest",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobOut"
-                }
-              }
-            },
-            "description": "Accepted"
-          },
-          "default": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorModel"
-                }
-              }
-            },
-            "description": "Error"
-          }
-        },
-        "summary": "Ingest a catalog's source",
         "tags": [
           "Catalogs"
         ]
@@ -7331,79 +7146,6 @@
           }
         },
         "summary": "Get a catalog item",
-        "tags": [
-          "Catalogs"
-        ]
-      }
-    },
-    "/catalogs/{id}/items/{item}/adopt": {
-      "post": {
-        "description": "Copies one version in as a new card or lorebook; a card's character_book becomes a linked lorebook. Returns 201 with the new entry, or 200 with the one an earlier adopt of the same version made.",
-        "operationId": "adopt-catalog-item",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "The catalog's item ID, with / escaped as %2F",
-            "in": "path",
-            "name": "item",
-            "required": true,
-            "schema": {
-              "description": "The catalog's item ID, with / escaped as %2F",
-              "type": "string"
-            }
-          },
-          {
-            "description": "Default: the latest",
-            "explode": false,
-            "in": "query",
-            "name": "version",
-            "schema": {
-              "description": "Default: the latest",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EntityOut"
-                }
-              }
-            },
-            "description": "An earlier adopt's entry"
-          },
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EntityOut"
-                }
-              }
-            },
-            "description": "Created"
-          },
-          "default": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorModel"
-                }
-              }
-            },
-            "description": "Error"
-          }
-        },
-        "summary": "Adopt a catalog item into the library",
         "tags": [
           "Catalogs"
         ]
@@ -10236,49 +9978,6 @@
         "summary": "List a lorebook's bindings: the apps it is pushed to and the site sources it follows",
         "tags": [
           "Sync"
-        ]
-      }
-    },
-    "/lorebooks/{id}/catalog-matches": {
-      "get": {
-        "description": "Asks every catalog that finds similar items for the same content, near-identical text, or a similar avatar.",
-        "operationId": "find-lorebook-in-catalogs",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CatalogMatches"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "default": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorModel"
-                }
-              }
-            },
-            "description": "Error"
-          }
-        },
-        "summary": "Find a lorebook in the catalogs",
-        "tags": [
-          "Catalogs"
         ]
       }
     },

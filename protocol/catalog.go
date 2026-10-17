@@ -10,19 +10,15 @@ import (
 	"time"
 )
 
-// The catalog capability serves a collection of cards and lorebooks the
-// owner searches and adopts from. catalog.similar and catalog.ingest are
-// optional; catalog.describe says whether the plugin answers them.
+// The catalog capability serves a remote collection of cards and lorebooks
+// the owner searches without storing it.
 const (
 	MethodCatalogDescribe = "catalog.describe"
 	MethodCatalogSearch   = "catalog.search"
 	MethodCatalogGet      = "catalog.get"
-	MethodCatalogSimilar  = "catalog.similar"
-	MethodCatalogIngest   = "catalog.ingest"
 )
 
-// Item kinds the core can adopt. A catalog may declare others, which a later
-// core may adopt.
+// Item kinds the library holds. A catalog may declare others.
 const (
 	KindCard     = "card"
 	KindLorebook = "lorebook"
@@ -52,9 +48,7 @@ type CatalogInfo struct {
 	Kinds   []string        `json:"kinds"`
 	Filters []CatalogFilter `json:"filters"`
 	// Sorts are the orders search accepts. The first is the default.
-	Sorts   []CatalogOption `json:"sorts"`
-	Ingest  bool            `json:"ingest"`
-	Similar bool            `json:"similar"`
+	Sorts []CatalogOption `json:"sorts"`
 }
 
 // CatalogFilter is one filter search accepts. Only an enum has Options.
@@ -294,7 +288,7 @@ type CatalogSearchResult struct {
 }
 
 // CatalogGetParams asks for one version of an item, the latest if Version is
-// empty. Avatar asks for its image too; adopt and plugin check set it.
+// empty. Avatar asks for its image too; plugin check sets it.
 type CatalogGetParams struct {
 	ID      string `json:"id"`
 	Version string `json:"version,omitempty"`
@@ -317,33 +311,4 @@ type CatalogGetResult struct {
 type CatalogVersion struct {
 	Version string `json:"version"`
 	Created string `json:"created,omitempty"`
-}
-
-// CatalogSimilarParams asks for items of Kind with the same content_hash, or
-// within MaxDistance bits of either other hash. Limit is 1 to MaxCatalogPage.
-type CatalogSimilarParams struct {
-	Kind        string        `json:"kind"`
-	Hashes      CatalogHashes `json:"hashes"`
-	MaxDistance int           `json:"max_distance"`
-	Limit       int           `json:"limit"`
-}
-
-// CatalogSimilarResult lists at most Limit matches, closest first.
-type CatalogSimilarResult struct {
-	Items []CatalogItem `json:"items"`
-}
-
-// CatalogIngestParams starts an ingest. Run and Checkpoint work as in
-// ImportRunParams, and so do the progress and checkpoint notifications.
-type CatalogIngestParams struct {
-	Run        string          `json:"run"`
-	Checkpoint json.RawMessage `json:"checkpoint"`
-}
-
-// CatalogIngestResult counts what the ingest changed.
-type CatalogIngestResult struct {
-	Added   int64 `json:"added"`
-	Updated int64 `json:"updated"`
-	Removed int64 `json:"removed"`
-	Skipped int64 `json:"skipped"`
 }

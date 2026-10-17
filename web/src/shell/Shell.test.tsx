@@ -17,6 +17,7 @@ test("the rail links every section and marks the current one", () => {
   for (const name of ["Cards", "Lorebooks", "Collections", "Sync", "Settings"]) {
     expect(screen.getByRole("link", { name })).toBeInTheDocument();
   }
+  expect(screen.queryByRole("link", { name: "Archive" })).not.toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Cards" })).toHaveAttribute("aria-current", "page");
   expect(screen.getByText("cards page")).toBeInTheDocument();
 });

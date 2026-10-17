@@ -1,7 +1,6 @@
 // Package importer runs import jobs: it calls an import plugin's import.run
-// and stores the cards and lorebooks the plugin emits. It also runs catalog
-// ingests, which send the same progress and checkpoint notifications, and the
-// job that detects imported items' sources.
+// and stores the cards and lorebooks the plugin emits. It also runs the job
+// that detects imported items' sources.
 package importer
 
 import (
@@ -28,10 +27,6 @@ import (
 // instance, and its payload is a Payload.
 const Kind = "import"
 
-// IngestKind is the job kind for catalog ingests. The job's instance is the
-// catalog plugin instance, and its payload is empty.
-const IngestKind = "catalog.ingest"
-
 // maxErrors is how many item errors a job's progress keeps.
 const maxErrors = 20
 
@@ -42,13 +37,13 @@ type Payload struct {
 	Library int64 `json:"library,omitempty"`
 }
 
-// Importer runs import and catalog ingest jobs.
+// Importer runs import jobs.
 type Importer struct {
 	Lib      *library.Library
 	Registry *plugins.Registry
 	// Queue gets a DetectKind job after each import.
 	Queue *jobs.Queue
-	// Plugins runs the import and catalog plugins. Its core handler must be
+	// Plugins runs the import plugins. Its core handler must be
 	// Runs.Handle.
 	Plugins *pluginhost.Manager
 	Runs    *pluginhost.Runs
@@ -80,21 +75,11 @@ type progress struct {
 	Warnings []string `json:"warnings,omitempty"`
 }
 
-// ingestProgress is a catalog ingest's progress: Done, Total, and Message
-// from the plugin, and once it finishes, the counts catalog.ingest returns.
-type ingestProgress struct {
-	Done    int64  `json:"done,omitempty"`
-	Total   int64  `json:"total,omitempty"`
-	Message string `json:"message,omitempty"`
-	*protocol.CatalogIngestResult
-}
-
-// session is one running import.run or catalog.ingest call.
+// session is one running import.run call.
 type session struct {
 	im     *Importer
 	run    *jobs.Run
 	plugin string
-	stores bool // the job's method.stores
 	ctx    context.Context
 	cancel context.CancelCauseFunc
 	// library and instance are where items go and which instance sent them.
@@ -109,38 +94,13 @@ type session struct {
 	// decl is the plugin's [enrichments], which values must match.
 	decl map[string]protocol.Enrichment
 
-	mu sync.Mutex
-	p  progress
-	// result is what catalog.ingest returned.
-	result *protocol.CatalogIngestResult
-	err    error
+	mu  sync.Mutex
+	p   progress
+	err error
 }
 
-// method is the plugin method a job kind calls.
-type method struct {
-	name   string
-	params func(run string, p Payload, checkpoint json.RawMessage) any
-	// stores is whether the core stores the items the plugin emits. A
-	// catalog emits none; adopt adds its items one at a time.
-	stores bool
-}
-
-var methods = map[string]method{
-	Kind: {protocol.MethodImportRun, func(run string, p Payload, checkpoint json.RawMessage) any {
-		return protocol.ImportRunParams{Run: run, Params: p.Params, Checkpoint: checkpoint}
-	}, true},
-	IngestKind: {protocol.MethodCatalogIngest, func(run string, _ Payload, checkpoint json.RawMessage) any {
-		return protocol.CatalogIngestParams{Run: run, Checkpoint: checkpoint}
-	}, false},
-}
-
-// Run is the jobs.Handler for Kind and IngestKind. It calls the kind's
-// method on the job's instance.
+// Run is the jobs.Handler for Kind. It calls import.run on the job's instance.
 func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
-	m, ok := methods[r.Kind]
-	if !ok {
-		return fmt.Errorf("importer can't run %s jobs", r.Kind)
-	}
 	if r.InstanceID == nil {
 		return fmt.Errorf("%s job has no plugin instance", r.Kind)
 	}
@@ -154,8 +114,8 @@ func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
 	}
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
-	s := &session{im: im, run: r, plugin: inst.Manifest.Name, stores: m.stores, ctx: ctx, cancel: cancel,
-		library: cmp.Or(payload.Library, library.DefaultLibrary), instance: *r.InstanceID, bulk: m.stores && inst.Manifest.Bulk,
+	s := &session{im: im, run: r, plugin: inst.Manifest.Name, ctx: ctx, cancel: cancel,
+		library: cmp.Or(payload.Library, library.DefaultLibrary), instance: *r.InstanceID, bulk: inst.Manifest.Bulk,
 		decl: inst.Manifest.Enrichments}
 	// ponytail: items re-sent after a resume count as skipped a second time.
 	_ = json.Unmarshal(r.Progress, &s.p)
@@ -163,28 +123,17 @@ func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
 	token, remove := im.Runs.Add(inst.ID, s.serve)
 	defer remove()
 
-	// Only catalog.ingest has a result worth keeping: its counts.
-	var res protocol.CatalogIngestResult
-	var result any
-	if !m.stores {
-		result = &res
-	}
 	// ponytail: a run abandoned on shutdown or a lost lease keeps going in
 	// the plugin until it finishes or the plugin is stopped.
-	err = im.Registry.Call(ctx, im.Plugins, inst, m.name, m.params(token, payload, r.Checkpoint), result)
+	params := protocol.ImportRunParams{Run: token, Params: payload.Params, Checkpoint: r.Checkpoint}
+	err = im.Registry.Call(ctx, im.Plugins, inst, protocol.MethodImportRun, params, nil)
 	if err == nil && len(s.buf) > 0 {
 		// Items sent after the last checkpoint.
 		s.flush(nil)
 	}
 	s.applyAutosync()
-	if m.stores && !s.bulk {
+	if !s.bulk {
 		EnqueueDetect(ctx, im.Queue, im.Log)
-	}
-	if err == nil && result != nil {
-		s.mu.Lock()
-		s.result = &res
-		s.mu.Unlock()
-		s.publish()
 	}
 	if serr := s.failure(); serr != nil {
 		return serr
@@ -201,7 +150,7 @@ func EnqueueDetect(ctx context.Context, q *jobs.Queue, log *slog.Logger) {
 }
 
 // serve answers the plugin's calls for this run: the notifications an
-// import or ingest sends.
+// import sends.
 func (s *session) serve(_ context.Context, method string, params json.RawMessage) (any, error) {
 	switch method {
 	case protocol.NotifyEmitCard, protocol.NotifyEmitLorebook, protocol.NotifyProgress, protocol.NotifyCheckpoint:
@@ -216,10 +165,6 @@ func (s *session) serve(_ context.Context, method string, params json.RawMessage
 // saved only after every item sent before it is stored.
 func (s *session) handle(method string, params json.RawMessage) {
 	if s.ctx.Err() != nil {
-		return
-	}
-	if !s.stores && (method == protocol.NotifyEmitCard || method == protocol.NotifyEmitLorebook) {
-		s.im.Log.Warn("catalog sent an item during ingest; only adopt adds catalog items", "plugin", s.plugin, "method", method)
 		return
 	}
 	switch method {
@@ -376,12 +321,7 @@ func (s *session) count(item string, got library.Imported, err error) {
 
 func (s *session) publish() {
 	s.mu.Lock()
-	var raw []byte
-	if !s.stores {
-		raw, _ = json.Marshal(ingestProgress{Done: s.p.Done, Total: s.p.Total, Message: s.p.Message, CatalogIngestResult: s.result})
-	} else {
-		raw, _ = json.Marshal(s.p)
-	}
+	raw, _ := json.Marshal(s.p)
 	s.mu.Unlock()
 	s.run.SetProgress(raw)
 }

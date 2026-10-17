@@ -245,3 +245,21 @@ test("Delete instance asks, then calls the API", async () => {
   expect(ask).toHaveBeenCalled();
   expect(requests).toContain("DELETE /api/instances/6");
 });
+
+test("Enable sends disabled false", async () => {
+  const user = userEvent.setup();
+  renderPlugins();
+  await user.click(await screen.findByRole("button", { name: "Enable napping" }));
+  expect(requests).toContain("PATCH /api/instances/7");
+  expect(bodies[requests.indexOf("PATCH /api/instances/7")]).toBe('{"disabled":false}');
+});
+
+test("declining the Delete instance confirm sends no DELETE", async () => {
+  const user = userEvent.setup();
+  const ask = vi.fn(() => false);
+  vi.stubGlobal("confirm", ask);
+  renderPlugins();
+  await user.click(await screen.findByRole("button", { name: "Delete instance office" }));
+  expect(ask).toHaveBeenCalled();
+  expect(requests.filter((r) => r.startsWith("DELETE"))).toEqual([]);
+});

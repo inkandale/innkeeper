@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -61,18 +62,18 @@ func (l *Library) HasLibrary(ctx context.Context, id int64) (bool, error) {
 	return ok, err
 }
 
-// CreateLibrary adds an empty library.
+// CreateLibrary adds an empty library. Its name is trimmed.
 func (l *Library) CreateLibrary(ctx context.Context, name string) (LibrarySummary, error) {
 	var id int64
-	if err := l.pool.QueryRow(ctx, `INSERT INTO library (name) VALUES ($1) RETURNING id`, name).Scan(&id); err != nil {
+	if err := l.pool.QueryRow(ctx, `INSERT INTO library (name) VALUES ($1) RETURNING id`, strings.TrimSpace(name)).Scan(&id); err != nil {
 		return LibrarySummary{}, libraryErr(err)
 	}
 	return l.GetLibrary(ctx, id)
 }
 
-// RenameLibrary renames a library.
+// RenameLibrary renames a library. The name is trimmed.
 func (l *Library) RenameLibrary(ctx context.Context, id int64, name string) (LibrarySummary, error) {
-	tag, err := l.pool.Exec(ctx, `UPDATE library SET name = $2 WHERE id = $1`, id, name)
+	tag, err := l.pool.Exec(ctx, `UPDATE library SET name = $2 WHERE id = $1`, id, strings.TrimSpace(name))
 	if err != nil {
 		return LibrarySummary{}, libraryErr(err)
 	}

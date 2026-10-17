@@ -29,6 +29,7 @@ func TestLibraryRoutes(t *testing.T) {
 	archive := e.createLibrary("Archive")
 	e.call("POST", "/libraries", map[string]any{"name": "Archive"}, 409, nil)
 	e.call("POST", "/libraries", map[string]any{"name": ""}, 422, nil)
+	e.call("POST", "/libraries", map[string]any{"name": "  "}, 400, nil)
 
 	var list []library.LibrarySummary
 	e.call("GET", "/libraries", nil, 200, &list)

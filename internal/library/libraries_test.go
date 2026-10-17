@@ -369,3 +369,21 @@ func TestInOtherLibrariesStopsAtFifty(t *testing.T) {
 		t.Fatalf("got %d matches, %v; want 50", len(got), err)
 	}
 }
+
+func TestLibraryNamesAreTrimmed(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	if _, err := lib.CreateLibrary(ctx, "   "); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("blank name: %v, want ErrInvalid", err)
+	}
+	l, err := lib.CreateLibrary(ctx, "  Archive ")
+	if err != nil || l.Name != "Archive" {
+		t.Fatalf("CreateLibrary = %+v, %v", l, err)
+	}
+	if _, err := lib.RenameLibrary(ctx, l.ID, " \t"); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("blank rename: %v, want ErrInvalid", err)
+	}
+	if _, err := lib.pool.Exec(ctx, `UPDATE library SET name = ' x' WHERE id = $1`, l.ID); err == nil {
+		t.Fatal("database took an untrimmed name")
+	}
+}

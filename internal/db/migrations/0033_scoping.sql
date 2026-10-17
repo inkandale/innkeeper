@@ -1,3 +1,7 @@
+-- Library names are trimmed, so a blank one can't pass as a name.
+ALTER TABLE library DROP CONSTRAINT library_name_check,
+    ADD CHECK (name <> '' AND name = btrim(name));
+
 -- A collection holds cards of one library.
 ALTER TABLE collection ADD COLUMN library_id bigint NOT NULL DEFAULT 1 REFERENCES library DEFERRABLE INITIALLY IMMEDIATE,
     DROP CONSTRAINT collection_name_key,

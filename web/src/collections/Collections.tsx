@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { Link } from "react-router";
 import { api, must, mustOk, thumb } from "../api/client";
 import { collectionsQuery } from "../api/queries";
+import { useLibrary, withLibrary } from "../shell/library";
 import "./Collections.css";
 
 function nameFrom(e: FormEvent<HTMLFormElement>): string {
@@ -12,12 +13,13 @@ function nameFrom(e: FormEvent<HTMLFormElement>): string {
 
 export function Collections() {
   const qc = useQueryClient();
-  const list = useQuery(collectionsQuery);
+  const library = useLibrary();
+  const list = useQuery(collectionsQuery(library));
   const [renaming, setRenaming] = useState<number | null>(null);
   const onSuccess = () => qc.invalidateQueries({ queryKey: ["collections"] });
 
   const create = useMutation({
-    mutationFn: async (name: string) => must(await api.POST("/collections", { body: { name } })),
+    mutationFn: async (name: string) => must(await api.POST("/collections", { body: { name, library } })),
     onSuccess,
   });
   const rename = useMutation({
@@ -50,7 +52,7 @@ export function Collections() {
       <div className="collections">
         {(list.data ?? []).map((c) => (
           <article key={c.id} className="collection">
-            <Link to={`/cards?f=${encodeURIComponent(`collection:${c.id}`)}`}>
+            <Link to={withLibrary(`/cards?f=${encodeURIComponent(`collection:${c.id}`)}`, library)}>
               <span className="mosaic">
                 {[0, 1, 2, 3].map((i) =>
                   c.avatars?.[i] ? <img key={i} src={thumb(c.avatars[i], 160)} alt="" loading="lazy" /> : <span key={i} />,

@@ -55,7 +55,7 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
         <Archive kind="card" entity={card} />
       </div>
       <Push kind="card" id={card.id} dirty={dirty} />
-      <Collections id={card.id} member={card.collections ?? []} />
+      <Collections id={card.id} library={card.library_id} member={card.collections ?? []} />
       <Sources kind="card" id={card.id} />
       <FoundInArchives kind="card" id={card.id} />
       <Sync kind="card" id={card.id} />

@@ -22,6 +22,7 @@ export function SelectionBar(props: {
   /** total is left out when the list groups variants, since it then counts families. */
   total?: number;
   query: Search;
+  library: number;
   ids: number[];
   /** shown is the picked entries on this page, by ID. */
   shown: Map<number, Picked>;
@@ -30,7 +31,7 @@ export function SelectionBar(props: {
   onStarted?: (job: number) => void;
   kind?: "card" | "lorebook";
 }) {
-  const { all, total, query, ids, shown, onAll, onClear, onStarted, kind = "card" } = props;
+  const { all, total, query, library, ids, shown, onAll, onClear, onStarted, kind = "card" } = props;
   const plural = (n?: number) => (n === undefined ? `all matching ${kind}s` : `${n} ${kind}${n === 1 ? "" : "s"}`);
   const enrichers = useInstancesWith("enrich");
   const keys = useQuery({ ...enrichmentKeysQuery, enabled: kind === "card" });
@@ -55,7 +56,7 @@ export function SelectionBar(props: {
   const count = ids.length;
   const n = all ? total : count;
 
-  const collections = useQuery(collectionsQuery);
+  const collections = useQuery(collectionsQuery(library));
   const instances = useQuery(instancesQuery);
   const plugins = useQuery(pluginsQuery);
   const targets = useInstancesWith("push");

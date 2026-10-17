@@ -92,7 +92,7 @@ test("uploads files to the card importer", async () => {
   await vi.waitFor(() =>
     expect(sent).toEqual([
       { method: "POST", path: "/api/blobs" },
-      { method: "POST", path: "/api/imports", body: { instance_id: 6, params: { blob: "abc", name: "brakka.png" } } },
+      { method: "POST", path: "/api/imports", body: { instance_id: 6, library: 1, params: { blob: "abc", name: "brakka.png" } } },
     ]),
   );
   expect(await screen.findByText(/brakka\.png/)).toBeInTheDocument();
@@ -108,7 +108,7 @@ test("imports a page URL with the URL importer", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Import" }));
   await vi.waitFor(() =>
     expect(sent).toEqual([
-      { method: "POST", path: "/api/imports", body: { instance_id: 7, params: { url: "https://chub.ai/characters/u/brakka" } } },
+      { method: "POST", path: "/api/imports", body: { instance_id: 7, library: 1, params: { url: "https://chub.ai/characters/u/brakka" } } },
     ]),
   );
   expect(await screen.findByRole("link", { name: /brakka/ })).toHaveAttribute("href", "/settings/jobs/1");
@@ -125,7 +125,7 @@ test("any importer offers the inputs its manifest declares", async () => {
   await userEvent.type(screen.getByLabelText("Import from a page URL"), "https://x.test/a");
   await userEvent.click(screen.getByRole("button", { name: "Import" }));
   await vi.waitFor(() =>
-    expect(sent).toEqual([{ method: "POST", path: "/api/imports", body: { instance_id: 8, params: { url: "https://x.test/a" } } }]),
+    expect(sent).toEqual([{ method: "POST", path: "/api/imports", body: { instance_id: 8, library: 1, params: { url: "https://x.test/a" } } }]),
   );
 });
 

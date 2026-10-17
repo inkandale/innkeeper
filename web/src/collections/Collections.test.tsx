@@ -7,16 +7,20 @@ import { Collections } from "./Collections";
 
 let list: { id: number; name: string; description: string; created_at: string; cards: number; avatars?: string[] }[];
 let calls: string[];
+let gets: string[];
 let conflict: boolean;
 beforeEach(() => {
   list = [{ id: 3, name: "Crew", description: "", created_at: "2026-10-06T00:00:00Z", cards: 5, avatars: ["ab".repeat(32)] }];
   calls = [];
+  gets = [];
   conflict = false;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
-      const path = new URL(req.url).pathname;
-      if (req.method !== "GET") calls.push(`${req.method} ${path} ${await req.text()}`);
+      const url = new URL(req.url);
+      const path = url.pathname;
+      if (req.method === "GET") gets.push(path + url.search);
+      else calls.push(`${req.method} ${path} ${await req.text()}`);
       if (req.method === "POST" && conflict)
         return new Response(JSON.stringify({ detail: "name taken" }), {
           status: 409,
@@ -34,7 +38,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 function renderCollections() {
   const router = createMemoryRouter([{ path: "/collections", element: <Toasts><Collections /></Toasts> }], {
-    initialEntries: ["/collections"],
+    initialEntries: ["/collections?library=2"],
   });
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -43,10 +47,11 @@ function renderCollections() {
   );
 }
 
-test("each collection links to its cards with a mosaic", async () => {
+test("each collection of the current library links to its cards with a mosaic", async () => {
   renderCollections();
   const link = await screen.findByRole("link", { name: /Crew/ });
-  expect(link).toHaveAttribute("href", "/cards?f=collection%3A3");
+  expect(gets).toContain("/api/collections?library=2");
+  expect(link).toHaveAttribute("href", "/cards?f=collection%3A3&library=2");
   expect(within(link).getByText("5 cards")).toBeInTheDocument();
   expect(link.querySelector("img")).toHaveAttribute("src", `/api/blobs/${"ab".repeat(32)}?w=160`);
 });
@@ -61,7 +66,7 @@ test("create, rename, and delete", async () => {
   await user.type(name, "Sailors{Enter}");
   await user.click(screen.getByRole("button", { name: "Delete Crew" }));
   expect(calls).toEqual([
-    'POST /api/collections {"name":"Villains"}',
+    'POST /api/collections {"name":"Villains","library":2}',
     'PATCH /api/collections/3 {"name":"Sailors"}',
     "DELETE /api/collections/3 ",
   ]);

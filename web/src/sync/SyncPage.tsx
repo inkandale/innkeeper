@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { api, followers, must, withCapability } from "../api/client";
 import { instancesQuery, pluginsQuery } from "../api/queries";
 import { age, finished, jobToast, useJob, type Job } from "../settings/jobUtil";
+import { useLibrary } from "../shell/library";
 import { useToast } from "../shell/Toasts";
 import { needsYou, stateCounts } from "./sync";
 import "./Sync.css";
@@ -68,7 +69,11 @@ export function Sync() {
 
   const refresh = useRun(async () => must(await api.POST("/scans")), "Refreshing every app…");
   const sync = useRun(async () => must(await api.POST("/syncs", { body: {} })), "Syncing every app…");
-  const checkSources = useRun(async () => must(await api.POST("/source-checks")), "Checking every source for updates…");
+  const library = useLibrary();
+  const checkSources = useRun(
+    async () => must(await api.POST("/source-checks", { params: { query: { library } } })),
+    "Checking every source for updates…",
+  );
 
   if (instances.isError) return <p className="error page">{instances.error.message}</p>;
   return (

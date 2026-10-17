@@ -49,7 +49,7 @@ function LorebookEditor({ id }: { id: number }) {
         </div>
         <Push kind="lorebook" id={id} dirty={dirty} />
         <Sync kind="lorebook" id={id} />
-        <LinkedCards ids={head.cards ?? []} />
+        <LinkedCards ids={head.cards ?? []} library={head.library_id} />
         <Sources kind="lorebook" id={id} />
         <FoundInArchives kind="lorebook" id={id} />
         <Variants kind="lorebook" entity={head} />
@@ -88,8 +88,8 @@ function LorebookEditor({ id }: { id: number }) {
   );
 }
 
-function LinkedCards({ ids }: { ids: number[] }) {
-  const body = { filter: { ids }, fields: ["name"], page: { size: 500 } };
+function LinkedCards({ ids, library }: { ids: number[]; library: number }) {
+  const body = { library, filter: { ids }, fields: ["name"], page: { size: 500 } };
   const cards = useQuery({
     queryKey: ["search", "card", body],
     enabled: ids.length > 0,

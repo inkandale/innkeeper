@@ -1,4 +1,5 @@
 import type { components } from "../api/schema";
+import { libraryParam } from "../shell/library";
 
 type Filter = components["schemas"]["Filter"];
 type Search = components["schemas"]["Query"];
@@ -19,7 +20,16 @@ export type TermKind = (typeof kinds)[number];
 /** Term is one filter: a section's value, or its negation. */
 export type Term = { kind: TermKind; value: string; not: boolean };
 export type Sort = (typeof sorts)[number] | `enrichment:${string}`;
-export type CardQuery = { text: string; terms: Term[]; sort: Sort; page: number; size: number; view: "grid" | "list"; sharesSource: boolean };
+export type CardQuery = {
+  library: number;
+  text: string;
+  terms: Term[];
+  sort: Sort;
+  page: number;
+  size: number;
+  view: "grid" | "list";
+  sharesSource: boolean;
+};
 
 export const defaultSort = (text: string): Sort => (text ? "relevance" : "updated");
 
@@ -70,8 +80,8 @@ function valid(kind: TermKind, value: string): boolean {
   return value !== "";
 }
 
-/** parseQuery reads the Cards page state from its URL, ignoring anything malformed. */
-export function parseQuery(p: URLSearchParams): CardQuery {
+/** parseQuery reads the Cards page state from its URL, ignoring anything malformed; library is used when the URL names none. */
+export function parseQuery(p: URLSearchParams, library = 1): CardQuery {
   const terms: Term[] = [];
   for (const raw of p.getAll("f")) {
     const not = raw.startsWith("-");
@@ -86,6 +96,7 @@ export function parseQuery(p: URLSearchParams): CardQuery {
   const page = Number(p.get("page"));
   const size = Number(p.get("size"));
   return {
+    library: libraryParam(p) ?? library,
     text,
     terms,
     sort: sorts.some((s) => s === sort) || enrichmentSort.test(sort ?? "") ? sort : defaultSort(text),
@@ -96,7 +107,7 @@ export function parseQuery(p: URLSearchParams): CardQuery {
   };
 }
 
-/** toParams writes the state back, leaving defaults out. */
+/** toParams writes the state back, leaving defaults out but always naming the library. */
 export function toParams(q: CardQuery): URLSearchParams {
   const p = new URLSearchParams();
   if (q.text) p.set("q", q.text);
@@ -106,6 +117,7 @@ export function toParams(q: CardQuery): URLSearchParams {
   if (q.size !== 48) p.set("size", String(q.size));
   if (q.view !== "grid") p.set("view", q.view);
   if (q.sharesSource) p.set("shared", "1");
+  p.set("library", String(q.library));
   return p;
 }
 
@@ -152,6 +164,7 @@ export function filterFor(terms: Term[], sharesSource = false): Filter | undefin
 /** toSearch is the POST /api/search body for the state. scores adds each card's enrichment values, which needs a score instance. */
 export function toSearch(q: CardQuery, scores = false): Search {
   return {
+    library: q.library,
     text: q.text || undefined,
     filter: filterFor(q.terms, q.sharesSource),
     sort: q.sort,
@@ -171,6 +184,7 @@ const facetOf = { target: "targets", tag: "tags", source: "sources", collection:
 /** countSearch counts a section's values over every other section's terms; size 1 because 0 means the default. */
 export function countSearch(q: CardQuery, section: keyof typeof facetOf): Search {
   return {
+    library: q.library,
     text: q.text || undefined,
     filter: filterFor(q.terms.filter((t) => t.kind !== section), q.sharesSource),
     facets: [facetOf[section]],
@@ -181,7 +195,7 @@ export function countSearch(q: CardQuery, section: keyof typeof facetOf): Search
 /** stateCountSearch counts the matches in one state; the targets facet can't, as it counts a card once per target. */
 export function stateCountSearch(q: CardQuery, is: TargetIs): Search {
   const terms: Term[] = [...q.terms.filter((t) => t.kind !== "state"), { kind: "state", value: is, not: false }];
-  return { text: q.text || undefined, filter: filterFor(terms, q.sharesSource), page: { size: 1 } };
+  return { library: q.library, text: q.text || undefined, filter: filterFor(terms, q.sharesSource), page: { size: 1 } };
 }
 
 // The tag facet groups by lower-cased name and the API filter ignores case, so tags match that way here too.

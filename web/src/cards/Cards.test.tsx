@@ -39,6 +39,7 @@ let posts: { path: string; body: unknown }[];
 let previews: unknown[];
 let family: unknown;
 let puts: { path: string; body: unknown }[];
+let gets: string[];
 beforeEach(() => {
   localStorage.clear();
   keys = { instance_id: null, keys: [] };
@@ -47,6 +48,7 @@ beforeEach(() => {
   previews = [];
   family = undefined;
   puts = [];
+  gets = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
@@ -92,6 +94,7 @@ beforeEach(() => {
           { name: "url-import", capabilities: ["import"], inputs: ["url"] },
           { name: "judge", capabilities: ["enrich"] },
         ]);
+      if (path === "/api/collections") gets.push(path + new URL(req.url).search);
       if (path === "/api/collections") return json([{ id: 4, name: "Elves", cards: 0 }]);
       if (path === "/api/enrichments/keys") return json(keys);
       return json([]);
@@ -124,7 +127,7 @@ test("a facet click filters and shift-click excludes", async () => {
   const { router } = renderCards("/cards?page=3");
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: /^pirate/ }));
-  expect(router.state.location.search).toBe("?f=tag%3Apirate");
+  expect(router.state.location.search).toBe("?f=tag%3Apirate&library=1");
   await user.keyboard("{Shift>}");
   await user.click(screen.getByRole("button", { name: /^fantasy/ }));
   await user.keyboard("{/Shift}");
@@ -135,28 +138,28 @@ test("a chip removes its filter", async () => {
   const { router } = renderCards("/cards?f=tag:fantasy");
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: "Remove tag: fantasy" }));
-  expect(router.state.location.search).toBe("");
+  expect(router.state.location.search).toBe("?library=1");
 });
 
 test("the search box sets the text", async () => {
   const { router } = renderCards("/cards");
   const user = userEvent.setup();
   await user.type(await screen.findByRole("searchbox", { name: "Search cards" }), "dwarf{Enter}");
-  expect(router.state.location.search).toBe("?q=dwarf");
+  expect(router.state.location.search).toBe("?q=dwarf&library=1");
 });
 
 test("a new search keeps a chosen sort", async () => {
   const { router } = renderCards("/cards?sort=name");
   const user = userEvent.setup();
   await user.type(await screen.findByRole("searchbox", { name: "Search cards" }), "x{Enter}");
-  expect(router.state.location.search).toBe("?q=x&sort=name");
+  expect(router.state.location.search).toBe("?q=x&sort=name&library=1");
 });
 
 test("a new search from the default sort stays default", async () => {
   const { router } = renderCards("/cards");
   const user = userEvent.setup();
   await user.type(await screen.findByRole("searchbox", { name: "Search cards" }), "x{Enter}");
-  expect(router.state.location.search).toBe("?q=x");
+  expect(router.state.location.search).toBe("?q=x&library=1");
 });
 
 test("an active facet is pressed", async () => {
@@ -176,7 +179,7 @@ test("the exclude button excludes a value", async () => {
   const { router } = renderCards("/cards");
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: "Exclude pirate" }));
-  expect(router.state.location.search).toBe("?f=-tag%3Apirate");
+  expect(router.state.location.search).toBe("?f=-tag%3Apirate&library=1");
 });
 
 test("a count past the facet cap shows 1,000+", async () => {
@@ -187,8 +190,9 @@ test("a count past the facet cap shows 1,000+", async () => {
 test("a section's counts leave out its own selections", async () => {
   renderCards("/cards?f=tag:fantasy&f=source:chub");
   await screen.findByRole("button", { name: /^pirate/ });
-  expect(searches).toContainEqual({ filter: { and: [{ source: "chub" }] }, facets: ["tags"], page: { size: 1 } });
+  expect(searches).toContainEqual({ library: 1, filter: { and: [{ source: "chub" }] }, facets: ["tags"], page: { size: 1 } });
   expect(searches).toContainEqual({
+    library: 1,
     filter: { and: [{ target_state: { states: ["ahead"] } }, { tag: "fantasy" }, { source: "chub" }] },
     page: { size: 1 },
   });
@@ -233,7 +237,7 @@ test("shift-click selects a range and tags it", async () => {
   await user.click(screen.getByRole("button", { name: "Tag" }));
   await user.type(screen.getByRole("textbox", { name: "Tags" }), "elf, sage");
   await user.click(screen.getByRole("button", { name: "Add tags" }));
-  await waitFor(() => expect(posts).toEqual([{ path: "/api/bulk", body: { query: { filter: { ids: [7, 8, 9] } }, action: "tag", tags: ["elf", "sage"] } }]));
+  await waitFor(() => expect(posts).toEqual([{ path: "/api/bulk", body: { query: { library: 1, filter: { ids: [7, 8, 9] } }, action: "tag", tags: ["elf", "sage"] } }]));
   expect(await screen.findByRole("link", { name: "View job" })).toHaveAttribute("href", "/settings/jobs/5");
   expect(screen.getByRole("searchbox", { name: "Search cards" })).toBeInTheDocument();
 });
@@ -249,7 +253,7 @@ test("select all matching archives the search", async () => {
   await user.click(screen.getByRole("button", { name: "Archive" }));
   await user.click(screen.getByRole("button", { name: "Archive 49 cards" }));
   await waitFor(() =>
-    expect(posts[0]).toEqual({ path: "/api/bulk", body: { query: { filter: { and: [{ tag: "fantasy" }] } }, action: "archive", unpublish: false } }),
+    expect(posts[0]).toEqual({ path: "/api/bulk", body: { query: { library: 1, filter: { and: [{ tag: "fantasy" }] } }, action: "archive", unpublish: false } }),
   );
   expect(posts[0]!.body).not.toHaveProperty("kind");
 });
@@ -272,10 +276,10 @@ test("push offers only targets that push", async () => {
   const targets = await screen.findByRole("group", { name: "Targets" });
   expect(within(targets).getAllByRole("checkbox").map((c) => c.closest("label")!.textContent!.trim())).toEqual(["Lumiverse"]);
   expect(await screen.findByText("1 not pushed")).toBeInTheDocument();
-  expect(previews).toEqual([{ instance_id: 2, query: { filter: { ids: [8] } } }]);
+  expect(previews).toEqual([{ instance_id: 2, query: { library: 1, filter: { ids: [8] } } }]);
   await user.click(screen.getByRole("button", { name: "Push 1 card" }));
   await waitFor(() =>
-    expect(posts[0]).toEqual({ path: "/api/pushes", body: { instance_id: 2, query: { filter: { ids: [8] } }, confirm: "q1" } }),
+    expect(posts[0]).toEqual({ path: "/api/pushes", body: { instance_id: 2, query: { library: 1, filter: { ids: [8] } }, confirm: "q1" } }),
   );
   expect(posts[0]!.body).not.toHaveProperty("kind");
 });
@@ -374,7 +378,7 @@ test("a facet click clears the selection, and paging keeps it", async () => {
   const user = userEvent.setup();
   await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
   await user.click(screen.getByRole("button", { name: "2" }));
-  expect(router.state.location.search).toBe("?page=2");
+  expect(router.state.location.search).toBe("?page=2&library=1");
   expect(screen.getByText("1 selected")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: /^pirate/ }));
   expect(screen.getByRole("searchbox", { name: "Search cards" })).toBeInTheDocument();
@@ -461,7 +465,7 @@ test("Import cards opens the importer and imports a page URL", async () => {
   await userEvent.type(screen.getByLabelText("Import from a page URL"), "https://chub.ai/characters/u/brakka");
   await userEvent.click(screen.getByRole("button", { name: "Import" }));
   await waitFor(() =>
-    expect(posts).toEqual([{ path: "/api/imports", body: { instance_id: 6, params: { url: "https://chub.ai/characters/u/brakka" } } }]),
+    expect(posts).toEqual([{ path: "/api/imports", body: { instance_id: 6, library: 1, params: { url: "https://chub.ai/characters/u/brakka" } } }]),
   );
   expect(await screen.findByRole("link", { name: /brakka/ })).toHaveAttribute("href", "/settings/jobs/11");
 });
@@ -488,8 +492,8 @@ test("push sends one push per ticked target", async () => {
   await user.click(screen.getByRole("button", { name: "Push 1 card" }));
   await waitFor(() =>
     expect(posts).toEqual([
-      { path: "/api/pushes", body: { instance_id: 2, query: { filter: { ids: [8] } }, confirm: "q1" } },
-      { path: "/api/pushes", body: { instance_id: 5, query: { filter: { ids: [8] } }, confirm: "q1" } },
+      { path: "/api/pushes", body: { instance_id: 2, query: { library: 1, filter: { ids: [8] } }, confirm: "q1" } },
+      { path: "/api/pushes", body: { instance_id: 5, query: { library: 1, filter: { ids: [8] } }, confirm: "q1" } },
     ]),
   );
   await waitFor(() => expect(screen.queryByText("1 selected")).not.toBeInTheDocument());
@@ -497,7 +501,7 @@ test("push sends one push per ticked target", async () => {
 
 test("New card links to the new-card page", async () => {
   renderCards("/cards");
-  expect(await screen.findByRole("link", { name: "New card" })).toHaveAttribute("href", "/cards/new");
+  expect(await screen.findByRole("link", { name: "New card" })).toHaveAttribute("href", "/cards/new?library=1");
 });
 
 const scored = {
@@ -547,7 +551,7 @@ test("each score key is a sort", async () => {
   const user = userEvent.setup();
   await screen.findByRole("option", { name: "Quality" });
   await user.selectOptions(screen.getByRole("combobox", { name: "Sort" }), "Quality");
-  expect(router.state.location.search).toBe("?sort=enrichment%3Aquality");
+  expect(router.state.location.search).toBe("?sort=enrichment%3Aquality&library=1");
   await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ sort: "enrichment:quality" })));
 });
 
@@ -558,7 +562,7 @@ test("Evaluate starts a run on the selection", async () => {
   await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
   await user.click(screen.getByRole("button", { name: "Evaluate" }));
   await user.click(screen.getByRole("button", { name: "Evaluate 1 card" }));
-  await waitFor(() => expect(posts).toEqual([{ path: "/api/enrichments/runs", body: { instance_id: 5, query: { filter: { ids: [8] } }, rescore: false } }]));
+  await waitFor(() => expect(posts).toEqual([{ path: "/api/enrichments/runs", body: { instance_id: 5, query: { library: 1, filter: { ids: [8] } }, rescore: false } }]));
 });
 
 test("Evaluate re-scores cards already scored when asked", async () => {
@@ -569,7 +573,7 @@ test("Evaluate re-scores cards already scored when asked", async () => {
   await user.click(screen.getByRole("button", { name: "Evaluate" }));
   await user.click(screen.getByRole("checkbox", { name: "Re-score cards already scored" }));
   await user.click(screen.getByRole("button", { name: "Evaluate 1 card" }));
-  await waitFor(() => expect(posts).toEqual([{ path: "/api/enrichments/runs", body: { instance_id: 5, query: { filter: { ids: [8] } }, rescore: true } }]));
+  await waitFor(() => expect(posts).toEqual([{ path: "/api/enrichments/runs", body: { instance_id: 5, query: { library: 1, filter: { ids: [8] } }, rescore: true } }]));
 });
 
 test("without a score instance, score filters and sort in the URL are dropped with a note", async () => {
@@ -588,7 +592,7 @@ test("variants group by default, and a family row expands to its members", async
   await user.click(await screen.findByRole("button", { name: "+2 variants" }));
   expect(mainSearches()[0]).toMatchObject({ group: "family" });
   const list = await screen.findByRole("list", { name: "Variants of Brakka" });
-  expect(searches).toContainEqual({ filter: { variant_of_root: 7 }, fields: ["name"], page: { size: 500 } });
+  expect(searches).toContainEqual({ library: 1, filter: { variant_of_root: 7 }, fields: ["name"], page: { size: 500 } });
   expect(await within(list).findByRole("link", { name: "Carrow" })).toHaveAttribute("href", "/cards/8");
   expect(within(list).getAllByText("matched")).toHaveLength(2);
 });
@@ -614,7 +618,7 @@ test("grouped, select all matching names no count, since total counts families",
   await user.click(screen.getByRole("button", { name: "Archive" }));
   await user.click(screen.getByRole("button", { name: "Archive all matching cards" }));
   await waitFor(() =>
-    expect(posts[0]).toEqual({ path: "/api/bulk", body: { query: { filter: { and: [{ tag: "fantasy" }] } }, action: "archive", unpublish: false } }),
+    expect(posts[0]).toEqual({ path: "/api/bulk", body: { query: { library: 1, filter: { and: [{ tag: "fantasy" }] } }, action: "archive", unpublish: false } }),
   );
 });
 
@@ -622,7 +626,7 @@ test("Shares a source filters the list", async () => {
   const { router } = renderCards("/cards");
   const user = userEvent.setup();
   await user.click(await screen.findByRole("checkbox", { name: "Shares a source" }));
-  expect(router.state.location.search).toBe("?shared=1");
+  expect(router.state.location.search).toBe("?shared=1&library=1");
   await waitFor(() => expect(mainSearches().at(-1)).toMatchObject({ filter: { and: [{ shares_source: true }] } }));
 });
 
@@ -642,4 +646,21 @@ test("Set parent… recommends the oldest pick and links the others to the chose
       { path: "/api/cards/7/variant_of", body: { id: 8 } },
     ]),
   );
+});
+
+test("the URL's library scopes the search, facets, and collections, and stays in the URL", async () => {
+  const { router } = renderCards("/cards?library=2");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: /^pirate/ }));
+  expect(searches.length).toBeGreaterThan(0);
+  expect(searches.every((s) => (s as { library?: number }).library === 2)).toBe(true);
+  expect(gets).toContain("/api/collections?library=2");
+  expect(router.state.location.search).toBe("?f=tag%3Apirate&library=2");
+});
+
+test("without ?library= the page opens the last library used", async () => {
+  localStorage.setItem("innkeeper.library", "3");
+  renderCards("/cards");
+  await screen.findByText("Brakka");
+  expect(searches).toContainEqual(expect.objectContaining({ library: 3, fields: ["name", "avatar"] }));
 });

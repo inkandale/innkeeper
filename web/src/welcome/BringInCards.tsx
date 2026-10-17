@@ -5,10 +5,12 @@ import { api, must, withCapability } from "../api/client";
 import { instancesQuery, pluginsQuery } from "../api/queries";
 import { ImportForm, importers, JobLine } from "../cards/ImportForm";
 import type { Job } from "../settings/jobUtil";
+import { useLibrary } from "../shell/library";
 import { useFinish } from "./Welcome";
 
 /** BringInCards syncs the apps that were set up and imports uploaded files and page URLs. */
 export function BringInCards() {
+  const library = useLibrary();
   const qc = useQueryClient();
   const finish = useFinish();
   const plugins = useQuery(pluginsQuery);
@@ -52,7 +54,7 @@ export function BringInCards() {
         </div>
       ))}
       {pull.error && <p className="error">{pull.error.message}</p>}
-      <ImportForm {...imp} />
+      <ImportForm {...imp} library={library} />
       <p className="muted">Imports keep running after you leave; Settings › Jobs shows them.</p>
       <button className="button primary" disabled={finish.isPending} onClick={() => finish.mutate()}>
         Finish

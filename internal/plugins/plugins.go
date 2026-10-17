@@ -35,6 +35,8 @@ var (
 	// ErrBroken means the instance's plugin failed to start. It stays broken
 	// until the owner changes the instance or a check starts it.
 	ErrBroken = errors.New("plugin instance is broken")
+	// ErrLastLogin means disabling the instance would leave no way to log in.
+	ErrLastLogin = errors.New("this is the last working login provider; add another before disabling it")
 	// ErrDisabled means the owner disabled the instance; nothing uses it until they enable it.
 	ErrDisabled  = errors.New("plugin instance is disabled")
 	ErrInvalid   = errors.New("invalid plugin instance")
@@ -229,6 +231,19 @@ func (r *Registry) HasCapability(plugin, capability string) bool {
 	return ok && m.Has(capability)
 }
 
+// pluginsWith returns the names of the installed plugins that declare capability.
+func (r *Registry) pluginsWith(capability string) []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var names []string
+	for name, m := range r.manifests {
+		if m.Has(capability) {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
 // Manifests returns the installed plugins by name.
 func (r *Registry) Manifests() map[string]*protocol.Manifest {
 	r.mu.RLock()
@@ -386,7 +401,8 @@ func (r *Registry) CreateInstance(ctx context.Context, n NewInstance) (int64, er
 
 // UpdateInstance applies e and clears the instance's broken state, so the
 // next call starts its plugin with the new settings. Changing the owner,
-// config, or secrets also ends the instance's login sessions.
+// config, or secrets, or disabling it, also ends the instance's login
+// sessions. It refuses to disable the last working login provider.
 func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit) error {
 	if err := checkBases(e.DefaultBases); err != nil {
 		return err
@@ -405,6 +421,18 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 	}
 	if err != nil {
 		return err
+	}
+	if e.Disabled != nil && *e.Disabled && r.HasCapability(plugin, "auth") {
+		var others int
+		err := tx.QueryRow(ctx, `SELECT count(*) FROM plugin_instance
+			WHERE id <> $1 AND plugin = ANY($2) AND owner_subject IS NOT NULL AND broken_error IS NULL AND NOT disabled`,
+			id, r.pluginsWith("auth")).Scan(&others)
+		if err != nil {
+			return err
+		}
+		if others == 0 {
+			return ErrLastLogin
+		}
 	}
 	if e.Secrets != nil {
 		m, ok := r.manifest(plugin)

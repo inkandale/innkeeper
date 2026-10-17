@@ -157,3 +157,23 @@ func TestInstanceLibraryAccess(t *testing.T) {
 		t.Fatal("created with library_access true, got false")
 	}
 }
+
+func TestDisableRefusesLastLogin(t *testing.T) {
+	e := newEnv(t)
+	path := fmt.Sprintf("/instances/%d", e.loginID)
+	e.call("PATCH", path, map[string]any{"disabled": true}, 409, nil)
+
+	owner := "second"
+	if _, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "fake", Name: "Login 2", OwnerSubject: &owner}); err != nil {
+		t.Fatal(err)
+	}
+	var inst plugins.InstanceInfo
+	e.call("PATCH", path, map[string]any{"disabled": true}, 200, &inst)
+	if !inst.Disabled || inst.Status != "disabled" {
+		t.Fatalf("disabled: %+v", inst)
+	}
+	e.call("PATCH", path, map[string]any{"disabled": false}, 200, &inst)
+	if inst.Disabled || inst.Status != "ready" {
+		t.Fatalf("enabled: %+v", inst)
+	}
+}

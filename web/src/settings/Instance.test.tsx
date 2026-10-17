@@ -13,7 +13,7 @@ function json(body: unknown) {
 const now = new Date().toISOString();
 const st = {
   name: "sillytavern", version: "0.1.0", capabilities: ["push", "pull"], secrets: ["password"],
-  multiple_instances: true, status: "instances" as const,
+  multiple_instances: true, status: "ready" as const,
   config: {
     type: "object", required: ["url"],
     properties: {
@@ -29,7 +29,7 @@ const ai = {
 };
 const broken = {
   id: 3, plugin: "sillytavern", name: "home", config: { url: "http://st", auth: "none" }, secrets: ["password"],
-  broken_error: "connection refused", broken_at: now, created_at: now, updated_at: now,
+  broken_error: "connection refused", disabled: false, status: "broken" as const, broken_at: now, created_at: now, updated_at: now,
 };
 const owned = { ...broken, id: 4, plugin: "password-login", name: "pw", config: {}, secrets: [], owner_subject: "me" };
 const forge = { ...broken, id: 5, plugin: "forge-ai", name: "ai", config: {}, secrets: [], broken_error: undefined, library_access: false };
@@ -55,7 +55,7 @@ const required = {
     },
   },
 };
-const confInst = { ...broken, id: 6, plugin: "conf", name: "c", config: { url: "http://x" }, secrets: ["api_key"], broken_error: undefined };
+const confInst = { ...broken, id: 6, plugin: "conf", name: "c", config: { url: "http://x" }, secrets: ["api_key"], broken_error: undefined, status: "ready" as const };
 
 let sent: { method: string; path: string; body: unknown }[];
 // Set to hold the conf plugin's defaults until it resolves.

@@ -2614,6 +2614,9 @@
             "format": "date-time",
             "type": "string"
           },
+          "disabled": {
+            "type": "boolean"
+          },
           "id": {
             "format": "int64",
             "type": "integer"
@@ -2639,6 +2642,15 @@
               "null"
             ]
           },
+          "status": {
+            "enum": [
+              "ready",
+              "needs_setup",
+              "broken",
+              "disabled"
+            ],
+            "type": "string"
+          },
           "updated_at": {
             "format": "date-time",
             "type": "string"
@@ -2652,7 +2664,9 @@
           "secrets",
           "library_access",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "disabled",
+          "status"
         ],
         "type": "object"
       },
@@ -3210,12 +3224,12 @@
             "type": "string"
           },
           "status": {
-            "description": "broken: an instance is broken. needs_setup: a singleton with no instance. ready: a singleton with a working instance, or a theme. instances: the plugin allows many; see its instances.",
+            "description": "Sums up the plugin's instances: broken or needs_setup if any instance is, disabled if every one is, needs_setup with none. A theme is ready.",
             "enum": [
               "ready",
               "needs_setup",
               "broken",
-              "instances"
+              "disabled"
             ],
             "type": "string"
           },
@@ -4775,6 +4789,10 @@
             "additionalProperties": {},
             "description": "For each JSON pointer the owner just overrode, the default it replaced, so the form can mark it once the default changes.",
             "type": "object"
+          },
+          "disabled": {
+            "description": "true keeps the instance but stops everything using it; false turns it back on. Disabling a login provider ends its sessions.",
+            "type": "boolean"
           },
           "library_access": {
             "description": "Lets an action plugin read the library while it runs an action that asks to.",

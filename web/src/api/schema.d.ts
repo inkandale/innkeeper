@@ -3367,6 +3367,7 @@ export interface components {
             };
             /** Format: date-time */
             created_at: string;
+            disabled: boolean;
             /** Format: int64 */
             id: number;
             library_access: boolean;
@@ -3374,6 +3375,8 @@ export interface components {
             owner_subject?: string;
             plugin: string;
             secrets: string[] | null;
+            /** @enum {string} */
+            status: "ready" | "needs_setup" | "broken" | "disabled";
             /** Format: date-time */
             updated_at: string;
         };
@@ -3596,10 +3599,10 @@ export interface components {
             /** @description Id of the source the plugin was installed from, or builtin */
             source: string;
             /**
-             * @description broken: an instance is broken. needs_setup: a singleton with no instance. ready: a singleton with a working instance, or a theme. instances: the plugin allows many; see its instances.
+             * @description Sums up the plugin's instances: broken or needs_setup if any instance is, disabled if every one is, needs_setup with none. A theme is ready.
              * @enum {string}
              */
-            status: "ready" | "needs_setup" | "broken" | "instances";
+            status: "ready" | "needs_setup" | "broken" | "disabled";
             version: string;
         };
         PluginSkill: {
@@ -4187,6 +4190,8 @@ export interface components {
             default_bases?: {
                 [key: string]: unknown;
             };
+            /** @description true keeps the instance but stops everything using it; false turns it back on. Disabling a login provider ends its sessions. */
+            disabled?: boolean;
             /** @description Lets an action plugin read the library while it runs an action that asks to. */
             library_access?: boolean;
             name?: string;

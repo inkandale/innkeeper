@@ -603,3 +603,42 @@ func TestPluginStatus(t *testing.T) {
 		})
 	}
 }
+
+func TestInstanceStatus(t *testing.T) {
+	ctx := context.Background()
+	box, err := secrets.New(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool := testdb.New(t)
+	reg := New(pool, map[string]*protocol.Manifest{
+		"conf": {Name: "conf", Version: "1", Capabilities: []string{"import"}, MultipleInstances: true,
+			Config: map[string]any{"type": "object", "required": []any{"url"}}},
+	}, &blobstore.Store{Name: "library", Root: t.TempDir()}, box)
+	create := func(name string, config map[string]any) int64 {
+		id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "conf", Name: name, Config: config})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	ready := create("ready", map[string]any{"url": "https://x"})
+	missing := create("missing", nil)
+	broken := create("broken", map[string]any{"url": "https://x"})
+	if _, err := pool.Exec(ctx, `UPDATE plugin_instance SET broken_error = 'boom', broken_at = now() WHERE id = $1`, broken); err != nil {
+		t.Fatal(err)
+	}
+	off := create("off", map[string]any{"url": "https://x"})
+	if _, err := pool.Exec(ctx, `UPDATE plugin_instance SET disabled = true, broken_error = 'boom' WHERE id = $1`, off); err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[int64]string{ready: "ready", missing: "needs_setup", broken: "broken", off: "disabled"} {
+		got, err := reg.GetInstance(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Status != want {
+			t.Errorf("instance %s: status %q, want %q", got.Name, got.Status, want)
+		}
+	}
+}

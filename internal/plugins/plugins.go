@@ -249,7 +249,13 @@ type InstanceInfo struct {
 	BrokenAt      *time.Time `json:"broken_at,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
+	Disabled      bool       `json:"disabled"`
+	// Status is disabled, broken, needs_setup, or ready, in that order.
+	Status string `json:"status" enum:"ready,needs_setup,broken,disabled"`
 }
+
+// Usable reports whether anything may use the instance.
+func (i InstanceInfo) Usable() bool { return i.BrokenError == nil && !i.Disabled }
 
 // Status sums up a plugin and its instances for the Plugins page: broken if
 // any instance is, instances for a plugin that allows many, and otherwise
@@ -467,13 +473,13 @@ func deleteInstances(ctx context.Context, db interface {
 }
 
 const infoCols = `id, plugin, name, config, secrets, owner_subject, library_access, broken_error, broken_at,
-	created_at, updated_at`
+	created_at, updated_at, disabled`
 
 func (r *Registry) scanInfo(row pgx.Row) (InstanceInfo, error) {
 	var i InstanceInfo
 	var sealed []byte
 	err := row.Scan(&i.ID, &i.Plugin, &i.Name, &i.Config, &sealed, &i.OwnerSubject, &i.LibraryAccess,
-		&i.BrokenError, &i.BrokenAt, &i.CreatedAt, &i.UpdatedAt)
+		&i.BrokenError, &i.BrokenAt, &i.CreatedAt, &i.UpdatedAt, &i.Disabled)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return i, ErrNotFound
 	}
@@ -487,7 +493,28 @@ func (r *Registry) scanInfo(row pgx.Row) (InstanceInfo, error) {
 	// Start non-nil so JSON shows [] rather than null.
 	i.Secrets = slices.AppendSeq([]string{}, maps.Keys(s))
 	slices.Sort(i.Secrets)
+	i.Status = r.instanceStatus(i)
 	return i, nil
+}
+
+func (r *Registry) instanceStatus(i InstanceInfo) string {
+	switch {
+	case i.Disabled:
+		return "disabled"
+	case i.BrokenError != nil:
+		return "broken"
+	}
+	m, ok := r.manifest(i.Plugin)
+	if !ok {
+		return "ready"
+	}
+	required, _ := m.Config["required"].([]any)
+	for _, k := range required {
+		if key, _ := k.(string); key != "" && i.Config[key] == nil {
+			return "needs_setup"
+		}
+	}
+	return "ready"
 }
 
 // GetInstance returns one instance's settings, without secret values.

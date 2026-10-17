@@ -142,3 +142,14 @@ func TestAutosyncWaitsForASyncWithoutStallingTheImport(t *testing.T) {
 		t.Fatalf("autosync didn't merge the update: %s", head.Data)
 	}
 }
+
+func TestBulkBatchThatFailsToCommitIsNotCounted(t *testing.T) {
+	e := setup(t, "-mode=bulk")
+	j, p := e.run(t, `{"cards": 6, "checkpoint_every": 3, "nul_checkpoint": 6}`)
+	if j.Status != jobs.StatusFailed {
+		t.Fatalf("job %s, want failed on the checkpoint it can't store", j.Status)
+	}
+	if n := e.count(t, "card"); p.Imported != int64(n) {
+		t.Fatalf("progress counts %d imported, but %d cards were stored", p.Imported, n)
+	}
+}

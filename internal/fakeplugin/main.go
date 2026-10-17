@@ -293,6 +293,9 @@ type importOptions struct {
 	Values  map[string]json.RawMessage `json:"values"`
 	// CheckpointEvery sends a checkpoint after every this many cards; 0 means 1.
 	CheckpointEvery int `json:"checkpoint_every"`
+	// NULCheckpoint sends the checkpoint with this next card holding a NUL,
+	// which PostgreSQL refuses to store.
+	NULCheckpoint int `json:"nul_checkpoint"`
 }
 
 func importRun(conn *protocol.Conn, blobTmp string, params json.RawMessage) (any, error) {
@@ -351,7 +354,10 @@ func importRun(conn *protocol.Conn, blobTmp string, params json.RawMessage) (any
 		}
 		_ = conn.Notify(protocol.NotifyProgress, protocol.Progress{Run: p.Run, Done: int64(i + 1), Total: int64(opts.Cards)})
 		if (i+1)%max(opts.CheckpointEvery, 1) == 0 {
-			next, _ := json.Marshal(map[string]int{"next": i + 1})
+			next, _ := json.Marshal(map[string]any{"next": i + 1})
+			if opts.NULCheckpoint == i+1 {
+				next, _ = json.Marshal(map[string]any{"next": i + 1, "note": "\u0000"})
+			}
 			_ = conn.Notify(protocol.NotifyCheckpoint, protocol.Checkpoint{Run: p.Run, Checkpoint: next})
 		}
 	}

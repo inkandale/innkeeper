@@ -11,7 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
+	"slices"
 	"sync"
 
 	"github.com/jackc/pgx/v5"
@@ -100,7 +100,7 @@ type session struct {
 	library, instance int64
 	// bulk stores items a checkpoint at a time; buf holds those since the last.
 	bulk bool
-	buf  []library.PluginItem
+	buf  []buffered
 	// autosync holds stored updates for autosync to try once the plugin call
 	// returns: applying one waits for a running sync, which must not stall
 	// reading the plugin's notifications.
@@ -229,11 +229,8 @@ func (s *session) handle(method string, params json.RawMessage) {
 			break
 		}
 		values, problems := protocol.CheckValues(s.decl, e.Values)
-		for _, p := range problems {
-			s.warn(e.Item + ": " + p)
-		}
 		s.store(e.Item, library.PluginItem{Kind: library.Card, Data: e.Card, Avatar: e.Avatar, Version: e.Version,
-			Created: e.Created, Values: values})
+			Created: e.Created, Values: values}, problems...)
 	case protocol.NotifyEmitLorebook:
 		var e protocol.EmitLorebook
 		if err := json.Unmarshal(params, &e); err != nil {
@@ -267,9 +264,18 @@ func (s *session) handle(method string, params json.RawMessage) {
 	s.publish()
 }
 
+// buffered is an item a bulk import holds until the next checkpoint, with
+// the warnings it is counted with once stored.
+type buffered struct {
+	name     string
+	it       library.PluginItem
+	warnings []string
+}
+
 // store stores an item the plugin emitted under its ID for the item, or in
-// bulk mode, buffers it until the next checkpoint.
-func (s *session) store(item string, it library.PluginItem) {
+// bulk mode, buffers it until the next checkpoint. warnings are problems
+// with what the item sent.
+func (s *session) store(item string, it library.PluginItem, warnings ...string) {
 	if item == "" {
 		s.count(item, library.Imported{}, &badItem{errors.New("item is empty")})
 		return
@@ -277,30 +283,47 @@ func (s *session) store(item string, it library.PluginItem) {
 	it.LibraryID, it.InstanceID, it.SkipDetect = s.library, s.instance, s.bulk
 	it.Provenance, it.Source = s.plugin+":"+item, "plugin:"+s.plugin
 	if s.bulk {
-		s.buf = append(s.buf, it)
+		s.buf = append(s.buf, buffered{item, it, warnings})
 		return
 	}
+	s.warn(item, warnings)
 	got, err := s.im.Lib.ImportItem(s.ctx, it)
 	s.count(item, got, invalid(err))
 	s.autosync = append(s.autosync, got.Autosync...)
 }
 
 // flush stores the buffered items and saves cp, which may be nil, in one
-// transaction.
+// transaction. Their counts are saved with it, and kept only if it commits.
 func (s *session) flush(cp json.RawMessage) {
-	items := s.buf
+	buf := s.buf
 	s.buf = nil
+	items := make([]library.PluginItem, len(buf))
+	for i, b := range buf {
+		items[i] = b.it
+	}
+	s.mu.Lock()
+	before := s.p
+	before.Errors, before.Warnings = slices.Clone(s.p.Errors), slices.Clone(s.p.Warnings)
+	s.mu.Unlock()
+	var auto []int64
 	err := s.im.Lib.ImportBatch(s.ctx, items, func(tx pgx.Tx, got []library.Imported, errs []error) error {
-		for i, it := range items {
-			s.count(strings.TrimPrefix(it.Provenance, s.plugin+":"), got[i], invalid(errs[i]))
-			s.autosync = append(s.autosync, got[i].Autosync...)
+		for i, b := range buf {
+			s.warn(b.name, b.warnings)
+			s.count(b.name, got[i], invalid(errs[i]))
+			auto = append(auto, got[i].Autosync...)
 		}
 		s.publish()
 		return s.run.SaveCheckpointTx(s.ctx, tx, cp)
 	})
 	if err != nil {
+		s.mu.Lock()
+		s.p = before
+		s.mu.Unlock()
+		s.publish()
 		s.fail(retryable(err))
+		return
 	}
+	s.autosync = append(s.autosync, auto...)
 }
 
 // applyAutosync applies each waiting update the import left on a binding
@@ -308,17 +331,20 @@ func (s *session) flush(cp json.RawMessage) {
 func (s *session) applyAutosync() {
 	for _, id := range s.autosync {
 		if _, err := s.im.Targets.ApplyUpdate(s.ctx, id); err != nil {
-			s.warn(fmt.Sprintf("autosync of binding %d: %v", id, err))
+			s.warn(fmt.Sprintf("binding %d", id), []string{fmt.Sprintf("autosync: %v", err)})
 		}
 	}
 	s.publish()
 }
 
-func (s *session) warn(msg string) {
+// warn records problems with what item sent.
+func (s *session) warn(item string, problems []string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if len(s.p.Warnings) < maxErrors {
-		s.p.Warnings = append(s.p.Warnings, msg)
+	for _, p := range problems {
+		if len(s.p.Warnings) < maxErrors {
+			s.p.Warnings = append(s.p.Warnings, item+": "+p)
+		}
 	}
 }
 

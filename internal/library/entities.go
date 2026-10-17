@@ -66,6 +66,7 @@ func (s *Entities) Kind() *Kind { return s.k }
 // Entity is a card or lorebook's current state.
 type Entity struct {
 	ID             int64
+	LibraryID      int64
 	Slug           string
 	HeadRevisionID int64
 	ArchivedAt     *time.Time
@@ -102,11 +103,11 @@ type Edit struct {
 	Source string
 }
 
-const entityCols = `id, slug, coalesce(head_revision_id, 0), archived_at, provenance, created_at`
+const entityCols = `id, library_id, slug, coalesce(head_revision_id, 0), archived_at, provenance, created_at`
 
 func scanEntity(row pgx.Row) (Entity, error) {
 	var e Entity
-	err := row.Scan(&e.ID, &e.Slug, &e.HeadRevisionID, &e.ArchivedAt, &e.Provenance, &e.CreatedAt)
+	err := row.Scan(&e.ID, &e.LibraryID, &e.Slug, &e.HeadRevisionID, &e.ArchivedAt, &e.Provenance, &e.CreatedAt)
 	return e, mapErr(err)
 }
 

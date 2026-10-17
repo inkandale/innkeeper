@@ -12,6 +12,10 @@ import (
 	"github.com/inkandale/innkeeper/internal/db"
 )
 
+// DefaultLibrary is the library cards and lorebooks go to when no library is
+// named. Migration 0029 creates it.
+const DefaultLibrary int64 = 1
+
 var (
 	ErrNotFound = errors.New("not found")
 	// ErrConflict means the write's base revision is no longer the head.

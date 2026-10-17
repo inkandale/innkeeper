@@ -169,3 +169,41 @@ func TestUpdateTxRollbackLeavesHead(t *testing.T) {
 		t.Fatalf("head = %d, %v; want %d", c.HeadRevisionID, err, first)
 	}
 }
+
+func TestEntitiesStartInDefaultLibrary(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	c, _, err := lib.Cards.Create(ctx, "brakka", "upload", edit(`{"name": "Brakka"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _, err := lib.Lorebooks.Create(ctx, "dwarf-lore", "upload", edit(`{"name": "Dwarf lore", "entries": []}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.LibraryID != DefaultLibrary || b.LibraryID != DefaultLibrary {
+		t.Fatalf("card in %d, lorebook in %d, want %d", c.LibraryID, b.LibraryID, DefaultLibrary)
+	}
+	got, err := lib.Cards.Get(ctx, c.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.LibraryID != DefaultLibrary {
+		t.Fatalf("Get: library %d, want %d", got.LibraryID, DefaultLibrary)
+	}
+	var name string
+	if err := lib.pool.QueryRow(ctx, `SELECT name FROM library WHERE id = $1`, DefaultLibrary).Scan(&name); err != nil {
+		t.Fatal(err)
+	}
+	if name != "Library" {
+		t.Fatalf("default library is named %q", name)
+	}
+	// The next library gets ID 2, not a conflict with library 1.
+	var next int64
+	if err := lib.pool.QueryRow(ctx, `INSERT INTO library (name) VALUES ('Archive') RETURNING id`).Scan(&next); err != nil {
+		t.Fatal(err)
+	}
+	if next != 2 {
+		t.Fatalf("next library ID = %d, want 2", next)
+	}
+}

@@ -3069,6 +3069,11 @@ export interface components {
             created_at: string;
             /** Format: int64 */
             id: number;
+            /**
+             * Format: int64
+             * @description The library it belongs to
+             */
+            library_id: number;
             /** @description Cards only: IDs of linked lorebooks */
             lorebooks?: number[] | null;
             provenance: string;

@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/inkandale/innkeeper/internal/library"
 )
 
 type entityResult struct {
 	ID          int64          `json:"id"`
+	LibraryID   int64          `json:"library_id"`
 	Slug        string         `json:"slug"`
 	Provenance  string         `json:"provenance"`
 	ArchivedAt  *string        `json:"archived_at"`
@@ -346,5 +349,18 @@ func TestLorebookCardsField(t *testing.T) {
 	e.call("GET", fmt.Sprintf("/cards/%d", c.ID), nil, 200, &card)
 	if card.Cards != nil {
 		t.Fatalf("a card lists cards: %v", card.Cards)
+	}
+}
+
+func TestEntityReportsItsLibrary(t *testing.T) {
+	e := newEnv(t)
+	c := e.createCard(`{"name": "Brakka"}`)
+	if c.LibraryID != library.DefaultLibrary {
+		t.Fatalf("created card in library %d", c.LibraryID)
+	}
+	var got entityResult
+	e.call("GET", fmt.Sprintf("/cards/%d", c.ID), nil, 200, &got)
+	if got.LibraryID != library.DefaultLibrary {
+		t.Fatalf("fetched card in library %d", got.LibraryID)
 	}
 }

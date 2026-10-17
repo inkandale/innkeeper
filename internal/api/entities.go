@@ -42,6 +42,7 @@ func toRevision(r library.Revision, full bool) revisionOut {
 
 type entityOut struct {
 	ID          int64               `json:"id"`
+	LibraryID   int64               `json:"library_id" doc:"The library it belongs to"`
 	Slug        string              `json:"slug"`
 	Provenance  string              `json:"provenance"`
 	ArchivedAt  *time.Time          `json:"archived_at,omitempty"`
@@ -186,7 +187,7 @@ func (s *Server) entity(ctx context.Context, ents *library.Entities, id int64) (
 	if err != nil {
 		return nil, s.fail(err)
 	}
-	out := &entityResp{Body: entityOut{ID: e.ID, Slug: e.Slug, Provenance: e.Provenance, ArchivedAt: e.ArchivedAt,
+	out := &entityResp{Body: entityOut{ID: e.ID, LibraryID: e.LibraryID, Slug: e.Slug, Provenance: e.Provenance, ArchivedAt: e.ArchivedAt,
 		CreatedAt: e.CreatedAt, Revision: toRevision(rev, true)}}
 	if ents.Kind() == library.Card {
 		if out.Body.Lorebooks, err = s.Lib.CardLorebooks(ctx, id); err != nil {

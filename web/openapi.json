@@ -1937,6 +1937,11 @@
             "format": "int64",
             "type": "integer"
           },
+          "library_id": {
+            "description": "The library it belongs to",
+            "format": "int64",
+            "type": "integer"
+          },
           "lorebooks": {
             "description": "Cards only: IDs of linked lorebooks",
             "items": {
@@ -1975,6 +1980,7 @@
         },
         "required": [
           "id",
+          "library_id",
           "slug",
           "provenance",
           "created_at",

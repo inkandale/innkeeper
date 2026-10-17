@@ -221,6 +221,7 @@ func TestThemeManifestErrors(t *testing.T) {
 		{"not css", strings.Replace(themeManifest, `"theme.css"`, `"theme.js"`, 1), "must end in .css"},
 		{"mixed", strings.Replace(themeManifest, `["theme"]`, `["theme", "push"]`, 1), "theme can't be combined"},
 		{"database", themeManifest + "database = true\n", "a theme plugin has no database"},
+		{"multiple instances", themeManifest + "multiple_instances = true\n", "a theme plugin has no instances"},
 		{"secrets", themeManifest + `secrets = ["k"]` + "\n", "a theme plugin has no secrets"},
 		{"config", themeManifest + "[config]\nk = \"v\"\n", "a theme plugin has no config"},
 		{"enrichments", themeManifest + "[enrichments.x]\n", "a theme plugin has no enrichments"},
@@ -399,5 +400,24 @@ Test-It = { label = "Test" }
 		if _, err := LoadManifest(writeManifest(t, base+body)); err == nil {
 			t.Errorf("%s: loaded", name)
 		}
+	}
+}
+
+func TestManifestListing(t *testing.T) {
+	body := validManifest[:strings.Index(validManifest, "[config]")] +
+		"multiple_instances = true\ndescription = \"Pushes cards.\"\ncategory = \"Apps\"\n"
+	m, err := LoadManifest(writeManifest(t, body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !m.MultipleInstances || m.Description != "Pushes cards." || m.Category != "Apps" {
+		t.Fatalf("manifest = %+v", m)
+	}
+}
+
+func TestManifestDescriptionIsOneLine(t *testing.T) {
+	body := validManifest[:strings.Index(validManifest, "[config]")] + "description = \"one\\ntwo\"\n"
+	if _, err := LoadManifest(writeManifest(t, body)); err == nil || !strings.Contains(err.Error(), "description must be one line") {
+		t.Fatalf("err = %v, want description must be one line", err)
 	}
 }

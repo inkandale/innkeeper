@@ -41,6 +41,9 @@ Each plugin folder has a `plugin.toml`:
 | `icon` | no | The app's logo, shown wherever a card is linked to one of the plugin's instances: a regular file inside the plugin folder, named `*.svg`, `*.png`, or `*.webp`. A symlink that leaves the folder is rejected. The core serves it at `/api/plugins/<name>/icon` without login. Without an icon, the UI shows the plugin name's first letter |
 | `records` | only for `records` | The record types the plugin keeps; see [`records`](#records). A `records` plugin must declare at least one |
 | `database` | no | `true` gives the plugin its own PostgreSQL schema, `plugin_<name>` with `-` as `_`, and a login role limited to it |
+| `multiple_instances` | no | `true` lets the owner create more than one instance, such as one per app server. Without it, the plugin has at most one, and the core creates it when the plugin needs no secrets and no required config, except for an `auth` plugin. A theme can't set it |
+| `description` | no | One line saying what the plugin does, shown on the Plugins page |
+| `category` | no | The group the Plugins page shows the plugin under, such as `Apps`. Without one, it shows under Other |
 | `uses` | no | Service methods the plugin calls on other instances, each listed once, such as `["ai.chat"]`; see [`ai`](#ai) |
 | `settings` | no; only for `settings` | Buttons on the instance form, under `[settings.actions]`, each keyed by an ID matching `^[a-z][a-z0-9_]*$` with a required `label`; see [`settings`](#settings) |
 

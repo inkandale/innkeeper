@@ -65,6 +65,16 @@ type Manifest struct {
 	// to it. The URL arrives as initialize's database_url.
 	Database bool `toml:"database"`
 
+	// MultipleInstances lets the owner create more than one instance;
+	// without it, a plugin has at most one.
+	MultipleInstances bool `toml:"multiple_instances"`
+
+	// Description is one line saying what the plugin does.
+	Description string `toml:"description"`
+
+	// Category groups the plugin on the Plugins page, such as "Apps".
+	Category string `toml:"category"`
+
 	// Uses are the service methods the plugin calls on other instances.
 	Uses []string `toml:"uses"`
 
@@ -180,6 +190,9 @@ func (m *Manifest) Validate() error {
 	}
 	if !m.IsTheme() && m.Stylesheet != "" {
 		errs = append(errs, errors.New("stylesheet needs the theme capability"))
+	}
+	if strings.ContainsAny(m.Description, "\r\n") {
+		errs = append(errs, errors.New("description must be one line"))
 	}
 	if len(m.Capabilities) == 0 {
 		errs = append(errs, errors.New("at least one capability is required"))
@@ -348,7 +361,7 @@ func (m *Manifest) validateTheme() []error {
 	if len(m.Command) > 0 {
 		errs = append(errs, errors.New("a theme plugin has no command"))
 	}
-	for key, set := range map[string]bool{"database": m.Database, "secrets": len(m.Secrets) > 0,
+	for key, set := range map[string]bool{"database": m.Database, "instances": m.MultipleInstances, "secrets": len(m.Secrets) > 0,
 		"config": len(m.Config) > 0, "enrichments": len(m.Enrichments) > 0} {
 		if set {
 			errs = append(errs, fmt.Errorf("a theme plugin has no %s", key))

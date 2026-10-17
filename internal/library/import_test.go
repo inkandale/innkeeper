@@ -332,3 +332,27 @@ func TestSplitCardDropsAppLocalExtensions(t *testing.T) {
 		t.Fatalf("%s hashes %s, want %s (%v)", only, h1, h2, err)
 	}
 }
+
+func TestImportOfTheAcceptedVersionWithdrawsAPendingUpdate(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	_, imp := importer(t, lib)
+	first := imp("brakka.png", `{"name": "Brakka"}`)
+	if _, err := lib.Cards.Update(ctx, first.ID, first.RevisionID, edit(`{"name": "Brakka the Bold"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if got := imp("brakka.png", `{"name": "Brakka", "description": "An orc."}`); got.Outcome != Pending {
+		t.Fatalf("update = %+v", got)
+	}
+	// The source took its change back.
+	imp("brakka.png", `{"name": "Brakka"}`)
+	var state string
+	var seen *string
+	if err := lib.pool.QueryRow(ctx, `SELECT remote_state, seen_data::text FROM binding WHERE card_id = $1 AND imported`, first.ID).
+		Scan(&state, &seen); err != nil {
+		t.Fatal(err)
+	}
+	if state != "unchanged" || seen != nil {
+		t.Fatalf("binding = %s, %v; want the update withdrawn", state, seen)
+	}
+}

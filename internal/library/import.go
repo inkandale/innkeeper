@@ -305,8 +305,11 @@ func (l *Library) importEntity(ctx context.Context, tx pgx.Tx, s *Entities, it P
 		}
 		return Imported{ID: ent.ID, Outcome: Created, RevisionID: rev.ID}, s.detectUnless(ctx, tx, it, ent.ID)
 	}
-	if err != nil || stored {
+	if err != nil {
 		return out, err
+	}
+	if stored {
+		return out, l.withdrawUpdate(ctx, tx, s.k, it, out.ID, r.contentHash, e.AvatarBlob)
 	}
 	b, err := l.importBinding(ctx, tx, s, it, out.ID, out.RevisionID)
 	if err != nil {
@@ -349,6 +352,19 @@ func (l *Library) importEntity(ctx context.Context, tx pgx.Tx, s *Entities, it P
 	}
 	out.Outcome, out.RevisionID = Revised, rev.ID
 	return out, s.detectUnless(ctx, tx, it, out.ID)
+}
+
+// withdrawUpdate drops the entity's waiting update when the item is the
+// accepted copy again, since the source took its change back.
+func (l *Library) withdrawUpdate(ctx context.Context, tx pgx.Tx, k *Kind, it PluginItem, id int64, hash, avatar string) error {
+	key, err := l.AvatarKey(ctx, avatar)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `UPDATE binding SET seen_data = NULL, seen_avatar = NULL, remote_state = 'unchanged', checked_at = now()
+		WHERE instance_id = $1 AND `+k.FK+` = $2 AND imported AND remote_state = 'changed'
+			AND accepted_hash = $3 AND coalesce(avatar_hash, '') = $4`, it.InstanceID, id, hash, key)
+	return err
 }
 
 // importBinding reads the entity's import binding, making one for an entity

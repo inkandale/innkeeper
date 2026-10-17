@@ -324,3 +324,29 @@ func TestDeleteLibraryTakesCardsAddedWhileDeleting(t *testing.T) {
 		t.Errorf("late card: %v", err)
 	}
 }
+
+func TestForkLinkIsNotASharedSource(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	id, _ := newCard(t, lib, "brakka", `{"name": "Brakka"}`)
+	for range 2 {
+		if _, err := lib.Cards.Fork(ctx, id, 0, "ui"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	shares := true
+	res, err := lib.Search(ctx, Card, Query{Filter: &Filter{SharesSource: &shares}, Facets: []string{"sources"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Total != 0 {
+		t.Errorf("sibling forks share a source: %+v", res.Hits)
+	}
+	all, err := lib.Search(ctx, Card, Query{Facets: []string{"sources"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if all.Facets != nil && len(all.Facets.Sources) != 0 {
+		t.Errorf("sources facet = %+v", all.Facets.Sources)
+	}
+}

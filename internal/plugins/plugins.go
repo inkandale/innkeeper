@@ -43,6 +43,8 @@ var (
 	ErrIncapable = errors.New("plugin lacks the capability")
 	// ErrNoCodec means no working codec instance writes a format.
 	ErrNoCodec = errors.New("no codec plugin instance writes this format")
+	// ErrSingleton means the plugin allows one instance and already has it.
+	ErrSingleton = errors.New("plugin allows one instance and already has it")
 )
 
 // LoadDir loads the manifest in each folder of dir. A folder with an invalid
@@ -292,6 +294,13 @@ func writeErr(err error) error {
 	return err
 }
 
+// lockPlugin holds a lock on plugin's instances until tx ends, so a check
+// for an existing instance stays true until the insert.
+func lockPlugin(ctx context.Context, tx pgx.Tx, plugin string) error {
+	_, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('plugin_instance:' || $1))`, plugin)
+	return err
+}
+
 // CreateInstance configures a new instance of an installed plugin.
 func (r *Registry) CreateInstance(ctx context.Context, n NewInstance) (int64, error) {
 	m, ok := r.manifest(n.Plugin)
@@ -317,10 +326,31 @@ func (r *Registry) CreateInstance(ctx context.Context, n NewInstance) (int64, er
 		n.Config = map[string]any{}
 	}
 	hashes := mergeDefaultHashes(nil, n.Config, n.DefaultBases)
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx)
+	if err := lockPlugin(ctx, tx, n.Plugin); err != nil {
+		return 0, err
+	}
+	if !m.MultipleInstances {
+		var exists bool
+		err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM plugin_instance WHERE plugin = $1)`, n.Plugin).Scan(&exists)
+		if err != nil {
+			return 0, err
+		}
+		if exists {
+			return 0, fmt.Errorf("%w: %s", ErrSingleton, n.Plugin)
+		}
+	}
 	var id int64
-	err = r.pool.QueryRow(ctx, `INSERT INTO plugin_instance (plugin, name, config, secrets, owner_subject, library_access, default_hashes)
+	err = tx.QueryRow(ctx, `INSERT INTO plugin_instance (plugin, name, config, secrets, owner_subject, library_access, default_hashes)
 		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`, n.Plugin, n.Name, n.Config, sealed, n.OwnerSubject, n.LibraryAccess, hashes).Scan(&id)
-	return id, writeErr(err)
+	if err != nil {
+		return 0, writeErr(err)
+	}
+	return id, tx.Commit(ctx)
 }
 
 // UpdateInstance applies e and clears the instance's broken state, so the

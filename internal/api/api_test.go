@@ -64,7 +64,7 @@ func newEnv(t *testing.T) *testEnv {
 		t.Fatal(err)
 	}
 	vault := &protocol.Manifest{Name: "vault", Version: "1.0.0", Protocol: protocol.Version,
-		Command: []string{"./vault"}, Capabilities: []string{"push"}, Secrets: []string{"api_key"}}
+		Command: []string{"./vault"}, Capabilities: []string{"push"}, Secrets: []string{"api_key"}, MultipleInstances: true}
 	// target is the fake plugin as a target app only.
 	target := *fake
 	target.Name, target.Capabilities = "target", []string{"push", "pull"}

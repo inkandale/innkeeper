@@ -48,6 +48,7 @@ version = "0.0.1"
 protocol = 1
 command = [%s]
 capabilities = [%s]
+multiple_instances = true
 `, strings.Join(cmd, ", "), strings.Join(quoted, ", "))
 	if slices.Contains(caps, "codec") {
 		manifest += "formats = [\"fake\"]\n"

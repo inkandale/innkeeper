@@ -63,7 +63,7 @@ func newRegistry(t *testing.T) (*Registry, *blobstore.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := &protocol.Manifest{Name: "fake", Version: "0.0.1", Secrets: []string{"api_key", "region"}}
+	m := &protocol.Manifest{Name: "fake", Version: "0.0.1", Secrets: []string{"api_key", "region"}, MultipleInstances: true}
 	dusk := &protocol.Manifest{Name: "dusk", Version: "1.0.0", Capabilities: []string{"theme"}, Stylesheet: "theme.css"}
 	return New(testdb.New(t), map[string]*protocol.Manifest{"fake": m, "dusk": dusk}, store, box), store
 }
@@ -530,5 +530,29 @@ func TestInstanceKeepsHashOfReplacedDefault(t *testing.T) {
 	}
 	if got := updated(id); len(got) != 0 {
 		t.Fatalf("after reset: updated = %v", got)
+	}
+}
+
+func TestCreateInstanceRejectsSecondSingleton(t *testing.T) {
+	ctx := context.Background()
+	box, err := secrets.New(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := New(testdb.New(t), map[string]*protocol.Manifest{
+		"solo": {Name: "solo", Version: "1", Capabilities: []string{"import"}},
+		"many": {Name: "many", Version: "1", Capabilities: []string{"push"}, MultipleInstances: true},
+	}, &blobstore.Store{Name: "library", Root: t.TempDir()}, box)
+
+	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "solo", Name: "solo"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "solo", Name: "solo 2"}); !errors.Is(err, ErrSingleton) {
+		t.Fatalf("second solo instance: err = %v, want ErrSingleton", err)
+	}
+	for _, name := range []string{"a", "b"} {
+		if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "many", Name: name}); err != nil {
+			t.Fatalf("many instance %s: %v", name, err)
+		}
 	}
 }

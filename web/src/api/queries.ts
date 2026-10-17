@@ -5,7 +5,13 @@ export const instancesQuery = queryOptions({ queryKey: ["instances"], queryFn: a
 
 export const pluginsQuery = queryOptions({ queryKey: ["plugins"], queryFn: async () => must(await api.GET("/plugins")) });
 
-export const collectionsQuery = queryOptions({ queryKey: ["collections"], queryFn: async () => must(await api.GET("/collections")) });
+export const librariesQuery = queryOptions({ queryKey: ["libraries"], queryFn: async () => must(await api.GET("/libraries")) });
+
+export const collectionsQuery = (library: number) =>
+  queryOptions({
+    queryKey: ["collections", library],
+    queryFn: async () => must(await api.GET("/collections", { params: { query: { library } } })),
+  });
 
 export const meQuery = queryOptions({ queryKey: ["me"], queryFn: async () => must(await api.GET("/auth/me")) });
 

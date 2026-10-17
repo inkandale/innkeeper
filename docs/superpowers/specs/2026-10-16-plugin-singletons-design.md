@@ -48,6 +48,7 @@ In the plugins repo, these set `multiple_instances = true`:
 | ai | One per model provider |
 | folder | One per indexed folder |
 | chub-archive | One per takeout dump |
+| password-login | Setup creates a new login when the only one is broken or has no owner; a singleton would lock the owner out |
 
 Every plugin gets the `description` and `category` its `index.toml` entry
 already has, and each changed plugin's version is bumped in both files.

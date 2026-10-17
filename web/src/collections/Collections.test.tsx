@@ -19,6 +19,7 @@ beforeEach(() => {
     vi.fn(async (req: Request) => {
       const url = new URL(req.url);
       const path = url.pathname;
+      if (path === "/api/libraries") return new Response(JSON.stringify([1, 2, 3].map((id) => ({ id, name: `Library ${id}`, cards: 0, lorebooks: 0, created_at: "2026-10-01T00:00:00Z" }))), { headers: { "Content-Type": "application/json" } });
       if (req.method === "GET") gets.push(path + url.search);
       else calls.push(`${req.method} ${path} ${await req.text()}`);
       if (req.method === "POST" && conflict)

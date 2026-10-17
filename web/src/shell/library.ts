@@ -1,4 +1,6 @@
+import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
+import { librariesQuery } from "../api/queries";
 
 const libraryKey = "innkeeper.library";
 
@@ -24,10 +26,12 @@ export function rememberLibrary(id: number) {
 /** libraryParam is the URL's ?library=, if it names one. */
 export const libraryParam = (p: URLSearchParams) => parse(p.get("library"));
 
-/** useLibrary is the current library: the URL's, else the last one used. */
+/** useLibrary is the current library: the URL's, else the last one used, or 1 once the list shows it no longer exists. */
 export function useLibrary(): number {
   const [params] = useSearchParams();
-  return libraryParam(params) ?? rememberedLibrary();
+  const libraries = useQuery(librariesQuery).data;
+  const library = libraryParam(params) ?? rememberedLibrary();
+  return libraries && !libraries.some((l) => l.id === library) ? 1 : library;
 }
 
 /** withLibrary adds ?library= to an app path, keeping any query it has. */

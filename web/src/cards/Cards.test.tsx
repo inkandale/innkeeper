@@ -53,6 +53,7 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (req: Request) => {
       const path = new URL(req.url).pathname;
+      if (path === "/api/libraries") return new Response(JSON.stringify([1, 2, 3].map((id) => ({ id, name: `Library ${id}`, cards: 0, lorebooks: 0, created_at: "2026-10-01T00:00:00Z" }))), { headers: { "Content-Type": "application/json" } });
       if (req.method === "PUT") {
         puts.push({ path, body: await req.json() });
         return new Response(null, { status: 204 });

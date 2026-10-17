@@ -89,6 +89,15 @@ describe("library switcher", () => {
     vi.restoreAllMocks();
   });
 
+  test("a remembered library that no longer exists falls back to library 1", async () => {
+    localStorage.setItem("innkeeper.library", "5");
+    renderShell("/settings/jobs");
+    await screen.findByRole("option", { name: "Chub archive" });
+    expect(screen.getByRole("combobox", { name: "Library" })).toHaveValue("1");
+    expect(screen.getByRole("link", { name: "Cards" })).toHaveAttribute("href", "/cards?library=1");
+    expect(localStorage.getItem("innkeeper.library")).toBe("1");
+  });
+
   test("choosing a library opens the same list in it without the old filters", async () => {
     const router = renderShell("/lorebooks?library=1&f=tag:x");
     await screen.findByRole("option", { name: "Chub archive" });

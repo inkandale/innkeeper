@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { NavLink, Outlet, useLocation, useNavigate, useSearchParams } from "react-router";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { api } from "../api/client";
 import { librariesQuery } from "../api/queries";
-import { libraryParam, rememberLibrary, useLibrary, withLibrary } from "./library";
+import { rememberLibrary, useLibrary, withLibrary } from "./library";
 import { Mark } from "./Mark";
 import { Toasts } from "./Toasts";
 import "./Shell.css";
@@ -30,17 +30,16 @@ async function logout() {
 // Pages that list one library's items; switching keeps the page, anywhere else opens Cards.
 const listPages = ["/cards", "/lorebooks", "/collections"];
 
-/** LibrarySwitcher picks the current library, and remembers any library the URL names. */
+/** LibrarySwitcher picks the current library, and remembers it once the list confirms it exists. */
 function LibrarySwitcher() {
   const libraries = useQuery(librariesQuery);
   const library = useLibrary();
-  const [params] = useSearchParams();
-  const named = libraryParam(params);
   const { pathname } = useLocation();
   const navigate = useNavigate();
+  const loaded = !!libraries.data;
   useEffect(() => {
-    if (named) rememberLibrary(named);
-  }, [named]);
+    if (loaded) rememberLibrary(library);
+  }, [loaded, library]);
   if (!libraries.data) return null;
   return (
     <select

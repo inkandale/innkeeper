@@ -17,6 +17,7 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (req: Request) => {
       const u = new URL(req.url);
+      if (u.pathname === "/api/libraries") return new Response(JSON.stringify([1, 2, 3].map((id) => ({ id, name: `Library ${id}`, cards: 0, lorebooks: 0, created_at: "2026-10-01T00:00:00Z" }))), { headers: { "Content-Type": "application/json" } });
       if (u.pathname === "/api/instances")
         return json([
           { id: 2, name: "Lumiverse", plugin: "lumiverse" },

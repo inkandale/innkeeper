@@ -26,6 +26,7 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (req: Request) => {
       const path = new URL(req.url).pathname;
+      if (path === "/api/libraries") return new Response(JSON.stringify([1, 2, 3].map((id) => ({ id, name: `Library ${id}`, cards: 0, lorebooks: 0, created_at: "2026-10-01T00:00:00Z" }))), { headers: { "Content-Type": "application/json" } });
       if (path === "/api/blobs") {
         posts.push({ path, body: await req.text() });
         return json({ sha256: "cd".repeat(32), mime: "image/png", size: 3, store: "local", created_at: now }, 201);

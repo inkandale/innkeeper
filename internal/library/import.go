@@ -308,12 +308,20 @@ func (l *Library) importEntity(ctx context.Context, tx pgx.Tx, s *Entities, it P
 	if err != nil {
 		return out, err
 	}
+	newKey, err := l.AvatarKey(ctx, e.AvatarBlob)
+	if err != nil {
+		return Imported{}, err
+	}
 	if stored {
-		return out, l.withdrawUpdate(ctx, tx, s.k, it, out.ID, r.contentHash, e.AvatarBlob)
+		return out, withdrawUpdate(ctx, tx, s.k, it, out.ID, r.contentHash, newKey)
 	}
 	b, err := l.importBinding(ctx, tx, s, it, out.ID, out.RevisionID)
 	if err != nil {
 		return Imported{}, err
+	}
+	// The accepted copy again, which the card may differ from by the owner's avatar.
+	if r.contentHash == b.acceptedHash && newKey == b.avatarKey {
+		return out, withdrawUpdate(ctx, tx, s.k, it, out.ID, r.contentHash, newKey)
 	}
 	if b.seen != nil {
 		seenHash, err := cardhash.ContentHash(b.seen)
@@ -328,7 +336,9 @@ func (l *Library) importEntity(ctx context.Context, tx pgx.Tx, s *Entities, it P
 	if err != nil {
 		return Imported{}, err
 	}
-	if headHash != b.acceptedHash || headKey != b.avatarKey {
+	// Data and avatar merge apart: the owner's avatar survives a text update.
+	ownAvatar := headKey != b.avatarKey
+	if headHash != b.acceptedHash || (ownAvatar && newKey != b.avatarKey) {
 		_, err := tx.Exec(ctx, `UPDATE binding SET seen_data = $2, seen_avatar = nullif($3, ''), remote_state = 'changed',
 			checked_at = now() WHERE id = $1`, b.id, e.Data, e.AvatarBlob)
 		out.Outcome = Pending
@@ -337,17 +347,19 @@ func (l *Library) importEntity(ctx context.Context, tx pgx.Tx, s *Entities, it P
 		}
 		return out, err
 	}
-	rev, err := s.insertRevision(ctx, tx, out.ID, &out.RevisionID, r)
-	if err != nil {
-		return Imported{}, err
+	if ownAvatar {
+		r.avatar = nil
+		if headAvatar != "" {
+			r.avatar = &headAvatar
+		}
 	}
-	key, err := l.AvatarKey(ctx, e.AvatarBlob)
+	rev, err := s.insertRevision(ctx, tx, out.ID, &out.RevisionID, r)
 	if err != nil {
 		return Imported{}, err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE binding SET accepted_data = $2, accepted_hash = $3, avatar_hash = $4,
 			seen_data = NULL, seen_avatar = NULL, remote_state = 'unchanged', checked_at = now(), version = version + 1
-		WHERE id = $1`, b.id, e.Data, r.contentHash, key); err != nil {
+		WHERE id = $1`, b.id, e.Data, r.contentHash, newKey); err != nil {
 		return Imported{}, err
 	}
 	out.Outcome, out.RevisionID = Revised, rev.ID
@@ -356,14 +368,10 @@ func (l *Library) importEntity(ctx context.Context, tx pgx.Tx, s *Entities, it P
 
 // withdrawUpdate drops the entity's waiting update when the item is the
 // accepted copy again, since the source took its change back.
-func (l *Library) withdrawUpdate(ctx context.Context, tx pgx.Tx, k *Kind, it PluginItem, id int64, hash, avatar string) error {
-	key, err := l.AvatarKey(ctx, avatar)
-	if err != nil {
-		return err
-	}
-	_, err = tx.Exec(ctx, `UPDATE binding SET seen_data = NULL, seen_avatar = NULL, remote_state = 'unchanged', checked_at = now()
+func withdrawUpdate(ctx context.Context, tx pgx.Tx, k *Kind, it PluginItem, id int64, hash, avatarKey string) error {
+	_, err := tx.Exec(ctx, `UPDATE binding SET seen_data = NULL, seen_avatar = NULL, remote_state = 'unchanged', checked_at = now()
 		WHERE instance_id = $1 AND `+k.FK+` = $2 AND imported AND remote_state = 'changed'
-			AND accepted_hash = $3 AND coalesce(avatar_hash, '') = $4`, it.InstanceID, id, hash, key)
+			AND accepted_hash = $3 AND coalesce(avatar_hash, '') = $4`, it.InstanceID, id, hash, avatarKey)
 	return err
 }
 

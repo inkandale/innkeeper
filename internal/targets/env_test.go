@@ -39,9 +39,11 @@ type env struct {
 	ctx  context.Context
 	pool *pgxpool.Pool
 	lib  *library.Library
-	reg  *plugins.Registry
-	s    *Service
-	inst int64
+	// blobTmp is where a plugin would write files for the blob store.
+	blobTmp string
+	reg     *plugins.Registry
+	s       *Service
+	inst    int64
 	// dir is where the fake app keeps its cards.
 	dir  string
 	card int64
@@ -91,7 +93,7 @@ func setup(t *testing.T, config map[string]any) *env {
 	}, store, box)
 	mgr := pluginhost.NewManager(noCore, time.Minute, quiet)
 	t.Cleanup(mgr.Close)
-	e := &env{t: t, ctx: ctx, pool: pool, lib: lib, reg: reg, s: New(pool, lib, reg, mgr, quiet), dir: t.TempDir()}
+	e := &env{t: t, ctx: ctx, pool: pool, lib: lib, blobTmp: store.TmpDir(), reg: reg, s: New(pool, lib, reg, mgr, quiet), dir: t.TempDir()}
 	cfg := map[string]any{"dir": e.dir}
 	maps.Copy(cfg, config)
 	if e.inst, err = reg.CreateInstance(ctx, plugins.NewInstance{Plugin: "fake", Name: "Fake app", Config: cfg}); err != nil {

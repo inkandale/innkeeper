@@ -2,6 +2,7 @@ package targets
 
 import (
 	"encoding/json"
+	"os"
 	"testing"
 
 	"github.com/inkandale/innkeeper/internal/library"
@@ -178,5 +179,79 @@ func TestImportBindingSitsBesideAFollowedSource(t *testing.T) {
 	}
 	if b := e.importBinding(got.ID); b.RemoteID != "archive:vyr" || b.RemoteState != remoteUnchanged {
 		t.Fatalf("import binding = %+v", b)
+	}
+}
+
+// tmpAvatar copies an image into the blob store's tmp folder, as a plugin sends one.
+func (e *env) tmpAvatar(png string) string {
+	e.t.Helper()
+	raw, err := os.ReadFile(png)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	if err := os.MkdirAll(e.blobTmp, 0o755); err != nil {
+		e.t.Fatal(err)
+	}
+	f, err := os.CreateTemp(e.blobTmp, "avatar-*.png")
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	defer f.Close()
+	if _, err := f.Write(raw); err != nil {
+		e.t.Fatal(err)
+	}
+	return f.Name()
+}
+
+func TestImportAfterKeepingTheLibraryAvatarRevisesTheCard(t *testing.T) {
+	e := setup(t, nil)
+	inst, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: "archive", Name: "Archive"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	site := patternPNG(t, func(x, _ int) uint8 { return uint8(x / 8 % 2 * 255) })
+	mine := patternPNG(t, func(_, y int) uint8 { return uint8(y / 8 % 2 * 255) })
+	site2 := patternPNG(t, func(x, y int) uint8 { return uint8((x + y) / 8 % 2 * 255) })
+	send := func(data map[string]any, avatar string) library.Imported {
+		t.Helper()
+		raw, _ := json.Marshal(map[string]any{"spec": "chara_card_v3", "spec_version": "3.0", "data": data})
+		got, err := e.lib.ImportItem(e.ctx, library.PluginItem{Kind: library.Card, InstanceID: inst, Provenance: "archive:vyr",
+			Source: "plugin:archive", Data: raw, Avatar: e.tmpAvatar(avatar)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	card := send(vyrCard, site).ID
+	// The owner swaps the avatar, and the site's new avatar and text wait for review.
+	ownBlob, err := e.lib.IngestBlob(e.ctx, e.tmpAvatar(mine))
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.update(card, func(ed *library.Edit) { ed.AvatarBlob = ownBlob.SHA256 })
+	v2 := map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Begone."}
+	if got := send(v2, site2); got.Outcome != library.Pending {
+		t.Fatalf("v2 = %+v", got)
+	}
+	// Review takes the site's text and keeps the owner's avatar.
+	b := e.importBinding(card)
+	c, err := e.s.CompareItem(e.ctx, library.Card, inst, b.RemoteID, card)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.s.Resolve(e.ctx, library.Card, Resolution{InstanceID: inst, RemoteID: b.RemoteID, AppHash: c.AppHash,
+		BaseRevisionID: c.HeadRevisionID, AcceptedHash: c.AcceptedHash, Action: "bind", CardID: card, Default: merge.ChooseApp}); err != nil {
+		t.Fatal(err)
+	}
+	// The text is as last imported, so the next text change is taken, with the owner's avatar.
+	v3 := map[string]any{"name": "Vyr", "description": "A red dragon.", "first_mes": "Begone, thief."}
+	if got := send(v3, site2); got.Outcome != library.Revised {
+		t.Fatalf("v3 = %+v, want a revision", got)
+	}
+	if h := e.head(card); h.AvatarBlob == nil || *h.AvatarBlob != ownBlob.SHA256 || e.field(card, "first_mes") != "Begone, thief." {
+		t.Fatalf("head = %s with avatar %v", h.Data, h.AvatarBlob)
+	}
+	if got := send(v3, site2); got.Outcome != library.Unchanged {
+		t.Fatalf("v3 again = %+v", got)
 	}
 }

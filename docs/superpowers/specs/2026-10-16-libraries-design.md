@@ -26,7 +26,7 @@ card page, and MCP then serve both through one code path.
 | Archives | An archive plugin is an `import` plugin. `catalog.ingest` and catalogkit's index go away. |
 | Item identity | One source item is one card. Re-importing a changed item adds a revision, or a source update if the owner edited the card. |
 | Plugin values | Values such as chub's `rating` are enrichment rows from the importing instance. |
-| Blobs | One blob root with a folder per library, `<root>/<library id>/`. |
+| Blobs | One store for every library, as today. Garbage collection cleans up after a deleted library. |
 | Pass-through catalogs | Unchanged. `catalog.describe`, `catalog.search`, and `catalog.get` stay for catalogs that store nothing (INN-38). |
 | Migrating the current archive | None. chub-archive re-imports from the dump once this lands. |
 
@@ -43,11 +43,12 @@ card page, and MCP then serve both through one code path.
   unlike today's `provenance` string after adopt.
 - **Bindings, sync, and push** work on cards in any library.
 - **Enrichments** are already keyed by card and need no change.
-- **Blobs** stay content-addressed, stored under `<blob root>/<library id>/`.
-  Deleting a library deletes its folder. An image shared by two libraries is
-  stored twice; only forks cause that.
-- **Deleting a library** deletes its cards, lorebooks, and blob folder. It runs
-  as a job behind a typed confirmation, since an archive holds ~270k cards.
+- **Blobs** don't change: one content-addressed store shared by every
+  library. A blob belongs to no library; garbage collection deletes it once no
+  revision references it.
+- **Deleting a library** deletes its cards and lorebooks; the next garbage
+  collection removes the blobs only they used. It runs as a job behind a typed
+  confirmation, since an archive holds ~270k cards.
 
 ## Import
 
@@ -99,9 +100,8 @@ bulk mode, core:
 
 ### Avatars
 
-Avatars arrive through `blob_tmp` as today. Core moves each into
-`<blob root>/<library id>/`, skipping one already stored. chub-archive's image
-store and its `image_store` setting go away.
+Avatars arrive through `blob_tmp` and go into the blob store, as today.
+chub-archive's image store and its `image_store` setting go away.
 
 ### Restarts
 
@@ -129,8 +129,9 @@ also fixes a limit the curated library has today.
   stop counting at a cap and show "1,000+".
 - **Library-wide jobs**, such as "Check for updates" and bulk Evaluate, take a
   library and page through its cards instead of loading every ID.
-- **Backup.** `innkeeper backup` copies every library's blob folder by
-  default. A `--library` flag limits it to the libraries named.
+- **Backup.** `innkeeper backup` still copies every blob, so with an archive
+  library a backup holds ~100 GB of images. Limiting a backup to some
+  libraries is out of scope.
 
 ## API, MCP, and web
 
@@ -163,9 +164,8 @@ also fixes a limit the curated library has today.
 
 Each step ships on its own. Step 5 is in innkeeper-plugins; the rest are core.
 
-1. **Libraries.** The `library` table, `library_id` set to 1, blobs under
-   `<root>/<library id>/`, and `innkeeper blobs relayout`, which moves
-   existing blobs into `1/`.
+1. **Libraries.** The `library` table, and `library_id` on cards and
+   lorebooks, set to 1.
 2. **Scale.** LSH similar lookup, keyset paging, facets and family grouping
    within a library, and the 300k `EXPLAIN ANALYZE` check.
 3. **Import.** One item, one card; the `emit.card` fields; values as
@@ -183,9 +183,9 @@ in one push.
 
 1. Mount the `innkeeper-archive` share at `/data` in both containers, beside
    the `blobs` volume.
-2. Deploy build step 1. Set `INNKEEPER_BLOB_DIR` to `/data/blobs`, run
-   `innkeeper blobs relayout` from the old directory, and check that avatars
-   load.
+2. Scale the deployment to 0, copy the blob directory to `/data/blobs`, set
+   `INNKEEPER_BLOB_DIR` to it, scale back up, and check that avatars load.
+   This needs no core change and can happen before build step 1.
 3. Remove the `blobs` volume, its Velero annotation, and the `/chub-archive`
    mount. The NAS's own snapshots now cover blobs.
 4. After build step 5, create a "Chub archive" library and import into it from
@@ -199,7 +199,8 @@ in one push.
   - a changed item on an edited card records a source update;
   - an interrupted import resumes without duplicates;
   - search, facets, and similar lookup stay within a library unless asked;
-  - deleting a library removes its cards and blob folder;
+  - deleting a library removes its cards, and garbage collection then removes
+    blobs only it used while keeping ones another library references;
   - keyset paging is stable while rows are inserted;
   - LSH similar lookup returns what the exact scan returns.
 - **Contract test.** The new `emit.card` fields through the real broker,
@@ -214,4 +215,5 @@ in one push.
 - Archive quality scoring, duplicate groups, hiding, and purging (INN-66).
 - Discovery beyond search (INN-67).
 - Pass-through catalog browsing (INN-38).
-- A per-library blob location other than a folder under the root.
+- A blob location per library.
+- Backing up only some libraries.

@@ -26,11 +26,18 @@ beforeEach(() => {
       requests.push(`${req.method} ${u.pathname}`);
       if (u.pathname === "/api/plugins")
         return json([
-          { name: "dusk", version: "1.0.0", capabilities: ["theme"], secrets: [], source: "builtin", builtin: true },
+          { name: "dusk", version: "1.0.0", capabilities: ["theme"], secrets: [], source: "builtin", builtin: true,
+            multiple_instances: false, status: "ready" },
           {
             name: "sillytavern", version: "0.1.0", capabilities: ["push", "pull"], secrets: ["password"],
             source: "official", builtin: false, previous_source: "official", previous_version: "0.0.9",
+            category: "Apps", description: "Pushes cards to SillyTavern.", multiple_instances: true, status: "broken",
           },
+          { name: "card-codec", version: "0.2.0", capabilities: ["codec"], secrets: [], source: "builtin", builtin: true,
+            category: "Formats", multiple_instances: false, status: "needs_setup" },
+          { name: "url-import", version: "0.3.0", capabilities: ["import"], secrets: [], source: "builtin", builtin: true,
+            config: { type: "object", properties: { delay: { type: "integer" } } },
+            category: "Import", multiple_instances: false, status: "ready" },
         ]);
       if (u.pathname === "/api/plugin-sources") return json([{ id: "official", url: "https://example.com/index.toml" }]);
       if (u.pathname === "/api/plugin-catalog")
@@ -46,7 +53,10 @@ beforeEach(() => {
         ]);
       if (req.method === "POST") return new Response(null, { status: req.url.endsWith("/plugin-sources") ? 201 : 204 });
       if (u.pathname === "/api/instances")
-        return json([inst(1, "sillytavern", "home"), inst(2, "sillytavern", "work", "connection refused"), inst(3, "gone", "old")]);
+        return json([
+          inst(1, "sillytavern", "home"), inst(2, "sillytavern", "work", "connection refused"),
+          inst(3, "gone", "old"), inst(4, "url-import", "url-import"),
+        ]);
       if (req.method === "DELETE" && u.pathname === "/api/instances/1")
         return json({ title: "Conflict", status: 409, detail: "instance in use" }, 409);
       if (req.method === "DELETE") return new Response(null, { status: 204 });
@@ -70,7 +80,6 @@ function renderPlugins() {
 test("lists plugins with their instances and status", async () => {
   renderPlugins();
   const st = (await screen.findByRole("heading", { name: "sillytavern" })).closest("article")!;
-  expect(within(st).getByText("push")).toBeInTheDocument();
   expect(within(st).getByRole("link", { name: "home" })).toHaveAttribute("href", "/settings/instances/1");
   expect(within(st).getByText("connection refused")).toBeInTheDocument();
   expect(within(st).getByRole("link", { name: "Add instance" })).toHaveAttribute("href", "/settings/plugins/sillytavern/new");
@@ -130,7 +139,8 @@ test("rolls back, uninstalls, and removes data only after typing the name", asyn
 test("adds a source", async () => {
   const user = userEvent.setup();
   renderPlugins();
-  await user.type(await screen.findByRole("textbox", { name: "Source id" }), "mine");
+  await user.click(await screen.findByText("Plugin sources"));
+  await user.type(screen.getByRole("textbox", { name: "Source id" }), "mine");
   await user.type(screen.getByRole("textbox", { name: "Source URL" }), "https://example.net/index.toml");
   await user.click(screen.getByRole("button", { name: "Add source" }));
   expect(requests).toContain("POST /api/plugin-sources");
@@ -149,4 +159,23 @@ test("recommends plugins on a fresh install", async () => {
   );
   renderPlugins();
   expect(await screen.findByText(/comes with login/)).toBeInTheDocument();
+});
+
+test("groups plugins by category, alphabetically, with Other last", async () => {
+  renderPlugins();
+  await screen.findByRole("heading", { name: "sillytavern" });
+  const groups = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+  expect(groups.filter((g) => ["Apps", "Formats", "Import", "Other"].includes(g!))).toEqual(["Apps", "Formats", "Import", "Other"]);
+  expect(groups).toContain("Not installed");
+});
+
+test("a singleton shows its status and one action, never Add instance", async () => {
+  renderPlugins();
+  const codec = (await screen.findByRole("heading", { name: "card-codec" })).closest("article")!;
+  expect(within(codec).getByText("Needs setup")).toBeInTheDocument();
+  expect(within(codec).getByRole("link", { name: "Set up" })).toHaveAttribute("href", "/settings/plugins/card-codec/new");
+  expect(within(codec).queryByRole("link", { name: "Add instance" })).not.toBeInTheDocument();
+  const url = screen.getByRole("heading", { name: "url-import" }).closest("article")!;
+  expect(within(url).getByText("Ready")).toBeInTheDocument();
+  expect(within(url).getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/settings/instances/4");
 });

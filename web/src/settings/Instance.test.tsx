@@ -13,6 +13,7 @@ function json(body: unknown) {
 const now = new Date().toISOString();
 const st = {
   name: "sillytavern", version: "0.1.0", capabilities: ["push", "pull"], secrets: ["password"],
+  multiple_instances: true, status: "instances" as const,
   config: {
     type: "object", required: ["url"],
     properties: {
@@ -34,6 +35,7 @@ const owned = { ...broken, id: 4, plugin: "password-login", name: "pw", config: 
 const forge = { ...broken, id: 5, plugin: "forge-ai", name: "ai", config: {}, secrets: [], broken_error: undefined, library_access: false };
 const conf = {
   name: "conf", version: "0.1.0", capabilities: ["settings"], secrets: ["api_key"],
+  multiple_instances: false, status: "ready" as const,
   settings_actions: { test: "Test connection" },
   config: {
     type: "object",

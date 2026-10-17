@@ -44,7 +44,6 @@ var (
 			`INSERT INTO card_lorebook (card_id, lorebook_id) SELECT $2, lorebook_id FROM card_lorebook WHERE card_id = $1`,
 		},
 		deleteLinks: []string{
-			`DELETE FROM enrichment WHERE card_id = ANY($1)`,
 			`DELETE FROM collection_card WHERE card_id = ANY($1)`,
 		}}
 	Lorebook = &Kind{Name: "lorebook", Plural: "lorebooks", Table: "lorebook", RevTable: "lorebook_revision",

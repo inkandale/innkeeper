@@ -2,6 +2,7 @@ package library
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -861,5 +862,21 @@ func TestFacetCountsStopAtCap(t *testing.T) {
 	res, err := lib.Search(context.Background(), Card, Query{Facets: []string{"tags"}})
 	if err != nil || len(res.Facets.Tags) != 1 || res.Facets.Tags[0].Cards != facetCap+1 || res.Total != facetCap+5 {
 		t.Fatalf("results = total %d, facets %+v, %v", res.Total, res.Facets, err)
+	}
+}
+
+func TestCursorRejectsOutOfRangeRank(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	seedSearch(t, lib)
+	for _, rank := range []string{"1e-50", "1e39"} {
+		cursor := base64.RawURLEncoding.EncodeToString([]byte(`[` + rank + `, 5]`))
+		if _, err := lib.Search(ctx, Card, Query{Text: "dwarf", Page: Page{Cursor: &cursor}}); !errors.Is(err, ErrInvalid) {
+			t.Errorf("rank %s: %v", rank, err)
+		}
+	}
+	cursor := base64.RawURLEncoding.EncodeToString([]byte(`[1e-45, 5]`))
+	if _, err := lib.Search(ctx, Card, Query{Text: "dwarf", Page: Page{Cursor: &cursor}}); err != nil {
+		t.Errorf("smallest real: %v", err)
 	}
 }

@@ -526,7 +526,13 @@ func cursorValueIs(typ string, v json.RawMessage) bool {
 	var dst any
 	switch typ {
 	case "real":
-		dst = new(float32)
+		var f float64
+		if json.Unmarshal(v, &f) != nil {
+			return false
+		}
+		// Postgres refuses a real that overflows or rounds to zero.
+		f32, err := strconv.ParseFloat(string(v), 32)
+		return err == nil && (f32 != 0 || f == 0)
 	case "bigint":
 		dst = new(int64)
 	case "boolean":

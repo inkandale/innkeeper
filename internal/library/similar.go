@@ -3,6 +3,7 @@ package library
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"slices"
 
 	"github.com/jackc/pgx/v5"
@@ -18,34 +19,51 @@ type Match struct {
 	Distance int `json:"distance"`
 }
 
-// SimilarCards compares a card's head revision with every other card's head
-// revision and returns matches within maxDistance bits, closest first. The
-// spec allows a pairwise scan at library scale.
+// SimilarCards returns the other cards in cardID's library whose head
+// revision is like cardID's, within maxDistance bits, closest first.
 func (l *Library) SimilarCards(ctx context.Context, cardID int64, maxDistance int) ([]Match, error) {
+	if maxDistance > NearDistance {
+		return nil, errWideDistance
+	}
 	rows, err := l.pool.Query(ctx, `
-		WITH heads AS (
-			SELECT c.id, r.content_hash, r.text_simhash, b.avatar_phash
+		WITH q AS (
+			SELECT 1 AS i, r.content_hash, r.text_simhash, b.avatar_phash AS image_phash, c.library_id, c.id AS self
 			FROM card c
 			JOIN card_revision r ON r.id = c.head_revision_id
 			LEFT JOIN blob b ON b.sha256 = r.avatar_blob
-		),
-		me AS (SELECT * FROM heads WHERE id = $1),
-		other AS (SELECT * FROM heads WHERE id <> $1)
-		SELECT * FROM (
-			SELECT o.id, 'content', 0 FROM other o, me WHERE o.content_hash = me.content_hash
-			UNION ALL
-			SELECT o.id, 'text', bit_count((o.text_simhash # me.text_simhash)::bit(64))::int
-			FROM other o, me WHERE bit_count((o.text_simhash # me.text_simhash)::bit(64)) <= $2
-			UNION ALL
-			SELECT o.id, 'avatar', bit_count((o.avatar_phash # me.avatar_phash)::bit(64))::int
-			FROM other o, me WHERE bit_count((o.avatar_phash # me.avatar_phash)::bit(64)) <= $2
-		) m (card_id, reason, distance)
-		ORDER BY distance, card_id, reason`, cardID, maxDistance)
+			WHERE c.id = $2
+		)
+		SELECT id, reason, distance FROM (`+nearSQL(Card)+`) m
+		ORDER BY distance, id, reason`, maxDistance, cardID)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, pgx.RowToStructByPos[Match])
 }
+
+// nearSQL selects (i, id, reason, distance) for each probe in the CTE q (i,
+// content_hash, text_simhash, image_phash, library_id, self): the entities
+// of k in the probe's library, except self, whose head revision has the same
+// content_hash or a hash within $1 bits. Candidates come from shared hash
+// bands, which find every hash within NearDistance bits and no farther.
+func nearSQL(k *Kind) string {
+	head := ` JOIN ` + k.Table + ` e ON e.id = r.` + k.FK + ` AND e.head_revision_id = r.id
+		WHERE e.library_id = q.library_id AND e.id <> q.self`
+	return `
+		SELECT q.i, e.id, 'content' AS reason, 0 AS distance
+		FROM q JOIN ` + k.RevTable + ` r ON r.content_hash = q.content_hash` + head + `
+		UNION ALL
+		SELECT q.i, e.id, 'text', bit_count((r.text_simhash # q.text_simhash)::bit(64))::int
+		FROM q JOIN ` + k.RevTable + ` r ON r.text_bands && hash_bands(q.text_simhash)` + head + `
+			AND bit_count((r.text_simhash # q.text_simhash)::bit(64)) <= $1
+		UNION ALL
+		SELECT q.i, e.id, 'avatar', bit_count((b.avatar_phash # q.image_phash)::bit(64))::int
+		FROM q JOIN blob b ON b.phash_bands && hash_bands(q.image_phash)
+		JOIN ` + k.RevTable + ` r ON r.avatar_blob = b.sha256` + head + `
+			AND bit_count((b.avatar_phash # q.image_phash)::bit(64)) <= $1`
+}
+
+var errWideDistance = fmt.Errorf("%w: similar lookup finds at most %d differing bits", ErrInvalid, NearDistance)
 
 // NearDistance is the most differing hash bits that count as a near match.
 // GET /cards/{id}/similar defaults to the same.
@@ -65,14 +83,14 @@ type HashMatch struct {
 	Distance int    `json:"distance"`
 }
 
-// MatchHashes returns, for each of hashes, the entities whose head revision
-// has the same content_hash, or a text_simhash or avatar phash within
-// maxDistance bits, closest first. An entity that matches more than one way
-// is listed once, by its closest reason.
-//
-// ponytail: scans every head revision for every item, as SimilarCards does;
-// index the hashes if libraries outgrow a scan.
-func (s *Entities) MatchHashes(ctx context.Context, hashes []Hashes, maxDistance int) ([][]HashMatch, error) {
+// MatchHashes returns, for each of hashes, the entities in library whose
+// head revision has the same content_hash, or a text_simhash or avatar phash
+// within maxDistance bits, closest first. An entity that matches more than
+// one way is listed once, by its closest reason.
+func (s *Entities) MatchHashes(ctx context.Context, library int64, hashes []Hashes, maxDistance int) ([][]HashMatch, error) {
+	if maxDistance > NearDistance {
+		return nil, errWideDistance
+	}
 	out := make([][]HashMatch, len(hashes))
 	if len(hashes) == 0 {
 		return out, nil
@@ -85,26 +103,11 @@ func (s *Entities) MatchHashes(ctx context.Context, hashes []Hashes, maxDistance
 	}
 	rows, err := s.pool.Query(ctx, `
 		WITH q AS (
-			SELECT * FROM unnest($1::text[], $2::bigint[], $3::bigint[])
-				WITH ORDINALITY AS q (content_hash, text_simhash, image_phash, i)
-		),
-		heads AS (
-			SELECT e.id, r.content_hash, r.text_simhash, b.avatar_phash
-			FROM `+s.k.Table+` e
-			JOIN `+s.k.RevTable+` r ON r.id = e.head_revision_id
-			LEFT JOIN blob b ON b.sha256 = r.avatar_blob
+			SELECT q.*, $5::bigint AS library_id, 0 AS self
+			FROM unnest($2::text[], $3::bigint[], $4::bigint[]) WITH ORDINALITY AS q (content_hash, text_simhash, image_phash, i)
 		)
-		SELECT DISTINCT ON (i, id) i::int, id, reason, distance FROM (
-			SELECT q.i, h.id, 'content' AS reason, 0 AS distance
-			FROM q JOIN heads h ON h.content_hash = q.content_hash
-			UNION ALL
-			SELECT q.i, h.id, 'text', bit_count((h.text_simhash # q.text_simhash)::bit(64))::int
-			FROM q JOIN heads h ON bit_count((h.text_simhash # q.text_simhash)::bit(64)) <= $4
-			UNION ALL
-			SELECT q.i, h.id, 'avatar', bit_count((h.avatar_phash # q.image_phash)::bit(64))::int
-			FROM q JOIN heads h ON bit_count((h.avatar_phash # q.image_phash)::bit(64)) <= $4
-		) m
-		ORDER BY i, id, distance, reason <> 'content'`, content, text, image, maxDistance)
+		SELECT DISTINCT ON (i, id) i::int, id, reason, distance FROM (`+nearSQL(s.k)+`) m
+		ORDER BY i, id, distance, reason <> 'content'`, maxDistance, content, text, image, library)
 	if err != nil {
 		return nil, err
 	}

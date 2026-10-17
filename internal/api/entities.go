@@ -153,7 +153,7 @@ type removeSourceIn struct {
 
 type similarIn struct {
 	ID          int64 `path:"id"`
-	MaxDistance int   `query:"max_distance" default:"8" minimum:"0" maximum:"32" doc:"Most differing hash bits to count as similar"`
+	MaxDistance int   `query:"max_distance" default:"8" minimum:"0" maximum:"8" doc:"Most differing hash bits to count as similar"`
 }
 
 type matchesOut struct{ Body []library.Match }

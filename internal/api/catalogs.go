@@ -178,7 +178,7 @@ func (s *Server) withMatches(ctx context.Context, items []protocol.CatalogItem) 
 			h := items[i].Hashes
 			hashes[j] = library.Hashes{ContentHash: h.ContentHash, TextSimhash: h.TextSimhash, ImagePhash: h.ImagePhash}
 		}
-		matches, err := s.Lib.Entities(k).MatchHashes(ctx, hashes, library.NearDistance)
+		matches, err := s.Lib.Entities(k).MatchHashes(ctx, library.DefaultLibrary, hashes, library.NearDistance)
 		if err != nil {
 			return nil, err
 		}

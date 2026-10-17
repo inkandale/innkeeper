@@ -69,7 +69,7 @@ func setupCaps(t *testing.T, caps []string, args ...string) *env {
 	im := New(lib, reg, q, mgr, runs, targets.New(pool, lib, reg, mgr, quiet), quiet)
 
 	w := &jobs.Worker{Queue: q, Log: quiet, Poll: 50 * time.Millisecond,
-		Backoff: func(int) time.Duration { return 0 }, Handlers: map[string]jobs.Handler{Kind: im.Run, IngestKind: im.Run, DetectKind: im.RunDetect}}
+		Backoff: func(int) time.Duration { return 0 }, Handlers: map[string]jobs.Handler{Kind: im.Run, DetectKind: im.RunDetect}}
 	wctx, cancel := context.WithCancel(ctx)
 	done := make(chan error, 1)
 	go func() { done <- w.Run(wctx) }()
@@ -245,34 +245,5 @@ func TestCancelledStartLeavesInstanceWorking(t *testing.T) {
 	}
 	if _, err := e.reg.Instance(context.Background(), e.inst); err != nil {
 		t.Fatalf("instance: %v", err)
-	}
-}
-
-func TestCatalogIngestResumes(t *testing.T) {
-	e := setupCaps(t, []string{"catalog"})
-	ctx := context.Background()
-	inst, err := e.reg.CreateInstance(ctx, plugins.NewInstance{Plugin: "fake", Name: "Archive",
-		Config: map[string]any{"crash_ingest_at": 1, "emit_during_ingest": true}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	j, err := e.q.Enqueue(ctx, jobs.Spec{Kind: IngestKind, InstanceID: &inst})
-	if err != nil {
-		t.Fatal(err)
-	}
-	j = e.wait(t, j.ID)
-	if j.Status != jobs.StatusSucceeded || j.Attempts != 2 {
-		t.Fatalf("job %s after %d attempts: %s", j.Status, j.Attempts, errText(j))
-	}
-	var p ingestProgress
-	if err := json.Unmarshal(j.Progress, &p); err != nil {
-		t.Fatal(err)
-	}
-	// The retry starts after entry 1's checkpoint, so it adds only entry 2.
-	if p.Done != 3 || p.Total != 3 || p.CatalogIngestResult == nil || p.Added != 1 {
-		t.Fatalf("progress = %s", j.Progress)
-	}
-	if n := e.count(t, "card"); n != 0 {
-		t.Fatalf("ingest stored %d cards", n)
 	}
 }

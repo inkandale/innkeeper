@@ -164,9 +164,9 @@ func TestCatalogChecks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// initialize, unknown method, six catalog checks, and two for shutdown.
-	if len(results) != 10 {
-		t.Fatalf("ran %d checks, want 10: %v", len(results), results)
+	// initialize, unknown method, five catalog checks, and two for shutdown.
+	if len(results) != 9 {
+		t.Fatalf("ran %d checks, want 9: %v", len(results), results)
 	}
 	if f := failed(results); len(f) > 0 {
 		t.Fatalf("checks failed: %v", f)
@@ -212,34 +212,6 @@ func TestSourcelessCatalog(t *testing.T) {
 	}
 	if got := failed(results)[catalogPagesName]; got == nil || !strings.Contains(got.Error(), "config.source is not set") {
 		t.Fatalf("with a config: got %v, want the search error", got)
-	}
-}
-
-// With a config, a catalog that ingests runs catalog.ingest before the
-// other catalog checks.
-func TestCatalogIngestCheck(t *testing.T) {
-	dir := testutil.FakePluginWith(t, []string{"catalog"})
-	t.Cleanup(func() { Config = nil })
-
-	Config = map[string]any{"source": "testdata"}
-	results, err := Check(context.Background(), dir, quiet)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if f := failed(results); len(f) > 0 {
-		t.Fatalf("checks failed: %v", f)
-	}
-	if !slices.ContainsFunc(results, func(r Result) bool { return r.Name == catalogIngestName }) {
-		t.Fatal("the ingest check didn't run")
-	}
-
-	Config = map[string]any{"crash_ingest_at": 0.0}
-	results, err = Check(context.Background(), dir, quiet)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if failed(results)[catalogIngestName] == nil {
-		t.Fatal("an ingest that crashed passed")
 	}
 }
 

@@ -107,7 +107,7 @@ type Edit struct {
 	// Overrides maps plugin instance IDs to JSON merge patches. Nil means none.
 	Overrides json.RawMessage
 	Message   string
-	// Source is ui, mcp, adopt, reconcile, or plugin:<name>.
+	// Source is ui, mcp, reconcile, or plugin:<name>.
 	Source string
 	// Created is the revision's created_at; zero means now.
 	Created time.Time

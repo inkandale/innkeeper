@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/inkandale/innkeeper/cardhash"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
@@ -19,8 +18,6 @@ const (
 	catalogFiltersName  = "catalog.search refuses an undeclared filter with -32602"
 	catalogNotFoundName = "catalog.get returns -32004 for an unknown ID"
 	catalogGetName      = "catalog.get returns a search result's data and avatar"
-	catalogSimilarName  = "catalog.similar finds an item by its own hashes"
-	catalogIngestName   = "catalog.ingest completes"
 )
 
 // catalogPages is how many one-item pages the paging check walks.
@@ -37,15 +34,6 @@ func checkCatalog(ctx context.Context, p *pluginhost.Process, tmp string) []Resu
 	if err != nil {
 		return results
 	}
-	// An ingested catalog is empty until it ingests its source.
-	if info.Ingest && len(Config) > 0 {
-		params := protocol.CatalogIngestParams{Run: "contract-check"}
-		err := call(ctx, p, protocol.MethodCatalogIngest, params, &protocol.CatalogIngestResult{})
-		results = append(results, Result{catalogIngestName, err})
-		if err != nil {
-			return results
-		}
-	}
 	var first *protocol.CatalogItem
 	var sourceless bool
 	checks := []check{
@@ -56,9 +44,6 @@ func checkCatalog(ctx context.Context, p *pluginhost.Process, tmp string) []Resu
 		{catalogFiltersName, func(ctx context.Context) error { return checkCatalogFilters(ctx, p) }},
 		{catalogNotFoundName, func(ctx context.Context) error { return checkCatalogNotFound(ctx, p, sourceless) }},
 		{catalogGetName, func(ctx context.Context) error { return checkCatalogGet(ctx, p, first, tmp) }},
-	}
-	if info.Similar {
-		checks = append(checks, check{catalogSimilarName, func(ctx context.Context) error { return checkCatalogSimilar(ctx, p, info, first, sourceless) }})
 	}
 	return append(results, runChecks(ctx, p, checks)...)
 }
@@ -180,36 +165,6 @@ func checkHash(data json.RawMessage, want string) error {
 	}
 	if hash != want {
 		return fmt.Errorf("data hashes to %s, but search reported %s; hash with the cardhash package", hash, want)
-	}
-	return nil
-}
-
-// checkCatalogSimilar looks up the first search result by its own hashes
-// and wants it among the matches. With no item it only wants an answer.
-func checkCatalogSimilar(ctx context.Context, p *pluginhost.Process, info protocol.CatalogInfo, it *protocol.CatalogItem, sourceless bool) error {
-	params := protocol.CatalogSimilarParams{Kind: info.Kinds[0],
-		Hashes: protocol.CatalogHashes{ContentHash: strings.Repeat("0", 64)}, MaxDistance: 3, Limit: 10}
-	if it != nil {
-		params.Kind, params.Hashes = it.Kind, it.Hashes
-	}
-	var res protocol.CatalogSimilarResult
-	err := call(ctx, p, protocol.MethodCatalogSimilar, params, &res)
-	if sourceless && answered(err) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if len(res.Items) > params.Limit {
-		return fmt.Errorf("asked for at most %d items, got %d", params.Limit, len(res.Items))
-	}
-	for _, m := range res.Items {
-		if err := m.Validate(info.Kinds); err != nil {
-			return err
-		}
-	}
-	if it != nil && !slices.ContainsFunc(res.Items, func(m protocol.CatalogItem) bool { return m.ID == it.ID }) {
-		return fmt.Errorf("item %q is not among the items similar to its own hashes", it.ID)
 	}
 	return nil
 }

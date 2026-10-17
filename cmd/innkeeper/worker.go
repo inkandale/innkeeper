@@ -87,7 +87,6 @@ func worker() error {
 		Concurrency: concurrency,
 		Handlers: map[string]jobs.Handler{
 			importer.Kind:              im.Run,
-			importer.IngestKind:        im.Run,
 			importer.DetectKind:        im.RunDetect,
 			actions.Kind:               runner.Run,
 			enrich.Kind:                enricher.Run,

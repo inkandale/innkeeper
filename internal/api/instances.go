@@ -26,21 +26,25 @@ type EnrichmentOut struct {
 }
 
 type pluginOut struct {
-	Name            string                   `json:"name"`
-	Version         string                   `json:"version"`
-	Capabilities    []string                 `json:"capabilities"`
-	Secrets         []string                 `json:"secrets"`
-	Formats         []string                 `json:"formats,omitempty" doc:"File formats a codec plugin reads and writes"`
-	Inputs          []string                 `json:"inputs,omitempty" doc:"What an import plugin takes from the UI: file (params blob and name), url (params url), or both"`
-	Config          map[string]any           `json:"config,omitempty" doc:"JSON Schema for an instance's config"`
-	Enrichments     map[string]EnrichmentOut `json:"enrichments,omitempty"`
-	Records         map[string]recordTypeOut `json:"records,omitempty" doc:"The record types a records plugin keeps, by type name"`
-	Source          string                   `json:"source" doc:"Id of the source the plugin was installed from, or builtin"`
-	PreviousSource  *string                  `json:"previous_source,omitempty" doc:"Source of the version a rollback returns to"`
-	PreviousVersion *string                  `json:"previous_version,omitempty" doc:"Version a rollback returns to"`
-	Builtin         bool                     `json:"builtin" doc:"The image ships this plugin, so uninstalling falls back to that copy"`
-	Icon            string                   `json:"icon,omitempty" doc:"URL of the app's logo"`
-	SettingsActions map[string]string        `json:"settings_actions,omitempty" doc:"Buttons the instance form shows: label by action id, run with POST /plugins/{name}/settings/run"`
+	Name              string                   `json:"name"`
+	Version           string                   `json:"version"`
+	Description       string                   `json:"description,omitempty"`
+	Category          string                   `json:"category,omitempty" doc:"The group the Plugins page shows the plugin under"`
+	MultipleInstances bool                     `json:"multiple_instances" doc:"The owner may create more than one instance"`
+	Status            string                   `json:"status" enum:"ready,needs_setup,broken,instances" doc:"broken: an instance is broken. needs_setup: a singleton with no instance. ready: a singleton with a working instance, or a theme. instances: the plugin allows many; see its instances."`
+	Capabilities      []string                 `json:"capabilities"`
+	Secrets           []string                 `json:"secrets"`
+	Formats           []string                 `json:"formats,omitempty" doc:"File formats a codec plugin reads and writes"`
+	Inputs            []string                 `json:"inputs,omitempty" doc:"What an import plugin takes from the UI: file (params blob and name), url (params url), or both"`
+	Config            map[string]any           `json:"config,omitempty" doc:"JSON Schema for an instance's config"`
+	Enrichments       map[string]EnrichmentOut `json:"enrichments,omitempty"`
+	Records           map[string]recordTypeOut `json:"records,omitempty" doc:"The record types a records plugin keeps, by type name"`
+	Source            string                   `json:"source" doc:"Id of the source the plugin was installed from, or builtin"`
+	PreviousSource    *string                  `json:"previous_source,omitempty" doc:"Source of the version a rollback returns to"`
+	PreviousVersion   *string                  `json:"previous_version,omitempty" doc:"Version a rollback returns to"`
+	Builtin           bool                     `json:"builtin" doc:"The image ships this plugin, so uninstalling falls back to that copy"`
+	Icon              string                   `json:"icon,omitempty" doc:"URL of the app's logo"`
+	SettingsActions   map[string]string        `json:"settings_actions,omitempty" doc:"Buttons the instance form shows: label by action id, run with POST /plugins/{name}/settings/run"`
 }
 
 type recordTypeOut struct {
@@ -107,11 +111,21 @@ func (s *Server) instanceRoutes(api huma.API) {
 			if err != nil {
 				return nil, s.fail(err)
 			}
+			all, err := s.Registry.ListInstances(ctx)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			byPlugin := map[string][]plugins.InstanceInfo{}
+			for _, i := range all {
+				byPlugin[i.Plugin] = append(byPlugin[i.Plugin], i)
+			}
 			out := &pluginsOut{Body: []pluginOut{}}
 			for _, m := range s.Registry.Manifests() {
 				p := pluginOut{Name: m.Name, Version: m.Version, Capabilities: m.Capabilities,
 					Secrets: orEmpty(m.Secrets), Formats: m.Formats, Inputs: m.Inputs, Config: m.Config,
-					Source: "builtin", Builtin: s.Registry.IsBuiltin(m.Name)}
+					Source: "builtin", Builtin: s.Registry.IsBuiltin(m.Name),
+					Description: m.Description, Category: m.Category, MultipleInstances: m.MultipleInstances,
+					Status: plugins.Status(m, byPlugin[m.Name])}
 				if m.Icon != "" {
 					p.Icon = "/api/plugins/" + m.Name + "/icon"
 				}

@@ -2030,7 +2030,7 @@ export interface paths {
         put?: never;
         /**
          * Install or update a plugin
-         * @description Installs a version from a source and makes it current. Running jobs finish on the old version. Installing the previous version rolls back without a download.
+         * @description Installs a version from a source and makes it current. Running jobs finish on the old version. Installing the previous version rolls back without a download. A plugin that allows one instance and needs no setup gets its instance.
          */
         post: operations["install-plugin"];
         delete?: never;
@@ -3509,10 +3509,13 @@ export interface components {
             /** @description The image ships this plugin, so uninstalling falls back to that copy */
             builtin: boolean;
             capabilities: string[] | null;
+            /** @description The group the Plugins page shows the plugin under */
+            category?: string;
             /** @description JSON Schema for an instance's config */
             config?: {
                 [key: string]: unknown;
             };
+            description?: string;
             enrichments?: {
                 [key: string]: components["schemas"]["EnrichmentOut"];
             };
@@ -3522,6 +3525,8 @@ export interface components {
             icon?: string;
             /** @description What an import plugin takes from the UI: file (params blob and name), url (params url), or both */
             inputs?: string[] | null;
+            /** @description The owner may create more than one instance */
+            multiple_instances: boolean;
             name: string;
             /** @description Source of the version a rollback returns to */
             previous_source?: string;
@@ -3538,6 +3543,11 @@ export interface components {
             };
             /** @description Id of the source the plugin was installed from, or builtin */
             source: string;
+            /**
+             * @description broken: an instance is broken. needs_setup: a singleton with no instance. ready: a singleton with a working instance, or a theme. instances: the plugin allows many; see its instances.
+             * @enum {string}
+             */
+            status: "ready" | "needs_setup" | "broken" | "instances";
             version: string;
         };
         PluginSkill: {

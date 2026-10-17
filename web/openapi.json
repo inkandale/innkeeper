@@ -3099,10 +3099,17 @@
               "null"
             ]
           },
+          "category": {
+            "description": "The group the Plugins page shows the plugin under",
+            "type": "string"
+          },
           "config": {
             "additionalProperties": {},
             "description": "JSON Schema for an instance's config",
             "type": "object"
+          },
+          "description": {
+            "type": "string"
           },
           "enrichments": {
             "additionalProperties": {
@@ -3133,6 +3140,10 @@
               "array",
               "null"
             ]
+          },
+          "multiple_instances": {
+            "description": "The owner may create more than one instance",
+            "type": "boolean"
           },
           "name": {
             "type": "string"
@@ -3172,6 +3183,16 @@
             "description": "Id of the source the plugin was installed from, or builtin",
             "type": "string"
           },
+          "status": {
+            "description": "broken: an instance is broken. needs_setup: a singleton with no instance. ready: a singleton with a working instance, or a theme. instances: the plugin allows many; see its instances.",
+            "enum": [
+              "ready",
+              "needs_setup",
+              "broken",
+              "instances"
+            ],
+            "type": "string"
+          },
           "version": {
             "type": "string"
           }
@@ -3179,6 +3200,8 @@
         "required": [
           "name",
           "version",
+          "multiple_instances",
+          "status",
           "capabilities",
           "secrets",
           "source",
@@ -10780,7 +10803,7 @@
     },
     "/plugins/{name}/install": {
       "post": {
-        "description": "Installs a version from a source and makes it current. Running jobs finish on the old version. Installing the previous version rolls back without a download.",
+        "description": "Installs a version from a source and makes it current. Running jobs finish on the old version. Installing the previous version rolls back without a download. A plugin that allows one instance and needs no setup gets its instance.",
         "operationId": "install-plugin",
         "parameters": [
           {

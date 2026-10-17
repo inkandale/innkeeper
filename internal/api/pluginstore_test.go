@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"slices"
 	"testing"
 
 	"github.com/inkandale/innkeeper/internal/blobstore"
@@ -45,6 +46,16 @@ func TestPluginStore(t *testing.T) {
 		list[0].PreviousVersion == nil || *list[0].PreviousVersion != "1.0.0" {
 		t.Fatalf("plugins = %+v", list)
 	}
+	if list[0].Status != "ready" || list[0].MultipleInstances {
+		t.Fatalf("status = %q, multiple = %v; want ready, false", list[0].Status, list[0].MultipleInstances)
+	}
+	var instances []plugins.InstanceInfo
+	e.call(http.MethodGet, "/instances", nil, http.StatusOK, &instances)
+	ours := slices.DeleteFunc(instances, func(i plugins.InstanceInfo) bool { return i.Plugin != "good" })
+	if len(ours) != 1 {
+		t.Fatalf("good instances = %+v; want the one install created", ours)
+	}
+	e.call(http.MethodPost, "/instances", map[string]string{"plugin": "good", "name": "second"}, http.StatusConflict, nil)
 
 	e.call(http.MethodDelete, "/plugin-sources/local", nil, http.StatusConflict, nil)
 	e.call(http.MethodDelete, "/plugins/good/data", nil, http.StatusBadRequest, nil)

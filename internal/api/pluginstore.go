@@ -104,9 +104,20 @@ func (s *Server) pluginStoreRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{Metadata: destructive, OperationID: "install-plugin", Method: http.MethodPost,
 		Path: "/plugins/{name}/install", Summary: "Install or update a plugin", Tags: tags, DefaultStatus: http.StatusNoContent,
 		Description: "Installs a version from a source and makes it current. Running jobs finish on the old version. " +
-			"Installing the previous version rolls back without a download."},
+			"Installing the previous version rolls back without a download. " +
+			"A plugin that allows one instance and needs no setup gets its instance."},
 		func(ctx context.Context, in *installIn) (*struct{}, error) {
-			return nil, s.fail(s.Registry.Install(ctx, in.Body.Source, in.Name, in.Body.Version))
+			if err := s.Registry.Install(ctx, in.Body.Source, in.Name, in.Body.Version); err != nil {
+				return nil, s.fail(err)
+			}
+			created, err := s.Registry.EnsureSingletons(ctx)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			for _, p := range created {
+				s.detectWith(ctx, p)
+			}
+			return nil, nil
 		})
 
 	huma.Register(api, huma.Operation{Metadata: destructive, OperationID: "uninstall-plugin", Method: http.MethodDelete,

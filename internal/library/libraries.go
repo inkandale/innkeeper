@@ -95,32 +95,42 @@ func (l *Library) DeleteLibrary(ctx context.Context, id int64, progress func(del
 		return fmt.Errorf("%w: the default library can't be deleted", ErrInvalid)
 	}
 	deleted := 0
-	for _, s := range []*Entities{l.Cards, l.Lorebooks} {
-		for {
-			n, err := s.deleteSome(ctx, id)
-			if err != nil {
-				return fmt.Errorf("delete %s of library %d: %w", s.k.Plural, id, err)
+	// An import still writing to the library can add entities after the
+	// batches; the library row's delete then fails, and the batches run again.
+	for range 3 {
+		for _, s := range []*Entities{l.Cards, l.Lorebooks} {
+			for {
+				n, err := s.deleteSome(ctx, id)
+				if err != nil {
+					return fmt.Errorf("delete %s of library %d: %w", s.k.Plural, id, err)
+				}
+				if n == 0 {
+					break
+				}
+				deleted += n
+				progress(deleted)
 			}
-			if n == 0 {
-				break
-			}
-			deleted += n
-			progress(deleted)
 		}
-	}
-	var found bool
-	err := pgx.BeginFunc(ctx, l.pool, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `DELETE FROM collection WHERE library_id = $1`, id); err != nil {
+		var found bool
+		err := pgx.BeginFunc(ctx, l.pool, func(tx pgx.Tx) error {
+			if _, err := tx.Exec(ctx, `DELETE FROM collection WHERE library_id = $1`, id); err != nil {
+				return err
+			}
+			tag, err := tx.Exec(ctx, `DELETE FROM library WHERE id = $1`, id)
+			found = tag.RowsAffected() > 0
 			return err
+		})
+		switch {
+		case db.IsCode(err, db.ForeignKeyViolation):
+			continue
+		case err != nil:
+			return err
+		case !found:
+			return ErrNotFound
 		}
-		tag, err := tx.Exec(ctx, `DELETE FROM library WHERE id = $1`, id)
-		found = tag.RowsAffected() > 0
-		return err
-	})
-	if err == nil && !found {
-		return ErrNotFound
+		return nil
 	}
-	return mapErr(err)
+	return fmt.Errorf("library %d keeps gaining cards or lorebooks; stop what writes to it and delete it again", id)
 }
 
 // deleteSome deletes up to deleteBatch entities of library and what hangs off

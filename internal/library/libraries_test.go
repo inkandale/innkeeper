@@ -291,3 +291,36 @@ func TestInOtherLibraries(t *testing.T) {
 		t.Fatalf("wide distance: %v", err)
 	}
 }
+
+func TestDeleteLibraryTakesCardsAddedWhileDeleting(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	archive, err := lib.CreateLibrary(ctx, "Archive")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := lib.Lorebooks.Create(ctx, archive.ID, "lore", "upload", edit(`{"name": "Lore", "entries": []}`)); err != nil {
+		t.Fatal(err)
+	}
+	var late int64
+	// The only batch is the lorebook's, so this card arrives after every batch ran.
+	err = lib.DeleteLibrary(ctx, archive.ID, func(int) {
+		if late != 0 {
+			return
+		}
+		c, _, err := lib.Cards.Create(ctx, archive.ID, "late", "upload", edit(`{"name": "Late"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		late = c.ID
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lib.GetLibrary(ctx, archive.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("library: %v", err)
+	}
+	if _, err := lib.Cards.Get(ctx, late); !errors.Is(err, ErrNotFound) {
+		t.Errorf("late card: %v", err)
+	}
+}

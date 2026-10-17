@@ -33,6 +33,10 @@ type Enrichment struct {
 // AddEnrichments stores values from instanceID. A value whose revision isn't
 // one of its card's is left out.
 func (l *Library) AddEnrichments(ctx context.Context, instanceID int64, vals []NewEnrichment) error {
+	return addEnrichments(ctx, l.pool, instanceID, vals)
+}
+
+func addEnrichments(ctx context.Context, q execer, instanceID int64, vals []NewEnrichment) error {
 	cards, revs, keys, values, metas := make([]int64, len(vals)), make([]int64, len(vals)),
 		make([]string, len(vals)), make([]string, len(vals)), make([]string, len(vals))
 	for i, v := range vals {
@@ -41,7 +45,7 @@ func (l *Library) AddEnrichments(ctx context.Context, instanceID int64, vals []N
 			metas[i] = "{}"
 		}
 	}
-	_, err := l.pool.Exec(ctx, `INSERT INTO enrichment (card_id, revision_id, instance_id, key, value, meta)
+	_, err := q.Exec(ctx, `INSERT INTO enrichment (card_id, revision_id, instance_id, key, value, meta)
 		SELECT v.card_id, v.revision_id, $1, v.key, v.value::jsonb, v.meta::jsonb
 		FROM unnest($2::bigint[], $3::bigint[], $4::text[], $5::text[], $6::text[]) WITH ORDINALITY v(card_id, revision_id, key, value, meta, ord)
 		JOIN card_revision r ON r.id = v.revision_id AND r.card_id = v.card_id

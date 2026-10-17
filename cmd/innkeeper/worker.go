@@ -63,14 +63,14 @@ func worker() error {
 
 	q := jobs.New(svc.pool)
 	runs := pluginhost.NewRuns(log)
-	im := importer.New(svc.lib, svc.registry, q, runs, log)
 	broker := &iservices.Broker{Registry: svc.registry, Runs: runs}
 	mgr := pluginhost.NewManager(broker.Handle(runs.Handle), 5*time.Minute, log)
 	defer mgr.Close()
-	im.Plugins, broker.Plugins = mgr, mgr
+	broker.Plugins = mgr
 	go stopIdlePlugins(ctx, mgr)
 
 	tg := targets.New(svc.pool, svc.lib, svc.registry, mgr, log)
+	im := importer.New(svc.lib, svc.registry, q, mgr, runs, tg, log)
 	// Serves library.call's tools in process; nothing listens on it.
 	tools := &api.Server{Lib: svc.lib, Queue: q, Registry: svc.registry, Auth: auth.New(svc.pool), Targets: tg, Plugins: mgr, Log: log}
 	runner := &actions.Runner{Lib: svc.lib, Registry: svc.registry, Plugins: mgr, Runs: runs, API: tools.APIHandler()}

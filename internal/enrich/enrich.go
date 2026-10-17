@@ -109,22 +109,15 @@ func Check(decl map[string]protocol.Enrichment, sent []protocol.EnrichRevision, 
 				meta = nil
 			}
 		}
-		stored := 0
-		for _, key := range slices.Sorted(maps.Keys(res.Values)) {
-			d, ok := decl[key]
-			if !ok {
-				out.Warnings = append(out.Warnings, fmt.Sprintf("%s: dropped %s, which the plugin doesn't declare", name, key))
-				continue
-			}
-			if err := d.Check(res.Values[key]); err != nil {
-				out.Warnings = append(out.Warnings, fmt.Sprintf("%s: dropped %s: %v", name, key, err))
-				continue
-			}
-			out.Values = append(out.Values, library.NewEnrichment{CardID: rev.CardID, RevisionID: rev.RevisionID, Key: key,
-				Value: res.Values[key], Meta: meta})
-			stored++
+		kept, problems := protocol.CheckValues(decl, res.Values)
+		for _, p := range problems {
+			out.Warnings = append(out.Warnings, name+": "+p)
 		}
-		if stored == 0 {
+		for _, key := range slices.Sorted(maps.Keys(kept)) {
+			out.Values = append(out.Values, library.NewEnrichment{CardID: rev.CardID, RevisionID: rev.RevisionID, Key: key,
+				Value: kept[key], Meta: meta})
+		}
+		if len(kept) == 0 {
 			out.Failed++
 			out.Warnings = append(out.Warnings, fmt.Sprintf("%s: no valid values", name))
 			continue

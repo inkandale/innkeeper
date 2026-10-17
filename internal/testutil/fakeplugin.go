@@ -56,8 +56,12 @@ multiple_instances = true
 	if slices.Contains(args, "-mode=database") {
 		manifest += "database = true\n"
 	}
-	// Tables go last; keys after one would belong to it.
-	if slices.Contains(caps, "enrich") {
+	if slices.Contains(args, "-mode=bulk") {
+		manifest += "bulk = true\n"
+	}
+	// Tables go last; keys after one would belong to it. An importer declares
+	// enrichments too, for emit.card's values.
+	if slices.Contains(caps, "enrich") || slices.Contains(caps, "import") {
 		manifest += FakeEnrichments
 	}
 	if slices.Contains(caps, "records") {

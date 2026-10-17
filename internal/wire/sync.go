@@ -51,6 +51,9 @@ type Binding struct {
 	Push bool `json:"push"`
 	// Paused means checks skip the binding, as when the owner ignores a source's changes.
 	Paused bool `json:"paused"`
+	// Imported marks the binding an import keeps for the item it came from;
+	// its updates arrive with the next import instead of a check.
+	Imported bool `json:"imported"`
 	// CheckFailures counts a followed source's checks that failed in a row;
 	// CheckError is the last one's error.
 	CheckFailures int        `json:"check_failures"`

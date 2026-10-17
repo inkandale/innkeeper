@@ -104,7 +104,7 @@ func (s *Entities) Fork(ctx context.Context, id int64, source string) (Entity, e
 		if err != nil {
 			return err
 		}
-		if ent, _, err = s.createFree(ctx, tx, from.Slug+"-variant", "variant", r); err != nil {
+		if ent, _, err = s.createFree(ctx, tx, from.Slug+"-variant", from.LibraryID, "variant", r); err != nil {
 			return fmt.Errorf("create variant of %s %d: %w", s.k.Name, id, err)
 		}
 		for _, q := range s.k.forkCopies {

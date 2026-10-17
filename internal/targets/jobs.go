@@ -111,7 +111,7 @@ func (s *Service) RunPush(ctx context.Context, r *jobs.Run) error {
 	switch {
 	case errors.Is(err, errAlreadyPushed):
 		var bindingID int64
-		if err := s.pool.QueryRow(ctx, `SELECT id FROM binding WHERE instance_id = $1 AND `+k.FK+` = $2`,
+		if err := s.pool.QueryRow(ctx, `SELECT id FROM binding WHERE instance_id = $1 AND `+k.FK+` = $2 AND NOT imported`,
 			*r.InstanceID, id).Scan(&bindingID); err != nil {
 			return err
 		}

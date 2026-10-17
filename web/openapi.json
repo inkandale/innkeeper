@@ -278,6 +278,9 @@
             "format": "int64",
             "type": "integer"
           },
+          "imported": {
+            "type": "boolean"
+          },
           "instance_id": {
             "format": "int64",
             "type": "integer"
@@ -329,6 +332,7 @@
           "autosync",
           "push",
           "paused",
+          "imported",
           "check_failures",
           "last_push",
           "created_at"

@@ -3,9 +3,11 @@
 package library
 
 import (
+	"context"
 	"errors"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/inkandale/innkeeper/internal/blobstore"
@@ -46,6 +48,11 @@ func New(pool *pgxpool.Pool, blobs *blobstore.Store) *Library {
 		pool:      pool,
 		blobs:     blobs,
 	}
+}
+
+// execer is a pool or a transaction.
+type execer interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
 // mapErr turns a missing row or a foreign key violation into ErrNotFound.

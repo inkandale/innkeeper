@@ -225,3 +225,24 @@ func TestRemoveData(t *testing.T) {
 		t.Fatalf("left instances %d, schema %v, role %v", instances, schema, role)
 	}
 }
+
+func TestRemoveDataOfAnImporterThatImported(t *testing.T) {
+	ctx := context.Background()
+	reg, pool, dbURL := newDBRegistry(t)
+	if err := reg.ProvisionDatabases(ctx, dbURL); err != nil {
+		t.Fatal(err)
+	}
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "cat-log", Name: "Cats"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `WITH c AS (INSERT INTO card (slug, provenance) VALUES ('a', 'cat-log:a') RETURNING id)
+		INSERT INTO binding (instance_id, card_id, remote_id, remote_state, accepted_data, accepted_hash, push, imported)
+		SELECT $1, id, 'cat-log:a', 'unchanged', '{}', '', false, true FROM c`, id); err != nil {
+		t.Fatal(err)
+	}
+	delete(reg.manifests, "cat-log")
+	if err := reg.RemoveData(ctx, "cat-log"); err != nil {
+		t.Fatalf("remove data: %v", err)
+	}
+}

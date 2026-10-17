@@ -36,7 +36,7 @@ func (s *Service) Items(ctx context.Context, lk *library.Kind, instanceID int64)
 		return nil, err
 	}
 	rows, err := s.pool.Query(ctx, `SELECT remote_id, id FROM binding WHERE instance_id = $1 AND `+k.FK+` IS NOT NULL
-		AND remote_state <> 'missing'`,
+		AND remote_state <> 'missing' AND NOT imported`,
 		instanceID)
 	if err != nil {
 		return nil, err
@@ -76,7 +76,7 @@ func (s *Service) Bind(ctx context.Context, lk *library.Kind, instanceID, id int
 	// Bind is for an unbound pair; resolve would also rebind or update one.
 	bound := func(where string, args ...any) error {
 		var b bool
-		err := s.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM binding WHERE instance_id = $1 AND `+where+`)`,
+		err := s.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM binding WHERE instance_id = $1 AND NOT imported AND `+where+`)`,
 			append([]any{instanceID}, args...)...).Scan(&b)
 		if err == nil && b {
 			err = ErrBound

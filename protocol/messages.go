@@ -1,6 +1,9 @@
 package protocol
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Version is the protocol version this core speaks.
 const Version = 1
@@ -57,6 +60,13 @@ type EmitCard struct {
 	Item   string          `json:"item"`
 	Card   json.RawMessage `json:"card"`
 	Avatar string          `json:"avatar,omitempty"`
+	// Version is the source's label for this version, the revision's message.
+	Version string `json:"version,omitempty"`
+	// Created is the source's date for this version, the revision's created_at.
+	Created time.Time `json:"created,omitzero"`
+	// Values are values for keys the manifest's [enrichments] declares,
+	// stored as enrichments from the importing instance.
+	Values map[string]json.RawMessage `json:"values,omitempty"`
 }
 
 // EmitLorebook sends one standalone lorebook, a CCv3 character_book.

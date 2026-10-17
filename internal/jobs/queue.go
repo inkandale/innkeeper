@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -83,6 +84,10 @@ func scanJob(row pgx.Row) (Job, error) {
 
 type querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+type execer interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
 func insert(ctx context.Context, db querier, s Spec, parent *int64, status string) (Job, error) {
@@ -223,8 +228,8 @@ func (q *Queue) claim(ctx context.Context, worker string, kinds []string, lease 
 
 // touch renews the lease and saves progress, and the checkpoint unless it is
 // nil.
-func (q *Queue) touch(ctx context.Context, j *Job, worker string, lease time.Duration, progress, checkpoint json.RawMessage) error {
-	tag, err := q.pool.Exec(ctx, `UPDATE job SET locked_until = now() + make_interval(secs => $3),
+func (q *Queue) touch(ctx context.Context, db execer, j *Job, worker string, lease time.Duration, progress, checkpoint json.RawMessage) error {
+	tag, err := db.Exec(ctx, `UPDATE job SET locked_until = now() + make_interval(secs => $3),
 			progress = coalesce($4::jsonb, progress), checkpoint = coalesce($5::jsonb, checkpoint)
 		WHERE id = $1 AND locked_by = $2 AND attempts = $6 AND status = 'running'`,
 		j.ID, worker, lease.Seconds(), progress, checkpoint, j.Attempts)

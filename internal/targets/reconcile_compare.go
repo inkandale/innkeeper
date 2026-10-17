@@ -35,9 +35,14 @@ func (s *Service) compareItem(ctx context.Context, k kind, instanceID int64, rem
 func (s *Service) compareRead(ctx context.Context, k kind, instanceID int64, remoteID string, id int64,
 	twoWay bool) (Comparison, appItem, error) {
 	c := Comparison{InstanceID: instanceID, RemoteID: remoteID, CardID: id, Base: "none"}
-	inst, info, err := s.describeReconcile(ctx, k, instanceID)
+	inst, info, it, imported, err := s.importedItem(ctx, s.pool, k, instanceID, remoteID, id)
 	if err != nil {
 		return c, appItem{}, err
+	}
+	if !imported {
+		if inst, info, err = s.describeReconcile(ctx, k, instanceID); err != nil {
+			return c, appItem{}, err
+		}
 	}
 	b, err := itemBinding(ctx, s.pool, k, instanceID, remoteID, c.CardID)
 	if err != nil {
@@ -69,9 +74,10 @@ func (s *Service) compareRead(ctx context.Context, k kind, instanceID int64, rem
 	}
 	lib := ents[0]
 	c.HeadRevisionID = lib.head
-	it, err := s.readItem(ctx, k, inst, info, remoteID, true)
-	if err != nil {
-		return c, appItem{}, err
+	if !imported {
+		if it, err = s.readItem(ctx, k, inst, info, remoteID, true); err != nil {
+			return c, appItem{}, err
+		}
 	}
 	if it.avatarErr != nil {
 		// Resolve trusts this comparison, so a hidden avatar difference is worse than an error.

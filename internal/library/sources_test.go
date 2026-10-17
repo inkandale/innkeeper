@@ -24,14 +24,8 @@ func detect(t *testing.T, lib *Library, s *Entities, id int64) error {
 func TestImportQueuesDetection(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
-	id, _, err := lib.Cards.Import(ctx, "p:1", "A", edit(chubCard))
-	if err != nil {
-		t.Fatal(err)
-	}
-	// A repeat import queues again, so a run that stopped before detecting finishes.
-	if _, _, err := lib.Cards.Import(ctx, "p:1", "A", edit(chubCard)); err != nil {
-		t.Fatal(err)
-	}
+	_, imp := importer(t, lib)
+	id := imp("1", chubCard).ID
 	if got := mustSources(t, lib.Cards, id); len(got) != 0 {
 		t.Fatalf("import recorded %+v; only the job records sources", got)
 	}
@@ -53,13 +47,18 @@ func TestImportQueuesDetection(t *testing.T) {
 func TestDetectQueuePages(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
+	inst, _ := importer(t, lib)
 	var want []DetectItem
 	for i, k := range []*Kind{Card, Lorebook, Card} {
-		id, _, err := lib.Entities(k).Import(ctx, fmt.Sprintf("p:%d", i), "A", edit(`{"name": "A"}`))
+		data := `{"name": "A", "entries": []}`
+		if k == Card {
+			data = `{"spec": "chara_card_v3", "data": {"name": "A"}}`
+		}
+		got, err := lib.ImportItem(ctx, PluginItem{Kind: k, InstanceID: inst, Provenance: fmt.Sprintf("p:%d", i), Source: "plugin:p", Data: []byte(data)})
 		if err != nil {
 			t.Fatal(err)
 		}
-		want = append(want, DetectItem{k, id})
+		want = append(want, DetectItem{k, got.ID})
 	}
 	var got []DetectItem
 	for after := (DetectItem{}); ; {

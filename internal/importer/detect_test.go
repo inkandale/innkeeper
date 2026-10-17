@@ -49,10 +49,12 @@ func TestDetectKeepsAnEntityQueuedOnARetryableFailure(t *testing.T) {
 	if err := e.reg.UpdateInstance(ctx, e.inst, plugins.InstanceEdit{Config: map[string]any{"sites_fail": "retryable"}}); err != nil {
 		t.Fatal(err)
 	}
-	id, _, err := e.lib.Cards.Import(ctx, "fake:x", "X", library.Edit{Data: []byte(`{"name": "X", "source": ["https://fake.example/u/x"]}`), Source: "plugin:fake"})
+	got, err := e.lib.ImportItem(ctx, library.PluginItem{Kind: library.Card, InstanceID: e.inst, Provenance: "fake:x",
+		Source: "plugin:fake", Data: []byte(`{"spec": "chara_card_v3", "data": {"name": "X", "source": ["https://fake.example/u/x"]}}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
+	id := got.ID
 	if err := e.im.RunDetect(ctx, &jobs.Run{}); !errors.Is(err, jobs.ErrRetry) {
 		t.Fatalf("run = %v, want a retry", err)
 	}
@@ -74,10 +76,12 @@ func TestDetectKeepsAnEntityQueuedOnARetryableFailure(t *testing.T) {
 func TestDetectKeepsTheQueueWithoutASitesPlugin(t *testing.T) {
 	ctx := context.Background()
 	e := setup(t)
-	id, _, err := e.lib.Cards.Import(ctx, "fake:x", "X", library.Edit{Data: []byte(`{"name": "X", "extensions": {"chub": {"full_path": "u/x"}}}`), Source: "plugin:fake"})
+	got, err := e.lib.ImportItem(ctx, library.PluginItem{Kind: library.Card, InstanceID: e.inst, Provenance: "fake:x",
+		Source: "plugin:fake", Data: []byte(`{"spec": "chara_card_v3", "data": {"name": "X", "extensions": {"chub": {"full_path": "u/x"}}}}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
+	id := got.ID
 	if err := e.im.RunDetect(ctx, &jobs.Run{}); err != nil {
 		t.Fatal(err)
 	}

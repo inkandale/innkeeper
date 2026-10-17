@@ -442,18 +442,28 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 // DeleteInstance removes an instance. Its jobs stay, without an instance,
 // and logins through it end. It returns ErrInUse while cards are bound to it.
 func (r *Registry) DeleteInstance(ctx context.Context, id int64) error {
-	tag, err := r.pool.Exec(ctx, `DELETE FROM plugin_instance WHERE id = $1`, id)
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.ConstraintName == "binding_instance_id_fkey" {
-		return ErrInUse
-	}
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
+	n, err := deleteInstances(ctx, r.pool, "id", id)
+	if err == nil && n == 0 {
 		return ErrNotFound
 	}
-	return nil
+	return err
+}
+
+// deleteInstances deletes the instances whose column (id or plugin) is
+// value, and how many it deleted. Their import bindings go with them, since
+// those only record what an importer last sent; any other binding makes it
+// fail with ErrInUse.
+func deleteInstances(ctx context.Context, db interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}, column string, value any) (int64, error) {
+	tag, err := db.Exec(ctx, `WITH b AS (DELETE FROM binding WHERE imported
+			AND instance_id IN (SELECT id FROM plugin_instance WHERE `+column+` = $1))
+		DELETE FROM plugin_instance WHERE `+column+` = $1`, value)
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.ConstraintName == "binding_instance_id_fkey" {
+		return 0, ErrInUse
+	}
+	return tag.RowsAffected(), err
 }
 
 const infoCols = `id, plugin, name, config, secrets, owner_subject, library_access, broken_error, broken_at,

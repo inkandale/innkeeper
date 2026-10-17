@@ -1,7 +1,6 @@
 package targets
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -23,7 +22,8 @@ func (s *Service) Check(ctx context.Context, id int64) (Binding, error) {
 	if err != nil {
 		return Binding{}, err
 	}
-	if b.paused {
+	// An import binding's update arrives with the import, so there's nothing to read.
+	if b.paused || b.imported {
 		return s.Binding(ctx, id)
 	}
 	inst, info, err := s.describe(ctx, b.instanceID)
@@ -94,19 +94,8 @@ func (s *Service) fetchFollowed(ctx context.Context, k kind, inst pluginhost.Ins
 	if err != nil {
 		return nil, "", "", err
 	}
-	avatar, err := s.avatarKey(ctx, blob.SHA256)
+	avatar, err := s.lib.AvatarKey(ctx, blob.SHA256)
 	return data, hash, avatar, err
-}
-
-// avatarKey is what a followed source's avatar is compared by: its pixels, so
-// a re-encode or new metadata isn't a change, else its bytes when it isn't an
-// image that decodes. "" for no avatar.
-func (s *Service) avatarKey(ctx context.Context, sha string) (string, error) {
-	if sha == "" {
-		return "", nil
-	}
-	pixels, err := s.lib.PixelHash(ctx, sha)
-	return cmp.Or(pixels, sha), err
 }
 
 // record stores what a check found, unless a push or resolve landed since b

@@ -138,7 +138,7 @@ func (e *env) follow(card int64) Binding {
 		e.t.Fatal(err)
 	}
 	for _, b := range list {
-		if !b.Push {
+		if !b.Push && !b.Imported {
 			return b
 		}
 	}
@@ -158,7 +158,7 @@ func (e *env) followFailing(card int64) Binding {
 		e.t.Fatal(err)
 	}
 	for _, b := range list {
-		if !b.Push {
+		if !b.Push && !b.Imported {
 			return b
 		}
 	}
@@ -245,10 +245,12 @@ func TestAppLocalExtensionsOnASourceAreNotAnUpdate(t *testing.T) {
 	page := maps.Clone(vyrCard)
 	page["extensions"] = appLocal
 	raw, _ := json.Marshal(map[string]any{"spec": "chara_card_v3", "spec_version": "3.0", "data": page})
-	card, _, err := e.lib.ImportCard(e.ctx, "upload", "plugin:upstream", raw, "")
+	imported, err := e.lib.ImportItem(e.ctx, library.PluginItem{Kind: library.Card, InstanceID: e.up, Provenance: "upload",
+		Source: "plugin:upstream", Data: raw})
 	if err != nil {
 		t.Fatal(err)
 	}
+	card := imported.ID
 	if _, err := e.lib.Cards.AddSource(e.ctx, card, library.Source{Kind: "fake", Ref: "vyr"}); err != nil {
 		t.Fatal(err)
 	}

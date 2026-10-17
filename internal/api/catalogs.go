@@ -309,7 +309,7 @@ func (s *Server) adoptCatalogItem(ctx context.Context, in *catalogItemIn) (*adop
 	if !ok {
 		return nil, huma.Error400BadRequest(fmt.Sprintf("can't adopt a %s; the library holds cards and lorebooks", res.Item.Kind))
 	}
-	id, created, err := s.Lib.ImportItem(ctx, library.PluginItem{Kind: k,
+	got, err := s.Lib.ImportItem(ctx, library.PluginItem{Kind: k, InstanceID: in.ID,
 		Provenance: fmt.Sprintf("catalog:%d:%s@%s", in.ID, in.Item, res.Version), Source: "plugin:" + info.Plugin,
 		Data: res.Data, Avatar: res.Avatar, Name: res.Item.Name})
 	// The error names server paths, so log it and keep it out of the body.
@@ -324,12 +324,12 @@ func (s *Server) adoptCatalogItem(ctx context.Context, in *catalogItemIn) (*adop
 		return nil, s.fail(err)
 	}
 	importer.EnqueueDetect(ctx, s.Queue, s.Log)
-	out, err := s.entity(ctx, s.Lib.Entities(k), id)
+	out, err := s.entity(ctx, s.Lib.Entities(k), got.ID)
 	if err != nil {
 		return nil, err
 	}
 	status := http.StatusOK
-	if created {
+	if got.Outcome == library.Created {
 		status = http.StatusCreated
 	}
 	return &adoptCatalogOut{Status: status, Body: out.Body}, nil

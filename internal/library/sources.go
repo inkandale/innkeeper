@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Source is a site an item was published on.
@@ -130,9 +129,7 @@ func (l *Library) Detected(ctx context.Context, it DetectItem, srcs []Source) er
 	})
 }
 
-func (s *Entities) recordSources(ctx context.Context, q interface {
-	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
-}, id int64, srcs []Source) error {
+func (s *Entities) recordSources(ctx context.Context, q execer, id int64, srcs []Source) error {
 	// An existing row is left as is on purpose, so detection never overwrites what the owner set.
 	for _, src := range srcs {
 		_, err := q.Exec(ctx, `INSERT INTO `+s.k.SourceTable+` (`+s.k.FK+`, kind, ref, external_id, url, linked_by)

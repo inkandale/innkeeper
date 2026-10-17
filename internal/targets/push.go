@@ -80,7 +80,7 @@ func (s *Service) push(ctx context.Context, k kind, instanceID, id int64, newCop
 	var remoteID, state, acceptedHash string
 	var lastPush *int64
 	err = tx.QueryRow(ctx, `SELECT remote_id, remote_state, accepted_hash, (SELECT max(id) FROM push WHERE binding_id = b.id)
-		FROM binding b WHERE instance_id = $1 AND `+k.FK+` = $2`,
+		FROM binding b WHERE instance_id = $1 AND `+k.FK+` = $2 AND NOT imported`,
 		instanceID, id).Scan(&remoteID, &state, &acceptedHash, &lastPush)
 	bound := err == nil
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -168,7 +168,7 @@ func (s *Service) push(ctx context.Context, k kind, instanceID, id int64, newCop
 	err = tx.QueryRow(ctx, `INSERT INTO binding (instance_id, `+k.FK+`, remote_id, remote_state, accepted_data,
 			accepted_hash, checked_at)
 		VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $4 = 'unknown' THEN NULL ELSE now() END)
-		ON CONFLICT (instance_id, `+k.FK+`) DO UPDATE SET remote_id = EXCLUDED.remote_id,
+		ON CONFLICT (instance_id, `+k.FK+`, imported) DO UPDATE SET remote_id = EXCLUDED.remote_id,
 			remote_state = EXCLUDED.remote_state, accepted_data = EXCLUDED.accepted_data,
 			accepted_hash = EXCLUDED.accepted_hash, seen_data = NULL, checked_at = EXCLUDED.checked_at,
 			version = binding.version + 1
@@ -201,7 +201,7 @@ func (s *Service) pushCardLorebooks(ctx context.Context, instanceID, cardID int6
 	ids := []string{}
 	for _, lid := range links {
 		var remoteID, state string
-		err := s.pool.QueryRow(ctx, `SELECT remote_id, remote_state FROM binding WHERE instance_id = $1 AND lorebook_id = $2`,
+		err := s.pool.QueryRow(ctx, `SELECT remote_id, remote_state FROM binding WHERE instance_id = $1 AND lorebook_id = $2 AND NOT imported`,
 			instanceID, lid).Scan(&remoteID, &state)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return nil, err
@@ -212,7 +212,7 @@ func (s *Service) pushCardLorebooks(ctx context.Context, instanceID, cardID int6
 			b, err := s.push(ctx, lorebookKind, instanceID, lid, false, fmt.Sprintf("%s:lorebook:%d", key, lid),
 				&pushExpect{createOnly: true})
 			if errors.Is(err, errAlreadyPushed) {
-				err = s.pool.QueryRow(ctx, `SELECT remote_id FROM binding WHERE instance_id = $1 AND lorebook_id = $2`,
+				err = s.pool.QueryRow(ctx, `SELECT remote_id FROM binding WHERE instance_id = $1 AND lorebook_id = $2 AND NOT imported`,
 					instanceID, lid).Scan(&b.RemoteID)
 			}
 			if err != nil {

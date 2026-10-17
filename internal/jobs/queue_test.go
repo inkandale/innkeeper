@@ -114,7 +114,7 @@ func TestStaleRunLosesLeaseAfterReclaim(t *testing.T) {
 	if _, err := q.claim(ctx, "w1", []string{"test"}, time.Minute); err != nil {
 		t.Fatal(err)
 	}
-	if err := q.touch(ctx, old, "w1", time.Minute, nil, nil); !errors.Is(err, ErrLeaseLost) {
+	if err := q.touch(ctx, q.pool, old, "w1", time.Minute, nil, nil); !errors.Is(err, ErrLeaseLost) {
 		t.Fatalf("stale touch = %v; want ErrLeaseLost", err)
 	}
 	if err := q.finish(ctx, old, "w1", nil, outcome{status: StatusSucceeded}); !errors.Is(err, ErrLeaseLost) {
@@ -187,7 +187,7 @@ func TestCancelRunningJobTakesItsLease(t *testing.T) {
 	if err := q.Cancel(ctx, j.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := q.touch(ctx, c, "w1", time.Minute, nil, nil); !errors.Is(err, ErrLeaseLost) {
+	if err := q.touch(ctx, q.pool, c, "w1", time.Minute, nil, nil); !errors.Is(err, ErrLeaseLost) {
 		t.Fatalf("touch after cancel: %v", err)
 	}
 }

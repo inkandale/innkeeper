@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -126,4 +127,24 @@ func (e Enrichment) Check(v json.RawMessage) error {
 		return fmt.Errorf("unknown type %q", e.Type)
 	}
 	return nil
+}
+
+// CheckValues keeps the values decl declares with a valid value, and says
+// why it dropped each of the others, in key order.
+func CheckValues(decl map[string]Enrichment, values map[string]json.RawMessage) (map[string]json.RawMessage, []string) {
+	kept := map[string]json.RawMessage{}
+	var problems []string
+	for _, key := range slices.Sorted(maps.Keys(values)) {
+		d, ok := decl[key]
+		if !ok {
+			problems = append(problems, fmt.Sprintf("dropped %s, which the plugin doesn't declare", key))
+			continue
+		}
+		if err := d.Check(values[key]); err != nil {
+			problems = append(problems, fmt.Sprintf("dropped %s: %v", key, err))
+			continue
+		}
+		kept[key] = values[key]
+	}
+	return kept, problems
 }

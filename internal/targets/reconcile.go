@@ -97,6 +97,8 @@ type appItem struct {
 	avatarErr error
 	// sources are what DetectSources found in raw.
 	sources []library.Source
+	// imported means raw is the copy an import binding holds, not the app's.
+	imported bool
 }
 
 // readItem reads an app item and, with avatar, moves the avatar into the blob

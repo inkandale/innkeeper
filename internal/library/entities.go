@@ -101,6 +101,8 @@ type Edit struct {
 	Message   string
 	// Source is ui, mcp, adopt, reconcile, or plugin:<name>.
 	Source string
+	// Created is the revision's created_at; zero means now.
+	Created time.Time
 }
 
 const entityCols = `id, library_id, slug, coalesce(head_revision_id, 0), archived_at, provenance, created_at`
@@ -129,6 +131,7 @@ type revisionRow struct {
 	contentHash     string
 	simhash         *int64
 	message, source string
+	created         *time.Time
 }
 
 func (s *Entities) prepare(e Edit) (revisionRow, error) {
@@ -152,6 +155,9 @@ func (s *Entities) prepare(e Edit) (revisionRow, error) {
 	if e.AvatarBlob != "" {
 		r.avatar = &e.AvatarBlob
 	}
+	if !e.Created.IsZero() {
+		r.created = &e.Created
+	}
 	var err error
 	if r.contentHash, err = cardhash.ContentHash(e.Data); err != nil {
 		return revisionRow{}, fmt.Errorf("%w: %w", ErrInvalid, err)
@@ -168,9 +174,9 @@ func (s *Entities) prepare(e Edit) (revisionRow, error) {
 
 func (s *Entities) insertRevision(ctx context.Context, tx pgx.Tx, id int64, parent *int64, r revisionRow) (Revision, error) {
 	rev, err := scanRevision(tx.QueryRow(ctx, `INSERT INTO `+s.k.RevTable+` (`+s.k.FK+`, parent_id, data, avatar_blob,
-		overrides, content_hash, text_simhash, message, source)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING `+s.revCols(),
-		id, parent, r.data, r.avatar, r.overrides, r.contentHash, r.simhash, r.message, r.source))
+		overrides, content_hash, text_simhash, message, source, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, coalesce($10, now())) RETURNING `+s.revCols(),
+		id, parent, r.data, r.avatar, r.overrides, r.contentHash, r.simhash, r.message, r.source, r.created))
 	if err != nil {
 		return Revision{}, err
 	}
@@ -189,7 +195,7 @@ func (s *Entities) Create(ctx context.Context, slug, provenance string, e Edit) 
 	var ent Entity
 	var rev Revision
 	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) (err error) {
-		ent, rev, err = s.create(ctx, tx, slug, provenance, r)
+		ent, rev, err = s.create(ctx, tx, slug, DefaultLibrary, provenance, r)
 		return err
 	})
 	return ent, rev, err
@@ -197,14 +203,14 @@ func (s *Entities) Create(ctx context.Context, slug, provenance string, e Edit) 
 
 // create inserts the entity inside a savepoint, so a taken slug leaves tx
 // usable for another try.
-func (s *Entities) create(ctx context.Context, tx pgx.Tx, slug, provenance string, r revisionRow) (Entity, Revision, error) {
+func (s *Entities) create(ctx context.Context, tx pgx.Tx, slug string, libraryID int64, provenance string, r revisionRow) (Entity, Revision, error) {
 	sp, err := tx.Begin(ctx)
 	if err != nil {
 		return Entity{}, Revision{}, err
 	}
 	defer sp.Rollback(ctx)
-	ent, err := scanEntity(sp.QueryRow(ctx, `INSERT INTO `+s.k.Table+` (slug, provenance) VALUES ($1, $2) RETURNING `+entityCols,
-		slug, provenance))
+	ent, err := scanEntity(sp.QueryRow(ctx, `INSERT INTO `+s.k.Table+` (slug, library_id, provenance) VALUES ($1, $2, $3) RETURNING `+entityCols,
+		slug, libraryID, provenance))
 	if db.IsCode(err, db.UniqueViolation) {
 		return Entity{}, Revision{}, ErrSlugTaken
 	}

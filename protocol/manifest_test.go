@@ -437,3 +437,20 @@ func TestAllowsManyInstances(t *testing.T) {
 		}
 	}
 }
+
+func TestBulkNeedsImport(t *testing.T) {
+	m, err := LoadManifest(writeManifest(t, `name = "archive"
+version = "1"
+protocol = 1
+command = ["./archive"]
+capabilities = ["import"]
+bulk = true
+`))
+	if err != nil || !m.Bulk {
+		t.Fatalf("bulk import manifest = %+v, %v", m, err)
+	}
+	push := &Manifest{Name: "p", Version: "1", Protocol: Version, Command: []string{"p"}, Capabilities: []string{"push"}, Bulk: true}
+	if push.Validate() == nil {
+		t.Fatal("bulk without import validated")
+	}
+}

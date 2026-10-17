@@ -69,7 +69,7 @@ func (s *Service) follow(ctx context.Context, k kind, instanceID int64, kinds []
 					ORDER BY r.source LIKE 'plugin:%' DESC, r.id LIMIT 1)
 			FROM `+k.SourceTable+` src JOIN `+k.Table+` e ON e.id = src.`+k.FK+`
 			WHERE src.removed_at IS NULL AND src.kind = ANY($2) AND e.archived_at IS NULL AND ($3::bigint = 0 OR src.`+k.FK+` = $3)
-				AND NOT EXISTS (SELECT 1 FROM binding b WHERE b.instance_id = $1 AND b.`+k.FK+` = src.`+k.FK+`)
+				AND NOT EXISTS (SELECT 1 FROM binding b WHERE b.instance_id = $1 AND b.`+k.FK+` = src.`+k.FK+` AND NOT b.imported)
 			ORDER BY src.`+k.FK+`, src.id`, instanceID, kinds, only)
 		if err != nil {
 			return err
@@ -145,7 +145,8 @@ func (s *Service) UnfollowRemovedSources(ctx context.Context, lk *library.Kind, 
 func unfollow(ctx context.Context, db interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }, k kind, instanceID, only int64, kinds []string) error {
-	_, err := db.Exec(ctx, `DELETE FROM binding b WHERE ($1::bigint = 0 OR b.instance_id = $1) AND NOT b.push AND b.`+k.FK+` IS NOT NULL
+	_, err := db.Exec(ctx, `DELETE FROM binding b WHERE ($1::bigint = 0 OR b.instance_id = $1) AND NOT b.push AND NOT b.imported
+		AND b.`+k.FK+` IS NOT NULL
 		AND ($2::bigint = 0 OR b.`+k.FK+` = $2) AND NOT EXISTS (SELECT 1 FROM `+k.SourceTable+` src
 			WHERE src.`+k.FK+` = b.`+k.FK+` AND src.removed_at IS NULL AND src.kind || ':' || src.ref = b.remote_id
 				AND ($3::text[] IS NULL OR src.kind = ANY($3)))`,
@@ -197,7 +198,8 @@ func (s *Service) checkSources(ctx context.Context, only *library.Kind, id int64
 	}
 	q := `SELECT b.id FROM binding b JOIN plugin_instance i ON i.id = b.instance_id
 		LEFT JOIN card c ON c.id = b.card_id LEFT JOIN lorebook l ON l.id = b.lorebook_id
-		WHERE NOT b.push AND NOT b.paused AND i.broken_error IS NULL AND coalesce(c.archived_at, l.archived_at) IS NULL`
+		WHERE NOT b.push AND NOT b.paused AND i.broken_error IS NULL AND coalesce(c.archived_at, l.archived_at) IS NULL
+			AND (NOT b.imported OR (b.remote_state = 'changed' AND b.autosync))`
 	var args []any
 	if only != nil {
 		q += ` AND b.` + only.FK + ` = $1`
@@ -249,7 +251,7 @@ func (s *Service) applyUpdate(ctx context.Context, b Binding) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	site, err := s.avatarKey(ctx, it.avatar)
+	site, err := s.lib.AvatarKey(ctx, it.avatar)
 	if err != nil {
 		return false, err
 	}

@@ -251,6 +251,22 @@ type InstanceInfo struct {
 	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
+// Status sums up a plugin and its instances for the Plugins page: broken if
+// any instance is, instances for a plugin that allows many, and otherwise
+// ready or needs_setup.
+func Status(m *protocol.Manifest, instances []InstanceInfo) string {
+	if slices.ContainsFunc(instances, func(i InstanceInfo) bool { return i.BrokenError != nil }) {
+		return "broken"
+	}
+	switch {
+	case m.MultipleInstances:
+		return "instances"
+	case m.IsTheme(), len(instances) > 0:
+		return "ready"
+	}
+	return "needs_setup"
+}
+
 // NewInstance is a new instance's settings.
 type NewInstance struct {
 	Plugin        string

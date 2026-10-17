@@ -556,3 +556,31 @@ func TestCreateInstanceRejectsSecondSingleton(t *testing.T) {
 		}
 	}
 }
+
+func TestPluginStatus(t *testing.T) {
+	broken := "connection refused"
+	ok, bad := InstanceInfo{ID: 1}, InstanceInfo{ID: 2, BrokenError: &broken}
+	solo := &protocol.Manifest{Name: "solo", Capabilities: []string{"import"}}
+	many := &protocol.Manifest{Name: "many", Capabilities: []string{"push"}, MultipleInstances: true}
+	theme := &protocol.Manifest{Name: "dusk", Capabilities: []string{"theme"}}
+	tests := []struct {
+		name      string
+		m         *protocol.Manifest
+		instances []InstanceInfo
+		want      string
+	}{
+		{"singleton with no instance", solo, nil, "needs_setup"},
+		{"singleton with a working instance", solo, []InstanceInfo{ok}, "ready"},
+		{"singleton with a broken instance", solo, []InstanceInfo{bad}, "broken"},
+		{"multi with none", many, nil, "instances"},
+		{"multi with one broken", many, []InstanceInfo{ok, bad}, "broken"},
+		{"theme", theme, nil, "ready"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Status(tt.m, tt.instances); got != tt.want {
+				t.Fatalf("Status = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

@@ -177,3 +177,9 @@ func TestDisableRefusesLastLogin(t *testing.T) {
 		t.Fatalf("enabled: %+v", inst)
 	}
 }
+
+func TestDisableAllowsABrokenLogin(t *testing.T) {
+	e := newEnv(t)
+	e.markBroken(e.loginID, "bad key")
+	e.call("PATCH", fmt.Sprintf("/instances/%d", e.loginID), map[string]any{"disabled": true}, 200, nil)
+}

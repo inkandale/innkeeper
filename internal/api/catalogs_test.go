@@ -43,6 +43,11 @@ func TestCatalogRoutes(t *testing.T) {
 	down := e.catalog("Down", map[string]any{"down": true})
 	broken := e.catalog("Broken", nil)
 	e.markBroken(broken, "bad config")
+	off := e.catalog("Off", nil)
+	disabled := true
+	if err := e.s.Registry.UpdateInstance(context.Background(), off, plugins.InstanceEdit{Disabled: &disabled}); err != nil {
+		t.Fatal(err)
+	}
 	base := fmt.Sprintf("/catalogs/%d", inst)
 
 	var list []catalogOut

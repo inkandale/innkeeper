@@ -239,6 +239,21 @@ func TestSettingsForgetADeletedScoreInstance(t *testing.T) {
 	}
 }
 
+func TestSettingsIgnoreADisabledScoreInstance(t *testing.T) {
+	e := newEnrichEnv(t)
+	second, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "judge", Name: "Second"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.call("PATCH", "/settings", map[string]any{"score_instance": second}, 200, nil)
+	e.call("PATCH", fmt.Sprintf("/instances/%d", second), map[string]any{"disabled": true}, 200, nil)
+	var s settings
+	e.call("GET", "/settings", nil, 200, &s)
+	if s.ScoreInstance != nil {
+		t.Fatalf("settings = %+v", s)
+	}
+}
+
 func TestEnrichRunFailsWhenEveryBatchFails(t *testing.T) {
 	e := newEnrichEnv(t)
 	j, p := e.evaluate(e.instID, 999998, 999999)

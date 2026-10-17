@@ -98,6 +98,9 @@ func (s *Server) catalogs(ctx context.Context) ([]catalogOut, error) {
 	}
 	out := []catalogOut{}
 	for _, i := range list {
+		if i.Disabled {
+			continue
+		}
 		c := catalogOut{ID: i.ID, Name: i.Name, Plugin: i.Plugin}
 		var info protocol.CatalogInfo
 		dctx, cancel := context.WithTimeout(ctx, describeTimeout)

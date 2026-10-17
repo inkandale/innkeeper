@@ -22,8 +22,8 @@ import (
 
 const scoreInstanceSetting = "score_instance"
 
-// scoreSetting is the score_instance setting while it names an enrich
-// instance, or nil, and the enrich instances.
+// scoreSetting is the score_instance setting while it names an enabled enrich
+// instance, or nil, and the enabled enrich instances.
 func (s *Server) scoreSetting(ctx context.Context) (*plugins.InstanceInfo, []plugins.InstanceInfo, error) {
 	v, err := s.Registry.Setting(ctx, scoreInstanceSetting)
 	if err != nil {
@@ -33,6 +33,7 @@ func (s *Server) scoreSetting(ctx context.Context) (*plugins.InstanceInfo, []plu
 	if err != nil {
 		return nil, nil, err
 	}
+	insts = slices.DeleteFunc(insts, func(i plugins.InstanceInfo) bool { return i.Disabled })
 	id, err := strconv.ParseInt(v, 10, 64)
 	if i := slices.IndexFunc(insts, func(i plugins.InstanceInfo) bool { return i.ID == id }); err == nil && i >= 0 {
 		return &insts[i], insts, nil

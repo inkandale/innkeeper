@@ -415,14 +415,16 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 	var plugin string
 	var sealed []byte
 	var hashes map[string]string
-	err = tx.QueryRow(ctx, `SELECT plugin, secrets, default_hashes FROM plugin_instance WHERE id = $1 FOR UPDATE`, id).Scan(&plugin, &sealed, &hashes)
+	var usable bool
+	err = tx.QueryRow(ctx, `SELECT plugin, secrets, default_hashes, owner_subject IS NOT NULL AND broken_error IS NULL AND NOT disabled
+		FROM plugin_instance WHERE id = $1 FOR UPDATE`, id).Scan(&plugin, &sealed, &hashes, &usable)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}
 	if err != nil {
 		return err
 	}
-	if e.Disabled != nil && *e.Disabled && r.HasCapability(plugin, "auth") {
+	if e.Disabled != nil && *e.Disabled && r.HasCapability(plugin, "auth") && usable {
 		var others int
 		err := tx.QueryRow(ctx, `SELECT count(*) FROM plugin_instance
 			WHERE id <> $1 AND plugin = ANY($2) AND owner_subject IS NOT NULL AND broken_error IS NULL AND NOT disabled`,

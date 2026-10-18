@@ -9498,6 +9498,49 @@
         ]
       }
     },
+    "/jobs/{id}/retry": {
+      "post": {
+        "description": "Queues a failed job again with all its attempts. An import picks up from its last checkpoint. A bulk job and its children can't be retried this way.",
+        "operationId": "retry-job",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Retry a failed job",
+        "tags": [
+          "Jobs"
+        ]
+      }
+    },
     "/libraries": {
       "get": {
         "description": "Oldest first, with how many cards and lorebooks each holds, archived ones included.",

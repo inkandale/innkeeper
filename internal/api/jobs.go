@@ -270,6 +270,20 @@ func (s *Server) jobRoutes(api huma.API) {
 			return &jobResp{Body: j}, nil
 		})
 
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "retry-job", Method: http.MethodPost, Path: "/jobs/{id}/retry",
+		Summary: "Retry a failed job", Description: "Queues a failed job again with all its attempts. An import picks up from its last checkpoint. " +
+			"A bulk job and its children can't be retried this way.", Tags: tags},
+		func(ctx context.Context, in *idIn) (*jobResp, error) {
+			if err := s.Queue.Retry(ctx, in.ID); err != nil {
+				return nil, s.fail(err)
+			}
+			j, err := s.job(ctx, in.ID)
+			if err != nil {
+				return nil, err
+			}
+			return &jobResp{Body: j}, nil
+		})
+
 	huma.Register(api, huma.Operation{OperationID: "watch-job", Method: http.MethodGet, Path: "/jobs/{id}/events",
 		Summary: "Stream a job's progress",
 		Description: "Server-sent events: a job event with the whole job each time it changes. The stream ends when the job " +

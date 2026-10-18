@@ -66,6 +66,75 @@ func TestReapRequeuesExpiredLease(t *testing.T) {
 	}
 }
 
+// A checkpoint saved at the end of a transaction that ran longer than the
+// lease must still leave the lease running.
+func TestCheckpointInLongTransactionKeepsLease(t *testing.T) {
+	q := newQueue(t)
+	ctx := context.Background()
+	if _, err := q.Enqueue(ctx, Spec{Kind: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	lease := time.Second
+	c, err := q.claim(ctx, "w1", []string{"test"}, lease)
+	if err != nil || c == nil {
+		t.Fatalf("claim = %v, %v", c, err)
+	}
+	run := &Run{Job: *c, q: q, worker: "w1", lease: lease}
+	tx, err := q.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `SELECT pg_sleep(1.5)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := run.SaveCheckpointTx(ctx, tx, json.RawMessage(`{"at": 1}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.reap(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := q.Get(ctx, c.ID); got.Status != StatusRunning {
+		t.Fatalf("job after a long checkpoint transaction = %+v, want still running", got)
+	}
+}
+
+func TestRetryQueuesAFailedJobFromItsCheckpoint(t *testing.T) {
+	q := newQueue(t)
+	ctx := context.Background()
+	j, _ := q.Enqueue(ctx, Spec{Kind: "test"})
+	if _, err := q.pool.Exec(ctx, `UPDATE job SET status = 'failed', attempts = max_attempts, error = 'boom',
+		finished_at = now(), checkpoint = '{"at": 7}' WHERE id = $1`, j.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.Retry(ctx, j.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := q.Get(ctx, j.ID)
+	if got.Status != StatusQueued || got.Attempts != 0 || got.Error != nil || got.FinishedAt != nil || string(got.Checkpoint) != `{"at": 7}` {
+		t.Fatalf("retried job = %+v", got)
+	}
+	if err := q.Retry(ctx, j.ID); !errors.Is(err, ErrNotRetryable) {
+		t.Fatalf("retrying a queued job: err = %v, want ErrNotRetryable", err)
+	}
+	child, _ := q.Enqueue(ctx, Spec{Kind: "test"})
+	if _, err := q.pool.Exec(ctx, `UPDATE job SET parent_id = CASE WHEN id = $2 THEN $1::bigint END, status = 'failed',
+		finished_at = now() WHERE id IN ($1, $2)`, j.ID, child.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []int64{j.ID, child.ID} {
+		if err := q.Retry(ctx, id); !errors.Is(err, ErrNotRetryable) {
+			t.Fatalf("retrying job %d of a bulk job: err = %v, want ErrNotRetryable", id, err)
+		}
+	}
+	if err := q.Retry(ctx, 999999); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("retrying a missing job: err = %v, want ErrNotFound", err)
+	}
+}
+
 func TestEnsureScheduled(t *testing.T) {
 	q := newQueue(t)
 	ctx := context.Background()

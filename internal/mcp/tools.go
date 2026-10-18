@@ -408,6 +408,10 @@ var tools = []tool{
 		func(ctx context.Context, c caller, in idIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", fmt.Sprintf("/jobs/%d/cancel", in.ID), nil)
 		}),
+	def("retry_job", "Queue a failed job again with all its attempts; an import picks up from its last checkpoint.", tier.Write,
+		func(ctx context.Context, c caller, in idIn) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "POST", fmt.Sprintf("/jobs/%d/retry", in.ID), nil)
+		}),
 	def("start_import", "Import cards and lorebooks from an import plugin instance, such as a folder, or one card from its page URL "+
 		"with url-import. To bring in an app's items, use start_sync.", tier.Write,
 		func(ctx context.Context, c caller, in importIn) (*sdk.CallToolResult, error) {

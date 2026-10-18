@@ -36,6 +36,10 @@ export function Job() {
     mutationFn: async () => must(await api.POST("/jobs/{id}/cancel", { params: { path: { id } } })),
     onSuccess: (data) => qc.setQueryData(["job", id], data),
   });
+  const retry = useMutation({
+    mutationFn: async () => must(await api.POST("/jobs/{id}/retry", { params: { path: { id } } })),
+    onSuccess: (data) => qc.setQueryData(["job", id], data),
+  });
 
   if (job.isError) return <p className="error">{job.error.message}</p>;
   if (!j) return null;
@@ -67,6 +71,13 @@ export function Job() {
           Cancel
         </button>
       )}
+      {/* A bulk job's children finish their parent, so only a job of its own retries. */}
+      {j.status === "failed" && !j.parent_id && j.kind !== "bulk" && (
+        <button className="button" onClick={() => retry.mutate()} disabled={retry.isPending}>
+          Retry
+        </button>
+      )}
+      {retry.isError && <p className="error">{retry.error.message}</p>}
       {blob && (
         <a className="button primary" href={`/api/blobs/${blob}`} download="innkeeper-cards.zip">
           Download zip

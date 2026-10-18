@@ -19,6 +19,10 @@ const exportJob = {
   id: 6, kind: "card.export", status: "succeeded", payload: {}, progress: { done: 2, total: 2, blob: "cd".repeat(32) },
   attempts: 1, max_attempts: 3, run_after: now, created_at: now,
 };
+const failedImport = {
+  id: 8, kind: "import", status: "failed", payload: {}, progress: { done: 10, total: 100 }, attempts: 8, max_attempts: 8,
+  run_after: now, created_at: now, finished_at: now, error: "worker stopped renewing its lease",
+};
 
 class FakeEventSource {
   static last: FakeEventSource | null = null;
@@ -51,6 +55,9 @@ beforeEach(() => {
       if (u.pathname === "/api/jobs/5/cancel") return json({ ...bulkJob, status: "failed" });
       if (u.pathname === "/api/jobs/5") return json(bulkJob);
       if (u.pathname === "/api/jobs/6") return json(exportJob);
+      if (u.pathname === "/api/jobs/8/retry")
+        return json({ ...failedImport, status: "queued", attempts: 0, error: undefined, finished_at: undefined });
+      if (u.pathname === "/api/jobs/8") return json(failedImport);
       return json([]);
     }),
   );
@@ -114,6 +121,15 @@ test("a finished export links to its zip and opens no stream", async () => {
   expect(link).toHaveAttribute("href", `/api/blobs/${"cd".repeat(32)}`);
   expect(FakeEventSource.last).toBeNull();
   expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+});
+
+test("a failed job retries from its page", async () => {
+  const user = userEvent.setup();
+  renderAt("/settings/jobs/8");
+  await user.click(await screen.findByRole("button", { name: "Retry" }));
+  expect(requests).toContain("POST /api/jobs/8/retry");
+  expect(await screen.findByText("queued")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
 });
 
 test("a bulk job filters its children by any state, waiting included", async () => {

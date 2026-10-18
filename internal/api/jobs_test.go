@@ -40,6 +40,13 @@ func TestImportAndCancel(t *testing.T) {
 		t.Fatalf("cancelled = %+v", j)
 	}
 	e.call("POST", path+"/cancel", nil, 409, nil)
+	var retried jobOut
+	e.call("POST", path+"/retry", nil, 200, &retried)
+	if retried.Status != "queued" || retried.Attempts != 0 || retried.Error != nil || retried.FinishedAt != nil {
+		t.Fatalf("retried = %+v", retried)
+	}
+	e.call("POST", path+"/retry", nil, 409, nil)
+	e.call("POST", "/jobs/999/retry", nil, 404, nil)
 	e.call("GET", "/jobs/999", nil, 404, nil)
 	e.call("GET", "/jobs/999/events", nil, 404, nil)
 

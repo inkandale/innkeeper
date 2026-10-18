@@ -36,6 +36,9 @@ var (
 	ErrLeaseLost = errors.New("job lease lost")
 	// ErrFinished means the job already succeeded or failed.
 	ErrFinished = errors.New("job already finished")
+	// ErrNotRetryable means the job isn't a failed job of its own: it is
+	// still open, succeeded, or is a bulk job or one of its children.
+	ErrNotRetryable = errors.New("only a failed job outside a bulk job can be retried")
 )
 
 // Job is one row of the job table.
@@ -229,7 +232,8 @@ func (q *Queue) claim(ctx context.Context, worker string, kinds []string, lease 
 // touch renews the lease and saves progress, and the checkpoint unless it is
 // nil.
 func (q *Queue) touch(ctx context.Context, db execer, j *Job, worker string, lease time.Duration, progress, checkpoint json.RawMessage) error {
-	tag, err := db.Exec(ctx, `UPDATE job SET locked_until = now() + make_interval(secs => $3),
+	// clock_timestamp, not now(): inside a caller's long transaction, now() is when it began.
+	tag, err := db.Exec(ctx, `UPDATE job SET locked_until = clock_timestamp() + make_interval(secs => $3),
 			progress = coalesce($4::jsonb, progress), checkpoint = coalesce($5::jsonb, checkpoint)
 		WHERE id = $1 AND locked_by = $2 AND attempts = $6 AND status = 'running'`,
 		j.ID, worker, lease.Seconds(), progress, checkpoint, j.Attempts)
@@ -345,6 +349,25 @@ func (q *Queue) Cancel(ctx context.Context, id int64) error {
 		_ = q.completeParent(ctx, *j.ParentID)
 	}
 	return nil
+}
+
+// Retry queues a failed job again with all its attempts, from its last
+// checkpoint.
+func (q *Queue) Retry(ctx context.Context, id int64) error {
+	tag, err := q.pool.Exec(ctx, `UPDATE job SET status = 'queued', attempts = 0, error = NULL, finished_at = NULL,
+			run_after = now(), locked_by = NULL, locked_until = NULL
+		WHERE id = $1 AND status = 'failed' AND parent_id IS NULL
+			AND NOT EXISTS (SELECT 1 FROM job c WHERE c.parent_id = $1)`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 1 {
+		return nil
+	}
+	if _, err := q.Get(ctx, id); err != nil {
+		return err
+	}
+	return ErrNotRetryable
 }
 
 // ListOptions filters List. Zero values match everything.

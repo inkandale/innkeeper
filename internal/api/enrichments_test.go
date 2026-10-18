@@ -77,8 +77,15 @@ func (e *enrichEnv) startRun(body map[string]any) (jobOut, enrich.Progress) {
 	e.t.Helper()
 	var j jobOut
 	e.call("POST", "/enrichments/runs", body, 202, &j)
+	return e.waitRun(j.ID)
+}
+
+// waitRun waits for the enrich job id to end.
+func (e *enrichEnv) waitRun(id int64) (jobOut, enrich.Progress) {
+	e.t.Helper()
+	var j jobOut
 	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-		e.call("GET", fmt.Sprintf("/jobs/%d", j.ID), nil, 200, &j)
+		e.call("GET", fmt.Sprintf("/jobs/%d", id), nil, 200, &j)
 		if j.Status == jobs.StatusSucceeded || j.Status == jobs.StatusFailed {
 			var p enrich.Progress
 			if err := json.Unmarshal(j.Progress, &p); err != nil {
@@ -87,7 +94,7 @@ func (e *enrichEnv) startRun(body map[string]any) (jobOut, enrich.Progress) {
 			return j, p
 		}
 	}
-	e.t.Fatalf("job %d still running", j.ID)
+	e.t.Fatalf("job %d still running", id)
 	return j, enrich.Progress{}
 }
 
@@ -366,4 +373,26 @@ func TestEnrichmentSearchUsesTheScoreInstance(t *testing.T) {
 	if err := json.Unmarshal([]byte(text), &mres); err != nil || !slices.Equal(ids(mres), []int64{high}) {
 		t.Fatalf("search_cards = %s, %v", text, err)
 	}
+}
+
+func TestMCPStartEvaluation(t *testing.T) {
+	e := newEnrichEnv(t)
+	brakka := e.card("Brakka", strings.Repeat("x", 78))
+	e.card("Other", strings.Repeat("x", 78))
+	s := e.mcpClient(tier.Write)
+
+	var j jobOut
+	_ = json.Unmarshal([]byte(tool(t, s, "start_evaluation", map[string]any{"instance_id": e.instID, "query": map[string]any{"text": "Brakka"}}, false)), &j)
+	if j, p := e.waitRun(j.ID); j.Status != jobs.StatusSucceeded || p.Total != 1 || p.Done != 1 {
+		t.Fatalf("query run: job %s, progress %+v", j.Status, p)
+	}
+	_ = json.Unmarshal([]byte(tool(t, s, "start_evaluation", map[string]any{"instance_id": e.instID, "card_ids": []int64{brakka}}, false)), &j)
+	if _, p := e.waitRun(j.ID); p.Skipped != 1 {
+		t.Fatalf("a run without rescore didn't skip the scored card: %+v", p)
+	}
+	_ = json.Unmarshal([]byte(tool(t, s, "start_evaluation", map[string]any{"instance_id": e.instID, "card_ids": []int64{brakka}, "rescore": true}, false)), &j)
+	if _, p := e.waitRun(j.ID); p.Done != 1 {
+		t.Fatalf("rescore run: %+v", p)
+	}
+	tool(t, s, "start_evaluation", map[string]any{"instance_id": e.instID}, true)
 }

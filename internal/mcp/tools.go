@@ -195,6 +195,13 @@ type syncIn struct {
 	Apply      string `json:"apply,omitempty" jsonschema:"obvious (default) binds exact matches and imports new items; none writes nothing"`
 }
 
+type evaluateIn struct {
+	InstanceID int64          `json:"instance_id" jsonschema:"An enrich plugin instance from list_instances, such as forge-ai"`
+	CardIDs    []int64        `json:"card_ids,omitempty" jsonschema:"The cards to evaluate. Send this or query"`
+	Query      map[string]any `json:"query,omitempty" jsonschema:"Evaluates every card a search_cards query matches, such as {\"filter\": ...} or {\"text\": \"knight\"}; set library in it for another library. Send this or card_ids"`
+	Rescore    bool           `json:"rescore,omitempty" jsonschema:"Also evaluate cards whose head revision already has a value from the instance; without it they count as skipped"`
+}
+
 type changesIn struct {
 	InstanceID int64  `json:"instance_id,omitempty" jsonschema:"Only this target app's changes; counts still cover every app"`
 	State      string `json:"state,omitempty" jsonschema:"Only this state: differs, both_changed, ahead, missing, error, new, or update. Ahead means the library has what the app doesn't: not pushed. Update means a followed site source changed"`
@@ -448,6 +455,12 @@ var tools = []tool{
 		"each app's reconcile job, whose progress is that app's snapshot.", tier.Write,
 		func(ctx context.Context, c caller, in syncIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", "/syncs", in)
+		}),
+	def("start_evaluation", "Evaluate cards with an enrich plugin instance, storing scores such as quality on each card's head revision. "+
+		"Starts a job whose get_job progress counts cards done, failed, and skipped. search_cards shows the results "+
+		"with include enrichments, and filters and sorts by them.", tier.Write,
+		func(ctx context.Context, c caller, in evaluateIn) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "POST", "/enrichments/runs", in)
 		}),
 	def("refresh", "Check every app for changes and count the app items nothing is bound to. Changes nothing.", tier.Read,
 		func(ctx context.Context, c caller, _ none) (*sdk.CallToolResult, error) {

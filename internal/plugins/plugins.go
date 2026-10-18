@@ -489,7 +489,6 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 		owner = *e.OwnerSubject
 	}
 	// A singleton's one instance has nothing to be told apart from.
-	m, ok := r.manifest(plugin)
 	single := ok && !m.AllowsManyInstances()
 	_, err = tx.Exec(ctx, `UPDATE plugin_instance SET
 			name = CASE WHEN $10 THEN NULL WHEN $2::text IS NULL THEN name ELSE nullif($2, '') END, config = coalesce($3, config),

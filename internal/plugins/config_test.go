@@ -39,12 +39,12 @@ func configRegistry(t *testing.T) *Registry {
 func TestCreateInstanceRejectsConfigThatBreaksTheSchema(t *testing.T) {
 	reg := configRegistry(t)
 	for _, config := range []map[string]any{{"port": "eight"}, {"auth": "oauth"}} {
-		_, err := reg.CreateInstance(context.Background(), NewInstance{Plugin: "app", Name: "x", Config: config})
+		_, err := reg.CreateInstance(context.Background(), NewInstance{Plugin: "app", Config: config})
 		if !errors.Is(err, ErrInvalid) {
 			t.Fatalf("create with %v: %v, want ErrInvalid", config, err)
 		}
 	}
-	_, err := reg.CreateInstance(context.Background(), NewInstance{Plugin: "app", Name: "x", Config: map[string]any{"port": "eight"}})
+	_, err := reg.CreateInstance(context.Background(), NewInstance{Plugin: "app", Config: map[string]any{"port": "eight"}})
 	if !strings.Contains(err.Error(), "port") {
 		t.Fatalf("error doesn't name the field: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestCreateInstanceRejectsConfigThatBreaksTheSchema(t *testing.T) {
 func TestCreateInstanceAcceptsConfigMissingRequiredKeys(t *testing.T) {
 	reg := configRegistry(t)
 	for _, config := range []map[string]any{nil, {"auth": "basic"}, {"url": "http://app", "port": float64(8080), "provider": float64(3)}} {
-		if _, err := reg.CreateInstance(context.Background(), NewInstance{Plugin: "app", Name: "x", Config: config}); err != nil {
+		if _, err := reg.CreateInstance(context.Background(), NewInstance{Plugin: "app", Config: config}); err != nil {
 			t.Fatalf("create with %v: %v", config, err)
 		}
 		if _, err := reg.pool.Exec(context.Background(), `DELETE FROM plugin_instance`); err != nil {
@@ -66,7 +66,7 @@ func TestCreateInstanceAcceptsConfigMissingRequiredKeys(t *testing.T) {
 func TestUpdateInstanceRejectsConfigThatBreaksTheSchema(t *testing.T) {
 	ctx := context.Background()
 	reg := configRegistry(t)
-	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "app", Name: "x", Config: map[string]any{"url": "http://app"}})
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "app", Config: map[string]any{"url": "http://app"}})
 	if err != nil {
 		t.Fatal(err)
 	}

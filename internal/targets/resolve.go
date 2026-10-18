@@ -387,6 +387,10 @@ func (rs *resolver) importItem(ctx context.Context, k kind, inst pluginhost.Inst
 			return 0, 0, stale
 		}
 	}
+	lib, err := s.syncLibrary(ctx, inst)
+	if err != nil {
+		return 0, 0, err
+	}
 	plugin := inst.Manifest.Name
 	provenance, source := plugin+":"+remoteID, "plugin:"+plugin
 	if !k.isLorebook() {
@@ -408,10 +412,10 @@ func (rs *resolver) importItem(ctx context.Context, k kind, inst pluginhost.Inst
 				return 0, 0, ctx.Err()
 			}
 		}
-		rev, err := s.lib.ImportCardTx(ctx, rs.tx, provenance, source, card, it.avatar, bookSources)
+		rev, err := s.lib.ImportCardTx(ctx, rs.tx, lib, provenance, source, card, it.avatar, bookSources)
 		return rev.EntityID, rev.ID, err
 	}
-	_, rev, err := s.lib.Lorebooks.CreateFromNameTx(ctx, rs.tx, cmp.Or(it.name, "lorebook"), provenance,
+	_, rev, err := s.lib.Lorebooks.CreateFromNameTx(ctx, rs.tx, lib, cmp.Or(it.name, "lorebook"), provenance,
 		library.Edit{Data: it.raw, Source: source, Message: "Imported"})
 	return rev.EntityID, rev.ID, err
 }
@@ -424,9 +428,13 @@ func (rs *resolver) exactMatch(ctx context.Context, k kind, inst pluginhost.Inst
 		fmt.Sprintf("import %s %s", k.Name, it.name)); err != nil {
 		return indexEntry{}, false, err
 	}
-	ents, err := rs.s.loadEntries(ctx, k, inst, info, `e.archived_at IS NULL
+	lib, err := rs.s.syncLibrary(ctx, inst)
+	if err != nil {
+		return indexEntry{}, false, err
+	}
+	ents, err := rs.s.loadEntries(ctx, k, inst, info, `e.archived_at IS NULL AND e.library_id = $4
 		AND coalesce(r.overrides -> $1 ->> 'name', r.data ->> 'name') = $2
-		AND NOT EXISTS (SELECT 1 FROM binding WHERE instance_id = $3 AND `+k.FK+` = e.id AND NOT imported)`, it.name, instanceID)
+		AND NOT EXISTS (SELECT 1 FROM binding WHERE instance_id = $3 AND `+k.FK+` = e.id AND NOT imported)`, it.name, instanceID, lib)
 	if err != nil {
 		return indexEntry{}, false, err
 	}

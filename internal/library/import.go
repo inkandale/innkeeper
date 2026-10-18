@@ -84,12 +84,12 @@ func (s *Entities) CreateFromName(ctx context.Context, libraryID int64, name, pr
 }
 
 // CreateFromNameTx is CreateFromName inside the caller's transaction.
-func (s *Entities) CreateFromNameTx(ctx context.Context, tx pgx.Tx, name, provenance string, e Edit) (Entity, Revision, error) {
+func (s *Entities) CreateFromNameTx(ctx context.Context, tx pgx.Tx, libraryID int64, name, provenance string, e Edit) (Entity, Revision, error) {
 	r, err := s.prepare(e)
 	if err != nil {
 		return Entity{}, Revision{}, err
 	}
-	return s.createFree(ctx, tx, Slugify(name), DefaultLibrary, provenance, r)
+	return s.createFree(ctx, tx, Slugify(name), libraryID, provenance, r)
 }
 
 // createFree creates an entity with base as its slug, or base-N if that's taken.
@@ -461,23 +461,23 @@ func (s *Entities) detectUnless(ctx context.Context, tx pgx.Tx, it PluginItem, i
 	return s.queueDetect(ctx, tx, id)
 }
 
-// ImportCardTx adds a CCv3 card as a new card inside the caller's
+// ImportCardTx adds a CCv3 card as a new card in library libraryID inside the caller's
 // transaction, with its character_book as a new linked lorebook. Unlike
 // ImportCard it always creates, since the caller asked for a new copy and its
 // transaction makes a retry unnecessary. avatar is a blob's sha256, or empty.
 // bookSources are recorded on the lorebook. It returns the card's head revision.
-func (l *Library) ImportCardTx(ctx context.Context, tx pgx.Tx, provenance, source string, card json.RawMessage,
+func (l *Library) ImportCardTx(ctx context.Context, tx pgx.Tx, libraryID int64, provenance, source string, card json.RawMessage,
 	avatar string, bookSources []Source) (Revision, error) {
 	name, data, book, err := SplitCard(card)
 	if err != nil {
 		return Revision{}, err
 	}
-	_, rev, err := l.Cards.CreateFromNameTx(ctx, tx, name, provenance,
+	_, rev, err := l.Cards.CreateFromNameTx(ctx, tx, libraryID, name, provenance,
 		Edit{Data: data, AvatarBlob: avatar, Source: source, Message: "Imported"})
 	if err != nil || book == nil {
 		return rev, err
 	}
-	lb, _, err := l.Lorebooks.CreateFromNameTx(ctx, tx, cmp.Or(DataName(book), name+" lorebook"), provenance,
+	lb, _, err := l.Lorebooks.CreateFromNameTx(ctx, tx, libraryID, cmp.Or(DataName(book), name+" lorebook"), provenance,
 		Edit{Data: book, Source: source, Message: "Split from imported card"})
 	if err != nil {
 		return Revision{}, err

@@ -9,8 +9,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/internal/tier"
+	"github.com/inkandale/innkeeper/protocol"
 )
 
 func TestInstanceRoutes(t *testing.T) {
@@ -189,4 +191,33 @@ func TestDisableAllowsABrokenLogin(t *testing.T) {
 	e := newEnv(t)
 	e.markBroken(e.loginID, "bad key")
 	e.call("PATCH", fmt.Sprintf("/instances/%d", e.loginID), map[string]any{"disabled": true}, 200, nil)
+}
+
+func TestInstanceSyncLibrary(t *testing.T) {
+	e := newEnv(t)
+	app, _ := e.target()
+	archive := e.createLibrary("Archive")
+	path := fmt.Sprintf("/instances/%d", app)
+
+	var got plugins.InstanceInfo
+	e.call("GET", path, nil, 200, &got)
+	if got.SyncLibrary != library.DefaultLibrary {
+		t.Fatalf("default sync library = %d", got.SyncLibrary)
+	}
+	e.call("PATCH", path, map[string]any{"sync_library": archive.ID}, 200, nil)
+	e.call("GET", path, nil, 200, &got)
+	if got.SyncLibrary != archive.ID {
+		t.Fatalf("sync library = %d, want %d", got.SyncLibrary, archive.ID)
+	}
+	e.call("PATCH", path, map[string]any{"sync_library": 999999}, 400, nil)
+
+	// A plugin that doesn't sync has no sync library.
+	scorer := &protocol.Manifest{Name: "scorer", Version: "1.0.0", Protocol: protocol.Version, Command: []string{"./scorer"},
+		Capabilities: []string{"enrich"}, Enrichments: map[string]protocol.Enrichment{"quality": {Type: "score", Range: []float64{0, 100}, Label: "Quality"}}}
+	e.manifests["scorer"] = scorer
+	id, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "scorer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.call("PATCH", fmt.Sprintf("/instances/%d", id), map[string]any{"sync_library": archive.ID}, 400, nil)
 }

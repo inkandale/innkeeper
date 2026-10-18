@@ -49,7 +49,11 @@ type indexBinding struct {
 func (s *Service) loadIndex(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo) (index, error) {
 	idx := index{byID: map[int64]indexEntry{}, byRemote: map[string]indexBinding{}, remoteOf: map[int64]string{}}
 	var err error
-	if idx.entries, err = s.loadEntries(ctx, k, inst, info, `e.archived_at IS NULL`); err != nil {
+	lib, err := s.syncLibrary(ctx, inst)
+	if err != nil {
+		return idx, err
+	}
+	if idx.entries, err = s.loadEntries(ctx, k, inst, info, `e.archived_at IS NULL AND e.library_id = $2`, lib); err != nil {
 		return idx, err
 	}
 	for _, e := range idx.entries {
@@ -73,6 +77,14 @@ func (s *Service) loadIndex(ctx context.Context, k kind, inst pluginhost.Instanc
 
 // loadEntries renders and projects the heads that match where, in ID order.
 // where's parameters start at $2.
+// syncLibrary is the library inst's syncs match against and import into.
+func (s *Service) syncLibrary(ctx context.Context, inst pluginhost.Instance) (int64, error) {
+	var lib int64
+	err := s.pool.QueryRow(ctx, `SELECT coalesce(sync_library, $2) FROM plugin_instance WHERE id = $1::bigint`,
+		inst.ID, library.DefaultLibrary).Scan(&lib)
+	return lib, err
+}
+
 func (s *Service) loadEntries(ctx context.Context, k kind, inst pluginhost.Instance, info protocol.TargetInfo,
 	where string, args ...any) ([]indexEntry, error) {
 	rows, err := s.pool.Query(ctx, `SELECT e.id, r.id, r.data, r.overrides -> $1, coalesce(r.avatar_blob, ''), b.avatar_phash

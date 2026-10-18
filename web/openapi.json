@@ -2672,6 +2672,10 @@
             ],
             "type": "string"
           },
+          "sync_library": {
+            "format": "int64",
+            "type": "integer"
+          },
           "updated_at": {
             "format": "date-time",
             "type": "string"
@@ -2684,6 +2688,7 @@
           "config",
           "secrets",
           "library_access",
+          "sync_library",
           "created_at",
           "updated_at",
           "disabled",
@@ -5197,6 +5202,11 @@
             },
             "description": "Sets each secret named; null removes it. Secrets not named stay.",
             "type": "object"
+          },
+          "sync_library": {
+            "description": "For a target app: the library its syncs match against and import new items into.",
+            "format": "int64",
+            "type": "integer"
           }
         },
         "type": "object"

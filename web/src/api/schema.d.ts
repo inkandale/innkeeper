@@ -3488,6 +3488,8 @@ export interface components {
             secrets: string[] | null;
             /** @enum {string} */
             status: "ready" | "needs_setup" | "broken" | "disabled";
+            /** Format: int64 */
+            sync_library: number;
             /** Format: date-time */
             updated_at: string;
         };
@@ -4461,6 +4463,11 @@ export interface components {
             secrets?: {
                 [key: string]: string | null;
             };
+            /**
+             * Format: int64
+             * @description For a target app: the library its syncs match against and import new items into.
+             */
+            sync_library?: number;
         };
         VariantOfInBody: {
             /**

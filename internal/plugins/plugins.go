@@ -266,12 +266,14 @@ type InstanceInfo struct {
 	Secrets      []string       `json:"secrets"`
 	OwnerSubject *string        `json:"owner_subject,omitempty"`
 	// LibraryAccess lets an action plugin read the library with library.call.
-	LibraryAccess bool       `json:"library_access"`
-	BrokenError   *string    `json:"broken_error,omitempty"`
-	BrokenAt      *time.Time `json:"broken_at,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
-	Disabled      bool       `json:"disabled"`
+	LibraryAccess bool `json:"library_access"`
+	// SyncLibrary is the library a target app's syncs match against and import into.
+	SyncLibrary int64      `json:"sync_library"`
+	BrokenError *string    `json:"broken_error,omitempty"`
+	BrokenAt    *time.Time `json:"broken_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	Disabled    bool       `json:"disabled"`
 	// Status is disabled, broken, needs_setup, or ready, in that order.
 	Status string `json:"status" enum:"ready,needs_setup,broken,disabled"`
 }
@@ -322,6 +324,8 @@ type InstanceEdit struct {
 	OwnerSubject  *string
 	LibraryAccess *bool
 	Disabled      *bool
+	// SyncLibrary is the library a target app syncs with.
+	SyncLibrary *int64
 	// DefaultBases maps a JSON pointer the owner just overrode to the default it replaced.
 	DefaultBases map[string]any
 }
@@ -343,6 +347,8 @@ func writeErr(err error) error {
 		return ErrNameTaken
 	case errors.As(err, &pgErr) && pgErr.Code == db.CheckViolation:
 		return fmt.Errorf("%w: %s", ErrInvalid, pgErr.ConstraintName)
+	case errors.As(err, &pgErr) && pgErr.ConstraintName == "plugin_instance_sync_library_fkey":
+		return fmt.Errorf("%w: no such library", ErrInvalid)
 	}
 	return err
 }
@@ -460,6 +466,9 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 			return err
 		}
 	}
+	if e.SyncLibrary != nil && !(ok && (m.Has("push") || m.Has("pull"))) {
+		return fmt.Errorf("%w: plugin %s doesn't sync, so it has no sync library", ErrInvalid, plugin)
+	}
 	if e.Secrets != nil {
 		current, err := r.box.Open(sealed)
 		if err != nil {
@@ -494,8 +503,9 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 			name = CASE WHEN $10 THEN NULL WHEN $2::text IS NULL THEN name ELSE nullif($2, '') END, config = coalesce($3, config),
 			secrets = $4, owner_subject = CASE WHEN $5 THEN nullif($6::text, '') ELSE owner_subject END,
 			library_access = coalesce($7, library_access), default_hashes = coalesce($8, default_hashes),
-			disabled = coalesce($9, disabled), broken_error = NULL, broken_at = NULL, updated_at = now()
-		WHERE id = $1`, id, e.Name, config, sealed, e.OwnerSubject != nil, owner, e.LibraryAccess, newHashes, e.Disabled, single)
+			disabled = coalesce($9, disabled), sync_library = coalesce($11, sync_library),
+			broken_error = NULL, broken_at = NULL, updated_at = now()
+		WHERE id = $1`, id, e.Name, config, sealed, e.OwnerSubject != nil, owner, e.LibraryAccess, newHashes, e.Disabled, single, e.SyncLibrary)
 	if err != nil {
 		return writeErr(err)
 	}
@@ -535,13 +545,13 @@ func deleteInstances(ctx context.Context, db interface {
 }
 
 const infoCols = `id, plugin, name, config, secrets, owner_subject, library_access, broken_error, broken_at,
-	created_at, updated_at, disabled`
+	created_at, updated_at, disabled, coalesce(sync_library, 1)`
 
 func (r *Registry) scanInfo(row pgx.Row) (InstanceInfo, error) {
 	var i InstanceInfo
 	var sealed []byte
 	err := row.Scan(&i.ID, &i.Plugin, &i.Name, &i.Config, &sealed, &i.OwnerSubject, &i.LibraryAccess,
-		&i.BrokenError, &i.BrokenAt, &i.CreatedAt, &i.UpdatedAt, &i.Disabled)
+		&i.BrokenError, &i.BrokenAt, &i.CreatedAt, &i.UpdatedAt, &i.Disabled, &i.SyncLibrary)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return i, ErrNotFound
 	}

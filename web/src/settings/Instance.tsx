@@ -2,7 +2,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { api, must } from "../api/client";
-import { instancesQuery, pluginsQuery } from "../api/queries";
+import { instancesQuery, librariesQuery, pluginsQuery } from "../api/queries";
 import { useToast } from "../shell/Toasts";
 import { type InstanceInfo, type Plugin } from "./Plugins";
 import { Records } from "./Records";
@@ -93,6 +93,10 @@ export function InstanceForm({
   // Only typed secrets (a string) and removed ones (null) are sent.
   const [secrets, setSecrets] = useState<Record<string, string | null>>({});
   const [libraryAccess, setLibraryAccess] = useState(instance?.library_access ?? false);
+  const [syncLibrary, setSyncLibrary] = useState(instance?.sync_library ?? 1);
+  const libraries = useQuery(librariesQuery).data ?? [];
+  // A target app syncs with one library; with only one there's nothing to pick.
+  const syncs = !!instance && (caps.includes("push") || caps.includes("pull")) && libraries.length > 1;
   const schema = plugin.config as Schema | undefined;
   const { general, tabs } = tabsOf(schema);
   const others = useQuery(instancesQuery).data?.filter((i) => i.plugin === plugin.name && i.id !== instance?.id) ?? [];
@@ -177,6 +181,7 @@ export function InstanceForm({
             secrets: hasSecrets ? secrets : undefined,
             owner_subject: owner !== undefined && owner !== (instance.owner_subject ?? "") ? owner : undefined,
             library_access: libraryAccess !== (instance.library_access ?? false) ? libraryAccess : undefined,
+            sync_library: syncLibrary !== instance.sync_library ? syncLibrary : undefined,
           },
         }),
       );
@@ -297,6 +302,21 @@ export function InstanceForm({
                 <input className="input" name="owner_subject" defaultValue={instance?.owner_subject} />
               </label>
               <small className="muted">The login that becomes the owner. Leave empty for none.</small>
+            </div>
+          )}
+          {syncs && (
+            <div className="form-field">
+              <label>
+                <span>Syncs with</span>
+                <select className="input" value={syncLibrary} onChange={(e) => setSyncLibrary(Number(e.target.value))}>
+                  {libraries.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <small className="muted">The library this app's syncs match its items against and import new ones into.</small>
             </div>
           )}
           {caps.includes("action") && (

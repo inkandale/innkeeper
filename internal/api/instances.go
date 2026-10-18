@@ -87,6 +87,7 @@ type updateInstanceIn struct {
 		OwnerSubject  *string            `json:"owner_subject,omitempty" doc:"Empty clears it, which logs the owner out of this provider."`
 		LibraryAccess *bool              `json:"library_access,omitempty" doc:"Lets an action plugin read the library while it runs an action that asks to."`
 		Disabled      *bool              `json:"disabled,omitempty" doc:"true keeps the instance but stops everything using it; false turns it back on. Disabling a login provider ends its sessions."`
+		SyncLibrary   *int64             `json:"sync_library,omitempty" doc:"For a target app: the library its syncs match against and import new items into."`
 		DefaultBases  map[string]any     `json:"default_bases,omitempty" doc:"For each JSON pointer the owner just overrode, the default it replaced, so the form can mark it once the default changes."`
 	}
 }
@@ -206,7 +207,8 @@ func (s *Server) instanceRoutes(api huma.API) {
 				return nil, err
 			}
 			err = s.Registry.UpdateInstance(ctx, in.ID, plugins.InstanceEdit{Name: in.Body.Name, Config: in.Body.Config,
-				Secrets: in.Body.Secrets, OwnerSubject: in.Body.OwnerSubject, LibraryAccess: in.Body.LibraryAccess, Disabled: in.Body.Disabled, DefaultBases: in.Body.DefaultBases})
+				Secrets: in.Body.Secrets, OwnerSubject: in.Body.OwnerSubject, LibraryAccess: in.Body.LibraryAccess, Disabled: in.Body.Disabled, SyncLibrary: in.Body.SyncLibrary,
+				DefaultBases: in.Body.DefaultBases})
 			if err != nil {
 				return nil, s.fail(err)
 			}

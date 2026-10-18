@@ -672,6 +672,13 @@ ink sync run <instance-id> --dry-run   # report only; link and import nothing
 ink sync refresh                       # check every app; change nothing
 ```
 
+Each app syncs with one library, library 1 unless you pick another under
+"Syncs with" on its settings page or with `sync_library` in
+`PATCH /instances/{id}`. A sync matches the app's items only against that
+library's cards and lorebooks, and imports new ones into it, so an archive
+library is never searched. Cards bound to the app from other libraries still
+push and report drift.
+
 A sync of every app prints a line per app with its totals and the job to
 pass to `ink sync apply`.
 

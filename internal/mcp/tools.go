@@ -148,6 +148,8 @@ type instanceUpdateIn struct {
 	Config   map[string]any     `json:"config,omitempty"`
 	Secrets  map[string]*string `json:"secrets,omitempty" jsonschema:"Sets each named secret; null removes one. Write-only."`
 	Disabled *bool              `json:"disabled,omitempty" jsonschema:"true keeps the instance but stops everything using it; false turns it back on"`
+	// SyncLibrary is a target app's library.
+	SyncLibrary *int64 `json:"sync_library,omitempty" jsonschema:"For a target app: the library from list_libraries its syncs match against and import new items into"`
 }
 
 type defaultsIn struct {
@@ -569,14 +571,15 @@ var tools = []tool{
 		func(ctx context.Context, c caller, in instanceIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", "/instances", in)
 		}),
-	def("update_instance", "Change a plugin instance's name, config, or secrets, or disable or enable it. Its plugin restarts with them. Login providers can't be changed here.", tier.Destructive,
+	def("update_instance", "Change a plugin instance's name, config, secrets, or, for a target app, sync library, or disable or enable it. Its plugin restarts with them. Login providers can't be changed here.", tier.Destructive,
 		func(ctx context.Context, c caller, in instanceUpdateIn) (*sdk.CallToolResult, error) {
 			body := struct {
-				Name     *string            `json:"name,omitempty"`
-				Config   map[string]any     `json:"config,omitempty"`
-				Secrets  map[string]*string `json:"secrets,omitempty"`
-				Disabled *bool              `json:"disabled,omitempty"`
-			}{in.Name, in.Config, in.Secrets, in.Disabled}
+				Name        *string            `json:"name,omitempty"`
+				Config      map[string]any     `json:"config,omitempty"`
+				Secrets     map[string]*string `json:"secrets,omitempty"`
+				Disabled    *bool              `json:"disabled,omitempty"`
+				SyncLibrary *int64             `json:"sync_library,omitempty"`
+			}{in.Name, in.Config, in.Secrets, in.Disabled, in.SyncLibrary}
 			return c.call(ctx, "PATCH", fmt.Sprintf("/instances/%d", in.ID), body)
 		}),
 }

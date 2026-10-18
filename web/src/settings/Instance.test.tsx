@@ -30,6 +30,7 @@ const ai = {
 const broken = {
   id: 3, plugin: "sillytavern", label: "home", name: "home", config: { url: "http://st", auth: "none" }, secrets: ["password"],
   broken_error: "connection refused", disabled: false, status: "broken" as const, broken_at: now, created_at: now, updated_at: now,
+  sync_library: 1,
 };
 const owned = { ...broken, id: 4, plugin: "password-login", label: "pw", name: "pw", config: {}, secrets: [], owner_subject: "me" };
 const forge = { ...broken, id: 5, plugin: "forge-ai", label: "ai", name: "ai", config: {}, secrets: [], broken_error: undefined, library_access: false };
@@ -59,12 +60,14 @@ const confInst = { ...broken, id: 6, plugin: "conf", label: "c", name: "c", conf
 
 let sent: { method: string; path: string; body: unknown }[];
 let instances: unknown[];
+let libraries: unknown[];
 // Set to hold the conf plugin's defaults until it resolves.
 let defaultsHeld: Promise<void> | undefined;
 let defaultsFetches: number;
 beforeEach(() => {
   sent = [];
   instances = [];
+  libraries = [{ id: 1, name: "Library", cards: 3, lorebooks: 0, created_at: now }];
   defaultsHeld = undefined;
   defaultsFetches = 0;
   vi.stubGlobal(
@@ -73,6 +76,7 @@ beforeEach(() => {
       const u = new URL(req.url);
       if (u.pathname === "/api/plugins") return json([login, st, ai, conf, required]);
       if (req.method === "GET" && u.pathname === "/api/instances") return json(instances);
+      if (req.method === "GET" && u.pathname === "/api/libraries") return json(libraries);
       if (req.method === "GET" && u.pathname === "/api/instances/3") return json(broken);
       if (req.method === "GET" && u.pathname === "/api/instances/4") return json(owned);
       if (req.method === "GET" && u.pathname === "/api/instances/5") return json(forge);
@@ -179,6 +183,24 @@ test("edits a broken instance and sends only what changed", async () => {
     path: "/api/instances/3",
     body: { name: "home2", secrets: { password: null } },
   });
+});
+
+test("a target app picks the library it syncs with", async () => {
+  libraries = [...libraries, { id: 2, name: "Chub archive", cards: 9, lorebooks: 0, created_at: now }];
+  const user = userEvent.setup();
+  renderAt("/settings/instances/3");
+  const picker = await screen.findByRole("combobox", { name: "Syncs with" });
+  expect(picker).toHaveDisplayValue("Library");
+  await user.selectOptions(picker, "Chub archive");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await vi.waitFor(() => expect(sent).toHaveLength(1));
+  expect(sent[0]).toEqual({ method: "PATCH", path: "/api/instances/3", body: { name: "home", sync_library: 2 } });
+});
+
+test("with one library there's no sync library to pick", async () => {
+  renderAt("/settings/instances/3");
+  expect(await screen.findByText(/connection refused/)).toBeInTheDocument();
+  expect(screen.queryByRole("combobox", { name: "Syncs with" })).not.toBeInTheDocument();
 });
 
 test("checks an instance and shows why it doesn't work", async () => {

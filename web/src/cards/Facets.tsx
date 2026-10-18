@@ -3,7 +3,7 @@ import { useState, type FormEvent, type MouseEvent } from "react";
 import { api, must, route, type Kind } from "../api/client";
 import type { components } from "../api/schema";
 import { stateLabel } from "../sync/sync";
-import { countSearch, onlyTerm, parseScore, sameValue, sectionsFor, setScore, stateCountSearch, targetStates, toggleTerm, type CardQuery, type TermKind } from "./query";
+import { countSearch, onlyTerm, parseScore, sameValue, scoreTerm, sectionsFor, setScore, stateCountSearch, targetStates, toggleTerm, type CardQuery, type TermKind } from "./query";
 import { badgeClass, type Names } from "./Tile";
 
 type Search = components["schemas"]["Query"];
@@ -162,25 +162,48 @@ function ScoreFilter({ k, q, onChange }: { k: EnrichmentKey; q: CardQuery; onCha
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const num = (name: string) => (String(f.get(name) ?? "") === "" ? undefined : Number(f.get(name)));
-    onChange(setScore(q, { key: k.key, gte: num("gte"), lte: num("lte") }));
+    const s = { key: k.key, gte: num("gte"), lte: num("lte") };
+    if (scoreTerm(s)?.value !== term?.value) onChange(setScore(q, s));
   };
   return (
+    // Keyed by the term, so a cleared chip empties the boxes.
+    // Applies on Enter, or when focus leaves the row, so moving from min to max doesn't search twice.
+    <form key={term?.value ?? ""} className={"score-filter" + (term ? " included" : "")} onSubmit={apply}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && e.target instanceof HTMLInputElement) {
+          e.preventDefault();
+          e.currentTarget.requestSubmit();
+        }
+      }}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.requestSubmit();
+      }}>
+      <span className="score-name" title={k.label}>{k.label}</span>
+      <input className="input" type="number" name="gte" aria-label={`${k.label} at least`} placeholder={String(low ?? "min")} min={low} max={high}
+        defaultValue={score?.gte} disabled={score?.none} />
+      <span aria-hidden="true">–</span>
+      <input className="input" type="number" name="lte" aria-label={`${k.label} at most`} placeholder={String(high ?? "max")} min={low} max={high}
+        defaultValue={score?.lte} disabled={score?.none} />
+      <button type="button" className="score-none" aria-label={`${k.label} not evaluated`} aria-pressed={!!score?.none} title="Not evaluated"
+        onClick={() => onChange(setScore(q, { key: k.key, none: !score?.none }))}>
+        none
+      </button>
+    </form>
+  );
+}
+
+/** ScoreSection is one collapsible section holding a range row per score key. */
+function ScoreSection({ scores, q, open, onOpen, onChange }: { scores: EnrichmentKey[]; q: CardQuery; open: boolean; onOpen: () => void; onChange: (q: CardQuery) => void }) {
+  const picked = q.terms.filter((t) => t.kind === "score").length;
+  return (
     <section className="facet-section">
-      <h2 className="facet-head">{k.label}</h2>
-      {/* Keyed by the term, so a cleared chip empties the boxes. */}
-      <form key={term?.value ?? ""} className="score-filter" onSubmit={apply}>
-        <input className="input" type="number" name="gte" aria-label={`${k.label} at least`} placeholder={String(low ?? "min")} min={low} max={high}
-          defaultValue={score?.gte} disabled={score?.none} />
-        <span aria-hidden="true">–</span>
-        <input className="input" type="number" name="lte" aria-label={`${k.label} at most`} placeholder={String(high ?? "max")} min={low} max={high}
-          defaultValue={score?.lte} disabled={score?.none} />
-        <button className="button" disabled={score?.none}>Apply</button>
-      </form>
-      <label className="check">
-        <input type="checkbox" aria-label={`${k.label} not evaluated`} checked={!!score?.none}
-          onChange={(e) => onChange(setScore(q, { key: k.key, none: e.target.checked }))} />
-        Not evaluated
-      </label>
+      <h2>
+        <button className="facet-head" aria-expanded={open} onClick={onOpen}>
+          {titles.score}
+          {picked > 0 && ` · ${picked}`}
+        </button>
+      </h2>
+      {open && scores.map((k) => <ScoreFilter key={k.key} k={k} q={q} onChange={onChange} />)}
     </section>
   );
 }
@@ -204,9 +227,7 @@ export function Facets({ kind, q, names, scores = [], onChange }: { kind: Kind; 
       {sections.map((s) => (
         <Section key={s} kind={s} rows={rows[s]} q={q} open={open(s)} onOpen={() => flip(s)} onChange={onChange} />
       ))}
-      {scores.filter((k) => k.type === "score").map((k) => (
-        <ScoreFilter key={k.key} k={k} q={q} onChange={onChange} />
-      ))}
+      {scores.length > 0 && <ScoreSection scores={scores} q={q} open={open("score")} onOpen={() => flip("score")} onChange={onChange} />}
     </aside>
   );
 }

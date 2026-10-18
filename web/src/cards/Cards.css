@@ -349,14 +349,50 @@
 }
 
 .score-filter {
-  display: flex;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-areas: "name name none" "gte dash lte";
+  gap: 2px 4px;
   align-items: center;
+  padding: 4px var(--space);
+  border-radius: calc(var(--radius) * 0.5);
+}
+
+.score-filter:hover,
+.score-filter:focus-within {
+  background: var(--surface-2);
+}
+
+.score-filter.included .score-name {
+  color: var(--accent);
+}
+
+.score-name {
+  grid-area: name;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .score-filter .input {
-  width: 4.5em;
   min-width: 0;
+  padding-inline: 4px;
+}
+
+.score-none {
+  grid-area: none;
+  justify-self: end;
+  background: none;
+  border: none;
+  padding: 0 2px;
+  font-size: 0.85em;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.score-none[aria-pressed="true"] {
+  color: var(--accent);
+  text-decoration: underline;
 }
 
 .list .badges {

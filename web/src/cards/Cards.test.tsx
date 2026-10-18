@@ -584,16 +584,27 @@ test("a score range filters, and Not evaluated replaces it", async () => {
   keys = scored;
   const { router } = renderCards("/cards");
   const user = userEvent.setup();
-  await user.type(await screen.findByRole("spinbutton", { name: "Quality at least" }), "70");
-  await user.click(screen.getByRole("button", { name: "Apply" }));
+  await user.type(await screen.findByRole("spinbutton", { name: "Quality at least" }), "70{Enter}");
   expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:quality:70.."]);
   await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "quality", gte: 70 }] } })));
   expect(screen.getByRole("button", { name: "Remove score: quality 70–…" })).toBeInTheDocument();
-  await user.click(screen.getByRole("checkbox", { name: "Quality not evaluated" }));
+  await user.click(screen.getByRole("button", { name: "Quality not evaluated" }));
   expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:quality:none"]);
   await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "quality", missing: true }] } })));
   // Only score keys get a range.
   expect(screen.queryByRole("spinbutton", { name: "Summary at least" })).not.toBeInTheDocument();
+});
+
+test("a score range applies once focus leaves the row", async () => {
+  keys = scored;
+  const { router } = renderCards("/cards");
+  const user = userEvent.setup();
+  await user.type(await screen.findByRole("spinbutton", { name: "Quality at least" }), "40");
+  await user.tab();
+  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual([]);
+  await user.type(screen.getByRole("spinbutton", { name: "Quality at most" }), "80");
+  await user.click(document.body);
+  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:quality:40..80"]);
 });
 
 test("each score key is a sort", async () => {

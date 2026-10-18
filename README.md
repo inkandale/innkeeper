@@ -262,6 +262,11 @@ always matches a preview Claude has shown you. Tools that need the
 `destructive` tier are marked destructive, so Claude asks before running
 them.
 
+`start_job` starts any API route that queues a job, such as an import, a
+sync, or an evaluation, by its operation ID and JSON body. Its description
+lists each route with the body's fields. Destructive routes, such as purge,
+are left out.
+
 To connect claude.ai, or another client that signs in through OAuth, set
 `INNKEEPER_PUBLIC_URL`, then add `<public URL>/mcp` as a custom connector
 with no credentials. The client sends you to Innkeeper to log in, then asks
@@ -471,7 +476,7 @@ ink cards import-url <instance-id> https://chub.ai/characters/user/name
 
 The web's "Bring in cards" step has a URL field while the instance exists.
 Over the API, start an import with `{"url": "<page URL>"}` as its params;
-over MCP, pass `url` to `start_import`.
+over MCP, send the same params to `start_job` with `start-import`.
 
 ## Sources
 
@@ -756,7 +761,7 @@ binding or card has nothing to compare with, so import it this way.
 For world books in an app that keeps them separately, `sync compare` and
 `sync resolve` cover characters only; use `ink call` with
 `/instances/<instance-id>/lorebooks/<remote-id>/compare?lorebook_id=<id>`
-and `.../resolve`. The MCP tools `start_sync`, `compare_item`,
+and `.../resolve`. The MCP tools `start_job`, `compare_item`,
 `resolve_item`, and `resolve_items` cover both.
 
 ### Lorebooks in apps that keep them separately

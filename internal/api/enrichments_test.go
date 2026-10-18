@@ -375,24 +375,22 @@ func TestEnrichmentSearchUsesTheScoreInstance(t *testing.T) {
 	}
 }
 
-func TestMCPStartEvaluation(t *testing.T) {
+func TestMCPStartJobEvaluates(t *testing.T) {
 	e := newEnrichEnv(t)
 	brakka := e.card("Brakka", strings.Repeat("x", 78))
 	e.card("Other", strings.Repeat("x", 78))
 	s := e.mcpClient(tier.Write)
-
-	var j jobOut
-	_ = json.Unmarshal([]byte(tool(t, s, "start_evaluation", map[string]any{"instance_id": e.instID, "query": map[string]any{"text": "Brakka"}}, false)), &j)
-	if j, p := e.waitRun(j.ID); j.Status != jobs.StatusSucceeded || p.Total != 1 || p.Done != 1 {
-		t.Fatalf("query run: job %s, progress %+v", j.Status, p)
+	run := func(body map[string]any) enrich.Progress {
+		t.Helper()
+		var j jobOut
+		_ = json.Unmarshal([]byte(tool(t, s, "start_job", map[string]any{"operation": "start-enrich-run", "body": body}, false)), &j)
+		_, p := e.waitRun(j.ID)
+		return p
 	}
-	_ = json.Unmarshal([]byte(tool(t, s, "start_evaluation", map[string]any{"instance_id": e.instID, "card_ids": []int64{brakka}}, false)), &j)
-	if _, p := e.waitRun(j.ID); p.Skipped != 1 {
-		t.Fatalf("a run without rescore didn't skip the scored card: %+v", p)
+	if p := run(map[string]any{"instance_id": e.instID, "query": map[string]any{"text": "Brakka"}}); p.Total != 1 || p.Done != 1 {
+		t.Fatalf("query run: %+v", p)
 	}
-	_ = json.Unmarshal([]byte(tool(t, s, "start_evaluation", map[string]any{"instance_id": e.instID, "card_ids": []int64{brakka}, "rescore": true}, false)), &j)
-	if _, p := e.waitRun(j.ID); p.Done != 1 {
+	if p := run(map[string]any{"instance_id": e.instID, "card_ids": []int64{brakka}, "rescore": true}); p.Done != 1 {
 		t.Fatalf("rescore run: %+v", p)
 	}
-	tool(t, s, "start_evaluation", map[string]any{"instance_id": e.instID}, true)
 }

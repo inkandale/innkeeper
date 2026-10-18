@@ -87,9 +87,11 @@ func TestMCPToolsByTier(t *testing.T) {
 		return out
 	}
 	read, write, all := names(tier.Read), names(tier.Write), names(tier.Destructive)
+	// Destructive routes keep their own tools, so start_job's annotations hold.
+	tool(t, e.mcpClient(tier.Destructive), "start_job", map[string]any{"operation": "purge-cards", "body": map[string]any{}}, true)
 	if !slices.Contains(read, "search_cards") || slices.Contains(read, "create_card") || slices.Contains(write, "push") ||
-		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 48 ||
-		!slices.Contains(read, "refresh") || slices.Contains(write, "set_autosync") || !slices.Contains(all, "set_autosync") ||
+		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 45 ||
+		!slices.Contains(read, "start_job") || slices.Contains(write, "set_autosync") || !slices.Contains(all, "set_autosync") ||
 		!slices.Contains(read, "get_config_defaults") || slices.Contains(write, "list_config_options") || slices.Contains(write, "run_settings_action") {
 		t.Fatalf("read %v\nwrite %v\nall %v", read, write, all)
 	}
@@ -239,19 +241,20 @@ func TestMCPOtherTools(t *testing.T) {
 	if got := tool(t, s, "list_changes", map[string]any{"instance_id": inst, "state": "ahead"}, false); !strings.Contains(got, `"rows"`) {
 		t.Fatalf("list_changes = %s", got)
 	}
-	if got := tool(t, s, "refresh", map[string]any{}, false); !strings.Contains(got, `"id"`) {
-		t.Fatalf("refresh = %s", got)
+	if got := tool(t, s, "start_job", map[string]any{"operation": "start-scan"}, false); !strings.Contains(got, `"id"`) {
+		t.Fatalf("start-scan = %s", got)
 	}
 
 	var job struct{ ID int64 }
-	_ = json.Unmarshal([]byte(tool(t, s, "start_import", map[string]any{"instance_id": e.importID}, false)), &job)
+	_ = json.Unmarshal([]byte(tool(t, s, "start_job", map[string]any{"operation": "start-import", "body": map[string]any{"instance_id": e.importID}}, false)), &job)
 	tool(t, s, "get_job", map[string]any{"id": job.ID}, false)
 	tool(t, s, "list_jobs", map[string]any{}, false)
 	tool(t, s, "cancel_job", map[string]any{"id": job.ID}, false)
 	tool(t, s, "retry_job", map[string]any{"id": job.ID}, false)
 	tool(t, s, "get_job_logs", map[string]any{"id": job.ID}, false)
-	if got := tool(t, s, "start_import", map[string]any{"instance_id": e.importID, "url": "https://chub.ai/characters/u/b"}, false); !strings.Contains(got, `"url":"https://chub.ai/characters/u/b"`) {
-		t.Fatalf("start_import with url = %s", got)
+	if got := tool(t, s, "start_job", map[string]any{"operation": "start-import", "body": map[string]any{"instance_id": e.importID,
+		"params": map[string]any{"url": "https://chub.ai/characters/u/b"}}}, false); !strings.Contains(got, `"url":"https://chub.ai/characters/u/b"`) {
+		t.Fatalf("start-import with url = %s", got)
 	}
 	if got := tool(t, s, "list_plugins", map[string]any{}, false); !strings.Contains(got, "fake") {
 		t.Fatalf("list_plugins = %s", got)
@@ -334,13 +337,12 @@ func TestMCPReconcile(t *testing.T) {
 	e.appCard(dir, "rCarrow", "Carrow", "Hello.")
 
 	read, write := e.mcpClient(tier.Read), e.mcpClient(tier.Write)
-	if _, err := read.CallTool(context.Background(), &sdk.CallToolParams{Name: "start_sync",
-		Arguments: map[string]any{"instance_id": inst}}); err == nil {
-		t.Fatal("a read token called start_sync")
+	start := map[string]any{"operation": "start-sync", "body": map[string]any{"instance_id": inst, "apply": "none"}}
+	if got := tool(t, read, "start_job", start, true); !strings.Contains(got, "start-sync") {
+		t.Fatalf("a read token's start_job = %s", got)
 	}
 	var j jobOut
-	start := map[string]any{"instance_id": inst, "apply": "none"}
-	if err := json.Unmarshal([]byte(tool(t, write, "start_sync", start, false)), &j); err != nil {
+	if err := json.Unmarshal([]byte(tool(t, write, "start_job", start, false)), &j); err != nil {
 		t.Fatal(err)
 	}
 	if last, r := e.watchJob(j.ID); last.Status != "succeeded" {
@@ -388,8 +390,8 @@ func TestMCPReconcile(t *testing.T) {
 func TestCheckSourcesTool(t *testing.T) {
 	e := newEnv(t)
 	s := e.mcpClient(tier.Write)
-	if got := tool(t, s, "check_sources", map[string]any{}, false); !strings.Contains(got, `"kind":"target.source-check"`) {
-		t.Fatalf("check_sources = %s", got)
+	if got := tool(t, s, "start_job", map[string]any{"operation": "start-source-check"}, false); !strings.Contains(got, `"kind":"target.source-check"`) {
+		t.Fatalf("start-source-check = %s", got)
 	}
 	var c entityOut
 	e.call("POST", "/cards", map[string]any{"data": map[string]any{"name": "Vyr"}}, 201, &c)
@@ -470,9 +472,9 @@ func TestMCPLibraries(t *testing.T) {
 		t.Fatalf("fork_card = %+v, %v", f, err)
 	}
 	var j jobOut
-	if err := json.Unmarshal([]byte(tool(t, s, "start_import", map[string]any{"instance_id": e.importID, "library": archive.ID}, false)), &j); err != nil ||
+	if err := json.Unmarshal([]byte(tool(t, s, "start_job", map[string]any{"operation": "start-import", "body": map[string]any{"instance_id": e.importID, "library": archive.ID}}, false)), &j); err != nil ||
 		!strings.Contains(string(j.Payload), fmt.Sprintf(`"library":%d`, archive.ID)) {
-		t.Fatalf("start_import = %+v, %v", j, err)
+		t.Fatalf("start-import = %+v, %v", j, err)
 	}
 	if got := tool(t, s, "create_card", map[string]any{"data": map[string]any{"name": "X"}, "library": 999}, true); !strings.HasPrefix(got, "422") {
 		t.Fatalf("missing library = %s", got)

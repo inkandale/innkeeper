@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"maps"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -197,25 +199,75 @@ func Spec() ([]byte, error) {
 // APIHandler serves the API without its /api prefix, for callers in the
 // core's own processes, such as the MCP tools.
 func (s *Server) APIHandler() *http.ServeMux {
+	apiMux, _ := s.apiHandler()
+	return apiMux
+}
+
+func (s *Server) apiHandler() (*http.ServeMux, huma.API) {
 	apiMux := http.NewServeMux()
 	api := humago.New(apiMux, config())
 	api.UseMiddleware(s.authenticate(api))
 	s.routes(api)
 	s.fileRoutes(apiMux)
-	return apiMux
+	return apiMux, api
+}
+
+// jobRoutes are api's routes that queue a job, for MCP's start_job.
+func jobRoutes(api huma.API) []mcp.JobRoute {
+	var out []mcp.JobRoute
+	for path, item := range api.OpenAPI().Paths {
+		op := item.Post
+		if op == nil || op.DefaultStatus != http.StatusAccepted || op.Deprecated || strings.Contains(path, "{") {
+			continue
+		}
+		desc := strings.TrimSpace(op.Summary + ". " + op.Description)
+		if fields := bodyFields(api, op); fields != "" {
+			desc += " Body: " + fields
+		}
+		out = append(out, mcp.JobRoute{Name: op.OperationID, Path: path, Description: desc, Tier: opTier(op)})
+	}
+	slices.SortFunc(out, func(a, b mcp.JobRoute) int { return strings.Compare(a.Name, b.Name) })
+	return out
+}
+
+// bodyFields lists op's JSON body fields with their docs, so an MCP client
+// can fill in a body without the OpenAPI spec.
+func bodyFields(api huma.API, op *huma.Operation) string {
+	if op.RequestBody == nil || op.RequestBody.Content["application/json"] == nil {
+		return ""
+	}
+	schema := op.RequestBody.Content["application/json"].Schema
+	if schema.Ref != "" {
+		schema = api.OpenAPI().Components.Schemas.SchemaFromRef(schema.Ref)
+	}
+	var fields []string
+	for _, name := range slices.Sorted(maps.Keys(schema.Properties)) {
+		if name == "$schema" {
+			continue
+		}
+		f := name
+		if slices.Contains(schema.Required, name) {
+			f += " (required)"
+		}
+		if d := schema.Properties[name].Description; d != "" {
+			f += ": " + d
+		}
+		fields = append(fields, f)
+	}
+	return strings.Join(fields, "; ")
 }
 
 // Handler returns the HTTP handler for every route: the API under /api,
 // OAuth and MCP at the root, and UI for everything else.
 func (s *Server) Handler() http.Handler {
 	s.loginSlot = make(chan struct{}, 1)
-	apiMux := s.APIHandler()
+	apiMux, api := s.apiHandler()
 	mux := http.NewServeMux()
 	mux.Handle("/api/", http.StripPrefix("/api", apiMux))
 	// Browsers arrive here from a login provider; it isn't part of the API.
 	mux.HandleFunc("GET /auth/{id}/callback", s.callback)
 	s.oauthRoutes(mux)
-	mux.Handle("/mcp", mcp.New(apiMux, s.Auth, s.Log, s.resourceMetadataURL()))
+	mux.Handle("/mcp", mcp.New(apiMux, jobRoutes(api), s.Auth, s.Log, s.resourceMetadataURL()))
 	if s.UI != nil {
 		// Not "GET /": that conflicts with the method-less "/api/".
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

@@ -128,13 +128,6 @@ func (in entityIn) path(suffix string) (string, error) {
 	return fmt.Sprintf("/%s/%d%s", k.Plural, in.ID, suffix), nil
 }
 
-type importIn struct {
-	InstanceID int64  `json:"instance_id" jsonschema:"An instance of an import plugin"`
-	Path       string `json:"path,omitempty" jsonschema:"A subfolder of the instance's folder; empty for all of it"`
-	URL        string `json:"url,omitempty" jsonschema:"A card's or lorebook's page URL, for a url-import instance"`
-	Library    int64  `json:"library,omitempty" jsonschema:"A library ID from list_libraries; default 1"`
-}
-
 type instanceIn struct {
 	Plugin  string            `json:"plugin"`
 	Name    string            `json:"name,omitempty" jsonschema:"Tells it apart from the plugin's other instances; leave empty for a plugin's first"`
@@ -190,26 +183,9 @@ type updateLibrarySettingsIn struct {
 	Settings map[string]any `json:"settings" jsonschema:"The settings to change, as get_library_settings names them, each a value or null to follow the default: score_instance, hide_below, duplicates (off, exact, near), duplicate_distance (0 to 8), duplicate_keep (best, oldest, newest), duplicate_decide (an ai instance that confirms near duplicates). Settings left out don't change."`
 }
 
-type syncIn struct {
-	InstanceID int64  `json:"instance_id,omitempty" jsonschema:"One target plugin instance to sync; omit to sync every app"`
-	Apply      string `json:"apply,omitempty" jsonschema:"obvious (default) binds exact matches and imports new items; none writes nothing"`
-}
-
-type evaluateIn struct {
-	InstanceID int64          `json:"instance_id" jsonschema:"An enrich plugin instance from list_instances, such as forge-ai"`
-	CardIDs    []int64        `json:"card_ids,omitempty" jsonschema:"The cards to evaluate. Send this or query"`
-	Query      map[string]any `json:"query,omitempty" jsonschema:"Evaluates every card a search_cards query matches, such as {\"filter\": ...} or {\"text\": \"knight\"}; set library in it for another library. Send this or card_ids"`
-	Rescore    bool           `json:"rescore,omitempty" jsonschema:"Also evaluate cards whose head revision already has a value from the instance; without it they count as skipped"`
-}
-
 type changesIn struct {
 	InstanceID int64  `json:"instance_id,omitempty" jsonschema:"Only this target app's changes; counts still cover every app"`
 	State      string `json:"state,omitempty" jsonschema:"Only this state: differs, both_changed, ahead, missing, error, new, or update. Ahead means the library has what the app doesn't: not pushed. Update means a followed site source changed"`
-}
-
-type sourceCheckIn struct {
-	kindIn
-	ID int64 `json:"id,omitempty" jsonschema:"One card or lorebook to check now; omit to start a job that checks every source"`
 }
 
 type autosyncIn struct {
@@ -434,45 +410,10 @@ var tools = []tool{
 		func(ctx context.Context, c caller, in idIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", fmt.Sprintf("/jobs/%d/retry", in.ID), nil)
 		}),
-	def("start_import", "Import cards and lorebooks from an import plugin instance, such as a folder, or one card from its page URL "+
-		"with url-import. To bring in an app's items, use start_sync.", tier.Write,
-		func(ctx context.Context, c caller, in importIn) (*sdk.CallToolResult, error) {
-			body := map[string]any{"instance_id": in.InstanceID, "library": in.Library}
-			params := map[string]any{}
-			if in.Path != "" {
-				params["path"] = in.Path
-			}
-			if in.URL != "" {
-				params["url"] = in.URL
-			}
-			if len(params) > 0 {
-				body["params"] = params
-			}
-			return c.call(ctx, "POST", "/imports", body)
-		}),
-	def("start_sync", "Sync every target app with the library, one at a time, or one app: binds exact matches, imports new items, "+
-		"and takes edits made only in an app. Pass apply \"none\" to preview. Starts a job; its finished get_job progress names "+
-		"each app's reconcile job, whose progress is that app's snapshot.", tier.Write,
-		func(ctx context.Context, c caller, in syncIn) (*sdk.CallToolResult, error) {
-			return c.call(ctx, "POST", "/syncs", in)
-		}),
-	def("start_evaluation", "Evaluate cards with an enrich plugin instance, storing scores such as quality on each card's head revision. "+
-		"Starts a job whose get_job progress counts cards done, failed, and skipped. search_cards shows the results "+
-		"with include enrichments, and filters and sorts by them.", tier.Write,
-		func(ctx context.Context, c caller, in evaluateIn) (*sdk.CallToolResult, error) {
-			return c.call(ctx, "POST", "/enrichments/runs", in)
-		}),
-	def("refresh", "Check every app for changes and count the app items nothing is bound to. Changes nothing.", tier.Read,
-		func(ctx context.Context, c caller, _ none) (*sdk.CallToolResult, error) {
-			return c.call(ctx, "POST", "/scans", nil)
-		}),
-	def("check_sources", "Check the sites cards and lorebooks came from, such as chub.ai, for updates. With id, checks that one "+
-		"now and returns its bindings; without, starts a job. An update shows in list_changes with state update; review it "+
+	def("check_sources", "Check the sites a card or lorebook came from, such as chub.ai, for updates now, and return its bindings. "+
+		"start_job's start-source-check checks every source. An update shows in list_changes with state update; review it "+
 		"with compare_item and resolve_item, passing the card's or lorebook's id (and kind).", tier.Write,
-		func(ctx context.Context, c caller, in sourceCheckIn) (*sdk.CallToolResult, error) {
-			if in.ID == 0 {
-				return c.call(ctx, "POST", "/source-checks", nil)
-			}
+		func(ctx context.Context, c caller, in entityIn) (*sdk.CallToolResult, error) {
 			k, err := in.kind()
 			if err != nil {
 				return nil, err

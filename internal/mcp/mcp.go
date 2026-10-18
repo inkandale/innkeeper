@@ -158,13 +158,21 @@ func Call(ctx context.Context, api http.Handler, t tier.Tier, name string, args 
 	return out, nil
 }
 
-// New returns the /mcp handler. api is the API's handler, which tools call.
-// Clients authenticate with an API token or an OAuth access token; each sees
-// the built-in and plugin tools its tier allows. resourceMetadata, if set, is
+// New returns the /mcp handler. api is the API's handler, which tools call,
+// and jobs are its routes that queue a job, for start_job. Clients
+// authenticate with an API token or an OAuth access token; each sees the
+// built-in and plugin tools its tier allows. resourceMetadata, if set, is
 // named in the 401 so clients can find the OAuth server.
-func New(api http.Handler, a *iauth.Auth, log *slog.Logger, resourceMetadata string) http.Handler {
+func New(api http.Handler, jobs []JobRoute, a *iauth.Auth, log *slog.Logger, resourceMetadata string) http.Handler {
 	// Stateless servers are built per request; the cache keeps that cheap.
 	cache := sdk.NewSchemaCache()
+	// Built once per tier, so the cache sees the same schemas each request.
+	startJobs := map[tier.Tier]tool{}
+	for _, t := range []tier.Tier{tier.Read, tier.Write, tier.Destructive} {
+		if tl, ok := startJob(jobs, t); ok {
+			startJobs[t] = tl
+		}
+	}
 	h := sdk.NewStreamableHTTPHandler(func(r *http.Request) *sdk.Server {
 		info := auth.TokenInfoFromContext(r.Context())
 		if info == nil || len(info.Scopes) != 1 {
@@ -176,8 +184,12 @@ func New(api http.Handler, a *iauth.Auth, log *slog.Logger, resourceMetadata str
 		}
 		token, _ := info.Extra["token"].(string)
 		s := sdk.NewServer(&sdk.Implementation{Name: "innkeeper", Version: "0.1.0"}, &sdk.ServerOptions{SchemaCache: cache})
-		taken := map[string]bool{}
-		for _, tl := range tools {
+		taken := map[string]bool{"start_job": true}
+		all := tools
+		if tl, ok := startJobs[t]; ok {
+			all = append(slices.Clip(tools), tl)
+		}
+		for _, tl := range all {
 			taken[tl.meta.Name] = true
 			if t.Allows(tl.tier) {
 				meta := tl.meta

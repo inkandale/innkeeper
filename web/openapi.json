@@ -3532,6 +3532,33 @@
         ],
         "type": "object"
       },
+      "PurgeInBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/PurgeInBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "confirm": {
+            "description": "How many cards the query matches, as digits. A count that has changed is refused with the new one.",
+            "type": "string"
+          },
+          "query": {
+            "$ref": "#/components/schemas/Query",
+            "description": "Selects the cards, as in POST /cards/search. Paging is ignored. It needs a filter or text."
+          }
+        },
+        "required": [
+          "query",
+          "confirm"
+        ],
+        "type": "object"
+      },
       "Push": {
         "additionalProperties": false,
         "properties": {
@@ -5891,6 +5918,48 @@
           }
         },
         "summary": "Create a card",
+        "tags": [
+          "Cards"
+        ]
+      }
+    },
+    "/cards/purge": {
+      "post": {
+        "description": "Queues a job that deletes the matching cards with their history, sources, and collection places. This can't be undone. A card bound to a target app is kept, and the job's progress lists it. Lorebooks stay. The next blob cleanup removes images nothing else uses.",
+        "operationId": "purge-cards",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurgeInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete the cards a query matches, for good",
         "tags": [
           "Cards"
         ]

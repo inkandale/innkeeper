@@ -149,18 +149,58 @@ func (s *Entities) deleteSome(ctx context.Context, library int64) (int, error) {
 			return err
 		}
 		n = len(ids)
-		// Entities and revisions point at each other, so they are checked at commit.
-		if _, err := tx.Exec(ctx, `SET LOCAL innkeeper.delete = 'on'; SET CONSTRAINTS ALL DEFERRED`); err != nil {
-			return err
-		}
-		for _, q := range append(slices.Clone(s.k.deleteLinks), s.k.deletes()...) {
-			if _, err := tx.Exec(ctx, q, ids); err != nil {
-				return err
-			}
-		}
-		return nil
+		return s.deleteIn(ctx, tx, ids)
 	})
 	return n, err
+}
+
+// deleteIn deletes the entities ids and what hangs off them in tx.
+func (s *Entities) deleteIn(ctx context.Context, tx pgx.Tx, ids []int64) error {
+	// Entities and revisions point at each other, so they are checked at commit.
+	if _, err := tx.Exec(ctx, `SET LOCAL innkeeper.delete = 'on'; SET CONSTRAINTS ALL DEFERRED`); err != nil {
+		return err
+	}
+	for _, q := range append(slices.Clone(s.k.deleteLinks), s.k.deletes()...) {
+		if _, err := tx.Exec(ctx, q, ids); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// DeleteCards deletes the cards ids with their revisions and what hangs off
+// them, except those bound to a target app, whose IDs it returns. Import
+// bindings only record an importer and don't keep a card. IDs that don't
+// exist are skipped. It returns how many it deleted.
+func (l *Library) DeleteCards(ctx context.Context, ids []int64) (int, []int64, error) {
+	var deleted int
+	var refused []int64
+	err := pgx.BeginFunc(ctx, l.pool, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `SELECT id, EXISTS (SELECT 1 FROM binding b WHERE b.card_id = c.id AND NOT b.imported)
+			FROM card c WHERE id = ANY($1) ORDER BY id FOR UPDATE`, ids)
+		if err != nil {
+			return err
+		}
+		var free []int64
+		var id int64
+		var bound bool
+		if _, err := pgx.ForEachRow(rows, []any{&id, &bound}, func() error {
+			if bound {
+				refused = append(refused, id)
+			} else {
+				free = append(free, id)
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		deleted = len(free)
+		if deleted == 0 {
+			return nil
+		}
+		return l.Cards.deleteIn(ctx, tx, free)
+	})
+	return deleted, refused, err
 }
 
 // deletes are the statements that delete the entities $1 of kind k, and

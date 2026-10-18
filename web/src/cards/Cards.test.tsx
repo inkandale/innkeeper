@@ -77,7 +77,7 @@ beforeEach(() => {
         posts.push({ path, body: await req.json() });
         return json({ id: 11, kind: "import", status: "queued" });
       }
-      if (path === "/api/bulk" || path === "/api/pushes" || path === "/api/enrichments/runs") {
+      if (path === "/api/bulk" || path === "/api/pushes" || path === "/api/enrichments/runs" || path === "/api/cards/purge") {
         posts.push({ path, body: await req.json() });
         return json({ id: 5, kind: "bulk", status: "waiting" });
       }
@@ -257,6 +257,27 @@ test("select all matching archives the search", async () => {
     expect(posts[0]).toEqual({ path: "/api/bulk", body: { query: { library: 1, filter: { and: [{ tag: "fantasy" }] } }, action: "archive", unpublish: false } }),
   );
   expect(posts[0]!.body).not.toHaveProperty("kind");
+});
+
+test("delete needs the count typed before it purges", async () => {
+  renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Brakka" }));
+  await user.keyboard("{Shift>}");
+  await user.click(screen.getByRole("checkbox", { name: "Select Dellin" }));
+  await user.keyboard("{/Shift}");
+  await user.click(screen.getByRole("button", { name: "Delete…" }));
+  expect(screen.getByText(/can't be undone/)).toBeInTheDocument();
+  const go = screen.getByRole("button", { name: "Delete 3 cards permanently" });
+  expect(go).toBeDisabled();
+  await user.type(screen.getByRole("textbox", { name: "Number of cards, to confirm" }), "2");
+  expect(go).toBeDisabled();
+  await user.clear(screen.getByRole("textbox", { name: "Number of cards, to confirm" }));
+  await user.type(screen.getByRole("textbox", { name: "Number of cards, to confirm" }), "3");
+  await user.click(go);
+  await waitFor(() =>
+    expect(posts).toEqual([{ path: "/api/cards/purge", body: { query: { library: 1, filter: { ids: [7, 8, 9] } }, confirm: "3" } }]),
+  );
 });
 
 test("archive can also delete the cards from linked apps", async () => {

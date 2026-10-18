@@ -426,3 +426,44 @@ func TestLibrarySettingOverrides(t *testing.T) {
 		t.Fatalf("delete a library with an override: %v", err)
 	}
 }
+
+func TestDeleteCardsRefusesCardsBoundToAnApp(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	plain, _ := newCard(t, lib, "plain", `{"name": "Plain"}`)
+	pushed, _ := newCard(t, lib, "pushed", `{"name": "Pushed"}`)
+	imported, _ := newCard(t, lib, "imported", `{"name": "Imported"}`)
+	lore, _, err := lib.Lorebooks.Create(ctx, DefaultLibrary, "lore", "upload", edit(`{"name": "Lore", "entries": []}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.LinkLorebook(ctx, plain, lore.ID); err != nil {
+		t.Fatal(err)
+	}
+	var inst int64
+	if err := lib.pool.QueryRow(ctx, `INSERT INTO plugin_instance (plugin, name) VALUES ('fake', 'fake') RETURNING id`).Scan(&inst); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lib.pool.Exec(ctx, `INSERT INTO binding (instance_id, card_id, remote_id, remote_state, accepted_data, accepted_hash, imported)
+		VALUES ($1, $2, 'r1', 'unchanged', '{}', 'h', false), ($1, $3, 'r2', 'unchanged', '{}', 'h', true)`, inst, pushed, imported); err != nil {
+		t.Fatal(err)
+	}
+	deleted, refused, err := lib.DeleteCards(ctx, []int64{plain, pushed, imported, 999999})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted != 2 || !slices.Equal(refused, []int64{pushed}) {
+		t.Fatalf("deleted %d, refused %v", deleted, refused)
+	}
+	for _, id := range []int64{plain, imported} {
+		if _, err := lib.Cards.Get(ctx, id); !errors.Is(err, ErrNotFound) {
+			t.Errorf("card %d: %v, want deleted", id, err)
+		}
+	}
+	if _, err := lib.Cards.Get(ctx, pushed); err != nil {
+		t.Errorf("pushed card: %v", err)
+	}
+	if _, err := lib.Lorebooks.Get(ctx, lore.ID); err != nil {
+		t.Errorf("a deleted card's lorebook: %v", err)
+	}
+}

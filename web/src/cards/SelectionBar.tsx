@@ -12,9 +12,18 @@ import { TargetPicker } from "../sync/TargetPicker";
 type Search = components["schemas"]["Query"];
 type Bulk = components["schemas"]["BulkInBody"];
 type Job = components["schemas"]["JobOut"];
-type Panel = "tag" | "collection" | "push" | "archive" | "export" | "evaluate" | "parent" | null;
+type Panel = "tag" | "collection" | "push" | "archive" | "export" | "evaluate" | "delete" | "parent" | null;
 
-const labels = { tag: "Tag", collection: "Collection", push: "Push", archive: "Archive", export: "Export", evaluate: "Evaluate", parent: "Set parent…" };
+const labels = {
+  tag: "Tag",
+  collection: "Collection",
+  push: "Push",
+  archive: "Archive",
+  export: "Export",
+  evaluate: "Evaluate",
+  delete: "Delete…",
+  parent: "Set parent…",
+};
 
 /** SelectionBar replaces the toolbar while cards are picked, and starts bulk jobs on them. */
 export function SelectionBar(props: {
@@ -38,8 +47,8 @@ export function SelectionBar(props: {
   // Lorebooks have no tags, collections, bulk export, or enrichments.
   const base =
     kind === "lorebook" ? (["push", "archive"] as const)
-    : enrichers.length ? (["tag", "collection", "push", "archive", "export", "evaluate"] as const)
-    : (["tag", "collection", "push", "archive", "export"] as const);
+    : enrichers.length ? (["tag", "collection", "push", "archive", "export", "evaluate", "delete"] as const)
+    : (["tag", "collection", "push", "archive", "export", "delete"] as const);
   // Set parent sends one call per picked entity, so it needs the IDs "Select all matching" doesn't have.
   const actions = all ? base : ([...base, "parent"] as const);
   // Card calls leave kind out, as they did before it existed.
@@ -52,6 +61,8 @@ export function SelectionBar(props: {
   const [enricher, setEnricher] = useState<number>();
   const [rescore, setRescore] = useState(false);
   const [unpublish, setUnpublish] = useState(false);
+  // The count typed to confirm a delete; the server refuses one that no longer matches.
+  const [typed, setTyped] = useState("");
   const toast = useToast();
   const count = ids.length;
   const n = all ? total : count;
@@ -213,6 +224,29 @@ export function SelectionBar(props: {
               </label>
               <button className="button primary" disabled={busy || !enricherId} onClick={evaluate}>
                 Evaluate {plural(n)}
+              </button>
+              {start.error && <span className="error">{start.error.message}</span>}
+            </>
+          )}
+          {panel === "delete" && (
+            <>
+              <span>
+                Deletes {plural(n)} and their history for good; this can't be undone. Cards pushed to an app are kept.
+              </span>
+              <input
+                className="input"
+                inputMode="numeric"
+                aria-label="Number of cards, to confirm"
+                placeholder={n === undefined ? "Number of cards" : `Type ${n}`}
+                value={typed}
+                onChange={(e) => setTyped(e.target.value.trim())}
+              />
+              <button
+                className="button danger"
+                disabled={busy || !typed || (n !== undefined && typed !== String(n))}
+                onClick={() => start.mutate(async () => must(await api.POST("/cards/purge", { body: { query, confirm: typed } })))}
+              >
+                Delete {plural(n)} permanently
               </button>
               {start.error && <span className="error">{start.error.message}</span>}
             </>

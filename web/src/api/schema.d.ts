@@ -361,6 +361,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cards/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete the cards a query matches, for good
+         * @description Queues a job that deletes the matching cards with their history, sources, and collection places. This can't be undone. A card bound to a target app is kept, and the job's progress lists it. Lorebooks stay. The next blob cleanup removes images nothing else uses.
+         */
+        post: operations["purge-cards"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cards/search": {
         parameters: {
             query?: never;
@@ -3767,6 +3787,18 @@ export interface components {
             name: string;
             plugin: string;
         };
+        PurgeInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/PurgeInBody.json
+             */
+            readonly $schema?: string;
+            /** @description How many cards the query matches, as digits. A count that has changed is refused with the new one. */
+            confirm: string;
+            /** @description Selects the cards, as in POST /cards/search. Paging is ignored. It needs a filter or text. */
+            query: components["schemas"]["Query"];
+        };
         Push: {
             /** Format: int64 */
             id: number;
@@ -4991,6 +5023,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntityOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "purge-cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PurgeInBody"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
                 };
             };
             /** @description Error */

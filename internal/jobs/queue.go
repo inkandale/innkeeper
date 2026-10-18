@@ -376,6 +376,8 @@ type ListOptions struct {
 	Kind   string
 	// Instance lists only that plugin instance's jobs; 0 lists every one's.
 	Instance int64
+	// Plugin lists only jobs run by an instance of that plugin.
+	Plugin string
 	// Parent lists that parent's children. Without it, List returns only
 	// top-level jobs.
 	Parent *int64
@@ -396,7 +398,8 @@ func (q *Queue) List(ctx context.Context, o ListOptions) ([]Job, error) {
 		WHERE ($1::text = '' OR status = $1) AND ($2::text = '' OR kind = $2)
 			AND parent_id IS NOT DISTINCT FROM $3::bigint AND ($4::bigint = 0 OR id < $4)
 			AND ($6::bigint = 0 OR instance_id = $6) AND ($7::jsonb IS NULL OR payload @> $7::jsonb)
-		ORDER BY id DESC LIMIT $5`, o.Status, o.Kind, o.Parent, o.Before, o.Limit, o.Instance, o.Payload)
+			AND ($8::text = '' OR instance_id IN (SELECT id FROM plugin_instance WHERE plugin = $8))
+		ORDER BY id DESC LIMIT $5`, o.Status, o.Kind, o.Parent, o.Before, o.Limit, o.Instance, o.Payload, o.Plugin)
 	if err != nil {
 		return nil, err
 	}

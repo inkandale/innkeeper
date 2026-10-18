@@ -33,6 +33,13 @@ func TestImportAndCancel(t *testing.T) {
 	if len(list) != 0 {
 		t.Fatalf("failed jobs = %+v", list)
 	}
+	for query, want := range map[string]int{"plugin=fake": 1, "plugin=vault": 0,
+		fmt.Sprintf("instance_id=%d", e.importID): 1, fmt.Sprintf("instance_id=%d", e.importID+100): 0} {
+		e.call("GET", "/jobs?"+query, nil, 200, &list)
+		if len(list) != want {
+			t.Fatalf("jobs?%s = %+v, want %d", query, list, want)
+		}
+	}
 
 	path := fmt.Sprintf("/jobs/%d", j.ID)
 	e.call("POST", path+"/cancel", nil, 200, &j)

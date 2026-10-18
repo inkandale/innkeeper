@@ -7114,6 +7114,10 @@ export interface operations {
             query?: {
                 status?: "queued" | "running" | "waiting" | "succeeded" | "failed";
                 kind?: string;
+                /** @description Only jobs run by an instance of this plugin */
+                plugin?: string;
+                /** @description Only jobs run by this instance */
+                instance_id?: number;
                 /** @description List this bulk job's children instead of top-level jobs */
                 parent?: number;
                 /** @description Only top-level jobs whose payload names this card, such as its pushes and action runs */

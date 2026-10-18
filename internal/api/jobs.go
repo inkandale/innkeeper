@@ -88,6 +88,8 @@ type jobsOut struct{ Body []jobOut }
 type listJobsIn struct {
 	Status     string `query:"status" enum:"queued,running,waiting,succeeded,failed"`
 	Kind       string `query:"kind"`
+	Plugin     string `query:"plugin" doc:"Only jobs run by an instance of this plugin"`
+	InstanceID int64  `query:"instance_id" doc:"Only jobs run by this instance"`
 	Parent     int64  `query:"parent" doc:"List this bulk job's children instead of top-level jobs"`
 	CardID     int64  `query:"card_id" doc:"Only top-level jobs whose payload names this card, such as its pushes and action runs"`
 	LorebookID int64  `query:"lorebook_id" doc:"Only top-level jobs whose payload names this lorebook, such as its action runs. Not with card_id"`
@@ -213,7 +215,7 @@ func (s *Server) jobRoutes(api huma.API) {
 		Summary: "List jobs", Description: "Newest first. A finished reconcile's progress is cut to its totals, an export's card_ids to a count of cards, " +
 			"and an action run's result is left out; get the job for the whole of each.", Tags: tags},
 		func(ctx context.Context, in *listJobsIn) (*jobsOut, error) {
-			o := jobs.ListOptions{Status: in.Status, Kind: in.Kind, Before: in.Before, Limit: in.Limit}
+			o := jobs.ListOptions{Status: in.Status, Kind: in.Kind, Plugin: in.Plugin, Instance: in.InstanceID, Before: in.Before, Limit: in.Limit}
 			if in.Parent != 0 {
 				o.Parent = &in.Parent
 			}

@@ -20,7 +20,7 @@ const exportJob = {
   attempts: 1, max_attempts: 3, run_after: now, created_at: now,
 };
 const failedImport = {
-  id: 8, kind: "import", status: "failed", payload: {}, progress: { done: 10, total: 100 }, attempts: 8, max_attempts: 8,
+  id: 8, kind: "import", instance_id: 3, status: "failed", payload: {}, progress: { done: 10, total: 100 }, attempts: 8, max_attempts: 8,
   run_after: now, created_at: now, finished_at: now, error: "worker stopped renewing its lease",
 };
 
@@ -51,7 +51,10 @@ beforeEach(() => {
       requests.push(`${req.method} ${u.pathname}${u.search}`);
       if (u.pathname === "/api/jobs" && u.searchParams.get("parent") === "5")
         return json([{ ...bulkJob, id: 7, kind: "card.tag", status: "succeeded", children: undefined }]);
-      if (u.pathname === "/api/jobs") return json([bulkJob, exportJob]);
+      if (u.pathname === "/api/jobs" && u.searchParams.get("plugin") === "chub-archive") return json([failedImport]);
+      if (u.pathname === "/api/jobs") return json([bulkJob, exportJob, failedImport]);
+      if (u.pathname === "/api/plugins") return json([{ name: "chub-archive" }, { name: "lumiverse" }]);
+      if (u.pathname === "/api/instances") return json([{ id: 3, plugin: "chub-archive", label: "Chub archive" }]);
       if (u.pathname === "/api/jobs/5/cancel") return json({ ...bulkJob, status: "failed" });
       if (u.pathname === "/api/jobs/5") return json(bulkJob);
       if (u.pathname === "/api/jobs/6") return json(exportJob);
@@ -89,6 +92,15 @@ test("the list shows jobs and filters by state", async () => {
   await user.selectOptions(screen.getByRole("combobox", { name: "State" }), "failed");
   expect(router.state.location.search).toBe("?status=failed");
   expect(requests).toContain("GET /api/jobs?status=failed");
+});
+
+test("the list filters by plugin and names each job's instance", async () => {
+  const router = renderAt("/settings/jobs?status=failed");
+  expect(await screen.findByText("Chub archive")).toBeInTheDocument();
+  const user = userEvent.setup();
+  await user.selectOptions(await screen.findByRole("combobox", { name: "Plugin" }), "chub-archive");
+  expect(router.state.location.search).toBe("?status=failed&plugin=chub-archive");
+  expect(requests).toContain("GET /api/jobs?status=failed&plugin=chub-archive");
 });
 
 test("a bulk job shows its children, follows events, and cancels", async () => {

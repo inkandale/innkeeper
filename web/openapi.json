@@ -9284,6 +9284,27 @@
             }
           },
           {
+            "description": "Only jobs run by an instance of this plugin",
+            "explode": false,
+            "in": "query",
+            "name": "plugin",
+            "schema": {
+              "description": "Only jobs run by an instance of this plugin",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only jobs run by this instance",
+            "explode": false,
+            "in": "query",
+            "name": "instance_id",
+            "schema": {
+              "description": "Only jobs run by this instance",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
             "description": "List this bulk job's children instead of top-level jobs",
             "explode": false,
             "in": "query",

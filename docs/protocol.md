@@ -844,7 +844,8 @@ a record with the same ID.
 An `enrich` plugin computes values about a card revision, such as an AI's
 quality score. The core stores every result, and the library grid, filters,
 and sort use the values of the instance the owner picks under **Scores
-from**. The core sends revisions only when the owner asks, never on save.
+from**, for every library or for one. The core sends revisions only when
+the owner asks, never on save.
 
 Declare each key in the manifest:
 

@@ -15,11 +15,18 @@ export const collectionsQuery = (library: number) =>
 
 export const meQuery = queryOptions({ queryKey: ["me"], queryFn: async () => must(await api.GET("/auth/me")) });
 
-/** enrichmentKeysQuery is the score instance and the keys its plugin declares; the grid, filters, and sort use them. */
-export const enrichmentKeysQuery = queryOptions({
-  queryKey: ["enrichment-keys"],
-  queryFn: async () => must(await api.GET("/enrichments/keys")),
-});
+/** enrichmentKeysQuery is a library's score instance and the keys its plugin declares; the grid, filters, and sort use them. */
+export const enrichmentKeysQuery = (library: number) =>
+  queryOptions({
+    queryKey: ["enrichment-keys", library],
+    queryFn: async () => must(await api.GET("/enrichments/keys", { params: { query: { library } } })),
+  });
+
+export const librarySettingsQuery = (id: number) =>
+  queryOptions({
+    queryKey: ["library-settings", id],
+    queryFn: async () => must(await api.GET("/libraries/{id}/settings", { params: { path: { id } } })),
+  });
 
 export const settingsQuery = queryOptions({ queryKey: ["settings"], queryFn: async () => must(await api.GET("/settings")) });
 

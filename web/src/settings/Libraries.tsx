@@ -4,6 +4,7 @@ import { api, must } from "../api/client";
 import { librariesQuery } from "../api/queries";
 import { JobLine } from "../cards/ImportForm";
 import { rememberedLibrary, rememberLibrary } from "../shell/library";
+import { ScoresFrom } from "./ScoresFrom";
 
 function nameFrom(e: FormEvent<HTMLFormElement>): string {
   e.preventDefault();
@@ -12,7 +13,10 @@ function nameFrom(e: FormEvent<HTMLFormElement>): string {
 
 const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 
-/** Libraries lists the libraries with their counts, and creates, renames, and deletes them. Library 1 can't be deleted. */
+/**
+ * Libraries lists the libraries with their counts and scorers, and creates, renames, and deletes them. Library 1
+ * can't be deleted.
+ */
 export function Libraries() {
   const qc = useQueryClient();
   const list = useQuery(librariesQuery);
@@ -113,6 +117,7 @@ export function Libraries() {
                 )}
               </div>
             )}
+            {renaming !== l.id && <ScoresFrom library={l.id} />}
             {deleting[l.id] && <JobLine label={`Deleting ${l.name}`} id={deleting[l.id]!} to={`/settings/jobs/${deleting[l.id]}`} />}
           </li>
         ))}

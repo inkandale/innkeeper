@@ -16,7 +16,7 @@ import (
 type settings struct {
 	Theme          string `json:"theme" doc:"The selected theme plugin, or empty for the default theme."`
 	OnboardingDone bool   `json:"onboarding_done" doc:"Whether the owner finished or skipped the setup wizard."`
-	ScoreInstance  *int64 `json:"score_instance" doc:"The enrich instance whose values the library grid, filters, and sort use, or null. When null and exactly one enrich instance exists, that one is used."`
+	ScoreInstance  *int64 `json:"score_instance" doc:"The enrich instance whose values the library grid, filters, and sort use, or null; a library may override it. When null and exactly one enrich instance exists, that one is used."`
 }
 
 type settingsOut struct{ Body settings }
@@ -49,13 +49,16 @@ func (s *Server) settings(ctx context.Context) (*settingsOut, error) {
 		return nil, s.fail(err)
 	}
 	out := &settingsOut{Body: settings{Theme: name, OnboardingDone: done == "true"}}
-	// A deleted instance, or one whose plugin no longer enriches, reads as unset.
-	score, _, err := s.scoreSetting(ctx)
+	score, err := s.Registry.Setting(ctx, scoreInstanceSetting)
 	if err != nil {
 		return nil, s.fail(err)
 	}
-	if score != nil {
-		out.Body.ScoreInstance = &score.ID
+	insts, err := s.enrichers(ctx)
+	if err != nil {
+		return nil, s.fail(err)
+	}
+	if i := scoreNamed(score, insts); i != nil {
+		out.Body.ScoreInstance = &i.ID
 	}
 	return out, nil
 }
@@ -84,7 +87,7 @@ func (s *Server) settingsRoutes(api huma.API) {
 				}
 			}
 			if in.Body.ScoreInstance.Sent {
-				if err := s.setScoreInstance(ctx, in.Body.ScoreInstance.ID); err != nil {
+				if err := s.setScoreInstance(ctx, nil, in.Body.ScoreInstance.ID); err != nil {
 					return nil, err
 				}
 			}

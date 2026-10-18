@@ -179,6 +179,15 @@ type settingsActionIn struct {
 	Action string `json:"action" jsonschema:"One of the plugin's settings_actions, from list_plugins"`
 }
 
+type librarySettingsIn struct {
+	Library int64 `json:"library" jsonschema:"A library ID from list_libraries"`
+}
+
+type updateLibrarySettingsIn struct {
+	Library       int64  `json:"library" jsonschema:"A library ID from list_libraries"`
+	ScoreInstance *int64 `json:"score_instance" jsonschema:"The enrich instance whose scores this library's search filters and sort use, or null to follow the default"`
+}
+
 type syncIn struct {
 	InstanceID int64  `json:"instance_id,omitempty" jsonschema:"One target plugin instance to sync; omit to sync every app"`
 	Apply      string `json:"apply,omitempty" jsonschema:"obvious (default) binds exact matches and imports new items; none writes nothing"`
@@ -511,6 +520,14 @@ var tools = []tool{
 		"get_job on each child shows its outcome. Pushing is a separate step.", tier.Write,
 		func(ctx context.Context, c caller, in resolveItemsIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", "/resolutions", in)
+		}),
+	def("get_library_settings", "Get a library's settings: each one's value in the library, the default, and whether the library overrides it.", tier.Read,
+		func(ctx context.Context, c caller, in librarySettingsIn) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "GET", fmt.Sprintf("/libraries/%d/settings", in.Library), nil)
+		}),
+	def("update_library_settings", "Override a library's settings, or set one back to null to follow the default.", tier.Write,
+		func(ctx context.Context, c caller, in updateLibrarySettingsIn) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "PATCH", fmt.Sprintf("/libraries/%d/settings", in.Library), map[string]any{"score_instance": in.ScoreInstance})
 		}),
 	def("list_plugins", "List the installed plugins, with each one's capabilities, config schema, secret names, and settings_actions. "+
 		"For a settings plugin, get_config_defaults, list_config_options, and run_settings_action help fill in its config.", tier.Read,

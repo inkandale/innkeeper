@@ -22,32 +22,37 @@ import (
 
 const scoreInstanceSetting = "score_instance"
 
-// scoreSetting is the score_instance setting while it names an enabled enrich
-// instance, or nil, and the enabled enrich instances.
-func (s *Server) scoreSetting(ctx context.Context) (*plugins.InstanceInfo, []plugins.InstanceInfo, error) {
-	v, err := s.Registry.Setting(ctx, scoreInstanceSetting)
-	if err != nil {
-		return nil, nil, err
-	}
+// enrichers is the enabled enrich instances.
+func (s *Server) enrichers(ctx context.Context) ([]plugins.InstanceInfo, error) {
 	insts, err := s.Registry.InstancesWith(ctx, "enrich")
-	if err != nil {
-		return nil, nil, err
-	}
-	insts = slices.DeleteFunc(insts, func(i plugins.InstanceInfo) bool { return i.Disabled })
-	id, err := strconv.ParseInt(v, 10, 64)
-	if i := slices.IndexFunc(insts, func(i plugins.InstanceInfo) bool { return i.ID == id }); err == nil && i >= 0 {
-		return &insts[i], insts, nil
-	}
-	return nil, insts, nil
+	return slices.DeleteFunc(insts, func(i plugins.InstanceInfo) bool { return i.Disabled }), err
 }
 
-// scoreInstance is the enrich instance whose values the grid, filters, and
-// sort use: the score_instance setting while it names an enrich instance,
-// else the only enrich instance, else nil.
-func (s *Server) scoreInstance(ctx context.Context) (*plugins.InstanceInfo, error) {
-	set, insts, err := s.scoreSetting(ctx)
-	if set != nil || err != nil {
-		return set, err
+// scoreNamed is the enrich instance a score_instance setting's value names,
+// or nil: a deleted instance, or one whose plugin no longer enriches, reads
+// as unset.
+func scoreNamed(v string, insts []plugins.InstanceInfo) *plugins.InstanceInfo {
+	id, err := strconv.ParseInt(v, 10, 64)
+	if i := slices.IndexFunc(insts, func(i plugins.InstanceInfo) bool { return i.ID == id }); err == nil && i >= 0 {
+		return &insts[i]
+	}
+	return nil
+}
+
+// scoreInstance is the enrich instance whose values library lib's grid,
+// filters, and sort use: the score_instance setting while it names an
+// enrich instance, else the only enrich instance, else nil.
+func (s *Server) scoreInstance(ctx context.Context, lib int64) (*plugins.InstanceInfo, error) {
+	v, _, err := s.librarySetting(ctx, lib, scoreInstanceSetting)
+	if err != nil {
+		return nil, err
+	}
+	insts, err := s.enrichers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if set := scoreNamed(v, insts); set != nil {
+		return set, nil
 	}
 	if len(insts) == 1 {
 		return &insts[0], nil
@@ -61,7 +66,7 @@ func (s *Server) withScores(ctx context.Context, q *library.Query) (map[string]p
 	if !q.UsesEnrichments() {
 		return nil, nil
 	}
-	inst, err := s.scoreInstance(ctx)
+	inst, err := s.scoreInstance(ctx, cmp.Or(q.Library, library.DefaultLibrary))
 	if inst == nil {
 		return nil, err
 	}
@@ -208,11 +213,15 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 
 	huma.Register(api, huma.Operation{OperationID: "list-enrichment-keys", Method: http.MethodGet, Path: "/enrichments/keys",
 		Summary: "List the score instance's enrichment keys", Tags: tags,
-		Description: "The keys the score instance's plugin declares: those that enrichment filters and sort can use. The grid key comes first, then the rest by label."},
-		func(ctx context.Context, _ *struct{}) (*enrichmentKeysOut, error) {
+		Description: "The keys the library's score instance's plugin declares: those that enrichment filters and sort can use. The grid key comes first, then the rest by label."},
+		func(ctx context.Context, in *libraryQuery) (*enrichmentKeysOut, error) {
+			lib, err := s.checkLibrary(ctx, in.Library)
+			if err != nil {
+				return nil, err
+			}
 			out := &enrichmentKeysOut{}
 			out.Body.Keys = []enrichmentKey{}
-			inst, err := s.scoreInstance(ctx)
+			inst, err := s.scoreInstance(ctx, lib)
 			if err != nil {
 				return nil, s.fail(err)
 			}
@@ -251,19 +260,23 @@ func (o optionalID) Schema(r huma.Registry) *huma.Schema {
 	return &huma.Schema{Type: "integer", Format: "int64", Nullable: true}
 }
 
-// setScoreInstance stores the score_instance setting: an enrich instance, or
-// none for nil.
-func (s *Server) setScoreInstance(ctx context.Context, id *int64) error {
-	if id == nil {
-		return s.Registry.SetSetting(ctx, scoreInstanceSetting, "")
+// setScoreInstance stores the score_instance setting, the core's for a nil
+// lib and library lib's override otherwise: an enrich instance, or none for nil.
+func (s *Server) setScoreInstance(ctx context.Context, lib *int64, id *int64) error {
+	v := ""
+	if id != nil {
+		// A broken instance may be picked, once it is an enrich instance; it may be fixed later.
+		info, err := s.Registry.GetInstance(ctx, *id)
+		if err != nil {
+			return s.fail(err)
+		}
+		if !s.Registry.HasCapability(info.Plugin, "enrich") {
+			return huma.Error400BadRequest(fmt.Sprintf("plugin %s can't enrich", info.Plugin))
+		}
+		v = strconv.FormatInt(*id, 10)
 	}
-	// A broken instance may be picked, once it is an enrich instance; it may be fixed later.
-	info, err := s.Registry.GetInstance(ctx, *id)
-	if err != nil {
-		return s.fail(err)
+	if lib == nil {
+		return s.fail(s.Registry.SetSetting(ctx, scoreInstanceSetting, v))
 	}
-	if !s.Registry.HasCapability(info.Plugin, "enrich") {
-		return huma.Error400BadRequest(fmt.Sprintf("plugin %s can't enrich", info.Plugin))
-	}
-	return s.Registry.SetSetting(ctx, scoreInstanceSetting, strconv.FormatInt(*id, 10))
+	return s.fail(s.Lib.SetLibrarySetting(ctx, *lib, scoreInstanceSetting, v))
 }

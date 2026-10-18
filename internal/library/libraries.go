@@ -2,6 +2,7 @@ package library
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -174,4 +175,27 @@ func (k *Kind) deletes() []string {
 		`DELETE FROM ` + k.RevTable + ` WHERE ` + k.FK + ` = ANY($1)`,
 		`DELETE FROM ` + k.Table + ` WHERE id = ANY($1)`,
 	}
+}
+
+// LibrarySetting is library id's override of a core setting, or "" when it
+// has none.
+func (l *Library) LibrarySetting(ctx context.Context, id int64, key string) (string, error) {
+	var v string
+	err := l.pool.QueryRow(ctx, `SELECT value FROM library_setting WHERE library_id = $1 AND key = $2`, id, key).Scan(&v)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return v, err
+}
+
+// SetLibrarySetting stores library id's override of a core setting; ""
+// removes it.
+func (l *Library) SetLibrarySetting(ctx context.Context, id int64, key, value string) error {
+	if value == "" {
+		_, err := l.pool.Exec(ctx, `DELETE FROM library_setting WHERE library_id = $1 AND key = $2`, id, key)
+		return err
+	}
+	_, err := l.pool.Exec(ctx, `INSERT INTO library_setting (library_id, key, value) VALUES ($1, $2, $3)
+		ON CONFLICT (library_id, key) DO UPDATE SET value = EXCLUDED.value`, id, key, value)
+	return mapErr(err)
 }

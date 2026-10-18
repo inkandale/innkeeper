@@ -34,7 +34,7 @@ export function SelectionBar(props: {
   const { all, total, query, library, ids, shown, onAll, onClear, onStarted, kind = "card" } = props;
   const plural = (n?: number) => (n === undefined ? `all matching ${kind}s` : `${n} ${kind}${n === 1 ? "" : "s"}`);
   const enrichers = useInstancesWith("enrich");
-  const keys = useQuery({ ...enrichmentKeysQuery, enabled: kind === "card" });
+  const keys = useQuery({ ...enrichmentKeysQuery(library), enabled: kind === "card" });
   // Lorebooks have no tags, collections, bulk export, or enrichments.
   const base =
     kind === "lorebook" ? (["push", "archive"] as const)

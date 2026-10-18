@@ -33,7 +33,7 @@ var Types = []Type{Assets, Config}
 // tables lists each type's tables in load order. Jobs, tokens, sessions and
 // OAuth grants are never backed up.
 var tables = map[Type][]string{
-	Assets: {"blob", "library", "card", "card_revision", "lorebook", "lorebook_revision", "card_lorebook",
+	Assets: {"blob", "library", "library_setting", "card", "card_revision", "lorebook", "lorebook_revision", "card_lorebook",
 		"collection", "collection_card", "card_source", "lorebook_source", "enrichment"},
 	Config: {"plugin_instance", "setting", "binding", "push"},
 }

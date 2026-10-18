@@ -905,7 +905,7 @@ export interface paths {
         };
         /**
          * List the score instance's enrichment keys
-         * @description The keys the score instance's plugin declares: those that enrichment filters and sort can use. The grid key comes first, then the rest by label.
+         * @description The keys the library's score instance's plugin declares: those that enrichment filters and sort can use. The grid key comes first, then the rest by label.
          */
         get: operations["list-enrichment-keys"];
         put?: never;
@@ -1585,6 +1585,30 @@ export interface paths {
          * @description A taken name returns 409.
          */
         patch: operations["rename-library"];
+        trace?: never;
+    };
+    "/libraries/{id}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a library's settings
+         * @description Each setting's value in this library, the core's default, and whether the library overrides it.
+         */
+        get: operations["get-library-settings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change a library's settings
+         * @description Overrides a setting for this library; null follows the default again. Settings left out don't change.
+         */
+        patch: operations["update-library-settings"];
         trace?: never;
     };
     "/lorebooks": {
@@ -3476,6 +3500,29 @@ export interface components {
             readonly $schema?: string;
             name: string;
         };
+        LibrarySettingOut: {
+            /**
+             * Format: int64
+             * @description The core's value, which a library without an override follows.
+             */
+            default: number | null;
+            overridden: boolean;
+            /**
+             * Format: int64
+             * @description What the library uses: its override, or the default.
+             */
+            value: number | null;
+        };
+        LibrarySettings: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/LibrarySettings.json
+             */
+            readonly $schema?: string;
+            /** @description The enrich instance whose values this library's grid, filters, and sort use. */
+            score_instance: components["schemas"]["LibrarySettingOut"];
+        };
         LibrarySummary: {
             /**
              * Format: uri
@@ -3576,6 +3623,19 @@ export interface components {
              * @description Default 50.
              */
             size?: number;
+        };
+        PatchLibrarySettingsInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/PatchLibrarySettingsInBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description An enrich instance's ID, or null to follow the default.
+             */
+            score_instance?: number | null;
         };
         PatchSettingsInBody: {
             /**
@@ -4015,7 +4075,7 @@ export interface components {
             onboarding_done: boolean;
             /**
              * Format: int64
-             * @description The enrich instance whose values the library grid, filters, and sort use, or null. When null and exactly one enrich instance exists, that one is used.
+             * @description The enrich instance whose values the library grid, filters, and sort use, or null; a library may override it. When null and exactly one enrich instance exists, that one is used.
              */
             score_instance: number | null;
             /** @description The selected theme plugin, or empty for the default theme. */
@@ -6066,7 +6126,10 @@ export interface operations {
     };
     "list-enrichment-keys": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description The library; default 1 */
+                library?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -7461,6 +7524,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibrarySummary"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-library-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibrarySettings"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "update-library-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchLibrarySettingsInBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibrarySettings"];
                 };
             };
             /** @description Error */

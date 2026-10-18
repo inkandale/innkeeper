@@ -2809,6 +2809,58 @@
         ],
         "type": "object"
       },
+      "LibrarySettingOut": {
+        "additionalProperties": false,
+        "properties": {
+          "default": {
+            "description": "The core's value, which a library without an override follows.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "overridden": {
+            "type": "boolean"
+          },
+          "value": {
+            "description": "What the library uses: its override, or the default.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "value",
+          "default",
+          "overridden"
+        ],
+        "type": "object"
+      },
+      "LibrarySettings": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/LibrarySettings.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "score_instance": {
+            "$ref": "#/components/schemas/LibrarySettingOut",
+            "description": "The enrich instance whose values this library's grid, filters, and sort use."
+          }
+        },
+        "required": [
+          "score_instance"
+        ],
+        "type": "object"
+      },
       "LibrarySummary": {
         "additionalProperties": false,
         "properties": {
@@ -3060,6 +3112,29 @@
             "maximum": 500,
             "minimum": 0,
             "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "PatchLibrarySettingsInBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/PatchLibrarySettingsInBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "score_instance": {
+            "description": "An enrich instance's ID, or null to follow the default.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "type": "object"
@@ -4224,7 +4299,7 @@
             "type": "boolean"
           },
           "score_instance": {
-            "description": "The enrich instance whose values the library grid, filters, and sort use, or null. When null and exactly one enrich instance exists, that one is used.",
+            "description": "The enrich instance whose values the library grid, filters, and sort use, or null; a library may override it. When null and exactly one enrich instance exists, that one is used.",
             "format": "int64",
             "type": [
               "integer",
@@ -7574,8 +7649,21 @@
     },
     "/enrichments/keys": {
       "get": {
-        "description": "The keys the score instance's plugin declares: those that enrichment filters and sort can use. The grid key comes first, then the rest by label.",
+        "description": "The keys the library's score instance's plugin declares: those that enrichment filters and sort can use. The grid key comes first, then the rest by label.",
         "operationId": "list-enrichment-keys",
+        "parameters": [
+          {
+            "description": "The library; default 1",
+            "explode": false,
+            "in": "query",
+            "name": "library",
+            "schema": {
+              "description": "The library; default 1",
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -9842,6 +9930,100 @@
           }
         },
         "summary": "Rename a library",
+        "tags": [
+          "Libraries"
+        ]
+      }
+    },
+    "/libraries/{id}/settings": {
+      "get": {
+        "description": "Each setting's value in this library, the core's default, and whether the library overrides it.",
+        "operationId": "get-library-settings",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibrarySettings"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a library's settings",
+        "tags": [
+          "Libraries"
+        ]
+      },
+      "patch": {
+        "description": "Overrides a setting for this library; null follows the default again. Settings left out don't change.",
+        "operationId": "update-library-settings",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchLibrarySettingsInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibrarySettings"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Change a library's settings",
         "tags": [
           "Libraries"
         ]

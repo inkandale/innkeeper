@@ -59,7 +59,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const Noun = kind === "card" ? "Cards" : "Lorebooks";
   const [params, setParams] = useSearchParams();
   const asked = parseQuery(params, useLibrary());
-  const keys = useQuery({ ...enrichmentKeysQuery, enabled: kind === "card" });
+  const keys = useQuery({ ...enrichmentKeysQuery(asked.library), enabled: kind === "card" });
   const scored = keys.data?.instance_id != null;
   // A link from when there was a score instance would otherwise be refused.
   const q = keys.data && !scored ? withoutScores(asked) : asked;

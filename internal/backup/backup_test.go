@@ -34,8 +34,8 @@ func setup(t *testing.T) (*pgxpool.Pool, *library.Library, Options) {
 	return pool, library.New(pool, store), Options{Dir: t.TempDir(), DatabaseURL: u.String(), Store: store}
 }
 
-// seed adds a card with an avatar, a lorebook, a collection, and a
-// blob no revision uses. It returns the avatar's and the unused blob's hashes.
+// seed adds a card with an avatar, a lorebook, a collection, a library
+// setting, and a blob no revision uses. It returns the avatar's and the unused blob's hashes.
 func seed(t *testing.T, lib *library.Library) (avatar, unused string) {
 	t.Helper()
 	ctx := context.Background()
@@ -54,6 +54,9 @@ func seed(t *testing.T, lib *library.Library) (avatar, unused string) {
 	}
 	b, _, err := lib.Lorebooks.Create(ctx, library.DefaultLibrary, "lore", "upload", library.Edit{Data: json.RawMessage(`{"name": "Lore", "entries": []}`), Source: "ui"})
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.SetLibrarySetting(ctx, library.DefaultLibrary, "score_instance", "7"); err != nil {
 		t.Fatal(err)
 	}
 	if err := lib.LinkLorebook(ctx, c.ID, b.ID); err != nil {
@@ -118,7 +121,7 @@ func TestWriteAssets(t *testing.T) {
 		t.Fatalf("blobs = %v, want only the avatar", m.Blobs)
 	}
 	want := map[string]int64{
-		"blob": 1, "library": 1, "card": 1, "card_revision": 1, "lorebook": 1, "lorebook_revision": 1, "card_lorebook": 1,
+		"blob": 1, "library": 1, "library_setting": 1, "card": 1, "card_revision": 1, "lorebook": 1, "lorebook_revision": 1, "card_lorebook": 1,
 		"collection": 1, "collection_card": 1, "card_source": 0, "lorebook_source": 0, "enrichment": 0,
 	}
 	if len(m.Tables) != len(want) {

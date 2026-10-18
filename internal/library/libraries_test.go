@@ -387,3 +387,42 @@ func TestLibraryNamesAreTrimmed(t *testing.T) {
 		t.Fatal("database took an untrimmed name")
 	}
 }
+
+func TestLibrarySettingOverrides(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	archive, err := lib.CreateLibrary(ctx, "Archive")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, err := lib.LibrarySetting(ctx, archive.ID, "score_instance"); err != nil || v != "" {
+		t.Fatalf("unset = %q, %v", v, err)
+	}
+	if err := lib.SetLibrarySetting(ctx, archive.ID, "score_instance", "7"); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.SetLibrarySetting(ctx, archive.ID, "score_instance", "8"); err != nil {
+		t.Fatal(err)
+	}
+	if v, err := lib.LibrarySetting(ctx, archive.ID, "score_instance"); err != nil || v != "8" {
+		t.Fatalf("set = %q, %v", v, err)
+	}
+	if v, _ := lib.LibrarySetting(ctx, DefaultLibrary, "score_instance"); v != "" {
+		t.Fatalf("another library's override leaked: %q", v)
+	}
+	if err := lib.SetLibrarySetting(ctx, archive.ID+100, "score_instance", "7"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing library: %v", err)
+	}
+	if err := lib.SetLibrarySetting(ctx, archive.ID, "score_instance", ""); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := lib.LibrarySetting(ctx, archive.ID, "score_instance"); v != "" {
+		t.Fatalf("cleared = %q", v)
+	}
+	if err := lib.SetLibrarySetting(ctx, archive.ID, "score_instance", "9"); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.DeleteLibrary(ctx, archive.ID, func(int) {}); err != nil {
+		t.Fatalf("delete a library with an override: %v", err)
+	}
+}

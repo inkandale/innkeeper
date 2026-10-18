@@ -43,6 +43,7 @@ const (
 	NotifyEmitLorebook = "emit.lorebook"
 	NotifyProgress     = "progress"
 	NotifyCheckpoint   = "checkpoint"
+	NotifyLog          = "log"
 )
 
 // ImportRunParams starts an import. Checkpoint is null on the first run, or
@@ -82,6 +83,15 @@ type Progress struct {
 	Done    int64  `json:"done"`
 	Total   int64  `json:"total,omitempty"`
 	Message string `json:"message,omitempty"`
+}
+
+// Log adds a line to the log of the job a run belongs to, where the owner
+// reads it on the job's page. Any run may send it. Level is info, warn, or
+// error; empty means info.
+type Log struct {
+	Run     string `json:"run"`
+	Level   string `json:"level,omitempty"`
+	Message string `json:"message"`
 }
 
 // Checkpoint is where to resume if the run is interrupted. The core saves it

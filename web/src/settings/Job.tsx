@@ -18,6 +18,32 @@ function Counts({ label, counts }: { label: string; counts?: Record<string, numb
   );
 }
 
+/** Logs is what the worker and the job's plugin logged, refreshed while the job runs. */
+function Logs({ job }: { job: JobT }) {
+  const running = !finished(job);
+  const logs = useQuery({
+    queryKey: ["job-logs", job.id],
+    queryFn: async () =>
+      must(await api.GET("/jobs/{id}/logs", { params: { path: { id: job.id }, query: { limit: 1000 } } })),
+    // ponytail: refetches the whole log while the job runs; fetch after the last line if 1000 lines gets slow.
+    refetchInterval: running ? 2000 : false,
+  });
+  if (logs.isError) return <p className="error">{logs.error.message}</p>;
+  if (!logs.data?.length) return null;
+  return (
+    <section aria-label="Log">
+      <h2>Log</h2>
+      <ol className="job-log">
+        {logs.data.map((l) => (
+          <li key={l.id} className={l.level}>
+            <time dateTime={l.at}>{new Date(l.at).toLocaleTimeString()}</time> {l.message}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 export function Job() {
   const id = Number(useParams().id);
   const qc = useQueryClient();
@@ -114,6 +140,7 @@ export function Job() {
           </table>
         </>
       )}
+      <Logs job={j} />
     </section>
   );
 }

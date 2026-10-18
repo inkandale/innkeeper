@@ -227,7 +227,7 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 			mu.Unlock()
 		}
 		return nil, nil
-	})
+	}, r.Log)
 	defer remove()
 
 	var lastErr error

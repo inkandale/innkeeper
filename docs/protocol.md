@@ -165,6 +165,25 @@ optional; the sender ignores it. Ignore a `cancel` for an `id` you aren't
 answering, since your reply may already be on its way. Plugins built on the
 Go `protocol.Conn` get this for free: the handler's context is cancelled.
 
+## Logging a run
+
+During any call that carries a `run` token, such as `import.run`,
+`action.run`, or `enrich.run`, send a `log` notification to add a line to the
+log of the job the run belongs to. The owner reads it on the job's page.
+
+| Param | Meaning |
+|---|---|
+| `run` | The run's token |
+| `level` | `info`, `warn`, or `error`. Optional; the default is `info` |
+| `message` | One line, up to 4 KiB; longer lines are cut |
+
+```json
+{"jsonrpc": "2.0", "method": "log", "params": {"run": "Q5MBGXK2YHRWZ7PJ3NCV4D6TLA", "level": "warn", "message": "chub:812 version 3 skipped: no date"}}
+```
+
+A job keeps its last 1,000 lines. Write to stderr for anything that isn't
+about one run: the core logs it per plugin process, not per job.
+
 ## Capability methods
 
 Each capability's methods are added here as the core implements them. The

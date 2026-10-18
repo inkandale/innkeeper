@@ -64,6 +64,11 @@ func TestReapRequeuesExpiredLease(t *testing.T) {
 	if got, _ := q.Get(ctx, j.ID); got.Status != StatusFailed {
 		t.Fatalf("job out of attempts = %+v, want failed", got)
 	}
+	lines, err := q.Logs(ctx, j.ID, 0, 10)
+	if err != nil || len(lines) != 2 || lines[0].Level != "warn" || lines[1].Level != "error" ||
+		lines[1].Message != "The worker stopped renewing its lease after attempt 2 of 1; out of attempts" {
+		t.Fatalf("log = %+v, %v", lines, err)
+	}
 }
 
 // A checkpoint saved at the end of a transaction that ran longer than the

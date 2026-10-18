@@ -97,6 +97,14 @@ type listJobsIn struct {
 	Limit      int    `query:"limit" default:"50" minimum:"1" maximum:"200"`
 }
 
+type jobLogsIn struct {
+	ID    int64 `path:"id"`
+	After int64 `query:"after" doc:"Only lines after this line ID, to fetch what's new"`
+	Limit int   `query:"limit" default:"500" minimum:"1" maximum:"1000"`
+}
+
+type jobLogsOut struct{ Body []jobs.LogLine }
+
 type importIn struct {
 	Body struct {
 		InstanceID int64           `json:"instance_id"`
@@ -284,6 +292,20 @@ func (s *Server) jobRoutes(api huma.API) {
 				return nil, err
 			}
 			return &jobResp{Body: j}, nil
+		})
+
+	huma.Register(api, huma.Operation{OperationID: "list-job-logs", Method: http.MethodGet, Path: "/jobs/{id}/logs",
+		Summary: "List a job's log", Description: "Oldest first: what the worker and the job's plugin logged while it ran. " +
+			"A job keeps its last 1000 lines.", Tags: tags},
+		func(ctx context.Context, in *jobLogsIn) (*jobLogsOut, error) {
+			if _, err := s.Queue.Get(ctx, in.ID); err != nil {
+				return nil, s.fail(err)
+			}
+			lines, err := s.Queue.Logs(ctx, in.ID, in.After, in.Limit)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			return &jobLogsOut{Body: lines}, nil
 		})
 
 	huma.Register(api, huma.Operation{OperationID: "watch-job", Method: http.MethodGet, Path: "/jobs/{id}/events",

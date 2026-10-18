@@ -1499,6 +1499,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/jobs/{id}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a job's log
+         * @description Oldest first: what the worker and the job's plugin logged while it ran. A job keeps its last 1000 lines.
+         */
+        get: operations["list-job-logs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/jobs/{id}/retry": {
         parameters: {
             query?: never;
@@ -3472,6 +3492,15 @@ export interface components {
             /** Format: int64 */
             lorebooks: number;
             name: string;
+        };
+        LogLine: {
+            /** Format: date-time */
+            at: string;
+            /** Format: int64 */
+            id: number;
+            /** @enum {string} */
+            level: "info" | "warn" | "error";
+            message: string;
         };
         MCPCallResult: {
             /**
@@ -7234,6 +7263,41 @@ export interface operations {
                 };
                 content: {
                     "text/event-stream": unknown;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-job-logs": {
+        parameters: {
+            query?: {
+                /** @description Only lines after this line ID, to fetch what's new */
+                after?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogLine"][] | null;
                 };
             };
             /** @description Error */

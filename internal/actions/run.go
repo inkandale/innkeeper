@@ -76,7 +76,7 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 	// A failed save is left to the lease renewal, which saves the progress again or stops the run.
 	s.saver = &progressSaver{every: progressEvery, save: func() { _ = r.SaveProgress(ctx) }}
 	var remove func()
-	params.Run, remove = rn.Runs.Add(inst.ID, s.serve)
+	params.Run, remove = rn.Runs.Add(inst.ID, s.serve, r.Log)
 	defer remove()
 
 	var res protocol.ActionRunResult

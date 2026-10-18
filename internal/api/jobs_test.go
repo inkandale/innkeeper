@@ -54,6 +54,19 @@ func TestImportAndCancel(t *testing.T) {
 	}
 	e.call("POST", path+"/retry", nil, 409, nil)
 	e.call("POST", "/jobs/999/retry", nil, 404, nil)
+	if err := e.s.Queue.AppendLog(context.Background(), j.ID, "warn", "row 7 skipped"); err != nil {
+		t.Fatal(err)
+	}
+	var lines []jobs.LogLine
+	e.call("GET", path+"/logs", nil, 200, &lines)
+	if len(lines) != 1 || lines[0].Message != "row 7 skipped" {
+		t.Fatalf("logs = %+v", lines)
+	}
+	e.call("GET", fmt.Sprintf("%s/logs?after=%d", path, lines[0].ID), nil, 200, &lines)
+	if len(lines) != 0 {
+		t.Fatalf("logs after the last = %+v", lines)
+	}
+	e.call("GET", "/jobs/999/logs", nil, 404, nil)
 	e.call("GET", "/jobs/999", nil, 404, nil)
 	e.call("GET", "/jobs/999/events", nil, 404, nil)
 

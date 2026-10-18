@@ -81,7 +81,7 @@ func (b *Broker) call(ctx context.Context, method string, params json.RawMessage
 	}
 	delete(fwd, "instance")
 	if head.Run != "" {
-		token, remove := b.Runs.Add(provider.ID, relay(protocol.Peer(ctx), head.Run))
+		token, remove := b.Runs.Add(provider.ID, relay(protocol.Peer(ctx), head.Run), b.Runs.LogFor(head.Run))
 		defer remove()
 		fwd["run"], _ = json.Marshal(token)
 	}

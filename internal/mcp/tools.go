@@ -404,6 +404,10 @@ var tools = []tool{
 		func(ctx context.Context, c caller, in idIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "GET", fmt.Sprintf("/jobs/%d", in.ID), nil)
 		}),
+	def("get_job_logs", "Get a job's log, oldest first: what the worker and the job's plugin logged while it ran.", tier.Read,
+		func(ctx context.Context, c caller, in idIn) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "GET", fmt.Sprintf("/jobs/%d/logs", in.ID), nil)
+		}),
 	def("cancel_job", "Cancel a job that hasn't finished.", tier.Write,
 		func(ctx context.Context, c caller, in idIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", fmt.Sprintf("/jobs/%d/cancel", in.ID), nil)

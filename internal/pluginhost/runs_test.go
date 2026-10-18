@@ -18,8 +18,9 @@ func TestRunsRoutesByToken(t *testing.T) {
 			return name, nil
 		}
 	}
-	first, removeFirst := runs.Add("1", handler("first"))
-	second, removeSecond := runs.Add("2", handler("second"))
+	var logged []string
+	first, removeFirst := runs.Add("1", handler("first"), func(level, message string) { logged = append(logged, level+" "+message) })
+	second, removeSecond := runs.Add("2", handler("second"), func(string, string) {})
 	defer removeSecond()
 	if first == second || len(first) < 20 {
 		t.Fatalf("tokens %q and %q aren't unique and unguessable", first, second)
@@ -37,6 +38,14 @@ func TestRunsRoutesByToken(t *testing.T) {
 	}
 	if got["first"] != "progress" || got["second"] != "library.call" {
 		t.Fatalf("handlers saw %v", got)
+	}
+	params, _ := json.Marshal(protocol.Log{Run: first, Level: "warn", Message: "row 7 skipped"})
+	if _, err := runs.Handle(fromInstance(context.Background(), "1"), protocol.NotifyLog, params); err != nil {
+		t.Fatal(err)
+	}
+	runs.LogFor(first)("info", "from a service call")
+	if len(logged) != 2 || logged[0] != "warn row 7 skipped" || logged[1] != "info from a service call" || got["first"] != "progress" {
+		t.Fatalf("logged %v; handlers saw %v", logged, got)
 	}
 
 	refused := func(name string, res any, err error) {

@@ -120,7 +120,7 @@ func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
 	// ponytail: items re-sent after a resume count as skipped a second time.
 	_ = json.Unmarshal(r.Progress, &s.p)
 
-	token, remove := im.Runs.Add(inst.ID, s.serve)
+	token, remove := im.Runs.Add(inst.ID, s.serve, r.Log)
 	defer remove()
 
 	// ponytail: a run abandoned on shutdown or a lost lease keeps going in
@@ -283,14 +283,16 @@ func (s *session) applyAutosync() {
 	s.publish()
 }
 
-// warn records problems with what item sent.
+// warn records problems with what item sent. Progress keeps the first few;
+// the job log keeps them all.
 func (s *session) warn(item string, problems []string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	for _, p := range problems {
+		s.mu.Lock()
 		if len(s.p.Warnings) < maxErrors {
 			s.p.Warnings = append(s.p.Warnings, item+": "+p)
 		}
+		s.mu.Unlock()
+		s.run.Log("warn", item+": "+p)
 	}
 }
 
@@ -299,6 +301,9 @@ func (s *session) count(item string, got library.Imported, err error) {
 	if err != nil && !errors.As(err, &bad) {
 		s.fail(retryable(fmt.Errorf("store %q: %w", item, err)))
 		return
+	}
+	if bad != nil {
+		s.run.Log("error", fmt.Sprintf("%s: %v", item, bad.err))
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

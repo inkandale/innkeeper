@@ -88,7 +88,7 @@ func TestMCPToolsByTier(t *testing.T) {
 	}
 	read, write, all := names(tier.Read), names(tier.Write), names(tier.Destructive)
 	if !slices.Contains(read, "search_cards") || slices.Contains(read, "create_card") || slices.Contains(write, "push") ||
-		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 43 ||
+		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 44 ||
 		!slices.Contains(read, "refresh") || slices.Contains(write, "set_autosync") || !slices.Contains(all, "set_autosync") ||
 		!slices.Contains(read, "get_config_defaults") || slices.Contains(write, "list_config_options") || slices.Contains(write, "run_settings_action") {
 		t.Fatalf("read %v\nwrite %v\nall %v", read, write, all)
@@ -249,6 +249,7 @@ func TestMCPOtherTools(t *testing.T) {
 	tool(t, s, "list_jobs", map[string]any{}, false)
 	tool(t, s, "cancel_job", map[string]any{"id": job.ID}, false)
 	tool(t, s, "retry_job", map[string]any{"id": job.ID}, false)
+	tool(t, s, "get_job_logs", map[string]any{"id": job.ID}, false)
 	if got := tool(t, s, "start_import", map[string]any{"instance_id": e.importID, "url": "https://chub.ai/characters/u/b"}, false); !strings.Contains(got, `"url":"https://chub.ai/characters/u/b"`) {
 		t.Fatalf("start_import with url = %s", got)
 	}

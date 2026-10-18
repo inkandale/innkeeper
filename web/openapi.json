@@ -2850,6 +2850,37 @@
         ],
         "type": "object"
       },
+      "LogLine": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "level": {
+            "enum": [
+              "info",
+              "warn",
+              "error"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "level",
+          "message"
+        ],
+        "type": "object"
+      },
       "MCPCallResult": {
         "additionalProperties": false,
         "properties": {
@@ -9514,6 +9545,78 @@
           }
         },
         "summary": "Stream a job's progress",
+        "tags": [
+          "Jobs"
+        ]
+      }
+    },
+    "/jobs/{id}/logs": {
+      "get": {
+        "description": "Oldest first: what the worker and the job's plugin logged while it ran. A job keeps its last 1000 lines.",
+        "operationId": "list-job-logs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Only lines after this line ID, to fetch what's new",
+            "explode": false,
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "description": "Only lines after this line ID, to fetch what's new",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 500,
+              "format": "int64",
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LogLine"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List a job's log",
         "tags": [
           "Jobs"
         ]

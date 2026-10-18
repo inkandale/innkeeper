@@ -55,9 +55,21 @@ type Run struct {
 	q      *Queue
 	worker string
 	lease  time.Duration
+	log    *slog.Logger
 
 	mu       sync.Mutex
 	progress json.RawMessage
+}
+
+// Log adds a line to the job's log, where the owner reads it on the job's
+// page. Level is info, warn, or error. A line that can't be saved goes to
+// the worker's log instead, since logging never fails a job.
+func (r *Run) Log(level, message string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := r.q.AppendLog(ctx, r.ID, level, message); err != nil && r.log != nil {
+		r.log.Warn("save job log line", "err", err, "message", message)
+	}
 }
 
 // SetProgress records the job's progress. It is saved with the next lease
@@ -229,7 +241,8 @@ func (w *Worker) maintain(ctx context.Context) {
 
 func (w *Worker) execute(ctx context.Context, j *Job) {
 	log := w.Log.With("job", j.ID, "kind", j.Kind, "attempt", j.Attempts)
-	run := &Run{Job: *j, q: w.Queue, worker: w.id, lease: w.Lease, progress: j.Progress}
+	run := &Run{Job: *j, q: w.Queue, worker: w.id, lease: w.Lease, log: log, progress: j.Progress}
+	run.Log("info", fmt.Sprintf("Attempt %d of %d started", j.Attempts, j.MaxAttempts))
 	hctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 	stop := make(chan struct{})
@@ -241,6 +254,7 @@ func (w *Worker) execute(ctx context.Context, j *Job) {
 
 	if errors.Is(err, ErrLeaseLost) || errors.Is(context.Cause(hctx), ErrLeaseLost) {
 		log.Warn("job lease lost: cancelled or taken by another worker", "err", err)
+		run.Log("warn", "This worker lost the job: it was cancelled, or its lease ran out and another worker took it")
 		return
 	}
 	o := outcome{status: StatusSucceeded}
@@ -267,6 +281,28 @@ func (w *Worker) execute(ctx context.Context, j *Job) {
 		return
 	}
 	log.Info("job ended", "status", o.status, "err", o.err)
+	run.Log(o.logLevel(), o.String())
+}
+
+// logLevel is the job log level for how a run ended.
+func (o outcome) logLevel() string {
+	switch {
+	case o.status == StatusFailed:
+		return "error"
+	case o.err != "":
+		return "warn"
+	}
+	return "info"
+}
+
+func (o outcome) String() string {
+	switch {
+	case o.status == StatusQueued && o.err != "":
+		return "Stopped, to run again: " + o.err
+	case o.err != "":
+		return "Failed: " + o.err
+	}
+	return "Succeeded"
 }
 
 func safeCall(ctx context.Context, h Handler, r *Run) (err error) {
@@ -298,6 +334,7 @@ func (w *Worker) heartbeat(ctx context.Context, cancel context.CancelCauseFunc, 
 		}
 		if err != nil && ctx.Err() == nil {
 			w.Log.Warn("renew job lease", "job", r.ID, "err", err)
+			r.Log("warn", "Renewing the lease failed: "+err.Error())
 		}
 	}
 }

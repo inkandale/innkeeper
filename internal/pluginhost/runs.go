@@ -22,6 +22,7 @@ type Runs struct {
 type run struct {
 	instance string
 	handler  protocol.Handler
+	log      func(level, message string)
 }
 
 func NewRuns(log *slog.Logger) *Runs {
@@ -29,18 +30,31 @@ func NewRuns(log *slog.Logger) *Runs {
 }
 
 // Add sends calls that carry the returned token, from instance's plugin
-// process, to h until remove is called. Every plugin on a Manager shares one
-// core handler, so the token is random and only instance may use it.
-func (r *Runs) Add(instance string, h protocol.Handler) (token string, remove func()) {
+// process, to h until remove is called, and log notices to log. Every plugin
+// on a Manager shares one core handler, so the token is random and only
+// instance may use it.
+func (r *Runs) Add(instance string, h protocol.Handler, log func(level, message string)) (token string, remove func()) {
 	token = rand.Text()
 	r.mu.Lock()
-	r.runs[token] = run{instance, h}
+	r.runs[token] = run{instance, h, log}
 	r.mu.Unlock()
 	return token, func() {
 		r.mu.Lock()
 		delete(r.runs, token)
 		r.mu.Unlock()
 	}
+}
+
+// LogFor is where the run with token sends its log notices, so a call made
+// on the run's behalf can log to it too. An unknown token's lines are dropped.
+func (r *Runs) LogFor(token string) func(level, message string) {
+	r.mu.Lock()
+	rn, ok := r.runs[token]
+	r.mu.Unlock()
+	if !ok {
+		return func(string, string) {}
+	}
+	return rn.log
 }
 
 // Handle is the core handler for a Manager whose plugins make calls for runs.
@@ -55,6 +69,14 @@ func (r *Runs) Handle(ctx context.Context, method string, params json.RawMessage
 	if !ok || rn.instance != CallerInstance(ctx) {
 		r.log.Warn("plugin call for a run that is not active", "method", method, "instance", CallerInstance(ctx))
 		return nil, &protocol.Error{Code: protocol.CodeInvalidParams, Message: "no active run with this token"}
+	}
+	if method == protocol.NotifyLog {
+		var l protocol.Log
+		if err := json.Unmarshal(params, &l); err != nil {
+			return nil, &protocol.Error{Code: protocol.CodeInvalidParams, Message: err.Error()}
+		}
+		rn.log(l.Level, l.Message)
+		return nil, nil
 	}
 	return rn.handler(ctx, method, params)
 }

@@ -60,6 +60,11 @@ beforeEach(() => {
       if (u.pathname === "/api/jobs/6") return json(exportJob);
       if (u.pathname === "/api/jobs/8/retry")
         return json({ ...failedImport, status: "queued", attempts: 0, error: undefined, finished_at: undefined });
+      if (u.pathname === "/api/jobs/8/logs")
+        return json([
+          { id: 1, at: now, level: "info", message: "Attempt 8 of 8 started" },
+          { id: 2, at: now, level: "error", message: "The worker stopped renewing its lease after attempt 8 of 8; out of attempts" },
+        ]);
       if (u.pathname === "/api/jobs/8") return json(failedImport);
       return json([]);
     }),
@@ -133,6 +138,13 @@ test("a finished export links to its zip and opens no stream", async () => {
   expect(link).toHaveAttribute("href", `/api/blobs/${"cd".repeat(32)}`);
   expect(FakeEventSource.last).toBeNull();
   expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+});
+
+test("a job's page shows its log", async () => {
+  renderAt("/settings/jobs/8");
+  const log = await screen.findByRole("region", { name: "Log" });
+  expect(log).toHaveTextContent("Attempt 8 of 8 started");
+  expect(screen.getByText(/out of attempts/).closest("li")).toHaveClass("error");
 });
 
 test("a failed job retries from its page", async () => {

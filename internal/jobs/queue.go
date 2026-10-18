@@ -309,12 +309,17 @@ func (q *Queue) completeParents(ctx context.Context, where string, args ...any) 
 // reap re-queues jobs whose lease expired because their worker died, or
 // fails them once they are out of attempts.
 func (q *Queue) reap(ctx context.Context) error {
-	if _, err := q.pool.Exec(ctx, `UPDATE job SET
+	if _, err := q.pool.Exec(ctx, `WITH reaped AS (UPDATE job SET
 			status = CASE WHEN attempts >= max_attempts THEN 'failed' ELSE 'queued' END,
 			error = 'worker stopped renewing its lease',
 			finished_at = CASE WHEN attempts >= max_attempts THEN now() END,
 			locked_by = NULL, locked_until = NULL, run_after = now()
-		WHERE status = 'running' AND locked_until < now()`); err != nil {
+		WHERE status = 'running' AND locked_until < now() RETURNING id, status, attempts, max_attempts)
+		INSERT INTO job_log (job_id, level, message)
+		SELECT id, CASE WHEN status = 'failed' THEN 'error' ELSE 'warn' END,
+			format('The worker stopped renewing its lease after attempt %s of %s; %s', attempts, max_attempts,
+				CASE WHEN status = 'failed' THEN 'out of attempts' ELSE 'queued to run again' END)
+		FROM reaped`); err != nil {
 		return err
 	}
 	return q.completeWaitingParents(ctx)

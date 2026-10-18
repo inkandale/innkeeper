@@ -91,6 +91,20 @@ func TestBulkImportResumesWithoutDuplicates(t *testing.T) {
 	}
 }
 
+func TestBulkImportStoresItemsPastTheBufferLimitBeforeACheckpoint(t *testing.T) {
+	defer func(n int) { bulkBufferBytes = n }(bulkBufferBytes)
+	bulkBufferBytes = 1
+	e := setup(t, "-mode=bulk")
+	// Cards 3 and 4 come after the last checkpoint before the crash, so only an early flush keeps them.
+	j, p := e.run(t, `{"cards": 6, "checkpoint_every": 3, "crash_at": 4}`)
+	if j.Status != jobs.StatusSucceeded || j.Attempts != 2 {
+		t.Fatalf("job %s after %d attempts: %s", j.Status, j.Attempts, errText(j))
+	}
+	if e.count(t, "card") != 6 || p.Imported != 6 || p.Skipped != 2 {
+		t.Fatalf("%d cards, progress %+v; want 6 cards, 6 imported, the 2 re-sent skipped", e.count(t, "card"), p)
+	}
+}
+
 func TestAutosyncWaitsForASyncWithoutStallingTheImport(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()

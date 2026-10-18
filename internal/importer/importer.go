@@ -30,6 +30,10 @@ const Kind = "import"
 // maxErrors is how many item errors a job's progress keeps.
 const maxErrors = 20
 
+// bulkBufferBytes is how much item data a bulk import buffers before
+// storing it without waiting for the next checkpoint. Tests lower it.
+var bulkBufferBytes = 16 << 20
+
 // Payload is an import job's payload. Params go to the plugin unchanged.
 type Payload struct {
 	Params json.RawMessage `json:"params"`
@@ -84,9 +88,11 @@ type session struct {
 	cancel context.CancelCauseFunc
 	// library and instance are where items go and which instance sent them.
 	library, instance int64
-	// bulk stores items a checkpoint at a time; buf holds those since the last.
-	bulk bool
-	buf  []buffered
+	// bulk stores items a checkpoint at a time; buf holds those since the
+	// last, and bufBytes their data's size.
+	bulk     bool
+	buf      []buffered
+	bufBytes int
 	// autosync holds stored updates for autosync to try once the plugin call
 	// returns: applying one waits for a running sync, which must not stall
 	// reading the plugin's notifications.
@@ -230,6 +236,11 @@ func (s *session) store(item string, it library.PluginItem, warnings ...string) 
 	it.Provenance, it.Source = s.plugin+":"+item, "plugin:"+s.plugin
 	if s.bulk {
 		s.buf = append(s.buf, buffered{item, it, warnings})
+		// Items stored without a checkpoint are sent again after a retry,
+		// and skipped as versions the library already has.
+		if s.bufBytes += len(it.Data); s.bufBytes >= bulkBufferBytes {
+			s.flush(nil)
+		}
 		return
 	}
 	s.warn(item, warnings)
@@ -242,7 +253,7 @@ func (s *session) store(item string, it library.PluginItem, warnings ...string) 
 // transaction. Their counts are saved with it, and kept only if it commits.
 func (s *session) flush(cp json.RawMessage) {
 	buf := s.buf
-	s.buf = nil
+	s.buf, s.bufBytes = nil, 0
 	items := make([]library.PluginItem, len(buf))
 	for i, b := range buf {
 		items[i] = b.it

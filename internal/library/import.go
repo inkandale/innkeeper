@@ -15,6 +15,7 @@ import (
 
 	"github.com/inkandale/innkeeper/cardhash"
 	"github.com/inkandale/innkeeper/internal/blobstore"
+	"github.com/inkandale/innkeeper/internal/db"
 )
 
 const maxSlugLen = 60
@@ -191,8 +192,17 @@ func (l *Library) ImportItem(ctx context.Context, it PluginItem) (Imported, erro
 // ImportItemTx stores an item a plugin sent as the one card or lorebook with
 // its provenance in its library, inside the caller's transaction. A card's
 // character_book becomes a linked lorebook with the same provenance, and its
-// avatar is moved into the blob store.
+// avatar is moved into the blob store. Data PostgreSQL refuses, such as
+// text it can't store, is ErrInvalid, so one bad item doesn't stop an import.
 func (l *Library) ImportItemTx(ctx context.Context, tx pgx.Tx, it PluginItem) (Imported, error) {
+	out, err := l.importItemTx(ctx, tx, it)
+	if db.IsDataError(err) {
+		return out, fmt.Errorf("%w: %w", ErrInvalid, err)
+	}
+	return out, err
+}
+
+func (l *Library) importItemTx(ctx context.Context, tx pgx.Tx, it PluginItem) (Imported, error) {
 	it.LibraryID = cmp.Or(it.LibraryID, DefaultLibrary)
 	edit := Edit{Data: it.Data, Source: it.Source, Message: cmp.Or(it.Version, "Imported"), Created: it.Created}
 	if it.Kind == Lorebook {

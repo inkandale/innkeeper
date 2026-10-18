@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/inkandale/innkeeper/cardhash"
+	"github.com/jackc/pgx/v5"
 )
 
 func TestSlugify(t *testing.T) {
@@ -392,5 +393,30 @@ func TestImportOfAnOlderVersionAfterANewerOneIsSkipped(t *testing.T) {
 	// Without a date, order is the plugin's.
 	if got := imp("brakka.png", `{"name": "Brakka", "description": "v0"}`); got.Outcome != Pending {
 		t.Fatalf("undated version = %+v", got)
+	}
+}
+
+// A card PostgreSQL can't store is refused on its own, and the rest of its
+// batch is stored.
+func TestImportBatchRefusesOnlyTheItemPostgresCantStore(t *testing.T) {
+	lib := newLibrary(t)
+	inst, _ := importer(t, lib)
+	card := func(item, name string) PluginItem {
+		return PluginItem{Kind: Card, InstanceID: inst, Provenance: "folder:" + item, Source: "plugin:folder",
+			Data: json.RawMessage(`{"spec":"chara_card_v3","spec_version":"3.0","data":{"name":"` + name + `"}}`)}
+	}
+	items := []PluginItem{card("a", "Ada"), card("nul", `Bad\u0000Name`), card("b", "Bea")}
+	var got []Imported
+	var errs []error
+	err := lib.ImportBatch(context.Background(), items, func(_ pgx.Tx, g []Imported, e []error) error {
+		got, errs = g, e
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if errs[0] != nil || errs[2] != nil || !errors.Is(errs[1], ErrInvalid) ||
+		got[0].Outcome != Created || got[2].Outcome != Created {
+		t.Fatalf("got %+v, errs %v; want Ada and Bea created, the NUL card refused", got, errs)
 	}
 }

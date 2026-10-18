@@ -127,6 +127,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
     onPick: (shift: boolean) => setSel(pick(sel, id, shift, pageIds)),
   });
   const picking = sel.all || sel.ids.length > 0;
+  const pickPage = () => setSel({ ...sel, ids: [...new Set([...sel.ids, ...pageIds])], all: false });
 
   return (
     <div className={facetsOpen ? "cards" : "cards no-facets"}>
@@ -141,6 +142,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
           ids={sel.ids}
           shown={new Map(hits.map((h) => [h.id, { id: h.id, name: text(h.fields.name), family: h.family }]))}
           onAll={() => setSel({ ...sel, all: true })}
+          onPage={pageIds.some((id) => !sel.ids.includes(id)) ? pickPage : undefined}
           onClear={() => setSel(emptySelection(key))}
           onStarted={setWatching}
         />
@@ -176,6 +178,16 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
           >
             Ungroup variants
           </button>
+          {hits.length > 0 && (
+            <>
+              <button className="button" onClick={pickPage}>
+                Select page
+              </button>
+              <button className="button" onClick={() => setSel({ ...sel, all: true })}>
+                Select all
+              </button>
+            </>
+          )}
           {kind === "card" && (
             <button className="button" onClick={() => go({ ...q, view: q.view === "grid" ? "list" : "grid" })}>
               {q.view === "grid" ? "List view" : "Grid view"}

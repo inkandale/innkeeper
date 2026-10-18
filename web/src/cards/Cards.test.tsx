@@ -243,6 +243,35 @@ test("shift-click selects a range and tags it", async () => {
   expect(screen.getByRole("searchbox", { name: "Search cards" })).toBeInTheDocument();
 });
 
+test("select page from the toolbar picks every card on the page", async () => {
+  renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Select page" }));
+  expect(screen.getByText("3 selected")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Select page" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Tag" }));
+  await user.type(screen.getByRole("textbox", { name: "Tags" }), "elf");
+  await user.click(screen.getByRole("button", { name: "Add tags" }));
+  await waitFor(() => expect(posts[0]?.body).toMatchObject({ query: { library: 1, filter: { ids: [7, 8, 9] } } }));
+});
+
+test("select page in the selection bar adds the rest of the page", async () => {
+  renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
+  await user.click(screen.getByRole("button", { name: "Select page" }));
+  expect(screen.getByText("3 selected")).toBeInTheDocument();
+});
+
+test("select all from the toolbar picks every matching card", async () => {
+  localStorage.setItem("innkeeper.library.ungrouped", "true");
+  renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Select all" }));
+  expect(screen.getByText("All 49 matching cards")).toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "Select Brakka" })).toBeChecked();
+});
+
 test("select all matching archives the search", async () => {
   localStorage.setItem("innkeeper.library.ungrouped", "true");
   renderCards("/cards?f=tag:fantasy");

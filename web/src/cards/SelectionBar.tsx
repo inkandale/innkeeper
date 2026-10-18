@@ -36,11 +36,13 @@ export function SelectionBar(props: {
   /** shown is the picked entries on this page, by ID. */
   shown: Map<number, Picked>;
   onAll: () => void;
+  /** onPage adds the rest of this page; left out once the whole page is picked. */
+  onPage?: () => void;
   onClear: () => void;
   onStarted?: (job: number) => void;
   kind?: "card" | "lorebook";
 }) {
-  const { all, total, query, library, ids, shown, onAll, onClear, onStarted, kind = "card" } = props;
+  const { all, total, query, library, ids, shown, onAll, onPage, onClear, onStarted, kind = "card" } = props;
   const plural = (n?: number) => (n === undefined ? `all matching ${kind}s` : `${n} ${kind}${n === 1 ? "" : "s"}`);
   const enrichers = useInstancesWith("enrich");
   const keys = useQuery({ ...enrichmentKeysQuery(library), enabled: kind === "card" });
@@ -123,6 +125,11 @@ export function SelectionBar(props: {
   return (
     <div className="toolbar selection-bar">
       <strong>{all ? (total === undefined ? `All matching ${kind}s` : `All ${total} matching ${kind}${total === 1 ? "" : "s"}`) : `${count} selected`}</strong>
+      {!all && onPage && (
+        <button className="button" onClick={onPage}>
+          Select page
+        </button>
+      )}
       {!all && (total === undefined || count < total) && (
         <button className="button" onClick={onAll}>
           Select all {total === undefined ? "" : `${total} `}matching

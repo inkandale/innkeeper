@@ -350,49 +350,81 @@
 
 .score-filter {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  grid-template-areas: "name name none" "gte dash lte";
-  gap: 2px 4px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0 calc(var(--space) * 0.5);
   align-items: center;
   padding: 4px var(--space);
-  border-radius: calc(var(--radius) * 0.5);
+  font-size: 0.9em;
 }
 
-.score-filter:hover,
-.score-filter:focus-within {
-  background: var(--surface-2);
-}
-
-.score-filter.included .score-name {
+.score-filter.included .score-name,
+.score-filter.included .score-value {
   color: var(--accent);
 }
 
 .score-name {
-  grid-area: name;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.score-filter .input {
-  min-width: 0;
-  padding-inline: 4px;
+.score-value,
+.score-none {
+  color: var(--text-muted);
+  font-size: 0.85em;
+  white-space: nowrap;
 }
 
-.score-none {
-  grid-area: none;
-  justify-self: end;
+.score-none input {
+  margin: 0 2px 0 0;
+  vertical-align: middle;
+}
+
+.score-filter.none .score-range {
+  opacity: 0.35;
+}
+
+/* Two stacked range inputs make one two-thumb slider; only the thumbs take the pointer. */
+.score-range {
+  grid-column: 1 / -1;
+  position: relative;
+  height: 18px;
+  background: linear-gradient(var(--border), var(--border)) center / 100% 2px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) var(--lo) center / calc(var(--hi) - var(--lo)) 2px no-repeat;
+}
+
+.score-range input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  margin: 0;
   background: none;
-  border: none;
-  padding: 0 2px;
-  font-size: 0.85em;
-  color: var(--text-muted);
+  appearance: none;
+  pointer-events: none;
+}
+
+.score-range input::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  pointer-events: auto;
   cursor: pointer;
 }
 
-.score-none[aria-pressed="true"] {
-  color: var(--accent);
-  text-decoration: underline;
+.score-range input::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.score-range input:disabled::-webkit-slider-thumb {
+  cursor: default;
 }
 
 .list .badges {

@@ -1,5 +1,5 @@
 import { keepPreviousData, useQueries } from "@tanstack/react-query";
-import { useState, type FormEvent, type MouseEvent } from "react";
+import { useState, type CSSProperties, type MouseEvent } from "react";
 import { api, must, route, type Kind } from "../api/client";
 import type { components } from "../api/schema";
 import { stateLabel } from "../sync/sync";
@@ -157,38 +157,34 @@ function Section({ kind, rows, q, open, onOpen, onChange }: SectionProps) {
 function ScoreFilter({ k, q, onChange }: { k: EnrichmentKey; q: CardQuery; onChange: (q: CardQuery) => void }) {
   const term = q.terms.find((t) => t.kind === "score" && parseScore(t.value)?.key === k.key);
   const score = term ? parseScore(term.value) : undefined;
-  const [low, high] = k.range ?? [];
-  const apply = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    const num = (name: string) => (String(f.get(name) ?? "") === "" ? undefined : Number(f.get(name)));
-    const s = { key: k.key, gte: num("gte"), lte: num("lte") };
+  const [low = 0, high = 100] = k.range ?? [];
+  const step = high - low >= 10 ? 1 : (high - low) / 100;
+  const [range, setRange] = useState<[number, number]>([score?.gte ?? low, score?.lte ?? high]);
+  const [lo, hi] = range;
+  // A thumb at either end means no bound on that side.
+  const commit = () => {
+    const s = { key: k.key, gte: lo > low ? lo : undefined, lte: hi < high ? hi : undefined };
     if (scoreTerm(s)?.value !== term?.value) onChange(setScore(q, s));
   };
+  const pct = (v: number) => `${((v - low) / (high - low)) * 100}%`;
+  const thumb = { disabled: score?.none, min: low, max: high, step, onPointerUp: commit, onKeyUp: commit };
   return (
-    // Keyed by the term, so a cleared chip empties the boxes.
-    // Applies on Enter, or when focus leaves the row, so moving from min to max doesn't search twice.
-    <form key={term?.value ?? ""} className={"score-filter" + (term ? " included" : "")} onSubmit={apply}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" && e.target instanceof HTMLInputElement) {
-          e.preventDefault();
-          e.currentTarget.requestSubmit();
-        }
-      }}
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.requestSubmit();
-      }}>
+    <div className={"score-filter" + (term ? " included" : "") + (score?.none ? " none" : "")}>
       <span className="score-name" title={k.label}>{k.label}</span>
-      <input className="input" type="number" name="gte" aria-label={`${k.label} at least`} placeholder={String(low ?? "min")} min={low} max={high}
-        defaultValue={score?.gte} disabled={score?.none} />
-      <span aria-hidden="true">–</span>
-      <input className="input" type="number" name="lte" aria-label={`${k.label} at most`} placeholder={String(high ?? "max")} min={low} max={high}
-        defaultValue={score?.lte} disabled={score?.none} />
-      <button type="button" className="score-none" aria-label={`${k.label} not evaluated`} aria-pressed={!!score?.none} title="Not evaluated"
-        onClick={() => onChange(setScore(q, { key: k.key, none: !score?.none }))}>
+      <span className="score-value">{score?.none ? "" : lo > low || hi < high ? `${lo}–${hi}` : "any"}</span>
+      <label className="score-none" title="Not evaluated">
+        <input type="checkbox" aria-label={`${k.label} not evaluated`} checked={!!score?.none}
+          onChange={(e) => onChange(setScore(q, { key: k.key, none: e.target.checked }))} />
         none
-      </button>
-    </form>
+      </label>
+      <div className="score-range" style={{ "--lo": pct(lo), "--hi": pct(hi) } as CSSProperties}>
+        {/* At the top end the min thumb must sit above the max one, or it can't be dragged back down. */}
+        <input type="range" aria-label={`${k.label} at least`} value={lo} {...thumb} style={lo === high ? { zIndex: 2 } : undefined}
+          onChange={(e) => setRange([Math.min(Number(e.target.value), hi), hi])} />
+        <input type="range" aria-label={`${k.label} at most`} value={hi} {...thumb}
+          onChange={(e) => setRange([lo, Math.max(Number(e.target.value), lo)])} />
+      </div>
+    </div>
   );
 }
 
@@ -203,7 +199,8 @@ function ScoreSection({ scores, q, open, onOpen, onChange }: { scores: Enrichmen
           {picked > 0 && ` · ${picked}`}
         </button>
       </h2>
-      {open && scores.map((k) => <ScoreFilter key={k.key} k={k} q={q} onChange={onChange} />)}
+      {/* Keyed by the term, so a cleared chip resets the slider. */}
+      {open && scores.map((k) => <ScoreFilter key={k.key + (q.terms.find((t) => t.kind === "score" && parseScore(t.value)?.key === k.key)?.value ?? "")} k={k} q={q} onChange={onChange} />)}
     </section>
   );
 }

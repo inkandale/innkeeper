@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { Toasts } from "../shell/Toasts";
@@ -584,26 +584,28 @@ test("a score range filters, and Not evaluated replaces it", async () => {
   keys = scored;
   const { router } = renderCards("/cards");
   const user = userEvent.setup();
-  await user.type(await screen.findByRole("spinbutton", { name: "Quality at least" }), "70{Enter}");
+  const min = await screen.findByRole("slider", { name: "Quality at least" });
+  fireEvent.change(min, { target: { value: "70" } });
+  fireEvent.pointerUp(min);
   expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:quality:70.."]);
   await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "quality", gte: 70 }] } })));
   expect(screen.getByRole("button", { name: "Remove score: quality 70–…" })).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Quality not evaluated" }));
+  await user.click(screen.getByRole("checkbox", { name: "Quality not evaluated" }));
+  expect(screen.getByRole("slider", { name: "Quality at least" })).toBeDisabled();
   expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:quality:none"]);
   await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "quality", missing: true }] } })));
   // Only score keys get a range.
-  expect(screen.queryByRole("spinbutton", { name: "Summary at least" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("slider", { name: "Summary at least" })).not.toBeInTheDocument();
 });
 
-test("a score range applies once focus leaves the row", async () => {
+test("a score slider applies its range on release", async () => {
   keys = scored;
   const { router } = renderCards("/cards");
-  const user = userEvent.setup();
-  await user.type(await screen.findByRole("spinbutton", { name: "Quality at least" }), "40");
-  await user.tab();
+  fireEvent.change(await screen.findByRole("slider", { name: "Quality at least" }), { target: { value: "40" } });
   expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual([]);
-  await user.type(screen.getByRole("spinbutton", { name: "Quality at most" }), "80");
-  await user.click(document.body);
+  const max = screen.getByRole("slider", { name: "Quality at most" });
+  fireEvent.change(max, { target: { value: "80" } });
+  fireEvent.pointerUp(max);
   expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:quality:40..80"]);
 });
 

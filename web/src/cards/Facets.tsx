@@ -171,7 +171,7 @@ function ScoreFilter({ k, q, onChange }: { k: EnrichmentKey; q: CardQuery; onCha
   return (
     <div className={"score-filter" + (term ? " included" : "") + (score?.none ? " none" : "")}>
       <span className="score-name" title={k.label}>{k.label}</span>
-      <span className="score-value">{score?.none ? "" : lo > low || hi < high ? `${lo}–${hi}` : "any"}</span>
+      <span className="score-value">{!score?.none && (lo > low || hi < high) && `${lo}–${hi}`}</span>
       <label className="score-none" title="Not evaluated">
         <input type="checkbox" aria-label={`${k.label} not evaluated`} checked={!!score?.none}
           onChange={(e) => onChange(setScore(q, { key: k.key, none: e.target.checked }))} />

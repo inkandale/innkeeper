@@ -126,3 +126,36 @@ func TestSessions(t *testing.T) {
 		t.Fatalf("%d sessions left; the expired one should be cleaned up at login", n)
 	}
 }
+
+func TestSetProvisionedTokensReplacesAndRevokes(t *testing.T) {
+	pool := testdb.New(t)
+	a := New(pool)
+	ctx := context.Background()
+	_, manual, err := a.CreateToken(ctx, "cli", tier.Read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := func(secret string, want tier.Tier) {
+		t.Helper()
+		if got, err := a.CheckToken(ctx, secret); err != nil || got != want {
+			t.Fatalf("CheckToken(%q) = %v, %v; want %v", secret, got, err, want)
+		}
+	}
+
+	if err := a.SetProvisionedTokens(ctx, []ProvisionedToken{{"gateway", tier.Destructive, "old-secret"}}); err != nil {
+		t.Fatal(err)
+	}
+	check("old-secret", tier.Destructive)
+
+	if err := a.SetProvisionedTokens(ctx, []ProvisionedToken{{"gateway", tier.Write, "new-secret"}}); err != nil {
+		t.Fatal(err)
+	}
+	check("old-secret", 0)
+	check("new-secret", tier.Write)
+
+	if err := a.SetProvisionedTokens(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	check("new-secret", 0)
+	check(manual, tier.Read)
+}

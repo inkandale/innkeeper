@@ -43,6 +43,13 @@ func apiServer() error {
 	if err := s.Bootstrap(ctx, os.Getenv("INNKEEPER_OWNER_PASSWORD_HASH")); err != nil {
 		return err
 	}
+	toks, err := provisionedTokens(os.Getenv)
+	if err != nil {
+		return err
+	}
+	if err := s.Auth.SetProvisionedTokens(ctx, toks); err != nil {
+		return err
+	}
 	srv := &http.Server{
 		Addr:              listen,
 		Handler:           s.Handler(),

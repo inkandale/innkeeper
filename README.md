@@ -63,6 +63,7 @@ database at startup and stop cleanly on `SIGTERM`.
 | `INNKEEPER_LISTEN` | `api` | Listen address; default `:8080` |
 | `INNKEEPER_PUBLIC_URL` | `api` | Where browsers reach the API, such as `https://innkeeper.example.com`. Needed for redirect logins, `ink login`, and MCP clients that connect through OAuth, such as claude.ai. An `http://` URL sends cookies without `Secure` |
 | `INNKEEPER_OWNER_PASSWORD_HASH` | `api` | A bcrypt hash from `password-login hash`. On a server with no login provider, the API creates the owner's password login from it at startup. Ignored once the server is claimed |
+| `INNKEEPER_API_TOKENS`, `INNKEEPER_API_TOKEN_<NAME>` | `api` | API tokens from config, for another service that calls Innkeeper. `INNKEEPER_API_TOKENS` lists `name:tier` pairs separated by commas, such as `gateway:write`. Each token's secret is in `INNKEEPER_API_TOKEN_` plus its name in capitals, with dashes as underscores, and must be at least 32 characters. At each start the API makes these the only config tokens: a changed secret replaces the old one, and a token removed from the list is revoked |
 | `INNKEEPER_WORKER_CONCURRENCY` | `worker` | Jobs run at once; default 4 |
 | `INNKEEPER_BACKUP_DIR` | `api`, `worker` | Where backups go. Needed for any backup or restore through the API, and for schedules |
 | `INNKEEPER_BACKUP_ASSETS_EVERY`, `INNKEEPER_BACKUP_CONFIG_EVERY` | `api`, `worker` | How often to back up that type, such as `24h` or `7d`. Unset means no schedule |

@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -63,6 +64,31 @@ func (a *Auth) CreateToken(ctx context.Context, name string, t tier.Tier) (Token
 		RETURNING id, name, tier, created_at, last_used_at`, name, h, t.String()).
 		Scan(&tok.ID, &tok.Name, &tok.Tier, &tok.CreatedAt, &tok.LastUsedAt)
 	return tok, secret, err
+}
+
+// ProvisionedToken is an API token whose secret comes from config.
+type ProvisionedToken struct {
+	Name   string
+	Tier   tier.Tier
+	Secret string
+}
+
+// SetProvisionedTokens makes toks the only provisioned tokens. A changed
+// secret replaces the old one, and a token left out is revoked.
+func (a *Auth) SetProvisionedTokens(ctx context.Context, toks []ProvisionedToken) error {
+	return pgx.BeginFunc(ctx, a.pool, func(tx pgx.Tx) error {
+		names := make([]string, len(toks))
+		for i, t := range toks {
+			names[i] = t.Name
+			if _, err := tx.Exec(ctx, `INSERT INTO api_token (name, token_hash, tier, provisioned) VALUES ($1, $2, $3, true)
+				ON CONFLICT (name) WHERE provisioned DO UPDATE SET token_hash = EXCLUDED.token_hash, tier = EXCLUDED.tier`,
+				t.Name, hash(t.Secret), t.Tier.String()); err != nil {
+				return fmt.Errorf("provision token %s: %w", t.Name, err)
+			}
+		}
+		_, err := tx.Exec(ctx, `DELETE FROM api_token WHERE provisioned AND NOT name = ANY($1)`, names)
+		return err
+	})
 }
 
 // Tokens returns every API token, oldest first.

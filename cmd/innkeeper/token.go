@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -79,4 +81,30 @@ func token(args []string) error {
 		return a.RevokeToken(ctx, id)
 	}
 	return errors.New(usage)
+}
+
+var provisionedName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+
+// provisionedTokens reads INNKEEPER_API_TOKENS, a comma-separated list of
+// name:tier, and each token's secret from INNKEEPER_API_TOKEN_<NAME>.
+func provisionedTokens(getenv func(string) string) ([]auth.ProvisionedToken, error) {
+	var toks []auth.ProvisionedToken
+	for _, entry := range strings.FieldsFunc(getenv("INNKEEPER_API_TOKENS"), func(r rune) bool { return r == ',' || r == ' ' }) {
+		name, tierName, _ := strings.Cut(entry, ":")
+		if !provisionedName.MatchString(name) {
+			return nil, fmt.Errorf("INNKEEPER_API_TOKENS: token name %q must be lowercase letters, digits, and dashes", name)
+		}
+		t, err := tier.Parse(tierName)
+		if err != nil {
+			return nil, fmt.Errorf("INNKEEPER_API_TOKENS: %s: %w", name, err)
+		}
+		v := "INNKEEPER_API_TOKEN_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
+		secret := getenv(v)
+		// A secret-generator placeholder that was never replaced is public.
+		if len(secret) < 32 || strings.HasPrefix(secret, "%generate") {
+			return nil, fmt.Errorf("%s must be a random secret of at least 32 characters", v)
+		}
+		toks = append(toks, auth.ProvisionedToken{Name: name, Tier: t, Secret: secret})
+	}
+	return toks, nil
 }

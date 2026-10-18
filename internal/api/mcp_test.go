@@ -88,8 +88,9 @@ func TestMCPToolsByTier(t *testing.T) {
 	}
 	read, write, all := names(tier.Read), names(tier.Write), names(tier.Destructive)
 	if !slices.Contains(read, "search_cards") || slices.Contains(read, "create_card") || slices.Contains(write, "push") ||
-		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 39 ||
-		!slices.Contains(read, "refresh") || slices.Contains(write, "set_autosync") || !slices.Contains(all, "set_autosync") {
+		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 42 ||
+		!slices.Contains(read, "refresh") || slices.Contains(write, "set_autosync") || !slices.Contains(all, "set_autosync") ||
+		!slices.Contains(read, "get_config_defaults") || slices.Contains(write, "list_config_options") || slices.Contains(write, "run_settings_action") {
 		t.Fatalf("read %v\nwrite %v\nall %v", read, write, all)
 	}
 }
@@ -473,5 +474,33 @@ func TestMCPLibraries(t *testing.T) {
 	}
 	if got := tool(t, s, "create_card", map[string]any{"data": map[string]any{"name": "X"}, "library": 999}, true); !strings.HasPrefix(got, "422") {
 		t.Fatalf("missing library = %s", got)
+	}
+}
+
+func TestMCPPluginSettings(t *testing.T) {
+	e := newEnv(t)
+	e.addConf()
+	s := e.mcpClient(tier.Destructive)
+	var inst struct{ ID int64 }
+	_ = json.Unmarshal([]byte(tool(t, s, "create_instance", map[string]any{"plugin": "conf",
+		"secrets": map[string]string{"api_key": "hunter2"}}, false)), &inst)
+
+	if got := tool(t, s, "get_config_defaults", map[string]any{"plugin": "conf"}, false); !strings.Contains(got, "Hello, {{user}}.") {
+		t.Fatalf("get_config_defaults = %s", got)
+	}
+	got := tool(t, s, "list_config_options", map[string]any{"plugin": "conf", "field": "/model", "config": map[string]any{"url": "http://draft"}}, false)
+	if !strings.Contains(got, "http://draft/m1") {
+		t.Fatalf("list_config_options = %s", got)
+	}
+	if got := tool(t, s, "list_config_options", map[string]any{"plugin": "conf", "field": "/model"}, true); !strings.Contains(got, "set the url first") {
+		t.Fatalf("list_config_options without url = %s", got)
+	}
+	// The draft starts from the saved instance's secrets, which never come back.
+	got = tool(t, s, "run_settings_action", map[string]any{"plugin": "conf", "action": "test", "instance": inst.ID}, false)
+	if !strings.Contains(got, `"ok":true`) || strings.Contains(got, "hunter2") {
+		t.Fatalf("run_settings_action = %s", got)
+	}
+	if got := tool(t, s, "run_settings_action", map[string]any{"plugin": "conf", "action": "test", "secrets": map[string]string{"api_key": "wrong"}}, false); !strings.Contains(got, `"ok":false`) {
+		t.Fatalf("run_settings_action with a wrong key = %s", got)
 	}
 }

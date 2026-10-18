@@ -150,6 +150,35 @@ type instanceUpdateIn struct {
 	Disabled *bool              `json:"disabled,omitempty" jsonschema:"true keeps the instance but stops everything using it; false turns it back on"`
 }
 
+type defaultsIn struct {
+	Plugin   string `json:"plugin"`
+	Instance int64  `json:"instance,omitempty" jsonschema:"Also list this instance's overrides whose default has since changed"`
+}
+
+// draftIn is an unsaved instance config, as the instance form holds it.
+type draftIn struct {
+	Plugin   string             `json:"plugin"`
+	Instance *int64             `json:"instance,omitempty" jsonschema:"An instance of this plugin whose saved secrets the draft starts from"`
+	Config   map[string]any     `json:"config,omitempty" jsonschema:"The unsaved config"`
+	Secrets  map[string]*string `json:"secrets,omitempty" jsonschema:"Secrets on top of the instance's saved ones; null removes one. Write-only."`
+}
+
+// body is the draft as the settings routes take it, with extra fields added.
+func (in draftIn) body(extra map[string]any) map[string]any {
+	extra["instance"], extra["config"], extra["secrets"] = in.Instance, in.Config, in.Secrets
+	return extra
+}
+
+type optionsIn struct {
+	draftIn
+	Field string `json:"field" jsonschema:"JSON pointer to a config field marked x-options, such as /model"`
+}
+
+type settingsActionIn struct {
+	draftIn
+	Action string `json:"action" jsonschema:"One of the plugin's settings_actions, from list_plugins"`
+}
+
 type syncIn struct {
 	InstanceID int64  `json:"instance_id,omitempty" jsonschema:"One target plugin instance to sync; omit to sync every app"`
 	Apply      string `json:"apply,omitempty" jsonschema:"obvious (default) binds exact matches and imports new items; none writes nothing"`
@@ -475,9 +504,31 @@ var tools = []tool{
 		func(ctx context.Context, c caller, in resolveItemsIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", "/resolutions", in)
 		}),
-	def("list_plugins", "List the installed plugins, with each one's capabilities, config schema, and secret names.", tier.Read,
+	def("list_plugins", "List the installed plugins, with each one's capabilities, config schema, secret names, and settings_actions. "+
+		"For a settings plugin, get_config_defaults, list_config_options, and run_settings_action help fill in its config.", tier.Read,
 		func(ctx context.Context, c caller, _ none) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "GET", "/plugins", nil)
+		}),
+	def("get_config_defaults", "Get a plugin's config defaults by JSON pointer, including ones its schema can't hold. "+
+		"A field left at its default is left out of the saved config.", tier.Read,
+		func(ctx context.Context, c caller, in defaultsIn) (*sdk.CallToolResult, error) {
+			path := fmt.Sprintf("/plugins/%s/settings/defaults", url.PathEscape(in.Plugin))
+			if in.Instance != 0 {
+				path += fmt.Sprintf("?instance=%d", in.Instance)
+			}
+			return c.call(ctx, "GET", path, nil)
+		}),
+	def("list_config_options", "Ask a settings plugin for the choices of a config field marked x-options, such as an AI "+
+		"provider's models, given the unsaved config. Use it before create_instance or update_instance instead of guessing.", tier.Destructive,
+		func(ctx context.Context, c caller, in optionsIn) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "POST", fmt.Sprintf("/plugins/%s/settings/options", url.PathEscape(in.Plugin)),
+				in.body(map[string]any{"field": in.Field}))
+		}),
+	def("run_settings_action", "Run one of a settings plugin's settings_actions, such as Test connection, against the unsaved "+
+		"config before saving it. A failed check comes back with ok false, not an error.", tier.Destructive,
+		func(ctx context.Context, c caller, in settingsActionIn) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "POST", fmt.Sprintf("/plugins/%s/settings/run", url.PathEscape(in.Plugin)),
+				in.body(map[string]any{"action": in.Action}))
 		}),
 	def("list_instances", "List configured plugin instances. Secrets show by name only.", tier.Read,
 		func(ctx context.Context, c caller, _ none) (*sdk.CallToolResult, error) {

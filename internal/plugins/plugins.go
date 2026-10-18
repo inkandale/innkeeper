@@ -368,6 +368,9 @@ func (r *Registry) CreateInstance(ctx context.Context, n NewInstance) (int64, er
 			return 0, err
 		}
 	}
+	if err := checkConfig(m, n.Config); err != nil {
+		return 0, err
+	}
 	if err := checkBases(n.DefaultBases); err != nil {
 		return 0, err
 	}
@@ -448,11 +451,16 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 			return ErrLastLogin
 		}
 	}
-	if e.Secrets != nil {
-		m, ok := r.manifest(plugin)
-		if !ok {
-			return fmt.Errorf("%w: %s", ErrUnknownPlugin, plugin)
+	m, ok := r.manifest(plugin)
+	if !ok && (e.Secrets != nil || e.Config != nil) {
+		return fmt.Errorf("%w: %s", ErrUnknownPlugin, plugin)
+	}
+	if e.Config != nil {
+		if err := checkConfig(m, e.Config); err != nil {
+			return err
 		}
+	}
+	if e.Secrets != nil {
 		current, err := r.box.Open(sealed)
 		if err != nil {
 			return err

@@ -94,6 +94,10 @@ A field with a `default` shows it until the owner changes it, and then offers
 the saved config, so apply your defaults yourself. When a default changes
 after the owner overrode it, the field says **Default updated**.
 
+The core refuses to save config that doesn't match the schema, ignoring
+`required`: an instance missing a required key is saved and shows **Needs
+setup**. Config saved before a schema change is checked when it is next saved.
+
 ## Lifecycle
 
 1. **`initialize`**: the core's first request. Answer within 10 seconds.

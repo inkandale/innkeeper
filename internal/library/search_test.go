@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -878,5 +879,25 @@ func TestCursorRejectsOutOfRangeRank(t *testing.T) {
 	cursor := base64.RawURLEncoding.EncodeToString([]byte(`[1e-45, 5]`))
 	if _, err := lib.Search(ctx, Card, Query{Text: "dwarf", Page: Page{Cursor: &cursor}}); err != nil {
 		t.Errorf("smallest real: %v", err)
+	}
+}
+
+// Search keeps only the start of very long text, so a card or lorebook of
+// several megabytes still saves.
+func TestHugeCardAndLorebookStillSave(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	var words strings.Builder
+	for i := range 250_000 {
+		fmt.Fprintf(&words, "word%d ", i)
+	}
+	text, _ := json.Marshal(words.String())
+	if _, _, err := lib.Cards.Create(ctx, DefaultLibrary, "huge", "upload",
+		edit(fmt.Sprintf(`{"name": "Huge", "description": %s, "first_mes": %s}`, text, text))); err != nil {
+		t.Fatalf("create a card of %d bytes: %v", 2*len(text), err)
+	}
+	if _, _, err := lib.Lorebooks.Create(ctx, DefaultLibrary, "huge", "upload",
+		edit(fmt.Sprintf(`{"name": "Huge", "entries": [{"keys": ["k"], "content": %s}]}`, text))); err != nil {
+		t.Fatalf("create a lorebook of %d bytes: %v", len(text), err)
 	}
 }

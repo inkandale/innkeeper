@@ -3269,6 +3269,10 @@ export interface components {
         };
         Facets: {
             collections?: components["schemas"]["CollectionCount"][] | null;
+            /** @description By key: each text value, or each item of a list value, and how many matching cards have it. Most common first, at most 100. */
+            enrichments?: {
+                [key: string]: components["schemas"]["ValueCount"][] | null;
+            };
             sources?: components["schemas"]["SourceCount"][] | null;
             /** @description Most used first. */
             tags?: components["schemas"]["TagCount"][] | null;
@@ -3308,6 +3312,8 @@ export interface components {
              * @description With enrichment: the enrich instance whose value to read, instead of the score instance.
              */
             instance?: number;
+            /** @description With enrichment: the value is this text, or a list holding it. */
+            is?: string;
             /**
              * Format: double
              * @description With enrichment: the value is at most this.
@@ -3815,6 +3821,11 @@ export interface components {
                 [key: string]: unknown;
             };
             description?: string;
+            /**
+             * Format: int64
+             * @description For an enrich plugin: the most cards a run takes without confirm
+             */
+            enrich_max_cards?: number;
             enrichments?: {
                 [key: string]: components["schemas"]["EnrichmentOut"];
             };
@@ -3947,7 +3958,7 @@ export interface components {
              * @example /api/schemas/Query.json
              */
             readonly $schema?: string;
-            /** @description Counts to return over every match: tags, collections, targets, sources. Lorebooks take targets and sources. */
+            /** @description Counts to return over every match: tags, collections, targets, sources, or enrichment:<key> for the values of a text or list key from the score instance. Lorebooks take targets and sources. */
             facets?: string[] | null;
             /** @description Card data keys to return per hit, plus avatar. Default: name. */
             fields?: string[] | null;
@@ -4340,6 +4351,8 @@ export interface components {
             readonly $schema?: string;
             /** @description The cards to enrich. Send this or query. */
             card_ids?: number[] | null;
+            /** @description Run past the plugin's enrich_max_cards. Without it, a larger run is refused. */
+            confirm?: boolean;
             /**
              * Format: int64
              * @description An enrich instance
@@ -4472,6 +4485,11 @@ export interface components {
              * @description For a target app: the library its syncs match against and import new items into.
              */
             sync_library?: number;
+        };
+        ValueCount: {
+            /** Format: int64 */
+            cards: number;
+            value: string;
         };
         VariantOfInBody: {
             /**

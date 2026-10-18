@@ -24,7 +24,7 @@ type Query struct {
 	Include  []string `json:"include,omitempty" doc:"Extra data per hit: tags, lorebooks, targets, enrichments (the score instance's current values of its score keys and grid key). Lorebooks take cards and targets."`
 	Fields   []string `json:"fields,omitempty" doc:"Card data keys to return per hit, plus avatar. Default: name."`
 	Sort     string   `json:"sort,omitempty" pattern:"^(relevance|updated|name|created|enrichment:[a-z][a-z0-9_]*)$" doc:"relevance, updated, name, created, or enrichment:<key> for the score instance's value of key, highest first and cards without one last. Default: relevance with text, newest first without."`
-	Facets   []string `json:"facets,omitempty" doc:"Counts to return over every match: tags, collections, targets, sources. Lorebooks take targets and sources."`
+	Facets   []string `json:"facets,omitempty" doc:"Counts to return over every match: tags, collections, targets, sources, or enrichment:<key> for the values of a text or list key from the score instance. Lorebooks take targets and sources."`
 	Page     Page     `json:"page,omitempty"`
 	Group    string   `json:"group,omitempty" enum:"family" doc:"family returns one hit per family of variants: its face, with the family's matches. Paging and total count families; facets count cards or lorebooks."`
 
@@ -62,6 +62,7 @@ type Filter struct {
 	Gte           *float64      `json:"gte,omitempty" doc:"With enrichment: the value is at least this."`
 	Lte           *float64      `json:"lte,omitempty" doc:"With enrichment: the value is at most this."`
 	Missing       *bool         `json:"missing,omitempty" doc:"With enrichment: true matches cards without a value."`
+	Is            *string       `json:"is,omitempty" doc:"With enrichment: the value is this text, or a list holding it."`
 	Instance      *int64        `json:"instance,omitempty" doc:"With enrichment: the enrich instance whose value to read, instead of the score instance."`
 }
 
@@ -129,6 +130,14 @@ type Facets struct {
 	Collections []CollectionCount `json:"collections,omitempty"`
 	Targets     []TargetCount     `json:"targets,omitempty"`
 	Sources     []SourceCount     `json:"sources,omitempty"`
+	// Enrichments are keyed by enrichment key.
+	Enrichments map[string][]ValueCount `json:"enrichments,omitempty" doc:"By key: each text value, or each item of a list value, and how many matching cards have it. Most common first, at most 100."`
+}
+
+// ValueCount is an enrichment value and how many matching cards have it.
+type ValueCount struct {
+	Value string `json:"value"`
+	Cards int    `json:"cards"`
 }
 
 // CollectionCount is a collection and how many matching cards it has.
@@ -188,8 +197,14 @@ func (w *where) enrichmentSQL(key string, inst int64) (string, error) {
 
 // enrichmentFilter is f's condition on its enrichment key.
 func (w *where) enrichmentFilter(f Filter) (string, error) {
-	if f.Missing != nil && (f.Gte != nil || f.Lte != nil) {
-		return "", fmt.Errorf("%w: an enrichment filter takes missing or a range, not both", ErrInvalid)
+	set := 0
+	for _, ok := range []bool{f.Missing != nil, f.Gte != nil || f.Lte != nil, f.Is != nil} {
+		if ok {
+			set++
+		}
+	}
+	if set > 1 {
+		return "", fmt.Errorf("%w: an enrichment filter takes one of missing, a range, or is", ErrInvalid)
 	}
 	var inst int64
 	if f.Instance != nil {
@@ -201,6 +216,11 @@ func (w *where) enrichmentFilter(f Filter) (string, error) {
 	}
 	if f.Missing != nil && *f.Missing {
 		return cur + ` IS NULL`, nil
+	}
+	if f.Is != nil {
+		is := w.arg(*f.Is)
+		return `EXISTS (SELECT 1 FROM (SELECT ` + cur + ` AS value) v WHERE v.value = to_jsonb(` + is + `::text)
+			OR jsonb_typeof(v.value) = 'array' AND v.value @> jsonb_build_array(` + is + `::text))`, nil
 	}
 	if f.Gte == nil && f.Lte == nil {
 		return cur + ` IS NOT NULL`, nil
@@ -242,10 +262,42 @@ var facetSQL = map[string]func(k *Kind, cond string) string{
 	},
 }
 
-// facets counts the matches of cond for each facet in names.
-func (l *Library) facets(ctx context.Context, k *Kind, names []string, cond string, args []any) (*Facets, error) {
+// enrichmentFacetPrefix starts a facet on an enrichment key's values.
+const enrichmentFacetPrefix = "enrichment:"
+
+// enrichmentFacetSQL counts the matches of cond per string value, or list
+// item, of the current value of the key and instance in args $key and $inst.
+func enrichmentFacetSQL(k *Kind, cond, key, inst string) string {
+	return `SELECT x.v, count(*)::int FROM (SELECT (SELECT e.value FROM enrichment e WHERE e.card_id = c.id AND e.key = ` + key +
+		` AND e.instance_id = ` + inst + ` ORDER BY e.revision_id DESC, e.created_at DESC, e.id DESC LIMIT 1) AS value
+			FROM ` + from(k) + ` WHERE ` + cond + `) m,
+		LATERAL (SELECT m.value #>> '{}' AS v WHERE jsonb_typeof(m.value) = 'string'
+			UNION SELECT i #>> '{}' FROM jsonb_array_elements(CASE jsonb_typeof(m.value) WHEN 'array' THEN m.value ELSE '[]' END) i
+			WHERE jsonb_typeof(i) = 'string') x
+		GROUP BY x.v ORDER BY count(*) DESC, x.v LIMIT 100`
+}
+
+// facets counts the matches of cond for each facet in names; an enrichment
+// facet reads the score instance's values.
+func (l *Library) facets(ctx context.Context, k *Kind, names []string, cond string, args []any, score int64) (*Facets, error) {
 	f := &Facets{}
 	for _, name := range names {
+		if key, ok := strings.CutPrefix(name, enrichmentFacetPrefix); ok {
+			n := len(args)
+			rows, err := l.pool.Query(ctx, enrichmentFacetSQL(k, cond, "$"+strconv.Itoa(n+1), "$"+strconv.Itoa(n+2)), append(slices.Clone(args), key, score)...)
+			if err != nil {
+				return nil, err
+			}
+			counts, err := pgx.CollectRows(rows, pgx.RowToStructByPos[ValueCount])
+			if err != nil {
+				return nil, err
+			}
+			if f.Enrichments == nil {
+				f.Enrichments = map[string][]ValueCount{}
+			}
+			f.Enrichments[key] = counts
+			continue
+		}
 		rows, err := l.pool.Query(ctx, facetSQL[name](k, cond), args...)
 		if err != nil {
 			return nil, err
@@ -294,8 +346,8 @@ func (w *where) filter(f Filter) (string, error) {
 	if set != 1 {
 		return "", fmt.Errorf("%w: each filter needs exactly one condition", ErrInvalid)
 	}
-	if f.Enrichment == nil && (f.Gte != nil || f.Lte != nil || f.Missing != nil || f.Instance != nil) {
-		return "", fmt.Errorf("%w: gte, lte, missing, and instance go with enrichment", ErrInvalid)
+	if f.Enrichment == nil && (f.Gte != nil || f.Lte != nil || f.Missing != nil || f.Is != nil || f.Instance != nil) {
+		return "", fmt.Errorf("%w: gte, lte, missing, is, and instance go with enrichment", ErrInvalid)
 	}
 	if w.k != Card && (f.Tag != nil || f.Collection != nil) {
 		return "", fmt.Errorf("%w: lorebooks have no tags or collections", ErrInvalid)
@@ -606,6 +658,15 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 		}
 	}
 	for _, name := range q.Facets {
+		if strings.HasPrefix(name, enrichmentFacetPrefix) {
+			if k != Card {
+				return Results{}, fmt.Errorf("%w: lorebooks have no enrichments", ErrInvalid)
+			}
+			if q.ScoreInstance == 0 {
+				return Results{}, errNoScoreInstance
+			}
+			continue
+		}
 		if facetSQL[name] == nil || k != Card && cardOnly(name) {
 			return Results{}, fmt.Errorf("%w: unknown facet %q", ErrInvalid, name)
 		}
@@ -652,7 +713,7 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 		return Results{}, fmt.Errorf("count matches: %w", err)
 	}
 	if len(q.Facets) > 0 {
-		if res.Facets, err = l.facets(ctx, k, q.Facets, cond, condArgs); err != nil {
+		if res.Facets, err = l.facets(ctx, k, q.Facets, cond, condArgs, q.ScoreInstance); err != nil {
 			return Results{}, err
 		}
 	}
@@ -714,7 +775,8 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 // UsesEnrichments reports whether q filters, sorts, or includes by
 // enrichment, and so needs ScoreInstance.
 func (q Query) UsesEnrichments() bool {
-	return strings.HasPrefix(q.Sort, "enrichment:") || slices.Contains(q.Include, "enrichments") || filtersEnrichments(q.Filter)
+	return strings.HasPrefix(q.Sort, "enrichment:") || slices.Contains(q.Include, "enrichments") || filtersEnrichments(q.Filter) ||
+		slices.ContainsFunc(q.Facets, func(f string) bool { return strings.HasPrefix(f, enrichmentFacetPrefix) })
 }
 
 func filtersEnrichments(f *Filter) bool {

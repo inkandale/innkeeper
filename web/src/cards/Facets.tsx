@@ -1,32 +1,48 @@
-import { keepPreviousData, useQueries } from "@tanstack/react-query";
+import { keepPreviousData, useQueries, useQuery } from "@tanstack/react-query";
 import { useState, type CSSProperties, type MouseEvent } from "react";
 import { api, must, route, type Kind } from "../api/client";
 import type { components } from "../api/schema";
 import { stateLabel } from "../sync/sync";
-import { countSearch, onlyTerm, parseScore, sameValue, scoreTerm, sectionsFor, setScore, stateCountSearch, targetStates, toggleTerm, type CardQuery, type TermKind } from "./query";
+import {
+  countSearch,
+  onlyTerm,
+  parseScore,
+  sameValue,
+  scoreTerm,
+  sectionOf,
+  sectionsFor,
+  setScore,
+  stateCountSearch,
+  targetStates,
+  toggleTerm,
+  valueCountSearch,
+  type CardQuery,
+  type TermKind,
+} from "./query";
 import { badgeClass, type Names } from "./Tile";
 
 type Search = components["schemas"]["Query"];
 type FacetLists = components["schemas"]["Facets"];
 type Row = { value: string; label: string; cards: number; dot?: string };
 
-const titles: Record<TermKind, string> = { target: "Target", state: "State", tag: "Tags", source: "Sources", collection: "Collections", score: "Scores" };
+const titles: Record<Exclude<TermKind, "value">, string> = { target: "Target", state: "State", tag: "Tags", source: "Sources", collection: "Collections", score: "Scores" };
 
 type EnrichmentKey = components["schemas"]["EnrichmentKey"];
 
 const collapsedKey = "innkeeper.facets.collapsed";
 
 // Storage can throw or be empty in private windows; the sidebar then just starts open.
-function readCollapsed(): TermKind[] {
+// Sections are named as sectionOf names them: a kind, or value:<key>.
+function readCollapsed(): string[] {
   try {
     const v: unknown = JSON.parse(localStorage.getItem(collapsedKey) ?? "[]");
-    return Array.isArray(v) ? v.filter((s): s is TermKind => typeof s === "string") : [];
+    return Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : [];
   } catch {
     return [];
   }
 }
 
-function saveCollapsed(v: TermKind[]) {
+function saveCollapsed(v: string[]) {
   try {
     localStorage.setItem(collapsedKey, JSON.stringify(v));
   } catch {
@@ -106,13 +122,25 @@ function FacetRow({ kind, row, q, onChange }: { kind: TermKind; row: Row; q: Car
   );
 }
 
-type SectionProps = { kind: TermKind; rows?: Row[]; q: CardQuery; open: boolean; onOpen: () => void; onChange: (q: CardQuery) => void };
+type SectionProps = {
+  kind: TermKind;
+  /** title and section name a value key's section; other kinds take theirs from kind. */
+  title?: string;
+  section?: string;
+  rows?: Row[];
+  q: CardQuery;
+  open: boolean;
+  onOpen: () => void;
+  onChange: (q: CardQuery) => void;
+};
 
-function Section({ kind, rows, q, open, onOpen, onChange }: SectionProps) {
+function Section({ kind, title, section = kind, rows, q, open, onOpen, onChange }: SectionProps) {
   const [all, setAll] = useState(false);
   const [find, setFind] = useState("");
-  const picked = q.terms.filter((t) => t.kind === kind).length;
-  const browse = kind === "tag";
+  const name = title ?? titles[kind as Exclude<TermKind, "value">];
+  const picked = q.terms.filter((t) => sectionOf(t) === section).length;
+  const browse = kind === "tag" || kind === "value";
+  const findLabel = kind === "tag" ? "Find a tag" : `Find in ${name}`;
   const needle = find.trim().toLowerCase();
   const isPicked = (r: Row) => q.terms.some((t) => t.kind === kind && sameValue(kind, t.value, r.value));
   const listed = rows ?? [];
@@ -128,14 +156,15 @@ function Section({ kind, rows, q, open, onOpen, onChange }: SectionProps) {
     <section className="facet-section">
       <h2>
         <button className="facet-head" aria-expanded={open} onClick={onOpen}>
-          {titles[kind]}
+          {name}
           {picked > 0 && ` · ${picked}`}
         </button>
       </h2>
       {open && (
         <>
-          {browse && (
-            <input className="input facet-find" type="search" aria-label="Find a tag" placeholder="Find a tag" value={find} onChange={(e) => setFind(e.target.value)} />
+          {/* Tags always get the box; a value key only once it lists more than fits. */}
+          {browse && (kind === "tag" || listed.length > 10) && (
+            <input className="input facet-find" type="search" aria-label={findLabel} placeholder={findLabel} value={find} onChange={(e) => setFind(e.target.value)} />
           )}
           <ul className="facet-list">
             {shown.map((r) => (
@@ -151,6 +180,27 @@ function Section({ kind, rows, q, open, onOpen, onChange }: SectionProps) {
       )}
     </section>
   );
+}
+
+/** ValueSection counts one text or list key's values from the score instance, each a row to include or exclude. */
+function ValueSection({ k, q, open, onOpen, onChange }: { k: EnrichmentKey; q: CardQuery; open: boolean; onOpen: () => void; onChange: (q: CardQuery) => void }) {
+  const body = valueCountSearch(q, k.key);
+  const res = useQuery({
+    queryKey: ["search", "card", body],
+    queryFn: async () => must(await api.POST("/cards/search", { body })),
+    placeholderData: keepPreviousData,
+    enabled: open,
+  });
+  const section = `value:${k.key}`;
+  const counted = res.data && (res.data.facets?.enrichments?.[k.key] ?? []).map((v) => ({ value: `${k.key}=${v.value}`, label: v.value, cards: v.cards }));
+  // A selected value with no matches still gets a row, so it can be cleared.
+  const rows = counted && [
+    ...counted,
+    ...q.terms
+      .filter((t) => sectionOf(t) === section && !counted.some((r) => r.value === t.value))
+      .map((t) => ({ value: t.value, label: t.value.slice(k.key.length + 1), cards: 0 })),
+  ];
+  return <Section kind="value" title={k.label} section={section} rows={rows} q={q} open={open} onOpen={onOpen} onChange={onChange} />;
 }
 
 /** ScoreFilter narrows to cards whose score instance value of key is in a range, or that have none. */
@@ -205,13 +255,30 @@ function ScoreSection({ scores, q, open, onOpen, onChange }: { scores: Enrichmen
   );
 }
 
-/** Facets is the filter sidebar: one section per term kind, each counting its values over the other sections' filters. */
-export function Facets({ kind, q, names, scores = [], onChange }: { kind: Kind; q: CardQuery; names: Names; scores?: EnrichmentKey[]; onChange: (q: CardQuery) => void }) {
-  const [collapsed, setCollapsed] = useState<TermKind[]>(readCollapsed);
+/**
+ * Facets is the filter sidebar: one section per term kind, and one per text or list key of the score instance,
+ * each counting its values over the other sections' filters.
+ */
+export function Facets({
+  kind,
+  q,
+  names,
+  scores = [],
+  values = [],
+  onChange,
+}: {
+  kind: Kind;
+  q: CardQuery;
+  names: Names;
+  scores?: EnrichmentKey[];
+  values?: EnrichmentKey[];
+  onChange: (q: CardQuery) => void;
+}) {
+  const [collapsed, setCollapsed] = useState<string[]>(readCollapsed);
   const sections = sectionsFor(kind).filter((s) => s !== "collection" || names.collections.size > 0);
-  const open = (s: TermKind) => !collapsed.includes(s);
+  const open = (s: string) => !collapsed.includes(s);
   const rows = useRows(kind, q, names, sections, open);
-  const flip = (s: TermKind) => {
+  const flip = (s: string) => {
     const next = open(s) ? [...collapsed, s] : collapsed.filter((x) => x !== s);
     setCollapsed(next);
     saveCollapsed(next);
@@ -223,6 +290,9 @@ export function Facets({ kind, q, names, scores = [], onChange }: { kind: Kind; 
       </label>
       {sections.map((s) => (
         <Section key={s} kind={s} rows={rows[s]} q={q} open={open(s)} onOpen={() => flip(s)} onChange={onChange} />
+      ))}
+      {values.map((k) => (
+        <ValueSection key={k.key} k={k} q={q} open={open(`value:${k.key}`)} onOpen={() => flip(`value:${k.key}`)} onChange={onChange} />
       ))}
       {scores.length > 0 && <ScoreSection scores={scores} q={q} open={open("score")} onOpen={() => flip("score")} onChange={onChange} />}
     </aside>

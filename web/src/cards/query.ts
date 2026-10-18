@@ -7,13 +7,15 @@ type TargetIs = components["schemas"]["TargetState"]["is"];
 
 // Typed from the schema so a new state fails the build here.
 export const targetStates: TargetIs[] = ["in_sync", "ahead", "remote_changed", "diverged", "missing", "cant_check"];
-/** kinds are the filter sections, in sidebar order. score filters on enrichment values. */
-const kinds = ["target", "state", "tag", "source", "collection", "score"] as const;
+/** kinds are the filter sections, in sidebar order. score filters on enrichment numbers, value on text and list enrichments. */
+const kinds = ["target", "state", "tag", "source", "collection", "score", "value"] as const;
 const sorts = ["relevance", "updated", "name", "created"] as const;
 const enrichmentSort = /^enrichment:[a-z][a-z0-9_]*$/;
 // A score term's value: key:low..high, either end optional, or key:none for cards without a value.
 const num = String.raw`-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?`;
 const scoreValue = new RegExp(String.raw`^([a-z][a-z0-9_]*):(none|(${num})?\.\.(${num})?)$`);
+// A value term's value: key=value.
+const valueTerm = /^([a-z][a-z0-9_]*)=(.+)$/;
 export const sizes = [24, 48, 96];
 
 export type TermKind = (typeof kinds)[number];
@@ -56,9 +58,15 @@ export function scoreTerm(s: Score): Term | undefined {
   return { kind: "score", value: `${s.key}:${s.gte ?? ""}..${s.lte ?? ""}`, not: false };
 }
 
-/** withoutScores drops score terms and an enrichment sort, for a library with no score instance. */
+/** enrichmentValue reads a value term's key and value, or returns undefined if it is malformed. */
+export function enrichmentValue(value: string): { key: string; value: string } | undefined {
+  const m = valueTerm.exec(value);
+  return m ? { key: m[1]!, value: m[2]! } : undefined;
+}
+
+/** withoutScores drops score and value terms and an enrichment sort, for a library with no score instance. */
 export function withoutScores(q: CardQuery): CardQuery {
-  const terms = q.terms.filter((t) => t.kind !== "score");
+  const terms = q.terms.filter((t) => t.kind !== "score" && t.kind !== "value");
   const sort = q.sort.startsWith("enrichment:") ? defaultSort(q.text) : q.sort;
   return terms.length === q.terms.length && sort === q.sort ? q : { ...q, terms, sort };
 }
@@ -77,6 +85,7 @@ function valid(kind: TermKind, value: string): boolean {
   if (kind === "target" || kind === "collection") return id(value);
   if (kind === "state") return targetStates.some((s) => s === value);
   if (kind === "score") return parseScore(value) !== undefined;
+  if (kind === "value") return enrichmentValue(value) !== undefined;
   return value !== "";
 }
 
@@ -138,6 +147,10 @@ function condition(kind: TermKind, value: string): Filter {
       const { key, gte, lte, none } = parseScore(value)!;
       return none ? { enrichment: key, missing: true } : { enrichment: key, gte, lte };
     }
+    case "value": {
+      const { key, value: is } = enrichmentValue(value)!;
+      return { enrichment: key, is };
+    }
   }
 }
 
@@ -156,6 +169,13 @@ export function filterFor(terms: Term[], sharesSource = false): Filter | undefin
   }
   // Each score key narrows on its own.
   for (const t of terms.filter((t) => t.kind === "score" && !t.not)) parts.push(condition(t.kind, t.value));
+  // A value key's included values OR together, like a section's.
+  const byKey = new Map<string, Filter[]>();
+  for (const t of terms.filter((t) => t.kind === "value" && !t.not)) {
+    const section = sectionOf(t);
+    byKey.set(section, [...(byKey.get(section) ?? []), condition(t.kind, t.value)]);
+  }
+  for (const [first, ...rest] of byKey.values()) if (first) parts.push(rest.length ? { or: [first, ...rest] } : first);
   if (sharesSource) parts.push({ shares_source: true });
   for (const t of terms.filter((t) => t.not)) parts.push({ not: condition(t.kind, t.value) });
   return parts.length ? { and: parts } : undefined;
@@ -192,6 +212,17 @@ export function countSearch(q: CardQuery, section: keyof typeof facetOf): Search
   };
 }
 
+/** valueCountSearch counts a value key's values over every other filter, the key's own terms aside. */
+export function valueCountSearch(q: CardQuery, key: string): Search {
+  return {
+    library: q.library,
+    text: q.text || undefined,
+    filter: filterFor(q.terms.filter((t) => sectionOf(t) !== `value:${key}`), q.sharesSource),
+    facets: [`enrichment:${key}`],
+    page: { size: 1 },
+  };
+}
+
 /** stateCountSearch counts the matches in one state; the targets facet can't, as it counts a card once per target. */
 export function stateCountSearch(q: CardQuery, is: TargetIs): Search {
   const terms: Term[] = [...q.terms.filter((t) => t.kind !== "state"), { kind: "state", value: is, not: false }];
@@ -200,6 +231,9 @@ export function stateCountSearch(q: CardQuery, is: TargetIs): Search {
 
 // The tag facet groups by lower-cased name and the API filter ignores case, so tags match that way here too.
 export const sameValue = (kind: TermKind, a: string, b: string) => (kind === "tag" ? a.toLowerCase() === b.toLowerCase() : a === b);
+
+/** sectionOf names a term's sidebar section: its kind, or value:<key> for a value, as each value key has its own. */
+export const sectionOf = (t: Term) => (t.kind === "value" ? `value:${enrichmentValue(t.value)?.key}` : t.kind);
 
 /** toggleTerm adds t, flips its negation, or removes it if it's already there as given. */
 export function toggleTerm(q: CardQuery, t: Term): CardQuery {
@@ -211,5 +245,5 @@ export function toggleTerm(q: CardQuery, t: Term): CardQuery {
 
 /** onlyTerm makes t the only value of its section. */
 export function onlyTerm(q: CardQuery, t: Term): CardQuery {
-  return { ...q, terms: [...q.terms.filter((x) => x.kind !== t.kind), { ...t, not: false }], page: 1 };
+  return { ...q, terms: [...q.terms.filter((x) => sectionOf(x) !== sectionOf(t)), { ...t, not: false }], page: 1 };
 }

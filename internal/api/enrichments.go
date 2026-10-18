@@ -134,6 +134,7 @@ type startEnrichIn struct {
 		CardIDs    []int64        `json:"card_ids,omitempty" maxItems:"10000" doc:"The cards to enrich. Send this or query."`
 		Query      *library.Query `json:"query,omitempty" doc:"Enriches every card the query matches, as POST /bulk selects them. Send this or card_ids."`
 		Rescore    bool           `json:"rescore,omitempty" doc:"Also send cards whose head revision already has a value from the instance. Without it, they count as skipped."`
+		Confirm    bool           `json:"confirm,omitempty" doc:"Run past the plugin's enrich_max_cards. Without it, a larger run is refused."`
 	}
 }
 
@@ -175,9 +176,10 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 			if n == 0 {
 				return nil, huma.Error400BadRequest("the query matches no cards")
 			}
-			if most := enrich.MaxCards(inst.Manifest); n > most {
-				return nil, huma.Error400BadRequest(fmt.Sprintf("a run of %s takes at most %d cards; this one has %d", inst.Manifest.Name, most, n))
+			if most := enrich.MaxCards(inst.Manifest); n > most && !b.Confirm {
+				return nil, huma.Error400BadRequest(fmt.Sprintf("a run of %s takes at most %d cards without confirm; this one has %d", inst.Manifest.Name, most, n))
 			}
+			p.Confirmed = b.Confirm
 			return s.enqueue(ctx, jobs.Spec{Kind: enrich.Kind, InstanceID: &b.InstanceID, Payload: p})
 		})
 

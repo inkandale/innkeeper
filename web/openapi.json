@@ -2084,6 +2084,19 @@
               "null"
             ]
           },
+          "enrichments": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/ValueCount"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "description": "By key: each text value, or each item of a list value, and how many matching cards have it. Most common first, at most 100.",
+            "type": "object"
+          },
           "sources": {
             "items": {
               "$ref": "#/components/schemas/SourceCount"
@@ -2215,6 +2228,10 @@
             "description": "With enrichment: the enrich instance whose value to read, instead of the score instance.",
             "format": "int64",
             "type": "integer"
+          },
+          "is": {
+            "description": "With enrichment: the value is this text, or a list holding it.",
+            "type": "string"
           },
           "lte": {
             "description": "With enrichment: the value is at most this.",
@@ -3477,6 +3494,11 @@
           "description": {
             "type": "string"
           },
+          "enrich_max_cards": {
+            "description": "For an enrich plugin: the most cards a run takes without confirm",
+            "format": "int64",
+            "type": "integer"
+          },
           "enrichments": {
             "additionalProperties": {
               "$ref": "#/components/schemas/EnrichmentOut"
@@ -3877,7 +3899,7 @@
             "type": "string"
           },
           "facets": {
-            "description": "Counts to return over every match: tags, collections, targets, sources. Lorebooks take targets and sources.",
+            "description": "Counts to return over every match: tags, collections, targets, sources, or enrichment:\u003ckey\u003e for the values of a text or list key from the score instance. Lorebooks take targets and sources.",
             "items": {
               "type": "string"
             },
@@ -4896,6 +4918,10 @@
               "null"
             ]
           },
+          "confirm": {
+            "description": "Run past the plugin's enrich_max_cards. Without it, a larger run is refused.",
+            "type": "boolean"
+          },
           "instance_id": {
             "description": "An enrich instance",
             "format": "int64",
@@ -5213,6 +5239,23 @@
             "type": "integer"
           }
         },
+        "type": "object"
+      },
+      "ValueCount": {
+        "additionalProperties": false,
+        "properties": {
+          "cards": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "cards"
+        ],
         "type": "object"
       },
       "VariantOfInBody": {

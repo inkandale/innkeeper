@@ -9,10 +9,13 @@ model's time. forge-ai's evaluate scores a card with one LLM call, which is
 too slow and too costly to run on a whole archive. This spec adds a cheap
 first pass, so you filter the archive in two stages:
 
-1. **Lint** (light): `card-lint`, a new enrich plugin, scores every card with
-   deterministic checks. It makes no model calls and runs in milliseconds per card.
+1. **Lint** (light): `card-lint`, a new enrich plugin, checks every card and
+   detects its language. It makes no model calls and runs in milliseconds per card.
 2. **Evaluate** (full): forge-ai's existing enrich run scores only the cards
-   that pass lint.
+   you keep after lint.
+
+You choose what to keep in the library sidebar, which counts each problem and
+each language over the current search.
 
 Builds on the [enrichments design](2026-10-15-enrichments-design.md).
 
@@ -20,15 +23,14 @@ Builds on the [enrichments design](2026-10-15-enrichments-design.md).
 
 | Topic | Decision |
 |---|---|
-| Where lint lives | A new plugin, `card-lint`, in innkeeper-plugins. Its checks need no core change. |
+| Where lint lives | A new plugin, `card-lint`, in innkeeper-plugins. |
 | Token counts | Estimated as a quarter of the characters, the same rule the web editor uses (`web/src/card/draft.ts`). This is close enough for filtering, and needs no tokenizer dependency. |
-| Gate | One `lint` score, 0 to 100, is the grid key, so `hide_below` and the grid work on it unchanged. |
-| Problems | A `problems` list of codes, shown on the card page, says why a card lost points. |
+| Problems | A `problems` list of codes. The sidebar counts each code, and you include or exclude cards by code. |
+| Language | A `language` text value, such as English or Japanese, from whatlanggo. The sidebar counts each language, so which languages to keep is a filter, not a setting. |
+| Gate | One `lint` score, 0 to 100, is the grid key, so `hide_below` and the grid work on it unchanged. Each problem's weight is fixed in the plugin. |
+| Settings | Only thresholds: what counts as too short, oversized, or repeated, and the placeholder list. The `default` in the config schema is the only copy of each default. |
 | Duplicates | Out of scope: the hide job already finds exact and near duplicates. |
-| Language | An `english` score: the share of common English words in the text, with no language-detection dependency. A card below a set level gets the `not_english` problem, which costs whatever points the settings give it. |
-| Tunables | Every threshold and every problem's points are instance settings. The `default` in the config schema is the only copy of each default. |
-| Run size | A plugin can raise its enrich run cap in its manifest; card-lint does (see [Run size](#run-size)). |
-| Filter by instance | Optional: an enrichment filter can name the instance it reads (see [Core](#core)). The two-stage flow works without it. |
+| Run size | A run past its plugin's card cap needs confirmation; a plugin whose calls cost nothing raises its cap. See [Run size](#run-size). |
 
 ## card-lint
 
@@ -38,49 +40,44 @@ Builds on the [enrichments design](2026-10-15-enrichments-design.md).
 name = "card-lint"
 category = "Quality"
 capabilities = ["enrich"]
-description = "Score cards with fast checks that need no model: missing fields, size, repeated text, leftover placeholders, and markup. Use it to filter an archive before running a model-based evaluation."
+enrich_max_cards = 1000000
 
 [enrichments]
 lint = { type = "score", range = [0, 100], label = "Lint", grid = true }
 tokens = { type = "score", range = [0, 1000000], label = "Always-on tokens" }
 problems = { type = "list", label = "Problems" }
-english = { type = "score", range = [0, 100], label = "English" }
+language = { type = "text", label = "Language" }
 ```
 
 `tokens` is the estimate for the fields sent with every message: description,
 personality, scenario, system prompt, and post-history instructions. The
 quarter-of-characters rule undercounts Chinese, Japanese, and Korean text,
-which runs closer to a token per character; filter on `english` first.
-
-### English score
-
-`english` is the percentage of the card's words, across description and first
-message, that are in a fixed list of about 100 common English words (the,
-and, you, her, is, ...), after removing macros and markup. Words in a
-non-Latin script, such as Cyrillic, count as words but never match the list.
-Chinese and Japanese are written without spaces, so each of their characters
-counts as a word.
-
-English prose lands around 40 to 60, other Latin-script languages under 15,
-and Chinese, Japanese, Korean, or Russian near 0. The score says only whether
-a card is English, not which language it is in; naming the language would
-need a detection library, such as whatlanggo.
+which runs closer to a token per character.
 
 The plugin has no database and no `uses`.
 
+### Language
+
+`language` is whatlanggo's name for the language of the description and first
+message, after macros and markup are removed: English, Mandarin, Japanese,
+Russian, and so on. A card whatlanggo can't call reliably, such as one with
+only a line of text, is `Unknown`.
+
+whatlanggo is pure Go and adds no model files. It confuses short Cyrillic text:
+two sentences of Ukrainian read as Serbian, so they come out `Unknown`.
+lingua-go gets these right but makes the plugin 130 MB; switch if `Unknown`
+turns out common.
+
 ### Checks
 
-`lint` starts at 100 and loses each problem's points, down to 0. A problem
-worth 100 points makes the score 0 on its own; one worth 0 is still listed in
-`problems` but doesn't change the score.
+`lint` starts at 100 and loses each problem's points, down to 0.
 
-| Code | Fails when | Default points |
+| Code | Fails when | Points |
 |---|---|---|
 | `no_name` | name is empty | 100 |
 | `no_description` | description is empty | 100 |
 | `no_first_message` | first message is empty | 100 |
 | `too_short` | description, personality, and scenario together estimate under `min_tokens` | 100 |
-| `not_english` | `english` is under `min_english` | 100 |
 | `oversized` | always-on tokens estimate over `max_tokens` | 20 |
 | `repeated_text` | a paragraph of `repeat_words` words or more appears in two always-on fields | 15 |
 | `first_message_copies_description` | the first message contains the description's first paragraph, when that paragraph has `repeat_words` words or more | 15 |
@@ -91,32 +88,15 @@ worth 100 points makes the score 0 on its own; one worth 0 is still listed in
 
 ### Settings
 
-The instance's config holds the thresholds and each problem's points:
-
-```toml
-[config]
-type = "object"
-
-[config.properties]
-min_tokens = { type = "integer", title = "Too short under", minimum = 0, default = 50, description = "Estimated tokens across description, personality, and scenario." }
-max_tokens = { type = "integer", title = "Oversized over", minimum = 1, default = 4000, description = "Estimated always-on tokens." }
-repeat_words = { type = "integer", title = "Repeated text from", minimum = 5, default = 20, description = "Words in a paragraph that, found in two always-on fields, count as repeated." }
-min_english = { type = "integer", title = "Not English under", minimum = 0, maximum = 100, default = 25, description = "The English score below which a card gets not_english." }
-placeholders = { type = "array", title = "Placeholders", items = { type = "string" }, default = ["<BOT>", "<USER>", "{char}", "{user}", "[name]", "[character]"] }
-
-[config.properties.points]
-type = "object"
-title = "Points"
-description = "What each problem costs, 0 to 100. 100 sets the score to 0; 0 only lists the problem."
-
-[config.properties.points.properties]
-no_name = { type = "integer", minimum = 0, maximum = 100, default = 100 }
-# ... one entry per code, with the defaults in the table above
-```
+| Setting | Default | Sets |
+|---|---|---|
+| `min_tokens` | 50 | `too_short` |
+| `max_tokens` | 4,000 | `oversized` |
+| `repeat_words` | 20 | `repeated_text`, `first_message_copies_description` |
+| `placeholders` | `<BOT>`, `<USER>`, `{char}`, `{user}`, `[name]`, `[character]` | `placeholder` |
 
 The core saves only the values an owner changed. The plugin embeds its
-`plugin.toml` and reads each `default` from it, so a default lives in one
-place.
+`plugin.toml` and reads each `default` from it.
 
 Changing a setting doesn't touch values already stored. To apply new settings,
 run card-lint again with **Re-score cards already scored** ticked.
@@ -129,85 +109,77 @@ data won't decode gets an `Error` result, not a zero score.
 ### Tests
 
 - One test per check: a card that trips only that check gets its code and
-  loses its points.
-- A card with a 100-point problem scores 0 whatever else it has.
+  loses its points. A card with a 100-point problem scores 0.
 - A clean card scores 100 with an empty `problems` list.
-- Settings: lowering `max_tokens` makes a card `oversized`; setting a code's
-  points to 0 keeps it in `problems` and restores the score; with no config,
-  the plugin uses the schema's defaults.
-- `english`: an English card scores at least 25; a Spanish, a Chinese, and a
-  Russian card each score under 15. Fixtures are real excerpts, not word lists.
-- `make check` runs the plugin through the real host, as for the other plugins.
+- Settings: lowering `max_tokens` makes a card `oversized`; a new placeholder
+  is caught; with no config, the plugin uses the schema's defaults.
+- `language`: real English, Spanish, Mandarin, and Russian excerpts get their
+  names; a card with one line is `Unknown`.
+- `make check` runs the plugin through the real host.
 
 ## The two-stage flow
 
-With today's core:
-
 1. Import the archive.
 2. Set the library's **Scores from** setting to the card-lint instance.
-3. Select all and run card-lint. card-lint sets `enrich_max_cards` (see
-   [Run size](#run-size)), so one run covers a whole archive.
-4. Filter to `lint` at least 60, select all, and run forge-ai's enrich. A
-   forge-ai run still takes at most 10,000 cards.
-   The bulk run takes the filtered query and runs the instance you pick,
-   so lint filters which cards forge-ai scores.
-5. Set **Scores from** back to forge-ai to see quality on the grid, and hide or
-   archive from there.
+3. Select all and run card-lint. Its cap is 1,000,000 cards, so one run covers
+   the archive with no confirmation.
+4. In the sidebar, pick the languages to keep under **Language** and exclude
+   problems under **Problems**. Each count updates as you filter.
+5. Select all and run forge-ai's enrich on what's left. Past 10,000 cards, the
+   Evaluate panel asks you to confirm.
+6. Set **Scores from** back to forge-ai to see quality on the grid.
 
-Step 5 switching the grid back and forth is the cost of having one score
-instance per library.
-
-## Run size
-
-An enrich run takes at most 10,000 cards, because each card can cost a model
-call. card-lint's calls cost nothing, so a plugin can declare its own cap in
-the manifest:
-
-```toml
-enrich_max_cards = 1000000
-```
-
-0 or unset keeps the default of 10,000. A run's request is refused when its
-selection is over the plugin's cap, and the job stops reading cards at it.
-`card_ids` still takes at most 10,000 IDs per request; a larger run sends a
-query.
-
-## Core
-
-Optional, and a separate change from the plugin.
-
-An enrichment filter gains `instance`:
-
-```json
-{"enrichment": "lint", "instance": 12, "gte": 60}
-```
-
-It reads that enrich instance's value instead of the score instance's. Without
-`instance`, the filter behaves as it does now. Sort and include stay on the
-score instance.
-
-With it, the library can keep forge-ai as its score instance, and a single
-query selects "passed lint, not yet evaluated":
+Through the API or MCP, a filter can name the instance it reads, so steps 2 and
+6 aren't needed:
 
 ```json
 {"and": [
-  {"enrichment": "lint", "instance": 12, "gte": 60},
+  {"enrichment": "language", "instance": 12, "is": "English"},
+  {"not": {"enrichment": "problems", "instance": 12, "is": "no_first_message"}},
   {"enrichment": "quality", "missing": true}
 ]}
 ```
 
-Through the API or MCP, this drops steps 2 and 5: the whole flow runs without
-touching settings.
+## Core
 
-- **Search:** `enrichmentSQL` takes the instance from the filter when set,
-  from `ScoreInstance` otherwise. A filter whose every enrichment term names
-  an instance needs no score instance. An instance that isn't an enrich instance
-  isn't refused; its cards just have no values, as with an unscored key.
-- **Tests:** a filter naming an instance matches on that instance's value
-  while the score instance holds a different one; one query combines two
-  instances; `instance` without `enrichment` is refused.
-- **Web:** out of scope. The filter sidebar still lists only the score
-  instance's keys, so in the UI the flow still switches **Scores from**.
+### Value filters and facets
+
+- **Filter:** `is` matches a text value equal to it, or a list value holding
+  it: `{"enrichment": "problems", "is": "markup"}`. It takes the place of a
+  range or `missing`.
+- **Instance:** `instance` on an enrichment filter reads that enrich
+  instance's value instead of the score instance's. A query whose every
+  enrichment filter names an instance needs no score instance.
+- **Facet:** `enrichment:<key>` counts the matches per text value, or per list
+  item, of the score instance's current value of key, most common first, at
+  most 100. Results go in `facets.enrichments[key]`.
+- **Web:** the sidebar has a section per text or list key of the score
+  instance, like Tags: click to include, shift-click or − to exclude, only to
+  pick one. A section counts over every filter but its own key's. Terms go in
+  the URL as `f=value:<key>=<value>`.
+
+### Run size
+
+An enrich run takes at most 10,000 cards unless its plugin's manifest sets
+`enrich_max_cards`. A request past the cap is refused unless it sends
+`confirm: true`; with it, the job takes every matching card. The plugin listing
+shows each enrich plugin's cap, and the Evaluate panel asks for the
+confirmation when the selection is larger. `card_ids` still takes at most
+10,000 IDs per request; a larger run sends a query.
+
+A confirmed run is one job. The job already sends cards 20 at a time, and a
+run without **Re-score** skips cards already scored, so running it again after
+an interruption carries on where it stopped.
+
+### Tests
+
+- Search: `is` on a text and on a list value, negated, and combined with a
+  facet; the facet counts list items and respects the filter; `is` with a range,
+  `is` without `enrichment`, and a facet without a score instance are refused.
+- API: a query past the plugin's cap is refused without `confirm` and runs every
+  card with it; the plugin listing shows the cap.
+- Web: a value section counts, filters, and excludes; Evaluate past the cap
+  stays disabled until confirmed and sends `confirm`.
 
 ## Feeding lint into evaluate
 

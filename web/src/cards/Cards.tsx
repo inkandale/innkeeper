@@ -9,7 +9,7 @@ import { stateLabel } from "../sync/sync";
 import { Facets } from "./Facets";
 import { ImportForm, importers } from "./ImportForm";
 import { pageLinks } from "./pages";
-import { defaultSort, parseQuery, parseScore, withoutScores, sizes, toggleTerm, toParams, toLorebookSearch, toSearch, type CardQuery, type Sort, type Term } from "./query";
+import { defaultSort, enrichmentValue, parseQuery, parseScore, withoutScores, sizes, toggleTerm, toParams, toLorebookSearch, toSearch, type CardQuery, type Sort, type Term } from "./query";
 import { emptySelection, pick, target, type Selection } from "./selection";
 import { useJobEvents } from "../settings/jobUtil";
 import { useLibrary, withLibrary } from "../shell/library";
@@ -45,6 +45,8 @@ function scoreLabel(value: string): string {
 }
 
 function termLabel(t: Term, names: Names): string {
+  const pair = t.kind === "value" ? enrichmentValue(t.value) : undefined;
+  if (pair) return `${t.not ? "not " : ""}${pair.key}: ${pair.value}`;
   const value =
     t.kind === "score" ? scoreLabel(t.value)
     : t.kind === "collection" ? (names.collections.get(Number(t.value)) ?? "#" + t.value)
@@ -79,6 +81,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const go = (next: CardQuery) => setParams(toParams(next));
 
   const scoreKeys = (keys.data?.keys ?? []).filter((k) => k.type === "score");
+  const valueKeys = (keys.data?.keys ?? []).filter((k) => k.type === "text" || k.type === "list");
   const grid = keys.data?.keys?.find((k) => k.grid);
   const body = { ...(kind === "card" ? toSearch(q, scored) : toLorebookSearch(q)), ...(ungrouped ? {} : { group: "family" as const }) };
   const res = useQuery({
@@ -131,7 +134,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
 
   return (
     <div className={facetsOpen ? "cards" : "cards no-facets"}>
-      {facetsOpen && <Facets kind={kind} q={q} names={names} scores={scoreKeys} onChange={go} />}
+      {facetsOpen && <Facets kind={kind} q={q} names={names} scores={scoreKeys} values={valueKeys} onChange={go} />}
       {picking ? (
         <SelectionBar
           all={sel.all}

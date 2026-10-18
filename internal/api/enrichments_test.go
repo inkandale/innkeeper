@@ -290,7 +290,7 @@ func TestStartEnrichRunRejects(t *testing.T) {
 	}
 }
 
-func TestStartEnrichRunTakesThePluginsCardCap(t *testing.T) {
+func TestStartEnrichRunNeedsConfirmPastThePluginsCardCap(t *testing.T) {
 	e := newEnrichEnv(t)
 	e.manifests["judge"].EnrichMaxCards = 1
 	a, b := e.card("Brakka", "x"), e.card("Carrow", "x")
@@ -301,6 +301,19 @@ func TestStartEnrichRunTakesThePluginsCardCap(t *testing.T) {
 	}
 	if r := e.send("POST", "/enrichments/runs", map[string]any{"instance_id": e.instID, "card_ids": []int64{a}}, auth...); r.Status != 202 {
 		t.Errorf("one card within a cap of one: %s", r)
+	}
+	j, p := e.startRun(map[string]any{"instance_id": e.instID, "query": query, "confirm": true, "rescore": true})
+	if j.Status != jobs.StatusSucceeded || p.Total != 2 || p.Done != 2 {
+		t.Fatalf("confirmed run past the cap: job %s, progress %+v", j.Status, p)
+	}
+	type listed struct {
+		Name           string `json:"name"`
+		EnrichMaxCards int    `json:"enrich_max_cards"`
+	}
+	var list []listed
+	e.call("GET", "/plugins", nil, 200, &list)
+	if i := slices.IndexFunc(list, func(pl listed) bool { return pl.Name == "judge" }); i < 0 || list[i].EnrichMaxCards != 1 {
+		t.Errorf("plugins = %+v, want judge with enrich_max_cards 1", list)
 	}
 }
 

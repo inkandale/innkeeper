@@ -62,6 +62,7 @@ export function SelectionBar(props: {
   const [format, setFormat] = useState("json");
   const [enricher, setEnricher] = useState<number>();
   const [rescore, setRescore] = useState(false);
+  const [confirmBig, setConfirmBig] = useState(false);
   const [unpublish, setUnpublish] = useState(false);
   // The count typed to confirm a delete; the server refuses one that no longer matches.
   const [typed, setTyped] = useState("");
@@ -86,8 +87,13 @@ export function SelectionBar(props: {
     start.mutate(async () => must(await api.POST("/bulk", { body: { query, ...kindField, ...body } })));
   const collectionId = collection ?? collections.data?.[0]?.id ?? 0;
   const enricherId = enricher ?? keys.data?.instance_id ?? enrichers[0]?.id ?? 0;
+  const enricherLabel = enrichers.find((i) => i.id === enricherId)?.label ?? "the plugin";
+  const enricherPlugin = instances.data?.find((i) => i.id === enricherId)?.plugin;
+  const maxCards = plugins.data?.find((p) => p.name === enricherPlugin)?.enrich_max_cards;
+  // Past the plugin's limit the API wants confirm, since each card may cost a model call.
+  const big = maxCards !== undefined && n !== undefined && n > maxCards;
   const evaluate = () =>
-    start.mutate(async () => must(await api.POST("/enrichments/runs", { body: { instance_id: enricherId, query, rescore } })));
+    start.mutate(async () => must(await api.POST("/enrichments/runs", { body: { instance_id: enricherId, query, rescore, ...(big && { confirm: true }) } })));
   const chosen = targets.filter((t) => (picked ?? [targets[0]?.id]).includes(t.id));
   // What the push does to each copy. Its confirm makes the push leave alone any copy that changes after this.
   const previews = useQueries({
@@ -229,7 +235,15 @@ export function SelectionBar(props: {
                 <span>Re-score cards already scored</span>
                 <input type="checkbox" checked={rescore} onChange={(e) => setRescore(e.target.checked)} />
               </label>
-              <button className="button primary" disabled={busy || !enricherId} onClick={evaluate}>
+              {big && (
+                <label className="check">
+                  <span>
+                    Send all {n.toLocaleString()} cards to {enricherLabel}, over its usual limit of {maxCards.toLocaleString()}
+                  </span>
+                  <input type="checkbox" checked={confirmBig} onChange={(e) => setConfirmBig(e.target.checked)} />
+                </label>
+              )}
+              <button className="button primary" disabled={busy || !enricherId || (big && !confirmBig)} onClick={evaluate}>
                 Evaluate {plural(n)}
               </button>
               {start.error && <span className="error">{start.error.message}</span>}

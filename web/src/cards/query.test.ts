@@ -210,3 +210,25 @@ test("Shares a source is shared=1 in the URL and a shares_source filter", () => 
   expect(toSearch(q).filter).toEqual({ and: [{ shares_source: true }] });
   expect(countSearch(q, "tag").filter).toEqual({ and: [{ shares_source: true }] });
 });
+
+test("value terms OR within a key, AND across keys, and only clears its own key", () => {
+  const q: CardQuery = {
+    ...base,
+    terms: [term("value", "language=en"), term("value", "language=ja"), term("value", "problems=markup", true), term("value", "problems=oversized")],
+  };
+  expect(filterFor(q.terms)).toEqual({
+    and: [
+      { or: [{ enrichment: "language", is: "en" }, { enrichment: "language", is: "ja" }] },
+      { enrichment: "problems", is: "oversized" },
+      { not: { enrichment: "problems", is: "markup" } },
+    ],
+  });
+  expect(onlyTerm(q, term("value", "language=zh")).terms).toEqual([
+    term("value", "problems=markup", true),
+    term("value", "problems=oversized"),
+    term("value", "language=zh"),
+  ]);
+  expect(parseQuery(toParams(q), 1).terms).toEqual(q.terms);
+  expect(parseQuery(new URLSearchParams("f=value:Bad=x&f=value:nokey"), 1).terms).toEqual([]);
+  expect(withoutScores(q).terms).toEqual([]);
+});

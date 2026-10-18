@@ -10,6 +10,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/inkandale/innkeeper/internal/auth"
+	"github.com/inkandale/innkeeper/internal/enrich"
 	"github.com/inkandale/innkeeper/internal/importer"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
 	"github.com/inkandale/innkeeper/internal/plugins"
@@ -38,6 +39,7 @@ type pluginOut struct {
 	Inputs            []string                 `json:"inputs,omitempty" doc:"What an import plugin takes from the UI: file (params blob and name), url (params url), or both"`
 	Config            map[string]any           `json:"config,omitempty" doc:"JSON Schema for an instance's config"`
 	Enrichments       map[string]EnrichmentOut `json:"enrichments,omitempty"`
+	EnrichMaxCards    int                      `json:"enrich_max_cards,omitempty" doc:"For an enrich plugin: the most cards a run takes without confirm"`
 	Records           map[string]recordTypeOut `json:"records,omitempty" doc:"The record types a records plugin keeps, by type name"`
 	Source            string                   `json:"source" doc:"Id of the source the plugin was installed from, or builtin"`
 	PreviousSource    *string                  `json:"previous_source,omitempty" doc:"Source of the version a rollback returns to"`
@@ -128,6 +130,9 @@ func (s *Server) instanceRoutes(api huma.API) {
 					Source: "builtin", Builtin: s.Registry.IsBuiltin(m.Name),
 					Description: m.Description, Category: m.Category, MultipleInstances: m.AllowsManyInstances(),
 					Status: plugins.Status(m, byPlugin[m.Name])}
+				if m.Has("enrich") {
+					p.EnrichMaxCards = enrich.MaxCards(m)
+				}
 				if m.Icon != "" {
 					p.Icon = "/api/plugins/" + m.Name + "/icon"
 				}

@@ -522,6 +522,79 @@ func TestSearchEnrichments(t *testing.T) {
 	}
 }
 
+func TestSearchEnrichmentValues(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	s := seedSearch(t, lib)
+	const lint = 7
+	add := func(card int64, key, value string) {
+		t.Helper()
+		c, err := lib.Cards.Get(ctx, card)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := lib.AddEnrichments(ctx, lint, []NewEnrichment{{CardID: card, RevisionID: c.HeadRevisionID, Key: key, Value: json.RawMessage(value)}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add(s.brakka, "language", `"en"`)
+	add(s.brakka, "problems", `["markup", "oversized"]`)
+	add(s.carrow, "language", `"zh"`)
+	add(s.carrow, "problems", `["markup"]`)
+
+	for name, tc := range map[string]struct {
+		f    Filter
+		want []int64
+	}{
+		"text is":         {Filter{Enrichment: ptr("language"), Is: ptr("zh")}, []int64{s.carrow}},
+		"list holds":      {Filter{Enrichment: ptr("problems"), Is: ptr("oversized")}, []int64{s.brakka}},
+		"list holds both": {Filter{Enrichment: ptr("problems"), Is: ptr("markup")}, []int64{s.carrow, s.brakka}},
+		"no such value":   {Filter{Enrichment: ptr("language"), Is: ptr("ja")}, []int64{}},
+		"not a list item": {Filter{Not: &Filter{Enrichment: ptr("problems"), Is: ptr("oversized")}}, []int64{s.carrow}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ids, err := lib.SearchIDs(ctx, Card, Query{Filter: &tc.f, ScoreInstance: lint})
+			if err != nil {
+				t.Fatal(err)
+			}
+			slices.Sort(tc.want)
+			if !slices.Equal(ids, tc.want) {
+				t.Fatalf("ids = %v, want %v", ids, tc.want)
+			}
+		})
+	}
+
+	got, err := lib.Search(ctx, Card, Query{Facets: []string{"enrichment:problems", "enrichment:language", "tags"}, ScoreInstance: lint})
+	if err != nil {
+		t.Fatal(err)
+	}
+	problems, languages := got.Facets.Enrichments["problems"], got.Facets.Enrichments["language"]
+	if !slices.Equal(problems, []ValueCount{{"markup", 2}, {"oversized", 1}}) || !slices.Equal(languages, []ValueCount{{"en", 1}, {"zh", 1}}) {
+		t.Fatalf("facets = %+v, %+v", problems, languages)
+	}
+	if len(got.Facets.Tags) == 0 {
+		t.Error("tags facet missing beside enrichment facets")
+	}
+	got, err = lib.Search(ctx, Card, Query{Facets: []string{"enrichment:problems"}, ScoreInstance: lint,
+		Filter: &Filter{Enrichment: ptr("language"), Is: ptr("zh")}})
+	if err != nil || !slices.Equal(got.Facets.Enrichments["problems"], []ValueCount{{"markup", 1}}) {
+		t.Fatalf("filtered facet = %+v, %v", got.Facets, err)
+	}
+
+	for name, q := range map[string]Query{
+		"facet without a score instance": {Facets: []string{"enrichment:language"}},
+		"is and a range":                 {Filter: &Filter{Enrichment: ptr("language"), Is: ptr("en"), Gte: ptr(1.0)}, ScoreInstance: lint},
+		"is without enrichment":          {Filter: &Filter{Is: ptr("en")}, ScoreInstance: lint},
+	} {
+		if _, err := lib.Search(ctx, Card, q); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: got %v, want ErrInvalid", name, err)
+		}
+	}
+	if _, err := lib.Search(ctx, Lorebook, Query{Facets: []string{"enrichment:language"}, ScoreInstance: lint}); !errors.Is(err, ErrInvalid) {
+		t.Errorf("lorebook facet: got %v, want ErrInvalid", err)
+	}
+}
+
 func TestQueryUsesEnrichments(t *testing.T) {
 	for q, want := range map[*Query]bool{
 		{}:                                 false,
@@ -530,6 +603,8 @@ func TestQueryUsesEnrichments(t *testing.T) {
 		{Include: []string{"enrichments"}}: true,
 		{Filter: &Filter{Or: []Filter{{Tag: ptr("a")}, {Not: &Filter{Enrichment: ptr("quality")}}}}}: true,
 		{Filter: &Filter{And: []Filter{{Tag: ptr("a")}}}}:                                            false,
+		{Facets: []string{"enrichment:language"}}:                                                    true,
+		{Facets: []string{"tags"}}:                                                                   false,
 	} {
 		if got := q.UsesEnrichments(); got != want {
 			t.Errorf("%+v: %v, want %v", *q, got, want)

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math"
 	"slices"
 	"sync"
 	"unicode/utf8"
@@ -45,6 +46,8 @@ type Payload struct {
 	ScoreInstance int64 `json:"score_instance,omitempty"`
 	// Rescore sends cards whose head revision already holds a value from the instance.
 	Rescore bool `json:"rescore,omitempty"`
+	// Confirmed lifts the plugin's card cap: the owner agreed to the run's size.
+	Confirmed bool `json:"confirmed,omitempty"`
 }
 
 // batches returns the payload's cards a batch at a time, reading a query's
@@ -210,7 +213,11 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 	if err != nil {
 		return err
 	}
-	next, total, err := p.batches(ctx, rn.Lib, MaxCards(inst.Manifest))
+	most := MaxCards(inst.Manifest)
+	if p.Confirmed {
+		most = math.MaxInt
+	}
+	next, total, err := p.batches(ctx, rn.Lib, most)
 	if err != nil {
 		return err
 	}

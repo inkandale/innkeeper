@@ -40,9 +40,11 @@ let previews: unknown[];
 let family: unknown;
 let puts: { path: string; body: unknown }[];
 let gets: string[];
+let judgeMax: number | undefined;
 beforeEach(() => {
   localStorage.clear();
   keys = { instance_id: null, keys: [] };
+  judgeMax = undefined;
   searches = [];
   posts = [];
   previews = [];
@@ -61,6 +63,8 @@ beforeEach(() => {
       if (path === "/api/cards/search") {
         const body = await req.json();
         searches.push(body);
+        if (body.page?.size === 1 && body.facets?.includes("enrichment:problems"))
+          return json({ hits: [], total: 4, facets: { enrichments: { problems: [{ value: "markup", cards: 3 }, { value: "oversized", cards: 1 }] } } });
         if (body.page?.size === 1 && body.facets?.includes("targets"))
           return json({ hits: [], total: 1, facets: { targets: [{ instance: 2, is: "ahead", cards: 1 }] } });
         if (body.include?.includes("enrichments")) {
@@ -93,7 +97,7 @@ beforeEach(() => {
           { name: "lumiverse", capabilities: ["push", "pull"] },
           { name: "folder", capabilities: ["import"] },
           { name: "url-import", capabilities: ["import"], inputs: ["url"] },
-          { name: "judge", capabilities: ["enrich"] },
+          { name: "judge", capabilities: ["enrich"], enrich_max_cards: judgeMax },
         ]);
       if (path === "/api/collections") gets.push(path + new URL(req.url).search);
       if (path === "/api/collections") return json([{ id: 4, name: "Elves", cards: 0 }]);
@@ -638,6 +642,40 @@ test("Evaluate re-scores cards already scored when asked", async () => {
   await user.click(screen.getByRole("checkbox", { name: "Re-score cards already scored" }));
   await user.click(screen.getByRole("button", { name: "Evaluate 1 card" }));
   await waitFor(() => expect(posts).toEqual([{ path: "/api/enrichments/runs", body: { instance_id: 5, query: { library: 1, filter: { ids: [8] } }, rescore: true } }]));
+});
+
+test("a list key's values count in the sidebar, and a click filters on one", async () => {
+  keys = { instance_id: 5, keys: [{ key: "problems", label: "Problems", type: "list" }] };
+  const { router } = renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: /^markup\s*3/ }));
+  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["value:problems=markup"]);
+  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "problems", is: "markup" }] } })));
+  expect(screen.getByRole("button", { name: "Remove problems: markup" })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Exclude oversized" }));
+  await waitFor(() =>
+    expect(searches).toContainEqual(
+      expect.objectContaining({ filter: { and: [{ enrichment: "problems", is: "markup" }, { not: { enrichment: "problems", is: "oversized" } }] } }),
+    ),
+  );
+  // The section counts over every filter but its own.
+  const counts = searches.filter((s) => (s as { facets?: string[] }).facets?.includes("enrichment:problems"));
+  expect((counts.at(-1) as { filter?: unknown }).filter).toBeUndefined();
+});
+
+test("Evaluate past the plugin's limit asks before sending confirm", async () => {
+  keys = scored;
+  judgeMax = 10;
+  localStorage.setItem("innkeeper.library.ungrouped", "true");
+  renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Select all" }));
+  await user.click(screen.getByRole("button", { name: "Evaluate" }));
+  const run = screen.getByRole("button", { name: "Evaluate 49 cards" });
+  expect(run).toBeDisabled();
+  await user.click(screen.getByRole("checkbox", { name: "Send all 49 cards to Judge, over its usual limit of 10" }));
+  await user.click(run);
+  await waitFor(() => expect(posts).toEqual([{ path: "/api/enrichments/runs", body: expect.objectContaining({ instance_id: 5, confirm: true }) }]));
 });
 
 test("without a score instance, score filters and sort in the URL are dropped with a note", async () => {

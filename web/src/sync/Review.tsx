@@ -52,7 +52,7 @@ function ReviewItem() {
   const filter = changesFilter(search);
   const follows = useFollowers();
   const followed = !!follows?.has(instance);
-  const appName = useQuery(instancesQuery).data?.find((i) => i.id === instance)?.name;
+  const appName = useQuery(instancesQuery).data?.find((i) => i.id === instance)?.label;
   const sides = { library: "Library", app: followed ? siteOf(remoteId) : appName || "App" };
   const navigate = useNavigate();
   const location = useLocation();

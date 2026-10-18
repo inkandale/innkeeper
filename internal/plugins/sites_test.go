@@ -47,7 +47,7 @@ func sitesRegistry(t *testing.T) (*Registry, *pluginhost.Manager) {
 
 func addSites(t *testing.T, reg *Registry, plugin, name string, config map[string]any) int64 {
 	t.Helper()
-	id, err := reg.CreateInstance(context.Background(), NewInstance{Plugin: plugin, Name: name, Config: config})
+	id, err := reg.CreateInstance(context.Background(), NewInstance{Plugin: plugin, Name: new(name), Config: config})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,6 +205,10 @@ func TestEnsureSingletons(t *testing.T) {
 	writeManifest(t, filepath.Join(dirs.Builtin, "many"), "name = \"many\"\n"+head+"capabilities = [\"import\"]\nmultiple_instances = true\n")
 	pool := testdb.New(t)
 	api, worker := openWith(t, pool, dirs), openWith(t, pool, dirs)
+	// Another plugin's instance by solo's name doesn't stop solo's.
+	if _, err := api.CreateInstance(ctx, NewInstance{Plugin: "many", Name: new("solo")}); err != nil {
+		t.Fatal(err)
+	}
 
 	// The api and the worker start at once.
 	created := make(chan []string, 2)
@@ -221,11 +225,11 @@ func TestEnsureSingletons(t *testing.T) {
 		t.Fatalf("created %v, want [solo]", got)
 	}
 	list, err := api.ListInstances(ctx)
-	if err != nil || len(list) != 1 || list[0].Plugin != "solo" {
-		t.Fatalf("instances = %+v, %v; want one of solo only", list, err)
+	if err != nil || len(list) != 2 || list[1].Plugin != "solo" || list[1].Name != nil {
+		t.Fatalf("instances = %+v, %v; want many's and an unnamed solo", list, err)
 	}
 
-	if err := api.DeleteInstance(ctx, list[0].ID); err != nil {
+	if err := api.DeleteInstance(ctx, list[1].ID); err != nil {
 		t.Fatal(err)
 	}
 	if names, err := worker.EnsureSingletons(ctx); err != nil || len(names) != 0 {

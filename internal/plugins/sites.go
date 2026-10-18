@@ -199,10 +199,9 @@ func (r *Registry) createSingletonOnce(ctx context.Context, plugin string) (bool
 	if err != nil || tag.RowsAffected() == 0 {
 		return false, err
 	}
-	// An owner who already has an instance, or one by that name, needs no other.
-	tag, err = tx.Exec(ctx, `INSERT INTO plugin_instance (plugin, name, secrets)
-		SELECT $1, $1, $2 WHERE NOT EXISTS (SELECT 1 FROM plugin_instance WHERE plugin = $1)
-		ON CONFLICT (name) DO NOTHING`, plugin, sealed)
+	// An owner who already has an instance needs no other.
+	tag, err = tx.Exec(ctx, `INSERT INTO plugin_instance (plugin, secrets)
+		SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM plugin_instance WHERE plugin = $1)`, plugin, sealed)
 	if err != nil {
 		return false, err
 	}

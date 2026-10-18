@@ -86,10 +86,10 @@ func newEnv(t *testing.T) *testEnv {
 		t.Fatal(err)
 	}
 	owner := "owner"
-	if e.loginID, err = reg.CreateInstance(ctx, plugins.NewInstance{Plugin: "fake", Name: "Login", OwnerSubject: &owner}); err != nil {
+	if e.loginID, err = reg.CreateInstance(ctx, plugins.NewInstance{Plugin: "fake", Name: new("Login"), OwnerSubject: &owner}); err != nil {
 		t.Fatal(err)
 	}
-	if e.importID, err = reg.CreateInstance(ctx, plugins.NewInstance{Plugin: "fake", Name: "Importer"}); err != nil {
+	if e.importID, err = reg.CreateInstance(ctx, plugins.NewInstance{Plugin: "fake", Name: new("Importer")}); err != nil {
 		t.Fatal(err)
 	}
 	return e

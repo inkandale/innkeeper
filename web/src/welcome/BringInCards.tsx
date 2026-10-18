@@ -45,10 +45,10 @@ export function BringInCards() {
       {apps.map((i) => (
         <div key={i.id}>
           {started[i.id] ? (
-            <JobLine label={i.name} id={started[i.id]!} to={`/sync/reconciles/${started[i.id]}`} />
+            <JobLine label={i.label} id={started[i.id]!} to={`/sync/reconciles/${started[i.id]}`} />
           ) : (
             <button className="button" disabled={pull.isPending} onClick={() => pull.mutate(i.id)}>
-              Sync {i.name}
+              Sync {i.label}
             </button>
           )}
         </div>

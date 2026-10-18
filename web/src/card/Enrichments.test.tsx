@@ -24,7 +24,7 @@ beforeEach(() => {
         return json({ id: 3, kind: "enrich", status: "queued" });
       }
       if (path === "/api/jobs/3") return json({ id: 3, kind: "enrich", status: "queued" });
-      if (path === "/api/instances") return json([{ id: 5, name: "Judge", plugin: "judge" }]);
+      if (path === "/api/instances") return json([{ id: 5, label: "Judge", name: "Judge", plugin: "judge" }]);
       if (path === "/api/plugins") return json([{ name: "judge", capabilities: ["enrich"] }]);
       return json([]);
     }),

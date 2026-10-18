@@ -80,7 +80,7 @@ func setupCaps(t *testing.T, caps []string, args ...string) *env {
 		}
 	})
 
-	inst, err := reg.CreateInstance(ctx, plugins.NewInstance{Plugin: "fake", Name: "Fake"})
+	inst, err := reg.CreateInstance(ctx, plugins.NewInstance{Plugin: "fake", Name: new("Fake")})
 	if err != nil {
 		t.Fatal(err)
 	}

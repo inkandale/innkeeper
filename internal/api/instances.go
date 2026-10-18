@@ -69,7 +69,7 @@ type checkOut struct{ Body checkResult }
 type createInstanceIn struct {
 	Body struct {
 		Plugin        string            `json:"plugin"`
-		Name          string            `json:"name" minLength:"1"`
+		Name          *string           `json:"name,omitempty" minLength:"1" doc:"Tells it apart from the plugin's other instances. A plugin may have one instance without a name; a singleton's is always without one."`
 		Config        map[string]any    `json:"config,omitempty"`
 		Secrets       map[string]string `json:"secrets,omitempty" doc:"Write-only. Responses list only the names that are set."`
 		OwnerSubject  *string           `json:"owner_subject,omitempty" doc:"For a login provider: the subject that logs in as the owner."`
@@ -81,7 +81,7 @@ type createInstanceIn struct {
 type updateInstanceIn struct {
 	ID   int64 `path:"id"`
 	Body struct {
-		Name          *string            `json:"name,omitempty" minLength:"1"`
+		Name          *string            `json:"name,omitempty" doc:"Empty clears it. A singleton's instance never keeps one."`
 		Config        map[string]any     `json:"config,omitempty" doc:"Replaces the whole config."`
 		Secrets       map[string]*string `json:"secrets,omitempty" doc:"Sets each secret named; null removes it. Secrets not named stay."`
 		OwnerSubject  *string            `json:"owner_subject,omitempty" doc:"Empty clears it, which logs the owner out of this provider."`

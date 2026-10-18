@@ -9,7 +9,7 @@ function json(body: unknown, status = 200) {
 }
 
 const plugin = (name: string, capabilities: string[]) => ({ name, source: "official", version: "0.1.0", capabilities, secrets: [] });
-const instance = (id: number, plugin: string, name: string) => ({ id, plugin, name, config: {}, secrets: [] });
+const instance = (id: number, plugin: string, name: string) => ({ id, plugin, name, label: name, config: {}, secrets: [] });
 const job = (id: number) => ({ id, kind: "import", status: "queued", attempts: 0, max_attempts: 3, payload: {}, progress: null, created_at: "", run_after: "" });
 
 let plugins: unknown[];

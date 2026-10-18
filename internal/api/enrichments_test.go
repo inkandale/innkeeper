@@ -37,7 +37,7 @@ func newEnrichEnv(t *testing.T) *enrichEnv {
 		t.Fatal(err)
 	}
 	e.manifests["judge"] = &judge
-	id, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "judge", Name: "Judge"})
+	id, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "judge", Name: new("Judge")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestEnrichRunOverAQuery(t *testing.T) {
 
 func TestSettingsForgetADeletedScoreInstance(t *testing.T) {
 	e := newEnrichEnv(t)
-	second, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "judge", Name: "Second"})
+	second, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "judge", Name: new("Second")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +241,7 @@ func TestSettingsForgetADeletedScoreInstance(t *testing.T) {
 
 func TestSettingsIgnoreADisabledScoreInstance(t *testing.T) {
 	e := newEnrichEnv(t)
-	second, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "judge", Name: "Second"})
+	second, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "judge", Name: new("Second")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,7 +320,7 @@ func TestEnrichmentSearchUsesTheScoreInstance(t *testing.T) {
 	}
 
 	// A second instance with no setting leaves no score instance.
-	second, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "judge", Name: "Second"})
+	second, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "judge", Name: new("Second")})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -43,7 +43,7 @@ func TestImportAndCancel(t *testing.T) {
 	e.call("GET", "/jobs/999", nil, 404, nil)
 	e.call("GET", "/jobs/999/events", nil, 404, nil)
 
-	vault, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "vault", Name: "Vault"})
+	vault, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "vault", Name: new("Vault")})
 	if err != nil {
 		t.Fatal(err)
 	}

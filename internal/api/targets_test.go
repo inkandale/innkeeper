@@ -25,7 +25,7 @@ import (
 func (e *testEnv) target() (int64, string) {
 	e.t.Helper()
 	dir := e.t.TempDir()
-	id, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "fake", Name: "Target",
+	id, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "fake", Name: new("Target"),
 		Config: map[string]any{"dir": dir}})
 	if err != nil {
 		e.t.Fatal(err)
@@ -167,7 +167,7 @@ func TestBindingRequestChecks(t *testing.T) {
 func TestLorebookPushRoutes(t *testing.T) {
 	e := newEnv(t)
 	dir := t.TempDir()
-	inst, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "fake", Name: "Target",
+	inst, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "fake", Name: new("Target"),
 		Config: map[string]any{"dir": dir, "lorebooks": "standalone"}})
 	if err != nil {
 		t.Fatal(err)
@@ -214,7 +214,7 @@ func TestBulkLorebookPush(t *testing.T) {
 	embedded, _ := e.target() // the fake keeps lorebooks inside cards
 	e.call("POST", "/pushes", body(embedded), 400, nil)
 
-	standalone, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "fake", Name: "Standalone",
+	standalone, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "fake", Name: new("Standalone"),
 		Config: map[string]any{"dir": t.TempDir(), "lorebooks": "standalone"}})
 	if err != nil {
 		t.Fatal(err)
@@ -282,7 +282,7 @@ func TestBindRoutes(t *testing.T) {
 
 func TestImportRefusesAnApp(t *testing.T) {
 	e := newEnv(t)
-	inst, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "target", Name: "App",
+	inst, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "target", Name: new("App"),
 		Config: map[string]any{"dir": t.TempDir()}})
 	if err != nil {
 		t.Fatal(err)
@@ -344,7 +344,7 @@ func (e *testEnv) upstream(args ...string) (int64, string) {
 	up.Command = append([]string{up.Command[0], "-caps=pull", "-name=upstream"}, args...)
 	e.manifests["upstream"] = &up
 	dir := e.t.TempDir()
-	id, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "upstream", Name: "Sites",
+	id, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "upstream", Name: new("Sites"),
 		Config: map[string]any{"dir": dir, "fields": []string{"name", "first_mes"}, "lorebooks": "standalone"}})
 	if err != nil {
 		e.t.Fatal(err)

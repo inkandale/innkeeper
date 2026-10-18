@@ -108,7 +108,7 @@ export function Archive({ kind, entity }: { kind: Kind; entity: Entity }) {
   const instances = useQuery(instancesQuery);
   const linked = (bindings.data ?? [])
     .filter((b) => b.push)
-    .map((b) => instances.data?.find((i) => i.id === b.instance_id)?.name ?? `#${b.instance_id}`);
+    .map((b) => instances.data?.find((i) => i.id === b.instance_id)?.label ?? `#${b.instance_id}`);
   const set = useMutation({
     mutationFn: async () =>
       mustOk(
@@ -163,7 +163,7 @@ export function Sync({ kind, id }: { kind: Kind; id: number }) {
   const instances = useQuery(instancesQuery);
   const plugins = useQuery(pluginsQuery);
   const logos = apps(instances.data, plugins.data);
-  const name = (n: number) => instances.data?.find((i) => i.id === n)?.name ?? `#${n}`;
+  const name = (n: number) => instances.data?.find((i) => i.id === n)?.label ?? `#${n}`;
   const { edit } = useBindingEdits(kind, id);
   // Followed site sources show under Sources.
   const pushed = (bindings.data ?? []).filter((b) => b.push);

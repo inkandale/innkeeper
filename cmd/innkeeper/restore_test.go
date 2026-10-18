@@ -67,7 +67,7 @@ func TestRestoreConfigWithPluginDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id, err := svc.registry.CreateInstance(ctx, plugins.NewInstance{Plugin: "notes", Name: "Notes"})
+	id, err := svc.registry.CreateInstance(ctx, plugins.NewInstance{Plugin: "notes", Name: new("Notes")})
 	if err != nil {
 		t.Fatal(err)
 	}

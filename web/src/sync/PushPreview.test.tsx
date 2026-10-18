@@ -47,8 +47,8 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-const lumiverse = { id: 2, name: "Lumiverse" };
-const tavern = { id: 3, name: "SillyTavern" };
+const lumiverse = { id: 2, label: "Lumiverse" };
+const tavern = { id: 3, label: "SillyTavern" };
 
 function renderPreview(onClose = vi.fn(), targets = [lumiverse]) {
   const router = createMemoryRouter(

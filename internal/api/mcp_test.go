@@ -260,7 +260,7 @@ func TestMCPOtherTools(t *testing.T) {
 	if got := tool(t, s, "update_instance", map[string]any{"id": inst, "name": "Renamed"}, true); !strings.HasPrefix(got, "403") {
 		t.Fatalf("update_instance on a login provider = %s", got)
 	}
-	vault, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "vault", Name: "Vault"})
+	vault, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "vault", Name: new("Vault")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +294,7 @@ func builtIn(names []string) int {
 func TestMCPPluginTools(t *testing.T) {
 	e := newEnv(t)
 	for _, name := range []string{"Twin Peaks!", "twin-peaks"} {
-		if _, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "fake", Name: name}); err != nil {
+		if _, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "fake", Name: new(name)}); err != nil {
 			t.Fatal(err)
 		}
 	}

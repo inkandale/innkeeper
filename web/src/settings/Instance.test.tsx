@@ -22,17 +22,17 @@ const st = {
     },
   },
 };
-const login = { name: "password-login", version: "0.1.0", capabilities: ["auth"], secrets: ["password_hash"] };
+const login = { name: "password-login", version: "0.1.0", capabilities: ["auth"], secrets: ["password_hash"], multiple_instances: true };
 const ai = {
   name: "forge-ai", version: "0.1.0", capabilities: ["action", "records"], secrets: [],
   records: { skills: { label: "Skills", schema: { type: "object", properties: { name: { type: "string" } } } } },
 };
 const broken = {
-  id: 3, plugin: "sillytavern", name: "home", config: { url: "http://st", auth: "none" }, secrets: ["password"],
+  id: 3, plugin: "sillytavern", label: "home", name: "home", config: { url: "http://st", auth: "none" }, secrets: ["password"],
   broken_error: "connection refused", disabled: false, status: "broken" as const, broken_at: now, created_at: now, updated_at: now,
 };
-const owned = { ...broken, id: 4, plugin: "password-login", name: "pw", config: {}, secrets: [], owner_subject: "me" };
-const forge = { ...broken, id: 5, plugin: "forge-ai", name: "ai", config: {}, secrets: [], broken_error: undefined, library_access: false };
+const owned = { ...broken, id: 4, plugin: "password-login", label: "pw", name: "pw", config: {}, secrets: [], owner_subject: "me" };
+const forge = { ...broken, id: 5, plugin: "forge-ai", label: "ai", name: "ai", config: {}, secrets: [], broken_error: undefined, library_access: false };
 const conf = {
   name: "conf", version: "0.1.0", capabilities: ["settings"], secrets: ["api_key"],
   multiple_instances: false, status: "ready" as const,
@@ -55,14 +55,16 @@ const required = {
     },
   },
 };
-const confInst = { ...broken, id: 6, plugin: "conf", name: "c", config: { url: "http://x" }, secrets: ["api_key"], broken_error: undefined, status: "ready" as const };
+const confInst = { ...broken, id: 6, plugin: "conf", label: "c", name: "c", config: { url: "http://x" }, secrets: ["api_key"], broken_error: undefined, status: "ready" as const };
 
 let sent: { method: string; path: string; body: unknown }[];
+let instances: unknown[];
 // Set to hold the conf plugin's defaults until it resolves.
 let defaultsHeld: Promise<void> | undefined;
 let defaultsFetches: number;
 beforeEach(() => {
   sent = [];
+  instances = [];
   defaultsHeld = undefined;
   defaultsFetches = 0;
   vi.stubGlobal(
@@ -70,6 +72,7 @@ beforeEach(() => {
     vi.fn(async (req: Request) => {
       const u = new URL(req.url);
       if (u.pathname === "/api/plugins") return json([login, st, ai, conf, required]);
+      if (req.method === "GET" && u.pathname === "/api/instances") return json(instances);
       if (req.method === "GET" && u.pathname === "/api/instances/3") return json(broken);
       if (req.method === "GET" && u.pathname === "/api/instances/4") return json(owned);
       if (req.method === "GET" && u.pathname === "/api/instances/5") return json(forge);
@@ -134,6 +137,30 @@ test("creates an instance from the schema form", async () => {
       body: { plugin: "sillytavern", name: "home", config: { url: "http://st", auth: "basic" }, secrets: { password: "pw" } },
     },
   ]);
+});
+
+test("a singleton's form has no Name", async () => {
+  renderAt("/settings/plugins/forge-ai/new");
+  await screen.findByRole("button", { name: "Save" });
+  expect(screen.queryByLabelText("Name")).not.toBeInTheDocument();
+});
+
+test("a second instance needs a name when the first has none", async () => {
+  instances = [{ ...broken, id: 1, name: undefined, label: "sillytavern" }];
+  renderAt("/settings/plugins/sillytavern/new");
+  const name = await screen.findByLabelText("Name");
+  await vi.waitFor(() => expect(name).toBeRequired());
+  expect(screen.getByText("Another sillytavern instance has no name, so this one needs one.")).toBeInTheDocument();
+});
+
+test("a plugin's first instance may go unnamed", async () => {
+  const user = userEvent.setup();
+  renderAt("/settings/plugins/sillytavern/new");
+  expect(await screen.findByLabelText("Name")).not.toBeRequired();
+  await user.type(screen.getByLabelText("Server URL"), "http://st");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await vi.waitFor(() => expect(sent).toHaveLength(1));
+  expect(sent[0]?.body).toEqual({ plugin: "sillytavern", config: { url: "http://st" } });
 });
 
 test("edits a broken instance and sends only what changed", async () => {
@@ -215,7 +242,7 @@ test("an action plugin's instance turns on Library access", async () => {
   await user.click(access);
   await user.click(screen.getByRole("button", { name: "Save" }));
   await vi.waitFor(() => expect(sent).toHaveLength(1));
-  expect(sent[0]?.body).toEqual({ name: "ai", library_access: true });
+  expect(sent[0]?.body).toEqual({ library_access: true });
 });
 
 test("other plugins have no Library access setting", async () => {
@@ -232,7 +259,7 @@ test("a saved instance of a records plugin lists each record type", async () => 
 
 test("a new instance shows no records until it's saved", async () => {
   renderAt("/settings/plugins/forge-ai/new");
-  await screen.findByLabelText("Name");
+  await screen.findByRole("button", { name: "Save" });
   expect(screen.queryByRole("heading", { name: "Skills" })).not.toBeInTheDocument();
 });
 
@@ -286,7 +313,7 @@ test("a settings button runs against the draft and shows each check", async () =
 test("a required field on a hidden tab opens that tab on save", async () => {
   const user = userEvent.setup();
   renderAt("/settings/plugins/required/new");
-  await user.type(await screen.findByLabelText("Name"), "r");
+  await screen.findByRole("button", { name: "Save" });
   await user.type(screen.getByLabelText("URL"), "http://x");
   await user.click(screen.getByRole("button", { name: "Save" }));
   expect(screen.getByRole("tab", { name: "Prompts" })).toHaveAttribute("aria-selected", "true");
@@ -296,7 +323,7 @@ test("a required field on a hidden tab opens that tab on save", async () => {
 test("with invalid fields on two tabs, save opens the first", async () => {
   const user = userEvent.setup();
   renderAt("/settings/plugins/required/new");
-  await user.type(await screen.findByLabelText("Name"), "r");
+  await screen.findByRole("button", { name: "Save" });
   await user.click(screen.getByRole("tab", { name: "Prompts" }));
   await user.click(screen.getByRole("button", { name: "Save" }));
   expect(screen.getByRole("tab", { name: "General" })).toHaveAttribute("aria-selected", "true");

@@ -26,7 +26,7 @@ export type FormHelpers = {
   /** Pointers whose override replaced a default that has since changed. */
   updated: Set<string>;
   loadOptions?: (pointer: string) => Promise<{ value: string; label?: string }[]>;
-  instances?: (service: string) => { id: number; name: string }[];
+  instances?: (service: string) => { id: number; label: string }[];
 };
 
 export const FormContext = createContext<FormHelpers>({ defaults: {}, updated: new Set() });
@@ -125,7 +125,7 @@ export function SchemaForm({ schema, label, value, onChange, required, path = ""
         <option value="">—</option>
         {helpers.instances(schema["x-offers"]).map((i) => (
           <option key={i.id} value={i.id}>
-            {i.name}
+            {i.label}
           </option>
         ))}
       </select>

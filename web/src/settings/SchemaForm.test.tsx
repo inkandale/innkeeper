@@ -165,7 +165,7 @@ test("a failed choices lookup shows its message", async () => {
 
 test("format instance picks from the instances offering the service", async () => {
   const user = userEvent.setup();
-  const instances = vi.fn(() => [{ id: 7, name: "Local LLM" }]);
+  const instances = vi.fn(() => [{ id: 7, label: "Local LLM" }]);
   const conn: Schema = { type: "object", properties: { connection: { type: "integer", title: "Connection", format: "instance", "x-offers": "ai.chat" } } };
   render(<WithHelpers schema={conn} initial={{}} helpers={{ instances }} />);
   expect(instances).toHaveBeenCalledWith("ai.chat");

@@ -38,11 +38,11 @@ func loginInstance(t *testing.T, e *testEnv) plugins.InstanceInfo {
 		t.Fatal(err)
 	}
 	for _, i := range insts {
-		if i.Plugin == "password-login" {
+		if i.Plugin == "password-login" && i.OwnerSubject != nil {
 			return i
 		}
 	}
-	t.Fatal("no password-login instance")
+	t.Fatal("no owner password-login instance")
 	return plugins.InstanceInfo{}
 }
 
@@ -77,7 +77,7 @@ func TestBootstrapReplacesBrokenSingletonLogin(t *testing.T) {
 	e := unclaimedEnv(t)
 	e.manifests["password-login"].MultipleInstances = false
 	ctx := context.Background()
-	if _, err := e.s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: "password-login", Name: "Old login"}); err != nil {
+	if _, err := e.s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: "password-login", Name: new("Old login")}); err != nil {
 		t.Fatal(err)
 	}
 	if err := e.s.Bootstrap(ctx, validHash); err != nil {
@@ -150,7 +150,7 @@ func TestSetupClaimsTheServer(t *testing.T) {
 		t.Fatalf("me with the claim's session: %s", me)
 	}
 	inst := loginInstance(t, e)
-	if inst.Name != "Login" || inst.OwnerSubject == nil || *inst.OwnerSubject != "owner" {
+	if inst.Label != "Login" || inst.OwnerSubject == nil || *inst.OwnerSubject != "owner" {
 		t.Fatalf("instance %+v", inst)
 	}
 
@@ -202,11 +202,11 @@ func TestSetupMakesACodeWhenNeeded(t *testing.T) {
 	}
 }
 
-// takeLoginName leaves an ownerless instance holding the name "Login", as
-// an old, broken, or uninstalled login provider would.
+// takeLoginName leaves an ownerless login instance holding the name "Login",
+// as an old or broken one would.
 func takeLoginName(t *testing.T, e *testEnv) {
 	t.Helper()
-	if _, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "fake", Name: "Login"}); err != nil {
+	if _, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "password-login", Name: new("Login")}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -217,7 +217,7 @@ func TestBootstrapWhenLoginNameIsTaken(t *testing.T) {
 	if err := e.s.Bootstrap(context.Background(), validHash); err != nil {
 		t.Fatal(err)
 	}
-	if inst := loginInstance(t, e); inst.Name != "Login 2" {
+	if inst := loginInstance(t, e); inst.Label != "Login 2" {
 		t.Fatalf("instance %+v", inst)
 	}
 }
@@ -231,7 +231,7 @@ func TestSetupWhenLoginNameIsTaken(t *testing.T) {
 	if r := e.send("POST", "/setup", claimBody(e.s.currentSetupCode(), "pw", "pw")); r.Status != http.StatusNoContent {
 		t.Fatalf("claim: %s", r)
 	}
-	if inst := loginInstance(t, e); inst.Name != "Login 2" {
+	if inst := loginInstance(t, e); inst.Label != "Login 2" {
 		t.Fatalf("instance %+v", inst)
 	}
 }

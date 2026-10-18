@@ -49,7 +49,7 @@ func settingsRegistry(t *testing.T, args ...string) (*Registry, *pluginhost.Mana
 func TestDefaultsJoinsSchemaAndPluginAndMarksUpdated(t *testing.T) {
 	ctx := context.Background()
 	reg, mgr := settingsRegistry(t)
-	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "conf", Name: "C",
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "conf", Name: new("C"),
 		Config:       map[string]any{"url": "http://mine", "prompts": map[string]any{"greet": "Yo"}},
 		DefaultBases: map[string]any{"/url": "http://localhost", "/prompts/greet": "an older default"}})
 	if err != nil {
@@ -70,7 +70,7 @@ func TestDefaultsJoinsSchemaAndPluginAndMarksUpdated(t *testing.T) {
 func TestSettingsCallsLayerDraftSecretsOnSaved(t *testing.T) {
 	ctx := context.Background()
 	reg, mgr := settingsRegistry(t)
-	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "conf", Name: "C", Secrets: map[string]string{"api_key": "hunter2"}})
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "conf", Name: new("C"), Secrets: map[string]string{"api_key": "hunter2"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestSettingsCallsLayerDraftSecretsOnSaved(t *testing.T) {
 func TestSettingsCallsRefuseAnotherPluginsInstance(t *testing.T) {
 	ctx := context.Background()
 	reg, mgr := settingsRegistry(t)
-	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "other", Name: "O", Secrets: map[string]string{"api_key": "hunter2"}})
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "other", Name: new("O"), Secrets: map[string]string{"api_key": "hunter2"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,7 @@ func TestDefaultsFallsBackToSchemaWhenPluginHasNone(t *testing.T) {
 func TestSettingsCallsRedactSecretsThePluginEchoes(t *testing.T) {
 	ctx := context.Background()
 	reg, mgr := settingsRegistry(t)
-	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "conf", Name: "C", Secrets: map[string]string{"api_key": "hunter2"}})
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "conf", Name: new("C"), Secrets: map[string]string{"api_key": "hunter2"}})
 	if err != nil {
 		t.Fatal(err)
 	}

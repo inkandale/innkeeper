@@ -96,7 +96,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const plugins = useQuery(pluginsQuery);
   const collections = useQuery(collectionsQuery(q.library));
   const names: Names = {
-    instances: new Map((instances.data ?? []).map((i) => [i.id, i.name])),
+    instances: new Map((instances.data ?? []).map((i) => [i.id, i.label])),
     collections: new Map((collections.data ?? []).map((c) => [c.id, c.name])),
     logos: apps(instances.data, plugins.data),
   };

@@ -785,7 +785,7 @@ func TestReconcileSplitUsesUnboundCandidate(t *testing.T) {
 func TestReconcileConcurrentImportsBindOneCard(t *testing.T) {
 	e := setup(t, nil)
 	dir2 := t.TempDir()
-	inst2, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: "fake", Name: "Other app",
+	inst2, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: "fake", Name: new("Other app"),
 		Config: map[string]any{"dir": dir2}})
 	if err != nil {
 		t.Fatal(err)

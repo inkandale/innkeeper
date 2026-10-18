@@ -33,7 +33,7 @@ func (s *Service) Changes(ctx context.Context, f ChangesFilter) (Changes, error)
 		return out, err
 	}
 	for _, in := range insts {
-		names[in.ID] = in.Name
+		names[in.ID] = in.Label
 	}
 	cards := map[int64]*ChangeRow{}
 	var orphans []ChangeRow

@@ -33,7 +33,7 @@ func callAPI(cmd *cobra.Command, method, path string, body any) ([]byte, error) 
 type instance struct {
 	ID           int64           `json:"id"`
 	Plugin       string          `json:"plugin"`
-	Name         string          `json:"name"`
+	Label        string          `json:"label"`
 	Config       json.RawMessage `json:"config"`
 	Secrets      []string        `json:"secrets"`
 	OwnerSubject *string         `json:"owner_subject"`
@@ -51,14 +51,14 @@ func printInstances(w io.Writer, list []instance) error {
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(tw, "ID\tPLUGIN\tNAME\tSTATUS")
 	for _, i := range list {
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\n", i.ID, i.Plugin, i.Name, i.status())
+		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\n", i.ID, i.Plugin, i.Label, i.status())
 	}
 	return tw.Flush()
 }
 
 func printInstance(w io.Writer, i instance) error {
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintf(tw, "id:\t%d\nplugin:\t%s\nname:\t%s\nstatus:\t%s\n", i.ID, i.Plugin, i.Name, i.status())
+	fmt.Fprintf(tw, "id:\t%d\nplugin:\t%s\nname:\t%s\nstatus:\t%s\n", i.ID, i.Plugin, i.Label, i.status())
 	var config bytes.Buffer
 	if err := json.Compact(&config, i.Config); err == nil {
 		fmt.Fprintf(tw, "config:\t%s\n", config.String())

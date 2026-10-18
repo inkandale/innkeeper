@@ -31,9 +31,9 @@ beforeEach(() => {
       const u = new URL(req.url);
       if (u.pathname === "/api/plugins") return json(installed);
       if (req.method === "POST" && u.pathname === "/api/instances") {
-        const body = (await req.json()) as object;
+        const body = (await req.json()) as { plugin: string };
         sent.push({ method: "POST", path: u.pathname, body });
-        return json({ id: 9, config: {}, secrets: [], ...body });
+        return json({ id: 9, config: {}, secrets: [], label: body.plugin, ...body });
       }
       if (u.pathname === "/api/instances") return json([]);
       if (u.pathname === "/api/instances/9/items") {
@@ -71,8 +71,7 @@ function renderAt(entry: string) {
 
 async function saveSillyTavern() {
   const user = userEvent.setup();
-  await user.type(await screen.findByLabelText("Name"), "home");
-  await user.type(screen.getByLabelText("Server URL"), "http://st");
+  await user.type(await screen.findByLabelText("Server URL"), "http://st");
   await user.click(screen.getByRole("button", { name: "Save" }));
   return user;
 }
@@ -109,7 +108,7 @@ test("a plugin with nothing to configure is created without a click", async () =
   installed = [bare];
   renderAt("/welcome/setup/hello");
   expect(await screen.findByText("cards step")).toBeInTheDocument();
-  expect(sent).toEqual([{ method: "POST", path: "/api/instances", body: { plugin: "hello", name: "hello" } }]);
+  expect(sent).toEqual([{ method: "POST", path: "/api/instances", body: { plugin: "hello" } }]);
 });
 
 test("with nothing installed, points back to choosing plugins", async () => {
@@ -122,5 +121,5 @@ test("a plugin that pulls without pushing moves on without checking an app", asy
   installed = [plugin("site-follower", ["pull"])];
   renderAt("/welcome/setup/site-follower");
   expect(await screen.findByText("cards step")).toBeInTheDocument();
-  expect(sent).toEqual([{ method: "POST", path: "/api/instances", body: { plugin: "site-follower", name: "site-follower" } }]);
+  expect(sent).toEqual([{ method: "POST", path: "/api/instances", body: { plugin: "site-follower" } }]);
 });

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { api, must, mustOk } from "../api/client";
 import { instancesQuery, pluginsQuery } from "../api/queries";
 import type { components } from "../api/schema";
@@ -11,6 +11,7 @@ export type InstanceInfo = components["schemas"]["InstanceInfo"];
 type CatalogSource = components["schemas"]["CatalogSourceOut"];
 
 export function Plugins() {
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const plugins = useQuery(pluginsQuery);
   const instances = useQuery(instancesQuery);
@@ -84,15 +85,15 @@ export function Plugins() {
   const instanceActions = (i: InstanceInfo) => (
     <>
       <button
-        aria-label={`${i.disabled ? "Enable" : "Disable"} ${i.name}`}
+        aria-label={`${i.disabled ? "Enable" : "Disable"} ${i.label}`}
         disabled={setDisabled.isPending}
         onClick={() => setDisabled.mutate({ id: i.id, disabled: !i.disabled })}
       >
         {i.disabled ? "Enable" : "Disable"}
       </button>
       <button
-        aria-label={`Delete instance ${i.name}`}
-        onClick={() => confirm(`Delete ${i.name}? Its jobs stay, and logins through it end.`) && remove.mutate(i.id)}
+        aria-label={`Delete instance ${i.label}`}
+        onClick={() => confirm(`Delete ${i.label}? Its jobs stay, and logins through it end.`) && remove.mutate(i.id)}
       >
         Delete instance
       </button>
@@ -103,9 +104,9 @@ export function Plugins() {
     <ul className="instances">
       {list.map((i) => (
         <li key={i.id}>
-          <Link to={`/settings/instances/${i.id}`}>{i.name}</Link>
+          <Link to={`/settings/instances/${i.id}`}>{i.label}</Link>
           <StatusText status={i.status} error={i.broken_error} />
-          <Menu label={`More for ${i.name}`}>{instanceActions(i)}</Menu>
+          <Menu label={`More for ${i.label}`}>{instanceActions(i)}</Menu>
         </li>
       ))}
     </ul>
@@ -120,6 +121,7 @@ export function Plugins() {
     const listed = list.length > 1;
     const only = list.length === 1 ? list[0] : undefined;
     const canUninstall = p.source !== "builtin";
+    const canAdd = p.multiple_instances === true && list.length > 0;
     return (
       <article key={p.name} className="plugin">
         <header>
@@ -147,20 +149,16 @@ export function Plugins() {
                   Settings
                 </Link>
               )}
-              {!only && !listed && !p.multiple_instances && (
+              {list.length === 0 && (
                 <Link className="button primary" to={addURL(p)}>
                   Set up
                 </Link>
               )}
-              {p.multiple_instances && (
-                <Link className={list.length === 0 ? "button primary" : "button"} to={addURL(p)}>
-                  Add instance
-                </Link>
-              )}
             </>
           )}
-          {(canUninstall || only || (prevSource && prevVersion)) && (
+          {(canUninstall || only || canAdd || (prevSource && prevVersion)) && (
             <Menu label={`More for ${p.name}`}>
+              {canAdd && <button onClick={() => navigate(addURL(p))}>Add instance</button>}
               {prevSource && prevVersion && (
                 <button disabled={busy} onClick={() => install.mutate({ name: p.name, source: prevSource, version: prevVersion })}>
                   Roll back to {prevVersion}

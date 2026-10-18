@@ -59,7 +59,7 @@ func (e *env) addUpstream(config map[string]any) {
 	e.updir = e.t.TempDir()
 	cfg := map[string]any{"dir": e.updir, "fields": []string{"name", "description", "first_mes"}, "lorebooks": "standalone"}
 	maps.Copy(cfg, config)
-	id, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: "upstream", Name: "Sites", Config: cfg})
+	id, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: "upstream", Name: new("Sites"), Config: cfg})
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -389,7 +389,7 @@ func recoded(t *testing.T, path string) string {
 func TestACardIsCheckedThroughOnlyThePluginsThatFollowItsSources(t *testing.T) {
 	e := setup(t, nil)
 	e.addUpstream(nil)
-	if _, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: "brokenup", Name: "Broken", Config: map[string]any{"dir": e.t.TempDir()}}); err != nil {
+	if _, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: "brokenup", Name: new("Broken"), Config: map[string]any{"dir": e.t.TempDir()}}); err != nil {
 		t.Fatal(err)
 	}
 	card := e.imported("vyr", vyrCard)
@@ -401,7 +401,7 @@ func TestACardsSourceCheckReportsTheFirstFollowersFailure(t *testing.T) {
 	// Created in this order, so brokenup's instance has the lower ID; each fails its describe its own way.
 	for _, plugin := range []string{"brokenup", "brokenagain"} {
 		cfg := map[string]any{"dir": e.t.TempDir(), "lorebooks": "never"}
-		if _, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: plugin, Name: plugin, Config: cfg}); err != nil {
+		if _, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: plugin, Name: new(plugin), Config: cfg}); err != nil {
 			t.Fatal(err)
 		}
 	}

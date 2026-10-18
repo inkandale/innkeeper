@@ -374,7 +374,7 @@ func (s *Server) loginProviders(ctx context.Context) ([]provider, error) {
 	var out []provider
 	for _, i := range insts {
 		if i.OwnerSubject != nil && i.Usable() {
-			out = append(out, provider{i.ID, i.Name, i.Plugin})
+			out = append(out, provider{i.ID, i.Label, i.Plugin})
 		}
 	}
 	return out, nil

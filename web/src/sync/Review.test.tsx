@@ -159,7 +159,7 @@ test("binds with the chosen side of each hunk, and the nested world book's", asy
 test("Keep all picks one side for every hunk, labelled with the app's name", async () => {
   const base = fetch;
   vi.stubGlobal("fetch", async (req: Request) =>
-    new URL(req.url).pathname === "/api/instances" ? json([{ id: 3, name: "Lumiverse", plugin: "lumiverse" }]) : base(req),
+    new URL(req.url).pathname === "/api/instances" ? json([{ id: 3, label: "Lumiverse", plugin: "lumiverse" }]) : base(req),
   );
   renderReview();
   const user = userEvent.setup();
@@ -486,7 +486,7 @@ function followSource(more: (path: string, u: URL) => Response | undefined = () 
     vi.fn(async (req: Request) => {
       const u = new URL(req.url);
       const path = decodeURIComponent(u.pathname);
-      if (path === "/api/instances") return json([{ id: 4, name: "URL import", plugin: "url-import" }]);
+      if (path === "/api/instances") return json([{ id: 4, label: "URL import", name: "URL import", plugin: "url-import" }]);
       if (path === "/api/plugins") return json([{ name: "url-import", capabilities: ["import", "sites", "pull"] }]);
       const card = Number(u.searchParams.get("card_id"));
       if (path === "/api/instances/4/cards/chub:alice/vyr/compare") {

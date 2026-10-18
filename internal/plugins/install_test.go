@@ -181,7 +181,7 @@ func TestUninstallKeepsInstances(t *testing.T) {
 	if err := reg.Install(ctx, "local", "good", "1.0.0"); err != nil {
 		t.Fatal(err)
 	}
-	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "good", Name: "Good"})
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "good", Name: new("Good")})
 	if err != nil {
 		t.Fatal(err)
 	}

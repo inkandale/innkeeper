@@ -72,10 +72,10 @@ func TestInstance(t *testing.T) {
 	ctx := context.Background()
 	reg, store := newRegistry(t)
 
-	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "missing", Name: "x"}); !errors.Is(err, ErrUnknownPlugin) {
+	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "missing", Name: new("x")}); !errors.Is(err, ErrUnknownPlugin) {
 		t.Fatalf("create for missing plugin: %v", err)
 	}
-	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: "Fake",
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: new("Fake"),
 		Config: map[string]any{"path": "/cards"}, Secrets: map[string]string{"api_key": "hunter2"}})
 	if err != nil {
 		t.Fatal(err)
@@ -107,7 +107,7 @@ func TestInstanceInfoHidesSecretValues(t *testing.T) {
 	ctx := context.Background()
 	reg, _ := newRegistry(t)
 	owner := "owner"
-	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: "Fake",
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: new("Fake"),
 		Secrets: map[string]string{"region": "eu", "api_key": "hunter2"}, OwnerSubject: &owner})
 	if err != nil {
 		t.Fatal(err)
@@ -131,17 +131,17 @@ func TestInstanceInfoHidesSecretValues(t *testing.T) {
 func TestCreateInstanceRejectsBadSettings(t *testing.T) {
 	ctx := context.Background()
 	reg, _ := newRegistry(t)
-	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: "Fake",
+	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: new("Fake"),
 		Secrets: map[string]string{"password": "x"}}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("undeclared secret: %v", err)
 	}
-	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: ""}); !errors.Is(err, ErrInvalid) {
+	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: new("")}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("empty name: %v", err)
 	}
-	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: "Fake"}); err != nil {
+	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: new("Fake")}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: "Fake"}); !errors.Is(err, ErrNameTaken) {
+	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: new("Fake")}); !errors.Is(err, ErrNameTaken) {
 		t.Fatalf("duplicate name: %v", err)
 	}
 }
@@ -149,7 +149,7 @@ func TestCreateInstanceRejectsBadSettings(t *testing.T) {
 func TestUpdateInstance(t *testing.T) {
 	ctx := context.Background()
 	reg, _ := newRegistry(t)
-	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: "Fake",
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: new("Fake"),
 		Config: map[string]any{"path": "/a"}, Secrets: map[string]string{"api_key": "old", "region": "eu"}})
 	if err != nil {
 		t.Fatal(err)
@@ -187,7 +187,7 @@ func TestUpdateInstance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Name != "Renamed" || *info.OwnerSubject != "owner" || info.BrokenError != nil {
+	if info.Label != "Renamed" || *info.OwnerSubject != "owner" || info.BrokenError != nil {
 		t.Fatalf("info = %+v", info)
 	}
 
@@ -227,7 +227,7 @@ func TestUpdateInstance(t *testing.T) {
 func TestDeleteInstance(t *testing.T) {
 	ctx := context.Background()
 	reg, _ := newRegistry(t)
-	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: "Fake"})
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: new("Fake")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +242,7 @@ func TestDeleteInstance(t *testing.T) {
 func TestDeleteInstanceWithBindings(t *testing.T) {
 	ctx := context.Background()
 	reg, _ := newRegistry(t)
-	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: "Fake"})
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: new("Fake")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +260,7 @@ func TestDeleteInstanceWithBindings(t *testing.T) {
 func TestDeleteImporterDropsItsImportBindings(t *testing.T) {
 	ctx := context.Background()
 	reg, _ := newRegistry(t)
-	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: "Fake"})
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: new("Fake")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ func TestDeleteImporterDropsItsImportBindings(t *testing.T) {
 func TestUpdateInstanceEndsSessions(t *testing.T) {
 	ctx := context.Background()
 	reg, _ := newRegistry(t)
-	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: "Fake"})
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: new("Fake")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -340,7 +340,7 @@ func TestTheme(t *testing.T) {
 	if name, _ := reg.Theme(ctx); name != "" {
 		t.Fatalf("theme after reset = %q", name)
 	}
-	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "dusk", Name: "Dusk"}); !errors.Is(err, ErrInvalid) {
+	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "dusk", Name: new("Dusk")}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("theme instance: %v", err)
 	}
 }
@@ -439,7 +439,7 @@ func TestSyncReloadsAfterGeneration(t *testing.T) {
 func TestInstanceVersionFollowsPluginChange(t *testing.T) {
 	ctx := context.Background()
 	reg, _ := newRegistry(t)
-	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: "Fake"})
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: new("Fake")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -484,11 +484,11 @@ func TestInstancesWithEveryCapability(t *testing.T) {
 		"app":    {Name: "app", Capabilities: []string{"push", "pull"}},
 		"pusher": {Name: "pusher", Capabilities: []string{"push"}},
 	}, &blobstore.Store{Name: "library", Root: t.TempDir()}, box)
-	app, err := reg.CreateInstance(ctx, NewInstance{Plugin: "app", Name: "App"})
+	app, err := reg.CreateInstance(ctx, NewInstance{Plugin: "app", Name: new("App")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	pusher, err := reg.CreateInstance(ctx, NewInstance{Plugin: "pusher", Name: "Pusher"})
+	pusher, err := reg.CreateInstance(ctx, NewInstance{Plugin: "pusher", Name: new("Pusher")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -525,7 +525,7 @@ func TestInstanceKeepsHashOfReplacedDefault(t *testing.T) {
 		}
 		return got.Updated
 	}
-	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: "Fake",
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: new("Fake"),
 		Config: map[string]any{"p": map[string]any{"a": "mine"}}, DefaultBases: map[string]any{"/p/a": "old A"}})
 	if err != nil {
 		t.Fatal(err)
@@ -563,16 +563,76 @@ func TestCreateInstanceRejectsSecondSingleton(t *testing.T) {
 		"many": {Name: "many", Version: "1", Capabilities: []string{"push"}, MultipleInstances: true},
 	}, &blobstore.Store{Name: "library", Root: t.TempDir()}, box)
 
-	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "solo", Name: "solo"}); err != nil {
+	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "solo", Name: new("solo")}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "solo", Name: "solo 2"}); !errors.Is(err, ErrSingleton) {
+	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "solo", Name: new("solo 2")}); !errors.Is(err, ErrSingleton) {
 		t.Fatalf("second solo instance: err = %v, want ErrSingleton", err)
 	}
 	for _, name := range []string{"a", "b"} {
-		if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "many", Name: name}); err != nil {
+		if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "many", Name: new(name)}); err != nil {
 			t.Fatalf("many instance %s: %v", name, err)
 		}
+	}
+}
+
+func TestInstanceNamesAreUniqueWithinAPlugin(t *testing.T) {
+	ctx := context.Background()
+	reg, _ := newRegistry(t)
+	create := func(plugin string, name *string) error {
+		_, err := reg.CreateInstance(ctx, NewInstance{Plugin: plugin, Name: name})
+		return err
+	}
+
+	if err := create("fake", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := create("fake", nil); !errors.Is(err, ErrNeedsName) {
+		t.Fatalf("second unnamed instance: err = %v, want ErrNeedsName", err)
+	}
+	if err := create("fake", new("Home")); err != nil {
+		t.Fatal(err)
+	}
+	if err := create("fake", new("Home")); !errors.Is(err, ErrNameTaken) {
+		t.Fatalf("second Home: err = %v, want ErrNameTaken", err)
+	}
+	list, err := reg.ListInstances(ctx)
+	if err != nil || len(list) != 2 || list[0].Label != "fake" || list[1].Label != "Home" {
+		t.Fatalf("instances = %+v, %v; want labels fake and Home", list, err)
+	}
+	if err := reg.UpdateInstance(ctx, list[1].ID, InstanceEdit{Name: new("")}); !errors.Is(err, ErrNeedsName) {
+		t.Fatalf("clearing Home's name beside an unnamed instance: err = %v, want ErrNeedsName", err)
+	}
+	if err := reg.DeleteInstance(ctx, list[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.UpdateInstance(ctx, list[1].ID, InstanceEdit{Name: new("")}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := reg.GetInstance(ctx, list[1].ID); err != nil || got.Name != nil || got.Label != "fake" {
+		t.Fatalf("after clearing its name: %+v, %v", got, err)
+	}
+}
+
+func TestSingletonInstanceHasNoName(t *testing.T) {
+	ctx := context.Background()
+	box, err := secrets.New(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := New(testdb.New(t), map[string]*protocol.Manifest{
+		"solo": {Name: "solo", Version: "1", Capabilities: []string{"import"}},
+	}, &blobstore.Store{Name: "library", Root: t.TempDir()}, box)
+
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "solo", Name: new("Mine")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.UpdateInstance(ctx, id, InstanceEdit{Name: new("Renamed")}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := reg.GetInstance(ctx, id); err != nil || got.Name != nil || got.Label != "solo" {
+		t.Fatalf("singleton instance = %+v, %v; want no name, label solo", got, err)
 	}
 }
 
@@ -620,7 +680,7 @@ func TestInstanceStatus(t *testing.T) {
 			Config: map[string]any{"type": "object", "required": []any{"url"}}},
 	}, &blobstore.Store{Name: "library", Root: t.TempDir()}, box)
 	create := func(name string, config map[string]any) int64 {
-		id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "conf", Name: name, Config: config})
+		id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "conf", Name: new(name), Config: config})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -646,7 +706,7 @@ func TestInstanceStatus(t *testing.T) {
 			t.Fatal(err)
 		}
 		if got.Status != want {
-			t.Errorf("instance %s: status %q, want %q", got.Name, got.Status, want)
+			t.Errorf("instance %s: status %q, want %q", got.Label, got.Status, want)
 		}
 	}
 }
@@ -661,7 +721,7 @@ func TestDisabledInstanceIsSkipped(t *testing.T) {
 	reg := New(pool, map[string]*protocol.Manifest{
 		"codec": {Name: "codec", Version: "1", Capabilities: []string{"codec"}, Formats: []string{"png"}},
 	}, &blobstore.Store{Name: "library", Root: t.TempDir()}, box)
-	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "codec", Name: "codec"})
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "codec", Name: new("codec")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -678,7 +738,7 @@ func TestDisabledInstanceIsSkipped(t *testing.T) {
 	if _, err := reg.CodecInstance(ctx, "png"); !errors.Is(err, ErrNoCodec) {
 		t.Fatalf("CodecInstance: err = %v, want ErrNoCodec", err)
 	}
-	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "codec", Name: "codec 2"}); !errors.Is(err, ErrSingleton) {
+	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "codec", Name: new("codec 2")}); !errors.Is(err, ErrSingleton) {
 		t.Fatalf("second instance while disabled: err = %v, want ErrSingleton", err)
 	}
 
@@ -708,7 +768,7 @@ func TestConcurrentDisablesKeepOneLogin(t *testing.T) {
 		}
 		var ids []int64
 		for _, name := range []string{"a", "b"} {
-			id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "login", Name: name, OwnerSubject: &owner})
+			id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "login", Name: new(name), OwnerSubject: &owner})
 			if err != nil {
 				t.Fatal(err)
 			}

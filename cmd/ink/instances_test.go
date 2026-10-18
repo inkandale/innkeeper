@@ -24,8 +24,8 @@ func runInkReader(t *testing.T, stdin io.Reader, args ...string) (string, error)
 }
 
 func TestInstances(t *testing.T) {
-	ok := `{"id": 3, "plugin": "lumiverse", "name": "Lumi", "config": {"url": "u"}, "secrets": ["password"], "created_at": "2026-10-07T10:00:00Z"}`
-	broken := `{"id": 4, "plugin": "sillytavern", "name": "ST", "config": {}, "secrets": [], "broken_error": "refused", "broken_at": "2026-10-07T10:00:00Z"}`
+	ok := `{"id": 3, "plugin": "lumiverse", "name": "Lumi", "label": "Lumi", "config": {"url": "u"}, "secrets": ["password"], "created_at": "2026-10-07T10:00:00Z"}`
+	broken := `{"id": 4, "plugin": "sillytavern", "name": "ST", "label": "ST", "config": {}, "secrets": [], "broken_error": "refused", "broken_at": "2026-10-07T10:00:00Z"}`
 	got := stubAPI(t, map[string]string{"GET /instances": "[" + ok + "," + broken + "]", "/instances/3": ok, "/instances/4": broken,
 		"POST /instances/3/check": `{"ok": true}`, "POST /instances/4/check": `{"ok": false, "error": "login refused"}`})
 

@@ -123,7 +123,7 @@ export function Sync() {
               const queue = (state?: string) => `/sync/changes?instance_id=${i.id}${state ? `&state=${state}` : ""}`;
               return (
                 <tr key={i.id}>
-                  <td>{i.name}</td>
+                  <td>{i.label}</td>
                   <td>{wait ? "…" : c.in_sync}</td>
                   {changes.data ? (
                     <>

@@ -54,7 +54,7 @@ func TestReconcileLive(t *testing.T) {
 	reg := plugins.New(pool, manifests, store, box)
 	mgr := pluginhost.NewManager(noCore, time.Minute, quiet)
 	t.Cleanup(mgr.Close)
-	inst, err := reg.CreateInstance(ctx, plugins.NewInstance{Plugin: "lumiverse", Name: fmt.Sprintf("Live check %x", rand.Uint32()),
+	inst, err := reg.CreateInstance(ctx, plugins.NewInstance{Plugin: "lumiverse", Name: new(fmt.Sprintf("Live check %x", rand.Uint32())),
 		Config:  map[string]any{"url": env["INNKEEPER_LIVE_LUMIVERSE_URL"], "username": env["INNKEEPER_LIVE_LUMIVERSE_USERNAME"]},
 		Secrets: map[string]string{"password": env["INNKEEPER_LIVE_LUMIVERSE_PASSWORD"]}})
 	if err != nil {

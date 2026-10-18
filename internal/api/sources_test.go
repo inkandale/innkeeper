@@ -22,7 +22,7 @@ func (e *testEnv) sitesPlugin() {
 func (e *testEnv) addSites() int64 {
 	e.t.Helper()
 	e.sitesPlugin()
-	id, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "sites", Name: "Sites"})
+	id, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "sites", Name: new("Sites")})
 	if err != nil {
 		e.t.Fatal(err)
 	}

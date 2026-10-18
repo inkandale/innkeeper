@@ -86,7 +86,7 @@ func (s *Server) catalogCall(ctx context.Context, id int64, method string, param
 		// The client went away; there is no one to answer.
 		return info, err
 	}
-	return info, s.failAs("catalog "+info.Name, err)
+	return info, s.failAs("catalog "+info.Label, err)
 }
 
 // catalogs lists every catalog instance with its description. A catalog that
@@ -101,7 +101,7 @@ func (s *Server) catalogs(ctx context.Context) ([]catalogOut, error) {
 		if i.Disabled {
 			continue
 		}
-		c := catalogOut{ID: i.ID, Name: i.Name, Plugin: i.Plugin}
+		c := catalogOut{ID: i.ID, Name: i.Label, Plugin: i.Plugin}
 		var info protocol.CatalogInfo
 		dctx, cancel := context.WithTimeout(ctx, describeTimeout)
 		_, err := s.catalogCall(dctx, i.ID, protocol.MethodCatalogDescribe, nil, &info)

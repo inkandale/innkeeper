@@ -55,8 +55,8 @@ beforeEach(() => {
       }
       if (u.pathname === "/api/instances")
         return json([
-          { id: 2, name: "Lumiverse", plugin: "lumiverse" },
-          { id: 3, name: "Tavern", plugin: "tavern" },
+          { id: 2, label: "Lumiverse", plugin: "lumiverse" },
+          { id: 3, label: "Tavern", name: "Tavern", plugin: "tavern" },
         ]);
       if (u.pathname === "/api/instances/2/cards/a/compare" && u.searchParams.get("card_id") === "1") return json(cmp);
       if (u.pathname === "/api/pushes/preview") {
@@ -208,7 +208,7 @@ test("a followed source's entries offer review, ignoring, and removing the sourc
     vi.fn(async (req: Request) => {
       const u = new URL(req.url);
       if (u.pathname === "/api/sync/changes") return json(followed);
-      if (u.pathname === "/api/instances") return json([{ id: 4, name: "URL import", plugin: "url-import" }]);
+      if (u.pathname === "/api/instances") return json([{ id: 4, label: "URL import", name: "URL import", plugin: "url-import" }]);
       if (u.pathname === "/api/plugins") return json([{ name: "url-import", capabilities: ["pull"] }]);
       if (req.method !== "GET") {
         sent.push({ method: req.method, path: u.pathname, ...(req.method === "DELETE" ? {} : { body: await req.json() }) });
@@ -256,7 +256,7 @@ test("ignoring a change the site has changed again reloads the queue and says so
         loads++;
         return json(followed);
       }
-      if (u.pathname === "/api/instances") return json([{ id: 4, name: "URL import", plugin: "url-import" }]);
+      if (u.pathname === "/api/instances") return json([{ id: 4, label: "URL import", name: "URL import", plugin: "url-import" }]);
       if (u.pathname === "/api/bindings/21/dismiss") return json({ detail: "the site changed", status: 409 }, 409);
       return base(req);
     }),

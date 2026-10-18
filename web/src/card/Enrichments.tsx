@@ -64,7 +64,7 @@ export function Enrichments({ id }: { id: number }) {
             <select className="input" aria-label="Evaluate with" value={instanceId} onChange={(e) => setPicked(Number(e.target.value))}>
               {enrichers.map((i) => (
                 <option key={i.id} value={i.id}>
-                  {i.name}
+                  {i.label}
                 </option>
               ))}
             </select>

@@ -1492,6 +1492,7 @@
             "type": "boolean"
           },
           "name": {
+            "description": "Tells it apart from the plugin's other instances. A plugin may have one instance without a name; a singleton's is always without one.",
             "minLength": 1,
             "type": "string"
           },
@@ -1511,8 +1512,7 @@
           }
         },
         "required": [
-          "plugin",
-          "name"
+          "plugin"
         ],
         "type": "object"
       },
@@ -2621,6 +2621,9 @@
             "format": "int64",
             "type": "integer"
           },
+          "label": {
+            "type": "string"
+          },
           "library_access": {
             "type": "boolean"
           },
@@ -2659,7 +2662,7 @@
         "required": [
           "id",
           "plugin",
-          "name",
+          "label",
           "config",
           "secrets",
           "library_access",
@@ -4799,7 +4802,7 @@
             "type": "boolean"
           },
           "name": {
-            "minLength": 1,
+            "description": "Empty clears it. A singleton's instance never keeps one.",
             "type": "string"
           },
           "owner_subject": {

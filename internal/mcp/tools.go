@@ -137,14 +137,14 @@ type importIn struct {
 
 type instanceIn struct {
 	Plugin  string            `json:"plugin"`
-	Name    string            `json:"name"`
+	Name    string            `json:"name,omitempty" jsonschema:"Tells it apart from the plugin's other instances; leave empty for a plugin's first"`
 	Config  map[string]any    `json:"config,omitempty"`
 	Secrets map[string]string `json:"secrets,omitempty" jsonschema:"Write-only; never returned"`
 }
 
 type instanceUpdateIn struct {
 	ID       int64              `json:"id"`
-	Name     *string            `json:"name,omitempty"`
+	Name     *string            `json:"name,omitempty" jsonschema:"Empty clears it"`
 	Config   map[string]any     `json:"config,omitempty"`
 	Secrets  map[string]*string `json:"secrets,omitempty" jsonschema:"Sets each named secret; null removes one. Write-only."`
 	Disabled *bool              `json:"disabled,omitempty" jsonschema:"true keeps the instance but stops everything using it; false turns it back on"`

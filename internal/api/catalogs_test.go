@@ -22,7 +22,7 @@ func (e *testEnv) catalog(name string, config map[string]any) int64 {
 		m.Command = []string{m.Command[0], "-caps=catalog", "-name=catalog"}
 		e.manifests["catalog"] = &m
 	}
-	id, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "catalog", Name: name, Config: config})
+	id, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "catalog", Name: new(name), Config: config})
 	if err != nil {
 		e.t.Fatal(err)
 	}

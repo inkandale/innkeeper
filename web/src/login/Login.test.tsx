@@ -39,7 +39,7 @@ test("a form login completes and goes to next", async () => {
     "fetch",
     vi.fn(async (req: Request) => {
       calls.push(`${req.method} ${new URL(req.url).pathname}`);
-      if (req.url.endsWith("/auth/providers")) return json([{ id: 3, name: "Password", plugin: "fake" }]);
+      if (req.url.endsWith("/auth/providers")) return json([{ id: 3, label: "Password", name: "Password", plugin: "fake" }]);
       if (req.url.endsWith("/auth/3/begin"))
         return json({ form: { type: "object", properties: { password: { type: "string" } }, required: ["password"] } });
       if (req.url.endsWith("/auth/3/complete")) {
@@ -61,7 +61,7 @@ test("a failed login shows the error", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
-      if (req.url.endsWith("/auth/providers")) return json([{ id: 3, name: "Password", plugin: "fake" }]);
+      if (req.url.endsWith("/auth/providers")) return json([{ id: 3, label: "Password", name: "Password", plugin: "fake" }]);
       if (req.url.endsWith("/begin")) return json({ form: { type: "object", properties: { password: { type: "string" } } } });
       return json({ status: 401, detail: "login failed" }, 401);
     }),
@@ -86,7 +86,7 @@ test("a redirect provider saves next and sends the browser away", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
-      if (req.url.endsWith("/auth/providers")) return json([{ id: 4, name: "SSO", plugin: "oidc" }]);
+      if (req.url.endsWith("/auth/providers")) return json([{ id: 4, label: "SSO", name: "SSO", plugin: "oidc" }]);
       return json({ redirect: "https://idp.example/auth?x=1" });
     }),
   );
@@ -99,7 +99,7 @@ test("a non-http redirect is refused", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
-      if (req.url.endsWith("/auth/providers")) return json([{ id: 4, name: "SSO", plugin: "oidc" }]);
+      if (req.url.endsWith("/auth/providers")) return json([{ id: 4, label: "SSO", name: "SSO", plugin: "oidc" }]);
       return json({ redirect: "javascript:alert(1)" });
     }),
   );
@@ -112,7 +112,7 @@ test("a single redirect provider waits for a click without next", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
-      if (req.url.endsWith("/auth/providers")) return json([{ id: 4, name: "SSO", plugin: "oidc" }]);
+      if (req.url.endsWith("/auth/providers")) return json([{ id: 4, label: "SSO", name: "SSO", plugin: "oidc" }]);
       return json({ redirect: "https://idp.example/auth?x=1" });
     }),
   );

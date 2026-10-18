@@ -98,7 +98,7 @@ export function SelectionBar(props: {
           onStarted?.(j.id);
           setPicked((ids) => (ids ?? chosen.map((c) => c.id)).filter((id) => id !== t.id));
         } catch (e) {
-          failed.push(`${t.name}: ${(e as Error).message}`);
+          failed.push(`${t.label}: ${(e as Error).message}`);
         }
       }
       if (failed.length) throw new Error(failed.join("; "));
@@ -173,7 +173,7 @@ export function SelectionBar(props: {
                   const p = previews[i]!;
                   return (
                     <span key={t.id} className="muted">
-                      {chosen.length > 1 && `${t.name}: `}
+                      {chosen.length > 1 && `${t.label}: `}
                       {p.data ? pushSummary(p.data) : p.error?.message}
                     </span>
                   );
@@ -202,7 +202,7 @@ export function SelectionBar(props: {
                 <select className="input" aria-label="Evaluate with" value={enricherId} onChange={(e) => setEnricher(Number(e.target.value))}>
                   {enrichers.map((i) => (
                     <option key={i.id} value={i.id}>
-                      {i.name}
+                      {i.label}
                     </option>
                   ))}
                 </select>

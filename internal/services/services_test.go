@@ -60,7 +60,7 @@ func setup(t *testing.T) fixture {
 	b.Plugins = mgr
 	t.Cleanup(mgr.Close)
 	create := func(plugin, name string, config map[string]any) (int64, pluginhost.Instance) {
-		id, err := reg.CreateInstance(ctx, plugins.NewInstance{Plugin: plugin, Name: name, Config: config})
+		id, err := reg.CreateInstance(ctx, plugins.NewInstance{Plugin: plugin, Name: new(name), Config: config})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -149,7 +149,7 @@ func TestBrokenProviderIsRefusedWithoutItsError(t *testing.T) {
 
 func TestServiceCallDuringInitializeIsRefused(t *testing.T) {
 	f := setup(t)
-	id, err := f.reg.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "consumer", Name: "Eager",
+	id, err := f.reg.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "consumer", Name: new("Eager"),
 		Config: map[string]any{"chat_on_initialize": f.chatID}})
 	if err != nil {
 		t.Fatal(err)

@@ -2,7 +2,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { api, must } from "../api/client";
-import { pluginsQuery } from "../api/queries";
+import { instancesQuery, pluginsQuery } from "../api/queries";
 import { useToast } from "../shell/Toasts";
 import { type InstanceInfo, type Plugin } from "./Plugins";
 import { Records } from "./Records";
@@ -95,6 +95,10 @@ export function InstanceForm({
   const [libraryAccess, setLibraryAccess] = useState(instance?.library_access ?? false);
   const schema = plugin.config as Schema | undefined;
   const { general, tabs } = tabsOf(schema);
+  const others = useQuery(instancesQuery).data?.filter((i) => i.plugin === plugin.name && i.id !== instance?.id) ?? [];
+  // A plugin may have one instance without a name; a singleton's never has one.
+  const named = plugin.multiple_instances === true;
+  const needsName = named && others.some((i) => !i.name);
   const [tab, setTab] = useState("general");
   const tabIds = ["general", ...tabs.map(([k]) => k)];
   // Arrow keys move between the tabs, selecting as they go.
@@ -137,7 +141,7 @@ export function InstanceForm({
 
   const save = useMutation({
     mutationFn: async (form: FormData) => {
-      const name = String(form.get("name")).trim();
+      const name = named ? String(form.get("name")).trim() : undefined;
       const cfg = (config ?? {}) as Record<string, unknown>;
       const owner = caps.includes("auth") ? String(form.get("owner_subject") ?? "").trim() : undefined;
       const hasSecrets = Object.keys(secrets).length > 0;
@@ -152,7 +156,7 @@ export function InstanceForm({
           await api.POST("/instances", {
             body: {
               plugin: plugin.name,
-              name,
+              name: name || undefined,
               config: cfg,
               default_bases,
               secrets: hasSecrets ? (secrets as Record<string, string>) : undefined,
@@ -181,7 +185,7 @@ export function InstanceForm({
       qc.setQueryData(["instance", saved.id], saved);
       qc.invalidateQueries({ queryKey: ["instances"] });
       qc.invalidateQueries({ queryKey: ["plugin-defaults", plugin.name] });
-      toast({ text: `Saved ${saved.name}.` });
+      toast({ text: `Saved ${saved.label}.` });
       if (onSaved) onSaved(saved);
       else navigate("/settings/plugins");
     },
@@ -212,7 +216,7 @@ export function InstanceForm({
         if (panel) setTab(panel.id.replace("panel-", ""));
       }}
     >
-      <h2>{instance ? instance.name : `New ${plugin.name} instance`}</h2>
+      <h2>{instance ? instance.label : `New ${plugin.name} instance`}</h2>
       {instance?.broken_error && (
         <p className="error">
           Broken since {new Date(instance.broken_at ?? instance.updated_at).toLocaleString()}: {instance.broken_error}.
@@ -224,12 +228,15 @@ export function InstanceForm({
           Changing the owner, config, or secrets ends every login through this provider, including yours if you used it.
         </p>
       )}
-      <div className="form-field">
-        <label>
-          <span>Name</span>
-          <input className="input" name="name" required defaultValue={instance?.name} />
-        </label>
-      </div>
+      {named && (
+        <div className="form-field">
+          <label>
+            <span>Name</span>
+            <input className="input" name="name" required={needsName} placeholder={needsName ? undefined : plugin.name} defaultValue={instance?.name} />
+          </label>
+          {needsName && <p className="muted">Another {plugin.name} instance has no name, so this one needs one.</p>}
+        </div>
+      )}
       <FormContext.Provider value={helpers}>
         {tabs.length > 0 && (
           <div role="tablist" aria-label="Settings" className="instance-tabs" onKeyDown={(e) => arrow(e.key)}>

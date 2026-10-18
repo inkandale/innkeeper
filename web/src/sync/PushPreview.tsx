@@ -11,7 +11,7 @@ import "./Sync.css";
 type Preview = components["schemas"]["Preview"];
 
 /** Target is an app instance a push goes to. */
-export type Target = { id: number; name: string };
+export type Target = { id: number; label: string };
 
 /** PushPreview shows what pushing one card or lorebook changes in each target app, and pushes once the owner confirms. */
 export function PushPreview(props: { kind: Kind; id: number; targets: Target[]; onClose: () => void }) {
@@ -52,7 +52,7 @@ export function PushPreview(props: { kind: Kind; id: number; targets: Target[]; 
     meta: { toast: false },
   });
   const ready = left.every((t) => t.preview.data && !t.preview.isFetching);
-  const title = targets.length === 1 ? `Push to ${targets[0]!.name}` : `Push to ${targets.length} apps`;
+  const title = targets.length === 1 ? `Push to ${targets[0]!.label}` : `Push to ${targets.length} apps`;
   return (
     <dialog {...modal} className="dialog" aria-label={title}>
       <h2>{title}</h2>
@@ -75,8 +75,8 @@ export function PushPreview(props: { kind: Kind; id: number; targets: Target[]; 
         return targets.length === 1 ? (
           <div key={t.id}>{body}</div>
         ) : (
-          <section key={t.id} aria-label={t.name}>
-            <h3>{t.name}</h3>
+          <section key={t.id} aria-label={t.label}>
+            <h3>{t.label}</h3>
             {body}
           </section>
         );

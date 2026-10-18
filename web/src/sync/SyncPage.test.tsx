@@ -22,9 +22,9 @@ beforeEach(() => {
       if (u.pathname === "/api/libraries") return new Response(JSON.stringify([1, 2, 3].map((id) => ({ id, name: `Library ${id}`, cards: 0, lorebooks: 0, created_at: "2026-10-01T00:00:00Z" }))), { headers: { "Content-Type": "application/json" } });
       if (u.pathname === "/api/instances")
         return json([
-          { id: 2, name: "Lumiverse", plugin: "lumiverse" },
-          { id: 3, name: "Cards folder", plugin: "folder" },
-          { id: 4, name: "URL import", plugin: "url-import" },
+          { id: 2, label: "Lumiverse", name: "Lumiverse", plugin: "lumiverse" },
+          { id: 3, label: "Cards folder", name: "Cards folder", plugin: "folder" },
+          { id: 4, label: "URL import", name: "URL import", plugin: "url-import" },
         ]);
       if (u.pathname === "/api/plugins")
         return json([
@@ -89,7 +89,7 @@ test("lists target apps with their counts and last sync", async () => {
 test("Can't check shows only when it isn't zero", async () => {
   vi.mocked(fetch).mockImplementation(async (req) => {
     const u = new URL((req as Request).url);
-    if (u.pathname === "/api/instances") return json([{ id: 2, name: "Lumiverse", plugin: "lumiverse" }]);
+    if (u.pathname === "/api/instances") return json([{ id: 2, label: "Lumiverse", name: "Lumiverse", plugin: "lumiverse" }]);
     if (u.pathname === "/api/plugins") return json([{ name: "lumiverse", capabilities: ["push"] }]);
     if (u.pathname === "/api/cards/search") return json({ hits: [], total: 5, facets: { targets: [{ instance: 2, is: "in_sync", cards: 5 }] } });
     if (u.pathname === "/api/sync/changes") return json({ rows: [], counts: {} });
@@ -137,7 +137,7 @@ test("site sources get their own line: their changes and a check of every source
 test("with only site sources, the Changes link still shows", async () => {
   vi.mocked(fetch).mockImplementation(async (req) => {
     const u = new URL((req as Request).url);
-    if (u.pathname === "/api/instances") return json([{ id: 4, name: "URL import", plugin: "url-import" }]);
+    if (u.pathname === "/api/instances") return json([{ id: 4, label: "URL import", name: "URL import", plugin: "url-import" }]);
     if (u.pathname === "/api/plugins") return json([{ name: "url-import", capabilities: ["import", "sites", "pull"] }]);
     if (u.pathname === "/api/sync/changes") return json({ rows: [], counts: {} });
     return json([]);

@@ -14,7 +14,7 @@ import (
 // description as the owner, and returns the instance and the card.
 func (e *env) archive(description string) (int64, int64) {
 	e.t.Helper()
-	inst, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: "archive", Name: "Archive"})
+	inst, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: "archive", Name: new("Archive")})
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -205,7 +205,7 @@ func (e *env) tmpAvatar(png string) string {
 
 func TestImportAfterKeepingTheLibraryAvatarRevisesTheCard(t *testing.T) {
 	e := setup(t, nil)
-	inst, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: "archive", Name: "Archive"})
+	inst, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: "archive", Name: new("Archive")})
 	if err != nil {
 		t.Fatal(err)
 	}

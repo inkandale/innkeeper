@@ -83,10 +83,10 @@ beforeEach(() => {
       }
       if (path === "/api/instances")
         return json([
-          { id: 2, name: "Lumiverse", plugin: "lumiverse" },
-          { id: 3, name: "Cards folder", plugin: "folder" },
-          { id: 6, name: "url-import", plugin: "url-import" },
-          { id: 5, name: "Judge", plugin: "judge" },
+          { id: 2, label: "Lumiverse", name: "Lumiverse", plugin: "lumiverse" },
+          { id: 3, label: "Cards folder", name: "Cards folder", plugin: "folder" },
+          { id: 6, label: "url-import", name: "url-import", plugin: "url-import" },
+          { id: 5, label: "Judge", name: "Judge", plugin: "judge" },
         ]);
       if (path === "/api/plugins")
         return json([
@@ -474,8 +474,8 @@ test("Import cards opens the importer and imports a page URL", async () => {
 test("push sends one push per ticked target", async () => {
   answer("/api/instances", async () =>
     json([
-      { id: 2, name: "Lumiverse", plugin: "lumiverse" },
-      { id: 5, name: "SillyTavern", plugin: "sillytavern" },
+      { id: 2, label: "Lumiverse", name: "Lumiverse", plugin: "lumiverse" },
+      { id: 5, label: "SillyTavern", name: "SillyTavern", plugin: "sillytavern" },
     ]),
   );
   answer("/api/plugins", async () =>

@@ -29,7 +29,7 @@ func TestInstancesOfferingListsOnlyInstancesThatOfferTheService(t *testing.T) {
 	mgr := pluginhost.NewManager(nil, time.Minute, quiet)
 	t.Cleanup(mgr.Close)
 	create := func(name string, services ...string) int64 {
-		id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: name,
+		id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: new(name),
 			Config: map[string]any{"services": services}})
 		if err != nil {
 			t.Fatal(err)

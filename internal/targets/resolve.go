@@ -513,7 +513,7 @@ func (rs *resolver) bind(ctx context.Context, k kind, info, rinfo protocol.Targe
 	}
 	if plan.revise {
 		rev, err := s.lib.Entities(k.Kind).UpdateTx(ctx, rs.tx, id, head.id, library.Edit{Data: plan.base,
-			AvatarBlob: plan.avatar, Overrides: plan.overrides, Source: "reconcile", Message: "Reconcile with " + named.Name})
+			AvatarBlob: plan.avatar, Overrides: plan.overrides, Source: "reconcile", Message: "Reconcile with " + named.Label})
 		if err != nil {
 			return res, err
 		}

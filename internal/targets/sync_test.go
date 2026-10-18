@@ -50,7 +50,7 @@ func (e *env) addApp() (int64, string) {
 	e.t.Helper()
 	dir := e.t.TempDir()
 	id, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: "fake",
-		Name: fmt.Sprintf("App %s", filepath.Base(dir)), Config: map[string]any{"dir": dir}})
+		Name: new(fmt.Sprintf("App %s", filepath.Base(dir))), Config: map[string]any{"dir": dir}})
 	if err != nil {
 		e.t.Fatal(err)
 	}

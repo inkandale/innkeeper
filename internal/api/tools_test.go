@@ -53,7 +53,7 @@ func TestPluginTools(t *testing.T) {
 // A plugin that hangs listing its tools mustn't hold up everyone else's.
 func TestHungPluginTools(t *testing.T) {
 	e := newEnv(t)
-	if _, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "fake", Name: "Hung",
+	if _, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "fake", Name: new("Hung"),
 		Config: map[string]any{"hang_tools": true}}); err != nil {
 		t.Fatal(err)
 	}

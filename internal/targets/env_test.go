@@ -96,7 +96,7 @@ func setup(t *testing.T, config map[string]any) *env {
 	e := &env{t: t, ctx: ctx, pool: pool, lib: lib, blobTmp: store.TmpDir(), reg: reg, s: New(pool, lib, reg, mgr, quiet), dir: t.TempDir()}
 	cfg := map[string]any{"dir": e.dir}
 	maps.Copy(cfg, config)
-	if e.inst, err = reg.CreateInstance(ctx, plugins.NewInstance{Plugin: "fake", Name: "Fake app", Config: cfg}); err != nil {
+	if e.inst, err = reg.CreateInstance(ctx, plugins.NewInstance{Plugin: "fake", Name: new("Fake app"), Config: cfg}); err != nil {
 		t.Fatal(err)
 	}
 	e.card = e.newCard("Brakka")

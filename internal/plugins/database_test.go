@@ -70,7 +70,7 @@ func TestProvisionDatabases(t *testing.T) {
 	if err := reg.ProvisionDatabases(ctx, dbURL); err != nil {
 		t.Fatal(err)
 	}
-	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "cat-log", Name: "Catalog"})
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "cat-log", Name: new("Catalog")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestProvisionDatabasesOptIn(t *testing.T) {
 	if err := reg.ProvisionDatabases(ctx, dbURL); err != nil {
 		t.Fatal(err)
 	}
-	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "plain", Name: "Plain"})
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "plain", Name: new("Plain")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func TestPluginUsesItsDatabase(t *testing.T) {
 	if err := reg.ProvisionDatabases(ctx, dbURL); err != nil {
 		t.Fatal(err)
 	}
-	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: "Fake"})
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: new("Fake")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestRemoveData(t *testing.T) {
 	if err := reg.ProvisionDatabases(ctx, dbURL); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "cat-log", Name: "Cats"}); err != nil {
+	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "cat-log", Name: new("Cats")}); err != nil {
 		t.Fatal(err)
 	}
 	if err := reg.RemoveData(ctx, "cat-log"); !errors.Is(err, ErrInvalid) {
@@ -232,7 +232,7 @@ func TestRemoveDataOfAnImporterThatImported(t *testing.T) {
 	if err := reg.ProvisionDatabases(ctx, dbURL); err != nil {
 		t.Fatal(err)
 	}
-	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "cat-log", Name: "Cats"})
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "cat-log", Name: new("Cats")})
 	if err != nil {
 		t.Fatal(err)
 	}

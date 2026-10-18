@@ -179,7 +179,7 @@ func TestLoginNeedsState(t *testing.T) {
 
 func TestLoginOnlyThroughAuthPlugins(t *testing.T) {
 	e := newEnv(t)
-	id, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "vault", Name: "Vault"})
+	id, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "vault", Name: new("Vault")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +221,7 @@ func TestDisabledLoginProviderIsNotListed(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	owner, disabled := "owner", true
-	second, err := e.s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: "fake", Name: "Second", OwnerSubject: &owner})
+	second, err := e.s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: "fake", Name: new("Second"), OwnerSubject: &owner})
 	if err != nil {
 		t.Fatal(err)
 	}

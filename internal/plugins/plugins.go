@@ -41,6 +41,8 @@ var (
 	ErrDisabled  = errors.New("plugin instance is disabled")
 	ErrInvalid   = errors.New("invalid plugin instance")
 	ErrNameTaken = errors.New("plugin instance name already in use")
+	// ErrNeedsName means the plugin already has an unnamed instance.
+	ErrNeedsName = errors.New("plugin already has an instance without a name; name this one")
 	// ErrInUse means cards are still bound to the instance.
 	ErrInUse = errors.New("plugin instance has bound cards; unbind them first")
 	// ErrIncapable means the instance's plugin lacks the capability asked for.
@@ -254,9 +256,12 @@ func (r *Registry) Manifests() map[string]*protocol.Manifest {
 // InstanceInfo is an instance as the owner sees it. It names the secrets
 // that are set but never holds their values.
 type InstanceInfo struct {
-	ID           int64          `json:"id"`
-	Plugin       string         `json:"plugin"`
-	Name         string         `json:"name"`
+	ID     int64  `json:"id"`
+	Plugin string `json:"plugin"`
+	// Name tells apart instances of one plugin; without one, the plugin's name stands in.
+	Name *string `json:"name,omitempty"`
+	// Label is what to show for the instance: its name, or its plugin's.
+	Label        string         `json:"label"`
 	Config       map[string]any `json:"config"`
 	Secrets      []string       `json:"secrets"`
 	OwnerSubject *string        `json:"owner_subject,omitempty"`
@@ -299,7 +304,7 @@ func Status(m *protocol.Manifest, instances []InstanceInfo) string {
 // NewInstance is a new instance's settings.
 type NewInstance struct {
 	Plugin        string
-	Name          string
+	Name          *string
 	Config        map[string]any
 	Secrets       map[string]string
 	OwnerSubject  *string
@@ -309,7 +314,7 @@ type NewInstance struct {
 }
 
 // InstanceEdit changes an instance. Nil fields stay as they are. A nil value
-// in Secrets removes that secret, and an empty OwnerSubject clears it.
+// in Secrets removes that secret, and an empty Name or OwnerSubject clears it.
 type InstanceEdit struct {
 	Name          *string
 	Config        map[string]any
@@ -332,6 +337,8 @@ func checkSecret(m *protocol.Manifest, name string) error {
 func writeErr(err error) error {
 	var pgErr *pgconn.PgError
 	switch {
+	case errors.As(err, &pgErr) && pgErr.ConstraintName == "plugin_instance_unnamed_key":
+		return ErrNeedsName
 	case db.IsCode(err, db.UniqueViolation):
 		return ErrNameTaken
 	case errors.As(err, &pgErr) && pgErr.Code == db.CheckViolation:
@@ -381,6 +388,7 @@ func (r *Registry) CreateInstance(ctx context.Context, n NewInstance) (int64, er
 		return 0, err
 	}
 	if !m.AllowsManyInstances() {
+		n.Name = nil
 		var exists bool
 		err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM plugin_instance WHERE plugin = $1)`, n.Plugin).Scan(&exists)
 		if err != nil {
@@ -472,11 +480,15 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 	if e.OwnerSubject != nil {
 		owner = *e.OwnerSubject
 	}
-	_, err = tx.Exec(ctx, `UPDATE plugin_instance SET name = coalesce($2, name), config = coalesce($3, config),
+	// A singleton's one instance has nothing to be told apart from.
+	m, ok := r.manifest(plugin)
+	single := ok && !m.AllowsManyInstances()
+	_, err = tx.Exec(ctx, `UPDATE plugin_instance SET
+			name = CASE WHEN $10 THEN NULL WHEN $2::text IS NULL THEN name ELSE nullif($2, '') END, config = coalesce($3, config),
 			secrets = $4, owner_subject = CASE WHEN $5 THEN nullif($6::text, '') ELSE owner_subject END,
 			library_access = coalesce($7, library_access), default_hashes = coalesce($8, default_hashes),
 			disabled = coalesce($9, disabled), broken_error = NULL, broken_at = NULL, updated_at = now()
-		WHERE id = $1`, id, e.Name, config, sealed, e.OwnerSubject != nil, owner, e.LibraryAccess, newHashes, e.Disabled)
+		WHERE id = $1`, id, e.Name, config, sealed, e.OwnerSubject != nil, owner, e.LibraryAccess, newHashes, e.Disabled, single)
 	if err != nil {
 		return writeErr(err)
 	}
@@ -528,6 +540,10 @@ func (r *Registry) scanInfo(row pgx.Row) (InstanceInfo, error) {
 	}
 	if err != nil {
 		return i, err
+	}
+	i.Label = i.Plugin
+	if i.Name != nil {
+		i.Label = *i.Name
 	}
 	s, err := r.box.Open(sealed)
 	if err != nil {

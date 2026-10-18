@@ -141,7 +141,7 @@ beforeEach(() => {
         return json([{ id: 4, kind: "chub", ref: "dg/brakka", url: "https://chub.ai/characters/dg/brakka", linked_by: "user", created_at: now },
           { id: 5, kind: "chub", ref: "dg/evil", url: "javascript:alert(1)", linked_by: "user", created_at: now }]);
       if (path === "/api/instances")
-        return json([{ id: 2, name: "Lumiverse", plugin: "lumiverse" }, { id: 4, name: "URL import", plugin: "url-import" }, ...(pngCodec ? [{ id: 5, name: "Codec", plugin: "card-codec" }] : [])]);
+        return json([{ id: 2, label: "Lumiverse", plugin: "lumiverse" }, { id: 4, name: "URL import", plugin: "url-import" }, ...(pngCodec ? [{ id: 5, name: "Codec", plugin: "card-codec" }] : [])]);
       if (path === "/api/plugins")
         return json([
           { name: "lumiverse", capabilities: ["push"] },

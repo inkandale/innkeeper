@@ -194,7 +194,7 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 			for _, v := range vals {
 				ev := enrichmentValue{Enrichment: v, EnrichmentOut: EnrichmentOut{Label: v.Key}}
 				if i := slices.IndexFunc(insts, func(i plugins.InstanceInfo) bool { return i.ID == v.InstanceID }); i >= 0 {
-					ev.InstanceName = insts[i].Name
+					ev.InstanceName = insts[i].Label
 					if m := s.Registry.Manifests()[insts[i].Plugin]; m != nil {
 						if d, ok := m.Enrichments[v.Key]; ok {
 							ev.EnrichmentOut = toEnrichmentOut(d)

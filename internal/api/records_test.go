@@ -27,7 +27,7 @@ func newRecordsEnv(t *testing.T) (*testEnv, int64, string) {
 	}
 	m.Name = "notes"
 	e.manifests["notes"] = m
-	id, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "notes", Name: "Notes"})
+	id, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "notes", Name: new("Notes")})
 	if err != nil {
 		t.Fatal(err)
 	}

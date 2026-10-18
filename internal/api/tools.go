@@ -63,16 +63,16 @@ func (s *Server) toolRoutes(api huma.API) {
 			// tool's name doesn't change when another instance goes down.
 			prefixes := map[string]int{}
 			for _, i := range insts {
-				prefixes[toolPrefix(i.Name)]++
+				prefixes[toolPrefix(i.Label)]++
 			}
 			out := collect(ctx, s, &s.tools, mcpTools, insts, func(i plugins.InstanceInfo, tools []protocol.Tool) []PluginTool {
-				prefix := toolPrefix(i.Name)
+				prefix := toolPrefix(i.Label)
 				if prefixes[prefix] > 1 {
 					prefix = fmt.Sprintf("%s_%d", prefix, i.ID)
 				}
 				var out []PluginTool
 				for _, t := range tools {
-					out = append(out, PluginTool{i.ID, i.Name, t.Name, t.Description, t.InputSchema,
+					out = append(out, PluginTool{i.ID, i.Label, t.Name, t.Description, t.InputSchema,
 						t.EffectiveTier(), prefix + "_" + t.Name})
 				}
 				return out

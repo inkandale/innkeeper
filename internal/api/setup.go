@@ -64,7 +64,7 @@ func (s *Server) Bootstrap(ctx context.Context, ownerHash string) error {
 func (s *Server) createOwnerLogin(ctx context.Context, plugin string, secrets map[string]string, subject string) (int64, error) {
 	name := "Login"
 	for n := 2; ; n++ {
-		id, err := s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: plugin, Name: name,
+		id, err := s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: plugin, Name: &name,
 			Secrets: secrets, OwnerSubject: &subject})
 		if !errors.Is(err, plugins.ErrNameTaken) || n > 10 {
 			return id, err

@@ -2937,7 +2937,8 @@ export interface components {
             };
             /** @description Lets an action plugin read the library while it runs an action that asks to. */
             library_access?: boolean;
-            name: string;
+            /** @description Tells it apart from the plugin's other instances. A plugin may have one instance without a name; a singleton's is always without one. */
+            name?: string;
             /** @description For a login provider: the subject that logs in as the owner. */
             owner_subject?: string;
             plugin: string;
@@ -3370,8 +3371,9 @@ export interface components {
             disabled: boolean;
             /** Format: int64 */
             id: number;
+            label: string;
             library_access: boolean;
-            name: string;
+            name?: string;
             owner_subject?: string;
             plugin: string;
             secrets: string[] | null;
@@ -4194,6 +4196,7 @@ export interface components {
             disabled?: boolean;
             /** @description Lets an action plugin read the library while it runs an action that asks to. */
             library_access?: boolean;
+            /** @description Empty clears it. A singleton's instance never keeps one. */
             name?: string;
             /** @description Empty clears it, which logs the owner out of this provider. */
             owner_subject?: string;

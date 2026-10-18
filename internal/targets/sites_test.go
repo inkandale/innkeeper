@@ -10,7 +10,7 @@ import (
 // addSites creates an instance of the fake sites plugin, which reads https://fake.example/{a}/{b} in data.source.
 func (e *env) addSites() {
 	e.t.Helper()
-	if _, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: "sites", Name: "Sites"}); err != nil {
+	if _, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: "sites", Name: new("Sites")}); err != nil {
 		e.t.Fatal(err)
 	}
 }

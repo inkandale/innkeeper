@@ -51,7 +51,7 @@ beforeEach(() => {
         posts.push({ path, body: await req.json() });
         return json({ id: 5, kind: "bulk", status: "waiting" });
       }
-      if (path === "/api/instances") return json([{ id: 2, name: "Lumiverse", plugin: "lumiverse" }]);
+      if (path === "/api/instances") return json([{ id: 2, label: "Lumiverse", name: "Lumiverse", plugin: "lumiverse" }]);
       if (path === "/api/plugins") return json([{ name: "lumiverse", capabilities: ["push"] }]);
       return json([]);
     }),

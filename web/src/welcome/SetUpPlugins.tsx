@@ -58,7 +58,7 @@ function PluginStep({ plugin, done, next }: { plugin: Plugin; done: InstanceInfo
   // Nothing to ask for, so create the instance straight away.
   const bare = !Object.keys((plugin.config as Schema | undefined)?.properties ?? {}).length && !plugin.secrets?.length;
   const create = useMutation({
-    mutationFn: async () => must(await api.POST("/instances", { body: { plugin: plugin.name, name: plugin.name } })),
+    mutationFn: async () => must(await api.POST("/instances", { body: { plugin: plugin.name } })),
     meta: { toast: false },
     onSuccess: (inst) => {
       qc.invalidateQueries({ queryKey: ["instances"] });
@@ -76,7 +76,7 @@ function PluginStep({ plugin, done, next }: { plugin: Plugin; done: InstanceInfo
   if (saved) {
     return (
       <div className="panel">
-        <h2>{saved.name}</h2>
+        <h2>{saved.label}</h2>
         {check.isPending && <p className="muted">Checking the connection…</p>}
         {check.isSuccess && (
           <>
@@ -107,7 +107,7 @@ function PluginStep({ plugin, done, next }: { plugin: Plugin; done: InstanceInfo
       <div className="panel">
         <h2>{plugin.name}</h2>
         {done.map((i) => (
-          <p key={i.id}>✓ {i.name}</p>
+          <p key={i.id}>✓ {i.label}</p>
         ))}
         <Link className="button primary" to={next}>
           Next

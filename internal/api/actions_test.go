@@ -34,7 +34,7 @@ func newActionEnv(t *testing.T) *actionEnv {
 	forge.Name, forge.Capabilities = "forge", []string{"action"}
 	forge.Command = []string{forge.Command[0], "-caps=action", "-name=forge"}
 	e.manifests["forge"] = &forge
-	id, err := e.s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: "forge", Name: "Forge"})
+	id, err := e.s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: "forge", Name: new("Forge")})
 	if err != nil {
 		t.Fatal(err)
 	}

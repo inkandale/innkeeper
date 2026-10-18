@@ -12,7 +12,7 @@ export function TargetPicker({ targets, picked, onChange }: { targets: Target[];
             checked={picked.includes(t.id)}
             onChange={(e) => onChange(e.target.checked ? [...picked, t.id] : picked.filter((id) => id !== t.id))}
           />{" "}
-          {t.name}
+          {t.label}
         </label>
       ))}
     </fieldset>

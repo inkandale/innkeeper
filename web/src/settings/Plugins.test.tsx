@@ -11,7 +11,7 @@ function json(body: unknown, status = 200) {
 
 const now = new Date().toISOString();
 const inst = (id: number, plugin: string, name: string, broken?: string, status?: string) => ({
-  id, plugin, name, config: {}, secrets: [], created_at: now, updated_at: now,
+  id, plugin, name, label: name, config: {}, secrets: [], created_at: now, updated_at: now,
   disabled: status === "disabled", status: status ?? (broken ? "broken" : "ready"),
   ...(broken ? { broken_error: broken, broken_at: now } : {}),
 });
@@ -41,6 +41,8 @@ beforeEach(() => {
             category: "Formats", multiple_instances: false, status: "needs_setup" },
           { name: "solo-app", version: "0.1.0", capabilities: ["push"], secrets: [], source: "official", builtin: false,
             category: "Apps", multiple_instances: true, status: "ready" },
+          { name: "fresh-app", version: "0.1.0", capabilities: ["push"], secrets: [], source: "official", builtin: false,
+            category: "Apps", multiple_instances: true, status: "needs_setup" },
           { name: "paused", version: "0.1.0", capabilities: ["push"], secrets: [], source: "official", builtin: false,
             category: "Apps", multiple_instances: true, status: "disabled" },
           { name: "url-import", version: "0.3.0", capabilities: ["import"], secrets: [], source: "builtin", builtin: true,
@@ -78,7 +80,10 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 function renderPlugins() {
-  const router = createMemoryRouter([{ path: "/settings/plugins", element: <Toasts><Plugins /></Toasts> }], {
+  const router = createMemoryRouter([
+    { path: "/settings/plugins", element: <Toasts><Plugins /></Toasts> },
+    { path: "/settings/plugins/:plugin/new", element: <p>new instance form</p> },
+  ], {
     initialEntries: ["/settings/plugins"],
   });
   render(
@@ -88,17 +93,23 @@ function renderPlugins() {
   );
 }
 
+const menuOf = (article: HTMLElement, name: string) =>
+  document.getElementById(within(article).getByRole("button", { name: `More for ${name}` }).getAttribute("popovertarget")!)!;
+
 test("lists plugins with their instances and status", async () => {
+  const user = userEvent.setup();
   renderPlugins();
   const st = (await screen.findByRole("heading", { name: "sillytavern" })).closest("article")!;
   expect(within(st).getByRole("link", { name: "home" })).toHaveAttribute("href", "/settings/instances/1");
   expect(within(st).getByText("connection refused")).toBeInTheDocument();
-  expect(within(st).getByRole("link", { name: "Add instance" })).toHaveAttribute("href", "/settings/plugins/sillytavern/new");
+  expect(within(st).queryByRole("link", { name: "Add instance" })).not.toBeInTheDocument();
   const dusk = screen.getByRole("heading", { name: "dusk" }).closest("article")!;
   expect(within(dusk).queryByRole("link", { name: "Add instance" })).not.toBeInTheDocument();
   expect(within(dusk).getByRole("link", { name: "Select in Appearance" })).toBeInTheDocument();
   // An instance whose plugin was removed stays visible so it can be deleted.
   expect(screen.getByRole("link", { name: "old" })).toBeInTheDocument();
+  await user.click(within(menuOf(st, "sillytavern")).getByRole("button", { name: "Add instance" }));
+  expect(await screen.findByText("new instance form")).toBeInTheDocument();
 });
 
 test("delete asks, calls the API, and shows a refusal", async () => {
@@ -183,6 +194,13 @@ test("groups plugins by category, alphabetically, with Other last", async () => 
   expect(groups).toContain("Not installed");
 });
 
+test("a many-instance plugin with no instance offers Set up, not Add instance", async () => {
+  renderPlugins();
+  const fresh = (await screen.findByRole("heading", { name: "fresh-app" })).closest("article")!;
+  expect(within(fresh).getByRole("link", { name: "Set up" })).toHaveAttribute("href", "/settings/plugins/fresh-app/new");
+  expect(within(fresh).queryByRole("button", { name: "Add instance" })).not.toBeInTheDocument();
+});
+
 test("a singleton shows its status and one action, never Add instance", async () => {
   renderPlugins();
   const codec = (await screen.findByRole("heading", { name: "card-codec" })).closest("article")!;
@@ -210,8 +228,9 @@ test("a many-instance plugin with one instance is one line", async () => {
   expect(solo.querySelector(".instances")).toBeNull();
   expect(within(solo).getByText("Ready")).toBeInTheDocument();
   expect(within(solo).getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/settings/instances/6");
-  expect(within(solo).getByRole("link", { name: "Add instance" })).toBeInTheDocument();
-  const menu = document.getElementById(within(solo).getByRole("button", { name: "More for solo-app" }).getAttribute("popovertarget")!)!;
+  expect(within(solo).queryByRole("link", { name: "Add instance" })).not.toBeInTheDocument();
+  const menu = menuOf(solo, "solo-app");
+  expect(within(menu).getByRole("button", { name: "Add instance" })).toBeInTheDocument();
   expect(within(menu).getByRole("button", { name: "Disable office" })).toBeInTheDocument();
   expect(within(menu).getByRole("button", { name: "Delete instance office" })).toBeInTheDocument();
 });

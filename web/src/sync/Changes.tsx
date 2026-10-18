@@ -59,7 +59,7 @@ export function Changes() {
     queryFn: async () => must(await api.GET("/sync/changes", { params: { query: { instance_id: instance, state } } })),
   });
   const instances = useQuery(instancesQuery);
-  const name = (id: number) => instances.data?.find((i) => i.id === id)?.name ?? `#${id}`;
+  const name = (id: number) => instances.data?.find((i) => i.id === id)?.label ?? `#${id}`;
   const follows = useFollowers();
   // The owner's changes from the defaults.
   const [checked, setChecked] = useState<Record<string, boolean>>({});
@@ -335,7 +335,7 @@ export function Changes() {
         <PushPreview
           kind="card"
           id={pushing.card}
-          targets={[{ id: pushing.instance, name: name(pushing.instance) }]}
+          targets={[{ id: pushing.instance, label: name(pushing.instance) }]}
           onClose={() => {
             setPushing(undefined);
             done();

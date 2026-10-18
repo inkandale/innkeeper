@@ -140,7 +140,7 @@ func TestResolveTakesAppHunkAndKeepsInApp(t *testing.T) {
 // otherInstance adds a second fake instance that stores the same fields.
 func (e *env) otherInstance() int64 {
 	e.t.Helper()
-	id, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: "fake", Name: "Other app",
+	id, err := e.reg.CreateInstance(e.ctx, plugins.NewInstance{Plugin: "fake", Name: new("Other app"),
 		Config: map[string]any{"dir": e.t.TempDir(), "fields": []string{"name", "description", "first_mes", "extensions"}}})
 	if err != nil {
 		e.t.Fatal(err)

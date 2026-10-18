@@ -12,8 +12,8 @@ let instances: unknown[];
 beforeEach(() => {
   patches = [];
   instances = [
-    { id: 5, name: "Judge", plugin: "judge" },
-    { id: 6, name: "Second judge", plugin: "judge" },
+    { id: 5, label: "Judge", name: "Judge", plugin: "judge" },
+    { id: 6, label: "Second judge", name: "Second judge", plugin: "judge" },
   ];
   vi.stubGlobal(
     "fetch",
@@ -53,7 +53,7 @@ test("picking an instance saves it, and None clears it", async () => {
 });
 
 test("with one instance, unset reads as automatic", async () => {
-  instances = [{ id: 5, name: "Judge", plugin: "judge" }];
+  instances = [{ id: 5, label: "Judge", name: "Judge", plugin: "judge" }];
   renderIt();
   expect(await screen.findByRole("option", { name: "Automatic (Judge)" })).toBeInTheDocument();
 });

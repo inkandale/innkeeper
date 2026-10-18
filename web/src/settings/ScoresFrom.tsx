@@ -30,7 +30,7 @@ export function ScoresFrom() {
           <option value="">{enrichers.length === 1 ? `Automatic (${enrichers[0]!.name})` : "None"}</option>
           {enrichers.map((i) => (
             <option key={i.id} value={i.id}>
-              {i.name}
+              {i.label}
             </option>
           ))}
         </select>

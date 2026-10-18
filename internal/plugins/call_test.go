@@ -30,7 +30,7 @@ func TestCallMarksBrokenOnStartFailure(t *testing.T) {
 	reg := New(testdb.New(t), map[string]*protocol.Manifest{"fake": m}, store, box)
 	mgr := pluginhost.NewManager(nil, time.Minute, quiet)
 	t.Cleanup(mgr.Close)
-	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: "Fake"})
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: new("Fake")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestCheckRefusesDisabledInstance(t *testing.T) {
 	reg := New(testdb.New(t), map[string]*protocol.Manifest{"fake": m}, store, box)
 	mgr := pluginhost.NewManager(nil, time.Minute, quiet)
 	t.Cleanup(mgr.Close)
-	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: "Fake"})
+	id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: new("Fake")})
 	if err != nil {
 		t.Fatal(err)
 	}

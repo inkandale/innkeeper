@@ -79,7 +79,7 @@ func (s *Server) actionRoutes(api huma.API) {
 				var out []PluginAction
 				for _, a := range list.Actions {
 					if in.Applies == "" || a.Applies == in.Applies {
-						out = append(out, PluginAction{a, i.ID, i.Name})
+						out = append(out, PluginAction{a, i.ID, i.Label})
 					}
 				}
 				return out
@@ -100,7 +100,7 @@ func (s *Server) actionRoutes(api huma.API) {
 			out := collect(ctx, s, &s.actions, actionList, insts, func(i plugins.InstanceInfo, list protocol.ActionListResult) []PluginSkill {
 				var out []PluginSkill
 				for _, sk := range list.Skills {
-					out = append(out, PluginSkill{sk, i.ID, i.Name})
+					out = append(out, PluginSkill{sk, i.ID, i.Label})
 				}
 				return out
 			})

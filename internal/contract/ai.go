@@ -2,6 +2,7 @@ package contract
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -18,6 +19,8 @@ func checkServices(ctx context.Context, p *pluginhost.Process) error {
 	requests := map[string]any{
 		protocol.MethodAIChat:  protocol.AIChatParams{Messages: []protocol.ChatMessage{{Role: "user", Content: "Say OK."}}},
 		protocol.MethodAIEmbed: protocol.AIEmbedParams{Texts: []string{"OK"}},
+		protocol.MethodAIDecide: protocol.AIDecideParams{State: json.RawMessage(`"Hello."`),
+			Questions: map[string]protocol.DecideQuestion{"greeting": {Type: "noul", Instructions: "The state is a greeting."}}},
 	}
 	var errs []error
 	for _, s := range p.Info.Services {

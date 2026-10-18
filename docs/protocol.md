@@ -911,6 +911,7 @@ the core forwards the consumer's calls to it.
 |---|---|
 | `ai.chat` | One model turn: messages and optional tools in, text and tool calls out |
 | `ai.embed` | One vector per text |
+| `ai.decide` | Typed questions about one state in, an answer with probabilities per question out |
 
 **Offering.** List the methods the instance offers in initialize's
 `services`, from its config. Don't contact the model during `initialize`.
@@ -950,6 +951,30 @@ retryable errors.
 
 **`ai.embed`** takes `instance` and `texts`, and replies with `vectors`, one
 array of numbers per text, in order.
+
+**`ai.decide`** asks questions about one state and gets each answer as
+probabilities, not text, in the shape of a decision model's `/v1/systemone`.
+Each question is answered on its own against the same state.
+
+| Param | Meaning |
+|---|---|
+| `instance` | The provider instance |
+| `state` | What the questions are about: a JSON string, or any JSON value |
+| `questions` | Questions by an ID you choose: `{"type", "instructions", "criteria"}`. A `choice` picks one option; its `criteria` is an object of option name to description. A `score` places the state on 2 to 10 levels; its `criteria` is an array of level descriptions, low to high. A `noul` asks whether `instructions`, a statement, is true; it has no `criteria` |
+| `images` | Image URLs, which may be `data:` URLs, that go with the state. Optional |
+
+Reply with `answers` under the same IDs, and `model`. Each answer has its
+`type` and:
+
+| Type | Fields |
+|---|---|
+| `choice` | `choice`, the likeliest option; `probabilities` by option; `confidence` |
+| `score` | `score`, the probability-weighted level from 0 to the top level, which can fall between levels; `probabilities` by level number, as a string; `confidence` |
+| `noul` | `noul`, the probability the statement is true |
+
+`confidence`, from 0 to 1, is how concentrated `probabilities` are: 1 when
+one option or level has it all. A provider may answer through a chat model,
+whose probabilities are rougher; set its confidence lower to match.
 
 When the caller cancels a call, the core cancels the provider's.
 
@@ -1068,7 +1093,7 @@ It loads the manifest, then checks that:
 - an `enrich` plugin's `enrich.run` of a sample card returns, within 5
   seconds, a result for its revision whose values are all declared and valid,
   or an error other than `-32601`
-- an `ai` plugin's `ai.chat` and `ai.embed`, for each it lists in `services`,
+- an `ai` plugin's `ai.chat`, `ai.embed`, and `ai.decide`, for each it lists in `services`,
   return a reply or an error other than `-32601` within 5 seconds. Checked
   without a connection, a provider can only fail, which counts as an answer
 - a plugin that declares `uses` runs with the provider plugin in

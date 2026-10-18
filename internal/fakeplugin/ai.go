@@ -5,7 +5,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"maps"
 	"net/http"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -222,4 +225,40 @@ func chatWithTool(ctx context.Context, conn *protocol.Conn, run string, instance
 		}
 		params.Tools = nil
 	}
+}
+
+// aiDecide answers every question with certainty: a choice's first option by
+// name, a score's top level, and a noul true.
+func aiDecide(params json.RawMessage) (any, error) {
+	var p protocol.AIDecideParams
+	if err := json.Unmarshal(params, &p); err != nil || len(p.Questions) == 0 {
+		return nil, protocol.NewError(protocol.CodeInvalidParams, "ai.decide needs questions", false)
+	}
+	sure := 1.0
+	answers := map[string]protocol.DecideAnswer{}
+	for id, q := range p.Questions {
+		a := protocol.DecideAnswer{Type: q.Type}
+		switch q.Type {
+		case "choice":
+			var options map[string]string
+			if json.Unmarshal(q.Criteria, &options) != nil || len(options) == 0 {
+				return nil, protocol.NewError(protocol.CodeInvalidParams, id+": a choice needs options", false)
+			}
+			a.Choice = slices.Min(slices.Collect(maps.Keys(options)))
+			a.Probabilities, a.Confidence = map[string]float64{a.Choice: 1}, &sure
+		case "score":
+			var levels []json.RawMessage
+			if json.Unmarshal(q.Criteria, &levels) != nil || len(levels) < 2 {
+				return nil, protocol.NewError(protocol.CodeInvalidParams, id+": a score needs at least two levels", false)
+			}
+			top := float64(len(levels) - 1)
+			a.Score, a.Probabilities, a.Confidence = &top, map[string]float64{strconv.Itoa(len(levels) - 1): 1}, &sure
+		case "noul":
+			a.Noul = &sure
+		default:
+			return nil, protocol.NewError(protocol.CodeInvalidParams, id+": unknown type "+q.Type, false)
+		}
+		answers[id] = a
+	}
+	return protocol.AIDecideResult{Answers: answers, Model: "fake"}, nil
 }

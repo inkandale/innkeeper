@@ -6,14 +6,15 @@ import "encoding/json"
 // declares the methods it calls in its manifest's uses and sends them to the
 // core, which forwards each to the provider instance it names.
 const (
-	MethodAIChat  = "ai.chat"
-	MethodAIEmbed = "ai.embed"
+	MethodAIChat   = "ai.chat"
+	MethodAIEmbed  = "ai.embed"
+	MethodAIDecide = "ai.decide"
 	// NotifyAIDelta is the next piece of an ai.chat reply's text.
 	NotifyAIDelta = "ai.delta"
 )
 
 // Services maps each service method to the capability that offers it.
-var Services = map[string]string{MethodAIChat: "ai", MethodAIEmbed: "ai"}
+var Services = map[string]string{MethodAIChat: "ai", MethodAIEmbed: "ai", MethodAIDecide: "ai"}
 
 // CodeAIRejected is a provider refusing a request as invalid, such as tools
 // for a model without tool support.
@@ -91,4 +92,45 @@ type AIEmbedParams struct {
 // AIEmbedResult holds the vectors in the order of the texts.
 type AIEmbedResult struct {
 	Vectors [][]float32 `json:"vectors"`
+}
+
+// AIDecideParams asks typed questions about one state, each answered on its
+// own, as a decision model's /v1/systemone does.
+type AIDecideParams struct {
+	ServiceCall
+	// State is what the questions are about: a JSON string or any JSON value.
+	State     json.RawMessage           `json:"state"`
+	Questions map[string]DecideQuestion `json:"questions"`
+	// Images are image URLs, which may be data: URLs, that go with the state.
+	Images []string `json:"images,omitempty"`
+}
+
+// DecideQuestion is one question. Criteria is a choice's options as an
+// object of name to description, or a score's 2 to 10 levels as an array,
+// low to high. A noul has none: its instructions are a statement.
+type DecideQuestion struct {
+	Type         string          `json:"type" enum:"choice,score,noul"`
+	Instructions string          `json:"instructions"`
+	Criteria     json.RawMessage `json:"criteria,omitempty"`
+}
+
+// AIDecideResult answers each question under its ID.
+type AIDecideResult struct {
+	Answers map[string]DecideAnswer `json:"answers"`
+	// Model is the model that answered, for the consumer's records.
+	Model string `json:"model,omitempty"`
+}
+
+// DecideAnswer is one question's answer. Choice is the likeliest option;
+// Score is the probability-weighted level, from 0 to the top level; Noul is
+// the probability the statement is true. Probabilities are by option name or
+// level number, and Confidence, 0 to 1, is how concentrated they are; a noul
+// has neither.
+type DecideAnswer struct {
+	Type          string             `json:"type"`
+	Choice        string             `json:"choice,omitempty"`
+	Score         *float64           `json:"score,omitempty"`
+	Noul          *float64           `json:"noul,omitempty"`
+	Probabilities map[string]float64 `json:"probabilities,omitempty"`
+	Confidence    *float64           `json:"confidence,omitempty"`
 }

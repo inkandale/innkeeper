@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -53,6 +54,7 @@ func setup(t *testing.T) fixture {
 		"fake":     m,
 		"consumer": as(m, "consumer", "action", protocol.MethodAIChat),
 		"stranger": as(m, "stranger", "action"),
+		"judge":    as(m, "judge", "action", protocol.MethodAIDecide),
 	}, &blobstore.Store{Name: "library", Root: t.TempDir()}, box)
 	runs := pluginhost.NewRuns(quiet)
 	b := &Broker{Registry: reg, Runs: runs}
@@ -198,4 +200,43 @@ func eventually(t *testing.T, ok func() bool) {
 		}
 	}
 	t.Fatal("condition never held")
+}
+
+func TestDecideReachesTheProvider(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	deciderID, err := f.reg.CreateInstance(ctx, plugins.NewInstance{Plugin: "fake", Name: new("Decide"),
+		Config: map[string]any{"services": []string{protocol.MethodAIDecide}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	consumerID, err := f.reg.CreateInstance(ctx, plugins.NewInstance{Plugin: "judge", Name: new("Judge")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	judge, err := f.reg.Instance(ctx, consumerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	params := protocol.AIDecideParams{ServiceCall: protocol.ServiceCall{Instance: deciderID},
+		State: json.RawMessage(`"Hi! *She waves from the tavern door.*"`),
+		Questions: map[string]protocol.DecideQuestion{
+			"hook":  {Type: "noul", Instructions: "The greeting gives the user something to answer."},
+			"voice": {Type: "score", Instructions: "How distinct is the voice?", Criteria: json.RawMessage(`["generic", "distinct"]`)},
+			"kind":  {Type: "choice", Instructions: "What is it?", Criteria: json.RawMessage(`{"greeting": "An opening line", "lore": "World facts"}`)},
+		}}
+	var out struct {
+		Result protocol.AIDecideResult `json:"result"`
+	}
+	if err := f.mgr.Call(ctx, judge, "relay", map[string]any{"method": protocol.MethodAIDecide, "params": params}, &out); err != nil {
+		t.Fatal(err)
+	}
+	a := out.Result.Answers
+	if len(a) != 3 || a["hook"].Noul == nil || a["voice"].Score == nil || a["kind"].Choice != "greeting" || out.Result.Model != "fake" {
+		t.Fatalf("answers = %+v", out.Result)
+	}
+
+	// A caller that declares only ai.chat can't send ai.decide.
+	err = f.mgr.Call(ctx, f.consumer, "relay", map[string]any{"method": protocol.MethodAIDecide, "params": params}, &out)
+	wantForbidden(t, err)
 }

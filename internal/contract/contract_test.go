@@ -387,7 +387,7 @@ func TestBadEnrichFails(t *testing.T) {
 
 func TestAIPluginAnswersItsServices(t *testing.T) {
 	t.Cleanup(func() { Config = nil })
-	for services, wantPass := range map[string]bool{"ai.chat": true, "ai.embed": false} {
+	for services, wantPass := range map[string]bool{"ai.chat": true, "ai.embed": false, "ai.decide": true} {
 		Config = map[string]any{"services": []any{services}}
 		results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"ai"}), quiet)
 		if err != nil {

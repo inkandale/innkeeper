@@ -225,6 +225,8 @@ func main() {
 				calls["ai.chat.cancelled"]++
 				callsMu.Unlock()
 			})
+		case protocol.MethodAIDecide:
+			return aiDecide(params)
 		case protocol.NotifyAIDelta:
 			deltas.add(params)
 			return nil, nil

@@ -2211,6 +2211,11 @@
               "null"
             ]
           },
+          "instance": {
+            "description": "With enrichment: the enrich instance whose value to read, instead of the score instance.",
+            "format": "int64",
+            "type": "integer"
+          },
           "lte": {
             "description": "With enrichment: the value is at most this.",
             "format": "double",

@@ -466,10 +466,13 @@ func TestSearchEnrichments(t *testing.T) {
 		"range uses the current value":     {Query{Filter: &Filter{Enrichment: quality, Gte: ptr(80.0)}}, []int64{s.brakka}},
 		"range ends are included":          {Query{Filter: &Filter{Enrichment: quality, Gte: ptr(70.0), Lte: ptr(70.0)}}, []int64{s.carrow}},
 		"only the score instance's values": {Query{Filter: &Filter{Enrichment: quality, Gte: ptr(91.0)}}, []int64{}},
-		"has a value":                      {Query{Filter: &Filter{Enrichment: quality}}, []int64{s.carrow, s.brakka}},
-		"missing":                          {Query{Filter: &Filter{Enrichment: ptr("voice"), Missing: ptr(true)}}, []int64{s.carrow, s.brakka}},
-		"sort highest first":               {Query{Sort: "enrichment:quality"}, []int64{s.brakka, s.carrow}},
-		"no value sorts last":              {Query{Sort: "enrichment:quality", Filter: &Filter{Archived: ptr(true)}}, []int64{s.dellin}},
+		"a named instance's values":        {Query{Filter: &Filter{Enrichment: quality, Instance: ptr(int64(other)), Gte: ptr(91.0)}}, []int64{s.carrow}},
+		"one query, two instances": {Query{Filter: &Filter{And: []Filter{
+			{Enrichment: quality, Instance: ptr(int64(other))}, {Enrichment: quality, Lte: ptr(75.0)}}}}, []int64{s.carrow}},
+		"has a value":         {Query{Filter: &Filter{Enrichment: quality}}, []int64{s.carrow, s.brakka}},
+		"missing":             {Query{Filter: &Filter{Enrichment: ptr("voice"), Missing: ptr(true)}}, []int64{s.carrow, s.brakka}},
+		"sort highest first":  {Query{Sort: "enrichment:quality"}, []int64{s.brakka, s.carrow}},
+		"no value sorts last": {Query{Sort: "enrichment:quality", Filter: &Filter{Archived: ptr(true)}}, []int64{s.dellin}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			tc.q.ScoreInstance = score
@@ -501,11 +504,15 @@ func TestSearchEnrichments(t *testing.T) {
 		"sort without a score instance":    {Sort: "enrichment:quality"},
 		"include without a score instance": {Include: []string{"enrichments"}},
 		"gte without enrichment":           {Filter: &Filter{Gte: ptr(1.0)}, ScoreInstance: score},
+		"instance without enrichment":      {Filter: &Filter{Instance: ptr(int64(other))}, ScoreInstance: score},
 		"missing and a range":              {Filter: &Filter{Enrichment: quality, Missing: ptr(true), Lte: ptr(1.0)}, ScoreInstance: score},
 	} {
 		if _, err := lib.Search(ctx, Card, q); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s: got %v, want ErrInvalid", name, err)
 		}
+	}
+	if ids, err := lib.SearchIDs(ctx, Card, Query{Filter: &Filter{Enrichment: quality, Instance: ptr(int64(other))}}); err != nil || !slices.Equal(ids, []int64{s.carrow}) {
+		t.Errorf("named instance without a score instance: %v, %v", ids, err)
 	}
 	if _, err := lib.Search(ctx, Lorebook, Query{Filter: &Filter{Enrichment: quality}, ScoreInstance: score}); !errors.Is(err, ErrInvalid) {
 		t.Errorf("lorebook filter: got %v, want ErrInvalid", err)

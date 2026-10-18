@@ -3304,6 +3304,11 @@ export interface components {
             /** @description Is one of these cards. */
             ids?: number[] | null;
             /**
+             * Format: int64
+             * @description With enrichment: the enrich instance whose value to read, instead of the score instance.
+             */
+            instance?: number;
+            /**
              * Format: double
              * @description With enrichment: the value is at most this.
              */

@@ -62,6 +62,7 @@ type Filter struct {
 	Gte           *float64      `json:"gte,omitempty" doc:"With enrichment: the value is at least this."`
 	Lte           *float64      `json:"lte,omitempty" doc:"With enrichment: the value is at most this."`
 	Missing       *bool         `json:"missing,omitempty" doc:"With enrichment: true matches cards without a value."`
+	Instance      *int64        `json:"instance,omitempty" doc:"With enrichment: the enrich instance whose value to read, instead of the score instance."`
 }
 
 // TargetFilter matches an entity by its bindings: one on any of Instances
@@ -171,17 +172,18 @@ func cardOnly(name string) bool {
 // errNoScoreInstance refuses an enrichment filter, sort, or include.
 var errNoScoreInstance = fmt.Errorf("%w: enrichment filters, sort, and include need a score instance; pick one in Settings under Scores from", ErrInvalid)
 
-// enrichmentSQL is the current value of key from the score instance for card
-// c, or NULL, as a jsonb expression.
-func (w *where) enrichmentSQL(key string) (string, error) {
+// enrichmentSQL is the current value of key from enrich instance inst for
+// card c, or NULL, as a jsonb expression. Instance 0 means the score instance.
+func (w *where) enrichmentSQL(key string, inst int64) (string, error) {
 	if w.k != Card {
 		return "", fmt.Errorf("%w: lorebooks have no enrichments", ErrInvalid)
 	}
-	if w.score == 0 {
+	inst = cmp.Or(inst, w.score)
+	if inst == 0 {
 		return "", errNoScoreInstance
 	}
 	return `(SELECT e.value FROM enrichment e WHERE e.card_id = c.id AND e.key = ` + w.arg(key) +
-		` AND e.instance_id = ` + w.arg(w.score) + ` ORDER BY e.revision_id DESC, e.created_at DESC, e.id DESC LIMIT 1)`, nil
+		` AND e.instance_id = ` + w.arg(inst) + ` ORDER BY e.revision_id DESC, e.created_at DESC, e.id DESC LIMIT 1)`, nil
 }
 
 // enrichmentFilter is f's condition on its enrichment key.
@@ -189,7 +191,11 @@ func (w *where) enrichmentFilter(f Filter) (string, error) {
 	if f.Missing != nil && (f.Gte != nil || f.Lte != nil) {
 		return "", fmt.Errorf("%w: an enrichment filter takes missing or a range, not both", ErrInvalid)
 	}
-	cur, err := w.enrichmentSQL(*f.Enrichment)
+	var inst int64
+	if f.Instance != nil {
+		inst = *f.Instance
+	}
+	cur, err := w.enrichmentSQL(*f.Enrichment, inst)
 	if err != nil {
 		return "", err
 	}
@@ -288,8 +294,8 @@ func (w *where) filter(f Filter) (string, error) {
 	if set != 1 {
 		return "", fmt.Errorf("%w: each filter needs exactly one condition", ErrInvalid)
 	}
-	if f.Enrichment == nil && (f.Gte != nil || f.Lte != nil || f.Missing != nil) {
-		return "", fmt.Errorf("%w: gte, lte, and missing go with enrichment", ErrInvalid)
+	if f.Enrichment == nil && (f.Gte != nil || f.Lte != nil || f.Missing != nil || f.Instance != nil) {
+		return "", fmt.Errorf("%w: gte, lte, missing, and instance go with enrichment", ErrInvalid)
 	}
 	if w.k != Card && (f.Tag != nil || f.Collection != nil) {
 		return "", fmt.Errorf("%w: lorebooks have no tags or collections", ErrInvalid)
@@ -621,7 +627,7 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 		if !ok {
 			return Results{}, fmt.Errorf("%w: unknown sort %q", ErrInvalid, q.Sort)
 		}
-		cur, err := w.enrichmentSQL(key)
+		cur, err := w.enrichmentSQL(key, 0)
 		if err != nil {
 			return Results{}, err
 		}

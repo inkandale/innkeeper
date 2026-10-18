@@ -180,17 +180,18 @@ query selects "passed lint, not yet evaluated":
 ]}
 ```
 
-This drops steps 2 and 5, and lets an MCP client run the whole flow without
+Through the API or MCP, this drops steps 2 and 5: the whole flow runs without
 touching settings.
 
 - **Search:** `enrichmentSQL` takes the instance from the filter when set,
-  from `ScoreInstance` otherwise. An instance that isn't an enrich instance
-  is a `400`.
-- **Web:** the filter sidebar lists keys from every enrich instance, grouped by
-  instance, not just the score instance's.
+  from `ScoreInstance` otherwise. A filter whose every enrichment term names
+  an instance needs no score instance. An instance that isn't an enrich instance
+  isn't refused; its cards just have no values, as with an unscored key.
 - **Tests:** a filter naming an instance matches on that instance's value
-  while the score instance holds a different one; a filter on a non-enrich
-  instance is refused.
+  while the score instance holds a different one; one query combines two
+  instances; `instance` without `enrichment` is refused.
+- **Web:** out of scope. The filter sidebar still lists only the score
+  instance's keys, so in the UI the flow still switches **Scores from**.
 
 ## Feeding lint into evaluate
 

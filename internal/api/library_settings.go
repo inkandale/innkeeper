@@ -34,6 +34,7 @@ type librarySettings struct {
 	Duplicates        librarySettingOut[string]  `json:"duplicates" doc:"Hiding archives duplicates: off, exact (the same content), or near (text within duplicate_distance bits)."`
 	DuplicateDistance librarySettingOut[int]     `json:"duplicate_distance" doc:"For near duplicates, the most bits two cards' text hashes may differ by."`
 	DuplicateKeep     librarySettingOut[string]  `json:"duplicate_keep" doc:"The duplicate hiding keeps: the best score, the oldest, or the newest."`
+	DuplicateDecide   librarySettingOut[int64]   `json:"duplicate_decide" doc:"For near duplicates, the ai instance that confirms each pair is the same card, or null for distance alone."`
 }
 
 type librarySettingsOut struct{ Body librarySettings }
@@ -45,11 +46,9 @@ type librarySettingsIn struct {
 type patchLibrarySettingsIn struct {
 	ID   int64 `path:"id"`
 	Body struct {
-		ScoreInstance     optional[int64]   `json:"score_instance,omitempty" doc:"An enrich instance's ID, or null to follow the default."`
-		HideBelow         optional[float64] `json:"hide_below,omitempty" doc:"A score, or null to follow the default."`
-		Duplicates        optional[string]  `json:"duplicates,omitempty" doc:"off, exact, or near, or null to follow the default."`
-		DuplicateDistance optional[int]     `json:"duplicate_distance,omitempty" doc:"0 to 8, or null to follow the default."`
-		DuplicateKeep     optional[string]  `json:"duplicate_keep,omitempty" doc:"best, oldest, or newest, or null to follow the default."`
+		ScoreInstance optional[int64] `json:"score_instance,omitempty" doc:"An enrich instance's ID, or null to follow the default."`
+		// Null follows the default.
+		HideOptionsIn
 	}
 }
 
@@ -94,31 +93,10 @@ func (s *Server) librarySettings(ctx context.Context, id int64) (*librarySetting
 	if b.DuplicateKeep, err = duplicateKeep.out(ctx, s, id); err != nil {
 		return nil, s.fail(err)
 	}
+	if b.DuplicateDecide, err = duplicateDecide.out(ctx, s, id); err != nil {
+		return nil, s.fail(err)
+	}
 	return out, nil
-}
-
-// setHideOptions stores each hide setting that was sent, for library lib or,
-// for a nil lib, the core.
-func setHideOptions(ctx context.Context, s *Server, lib *int64, below optional[float64], dups optional[string], dist optional[int], keep optional[string]) error {
-	if below.Sent {
-		if err := hideBelow.set(ctx, s, lib, below.Value); err != nil {
-			return err
-		}
-	}
-	if dups.Sent {
-		if err := duplicates.set(ctx, s, lib, dups.Value); err != nil {
-			return err
-		}
-	}
-	if dist.Sent {
-		if err := duplicateDistance.set(ctx, s, lib, dist.Value); err != nil {
-			return err
-		}
-	}
-	if keep.Sent {
-		return duplicateKeep.set(ctx, s, lib, keep.Value)
-	}
-	return nil
 }
 
 func (s *Server) librarySettingsRoutes(api huma.API) {
@@ -143,7 +121,7 @@ func (s *Server) librarySettingsRoutes(api huma.API) {
 					return nil, err
 				}
 			}
-			if err := setHideOptions(ctx, s, &in.ID, b.HideBelow, b.Duplicates, b.DuplicateDistance, b.DuplicateKeep); err != nil {
+			if err := b.HideOptionsIn.set(ctx, s, &in.ID); err != nil {
 				return nil, err
 			}
 			return s.librarySettings(ctx, in.ID)

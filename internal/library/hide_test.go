@@ -11,7 +11,7 @@ import (
 const brakka = "Brakka is a grumpy dwarf blacksmith who runs the forge at the edge of town. " +
 	"She hates elves, loves good ale, and never turns away a customer with honest coin."
 
-func TestDuplicateGroups(t *testing.T) {
+func TestDuplicatePairs(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
 	orig, _ := newCard(t, lib, "orig", `{"name": "Brakka", "description": "`+brakka+`"}`)
@@ -27,20 +27,24 @@ func TestDuplicateGroups(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	exact, err := lib.DuplicateGroups(ctx, DefaultLibrary, -1)
+	exact, err := lib.DuplicatePairs(ctx, DefaultLibrary, -1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The owner's archived copy and the other library's copy are in no group.
-	if len(exact) != 1 || !slices.Equal(exact[0], []int64{orig, dup}) {
-		t.Fatalf("exact groups = %v", exact)
+	// The owner's archived copy and the other library's copy are in no pair.
+	if !slices.Equal(exact, []DuplicatePair{{orig, dup, true}}) {
+		t.Fatalf("exact pairs = %v", exact)
 	}
-	near, err := lib.DuplicateGroups(ctx, DefaultLibrary, NearDistance)
+	near, err := lib.DuplicatePairs(ctx, DefaultLibrary, NearDistance)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(near) != 1 || !slices.Equal(near[0], []int64{orig, dup, edited}) {
-		t.Fatalf("near groups = %v", near)
+	// orig and dup match by content and by text, and are listed once, as exact.
+	if !slices.Equal(near, []DuplicatePair{{orig, dup, true}, {orig, edited, false}, {dup, edited, false}}) {
+		t.Fatalf("near pairs = %v", near)
+	}
+	if groups := GroupPairs(near); len(groups) != 1 || !slices.Equal(groups[0], []int64{orig, dup, edited}) {
+		t.Fatalf("groups = %v", groups)
 	}
 }
 
@@ -146,5 +150,12 @@ func TestHideCandidatesReadTheScoreInstance(t *testing.T) {
 	}
 	if len(got) != 2 || got[0].ID != scored || got[0].Score == nil || *got[0].Score != 72 || got[1].ID != unscored || got[1].Score != nil {
 		t.Fatalf("candidates %+v", got)
+	}
+}
+
+func TestGroupPairsJoinsChains(t *testing.T) {
+	got := GroupPairs([]DuplicatePair{{5, 9, false}, {1, 5, false}, {2, 3, true}})
+	if len(got) != 2 || !slices.Equal(got[0], []int64{1, 5, 9}) || !slices.Equal(got[1], []int64{2, 3}) {
+		t.Fatalf("groups = %v", got)
 	}
 }

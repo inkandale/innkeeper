@@ -54,16 +54,24 @@ func (l *Library) SetHidden(ctx context.Context, library int64, hidden map[int64
 	return archived, unarchived, err
 }
 
-// DuplicateGroups returns library's groups of two or more cards whose head
-// revisions have the same content or, unless maxDistance is negative, text
-// within maxDistance bits. Each group and the list are in ID order. Cards
-// the owner archived are in no group. An image alone doesn't make a
-// duplicate: archives reuse art for different characters.
-func (l *Library) DuplicateGroups(ctx context.Context, library int64, maxDistance int) ([][]int64, error) {
+// DuplicatePair is two cards of one library that look like the same card:
+// Exact when their head revisions have the same content, and their text
+// within the asked distance otherwise. A is the lower ID.
+type DuplicatePair struct {
+	A, B  int64
+	Exact bool
+}
+
+// DuplicatePairs returns library's pairs of cards whose head revisions have
+// the same content or, unless maxDistance is negative, text within
+// maxDistance bits, in (A, B) order. Cards the owner archived are in no
+// pair. An image alone doesn't make a duplicate: archives reuse art for
+// different characters.
+func (l *Library) DuplicatePairs(ctx context.Context, library int64, maxDistance int) ([]DuplicatePair, error) {
 	if maxDistance > NearDistance {
 		return nil, errWideDistance
 	}
-	pairs := `SELECT c.id, e.id FROM card c JOIN card_revision r ON r.id = c.head_revision_id
+	pairs := `SELECT c.id, e.id, true FROM card c JOIN card_revision r ON r.id = c.head_revision_id
 		JOIN card_revision r2 ON r2.content_hash = r.content_hash
 		JOIN card e ON e.id = r2.card_id AND e.head_revision_id = r2.id AND e.library_id = c.library_id AND e.id > c.id
 		WHERE c.library_id = $1 AND ` + hideable + ` AND (e.archived_at IS NULL OR e.archived_reason IS NOT NULL)`
@@ -71,8 +79,8 @@ func (l *Library) DuplicateGroups(ctx context.Context, library int64, maxDistanc
 	if maxDistance >= 0 {
 		args = append(args, maxDistance)
 		pairs += `
-		UNION
-		SELECT c.id, m.id FROM card c JOIN card_revision r ON r.id = c.head_revision_id
+		UNION ALL
+		SELECT c.id, m.id, false FROM card c JOIN card_revision r ON r.id = c.head_revision_id
 		CROSS JOIN LATERAL (
 			SELECT e.id FROM card_revision r2
 			JOIN card e ON e.id = r2.card_id AND e.head_revision_id = r2.id
@@ -86,6 +94,30 @@ func (l *Library) DuplicateGroups(ctx context.Context, library int64, maxDistanc
 	if err != nil {
 		return nil, err
 	}
+	found, err := pgx.CollectRows(rows, pgx.RowToStructByPos[DuplicatePair])
+	if err != nil {
+		return nil, err
+	}
+	// A pair matching by content and by text is exact.
+	slices.SortFunc(found, func(x, y DuplicatePair) int {
+		return cmp.Or(cmp.Compare(x.A, y.A), cmp.Compare(x.B, y.B), compareBool(y.Exact, x.Exact))
+	})
+	return slices.CompactFunc(found, func(x, y DuplicatePair) bool { return x.A == y.A && x.B == y.B }), nil
+}
+
+func compareBool(a, b bool) int {
+	switch {
+	case a == b:
+		return 0
+	case a:
+		return 1
+	}
+	return -1
+}
+
+// GroupPairs joins pairs that share a card into groups, each in ID order,
+// the groups ordered by their first card.
+func GroupPairs(pairs []DuplicatePair) [][]int64 {
 	parent := map[int64]int64{}
 	var find func(int64) int64
 	find = func(x int64) int64 {
@@ -98,13 +130,9 @@ func (l *Library) DuplicateGroups(ctx context.Context, library int64, maxDistanc
 		parent[x] = root
 		return root
 	}
-	var a, b int64
-	if _, err := pgx.ForEachRow(rows, []any{&a, &b}, func() error {
-		ra, rb := find(a), find(b)
+	for _, p := range pairs {
+		ra, rb := find(p.A), find(p.B)
 		parent[max(ra, rb)] = min(ra, rb)
-		return nil
-	}); err != nil {
-		return nil, err
 	}
 	members := map[int64][]int64{}
 	for id := range parent {
@@ -117,7 +145,7 @@ func (l *Library) DuplicateGroups(ctx context.Context, library int64, maxDistanc
 		groups = append(groups, g)
 	}
 	slices.SortFunc(groups, func(x, y []int64) int { return cmp.Compare(x[0], y[0]) })
-	return groups, nil
+	return groups
 }
 
 // HideCandidate is a card the hide job weighs: one the owner hasn't archived.

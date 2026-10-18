@@ -185,7 +185,7 @@ type librarySettingsIn struct {
 
 type updateLibrarySettingsIn struct {
 	Library  int64          `json:"library" jsonschema:"A library ID from list_libraries"`
-	Settings map[string]any `json:"settings" jsonschema:"The settings to change, as get_library_settings names them, each a value or null to follow the default: score_instance, hide_below, duplicates (off, exact, near), duplicate_distance (0 to 8), duplicate_keep (best, oldest, newest). Settings left out don't change."`
+	Settings map[string]any `json:"settings" jsonschema:"The settings to change, as get_library_settings names them, each a value or null to follow the default: score_instance, hide_below, duplicates (off, exact, near), duplicate_distance (0 to 8), duplicate_keep (best, oldest, newest), duplicate_decide (an ai instance that confirms near duplicates). Settings left out don't change."`
 }
 
 type syncIn struct {

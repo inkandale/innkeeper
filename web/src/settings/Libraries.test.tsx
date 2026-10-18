@@ -31,7 +31,7 @@ beforeEach(() => {
       if (path.endsWith("/settings")) {
         const off = { value: null, default: null, overridden: false };
         return json({ score_instance: off, hide_below: off, duplicates: { ...off, value: "off", default: "off" },
-          duplicate_distance: { ...off, value: 3, default: 3 }, duplicate_keep: { ...off, value: "best", default: "best" } });
+          duplicate_distance: { ...off, value: 3, default: 3 }, duplicate_keep: { ...off, value: "best", default: "best" }, duplicate_decide: off });
       }
       if (req.method === "DELETE") return json({ id: 9, kind: "library.delete", status: "running", created_at: now, payload: {}, progress: { done: 100, total: 304 } }, 202);
       if (path === "/api/jobs/9") return json({ id: 9, kind: "library.delete", status: "running", created_at: now, payload: {}, progress: { done: 100, total: 304 } });

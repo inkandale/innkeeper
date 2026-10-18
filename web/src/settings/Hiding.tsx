@@ -27,6 +27,12 @@ export function Hiding({ library }: { library: number }) {
     onSuccess: (j) => setJob(j.id),
   });
   const s = settings.data;
+  const near = s?.duplicates.value === "near";
+  const deciders = useQuery({
+    queryKey: ["instances", "offers", "ai.decide"],
+    queryFn: async () => must(await api.GET("/instances", { params: { query: { offers: "ai.decide" } } })),
+    enabled: near,
+  });
   if (!s) return null;
   // A blank number follows the default.
   const number = (v: string) => (v.trim() === "" ? null : Number(v));
@@ -79,6 +85,25 @@ export function Hiding({ library }: { library: number }) {
               if (v !== (s.duplicate_distance.overridden ? s.duplicate_distance.value : null)) save.mutate({ duplicate_distance: v });
             }}
           />
+        </label>
+      )}
+      {near && (deciders.data?.length ?? 0) > 0 && (
+        <label>
+          Confirm near copies with{" "}
+          <select
+            className="input"
+            value={s.duplicate_decide.overridden ? (s.duplicate_decide.value ?? "") : ""}
+            onChange={(e) => save.mutate({ duplicate_decide: e.target.value === "" ? null : Number(e.target.value) })}
+          >
+            <option value="">
+              Same as default ({deciders.data!.find((i) => i.id === s.duplicate_decide.default)?.label ?? "distance only"})
+            </option>
+            {deciders.data!.map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.label}
+              </option>
+            ))}
+          </select>
         </label>
       )}
       {s.duplicates.value !== "off" && (

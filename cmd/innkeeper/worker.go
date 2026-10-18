@@ -21,6 +21,7 @@ import (
 	"github.com/inkandale/innkeeper/internal/pluginhost"
 	iservices "github.com/inkandale/innkeeper/internal/services"
 	"github.com/inkandale/innkeeper/internal/targets"
+	"github.com/inkandale/innkeeper/protocol"
 )
 
 const (
@@ -86,18 +87,25 @@ func worker() error {
 		Log:         log,
 		Concurrency: concurrency,
 		Handlers: map[string]jobs.Handler{
-			importer.Kind:              im.Run,
-			importer.DetectKind:        im.RunDetect,
-			actions.Kind:               runner.Run,
-			enrich.Kind:                enricher.Run,
-			bulk.ArchiveKind:           bulk.Archive(svc.lib, tg),
-			bulk.LorebookArchiveKind:   bulk.ArchiveLorebook(svc.lib, tg),
-			bulk.TagKind:               bulk.Tag(svc.lib),
-			bulk.CollectKind:           bulk.Collect(svc.lib),
-			bulk.ExportKind:            bulk.Export(ex),
-			bulk.DeleteLibraryKind:     bulk.DeleteLibrary(svc.lib),
-			bulk.PurgeKind:             bulk.Purge(svc.lib),
-			bulk.HideKind:              bulk.Hide(svc.lib),
+			importer.Kind:            im.Run,
+			importer.DetectKind:      im.RunDetect,
+			actions.Kind:             runner.Run,
+			enrich.Kind:              enricher.Run,
+			bulk.ArchiveKind:         bulk.Archive(svc.lib, tg),
+			bulk.LorebookArchiveKind: bulk.ArchiveLorebook(svc.lib, tg),
+			bulk.TagKind:             bulk.Tag(svc.lib),
+			bulk.CollectKind:         bulk.Collect(svc.lib),
+			bulk.ExportKind:          bulk.Export(ex),
+			bulk.DeleteLibraryKind:   bulk.DeleteLibrary(svc.lib),
+			bulk.PurgeKind:           bulk.Purge(svc.lib),
+			bulk.HideKind: bulk.Hide(svc.lib, func(ctx context.Context, id int64, p protocol.AIDecideParams) (protocol.AIDecideResult, error) {
+				var res protocol.AIDecideResult
+				inst, err := svc.registry.InstanceWith(ctx, id, "ai")
+				if err == nil {
+					err = svc.registry.Call(ctx, mgr, inst, protocol.MethodAIDecide, p, &res)
+				}
+				return res, err
+			}),
 			targets.PushKind:           tg.RunPush,
 			targets.ScanKind:           tg.RunScan,
 			targets.ReconcileKind:      tg.RunReconcile,

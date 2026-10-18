@@ -96,8 +96,47 @@ var (
 		}
 		return nil
 	}}
-	duplicateKeep = libraryOption[string]{key: "duplicate_keep", def: new("best"), check: oneOf("best", "oldest", "newest")}
+	duplicateKeep   = libraryOption[string]{key: "duplicate_keep", def: new("best"), check: oneOf("best", "oldest", "newest")}
+	duplicateDecide = libraryOption[int64]{key: "duplicate_decide", check: func(v int64) error {
+		if v <= 0 {
+			return fmt.Errorf("want an ai instance's ID")
+		}
+		return nil
+	}}
 )
+
+// HideOptionsIn are the hide settings a settings PATCH may change, each a
+// value or null.
+type HideOptionsIn struct {
+	HideBelow         optional[float64] `json:"hide_below,omitempty" doc:"Hide cards whose grid score is below this."`
+	Duplicates        optional[string]  `json:"duplicates,omitempty" doc:"off, exact, or near."`
+	DuplicateDistance optional[int]     `json:"duplicate_distance,omitempty" doc:"0 to 8."`
+	DuplicateKeep     optional[string]  `json:"duplicate_keep,omitempty" doc:"best, oldest, or newest."`
+	DuplicateDecide   optional[int64]   `json:"duplicate_decide,omitempty" doc:"An ai instance offering ai.decide, which confirms near duplicates."`
+}
+
+// set stores each sent setting, for library lib or, for a nil lib, the core.
+func (in HideOptionsIn) set(ctx context.Context, s *Server, lib *int64) error {
+	for _, f := range []func() error{
+		func() error { return setSent(ctx, s, lib, hideBelow, in.HideBelow) },
+		func() error { return setSent(ctx, s, lib, duplicates, in.Duplicates) },
+		func() error { return setSent(ctx, s, lib, duplicateDistance, in.DuplicateDistance) },
+		func() error { return setSent(ctx, s, lib, duplicateKeep, in.DuplicateKeep) },
+		func() error { return setSent(ctx, s, lib, duplicateDecide, in.DuplicateDecide) },
+	} {
+		if err := f(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func setSent[T comparable](ctx context.Context, s *Server, lib *int64, o libraryOption[T], v optional[T]) error {
+	if !v.Sent {
+		return nil
+	}
+	return o.set(ctx, s, lib, v.Value)
+}
 
 type hideIn struct {
 	ID int64 `path:"id"`
@@ -118,6 +157,12 @@ func (s *Server) hideRoutes(api huma.API) {
 			b := set.Body
 			p := bulk.HidePayload{Library: in.ID, HideBelow: b.HideBelow.Value, Duplicates: *b.Duplicates.Value,
 				Distance: *b.DuplicateDistance.Value, Keep: *b.DuplicateKeep.Value}
+			if d := b.DuplicateDecide.Value; d != nil && p.Duplicates == "near" {
+				if _, err := s.usable(ctx, *d, "ai"); err != nil {
+					return nil, err
+				}
+				p.Decide = *d
+			}
 			if p.HideBelow == nil && p.Duplicates == "off" {
 				return nil, huma.Error400BadRequest("nothing to hide: set hide_below or duplicates")
 			}

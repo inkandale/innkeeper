@@ -11,6 +11,7 @@ import (
 
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
+	"github.com/inkandale/innkeeper/protocol"
 )
 
 // Job kinds.
@@ -223,7 +224,8 @@ func Purge(lib *library.Library) jobs.Handler {
 const HideKind = "library.hide"
 
 // HidePayload is a HideKind job's payload: the library's settings when the
-// job was queued. ScoreInstance and ScoreKey name the score it reads, if any.
+// job was queued. ScoreInstance and ScoreKey name the score it reads, if any;
+// Decide, if set, is the ai instance that confirms near duplicates.
 type HidePayload struct {
 	Library       int64    `json:"library"`
 	ScoreInstance int64    `json:"score_instance,omitempty"`
@@ -232,19 +234,28 @@ type HidePayload struct {
 	Duplicates    string   `json:"duplicates"`
 	Distance      int      `json:"distance"`
 	Keep          string   `json:"keep"`
+	Decide        int64    `json:"decide,omitempty"`
 }
 
-// HideProgress counts what a HideKind job did.
+// HideProgress counts what a HideKind job did. Rejected are near pairs the
+// decision model said aren't the same card; Unchecked are those it failed
+// on, which stay duplicates as their distance says.
 type HideProgress struct {
 	Groups     int `json:"groups"`
 	LowScore   int `json:"low_score"`
 	Duplicate  int `json:"duplicate"`
 	Archived   int `json:"archived"`
 	Unarchived int `json:"unarchived"`
+	Checked    int `json:"checked,omitempty"`
+	Rejected   int `json:"rejected,omitempty"`
+	Unchecked  int `json:"unchecked,omitempty"`
 }
 
+// Decider sends ai.decide to the ai instance named by id.
+type Decider func(ctx context.Context, id int64, p protocol.AIDecideParams) (protocol.AIDecideResult, error)
+
 // Hide is the jobs.Handler for HideKind.
-func Hide(lib *library.Library) jobs.Handler {
+func Hide(lib *library.Library, decide Decider) jobs.Handler {
 	return func(ctx context.Context, r *jobs.Run) error {
 		var p HidePayload
 		if err := json.Unmarshal(r.Payload, &p); err != nil {
@@ -254,18 +265,25 @@ func Hide(lib *library.Library) jobs.Handler {
 		if err != nil {
 			return err
 		}
-		var groups [][]int64
+		var prog HideProgress
+		var pairs []library.DuplicatePair
 		switch p.Duplicates {
 		case "exact":
-			groups, err = lib.DuplicateGroups(ctx, p.Library, -1)
+			pairs, err = lib.DuplicatePairs(ctx, p.Library, -1)
 		case "near":
-			groups, err = lib.DuplicateGroups(ctx, p.Library, p.Distance)
+			pairs, err = lib.DuplicatePairs(ctx, p.Library, p.Distance)
 		}
 		if err != nil {
 			return err
 		}
+		if p.Decide != 0 {
+			if pairs, err = confirmPairs(ctx, lib, decide, p.Decide, pairs, &prog, r); err != nil {
+				return err
+			}
+		}
+		groups := library.GroupPairs(pairs)
 		hidden := library.PlanHide(cands, groups, p.HideBelow, p.Keep)
-		prog := HideProgress{Groups: len(groups)}
+		prog.Groups = len(groups)
 		for _, reason := range hidden {
 			if reason == library.ReasonLowScore {
 				prog.LowScore++
@@ -280,4 +298,80 @@ func Hide(lib *library.Library) jobs.Handler {
 		r.SetProgress(raw)
 		return nil
 	}
+}
+
+// sameCard is the question a decision model answers about a near pair.
+var sameCard = map[string]protocol.DecideQuestion{"same": {Type: "noul",
+	Instructions: "first and second are the same character card, perhaps with small edits, fixes, or formatting changes."}}
+
+// confirmPairs asks the decision model about each near pair and keeps those
+// it says are the same card. Exact pairs need no asking; a pair it fails on
+// stays.
+func confirmPairs(ctx context.Context, lib *library.Library, decide Decider, id int64, pairs []library.DuplicatePair,
+	prog *HideProgress, r *jobs.Run) ([]library.DuplicatePair, error) {
+	states := map[int64]json.RawMessage{}
+	state := func(card int64) (json.RawMessage, error) {
+		if s, ok := states[card]; ok {
+			return s, nil
+		}
+		e, err := lib.Cards.Get(ctx, card)
+		if err != nil {
+			return nil, err
+		}
+		rev, err := lib.Cards.Revision(ctx, e.HeadRevisionID)
+		if err != nil {
+			return nil, err
+		}
+		var data map[string]any
+		if err := json.Unmarshal(rev.Data, &data); err != nil {
+			return nil, err
+		}
+		kept := map[string]any{}
+		for _, k := range []string{"name", "description", "personality", "scenario", "first_mes"} {
+			kept[k] = data[k]
+		}
+		states[card], err = json.Marshal(kept)
+		return states[card], err
+	}
+	near := 0
+	for _, pair := range pairs {
+		if !pair.Exact {
+			near++
+		}
+	}
+	var out []library.DuplicatePair
+	for _, pair := range pairs {
+		if pair.Exact {
+			out = append(out, pair)
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		a, err := state(pair.A)
+		if err != nil {
+			return nil, err
+		}
+		b, err := state(pair.B)
+		if err != nil {
+			return nil, err
+		}
+		both, _ := json.Marshal(map[string]json.RawMessage{"first": a, "second": b})
+		res, err := decide(ctx, id, protocol.AIDecideParams{State: both, Questions: sameCard})
+		prog.Checked++
+		switch ans, ok := res.Answers["same"]; {
+		case err != nil || !ok || ans.Noul == nil:
+			prog.Unchecked++
+			out = append(out, pair)
+		case *ans.Noul >= 0.5:
+			out = append(out, pair)
+		default:
+			prog.Rejected++
+		}
+		if prog.Checked%20 == 0 || prog.Checked == near {
+			raw, _ := json.Marshal(map[string]int{"done": prog.Checked, "total": near})
+			r.SetProgress(raw)
+		}
+	}
+	return out, nil
 }

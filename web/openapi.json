@@ -2949,6 +2949,10 @@
             "readOnly": true,
             "type": "string"
           },
+          "duplicate_decide": {
+            "$ref": "#/components/schemas/LibrarySettingOutInt64",
+            "description": "For near duplicates, the ai instance that confirms each pair is the same card, or null for distance alone."
+          },
           "duplicate_distance": {
             "$ref": "#/components/schemas/LibrarySettingOutInt",
             "description": "For near duplicates, the most bits two cards' text hashes may differ by."
@@ -2975,7 +2979,8 @@
           "hide_below",
           "duplicates",
           "duplicate_distance",
-          "duplicate_keep"
+          "duplicate_keep",
+          "duplicate_decide"
         ],
         "type": "object"
       },
@@ -3246,8 +3251,16 @@
             "readOnly": true,
             "type": "string"
           },
+          "duplicate_decide": {
+            "description": "An ai instance offering ai.decide, which confirms near duplicates.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "duplicate_distance": {
-            "description": "0 to 8, or null to follow the default.",
+            "description": "0 to 8.",
             "format": "int64",
             "type": [
               "integer",
@@ -3255,21 +3268,21 @@
             ]
           },
           "duplicate_keep": {
-            "description": "best, oldest, or newest, or null to follow the default.",
+            "description": "best, oldest, or newest.",
             "type": [
               "string",
               "null"
             ]
           },
           "duplicates": {
-            "description": "off, exact, or near, or null to follow the default.",
+            "description": "off, exact, or near.",
             "type": [
               "string",
               "null"
             ]
           },
           "hide_below": {
-            "description": "A score, or null to follow the default.",
+            "description": "Hide cards whose grid score is below this.",
             "format": "double",
             "type": [
               "number",
@@ -3299,8 +3312,16 @@
             "readOnly": true,
             "type": "string"
           },
+          "duplicate_decide": {
+            "description": "An ai instance offering ai.decide, which confirms near duplicates.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "duplicate_distance": {
-            "description": "0 to 8; null is 3.",
+            "description": "0 to 8.",
             "format": "int64",
             "type": [
               "integer",
@@ -3308,21 +3329,21 @@
             ]
           },
           "duplicate_keep": {
-            "description": "best, oldest, or newest; null is best.",
+            "description": "best, oldest, or newest.",
             "type": [
               "string",
               "null"
             ]
           },
           "duplicates": {
-            "description": "off, exact, or near; null is off.",
+            "description": "off, exact, or near.",
             "type": [
               "string",
               "null"
             ]
           },
           "hide_below": {
-            "description": "A score, or null to hide none for their score.",
+            "description": "Hide cards whose grid score is below this.",
             "format": "double",
             "type": [
               "number",
@@ -4499,6 +4520,13 @@
             "readOnly": true,
             "type": "string"
           },
+          "duplicate_decide": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "duplicate_distance": {
             "format": "int64",
             "type": "integer"
@@ -4550,7 +4578,8 @@
           "hide_below",
           "duplicates",
           "duplicate_distance",
-          "duplicate_keep"
+          "duplicate_keep",
+          "duplicate_decide"
         ],
         "type": "object"
       },

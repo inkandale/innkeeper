@@ -22,19 +22,18 @@ type settings struct {
 	Duplicates        string   `json:"duplicates" enum:"off,exact,near"`
 	DuplicateDistance int      `json:"duplicate_distance"`
 	DuplicateKeep     string   `json:"duplicate_keep" enum:"best,oldest,newest"`
+	DuplicateDecide   *int64   `json:"duplicate_decide"`
 }
 
 type settingsOut struct{ Body settings }
 
 type patchSettingsIn struct {
 	Body struct {
-		Theme             *string           `json:"theme,omitempty" doc:"An installed theme plugin's name, or empty for the default theme."`
-		OnboardingDone    *bool             `json:"onboarding_done,omitempty" doc:"true once the owner finishes or skips the setup wizard; false shows it again."`
-		ScoreInstance     optional[int64]   `json:"score_instance,omitempty" doc:"An enrich instance's ID, or null to clear it."`
-		HideBelow         optional[float64] `json:"hide_below,omitempty" doc:"A score, or null to hide none for their score."`
-		Duplicates        optional[string]  `json:"duplicates,omitempty" doc:"off, exact, or near; null is off."`
-		DuplicateDistance optional[int]     `json:"duplicate_distance,omitempty" doc:"0 to 8; null is 3."`
-		DuplicateKeep     optional[string]  `json:"duplicate_keep,omitempty" doc:"best, oldest, or newest; null is best."`
+		Theme          *string         `json:"theme,omitempty" doc:"An installed theme plugin's name, or empty for the default theme."`
+		OnboardingDone *bool           `json:"onboarding_done,omitempty" doc:"true once the owner finishes or skips the setup wizard; false shows it again."`
+		ScoreInstance  optional[int64] `json:"score_instance,omitempty" doc:"An enrich instance's ID, or null to clear it."`
+		// Null clears a setting: no hide_below, duplicates off, distance 3, keep best, no decide instance.
+		HideOptionsIn
 	}
 }
 
@@ -86,6 +85,9 @@ func (s *Server) settings(ctx context.Context) (*settingsOut, error) {
 		return nil, s.fail(err)
 	}
 	b.Duplicates, b.DuplicateDistance, b.DuplicateKeep = *dups, *dist, *keep
+	if b.DuplicateDecide, err = duplicateDecide.core(ctx, s); err != nil {
+		return nil, s.fail(err)
+	}
 	return out, nil
 }
 
@@ -118,7 +120,7 @@ func (s *Server) settingsRoutes(api huma.API) {
 				}
 			}
 			b := in.Body
-			if err := setHideOptions(ctx, s, nil, b.HideBelow, b.Duplicates, b.DuplicateDistance, b.DuplicateKeep); err != nil {
+			if err := b.HideOptionsIn.set(ctx, s, nil); err != nil {
 				return nil, err
 			}
 			return s.settings(ctx)

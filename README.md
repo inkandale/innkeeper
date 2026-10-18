@@ -545,6 +545,7 @@ the default in `PATCH /settings`.
 | `hide_below` | Cards whose grid score, from the library's Scores from instance, is below it |
 | `duplicates` | `exact`: cards with the same content. `near`: also cards whose text differs by at most `duplicate_distance` bits, 3 by default. A matching image alone doesn't count, since archives reuse art |
 | `duplicate_keep` | Which copy of each duplicate group stays: the `best` score, the `oldest`, or the `newest` |
+| `duplicate_decide` | For `near`: an `ai` instance offering `ai.decide`, such as a decision model, asked whether each near pair is the same card. A pair it says isn't stays apart; one it fails on counts by distance. Exact copies aren't asked |
 
 "Hide now", `POST /libraries/{id}/hide`, or the `hide_cards` MCP tool runs a
 job that archives what the settings pick and records why: `low_score` or

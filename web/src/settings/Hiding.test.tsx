@@ -19,6 +19,7 @@ beforeEach(() => {
     duplicates: setting("off", "off"),
     duplicate_distance: setting(3, 3),
     duplicate_keep: setting("best", "best"),
+    duplicate_decide: setting(null, null),
   };
   vi.stubGlobal(
     "fetch",

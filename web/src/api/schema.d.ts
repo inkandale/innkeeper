@@ -3596,6 +3596,8 @@ export interface components {
              * @example /api/schemas/LibrarySettings.json
              */
             readonly $schema?: string;
+            /** @description For near duplicates, the ai instance that confirms each pair is the same card, or null for distance alone. */
+            duplicate_decide: components["schemas"]["LibrarySettingOutInt64"];
             /** @description For near duplicates, the most bits two cards' text hashes may differ by. */
             duplicate_distance: components["schemas"]["LibrarySettingOutInt"];
             /** @description The duplicate hiding keeps: the best score, the oldest, or the newest. */
@@ -3717,16 +3719,21 @@ export interface components {
             readonly $schema?: string;
             /**
              * Format: int64
-             * @description 0 to 8, or null to follow the default.
+             * @description An ai instance offering ai.decide, which confirms near duplicates.
+             */
+            duplicate_decide?: number | null;
+            /**
+             * Format: int64
+             * @description 0 to 8.
              */
             duplicate_distance?: number | null;
-            /** @description best, oldest, or newest, or null to follow the default. */
+            /** @description best, oldest, or newest. */
             duplicate_keep?: string | null;
-            /** @description off, exact, or near, or null to follow the default. */
+            /** @description off, exact, or near. */
             duplicates?: string | null;
             /**
              * Format: double
-             * @description A score, or null to follow the default.
+             * @description Hide cards whose grid score is below this.
              */
             hide_below?: number | null;
             /**
@@ -3744,16 +3751,21 @@ export interface components {
             readonly $schema?: string;
             /**
              * Format: int64
-             * @description 0 to 8; null is 3.
+             * @description An ai instance offering ai.decide, which confirms near duplicates.
+             */
+            duplicate_decide?: number | null;
+            /**
+             * Format: int64
+             * @description 0 to 8.
              */
             duplicate_distance?: number | null;
-            /** @description best, oldest, or newest; null is best. */
+            /** @description best, oldest, or newest. */
             duplicate_keep?: string | null;
-            /** @description off, exact, or near; null is off. */
+            /** @description off, exact, or near. */
             duplicates?: string | null;
             /**
              * Format: double
-             * @description A score, or null to hide none for their score.
+             * @description Hide cards whose grid score is below this.
              */
             hide_below?: number | null;
             /** @description true once the owner finishes or skips the setup wizard; false shows it again. */
@@ -4195,6 +4207,8 @@ export interface components {
              * @example /api/schemas/Settings.json
              */
             readonly $schema?: string;
+            /** Format: int64 */
+            duplicate_decide: number | null;
             /** Format: int64 */
             duplicate_distance: number;
             /** @enum {string} */

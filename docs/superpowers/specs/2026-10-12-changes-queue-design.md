@@ -50,6 +50,19 @@ An app item can be a candidate for one card only in the queue: its best
 unbound candidate, as the snapshot ranks them. Its other candidates stay
 reachable in review.
 
+### World books
+
+Library lorebooks get rows by the same rules (INN-48). Their app items come
+from both places a snapshot holds them: the standalone world books, and those
+nested under a character item. A world book nested under several characters
+counts once per app. Their `ahead` and `missing` states come from lorebook
+bindings in `binding_status`. Every row says its `kind`, `card` or
+`lorebook`, so an orphan row says which review route it opens. A lorebook's
+review is the `lorebook` route, which finds a nested world book as well as a
+standalone one, and Apply suggested resolves and pushes it as a lorebook. A
+world book page's Sync section links an `ahead` or `missing` app into the
+queue, as a card's does.
+
 An `ahead` binding may come from a bind, which accepts the app's copy as it
 is, so the library being ahead doesn't mean its copy is the one to keep. Its
 review compares with `base=none`, leaving out the accepted copy, so every

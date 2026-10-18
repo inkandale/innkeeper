@@ -11,15 +11,16 @@ function json(body: unknown, status = 200) {
 
 const changes = {
   rows: [
-    { name: "Zed (Lumiverse only)", apps: [{ instance_id: 2, push: true, state: "new", remote_id: "z", name: "Zed", job_id: 7, app_hash: "hz" }] },
+    { kind: "card", name: "Zed (Lumiverse only)", apps: [{ instance_id: 2, push: true, state: "new", remote_id: "z", name: "Zed", job_id: 7, app_hash: "hz" }] },
     {
+      kind: "card",
       card_id: 1,
       name: "Ann",
       apps: [{ instance_id: 2, push: true, state: "differs", remote_id: "a", name: "Ann", job_id: 7, app_hash: "ha", suggested: { action: "bind", card_id: 1 } }],
     },
-    { card_id: 4, name: "Bo", apps: [{ instance_id: 3, push: true, state: "ahead", remote_id: "b", binding_id: 11 }] },
-    { card_id: 5, name: "Cy", apps: [{ instance_id: 3, push: true, state: "missing", remote_id: "c", binding_id: 12 }] },
-    { card_id: 6, name: "Di", apps: [{ instance_id: 2, push: true, state: "error", remote_id: "d", job_id: 7, error: "bad JSON" }] },
+    { kind: "card", card_id: 4, name: "Bo", apps: [{ instance_id: 3, push: true, state: "ahead", remote_id: "b", binding_id: 11 }] },
+    { kind: "card", card_id: 5, name: "Cy", apps: [{ instance_id: 3, push: true, state: "missing", remote_id: "c", binding_id: 12 }] },
+    { kind: "card", card_id: 6, name: "Di", apps: [{ instance_id: 2, push: true, state: "error", remote_id: "d", job_id: 7, error: "bad JSON" }] },
   ],
   counts: { "2": { new: 1, differs: 1, error: 1 }, "3": { ahead: 1, missing: 1 } },
 };
@@ -27,11 +28,13 @@ const cmp = { instance_id: 2, remote_id: "a", card_id: 1, head_revision_id: 118,
 const followed = {
   rows: [
     {
+      kind: "lorebook",
       lorebook_id: 9,
       name: "Forge lore",
       apps: [{ instance_id: 4, state: "missing", remote_id: "chub:alice/forge", binding_id: 22, push: false, source_id: 30 }],
     },
     {
+      kind: "card",
       card_id: 8,
       name: "Vyr",
       apps: [{ instance_id: 4, state: "update", remote_id: "chub:alice/vyr", binding_id: 21, push: false, source_id: 31, app_hash: "hv" }],
@@ -42,16 +45,19 @@ const followed = {
 
 let queries: URLSearchParams[];
 let posts: { path: string; body: unknown }[];
+// served is the queue the fake API returns.
+let served: unknown;
 beforeEach(() => {
   queries = [];
   posts = [];
+  served = changes;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
       const u = new URL(req.url);
       if (u.pathname === "/api/sync/changes") {
         queries.push(u.searchParams);
-        return json(changes);
+        return json(served);
       }
       if (u.pathname === "/api/instances")
         return json([
@@ -153,6 +159,22 @@ test("Apply suggested with an ahead row asks with the push preview first", async
   await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
   await waitFor(() => expect(posts.map((p) => p.path)).toEqual(["/api/pushes/preview", "/api/resolutions", "/api/pushes"]));
   expect(posts[2]!.body).toEqual({ instance_id: 3, query: { filter: { ids: [4] } }, confirm: "q1" });
+});
+
+test("a world book's row reviews and pushes as a lorebook", async () => {
+  served = {
+    rows: [
+      { kind: "lorebook", lorebook_id: 9, name: "Forge lore", apps: [{ instance_id: 3, push: true, state: "ahead", remote_id: "l1", binding_id: 13 }] },
+    ],
+    counts: { "3": { ahead: 1 } },
+  };
+  renderChanges();
+  const forge = await screen.findByRole("row", { name: /Forge lore/ });
+  expect(within(forge).getByRole("link", { name: "Review" })).toHaveAttribute("href", "/sync/3/lorebook/l1?card=9&base=none&queue=1");
+  await userEvent.click(within(forge).getByRole("checkbox"));
+  await userEvent.click(screen.getByRole("button", { name: /Apply/ }));
+  await screen.findByRole("dialog");
+  expect(posts).toEqual([{ path: "/api/pushes/preview", body: { instance_id: 3, kind: "lorebook", query: { filter: { ids: [9] } } } }]);
 });
 
 test("Review one by one opens the first review", async () => {

@@ -26,6 +26,7 @@ import {
   type AppChange,
   type Option,
 } from "./sync";
+import type { Kind } from "../api/client";
 import "./Sync.css";
 
 type ChangeRow = components["schemas"]["ChangeRow"];
@@ -33,14 +34,20 @@ type Job = components["schemas"]["JobOut"];
 
 const states = ["differs", "both_changed", "new", "error", "ahead", "missing", "update"] as const;
 const rowKey = (r: ChangeRow) =>
-  r.card_id ? `card/${r.card_id}` : r.lorebook_id ? `lorebook/${r.lorebook_id}` : `app/${r.apps?.[0]?.instance_id}/${r.apps?.[0]?.remote_id}`;
+  r.card_id ? `card/${r.card_id}`
+  : r.lorebook_id ? `lorebook/${r.lorebook_id}`
+  : `app/${r.kind}/${r.apps?.[0]?.instance_id}/${r.apps?.[0]?.remote_id}`;
+// Card calls leave kind out, as they did before it existed.
+const kindField = (kind: Kind) => (kind === "lorebook" ? { kind } : {});
+/** entity is the row's card or lorebook ID, 0 for an app item nothing matches. */
+const entity = (r: ChangeRow) => r.card_id ?? r.lorebook_id ?? 0;
 /** applicable entries are what Apply suggested settles: a review with a suggestion, or a push. */
 const applicable = (c: AppChange) => (reviewable(c) && !!c.suggested) || c.state === "ahead";
 
-/** group lists values by the instance each belongs to. */
-function group<T>(xs: T[], inst: (x: T) => number): Map<number, T[]> {
-  const m = new Map<number, T[]>();
-  for (const x of xs) m.set(inst(x), [...(m.get(inst(x)) ?? []), x]);
+/** groupBy lists values by key. */
+function groupBy<T, K>(xs: T[], key: (x: T) => K): Map<K, T[]> {
+  const m = new Map<K, T[]>();
+  for (const x of xs) m.set(key(x), [...(m.get(key(x)) ?? []), x]);
   return m;
 }
 
@@ -63,7 +70,7 @@ export function Changes() {
   const follows = useFollowers();
   // The owner's changes from the defaults.
   const [checked, setChecked] = useState<Record<string, boolean>>({});
-  const [pushing, setPushing] = useState<{ card: number; instance: number }>();
+  const [pushing, setPushing] = useState<{ kind: Kind; id: number; instance: number }>();
   const [asking, setAsking] = useState(false);
 
   const rows = changes.data?.rows ?? [];
@@ -71,9 +78,10 @@ export function Changes() {
   const isChecked = (r: ChangeRow) =>
     (r.apps ?? []).some(applicable) && // A push overwrites the app's copy, so it waits for the owner to check it.
     (checked[rowKey(r)] ?? (r.apps ?? []).every((c) => applicable(c) && c.state !== "ahead"));
-  const chosen = rows.filter(isChecked).flatMap((r) => (r.apps ?? []).filter(applicable).map((c) => ({ card: r.card_id ?? 0, c })));
-  const reviews = chosen.filter(({ c }) => c.state !== "ahead").map(({ c }) => c);
-  const pushes = group(chosen.filter(({ c }) => c.state === "ahead"), ({ c }) => c.instance_id);
+  const chosen = rows.filter(isChecked).flatMap((r) => (r.apps ?? []).filter(applicable).map((c) => ({ kind: r.kind, id: entity(r), c })));
+  const reviews = chosen.filter(({ c }) => c.state !== "ahead");
+  // One push per app and kind: a push takes cards or lorebooks.
+  const pushes = groupBy(chosen.filter(({ c }) => c.state === "ahead"), ({ kind, c }) => `${c.instance_id}/${kind}`);
   const first = queueReviews(rows)[0];
 
   const setFilter = (k: string, v: string) => {
@@ -87,14 +95,15 @@ export function Changes() {
   // What each push does to the app's copies; its confirm makes the push leave alone any copy that changes after this.
   const previews = useQuery({
     enabled: asking,
-    queryKey: ["push-preview", "changes", [...pushes].map(([i, cs]) => [i, cs.map((p) => p.card)])],
+    queryKey: ["push-preview", "changes", [...pushes].map(([k, cs]) => [k, cs.map((p) => p.id)])],
     gcTime: 0,
     queryFn: async () =>
       new Map(
         await Promise.all(
-          [...pushes].map(async ([i, cs]) => {
-            const body = { instance_id: i, query: { filter: { ids: cs.map((p) => p.card) } } };
-            return [i, must(await api.POST("/pushes/preview", { body }))] as const;
+          [...pushes].map(async ([k, cs]) => {
+            const { kind, c } = cs[0]!;
+            const body = { instance_id: c.instance_id, ...kindField(kind), query: { filter: { ids: cs.map((p) => p.id) } } };
+            return [k, must(await api.POST("/pushes/preview", { body }))] as const;
           }),
         ),
       ),
@@ -105,13 +114,13 @@ export function Changes() {
       const jobs: Job[] = [];
       const resolutions = (
         await Promise.all(
-          [...group(reviews, (c) => c.instance_id)].map(([i, cs]) =>
+          [...groupBy(reviews, ({ c }) => c.instance_id)].map(([i, cs]) =>
             bulkResolutions(
               i,
-              cs.map((c) => ({ kind: "card" as const, item: { remote_id: c.remote_id ?? "", app_hash: c.app_hash ?? "", binding_id: c.binding_id }, c })),
+              cs.map(({ kind, c }) => ({ kind, item: { remote_id: c.remote_id ?? "", app_hash: c.app_hash ?? "", binding_id: c.binding_id }, c })),
               (r) => r.c.suggested as Option,
               (r, card) =>
-                compareItem(i, "card", r.item.remote_id, card).catch((e: Error) => {
+                compareItem(i, r.kind, r.item.remote_id, card).catch((e: Error) => {
                   throw new Error(`${r.c.name || r.item.remote_id}: ${e.message}`);
                 }),
             ),
@@ -119,8 +128,9 @@ export function Changes() {
         )
       ).flat();
       if (resolutions.length) jobs.push(must(await api.POST("/resolutions", { body: { resolutions } })));
-      for (const [i, cs] of pushes) {
-        const body = { instance_id: i, query: { filter: { ids: cs.map((p) => p.card) } }, confirm: previews.data?.get(i)?.confirm };
+      for (const [k, cs] of pushes) {
+        const { kind, c } = cs[0]!;
+        const body = { instance_id: c.instance_id, ...kindField(kind), query: { filter: { ids: cs.map((p) => p.id) } }, confirm: previews.data?.get(k)?.confirm };
         const res = await api.POST("/pushes", { body });
         // A 409 means the copies changed since the preview; show the new one.
         if (res.response.status === 409) void previews.refetch();
@@ -169,7 +179,7 @@ export function Changes() {
       case "update":
         return (
           <>
-            <Link to={changePath({ ...c, card_id: r.card_id, lorebook_id: r.lorebook_id }, filter)}>Review</Link>{" "}
+            <Link to={changePath({ ...c, kind: r.kind, card_id: r.card_id, lorebook_id: r.lorebook_id }, filter)}>Review</Link>{" "}
             {button("Ignore this change", "dismiss")} {button("Ignore all", "pause")}
           </>
         );
@@ -188,13 +198,13 @@ export function Changes() {
     if (!c.push) return sourceActions(r, c);
     const where = (r.apps?.length ?? 0) > 1 && <span className="muted"> {name(c.instance_id)}</span>;
     const push = (text: string) => (
-      <button className="button" onClick={() => setPushing({ card: r.card_id ?? 0, instance: c.instance_id })}>
+      <button className="button" onClick={() => setPushing({ kind: r.kind, id: entity(r), instance: c.instance_id })}>
         {text}
         {where}
       </button>
     );
     const review = (
-      <Link to={changePath({ ...c, card_id: r.card_id }, filter)}>
+      <Link to={changePath({ ...c, kind: r.kind, card_id: r.card_id, lorebook_id: r.lorebook_id }, filter)}>
         Review{where}
       </Link>
     );
@@ -216,7 +226,7 @@ export function Changes() {
             <button
               className="button"
               disabled={unbind.isPending}
-              onClick={() => confirm(`Unbind ${r.name} from ${name(c.instance_id)}? The card stays in the library.`) && unbind.mutate(c.binding_id ?? 0)}
+              onClick={() => confirm(`Unbind ${r.name} from ${name(c.instance_id)}? The ${r.kind} stays in the library.`) && unbind.mutate(c.binding_id ?? 0)}
             >
               Unbind{where}
             </button>
@@ -333,8 +343,8 @@ export function Changes() {
       )}
       {pushing && (
         <PushPreview
-          kind="card"
-          id={pushing.card}
+          kind={pushing.kind}
+          id={pushing.id}
           targets={[{ id: pushing.instance, label: name(pushing.instance) }]}
           onClose={() => {
             setPushing(undefined);
@@ -346,10 +356,11 @@ export function Changes() {
   );
 }
 
-/** AskPush shows what pushing the checked cards does to each app's copies before Apply sends anything. */
+/** AskPush shows what pushing the checked cards and lorebooks does to each app's copies before Apply sends anything. */
 function AskPush(props: {
   name: (id: number) => string;
-  previews: { data?: Map<number, components["schemas"]["BulkPreview"]>; error: Error | null; isFetching: boolean };
+  /** previews are by app and kind, as "<instance>/<kind>". */
+  previews: { data?: Map<string, components["schemas"]["BulkPreview"]>; error: Error | null; isFetching: boolean };
   busy: boolean;
   onConfirm: () => void;
   onClose: () => void;
@@ -368,11 +379,14 @@ function AskPush(props: {
       ) : !previews.data ? (
         <p>Reading the apps…</p>
       ) : (
-        [...previews.data].map(([i, p]) => (
-          <p key={i}>
-            Push to {name(i)}: {pushSummary(p)}
-          </p>
-        ))
+        [...previews.data].map(([k, p]) => {
+          const [i, kind] = k.split("/");
+          return (
+            <p key={k}>
+              Push {kind === "lorebook" ? "lorebooks " : ""}to {name(Number(i))}: {pushSummary(p)}
+            </p>
+          );
+        })
       )}
       <div className="row">
         <button className="button primary" disabled={!previews.data || previews.isFetching || busy} onClick={onConfirm}>

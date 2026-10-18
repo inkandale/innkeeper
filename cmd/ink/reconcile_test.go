@@ -236,8 +236,10 @@ func TestSyncRefreshAndAutosync(t *testing.T) {
 
 func TestSyncChanges(t *testing.T) {
 	got := stubAPI(t, map[string]string{
-		"/sync/changes?instance_id=3&state=both_changed": `{"rows": [{"card_id": 12, "name": "Brakka",
-			"apps": [{"instance_id": 3, "state": "both_changed"}, {"instance_id": 4, "state": "ahead"}]}], "counts": {"3": {"both_changed": 1}}}`,
+		"/sync/changes?instance_id=3&state=both_changed": `{"rows": [{"kind": "card", "card_id": 12, "name": "Brakka",
+			"apps": [{"instance_id": 3, "state": "both_changed"}, {"instance_id": 4, "state": "ahead"}]},
+			{"kind": "lorebook", "lorebook_id": 9, "name": "Forge lore", "apps": [{"instance_id": 3, "state": "both_changed"}]}],
+			"counts": {"3": {"both_changed": 2}}}`,
 	})
 	out, err := runInk(t, "sync", "changes", "--app", "3", "--state", "both_changed")
 	if err != nil {
@@ -246,7 +248,7 @@ func TestSyncChanges(t *testing.T) {
 	if want := "GET /sync/changes?instance_id=3&state=both_changed "; len(*got) != 1 || (*got)[0] != want {
 		t.Fatalf("requests = %q", *got)
 	}
-	if !strings.Contains(out, "Brakka  #3: changed in both, #4: not pushed") {
+	if !strings.Contains(out, "Brakka  #3: changed in both, #4: not pushed") || !strings.Contains(out, "Forge lore (lorebook)  #3: changed in both") {
 		t.Errorf("out = %q", out)
 	}
 }

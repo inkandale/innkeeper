@@ -194,8 +194,8 @@ export function Sync({ kind, id }: { kind: Kind; id: number }) {
               />{" "}
               autosync
             </label>
-            {/* The queue lists drift only after a sync reads the app, and cards only, so drift opens Review. */}
-            {kind === "card" && (b.status === "ahead" || b.status === "missing") ? (
+            {/* The queue lists drift only after a sync reads the app, so drift opens Review. */}
+            {b.status === "ahead" || b.status === "missing" ? (
               <>
                 {" "}
                 <Link to={`/sync/changes?instance_id=${b.instance_id}`}>Changes</Link>

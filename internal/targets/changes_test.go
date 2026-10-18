@@ -146,3 +146,56 @@ func TestChangesOneItemPerCard(t *testing.T) {
 		}
 	}
 }
+
+func TestChangesIncludeWorldBooks(t *testing.T) {
+	e := setup(t, map[string]any{"lorebooks": "standalone"})
+	// ahead: pushed, then edited in the library only.
+	forge := e.newLorebook("Forge lore")
+	e.pushLorebook(forge)
+	e.updateLorebook(forge, func(ed *library.Edit) { ed.Data = setField(ed.Data, "description", "Hotter lore.") })
+	// differs: a standalone app book likely the same as an unbound library one.
+	docks := e.newLorebook("Docks")
+	e.writeRemote("l7", map[string]any{"lorebook": map[string]any{"name": "Docks", "description": "Forge lore.", "scan_depth": 4,
+		"entries": []any{map[string]any{"keys": []any{"forge"}, "content": "The forge is cold."}}}})
+	// new, nested: an app character links a book nothing matches.
+	e.appCard("r8", map[string]any{"name": "Wren", "description": "A ferrywoman."}, map[string]any{"lorebook_remote_ids": []string{"l8"}})
+	e.writeRemote("l8", map[string]any{"lorebook": map[string]any{"name": "Tides",
+		"entries": []any{map[string]any{"keys": []any{"tide"}, "content": "The tide turns at dusk."}}}})
+
+	if _, err := e.s.Sync(e.ctx, SyncParams{Apply: ApplyNone}, nil); err != nil {
+		t.Fatal(err)
+	}
+	ch, err := e.s.Changes(e.ctx, ChangesFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	type row struct {
+		kind  string
+		id    int64
+		state string
+	}
+	got := map[string]row{}
+	for _, r := range ch.Rows {
+		if len(r.Apps) != 1 {
+			t.Fatalf("row %q has %d apps: %+v", r.Name, len(r.Apps), r.Apps)
+		}
+		got[r.Name] = row{r.Kind, r.CardID + r.LorebookID, r.Apps[0].State}
+	}
+	want := map[string]row{
+		"Forge lore":            {"lorebook", forge, ChangeAhead},
+		"Docks":                 {"lorebook", docks, ChangeDiffers},
+		"Tides (Fake app only)": {"lorebook", 0, ChangeNew},
+		"Wren (Fake app only)":  {"card", 0, ChangeNew},
+	}
+	if len(got) != len(want) {
+		t.Errorf("rows = %v, want %v", got, want)
+	}
+	for name, w := range want {
+		if got[name] != w {
+			t.Errorf("%s = %+v, want %+v", name, got[name], w)
+		}
+	}
+	if ch.Counts[e.inst][ChangeNew] != 2 || ch.Counts[e.inst][ChangeAhead] != 1 {
+		t.Errorf("counts = %v", ch.Counts)
+	}
+}

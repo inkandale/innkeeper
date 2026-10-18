@@ -121,6 +121,9 @@ test("a source update reviews against its card or lorebook, three ways", () => {
   const c = { instance_id: 4, push: false, state: "update" as const, remote_id: "chub:alice/vyr", binding_id: 21 };
   expect(changePath({ ...c, card_id: 8 })).toBe("/sync/4/card/chub%3Aalice%2Fvyr?card=8&queue=1");
   expect(changePath({ ...c, lorebook_id: 9 }, { state: "update" })).toBe("/sync/4/lorebook/chub%3Aalice%2Fvyr?card=9&queue=1&state=update");
+  // A world book from a snapshot reviews on the lorebook route, and an ahead one compares without the accepted copy.
+  expect(changePath({ ...c, state: "differs", job_id: 7, kind: "lorebook", lorebook_id: 9 })).toBe("/sync/4/lorebook/chub%3Aalice%2Fvyr?job=7&queue=1");
+  expect(changePath({ ...c, state: "ahead", kind: "lorebook", lorebook_id: 9 })).toBe("/sync/4/lorebook/chub%3Aalice%2Fvyr?card=9&base=none&queue=1");
   expect(queueReviews([{ lorebook_id: 9, apps: [c] }])).toEqual([{ ...c, card_id: undefined, lorebook_id: 9 }]);
 });
 

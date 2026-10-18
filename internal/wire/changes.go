@@ -34,9 +34,12 @@ type AppChange struct {
 
 // ChangeRow is a card, a lorebook, or an unmatched app item, with its changes.
 type ChangeRow struct {
-	// CardID is 0 for an app item no card matches.
+	// Kind says whether the row is a card or a lorebook, which an app item no
+	// library entry matches also needs.
+	Kind string `json:"kind" enum:"card,lorebook"`
+	// CardID is the card; 0 for a lorebook or an app item nothing matches.
 	CardID int64 `json:"card_id,omitempty"`
-	// LorebookID is set instead of CardID for a lorebook that follows a site source.
+	// LorebookID is set instead of CardID for a lorebook.
 	LorebookID int64       `json:"lorebook_id,omitempty"`
 	Name       string      `json:"name"`
 	Apps       []AppChange `json:"apps"`

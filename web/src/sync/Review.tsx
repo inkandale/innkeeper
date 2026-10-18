@@ -19,9 +19,9 @@ import {
   queueReviews,
   resolution,
   resolveItem,
-  rows,
   siteOf,
   snapshotOf,
+  findItem,
   type Comparison,
   type Item,
   type Option,
@@ -74,7 +74,7 @@ function ReviewItem() {
   const next = reviews[at + 1];
   const onward = () => navigate(next ? changePath(next, filter) : changesPath(filter));
   const snap = snapshotOf(job.data);
-  const item = snap && rows(snap).find((r) => r.kind === kind && r.item.remote_id === remoteId)?.item;
+  const item = snap && findItem(snap, kind, remoteId);
   const suggested = item?.suggested;
   const candidates = item?.candidates ?? [];
   const card =

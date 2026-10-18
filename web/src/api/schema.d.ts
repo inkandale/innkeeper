@@ -2877,6 +2877,8 @@ export interface components {
             apps: components["schemas"]["AppChange"][] | null;
             /** Format: int64 */
             card_id?: number;
+            /** @enum {string} */
+            kind: "card" | "lorebook";
             /** Format: int64 */
             lorebook_id?: number;
             name: string;

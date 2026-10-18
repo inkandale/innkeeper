@@ -50,6 +50,16 @@ export function snapshotOf(job: { status: string; progress: unknown } | undefine
   return p && typeof p === "object" && "params" in p ? (p as Snapshot) : undefined;
 }
 
+/** findItem is the snapshot's app item of kind with remoteId; a world book may be nested under a character. */
+export function findItem(s: Snapshot, kind: Kind, remoteId: string): Item | undefined {
+  for (const r of rows(s)) {
+    if (r.kind === kind && r.item.remote_id === remoteId) return r.item;
+    const nested = kind === "lorebook" ? r.item.lorebooks?.find((b) => b.remote_id === remoteId) : undefined;
+    if (nested) return nested;
+  }
+  return undefined;
+}
+
 /** rows lists a snapshot's characters, then its world books no character links to. */
 export function rows(s: Snapshot): Row[] {
   return [
@@ -161,12 +171,17 @@ export function reviewPath(
 export const reviewable = (c: AppChange) =>
   c.state === "differs" || c.state === "both_changed" || c.state === "new" || c.state === "ahead" || c.state === "update";
 
-/** QueueChange is a queue entry with its row's card or lorebook, which Review compares with when there's no snapshot. */
-type QueueChange = AppChange & { card_id?: number; lorebook_id?: number };
+/**
+ * QueueChange is a queue entry with its row's kind and card or lorebook, which Review compares with when there's no
+ * snapshot. Kind defaults to the one the IDs imply.
+ */
+type QueueChange = AppChange & { kind?: Kind; card_id?: number; lorebook_id?: number };
 
 /** queueReviews lists the queue's reviewable entries in order. */
-export const queueReviews = (rows: { card_id?: number; lorebook_id?: number; apps: AppChange[] | null }[]): QueueChange[] =>
-  rows.flatMap((r) => (r.apps ?? []).filter(reviewable).map((c) => ({ ...c, card_id: r.card_id, lorebook_id: r.lorebook_id })));
+export const queueReviews = (rows: { kind?: Kind; card_id?: number; lorebook_id?: number; apps: AppChange[] | null }[]): QueueChange[] =>
+  rows.flatMap((r) =>
+    (r.apps ?? []).filter(reviewable).map((c) => ({ ...c, kind: r.kind, card_id: r.card_id, lorebook_id: r.lorebook_id })),
+  );
 
 /** stateLabel names a binding or queue state from the library's side. */
 export const stateLabel = (s: string) =>
@@ -194,15 +209,15 @@ export function changesPath(f: ChangesFilter = {}): string {
  * copy, which would keep the library's side of every difference unasked. A source update compares three ways with its
  * card or lorebook.
  */
-export const changePath = (c: QueueChange, f: ChangesFilter = {}) =>
-  c.state === "update"
-    ? reviewPath(c.instance_id, c.lorebook_id ? "lorebook" : "card", c.remote_id ?? "", { card: c.lorebook_id ?? c.card_id, queue: 1, ...f })
-    : reviewPath(
-        c.instance_id,
-        "card",
-        c.remote_id ?? "",
-        c.state === "ahead" ? { card: c.card_id, base: "none", queue: 1, ...f } : { job: c.job_id ?? 0, queue: 1, ...f },
-      );
+export const changePath = (c: QueueChange, f: ChangesFilter = {}) => {
+  const kind = c.kind ?? (c.lorebook_id ? "lorebook" : "card");
+  const card = c.lorebook_id ?? c.card_id;
+  const params =
+    c.state === "update" ? { card, queue: 1, ...f }
+    : c.state === "ahead" ? { card, base: "none", queue: 1, ...f }
+    : { job: c.job_id ?? 0, queue: 1, ...f };
+  return reviewPath(c.instance_id, kind, c.remote_id ?? "", params);
+};
 
 /** needsYou counts an app's changes that need a decision, from GET /sync/changes counts. */
 export const needsYou = (c: Record<string, number> = {}) => (c.differs ?? 0) + (c.both_changed ?? 0) + (c.error ?? 0) + (c.new ?? 0);

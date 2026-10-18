@@ -1071,6 +1071,13 @@
             "format": "int64",
             "type": "integer"
           },
+          "kind": {
+            "enum": [
+              "card",
+              "lorebook"
+            ],
+            "type": "string"
+          },
           "lorebook_id": {
             "format": "int64",
             "type": "integer"
@@ -1080,6 +1087,7 @@
           }
         },
         "required": [
+          "kind",
           "name",
           "apps"
         ],

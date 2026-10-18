@@ -5,13 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"slices"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
 
 	"github.com/inkandale/innkeeper/cardhash"
+	"github.com/inkandale/innkeeper/internal/library"
 )
 
 // failuresShown is how many checks of a followed source must fail in a row
@@ -35,9 +35,20 @@ func (s *Service) Changes(ctx context.Context, f ChangesFilter) (Changes, error)
 	for _, in := range insts {
 		names[in.ID] = in.Label
 	}
-	cards := map[int64]*ChangeRow{}
+	// One row per library entry, by kind and ID.
+	type key struct {
+		book bool
+		id   int64
+	}
+	entries := map[key]*ChangeRow{}
 	var orphans []ChangeRow
-	seen := map[[2]int64]bool{} // card and instance with a snapshot change
+	seen := map[[3]int64]bool{} // kind (1 for lorebook), entry, and instance with a snapshot change
+	kindOf := func(book bool) string {
+		if book {
+			return "lorebook"
+		}
+		return "card"
+	}
 	// count tallies c and says whether the filter keeps it.
 	count := func(c AppChange) bool {
 		if out.Counts[c.InstanceID] == nil {
@@ -46,59 +57,54 @@ func (s *Service) Changes(ctx context.Context, f ChangesFilter) (Changes, error)
 		out.Counts[c.InstanceID][c.State]++
 		return (f.InstanceID == 0 || c.InstanceID == f.InstanceID) && (f.State == "" || c.State == f.State)
 	}
-	add := func(card int64, c AppChange) {
+	// add files c under the library entry id of its kind, or as an orphan for 0.
+	add := func(book bool, id int64, c AppChange) {
 		kept := count(c)
-		if card != 0 {
-			seen[[2]int64{card, c.InstanceID}] = true
+		if id != 0 {
+			seen[[3]int64{boolInt(book), id, c.InstanceID}] = true
 		}
 		if !kept {
 			return
 		}
-		if card == 0 {
-			orphans = append(orphans, ChangeRow{Name: fmt.Sprintf("%s (%s only)", c.Name, names[c.InstanceID]), Apps: []AppChange{c}})
+		if id == 0 {
+			orphans = append(orphans, ChangeRow{Kind: kindOf(book), Name: fmt.Sprintf("%s (%s only)", c.Name, names[c.InstanceID]), Apps: []AppChange{c}})
 			return
 		}
-		r := cards[card]
+		r := entries[key{book, id}]
 		if r == nil {
-			r = &ChangeRow{CardID: card}
-			cards[card] = r
-		}
-		r.Apps = append(r.Apps, c)
-	}
-	books := map[int64]*ChangeRow{}
-	addBook := func(lorebook int64, c AppChange) {
-		if !count(c) {
-			return
-		}
-		r := books[lorebook]
-		if r == nil {
-			r = &ChangeRow{LorebookID: lorebook}
-			books[lorebook] = r
+			r = &ChangeRow{Kind: kindOf(book)}
+			if book {
+				r.LorebookID = id
+			} else {
+				r.CardID = id
+			}
+			entries[key{book, id}] = r
 		}
 		r.Apps = append(r.Apps, c)
 	}
 
-	// Each live binding's card and accepted copy, by instance and remote ID, to
-	// drop entries settled since the snapshot; and the cards bound now.
+	// Each live binding's entry and accepted copy, by kind, instance, and remote
+	// ID, to drop entries settled since the snapshot; and the entries bound now.
 	type live struct {
-		card int64
+		id   int64
 		hash string
 	}
-	accepted := map[int64]map[string]live{}
-	boundNow := map[[2]int64]bool{} // card and instance
-	rows, err := s.pool.Query(ctx, `SELECT instance_id, remote_id, card_id, accepted_hash FROM binding
-		WHERE card_id IS NOT NULL AND push AND remote_state <> 'missing'`)
+	accepted := map[bool]map[int64]map[string]live{false: {}, true: {}}
+	boundNow := map[[3]int64]bool{} // kind, entry, and instance
+	rows, err := s.pool.Query(ctx, `SELECT instance_id, remote_id, coalesce(card_id, 0), coalesce(lorebook_id, 0), accepted_hash
+		FROM binding WHERE push AND remote_state <> 'missing'`)
 	if err != nil {
 		return out, err
 	}
-	var inst, bcard int64
+	var inst, bcard, bbook int64
 	var remote, hash string
-	if _, err := pgx.ForEachRow(rows, []any{&inst, &remote, &bcard, &hash}, func() error {
-		if accepted[inst] == nil {
-			accepted[inst] = map[string]live{}
+	if _, err := pgx.ForEachRow(rows, []any{&inst, &remote, &bcard, &bbook, &hash}, func() error {
+		book, id := bbook != 0, cmp.Or(bcard, bbook)
+		if accepted[book][inst] == nil {
+			accepted[book][inst] = map[string]live{}
 		}
-		accepted[inst][remote] = live{bcard, hash}
-		boundNow[[2]int64{bcard, inst}] = true
+		accepted[book][inst][remote] = live{id, hash}
+		boundNow[[3]int64{boolInt(book), id, inst}] = true
 		return nil
 	}); err != nil {
 		return out, err
@@ -127,58 +133,82 @@ func (s *Service) Changes(ctx context.Context, f ChangesFilter) (Changes, error)
 	}); err != nil {
 		return out, err
 	}
-	for _, l := range latest {
-		for _, it := range l.snap.Items {
-			c := AppChange{InstanceID: l.inst, RemoteID: it.RemoteID, Name: it.Name, BindingID: it.BindingID, Push: true,
-				JobID: l.job, AppHash: it.AppHash, Suggested: it.Suggested, Error: it.Error}
-			acc, isBound := accepted[l.inst][it.RemoteID]
-			card := int64(0)
-			switch {
-			case it.AutoBound || it.AutoImported || it.AutoPulled:
-				continue
-			case it.Verdict == VerdictError:
-				// An item the app can't read has no candidates; a bound one belongs to its binding's card.
-				c.State = ChangeError
-				if isBound {
-					card = acc.card
-				} else if len(it.Candidates) > 0 {
-					card = it.Candidates[0].CardID
-				}
-			case it.Verdict == VerdictBound:
-				// A library-only change shows as ahead from the binding status instead.
-				if !it.AppChanged || it.AppOnly || len(it.Candidates) == 0 || (isBound && acc.hash == it.AppHash) {
-					continue
-				}
-				c.State, card = ChangeBothChanged, it.Candidates[0].CardID
-			case isBound:
-				// Bound since the snapshot.
-				continue
-			default:
-				// A card bound on this app since the snapshot, as a duplicate's sibling may be, is taken.
-				i := slices.IndexFunc(it.Candidates, func(c Candidate) bool {
-					return c.BoundTo == "" && !boundNow[[2]int64{c.CardID, l.inst}]
-				})
-				if it.Verdict == VerdictNew || i < 0 {
-					c.State = ChangeNew
-				} else {
-					c.State, card = ChangeDiffers, it.Candidates[i].CardID
-				}
+	// classify is the queue state of snapshot item it of kind book on instance
+	// inst and the library entry it belongs to, or false when it needs nothing.
+	classify := func(book bool, inst int64, it ReconcileItem) (string, int64, bool) {
+		acc, isBound := accepted[book][inst][it.RemoteID]
+		switch {
+		case it.AutoBound || it.AutoImported || it.AutoPulled:
+			return "", 0, false
+		case it.Verdict == VerdictError:
+			// An item the app can't read has no candidates; a bound one belongs to its binding's entry.
+			if isBound {
+				return ChangeError, acc.id, true
 			}
-			add(card, c)
+			if len(it.Candidates) > 0 {
+				return ChangeError, it.Candidates[0].CardID, true
+			}
+			return ChangeError, 0, true
+		case it.Verdict == VerdictBound:
+			// A library-only change shows as ahead from the binding status instead.
+			if !it.AppChanged || it.AppOnly || len(it.Candidates) == 0 || (isBound && acc.hash == it.AppHash) {
+				return "", 0, false
+			}
+			return ChangeBothChanged, it.Candidates[0].CardID, true
+		case isBound:
+			// Bound since the snapshot.
+			return "", 0, false
+		}
+		// An entry bound on this app since the snapshot, as a duplicate's sibling may be, is taken.
+		i := slices.IndexFunc(it.Candidates, func(c Candidate) bool {
+			return c.BoundTo == "" && !boundNow[[3]int64{boolInt(book), c.CardID, inst}]
+		})
+		if it.Verdict == VerdictNew || i < 0 {
+			return ChangeNew, 0, true
+		}
+		return ChangeDiffers, it.Candidates[i].CardID, true
+	}
+	for _, l := range latest {
+		// A world book linked to several characters is nested under each; it counts once.
+		books := map[string]bool{}
+		visit := func(book bool, it ReconcileItem) {
+			if book {
+				if books[it.RemoteID] {
+					return
+				}
+				books[it.RemoteID] = true
+			}
+			state, id, ok := classify(book, l.inst, it)
+			if !ok {
+				return
+			}
+			add(book, id, AppChange{InstanceID: l.inst, State: state, RemoteID: it.RemoteID, Name: it.Name, BindingID: it.BindingID,
+				Push: true, JobID: l.job, AppHash: it.AppHash, Suggested: it.Suggested, Error: it.Error})
+		}
+		for _, it := range l.snap.Items {
+			visit(false, it)
+			for _, nested := range it.Lorebooks {
+				visit(true, nested)
+			}
+		}
+		for _, it := range l.snap.Lorebooks {
+			visit(true, it)
 		}
 	}
 
-	st, err := s.pool.Query(ctx, `SELECT b.card_id, b.instance_id, b.id, b.remote_id, s.status FROM binding b
-		JOIN binding_status s ON s.binding_id = b.id JOIN card c ON c.id = b.card_id
-		WHERE c.archived_at IS NULL AND b.push AND s.status IN ('ahead', 'missing') ORDER BY b.id`)
+	st, err := s.pool.Query(ctx, `SELECT coalesce(b.card_id, 0), coalesce(b.lorebook_id, 0), b.instance_id, b.id, b.remote_id, s.status
+		FROM binding b JOIN binding_status s ON s.binding_id = b.id
+		LEFT JOIN card c ON c.id = b.card_id LEFT JOIN lorebook l ON l.id = b.lorebook_id
+		WHERE coalesce(c.archived_at, l.archived_at) IS NULL AND b.push AND s.status IN ('ahead', 'missing') ORDER BY b.id`)
 	if err != nil {
 		return out, err
 	}
-	var card, binding int64
+	var card, book, binding int64
 	var status string
-	if _, err := pgx.ForEachRow(st, []any{&card, &inst, &binding, &remote, &status}, func() error {
-		if !seen[[2]int64{card, inst}] {
-			add(card, AppChange{InstanceID: inst, State: status, RemoteID: remote, BindingID: binding, Push: true})
+	if _, err := pgx.ForEachRow(st, []any{&card, &book, &inst, &binding, &remote, &status}, func() error {
+		isBook, id := book != 0, cmp.Or(card, book)
+		if !seen[[3]int64{boolInt(isBook), id, inst}] {
+			add(isBook, id, AppChange{InstanceID: inst, State: status, RemoteID: remote, BindingID: binding, Push: true})
 		}
 		return nil
 	}); err != nil {
@@ -201,7 +231,7 @@ func (s *Service) Changes(ctx context.Context, f ChangesFilter) (Changes, error)
 	if err != nil {
 		return out, err
 	}
-	var book, source int64
+	var source int64
 	var state, checkErr string
 	var seenData []byte
 	if _, err := pgx.ForEachRow(fl, []any{&card, &book, &inst, &binding, &remote, &state, &checkErr, &source, &seenData}, func() error {
@@ -220,50 +250,38 @@ func (s *Service) Changes(ctx context.Context, f ChangesFilter) (Changes, error)
 		default:
 			c.State, c.Error = ChangeError, checkErr
 		}
-		if book != 0 {
-			addBook(book, c)
-		} else {
-			add(card, c)
-		}
+		add(book != 0, cmp.Or(card, book), c)
 		return nil
 	}); err != nil {
 		return out, err
 	}
 
-	ids := make([]int64, 0, len(cards))
-	for id := range cards {
-		ids = append(ids, id)
-	}
-	// A card left out here is archived, so its row is dropped; its counts stay.
-	nr, err := s.pool.Query(ctx, `SELECT c.id, coalesce(r.data->>'name', '') FROM card c
-		JOIN card_revision r ON r.id = c.head_revision_id WHERE c.id = ANY($1) AND c.archived_at IS NULL`, ids)
-	if err != nil {
-		return out, err
-	}
-	var id int64
-	var name string
+	// An entry left out here is archived, so its row is dropped; its counts stay.
 	var named []ChangeRow
-	if _, err := pgx.ForEachRow(nr, []any{&id, &name}, func() error {
-		r := cards[id]
-		r.Name = name
-		slices.SortFunc(r.Apps, func(a, b AppChange) int { return cmp.Compare(a.InstanceID, b.InstanceID) })
-		named = append(named, *r)
-		return nil
-	}); err != nil {
-		return out, err
-	}
-	lr, err := s.pool.Query(ctx, `SELECT l.id, coalesce(r.data->>'name', '') FROM lorebook l
-		JOIN lorebook_revision r ON r.id = l.head_revision_id WHERE l.id = ANY($1)`, slices.Collect(maps.Keys(books)))
-	if err != nil {
-		return out, err
-	}
-	if _, err := pgx.ForEachRow(lr, []any{&id, &name}, func() error {
-		r := books[id]
-		r.Name = name
-		named = append(named, *r)
-		return nil
-	}); err != nil {
-		return out, err
+	for _, k := range []*library.Kind{library.Card, library.Lorebook} {
+		book := k == library.Lorebook
+		var ids []int64
+		for e := range entries {
+			if e.book == book {
+				ids = append(ids, e.id)
+			}
+		}
+		nr, err := s.pool.Query(ctx, `SELECT e.id, coalesce(r.data->>'name', '') FROM `+k.Table+` e
+			JOIN `+k.RevTable+` r ON r.id = e.head_revision_id WHERE e.id = ANY($1) AND e.archived_at IS NULL`, ids)
+		if err != nil {
+			return out, err
+		}
+		var id int64
+		var name string
+		if _, err := pgx.ForEachRow(nr, []any{&id, &name}, func() error {
+			r := entries[key{book, id}]
+			r.Name = name
+			slices.SortFunc(r.Apps, func(a, b AppChange) int { return cmp.Compare(a.InstanceID, b.InstanceID) })
+			named = append(named, *r)
+			return nil
+		}); err != nil {
+			return out, err
+		}
 	}
 	byName := func(a, b ChangeRow) int {
 		return cmp.Or(cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)), cmp.Compare(a.CardID, b.CardID),
@@ -273,4 +291,11 @@ func (s *Service) Changes(ctx context.Context, f ChangesFilter) (Changes, error)
 	slices.SortFunc(named, byName)
 	out.Rows = append(append(out.Rows, orphans...), named...)
 	return out, nil
+}
+
+func boolInt(b bool) int64 {
+	if b {
+		return 1
+	}
+	return 0
 }

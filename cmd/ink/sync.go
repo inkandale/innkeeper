@@ -36,10 +36,10 @@ func changesCmd() *cobra.Command {
 	var state string
 	changes := &cobra.Command{
 		Use:   "changes",
-		Short: "List the cards an app needs you for",
-		Long: `Changes prints a line per card with a change in some app, and first the app
-items no card matches. It reads each app's latest sync and the binding
-statuses. The states are differs, both_changed, ahead, missing, error, and
+		Short: "List the cards and lorebooks an app needs you for",
+		Long: `Changes prints a line per card or lorebook with a change in some app, and
+first the app items nothing matches; lorebooks say so after their name. It
+reads each app's latest sync and the binding statuses. The states are differs, both_changed, ahead, missing, error, and
 new; it prints them from the library's side, so ahead is "not pushed" and
 both_changed "changed in both". A card not pushed may have been bound to an app
 copy that differs, so review it before pushing: ink sync compare --two-way.`,
@@ -82,14 +82,18 @@ func stateLabel(s string) string {
 	return strings.ReplaceAll(s, "_", " ")
 }
 
-// printQueue prints a line per row: its name, then each app's state.
+// printQueue prints a line per row: its name, marked for a lorebook, then each app's state.
 func printQueue(w io.Writer, ch wire.Changes) error {
 	for _, r := range ch.Rows {
 		apps := make([]string, len(r.Apps))
 		for i, a := range r.Apps {
 			apps[i] = fmt.Sprintf("#%d: %s", a.InstanceID, stateLabel(a.State))
 		}
-		if _, err := fmt.Fprintf(w, "%s  %s\n", r.Name, strings.Join(apps, ", ")); err != nil {
+		name := r.Name
+		if r.Kind == "lorebook" {
+			name += " (lorebook)"
+		}
+		if _, err := fmt.Fprintf(w, "%s  %s\n", name, strings.Join(apps, ", ")); err != nil {
 			return err
 		}
 	}

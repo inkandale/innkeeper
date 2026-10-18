@@ -4194,7 +4194,6 @@ export interface components {
             readonly $schema?: string;
             /** @description One per catalog:<id> source, in order */
             catalogs?: components["schemas"]["CatalogResults"][] | null;
-            /** @description Counts stop at 1001, meaning more than 1,000. */
             facets?: components["schemas"]["Facets"];
             hits: components["schemas"]["Hit"][] | null;
             next_cursor?: string;

@@ -125,8 +125,7 @@ also fixes a limit the curated library has today.
 - **Search.** Queries filter on `library_id` first and read head revisions
   only. Check the plans with `EXPLAIN ANALYZE` on a generated 300k-card library
   before merging.
-- **Facets and family grouping** count within the current library. Facets
-  stop counting at a cap and show "1,000+".
+- **Facets and family grouping** count within the current library.
 - **Library-wide jobs**, such as "Check for updates" and bulk Evaluate, take a
   library and page through its cards instead of loading every ID.
 - **Backup.** `innkeeper backup` still copies every blob, so with an archive

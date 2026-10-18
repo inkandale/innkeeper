@@ -4494,8 +4494,7 @@
             ]
           },
           "facets": {
-            "$ref": "#/components/schemas/Facets",
-            "description": "Counts stop at 1001, meaning more than 1,000."
+            "$ref": "#/components/schemas/Facets"
           },
           "hits": {
             "items": {

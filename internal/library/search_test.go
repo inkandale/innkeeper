@@ -857,11 +857,11 @@ func bulkCards(t testing.TB, lib *Library, n int, data string) {
 	}
 }
 
-func TestFacetCountsStopAtCap(t *testing.T) {
+func TestFacetCountsPastAThousandAreExact(t *testing.T) {
 	lib := newLibrary(t)
-	bulkCards(t, lib, facetCap+5, `'{"name": "Bulk", "tags": ["bulk"]}'::jsonb`)
+	bulkCards(t, lib, 1005, `'{"name": "Bulk", "tags": ["bulk"]}'::jsonb`)
 	res, err := lib.Search(context.Background(), Card, Query{Facets: []string{"tags"}})
-	if err != nil || len(res.Facets.Tags) != 1 || res.Facets.Tags[0].Cards != facetCap+1 || res.Total != facetCap+5 {
+	if err != nil || len(res.Facets.Tags) != 1 || res.Facets.Tags[0].Cards != 1005 || res.Total != 1005 {
 		t.Fatalf("results = total %d, facets %+v, %v", res.Total, res.Facets, err)
 	}
 }

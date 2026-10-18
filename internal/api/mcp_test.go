@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -124,22 +125,57 @@ func TestMCPSources(t *testing.T) {
 	e := newEnv(t)
 	e.addSites()
 	s := e.mcpClient(tier.Write)
-	var c entityOut
+	var c, lb entityOut
 	_ = json.Unmarshal([]byte(tool(t, s, "create_card", map[string]any{"data": map[string]any{"name": "Brakka"}}, false)), &c)
-	if got := tool(t, s, "add_source", map[string]any{"card_id": c.ID, "url": "https://fake.example/u/a"}, false); !strings.Contains(got, `"u/a"`) {
-		t.Fatalf("add_source = %s", got)
+	_ = json.Unmarshal([]byte(tool(t, s, "create_lorebook", map[string]any{"data": map[string]any{"name": "Lore", "entries": []any{}}}, false)), &lb)
+	for _, entity := range []map[string]any{{"id": c.ID}, {"kind": "lorebook", "id": lb.ID}} {
+		with := func(k string, v any) map[string]any {
+			args := maps.Clone(entity)
+			args[k] = v
+			return args
+		}
+		if got := tool(t, s, "add_source", with("url", "https://fake.example/u/a"), false); !strings.Contains(got, `"u/a"`) {
+			t.Fatalf("add_source %v = %s", entity, got)
+		}
+		var list []struct{ ID int64 }
+		_ = json.Unmarshal([]byte(tool(t, s, "list_sources", entity, false)), &list)
+		if len(list) != 1 {
+			t.Fatalf("sources %v = %v", entity, list)
+		}
+		tool(t, s, "remove_source", with("source_id", list[0].ID), false)
+		if got := tool(t, s, "list_sources", entity, false); !strings.Contains(got, "[]") {
+			t.Fatalf("after remove %v = %s", entity, got)
+		}
 	}
-	var list []struct{ ID int64 }
-	_ = json.Unmarshal([]byte(tool(t, s, "list_sources", map[string]any{"card_id": c.ID}, false)), &list)
-	if len(list) != 1 {
-		t.Fatalf("sources = %v", list)
-	}
-	tool(t, s, "remove_source", map[string]any{"card_id": c.ID, "source_id": list[0].ID}, false)
-	if got := tool(t, s, "list_sources", map[string]any{"card_id": c.ID}, false); !strings.Contains(got, "[]") {
-		t.Fatalf("after remove = %s", got)
-	}
-	tool(t, s, "add_source", map[string]any{"card_id": c.ID, "url": "https://example.com/x"}, true)
+	tool(t, s, "add_source", map[string]any{"id": c.ID, "url": "https://example.com/x"}, true)
 	tool(t, s, "list_sources", map[string]any{}, true)
+}
+
+func TestMCPRejectsAnUnknownKind(t *testing.T) {
+	e := newEnv(t)
+	got := tool(t, e.mcpClient(tier.Read), "get_history", map[string]any{"kind": "persona", "id": 1}, true)
+	if !strings.Contains(got, "card") || !strings.Contains(got, "lorebook") {
+		t.Fatalf("get_history = %s", got)
+	}
+}
+
+func TestMCPBind(t *testing.T) {
+	e := newEnv(t)
+	inst, dir := e.target()
+	if err := os.WriteFile(filepath.Join(dir, "r1.json"), []byte(`{"spec": "chara_card_v3", "data": {"name": "Brakka"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := e.mcpClient(tier.Write)
+	var c, lb entityOut
+	_ = json.Unmarshal([]byte(tool(t, s, "create_card", map[string]any{"data": map[string]any{"name": "Brakka"}}, false)), &c)
+	_ = json.Unmarshal([]byte(tool(t, s, "create_lorebook", map[string]any{"data": map[string]any{"name": "Lore", "entries": []any{}}}, false)), &lb)
+	if got := tool(t, s, "bind", map[string]any{"id": c.ID, "instance_id": inst, "remote_id": "r1"}, false); !strings.Contains(got, "in_sync") {
+		t.Fatalf("bind = %s", got)
+	}
+	// The fake keeps lorebooks inside cards, so the API refuses a lorebook binding.
+	if got := tool(t, s, "bind", map[string]any{"kind": "lorebook", "id": lb.ID, "instance_id": inst, "remote_id": "r1"}, true); !strings.HasPrefix(got, "400") {
+		t.Fatalf("lorebook bind = %s", got)
+	}
 }
 
 func TestMCPPush(t *testing.T) {

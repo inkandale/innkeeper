@@ -14,10 +14,12 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	iauth "github.com/inkandale/innkeeper/internal/auth"
+	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/tier"
 	"github.com/inkandale/innkeeper/protocol"
 )
@@ -34,7 +36,7 @@ type tool struct {
 // def makes a tool whose input is In. run turns the input into one or more
 // API calls through c.
 func def[In any](name, description string, t tier.Tier, run func(ctx context.Context, c caller, in In) (*sdk.CallToolResult, error)) tool {
-	return tool{tier: t, meta: sdk.Tool{Name: name, Description: description},
+	return tool{tier: t, meta: sdk.Tool{Name: name, Description: description, InputSchema: inputSchema[In]()},
 		call: func(ctx context.Context, c caller, args json.RawMessage) (*sdk.CallToolResult, error) {
 			var in In
 			if len(args) > 0 {
@@ -52,6 +54,22 @@ func def[In any](name, description string, t tier.Tier, run func(ctx context.Con
 				return res, nil, err
 			})
 		}}
+}
+
+// inputSchema is In's JSON Schema. A kind argument lists the library's kinds,
+// so a new kind reaches every tool that takes one.
+func inputSchema[In any]() *jsonschema.Schema {
+	schema, err := jsonschema.For[In](nil)
+	if err != nil {
+		panic(err)
+	}
+	if k, ok := schema.Properties["kind"]; ok {
+		k.Description = "Default " + library.Card.Name
+		for _, kind := range library.Kinds {
+			k.Enum = append(k.Enum, kind.Name)
+		}
+	}
+	return schema
 }
 
 // caller makes API requests as the MCP client.

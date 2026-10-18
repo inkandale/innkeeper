@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -17,17 +18,27 @@ type idIn struct {
 	ID int64 `json:"id"`
 }
 
-type entityIn struct {
-	Kind string `json:"kind" jsonschema:"card or lorebook"`
-	ID   int64  `json:"id"`
+// kindIn names a library kind. Its schema lists library.Kinds; see inputSchema.
+type kindIn struct {
+	Kind string `json:"kind,omitempty"`
 }
 
-// kindNamed is the library kind a tool's input names.
-func kindNamed(name string) (*library.Kind, error) {
-	if k, ok := library.KindNamed(name); ok {
+// kind is the library kind in names, card when left out.
+func (in kindIn) kind() (*library.Kind, error) {
+	if k, ok := library.KindNamed(cmp.Or(in.Kind, library.Card.Name)); ok {
 		return k, nil
 	}
-	return nil, fmt.Errorf("kind must be card or lorebook, not %q", name)
+	names := make([]string, len(library.Kinds))
+	for i, k := range library.Kinds {
+		names[i] = k.Name
+	}
+	return nil, fmt.Errorf("kind must be one of %s, not %q", strings.Join(names, ", "), in.Kind)
+}
+
+// entityIn names one card or lorebook.
+type entityIn struct {
+	kindIn
+	ID int64 `json:"id"`
 }
 
 type searchIn struct {
@@ -55,34 +66,29 @@ type linkIn struct {
 }
 
 type restoreIn struct {
-	Kind           string `json:"kind" jsonschema:"card or lorebook"`
-	ID             int64  `json:"id"`
+	entityIn
 	RevisionID     int64  `json:"revision_id" jsonschema:"The old revision to bring back"`
 	BaseRevisionID int64  `json:"base_revision_id" jsonschema:"The current head revision"`
 	Avatar         string `json:"avatar,omitempty" jsonschema:"keep (default) keeps the head's image; revision takes the old revision's, even none"`
 }
 
 type forkIn struct {
-	Kind    string `json:"kind,omitempty" jsonschema:"card or lorebook; default card"`
-	ID      int64  `json:"id"`
-	Library int64  `json:"library,omitempty" jsonschema:"A library ID from list_libraries; default the original's"`
+	entityIn
+	Library int64 `json:"library,omitempty" jsonschema:"A library ID from list_libraries; default the original's"`
 }
 
 type variantOfIn struct {
-	Kind      string `json:"kind,omitempty" jsonschema:"card or lorebook; default card"`
-	ID        int64  `json:"id"`
+	entityIn
 	VariantOf *int64 `json:"variant_of,omitempty" jsonschema:"The card or lorebook of the same kind it is a variant of; null or left out unlinks it"`
 }
 
 type previewIn struct {
-	Kind       string `json:"kind" jsonschema:"card or lorebook"`
-	ID         int64  `json:"id"`
-	InstanceID int64  `json:"instance_id" jsonschema:"The target plugin instance"`
+	entityIn
+	InstanceID int64 `json:"instance_id" jsonschema:"The target plugin instance"`
 }
 
 type pushIn struct {
-	Kind       string `json:"kind" jsonschema:"card or lorebook"`
-	ID         int64  `json:"id"`
+	entityIn
 	InstanceID int64  `json:"instance_id" jsonschema:"The target plugin instance"`
 	Confirm    string `json:"confirm" jsonschema:"The confirm value from preview_push. Show the owner the preview's changes first."`
 	NewCopy    bool   `json:"new_copy,omitempty" jsonschema:"Make another copy on a target that can't update"`
@@ -93,33 +99,33 @@ type bindingIn struct {
 }
 
 type itemsIn struct {
-	InstanceID int64  `json:"instance_id" jsonschema:"The target plugin instance"`
-	Kind       string `json:"kind,omitempty" jsonschema:"card or lorebook; default card"`
+	InstanceID int64 `json:"instance_id" jsonschema:"The target plugin instance"`
+	kindIn
 }
 
 type bindIn struct {
-	CardID     int64  `json:"card_id,omitempty" jsonschema:"The card to bind; give this or lorebook_id"`
-	LorebookID int64  `json:"lorebook_id,omitempty" jsonschema:"The lorebook to bind; give this or card_id"`
+	entityIn
 	InstanceID int64  `json:"instance_id" jsonschema:"The target plugin instance"`
 	RemoteID   string `json:"remote_id" jsonschema:"The app item's remote_id, from list_app_items"`
 }
 
-type sourceIn struct {
-	CardID     int64  `json:"card_id,omitempty" jsonschema:"The card; give this or lorebook_id"`
-	LorebookID int64  `json:"lorebook_id,omitempty" jsonschema:"The lorebook; give this or card_id"`
-	URL        string `json:"url,omitempty" jsonschema:"A page on a known site, such as a chub.ai character page"`
-	SourceID   int64  `json:"source_id,omitempty" jsonschema:"The source to remove, from list_sources"`
+type addSourceIn struct {
+	entityIn
+	URL string `json:"url" jsonschema:"A page on a known site, such as a chub.ai character page"`
 }
 
-// sourcesPath is the API path of a card's or lorebook's sources.
-func sourcesPath(in sourceIn) (string, error) {
-	switch {
-	case (in.CardID == 0) == (in.LorebookID == 0):
-		return "", fmt.Errorf("give exactly one of card_id and lorebook_id")
-	case in.CardID != 0:
-		return fmt.Sprintf("/cards/%d/sources", in.CardID), nil
+type removeSourceIn struct {
+	entityIn
+	SourceID int64 `json:"source_id" jsonschema:"The source to remove, from list_sources"`
+}
+
+// path is the API path of in's card or lorebook, with suffix appended.
+func (in entityIn) path(suffix string) (string, error) {
+	k, err := in.kind()
+	if err != nil {
+		return "", err
 	}
-	return fmt.Sprintf("/lorebooks/%d/sources", in.LorebookID), nil
+	return fmt.Sprintf("/%s/%d%s", k.Plural, in.ID, suffix), nil
 }
 
 type importIn struct {
@@ -155,8 +161,8 @@ type changesIn struct {
 }
 
 type sourceCheckIn struct {
-	Kind string `json:"kind,omitempty" jsonschema:"card or lorebook; default card"`
-	ID   int64  `json:"id,omitempty" jsonschema:"One card or lorebook to check now; omit to start a job that checks every source"`
+	kindIn
+	ID int64 `json:"id,omitempty" jsonschema:"One card or lorebook to check now; omit to start a job that checks every source"`
 }
 
 type autosyncIn struct {
@@ -167,15 +173,15 @@ type autosyncIn struct {
 type compareIn struct {
 	InstanceID int64  `json:"instance_id" jsonschema:"The target plugin instance"`
 	RemoteID   string `json:"remote_id" jsonschema:"The app item's remote_id, from the sync snapshot"`
-	Kind       string `json:"kind,omitempty" jsonschema:"card or lorebook; default card"`
-	ID         int64  `json:"id,omitempty" jsonschema:"The library card or lorebook to compare with; omit for the bound one"`
-	TwoWay     bool   `json:"two_way,omitempty" jsonschema:"Cards only: compare without the binding's accepted copy, so every difference is a choice. Use it for an ahead card; resolve with base none"`
+	kindIn
+	ID     int64 `json:"id,omitempty" jsonschema:"The library card or lorebook to compare with; omit for the bound one"`
+	TwoWay bool  `json:"two_way,omitempty" jsonschema:"Cards only: compare without the binding's accepted copy, so every difference is a choice. Use it for an ahead card; resolve with base none"`
 }
 
 type resolveIn struct {
-	InstanceID     int64             `json:"instance_id" jsonschema:"The target plugin instance"`
-	RemoteID       string            `json:"remote_id"`
-	Kind           string            `json:"kind,omitempty" jsonschema:"card or lorebook; default card"`
+	InstanceID int64  `json:"instance_id" jsonschema:"The target plugin instance"`
+	RemoteID   string `json:"remote_id"`
+	kindIn
 	Action         string            `json:"action" jsonschema:"bind, import, or skip"`
 	CardID         int64             `json:"card_id,omitempty" jsonschema:"For bind: the card or lorebook compared with"`
 	AppHash        string            `json:"app_hash,omitempty" jsonschema:"From compare_item, or the snapshot for an import; not needed to skip"`
@@ -225,11 +231,11 @@ var tools = []tool{
 		}),
 	def("get_history", "List a card's or lorebook's revisions, newest first.", tier.Read,
 		func(ctx context.Context, c caller, in entityIn) (*sdk.CallToolResult, error) {
-			k, err := kindNamed(in.Kind)
+			path, err := in.path("/revisions")
 			if err != nil {
 				return nil, err
 			}
-			return c.call(ctx, "GET", fmt.Sprintf("/%s/%d/revisions", k.Plural, in.ID), nil)
+			return c.call(ctx, "GET", path, nil)
 		}),
 	def("create_card", "Create a card from a CCv3 data object.", tier.Write,
 		func(ctx context.Context, c caller, in createIn) (*sdk.CallToolResult, error) {
@@ -257,31 +263,30 @@ var tools = []tool{
 		}),
 	def("restore_revision", "Bring back an old revision of a card or lorebook as a new revision.", tier.Write,
 		func(ctx context.Context, c caller, in restoreIn) (*sdk.CallToolResult, error) {
-			k, err := kindNamed(in.Kind)
+			path, err := in.path("/restore")
 			if err != nil {
 				return nil, err
 			}
-			return c.call(ctx, "POST", fmt.Sprintf("/%s/%d/restore", k.Plural, in.ID),
+			return c.call(ctx, "POST", path,
 				map[string]any{"revision_id": in.RevisionID, "base_revision_id": in.BaseRevisionID, "avatar": cmp.Or(in.Avatar, "keep"), "source": "mcp"})
 		}),
 	def("fork_card", "Make a variant of a card or lorebook: a new one with the head revision's content, image, and overrides, "+
 		"and a card's collections and linked lorebooks, but not its sources or app bindings. Returns the new one. "+
 		"Forked into another library, it isn't a variant and gets no collections.", tier.Write,
 		func(ctx context.Context, c caller, in forkIn) (*sdk.CallToolResult, error) {
-			k, err := kindNamed(cmp.Or(in.Kind, library.Card.Name))
+			path, err := in.path("/variants")
 			if err != nil {
 				return nil, err
 			}
-			return c.call(ctx, "POST", fmt.Sprintf("/%s/%d/variants", k.Plural, in.ID), map[string]any{"source": "mcp", "library": in.Library})
+			return c.call(ctx, "POST", path, map[string]any{"source": "mcp", "library": in.Library})
 		}),
 	def("set_variant_of", "Record that a card or lorebook is a variant of another of the same kind, or unlink it with variant_of null. "+
 		"Refuses a link that would make it its own ancestor, or to one in another library. Changes no content.", tier.Write,
 		func(ctx context.Context, c caller, in variantOfIn) (*sdk.CallToolResult, error) {
-			k, err := kindNamed(cmp.Or(in.Kind, library.Card.Name))
+			path, err := in.path("/variant_of")
 			if err != nil {
 				return nil, err
 			}
-			path := fmt.Sprintf("/%s/%d/variant_of", k.Plural, in.ID)
 			if in.VariantOf == nil {
 				return c.call(ctx, "DELETE", path, nil)
 			}
@@ -291,23 +296,23 @@ var tools = []tool{
 		"with the app's value as before and the pushed one as after, fields it would drop, and lorebooks it would create. "+
 		"Show the owner the changes, then pass confirm to push.", tier.Read,
 		func(ctx context.Context, c caller, in previewIn) (*sdk.CallToolResult, error) {
-			k, err := kindNamed(in.Kind)
+			path, err := in.path(fmt.Sprintf("/push-preview?instance_id=%d", in.InstanceID))
 			if err != nil {
 				return nil, err
 			}
-			return c.call(ctx, "GET", fmt.Sprintf("/%s/%d/push-preview?instance_id=%d", k.Plural, in.ID, in.InstanceID), nil)
+			return c.call(ctx, "GET", path, nil)
 		}),
 	def("push", "Push a card or lorebook to a target app, overwriting the app's copy. Needs confirm from preview_push; "+
 		"if anything changed since, it returns the new preview instead.", tier.Destructive,
 		func(ctx context.Context, c caller, in pushIn) (*sdk.CallToolResult, error) {
-			k, err := kindNamed(in.Kind)
+			path, err := in.path("/push")
 			if err != nil {
 				return nil, err
 			}
 			if in.Confirm == "" {
 				return nil, fmt.Errorf("confirm is required: call preview_push and show the owner its changes first")
 			}
-			return c.call(ctx, "POST", fmt.Sprintf("/%s/%d/push", k.Plural, in.ID),
+			return c.call(ctx, "POST", path,
 				map[string]any{"instance_id": in.InstanceID, "confirm": in.Confirm, "new_copy": in.NewCopy})
 		}),
 	def("check_drift", "Read a bound card or lorebook back from its app now, and report what changed there.", tier.Read,
@@ -316,31 +321,31 @@ var tools = []tool{
 		}),
 	def("list_bindings", "List the target apps a card or lorebook is pushed to, and the site sources it follows, with each one's status.", tier.Read,
 		func(ctx context.Context, c caller, in entityIn) (*sdk.CallToolResult, error) {
-			k, err := kindNamed(in.Kind)
+			path, err := in.path("/bindings")
 			if err != nil {
 				return nil, err
 			}
-			return c.call(ctx, "GET", fmt.Sprintf("/%s/%d/bindings", k.Plural, in.ID), nil)
+			return c.call(ctx, "GET", path, nil)
 		}),
 	def("list_sources", "List the sites a card or lorebook was published on.", tier.Read,
-		func(ctx context.Context, c caller, in sourceIn) (*sdk.CallToolResult, error) {
-			path, err := sourcesPath(in)
+		func(ctx context.Context, c caller, in entityIn) (*sdk.CallToolResult, error) {
+			path, err := in.path("/sources")
 			if err != nil {
 				return nil, err
 			}
 			return c.call(ctx, "GET", path, nil)
 		}),
 	def("add_source", "Record that a card or lorebook was published at a URL, such as its chub.ai page.", tier.Write,
-		func(ctx context.Context, c caller, in sourceIn) (*sdk.CallToolResult, error) {
-			path, err := sourcesPath(in)
+		func(ctx context.Context, c caller, in addSourceIn) (*sdk.CallToolResult, error) {
+			path, err := in.path("/sources")
 			if err != nil {
 				return nil, err
 			}
 			return c.call(ctx, "PUT", path, map[string]any{"url": in.URL})
 		}),
 	def("remove_source", "Remove a source from a card or lorebook, so detection doesn't add it back.", tier.Write,
-		func(ctx context.Context, c caller, in sourceIn) (*sdk.CallToolResult, error) {
-			path, err := sourcesPath(in)
+		func(ctx context.Context, c caller, in removeSourceIn) (*sdk.CallToolResult, error) {
+			path, err := in.path("/sources")
 			if err != nil {
 				return nil, err
 			}
@@ -348,7 +353,7 @@ var tools = []tool{
 		}),
 	def("list_app_items", "List the cards or lorebooks a target app already has, with the binding that uses each, if any.", tier.Read,
 		func(ctx context.Context, c caller, in itemsIn) (*sdk.CallToolResult, error) {
-			k, err := kindNamed(cmp.Or(in.Kind, library.Card.Name))
+			k, err := in.kind()
 			if err != nil {
 				return nil, err
 			}
@@ -356,12 +361,9 @@ var tools = []tool{
 		}),
 	def("bind", "Link a card or lorebook to one the app already has. Changes nothing in the app or the library; the binding shows ahead until the next push where they differ. The app's linked world books are left for sync.", tier.Write,
 		func(ctx context.Context, c caller, in bindIn) (*sdk.CallToolResult, error) {
-			if (in.CardID == 0) == (in.LorebookID == 0) {
-				return nil, fmt.Errorf("give exactly one of card_id and lorebook_id")
-			}
-			path := fmt.Sprintf("/cards/%d/bind", in.CardID)
-			if in.LorebookID != 0 {
-				path = fmt.Sprintf("/lorebooks/%d/bind", in.LorebookID)
+			path, err := in.path("/bind")
+			if err != nil {
+				return nil, err
 			}
 			return c.call(ctx, "POST", path, map[string]any{"instance_id": in.InstanceID, "remote_id": in.RemoteID})
 		}),
@@ -410,7 +412,7 @@ var tools = []tool{
 			if in.ID == 0 {
 				return c.call(ctx, "POST", "/source-checks", nil)
 			}
-			k, err := kindNamed(cmp.Or(in.Kind, library.Card.Name))
+			k, err := in.kind()
 			if err != nil {
 				return nil, err
 			}
@@ -438,7 +440,7 @@ var tools = []tool{
 	def("compare_item", "Compare an app item with a library card or lorebook, hunk by hunk. resolve_item needs this reply's app_hash, "+
 		"head_revision_id, accepted_hash, and binding_id. An unbound item needs an id to compare with.", tier.Read,
 		func(ctx context.Context, c caller, in compareIn) (*sdk.CallToolResult, error) {
-			k, err := kindNamed(cmp.Or(in.Kind, library.Card.Name))
+			k, err := in.kind()
 			if err != nil {
 				return nil, err
 			}
@@ -462,7 +464,7 @@ var tools = []tool{
 	def("resolve_item", "Bind an app item to a library card with per-hunk choices, import it, or skip it. Show the owner compare_item first. "+
 		"Changes the library and the binding, never the app: push afterwards to send the result. A 409 means something changed; it has a fresh comparison.", tier.Write,
 		func(ctx context.Context, c caller, in resolveIn) (*sdk.CallToolResult, error) {
-			k, err := kindNamed(cmp.Or(in.Kind, library.Card.Name))
+			k, err := in.kind()
 			if err != nil {
 				return nil, err
 			}

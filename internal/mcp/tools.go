@@ -184,8 +184,8 @@ type librarySettingsIn struct {
 }
 
 type updateLibrarySettingsIn struct {
-	Library       int64  `json:"library" jsonschema:"A library ID from list_libraries"`
-	ScoreInstance *int64 `json:"score_instance" jsonschema:"The enrich instance whose scores this library's search filters and sort use, or null to follow the default"`
+	Library  int64          `json:"library" jsonschema:"A library ID from list_libraries"`
+	Settings map[string]any `json:"settings" jsonschema:"The settings to change, as get_library_settings names them, each a value or null to follow the default: score_instance, hide_below, duplicates (off, exact, near), duplicate_distance (0 to 8), duplicate_keep (best, oldest, newest). Settings left out don't change."`
 }
 
 type syncIn struct {
@@ -525,9 +525,14 @@ var tools = []tool{
 		func(ctx context.Context, c caller, in librarySettingsIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "GET", fmt.Sprintf("/libraries/%d/settings", in.Library), nil)
 		}),
-	def("update_library_settings", "Override a library's settings, or set one back to null to follow the default.", tier.Write,
+	def("update_library_settings", "Override a library's settings, or set one to null to follow the default.", tier.Write,
 		func(ctx context.Context, c caller, in updateLibrarySettingsIn) (*sdk.CallToolResult, error) {
-			return c.call(ctx, "PATCH", fmt.Sprintf("/libraries/%d/settings", in.Library), map[string]any{"score_instance": in.ScoreInstance})
+			return c.call(ctx, "PATCH", fmt.Sprintf("/libraries/%d/settings", in.Library), in.Settings)
+		}),
+	def("hide_cards", "Archive a library's cards scoring below its hide_below and its duplicates but the one duplicate_keep picks, "+
+		"recording why; cards hidden before that now pass come back. Cards the owner archived are left alone. Starts a job.", tier.Write,
+		func(ctx context.Context, c caller, in librarySettingsIn) (*sdk.CallToolResult, error) {
+			return c.call(ctx, "POST", fmt.Sprintf("/libraries/%d/hide", in.Library), nil)
 		}),
 	def("list_plugins", "List the installed plugins, with each one's capabilities, config schema, secret names, and settings_actions. "+
 		"For a settings plugin, get_config_defaults, list_config_options, and run_settings_action help fill in its config.", tier.Read,

@@ -46,7 +46,9 @@ type entityOut struct {
 	Slug        string              `json:"slug"`
 	Provenance  string              `json:"provenance"`
 	ArchivedAt  *time.Time          `json:"archived_at,omitempty"`
-	CreatedAt   time.Time           `json:"created_at"`
+	// ArchivedReason is why the hide job archived it.
+	ArchivedReason string              `json:"archived_reason,omitempty" enum:"low_score,duplicate"`
+	CreatedAt      time.Time           `json:"created_at"`
 	Revision    revisionOut         `json:"revision" doc:"The head revision"`
 	Lorebooks   []int64             `json:"lorebooks,omitempty" doc:"Cards only: IDs of linked lorebooks"`
 	Collections []int64             `json:"collections,omitempty" doc:"Cards only: IDs of the collections it's in"`
@@ -191,7 +193,7 @@ func (s *Server) entity(ctx context.Context, ents *library.Entities, id int64) (
 	if err != nil {
 		return nil, s.fail(err)
 	}
-	out := &entityResp{Body: entityOut{ID: e.ID, LibraryID: e.LibraryID, Slug: e.Slug, Provenance: e.Provenance, ArchivedAt: e.ArchivedAt,
+	out := &entityResp{Body: entityOut{ID: e.ID, LibraryID: e.LibraryID, Slug: e.Slug, Provenance: e.Provenance, ArchivedAt: e.ArchivedAt, ArchivedReason: e.ArchivedReason,
 		CreatedAt: e.CreatedAt, Revision: toRevision(rev, true)}}
 	if ents.Kind() == library.Card {
 		if out.Body.Lorebooks, err = s.Lib.CardLorebooks(ctx, id); err != nil {

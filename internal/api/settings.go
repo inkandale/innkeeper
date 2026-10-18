@@ -17,15 +17,24 @@ type settings struct {
 	Theme          string `json:"theme" doc:"The selected theme plugin, or empty for the default theme."`
 	OnboardingDone bool   `json:"onboarding_done" doc:"Whether the owner finished or skipped the setup wizard."`
 	ScoreInstance  *int64 `json:"score_instance" doc:"The enrich instance whose values the library grid, filters, and sort use, or null; a library may override it. When null and exactly one enrich instance exists, that one is used."`
+	// The hide job's defaults; see GET /libraries/{id}/settings.
+	HideBelow         *float64 `json:"hide_below"`
+	Duplicates        string   `json:"duplicates" enum:"off,exact,near"`
+	DuplicateDistance int      `json:"duplicate_distance"`
+	DuplicateKeep     string   `json:"duplicate_keep" enum:"best,oldest,newest"`
 }
 
 type settingsOut struct{ Body settings }
 
 type patchSettingsIn struct {
 	Body struct {
-		Theme          *string    `json:"theme,omitempty" doc:"An installed theme plugin's name, or empty for the default theme."`
-		OnboardingDone *bool      `json:"onboarding_done,omitempty" doc:"true once the owner finishes or skips the setup wizard; false shows it again."`
-		ScoreInstance  optionalID `json:"score_instance,omitempty" doc:"An enrich instance's ID, or null to clear it."`
+		Theme             *string           `json:"theme,omitempty" doc:"An installed theme plugin's name, or empty for the default theme."`
+		OnboardingDone    *bool             `json:"onboarding_done,omitempty" doc:"true once the owner finishes or skips the setup wizard; false shows it again."`
+		ScoreInstance     optional[int64]   `json:"score_instance,omitempty" doc:"An enrich instance's ID, or null to clear it."`
+		HideBelow         optional[float64] `json:"hide_below,omitempty" doc:"A score, or null to hide none for their score."`
+		Duplicates        optional[string]  `json:"duplicates,omitempty" doc:"off, exact, or near; null is off."`
+		DuplicateDistance optional[int]     `json:"duplicate_distance,omitempty" doc:"0 to 8; null is 3."`
+		DuplicateKeep     optional[string]  `json:"duplicate_keep,omitempty" doc:"best, oldest, or newest; null is best."`
 	}
 }
 
@@ -60,6 +69,23 @@ func (s *Server) settings(ctx context.Context) (*settingsOut, error) {
 	if i := scoreNamed(score, insts); i != nil {
 		out.Body.ScoreInstance = &i.ID
 	}
+	b := &out.Body
+	if b.HideBelow, err = hideBelow.core(ctx, s); err != nil {
+		return nil, s.fail(err)
+	}
+	dups, err := duplicates.core(ctx, s)
+	if err != nil {
+		return nil, s.fail(err)
+	}
+	dist, err := duplicateDistance.core(ctx, s)
+	if err != nil {
+		return nil, s.fail(err)
+	}
+	keep, err := duplicateKeep.core(ctx, s)
+	if err != nil {
+		return nil, s.fail(err)
+	}
+	b.Duplicates, b.DuplicateDistance, b.DuplicateKeep = *dups, *dist, *keep
 	return out, nil
 }
 
@@ -87,9 +113,13 @@ func (s *Server) settingsRoutes(api huma.API) {
 				}
 			}
 			if in.Body.ScoreInstance.Sent {
-				if err := s.setScoreInstance(ctx, nil, in.Body.ScoreInstance.ID); err != nil {
+				if err := s.setScoreInstance(ctx, nil, in.Body.ScoreInstance.Value); err != nil {
 					return nil, err
 				}
+			}
+			b := in.Body
+			if err := setHideOptions(ctx, s, nil, b.HideBelow, b.Duplicates, b.DuplicateDistance, b.DuplicateKeep); err != nil {
+				return nil, err
 			}
 			return s.settings(ctx)
 		})

@@ -218,3 +218,66 @@ func Purge(lib *library.Library) jobs.Handler {
 		return nil
 	}
 }
+
+// HideKind archives a library's low-scoring and duplicate cards.
+const HideKind = "library.hide"
+
+// HidePayload is a HideKind job's payload: the library's settings when the
+// job was queued. ScoreInstance and ScoreKey name the score it reads, if any.
+type HidePayload struct {
+	Library       int64    `json:"library"`
+	ScoreInstance int64    `json:"score_instance,omitempty"`
+	ScoreKey      string   `json:"score_key,omitempty"`
+	HideBelow     *float64 `json:"hide_below,omitempty"`
+	Duplicates    string   `json:"duplicates"`
+	Distance      int      `json:"distance"`
+	Keep          string   `json:"keep"`
+}
+
+// HideProgress counts what a HideKind job did.
+type HideProgress struct {
+	Groups     int `json:"groups"`
+	LowScore   int `json:"low_score"`
+	Duplicate  int `json:"duplicate"`
+	Archived   int `json:"archived"`
+	Unarchived int `json:"unarchived"`
+}
+
+// Hide is the jobs.Handler for HideKind.
+func Hide(lib *library.Library) jobs.Handler {
+	return func(ctx context.Context, r *jobs.Run) error {
+		var p HidePayload
+		if err := json.Unmarshal(r.Payload, &p); err != nil {
+			return err
+		}
+		cands, err := lib.HideCandidates(ctx, p.Library, p.ScoreInstance, p.ScoreKey)
+		if err != nil {
+			return err
+		}
+		var groups [][]int64
+		switch p.Duplicates {
+		case "exact":
+			groups, err = lib.DuplicateGroups(ctx, p.Library, -1)
+		case "near":
+			groups, err = lib.DuplicateGroups(ctx, p.Library, p.Distance)
+		}
+		if err != nil {
+			return err
+		}
+		hidden := library.PlanHide(cands, groups, p.HideBelow, p.Keep)
+		prog := HideProgress{Groups: len(groups)}
+		for _, reason := range hidden {
+			if reason == library.ReasonLowScore {
+				prog.LowScore++
+			} else {
+				prog.Duplicate++
+			}
+		}
+		if prog.Archived, prog.Unarchived, err = lib.SetHidden(ctx, p.Library, hidden); err != nil {
+			return err
+		}
+		raw, _ := json.Marshal(prog)
+		r.SetProgress(raw)
+		return nil
+	}
+}

@@ -22,14 +22,18 @@ func (s *Server) librarySetting(ctx context.Context, lib int64, key string) (str
 }
 
 // librarySettingOut is one library setting.
-type librarySettingOut struct {
-	Value      *int64 `json:"value" doc:"What the library uses: its override, or the default."`
-	Default    *int64 `json:"default" doc:"The core's value, which a library without an override follows."`
-	Overridden bool   `json:"overridden"`
+type librarySettingOut[T any] struct {
+	Value      *T   `json:"value" doc:"What the library uses: its override, or the default."`
+	Default    *T   `json:"default" doc:"The core's value, which a library without an override follows."`
+	Overridden bool `json:"overridden"`
 }
 
 type librarySettings struct {
-	ScoreInstance librarySettingOut `json:"score_instance" doc:"The enrich instance whose values this library's grid, filters, and sort use."`
+	ScoreInstance     librarySettingOut[int64]   `json:"score_instance" doc:"The enrich instance whose values this library's grid, filters, and sort use."`
+	HideBelow         librarySettingOut[float64] `json:"hide_below" doc:"Hiding archives cards whose grid score is below this; null hides none for their score."`
+	Duplicates        librarySettingOut[string]  `json:"duplicates" doc:"Hiding archives duplicates: off, exact (the same content), or near (text within duplicate_distance bits)."`
+	DuplicateDistance librarySettingOut[int]     `json:"duplicate_distance" doc:"For near duplicates, the most bits two cards' text hashes may differ by."`
+	DuplicateKeep     librarySettingOut[string]  `json:"duplicate_keep" doc:"The duplicate hiding keeps: the best score, the oldest, or the newest."`
 }
 
 type librarySettingsOut struct{ Body librarySettings }
@@ -41,7 +45,11 @@ type librarySettingsIn struct {
 type patchLibrarySettingsIn struct {
 	ID   int64 `path:"id"`
 	Body struct {
-		ScoreInstance optionalID `json:"score_instance,omitempty" doc:"An enrich instance's ID, or null to follow the default."`
+		ScoreInstance     optional[int64]   `json:"score_instance,omitempty" doc:"An enrich instance's ID, or null to follow the default."`
+		HideBelow         optional[float64] `json:"hide_below,omitempty" doc:"A score, or null to follow the default."`
+		Duplicates        optional[string]  `json:"duplicates,omitempty" doc:"off, exact, or near, or null to follow the default."`
+		DuplicateDistance optional[int]     `json:"duplicate_distance,omitempty" doc:"0 to 8, or null to follow the default."`
+		DuplicateKeep     optional[string]  `json:"duplicate_keep,omitempty" doc:"best, oldest, or newest, or null to follow the default."`
 	}
 }
 
@@ -73,7 +81,44 @@ func (s *Server) librarySettings(ctx context.Context, id int64) (*librarySetting
 	if i := scoreNamed(def, insts); i != nil {
 		out.Body.ScoreInstance.Default = &i.ID
 	}
+	b := &out.Body
+	if b.HideBelow, err = hideBelow.out(ctx, s, id); err != nil {
+		return nil, s.fail(err)
+	}
+	if b.Duplicates, err = duplicates.out(ctx, s, id); err != nil {
+		return nil, s.fail(err)
+	}
+	if b.DuplicateDistance, err = duplicateDistance.out(ctx, s, id); err != nil {
+		return nil, s.fail(err)
+	}
+	if b.DuplicateKeep, err = duplicateKeep.out(ctx, s, id); err != nil {
+		return nil, s.fail(err)
+	}
 	return out, nil
+}
+
+// setHideOptions stores each hide setting that was sent, for library lib or,
+// for a nil lib, the core.
+func setHideOptions(ctx context.Context, s *Server, lib *int64, below optional[float64], dups optional[string], dist optional[int], keep optional[string]) error {
+	if below.Sent {
+		if err := hideBelow.set(ctx, s, lib, below.Value); err != nil {
+			return err
+		}
+	}
+	if dups.Sent {
+		if err := duplicates.set(ctx, s, lib, dups.Value); err != nil {
+			return err
+		}
+	}
+	if dist.Sent {
+		if err := duplicateDistance.set(ctx, s, lib, dist.Value); err != nil {
+			return err
+		}
+	}
+	if keep.Sent {
+		return duplicateKeep.set(ctx, s, lib, keep.Value)
+	}
+	return nil
 }
 
 func (s *Server) librarySettingsRoutes(api huma.API) {
@@ -92,10 +137,14 @@ func (s *Server) librarySettingsRoutes(api huma.API) {
 			if _, err := s.librarySettings(ctx, in.ID); err != nil {
 				return nil, err
 			}
-			if in.Body.ScoreInstance.Sent {
-				if err := s.setScoreInstance(ctx, &in.ID, in.Body.ScoreInstance.ID); err != nil {
+			b := in.Body
+			if b.ScoreInstance.Sent {
+				if err := s.setScoreInstance(ctx, &in.ID, b.ScoreInstance.Value); err != nil {
 					return nil, err
 				}
+			}
+			if err := setHideOptions(ctx, s, &in.ID, b.HideBelow, b.Duplicates, b.DuplicateDistance, b.DuplicateKeep); err != nil {
+				return nil, err
 			}
 			return s.librarySettings(ctx, in.ID)
 		})

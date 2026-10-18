@@ -97,6 +97,7 @@ func worker() error {
 			bulk.ExportKind:            bulk.Export(ex),
 			bulk.DeleteLibraryKind:     bulk.DeleteLibrary(svc.lib),
 			bulk.PurgeKind:             bulk.Purge(svc.lib),
+			bulk.HideKind:              bulk.Hide(svc.lib),
 			targets.PushKind:           tg.RunPush,
 			targets.ScanKind:           tg.RunScan,
 			targets.ReconcileKind:      tg.RunReconcile,

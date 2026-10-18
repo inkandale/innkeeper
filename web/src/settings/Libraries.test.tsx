@@ -28,6 +28,11 @@ beforeEach(() => {
           { id: 2, name: "Chub archive", cards: 300, lorebooks: 4, created_at: now },
         ]);
       if (path === "/api/plugins" || path === "/api/instances") return json([]);
+      if (path.endsWith("/settings")) {
+        const off = { value: null, default: null, overridden: false };
+        return json({ score_instance: off, hide_below: off, duplicates: { ...off, value: "off", default: "off" },
+          duplicate_distance: { ...off, value: 3, default: 3 }, duplicate_keep: { ...off, value: "best", default: "best" } });
+      }
       if (req.method === "DELETE") return json({ id: 9, kind: "library.delete", status: "running", created_at: now, payload: {}, progress: { done: 100, total: 304 } }, 202);
       if (path === "/api/jobs/9") return json({ id: 9, kind: "library.delete", status: "running", created_at: now, payload: {}, progress: { done: 100, total: 304 } });
       return json({ id: 3, name: "x", cards: 0, lorebooks: 0, created_at: now }, req.method === "POST" ? 201 : 200);

@@ -124,6 +124,12 @@ export function Archive({ kind, entity }: { kind: Kind; entity: Entity }) {
       <button className={archived ? "button" : "button danger"} disabled={set.isPending} onClick={() => set.mutate()}>
         {archived ? "Unarchive" : "Archive"}
       </button>
+      {entity.archived_reason && (
+        <span className="muted">
+          Hidden {entity.archived_reason === "duplicate" ? "as a duplicate" : "for a low score"}. If you unarchive it, the next
+          hide run may hide it again.
+        </span>
+      )}
       {!archived && linked.length > 0 && (
         <label className="check">
           <span>Also delete from {linked.join(", ")}, chats included</span>

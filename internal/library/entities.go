@@ -78,6 +78,8 @@ type Entity struct {
 	Slug           string
 	HeadRevisionID int64
 	ArchivedAt     *time.Time
+	// ArchivedReason is why the hide job archived it, or empty.
+	ArchivedReason string
 	Provenance     string
 	CreatedAt      time.Time
 }
@@ -113,11 +115,11 @@ type Edit struct {
 	Created time.Time
 }
 
-const entityCols = `id, library_id, slug, coalesce(head_revision_id, 0), archived_at, provenance, created_at`
+const entityCols = `id, library_id, slug, coalesce(head_revision_id, 0), archived_at, coalesce(archived_reason, ''), provenance, created_at`
 
 func scanEntity(row pgx.Row) (Entity, error) {
 	var e Entity
-	err := row.Scan(&e.ID, &e.LibraryID, &e.Slug, &e.HeadRevisionID, &e.ArchivedAt, &e.Provenance, &e.CreatedAt)
+	err := row.Scan(&e.ID, &e.LibraryID, &e.Slug, &e.HeadRevisionID, &e.ArchivedAt, &e.ArchivedReason, &e.Provenance, &e.CreatedAt)
 	return e, mapErr(err)
 }
 
@@ -279,10 +281,11 @@ func (s *Entities) History(ctx context.Context, id int64) ([]Revision, error) {
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Revision, error) { return scanRevision(row) })
 }
 
-// SetArchived archives or unarchives an entity.
+// SetArchived archives or unarchives an entity for the owner, which takes it
+// out of the hide job's hands.
 func (s *Entities) SetArchived(ctx context.Context, id int64, archived bool) error {
 	tag, err := s.pool.Exec(ctx, `UPDATE `+s.k.Table+`
-		SET archived_at = CASE WHEN $2 THEN coalesce(archived_at, now()) END WHERE id = $1`, id, archived)
+		SET archived_at = CASE WHEN $2 THEN coalesce(archived_at, now()) END, archived_reason = NULL WHERE id = $1`, id, archived)
 	if err != nil {
 		return err
 	}

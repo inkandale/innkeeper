@@ -70,12 +70,12 @@ func TestLibraryScoreInstanceOverride(t *testing.T) {
 func TestLibrarySettingsOverMCP(t *testing.T) {
 	e := newEnrichEnv(t)
 	s := e.mcpClient(tier.Write)
-	tool(t, s, "update_library_settings", map[string]any{"library": 1, "score_instance": e.instID}, false)
+	tool(t, s, "update_library_settings", map[string]any{"library": 1, "settings": map[string]any{"score_instance": e.instID}}, false)
 	got := tool(t, s, "get_library_settings", map[string]any{"library": 1}, false)
 	if !strings.Contains(got, fmt.Sprintf(`"value":%d`, e.instID)) || !strings.Contains(got, `"overridden":true`) {
 		t.Fatalf("get_library_settings = %s", got)
 	}
-	tool(t, s, "update_library_settings", map[string]any{"library": 1, "score_instance": nil}, false)
+	tool(t, s, "update_library_settings", map[string]any{"library": 1, "settings": map[string]any{"score_instance": nil}}, false)
 	if got := tool(t, s, "get_library_settings", map[string]any{"library": 1}, false); !strings.Contains(got, `"overridden":false`) {
 		t.Fatalf("after reset = %s", got)
 	}

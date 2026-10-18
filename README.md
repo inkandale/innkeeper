@@ -532,6 +532,31 @@ When reviewing a sync, "Import as variant of this" imports the app item as a
 new card linked to the compared card. In the API, that is `variant_of` on an
 `import` resolution.
 
+## Hiding and purging
+
+A large library, such as an imported archive, holds many weak cards and many
+copies of the same card. **Hiding** archives them, so search leaves them out,
+without deleting anything. Set it per library under Settings > Libraries, or
+with `PATCH /libraries/{id}/settings`; a library without its own value follows
+the default in `PATCH /settings`.
+
+| Setting | Hides |
+|---|---|
+| `hide_below` | Cards whose grid score, from the library's Scores from instance, is below it |
+| `duplicates` | `exact`: cards with the same content. `near`: also cards whose text differs by at most `duplicate_distance` bits, 3 by default. A matching image alone doesn't count, since archives reuse art |
+| `duplicate_keep` | Which copy of each duplicate group stays: the `best` score, the `oldest`, or the `newest` |
+
+"Hide now", `POST /libraries/{id}/hide`, or the `hide_cards` MCP tool runs a
+job that archives what the settings pick and records why: `low_score` or
+`duplicate`. A later run unarchives the cards it hid that now pass. It never
+touches a card you archived yourself, and archiving or unarchiving a card by
+hand clears its reason. An unarchived duplicate can be hidden again by the
+next run.
+
+**Purging** deletes for good. Select cards, such as archived ones scoring
+under 30, and use Delete…, typing how many there are. Cards pushed to an app
+are kept. See `POST /cards/purge`.
+
 ## Sync
 
 The image ships a target for [Lumiverse](https://github.com/prolix-oc/Lumiverse).

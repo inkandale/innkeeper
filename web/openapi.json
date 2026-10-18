@@ -1849,6 +1849,13 @@
             "format": "date-time",
             "type": "string"
           },
+          "archived_reason": {
+            "enum": [
+              "low_score",
+              "duplicate"
+            ],
+            "type": "string"
+          },
           "cards": {
             "description": "Lorebooks only: IDs of linked cards",
             "items": {
@@ -2372,6 +2379,9 @@
             "format": "date-time",
             "type": "string"
           },
+          "archived_reason": {
+            "type": "string"
+          },
           "cards": {
             "description": "Lorebooks with include cards: IDs of linked cards.",
             "items": {
@@ -2809,7 +2819,37 @@
         ],
         "type": "object"
       },
-      "LibrarySettingOut": {
+      "LibrarySettingOutFloat64": {
+        "additionalProperties": false,
+        "properties": {
+          "default": {
+            "description": "The core's value, which a library without an override follows.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "overridden": {
+            "type": "boolean"
+          },
+          "value": {
+            "description": "What the library uses: its override, or the default.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "value",
+          "default",
+          "overridden"
+        ],
+        "type": "object"
+      },
+      "LibrarySettingOutInt": {
         "additionalProperties": false,
         "properties": {
           "default": {
@@ -2839,6 +2879,64 @@
         ],
         "type": "object"
       },
+      "LibrarySettingOutInt64": {
+        "additionalProperties": false,
+        "properties": {
+          "default": {
+            "description": "The core's value, which a library without an override follows.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "overridden": {
+            "type": "boolean"
+          },
+          "value": {
+            "description": "What the library uses: its override, or the default.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "value",
+          "default",
+          "overridden"
+        ],
+        "type": "object"
+      },
+      "LibrarySettingOutString": {
+        "additionalProperties": false,
+        "properties": {
+          "default": {
+            "description": "The core's value, which a library without an override follows.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "overridden": {
+            "type": "boolean"
+          },
+          "value": {
+            "description": "What the library uses: its override, or the default.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "value",
+          "default",
+          "overridden"
+        ],
+        "type": "object"
+      },
       "LibrarySettings": {
         "additionalProperties": false,
         "properties": {
@@ -2851,13 +2949,33 @@
             "readOnly": true,
             "type": "string"
           },
+          "duplicate_distance": {
+            "$ref": "#/components/schemas/LibrarySettingOutInt",
+            "description": "For near duplicates, the most bits two cards' text hashes may differ by."
+          },
+          "duplicate_keep": {
+            "$ref": "#/components/schemas/LibrarySettingOutString",
+            "description": "The duplicate hiding keeps: the best score, the oldest, or the newest."
+          },
+          "duplicates": {
+            "$ref": "#/components/schemas/LibrarySettingOutString",
+            "description": "Hiding archives duplicates: off, exact (the same content), or near (text within duplicate_distance bits)."
+          },
+          "hide_below": {
+            "$ref": "#/components/schemas/LibrarySettingOutFloat64",
+            "description": "Hiding archives cards whose grid score is below this; null hides none for their score."
+          },
           "score_instance": {
-            "$ref": "#/components/schemas/LibrarySettingOut",
+            "$ref": "#/components/schemas/LibrarySettingOutInt64",
             "description": "The enrich instance whose values this library's grid, filters, and sort use."
           }
         },
         "required": [
-          "score_instance"
+          "score_instance",
+          "hide_below",
+          "duplicates",
+          "duplicate_distance",
+          "duplicate_keep"
         ],
         "type": "object"
       },
@@ -3128,6 +3246,36 @@
             "readOnly": true,
             "type": "string"
           },
+          "duplicate_distance": {
+            "description": "0 to 8, or null to follow the default.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "duplicate_keep": {
+            "description": "best, oldest, or newest, or null to follow the default.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "duplicates": {
+            "description": "off, exact, or near, or null to follow the default.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hide_below": {
+            "description": "A score, or null to follow the default.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
           "score_instance": {
             "description": "An enrich instance's ID, or null to follow the default.",
             "format": "int64",
@@ -3150,6 +3298,36 @@
             "format": "uri",
             "readOnly": true,
             "type": "string"
+          },
+          "duplicate_distance": {
+            "description": "0 to 8; null is 3.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "duplicate_keep": {
+            "description": "best, oldest, or newest; null is best.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "duplicates": {
+            "description": "off, exact, or near; null is off.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hide_below": {
+            "description": "A score, or null to hide none for their score.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
           },
           "onboarding_done": {
             "description": "true once the owner finishes or skips the setup wizard; false shows it again.",
@@ -4321,6 +4499,33 @@
             "readOnly": true,
             "type": "string"
           },
+          "duplicate_distance": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "duplicate_keep": {
+            "enum": [
+              "best",
+              "oldest",
+              "newest"
+            ],
+            "type": "string"
+          },
+          "duplicates": {
+            "enum": [
+              "off",
+              "exact",
+              "near"
+            ],
+            "type": "string"
+          },
+          "hide_below": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
           "onboarding_done": {
             "description": "Whether the owner finished or skipped the setup wizard.",
             "type": "boolean"
@@ -4341,7 +4546,11 @@
         "required": [
           "theme",
           "onboarding_done",
-          "score_instance"
+          "score_instance",
+          "hide_below",
+          "duplicates",
+          "duplicate_distance",
+          "duplicate_keep"
         ],
         "type": "object"
       },
@@ -9999,6 +10208,49 @@
           }
         },
         "summary": "Rename a library",
+        "tags": [
+          "Libraries"
+        ]
+      }
+    },
+    "/libraries/{id}/hide": {
+      "post": {
+        "description": "Queues a job that archives, by the library's settings, each card scoring below hide_below and every duplicate but the one duplicate_keep picks, and records why. Cards it archived on an earlier run that now pass are unarchived. Cards the owner archived are left alone. Its progress counts each.",
+        "operationId": "hide-cards",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Archive a library's low-scoring and duplicate cards",
         "tags": [
           "Libraries"
         ]

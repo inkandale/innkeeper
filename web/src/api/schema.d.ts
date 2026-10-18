@@ -1607,6 +1607,26 @@ export interface paths {
         patch: operations["rename-library"];
         trace?: never;
     };
+    "/libraries/{id}/hide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive a library's low-scoring and duplicate cards
+         * @description Queues a job that archives, by the library's settings, each card scoring below hide_below and every duplicate but the one duplicate_keep picks, and records why. Cards it archived on an earlier run that now pass are unarchived. Cards the owner archived are left alone. Its progress counts each.
+         */
+        post: operations["hide-cards"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/libraries/{id}/settings": {
         parameters: {
             query?: never;
@@ -3155,6 +3175,8 @@ export interface components {
             readonly $schema?: string;
             /** Format: date-time */
             archived_at?: string;
+            /** @enum {string} */
+            archived_reason?: "low_score" | "duplicate";
             /** @description Lorebooks only: IDs of linked cards */
             cards?: number[] | null;
             /** @description Cards only: IDs of the collections it's in */
@@ -3357,6 +3379,7 @@ export interface components {
         Hit: {
             /** Format: date-time */
             archived_at?: string;
+            archived_reason?: string;
             /** @description Lorebooks with include cards: IDs of linked cards. */
             cards?: number[] | null;
             /** @description With include enrichments: the score instance's current value of each key. */
@@ -3520,7 +3543,20 @@ export interface components {
             readonly $schema?: string;
             name: string;
         };
-        LibrarySettingOut: {
+        LibrarySettingOutFloat64: {
+            /**
+             * Format: double
+             * @description The core's value, which a library without an override follows.
+             */
+            default: number | null;
+            overridden: boolean;
+            /**
+             * Format: double
+             * @description What the library uses: its override, or the default.
+             */
+            value: number | null;
+        };
+        LibrarySettingOutInt: {
             /**
              * Format: int64
              * @description The core's value, which a library without an override follows.
@@ -3533,6 +3569,26 @@ export interface components {
              */
             value: number | null;
         };
+        LibrarySettingOutInt64: {
+            /**
+             * Format: int64
+             * @description The core's value, which a library without an override follows.
+             */
+            default: number | null;
+            overridden: boolean;
+            /**
+             * Format: int64
+             * @description What the library uses: its override, or the default.
+             */
+            value: number | null;
+        };
+        LibrarySettingOutString: {
+            /** @description The core's value, which a library without an override follows. */
+            default: string | null;
+            overridden: boolean;
+            /** @description What the library uses: its override, or the default. */
+            value: string | null;
+        };
         LibrarySettings: {
             /**
              * Format: uri
@@ -3540,8 +3596,16 @@ export interface components {
              * @example /api/schemas/LibrarySettings.json
              */
             readonly $schema?: string;
+            /** @description For near duplicates, the most bits two cards' text hashes may differ by. */
+            duplicate_distance: components["schemas"]["LibrarySettingOutInt"];
+            /** @description The duplicate hiding keeps: the best score, the oldest, or the newest. */
+            duplicate_keep: components["schemas"]["LibrarySettingOutString"];
+            /** @description Hiding archives duplicates: off, exact (the same content), or near (text within duplicate_distance bits). */
+            duplicates: components["schemas"]["LibrarySettingOutString"];
+            /** @description Hiding archives cards whose grid score is below this; null hides none for their score. */
+            hide_below: components["schemas"]["LibrarySettingOutFloat64"];
             /** @description The enrich instance whose values this library's grid, filters, and sort use. */
-            score_instance: components["schemas"]["LibrarySettingOut"];
+            score_instance: components["schemas"]["LibrarySettingOutInt64"];
         };
         LibrarySummary: {
             /**
@@ -3653,6 +3717,20 @@ export interface components {
             readonly $schema?: string;
             /**
              * Format: int64
+             * @description 0 to 8, or null to follow the default.
+             */
+            duplicate_distance?: number | null;
+            /** @description best, oldest, or newest, or null to follow the default. */
+            duplicate_keep?: string | null;
+            /** @description off, exact, or near, or null to follow the default. */
+            duplicates?: string | null;
+            /**
+             * Format: double
+             * @description A score, or null to follow the default.
+             */
+            hide_below?: number | null;
+            /**
+             * Format: int64
              * @description An enrich instance's ID, or null to follow the default.
              */
             score_instance?: number | null;
@@ -3664,6 +3742,20 @@ export interface components {
              * @example /api/schemas/PatchSettingsInBody.json
              */
             readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description 0 to 8; null is 3.
+             */
+            duplicate_distance?: number | null;
+            /** @description best, oldest, or newest; null is best. */
+            duplicate_keep?: string | null;
+            /** @description off, exact, or near; null is off. */
+            duplicates?: string | null;
+            /**
+             * Format: double
+             * @description A score, or null to hide none for their score.
+             */
+            hide_below?: number | null;
             /** @description true once the owner finishes or skips the setup wizard; false shows it again. */
             onboarding_done?: boolean;
             /**
@@ -4103,6 +4195,14 @@ export interface components {
              * @example /api/schemas/Settings.json
              */
             readonly $schema?: string;
+            /** Format: int64 */
+            duplicate_distance: number;
+            /** @enum {string} */
+            duplicate_keep: "best" | "oldest" | "newest";
+            /** @enum {string} */
+            duplicates: "off" | "exact" | "near";
+            /** Format: double */
+            hide_below: number | null;
             /** @description Whether the owner finished or skipped the setup wizard. */
             onboarding_done: boolean;
             /**
@@ -7589,6 +7689,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibrarySummary"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "hide-cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
                 };
             };
             /** @description Error */

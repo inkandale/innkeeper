@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
+	"reflect"
 	"slices"
 	"strconv"
 
@@ -245,19 +246,21 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 		})
 }
 
-// optionalID is a body field that may be absent, null, or an ID.
-type optionalID struct {
-	Sent bool
-	ID   *int64
+// optional is a body field that may be absent, null, or a value.
+type optional[T any] struct {
+	Sent  bool
+	Value *T
 }
 
-func (o *optionalID) UnmarshalJSON(b []byte) error {
+func (o *optional[T]) UnmarshalJSON(b []byte) error {
 	o.Sent = true
-	return json.Unmarshal(b, &o.ID)
+	return json.Unmarshal(b, &o.Value)
 }
 
-func (o optionalID) Schema(r huma.Registry) *huma.Schema {
-	return &huma.Schema{Type: "integer", Format: "int64", Nullable: true}
+func (o optional[T]) Schema(r huma.Registry) *huma.Schema {
+	schema := *r.Schema(reflect.TypeFor[T](), false, "")
+	schema.Nullable = true
+	return &schema
 }
 
 // setScoreInstance stores the score_instance setting, the core's for a nil

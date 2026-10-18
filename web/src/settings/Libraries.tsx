@@ -4,6 +4,7 @@ import { api, must } from "../api/client";
 import { librariesQuery } from "../api/queries";
 import { JobLine } from "../cards/ImportForm";
 import { rememberedLibrary, rememberLibrary } from "../shell/library";
+import { Hiding } from "./Hiding";
 import { ScoresFrom } from "./ScoresFrom";
 
 function nameFrom(e: FormEvent<HTMLFormElement>): string {
@@ -118,6 +119,7 @@ export function Libraries() {
               </div>
             )}
             {renaming !== l.id && <ScoresFrom library={l.id} />}
+            {renaming !== l.id && <Hiding library={l.id} />}
             {deleting[l.id] && <JobLine label={`Deleting ${l.name}`} id={deleting[l.id]!} to={`/settings/jobs/${deleting[l.id]}`} />}
           </li>
         ))}

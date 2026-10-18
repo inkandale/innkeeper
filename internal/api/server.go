@@ -169,6 +169,7 @@ func (s *Server) routes(api huma.API) {
 	s.libraryRoutes(api)
 	s.librarySettingsRoutes(api)
 	s.purgeRoutes(api)
+	s.hideRoutes(api)
 	s.catalogRoutes(api)
 	s.instanceRoutes(api)
 	s.pluginSettingsRoutes(api)

@@ -82,16 +82,18 @@ var targetStatuses = []string{"in_sync", "ahead", "remote_changed", "diverged", 
 
 // Hit is one matching card.
 type Hit struct {
-	ID         int64          `json:"id"`
-	Slug       string         `json:"slug"`
-	RevisionID int64          `json:"revision_id"`
-	ArchivedAt *time.Time     `json:"archived_at,omitempty"`
-	Fields     map[string]any `json:"fields"`
-	Tags       []string       `json:"tags,omitempty"`
-	Lorebooks  []int64        `json:"lorebooks,omitempty"`
-	Targets    []TargetState  `json:"targets,omitempty" doc:"With include targets: how the card stands on each target it's pushed to."`
-	Cards      []int64        `json:"cards,omitempty" doc:"Lorebooks with include cards: IDs of linked cards."`
-	Entries    *int           `json:"entries,omitempty" doc:"Lorebooks only: how many entries it has."`
+	ID         int64      `json:"id"`
+	Slug       string     `json:"slug"`
+	RevisionID int64      `json:"revision_id"`
+	ArchivedAt *time.Time `json:"archived_at,omitempty"`
+	// ArchivedReason is why the hide job archived it: low_score or duplicate.
+	ArchivedReason string         `json:"archived_reason,omitempty"`
+	Fields         map[string]any `json:"fields"`
+	Tags           []string       `json:"tags,omitempty"`
+	Lorebooks      []int64        `json:"lorebooks,omitempty"`
+	Targets        []TargetState  `json:"targets,omitempty" doc:"With include targets: how the card stands on each target it's pushed to."`
+	Cards          []int64        `json:"cards,omitempty" doc:"Lorebooks with include cards: IDs of linked cards."`
+	Entries        *int           `json:"entries,omitempty" doc:"Lorebooks only: how many entries it has."`
 	// Enrichments are keyed by enrichment key.
 	Enrichments map[string]HitEnrichment `json:"enrichments,omitempty" doc:"With include enrichments: the score instance's current value of each key."`
 	Family      *Family                  `json:"family,omitempty" doc:"With group family: the family this hit is the face of."`
@@ -653,7 +655,7 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 			return Results{}, err
 		}
 	}
-	cols := `c.id, c.slug, r.id, c.archived_at, r.data, r.avatar_blob, ` + tags + `, ` + books + `, ` + targets + `, ` + cards + `, ` + entries + `, ` + enrichments
+	cols := `c.id, c.slug, r.id, c.archived_at, coalesce(c.archived_reason, ''), r.data, r.avatar_blob, ` + tags + `, ` + books + `, ` + targets + `, ` + cards + `, ` + entries + `, ` + enrichments
 	limit, skip := w.arg(size+1), w.arg(offset)
 	sql := `SELECT ` + cols + `, NULL::bigint, NULL::int, NULL::bigint[], ` + o.cursor() + ` FROM ` + from(k) + `
 		WHERE ` + cond + ` AND ` + after + ` ORDER BY ` + o.sql() + ` LIMIT ` + limit + ` OFFSET ` + skip
@@ -671,7 +673,7 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 	var famSize *int
 	var matched []int64
 	var cur, next string
-	_, err = pgx.ForEachRow(rows, []any{&h.ID, &h.Slug, &h.RevisionID, &h.ArchivedAt, &data, &avatar, &h.Tags, &h.Lorebooks, &h.Targets, &h.Cards, &h.Entries, &h.Enrichments, &rootID, &famSize, &matched, &cur},
+	_, err = pgx.ForEachRow(rows, []any{&h.ID, &h.Slug, &h.RevisionID, &h.ArchivedAt, &h.ArchivedReason, &data, &avatar, &h.Tags, &h.Lorebooks, &h.Targets, &h.Cards, &h.Entries, &h.Enrichments, &rootID, &famSize, &matched, &cur},
 		func() error {
 			if len(res.Hits) == size-1 {
 				next = base64.RawURLEncoding.EncodeToString([]byte(cur))

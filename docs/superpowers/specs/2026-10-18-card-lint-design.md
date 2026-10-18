@@ -20,14 +20,15 @@ Builds on the [enrichments design](2026-10-15-enrichments-design.md).
 
 | Topic | Decision |
 |---|---|
-| Where lint lives | A new plugin, `card-lint`, in innkeeper-plugins. It needs no core change. |
+| Where lint lives | A new plugin, `card-lint`, in innkeeper-plugins. Its checks need no core change. |
 | Token counts | Estimated as a quarter of the characters, the same rule the web editor uses (`web/src/card/draft.ts`). This is close enough for filtering, and needs no tokenizer dependency. |
 | Gate | One `lint` score, 0 to 100, is the grid key, so `hide_below` and the grid work on it unchanged. |
 | Problems | A `problems` list of codes, shown on the card page, says why a card lost points. |
 | Duplicates | Out of scope: the hide job already finds exact and near duplicates. |
 | Language | An `english` score: the share of common English words in the text, with no language-detection dependency. A card below a set level gets the `not_english` problem, which costs whatever points the settings give it. |
 | Tunables | Every threshold and every problem's points are instance settings. The `default` in the config schema is the only copy of each default. |
-| Core change | One, and optional: an enrichment filter can name the instance it reads (see [Core](#core)). The two-stage flow works without it. |
+| Run size | A plugin can raise its enrich run cap in its manifest; card-lint does (see [Run size](#run-size)). |
+| Filter by instance | Optional: an enrichment filter can name the instance it reads (see [Core](#core)). The two-stage flow works without it. |
 
 ## card-lint
 
@@ -144,10 +145,10 @@ With today's core:
 
 1. Import the archive.
 2. Set the library's **Scores from** setting to the card-lint instance.
-3. Select all and run card-lint. A run refuses a selection of over 10,000 cards
-   (`enrich.MaxCards`), so split a larger archive by collection or tag and run
-   each part.
-4. Filter to `lint` at least 60, select all, and run forge-ai's enrich.
+3. Select all and run card-lint. card-lint sets `enrich_max_cards` (see
+   [Run size](#run-size)), so one run covers a whole archive.
+4. Filter to `lint` at least 60, select all, and run forge-ai's enrich. A
+   forge-ai run still takes at most 10,000 cards.
    The bulk run takes the filtered query and runs the instance you pick,
    so lint filters which cards forge-ai scores.
 5. Set **Scores from** back to forge-ai to see quality on the grid, and hide or
@@ -155,6 +156,21 @@ With today's core:
 
 Step 5 switching the grid back and forth is the cost of having one score
 instance per library.
+
+## Run size
+
+An enrich run takes at most 10,000 cards, because each card can cost a model
+call. card-lint's calls cost nothing, so a plugin can declare its own cap in
+the manifest:
+
+```toml
+enrich_max_cards = 1000000
+```
+
+0 or unset keeps the default of 10,000. A run's request is refused when its
+selection is over the plugin's cap, and the job stops reading cards at it.
+`card_ids` still takes at most 10,000 IDs per request; a larger run sends a
+query.
 
 ## Core
 

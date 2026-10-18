@@ -148,7 +148,8 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 			if (len(b.CardIDs) > 0) == (b.Query != nil) {
 				return nil, huma.Error400BadRequest("send card_ids or query")
 			}
-			if _, err := s.usable(ctx, b.InstanceID, "enrich"); err != nil {
+			inst, err := s.usable(ctx, b.InstanceID, "enrich")
+			if err != nil {
 				return nil, err
 			}
 			p := enrich.Payload{Rescore: b.Rescore}
@@ -156,7 +157,6 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 			if b.Query != nil {
 				// The job reads the query's cards as it goes, so the payload holds the query, not its IDs.
 				q := *b.Query
-				var err error
 				if q.Library, err = s.checkLibrary(ctx, q.Library); err != nil {
 					return nil, err
 				}
@@ -175,8 +175,8 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 			if n == 0 {
 				return nil, huma.Error400BadRequest("the query matches no cards")
 			}
-			if n > enrich.MaxCards {
-				return nil, huma.Error400BadRequest(fmt.Sprintf("a run takes at most %d cards; this one has %d", enrich.MaxCards, n))
+			if most := enrich.MaxCards(inst.Manifest); n > most {
+				return nil, huma.Error400BadRequest(fmt.Sprintf("a run of %s takes at most %d cards; this one has %d", inst.Manifest.Name, most, n))
 			}
 			return s.enqueue(ctx, jobs.Spec{Kind: enrich.Kind, InstanceID: &b.InstanceID, Payload: p})
 		})

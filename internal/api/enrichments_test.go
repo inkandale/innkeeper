@@ -277,7 +277,7 @@ func TestStartEnrichRunRejects(t *testing.T) {
 		"no cards":                 {"instance_id": e.instID, "card_ids": []int64{}},
 		"ids and a query":          {"instance_id": e.instID, "card_ids": []int64{id}, "query": map[string]any{}},
 		"a query matching nothing": {"instance_id": e.instID, "query": map[string]any{"filter": map[string]any{"name": "nobody"}}},
-		"too many cards":           {"instance_id": e.instID, "card_ids": make([]int64, enrich.MaxCards+1)},
+		"too many cards":           {"instance_id": e.instID, "card_ids": make([]int64, enrich.DefaultMaxCards+1)},
 		"not an enricher":          {"instance_id": e.importID, "card_ids": []int64{id}},
 	} {
 		if r := e.send("POST", "/enrichments/runs", body, auth...); r.Status != 400 && r.Status != 422 {
@@ -287,6 +287,20 @@ func TestStartEnrichRunRejects(t *testing.T) {
 	if r := e.send("POST", "/enrichments/runs", map[string]any{"instance_id": e.instID, "card_ids": []int64{id}},
 		"Authorization", "Bearer "+e.tokenWith(tier.Read)); r.Status != 403 {
 		t.Errorf("read tier: %s", r)
+	}
+}
+
+func TestStartEnrichRunTakesThePluginsCardCap(t *testing.T) {
+	e := newEnrichEnv(t)
+	e.manifests["judge"].EnrichMaxCards = 1
+	a, b := e.card("Brakka", "x"), e.card("Carrow", "x")
+	auth := []string{"Authorization", "Bearer " + e.token}
+	query := map[string]any{"filter": map[string]any{"ids": []int64{a, b}}}
+	if r := e.send("POST", "/enrichments/runs", map[string]any{"instance_id": e.instID, "query": query}, auth...); r.Status != 400 {
+		t.Errorf("two cards past a cap of one: %s", r)
+	}
+	if r := e.send("POST", "/enrichments/runs", map[string]any{"instance_id": e.instID, "card_ids": []int64{a}}, auth...); r.Status != 202 {
+		t.Errorf("one card within a cap of one: %s", r)
 	}
 }
 

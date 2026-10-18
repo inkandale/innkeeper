@@ -454,3 +454,22 @@ bulk = true
 		t.Fatal("bulk without import validated")
 	}
 }
+
+func TestEnrichMaxCardsTakesOnlyAnEnrichersNonNegativeCap(t *testing.T) {
+	base := func(caps string, max int) *Manifest {
+		m := &Manifest{Name: "p", Version: "1", Protocol: Version, Command: []string{"p"}, Capabilities: []string{caps}, EnrichMaxCards: max}
+		if caps == "enrich" {
+			m.Enrichments = map[string]Enrichment{"lint": {Type: "score", Label: "Lint", Range: []float64{0, 100}}}
+		}
+		return m
+	}
+	if err := base("enrich", 200_000).Validate(); err != nil {
+		t.Errorf("enrich plugin raising its cap: %v", err)
+	}
+	if base("enrich", -1).Validate() == nil {
+		t.Error("negative enrich_max_cards validated")
+	}
+	if base("push", 5).Validate() == nil {
+		t.Error("enrich_max_cards without enrich validated")
+	}
+}

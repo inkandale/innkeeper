@@ -4,6 +4,7 @@
 package enrich
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -23,8 +24,12 @@ import (
 // Kind is the enrich job kind. Its InstanceID is the enrich instance.
 const Kind = "enrich"
 
-// MaxCards is the most cards one run takes.
-const MaxCards = 10_000
+// DefaultMaxCards is the most cards one run takes unless its plugin says
+// otherwise: each card can cost the owner a model call.
+const DefaultMaxCards = 10_000
+
+// MaxCards is the most cards one run of m's plugin takes.
+func MaxCards(m *protocol.Manifest) int { return cmp.Or(m.EnrichMaxCards, DefaultMaxCards) }
 
 // maxWarnings and maxWarning bound the warnings a job's progress keeps.
 const (
@@ -205,7 +210,7 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 	if err != nil {
 		return err
 	}
-	next, total, err := p.batches(ctx, rn.Lib, MaxCards)
+	next, total, err := p.batches(ctx, rn.Lib, MaxCards(inst.Manifest))
 	if err != nil {
 		return err
 	}

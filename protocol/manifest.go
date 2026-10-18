@@ -55,6 +55,10 @@ type Manifest struct {
 	// one transaction, without queuing source detection.
 	Bulk bool `toml:"bulk"`
 
+	// EnrichMaxCards is the most cards one enrich run of the plugin takes,
+	// or 0 for the core's default. A plugin whose calls cost nothing can raise it.
+	EnrichMaxCards int `toml:"enrich_max_cards"`
+
 	// SourceKinds are the site source kinds a pull-only plugin follows: the
 	// core binds each such source to its instance as remote_id kind:ref.
 	SourceKinds []string `toml:"source_kinds"`
@@ -266,6 +270,12 @@ func (m *Manifest) Validate() error {
 			errs = append(errs, fmt.Errorf("format %q listed twice", f))
 		}
 		seenFormats[f] = true
+	}
+	if m.EnrichMaxCards < 0 {
+		errs = append(errs, errors.New("enrich_max_cards can't be negative"))
+	}
+	if !m.Has("enrich") && m.EnrichMaxCards != 0 {
+		errs = append(errs, errors.New("enrich_max_cards needs the enrich capability"))
 	}
 	if !m.Has("import") && m.Bulk {
 		errs = append(errs, errors.New("bulk needs the import capability"))

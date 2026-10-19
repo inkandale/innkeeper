@@ -111,6 +111,7 @@ func (s *Service) RunPush(ctx context.Context, r *jobs.Run) error {
 	b, err := s.push(ctx, k, *r.InstanceID, id, p.NewCopy, key, &pushExpect{lastPush: p.LastPush, appHash: p.AppHash, createOnly: p.CreateOnly})
 	switch {
 	case errors.Is(err, errAlreadyPushed):
+		// ponytail: an attempt that pushed but died before finishing counts 0 here.
 		var bindingID int64
 		if err := s.pool.QueryRow(ctx, `SELECT id FROM binding WHERE instance_id = $1 AND `+k.FK+` = $2 AND NOT imported`,
 			*r.InstanceID, id).Scan(&bindingID); err != nil {
@@ -128,7 +129,7 @@ func (s *Service) RunPush(ctx context.Context, r *jobs.Run) error {
 	if err != nil {
 		return err
 	}
-	if p.LorebookID == 0 {
+	if !k.isLorebook() {
 		r.AddCardsChanged(1)
 	}
 	r.SetProgress(raw)

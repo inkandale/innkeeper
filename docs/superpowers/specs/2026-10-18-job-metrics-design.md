@@ -55,7 +55,7 @@ Each handler that changes cards calls `AddCardsChanged` where it does:
 | `enrich` | Cards that got values |
 | `targets` | Cards a push sends, a resolve revises, a reconcile or sync imports or pulls, autosync pushes, or a source check applies |
 
-Export, backup, blob collection, detect, drift scans and action runs change no cards, and stay at 0. Action runs reach the library read-only.
+Export, backup, restore, blob collection, job prune, lorebook archive, detect, drift scans and action runs change no cards, and stay at 0. Action runs reach the library read-only.
 
 A sync's count includes the cards in the reconcile jobs it records, so summing the Jobs list counts those cards twice.
 
@@ -75,7 +75,7 @@ For a bulk parent, the API fills these from `ChildrenFor`. Regenerate the schema
 
 - **Jobs list** (`web/src/settings/Jobs.tsx`): adds *Duration* and *Cards* columns.
 - **Job page** (`web/src/settings/Job.tsx`): shows queue wait (`started_at − created_at`), run time, and cards changed.
-- Durations reuse `age()`'s format from `jobUtil.ts`. A cards count of 0 shows blank.
+- Durations reuse `age()`'s format from `jobUtil.ts`. In the list, a cards count of 0 shows blank.
 
 ## Stage 2: Prometheus
 

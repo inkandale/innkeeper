@@ -279,17 +279,19 @@ func (s *session) flush(cp json.RawMessage) {
 			auto = append(auto, got[i].Autosync...)
 		}
 		s.publish()
+		// Added before the checkpoint so both commit together; undone below on rollback.
+		s.run.AddCardsChanged(cards)
 		return s.run.SaveCheckpointTx(s.ctx, tx, cp)
 	})
 	if err != nil {
 		s.mu.Lock()
 		s.p = before
 		s.mu.Unlock()
+		s.run.AddCardsChanged(-cards)
 		s.publish()
 		s.fail(retryable(err))
 		return
 	}
-	s.run.AddCardsChanged(cards)
 	s.autosync = append(s.autosync, auto...)
 }
 

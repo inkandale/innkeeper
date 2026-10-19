@@ -146,6 +146,15 @@ func EnqueueDetect(ctx context.Context, q *jobs.Queue, log *slog.Logger) {
 	}
 }
 
+// EnqueueDetectForSites is EnqueueDetect when any of names is a sites plugin
+// that may have just started working, since the job leaves entities queued
+// while no sites instance works.
+func EnqueueDetectForSites(ctx context.Context, q *jobs.Queue, reg *plugins.Registry, log *slog.Logger, names ...string) {
+	if slices.ContainsFunc(names, func(p string) bool { return reg.HasCapability(p, protocol.CapabilitySites) }) {
+		EnqueueDetect(ctx, q, log)
+	}
+}
+
 // serve answers the plugin's calls for this run: the notifications an
 // import sends, other than progress.
 func (s *session) serve(_ context.Context, method string, params json.RawMessage) (any, error) {

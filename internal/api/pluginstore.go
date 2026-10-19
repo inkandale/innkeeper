@@ -8,6 +8,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/inkandale/innkeeper/internal/importer"
 	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/internal/tier"
 )
@@ -115,9 +116,7 @@ func (s *Server) pluginStoreRoutes(api huma.API) {
 				// The install succeeded; the next startup retries the instances.
 				s.Log.Error("create singleton instances after install", "plugin", in.Name, "err", err)
 			}
-			for _, p := range created {
-				s.detectWith(ctx, p)
-			}
+			importer.EnqueueDetectForSites(ctx, s.Queue, s.Registry, s.Log, created...)
 			return nil, nil
 		})
 

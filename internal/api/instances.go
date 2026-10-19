@@ -191,7 +191,7 @@ func (s *Server) instanceRoutes(api huma.API) {
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			s.detectWith(ctx, in.Body.Plugin)
+			importer.EnqueueDetectForSites(ctx, s.Queue, s.Registry, s.Log, in.Body.Plugin)
 			return s.instance(ctx, id)
 		})
 
@@ -217,7 +217,7 @@ func (s *Server) instanceRoutes(api huma.API) {
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			s.detectWith(ctx, cur.Plugin)
+			importer.EnqueueDetectForSites(ctx, s.Queue, s.Registry, s.Log, cur.Plugin)
 			return s.instance(ctx, in.ID)
 		})
 
@@ -237,7 +237,7 @@ func (s *Server) instanceRoutes(api huma.API) {
 			switch {
 			case problem == nil:
 				if cur, err := s.Registry.GetInstance(ctx, in.ID); err == nil {
-					s.detectWith(ctx, cur.Plugin)
+					importer.EnqueueDetectForSites(ctx, s.Queue, s.Registry, s.Log, cur.Plugin)
 				}
 				return &checkOut{Body: checkResult{OK: true}}, nil
 			case errors.As(problem, &startErr):
@@ -253,14 +253,6 @@ func (s *Server) instanceRoutes(api huma.API) {
 		func(ctx context.Context, in *idIn) (*struct{}, error) {
 			return nil, s.fail(s.Registry.DeleteInstance(ctx, in.ID))
 		})
-}
-
-// detectWith runs the detect-sources job after a sites instance may have
-// started working, since the job leaves entities queued while none does.
-func (s *Server) detectWith(ctx context.Context, plugin string) {
-	if s.Registry.HasCapability(plugin, protocol.CapabilitySites) {
-		importer.EnqueueDetect(ctx, s.Queue, s.Log)
-	}
 }
 
 // loginGuard keeps OAuth and MCP clients away from login providers. A

@@ -69,6 +69,9 @@ func TestArchive(t *testing.T) {
 		t.Fatal(err)
 	}
 	wait(t, q, parent.ID)
+	if children, err := q.ChildrenFor(ctx, []int64{parent.ID}); err != nil || children[parent.ID].CardsChanged != 2 {
+		t.Fatalf("children = %+v, %v; want 2 cards changed", children, err)
+	}
 	for _, id := range ids {
 		if c, _ := lib.Cards.Get(ctx, id); c.ArchivedAt == nil {
 			t.Errorf("card %d not archived", id)
@@ -96,6 +99,9 @@ func TestTagAndCollect(t *testing.T) {
 		t.Fatal(err)
 	}
 	wait(t, q, p.ID)
+	if children, err := q.ChildrenFor(ctx, []int64{p.ID}); err != nil || children[p.ID].CardsChanged != 2 {
+		t.Fatalf("tag children = %+v, %v; want 2 cards changed", children, err)
+	}
 	for i, want := range [][]string{{"keep", "new"}, {"new"}} {
 		c, err := lib.Cards.Get(ctx, ids[i])
 		if err != nil {
@@ -116,6 +122,9 @@ func TestTagAndCollect(t *testing.T) {
 		t.Fatal(err)
 	}
 	wait(t, q, p.ID)
+	if children, err := q.ChildrenFor(ctx, []int64{p.ID}); err != nil || children[p.ID].CardsChanged != 2 {
+		t.Fatalf("collect children = %+v, %v; want 2 cards changed", children, err)
+	}
 	for _, id := range ids {
 		if got, _ := lib.CardCollections(ctx, id); !slices.Equal(got, []int64{col.ID}) {
 			t.Fatalf("card %d collections = %v", id, got)

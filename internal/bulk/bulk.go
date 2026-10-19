@@ -118,13 +118,20 @@ func EnqueueCollect(ctx context.Context, q *jobs.Queue, cardIDs []int64, collect
 }
 
 // Archive is the jobs.Handler for ArchiveKind.
+//
+// ponytail: counts the card even when it was already archived; compare
+// before and after if the count must be exact.
 func Archive(lib *library.Library, apps unpublisher) jobs.Handler {
 	return func(ctx context.Context, r *jobs.Run) error {
 		var p archivePayload
 		if err := json.Unmarshal(r.Payload, &p); err != nil {
 			return err
 		}
-		return SetArchived(ctx, lib, apps, library.Card, p.CardID, p.Archived, p.Unpublish)
+		if err := SetArchived(ctx, lib, apps, library.Card, p.CardID, p.Archived, p.Unpublish); err != nil {
+			return err
+		}
+		r.AddCardsChanged(1)
+		return nil
 	}
 }
 
@@ -158,7 +165,11 @@ func Tag(lib *library.Library) jobs.Handler {
 		if err := json.Unmarshal(r.Payload, &p); err != nil {
 			return err
 		}
-		return lib.EditCardTags(ctx, p.CardID, p.Add, p.Remove)
+		if err := lib.EditCardTags(ctx, p.CardID, p.Add, p.Remove); err != nil {
+			return err
+		}
+		r.AddCardsChanged(1)
+		return nil
 	}
 }
 
@@ -169,10 +180,15 @@ func Collect(lib *library.Library) jobs.Handler {
 		if err := json.Unmarshal(r.Payload, &p); err != nil {
 			return err
 		}
+		edit := lib.AddToCollection
 		if p.Remove {
-			return lib.RemoveFromCollection(ctx, p.CollectionID, p.CardID)
+			edit = lib.RemoveFromCollection
 		}
-		return lib.AddToCollection(ctx, p.CollectionID, p.CardID)
+		if err := edit(ctx, p.CollectionID, p.CardID); err != nil {
+			return err
+		}
+		r.AddCardsChanged(1)
+		return nil
 	}
 }
 

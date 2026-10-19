@@ -18,10 +18,11 @@ const (
 	MethodLibraryCall = "library.call"
 )
 
-// What an action applies to. ApplyNew is a card that doesn't exist yet.
+// What an action applies to: an item kind, or ApplyNew, a card that doesn't
+// exist yet.
 const (
-	ApplyCard     = "card"
-	ApplyLorebook = "lorebook"
+	ApplyCard     = KindCard
+	ApplyLorebook = KindLorebook
 	ApplyNew      = "new"
 )
 

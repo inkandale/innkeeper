@@ -62,7 +62,14 @@ spec:
           image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
           imagePullPolicy: {{ $.Values.image.pullPolicy }}
           args: [{{ $cmd }}]
+          {{- if and (eq $cmd "worker") $.Values.worker.metrics.enabled }}
+          env: {{- toYaml (append $env (dict "name" "INNKEEPER_METRICS_LISTEN" "value" ":9090")) | nindent 12 }}
+          ports:
+            - name: metrics
+              containerPort: 9090
+          {{- else }}
           env: {{- toYaml $env | nindent 12 }}
+          {{- end }}
           {{- if eq $cmd "api" }}
           ports:
             - name: http

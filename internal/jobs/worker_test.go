@@ -7,8 +7,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	promtest "github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 var quiet = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -351,5 +355,54 @@ func TestCardsChangedAddsUpAcrossAttempts(t *testing.T) {
 	}
 	if got := waitStatus(t, q, j.ID, StatusFailed); got.CardsChanged != 4 {
 		t.Fatalf("failed job changed %d cards, want 4 across both attempts", got.CardsChanged)
+	}
+}
+
+func TestMetricsRecordFinishedJobOnceAcrossRetries(t *testing.T) {
+	q := newQueue(t)
+	reg := prometheus.NewRegistry()
+	startWorker(t, &Worker{Queue: q, Metrics: NewMetrics(reg), Backoff: func(int) time.Duration { return 0 }, Handlers: map[string]Handler{
+		"test": func(_ context.Context, r *Run) error {
+			r.AddCardsChanged(2)
+			if r.Attempts == 1 {
+				return fmt.Errorf("%w: flaky", ErrRetry)
+			}
+			return nil
+		},
+	}})
+	j, _ := q.Enqueue(context.Background(), Spec{Kind: "test"})
+	waitStatus(t, q, j.ID, StatusSucceeded)
+	// The worker observes just after the finish commits.
+	want := `
+# HELP innkeeper_cards_changed_total Cards finished jobs changed in the library or in an app.
+# TYPE innkeeper_cards_changed_total counter
+innkeeper_cards_changed_total{kind="test"} 4
+`
+	var err error
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if err = promtest.GatherAndCompare(reg, strings.NewReader(want), "innkeeper_cards_changed_total"); err == nil {
+			break
+		}
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n, err := promtest.GatherAndCount(reg, "innkeeper_job_duration_seconds"); err != nil || n != 1 {
+		t.Fatalf("duration series = %d, %v; want one, for the succeeded job only", n, err)
+	}
+	mfs, _ := reg.Gather()
+	for _, mf := range mfs {
+		if mf.GetName() != "innkeeper_job_duration_seconds" {
+			continue
+		}
+		h := mf.GetMetric()[0]
+		if got := h.GetHistogram().GetSampleCount(); got != 1 {
+			t.Fatalf("duration samples = %d, want 1 for the job's two attempts", got)
+		}
+		for _, l := range h.GetLabel() {
+			if l.GetName() == "status" && l.GetValue() != StatusSucceeded {
+				t.Fatalf("status label = %s, want succeeded", l.GetValue())
+			}
+		}
 	}
 }

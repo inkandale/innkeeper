@@ -1,0 +1,12 @@
+{{- if .Values.worker.metrics.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ .Release.Name }}
+  labels: {{- include "innkeeper.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels: {{- include "innkeeper.labels" . | nindent 6 }}
+  podMetricsEndpoints:
+    - port: metrics
+{{- end }}

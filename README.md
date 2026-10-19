@@ -64,6 +64,7 @@ database at startup and stop cleanly on `SIGTERM`.
 | `INNKEEPER_PUBLIC_URL` | `api` | Where browsers reach the API, such as `https://innkeeper.example.com`. Needed for redirect logins, `ink login`, and MCP clients that connect through OAuth, such as claude.ai. An `http://` URL sends cookies without `Secure` |
 | `INNKEEPER_OWNER_PASSWORD_HASH` | `api` | A bcrypt hash from `password-login hash`. On a server with no login provider, the API creates the owner's password login from it at startup. Ignored once the server is claimed |
 | `INNKEEPER_WORKER_CONCURRENCY` | `worker` | Jobs run at once; default 4 |
+| `INNKEEPER_METRICS_LISTEN` | `worker` | Address to serve Prometheus metrics on at `/metrics`, such as `:9090`: `innkeeper_job_duration_seconds{kind,status}`, `innkeeper_cards_changed_total{kind}`, and Go runtime metrics. Unset serves none |
 | `INNKEEPER_BACKUP_DIR` | `api`, `worker` | Where backups go. Needed for any backup or restore through the API, and for schedules |
 | `INNKEEPER_BACKUP_ASSETS_EVERY`, `INNKEEPER_BACKUP_CONFIG_EVERY` | `api`, `worker` | How often to back up that type, such as `24h` or `7d`. Unset means no schedule |
 | `INNKEEPER_SYNC_EVERY` | `worker` | How often to sync every app, such as `30m` or `6h`. `0` turns the schedule off. Default `1h` |
@@ -139,6 +140,10 @@ dump, into both containers. To keep blobs elsewhere, such as on a NAS share,
 set `persistence.blobs.enabled=false`, mount the share with those two, and set
 `INNKEEPER_BLOB_DIR` in `extraEnv`; the chart then creates no blob volume, and
 refuses to render without `INNKEEPER_BLOB_DIR`.
+
+`worker.metrics.enabled=true` serves the worker's
+[job metrics](#running) on port 9090 and adds a PodMonitor, which needs
+the Prometheus Operator CRDs.
 
 > **Warning:** on an existing release, `persistence.blobs.enabled=false`
 > deletes the blobs PVC and, with most storage classes, every blob in it.

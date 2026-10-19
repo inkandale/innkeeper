@@ -19,6 +19,10 @@ publicUrl: ""
 
 worker:
   concurrency: 4
+  # Serves job metrics at /metrics on port 9090 of the worker container and
+  # adds a PodMonitor, which needs the Prometheus Operator CRDs.
+  metrics:
+    enabled: false
 
 # Blob store, shared by the API and worker containers.
 persistence:

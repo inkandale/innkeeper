@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"time"
@@ -22,6 +24,9 @@ import (
 	iservices "github.com/inkandale/innkeeper/internal/services"
 	"github.com/inkandale/innkeeper/internal/targets"
 	"github.com/inkandale/innkeeper/protocol"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 const (
@@ -51,6 +56,12 @@ func worker() error {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	ctx, stop := signalContext()
 	defer stop()
+	var metrics *jobs.Metrics
+	if addr := os.Getenv("INNKEEPER_METRICS_LISTEN"); addr != "" {
+		if metrics, err = serveMetrics(ctx, addr, log); err != nil {
+			return err
+		}
+	}
 	// Each running job can hold a connection (a push holds its transaction across
 	// the plugin call) while its lease heartbeat or an import notification needs another.
 	svc, err := openServices(ctx, log, 2*concurrency+2)
@@ -86,6 +97,7 @@ func worker() error {
 		Queue:       q,
 		Log:         log,
 		Concurrency: concurrency,
+		Metrics:     metrics,
 		Handlers: map[string]jobs.Handler{
 			importer.Kind:            im.Run,
 			importer.DetectKind:      im.RunDetect,
@@ -159,6 +171,29 @@ func worker() error {
 	}
 	log.Info("worker started", "plugins", len(svc.registry.Manifests()), "concurrency", concurrency)
 	return w.Run(ctx)
+}
+
+// serveMetrics serves the job metrics, with Go runtime and process metrics,
+// at /metrics on addr until ctx is cancelled.
+func serveMetrics(ctx context.Context, addr string, log *slog.Logger) (*jobs.Metrics, error) {
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	metrics := jobs.NewMetrics(reg)
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("INNKEEPER_METRICS_LISTEN: %w", err)
+	}
+	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	go func() {
+		if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
+			log.Error("metrics server stopped", "err", err)
+		}
+	}()
+	context.AfterFunc(ctx, func() { srv.Close() })
+	log.Info("metrics listening", "addr", ln.Addr().String())
+	return metrics, nil
 }
 
 // everyEnv reads a schedule from env var name: a duration such as 1h, or 0

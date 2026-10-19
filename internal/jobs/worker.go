@@ -44,6 +44,8 @@ type Worker struct {
 	// Backoff is the delay before retry number attempt. Default 10s,
 	// doubling each attempt, at most 30m.
 	Backoff func(attempt int) time.Duration
+	// Metrics, if set, records each job that succeeds or fails.
+	Metrics *Metrics
 
 	id   string
 	wake chan struct{}
@@ -287,13 +289,17 @@ func (w *Worker) execute(ctx context.Context, j *Job) {
 	// ctx may already be cancelled, and the job must still be released.
 	fctx, fcancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer fcancel()
-	if err := w.Queue.finish(fctx, j, w.id, run.current(), o); err != nil {
+	st := run.current()
+	if err := w.Queue.finish(fctx, j, w.id, st, o); err != nil {
 		if errors.Is(err, ErrLeaseLost) {
 			log.Warn("job lease lost: cancelled or taken by another worker", "err", err)
 			return
 		}
 		log.Error("finish job", "err", err)
 		return
+	}
+	if w.Metrics != nil && o.status != StatusQueued {
+		w.Metrics.observe(j, o.status, st.cards)
 	}
 	log.Info("job ended", "status", o.status, "err", o.err)
 	run.Log(o.logLevel(), o.String())

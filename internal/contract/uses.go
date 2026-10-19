@@ -41,9 +41,9 @@ const (
 const consumerID, providerID = 1, 2
 
 // checkUses runs the plugin and the Provider under the real service broker,
-// drives the plugin's actions and enrich.run, and checks what reached the
-// model server and what came back.
-func checkUses(ctx context.Context, m *protocol.Manifest, params protocol.InitializeParams, log *slog.Logger) []Result {
+// makes the calls each of the plugin's suites drives, and checks what reached
+// the model server and what came back.
+func checkUses(ctx context.Context, m *protocol.Manifest, params protocol.InitializeParams, suites []suite, log *slog.Logger) []Result {
 	model := newModelServer()
 	defer model.Close()
 	h, err := startHarness(ctx, m, params, model.URL+"/v1", log)
@@ -54,7 +54,13 @@ func checkUses(ctx context.Context, m *protocol.Manifest, params protocol.Initia
 	defer h.mgr.Close()
 
 	var first func(context.Context) error
-	for _, drive := range h.drivers(ctx) {
+	var drives []func(context.Context) error
+	for _, s := range suites {
+		if s.drive != nil && slices.ContainsFunc(s.capabilities, m.Has) {
+			drives = append(drives, s.drive(ctx, h.call)...)
+		}
+	}
+	for _, drive := range drives {
 		before := model.requestCount()
 		// Only what reached the model server matters, not the consumer's own reply.
 		_ = drive(ctx)
@@ -185,29 +191,6 @@ func withProvider(m *protocol.Manifest, config map[string]any) map[string]any {
 	return out
 }
 
-// drivers are the consumer calls that may use a service: each action on
-// the sample entity, then enrich.run on the sample card.
-func (h *harness) drivers(ctx context.Context) []func(context.Context) error {
-	var out []func(context.Context) error
-	if h.consumer.Manifest.Has("action") {
-		var list protocol.ActionListResult
-		if err := h.call(ctx, protocol.MethodActionList, nil, &list); err == nil {
-			for _, a := range list.Actions {
-				params := actionRunParams(a)
-				out = append(out, func(ctx context.Context) error {
-					return h.call(ctx, protocol.MethodActionRun, params, nil)
-				})
-			}
-		}
-	}
-	if h.consumer.Manifest.Has("enrich") {
-		out = append(out, func(ctx context.Context) error {
-			return h.call(ctx, protocol.MethodEnrichRun, enrichRunParams(), nil)
-		})
-	}
-	return out
-}
-
 func (h *harness) call(ctx context.Context, method string, params, result any) error {
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
@@ -247,7 +230,7 @@ func (l *serviceLog) err() error {
 	case l.last != nil:
 		return fmt.Errorf("the broker answered the consumer with an error: %w", l.last)
 	}
-	return errors.New("the consumer made no service call from its actions or enrich.run")
+	return errors.New("the consumer made no service call from any call the check made")
 }
 
 // instances is the broker's registry for a check: the consumer and its

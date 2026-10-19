@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -31,8 +32,8 @@ func TestWellBehavedPluginPasses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 7 {
-		t.Fatalf("ran %d checks, want 7", len(results))
+	if len(results) != 8 {
+		t.Fatalf("ran %d checks, want 8", len(results))
 	}
 	if f := failed(results); len(f) > 0 {
 		t.Fatalf("checks failed: %v", f)
@@ -125,15 +126,106 @@ func TestToolChecks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err, ok := failed(results)["mcp.tools returns valid tools"]; ok {
-		t.Fatalf("good tools failed: %v", err)
+	if f := failed(results); len(f) > 0 {
+		t.Fatalf("good tools failed: %v", f)
 	}
-	results, err = Check(context.Background(), testutil.FakePluginWith(t, []string{"mcp"}, "-mode=bad-tools"), quiet)
+	if !slices.ContainsFunc(results, func(r Result) bool { return r.Name == checkMCPCallsName }) {
+		t.Fatalf("no mcp.call check in %v", results)
+	}
+	tests := []struct{ mode, check, wantErr string }{
+		{"bad-tools", checkMCPToolsName, "lowercase letters"},
+		{"no-tool-call", checkMCPCallsName, "-32601"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.mode, func(t *testing.T) {
+			results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"mcp"}, "-mode="+tt.mode), quiet)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := failed(results)[tt.check]; got == nil || !strings.Contains(got.Error(), tt.wantErr) {
+				t.Fatalf("check %q: got %v, want %q", tt.check, got, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestPushTargetMustNameWhatItPut(t *testing.T) {
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"push", "pull"}, "-mode=bad-put"), quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := failed(results)["mcp.tools returns valid tools"]; err == nil || !strings.Contains(err.Error(), "lowercase letters") {
-		t.Fatalf("bad tools: %v", err)
+	if got := failed(results)[checkPutName]; got == nil || !strings.Contains(got.Error(), "remote_id is empty") {
+		t.Fatalf("got %v, want an empty remote_id failure", got)
+	}
+}
+
+// With a store, the put check puts the card and its standalone lorebook,
+// and deletes both.
+func TestPutCheckCleansUpWhatItPut(t *testing.T) {
+	dir := t.TempDir()
+	Config = map[string]any{"dir": dir, "lorebooks": "standalone"}
+	t.Cleanup(func() { Config = nil })
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"push", "pull"}), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := failed(results); len(f) > 0 {
+		t.Fatalf("checks failed: %v", f)
+	}
+	if left, _ := filepath.Glob(filepath.Join(dir, "*.json")); len(left) > 0 {
+		t.Fatalf("the check left %v", left)
+	}
+}
+
+func TestImportChecks(t *testing.T) {
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"import"}), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := failed(results); len(f) > 0 {
+		t.Fatalf("checks failed: %v", f)
+	}
+	if !slices.ContainsFunc(results, func(r Result) bool { return r.Name == checkImportName }) {
+		t.Fatalf("no import check in %v", results)
+	}
+	results, err = Check(context.Background(), testutil.FakePluginWith(t, []string{"import"}, "-mode=no-import"), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := failed(results)[checkImportName]; got == nil || !strings.Contains(got.Error(), "-32601") {
+		t.Fatalf("an importer without import.run: got %v, want a -32601 failure", got)
+	}
+}
+
+func TestSettingsChecks(t *testing.T) {
+	for _, mode := range []string{"", "-mode=settings-no-defaults"} {
+		results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"settings"}, mode), quiet)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if f := failed(results); len(f) > 0 {
+			t.Fatalf("%q: checks failed: %v", mode, f)
+		}
+		for _, name := range []string{checkSettingsDefaultsName, checkSettingsRunName} {
+			if !slices.ContainsFunc(results, func(r Result) bool { return r.Name == name }) {
+				t.Errorf("%q: no %q check in %v", mode, name, results)
+			}
+		}
+	}
+	tests := []struct{ mode, check, wantErr string }{
+		{"settings-defaults-error", checkSettingsDefaultsName, "no defaults today"},
+		{"no-settings-run", checkSettingsRunName, "test: "},
+	}
+	for _, tt := range tests {
+		t.Run(tt.mode, func(t *testing.T) {
+			results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"settings"}, "-mode="+tt.mode), quiet)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := failed(results)[tt.check]; got == nil || !strings.Contains(got.Error(), tt.wantErr) {
+				t.Fatalf("check %q: got %v, want %q", tt.check, got, tt.wantErr)
+			}
+		})
 	}
 }
 
@@ -345,7 +437,7 @@ func TestRecordsPluginPasses(t *testing.T) {
 	if f := failed(results); len(f) > 0 {
 		t.Fatalf("checks failed: %v", f)
 	}
-	for _, name := range []string{checkRecordsListName, checkRecordsRoundTripName, checkRecordsGoneName} {
+	for _, name := range []string{checkRecordsListName, checkRecordsRoundTripName, checkRecordsGoneName, checkRecordsImportName} {
 		if !slices.ContainsFunc(results, func(r Result) bool { return r.Name == name }) {
 			t.Errorf("no %q check in %v", name, results)
 		}
@@ -358,6 +450,16 @@ func TestBadRecordsFail(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := failed(results)[checkRecordsListName]; err == nil || !strings.Contains(err.Error(), "record id") {
+		t.Fatalf("got %v, want the bad record named", err)
+	}
+}
+
+func TestBadRecordsImportFails(t *testing.T) {
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"records"}, "-mode=bad-records-import"), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := failed(results)[checkRecordsImportName]; err == nil || !strings.Contains(err.Error(), "record id") {
 		t.Fatalf("got %v, want the bad record named", err)
 	}
 }
@@ -403,6 +505,18 @@ func TestAIPluginAnswersItsServices(t *testing.T) {
 	}
 }
 
+func TestAIPluginWithAnEmptyDecisionFails(t *testing.T) {
+	Config = map[string]any{"services": []any{"ai.decide"}}
+	t.Cleanup(func() { Config = nil })
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"ai"}, "-mode=bad-decide"), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := failed(results)[checkServicesName]; err == nil || !strings.Contains(err.Error(), "has no answer") {
+		t.Fatalf("got %v, want the unanswered question named", err)
+	}
+}
+
 // provide makes the fake an ai.chat provider that streams from the check's
 // model server.
 func provide(t *testing.T) {
@@ -413,7 +527,7 @@ func provide(t *testing.T) {
 
 func TestConsumerCallsAProviderThroughTheBroker(t *testing.T) {
 	provide(t)
-	results, err := Check(context.Background(), testutil.FakeConsumer(t), quiet)
+	results, err := Check(context.Background(), testutil.FakeConsumer(t, []string{"action"}), quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -427,9 +541,24 @@ func TestConsumerCallsAProviderThroughTheBroker(t *testing.T) {
 	}
 }
 
+func TestConsumerCallsAProviderFromEachDrivenCapability(t *testing.T) {
+	provide(t)
+	for _, capability := range []string{"mcp", "import", "records", "settings"} {
+		t.Run(capability, func(t *testing.T) {
+			results, err := Check(context.Background(), testutil.FakeConsumer(t, []string{capability}), quiet)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if f := failed(results); len(f) > 0 {
+				t.Fatalf("checks failed: %v", f)
+			}
+		})
+	}
+}
+
 func TestConsumerThatDropsTheToolCallFails(t *testing.T) {
 	provide(t)
-	results, err := Check(context.Background(), testutil.FakeConsumer(t, "-mode=drop-tool-call"), quiet)
+	results, err := Check(context.Background(), testutil.FakeConsumer(t, []string{"action"}, "-mode=drop-tool-call"), quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -440,7 +569,7 @@ func TestConsumerThatDropsTheToolCallFails(t *testing.T) {
 }
 
 func TestUsesWithoutAProviderFails(t *testing.T) {
-	results, err := Check(context.Background(), testutil.FakeConsumer(t), quiet)
+	results, err := Check(context.Background(), testutil.FakeConsumer(t, []string{"action"}), quiet)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -20,7 +21,7 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-tools | bad-actions | bad-records | bad-enrich | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code | database | bad-list | bad-setup | bad-catalog | catalog-repeat | catalog-lax | catalog-no-notfound | catalog-wrong-hash | catalog-sourceless | sites-noisy | sites-lax-data | sites-claims | sites-lax-params | sites-bad-source | no-delete | settings-no-defaults | drop-tool-call")
+	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-tools | bad-actions | bad-records | bad-enrich | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code | database | bad-list | bad-setup | bad-catalog | catalog-repeat | catalog-lax | catalog-no-notfound | catalog-wrong-hash | catalog-sourceless | sites-noisy | sites-lax-data | sites-claims | sites-lax-params | sites-bad-source | no-delete | bad-put | no-tool-call | no-import | settings-no-defaults | settings-defaults-error | no-settings-run | bad-records-import | bad-decide | drop-tool-call")
 	caps := flag.String("caps", "push,pull", "comma-separated capabilities to report")
 	name := flag.String("name", "fake", "the plugin name to report")
 	flag.Parse()
@@ -44,6 +45,13 @@ func main() {
 		}
 		if config["failing"] == true && strings.HasPrefix(method, "catalog.") && method != protocol.MethodCatalogDescribe {
 			return nil, protocol.NewError(-32000, "open /srv/dump.sql: permission denied", false)
+		}
+		// As a consumer, the fake asks its provider from each call the contract
+		// check drives; actions ask from actionRun.
+		if id, ok := config["connection"].(float64); ok && slices.Contains(consumerCalls, method) {
+			if err := chatWithTool(ctx, conn, method, int64(id), *mode); err != nil {
+				return nil, err
+			}
 		}
 		switch method {
 		case protocol.MethodInitialize:
@@ -112,6 +120,9 @@ func main() {
 		case "crash":
 			os.Exit(3)
 		case protocol.MethodImportRun:
+			if *mode == "no-import" {
+				return nil, protocol.MethodNotFound(method)
+			}
 			return importRun(conn, blobTmp, params)
 		case protocol.MethodTargetDescribe:
 			if *mode == "bad-describe" {
@@ -124,6 +135,9 @@ func main() {
 			}
 			return mcpTools(*mode), nil
 		case protocol.MethodMCPCall:
+			if *mode == "no-tool-call" {
+				return nil, protocol.MethodNotFound(method)
+			}
 			return mcpCall(params)
 		case protocol.MethodActionList:
 			return fakeActions(*mode), nil
@@ -134,15 +148,19 @@ func main() {
 		case protocol.MethodRecordsList, protocol.MethodRecordsGet, protocol.MethodRecordsPut,
 			protocol.MethodRecordsDelete, protocol.MethodRecordsImport:
 			return recordsCall(method, params, *mode)
-		case protocol.MethodTargetPut:
+		case protocol.MethodTargetPut, protocol.MethodTargetPutLorebook:
+			if *mode == "bad-put" {
+				return protocol.TargetPutResult{}, nil
+			}
+			if method == protocol.MethodTargetPutLorebook {
+				return newTarget(config).putLorebook(params)
+			}
 			return newTarget(config).put(params)
 		case protocol.MethodTargetGet:
 			if config["fail_get"] == "retryable" {
 				return nil, protocol.NewError(-32000, "app unavailable", true)
 			}
 			return newTarget(config).get(params, blobTmp)
-		case protocol.MethodTargetPutLorebook:
-			return newTarget(config).putLorebook(params)
 		case protocol.MethodTargetGetLorebook:
 			return newTarget(config).getLorebook(params)
 		case protocol.MethodTargetDelete, protocol.MethodTargetDeleteLorebook:
@@ -226,6 +244,9 @@ func main() {
 				callsMu.Unlock()
 			})
 		case protocol.MethodAIDecide:
+			if *mode == "bad-decide" {
+				return protocol.AIDecideResult{Model: "fake"}, nil
+			}
 			return aiDecide(params)
 		case protocol.NotifyAIDelta:
 			deltas.add(params)
@@ -265,6 +286,9 @@ func main() {
 		time.Sleep(time.Minute)
 	}
 }
+
+// consumerCalls are the calls a consumer fake asks its provider from.
+var consumerCalls = []string{protocol.MethodMCPCall, protocol.MethodImportRun, protocol.MethodRecordsList, protocol.MethodSettingsRun}
 
 // importOptions are the fake importer's params.
 type importOptions struct {

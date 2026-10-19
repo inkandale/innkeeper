@@ -20,7 +20,7 @@ func mcpTools(mode string) protocol.MCPToolsResult {
 		{Name: "note", Description: "Pretends to save text.", InputSchema: object, Tier: protocol.TierWrite},
 		{Name: "wipe", Description: "Pretends to delete everything.", InputSchema: object, Tier: protocol.TierDestructive},
 		{Name: "untiered", Description: "Declares no tier.", InputSchema: object},
-		{Name: "crash", Description: "Exits the plugin.", InputSchema: object, Tier: protocol.TierRead},
+		{Name: "crash", Description: "Exits the plugin when given text.", InputSchema: object, Tier: protocol.TierRead},
 	}}
 }
 
@@ -35,7 +35,11 @@ func mcpCall(params json.RawMessage) (any, error) {
 	_ = json.Unmarshal(p.Arguments, &args)
 	switch p.Name {
 	case "crash":
-		os.Exit(4)
+		// Only with text, so the contract check's empty call doesn't crash it.
+		if args.Text != "" {
+			os.Exit(4)
+		}
+		return protocol.MCPCallResult{IsError: true, Content: []protocol.MCPContent{{Type: "text", Text: "crash needs text"}}}, nil
 	case "echo", "note", "wipe", "untiered":
 		return protocol.MCPCallResult{Content: []protocol.MCPContent{{Type: "text", Text: p.Name + ": " + args.Text}}}, nil
 	}

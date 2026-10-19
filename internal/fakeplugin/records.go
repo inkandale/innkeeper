@@ -78,6 +78,9 @@ func recordsCall(method string, params json.RawMessage, mode string) (any, error
 		notes.byID[n.Title] = n
 		return protocol.RecordsPutResult{ID: n.Title}, nil
 	case protocol.MethodRecordsImport:
+		if mode == "bad-records-import" {
+			return protocol.RecordsImportResult{Records: []protocol.RecordSummary{{Name: "No ID"}}}, nil
+		}
 		// The body says where the note came from, so tests can see the path.
 		// A URL's last segment is the title; one ending in / has none.
 		title, _, _ := strings.Cut(p.URL[strings.LastIndex(p.URL, "/")+1:], "?")

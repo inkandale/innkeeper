@@ -11,8 +11,11 @@ import (
 func settingsCall(method string, params json.RawMessage, mode string) (any, error) {
 	switch method {
 	case protocol.MethodSettingsDefaults:
-		if mode == "settings-no-defaults" {
+		switch mode {
+		case "settings-no-defaults":
 			return nil, protocol.MethodNotFound(method)
+		case "settings-defaults-error":
+			return nil, protocol.NewError(-32000, "no defaults today", false)
 		}
 		return protocol.SettingsDefaultsResult{Defaults: map[string]any{"/prompts/greet": "Hello, {{user}}."}}, nil
 	case protocol.MethodSettingsOptions:
@@ -35,6 +38,9 @@ func settingsCall(method string, params json.RawMessage, mode string) (any, erro
 		}
 		return protocol.SettingsOptionsResult{Options: []protocol.SettingsOption{{Value: url + "/m1", Label: "Model one"}, {Value: url + "/m2"}}}, nil
 	case protocol.MethodSettingsRun:
+		if mode == "no-settings-run" {
+			return nil, protocol.MethodNotFound(method)
+		}
 		var p protocol.SettingsRunParams
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, protocol.NewError(protocol.CodeInvalidParams, err.Error(), false)

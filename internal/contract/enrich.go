@@ -62,3 +62,10 @@ func enrichRunParams() protocol.EnrichRunParams {
 	return protocol.EnrichRunParams{Run: "contract-check",
 		Revisions: []protocol.EnrichRevision{{CardID: 1, RevisionID: sampleRevision, Data: card.Data}}}
 }
+
+// driveEnrich runs enrich.run on the sample card.
+func driveEnrich(_ context.Context, call caller) []func(context.Context) error {
+	return []func(context.Context) error{func(ctx context.Context) error {
+		return call(ctx, protocol.MethodEnrichRun, enrichRunParams(), nil)
+	}}
+}

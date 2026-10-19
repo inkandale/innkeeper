@@ -94,3 +94,17 @@ func actionRunParams(a protocol.Action) protocol.ActionRunParams {
 	}
 	return params
 }
+
+// driveActions runs each listed action on the sample entity.
+func driveActions(ctx context.Context, call caller) []func(context.Context) error {
+	var list protocol.ActionListResult
+	if call(ctx, protocol.MethodActionList, nil, &list) != nil {
+		return nil
+	}
+	var out []func(context.Context) error
+	for _, a := range list.Actions {
+		params := actionRunParams(a)
+		out = append(out, func(ctx context.Context) error { return call(ctx, protocol.MethodActionRun, params, nil) })
+	}
+	return out
+}

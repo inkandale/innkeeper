@@ -85,25 +85,24 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 		return exited(results, p), nil
 	}
 
-	suites := []struct {
-		capabilities []string
-		run          func() []Result
-	}{
-		{[]string{"push", "pull"}, func() []Result { return checkTarget(ctx, p, m) }},
-		{[]string{"auth"}, func() []Result { return []Result{{"auth.setup returns a form or -32601", checkSetup(ctx, p)}} }},
-		{[]string{"mcp"}, func() []Result { return []Result{{"mcp.tools returns valid tools", checkTools(ctx, p)}} }},
-		{[]string{"action"}, func() []Result { return checkActions(ctx, p) }},
-		{[]string{"records"}, func() []Result { return checkRecords(ctx, p, m) }},
-		{[]string{"enrich"}, func() []Result { return []Result{{checkEnrichName, checkEnrich(ctx, p, m)}} }},
-		{[]string{"ai"}, func() []Result { return []Result{{checkServicesName, checkServices(ctx, p)}} }},
-		{[]string{"catalog"}, func() []Result { return checkCatalog(ctx, p, tmp) }},
-		{[]string{"sites"}, func() []Result { return checkSites(ctx, p) }},
+	suites := []suite{
+		{[]string{"push", "pull"}, func() []Result { return checkTarget(ctx, p, m) }, nil},
+		{[]string{"auth"}, func() []Result { return []Result{{"auth.setup returns a form or -32601", checkSetup(ctx, p)}} }, nil},
+		{[]string{"mcp"}, func() []Result { return checkMCP(ctx, p) }, driveMCP},
+		{[]string{"action"}, func() []Result { return checkActions(ctx, p) }, driveActions},
+		{[]string{"records"}, func() []Result { return checkRecords(ctx, p, m, tmp) }, driveRecords(m, tmp)},
+		{[]string{"import"}, func() []Result { return []Result{{checkImportName, checkImport(ctx, p)}} }, driveImport},
+		{[]string{"enrich"}, func() []Result { return []Result{{checkEnrichName, checkEnrich(ctx, p, m)}} }, driveEnrich},
+		{[]string{"settings"}, func() []Result { return checkSettings(ctx, p, m) }, driveSettings(m)},
+		{[]string{"ai"}, func() []Result { return []Result{{checkServicesName, checkServices(ctx, p)}} }, nil},
+		{[]string{"catalog"}, func() []Result { return checkCatalog(ctx, p, tmp) }, nil},
+		{[]string{"sites"}, func() []Result { return checkSites(ctx, p) }, nil},
 		{[]string{"codec"}, func() []Result {
 			return runChecks(ctx, p, []check{
 				{checkRoundTripName, func(ctx context.Context) error { return checkRoundTrip(ctx, p, m, tmp) }},
 				{checkRejectsName, func(ctx context.Context) error { return checkRejects(ctx, p, tmp) }},
 			})
-		}},
+		}, nil},
 	}
 	for _, suite := range suites {
 		if !slices.ContainsFunc(suite.capabilities, m.Has) {
@@ -116,7 +115,7 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	}
 
 	if len(m.Uses) > 0 {
-		results = append(results, checkUses(ctx, m, params, log)...)
+		results = append(results, checkUses(ctx, m, params, suites, log)...)
 	}
 
 	callCtx, cancel = context.WithTimeout(ctx, callTimeout)
@@ -128,6 +127,18 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	results = append(results, Result{"answers shutdown", err})
 	return append(results, Result{"exits after shutdown", p.Stop()}), nil
 }
+
+// suite is the checks for a set of capabilities, run when the plugin has
+// any of them. drive, if set, is the calls of those capabilities that may use
+// a service, for checkUses to make.
+type suite struct {
+	capabilities []string
+	run          func() []Result
+	drive        func(context.Context, caller) []func(context.Context) error
+}
+
+// caller makes one call to the plugin.
+type caller func(ctx context.Context, method string, params, result any) error
 
 // checkSecrets gives each secret the manifest declares a placeholder value.
 func checkSecrets(m *protocol.Manifest) map[string]string {
@@ -179,6 +190,13 @@ func checkTarget(ctx context.Context, p *pluginhost.Process, m *protocol.Manifes
 			return results
 		}
 	}
+	if m.Has("push") && info.Delete {
+		err = checkPut(ctx, p, info)
+		results = append(results, Result{checkPutName, err})
+		if dead(err, p) {
+			return results
+		}
+	}
 	if !info.Pull {
 		return results
 	}
@@ -219,6 +237,42 @@ func checkDelete(ctx context.Context, p *pluginhost.Process, info protocol.Targe
 		err := call(ctx, p, method, protocol.TargetDeleteParams{RemoteID: "innkeeper-contract:none"}, nil)
 		if err != nil && !answered(err) {
 			return fmt.Errorf("%s: %w", method, err)
+		}
+	}
+	return nil
+}
+
+const checkPutName = "a push target answers target.put with a remote_id or a plugin error"
+
+// checkPut puts the sample card, and a lorebook if the target keeps
+// standalone ones, then deletes what it made. It runs only on targets that
+// can delete, so a check against a real app leaves nothing behind. Without
+// its app the target can only fail, so any error but -32601 counts as an
+// answer.
+func checkPut(ctx context.Context, p *pluginhost.Process, info protocol.TargetInfo) error {
+	type put struct {
+		method, delete string
+		params         any
+	}
+	puts := []put{{protocol.MethodTargetPut, protocol.MethodTargetDelete, protocol.TargetPutParams{Card: sampleCard, Key: contractNone}}}
+	if info.Lorebooks == protocol.LorebooksStandalone {
+		puts = append(puts, put{protocol.MethodTargetPutLorebook, protocol.MethodTargetDeleteLorebook,
+			protocol.TargetPutLorebookParams{Lorebook: sampleLorebook, Key: contractNone}})
+	}
+	for _, pt := range puts {
+		var res protocol.TargetPutResult
+		err := call(ctx, p, pt.method, pt.params, &res)
+		if answered(err) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("%s: %w", pt.method, err)
+		}
+		if res.RemoteID == "" {
+			return fmt.Errorf("%s: remote_id is empty", pt.method)
+		}
+		if err := call(ctx, p, pt.delete, protocol.TargetDeleteParams{RemoteID: res.RemoteID}, nil); err != nil {
+			return fmt.Errorf("%s of the checked item: %w", pt.delete, err)
 		}
 	}
 	return nil
@@ -274,23 +328,6 @@ func checkLists(ctx context.Context, p *pluginhost.Process) error {
 		}
 	}
 	return nil
-}
-
-func checkTools(ctx context.Context, p *pluginhost.Process) error {
-	var res protocol.MCPToolsResult
-	if err := call(ctx, p, protocol.MethodMCPTools, nil, &res); err != nil {
-		return err
-	}
-	seen := map[string]bool{}
-	var errs []error
-	for _, t := range res.Tools {
-		if seen[t.Name] {
-			errs = append(errs, fmt.Errorf("tool name %q repeats", t.Name))
-		}
-		seen[t.Name] = true
-		errs = append(errs, t.Validate())
-	}
-	return errors.Join(errs...)
 }
 
 // checkSetup accepts a plugin without setup, or one whose form is a JSON

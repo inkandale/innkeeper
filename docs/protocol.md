@@ -1073,6 +1073,11 @@ It loads the manifest, then checks that:
 - a plugin whose `target.describe` claims `delete` answers `target.delete`,
   and `target.delete_lorebook` if it keeps standalone lorebooks, in the same
   way
+- a `push` plugin whose `target.describe` claims `delete` answers
+  `target.put` of a sample card, and `target.put_lorebook` of a sample
+  lorebook if it keeps standalone lorebooks, with a `remote_id` or an error
+  other than `-32601`, then deletes what it put. A target that can't delete
+  isn't sent a put, so a check against a real app leaves nothing in it.
 - a plugin that pulls without pushing answers `-32004` to `target.get` for
   `innkeeper-contract:none`, and to `target.get_lorebook` if it keeps standalone
   lorebooks
@@ -1080,7 +1085,8 @@ It loads the manifest, then checks that:
   `blob_tmp` with a valid extension, decodes it back, and returns an error
   when asked to decode a file that isn't a card
 - an `mcp` plugin's `mcp.tools` reply has valid, unique names, valid input
-  schemas, and comes within 5 seconds
+  schemas, and comes within 5 seconds; `mcp.call` of each tool with `{}` as
+  its arguments returns a result or an error other than `-32601`
 - an `action` plugin's `action.list` reply has valid actions with unique IDs,
   and `action.run` of each, on a sample card or lorebook with the action's
   first field and empty inputs, returns a valid reply or an error other than
@@ -1090,18 +1096,29 @@ It loads the manifest, then checks that:
   unique IDs, or an error other than `-32601`. When it answers with records,
   `records.get` of the first returns an object, and `records.put` of that object
   with its `id` replies with an ID. When it lists records, `records.get` and
-  `records.delete` of `innkeeper-contract:none` return `-32004`
+  `records.delete` of `innkeeper-contract:none` return `-32004`, and
+  `records.import` from each input a type takes, a URL that can't resolve or
+  a small text file in `blob_tmp`, returns valid summaries or an error other
+  than `-32601`
+- an `import` plugin's `import.run` with `{}` as its params and a null
+  checkpoint returns a reply or an error other than `-32601` within 5 seconds
 - an `enrich` plugin's `enrich.run` of a sample card returns, within 5
   seconds, a result for its revision whose values are all declared and valid,
   or an error other than `-32601`
 - an `ai` plugin's `ai.chat`, `ai.embed`, and `ai.decide`, for each it lists in `services`,
-  return a reply or an error other than `-32601` within 5 seconds. Checked
-  without a connection, a provider can only fail, which counts as an answer
+  return a valid reply or an error other than `-32601` within 5 seconds. A
+  chat reply has text or tool calls, an embed reply one vector per text, and
+  a decide reply an answer of each question's type. Checked without a
+  connection, a provider can only fail, which counts as an answer
+- a `settings` plugin's `settings.defaults` returns defaults or `-32601`, and
+  `settings.run` of each of its `settings.actions` on an empty draft returns
+  a reply or an error other than `-32601`
 - a plugin that declares `uses` runs with the provider plugin in
   `INNKEEPER_PROVIDER_PLUGIN` behind the core's service broker, and the
   provider talks to a fake OpenAI-compatible server. Its config fields with
-  `format = "instance"` point at the provider. Running its actions and
-  `enrich.run`: a service call gets the provider's reply; the reply's two
+  `format = "instance"` point at the provider. Making the calls above for its
+  tools, actions, records, imports, `enrich.run`, and settings actions: a
+  service call gets the provider's reply; the reply's two
   streamed pieces reach the plugin as `ai.delta`; a tool call the model makes
   comes back with the same id, name, and arguments, and a `tool` message
   answering it; and cancelling the plugin's call ends the provider's request

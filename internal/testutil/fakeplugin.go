@@ -71,24 +71,32 @@ import = ["file", "url"]
 schema = {type = "object", required = ["title"], properties = {title = {type = "string"}, body = {type = "string", contentMediaType = "text/markdown"}}}
 `
 	}
+	if slices.Contains(caps, "settings") {
+		manifest += `[settings.actions]
+test = { label = "Test connection" }
+`
+	}
 	if err := os.WriteFile(filepath.Join(dir, "plugin.toml"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return dir
 }
 
-// FakeConsumer is an action fake that declares uses = ["ai.chat"]. Its
-// actions call ai.chat on the instance its connection config names.
-func FakeConsumer(t *testing.T, args ...string) string {
+// FakeConsumer is a fake with caps that declares uses = ["ai.chat"]. Its
+// actions, tools, imports, record lists, and settings actions call ai.chat on
+// the instance its connection config names.
+func FakeConsumer(t *testing.T, caps []string, args ...string) string {
 	t.Helper()
-	dir := FakePluginWith(t, []string{"action"}, args...)
-	f, err := os.OpenFile(filepath.Join(dir, "plugin.toml"), os.O_APPEND|os.O_WRONLY, 0)
+	dir := FakePluginWith(t, caps, args...)
+	path := filepath.Join(dir, "plugin.toml")
+	manifest, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
-	_, err = f.WriteString(`uses = ["ai.chat"]
-
+	// uses goes first, since a key after a table belongs to it.
+	manifest = append([]byte(`uses = ["ai.chat"]
+`), manifest...)
+	manifest = append(manifest, `
 [config]
 type = "object"
 
@@ -96,8 +104,8 @@ type = "object"
 type = "integer"
 format = "instance"
 x-offers = "ai.chat"
-`)
-	if err != nil {
+`...)
+	if err := os.WriteFile(path, manifest, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return dir

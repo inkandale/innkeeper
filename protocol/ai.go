@@ -1,6 +1,12 @@
 package protocol
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"maps"
+	"slices"
+)
 
 // The ai capability offers model services to other plugins. A consumer
 // declares the methods it calls in its manifest's uses and sends them to the
@@ -15,6 +21,37 @@ const (
 
 // Services maps each service method to the capability that offers it.
 var Services = map[string]string{MethodAIChat: "ai", MethodAIEmbed: "ai", MethodAIDecide: "ai"}
+
+// ServiceSample is a small request to one service, and a check of the reply's
+// shape. The contract check sends it to every provider of the service.
+type ServiceSample struct {
+	Params any
+	Check  func(reply json.RawMessage) error
+}
+
+var (
+	sampleEmbed  = AIEmbedParams{Texts: []string{"OK"}}
+	sampleDecide = AIDecideParams{State: json.RawMessage(`"Hello."`),
+		Questions: map[string]DecideQuestion{"greeting": {Type: "noul", Instructions: "The state is a greeting."}}}
+)
+
+// ServiceSamples holds a ServiceSample for each method in Services.
+var ServiceSamples = map[string]ServiceSample{
+	MethodAIChat: {AIChatParams{Messages: []ChatMessage{{Role: "user", Content: "Say OK."}}},
+		decoded(func(r AIChatResult) error { return r.Validate() })},
+	MethodAIEmbed:  {sampleEmbed, decoded(func(r AIEmbedResult) error { return r.Validate(len(sampleEmbed.Texts)) })},
+	MethodAIDecide: {sampleDecide, decoded(func(r AIDecideResult) error { return r.Validate(sampleDecide.Questions) })},
+}
+
+func decoded[T any](check func(T) error) func(json.RawMessage) error {
+	return func(raw json.RawMessage) error {
+		var v T
+		if err := json.Unmarshal(raw, &v); err != nil {
+			return err
+		}
+		return check(v)
+	}
+}
 
 // CodeAIRejected is a provider refusing a request as invalid, such as tools
 // for a model without tool support.
@@ -77,6 +114,21 @@ type AIChatResult struct {
 	Model string `json:"model,omitempty"`
 }
 
+// Validate reports a reply with neither text nor tool calls, or a tool call
+// the consumer couldn't answer.
+func (r AIChatResult) Validate() error {
+	if r.Text == "" && len(r.ToolCalls) == 0 {
+		return errors.New("the reply has neither text nor tool calls")
+	}
+	var errs []error
+	for _, c := range r.ToolCalls {
+		if c.ID == "" || c.Name == "" {
+			errs = append(errs, fmt.Errorf("tool call %q needs an id and a name", c.Name))
+		}
+	}
+	return errors.Join(errs...)
+}
+
 // AIDelta streams ai.chat's text under the call's Run token.
 type AIDelta struct {
 	Run  string `json:"run"`
@@ -92,6 +144,20 @@ type AIEmbedParams struct {
 // AIEmbedResult holds the vectors in the order of the texts.
 type AIEmbedResult struct {
 	Vectors [][]float32 `json:"vectors"`
+}
+
+// Validate reports a reply without one non-empty vector for each of texts,
+// all the same length.
+func (r AIEmbedResult) Validate(texts int) error {
+	if len(r.Vectors) != texts {
+		return fmt.Errorf("got %d vectors for %d texts", len(r.Vectors), texts)
+	}
+	for i, v := range r.Vectors {
+		if len(v) == 0 || len(v) != len(r.Vectors[0]) {
+			return fmt.Errorf("vector %d has %d dimensions; want the same non-zero number for each", i, len(v))
+		}
+	}
+	return nil
 }
 
 // AIDecideParams asks typed questions about one state, each answered on its
@@ -133,4 +199,22 @@ type DecideAnswer struct {
 	Noul          *float64           `json:"noul,omitempty"`
 	Probabilities map[string]float64 `json:"probabilities,omitempty"`
 	Confidence    *float64           `json:"confidence,omitempty"`
+}
+
+// Validate reports a question without an answer of its type.
+func (r AIDecideResult) Validate(questions map[string]DecideQuestion) error {
+	var errs []error
+	for _, id := range slices.Sorted(maps.Keys(questions)) {
+		a, ok := r.Answers[id]
+		typ := questions[id].Type
+		switch {
+		case !ok:
+			errs = append(errs, fmt.Errorf("question %q has no answer", id))
+		case a.Type != typ:
+			errs = append(errs, fmt.Errorf("question %q: answer type %q, want %q", id, a.Type, typ))
+		case typ == "choice" && a.Choice == "", typ == "score" && a.Score == nil, typ == "noul" && a.Noul == nil:
+			errs = append(errs, fmt.Errorf("question %q: the %s answer is empty", id, typ))
+		}
+	}
+	return errors.Join(errs...)
 }

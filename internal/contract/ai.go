@@ -10,26 +10,26 @@ import (
 	"github.com/inkandale/innkeeper/protocol"
 )
 
-const checkServicesName = "an ai plugin answers each service it offers with a reply or a plugin error"
+const checkServicesName = "an ai plugin answers each service it offers with a valid reply or a plugin error"
 
-// checkServices sends a small request to each service the plugin offers. A
+// checkServices sends each service the plugin offers its sample request. A
 // provider checked without its connection can only fail, so an error other
 // than -32601 counts as an answer.
 func checkServices(ctx context.Context, p *pluginhost.Process) error {
-	requests := map[string]any{
-		protocol.MethodAIChat:  protocol.AIChatParams{Messages: []protocol.ChatMessage{{Role: "user", Content: "Say OK."}}},
-		protocol.MethodAIEmbed: protocol.AIEmbedParams{Texts: []string{"OK"}},
-		protocol.MethodAIDecide: protocol.AIDecideParams{State: json.RawMessage(`"Hello."`),
-			Questions: map[string]protocol.DecideQuestion{"greeting": {Type: "noul", Instructions: "The state is a greeting."}}},
-	}
 	var errs []error
 	for _, s := range p.Info.Services {
-		err := call(ctx, p, s, requests[s], nil)
-		var rpcErr *protocol.Error
-		if err == nil || errors.As(err, &rpcErr) && rpcErr.Code != protocol.CodeMethodNotFound {
-			continue
+		sample := protocol.ServiceSamples[s]
+		var reply json.RawMessage
+		err := call(ctx, p, s, sample.Params, &reply)
+		switch {
+		case answered(err):
+		case err != nil:
+			errs = append(errs, fmt.Errorf("%s: %w", s, err))
+		default:
+			if err := sample.Check(reply); err != nil {
+				errs = append(errs, fmt.Errorf("%s: %w", s, err))
+			}
 		}
-		errs = append(errs, fmt.Errorf("%s: %w", s, err))
 	}
 	return errors.Join(errs...)
 }

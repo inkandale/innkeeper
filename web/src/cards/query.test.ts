@@ -15,6 +15,7 @@ import {
   toggleTerm,
   type CardQuery,
   type Term,
+  valueLabel,
 } from "./query";
 
 const base: CardQuery = { library: 1, text: "", terms: [], sort: "updated", page: 1, size: 48, view: "grid", sharesSource: false };
@@ -250,4 +251,10 @@ test("value terms OR within a key, AND across keys, and only clears its own key"
   expect(parseQuery(toParams(q), 1).terms).toEqual(q.terms);
   expect(parseQuery(new URLSearchParams("f=value:Bad=x&f=value:nokey"), 1).terms).toEqual([]);
   expect(withScoreInstance(q, null).terms).toEqual([]);
+});
+
+test("valueLabel turns a plugin's code into words and leaves other values alone", () => {
+  expect(valueLabel("first_message_copies_description")).toBe("First message copies description");
+  expect(valueLabel("markup")).toBe("Markup");
+  expect(valueLabel("English")).toBe("English");
 });

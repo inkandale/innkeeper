@@ -646,11 +646,11 @@ test("a list key's values count in the sidebar, and a click filters on one", asy
   keys = { instance_id: 5, instances: [{ id: 5, label: "Lint", keys: [{ key: "problems", label: "Problems", type: "list" }] }] };
   const { router } = renderCards("/cards");
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: /^markup\s*3/ }));
+  await user.click(await screen.findByRole("button", { name: /^Markup\s*3/ }));
   expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["value:5:problems=markup"]);
   await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "problems", instance: 5, is: "markup" }] } })));
-  expect(screen.getByRole("button", { name: "Remove problems: markup" })).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Exclude oversized" }));
+  expect(screen.getByRole("button", { name: "Remove problems: Markup" })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Exclude Oversized" }));
   await waitFor(() =>
     expect(searches).toContainEqual(
       expect.objectContaining({ filter: { and: [{ enrichment: "problems", instance: 5, is: "markup" }, { not: { enrichment: "problems", instance: 5, is: "oversized" } }] } }),

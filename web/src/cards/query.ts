@@ -66,6 +66,11 @@ export function scoreTerm(s: Score): Term | undefined {
 }
 
 /** enrichmentValue reads a value term's key and value, or returns undefined if it is malformed. */
+/** valueLabel shows a plugin's code, such as no_char_macro, as words: "No char macro". Other values show as they are. */
+export function valueLabel(value: string): string {
+  return /^[a-z0-9_]+$/.test(value) ? value[0]!.toUpperCase() + value.slice(1).replaceAll("_", " ") : value;
+}
+
 export function enrichmentValue(value: string): { instance?: number; key: string; value: string } | undefined {
   const m = valueTerm.exec(value);
   return m ? { ...(m[1] !== undefined && { instance: Number(m[1]) }), key: m[2]!, value: m[3]! } : undefined;

@@ -18,6 +18,7 @@ import {
   toggleTerm,
   valueCountSearch,
   type CardQuery,
+  valueLabel,
   type TermKind,
 } from "./query";
 import { badgeClass, type Names } from "./Tile";
@@ -128,6 +129,8 @@ type SectionProps = {
   kind: TermKind;
   /** title and section name a value key's section; other kinds take theirs from kind. */
   title?: string;
+  /** instance names the enrich instance a value key comes from, when there are several. */
+  instance?: string;
   section?: string;
   rows?: Row[];
   q: CardQuery;
@@ -136,7 +139,7 @@ type SectionProps = {
   onChange: (q: CardQuery) => void;
 };
 
-function Section({ kind, title, section = kind, rows, q, open, onOpen, onChange }: SectionProps) {
+function Section({ kind, title, instance, section = kind, rows, q, open, onOpen, onChange }: SectionProps) {
   const [all, setAll] = useState(false);
   const [find, setFind] = useState("");
   const name = title ?? titles[kind as Exclude<TermKind, "value">];
@@ -159,6 +162,7 @@ function Section({ kind, title, section = kind, rows, q, open, onOpen, onChange 
       <h2>
         <button className="facet-head" aria-expanded={open} onClick={onOpen}>
           {name}
+          {instance && <> <span className="facet-instance">· {instance}</span></>}
           {picked > 0 && ` · ${picked}`}
         </button>
       </h2>
@@ -185,7 +189,7 @@ function Section({ kind, title, section = kind, rows, q, open, onOpen, onChange 
 }
 
 /** ValueSection counts one text or list key's values from one enrich instance, each a row to include or exclude. */
-function ValueSection({ instance, k, title, q, open, onOpen, onChange }: { instance: number; k: EnrichmentKey; title: string; q: CardQuery; open: boolean; onOpen: () => void; onChange: (q: CardQuery) => void }) {
+function ValueSection({ instance, instanceLabel, k, q, open, onOpen, onChange }: { instance: number; instanceLabel?: string; k: EnrichmentKey; q: CardQuery; open: boolean; onOpen: () => void; onChange: (q: CardQuery) => void }) {
   const ref = keyRef(instance, k.key);
   const body = valueCountSearch(q, ref);
   const res = useQuery({
@@ -195,15 +199,15 @@ function ValueSection({ instance, k, title, q, open, onOpen, onChange }: { insta
     enabled: open,
   });
   const section = `value:${ref}`;
-  const counted = res.data && (res.data.facets?.enrichments?.[ref] ?? []).map((v) => ({ value: `${ref}=${v.value}`, label: v.value, cards: v.cards }));
+  const counted = res.data && (res.data.facets?.enrichments?.[ref] ?? []).map((v) => ({ value: `${ref}=${v.value}`, label: valueLabel(v.value), cards: v.cards }));
   // A selected value with no matches still gets a row, so it can be cleared.
   const rows = counted && [
     ...counted,
     ...q.terms
       .filter((t) => sectionOf(t) === section && !counted.some((r) => r.value === t.value))
-      .map((t) => ({ value: t.value, label: t.value.slice(ref.length + 1), cards: 0 })),
+      .map((t) => ({ value: t.value, label: valueLabel(t.value.slice(ref.length + 1)), cards: 0 })),
   ];
-  return <Section kind="value" title={title} section={section} rows={rows} q={q} open={open} onOpen={onOpen} onChange={onChange} />;
+  return <Section kind="value" title={k.label} instance={instanceLabel} section={section} rows={rows} q={q} open={open} onOpen={onOpen} onChange={onChange} />;
 }
 
 /** scoreTermOf is the score term for one instance's key, if any. */
@@ -304,8 +308,8 @@ export function Facets({ kind, q, names, enrichers = [], onChange }: { kind: Kin
           .filter((k) => k.type === "text" || k.type === "list")
           .map((k) => {
             const section = `value:${keyRef(e.id, k.key)}`;
-            const title = enrichers.length > 1 ? `${k.label} · ${e.label}` : k.label;
-            return <ValueSection key={section} instance={e.id} k={k} title={title} q={q} open={open(section)} onOpen={() => flip(section)} onChange={onChange} />;
+            const instanceLabel = enrichers.length > 1 ? e.label : undefined;
+            return <ValueSection key={section} instance={e.id} instanceLabel={instanceLabel} k={k} q={q} open={open(section)} onOpen={() => flip(section)} onChange={onChange} />;
           }),
       )}
       {scored.length > 0 && <ScoreSection enrichers={scored} q={q} open={open("score")} onOpen={() => flip("score")} onChange={onChange} />}

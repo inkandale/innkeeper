@@ -9,7 +9,7 @@ import { stateLabel } from "../sync/sync";
 import { Facets } from "./Facets";
 import { ImportForm, importers } from "./ImportForm";
 import { pageLinks } from "./pages";
-import { defaultSort, enrichmentValue, keyRef, parseQuery, parseScore, withScoreInstance, sizes, toggleTerm, toParams, toLorebookSearch, toSearch, type CardQuery, type Sort, type Term } from "./query";
+import { defaultSort, enrichmentValue, keyRef, parseQuery, parseScore, withScoreInstance, sizes, toggleTerm, toParams, toLorebookSearch, toSearch, valueLabel, type CardQuery, type Sort, type Term } from "./query";
 import { emptySelection, pick, target, type Selection } from "./selection";
 import { useJobEvents } from "../settings/jobUtil";
 import { useLibrary, withLibrary } from "../shell/library";
@@ -46,7 +46,7 @@ function scoreLabel(value: string): string {
 
 function termLabel(t: Term, names: Names): string {
   const pair = t.kind === "value" ? enrichmentValue(t.value) : undefined;
-  if (pair) return `${t.not ? "not " : ""}${pair.key}: ${pair.value}`;
+  if (pair) return `${t.not ? "not " : ""}${pair.key}: ${valueLabel(pair.value)}`;
   const value =
     t.kind === "score" ? scoreLabel(t.value)
     : t.kind === "collection" ? (names.collections.get(Number(t.value)) ?? "#" + t.value)

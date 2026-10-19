@@ -35,6 +35,12 @@
   cursor: pointer;
 }
 
+.facet-instance {
+  text-transform: none;
+  font-weight: normal;
+  font-size: 0.85em;
+}
+
 .facet-list {
   list-style: none;
   margin: 0;

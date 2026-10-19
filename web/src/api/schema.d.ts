@@ -1144,7 +1144,7 @@ export interface paths {
         put?: never;
         /**
          * Check that a plugin instance works
-         * @description Starts the plugin, even when the instance is broken; a pull target also lists the app's cards. A failed start marks the instance broken, and a good one clears that. An app error is reported but doesn't mark it broken.
+         * @description Starts the plugin, even when the instance is broken; a target that pushes and pulls also lists the app's cards. A failed start marks the instance broken, and a good one clears that. An app error is reported but doesn't mark it broken.
          */
         post: operations["check-instance"];
         delete?: never;

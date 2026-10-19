@@ -759,8 +759,9 @@ func (r *Registry) setBroken(ctx context.Context, id int64, version string, caus
 }
 
 // Check starts an instance's plugin even when it's broken: a failed start
-// marks it broken, and a good one clears that. A pull target then lists the
-// app's cards, which tests its address and login. problem says why the
+// marks it broken, and a good one clears that. An app it pulls from then
+// lists its cards, which tests its address and login; a pull-only plugin has
+// no app to list. problem says why the
 // instance doesn't work; err means the check itself failed.
 func (r *Registry) Check(ctx context.Context, mgr *pluginhost.Manager, id int64) (problem, err error) {
 	inst, st, err := r.load(ctx, id)
@@ -784,7 +785,7 @@ func (r *Registry) Check(ctx context.Context, mgr *pluginhost.Manager, id int64)
 			return nil, err
 		}
 	}
-	if inst.Manifest.Has(protocol.CapabilityPull) {
+	if inst.Manifest.Has(protocol.CapabilityPull) && !inst.Manifest.PullOnly() {
 		var res protocol.TargetListResult
 		if err := r.Call(ctx, mgr, inst, protocol.MethodTargetList, nil, &res); err != nil && ctx.Err() == nil {
 			return err, nil

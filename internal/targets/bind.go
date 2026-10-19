@@ -60,8 +60,12 @@ func (s *Service) Items(ctx context.Context, lk *library.Kind, instanceID int64)
 	return items, nil
 }
 
-// listItems lists the app's items of kind k.
+// listItems lists the app's items of kind k. A pull-only target has no app,
+// so it has none.
 func (s *Service) listItems(ctx context.Context, k kind, inst pluginhost.Instance) ([]protocol.TargetItem, error) {
+	if inst.Manifest.PullOnly() {
+		return nil, nil
+	}
 	var res protocol.TargetListResult
 	err := s.reg.Call(ctx, s.plugins, inst, k.list, nil, &res)
 	return res.Items, err

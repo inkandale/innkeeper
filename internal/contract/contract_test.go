@@ -51,7 +51,7 @@ func TestMisbehavingPluginsFail(t *testing.T) {
 		{"crash-unknown", "exits after shutdown", "already exited"},
 		{"no-shutdown", "answers shutdown", "no response within"},
 		{"bad-describe", "target.describe returns a valid description", "fields is empty"},
-		{"bad-list", "a pull target answers target.list and target.list_lorebooks", "no remote_id"},
+		{"bad-list", checkListsName, "no remote_id"},
 	}
 
 	for _, tt := range tests {
@@ -350,7 +350,8 @@ func TestSitesChecks(t *testing.T) {
 }
 
 func TestPullOnlyTargetChecks(t *testing.T) {
-	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"pull"}), Options{}, quiet)
+	// bad-list lists an item without a remote_id, which fails the list check if it runs.
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"pull"}, "-mode=bad-list"), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,8 +359,8 @@ func TestPullOnlyTargetChecks(t *testing.T) {
 	for i, r := range results {
 		names[i] = r.Name
 	}
-	if !slices.Contains(names, "a pull target answers target.list and target.list_lorebooks") || !slices.Contains(names, checkGoneName) {
-		t.Fatalf("ran %v, want the list and gone checks", names)
+	if slices.Contains(names, checkListsName) || !slices.Contains(names, checkGoneName) {
+		t.Fatalf("ran %v, want the gone check and no list check", names)
 	}
 	if f := failed(results); len(f) > 0 {
 		t.Fatalf("checks failed: %v", f)

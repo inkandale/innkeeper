@@ -122,9 +122,10 @@ func TestReconcileAndSyncRefuseAPullOnlyTarget(t *testing.T) {
 	}
 }
 
-func TestAPullOnlyTargetCanBeRead(t *testing.T) {
+func TestAPullOnlyTargetListsNothingWithoutCallingIt(t *testing.T) {
 	e := setup(t, nil)
-	e.addUpstream(nil)
+	// A target.list call would fail.
+	e.addUpstream(map[string]any{"fail_list": "retryable"})
 	if items, err := e.s.Items(e.ctx, library.Card, e.up); err != nil || len(items) != 0 {
 		t.Fatalf("items = %+v, %v", items, err)
 	}

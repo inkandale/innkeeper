@@ -413,8 +413,9 @@ If the app no longer has the card, reply with error `-32004`.
 
 **`target.list`** and **`target.list_lorebooks`** take no params and say what
 the app already has, so the owner can link a library item to one instead of
-pushing a copy. Both need the `pull` capability. Page through the app
-yourself and reply with every item:
+pushing a copy. Both need the `pull` capability, and the core sends them only
+to a plugin that also pushes. Page through the app yourself and reply with
+every item:
 
 ```json
 {"items": [{"remote_id": "42", "name": "Brakka"}]}
@@ -458,8 +459,7 @@ changes queue.
 |---|---|
 | `target.describe` | `pull` true, `update` false. Leave `character_book` out of `fields`; the core doesn't compare embedded books. Set `lorebooks` to `standalone` to follow lorebook sources |
 | `target.get`, `target.get_lorebook` | The site's current copy. A card check sets `avatar`, so return the image when asked. Leave `lorebook_remote_ids` out of `target.get` |
-| `target.list`, `target.list_lorebooks` | `{"items": []}`. Instance checks and `innkeeper plugin check` call them |
-| `target.put`, `target.put_lorebook` | Don't implement. The core never pushes to a pull-only plugin |
+| `target.put`, `target.put_lorebook`, `target.list`, `target.list_lorebooks` | Don't implement. The core never pushes to a pull-only plugin or lists its items |
 
 Errors and stability:
 
@@ -1115,7 +1115,7 @@ It loads the manifest, then checks that:
 - an `auth` plugin's `auth.begin` returns a `redirect` or a `form` with
   `"type": "object"`, or an error other than `-32601`, and its `auth.setup`
   returns such a form or `-32601`
-- a plugin whose `target.describe` claims `pull` answers `target.list` and
+- a `push` plugin whose `target.describe` claims `pull` answers `target.list` and
   `target.list_lorebooks` within 5 seconds, with a `remote_id` on every item
   it returns. A target checked without its app can only return an error, so
   an error other than `-32601` counts as an answer.

@@ -188,8 +188,9 @@ func dead(err error, p *pluginhost.Process) bool {
 
 const checkGoneName = "a pull-only target answers -32004 for an item it doesn't have"
 
-// checkTarget checks target.describe and, for a pull target, its lists. A
-// pull-only target follows site sources, so it must also say when one is gone.
+// checkTarget checks target.describe and, for an app it pulls from, its
+// lists. A pull-only target has no app to list; it follows site sources, so
+// it must say when one is gone.
 func checkTarget(ctx context.Context, p *pluginhost.Process, m *protocol.Manifest) []Result {
 	info, err := checkDescribe(ctx, p, m)
 	results := []Result{{"target.describe returns a valid description", err}}
@@ -210,16 +211,16 @@ func checkTarget(ctx context.Context, p *pluginhost.Process, m *protocol.Manifes
 			return results
 		}
 	}
-	if !info.Pull {
+	switch {
+	case !info.Pull:
 		return results
+	case m.PullOnly():
+		return append(results, Result{checkGoneName, checkGone(ctx, p, info)})
 	}
-	err = checkLists(ctx, p)
-	results = append(results, Result{"a pull target answers target.list and target.list_lorebooks", err})
-	if !m.PullOnly() || dead(err, p) {
-		return results
-	}
-	return append(results, Result{checkGoneName, checkGone(ctx, p, info)})
+	return append(results, Result{checkListsName, checkLists(ctx, p)})
 }
+
+const checkListsName = "a pull target answers target.list and target.list_lorebooks"
 
 // checkGone asks for a card, and a lorebook if the target keeps standalone
 // ones, that no site has. The core shows -32004 as "no longer on the site", and

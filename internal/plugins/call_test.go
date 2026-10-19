@@ -118,3 +118,34 @@ func TestCheckRefusesDisabledInstance(t *testing.T) {
 		t.Fatalf("after Check: broken = %v, err = %v; the plugin must not have started", got.BrokenError, err)
 	}
 }
+
+func TestCheckListsOnlyAnAppsItems(t *testing.T) {
+	ctx := context.Background()
+	box, err := secrets.New(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		caps        []string
+		wantProblem bool
+	}{
+		{[]string{"push", "pull"}, true},
+		{[]string{"pull"}, false},
+	} {
+		m, err := protocol.LoadManifest(testutil.FakePluginWith(t, c.caps))
+		if err != nil {
+			t.Fatal(err)
+		}
+		reg := New(testdb.New(t), map[string]*protocol.Manifest{"fake": m}, &blobstore.Store{Name: "library", Root: t.TempDir()}, box)
+		mgr := pluginhost.NewManager(nil, time.Minute, quiet)
+		t.Cleanup(mgr.Close)
+		id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: new("Fake"), Config: map[string]any{"fail_list": "retryable"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		problem, err := reg.Check(ctx, mgr, id)
+		if err != nil || (problem != nil) != c.wantProblem {
+			t.Errorf("%v: problem = %v, err = %v; want a problem: %v", c.caps, problem, err, c.wantProblem)
+		}
+	}
+}

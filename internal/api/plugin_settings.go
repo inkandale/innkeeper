@@ -115,10 +115,7 @@ func (s *Server) draftGuard(ctx context.Context, d DraftIn) error {
 // owner: options and run need destructive, and defaults sends no secrets.
 func (s *Server) settingsFail(err error) error {
 	var rpcErr *protocol.Error
-	switch {
-	case errors.Is(err, plugins.ErrIncapable):
-		return huma.Error400BadRequest(err.Error())
-	case errors.As(err, &rpcErr) && rpcErr.Code != protocol.CodeMethodNotFound:
+	if errors.As(err, &rpcErr) && rpcErr.Code != protocol.CodeMethodNotFound {
 		return huma.Error502BadGateway(rpcErr.Message)
 	}
 	return s.fail(err)

@@ -321,7 +321,8 @@ func (s *Server) failAs(who string, err error) error {
 		// The stored error can hold paths and plugin output, so it stays out of the response.
 		return huma.Error409Conflict("plugin instance is broken; fix its settings first")
 	case errors.Is(err, library.ErrInvalid), errors.Is(err, plugins.ErrInvalid), errors.Is(err, plugins.ErrUnknownPlugin),
-		errors.Is(err, targets.ErrCannot), errors.Is(err, plugins.ErrNoCodec), errors.Is(err, actions.ErrInvalid):
+		errors.Is(err, targets.ErrCannot), errors.Is(err, plugins.ErrNoCodec), errors.Is(err, actions.ErrInvalid),
+		errors.Is(err, plugins.ErrIncapable):
 		return huma.Error400BadRequest(err.Error())
 	case errors.Is(err, merge.ErrUnknownHunk), errors.Is(err, merge.ErrBadChoice):
 		return huma.Error422UnprocessableEntity(err.Error())

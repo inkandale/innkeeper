@@ -74,3 +74,15 @@ func TestHungPluginTools(t *testing.T) {
 		}
 	}
 }
+
+func TestToolCallOnAnInstanceWithoutMCPIsBadRequest(t *testing.T) {
+	e := newEnv(t)
+	vault, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "vault", Name: new("Vault")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := e.call("POST", fmt.Sprintf("/instances/%d/tools/echo", vault), map[string]any{"arguments": map[string]any{}}, 400, nil)
+	if !strings.Contains(string(r.Body), "can't mcp") {
+		t.Fatalf("body = %s", r)
+	}
+}

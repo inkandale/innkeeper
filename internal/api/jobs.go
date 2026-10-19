@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -19,7 +18,6 @@ import (
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
-	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/internal/targets"
 	"github.com/inkandale/innkeeper/internal/tier"
 )
@@ -146,9 +144,6 @@ type bulkIn struct {
 // plugin has capability, and returns it.
 func (s *Server) usable(ctx context.Context, id int64, capability string) (pluginhost.Instance, error) {
 	inst, err := s.Registry.InstanceWith(ctx, id, capability)
-	if errors.Is(err, plugins.ErrIncapable) {
-		return inst, huma.Error400BadRequest(fmt.Sprintf("plugin %s can't %s", inst.Manifest.Name, capability))
-	}
 	return inst, s.fail(err)
 }
 

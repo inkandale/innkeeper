@@ -225,35 +225,20 @@ func (m *Manifest) Validate() error {
 	case filepath.IsAbs(m.Icon) || (m.Dir != "" && !inside(m.Dir, filepath.Join(m.Dir, m.Icon))):
 		errs = append(errs, fmt.Errorf("icon %q is outside the plugin folder", m.Icon))
 	}
-	if !m.IsTheme() && m.Stylesheet != "" {
-		errs = append(errs, errors.New("stylesheet needs the theme capability"))
-	}
 	if strings.ContainsAny(m.Description, "\r\n") {
 		errs = append(errs, errors.New("description must be one line"))
 	}
 	if len(m.Capabilities) == 0 {
 		errs = append(errs, errors.New("at least one capability is required"))
 	}
-	seen := map[string]bool{}
 	for _, c := range m.Capabilities {
 		if !slices.Contains(Capabilities, c) {
 			errs = append(errs, fmt.Errorf("unknown capability %q", c))
 		}
-		if seen[c] {
-			errs = append(errs, fmt.Errorf("capability %q listed twice", c))
-		}
-		seen[c] = true
 	}
-	seenSecrets := map[string]bool{}
-	for _, s := range m.Secrets {
-		if !keyPattern.MatchString(s) {
-			errs = append(errs, fmt.Errorf("secret name %q must match %s", s, keyPattern))
-		}
-		if seenSecrets[s] {
-			errs = append(errs, fmt.Errorf("secret %q listed twice", s))
-		}
-		seenSecrets[s] = true
-	}
+	errs = append(errs, unique("capability", m.Capabilities, nil)...)
+	errs = append(errs, m.checkCapabilityKeys()...)
+	errs = append(errs, unique("secret name", m.Secrets, matches(keyPattern))...)
 	for key, e := range m.Enrichments {
 		if !keyPattern.MatchString(key) {
 			errs = append(errs, fmt.Errorf("enrichment key %q must match %s", key, keyPattern))
@@ -277,86 +262,22 @@ func (m *Manifest) Validate() error {
 	if grids > 1 {
 		errs = append(errs, errors.New("at most one enrichment can set grid"))
 	}
-	if m.Has(CapabilityEnrich) && len(m.Enrichments) == 0 {
-		errs = append(errs, errors.New("an enrich plugin must declare enrichments"))
-	}
-	hasCodec := m.Has(CapabilityCodec)
-	if hasCodec && len(m.Formats) == 0 {
-		errs = append(errs, errors.New("a codec plugin must list its formats"))
-	}
-	if !hasCodec && len(m.Formats) > 0 {
-		errs = append(errs, errors.New("formats needs the codec capability"))
-	}
-	seenFormats := map[string]bool{}
-	for _, f := range m.Formats {
-		if !formatPattern.MatchString(f) {
-			errs = append(errs, fmt.Errorf("format %q must match %s", f, formatPattern))
-		}
-		if f == "json" {
-			errs = append(errs, errors.New(`format "json" is the core's own CCv3 export`))
-		}
-		if seenFormats[f] {
-			errs = append(errs, fmt.Errorf("format %q listed twice", f))
-		}
-		seenFormats[f] = true
+	errs = append(errs, unique("format", m.Formats, matches(formatPattern))...)
+	if slices.Contains(m.Formats, "json") {
+		errs = append(errs, errors.New(`format "json" is the core's own CCv3 export`))
 	}
 	if m.EnrichMaxCards < 0 {
 		errs = append(errs, errors.New("enrich_max_cards can't be negative"))
 	}
-	if !m.Has(CapabilityEnrich) && m.EnrichMaxCards != 0 {
-		errs = append(errs, errors.New("enrich_max_cards needs the enrich capability"))
-	}
-	if !m.Has(CapabilityImport) && m.Bulk {
-		errs = append(errs, errors.New("bulk needs the import capability"))
-	}
-	if !m.Has(CapabilityImport) && len(m.Inputs) > 0 {
-		errs = append(errs, errors.New("inputs needs the import capability"))
-	}
-	seenInputs := map[string]bool{}
-	for _, in := range m.Inputs {
-		if !slices.Contains(importInputs, in) {
-			errs = append(errs, fmt.Errorf("input %q must be one of %v", in, importInputs))
-		}
-		if seenInputs[in] {
-			errs = append(errs, fmt.Errorf("input %q listed twice", in))
-		}
-		seenInputs[in] = true
-	}
-	if m.Has(CapabilityRecords) && len(m.Records) == 0 {
-		errs = append(errs, errors.New("a records plugin must declare a record type"))
-	}
-	if !m.Has(CapabilityRecords) && len(m.Records) > 0 {
-		errs = append(errs, errors.New("records needs the records capability"))
-	}
+	errs = append(errs, unique("input", m.Inputs, oneOf(importInputs))...)
 	for _, key := range slices.Sorted(maps.Keys(m.Records)) {
 		errs = append(errs, m.Records[key].validate(key)...)
 	}
 	if len(m.SourceKinds) > 0 && !m.PullOnly() {
 		errs = append(errs, errors.New("source_kinds needs the pull capability and not push"))
 	}
-	seenKinds := map[string]bool{}
-	for _, k := range m.SourceKinds {
-		if !sourceKindPattern.MatchString(k) {
-			errs = append(errs, fmt.Errorf("source kind %q must match %s", k, sourceKindPattern))
-		}
-		if seenKinds[k] {
-			errs = append(errs, fmt.Errorf("source kind %q listed twice", k))
-		}
-		seenKinds[k] = true
-	}
-	seenUses := map[string]bool{}
-	for _, u := range m.Uses {
-		if _, ok := Services[u]; !ok {
-			errs = append(errs, fmt.Errorf("uses %q must be one of %v", u, slices.Sorted(maps.Keys(Services))))
-		}
-		if seenUses[u] {
-			errs = append(errs, fmt.Errorf("uses %q listed twice", u))
-		}
-		seenUses[u] = true
-	}
-	if len(m.Settings.Actions) > 0 && !m.Has(CapabilitySettings) {
-		errs = append(errs, errors.New("settings.actions needs the settings capability"))
-	}
+	errs = append(errs, unique("source kind", m.SourceKinds, matches(sourceKindPattern))...)
+	errs = append(errs, unique("uses", m.Uses, oneOf(slices.Sorted(maps.Keys(Services))))...)
 	for _, id := range slices.Sorted(maps.Keys(m.Settings.Actions)) {
 		if !keyPattern.MatchString(id) {
 			errs = append(errs, fmt.Errorf("settings action %q must match %s", id, keyPattern))
@@ -366,6 +287,79 @@ func (m *Manifest) Validate() error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// capabilityKeys are the manifest keys that belong to one capability. A key
+// marked only is an error without its capability; a key marked required is
+// an error when a plugin with the capability leaves it unset.
+var capabilityKeys = []struct {
+	capability, key string
+	only, required  bool
+	set             func(*Manifest) bool
+}{
+	{CapabilityTheme, "stylesheet", true, false, func(m *Manifest) bool { return m.Stylesheet != "" }},
+	{CapabilityEnrich, "enrichments", false, true, func(m *Manifest) bool { return len(m.Enrichments) > 0 }},
+	{CapabilityEnrich, "enrich_max_cards", true, false, func(m *Manifest) bool { return m.EnrichMaxCards != 0 }},
+	{CapabilityCodec, "formats", true, true, func(m *Manifest) bool { return len(m.Formats) > 0 }},
+	{CapabilityImport, "bulk", true, false, func(m *Manifest) bool { return m.Bulk }},
+	{CapabilityImport, "inputs", true, false, func(m *Manifest) bool { return len(m.Inputs) > 0 }},
+	{CapabilityRecords, "records", true, true, func(m *Manifest) bool { return len(m.Records) > 0 }},
+	{CapabilitySettings, "settings.actions", true, false, func(m *Manifest) bool { return len(m.Settings.Actions) > 0 }},
+}
+
+func (m *Manifest) checkCapabilityKeys() []error {
+	var errs []error
+	for _, k := range capabilityKeys {
+		has, set := m.Has(k.capability), k.set(m)
+		switch {
+		case k.only && set && !has:
+			errs = append(errs, fmt.Errorf("%s needs the %s capability", k.key, k.capability))
+		case k.required && has && !set:
+			article := "a"
+			if strings.ContainsAny(k.capability[:1], "aeiou") {
+				article = "an"
+			}
+			errs = append(errs, fmt.Errorf("%s %s plugin must declare %s", article, k.capability, k.key))
+		}
+	}
+	return errs
+}
+
+// unique reports each key that check rejects and each listed more than once.
+// A nil check accepts any key.
+func unique(what string, keys []string, check func(string) error) []error {
+	var errs []error
+	for i, k := range keys {
+		if check != nil {
+			if err := check(k); err != nil {
+				errs = append(errs, fmt.Errorf("%s %q %w", what, k, err))
+			}
+		}
+		if slices.Contains(keys[:i], k) {
+			errs = append(errs, fmt.Errorf("%s %q listed twice", what, k))
+		}
+	}
+	return errs
+}
+
+// matches is a check for unique that wants each key to match pattern.
+func matches(pattern *regexp.Regexp) func(string) error {
+	return func(k string) error {
+		if !pattern.MatchString(k) {
+			return fmt.Errorf("must match %s", pattern)
+		}
+		return nil
+	}
+}
+
+// oneOf is a check for unique that wants each key to be one of allowed.
+func oneOf(allowed []string) func(string) error {
+	return func(k string) error {
+		if !slices.Contains(allowed, k) {
+			return fmt.Errorf("must be one of %v", allowed)
+		}
+		return nil
+	}
 }
 
 // Settings is the manifest's [settings] table.

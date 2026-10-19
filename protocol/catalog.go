@@ -71,7 +71,7 @@ func (c CatalogInfo) Validate() error {
 	if len(c.Kinds) == 0 {
 		errs = append(errs, errors.New("kinds is empty"))
 	}
-	errs = append(errs, uniqueKeys("kind", c.Kinds)...)
+	errs = append(errs, unique("kind", c.Kinds, matches(keyPattern))...)
 	names := make([]string, len(c.Filters))
 	for i, f := range c.Filters {
 		names[i] = f.Name
@@ -86,7 +86,7 @@ func (c CatalogInfo) Validate() error {
 		}
 		errs = append(errs, checkOptions("filter "+f.Name+" option", f.Options)...)
 	}
-	errs = append(errs, uniqueKeys("filter", names)...)
+	errs = append(errs, unique("filter", names, matches(keyPattern))...)
 	if len(c.Sorts) == 0 {
 		errs = append(errs, errors.New("sorts is empty"))
 	}
@@ -94,35 +94,16 @@ func (c CatalogInfo) Validate() error {
 	return errors.Join(errs...)
 }
 
-// uniqueKeys wants each key in lowercase snake_case and listed once.
-func uniqueKeys(what string, keys []string) []error {
-	var errs []error
-	seen := map[string]bool{}
-	for _, k := range keys {
-		if !keyPattern.MatchString(k) {
-			errs = append(errs, fmt.Errorf("%s %q must be lowercase snake_case", what, k))
-		}
-		if seen[k] {
-			errs = append(errs, fmt.Errorf("%s %q listed twice", what, k))
-		}
-		seen[k] = true
-	}
-	return errs
-}
-
 func checkOptions(what string, opts []CatalogOption) []error {
 	var errs []error
-	seen := map[string]bool{}
-	for _, o := range opts {
+	values := make([]string, len(opts))
+	for i, o := range opts {
+		values[i] = o.Value
 		if o.Value == "" || o.Label == "" {
 			errs = append(errs, fmt.Errorf("%s %q needs a value and a label", what, o.Value))
 		}
-		if seen[o.Value] {
-			errs = append(errs, fmt.Errorf("%s %q listed twice", what, o.Value))
-		}
-		seen[o.Value] = true
 	}
-	return errs
+	return append(errs, unique(what, values, nil)...)
 }
 
 // CatalogSearchParams asks for one page of items. Every field is optional:

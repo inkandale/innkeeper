@@ -501,3 +501,42 @@ func TestEnrichMaxCardsTakesOnlyAnEnrichersNonNegativeCap(t *testing.T) {
 		t.Error("enrich_max_cards without enrich validated")
 	}
 }
+
+func TestManifestCapabilityKeys(t *testing.T) {
+	record := map[string]RecordType{"skills": {Label: "Skills", Schema: map[string]any{"type": "object"}}}
+	tests := []struct {
+		name    string
+		caps    []string
+		set     func(*Manifest)
+		wantErr string
+	}{
+		{"stylesheet without theme", []string{"push"}, func(m *Manifest) { m.Stylesheet = "a.css" }, "stylesheet needs the theme capability"},
+		{"enrich without enrichments", []string{"enrich"}, func(*Manifest) {}, "an enrich plugin must declare enrichments"},
+		{"enrich_max_cards without enrich", []string{"push"}, func(m *Manifest) { m.EnrichMaxCards = 5 }, "enrich_max_cards needs the enrich capability"},
+		{"codec without formats", []string{"codec"}, func(*Manifest) {}, "a codec plugin must declare formats"},
+		{"formats without codec", []string{"push"}, func(m *Manifest) { m.Formats = []string{"png"} }, "formats needs the codec capability"},
+		{"bulk without import", []string{"push"}, func(m *Manifest) { m.Bulk = true }, "bulk needs the import capability"},
+		{"inputs without import", []string{"push"}, func(m *Manifest) { m.Inputs = []string{"url"} }, "inputs needs the import capability"},
+		{"records without types", []string{"records"}, func(*Manifest) {}, "a records plugin must declare records"},
+		{"record types without records", []string{"push"}, func(m *Manifest) { m.Records = record }, "records needs the records capability"},
+		{"settings actions without settings", []string{"push"}, func(m *Manifest) {
+			m.Settings.Actions = map[string]SettingsAction{"test": {Label: "Test"}}
+		}, "settings.actions needs the settings capability"},
+		{"enrichments on an importer", []string{"import"}, func(m *Manifest) {
+			m.Enrichments = map[string]Enrichment{"rating": {Type: "text", Label: "Rating"}}
+		}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := &Manifest{Name: "p", Version: "1", Protocol: Version, Command: []string{"p"}, Capabilities: tt.caps}
+			tt.set(m)
+			err := m.Validate()
+			if tt.wantErr == "" && err != nil {
+				t.Fatalf("Validate = %v", err)
+			}
+			if tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)) {
+				t.Fatalf("Validate = %v, want %q", err, tt.wantErr)
+			}
+		})
+	}
+}

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"slices"
 	"strings"
 )
 
@@ -39,15 +38,7 @@ func (it RecordType) validate(key string) []error {
 	if raw, err := json.Marshal(it.Schema); err != nil || !objectSchema(raw) {
 		errs = append(errs, fmt.Errorf("record type %q: schema must be a JSON Schema with type object", key))
 	}
-	for i, in := range it.Import {
-		if !slices.Contains(importInputs, in) {
-			errs = append(errs, fmt.Errorf("record type %q: import %q must be one of %v", key, in, importInputs))
-		}
-		if slices.Contains(it.Import[:i], in) {
-			errs = append(errs, fmt.Errorf("record type %q: import %q listed twice", key, in))
-		}
-	}
-	return errs
+	return append(errs, unique(fmt.Sprintf("record type %q: import", key), it.Import, oneOf(importInputs))...)
 }
 
 // RecordSummary is one record in a list.

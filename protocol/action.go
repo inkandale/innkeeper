@@ -68,13 +68,10 @@ func (a Action) Validate() error {
 	if a.WholeCard && len(a.Fields) == 0 {
 		errs = append(errs, fmt.Errorf("action %s: whole_card needs fields", a.ID))
 	}
-	for i, f := range a.Fields {
-		if f == "" {
-			errs = append(errs, fmt.Errorf("action %s: a field is empty", a.ID))
-		} else if slices.Contains(a.Fields[:i], f) {
-			errs = append(errs, fmt.Errorf("action %s: field %q is listed twice", a.ID, f))
-		}
+	if slices.Contains(a.Fields, "") {
+		errs = append(errs, fmt.Errorf("action %s: a field is empty", a.ID))
 	}
+	errs = append(errs, unique("action "+a.ID+": field", a.Fields, nil)...)
 	if len(a.Inputs) > 0 && !objectSchema(a.Inputs) {
 		errs = append(errs, fmt.Errorf("action %s: inputs must be a JSON Schema with type object", a.ID))
 	}

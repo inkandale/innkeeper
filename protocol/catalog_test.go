@@ -29,7 +29,7 @@ func TestCatalogInfoValidate(t *testing.T) {
 		wantErr string
 	}{
 		{"no kinds", func(c *CatalogInfo) { c.Kinds = nil }, "kinds is empty"},
-		{"bad kind", func(c *CatalogInfo) { c.Kinds = []string{"Card"} }, `kind "Card" must be lowercase snake_case`},
+		{"bad kind", func(c *CatalogInfo) { c.Kinds = []string{"Card"} }, `kind "Card" must match`},
 		{"repeated kind", func(c *CatalogInfo) { c.Kinds = []string{"card", "card"} }, `kind "card" listed twice`},
 		{"unknown filter type", func(c *CatalogInfo) { c.Filters[1].Type = "regex" }, `type "regex" must be one of`},
 		{"enum without options", func(c *CatalogInfo) { c.Filters[0].Options = nil }, "only an enum has them"},

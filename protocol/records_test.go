@@ -33,7 +33,7 @@ func TestManifestRecords(t *testing.T) {
 		t.Fatalf("skills = %+v", skills)
 	}
 	tests := []struct{ name, replace, with, wantErr string }{
-		{"capability without types", "[records.skills]\nlabel = \"Skills\"\nimport = [\"file\", \"url\"]\n\n[records.skills.schema]\ntype = \"object\"\nrequired = [\"name\"]\nproperties.name = {type = \"string\", title = \"Name\"}\nproperties.body = {type = \"string\", contentMediaType = \"text/markdown\"}\n", "", "must declare a record type"},
+		{"capability without types", "[records.skills]\nlabel = \"Skills\"\nimport = [\"file\", \"url\"]\n\n[records.skills.schema]\ntype = \"object\"\nrequired = [\"name\"]\nproperties.name = {type = \"string\", title = \"Name\"}\nproperties.body = {type = \"string\", contentMediaType = \"text/markdown\"}\n", "", "must declare records"},
 		{"types without capability", `"action", "records"]`, `"action"]`, "records needs the records capability"},
 		{"bad type key", "[records.skills]", "[records.Skills]", `record type "Skills"`},
 		{"no label", `label = "Skills"`, `label = ""`, "label is required"},

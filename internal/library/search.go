@@ -23,8 +23,8 @@ type Query struct {
 	Sources  []string `json:"sources,omitempty" doc:"library, or catalog:<instance id> to also search a catalog by text alone. Default: library."`
 	Include  []string `json:"include,omitempty" doc:"Extra data per hit: tags, lorebooks, targets, enrichments (the score instance's current values of its score keys and grid key). Lorebooks take cards and targets."`
 	Fields   []string `json:"fields,omitempty" doc:"Card data keys to return per hit, plus avatar. Default: name."`
-	Sort     string   `json:"sort,omitempty" pattern:"^(relevance|updated|name|created|enrichment:[a-z][a-z0-9_]*)$" doc:"relevance, updated, name, created, or enrichment:<key> for the score instance's value of key, highest first and cards without one last. Default: relevance with text, newest first without."`
-	Facets   []string `json:"facets,omitempty" doc:"Counts to return over every match: tags, collections, targets, sources, or enrichment:<key> for the values of a text or list key from the score instance. Lorebooks take targets and sources."`
+	Sort     string   `json:"sort,omitempty" pattern:"^(relevance|updated|name|created|enrichment:([1-9][0-9]*:)?[a-z][a-z0-9_]*)$" doc:"relevance, updated, name, created, or enrichment:<key> for the score instance's value of key, highest first and cards without one last; enrichment:<instance>:<key> reads that enrich instance's value instead. Default: relevance with text, newest first without."`
+	Facets   []string `json:"facets,omitempty" doc:"Counts to return over every match: tags, collections, targets, sources, or enrichment:<key> for the values of a text or list key from the score instance, or enrichment:<instance>:<key> from that enrich instance. Enrichment counts are keyed by what follows enrichment:. Lorebooks take targets and sources."`
 	Page     Page     `json:"page,omitempty"`
 	Group    string   `json:"group,omitempty" enum:"family" doc:"family returns one hit per family of variants: its face, with the family's matches. Paging and total count families; facets count cards or lorebooks."`
 
@@ -195,6 +195,21 @@ func (w *where) enrichmentSQL(key string, inst int64) (string, error) {
 		` AND e.instance_id = ` + w.arg(inst) + ` ORDER BY e.revision_id DESC, e.created_at DESC, e.id DESC LIMIT 1)`, nil
 }
 
+// enrichmentRef reads a sort or facet's reference to an enrichment key:
+// key for the score instance's values, or <instance>:<key> for that enrich
+// instance's. Instance 0 means the score instance.
+func enrichmentRef(ref string) (int64, string, error) {
+	id, key, ok := strings.Cut(ref, ":")
+	if !ok {
+		return 0, ref, nil
+	}
+	inst, err := strconv.ParseInt(id, 10, 64)
+	if err != nil || inst <= 0 {
+		return 0, "", fmt.Errorf("%w: %q names no enrich instance", ErrInvalid, ref)
+	}
+	return inst, key, nil
+}
+
 // enrichmentFilter is f's condition on its enrichment key.
 func (w *where) enrichmentFilter(f Filter) (string, error) {
 	set := 0
@@ -278,13 +293,17 @@ func enrichmentFacetSQL(k *Kind, cond, key, inst string) string {
 }
 
 // facets counts the matches of cond for each facet in names; an enrichment
-// facet reads the score instance's values.
+// facet reads its named instance's values, or score's.
 func (l *Library) facets(ctx context.Context, k *Kind, names []string, cond string, args []any, score int64) (*Facets, error) {
 	f := &Facets{}
 	for _, name := range names {
-		if key, ok := strings.CutPrefix(name, enrichmentFacetPrefix); ok {
+		if ref, ok := strings.CutPrefix(name, enrichmentFacetPrefix); ok {
+			inst, key, err := enrichmentRef(ref)
+			if err != nil {
+				return nil, err
+			}
 			n := len(args)
-			rows, err := l.pool.Query(ctx, enrichmentFacetSQL(k, cond, "$"+strconv.Itoa(n+1), "$"+strconv.Itoa(n+2)), append(slices.Clone(args), key, score)...)
+			rows, err := l.pool.Query(ctx, enrichmentFacetSQL(k, cond, "$"+strconv.Itoa(n+1), "$"+strconv.Itoa(n+2)), append(slices.Clone(args), key, cmp.Or(inst, score))...)
 			if err != nil {
 				return nil, err
 			}
@@ -295,7 +314,7 @@ func (l *Library) facets(ctx context.Context, k *Kind, names []string, cond stri
 			if f.Enrichments == nil {
 				f.Enrichments = map[string][]ValueCount{}
 			}
-			f.Enrichments[key] = counts
+			f.Enrichments[ref] = counts
 			continue
 		}
 		rows, err := l.pool.Query(ctx, facetSQL[name](k, cond), args...)
@@ -658,11 +677,15 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 		}
 	}
 	for _, name := range q.Facets {
-		if strings.HasPrefix(name, enrichmentFacetPrefix) {
+		if ref, ok := strings.CutPrefix(name, enrichmentFacetPrefix); ok {
 			if k != Card {
 				return Results{}, fmt.Errorf("%w: lorebooks have no enrichments", ErrInvalid)
 			}
-			if q.ScoreInstance == 0 {
+			inst, _, err := enrichmentRef(ref)
+			if err != nil {
+				return Results{}, err
+			}
+			if inst == 0 && q.ScoreInstance == 0 {
 				return Results{}, errNoScoreInstance
 			}
 			continue
@@ -684,11 +707,15 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 		o = order{keys: []sortKey{{name + " IS NULL", "boolean"}, {"coalesce(" + name + ", '')", "text"}}}
 	case "created":
 	default:
-		key, ok := strings.CutPrefix(q.Sort, "enrichment:")
+		ref, ok := strings.CutPrefix(q.Sort, "enrichment:")
 		if !ok {
 			return Results{}, fmt.Errorf("%w: unknown sort %q", ErrInvalid, q.Sort)
 		}
-		cur, err := w.enrichmentSQL(key, 0)
+		inst, key, err := enrichmentRef(ref)
+		if err != nil {
+			return Results{}, err
+		}
+		cur, err := w.enrichmentSQL(key, inst)
 		if err != nil {
 			return Results{}, err
 		}

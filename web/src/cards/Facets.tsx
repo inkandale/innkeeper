@@ -5,6 +5,7 @@ import type { components } from "../api/schema";
 import { stateLabel } from "../sync/sync";
 import {
   countSearch,
+  keyRef,
   onlyTerm,
   parseScore,
   sameValue,
@@ -28,6 +29,7 @@ type Row = { value: string; label: string; cards: number; dot?: string };
 const titles: Record<Exclude<TermKind, "value">, string> = { target: "Target", state: "State", tag: "Tags", source: "Sources", collection: "Collections", score: "Scores" };
 
 type EnrichmentKey = components["schemas"]["EnrichmentKey"];
+type Enricher = components["schemas"]["EnrichmentInstance"];
 
 const collapsedKey = "innkeeper.facets.collapsed";
 
@@ -182,30 +184,39 @@ function Section({ kind, title, section = kind, rows, q, open, onOpen, onChange 
   );
 }
 
-/** ValueSection counts one text or list key's values from the score instance, each a row to include or exclude. */
-function ValueSection({ k, q, open, onOpen, onChange }: { k: EnrichmentKey; q: CardQuery; open: boolean; onOpen: () => void; onChange: (q: CardQuery) => void }) {
-  const body = valueCountSearch(q, k.key);
+/** ValueSection counts one text or list key's values from one enrich instance, each a row to include or exclude. */
+function ValueSection({ instance, k, title, q, open, onOpen, onChange }: { instance: number; k: EnrichmentKey; title: string; q: CardQuery; open: boolean; onOpen: () => void; onChange: (q: CardQuery) => void }) {
+  const ref = keyRef(instance, k.key);
+  const body = valueCountSearch(q, ref);
   const res = useQuery({
     queryKey: ["search", "card", body],
     queryFn: async () => must(await api.POST("/cards/search", { body })),
     placeholderData: keepPreviousData,
     enabled: open,
   });
-  const section = `value:${k.key}`;
-  const counted = res.data && (res.data.facets?.enrichments?.[k.key] ?? []).map((v) => ({ value: `${k.key}=${v.value}`, label: v.value, cards: v.cards }));
+  const section = `value:${ref}`;
+  const counted = res.data && (res.data.facets?.enrichments?.[ref] ?? []).map((v) => ({ value: `${ref}=${v.value}`, label: v.value, cards: v.cards }));
   // A selected value with no matches still gets a row, so it can be cleared.
   const rows = counted && [
     ...counted,
     ...q.terms
       .filter((t) => sectionOf(t) === section && !counted.some((r) => r.value === t.value))
-      .map((t) => ({ value: t.value, label: t.value.slice(k.key.length + 1), cards: 0 })),
+      .map((t) => ({ value: t.value, label: t.value.slice(ref.length + 1), cards: 0 })),
   ];
-  return <Section kind="value" title={k.label} section={section} rows={rows} q={q} open={open} onOpen={onOpen} onChange={onChange} />;
+  return <Section kind="value" title={title} section={section} rows={rows} q={q} open={open} onOpen={onOpen} onChange={onChange} />;
 }
 
-/** ScoreFilter narrows to cards whose score instance value of key is in a range, or that have none. */
-function ScoreFilter({ k, q, onChange }: { k: EnrichmentKey; q: CardQuery; onChange: (q: CardQuery) => void }) {
-  const term = q.terms.find((t) => t.kind === "score" && parseScore(t.value)?.key === k.key);
+/** scoreTermOf is the score term for one instance's key, if any. */
+function scoreTermOf(q: CardQuery, instance: number, key: string) {
+  return q.terms.find((t) => {
+    const s = t.kind === "score" ? parseScore(t.value) : undefined;
+    return s?.key === key && s.instance === instance;
+  });
+}
+
+/** ScoreFilter narrows to cards whose value of one instance's key is in a range, or that have none. */
+function ScoreFilter({ instance, k, q, onChange }: { instance: number; k: EnrichmentKey; q: CardQuery; onChange: (q: CardQuery) => void }) {
+  const term = scoreTermOf(q, instance, k.key);
   const score = term ? parseScore(term.value) : undefined;
   const [low = 0, high = 100] = k.range ?? [];
   const step = high - low >= 10 ? 1 : (high - low) / 100;
@@ -213,7 +224,7 @@ function ScoreFilter({ k, q, onChange }: { k: EnrichmentKey; q: CardQuery; onCha
   const [lo, hi] = range;
   // A thumb at either end means no bound on that side.
   const commit = () => {
-    const s = { key: k.key, gte: lo > low ? lo : undefined, lte: hi < high ? hi : undefined };
+    const s = { instance, key: k.key, gte: lo > low ? lo : undefined, lte: hi < high ? hi : undefined };
     if (scoreTerm(s)?.value !== term?.value) onChange(setScore(q, s));
   };
   const pct = (v: number) => `${((v - low) / (high - low)) * 100}%`;
@@ -224,7 +235,7 @@ function ScoreFilter({ k, q, onChange }: { k: EnrichmentKey; q: CardQuery; onCha
       <span className="score-value">{!score?.none && (lo > low || hi < high) && `${lo}–${hi}`}</span>
       <label className="score-none" title="Not evaluated">
         <input type="checkbox" aria-label={`${k.label} not evaluated`} checked={!!score?.none}
-          onChange={(e) => onChange(setScore(q, { key: k.key, none: e.target.checked }))} />
+          onChange={(e) => onChange(setScore(q, { instance, key: k.key, none: e.target.checked }))} />
         none
       </label>
       <div className="score-range" style={{ "--lo": pct(lo), "--hi": pct(hi) } as CSSProperties}>
@@ -238,8 +249,10 @@ function ScoreFilter({ k, q, onChange }: { k: EnrichmentKey; q: CardQuery; onCha
   );
 }
 
-/** ScoreSection is one collapsible section holding a range row per score key. */
-function ScoreSection({ scores, q, open, onOpen, onChange }: { scores: EnrichmentKey[]; q: CardQuery; open: boolean; onOpen: () => void; onChange: (q: CardQuery) => void }) {
+const scoreKeys = (e: Enricher) => (e.keys ?? []).filter((k) => k.type === "score");
+
+/** ScoreSection is one collapsible section holding a range row per score key, under its instance's name when there are several. */
+function ScoreSection({ enrichers, q, open, onOpen, onChange }: { enrichers: Enricher[]; q: CardQuery; open: boolean; onOpen: () => void; onChange: (q: CardQuery) => void }) {
   const picked = q.terms.filter((t) => t.kind === "score").length;
   return (
     <section className="facet-section">
@@ -249,35 +262,30 @@ function ScoreSection({ scores, q, open, onOpen, onChange }: { scores: Enrichmen
           {picked > 0 && ` · ${picked}`}
         </button>
       </h2>
-      {/* Keyed by the term, so a cleared chip resets the slider. */}
-      {open && scores.map((k) => <ScoreFilter key={k.key + (q.terms.find((t) => t.kind === "score" && parseScore(t.value)?.key === k.key)?.value ?? "")} k={k} q={q} onChange={onChange} />)}
+      {open &&
+        enrichers.map((e) => (
+          <div key={e.id} className="score-instance">
+            {enrichers.length > 1 && <h3>{e.label}</h3>}
+            {/* Keyed by the term, so a cleared chip resets the slider. */}
+            {scoreKeys(e).map((k) => (
+              <ScoreFilter key={k.key + (scoreTermOf(q, e.id, k.key)?.value ?? "")} instance={e.id} k={k} q={q} onChange={onChange} />
+            ))}
+          </div>
+        ))}
     </section>
   );
 }
 
 /**
- * Facets is the filter sidebar: one section per term kind, and one per text or list key of the score instance,
+ * Facets is the filter sidebar: one section per term kind, and one per text or list key of each enrich instance,
  * each counting its values over the other sections' filters.
  */
-export function Facets({
-  kind,
-  q,
-  names,
-  scores = [],
-  values = [],
-  onChange,
-}: {
-  kind: Kind;
-  q: CardQuery;
-  names: Names;
-  scores?: EnrichmentKey[];
-  values?: EnrichmentKey[];
-  onChange: (q: CardQuery) => void;
-}) {
+export function Facets({ kind, q, names, enrichers = [], onChange }: { kind: Kind; q: CardQuery; names: Names; enrichers?: Enricher[]; onChange: (q: CardQuery) => void }) {
   const [collapsed, setCollapsed] = useState<string[]>(readCollapsed);
   const sections = sectionsFor(kind).filter((s) => s !== "collection" || names.collections.size > 0);
   const open = (s: string) => !collapsed.includes(s);
   const rows = useRows(kind, q, names, sections, open);
+  const scored = enrichers.filter((e) => scoreKeys(e).length > 0);
   const flip = (s: string) => {
     const next = open(s) ? [...collapsed, s] : collapsed.filter((x) => x !== s);
     setCollapsed(next);
@@ -291,10 +299,16 @@ export function Facets({
       {sections.map((s) => (
         <Section key={s} kind={s} rows={rows[s]} q={q} open={open(s)} onOpen={() => flip(s)} onChange={onChange} />
       ))}
-      {values.map((k) => (
-        <ValueSection key={k.key} k={k} q={q} open={open(`value:${k.key}`)} onOpen={() => flip(`value:${k.key}`)} onChange={onChange} />
-      ))}
-      {scores.length > 0 && <ScoreSection scores={scores} q={q} open={open("score")} onOpen={() => flip("score")} onChange={onChange} />}
+      {enrichers.flatMap((e) =>
+        (e.keys ?? [])
+          .filter((k) => k.type === "text" || k.type === "list")
+          .map((k) => {
+            const section = `value:${keyRef(e.id, k.key)}`;
+            const title = enrichers.length > 1 ? `${k.label} · ${e.label}` : k.label;
+            return <ValueSection key={section} instance={e.id} k={k} title={title} q={q} open={open(section)} onOpen={() => flip(section)} onChange={onChange} />;
+          }),
+      )}
+      {scored.length > 0 && <ScoreSection enrichers={scored} q={q} open={open("score")} onOpen={() => flip("score")} onChange={onChange} />}
     </aside>
   );
 }

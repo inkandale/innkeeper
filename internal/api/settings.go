@@ -16,7 +16,7 @@ import (
 type settings struct {
 	Theme          string `json:"theme" doc:"The selected theme plugin, or empty for the default theme."`
 	OnboardingDone bool   `json:"onboarding_done" doc:"Whether the owner finished or skipped the setup wizard."`
-	ScoreInstance  *int64 `json:"score_instance" doc:"The enrich instance whose values the library grid, filters, and sort use, or null; a library may override it. When null and exactly one enrich instance exists, that one is used."`
+	ScoreInstance  *int64 `json:"score_instance" doc:"The enrich instance whose values the library grid shows and hide_below reads, and that enrichment filters and sort naming no instance use, or null; a library may override it. When null and exactly one enrich instance exists, that one is used."`
 	// The hide job's defaults; see GET /libraries/{id}/settings.
 	HideBelow         *float64 `json:"hide_below"`
 	Duplicates        string   `json:"duplicates" enum:"off,exact,near"`

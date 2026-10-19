@@ -924,8 +924,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List the score instance's enrichment keys
-         * @description The keys the library's score instance's plugin declares: those that enrichment filters and sort can use. The grid key comes first, then the rest by label.
+         * List enrichment keys
+         * @description The library's score instance, and the keys each enabled enrich instance's plugin declares: those that enrichment filters and sort can use, naming the instance.
          */
         get: operations["list-enrichment-keys"];
         put?: never;
@@ -3117,6 +3117,13 @@ export interface components {
             /** @description The app_hash of the change the owner saw, from the binding or the changes queue. If the site's data changed since (an avatar change alone does not count), the dismiss is refused with 409 and a fresh comparison. */
             app_hash: string;
         };
+        EnrichmentInstance: {
+            /** Format: int64 */
+            id: number;
+            /** @description The grid key first, then the rest by label. */
+            keys: components["schemas"]["EnrichmentKey"][] | null;
+            label: string;
+        };
         EnrichmentKey: {
             /** @description Whether the library grid shows this key. */
             grid?: boolean;
@@ -3137,7 +3144,8 @@ export interface components {
              * @description The score instance, or null when there is none.
              */
             instance_id: number | null;
-            keys: components["schemas"]["EnrichmentKey"][] | null;
+            /** @description Each enabled enrich instance, with the keys its plugin declares. */
+            instances: components["schemas"]["EnrichmentInstance"][] | null;
         };
         EnrichmentOut: {
             /** @description Whether the library grid shows this key. */
@@ -3621,7 +3629,7 @@ export interface components {
             duplicates: components["schemas"]["LibrarySettingOutString"];
             /** @description Hiding archives cards whose grid score is below this; null hides none for their score. */
             hide_below: components["schemas"]["LibrarySettingOutFloat64"];
-            /** @description The enrich instance whose values this library's grid, filters, and sort use. */
+            /** @description The enrich instance whose values this library's grid shows and hide_below reads, and that enrichment filters and sort naming no instance use. */
             score_instance: components["schemas"]["LibrarySettingOutInt64"];
         };
         LibrarySummary: {
@@ -3958,7 +3966,7 @@ export interface components {
              * @example /api/schemas/Query.json
              */
             readonly $schema?: string;
-            /** @description Counts to return over every match: tags, collections, targets, sources, or enrichment:<key> for the values of a text or list key from the score instance. Lorebooks take targets and sources. */
+            /** @description Counts to return over every match: tags, collections, targets, sources, or enrichment:<key> for the values of a text or list key from the score instance, or enrichment:<instance>:<key> from that enrich instance. Enrichment counts are keyed by what follows enrichment:. Lorebooks take targets and sources. */
             facets?: string[] | null;
             /** @description Card data keys to return per hit, plus avatar. Default: name. */
             fields?: string[] | null;
@@ -3978,7 +3986,7 @@ export interface components {
             page?: components["schemas"]["Page"];
             /** @description Not available yet: needs an embedding enricher. */
             semantic?: boolean;
-            /** @description relevance, updated, name, created, or enrichment:<key> for the score instance's value of key, highest first and cards without one last. Default: relevance with text, newest first without. */
+            /** @description relevance, updated, name, created, or enrichment:<key> for the score instance's value of key, highest first and cards without one last; enrichment:<instance>:<key> reads that enrich instance's value instead. Default: relevance with text, newest first without. */
             sort?: string;
             /** @description library, or catalog:<instance id> to also search a catalog by text alone. Default: library. */
             sources?: string[] | null;
@@ -4240,7 +4248,7 @@ export interface components {
             onboarding_done: boolean;
             /**
              * Format: int64
-             * @description The enrich instance whose values the library grid, filters, and sort use, or null; a library may override it. When null and exactly one enrich instance exists, that one is used.
+             * @description The enrich instance whose values the library grid shows and hide_below reads, and that enrichment filters and sort naming no instance use, or null; a library may override it. When null and exactly one enrich instance exists, that one is used.
              */
             score_instance: number | null;
             /** @description The selected theme plugin, or empty for the default theme. */

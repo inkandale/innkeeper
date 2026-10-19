@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router";
-import { api, must, route, withCapability } from "../api/client";
+import { api, must, route } from "../api/client";
 import { instancesQuery, collectionsQuery, enrichmentKeysQuery, pluginsQuery } from "../api/queries";
 import { text } from "../card/draft";
 import { apps } from "../sync/Logo";
@@ -9,7 +9,7 @@ import { stateLabel } from "../sync/sync";
 import { Facets } from "./Facets";
 import { ImportForm, importers } from "./ImportForm";
 import { pageLinks } from "./pages";
-import { defaultSort, enrichmentValue, parseQuery, parseScore, withoutScores, sizes, toggleTerm, toParams, toLorebookSearch, toSearch, type CardQuery, type Sort, type Term } from "./query";
+import { defaultSort, enrichmentValue, keyRef, parseQuery, parseScore, withScoreInstance, sizes, toggleTerm, toParams, toLorebookSearch, toSearch, type CardQuery, type Sort, type Term } from "./query";
 import { emptySelection, pick, target, type Selection } from "./selection";
 import { useJobEvents } from "../settings/jobUtil";
 import { useLibrary, withLibrary } from "../shell/library";
@@ -63,9 +63,9 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const asked = parseQuery(params, useLibrary());
   const keys = useQuery({ ...enrichmentKeysQuery(asked.library), enabled: kind === "card" });
   const scored = keys.data?.instance_id != null;
-  // A link from when there was a score instance would otherwise be refused.
-  const q = keys.data && !scored ? withoutScores(asked) : asked;
-  const scoresOff = q !== asked;
+  // Terms that name no instance, from older links, read the score instance; without one they'd be refused.
+  const q = keys.data ? withScoreInstance(asked, keys.data.instance_id) : asked;
+  const scoresOff = !scored && q !== asked;
   // The selection belongs to one search: paging keeps it, a new search clears it.
   const key = JSON.stringify([q.library, q.text, q.terms]);
   const [stored, setSel] = useState<Selection>(() => emptySelection(key));
@@ -80,9 +80,8 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   useJobEvents(watching ?? 0, watching !== undefined);
   const go = (next: CardQuery) => setParams(toParams(next));
 
-  const scoreKeys = (keys.data?.keys ?? []).filter((k) => k.type === "score");
-  const valueKeys = (keys.data?.keys ?? []).filter((k) => k.type === "text" || k.type === "list");
-  const grid = keys.data?.keys?.find((k) => k.grid);
+  const enrichers = keys.data?.instances ?? [];
+  const grid = enrichers.find((e) => e.id === keys.data?.instance_id)?.keys?.find((k) => k.grid);
   const body = { ...(kind === "card" ? toSearch(q, scored) : toLorebookSearch(q)), ...(ungrouped ? {} : { group: "family" as const }) };
   const res = useQuery({
     queryKey: ["search", kind, body],
@@ -93,7 +92,11 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   });
   const sorts: [Sort, string][] = [
     ...(Object.entries(sortLabels) as [Sort, string][]),
-    ...scoreKeys.map((k): [Sort, string] => [`enrichment:${k.key}`, k.label]),
+    ...enrichers.flatMap((e) =>
+      (e.keys ?? [])
+        .filter((k) => k.type === "score")
+        .map((k): [Sort, string] => [`enrichment:${keyRef(e.id, k.key)}`, enrichers.length > 1 ? `${k.label} · ${e.label}` : k.label]),
+    ),
   ];
   const instances = useQuery(instancesQuery);
   const plugins = useQuery(pluginsQuery);
@@ -105,7 +108,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   };
   const imp = importers(instances.data, plugins.data);
   // With two or more, the core picks none until Scores from names one.
-  const unpicked = keys.data && !scored && withCapability(instances.data, plugins.data, "enrich").filter((i) => !i.disabled).length > 1;
+  const unpicked = !scored && enrichers.length > 1;
 
   const search = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -136,7 +139,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
 
   return (
     <div className={facetsOpen ? "cards" : "cards no-facets"}>
-      {facetsOpen && <Facets kind={kind} q={q} names={names} scores={scoreKeys} values={valueKeys} onChange={go} />}
+      {facetsOpen && <Facets kind={kind} q={q} names={names} enrichers={enrichers} onChange={go} />}
       {picking ? (
         <SelectionBar
           all={sel.all}
@@ -231,9 +234,8 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
           </section>
         )}
         {res.isError && <p className="error">{res.error.message}</p>}
-        {(scoresOff || unpicked) && (
-          <p className="muted">Score filters and sort are off: {unpicked ? "more than one instance gives scores" : "no instance gives scores"}. Pick one in Settings, under Scores from.</p>
-        )}
+        {scoresOff && <p className="muted">Score filters and sort from this link are off: they read the Scores from instance, and there is none.</p>}
+        {unpicked && <p className="muted">Tiles show no score: more than one instance gives scores. Pick one in Settings, under Scores from.</p>}
         {res.data && <p className="total">{total} {ungrouped ? (total === 1 ? noun.slice(0, -1) : noun) : total === 1 ? "result" : "results"}</p>}
         {res.data && q.page > last && (
           <p>

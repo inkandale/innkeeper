@@ -1674,6 +1674,34 @@
         ],
         "type": "object"
       },
+      "EnrichmentInstance": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "keys": {
+            "description": "The grid key first, then the rest by label.",
+            "items": {
+              "$ref": "#/components/schemas/EnrichmentKey"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "keys"
+        ],
+        "type": "object"
+      },
       "EnrichmentKey": {
         "additionalProperties": false,
         "properties": {
@@ -1728,9 +1756,10 @@
               "null"
             ]
           },
-          "keys": {
+          "instances": {
+            "description": "Each enabled enrich instance, with the keys its plugin declares.",
             "items": {
-              "$ref": "#/components/schemas/EnrichmentKey"
+              "$ref": "#/components/schemas/EnrichmentInstance"
             },
             "type": [
               "array",
@@ -1740,7 +1769,7 @@
         },
         "required": [
           "instance_id",
-          "keys"
+          "instances"
         ],
         "type": "object"
       },
@@ -3006,7 +3035,7 @@
           },
           "score_instance": {
             "$ref": "#/components/schemas/LibrarySettingOutInt64",
-            "description": "The enrich instance whose values this library's grid, filters, and sort use."
+            "description": "The enrich instance whose values this library's grid shows and hide_below reads, and that enrichment filters and sort naming no instance use."
           }
         },
         "required": [
@@ -3899,7 +3928,7 @@
             "type": "string"
           },
           "facets": {
-            "description": "Counts to return over every match: tags, collections, targets, sources, or enrichment:\u003ckey\u003e for the values of a text or list key from the score instance. Lorebooks take targets and sources.",
+            "description": "Counts to return over every match: tags, collections, targets, sources, or enrichment:\u003ckey\u003e for the values of a text or list key from the score instance, or enrichment:\u003cinstance\u003e:\u003ckey\u003e from that enrich instance. Enrichment counts are keyed by what follows enrichment:. Lorebooks take targets and sources.",
             "items": {
               "type": "string"
             },
@@ -3951,8 +3980,8 @@
             "type": "boolean"
           },
           "sort": {
-            "description": "relevance, updated, name, created, or enrichment:\u003ckey\u003e for the score instance's value of key, highest first and cards without one last. Default: relevance with text, newest first without.",
-            "pattern": "^(relevance|updated|name|created|enrichment:[a-z][a-z0-9_]*)$",
+            "description": "relevance, updated, name, created, or enrichment:\u003ckey\u003e for the score instance's value of key, highest first and cards without one last; enrichment:\u003cinstance\u003e:\u003ckey\u003e reads that enrich instance's value instead. Default: relevance with text, newest first without.",
+            "pattern": "^(relevance|updated|name|created|enrichment:([1-9][0-9]*:)?[a-z][a-z0-9_]*)$",
             "type": "string"
           },
           "sources": {
@@ -4598,7 +4627,7 @@
             "type": "boolean"
           },
           "score_instance": {
-            "description": "The enrich instance whose values the library grid, filters, and sort use, or null; a library may override it. When null and exactly one enrich instance exists, that one is used.",
+            "description": "The enrich instance whose values the library grid shows and hide_below reads, and that enrichment filters and sort naming no instance use, or null; a library may override it. When null and exactly one enrich instance exists, that one is used.",
             "format": "int64",
             "type": [
               "integer",
@@ -8021,7 +8050,7 @@
     },
     "/enrichments/keys": {
       "get": {
-        "description": "The keys the library's score instance's plugin declares: those that enrichment filters and sort can use. The grid key comes first, then the rest by label.",
+        "description": "The library's score instance, and the keys each enabled enrich instance's plugin declares: those that enrichment filters and sort can use, naming the instance.",
         "operationId": "list-enrichment-keys",
         "parameters": [
           {
@@ -8058,7 +8087,7 @@
             "description": "Error"
           }
         },
-        "summary": "List the score instance's enrichment keys",
+        "summary": "List enrichment keys",
         "tags": [
           "Enrichments"
         ]

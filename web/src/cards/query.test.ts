@@ -11,7 +11,7 @@ import {
   sameValue,
   setScore,
   parseScore,
-  withoutScores,
+  withScoreInstance,
   toggleTerm,
   type CardQuery,
   type Term,
@@ -198,10 +198,29 @@ test("score ranges take negative and exponent numbers", () => {
   expect(parseScore("mood:-2.5e-1..1E2")).toEqual({ key: "mood", gte: -0.25, lte: 100 });
 });
 
-test("withoutScores drops score terms and an enrichment sort", () => {
-  const q: CardQuery = { ...base, terms: [term("tag", "a"), term("score", "quality:1..")], sort: "enrichment:quality" };
-  expect(withoutScores(q)).toEqual({ ...base, terms: [term("tag", "a")] });
-  expect(withoutScores(base)).toBe(base);
+test("terms and sorts that name an instance filter on that instance's values", () => {
+  const q: CardQuery = { ...base, terms: [term("score", "5:quality:70.."), term("value", "7:language=en")], sort: "enrichment:5:quality" };
+  expect(parseQuery(toParams(q), 1)).toEqual(q);
+  expect(parseScore("5:quality:70..")).toEqual({ instance: 5, key: "quality", gte: 70 });
+  expect(filterFor(q.terms)).toEqual({ and: [{ enrichment: "quality", instance: 5, gte: 70 }, { enrichment: "language", instance: 7, is: "en" }] });
+  expect(parseQuery(new URLSearchParams("f=score:0:quality:1..&sort=enrichment:0:quality"), 1)).toEqual(base);
+});
+
+test("setScore keeps the same key from another instance", () => {
+  const q = setScore(setScore(base, { instance: 5, key: "quality", gte: 70 }), { instance: 7, key: "quality", none: true });
+  expect(setScore(q, { instance: 5, key: "quality", lte: 20 }).terms).toEqual([term("score", "7:quality:none"), term("score", "5:quality:..20")]);
+});
+
+test("withScoreInstance names the score instance in old terms and sorts, or drops them without one", () => {
+  const q: CardQuery = { ...base, terms: [term("tag", "a"), term("score", "quality:1.."), term("value", "language=en", true), term("score", "7:lint:none")], sort: "enrichment:quality" };
+  expect(withScoreInstance(q, 5)).toEqual({
+    ...q,
+    terms: [term("tag", "a"), term("score", "5:quality:1.."), term("value", "5:language=en", true), term("score", "7:lint:none")],
+    sort: "enrichment:5:quality",
+  });
+  expect(withScoreInstance(q, null)).toEqual({ ...base, terms: [term("tag", "a"), term("score", "7:lint:none")] });
+  const named = { ...q, terms: [term("score", "7:lint:none")], sort: "enrichment:7:lint" as const };
+  expect(withScoreInstance(named, null)).toBe(named);
 });
 
 test("Shares a source is shared=1 in the URL and a shares_source filter", () => {
@@ -230,5 +249,5 @@ test("value terms OR within a key, AND across keys, and only clears its own key"
   ]);
   expect(parseQuery(toParams(q), 1).terms).toEqual(q.terms);
   expect(parseQuery(new URLSearchParams("f=value:Bad=x&f=value:nokey"), 1).terms).toEqual([]);
-  expect(withoutScores(q).terms).toEqual([]);
+  expect(withScoreInstance(q, null).terms).toEqual([]);
 });

@@ -40,9 +40,9 @@ func scoreNamed(v string, insts []plugins.InstanceInfo) *plugins.InstanceInfo {
 	return nil
 }
 
-// scoreInstance is the enrich instance whose values library lib's grid,
-// filters, and sort use: the score_instance setting while it names an
-// enrich instance, else the only enrich instance, else nil.
+// scoreInstance is the enrich instance whose values library lib's grid
+// shows and unnamed filters read: the score_instance setting while it names
+// an enrich instance, else the only enrich instance, else nil.
 func (s *Server) scoreInstance(ctx context.Context, lib int64) (*plugins.InstanceInfo, error) {
 	v, _, err := s.librarySetting(ctx, lib, scoreInstanceSetting)
 	if err != nil {
@@ -121,10 +121,16 @@ type enrichmentKey struct {
 	EnrichmentOut
 }
 
+type enrichmentInstance struct {
+	ID    int64           `json:"id"`
+	Label string          `json:"label"`
+	Keys  []enrichmentKey `json:"keys" doc:"The grid key first, then the rest by label."`
+}
+
 type enrichmentKeysOut struct {
 	Body struct {
-		InstanceID *int64          `json:"instance_id" doc:"The score instance, or null when there is none."`
-		Keys       []enrichmentKey `json:"keys"`
+		InstanceID *int64               `json:"instance_id" doc:"The score instance, or null when there is none."`
+		Instances  []enrichmentInstance `json:"instances" doc:"Each enabled enrich instance, with the keys its plugin declares."`
 	}
 }
 
@@ -215,35 +221,42 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 		})
 
 	huma.Register(api, huma.Operation{OperationID: "list-enrichment-keys", Method: http.MethodGet, Path: "/enrichments/keys",
-		Summary: "List the score instance's enrichment keys", Tags: tags,
-		Description: "The keys the library's score instance's plugin declares: those that enrichment filters and sort can use. The grid key comes first, then the rest by label."},
+		Summary: "List enrichment keys", Tags: tags,
+		Description: "The library's score instance, and the keys each enabled enrich instance's plugin declares: those that enrichment filters and sort can use, naming the instance."},
 		func(ctx context.Context, in *libraryQuery) (*enrichmentKeysOut, error) {
 			lib, err := s.checkLibrary(ctx, in.Library)
 			if err != nil {
 				return nil, err
 			}
-			out := &enrichmentKeysOut{}
-			out.Body.Keys = []enrichmentKey{}
-			inst, err := s.scoreInstance(ctx, lib)
+			score, err := s.scoreInstance(ctx, lib)
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			if inst == nil {
-				return out, nil
+			insts, err := s.enrichers(ctx)
+			if err != nil {
+				return nil, s.fail(err)
 			}
-			out.Body.InstanceID = &inst.ID
-			for k, e := range s.Registry.Manifests()[inst.Plugin].Enrichments {
-				out.Body.Keys = append(out.Body.Keys, enrichmentKey{k, toEnrichmentOut(e)})
+			out := &enrichmentKeysOut{}
+			if score != nil {
+				out.Body.InstanceID = &score.ID
 			}
-			slices.SortFunc(out.Body.Keys, func(a, b enrichmentKey) int {
-				if a.Grid != b.Grid {
-					if a.Grid {
-						return -1
-					}
-					return 1
+			out.Body.Instances = []enrichmentInstance{}
+			for _, inst := range insts {
+				keys := []enrichmentKey{}
+				for k, e := range s.Registry.Manifests()[inst.Plugin].Enrichments {
+					keys = append(keys, enrichmentKey{k, toEnrichmentOut(e)})
 				}
-				return cmp.Compare(a.Label, b.Label)
-			})
+				slices.SortFunc(keys, func(a, b enrichmentKey) int {
+					if a.Grid != b.Grid {
+						if a.Grid {
+							return -1
+						}
+						return 1
+					}
+					return cmp.Compare(a.Label, b.Label)
+				})
+				out.Body.Instances = append(out.Body.Instances, enrichmentInstance{inst.ID, inst.Label, keys})
+			}
 			return out, nil
 		})
 }

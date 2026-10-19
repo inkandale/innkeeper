@@ -473,6 +473,7 @@ func TestSearchEnrichments(t *testing.T) {
 		"missing":             {Query{Filter: &Filter{Enrichment: ptr("voice"), Missing: ptr(true)}}, []int64{s.carrow, s.brakka}},
 		"sort highest first":  {Query{Sort: "enrichment:quality"}, []int64{s.brakka, s.carrow}},
 		"no value sorts last": {Query{Sort: "enrichment:quality", Filter: &Filter{Archived: ptr(true)}}, []int64{s.dellin}},
+		"sort by a named instance's values": {Query{Sort: fmt.Sprintf("enrichment:%d:quality", other)}, []int64{s.carrow, s.brakka}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			tc.q.ScoreInstance = score
@@ -502,6 +503,7 @@ func TestSearchEnrichments(t *testing.T) {
 	for name, q := range map[string]Query{
 		"filter without a score instance":  {Filter: &Filter{Enrichment: quality}},
 		"sort without a score instance":    {Sort: "enrichment:quality"},
+		"sort by instance 0":               {Sort: "enrichment:0:quality", ScoreInstance: score},
 		"include without a score instance": {Include: []string{"enrichments"}},
 		"gte without enrichment":           {Filter: &Filter{Gte: ptr(1.0)}, ScoreInstance: score},
 		"instance without enrichment":      {Filter: &Filter{Instance: ptr(int64(other))}, ScoreInstance: score},
@@ -510,6 +512,9 @@ func TestSearchEnrichments(t *testing.T) {
 		if _, err := lib.Search(ctx, Card, q); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s: got %v, want ErrInvalid", name, err)
 		}
+	}
+	if got, err := lib.Search(ctx, Card, Query{Sort: fmt.Sprintf("enrichment:%d:quality", other)}); err != nil || !slices.Equal(hitIDs(got), []int64{s.carrow, s.brakka}) {
+		t.Errorf("sort by a named instance without a score instance: %v, %v", hitIDs(got), err)
 	}
 	if ids, err := lib.SearchIDs(ctx, Card, Query{Filter: &Filter{Enrichment: quality, Instance: ptr(int64(other))}}); err != nil || !slices.Equal(ids, []int64{s.carrow}) {
 		t.Errorf("named instance without a score instance: %v, %v", ids, err)
@@ -581,8 +586,14 @@ func TestSearchEnrichmentValues(t *testing.T) {
 		t.Fatalf("filtered facet = %+v, %v", got.Facets, err)
 	}
 
+	got, err = lib.Search(ctx, Card, Query{Facets: []string{"enrichment:7:language"}})
+	if err != nil || !slices.Equal(got.Facets.Enrichments["7:language"], []ValueCount{{"en", 1}, {"zh", 1}}) {
+		t.Fatalf("named instance's facet without a score instance = %+v, %v", got.Facets, err)
+	}
+
 	for name, q := range map[string]Query{
 		"facet without a score instance": {Facets: []string{"enrichment:language"}},
+		"facet on instance 0":            {Facets: []string{"enrichment:0:language"}, ScoreInstance: lint},
 		"is and a range":                 {Filter: &Filter{Enrichment: ptr("language"), Is: ptr("en"), Gte: ptr(1.0)}, ScoreInstance: lint},
 		"is without enrichment":          {Filter: &Filter{Is: ptr("en")}, ScoreInstance: lint},
 	} {

@@ -29,7 +29,7 @@ type librarySettingOut[T any] struct {
 }
 
 type librarySettings struct {
-	ScoreInstance     librarySettingOut[int64]   `json:"score_instance" doc:"The enrich instance whose values this library's grid, filters, and sort use."`
+	ScoreInstance     librarySettingOut[int64]   `json:"score_instance" doc:"The enrich instance whose values this library's grid shows and hide_below reads, and that enrichment filters and sort naming no instance use."`
 	HideBelow         librarySettingOut[float64] `json:"hide_below" doc:"Hiding archives cards whose grid score is below this; null hides none for their score."`
 	Duplicates        librarySettingOut[string]  `json:"duplicates" doc:"Hiding archives duplicates: off, exact (the same content), or near (text within duplicate_distance bits)."`
 	DuplicateDistance librarySettingOut[int]     `json:"duplicate_distance" doc:"For near duplicates, the most bits two cards' text hashes may differ by."`

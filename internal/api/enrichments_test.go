@@ -327,9 +327,11 @@ func TestEnrichmentSearchUsesTheScoreInstance(t *testing.T) {
 	// The only enrich instance is the score instance.
 	var keys enrichmentKeysOut
 	e.call("GET", "/enrichments/keys", nil, 200, &keys.Body)
-	if keys.Body.InstanceID == nil || *keys.Body.InstanceID != e.instID || len(keys.Body.Keys) != 3 ||
-		keys.Body.Keys[0].Key != "quality" || !keys.Body.Keys[0].Grid || keys.Body.Keys[1].Key != "summary" {
+	if keys.Body.InstanceID == nil || *keys.Body.InstanceID != e.instID || len(keys.Body.Instances) != 1 {
 		t.Fatalf("keys = %+v", keys.Body)
+	}
+	if k := keys.Body.Instances[0].Keys; len(k) != 3 || k[0].Key != "quality" || !k[0].Grid || k[1].Key != "summary" {
+		t.Fatalf("instance keys = %+v", k)
 	}
 	ids := func(r library.Results) []int64 {
 		out := []int64{}
@@ -361,8 +363,13 @@ func TestEnrichmentSearchUsesTheScoreInstance(t *testing.T) {
 	e.search(map[string]any{"filter": quality}, 400)
 	e.search(map[string]any{"sort": "enrichment:quality"}, 400)
 	e.call("GET", "/enrichments/keys", nil, 200, &keys.Body)
-	if keys.Body.InstanceID != nil || len(keys.Body.Keys) != 0 {
+	if keys.Body.InstanceID != nil || len(keys.Body.Instances) != 2 || keys.Body.Instances[1].ID != second || len(keys.Body.Instances[1].Keys) != 3 {
 		t.Fatalf("keys without a score instance = %+v", keys.Body)
+	}
+	// A filter or sort that names its instance needs no score instance.
+	named := map[string]any{"enrichment": "quality", "gte": 50, "instance": e.instID}
+	if got := ids(e.search(map[string]any{"filter": named, "sort": fmt.Sprintf("enrichment:%d:quality", e.instID)}, 200)); !slices.Equal(got, []int64{high}) {
+		t.Fatalf("named instance without a score instance = %v", got)
 	}
 	// Bulk selections use the same rule.
 	e.call("POST", "/bulk", map[string]any{"action": "tag", "tags": []string{"good"}, "query": map[string]any{"filter": quality}}, 400, nil)

@@ -10,12 +10,14 @@ export const targetStates: TargetIs[] = ["in_sync", "ahead", "remote_changed", "
 /** kinds are the filter sections, in sidebar order. score filters on enrichment numbers, value on text and list enrichments. */
 const kinds = ["target", "state", "tag", "source", "collection", "score", "value"] as const;
 const sorts = ["relevance", "updated", "name", "created"] as const;
-const enrichmentSort = /^enrichment:[a-z][a-z0-9_]*$/;
+const enrichmentSort = /^enrichment:(?:[1-9]\d*:)?[a-z][a-z0-9_]*$/;
+// Score and value terms name their key as instance:key; a bare key, from older links, reads the score instance.
+const ref = String.raw`(?:([1-9]\d*):)?([a-z][a-z0-9_]*)`;
 // A score term's value: key:low..high, either end optional, or key:none for cards without a value.
 const num = String.raw`-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?`;
-const scoreValue = new RegExp(String.raw`^([a-z][a-z0-9_]*):(none|(${num})?\.\.(${num})?)$`);
+const scoreValue = new RegExp(String.raw`^${ref}:(none|(${num})?\.\.(${num})?)$`);
 // A value term's value: key=value.
-const valueTerm = /^([a-z][a-z0-9_]*)=(.+)$/;
+const valueTerm = new RegExp(String.raw`^${ref}=(.+)$`);
 export const sizes = [24, 48, 96];
 
 export type TermKind = (typeof kinds)[number];
@@ -39,42 +41,64 @@ export const defaultSort = (text: string): Sort => (text ? "relevance" : "update
 export const sectionsFor = (entity: "card" | "lorebook"): TermKind[] =>
   entity === "card" ? ["target", "state", "tag", "source", "collection"] : ["target", "state", "source"];
 
+/** keyRef names an enrichment key as terms, sorts, and facets do: instance:key, or key alone for the score instance. */
+export const keyRef = (instance: number | undefined, key: string) => (instance ? `${instance}:${key}` : key);
+
 /** Score is a score term's value: a range, or none for cards without a value. */
-export type Score = { key: string; gte?: number; lte?: number; none?: boolean };
+export type Score = { instance?: number; key: string; gte?: number; lte?: number; none?: boolean };
 
 /** parseScore reads a score term's value, or returns undefined if it is malformed. */
 export function parseScore(value: string): Score | undefined {
   const m = scoreValue.exec(value);
   if (!m) return undefined;
-  if (m[2] === "none") return { key: m[1]!, none: true };
-  if (m[3] === undefined && m[4] === undefined) return undefined;
-  return { key: m[1]!, ...(m[3] !== undefined && { gte: Number(m[3]) }), ...(m[4] !== undefined && { lte: Number(m[4]) }) };
+  const at = { ...(m[1] !== undefined && { instance: Number(m[1]) }), key: m[2]! };
+  if (m[3] === "none") return { ...at, none: true };
+  if (m[4] === undefined && m[5] === undefined) return undefined;
+  return { ...at, ...(m[4] !== undefined && { gte: Number(m[4]) }), ...(m[5] !== undefined && { lte: Number(m[5]) }) };
 }
 
 /** scoreTerm is the term for a score, or undefined for one with no condition. */
 export function scoreTerm(s: Score): Term | undefined {
-  if (s.none) return { kind: "score", value: `${s.key}:none`, not: false };
+  const k = keyRef(s.instance, s.key);
+  if (s.none) return { kind: "score", value: `${k}:none`, not: false };
   if (s.gte === undefined && s.lte === undefined) return undefined;
-  return { kind: "score", value: `${s.key}:${s.gte ?? ""}..${s.lte ?? ""}`, not: false };
+  return { kind: "score", value: `${k}:${s.gte ?? ""}..${s.lte ?? ""}`, not: false };
 }
 
 /** enrichmentValue reads a value term's key and value, or returns undefined if it is malformed. */
-export function enrichmentValue(value: string): { key: string; value: string } | undefined {
+export function enrichmentValue(value: string): { instance?: number; key: string; value: string } | undefined {
   const m = valueTerm.exec(value);
-  return m ? { key: m[1]!, value: m[2]! } : undefined;
+  return m ? { ...(m[1] !== undefined && { instance: Number(m[1]) }), key: m[2]!, value: m[3]! } : undefined;
 }
 
-/** withoutScores drops score and value terms and an enrichment sort, for a library with no score instance. */
-export function withoutScores(q: CardQuery): CardQuery {
-  const terms = q.terms.filter((t) => t.kind !== "score" && t.kind !== "value");
-  const sort = q.sort.startsWith("enrichment:") ? defaultSort(q.text) : q.sort;
-  return terms.length === q.terms.length && sort === q.sort ? q : { ...q, terms, sort };
+/**
+ * withScoreInstance gives the score and value terms and enrichment sort that name no instance the score instance,
+ * or drops them when there is none. It returns q itself when nothing changes.
+ */
+export function withScoreInstance(q: CardQuery, score: number | null): CardQuery {
+  let changed = false;
+  const terms = q.terms.flatMap((t): Term[] => {
+    const s = t.kind === "score" ? parseScore(t.value) : undefined;
+    const v = t.kind === "value" ? enrichmentValue(t.value) : undefined;
+    if ((!s && !v) || (s ?? v)!.instance) return [t];
+    changed = true;
+    if (!score) return [];
+    return [{ ...t, value: s ? scoreTerm({ ...s, instance: score })!.value : `${keyRef(score, v!.key)}=${v!.value}` }];
+  });
+  let sort = q.sort;
+  const key = sort.startsWith("enrichment:") ? sort.slice("enrichment:".length) : undefined;
+  if (key && !key.includes(":")) sort = score ? `enrichment:${keyRef(score, key)}` : defaultSort(q.text);
+  return changed || sort !== q.sort ? { ...q, terms, sort } : q;
 }
 
-/** setScore replaces key's score term with s's. */
+/** setScore replaces the score term for s's instance and key with s's. */
 export function setScore(q: CardQuery, s: Score): CardQuery {
   const t = scoreTerm(s);
-  const rest = q.terms.filter((x) => x.kind !== "score" || parseScore(x.value)?.key !== s.key);
+  const same = (x: Term) => {
+    const p = x.kind === "score" ? parseScore(x.value) : undefined;
+    return p?.key === s.key && p.instance === s.instance;
+  };
+  const rest = q.terms.filter((x) => !same(x));
   return { ...q, terms: t ? [...rest, t] : rest, page: 1 };
 }
 
@@ -144,12 +168,12 @@ function condition(kind: TermKind, value: string): Filter {
     case "collection":
       return { collection: Number(value) };
     case "score": {
-      const { key, gte, lte, none } = parseScore(value)!;
-      return none ? { enrichment: key, missing: true } : { enrichment: key, gte, lte };
+      const { instance, key, gte, lte, none } = parseScore(value)!;
+      return { enrichment: key, ...(instance && { instance }), ...(none ? { missing: true } : { gte, lte }) };
     }
     case "value": {
-      const { key, value: is } = enrichmentValue(value)!;
-      return { enrichment: key, is };
+      const { instance, key, value: is } = enrichmentValue(value)!;
+      return { enrichment: key, ...(instance && { instance }), is };
     }
   }
 }
@@ -212,13 +236,13 @@ export function countSearch(q: CardQuery, section: keyof typeof facetOf): Search
   };
 }
 
-/** valueCountSearch counts a value key's values over every other filter, the key's own terms aside. */
-export function valueCountSearch(q: CardQuery, key: string): Search {
+/** valueCountSearch counts a value key's values over every other filter, the key's own terms aside; ref is as keyRef names it. */
+export function valueCountSearch(q: CardQuery, ref: string): Search {
   return {
     library: q.library,
     text: q.text || undefined,
-    filter: filterFor(q.terms.filter((t) => sectionOf(t) !== `value:${key}`), q.sharesSource),
-    facets: [`enrichment:${key}`],
+    filter: filterFor(q.terms.filter((t) => sectionOf(t) !== `value:${ref}`), q.sharesSource),
+    facets: [`enrichment:${ref}`],
     page: { size: 1 },
   };
 }
@@ -232,8 +256,11 @@ export function stateCountSearch(q: CardQuery, is: TargetIs): Search {
 // The tag facet groups by lower-cased name and the API filter ignores case, so tags match that way here too.
 export const sameValue = (kind: TermKind, a: string, b: string) => (kind === "tag" ? a.toLowerCase() === b.toLowerCase() : a === b);
 
-/** sectionOf names a term's sidebar section: its kind, or value:<key> for a value, as each value key has its own. */
-export const sectionOf = (t: Term) => (t.kind === "value" ? `value:${enrichmentValue(t.value)?.key}` : t.kind);
+/** sectionOf names a term's sidebar section: its kind, or value:<ref> for a value, as each value key has its own. */
+export function sectionOf(t: Term): string {
+  const v = t.kind === "value" ? enrichmentValue(t.value) : undefined;
+  return v ? `value:${keyRef(v.instance, v.key)}` : t.kind;
+}
 
 /** toggleTerm adds t, flips its negation, or removes it if it's already there as given. */
 export function toggleTerm(q: CardQuery, t: Term): CardQuery {

@@ -43,7 +43,7 @@ let gets: string[];
 let judgeMax: number | undefined;
 beforeEach(() => {
   localStorage.clear();
-  keys = { instance_id: null, keys: [] };
+  keys = { instance_id: null, instances: [] };
   judgeMax = undefined;
   searches = [];
   posts = [];
@@ -63,8 +63,8 @@ beforeEach(() => {
       if (path === "/api/cards/search") {
         const body = await req.json();
         searches.push(body);
-        if (body.page?.size === 1 && body.facets?.includes("enrichment:problems"))
-          return json({ hits: [], total: 4, facets: { enrichments: { problems: [{ value: "markup", cards: 3 }, { value: "oversized", cards: 1 }] } } });
+        const problems = body.page?.size === 1 && body.facets?.find((f: string) => f.endsWith(":problems"))?.slice("enrichment:".length);
+        if (problems) return json({ hits: [], total: 4, facets: { enrichments: { [problems]: [{ value: "markup", cards: 3 }, { value: "oversized", cards: 1 }] } } });
         if (body.page?.size === 1 && body.facets?.includes("targets"))
           return json({ hits: [], total: 1, facets: { targets: [{ instance: 2, is: "ahead", cards: 1 }] } });
         if (body.include?.includes("enrichments")) {
@@ -559,13 +559,11 @@ test("New card links to the new-card page", async () => {
   expect(await screen.findByRole("link", { name: "New card" })).toHaveAttribute("href", "/cards/new?library=1");
 });
 
-const scored = {
-  instance_id: 5,
-  keys: [
-    { key: "quality", label: "Quality", type: "score", range: [0, 100], grid: true },
-    { key: "summary", label: "Summary", type: "text" },
-  ],
-};
+const judgeKeys = [
+  { key: "quality", label: "Quality", type: "score", range: [0, 100], grid: true },
+  { key: "summary", label: "Summary", type: "text" },
+];
+const scored = { instance_id: 5, instances: [{ id: 5, label: "Judge", keys: judgeKeys }] };
 
 test("tiles show the grid score, dimmed when stale", async () => {
   keys = scored;
@@ -591,13 +589,13 @@ test("a score range filters, and Not evaluated replaces it", async () => {
   const min = await screen.findByRole("slider", { name: "Quality at least" });
   fireEvent.change(min, { target: { value: "70" } });
   fireEvent.pointerUp(min);
-  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:quality:70.."]);
-  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "quality", gte: 70 }] } })));
+  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:5:quality:70.."]);
+  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "quality", instance: 5, gte: 70 }] } })));
   expect(screen.getByRole("button", { name: "Remove score: quality 70–…" })).toBeInTheDocument();
   await user.click(screen.getByRole("checkbox", { name: "Quality not evaluated" }));
   expect(screen.getByRole("slider", { name: "Quality at least" })).toBeDisabled();
-  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:quality:none"]);
-  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "quality", missing: true }] } })));
+  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:5:quality:none"]);
+  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "quality", instance: 5, missing: true }] } })));
   // Only score keys get a range.
   expect(screen.queryByRole("slider", { name: "Summary at least" })).not.toBeInTheDocument();
 });
@@ -610,7 +608,7 @@ test("a score slider applies its range on release", async () => {
   const max = screen.getByRole("slider", { name: "Quality at most" });
   fireEvent.change(max, { target: { value: "80" } });
   fireEvent.pointerUp(max);
-  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:quality:40..80"]);
+  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:5:quality:40..80"]);
 });
 
 test("each score key is a sort", async () => {
@@ -619,8 +617,8 @@ test("each score key is a sort", async () => {
   const user = userEvent.setup();
   await screen.findByRole("option", { name: "Quality" });
   await user.selectOptions(screen.getByRole("combobox", { name: "Sort" }), "Quality");
-  expect(router.state.location.search).toBe("?sort=enrichment%3Aquality&library=1");
-  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ sort: "enrichment:quality" })));
+  expect(router.state.location.search).toBe("?sort=enrichment%3A5%3Aquality&library=1");
+  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ sort: "enrichment:5:quality" })));
 });
 
 test("Evaluate starts a run on the selection", async () => {
@@ -645,21 +643,21 @@ test("Evaluate re-scores cards already scored when asked", async () => {
 });
 
 test("a list key's values count in the sidebar, and a click filters on one", async () => {
-  keys = { instance_id: 5, keys: [{ key: "problems", label: "Problems", type: "list" }] };
+  keys = { instance_id: 5, instances: [{ id: 5, label: "Lint", keys: [{ key: "problems", label: "Problems", type: "list" }] }] };
   const { router } = renderCards("/cards");
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: /^markup\s*3/ }));
-  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["value:problems=markup"]);
-  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "problems", is: "markup" }] } })));
+  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["value:5:problems=markup"]);
+  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "problems", instance: 5, is: "markup" }] } })));
   expect(screen.getByRole("button", { name: "Remove problems: markup" })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Exclude oversized" }));
   await waitFor(() =>
     expect(searches).toContainEqual(
-      expect.objectContaining({ filter: { and: [{ enrichment: "problems", is: "markup" }, { not: { enrichment: "problems", is: "oversized" } }] } }),
+      expect.objectContaining({ filter: { and: [{ enrichment: "problems", instance: 5, is: "markup" }, { not: { enrichment: "problems", instance: 5, is: "oversized" } }] } }),
     ),
   );
   // The section counts over every filter but its own.
-  const counts = searches.filter((s) => (s as { facets?: string[] }).facets?.includes("enrichment:problems"));
+  const counts = searches.filter((s) => (s as { facets?: string[] }).facets?.includes("enrichment:5:problems"));
   expect((counts.at(-1) as { filter?: unknown }).filter).toBeUndefined();
 });
 
@@ -678,28 +676,48 @@ test("Evaluate past the plugin's limit asks before sending confirm", async () =>
   await waitFor(() => expect(posts).toEqual([{ path: "/api/enrichments/runs", body: expect.objectContaining({ instance_id: 5, confirm: true }) }]));
 });
 
-test("without a score instance, score filters and sort in the URL are dropped with a note", async () => {
+test("a score filter and sort from an older link read the score instance", async () => {
+  keys = scored;
+  renderCards("/cards?f=score:quality:70..&sort=enrichment:quality");
+  await waitFor(() =>
+    expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "quality", instance: 5, gte: 70 }] }, sort: "enrichment:5:quality" })),
+  );
+  expect(screen.getByRole("slider", { name: "Quality at least" })).toHaveValue("70");
+});
+
+test("without a score instance, score filters and sort from an older link are dropped with a note", async () => {
   renderCards("/cards?f=score:quality:70..&f=tag:fantasy&sort=enrichment:quality");
-  expect(await screen.findByText(/Score filters and sort are off/)).toBeInTheDocument();
+  expect(await screen.findByText(/Score filters and sort from this link are off/)).toBeInTheDocument();
   await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ tag: "fantasy" }] }, sort: "updated" })));
   expect(searches).not.toContainEqual(expect.objectContaining({ sort: "enrichment:quality" }));
 });
 
-test("with two score instances and none picked, a note says to pick one", async () => {
-  answer("/api/instances", async () =>
-    json([
-      { id: 5, label: "Judge", name: "Judge", plugin: "judge" },
-      { id: 7, label: "Lint", name: "Lint", plugin: "lint" },
-    ]),
+const lintKeys = [
+  { key: "tokens", label: "Tokens", type: "score", range: [0, 10000] },
+  { key: "problems", label: "Problems", type: "list" },
+];
+
+test("with two instances and none picked, both instances' keys filter and sort, and a note says why tiles have no score", async () => {
+  keys = { instance_id: null, instances: [{ id: 5, label: "Judge", keys: judgeKeys }, { id: 7, label: "Lint", keys: lintKeys }] };
+  const { router } = renderCards("/cards");
+  expect(await screen.findByText(/Tiles show no score: more than one instance gives scores/)).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Judge" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Lint" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Problems · Lint" })).toBeInTheDocument();
+  expect(screen.getByRole("option", { name: "Tokens · Lint" })).toBeInTheDocument();
+  const lo = screen.getByRole("slider", { name: "Quality at least" });
+  fireEvent.change(lo, { target: { value: "70" } });
+  fireEvent.pointerUp(lo);
+  const hi = screen.getByRole("slider", { name: "Tokens at most" });
+  fireEvent.change(hi, { target: { value: "2000" } });
+  fireEvent.pointerUp(hi);
+  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:5:quality:70..", "score:7:tokens:..2000"]);
+  await waitFor(() =>
+    expect(searches).toContainEqual(
+      expect.objectContaining({ filter: { and: [{ enrichment: "quality", instance: 5, gte: 70 }, { enrichment: "tokens", instance: 7, lte: 2000 }] } }),
+    ),
   );
-  answer("/api/plugins", async () =>
-    json([
-      { name: "judge", capabilities: ["enrich"] },
-      { name: "lint", capabilities: ["enrich"] },
-    ]),
-  );
-  renderCards("/cards");
-  expect(await screen.findByText(/more than one instance gives scores/)).toBeInTheDocument();
+  expect(searches).not.toContainEqual(expect.objectContaining({ include: expect.arrayContaining(["enrichments"]) }));
 });
 
 const mainSearches = () => searches.filter((s) => (s as { page?: { size?: number } }).page?.size === 48);

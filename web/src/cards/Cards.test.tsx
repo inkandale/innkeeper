@@ -685,6 +685,23 @@ test("without a score instance, score filters and sort in the URL are dropped wi
   expect(searches).not.toContainEqual(expect.objectContaining({ sort: "enrichment:quality" }));
 });
 
+test("with two score instances and none picked, a note says to pick one", async () => {
+  answer("/api/instances", async () =>
+    json([
+      { id: 5, label: "Judge", name: "Judge", plugin: "judge" },
+      { id: 7, label: "Lint", name: "Lint", plugin: "lint" },
+    ]),
+  );
+  answer("/api/plugins", async () =>
+    json([
+      { name: "judge", capabilities: ["enrich"] },
+      { name: "lint", capabilities: ["enrich"] },
+    ]),
+  );
+  renderCards("/cards");
+  expect(await screen.findByText(/more than one instance gives scores/)).toBeInTheDocument();
+});
+
 const mainSearches = () => searches.filter((s) => (s as { page?: { size?: number } }).page?.size === 48);
 
 test("variants group by default, and a family row expands to its members", async () => {

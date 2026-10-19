@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router";
-import { api, must, route } from "../api/client";
+import { api, must, route, withCapability } from "../api/client";
 import { instancesQuery, collectionsQuery, enrichmentKeysQuery, pluginsQuery } from "../api/queries";
 import { text } from "../card/draft";
 import { apps } from "../sync/Logo";
@@ -104,6 +104,8 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
     logos: apps(instances.data, plugins.data),
   };
   const imp = importers(instances.data, plugins.data);
+  // With two or more, the core picks none until Scores from names one.
+  const unpicked = keys.data && !scored && withCapability(instances.data, plugins.data, "enrich").filter((i) => !i.disabled).length > 1;
 
   const search = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -229,7 +231,9 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
           </section>
         )}
         {res.isError && <p className="error">{res.error.message}</p>}
-        {scoresOff && <p className="muted">Score filters and sort are off: no instance gives scores. Pick one in Settings, under Scores from.</p>}
+        {(scoresOff || unpicked) && (
+          <p className="muted">Score filters and sort are off: {unpicked ? "more than one instance gives scores" : "no instance gives scores"}. Pick one in Settings, under Scores from.</p>
+        )}
         {res.data && <p className="total">{total} {ungrouped ? (total === 1 ? noun.slice(0, -1) : noun) : total === 1 ? "result" : "results"}</p>}
         {res.data && q.page > last && (
           <p>

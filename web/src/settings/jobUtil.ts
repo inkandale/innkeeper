@@ -28,14 +28,17 @@ export function progressText(j: Job): string {
   return typeof p.skipped === "number" && p.skipped > 0 ? `${p.done} of ${p.total}, ${p.skipped} skipped` : `${p.done} of ${p.total}`;
 }
 
-/** age is how long ago t was: 30s, 45m, 10h, 4d. */
-export function age(t: string, now = Date.now()): string {
-  const s = Math.max(0, Math.round((now - Date.parse(t)) / 1000));
+/** span is a length of time, short: 30s, 45m, 10h, 4d. */
+export function span(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
   if (s < 60) return `${s}s`;
   if (s < 3600) return `${Math.floor(s / 60)}m`;
   if (s < 86400) return `${Math.floor(s / 3600)}h`;
   return `${Math.floor(s / 86400)}d`;
 }
+
+/** age is how long ago t was, as span shows it. */
+export const age = (t: string, now = Date.now()) => span(now - Date.parse(t));
 
 /** useJobEvents keeps the ["job", id] query current from the job's event stream while live. */
 export function useJobEvents(id: number, live: boolean) {

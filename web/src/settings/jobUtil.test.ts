@@ -1,4 +1,4 @@
-import { age, kindLabel, progressText, type Job } from "./jobUtil";
+import { age, kindLabel, progressText, span, type Job } from "./jobUtil";
 
 const job = (j: Partial<Job>): Job => ({ id: 1, kind: "bulk", status: "running", payload: {}, progress: {}, attempts: 1, max_attempts: 3, run_after: "", created_at: "", ...j }) as Job;
 
@@ -21,4 +21,10 @@ test("age is short", () => {
   expect(age("2026-10-06T11:15:00Z", now)).toBe("45m");
   expect(age("2026-10-06T02:00:00Z", now)).toBe("10h");
   expect(age("2026-10-02T12:00:00Z", now)).toBe("4d");
+});
+
+test("span is short", () => {
+  expect(span(0)).toBe("0s");
+  expect(span(45_000)).toBe("45s");
+  expect(span(90 * 60_000)).toBe("1h");
 });

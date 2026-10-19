@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useParams } from "react-router";
 import { api, must } from "../api/client";
-import { age, finished, jobStates, kindLabel, progressText, useJob, type Job as JobT } from "./jobUtil";
+import { age, finished, jobStates, kindLabel, progressText, span, useJob, type Job as JobT } from "./jobUtil";
 
 function Counts({ label, counts }: { label: string; counts?: Record<string, number> }) {
   if (!counts || !Object.keys(counts).length) return null;
@@ -85,6 +85,20 @@ export function Job() {
         <dd>{progressText(j)}</dd>
         <dt>Age</dt>
         <dd>{age(j.created_at)}</dd>
+        {j.started_at && (
+          <>
+            <dt>Waited</dt>
+            <dd>{span(Date.parse(j.started_at) - Date.parse(j.created_at))}</dd>
+          </>
+        )}
+        {j.duration_ms != null && (
+          <>
+            <dt>Ran for</dt>
+            <dd>{span(j.duration_ms)}</dd>
+          </>
+        )}
+        <dt>Cards changed</dt>
+        <dd>{j.cards_changed}</dd>
         {j.error && (
           <>
             <dt>Error</dt>

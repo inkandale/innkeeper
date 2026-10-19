@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router";
 import { api, must } from "../api/client";
 import { instancesQuery, pluginsQuery } from "../api/queries";
-import { age, finished, jobStates, kindLabel, progressText } from "./jobUtil";
+import { age, finished, jobStates, kindLabel, progressText, span } from "./jobUtil";
 
 export function Jobs() {
   const [params, setParams] = useSearchParams();
@@ -58,6 +58,8 @@ export function Jobs() {
             <th>Instance</th>
             <th>State</th>
             <th>Progress</th>
+            <th>Duration</th>
+            <th>Cards</th>
             <th>Age</th>
           </tr>
         </thead>
@@ -71,6 +73,8 @@ export function Jobs() {
               <td>{j.instance_id ? (label.get(j.instance_id) ?? `#${j.instance_id}`) : ""}</td>
               <td className={"state " + j.status}>{j.status}</td>
               <td>{progressText(j)}</td>
+              <td>{j.duration_ms != null ? span(j.duration_ms) : ""}</td>
+              <td>{j.cards_changed || ""}</td>
               <td>{age(j.created_at)}</td>
             </tr>
           ))}

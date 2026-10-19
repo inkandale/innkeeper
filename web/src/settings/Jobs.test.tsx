@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -17,11 +17,12 @@ const bulkJob = {
 };
 const exportJob = {
   id: 6, kind: "card.export", status: "succeeded", payload: {}, progress: { done: 2, total: 2, blob: "cd".repeat(32) },
-  attempts: 1, max_attempts: 3, run_after: now, created_at: now,
+  attempts: 1, max_attempts: 3, run_after: now, created_at: now, started_at: now, finished_at: now, duration_ms: 90_000,
+  cards_changed: 0,
 };
 const failedImport = {
   id: 8, kind: "import", instance_id: 3, status: "failed", payload: {}, progress: { done: 10, total: 100 }, attempts: 8, max_attempts: 8,
-  run_after: now, created_at: now, finished_at: now, error: "worker stopped renewing its lease",
+  run_after: now, created_at: now, finished_at: now, error: "worker stopped renewing its lease", cards_changed: 12,
 };
 
 class FakeEventSource {
@@ -138,6 +139,17 @@ test("a finished export links to its zip and opens no stream", async () => {
   expect(link).toHaveAttribute("href", `/api/blobs/${"cd".repeat(32)}`);
   expect(FakeEventSource.last).toBeNull();
   expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+  expect(screen.getByText("Ran for").nextElementSibling).toHaveTextContent("1m");
+  expect(screen.getByText("Cards changed").nextElementSibling).toHaveTextContent("0");
+});
+
+test("the list shows how long each job ran and the cards it changed", async () => {
+  renderAt("/settings/jobs");
+  await screen.findByText("card.export");
+  const cells = (text: string) =>
+    within(screen.getByText(text).closest("tr")!).getAllByRole("cell").map((c) => c.textContent);
+  expect(cells("card.export").slice(5, 7)).toEqual(["1m", ""]);
+  expect(cells("Chub archive").slice(5, 7)).toEqual(["", "12"]);
 });
 
 test("a job's page shows its log", async () => {

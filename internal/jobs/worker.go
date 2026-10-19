@@ -20,6 +20,23 @@ import (
 // ErrRetry to have it retried later, or any other error to fail it.
 type Handler func(ctx context.Context, r *Run) error
 
+// Once runs h for a job that must not run twice, such as one that costs the
+// owner money: a job claimed again after its worker died fails without
+// running, and every error is final, so running it again is the owner's
+// choice.
+func Once(h Handler) Handler {
+	return func(ctx context.Context, r *Run) error {
+		err := errors.New("the run was interrupted; start it again")
+		if r.Attempts <= 1 {
+			err = h(ctx, r)
+		}
+		if err != nil {
+			return fmt.Errorf("%w: %w", ErrFinal, err)
+		}
+		return nil
+	}
+}
+
 // Schedule enqueues Kind every Every; see Queue.EnsureScheduled.
 type Schedule struct {
 	Kind  string

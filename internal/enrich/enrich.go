@@ -6,7 +6,6 @@ package enrich
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -182,37 +181,22 @@ func Check(decl map[string]protocol.Enrichment, sent []protocol.EnrichRevision, 
 
 // Runner runs enrich jobs.
 type Runner struct {
-	Lib      *library.Library
-	Registry *plugins.Registry
-	// Plugins runs the enrich plugins. Its core handler must be Runs.Handle.
-	Plugins *pluginhost.Manager
-	Runs    *pluginhost.Runs
+	plugins.JobRunner
+	Lib *library.Library
 }
 
-// Run is the jobs.Handler for Kind. Every failure is final: each call costs
-// the owner money, so running it again is the owner's choice.
-func (rn *Runner) Run(ctx context.Context, r *jobs.Run) error {
-	if err := rn.run(ctx, r); err != nil {
-		return fmt.Errorf("%w: %w", jobs.ErrFinal, err)
-	}
-	return nil
-}
+// Run is the jobs.Handler for Kind. It runs once: each call costs the owner
+// money, so running it again is the owner's choice.
+func (rn *Runner) Run(ctx context.Context, r *jobs.Run) error { return jobs.Once(rn.run)(ctx, r) }
 
 func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
-	if r.Attempts > 1 {
-		return errors.New("the run was interrupted; start it again")
-	}
-	if r.InstanceID == nil {
-		return errors.New("enrich job has no plugin instance")
-	}
 	var p Payload
-	if err := json.Unmarshal(r.Payload, &p); err != nil {
-		return fmt.Errorf("enrich payload: %w", err)
-	}
-	inst, err := rn.Registry.InstanceWith(ctx, *r.InstanceID, protocol.CapabilityEnrich)
+	pr, err := rn.OpenRun(ctx, r, protocol.CapabilityEnrich, &p)
 	if err != nil {
 		return err
 	}
+	defer pr.Close()
+	inst := pr.Instance
 	most := MaxCards(inst.Manifest)
 	if p.Confirmed {
 		most = math.MaxInt
@@ -223,24 +207,12 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 	}
 	var mu sync.Mutex
 	prog := Progress{Total: total}
-	publish := func() {
-		raw, _ := json.Marshal(prog)
-		r.SetProgress(raw)
-	}
-	token, remove := rn.Runs.Add(inst.ID, func(_ context.Context, method string, params json.RawMessage) (any, error) {
-		var n protocol.Progress
-		if method != protocol.NotifyProgress {
-			return nil, protocol.MethodNotFound(method)
-		}
-		if json.Unmarshal(params, &n) == nil {
-			mu.Lock()
-			prog.Message = n.Message
-			publish()
-			mu.Unlock()
-		}
-		return nil, nil
-	}, r.Log)
-	defer remove()
+	token := pr.Serve(func(n protocol.Progress) {
+		mu.Lock()
+		prog.Message = n.Message
+		pr.Publish(prog)
+		mu.Unlock()
+	}, nil)
 
 	var lastErr error
 	batches, failedBatches := 0, 0
@@ -270,10 +242,8 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 			prog.Skipped += checked.Skipped
 			prog.warn(checked.Warnings...)
 		}
-		publish()
+		pr.Publish(prog)
 		mu.Unlock()
-		// A failed save is left to the lease renewal, which saves the progress again or stops the run.
-		_ = r.SaveProgress(ctx)
 	}
 	if batches > 0 && failedBatches == batches {
 		return fmt.Errorf("every batch failed: %w", lastErr)

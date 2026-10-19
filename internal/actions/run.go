@@ -3,12 +3,10 @@ package actions
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"slices"
 	"sync"
-	"time"
 
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
@@ -25,40 +23,26 @@ var libraryTools = []string{"search_cards", "get_card", "get_lorebook", "get_his
 
 // Runner runs action jobs.
 type Runner struct {
-	Lib      *library.Library
-	Registry *plugins.Registry
-	// Plugins runs the action plugins. Its core handler must be Runs.Handle.
-	Plugins *pluginhost.Manager
-	Runs    *pluginhost.Runs
+	plugins.JobRunner
+	Lib *library.Library
 	// API serves library.call's tools in process; see mcp.Call.
 	API http.Handler
 }
 
-// Run is the jobs.Handler for Kind. Every failure is final: a run costs the
-// owner money, so running it again is the owner's choice.
-func (rn *Runner) Run(ctx context.Context, r *jobs.Run) error {
-	if err := rn.run(ctx, r); err != nil {
-		return fmt.Errorf("%w: %w", jobs.ErrFinal, err)
-	}
-	return nil
-}
+// Run is the jobs.Handler for Kind. It runs once: a run costs the owner
+// money, so running it again is the owner's choice.
+func (rn *Runner) Run(ctx context.Context, r *jobs.Run) error { return jobs.Once(rn.run)(ctx, r) }
 
 func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
-	// A worker that died mid-run leaves the job to be claimed again.
-	if r.Attempts > 1 {
-		return errors.New("the run was interrupted; start it again")
-	}
-	if r.InstanceID == nil {
-		return errors.New("action job has no plugin instance")
-	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	var p Payload
-	if err := json.Unmarshal(r.Payload, &p); err != nil {
-		return fmt.Errorf("action payload: %w", err)
-	}
-	inst, err := rn.Registry.InstanceWith(ctx, *r.InstanceID, protocol.CapabilityAction)
+	pr, err := rn.OpenRun(ctx, r, protocol.CapabilityAction, &p)
 	if err != nil {
 		return err
 	}
+	defer pr.Close()
+	inst := pr.Instance
 	a, err := rn.declaration(ctx, inst, p.Action)
 	if err != nil {
 		return err
@@ -70,14 +54,8 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	s := &session{rn: rn, ctx: ctx, run: r, action: a, instanceID: *r.InstanceID}
-	// A failed save is left to the lease renewal, which saves the progress again or stops the run.
-	s.saver = &progressSaver{every: progressEvery, save: func() { _ = r.SaveProgress(ctx) }}
-	var remove func()
-	params.Run, remove = rn.Runs.Add(inst.ID, s.serve, r.Log)
-	defer remove()
+	s := &session{rn: rn, ctx: ctx, run: pr, action: a, instanceID: *r.InstanceID}
+	params.Run = pr.Serve(s.progress, s.serve)
 
 	var res protocol.ActionRunResult
 	if err := rn.Registry.Call(ctx, rn.Plugins, inst, protocol.MethodActionRun, params, &res); err != nil {
@@ -167,29 +145,24 @@ func (rn *Runner) blobPath(ctx context.Context, sha string) (string, error) {
 type session struct {
 	rn         *Runner
 	ctx        context.Context
-	run        *jobs.Run
+	run        *plugins.PluginRun
 	action     protocol.Action
 	instanceID int64
-
-	saver *progressSaver
 
 	mu sync.Mutex
 	p  Progress
 }
 
-// serve answers the plugin's calls for this run.
+func (s *session) progress(p protocol.Progress) {
+	s.mu.Lock()
+	s.p.Message, s.p.Done, s.p.Total = p.Message, p.Done, p.Total
+	s.mu.Unlock()
+	s.publish()
+}
+
+// serve answers the plugin's calls for this run other than progress.
 func (s *session) serve(_ context.Context, method string, params json.RawMessage) (any, error) {
-	switch method {
-	case protocol.NotifyProgress:
-		var p protocol.Progress
-		if json.Unmarshal(params, &p) == nil {
-			s.mu.Lock()
-			s.p.Message, s.p.Done, s.p.Total = p.Message, p.Done, p.Total
-			s.mu.Unlock()
-			s.publish()
-		}
-		return nil, nil
-	case protocol.MethodLibraryCall:
+	if method == protocol.MethodLibraryCall {
 		return s.libraryCall(params)
 	}
 	return nil, protocol.MethodNotFound(method)
@@ -197,41 +170,8 @@ func (s *session) serve(_ context.Context, method string, params json.RawMessage
 
 func (s *session) publish() {
 	s.mu.Lock()
-	raw, _ := json.Marshal(s.p)
-	s.mu.Unlock()
-	s.run.SetProgress(raw)
-	s.saver.poke()
-}
-
-// progressEvery is how often a run's progress is saved, which is how often
-// the job's event stream looks.
-const progressEvery = time.Second
-
-// progressSaver saves a run's progress soon after it changes, at most once per
-// every, away from the plugin's read loop.
-type progressSaver struct {
-	every time.Duration
-	save  func()
-
-	mu      sync.Mutex
-	last    time.Time
-	pending bool
-}
-
-// poke asks for a save: now, or once every has passed since the last one.
-func (p *progressSaver) poke() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.pending {
-		return
-	}
-	p.pending = true
-	time.AfterFunc(max(p.every-time.Since(p.last), 0), func() {
-		p.mu.Lock()
-		p.pending, p.last = false, time.Now()
-		p.mu.Unlock()
-		p.save()
-	})
+	defer s.mu.Unlock()
+	s.run.Publish(s.p)
 }
 
 // libraryCall runs a library tool for the plugin, if its action declared

@@ -43,14 +43,10 @@ type Payload struct {
 
 // Importer runs import jobs.
 type Importer struct {
-	Lib      *library.Library
-	Registry *plugins.Registry
+	plugins.JobRunner
+	Lib *library.Library
 	// Queue gets a DetectKind job after each import.
 	Queue *jobs.Queue
-	// Plugins runs the import plugins. Its core handler must be
-	// Runs.Handle.
-	Plugins *pluginhost.Manager
-	Runs    *pluginhost.Runs
 	// Targets applies an import's waiting updates whose binding has autosync on.
 	Targets *targets.Service
 	Log     *slog.Logger
@@ -107,17 +103,13 @@ type session struct {
 
 // Run is the jobs.Handler for Kind. It calls import.run on the job's instance.
 func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
-	if r.InstanceID == nil {
-		return fmt.Errorf("%s job has no plugin instance", r.Kind)
-	}
-	inst, err := im.Registry.Instance(ctx, *r.InstanceID)
+	var payload Payload
+	pr, err := im.OpenRun(ctx, r, protocol.CapabilityImport, &payload)
 	if err != nil {
 		return err
 	}
-	var payload Payload
-	if err := json.Unmarshal(r.Payload, &payload); err != nil {
-		return fmt.Errorf("%s payload: %w", r.Kind, err)
-	}
+	defer pr.Close()
+	inst := pr.Instance
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 	s := &session{im: im, run: r, plugin: inst.Manifest.Name, ctx: ctx, cancel: cancel,
@@ -126,8 +118,7 @@ func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
 	// ponytail: items re-sent after a resume count as skipped a second time.
 	_ = json.Unmarshal(r.Progress, &s.p)
 
-	token, remove := im.Runs.Add(inst.ID, s.serve, r.Log)
-	defer remove()
+	token := pr.Serve(s.progress, s.serve)
 
 	// ponytail: a run abandoned on shutdown or a lost lease keeps going in
 	// the plugin until it finishes or the plugin is stopped.
@@ -156,10 +147,10 @@ func EnqueueDetect(ctx context.Context, q *jobs.Queue, log *slog.Logger) {
 }
 
 // serve answers the plugin's calls for this run: the notifications an
-// import sends.
+// import sends, other than progress.
 func (s *session) serve(_ context.Context, method string, params json.RawMessage) (any, error) {
 	switch method {
-	case protocol.NotifyEmitCard, protocol.NotifyEmitLorebook, protocol.NotifyProgress, protocol.NotifyCheckpoint:
+	case protocol.NotifyEmitCard, protocol.NotifyEmitLorebook, protocol.NotifyCheckpoint:
 		s.handle(method, params)
 		return nil, nil
 	}
@@ -190,13 +181,6 @@ func (s *session) handle(method string, params json.RawMessage) {
 			break
 		}
 		s.store(e.Item, library.PluginItem{Kind: library.Lorebook, Data: e.Lorebook, Name: "lorebook"})
-	case protocol.NotifyProgress:
-		var p protocol.Progress
-		if json.Unmarshal(params, &p) == nil {
-			s.mu.Lock()
-			s.p.Done, s.p.Total, s.p.Message = p.Done, p.Total, p.Message
-			s.mu.Unlock()
-		}
 	case protocol.NotifyCheckpoint:
 		var c protocol.Checkpoint
 		if err := json.Unmarshal(params, &c); err != nil {
@@ -213,6 +197,18 @@ func (s *session) handle(method string, params json.RawMessage) {
 		}
 		return
 	}
+	s.publish()
+}
+
+// progress records the plugin's progress. Like handle, it runs on the read
+// goroutine, in order with the other notifications.
+func (s *session) progress(p protocol.Progress) {
+	if s.ctx.Err() != nil {
+		return
+	}
+	s.mu.Lock()
+	s.p.Done, s.p.Total, s.p.Message = p.Done, p.Total, p.Message
+	s.mu.Unlock()
 	s.publish()
 }
 

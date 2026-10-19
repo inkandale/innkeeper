@@ -406,3 +406,18 @@ innkeeper_cards_changed_total{kind="test"} 4
 		}
 	}
 }
+
+func TestOnceMakesErrorsFinalAndRefusesASecondAttempt(t *testing.T) {
+	ran := 0
+	h := Once(func(context.Context, *Run) error { ran++; return errors.New("model refused") })
+	if err := h(context.Background(), &Run{Job: Job{Attempts: 1}}); !errors.Is(err, ErrFinal) || ran != 1 {
+		t.Fatalf("first attempt: err = %v, ran %d times; want a final error after one run", err, ran)
+	}
+	err := h(context.Background(), &Run{Job: Job{Attempts: 2}})
+	if !errors.Is(err, ErrFinal) || !strings.Contains(err.Error(), "interrupted") || ran != 1 {
+		t.Fatalf("second attempt: err = %v, ran %d times; want a final error without running", err, ran)
+	}
+	if err := Once(func(context.Context, *Run) error { return nil })(context.Background(), &Run{Job: Job{Attempts: 1}}); err != nil {
+		t.Fatalf("success: err = %v", err)
+	}
+}

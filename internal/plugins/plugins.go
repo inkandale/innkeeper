@@ -851,6 +851,24 @@ func (r *Registry) InstancesOffering(ctx context.Context, mgr *pluginhost.Manage
 	return out, nil
 }
 
+// Decide sends p to ai instance id's ai.decide, which the instance must
+// offer.
+func (r *Registry) Decide(ctx context.Context, mgr *pluginhost.Manager, id int64, p protocol.AIDecideParams) (protocol.AIDecideResult, error) {
+	var res protocol.AIDecideResult
+	inst, err := r.InstanceWith(ctx, id, protocol.Services[protocol.MethodAIDecide])
+	if err != nil {
+		return res, err
+	}
+	services, err := r.Services(ctx, mgr, inst)
+	if err != nil {
+		return res, err
+	}
+	if !slices.Contains(services, protocol.MethodAIDecide) {
+		return res, fmt.Errorf("%w: instance %d doesn't offer %s", ErrIncapable, id, protocol.MethodAIDecide)
+	}
+	return res, r.Call(ctx, mgr, inst, protocol.MethodAIDecide, p, &res)
+}
+
 // Retryable reports whether a failed plugin call may work later: the plugin
 // exited, or it replied with a retryable error.
 func Retryable(err error) bool {

@@ -227,6 +227,19 @@ func chatWithTool(ctx context.Context, conn *protocol.Conn, run string, instance
 	}
 }
 
+// aiEmbed returns one two-dimensional vector per text: its length and 1.
+func aiEmbed(params json.RawMessage) (any, error) {
+	var p protocol.AIEmbedParams
+	if err := json.Unmarshal(params, &p); err != nil || len(p.Texts) == 0 {
+		return nil, protocol.NewError(protocol.CodeInvalidParams, "ai.embed needs texts", false)
+	}
+	res := protocol.AIEmbedResult{Vectors: make([][]float32, len(p.Texts))}
+	for i, t := range p.Texts {
+		res.Vectors[i] = []float32{float32(len(t)), 1}
+	}
+	return res, nil
+}
+
 // aiDecide answers every question with certainty: a choice's first option by
 // name, a score's top level, and a noul true.
 func aiDecide(params json.RawMessage) (any, error) {

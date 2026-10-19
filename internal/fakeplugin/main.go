@@ -243,6 +243,8 @@ func main() {
 				calls["ai.chat.cancelled"]++
 				callsMu.Unlock()
 			})
+		case protocol.MethodAIEmbed:
+			return aiEmbed(params)
 		case protocol.MethodAIDecide:
 			if *mode == "bad-decide" {
 				return protocol.AIDecideResult{Model: "fake"}, nil

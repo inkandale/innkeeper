@@ -872,10 +872,6 @@
       "CatalogOut": {
         "additionalProperties": false,
         "properties": {
-          "error": {
-            "description": "Why the catalog couldn't describe itself",
-            "type": "string"
-          },
           "id": {
             "format": "int64",
             "type": "integer"
@@ -894,7 +890,8 @@
         "required": [
           "id",
           "name",
-          "plugin"
+          "plugin",
+          "info"
         ],
         "type": "object"
       },
@@ -7596,7 +7593,7 @@
     },
     "/catalogs": {
       "get": {
-        "description": "Every instance of a catalog plugin, with its description.",
+        "description": "Every working instance of a catalog plugin, with its description. Instances that are broken, or whose plugin doesn't answer, are left out.",
         "operationId": "list-catalogs",
         "responses": {
           "200": {

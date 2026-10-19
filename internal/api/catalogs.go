@@ -1,11 +1,13 @@
 package api
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -18,15 +20,15 @@ import (
 // catalogTimeout bounds each call the API makes to a catalog.
 const catalogTimeout = 30 * time.Second
 
-// describeTimeout is shorter: describe never reaches the source, and GET /catalogs waits on every catalog.
-const describeTimeout = 5 * time.Second
+// catalogDescribe is a catalog's kinds, filters, and sorts.
+var catalogDescribe = listMethod[protocol.CatalogInfo, protocol.CatalogInfo]{name: protocol.MethodCatalogDescribe,
+	clean: func(r protocol.CatalogInfo, _ func(string, error)) protocol.CatalogInfo { return r }}
 
 type catalogOut struct {
-	ID     int64                 `json:"id"`
-	Name   string                `json:"name"`
-	Plugin string                `json:"plugin"`
-	Info   *protocol.CatalogInfo `json:"info,omitempty" doc:"The catalog's kinds, filters, and sorts"`
-	Error  string                `json:"error,omitempty" doc:"Why the catalog couldn't describe itself"`
+	ID     int64                `json:"id"`
+	Name   string               `json:"name"`
+	Plugin string               `json:"plugin"`
+	Info   protocol.CatalogInfo `json:"info" doc:"The catalog's kinds, filters, and sorts"`
 }
 
 type catalogsOut struct{ Body []catalogOut }
@@ -66,53 +68,41 @@ type catalogItemIn struct {
 type catalogItemOut struct{ Body protocol.CatalogGetResult }
 
 // catalogCall sends method to catalog instance id with a timeout, and maps
-// its errors to HTTP ones. It returns the instance's settings.
-func (s *Server) catalogCall(ctx context.Context, id int64, method string, params, result any) (plugins.InstanceInfo, error) {
-	info, err := s.Registry.GetInstance(ctx, id)
-	if err != nil {
-		return info, s.fail(err)
-	}
+// its errors to HTTP ones.
+func (s *Server) catalogCall(ctx context.Context, id int64, method string, params, result any) error {
 	inst, err := s.Registry.InstanceWith(ctx, id, protocol.CapabilityCatalog)
 	if errors.Is(err, plugins.ErrIncapable) || errors.Is(err, plugins.ErrUnknownPlugin) {
-		return info, huma.Error404NotFound(fmt.Sprintf("instance %d is not a catalog", id))
+		return huma.Error404NotFound(fmt.Sprintf("instance %d is not a catalog", id))
 	}
 	if err != nil {
-		return info, s.fail(err)
+		return s.fail(err)
 	}
-	ctx, cancel := context.WithTimeout(ctx, catalogTimeout)
+	callCtx, cancel := context.WithTimeout(ctx, catalogTimeout)
 	defer cancel()
-	err = s.Registry.Call(ctx, s.Plugins, inst, method, params, result)
-	if errors.Is(err, context.Canceled) {
-		// The client went away; there is no one to answer.
-		return info, err
+	err = s.Registry.Call(callCtx, s.Plugins, inst, method, params, result)
+	if err == nil || errors.Is(err, context.Canceled) {
+		// Canceled: the client went away; there is no one to answer.
+		return err
 	}
-	return info, s.failAs("catalog "+info.Label, err)
+	// The name is read only on failure, so a call that works looks the instance up once.
+	name := "instance " + inst.ID
+	if info, ierr := s.Registry.GetInstance(ctx, id); ierr == nil {
+		name = info.Label
+	}
+	return s.failAs("catalog "+name, err)
 }
 
-// catalogs lists every catalog instance with its description. A catalog that
-// can't describe itself gets an error instead.
+// catalogs lists each working catalog instance with its description. One
+// that is broken, or doesn't describe itself in time, is left out.
 func (s *Server) catalogs(ctx context.Context) ([]catalogOut, error) {
 	list, err := s.Registry.InstancesWith(ctx, protocol.CapabilityCatalog)
 	if err != nil {
 		return nil, err
 	}
-	out := []catalogOut{}
-	for _, i := range list {
-		if i.Disabled {
-			continue
-		}
-		c := catalogOut{ID: i.ID, Name: i.Label, Plugin: i.Plugin}
-		var info protocol.CatalogInfo
-		dctx, cancel := context.WithTimeout(ctx, describeTimeout)
-		_, err := s.catalogCall(dctx, i.ID, protocol.MethodCatalogDescribe, nil, &info)
-		cancel()
-		if err != nil {
-			c.Error = err.Error()
-		} else {
-			c.Info = &info
-		}
-		out = append(out, c)
-	}
+	out := collect(ctx, s, &s.catalogInfo, catalogDescribe, list, func(i plugins.InstanceInfo, info protocol.CatalogInfo) []catalogOut {
+		return []catalogOut{{ID: i.ID, Name: i.Label, Plugin: i.Plugin, Info: info}}
+	})
+	slices.SortFunc(out, func(a, b catalogOut) int { return cmp.Compare(a.ID, b.ID) })
 	return out, nil
 }
 
@@ -148,7 +138,7 @@ func (s *Server) withMatches(ctx context.Context, lib int64, items []protocol.Ca
 // searchCatalog returns one page from a catalog with its matches in library lib.
 func (s *Server) searchCatalog(ctx context.Context, id, lib int64, p protocol.CatalogSearchParams) (catalogResults, error) {
 	var page protocol.CatalogSearchResult
-	if _, err := s.catalogCall(ctx, id, protocol.MethodCatalogSearch, p, &page); err != nil {
+	if err := s.catalogCall(ctx, id, protocol.MethodCatalogSearch, p, &page); err != nil {
 		return catalogResults{}, err
 	}
 	hits, err := s.withMatches(ctx, lib, page.Items)
@@ -161,7 +151,8 @@ func (s *Server) searchCatalog(ctx context.Context, id, lib int64, p protocol.Ca
 func (s *Server) catalogRoutes(api huma.API) {
 	tags := []string{"Catalogs"}
 	huma.Register(api, huma.Operation{OperationID: "list-catalogs", Method: http.MethodGet, Path: "/catalogs",
-		Summary: "List catalogs", Description: "Every instance of a catalog plugin, with its description.", Tags: tags},
+		Summary: "List catalogs", Description: "Every working instance of a catalog plugin, with its description. " +
+			"Instances that are broken, or whose plugin doesn't answer, are left out.", Tags: tags},
 		func(ctx context.Context, _ *struct{}) (*catalogsOut, error) {
 			list, err := s.catalogs(ctx)
 			if err != nil {
@@ -192,7 +183,7 @@ func (s *Server) catalogRoutes(api huma.API) {
 		func(ctx context.Context, in *catalogItemIn) (*catalogItemOut, error) {
 			out := &catalogItemOut{}
 			params := protocol.CatalogGetParams{ID: in.Item, Version: in.Version}
-			if _, err := s.catalogCall(ctx, in.ID, protocol.MethodCatalogGet, params, &out.Body); err != nil {
+			if err := s.catalogCall(ctx, in.ID, protocol.MethodCatalogGet, params, &out.Body); err != nil {
 				return nil, err
 			}
 			// Never hand a client a server path.

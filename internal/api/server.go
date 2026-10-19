@@ -64,9 +64,9 @@ type Server struct {
 	// login provider. Empty until needed.
 	setupMu   sync.Mutex
 	setupCode string
-	// tools and actions cache each plugin instance's mcp.tools and
-	// action.list, by instance version.
-	tools, actions sync.Map
+	// tools, actions, and catalogInfo cache each plugin instance's
+	// mcp.tools, action.list, and catalog.describe, by instance version.
+	tools, actions, catalogInfo sync.Map
 	// lastPrune is when OAuth clients were last pruned, in Unix seconds.
 	lastPrune atomic.Int64
 }

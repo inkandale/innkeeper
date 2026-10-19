@@ -802,7 +802,7 @@ export interface paths {
         };
         /**
          * List catalogs
-         * @description Every instance of a catalog plugin, with its description.
+         * @description Every working instance of a catalog plugin, with its description. Instances that are broken, or whose plugin doesn't answer, are left out.
          */
         get: operations["list-catalogs"];
         put?: never;
@@ -2822,12 +2822,10 @@ export interface components {
             value: string;
         };
         CatalogOut: {
-            /** @description Why the catalog couldn't describe itself */
-            error?: string;
             /** Format: int64 */
             id: number;
             /** @description The catalog's kinds, filters, and sorts */
-            info?: components["schemas"]["CatalogInfo"];
+            info: components["schemas"]["CatalogInfo"];
             name: string;
             plugin: string;
         };

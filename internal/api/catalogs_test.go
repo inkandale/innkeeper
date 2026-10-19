@@ -56,12 +56,9 @@ func TestCatalogRoutes(t *testing.T) {
 	for _, c := range list {
 		got[c.ID] = c
 	}
-	if len(list) != 3 || got[inst].Name != "Archive" || got[inst].Info == nil {
-		t.Fatalf("catalogs = %+v", list)
-	}
 	// describe doesn't reach the source, so a catalog that is down still answers it.
-	if got[down].Info == nil || got[broken].Info != nil || !strings.Contains(got[broken].Error, "broken") {
-		t.Fatalf("down = %+v, broken = %+v", got[down], got[broken])
+	if len(list) != 2 || got[inst].Name != "Archive" || len(got[inst].Info.Kinds) == 0 || len(got[down].Info.Kinds) == 0 {
+		t.Fatalf("catalogs = %+v; want Archive and Down, not the broken or disabled one", list)
 	}
 
 	var page catalogResults

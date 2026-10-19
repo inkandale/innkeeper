@@ -188,10 +188,10 @@ func TestStaleRunLosesLeaseAfterReclaim(t *testing.T) {
 	if _, err := q.claim(ctx, "w1", []string{"test"}, time.Minute); err != nil {
 		t.Fatal(err)
 	}
-	if err := q.touch(ctx, q.pool, old, "w1", time.Minute, nil, nil); !errors.Is(err, ErrLeaseLost) {
+	if err := q.touch(ctx, q.pool, old, "w1", time.Minute, runState{}, nil); !errors.Is(err, ErrLeaseLost) {
 		t.Fatalf("stale touch = %v; want ErrLeaseLost", err)
 	}
-	if err := q.finish(ctx, old, "w1", nil, outcome{status: StatusSucceeded}); !errors.Is(err, ErrLeaseLost) {
+	if err := q.finish(ctx, old, "w1", runState{}, outcome{status: StatusSucceeded}); !errors.Is(err, ErrLeaseLost) {
 		t.Fatalf("stale finish = %v; want ErrLeaseLost", err)
 	}
 }
@@ -261,7 +261,7 @@ func TestCancelRunningJobTakesItsLease(t *testing.T) {
 	if err := q.Cancel(ctx, j.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := q.touch(ctx, q.pool, c, "w1", time.Minute, nil, nil); !errors.Is(err, ErrLeaseLost) {
+	if err := q.touch(ctx, q.pool, c, "w1", time.Minute, runState{}, nil); !errors.Is(err, ErrLeaseLost) {
 		t.Fatalf("touch after cancel: %v", err)
 	}
 }
@@ -392,14 +392,14 @@ func TestClaimSetsStartedAtOnce(t *testing.T) {
 	if err != nil || first == nil || first.StartedAt == nil {
 		t.Fatalf("claim = %+v, %v", first, err)
 	}
-	if err := q.finish(ctx, first, "w1", nil, outcome{status: StatusQueued, err: "try again"}); err != nil {
+	if err := q.finish(ctx, first, "w1", runState{}, outcome{status: StatusQueued, err: "try again"}); err != nil {
 		t.Fatal(err)
 	}
 	again, err := q.claim(ctx, "w1", []string{"test"}, time.Minute)
 	if err != nil || again == nil || again.StartedAt == nil || !again.StartedAt.Equal(*first.StartedAt) {
 		t.Fatalf("retry claim = %+v, %v; want started at %v", again, err, first.StartedAt)
 	}
-	if err := q.finish(ctx, again, "w1", nil, outcome{status: StatusFailed, err: "boom"}); err != nil {
+	if err := q.finish(ctx, again, "w1", runState{}, outcome{status: StatusFailed, err: "boom"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := q.Retry(ctx, j.ID); err != nil {

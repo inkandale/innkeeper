@@ -59,6 +59,7 @@ type Run struct {
 
 	mu       sync.Mutex
 	progress json.RawMessage
+	cards    int
 }
 
 // Log adds a line to the job's log, where the owner reads it on the job's
@@ -80,28 +81,42 @@ func (r *Run) SetProgress(p json.RawMessage) {
 	r.mu.Unlock()
 }
 
-func (r *Run) currentProgress() json.RawMessage {
+// AddCardsChanged counts n more cards the job changed. Like progress, it is
+// saved with the next lease renewal, checkpoint, or finish.
+func (r *Run) AddCardsChanged(n int) {
+	r.mu.Lock()
+	r.cards += n
+	r.mu.Unlock()
+}
+
+// runState is what a run saves with each renewal and at its finish.
+type runState struct {
+	progress json.RawMessage
+	cards    int
+}
+
+func (r *Run) current() runState {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.progress
+	return runState{r.progress, r.cards}
 }
 
 // SaveProgress saves the current progress now, for a job whose watchers
 // shouldn't wait for the next lease renewal.
 func (r *Run) SaveProgress(ctx context.Context) error {
-	return r.q.touch(ctx, r.q.pool, &r.Job, r.worker, r.lease, r.currentProgress(), nil)
+	return r.q.touch(ctx, r.q.pool, &r.Job, r.worker, r.lease, r.current(), nil)
 }
 
 // SaveCheckpoint saves where a retry should resume, along with the current
 // progress. The retry finds it in Run.Checkpoint.
 func (r *Run) SaveCheckpoint(ctx context.Context, cp json.RawMessage) error {
-	return r.q.touch(ctx, r.q.pool, &r.Job, r.worker, r.lease, r.currentProgress(), cp)
+	return r.q.touch(ctx, r.q.pool, &r.Job, r.worker, r.lease, r.current(), cp)
 }
 
 // SaveCheckpointTx is SaveCheckpoint inside the caller's transaction, so the
 // checkpoint commits with the work done before it.
 func (r *Run) SaveCheckpointTx(ctx context.Context, tx pgx.Tx, cp json.RawMessage) error {
-	return r.q.touch(ctx, tx, &r.Job, r.worker, r.lease, r.currentProgress(), cp)
+	return r.q.touch(ctx, tx, &r.Job, r.worker, r.lease, r.current(), cp)
 }
 
 func backoff(attempt int) time.Duration {
@@ -241,7 +256,7 @@ func (w *Worker) maintain(ctx context.Context) {
 
 func (w *Worker) execute(ctx context.Context, j *Job) {
 	log := w.Log.With("job", j.ID, "kind", j.Kind, "attempt", j.Attempts)
-	run := &Run{Job: *j, q: w.Queue, worker: w.id, lease: w.Lease, log: log, progress: j.Progress}
+	run := &Run{Job: *j, q: w.Queue, worker: w.id, lease: w.Lease, log: log, progress: j.Progress, cards: j.CardsChanged}
 	run.Log("info", fmt.Sprintf("Attempt %d of %d started", j.Attempts, j.MaxAttempts))
 	hctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
@@ -272,7 +287,7 @@ func (w *Worker) execute(ctx context.Context, j *Job) {
 	// ctx may already be cancelled, and the job must still be released.
 	fctx, fcancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer fcancel()
-	if err := w.Queue.finish(fctx, j, w.id, run.currentProgress(), o); err != nil {
+	if err := w.Queue.finish(fctx, j, w.id, run.current(), o); err != nil {
 		if errors.Is(err, ErrLeaseLost) {
 			log.Warn("job lease lost: cancelled or taken by another worker", "err", err)
 			return
@@ -327,7 +342,7 @@ func (w *Worker) heartbeat(ctx context.Context, cancel context.CancelCauseFunc, 
 			return
 		case <-t.C:
 		}
-		err := r.q.touch(ctx, r.q.pool, &r.Job, r.worker, r.lease, r.currentProgress(), nil)
+		err := r.q.touch(ctx, r.q.pool, &r.Job, r.worker, r.lease, r.current(), nil)
 		if errors.Is(err, ErrLeaseLost) {
 			cancel(ErrLeaseLost)
 			return

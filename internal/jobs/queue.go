@@ -236,14 +236,14 @@ func (q *Queue) claim(ctx context.Context, worker string, kinds []string, lease 
 	return &j, nil
 }
 
-// touch renews the lease and saves progress, and the checkpoint unless it is
-// nil.
-func (q *Queue) touch(ctx context.Context, db execer, j *Job, worker string, lease time.Duration, progress, checkpoint json.RawMessage) error {
+// touch renews the lease and saves the run's state, and the checkpoint
+// unless it is nil.
+func (q *Queue) touch(ctx context.Context, db execer, j *Job, worker string, lease time.Duration, st runState, checkpoint json.RawMessage) error {
 	// clock_timestamp, not now(): inside a caller's long transaction, now() is when it began.
 	tag, err := db.Exec(ctx, `UPDATE job SET locked_until = clock_timestamp() + make_interval(secs => $3),
-			progress = coalesce($4::jsonb, progress), checkpoint = coalesce($5::jsonb, checkpoint)
+			progress = coalesce($4::jsonb, progress), checkpoint = coalesce($5::jsonb, checkpoint), cards_changed = $7
 		WHERE id = $1 AND locked_by = $2 AND attempts = $6 AND status = 'running'`,
-		j.ID, worker, lease.Seconds(), progress, checkpoint, j.Attempts)
+		j.ID, worker, lease.Seconds(), st.progress, checkpoint, j.Attempts, st.cards)
 	if err != nil {
 		return err
 	}
@@ -262,17 +262,17 @@ type outcome struct {
 	refund bool
 }
 
-func (q *Queue) finish(ctx context.Context, j *Job, worker string, progress json.RawMessage, o outcome) error {
+func (q *Queue) finish(ctx context.Context, j *Job, worker string, st runState, o outcome) error {
 	refund := 0
 	if o.refund {
 		refund = 1
 	}
 	tag, err := q.pool.Exec(ctx, `UPDATE job SET status = $3, error = nullif($4, ''),
 			run_after = now() + make_interval(secs => $5), attempts = attempts - $6,
-			progress = coalesce($7::jsonb, progress), locked_by = NULL, locked_until = NULL,
+			progress = coalesce($7::jsonb, progress), cards_changed = $9, locked_by = NULL, locked_until = NULL,
 			finished_at = CASE WHEN $3 IN ('succeeded', 'failed') THEN now() END
 		WHERE id = $1 AND locked_by = $2 AND attempts = $8 AND status = 'running'`,
-		j.ID, worker, o.status, o.err, o.runAfter.Seconds(), refund, progress, j.Attempts)
+		j.ID, worker, o.status, o.err, o.runAfter.Seconds(), refund, st.progress, j.Attempts, st.cards)
 	if err != nil {
 		return err
 	}

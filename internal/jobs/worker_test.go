@@ -325,3 +325,31 @@ func TestFinalErrorFailsEvenOnShutdown(t *testing.T) {
 		t.Fatalf("job after shutdown = %+v", got)
 	}
 }
+
+func TestCardsChangedAddsUpAcrossAttempts(t *testing.T) {
+	q := newQueue(t)
+	saved, release := make(chan error), make(chan struct{})
+	startWorker(t, &Worker{Queue: q, Backoff: func(int) time.Duration { return 0 }, Handlers: map[string]Handler{
+		"test": func(ctx context.Context, r *Run) error {
+			r.AddCardsChanged(2)
+			if r.Attempts == 1 {
+				saved <- r.SaveProgress(ctx)
+				<-release
+				return fmt.Errorf("%w: crashed", ErrRetry)
+			}
+			return errors.New("bad input")
+		},
+	}})
+	j, _ := q.Enqueue(context.Background(), Spec{Kind: "test"})
+	if err := <-saved; err != nil {
+		t.Fatal(err)
+	}
+	running, err := q.Get(context.Background(), j.ID)
+	close(release)
+	if err != nil || running.CardsChanged != 2 {
+		t.Fatalf("running job = %+v, %v; want 2 cards saved", running, err)
+	}
+	if got := waitStatus(t, q, j.ID, StatusFailed); got.CardsChanged != 4 {
+		t.Fatalf("failed job changed %d cards, want 4 across both attempts", got.CardsChanged)
+	}
+}

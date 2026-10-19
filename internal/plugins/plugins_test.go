@@ -751,6 +751,45 @@ func TestDisabledInstanceIsSkipped(t *testing.T) {
 	}
 }
 
+func TestWorkingInstancesWithLeavesOutBrokenDisabledAndOtherCapabilities(t *testing.T) {
+	ctx := context.Background()
+	box, err := secrets.New(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := New(testdb.New(t), map[string]*protocol.Manifest{
+		"sites": {Name: "sites", Version: "1", Capabilities: []string{"sites"}, MultipleInstances: true},
+		"other": {Name: "other", Version: "1", Capabilities: []string{"push"}},
+	}, &blobstore.Store{Name: "library", Root: t.TempDir()}, box)
+	var ids []int64
+	for _, name := range []string{"working", "broken", "disabled"} {
+		id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "sites", Name: new(name)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "other", Name: new("other")}); err != nil {
+		t.Fatal(err)
+	}
+	broken, err := reg.Instance(ctx, ids[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.MarkBroken(ctx, ids[1], broken.Version, errors.New("no start")); err != nil {
+		t.Fatal(err)
+	}
+	disabled := true
+	if err := reg.UpdateInstance(ctx, ids[2], InstanceEdit{Disabled: &disabled}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := reg.WorkingInstancesWith(ctx, protocol.CapabilitySites)
+	if err != nil || len(got) != 1 || got[0].Info.ID != ids[0] || got[0].Instance.ID != strconv.FormatInt(ids[0], 10) {
+		t.Fatalf("WorkingInstancesWith = %+v, %v; want only instance %d", got, err, ids[0])
+	}
+}
+
 func TestConcurrentDisablesKeepOneLogin(t *testing.T) {
 	ctx := context.Background()
 	box, err := secrets.New(make([]byte, 32))

@@ -619,6 +619,37 @@ func (r *Registry) InstancesWith(ctx context.Context, capabilities ...string) ([
 	}), nil
 }
 
+// WorkingInstance is a usable instance and what the plugin host needs to run it.
+type WorkingInstance struct {
+	Info     InstanceInfo
+	Instance pluginhost.Instance
+}
+
+// WorkingInstancesWith returns the usable instances whose plugins declare
+// capability, oldest first. One broken, disabled, or deleted after the list
+// was read is left out.
+func (r *Registry) WorkingInstancesWith(ctx context.Context, capability string) ([]WorkingInstance, error) {
+	list, err := r.InstancesWith(ctx, capability)
+	if err != nil {
+		return nil, err
+	}
+	var out []WorkingInstance
+	for _, info := range list {
+		if !info.Usable() {
+			continue
+		}
+		inst, err := r.Instance(ctx, info.ID)
+		if errors.Is(err, ErrBroken) || errors.Is(err, ErrDisabled) || errors.Is(err, ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, WorkingInstance{Info: info, Instance: inst})
+	}
+	return out, nil
+}
+
 // InstanceWith is Instance for an instance whose plugin declares capability.
 func (r *Registry) InstanceWith(ctx context.Context, id int64, capability string) (pluginhost.Instance, error) {
 	inst, err := r.Instance(ctx, id)
@@ -692,21 +723,13 @@ func (r *Registry) load(ctx context.Context, id int64) (inst pluginhost.Instance
 // CodecInstance returns the oldest working instance of a codec plugin that
 // lists format.
 func (r *Registry) CodecInstance(ctx context.Context, format string) (pluginhost.Instance, error) {
-	type row struct {
-		ID     int64
-		Plugin string
-	}
-	rows, err := r.pool.Query(ctx, `SELECT id, plugin FROM plugin_instance WHERE broken_error IS NULL AND NOT disabled ORDER BY id`)
+	list, err := r.WorkingInstancesWith(ctx, protocol.CapabilityCodec)
 	if err != nil {
 		return pluginhost.Instance{}, err
 	}
-	all, err := pgx.CollectRows(rows, pgx.RowToStructByPos[row])
-	if err != nil {
-		return pluginhost.Instance{}, err
-	}
-	for _, i := range all {
-		if m, ok := r.manifest(i.Plugin); ok && m.Has(protocol.CapabilityCodec) && slices.Contains(m.Formats, format) {
-			return r.Instance(ctx, i.ID)
+	for _, w := range list {
+		if slices.Contains(w.Instance.Manifest.Formats, format) {
+			return w.Instance, nil
 		}
 	}
 	return pluginhost.Instance{}, fmt.Errorf("%w: %q; create an instance of a codec plugin that lists it", ErrNoCodec, format)
@@ -807,23 +830,13 @@ func (r *Registry) InstancesOffering(ctx context.Context, mgr *pluginhost.Manage
 	if !ok {
 		return nil, fmt.Errorf("%w: %q is not a service", ErrInvalid, method)
 	}
-	list, err := r.InstancesWith(ctx, capability)
+	list, err := r.WorkingInstancesWith(ctx, capability)
 	if err != nil {
 		return nil, err
 	}
 	out := []InstanceInfo{}
-	for _, info := range list {
-		if !info.Usable() {
-			continue
-		}
-		inst, err := r.Instance(ctx, info.ID)
-		if errors.Is(err, ErrBroken) || errors.Is(err, ErrDisabled) {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		services, err := r.Services(ctx, mgr, inst)
+	for _, w := range list {
+		services, err := r.Services(ctx, mgr, w.Instance)
 		var startErr *pluginhost.StartError
 		if errors.As(err, &startErr) {
 			continue
@@ -832,7 +845,7 @@ func (r *Registry) InstancesOffering(ctx context.Context, mgr *pluginhost.Manage
 			return nil, err
 		}
 		if slices.Contains(services, method) {
-			out = append(out, info)
+			out = append(out, w.Info)
 		}
 	}
 	return out, nil

@@ -748,7 +748,7 @@ func TestAutosyncTakesASourceUpdateWithoutConflicts(t *testing.T) {
 		t.Fatal(err)
 	}
 	p, err := e.s.CheckSources(e.ctx, library.DefaultLibrary, func(ScanProgress) {})
-	if err != nil || p.Applied != 1 || p.Changed != 0 {
+	if err != nil || p.Applied != 1 || p.Changed != 0 || p.cardsApplied != 1 {
 		t.Fatalf("progress = %+v, %v", p, err)
 	}
 	var data map[string]any

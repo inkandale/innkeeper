@@ -169,6 +169,9 @@ type SyncParams struct {
 // SyncResult is a sync's progress, and its result once it finishes.
 type SyncResult struct {
 	Apps []SyncApp `json:"apps"`
+	// CardsChanged counts the cards the sync imported, pulled, or
+	// autosync pushed. The sync job stores it, so progress leaves it out.
+	CardsChanged int `json:"-"`
 }
 
 // SyncApp is one app's part of a sync.

@@ -129,9 +129,11 @@ type ScanProgress struct {
 	Changed int `json:"changed"`
 	Missing int `json:"missing"`
 	// Applied counts followed sources whose update autosync took.
-	Applied int      `json:"applied,omitempty"`
-	Failed  int      `json:"failed"`
-	Errors  []string `json:"errors,omitempty"`
+	Applied int `json:"applied,omitempty"`
+	// cardsApplied counts the Applied updates that went to cards.
+	cardsApplied int
+	Failed       int      `json:"failed"`
+	Errors       []string `json:"errors,omitempty"`
 	// NewInApp counts, by instance ID, the app items no binding uses.
 	NewInApp map[int64]int `json:"new_in_app,omitempty"`
 	// firstErr keeps the first failure's error, which Errors holds only as text.

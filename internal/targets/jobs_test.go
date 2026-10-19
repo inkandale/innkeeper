@@ -28,6 +28,9 @@ func TestJobs(t *testing.T) {
 	if e.status(e.card) != "in_sync" || e.status(other) != "in_sync" {
 		t.Fatal("bulk push didn't push both cards")
 	}
+	if children, err := q.ChildrenFor(e.ctx, []int64{parent.ID}); err != nil || children[parent.ID].CardsChanged != 2 {
+		t.Fatalf("push children = %+v, %v; want 2 cards changed", children, err)
+	}
 
 	e.editRemote("r1", "first_mes", "Well met.")
 	scan, err := q.Enqueue(e.ctx, jobs.Spec{Kind: ScanKind})
@@ -161,8 +164,12 @@ func TestLorebookPushJob(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := e.startWorker(q)(j.ID); got.Status != jobs.StatusSucceeded {
+	got := e.startWorker(q)(j.ID)
+	if got.Status != jobs.StatusSucceeded {
 		t.Fatalf("job %s (%v)", got.Status, got.Error)
+	}
+	if got.CardsChanged != 0 {
+		t.Fatalf("lorebook push changed %d cards, want 0", got.CardsChanged)
 	}
 	if s := e.lorebookStatus(lb); s != "in_sync" {
 		t.Fatalf("status %s", s)

@@ -502,6 +502,18 @@ func (s *Service) Reconcile(ctx context.Context, p ReconcileParams, progress fun
 	return snap, nil
 }
 
+// cardsChanged counts the cards a reconcile imported or pulled the app's
+// changes into.
+func cardsChanged(snap Snapshot) int {
+	n := 0
+	for _, it := range snap.Items {
+		if it.AutoImported || it.AutoPulled {
+			n++
+		}
+	}
+	return n
+}
+
 // autoTotals counts the items auto-apply imported, bound, or pulled.
 func autoTotals(items, lorebooks []ReconcileItem) map[string]int {
 	type auto struct{ bound, imported, pulled bool }

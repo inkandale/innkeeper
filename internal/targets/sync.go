@@ -85,6 +85,7 @@ func (s *Service) RunSync(ctx context.Context, r *jobs.Run) error {
 		r.SetProgress(raw)
 	}
 	res, err := s.Sync(ctx, p, report)
+	r.AddCardsChanged(res.CardsChanged)
 	if err != nil {
 		return err
 	}
@@ -118,18 +119,21 @@ func (s *Service) Sync(ctx context.Context, p SyncParams, progress func(SyncResu
 		app := SyncApp{InstanceID: id}
 		failure := err
 		var raw json.RawMessage
+		cards := 0
 		if err != nil {
 			app.Error = err.Error()
 		} else {
 			app.Totals, params = snap.Totals, snap.Params
+			cards = cardsChanged(snap)
 			if raw, err = json.Marshal(snap); err != nil {
 				return res, err
 			}
 		}
-		j, rerr := q.Record(ctx, jobs.Spec{Kind: ReconcileKind, InstanceID: &id, Payload: params}, raw, 0, failure)
+		j, rerr := q.Record(ctx, jobs.Spec{Kind: ReconcileKind, InstanceID: &id, Payload: params}, raw, cards, failure)
 		if rerr != nil {
 			return res, rerr
 		}
+		res.CardsChanged += cards
 		app.JobID = j.ID
 		res.Apps = append(res.Apps, app)
 		if progress != nil {
@@ -139,7 +143,7 @@ func (s *Service) Sync(ctx context.Context, p SyncParams, progress func(SyncResu
 	// Pass 2 runs after every app's pass 1, so an edit pulled from one app reaches the others.
 	for i := range res.Apps {
 		if res.Apps[i].Error == "" {
-			s.autosync(ctx, &res.Apps[i])
+			res.CardsChanged += s.autosync(ctx, &res.Apps[i])
 		}
 		if ctx.Err() != nil {
 			return res, ctx.Err()
@@ -173,11 +177,11 @@ func (s *Service) syncApps(ctx context.Context, only int64) ([]int64, error) {
 // autosync pushes the app's bindings that have autosync on and are ahead.
 // Each push expects the app to hold the copy the library last agreed with,
 // so one that changed in the app is left for the owner and counted as
-// autosync_changed.
+// autosync_changed. It returns how many cards it pushed.
 //
 // ponytail: the check compares the card's stored fields, not its avatar, so
 // an avatar changed only in the app is overwritten, as a manual push would.
-func (s *Service) autosync(ctx context.Context, app *SyncApp) {
+func (s *Service) autosync(ctx context.Context, app *SyncApp) (cards int) {
 	if app.Totals == nil {
 		app.Totals = map[string]int{}
 	}
@@ -221,6 +225,9 @@ func (s *Service) autosync(ctx context.Context, app *SyncApp) {
 		switch {
 		case err == nil:
 			app.Totals["autosync_pushed"]++
+			if d.lorebook == 0 {
+				cards++
+			}
 		case errors.Is(err, ErrAppChanged):
 			app.Totals["autosync_changed"]++
 		case errors.Is(err, ErrNewCopy):
@@ -230,4 +237,5 @@ func (s *Service) autosync(ctx context.Context, app *SyncApp) {
 			failed(d.binding, err)
 		}
 	}
+	return cards
 }

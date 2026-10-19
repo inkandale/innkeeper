@@ -47,6 +47,7 @@ func (s *Service) RunReconcile(ctx context.Context, r *jobs.Run) error {
 	if err != nil {
 		return plugins.JobErr(err)
 	}
+	r.AddCardsChanged(cardsChanged(snap))
 	raw, err := json.Marshal(snap)
 	if err != nil {
 		return err

@@ -64,11 +64,20 @@ func TestBulkResolveRepeatedImportIsStale(t *testing.T) {
 	e.appCard("a", map[string]any{"name": "Pell", "description": "A clockwork owl."}, nil)
 	item := e.reconcile(ReconcileParams{InstanceID: e.inst}, "a")["a"]
 	rs := []Resolution{{InstanceID: e.inst, RemoteID: "a", AppHash: item.AppHash, BindingID: item.BindingID, Action: "import"}}
-	if _, out := e.runResolve(rs); out["import"] != 1 {
-		t.Fatalf("first: outcomes %v", out)
+	changed := func(parent jobs.Job) int {
+		t.Helper()
+		children, err := jobs.New(e.pool).ChildrenFor(e.ctx, []int64{parent.ID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return children[parent.ID].CardsChanged
+	}
+	parent, out := e.runResolve(rs)
+	if out["import"] != 1 || changed(parent) != 1 {
+		t.Fatalf("first: outcomes %v, %d cards changed", out, changed(parent))
 	}
 	cards := e.cardCount()
-	if _, out := e.runResolve(rs); out["stale"] != 1 || e.cardCount() != cards {
+	if parent, out := e.runResolve(rs); out["stale"] != 1 || e.cardCount() != cards || changed(parent) != 0 {
 		t.Fatalf("again: outcomes %v, %d cards, want %d", out, e.cardCount(), cards)
 	}
 }

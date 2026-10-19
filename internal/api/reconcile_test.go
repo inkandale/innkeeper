@@ -148,6 +148,9 @@ func TestSyncRoute(t *testing.T) {
 	if app.Kind != targets.ReconcileKind || app.Status != "succeeded" {
 		t.Errorf("app job = %+v", app)
 	}
+	if app.CardsChanged != 1 || j.CardsChanged < 1 {
+		t.Errorf("sync changed %d cards, its reconcile %d; want the imported card counted in both", j.CardsChanged, app.CardsChanged)
+	}
 	e.call("POST", "/syncs", map[string]any{"instance_id": 999}, 404, nil)
 }
 

@@ -222,6 +222,9 @@ func (s *Service) checkSources(ctx context.Context, libraryID int64, only *libra
 		applied, err := s.applyUpdate(ctx, *b)
 		if applied {
 			p.Applied++
+			if b.CardID != 0 {
+				p.cardsApplied++
+			}
 			b.RemoteState = remoteUnchanged
 		}
 		return err

@@ -128,6 +128,9 @@ func (s *Service) RunPush(ctx context.Context, r *jobs.Run) error {
 	if err != nil {
 		return err
 	}
+	if p.LorebookID == 0 {
+		r.AddCardsChanged(1)
+	}
 	r.SetProgress(raw)
 	return nil
 }
@@ -162,9 +165,10 @@ func (s *Service) RunSourceCheck(ctx context.Context, r *jobs.Run) error {
 	if err := json.Unmarshal(r.Payload, &p); err != nil {
 		return fmt.Errorf("source check payload: %w", err)
 	}
-	_, err := s.CheckSources(ctx, cmp.Or(p.Library, library.DefaultLibrary), func(p ScanProgress) {
+	res, err := s.CheckSources(ctx, cmp.Or(p.Library, library.DefaultLibrary), func(p ScanProgress) {
 		raw, _ := json.Marshal(p)
 		r.SetProgress(raw)
 	})
+	r.AddCardsChanged(res.cardsApplied)
 	return err
 }

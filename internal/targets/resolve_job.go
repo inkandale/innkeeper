@@ -56,6 +56,9 @@ func (s *Service) RunResolve(ctx context.Context, run *jobs.Run) error {
 	}
 	r.InstanceID = *run.InstanceID
 	res, err := s.resolve(ctx, kindNamed(r.Kind), r, resolveOpts{})
+	if err == nil && res.RevisionID != 0 && !kindNamed(r.Kind).isLorebook() {
+		run.AddCardsChanged(1)
+	}
 	p := resolveProgress{Outcome: r.Action, Result: &res}
 	var stale *StaleError
 	var startErr *pluginhost.StartError

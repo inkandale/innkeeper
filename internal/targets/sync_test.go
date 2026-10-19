@@ -243,6 +243,9 @@ func TestSyncAutosyncPushes(t *testing.T) {
 		if !on && (got == "Edited in the first app." || pushed != 0) {
 			t.Errorf("autosync off: second app has %v, pushed %d", got, pushed)
 		}
+		if want := map[bool]int{true: 2, false: 1}[on]; res.CardsChanged != want {
+			t.Errorf("autosync %v: %d cards changed, want %d", on, res.CardsChanged, want)
+		}
 		if !on {
 			continue
 		}

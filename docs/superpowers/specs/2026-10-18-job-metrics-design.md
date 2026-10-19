@@ -57,6 +57,8 @@ Each handler that changes cards calls `AddCardsChanged` where it does:
 
 Export, backup, blob collection, detect, drift scans and action runs change no cards, and stay at 0. Action runs reach the library read-only.
 
+A sync's count includes the cards in the reconcile jobs it records, so summing the Jobs list counts those cards twice.
+
 `DeleteLibrary`'s progress callback reports each batch's kind and size, so the job can tell cards from lorebooks.
 
 Known gap: updates an import applies through autosync after its items are stored aren't counted, because the import holds only binding IDs at that point.

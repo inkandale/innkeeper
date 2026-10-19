@@ -129,11 +129,11 @@ func (s *Service) Sync(ctx context.Context, p SyncParams, progress func(SyncResu
 				return res, err
 			}
 		}
+		res.CardsChanged += cards
 		j, rerr := q.Record(ctx, jobs.Spec{Kind: ReconcileKind, InstanceID: &id, Payload: params}, raw, cards, failure)
 		if rerr != nil {
 			return res, rerr
 		}
-		res.CardsChanged += cards
 		app.JobID = j.ID
 		res.Apps = append(res.Apps, app)
 		if progress != nil {

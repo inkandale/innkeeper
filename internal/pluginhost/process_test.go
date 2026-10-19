@@ -277,3 +277,11 @@ func TestCheckInfoRefusesServicesOutsideCapabilities(t *testing.T) {
 		t.Error("ai.chat from a plugin without ai passed")
 	}
 }
+
+func TestCheckInfoIgnoresRetiredSearch(t *testing.T) {
+	m := &protocol.Manifest{Name: "p", Version: "1", Capabilities: []string{"push"}}
+	info := protocol.InitializeResult{Protocol: protocol.Version, Name: "p", Version: "1", Capabilities: []string{"push", "search"}}
+	if err := checkInfo(m, info); err != nil {
+		t.Fatal(err)
+	}
+}

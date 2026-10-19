@@ -14,7 +14,14 @@ import (
 )
 
 // Capabilities lists every capability a plugin may declare.
-var Capabilities = []string{"import", "search", "push", "pull", "action", "records", "enrich", "codec", "auth", "mcp", "theme", "catalog", "sites", "ai", "settings"}
+var Capabilities = []string{"import", "push", "pull", "action", "records", "enrich", "codec", "auth", "mcp", "theme", "catalog", "sites", "ai", "settings"}
+
+// WithoutRetired drops capabilities an older core defined, so a manifest or
+// handshake that still lists one keeps working.
+// ponytail: drop this and its callers a release after search was removed.
+func WithoutRetired(capabilities []string) []string {
+	return slices.DeleteFunc(slices.Clone(capabilities), func(c string) bool { return c == "search" })
+}
 
 var enrichmentTypes = []string{"text", "score", "list"}
 
@@ -131,6 +138,7 @@ func LoadManifest(dir string) (*Manifest, error) {
 		return nil, fmt.Errorf("manifest %s: unknown keys: %s", abs, strings.Join(unknown, ", "))
 	}
 	m.Dir = abs
+	m.Capabilities = WithoutRetired(m.Capabilities)
 	if err := m.Validate(); err != nil {
 		return nil, fmt.Errorf("manifest %s: %w", abs, err)
 	}

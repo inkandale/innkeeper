@@ -21,7 +21,7 @@ name = "lumiverse"
 version = "0.1.0"
 protocol = 1
 command = ["./lumiverse-plugin", "--quiet"]
-capabilities = ["push", "pull", "search"]
+capabilities = ["push", "pull"]
 secrets = ["api_key"]
 
 [config]
@@ -38,7 +38,7 @@ func TestLoadManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Name != "lumiverse" || len(m.Capabilities) != 3 || m.Secrets[0] != "api_key" {
+	if m.Name != "lumiverse" || len(m.Capabilities) != 2 || m.Secrets[0] != "api_key" {
 		t.Fatalf("unexpected manifest: %+v", m)
 	}
 	if got := m.Enrichments["quality"].Range; len(got) != 2 || got[1] != 5 {
@@ -76,8 +76,8 @@ func TestManifestErrors(t *testing.T) {
 	}{
 		{"bad name", `name = "lumiverse"`, `name = "Lumi Verse"`, "name"},
 		{"wrong protocol", `protocol = 1`, `protocol = 2`, "protocol 2 is not supported"},
-		{"unknown capability", `"search"]`, `"teleport"]`, `unknown capability "teleport"`},
-		{"duplicate capability", `"search"]`, `"push"]`, "listed twice"},
+		{"unknown capability", `"pull"]`, `"pull", "teleport"]`, `unknown capability "teleport"`},
+		{"duplicate capability", `"pull"]`, `"pull", "push"]`, "listed twice"},
 		{"score without range", `range = [1, 5], `, ``, "score needs range"},
 		{"bad enrichment type", `type = "text"`, `type = "essay"`, `type "essay"`},
 		{"unknown key", `secrets = ["api_key"]`, `secret = ["api_key"]`, "unknown keys: secret"},
@@ -255,6 +255,17 @@ func TestThemeStylesheetConfined(t *testing.T) {
 				t.Fatalf("err = %v, want a stylesheet error", err)
 			}
 		})
+	}
+}
+
+func TestLoadManifestIgnoresRetiredSearch(t *testing.T) {
+	dir := writeManifest(t, strings.Replace(validManifest, `["push", "pull"]`, `["push", "search", "pull"]`, 1))
+	m, err := LoadManifest(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(m.Capabilities, ",") != "push,pull" {
+		t.Fatalf("capabilities = %v, want [push pull]", m.Capabilities)
 	}
 }
 

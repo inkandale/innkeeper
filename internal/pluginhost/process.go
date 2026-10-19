@@ -158,7 +158,7 @@ func checkInfo(m *protocol.Manifest, info protocol.InitializeResult) error {
 	if info.Version != m.Version {
 		return fmt.Errorf("plugin %s reported version %q; manifest declares %q", m.Name, info.Version, m.Version)
 	}
-	got, want := slices.Sorted(slices.Values(info.Capabilities)), slices.Sorted(slices.Values(m.Capabilities))
+	got, want := slices.Sorted(slices.Values(protocol.WithoutRetired(info.Capabilities))), slices.Sorted(slices.Values(m.Capabilities))
 	if !slices.Equal(got, want) {
 		return fmt.Errorf("plugin %s reported capabilities %v; manifest declares %v", m.Name, got, want)
 	}

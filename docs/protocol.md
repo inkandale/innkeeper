@@ -20,6 +20,72 @@ Protocol version 1. The design behind it is in
 - The core handles requests concurrently and notifications in the order they
   arrive, so a plugin can rely on the order of what it sends.
 
+## Conventions
+
+New parts of the protocol follow these rules. Older names that break them
+stay as they are, so existing plugins keep working; each is listed as an
+exception.
+
+### Manifest or RPC
+
+Declare a fact in the [manifest](#manifest) when it is fixed for a plugin
+version. Answer it over RPC only when it depends on the instance's config,
+as `target.describe`, `action.list`, `mcp.tools`, and `initialize`'s
+`services` do.
+
+Exceptions:
+
+- `pull` is both a capability and a field of `target.describe`. The core
+  trusts the field only when the manifest declares the capability.
+- `settings.defaults` is RPC, but the core sends it to a process started
+  with an empty config.
+
+### Method names
+
+New methods are named `<capability>.<verb>`, or `<capability>.<verb>_<kind>`
+for a second item kind, such as `target.put_lorebook`.
+
+Exceptions:
+
+- The `push` and `pull` capabilities share the `target.` prefix.
+- `auth.setup.complete` has two dotted parts after the capability.
+- `mcp.tools`, `settings.defaults`, `settings.options`, and the `ai.delta`
+  notification name a noun, not a verb.
+- `target.list_lorebooks` uses the plural kind.
+- `library.call` belongs to `action`, and the plugin sends it to the core.
+- `initialize`, `shutdown`, and the notifications `emit.card`,
+  `emit.lorebook`, `progress`, `checkpoint`, `log`, and `cancel` aren't
+  named after a capability.
+
+### Identifiers
+
+| Identifier | Pattern |
+|---|---|
+| Secret names | `^[a-z][a-z0-9_]*$` |
+| Enrichment keys | `^[a-z][a-z0-9_]*$` |
+| Record types | `^[a-z][a-z0-9_]*$` |
+| Catalog kinds and filter names | `^[a-z][a-z0-9_]*$` |
+| Settings action IDs | `^[a-z][a-z0-9_]*$` |
+| Action IDs | `^[a-z0-9-]{1,40}$` |
+| MCP tool names | `^[a-z0-9_]{1,40}$` |
+| Skill names | `^[a-z0-9-]{1,64}$` |
+| Source kinds | `^[a-z][a-z0-9-]*$` |
+| Codec formats | `^[a-z0-9]+(-[a-z0-9]+)*$` |
+
+### Shapes that differ by method
+
+- **Instance IDs.** `initialize`'s `instance_id` is a string: the instance's
+  ID in decimal, or another value for a process that serves no instance,
+  such as the [`settings`](#settings) process. A service call's `instance`
+  and a config field with `"format": "instance"` hold the ID as an integer.
+- **`data`.** `catalog.get` returns a whole CCv3 card as `data`. In
+  `action.run`, `enrich.run`, and `sites.detect`, a card's `data` is the
+  CCv3 `data` object only. A lorebook's `data` is its `character_book`
+  everywhere.
+- **File inputs.** A `file` input sends `blob`, an uploaded blob's sha256,
+  and `name` in [`import.run`](#import)'s `params`, but `path`, a file in
+  `blob_tmp`, and `name` to [`records.import`](#records).
+
 ## Manifest
 
 Each plugin folder has a `plugin.toml`:

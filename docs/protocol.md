@@ -138,7 +138,17 @@ not in memory.
 
 ## Errors
 
-Use standard JSON-RPC errors. Answer unknown methods with `-32601`.
+| Code | Go constant | Meaning |
+|---|---|---|
+| `-32700` | `CodeParseError` | The message isn't valid JSON |
+| `-32600` | `CodeInvalidRequest` | The request isn't valid, such as a call before `initialize` |
+| `-32601` | `CodeMethodNotFound` | The receiver doesn't implement the method. Answer every unknown method with it |
+| `-32602` | `CodeInvalidParams` | The params are malformed or name something the method can't accept |
+| `-32603` | `CodeInternalError` | The receiver failed unexpectedly, such as a handler panic |
+| `-32000` | `CodeFailed` | The call failed for a reason the message tells the owner, such as the app refusing a card |
+| `-32003` | `CodeForbidden` | The core refuses a call the plugin isn't allowed to make |
+| `-32004` | `CodeRemoteNotFound` | The plugin doesn't have the ID: a `remote_id`, a catalog item or version, or a record |
+| `-32010` | `CodeAIRejected` | A model provider refuses the request as invalid, such as tools for a model without tool support |
 
 `data` may be any JSON value. When it is an object, set `data.retryable` to
 `true` if the same call might succeed later, such as after a timeout or a
@@ -149,6 +159,43 @@ rate limit:
 ```
 
 The core re-queues jobs that fail with a retryable error and fails the rest.
+
+## Writing a plugin in Go
+
+The Go package `github.com/inkandale/innkeeper/protocol` has a type for
+every message in this document. `protocol.Serve` runs the plugin:
+
+```go
+func main() {
+	protocol.Serve(protocol.Plugin[instance]{
+		Init: func(ctx context.Context, p protocol.InitializeParams) (*instance, error) {
+			return &instance{blobTmp: p.BlobTmp}, nil
+		},
+		Methods: map[string]func(*instance, context.Context, json.RawMessage) (any, error){
+			protocol.MethodCodecDecode: (*instance).decode,
+		},
+	})
+}
+```
+
+`Serve`:
+
+- answers `initialize` with the `name`, `version`, and `capabilities` in
+  `./plugin.toml`, so the version lives only in the manifest
+- passes each later call to its entry in `Methods`, with the state `Init`
+  built for this instance
+- answers a call before `initialize` with `-32600`, an unknown method with
+  `-32601`, and `shutdown` with an empty reply unless `Methods` has it
+- exits with status 1 when the connection fails
+
+An `ai` plugin sets `Services` to list each instance's service methods. To
+notify or call the core from a method, use `protocol.Peer(ctx)`. A test can
+run the plugin over pipes with `protocol.NewConn` and
+`Plugin.Handler(manifest)`.
+
+Build errors with `protocol.Fail(msg, retryable)` for `-32000`,
+`protocol.InvalidParams(err)` for `-32602`, and `protocol.NewError` for any
+other code.
 
 ## Cancelling a request
 

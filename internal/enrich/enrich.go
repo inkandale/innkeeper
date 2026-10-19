@@ -265,6 +265,7 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 			prog.warn(fmt.Sprintf("a batch of %d cards failed: %v", len(ids), err))
 		} else {
 			prog.Done += checked.Done
+			r.AddCardsChanged(checked.Done)
 			prog.Failed += checked.Failed
 			prog.Skipped += checked.Skipped
 			prog.warn(checked.Warnings...)

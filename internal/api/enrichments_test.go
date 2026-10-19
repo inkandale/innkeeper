@@ -112,8 +112,8 @@ func TestEnrichRunStoresCheckedValues(t *testing.T) {
 	fail := e.card("Fail", "x")
 	skip := e.card("Skip", "x")
 	j, p := e.evaluate(e.instID, good, bad, fail, skip, 999999)
-	if j.Status != jobs.StatusSucceeded || p.Total != 5 || p.Done != 2 || p.Failed != 3 {
-		t.Fatalf("job %s, progress %+v", j.Status, p)
+	if j.Status != jobs.StatusSucceeded || p.Total != 5 || p.Done != 2 || p.Failed != 3 || j.CardsChanged != 2 {
+		t.Fatalf("job %s, %d cards changed, progress %+v", j.Status, j.CardsChanged, p)
 	}
 	for _, w := range []string{"dropped mood", "dropped voice", "dropped quality", "Fail: the model returned no JSON",
 		"Skip: the plugin sent no result", "card 999999"} {

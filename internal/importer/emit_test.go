@@ -83,8 +83,8 @@ func TestBulkImportResumesWithoutDuplicates(t *testing.T) {
 		t.Fatalf("%d cards, %d revisions; want 8 each", e.count(t, "card"), e.count(t, "card_revision"))
 	}
 	// The uncommitted batch was never counted, so nothing was skipped.
-	if p.Imported != 8 || p.Skipped != 0 {
-		t.Fatalf("progress %+v", p)
+	if p.Imported != 8 || p.Skipped != 0 || j.CardsChanged != 8 {
+		t.Fatalf("%d cards changed, progress %+v", j.CardsChanged, p)
 	}
 	if n := e.count(t, "source_detect"); n != 0 {
 		t.Fatalf("bulk import queued %d entities for detection", n)
@@ -163,8 +163,8 @@ func TestBulkBatchThatFailsToCommitIsNotCounted(t *testing.T) {
 	if j.Status != jobs.StatusFailed {
 		t.Fatalf("job %s, want failed on the checkpoint it can't store", j.Status)
 	}
-	if n := e.count(t, "card"); p.Imported != int64(n) {
-		t.Fatalf("progress counts %d imported, but %d cards were stored", p.Imported, n)
+	if n := e.count(t, "card"); p.Imported != int64(n) || j.CardsChanged != n {
+		t.Fatalf("progress counts %d imported and %d cards changed, but %d cards were stored", p.Imported, j.CardsChanged, n)
 	}
 }
 

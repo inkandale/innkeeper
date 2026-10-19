@@ -151,8 +151,8 @@ func TestImportCards(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()
 	j, p := e.run(t, `{"cards": 3, "book": true, "avatar": true, "lorebooks": 1}`)
-	if j.Status != jobs.StatusSucceeded || p.Imported != 4 || p.Done != 3 || p.Total != 3 {
-		t.Fatalf("job %s, progress %+v", j.Status, p)
+	if j.Status != jobs.StatusSucceeded || p.Imported != 4 || p.Done != 3 || p.Total != 3 || j.CardsChanged != 3 {
+		t.Fatalf("job %s, %d cards changed, progress %+v", j.Status, j.CardsChanged, p)
 	}
 	if n := e.count(t, "card"); n != 3 {
 		t.Fatalf("%d cards, want 3", n)
@@ -183,9 +183,9 @@ func TestImportCards(t *testing.T) {
 	}
 
 	// Importing the same items again adds nothing.
-	_, p = e.run(t, `{"cards": 3, "book": true, "avatar": true, "lorebooks": 1}`)
-	if p.Imported != 0 || p.Skipped != 4 || e.count(t, "card") != 3 {
-		t.Fatalf("re-import progress %+v", p)
+	j, p = e.run(t, `{"cards": 3, "book": true, "avatar": true, "lorebooks": 1}`)
+	if p.Imported != 0 || p.Skipped != 4 || e.count(t, "card") != 3 || j.CardsChanged != 0 {
+		t.Fatalf("re-import: %d cards changed, progress %+v", j.CardsChanged, p)
 	}
 }
 

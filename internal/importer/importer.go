@@ -245,7 +245,11 @@ func (s *session) store(item string, it library.PluginItem, warnings ...string) 
 	}
 	s.warn(item, warnings)
 	got, err := s.im.Lib.ImportItem(s.ctx, it)
-	s.count(item, got, invalid(err))
+	err = invalid(err)
+	s.count(item, got, err)
+	if cardChanged(it, got, err) {
+		s.run.AddCardsChanged(1)
+	}
 	s.autosync = append(s.autosync, got.Autosync...)
 }
 
@@ -263,10 +267,16 @@ func (s *session) flush(cp json.RawMessage) {
 	before.Errors, before.Warnings = slices.Clone(s.p.Errors), slices.Clone(s.p.Warnings)
 	s.mu.Unlock()
 	var auto []int64
+	cards := 0
 	err := s.im.Lib.ImportBatch(s.ctx, items, func(tx pgx.Tx, got []library.Imported, errs []error) error {
+		cards = 0
 		for i, b := range buf {
 			s.warn(b.name, b.warnings)
-			s.count(b.name, got[i], invalid(errs[i]))
+			err := invalid(errs[i])
+			s.count(b.name, got[i], err)
+			if cardChanged(b.it, got[i], err) {
+				cards++
+			}
 			auto = append(auto, got[i].Autosync...)
 		}
 		s.publish()
@@ -280,9 +290,12 @@ func (s *session) flush(cp json.RawMessage) {
 		s.fail(retryable(err))
 		return
 	}
+	s.run.AddCardsChanged(cards)
 	s.autosync = append(s.autosync, auto...)
 }
 
+// ponytail: updates applied here aren't counted in cards changed; the
+// session holds only binding IDs. Return the binding's kind if it matters.
 // applyAutosync applies each waiting update the import left on a binding
 // with autosync on. One that fails stays in the changes queue.
 func (s *session) applyAutosync() {
@@ -305,6 +318,11 @@ func (s *session) warn(item string, problems []string) {
 		s.mu.Unlock()
 		s.run.Log("warn", item+": "+p)
 	}
+}
+
+// cardChanged reports whether storing it created or revised a card.
+func cardChanged(it library.PluginItem, got library.Imported, err error) bool {
+	return err == nil && it.Kind == library.Card && (got.Outcome == library.Created || got.Outcome == library.Revised)
 }
 
 func (s *session) count(item string, got library.Imported, err error) {

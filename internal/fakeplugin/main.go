@@ -200,6 +200,9 @@ func main() {
 		case protocol.MethodSettingsDefaults, protocol.MethodSettingsOptions, protocol.MethodSettingsRun:
 			return settingsCall(method, params, *mode)
 		case protocol.MethodAuthBegin:
+			if *mode == "bad-setup" {
+				return protocol.AuthBeginResult{Form: json.RawMessage(`{"type": "string"}`)}, nil
+			}
 			return protocol.AuthBeginResult{
 				Form:  json.RawMessage(`{"type": "object", "properties": {"password": {"type": "string"}}, "required": ["password"]}`),
 				State: "fake-state",

@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 )
 
@@ -123,6 +124,20 @@ type AuthBeginResult struct {
 	State    string          `json:"state,omitempty"`
 }
 
+// Validate checks that the reply has a redirect or a form, and that a form
+// is a JSON Schema with type object.
+func (r AuthBeginResult) Validate() error {
+	if r.Redirect == "" && len(r.Form) == 0 {
+		return errors.New("reply has neither a form nor a redirect")
+	}
+	if len(r.Form) > 0 && !objectSchema(r.Form) {
+		return errFormSchema
+	}
+	return nil
+}
+
+var errFormSchema = errors.New("form must be a JSON Schema with type object")
+
 // AuthCompleteParams carries what the user sent back: the form's fields, or
 // the query parameters of the redirect to CallbackURL.
 type AuthCompleteParams struct {
@@ -151,6 +166,14 @@ const (
 // AuthBeginResult.Form.
 type AuthSetupResult struct {
 	Form json.RawMessage `json:"form"`
+}
+
+// Validate checks that the form is a JSON Schema with type object.
+func (r AuthSetupResult) Validate() error {
+	if !objectSchema(r.Form) {
+		return errFormSchema
+	}
+	return nil
 }
 
 // AuthSetupCompleteParams carries the setup form's fields.

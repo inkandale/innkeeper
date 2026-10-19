@@ -95,7 +95,12 @@ func Check(ctx context.Context, dir string, opts Options, log *slog.Logger) ([]R
 
 	suites := []suite{
 		{[]string{protocol.CapabilityPush, protocol.CapabilityPull}, func() []Result { return checkTarget(ctx, p, m) }, nil},
-		{[]string{protocol.CapabilityAuth}, func() []Result { return []Result{{"auth.setup returns a form or -32601", checkSetup(ctx, p)}} }, nil},
+		{[]string{protocol.CapabilityAuth}, func() []Result {
+			return runChecks(ctx, p, []check{
+				{"auth.begin returns a form or a redirect", func(ctx context.Context) error { return checkBegin(ctx, p) }},
+				{"auth.setup returns a form or -32601", func(ctx context.Context) error { return checkSetup(ctx, p) }},
+			})
+		}, nil},
 		{[]string{protocol.CapabilityMCP}, func() []Result { return checkMCP(ctx, p) }, driveMCP},
 		{[]string{protocol.CapabilityAction}, func() []Result { return checkActions(ctx, p) }, driveActions},
 		{[]string{protocol.CapabilityRecords}, func() []Result { return checkRecords(ctx, p, m, tmp) }, driveRecords(m, tmp)},
@@ -338,8 +343,22 @@ func checkLists(ctx context.Context, p *pluginhost.Process) error {
 	return nil
 }
 
+// checkBegin wants a valid login reply. Checked without its config, a
+// provider may only fail, so any error but -32601 counts as an answer.
+func checkBegin(ctx context.Context, p *pluginhost.Process) error {
+	var res protocol.AuthBeginResult
+	err := call(ctx, p, protocol.MethodAuthBegin, protocol.AuthBeginParams{}, &res)
+	if answered(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return res.Validate()
+}
+
 // checkSetup accepts a plugin without setup, or one whose form is a JSON
-// object.
+// Schema object.
 func checkSetup(ctx context.Context, p *pluginhost.Process) error {
 	var res protocol.AuthSetupResult
 	err := call(ctx, p, protocol.MethodAuthSetup, nil, &res)
@@ -350,11 +369,7 @@ func checkSetup(ctx context.Context, p *pluginhost.Process) error {
 	if err != nil {
 		return err
 	}
-	var form map[string]any
-	if err := json.Unmarshal(res.Form, &form); err != nil || form == nil {
-		return errors.New("form is not a JSON object")
-	}
-	return nil
+	return res.Validate()
 }
 
 // call makes one plugin call with its own timeout.

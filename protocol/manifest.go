@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -224,6 +225,11 @@ func (m *Manifest) Validate() error {
 		errs = append(errs, fmt.Errorf("icon %q must end in one of %v", m.Icon, slices.Sorted(maps.Keys(IconTypes))))
 	case filepath.IsAbs(m.Icon) || (m.Dir != "" && !inside(m.Dir, filepath.Join(m.Dir, m.Icon))):
 		errs = append(errs, fmt.Errorf("icon %q is outside the plugin folder", m.Icon))
+	}
+	if len(m.Config) > 0 {
+		if raw, err := json.Marshal(m.Config); err != nil || !objectSchema(raw) {
+			errs = append(errs, errors.New("config must be a JSON Schema with type object"))
+		}
 	}
 	if strings.ContainsAny(m.Description, "\r\n") {
 		errs = append(errs, errors.New("description must be one line"))

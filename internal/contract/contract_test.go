@@ -245,8 +245,11 @@ func TestSetupCheck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := failed(results)[name]; err == nil || !strings.Contains(err.Error(), "not a JSON object") {
+	if err := failed(results)[name]; err == nil || !strings.Contains(err.Error(), "type object") {
 		t.Fatalf("bad setup form: got %v", err)
+	}
+	if err := failed(results)["auth.begin returns a form or a redirect"]; err == nil || !strings.Contains(err.Error(), "type object") {
+		t.Fatalf("bad login form: got %v", err)
 	}
 }
 

@@ -32,7 +32,7 @@ Each plugin folder has a `plugin.toml`:
 | `command` | yes, except for themes | Program and arguments. Use `./name` for a program in the plugin folder: a relative path containing `/` is inside the folder and can't leave it, an absolute path is used as-is, and a bare name is found on `PATH` |
 | `capabilities` | yes | Any of `import`, `push`, `pull`, `action`, `records`, `enrich`, `codec`, `auth`, `mcp`, `catalog`, `sites`, `ai`, `settings`, or `theme`. A theme lists no other capability |
 | `secrets` | no | Names of secrets the owner enters for each instance, in lowercase `snake_case` |
-| `config` | no | JSON Schema for instance settings; the UI renders a form from it. See [The config form](#the-config-form) |
+| `config` | no | JSON Schema with `type = "object"` for instance settings; the UI renders a form from it. See [The config form](#the-config-form) |
 | `enrichments` | for `enrich` | Keys the plugin writes, in lowercase `snake_case`; see [`enrich`](#enrich), and `emit.card`'s `values` under [`import`](#import). Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list`. `grid = true` shows the key on the library grid, for at most one key. An `enrich` plugin must declare at least one |
 | `formats` | only for `codec` | What `codec.encode` writes, each listed once: lowercase words of letters and digits joined by single hyphens, such as `png`. A codec plugin must list at least one. `json` is taken: the core exports CCv3 JSON itself |
 | `bulk` | no; only for `import` | `true` for imports of large sources, such as a site dump. The core stores the cards sent between two checkpoints, about 1,000, in one transaction with the second checkpoint, and doesn't queue them for source detection |
@@ -326,7 +326,6 @@ same way and waits a second, so don't add your own delay.
 Two optional methods let the owner claim a new server with this provider.
 Both run before any instance exists, with an empty config and no secrets. A
 plugin without them returns -32601 and can't be used to claim.
-`innkeeper plugin check` accepts either a form from `auth.setup` or -32601.
 
 **`auth.setup`** takes no params and replies with `form`, a JSON Schema
 object as in `auth.begin`.
@@ -1113,6 +1112,9 @@ It loads the manifest, then checks that:
 - an unknown method returns `-32601` within 5 seconds
 - a `push` or `pull` plugin's `target.describe` reply is valid, and claims `pull` only
   if the manifest declares it
+- an `auth` plugin's `auth.begin` returns a `redirect` or a `form` with
+  `"type": "object"`, or an error other than `-32601`, and its `auth.setup`
+  returns such a form or `-32601`
 - a plugin whose `target.describe` claims `pull` answers `target.list` and
   `target.list_lorebooks` within 5 seconds, with a `remote_id` on every item
   it returns. A target checked without its app can only return an error, so

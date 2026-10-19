@@ -39,7 +39,7 @@ func TestPurgeCards(t *testing.T) {
 	var j jobOut
 	e.call("POST", "/cards/purge", map[string]any{"query": query, "confirm": "2"}, 202, &j)
 	last, resp := e.watchJob(j.ID)
-	if last.Status != "succeeded" {
+	if last.Status != "succeeded" || last.CardsChanged != 2 {
 		t.Fatalf("purge = %+v\n%s", last, resp.Body)
 	}
 	var p bulk.PurgeProgress

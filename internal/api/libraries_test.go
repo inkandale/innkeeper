@@ -65,7 +65,7 @@ func TestDeleteLibraryRoute(t *testing.T) {
 	e.call("DELETE", "/libraries/999", map[string]any{"confirm": "x"}, 404, nil)
 	var j jobOut
 	e.call("DELETE", path, map[string]any{"confirm": "Archive"}, 202, &j)
-	if last, r := e.watchJob(j.ID); last.Status != "succeeded" {
+	if last, r := e.watchJob(j.ID); last.Status != "succeeded" || last.CardsChanged != 1 {
 		t.Fatalf("delete = %+v\n%s", last, r.Body)
 	}
 	e.call("GET", fmt.Sprintf("/cards/%d", c.ID), nil, 404, nil)

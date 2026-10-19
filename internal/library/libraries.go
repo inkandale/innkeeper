@@ -90,13 +90,12 @@ const deleteBatch = 500
 
 // DeleteLibrary deletes a library with its cards, lorebooks, and
 // collections. It works in batches, each its own transaction, so a run that
-// stops part way can run again. progress hears the running count of deleted
-// cards and lorebooks. Blobs stay until garbage collection finds them unused.
-func (l *Library) DeleteLibrary(ctx context.Context, id int64, progress func(deleted int)) error {
+// stops part way can run again. progress hears each batch's kind and size.
+// Blobs stay until garbage collection finds them unused.
+func (l *Library) DeleteLibrary(ctx context.Context, id int64, progress func(k *Kind, n int)) error {
 	if id == DefaultLibrary {
 		return fmt.Errorf("%w: the default library can't be deleted", ErrInvalid)
 	}
-	deleted := 0
 	// An import still writing to the library can add entities after the
 	// batches; the library row's delete then fails, and the batches run again.
 	for range 3 {
@@ -109,8 +108,7 @@ func (l *Library) DeleteLibrary(ctx context.Context, id int64, progress func(del
 				if n == 0 {
 					break
 				}
-				deleted += n
-				progress(deleted)
+				progress(s.k, n)
 			}
 		}
 		var found bool

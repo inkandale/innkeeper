@@ -51,6 +51,9 @@ func TestHideArchivesLowScoresAndDuplicates(t *testing.T) {
 		if err := json.Unmarshal(last.Progress, &p); err != nil {
 			t.Fatal(err)
 		}
+		if last.CardsChanged != p.Archived+p.Unarchived {
+			t.Fatalf("hide changed %d cards, progress %+v", last.CardsChanged, p)
+		}
 		return p
 	}
 	reason := func(id int64) (bool, string) {

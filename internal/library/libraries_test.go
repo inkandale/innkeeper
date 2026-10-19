@@ -49,7 +49,7 @@ func TestLibraryCRUD(t *testing.T) {
 
 func TestDeleteDefaultLibraryRefused(t *testing.T) {
 	lib := newLibrary(t)
-	if err := lib.DeleteLibrary(context.Background(), DefaultLibrary, func(int) {}); !errors.Is(err, ErrInvalid) {
+	if err := lib.DeleteLibrary(context.Background(), DefaultLibrary, func(*Kind, int) {}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("got %v, want ErrInvalid", err)
 	}
 }
@@ -121,12 +121,16 @@ func TestDeleteLibraryRemovesItsCardsAndBlobs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var seen []int
-	if err := lib.DeleteLibrary(ctx, archive.ID, func(n int) { seen = append(seen, n) }); err != nil {
+	type batch struct {
+		kind *Kind
+		n    int
+	}
+	var seen []batch
+	if err := lib.DeleteLibrary(ctx, archive.ID, func(k *Kind, n int) { seen = append(seen, batch{k, n}) }); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(seen, []int{2, 3}) {
-		t.Errorf("progress = %v, want [2 3]", seen)
+	if !slices.Equal(seen, []batch{{Card, 2}, {Lorebook, 1}}) {
+		t.Errorf("batches = %v, want 2 cards then 1 lorebook", seen)
 	}
 	if _, err := lib.GetLibrary(ctx, archive.ID); !errors.Is(err, ErrNotFound) {
 		t.Errorf("library: %v", err)
@@ -304,7 +308,7 @@ func TestDeleteLibraryTakesCardsAddedWhileDeleting(t *testing.T) {
 	}
 	var late int64
 	// The only batch is the lorebook's, so this card arrives after every batch ran.
-	err = lib.DeleteLibrary(ctx, archive.ID, func(int) {
+	err = lib.DeleteLibrary(ctx, archive.ID, func(*Kind, int) {
 		if late != 0 {
 			return
 		}
@@ -422,7 +426,7 @@ func TestLibrarySettingOverrides(t *testing.T) {
 	if err := lib.SetLibrarySetting(ctx, archive.ID, "score_instance", "9"); err != nil {
 		t.Fatal(err)
 	}
-	if err := lib.DeleteLibrary(ctx, archive.ID, func(int) {}); err != nil {
+	if err := lib.DeleteLibrary(ctx, archive.ID, func(*Kind, int) {}); err != nil {
 		t.Fatalf("delete a library with an override: %v", err)
 	}
 }

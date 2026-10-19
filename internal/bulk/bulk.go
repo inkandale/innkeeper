@@ -37,8 +37,13 @@ func DeleteLibrary(lib *library.Library) jobs.Handler {
 		if err := json.Unmarshal(r.Payload, &p); err != nil {
 			return err
 		}
-		err := lib.DeleteLibrary(ctx, p.Library, func(n int) {
-			r.SetProgress(fmt.Appendf(nil, `{"deleted": %d}`, n))
+		deleted := 0
+		err := lib.DeleteLibrary(ctx, p.Library, func(k *library.Kind, n int) {
+			deleted += n
+			if k == library.Card {
+				r.AddCardsChanged(n)
+			}
+			r.SetProgress(fmt.Appendf(nil, `{"deleted": %d}`, deleted))
 		})
 		// A run that finished before its job was marked done finds nothing left.
 		if errors.Is(err, library.ErrNotFound) {
@@ -227,6 +232,7 @@ func Purge(lib *library.Library) jobs.Handler {
 				return err
 			}
 			prog.Done += n
+			r.AddCardsChanged(n)
 			prog.Refused = append(prog.Refused, refused...)
 			prog.Skipped = len(prog.Refused)
 			raw, _ := json.Marshal(prog)
@@ -310,6 +316,7 @@ func Hide(lib *library.Library, decide Decider) jobs.Handler {
 		if prog.Archived, prog.Unarchived, err = lib.SetHidden(ctx, p.Library, hidden); err != nil {
 			return err
 		}
+		r.AddCardsChanged(prog.Archived + prog.Unarchived)
 		raw, _ := json.Marshal(prog)
 		r.SetProgress(raw)
 		return nil

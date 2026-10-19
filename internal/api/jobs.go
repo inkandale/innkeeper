@@ -32,27 +32,44 @@ var watchInterval = time.Second
 var pingInterval = 15 * time.Second
 
 type jobOut struct {
-	ID          int64           `json:"id"`
-	Kind        string          `json:"kind"`
-	InstanceID  *int64          `json:"instance_id,omitempty"`
-	Payload     json.RawMessage `json:"payload"`
-	Status      string          `json:"status" enum:"queued,running,waiting,succeeded,failed"`
-	Attempts    int             `json:"attempts"`
-	MaxAttempts int             `json:"max_attempts"`
-	Progress    json.RawMessage `json:"progress" doc:"An import's has done, total, message, imported, skipped, failed, and errors. A running reconcile's has done and total; a finished one's is the snapshot, cut to totals in job lists and streams. An action run's has message, done, and total, and once finished, result, which job lists and streams leave out. An enrich run's has message, done, failed, total, and warnings."`
-	ParentID    *int64          `json:"parent_id,omitempty"`
-	Error       *string         `json:"error,omitempty"`
-	RunAfter    time.Time       `json:"run_after"`
-	CreatedAt   time.Time       `json:"created_at"`
-	FinishedAt  *time.Time      `json:"finished_at,omitempty"`
-	Children    map[string]int  `json:"children,omitempty" doc:"A bulk job's children, counted by status. Get-job, cancel-job, watch-job, and list-jobs fill it."`
-	Outcomes    map[string]int  `json:"outcomes,omitempty" doc:"A bulk job's finished children, counted by outcome, such as a resolve's action, stale, conflict, or failed. Only get-job, cancel-job, and watch-job fill it."`
+	ID           int64           `json:"id"`
+	Kind         string          `json:"kind"`
+	InstanceID   *int64          `json:"instance_id,omitempty"`
+	Payload      json.RawMessage `json:"payload"`
+	Status       string          `json:"status" enum:"queued,running,waiting,succeeded,failed"`
+	Attempts     int             `json:"attempts"`
+	MaxAttempts  int             `json:"max_attempts"`
+	Progress     json.RawMessage `json:"progress" doc:"An import's has done, total, message, imported, skipped, failed, and errors. A running reconcile's has done and total; a finished one's is the snapshot, cut to totals in job lists and streams. An action run's has message, done, and total, and once finished, result, which job lists and streams leave out. An enrich run's has message, done, failed, total, and warnings."`
+	ParentID     *int64          `json:"parent_id,omitempty"`
+	Error        *string         `json:"error,omitempty"`
+	RunAfter     time.Time       `json:"run_after"`
+	CreatedAt    time.Time       `json:"created_at"`
+	FinishedAt   *time.Time      `json:"finished_at,omitempty"`
+	StartedAt    *time.Time      `json:"started_at,omitempty" doc:"When the first attempt started; a bulk job's is its earliest child's. A manual retry clears it."`
+	DurationMS   *int64          `json:"duration_ms,omitempty" doc:"Milliseconds from started_at to finished_at, once the job finishes."`
+	CardsChanged int             `json:"cards_changed" doc:"Cards the job changed in the library or an app, across every attempt; a bulk job's sums its children's."`
+	Children     map[string]int  `json:"children,omitempty" doc:"A bulk job's children, counted by status. Get-job, cancel-job, watch-job, and list-jobs fill it."`
+	Outcomes     map[string]int  `json:"outcomes,omitempty" doc:"A bulk job's finished children, counted by outcome, such as a resolve's action, stale, conflict, or failed. Only get-job, cancel-job, and watch-job fill it."`
 }
 
 func toJob(j jobs.Job) jobOut {
 	return jobOut{ID: j.ID, Kind: j.Kind, InstanceID: j.InstanceID, Payload: j.Payload, Status: j.Status,
 		Attempts: j.Attempts, MaxAttempts: j.MaxAttempts, Progress: j.Progress, ParentID: j.ParentID, Error: j.Error,
-		RunAfter: j.RunAfter, CreatedAt: j.CreatedAt, FinishedAt: j.FinishedAt}
+		RunAfter: j.RunAfter, CreatedAt: j.CreatedAt, FinishedAt: j.FinishedAt, StartedAt: j.StartedAt,
+		DurationMS: durationMS(j.StartedAt, j.FinishedAt), CardsChanged: j.CardsChanged}
+}
+
+func durationMS(start, end *time.Time) *int64 {
+	if start == nil || end == nil {
+		return nil
+	}
+	return new(end.Sub(*start).Milliseconds())
+}
+
+// withChildren fills a bulk job's counts, start, and cards from its children.
+func (o *jobOut) withChildren(c jobs.Children) {
+	o.Children, o.StartedAt, o.CardsChanged = c.Counts, c.StartedAt, c.CardsChanged
+	o.DurationMS = durationMS(o.StartedAt, o.FinishedAt)
 }
 
 // summary is a job as lists and streams show it: a finished reconcile's
@@ -156,7 +173,7 @@ func (s *Server) job(ctx context.Context, id int64) (jobOut, error) {
 		if err != nil {
 			return jobOut{}, s.fail(err)
 		}
-		out.Children = children[id].Counts
+		out.withChildren(children[id])
 		if out.Outcomes, err = s.Queue.ChildOutcomes(ctx, id); err != nil {
 			return jobOut{}, s.fail(err)
 		}
@@ -254,7 +271,9 @@ func (s *Server) jobRoutes(api huma.API) {
 			out := &jobsOut{Body: make([]jobOut, len(list))}
 			for i, j := range list {
 				out.Body[i] = summary(toJob(j))
-				out.Body[i].Children = children[j.ID].Counts
+				if c, ok := children[j.ID]; ok {
+					out.Body[i].withChildren(c)
+				}
 			}
 			return out, nil
 		})

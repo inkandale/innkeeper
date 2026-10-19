@@ -3527,12 +3527,22 @@ export interface components {
             readonly $schema?: string;
             /** Format: int64 */
             attempts: number;
+            /**
+             * Format: int64
+             * @description Cards the job changed in the library or an app, across every attempt; a bulk job's sums its children's.
+             */
+            cards_changed: number;
             /** @description A bulk job's children, counted by status. Get-job, cancel-job, watch-job, and list-jobs fill it. */
             children?: {
                 [key: string]: number;
             };
             /** Format: date-time */
             created_at: string;
+            /**
+             * Format: int64
+             * @description Milliseconds from started_at to finished_at, once the job finishes.
+             */
+            duration_ms?: number;
             error?: string;
             /** Format: date-time */
             finished_at?: string;
@@ -3554,6 +3564,11 @@ export interface components {
             progress: unknown;
             /** Format: date-time */
             run_after: string;
+            /**
+             * Format: date-time
+             * @description When the first attempt started; a bulk job's is its earliest child's. A manual retry clears it.
+             */
+            started_at?: string;
             /** @enum {string} */
             status: "queued" | "running" | "waiting" | "succeeded" | "failed";
         };

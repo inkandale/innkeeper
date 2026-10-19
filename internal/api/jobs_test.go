@@ -29,6 +29,9 @@ func TestImportAndCancel(t *testing.T) {
 	if len(list) != 1 || list[0].ID != j.ID {
 		t.Fatalf("jobs = %+v", list)
 	}
+	if list[0].StartedAt != nil || list[0].DurationMS != nil || list[0].CardsChanged != 0 {
+		t.Fatalf("queued job metrics = %+v", list[0])
+	}
 	e.call("GET", "/jobs?status=failed", nil, 200, &list)
 	if len(list) != 0 {
 		t.Fatalf("failed jobs = %+v", list)
@@ -108,7 +111,7 @@ func TestBulkArchiveAndWatch(t *testing.T) {
 	if r.Header.Get("Content-Type") != "text/event-stream" {
 		t.Fatalf("events content type %q", r.Header.Get("Content-Type"))
 	}
-	if last.Status != "succeeded" || last.Children["succeeded"] != 2 {
+	if last.Status != "succeeded" || last.Children["succeeded"] != 2 || last.StartedAt == nil || last.DurationMS == nil {
 		t.Fatalf("last event = %+v\n%s", last, r.Body)
 	}
 
@@ -124,7 +127,7 @@ func TestBulkArchiveAndWatch(t *testing.T) {
 	}
 	var list []jobOut
 	e.call("GET", "/jobs", nil, 200, &list)
-	if len(list) != 1 || list[0].Children["succeeded"] != 2 {
+	if len(list) != 1 || list[0].Children["succeeded"] != 2 || list[0].StartedAt == nil || list[0].DurationMS == nil {
 		t.Fatalf("listed bulk job = %+v", list)
 	}
 

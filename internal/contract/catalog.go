@@ -24,7 +24,8 @@ const (
 const catalogPages = 3
 
 // checkCatalog runs the catalog checks, stopping if the plugin dies.
-func checkCatalog(ctx context.Context, p *pluginhost.Process, tmp string) []Result {
+// configured reports that the plugin was given a config.
+func checkCatalog(ctx context.Context, p *pluginhost.Process, tmp string, configured bool) []Result {
 	var info protocol.CatalogInfo
 	err := call(ctx, p, protocol.MethodCatalogDescribe, nil, &info)
 	if err == nil {
@@ -38,7 +39,7 @@ func checkCatalog(ctx context.Context, p *pluginhost.Process, tmp string) []Resu
 	var sourceless bool
 	checks := []check{
 		{catalogPagesName, func(ctx context.Context) (err error) {
-			first, sourceless, err = checkCatalogPages(ctx, p, info)
+			first, sourceless, err = checkCatalogPages(ctx, p, info, configured)
 			return err
 		}},
 		{catalogFiltersName, func(ctx context.Context) error { return checkCatalogFilters(ctx, p) }},
@@ -58,14 +59,14 @@ func answered(err error) bool {
 // checkCatalogPages walks one-item pages and returns the first item. Every
 // item must be valid and none may come back on a later page. sourceless
 // reports that, checked without a config, the catalog refused to search.
-func checkCatalogPages(ctx context.Context, p *pluginhost.Process, info protocol.CatalogInfo) (first *protocol.CatalogItem, sourceless bool, err error) {
+func checkCatalogPages(ctx context.Context, p *pluginhost.Process, info protocol.CatalogInfo, configured bool) (first *protocol.CatalogItem, sourceless bool, err error) {
 	seen := map[string]bool{}
 	cursor := ""
 	for range catalogPages {
 		var res protocol.CatalogSearchResult
 		params := protocol.CatalogSearchParams{Page: protocol.CatalogPage{Size: 1, Cursor: cursor}}
 		err := call(ctx, p, protocol.MethodCatalogSearch, params, &res)
-		if cursor == "" && len(Config) == 0 && answered(err) {
+		if cursor == "" && !configured && answered(err) {
 			return nil, true, nil
 		}
 		if err != nil {

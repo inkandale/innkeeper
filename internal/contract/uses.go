@@ -20,14 +20,6 @@ import (
 	"github.com/inkandale/innkeeper/protocol"
 )
 
-// Provider is the folder of the plugin that answers the services a checked
-// plugin uses. A plugin with uses fails the check without one.
-var Provider string
-
-// ProviderConfig is the provider's instance config as JSON. The check
-// replaces ${INNKEEPER_FAKE_AI_URL} in it with its model server's URL.
-var ProviderConfig string
-
 const fakeAIURL = "${INNKEEPER_FAKE_AI_URL}"
 
 const (
@@ -40,13 +32,13 @@ const (
 
 const consumerID, providerID = 1, 2
 
-// checkUses runs the plugin and the Provider under the real service broker,
+// checkUses runs the plugin and opts.Provider under the real service broker,
 // makes the calls each of the plugin's suites drives, and checks what reached
 // the model server and what came back.
-func checkUses(ctx context.Context, m *protocol.Manifest, params protocol.InitializeParams, suites []suite, log *slog.Logger) []Result {
+func checkUses(ctx context.Context, m *protocol.Manifest, params protocol.InitializeParams, opts Options, suites []suite, log *slog.Logger) []Result {
 	model := newModelServer()
 	defer model.Close()
-	h, err := startHarness(ctx, m, params, model.URL+"/v1", log)
+	h, err := startHarness(ctx, m, params, opts, model.URL+"/v1", log)
 	results := []Result{{checkProviderName, err}}
 	if err != nil {
 		return results
@@ -128,17 +120,17 @@ type harness struct {
 	deltas   atomic.Int64
 }
 
-func startHarness(ctx context.Context, m *protocol.Manifest, params protocol.InitializeParams, modelURL string, log *slog.Logger) (*harness, error) {
-	if Provider == "" {
+func startHarness(ctx context.Context, m *protocol.Manifest, params protocol.InitializeParams, opts Options, modelURL string, log *slog.Logger) (*harness, error) {
+	if opts.Provider == "" {
 		return nil, fmt.Errorf("plugin %s uses %s; set INNKEEPER_PROVIDER_PLUGIN to the folder of a plugin that offers them",
 			m.Name, strings.Join(m.Uses, ", "))
 	}
-	pm, err := protocol.LoadManifest(Provider)
+	pm, err := protocol.LoadManifest(opts.Provider)
 	if err != nil {
 		return nil, fmt.Errorf("provider: %w", err)
 	}
 	var providerConfig map[string]any
-	raw := strings.ReplaceAll(cmp.Or(ProviderConfig, "{}"), fakeAIURL, modelURL)
+	raw := strings.ReplaceAll(cmp.Or(opts.ProviderConfig, "{}"), fakeAIURL, modelURL)
 	if err := json.Unmarshal([]byte(raw), &providerConfig); err != nil {
 		return nil, fmt.Errorf("INNKEEPER_PROVIDER_CONFIG: %w", err)
 	}

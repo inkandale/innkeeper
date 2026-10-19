@@ -25,13 +25,21 @@ import (
 // variable so tests can shorten it.
 var callTimeout = 5 * time.Second
 
-// DatabaseURL is sent to the plugin as database_url, for a plugin that
-// declares `database = true`. Empty sends none.
-var DatabaseURL string
-
-// Config is sent to the plugin as its instance config. Nil sends an empty
-// one.
-var Config map[string]any
+// Options are what Check gives the plugin beyond its manifest.
+type Options struct {
+	// DatabaseURL is sent to the plugin as database_url, for a plugin that
+	// declares `database = true`. Empty sends none.
+	DatabaseURL string
+	// Config is sent to the plugin as its instance config. Nil sends an
+	// empty one.
+	Config map[string]any
+	// Provider is the folder of the plugin that answers the services a
+	// checked plugin uses. A plugin with uses fails the check without one.
+	Provider string
+	// ProviderConfig is the provider's instance config as JSON. The check
+	// replaces ${INNKEEPER_FAKE_AI_URL} in it with its model server's URL.
+	ProviderConfig string
+}
 
 // Result is the outcome of one check. Err is nil when it passed.
 type Result struct {
@@ -41,7 +49,7 @@ type Result struct {
 
 // Check runs every check against the plugin in dir. It returns an error only
 // when the manifest can't be loaded, since nothing else can be checked then.
-func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) {
+func Check(ctx context.Context, dir string, opts Options, log *slog.Logger) ([]Result, error) {
 	m, err := protocol.LoadManifest(dir)
 	if err != nil {
 		return nil, err
@@ -62,12 +70,12 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	if err := os.Mkdir(tmp, 0o700); err != nil {
 		return nil, err
 	}
-	config := Config
+	config := opts.Config
 	if config == nil {
 		config = map[string]any{}
 	}
 	params := protocol.InitializeParams{InstanceID: "contract-check", Config: config, Secrets: secrets,
-		BlobStores: map[string]string{"contract-check": root}, BlobTmp: tmp, DatabaseURL: DatabaseURL}
+		BlobStores: map[string]string{"contract-check": root}, BlobTmp: tmp, DatabaseURL: opts.DatabaseURL}
 
 	p, err := pluginhost.Start(ctx, m, params, noCore, log)
 	results := []Result{{"initialize handshake matches manifest", err}}
@@ -95,7 +103,7 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 		{[]string{protocol.CapabilityEnrich}, func() []Result { return []Result{{checkEnrichName, checkEnrich(ctx, p, m)}} }, driveEnrich},
 		{[]string{protocol.CapabilitySettings}, func() []Result { return checkSettings(ctx, p, m) }, driveSettings(m)},
 		{[]string{protocol.CapabilityAI}, func() []Result { return []Result{{checkServicesName, checkServices(ctx, p)}} }, nil},
-		{[]string{protocol.CapabilityCatalog}, func() []Result { return checkCatalog(ctx, p, tmp) }, nil},
+		{[]string{protocol.CapabilityCatalog}, func() []Result { return checkCatalog(ctx, p, tmp, len(opts.Config) > 0) }, nil},
 		{[]string{protocol.CapabilitySites}, func() []Result { return checkSites(ctx, p) }, nil},
 		{[]string{protocol.CapabilityCodec}, func() []Result {
 			return runChecks(ctx, p, []check{
@@ -115,7 +123,7 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	}
 
 	if len(m.Uses) > 0 {
-		results = append(results, checkUses(ctx, m, params, suites, log)...)
+		results = append(results, checkUses(ctx, m, params, opts, suites, log)...)
 	}
 
 	callCtx, cancel = context.WithTimeout(ctx, callTimeout)

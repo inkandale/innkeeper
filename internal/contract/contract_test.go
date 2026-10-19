@@ -28,7 +28,7 @@ func failed(results []Result) map[string]error {
 // The check sends no config, so the fake's list and delete methods return an error,
 // which counts as an answer.
 func TestWellBehavedPluginPasses(t *testing.T) {
-	results, err := Check(context.Background(), testutil.FakePlugin(t), quiet)
+	results, err := Check(context.Background(), testutil.FakePlugin(t), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestMisbehavingPluginsFail(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.mode+"/"+tt.check, func(t *testing.T) {
-			results, err := Check(context.Background(), testutil.FakePlugin(t, "-mode="+tt.mode), quiet)
+			results, err := Check(context.Background(), testutil.FakePlugin(t, "-mode="+tt.mode), Options{}, quiet)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -72,7 +72,7 @@ func TestMisbehavingPluginsFail(t *testing.T) {
 }
 
 func TestDescribePullNeedsCapability(t *testing.T) {
-	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"push"}), quiet)
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"push"}), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestDescribePullNeedsCapability(t *testing.T) {
 }
 
 func TestCodecChecks(t *testing.T) {
-	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"codec"}), quiet)
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"codec"}), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestCodecChecks(t *testing.T) {
 		t.Fatalf("checks failed: %v", f)
 	}
 
-	results, err = Check(context.Background(), testutil.FakePluginWith(t, []string{"codec"}, "-mode=bad-codec"), quiet)
+	results, err = Check(context.Background(), testutil.FakePluginWith(t, []string{"codec"}, "-mode=bad-codec"), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestCodecChecks(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.mode, func(t *testing.T) {
-			results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"codec"}, "-mode="+tt.mode), quiet)
+			results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"codec"}, "-mode="+tt.mode), Options{}, quiet)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -122,7 +122,7 @@ func TestCodecChecks(t *testing.T) {
 }
 
 func TestToolChecks(t *testing.T) {
-	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"mcp"}), quiet)
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"mcp"}), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestToolChecks(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.mode, func(t *testing.T) {
-			results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"mcp"}, "-mode="+tt.mode), quiet)
+			results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"mcp"}, "-mode="+tt.mode), Options{}, quiet)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -150,7 +150,7 @@ func TestToolChecks(t *testing.T) {
 }
 
 func TestPushTargetMustNameWhatItPut(t *testing.T) {
-	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"push", "pull"}, "-mode=bad-put"), quiet)
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"push", "pull"}, "-mode=bad-put"), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,9 +163,8 @@ func TestPushTargetMustNameWhatItPut(t *testing.T) {
 // and deletes both.
 func TestPutCheckCleansUpWhatItPut(t *testing.T) {
 	dir := t.TempDir()
-	Config = map[string]any{"dir": dir, "lorebooks": "standalone"}
-	t.Cleanup(func() { Config = nil })
-	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"push", "pull"}), quiet)
+	opts := Options{Config: map[string]any{"dir": dir, "lorebooks": "standalone"}}
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"push", "pull"}), opts, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +177,7 @@ func TestPutCheckCleansUpWhatItPut(t *testing.T) {
 }
 
 func TestImportChecks(t *testing.T) {
-	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"import"}), quiet)
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"import"}), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +187,7 @@ func TestImportChecks(t *testing.T) {
 	if !slices.ContainsFunc(results, func(r Result) bool { return r.Name == checkImportName }) {
 		t.Fatalf("no import check in %v", results)
 	}
-	results, err = Check(context.Background(), testutil.FakePluginWith(t, []string{"import"}, "-mode=no-import"), quiet)
+	results, err = Check(context.Background(), testutil.FakePluginWith(t, []string{"import"}, "-mode=no-import"), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +198,7 @@ func TestImportChecks(t *testing.T) {
 
 func TestSettingsChecks(t *testing.T) {
 	for _, mode := range []string{"", "-mode=settings-no-defaults"} {
-		results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"settings"}, mode), quiet)
+		results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"settings"}, mode), Options{}, quiet)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -218,7 +217,7 @@ func TestSettingsChecks(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.mode, func(t *testing.T) {
-			results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"settings"}, "-mode="+tt.mode), quiet)
+			results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"settings"}, "-mode="+tt.mode), Options{}, quiet)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -231,7 +230,7 @@ func TestSettingsChecks(t *testing.T) {
 
 func TestSetupCheck(t *testing.T) {
 	const name = "auth.setup returns a form or -32601"
-	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"auth"}), quiet)
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"auth"}), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +241,7 @@ func TestSetupCheck(t *testing.T) {
 		t.Fatalf("no %q check in %v", name, results)
 	}
 
-	results, err = Check(context.Background(), testutil.FakePluginWith(t, []string{"auth"}, "-mode=bad-setup"), quiet)
+	results, err = Check(context.Background(), testutil.FakePluginWith(t, []string{"auth"}, "-mode=bad-setup"), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +251,7 @@ func TestSetupCheck(t *testing.T) {
 }
 
 func TestCatalogChecks(t *testing.T) {
-	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"catalog"}), quiet)
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"catalog"}), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +272,7 @@ func TestCatalogChecks(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.mode, func(t *testing.T) {
-			results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"catalog"}, "-mode="+tt.mode), quiet)
+			results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"catalog"}, "-mode="+tt.mode), Options{}, quiet)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -288,7 +287,7 @@ func TestCatalogChecks(t *testing.T) {
 // it must search.
 func TestSourcelessCatalog(t *testing.T) {
 	dir := testutil.FakePluginWith(t, []string{"catalog"}, "-mode=catalog-sourceless")
-	results, err := Check(context.Background(), dir, quiet)
+	results, err := Check(context.Background(), dir, Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,9 +295,7 @@ func TestSourcelessCatalog(t *testing.T) {
 		t.Fatalf("checks failed without a config: %v", f)
 	}
 
-	Config = map[string]any{"source": "testdata"}
-	t.Cleanup(func() { Config = nil })
-	results, err = Check(context.Background(), dir, quiet)
+	results, err = Check(context.Background(), dir, Options{Config: map[string]any{"source": "testdata"}}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +307,7 @@ func TestSourcelessCatalog(t *testing.T) {
 func TestSitesChecks(t *testing.T) {
 	callTimeout = 300 * time.Millisecond
 	t.Cleanup(func() { callTimeout = 5 * time.Second })
-	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"sites"}), quiet)
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"sites"}), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +328,7 @@ func TestSitesChecks(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.mode+"/"+tt.check, func(t *testing.T) {
-			results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"sites"}, "-mode="+tt.mode), quiet)
+			results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"sites"}, "-mode="+tt.mode), Options{}, quiet)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -340,7 +337,7 @@ func TestSitesChecks(t *testing.T) {
 			}
 		})
 	}
-	results, err = Check(context.Background(), testutil.FakePluginWith(t, []string{"sites"}, "-mode=sites-noisy"), quiet)
+	results, err = Check(context.Background(), testutil.FakePluginWith(t, []string{"sites"}, "-mode=sites-noisy"), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -350,7 +347,7 @@ func TestSitesChecks(t *testing.T) {
 }
 
 func TestPullOnlyTargetChecks(t *testing.T) {
-	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"pull"}), quiet)
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"pull"}), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,9 +362,8 @@ func TestPullOnlyTargetChecks(t *testing.T) {
 		t.Fatalf("checks failed: %v", f)
 	}
 
-	Config = map[string]any{"fail_get": "retryable"}
-	t.Cleanup(func() { Config = nil })
-	results, err = Check(context.Background(), testutil.FakePluginWith(t, []string{"pull"}), quiet)
+	opts := Options{Config: map[string]any{"fail_get": "retryable"}}
+	results, err = Check(context.Background(), testutil.FakePluginWith(t, []string{"pull"}), opts, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,14 +375,14 @@ func TestPullOnlyTargetChecks(t *testing.T) {
 const checkDeleteName = "a target that claims delete answers target.delete"
 
 func TestDeleteCheckFailsATargetWithoutTheMethod(t *testing.T) {
-	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"push", "pull"}), quiet)
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"push", "pull"}), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if f := failed(results); len(f) > 0 {
 		t.Fatalf("checks failed: %v", f)
 	}
-	results, err = Check(context.Background(), testutil.FakePluginWith(t, []string{"push", "pull"}, "-mode=no-delete"), quiet)
+	results, err = Check(context.Background(), testutil.FakePluginWith(t, []string{"push", "pull"}, "-mode=no-delete"), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,7 +392,7 @@ func TestDeleteCheckFailsATargetWithoutTheMethod(t *testing.T) {
 }
 
 func TestGoneCheckSkipsGetLorebookWithoutStandaloneLorebooks(t *testing.T) {
-	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"pull"}), quiet)
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"pull"}), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -406,7 +402,7 @@ func TestGoneCheckSkipsGetLorebookWithoutStandaloneLorebooks(t *testing.T) {
 }
 
 func TestActionPluginPasses(t *testing.T) {
-	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"action"}), quiet)
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"action"}), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -419,7 +415,7 @@ func TestActionPluginPasses(t *testing.T) {
 }
 
 func TestBadActionsFail(t *testing.T) {
-	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"action"}, "-mode=bad-actions"), quiet)
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"action"}, "-mode=bad-actions"), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -430,7 +426,7 @@ func TestBadActionsFail(t *testing.T) {
 }
 
 func TestRecordsPluginPasses(t *testing.T) {
-	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"records"}), quiet)
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"records"}), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -445,7 +441,7 @@ func TestRecordsPluginPasses(t *testing.T) {
 }
 
 func TestBadRecordsFail(t *testing.T) {
-	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"records"}, "-mode=bad-records"), quiet)
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"records"}, "-mode=bad-records"), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -455,7 +451,7 @@ func TestBadRecordsFail(t *testing.T) {
 }
 
 func TestBadRecordsImportFails(t *testing.T) {
-	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"records"}, "-mode=bad-records-import"), quiet)
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"records"}, "-mode=bad-records-import"), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -465,7 +461,7 @@ func TestBadRecordsImportFails(t *testing.T) {
 }
 
 func TestEnrichPluginPasses(t *testing.T) {
-	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"enrich"}), quiet)
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"enrich"}), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -478,7 +474,7 @@ func TestEnrichPluginPasses(t *testing.T) {
 }
 
 func TestBadEnrichFails(t *testing.T) {
-	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"enrich"}, "-mode=bad-enrich"), quiet)
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"enrich"}, "-mode=bad-enrich"), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -488,10 +484,9 @@ func TestBadEnrichFails(t *testing.T) {
 }
 
 func TestAIPluginAnswersItsServices(t *testing.T) {
-	t.Cleanup(func() { Config = nil })
 	for services, wantPass := range map[string]bool{"ai.chat": true, "ai.embed": false, "ai.decide": true} {
-		Config = map[string]any{"services": []any{services}}
-		results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"ai"}), quiet)
+		opts := Options{Config: map[string]any{"services": []any{services}}}
+		results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"ai"}), opts, quiet)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -506,9 +501,8 @@ func TestAIPluginAnswersItsServices(t *testing.T) {
 }
 
 func TestAIPluginWithAnEmptyDecisionFails(t *testing.T) {
-	Config = map[string]any{"services": []any{"ai.decide"}}
-	t.Cleanup(func() { Config = nil })
-	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"ai"}, "-mode=bad-decide"), quiet)
+	opts := Options{Config: map[string]any{"services": []any{"ai.decide"}}}
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"ai"}, "-mode=bad-decide"), opts, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -519,15 +513,13 @@ func TestAIPluginWithAnEmptyDecisionFails(t *testing.T) {
 
 // provide makes the fake an ai.chat provider that streams from the check's
 // model server.
-func provide(t *testing.T) {
-	Provider = testutil.FakePluginWith(t, []string{"ai"})
-	ProviderConfig = `{"services": ["ai.chat"], "base_url": "${INNKEEPER_FAKE_AI_URL}"}`
-	t.Cleanup(func() { Provider, ProviderConfig = "", "" })
+func provide(t *testing.T) Options {
+	return Options{Provider: testutil.FakePluginWith(t, []string{"ai"}),
+		ProviderConfig: `{"services": ["ai.chat"], "base_url": "${INNKEEPER_FAKE_AI_URL}"}`}
 }
 
 func TestConsumerCallsAProviderThroughTheBroker(t *testing.T) {
-	provide(t)
-	results, err := Check(context.Background(), testutil.FakeConsumer(t, []string{"action"}), quiet)
+	results, err := Check(context.Background(), testutil.FakeConsumer(t, []string{"action"}), provide(t), quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -542,10 +534,10 @@ func TestConsumerCallsAProviderThroughTheBroker(t *testing.T) {
 }
 
 func TestConsumerCallsAProviderFromEachDrivenCapability(t *testing.T) {
-	provide(t)
+	opts := provide(t)
 	for _, capability := range []string{"mcp", "import", "records", "settings"} {
 		t.Run(capability, func(t *testing.T) {
-			results, err := Check(context.Background(), testutil.FakeConsumer(t, []string{capability}), quiet)
+			results, err := Check(context.Background(), testutil.FakeConsumer(t, []string{capability}), opts, quiet)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -557,8 +549,7 @@ func TestConsumerCallsAProviderFromEachDrivenCapability(t *testing.T) {
 }
 
 func TestConsumerThatDropsTheToolCallFails(t *testing.T) {
-	provide(t)
-	results, err := Check(context.Background(), testutil.FakeConsumer(t, []string{"action"}, "-mode=drop-tool-call"), quiet)
+	results, err := Check(context.Background(), testutil.FakeConsumer(t, []string{"action"}, "-mode=drop-tool-call"), provide(t), quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -569,7 +560,7 @@ func TestConsumerThatDropsTheToolCallFails(t *testing.T) {
 }
 
 func TestUsesWithoutAProviderFails(t *testing.T) {
-	results, err := Check(context.Background(), testutil.FakeConsumer(t, []string{"action"}), quiet)
+	results, err := Check(context.Background(), testutil.FakeConsumer(t, []string{"action"}), Options{}, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}

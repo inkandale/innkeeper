@@ -41,10 +41,10 @@ func main() {
 		calls[method]++
 		callsMu.Unlock()
 		if config["down"] == true && strings.HasPrefix(method, "catalog.") && method != protocol.MethodCatalogDescribe {
-			return nil, protocol.NewError(-32000, "archive unavailable", true)
+			return nil, protocol.Fail("archive unavailable", true)
 		}
 		if config["failing"] == true && strings.HasPrefix(method, "catalog.") && method != protocol.MethodCatalogDescribe {
-			return nil, protocol.NewError(-32000, "open /srv/dump.sql: permission denied", false)
+			return nil, protocol.Fail("open /srv/dump.sql: permission denied", false)
 		}
 		// As a consumer, the fake asks its provider from each call the contract
 		// check drives; actions ask from actionRun.
@@ -109,11 +109,11 @@ func main() {
 			err := conn.Call(ctx, "core.ping", nil, &out)
 			return out, err
 		case "fail":
-			return nil, protocol.NewError(-32000, "temporary failure", true)
+			return nil, protocol.Fail("temporary failure", true)
 		case "sleep":
 			var ms int
 			if err := json.Unmarshal(params, &ms); err != nil {
-				return nil, protocol.NewError(protocol.CodeInvalidParams, err.Error(), false)
+				return nil, protocol.InvalidParams(err)
 			}
 			time.Sleep(time.Duration(ms) * time.Millisecond)
 			return "slept", nil
@@ -158,7 +158,7 @@ func main() {
 			return newTarget(config).put(params)
 		case protocol.MethodTargetGet:
 			if config["fail_get"] == "retryable" {
-				return nil, protocol.NewError(-32000, "app unavailable", true)
+				return nil, protocol.Fail("app unavailable", true)
 			}
 			return newTarget(config).get(params, blobTmp)
 		case protocol.MethodTargetGetLorebook:
@@ -170,7 +170,7 @@ func main() {
 			return newTarget(config).remove(params)
 		case protocol.MethodTargetList, protocol.MethodTargetListLorebooks:
 			if config["fail_list"] == "retryable" {
-				return nil, protocol.NewError(-32000, "app unavailable", true)
+				return nil, protocol.Fail("app unavailable", true)
 			}
 			if *mode == "bad-list" {
 				return protocol.TargetListResult{Items: []protocol.TargetItem{{Name: "No ID"}}}, nil
@@ -208,7 +208,7 @@ func main() {
 			var p protocol.AuthCompleteParams
 			_ = json.Unmarshal(params, &p)
 			if p.State != "fake-state" {
-				return nil, protocol.NewError(-32000, "login state doesn't match", false)
+				return nil, protocol.Fail("login state doesn't match", false)
 			}
 			switch p.Params["password"] {
 			case "letmein":
@@ -216,7 +216,7 @@ func main() {
 			case "stranger":
 				return protocol.AuthCompleteResult{Subject: "someone-else"}, nil
 			}
-			return nil, protocol.NewError(-32000, "wrong password", false)
+			return nil, protocol.Fail("wrong password", false)
 		case protocol.MethodAuthSetup:
 			if *mode == "bad-setup" {
 				return protocol.AuthSetupResult{}, nil
@@ -228,7 +228,7 @@ func main() {
 			var p protocol.AuthSetupCompleteParams
 			_ = json.Unmarshal(params, &p)
 			if p.Params["password"] == "" || p.Params["password"] != p.Params["confirm"] {
-				return nil, protocol.NewError(-32000, "the passwords don't match", false)
+				return nil, protocol.Fail("the passwords don't match", false)
 			}
 			return protocol.AuthSetupCompleteResult{
 				Secrets: map[string]string{"password_hash": "fake:" + p.Params["password"]},
@@ -322,16 +322,16 @@ func importRun(conn *protocol.Conn, blobTmp string, params json.RawMessage) (any
 	var p protocol.ImportRunParams
 	var opts importOptions
 	if err := json.Unmarshal(params, &p); err != nil {
-		return nil, protocol.NewError(protocol.CodeInvalidParams, err.Error(), false)
+		return nil, protocol.InvalidParams(err)
 	}
 	if err := json.Unmarshal(p.Params, &opts); err != nil {
-		return nil, protocol.NewError(protocol.CodeInvalidParams, err.Error(), false)
+		return nil, protocol.InvalidParams(err)
 	}
 	switch opts.Fail {
 	case "retryable":
-		return nil, protocol.NewError(-32000, "source unavailable", true)
+		return nil, protocol.Fail("source unavailable", true)
 	case "fatal":
-		return nil, protocol.NewError(-32000, "no such folder", false)
+		return nil, protocol.Fail("no such folder", false)
 	}
 	var cp struct {
 		Next int `json:"next"`
@@ -389,7 +389,7 @@ func importRun(conn *protocol.Conn, blobTmp string, params json.RawMessage) (any
 func dbRoundTrip(ctx context.Context, url string, params json.RawMessage) (any, error) {
 	var v string
 	if err := json.Unmarshal(params, &v); err != nil {
-		return nil, protocol.NewError(protocol.CodeInvalidParams, err.Error(), false)
+		return nil, protocol.InvalidParams(err)
 	}
 	conn, err := pgx.Connect(ctx, url)
 	if err != nil {

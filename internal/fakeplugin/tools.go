@@ -27,7 +27,7 @@ func mcpTools(mode string) protocol.MCPToolsResult {
 func mcpCall(params json.RawMessage) (any, error) {
 	var p protocol.MCPCallParams
 	if err := json.Unmarshal(params, &p); err != nil {
-		return nil, protocol.NewError(protocol.CodeInvalidParams, err.Error(), false)
+		return nil, protocol.InvalidParams(err)
 	}
 	var args struct {
 		Text string `json:"text"`

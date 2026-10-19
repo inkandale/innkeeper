@@ -42,9 +42,9 @@ func sitesTrouble(config map[string]any) error {
 	}
 	switch config["sites_fail"] {
 	case "retryable":
-		return protocol.NewError(-32000, "sites unavailable", true)
+		return protocol.Fail("sites unavailable", true)
 	case "fatal":
-		return protocol.NewError(-32000, "sites broke", false)
+		return protocol.Fail("sites broke", false)
 	}
 	return nil
 }

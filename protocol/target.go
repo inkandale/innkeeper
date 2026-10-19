@@ -26,10 +26,6 @@ const (
 	MethodTargetDeleteLorebook = "target.delete_lorebook"
 )
 
-// CodeRemoteNotFound is the error for an ID the plugin doesn't have: a
-// remote_id the app no longer has, or a catalog item or version.
-const CodeRemoteNotFound = -32004
-
 // How a target stores lorebooks.
 const (
 	LorebooksEmbedded   = "embedded"

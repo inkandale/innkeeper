@@ -28,7 +28,7 @@ var catalogInfo = protocol.CatalogInfo{
 	Sorts:   []protocol.CatalogOption{{Value: "name", Label: "Name"}},
 }
 
-var noSource = protocol.NewError(-32000, "config.source is not set", false)
+var noSource = protocol.Fail("config.source is not set", false)
 
 type catalogEntry struct {
 	id, kind string
@@ -87,11 +87,11 @@ func (e catalogEntry) item(mode string) protocol.CatalogItem {
 func catalogSearch(params json.RawMessage, mode string) (any, error) {
 	var p protocol.CatalogSearchParams
 	if err := json.Unmarshal(params, &p); err != nil {
-		return nil, invalidParams(err)
+		return nil, protocol.InvalidParams(err)
 	}
 	if mode != "catalog-lax" {
 		if err := catalogInfo.CheckSearch(p); err != nil {
-			return nil, invalidParams(err)
+			return nil, protocol.InvalidParams(err)
 		}
 	}
 	if mode == "catalog-sourceless" {
@@ -123,7 +123,7 @@ func catalogSearch(params json.RawMessage, mode string) (any, error) {
 func catalogGet(blobTmp string, config map[string]any, params json.RawMessage, mode string) (any, error) {
 	var p protocol.CatalogGetParams
 	if err := json.Unmarshal(params, &p); err != nil {
-		return nil, invalidParams(err)
+		return nil, protocol.InvalidParams(err)
 	}
 	if mode == "catalog-sourceless" {
 		return nil, noSource

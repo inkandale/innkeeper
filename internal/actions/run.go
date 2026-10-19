@@ -239,7 +239,7 @@ func (p *progressSaver) poke() {
 func (s *session) libraryCall(params json.RawMessage) (any, error) {
 	var c protocol.LibraryCallParams
 	if err := json.Unmarshal(params, &c); err != nil {
-		return nil, protocol.NewError(protocol.CodeInvalidParams, err.Error(), false)
+		return nil, protocol.InvalidParams(err)
 	}
 	if !s.action.Library {
 		return nil, forbidden(fmt.Sprintf("action %s doesn't declare library", s.action.ID))

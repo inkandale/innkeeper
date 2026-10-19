@@ -21,6 +21,22 @@ const (
 	CodeInternalError  = -32603
 )
 
+// Innkeeper's error codes, in the range JSON-RPC leaves to applications.
+const (
+	// CodeFailed is a call that failed for a reason the message explains,
+	// such as the app refusing a card or a wrong password.
+	CodeFailed = -32000
+	// CodeForbidden is the core refusing a call the plugin isn't allowed to
+	// make, such as library.call without Library access.
+	CodeForbidden = -32003
+	// CodeRemoteNotFound is the error for an ID the plugin doesn't have: a
+	// remote_id the app no longer has, or a catalog item or version.
+	CodeRemoteNotFound = -32004
+	// CodeAIRejected is a provider refusing a request as invalid, such as
+	// tools for a model without tool support.
+	CodeAIRejected = -32010
+)
+
 // methodCancel is the notification a caller sends when it stops waiting for
 // a request's reply; Conn handles it itself and never passes it to Handler.
 const methodCancel = "cancel"
@@ -57,6 +73,12 @@ func NewError(code int, message string, retryable bool) *Error {
 	data, _ := json.Marshal(map[string]bool{"retryable": retryable})
 	return &Error{Code: code, Message: message, Data: data}
 }
+
+// Fail is a CodeFailed error with msg for the owner to read.
+func Fail(msg string, retryable bool) *Error { return NewError(CodeFailed, msg, retryable) }
+
+// InvalidParams is the error for params the method can't accept.
+func InvalidParams(err error) *Error { return NewError(CodeInvalidParams, err.Error(), false) }
 
 // MethodNotFound is the error for a method the receiver doesn't implement.
 func MethodNotFound(method string) *Error {

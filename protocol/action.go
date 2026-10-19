@@ -18,10 +18,6 @@ const (
 	MethodLibraryCall = "library.call"
 )
 
-// CodeForbidden is the core refusing a call the plugin isn't allowed to make,
-// such as library.call without Library access.
-const CodeForbidden = -32003
-
 // What an action applies to. ApplyNew is a card that doesn't exist yet.
 const (
 	ApplyCard     = "card"

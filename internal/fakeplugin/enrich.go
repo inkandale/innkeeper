@@ -18,7 +18,7 @@ import (
 func enrichRun(ctx context.Context, conn *protocol.Conn, params json.RawMessage, mode string) (any, error) {
 	var p protocol.EnrichRunParams
 	if err := json.Unmarshal(params, &p); err != nil {
-		return nil, protocol.NewError(protocol.CodeInvalidParams, err.Error(), false)
+		return nil, protocol.InvalidParams(err)
 	}
 	_ = conn.Notify(protocol.NotifyProgress, protocol.Progress{Run: p.Run, Message: fmt.Sprintf("Evaluating %d cards", len(p.Revisions)), Total: int64(len(p.Revisions))})
 	res := protocol.EnrichRunResult{Results: []protocol.EnrichResult{}}

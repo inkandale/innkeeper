@@ -57,11 +57,11 @@ func codecEncode(blobTmp string, params json.RawMessage, mode string) (any, erro
 func codecDecode(params json.RawMessage, mode string) (any, error) {
 	var p protocol.CodecDecodeParams
 	if err := json.Unmarshal(params, &p); err != nil {
-		return nil, protocol.NewError(protocol.CodeInvalidParams, err.Error(), false)
+		return nil, protocol.InvalidParams(err)
 	}
 	b, err := os.ReadFile(p.Path)
 	if err != nil {
-		return nil, protocol.NewError(protocol.CodeInvalidParams, err.Error(), false)
+		return nil, protocol.InvalidParams(err)
 	}
 	card, ok := bytes.CutPrefix(b, []byte("fake:"))
 	if !ok {

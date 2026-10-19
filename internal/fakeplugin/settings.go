@@ -15,26 +15,26 @@ func settingsCall(method string, params json.RawMessage, mode string) (any, erro
 		case "settings-no-defaults":
 			return nil, protocol.MethodNotFound(method)
 		case "settings-defaults-error":
-			return nil, protocol.NewError(-32000, "no defaults today", false)
+			return nil, protocol.Fail("no defaults today", false)
 		}
 		return protocol.SettingsDefaultsResult{Defaults: map[string]any{"/prompts/greet": "Hello, {{user}}."}}, nil
 	case protocol.MethodSettingsOptions:
 		var p protocol.SettingsOptionsParams
 		if err := json.Unmarshal(params, &p); err != nil {
-			return nil, protocol.NewError(protocol.CodeInvalidParams, err.Error(), false)
+			return nil, protocol.InvalidParams(err)
 		}
 		if key := p.Secrets["api_key"]; p.Field == "/echo" && key != "" {
 			return protocol.SettingsOptionsResult{Options: []protocol.SettingsOption{{Value: "v-" + key, Label: "l-" + key}}}, nil
 		}
 		if p.Field == "/echo-error" {
-			return nil, protocol.NewError(-32000, "bad key "+p.Secrets["api_key"], false)
+			return nil, protocol.Fail("bad key "+p.Secrets["api_key"], false)
 		}
 		if p.Field != "/model" {
 			return nil, protocol.NewError(protocol.CodeInvalidParams, "no choices for "+p.Field, false)
 		}
 		url, _ := p.Config["url"].(string)
 		if url == "" {
-			return nil, protocol.NewError(-32000, "set the url first", false)
+			return nil, protocol.Fail("set the url first", false)
 		}
 		return protocol.SettingsOptionsResult{Options: []protocol.SettingsOption{{Value: url + "/m1", Label: "Model one"}, {Value: url + "/m2"}}}, nil
 	case protocol.MethodSettingsRun:
@@ -43,7 +43,7 @@ func settingsCall(method string, params json.RawMessage, mode string) (any, erro
 		}
 		var p protocol.SettingsRunParams
 		if err := json.Unmarshal(params, &p); err != nil {
-			return nil, protocol.NewError(protocol.CodeInvalidParams, err.Error(), false)
+			return nil, protocol.InvalidParams(err)
 		}
 		if key := p.Secrets["api_key"]; p.Action == "echo" {
 			return protocol.SettingsRunResult{Message: "sent " + key, Checks: []protocol.SettingsCheck{{Name: "echo " + key, Message: "got " + key}}}, nil

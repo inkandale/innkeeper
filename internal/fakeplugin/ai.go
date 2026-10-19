@@ -159,7 +159,7 @@ func openAIChat(ctx context.Context, conn *protocol.Conn, base string, params js
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, protocol.NewError(-32000, "model server: "+resp.Status, false)
+		return nil, protocol.Fail("model server: "+resp.Status, false)
 	}
 	res := protocol.AIChatResult{Model: "fake"}
 	var text strings.Builder

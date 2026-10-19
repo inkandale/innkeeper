@@ -53,10 +53,6 @@ func decoded[T any](check func(T) error) func(json.RawMessage) error {
 	}
 }
 
-// CodeAIRejected is a provider refusing a request as invalid, such as tools
-// for a model without tool support.
-const CodeAIRejected = -32010
-
 // ServiceCall is the part of every service call the core reads: the
 // provider instance, and the caller's token for the call's notifications.
 type ServiceCall struct {

@@ -39,7 +39,7 @@ func fakeActions(mode string) protocol.ActionListResult {
 func actionRun(ctx context.Context, conn *protocol.Conn, params json.RawMessage, config map[string]any, mode string) (any, error) {
 	var p protocol.ActionRunParams
 	if err := json.Unmarshal(params, &p); err != nil {
-		return nil, protocol.NewError(protocol.CodeInvalidParams, err.Error(), false)
+		return nil, protocol.InvalidParams(err)
 	}
 	var in struct {
 		SleepMS int             `json:"sleep_ms"`
@@ -50,7 +50,7 @@ func actionRun(ctx context.Context, conn *protocol.Conn, params json.RawMessage,
 	_ = conn.Notify(protocol.NotifyProgress, protocol.Progress{Run: p.Run, Message: "Running " + p.Action, Done: 1, Total: 2})
 	time.Sleep(time.Duration(in.SleepMS) * time.Millisecond)
 	if in.Fail {
-		return nil, protocol.NewError(-32000, "the model refused", true)
+		return nil, protocol.Fail("the model refused", true)
 	}
 	if id, ok := config["connection"].(float64); ok {
 		if err := chatWithTool(ctx, conn, p.Run, int64(id), mode); err != nil {

@@ -101,7 +101,7 @@ func relay(caller *protocol.Conn, run string) protocol.Handler {
 		}
 		var d protocol.AIDelta
 		if err := json.Unmarshal(params, &d); err != nil {
-			return nil, protocol.NewError(protocol.CodeInvalidParams, err.Error(), false)
+			return nil, protocol.InvalidParams(err)
 		}
 		d.Run = run
 		return nil, caller.Notify(method, d)

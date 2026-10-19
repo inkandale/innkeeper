@@ -61,10 +61,6 @@ func (t target) describe() protocol.TargetInfo {
 
 func (t target) path(id string) string { return filepath.Join(t.Dir, id+".json") }
 
-func invalidParams(err error) error {
-	return protocol.NewError(protocol.CodeInvalidParams, err.Error(), false)
-}
-
 // keep returns only the fields the app stores, like a real app.
 func keep(all map[string]json.RawMessage, fields []string) map[string]json.RawMessage {
 	kept := map[string]json.RawMessage{}
@@ -79,19 +75,19 @@ func keep(all map[string]json.RawMessage, fields []string) map[string]json.RawMe
 func (t target) put(params json.RawMessage) (any, error) {
 	var p protocol.TargetPutParams
 	if err := json.Unmarshal(params, &p); err != nil {
-		return nil, invalidParams(err)
+		return nil, protocol.InvalidParams(err)
 	}
 	switch t.FailPut {
 	case "retryable":
-		return nil, protocol.NewError(-32000, "app unavailable", true)
+		return nil, protocol.Fail("app unavailable", true)
 	case "fatal":
-		return nil, protocol.NewError(-32000, "app rejected the card", false)
+		return nil, protocol.Fail("app rejected the card", false)
 	}
 	var card struct {
 		Data map[string]json.RawMessage `json:"data"`
 	}
 	if err := json.Unmarshal(p.Card, &card); err != nil {
-		return nil, invalidParams(err)
+		return nil, protocol.InvalidParams(err)
 	}
 	info := t.describe()
 	stored := map[string]any{"spec": "chara_card_v3", "spec_version": "3.0", "data": keep(card.Data, info.Fields)}
@@ -107,11 +103,11 @@ func (t target) put(params json.RawMessage) (any, error) {
 func (t target) putLorebook(params json.RawMessage) (any, error) {
 	var p protocol.TargetPutLorebookParams
 	if err := json.Unmarshal(params, &p); err != nil {
-		return nil, invalidParams(err)
+		return nil, protocol.InvalidParams(err)
 	}
 	var book map[string]json.RawMessage
 	if err := json.Unmarshal(p.Lorebook, &book); err != nil {
-		return nil, invalidParams(err)
+		return nil, protocol.InvalidParams(err)
 	}
 	return t.store("l", map[string]any{"lorebook": keep(book, t.describe().LorebookFields)}, p.RemoteID, p.Key, false)
 }
@@ -121,7 +117,7 @@ func (t target) putLorebook(params json.RawMessage) (any, error) {
 // after writing.
 func (t target) store(prefix string, stored map[string]any, remoteID, key string, crash bool) (any, error) {
 	if t.Dir == "" {
-		return nil, protocol.NewError(-32000, "config.dir is not set", false)
+		return nil, protocol.Fail("config.dir is not set", false)
 	}
 	if key != "" {
 		if id, ok := t.byKey(prefix, key); ok {
@@ -177,14 +173,14 @@ func (t target) store(prefix string, stored map[string]any, remoteID, key string
 // remove deletes the stored item named by params' remote_id.
 func (t target) remove(params json.RawMessage) (any, error) {
 	if t.FailDelete {
-		return nil, protocol.NewError(-32000, "app unavailable", true)
+		return nil, protocol.Fail("app unavailable", true)
 	}
 	if t.Dir == "" {
-		return nil, protocol.NewError(-32000, "config.dir is not set", false)
+		return nil, protocol.Fail("config.dir is not set", false)
 	}
 	var p protocol.TargetDeleteParams
 	if err := json.Unmarshal(params, &p); err != nil {
-		return nil, invalidParams(err)
+		return nil, protocol.InvalidParams(err)
 	}
 	err := os.Remove(t.path(p.RemoteID))
 	if errors.Is(err, os.ErrNotExist) {
@@ -209,7 +205,7 @@ func (t target) byKey(prefix, key string) (string, bool) {
 func (t target) read(params json.RawMessage) ([]byte, error) {
 	var p protocol.TargetGetParams
 	if err := json.Unmarshal(params, &p); err != nil {
-		return nil, invalidParams(err)
+		return nil, protocol.InvalidParams(err)
 	}
 	raw, err := os.ReadFile(t.path(p.RemoteID))
 	if errors.Is(err, os.ErrNotExist) {
@@ -285,7 +281,7 @@ func (t target) getLorebook(params json.RawMessage) (any, error) {
 // list returns the stored items with prefix, named by their name field.
 func (t target) list(prefix string) (any, error) {
 	if t.Dir == "" {
-		return nil, protocol.NewError(-32000, "config.dir is not set", false)
+		return nil, protocol.Fail("config.dir is not set", false)
 	}
 	files, _ := filepath.Glob(filepath.Join(t.Dir, prefix+"*.json"))
 	items := []protocol.TargetItem{}

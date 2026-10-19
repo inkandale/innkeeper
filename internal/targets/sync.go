@@ -126,7 +126,7 @@ func (s *Service) Sync(ctx context.Context, p SyncParams, progress func(SyncResu
 				return res, err
 			}
 		}
-		j, rerr := q.Record(ctx, jobs.Spec{Kind: ReconcileKind, InstanceID: &id, Payload: params}, raw, failure)
+		j, rerr := q.Record(ctx, jobs.Spec{Kind: ReconcileKind, InstanceID: &id, Payload: params}, raw, 0, failure)
 		if rerr != nil {
 			return res, rerr
 		}

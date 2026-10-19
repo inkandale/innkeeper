@@ -57,6 +57,9 @@ type Job struct {
 	Error       *string
 	CreatedAt   time.Time
 	FinishedAt  *time.Time
+	// StartedAt is when the first attempt was claimed.
+	StartedAt    *time.Time
+	CardsChanged int
 }
 
 // Spec describes a job to enqueue.
@@ -73,12 +76,13 @@ type Queue struct{ pool *pgxpool.Pool }
 func New(pool *pgxpool.Pool) *Queue { return &Queue{pool: pool} }
 
 const jobCols = `id, kind, instance_id, payload, status, attempts, max_attempts, progress, checkpoint,
-	run_after, parent_id, error, created_at, finished_at`
+	run_after, parent_id, error, created_at, finished_at, started_at, cards_changed`
 
 func scanJob(row pgx.Row) (Job, error) {
 	var j Job
 	err := row.Scan(&j.ID, &j.Kind, &j.InstanceID, &j.Payload, &j.Status, &j.Attempts, &j.MaxAttempts,
-		&j.Progress, &j.Checkpoint, &j.RunAfter, &j.ParentID, &j.Error, &j.CreatedAt, &j.FinishedAt)
+		&j.Progress, &j.Checkpoint, &j.RunAfter, &j.ParentID, &j.Error, &j.CreatedAt, &j.FinishedAt,
+		&j.StartedAt, &j.CardsChanged)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Job{}, ErrNotFound
 	}
@@ -138,9 +142,10 @@ func (q *Queue) EnqueueOnce(ctx context.Context, s Spec) (Job, error) {
 	return j, tx.Commit(ctx)
 }
 
-// Record adds a finished top-level job holding progress, for work another
-// job did itself. A failure fails it with that message.
-func (q *Queue) Record(ctx context.Context, s Spec, progress json.RawMessage, failure error) (Job, error) {
+// Record adds a finished top-level job holding progress and the cards it
+// changed, for work another job did itself. A failure fails it with that
+// message.
+func (q *Queue) Record(ctx context.Context, s Spec, progress json.RawMessage, cards int, failure error) (Job, error) {
 	payload, err := payloadOf(s)
 	if err != nil {
 		return Job{}, err
@@ -153,9 +158,10 @@ func (q *Queue) Record(ctx context.Context, s Spec, progress json.RawMessage, fa
 		m := failure.Error()
 		status, msg = StatusFailed, &m
 	}
-	return scanJob(q.pool.QueryRow(ctx, `INSERT INTO job (kind, instance_id, payload, status, progress, error, finished_at)
-		VALUES ($1, $2, $3, $4, $5, $6, now()) RETURNING `+jobCols,
-		s.Kind, s.InstanceID, payload, status, progress, msg))
+	return scanJob(q.pool.QueryRow(ctx, `INSERT INTO job (kind, instance_id, payload, status, progress, error, cards_changed,
+			started_at, finished_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now()) RETURNING `+jobCols,
+		s.Kind, s.InstanceID, payload, status, progress, msg, cards))
 }
 
 // EnqueueBulk adds a parent job with one child job per spec, in one
@@ -215,6 +221,7 @@ func (q *Queue) EnsureScheduled(ctx context.Context, kind string, every time.Dur
 // worker. It returns nil when no job is due.
 func (q *Queue) claim(ctx context.Context, worker string, kinds []string, lease time.Duration) (*Job, error) {
 	j, err := scanJob(q.pool.QueryRow(ctx, `UPDATE job SET status = 'running', attempts = attempts + 1,
+			started_at = coalesce(started_at, now()),
 			locked_by = $1, locked_until = now() + make_interval(secs => $2)
 		WHERE id = (
 			SELECT id FROM job WHERE status = 'queued' AND run_after <= now() AND kind = ANY($3)
@@ -360,7 +367,7 @@ func (q *Queue) Cancel(ctx context.Context, id int64) error {
 // checkpoint.
 func (q *Queue) Retry(ctx context.Context, id int64) error {
 	tag, err := q.pool.Exec(ctx, `UPDATE job SET status = 'queued', attempts = 0, error = NULL, finished_at = NULL,
-			run_after = now(), locked_by = NULL, locked_until = NULL
+			started_at = NULL, run_after = now(), locked_by = NULL, locked_until = NULL
 		WHERE id = $1 AND status = 'failed' AND parent_id IS NULL
 			AND NOT EXISTS (SELECT 1 FROM job c WHERE c.parent_id = $1)`, id)
 	if err != nil {

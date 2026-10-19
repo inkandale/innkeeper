@@ -362,20 +362,50 @@ func TestEnqueueOnce(t *testing.T) {
 func TestRecord(t *testing.T) {
 	q := newQueue(t)
 	ctx := context.Background()
-	ok, err := q.Record(ctx, Spec{Kind: "t.rec", Payload: map[string]int{"n": 1}}, json.RawMessage(`{"x":1}`), nil)
+	ok, err := q.Record(ctx, Spec{Kind: "t.rec", Payload: map[string]int{"n": 1}}, json.RawMessage(`{"x":1}`), 3, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var p struct{ X int }
-	if ok.Status != StatusSucceeded || ok.FinishedAt == nil || json.Unmarshal(ok.Progress, &p) != nil || p.X != 1 {
+	if ok.Status != StatusSucceeded || ok.FinishedAt == nil || ok.StartedAt == nil || ok.CardsChanged != 3 ||
+		json.Unmarshal(ok.Progress, &p) != nil || p.X != 1 {
 		t.Errorf("recorded = %+v", ok)
 	}
-	bad, err := q.Record(ctx, Spec{Kind: "t.rec"}, nil, errors.New("boom"))
+	bad, err := q.Record(ctx, Spec{Kind: "t.rec"}, nil, 0, errors.New("boom"))
 	if err != nil || bad.Status != StatusFailed || bad.Error == nil || *bad.Error != "boom" || bad.FinishedAt == nil {
 		t.Errorf("failed record = %+v, %v", bad, err)
 	}
 	listed, err := q.List(ctx, ListOptions{Kind: "t.rec"})
 	if err != nil || len(listed) != 2 {
 		t.Errorf("listed %d, %v", len(listed), err)
+	}
+}
+
+func TestClaimSetsStartedAtOnce(t *testing.T) {
+	q := newQueue(t)
+	ctx := context.Background()
+	j, _ := q.Enqueue(ctx, Spec{Kind: "test"})
+	if j.StartedAt != nil {
+		t.Fatalf("queued job started at %v", j.StartedAt)
+	}
+	first, err := q.claim(ctx, "w1", []string{"test"}, time.Minute)
+	if err != nil || first == nil || first.StartedAt == nil {
+		t.Fatalf("claim = %+v, %v", first, err)
+	}
+	if err := q.finish(ctx, first, "w1", nil, outcome{status: StatusQueued, err: "try again"}); err != nil {
+		t.Fatal(err)
+	}
+	again, err := q.claim(ctx, "w1", []string{"test"}, time.Minute)
+	if err != nil || again == nil || again.StartedAt == nil || !again.StartedAt.Equal(*first.StartedAt) {
+		t.Fatalf("retry claim = %+v, %v; want started at %v", again, err, first.StartedAt)
+	}
+	if err := q.finish(ctx, again, "w1", nil, outcome{status: StatusFailed, err: "boom"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.Retry(ctx, j.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := q.Get(ctx, j.ID); got.StartedAt != nil {
+		t.Fatalf("manually retried job started at %v, want nil", got.StartedAt)
 	}
 }

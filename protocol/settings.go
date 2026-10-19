@@ -31,11 +31,12 @@ type SettingsOptionsParams struct {
 
 // SettingsOptionsResult lists a field's choices.
 type SettingsOptionsResult struct {
-	Options []SettingsOption `json:"options"`
+	Options []Option `json:"options"`
 }
 
-// SettingsOption is one choice; Label defaults to Value.
-type SettingsOption struct {
+// Option is one choice: a settings field's, a catalog enum filter's, or a
+// catalog sort order. An empty Label shows Value; a catalog requires one.
+type Option struct {
 	Value string `json:"value"`
 	Label string `json:"label,omitempty"`
 }

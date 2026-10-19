@@ -14,7 +14,7 @@ func TestPrintSnapshot(t *testing.T) {
 	var b strings.Builder
 	err := printSnapshot(&b, wire.Snapshot{
 		Items: []wire.ReconcileItem{{RemoteID: "Brakka.png", Name: "Brakka", Verdict: "likely",
-			Candidates: []wire.Candidate{{CardID: 12, Name: "Brakka"}}, Suggested: &wire.Option{Action: "bind", CardID: 12}}},
+			Candidates: []wire.Candidate{{CardID: 12, Name: "Brakka"}}, Suggested: &wire.ResolveOption{Action: "bind", CardID: 12}}},
 		Totals: map[string]int{"likely": 1},
 	})
 	if err != nil {
@@ -41,7 +41,7 @@ func TestPrintSnapshotAuto(t *testing.T) {
 		{RemoteID: "a", Verdict: "exact", AutoBound: true},
 		{RemoteID: "b", Verdict: "new", AutoImported: true, Lorebooks: []wire.ReconcileItem{{RemoteID: "lb", Verdict: "new"}}},
 		{RemoteID: "c", Verdict: "bound"},
-		{RemoteID: "e", Verdict: "bound", Suggested: &wire.Option{Action: "bind", CardID: 1}},
+		{RemoteID: "e", Verdict: "bound", Suggested: &wire.ResolveOption{Action: "bind", CardID: 1}},
 		{RemoteID: "d", Verdict: "likely"},
 	}})
 	if err != nil {
@@ -130,8 +130,8 @@ func TestResolveRemoteIDWithEquals(t *testing.T) {
 
 func TestSyncApply(t *testing.T) {
 	snap, _ := json.Marshal(wire.Snapshot{Params: wire.ReconcileParams{InstanceID: 3}, Items: []wire.ReconcileItem{
-		{RemoteID: "r1", AppHash: "h1", Verdict: "exact", BindingID: 7, Suggested: &wire.Option{Action: "bind", CardID: 12}},
-		{RemoteID: "r2", AppHash: "h2", Verdict: "new", Suggested: &wire.Option{Action: "import"}},
+		{RemoteID: "r1", AppHash: "h1", Verdict: "exact", BindingID: 7, Suggested: &wire.ResolveOption{Action: "bind", CardID: 12}},
+		{RemoteID: "r2", AppHash: "h2", Verdict: "new", Suggested: &wire.ResolveOption{Action: "import"}},
 	}})
 	job, _ := json.Marshal(map[string]any{"kind": wire.ReconcileKind, "status": "succeeded", "progress": json.RawMessage(snap)})
 	got := stubAPI(t, map[string]string{

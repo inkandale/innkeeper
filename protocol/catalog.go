@@ -48,7 +48,7 @@ type CatalogInfo struct {
 	Kinds   []string        `json:"kinds"`
 	Filters []CatalogFilter `json:"filters"`
 	// Sorts are the orders search accepts. The first is the default.
-	Sorts []CatalogOption `json:"sorts"`
+	Sorts []Option `json:"sorts"`
 }
 
 // CatalogFilter is one filter search accepts. Only an enum has Options.
@@ -56,13 +56,7 @@ type CatalogFilter struct {
 	Name    string          `json:"name"`
 	Label   string          `json:"label"`
 	Type    string          `json:"type"`
-	Options []CatalogOption `json:"options,omitempty"`
-}
-
-// CatalogOption is an enum filter's value or a sort order.
-type CatalogOption struct {
-	Value string `json:"value"`
-	Label string `json:"label"`
+	Options []Option `json:"options,omitempty"`
 }
 
 // Validate reports every problem with the description at once.
@@ -94,7 +88,7 @@ func (c CatalogInfo) Validate() error {
 	return errors.Join(errs...)
 }
 
-func checkOptions(what string, opts []CatalogOption) []error {
+func checkOptions(what string, opts []Option) []error {
 	var errs []error
 	values := make([]string, len(opts))
 	for i, o := range opts {
@@ -146,7 +140,7 @@ func (c CatalogInfo) CheckSearch(p CatalogSearchParams) error {
 	if p.Kind != "" && !slices.Contains(c.Kinds, p.Kind) {
 		errs = append(errs, fmt.Errorf("kind %q is not declared", p.Kind))
 	}
-	if p.Sort != "" && !slices.ContainsFunc(c.Sorts, func(o CatalogOption) bool { return o.Value == p.Sort }) {
+	if p.Sort != "" && !slices.ContainsFunc(c.Sorts, func(o Option) bool { return o.Value == p.Sort }) {
 		errs = append(errs, fmt.Errorf("sort %q is not declared", p.Sort))
 	}
 	if p.Page.Size < 0 || p.Page.Size > MaxCatalogPage {
@@ -171,7 +165,7 @@ func (f CatalogFilter) check(raw json.RawMessage) error {
 		if err := json.Unmarshal(raw, &s); err != nil || s == "" {
 			return errors.New("want a non-empty string")
 		}
-		if f.Type == FilterEnum && !slices.ContainsFunc(f.Options, func(o CatalogOption) bool { return o.Value == s }) {
+		if f.Type == FilterEnum && !slices.ContainsFunc(f.Options, func(o Option) bool { return o.Value == s }) {
 			return fmt.Errorf("%q is not one of its options", s)
 		}
 	case FilterDateRange:

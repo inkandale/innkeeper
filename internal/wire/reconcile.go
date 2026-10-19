@@ -50,8 +50,8 @@ type ReconcileItem struct {
 	Error      string          `json:"error,omitempty"`
 	BindingID  int64           `json:"binding_id,omitempty"` // the live binding; an import sends it back
 	Candidates []Candidate     `json:"candidates,omitempty"`
-	Options    []Option        `json:"options"`
-	Suggested  *Option         `json:"suggested,omitempty"`
+	Options    []ResolveOption `json:"options"`
+	Suggested  *ResolveOption  `json:"suggested,omitempty"`
 	Lorebooks  []ReconcileItem `json:"lorebooks,omitempty"`
 	// AutoBound means the run bound this exact match.
 	AutoBound bool `json:"auto_bound,omitempty"`
@@ -82,8 +82,8 @@ type Candidate struct {
 	BoundTo string `json:"bound_to,omitempty"`
 }
 
-// Option is one way to resolve an item.
-type Option struct {
+// ResolveOption is one way to resolve an item.
+type ResolveOption struct {
 	Action string `json:"action" enum:"bind,import,skip"`
 	CardID int64  `json:"card_id,omitempty"`
 	Why    string `json:"why,omitempty"`

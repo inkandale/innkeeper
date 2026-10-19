@@ -337,10 +337,10 @@ func (rs *resolver) suggested(ctx context.Context, inst pluginhost.Instance, inf
 	}
 	opt := item.Suggested
 	if opt == nil {
-		opt = &Option{Action: "skip"}
+		opt = &ResolveOption{Action: "skip"}
 		// An item the app can't give back gets only skip, as in Reconcile.
 		if b, ok := rs.index.byRemote[remoteID]; ok && item.Verdict != VerdictError {
-			opt = &Option{Action: "bind", CardID: b.entityID}
+			opt = &ResolveOption{Action: "bind", CardID: b.entityID}
 		}
 	}
 	n := Resolution{RemoteID: remoteID, Action: opt.Action, AppHash: item.AppHash, BindingID: item.BindingID}

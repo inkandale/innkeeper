@@ -9,7 +9,7 @@ type (
 	Snapshot        = wire.Snapshot
 	ReconcileItem   = wire.ReconcileItem
 	Candidate       = wire.Candidate
-	Option          = wire.Option
+	ResolveOption   = wire.ResolveOption
 	Comparison      = wire.Comparison
 	AvatarDiff      = wire.AvatarDiff
 	Resolution      = wire.Resolution

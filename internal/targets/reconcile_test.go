@@ -150,7 +150,7 @@ func TestReconcileVerdicts(t *testing.T) {
 	if it := check("dup", VerdictExact, e.card); it.Candidates[0].BoundTo != bound.RemoteID {
 		t.Errorf("dup candidate bound_to = %q", it.Candidates[0].BoundTo)
 	}
-	if it := check("bad", VerdictError); it.Error == "" || !slices.Equal(it.Options, []Option{{Action: "skip"}}) {
+	if it := check("bad", VerdictError); it.Error == "" || !slices.Equal(it.Options, []ResolveOption{{Action: "skip"}}) {
 		t.Errorf("error item = %+v", it)
 	}
 
@@ -394,7 +394,7 @@ func edited(fields ...string) map[string]any {
 	return out
 }
 
-func hasOption(it ReconcileItem, o Option) bool {
+func hasOption(it ReconcileItem, o ResolveOption) bool {
 	for _, got := range it.Options {
 		if got.Action == o.Action && got.CardID == o.CardID {
 			return true
@@ -427,7 +427,7 @@ func TestReconcileSuggestions(t *testing.T) {
 
 	got := e.reconcile(ReconcileParams{}, ids...)
 	for _, id := range ids {
-		if !hasOption(got[id], Option{Action: "skip"}) {
+		if !hasOption(got[id], ResolveOption{Action: "skip"}) {
 			t.Errorf("%s options = %+v", id, got[id].Options)
 		}
 	}
@@ -448,14 +448,14 @@ func TestReconcileSuggestions(t *testing.T) {
 		t.Errorf("three candidates = %+v", it.Candidates)
 	}
 	for _, c := range []int64{tamsin, other} {
-		if !hasOption(it, Option{Action: "bind", CardID: c}) || !hasOption(it, Option{Action: "import"}) {
+		if !hasOption(it, ResolveOption{Action: "bind", CardID: c}) || !hasOption(it, ResolveOption{Action: "import"}) {
 			t.Errorf("three options = %+v", it.Options)
 		}
 	}
 	suggested("two", "bind", twin)
 	suggested("greeting", "import", 0)
 	// bind to each candidate in rank order, then import, then skip.
-	want := []Option{{Action: "bind", CardID: tamsin}, {Action: "bind", CardID: twin}, {Action: "bind", CardID: other},
+	want := []ResolveOption{{Action: "bind", CardID: tamsin}, {Action: "bind", CardID: twin}, {Action: "bind", CardID: other},
 		{Action: "import"}, {Action: "skip"}}
 	if !slices.Equal(got["three"].Options, want) {
 		t.Errorf("three options = %+v", got["three"].Options)
@@ -468,7 +468,7 @@ func TestReconcileSuggestions(t *testing.T) {
 	if it := suggested("dupe", "skip", 0); !strings.Contains(it.Suggested.Why, fmt.Sprintf("#%d ", e.card)) {
 		t.Errorf("dupe why = %q", it.Suggested.Why)
 	}
-	if it := suggested("quill", "import", 0); !hasOption(it, Option{Action: "bind", CardID: quill}) ||
+	if it := suggested("quill", "import", 0); !hasOption(it, ResolveOption{Action: "bind", CardID: quill}) ||
 		it.Candidates[0].BoundTo != quillBinding.RemoteID {
 		t.Errorf("quill = %+v", it)
 	}
@@ -592,7 +592,7 @@ func TestReconcileBoundArchived(t *testing.T) {
 	}
 	it := e.reconcile(ReconcileParams{}, bound.RemoteID)[bound.RemoteID]
 	if it.Verdict != VerdictBound || it.BindingID != bound.ID || len(it.Candidates) != 0 || it.Suggested != nil ||
-		!slices.Equal(it.Options, []Option{{Action: "import"}, {Action: "skip"}}) {
+		!slices.Equal(it.Options, []ResolveOption{{Action: "import"}, {Action: "skip"}}) {
 		t.Errorf("item = %+v", it)
 	}
 }
@@ -771,7 +771,7 @@ func TestReconcileSplitUsesUnboundCandidate(t *testing.T) {
 	e.appCard("like-free", far, nil)
 
 	got := e.reconcile(ReconcileParams{}, "like-taken", "like-free")
-	for id, want := range map[string]Option{"like-taken": {Action: "import"}, "like-free": {Action: "bind", CardID: free}} {
+	for id, want := range map[string]ResolveOption{"like-taken": {Action: "import"}, "like-free": {Action: "bind", CardID: free}} {
 		it := got[id]
 		if ids(it.Candidates)[0] != taken || it.Suggested == nil || it.Suggested.Action != want.Action ||
 			it.Suggested.CardID != want.CardID {

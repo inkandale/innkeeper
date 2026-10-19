@@ -171,7 +171,7 @@ func TestSettingsCallsRedactSecretsThePluginEchoes(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if opts.Options[0] != (protocol.SettingsOption{Value: "v-[redacted]", Label: "l-[redacted]"}) {
+		if opts.Options[0] != (protocol.Option{Value: "v-[redacted]", Label: "l-[redacted]"}) {
 			t.Errorf("%s: options = %+v", name, opts)
 		}
 		_, err = reg.Options(ctx, mgr, "conf", "/echo-error", d)

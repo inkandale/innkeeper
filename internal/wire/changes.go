@@ -26,10 +26,10 @@ type AppChange struct {
 	// SourceID is a followed source's card_source or lorebook_source ID, for removing it.
 	SourceID int64 `json:"source_id,omitempty"`
 	// JobID is the reconcile job whose snapshot the state came from; 0 for ahead and missing.
-	JobID     int64   `json:"job_id,omitempty"`
-	AppHash   string  `json:"app_hash,omitempty"`
-	Suggested *Option `json:"suggested,omitempty"`
-	Error     string  `json:"error,omitempty"`
+	JobID     int64          `json:"job_id,omitempty"`
+	AppHash   string         `json:"app_hash,omitempty"`
+	Suggested *ResolveOption `json:"suggested,omitempty"`
+	Error     string         `json:"error,omitempty"`
 }
 
 // ChangeRow is a card, a lorebook, or an unmatched app item, with its changes.

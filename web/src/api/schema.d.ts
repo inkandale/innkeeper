@@ -2541,7 +2541,7 @@ export interface components {
             source_id?: number;
             /** @enum {string} */
             state: "differs" | "both_changed" | "ahead" | "missing" | "error" | "new" | "update";
-            suggested?: components["schemas"]["Option"];
+            suggested?: components["schemas"]["ResolveOption"];
         };
         ArchiveInBody: {
             /**
@@ -2765,7 +2765,7 @@ export interface components {
         CatalogFilter: {
             label: string;
             name: string;
-            options?: components["schemas"]["CatalogOption"][] | null;
+            options?: components["schemas"]["Option"][] | null;
             type: string;
         };
         CatalogGetResult: {
@@ -2804,7 +2804,7 @@ export interface components {
         CatalogInfo: {
             filters: components["schemas"]["CatalogFilter"][] | null;
             kinds: string[] | null;
-            sorts: components["schemas"]["CatalogOption"][] | null;
+            sorts: components["schemas"]["Option"][] | null;
         };
         CatalogItem: {
             author?: string;
@@ -2816,10 +2816,6 @@ export interface components {
             summary?: string;
             tags?: string[] | null;
             thumbnail?: string;
-        };
-        CatalogOption: {
-            label: string;
-            value: string;
         };
         CatalogOut: {
             /** Format: int64 */
@@ -3703,11 +3699,8 @@ export interface components {
             tier: string;
         };
         Option: {
-            /** @enum {string} */
-            action: "bind" | "import" | "skip";
-            /** Format: int64 */
-            card_id?: number;
-            why?: string;
+            label?: string;
+            value: string;
         };
         OptionsInBody: {
             /**
@@ -4123,6 +4116,13 @@ export interface components {
             readonly $schema?: string;
             resolutions: components["schemas"]["Resolution"][] | null;
         };
+        ResolveOption: {
+            /** @enum {string} */
+            action: "bind" | "import" | "skip";
+            /** Format: int64 */
+            card_id?: number;
+            why?: string;
+        };
         ResolveResult: {
             /**
              * Format: uri
@@ -4274,10 +4274,6 @@ export interface components {
             name: string;
             ok: boolean;
         };
-        SettingsOption: {
-            label?: string;
-            value: string;
-        };
         SettingsOptionsResult: {
             /**
              * Format: uri
@@ -4285,7 +4281,7 @@ export interface components {
              * @example /api/schemas/SettingsOptionsResult.json
              */
             readonly $schema?: string;
-            options: components["schemas"]["SettingsOption"][] | null;
+            options: components["schemas"]["Option"][] | null;
         };
         SettingsRunResult: {
             /**

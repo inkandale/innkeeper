@@ -144,7 +144,7 @@ func (r *Registry) Options(ctx context.Context, mgr *pluginhost.Manager, plugin,
 	err = mgr.Call(ctx, inst, protocol.MethodSettingsOptions, protocol.SettingsOptionsParams{SettingsDraft: draft, Field: pointer}, &res)
 	redact := redactor(draft.Secrets)
 	for i, o := range res.Options {
-		res.Options[i] = protocol.SettingsOption{Value: redact(o.Value), Label: redact(o.Label)}
+		res.Options[i] = protocol.Option{Value: redact(o.Value), Label: redact(o.Label)}
 	}
 	return res, redactError(err, redact)
 }

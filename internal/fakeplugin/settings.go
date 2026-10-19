@@ -24,7 +24,7 @@ func settingsCall(method string, params json.RawMessage, mode string) (any, erro
 			return nil, protocol.InvalidParams(err)
 		}
 		if key := p.Secrets["api_key"]; p.Field == "/echo" && key != "" {
-			return protocol.SettingsOptionsResult{Options: []protocol.SettingsOption{{Value: "v-" + key, Label: "l-" + key}}}, nil
+			return protocol.SettingsOptionsResult{Options: []protocol.Option{{Value: "v-" + key, Label: "l-" + key}}}, nil
 		}
 		if p.Field == "/echo-error" {
 			return nil, protocol.Fail("bad key "+p.Secrets["api_key"], false)
@@ -36,7 +36,7 @@ func settingsCall(method string, params json.RawMessage, mode string) (any, erro
 		if url == "" {
 			return nil, protocol.Fail("set the url first", false)
 		}
-		return protocol.SettingsOptionsResult{Options: []protocol.SettingsOption{{Value: url + "/m1", Label: "Model one"}, {Value: url + "/m2"}}}, nil
+		return protocol.SettingsOptionsResult{Options: []protocol.Option{{Value: url + "/m1", Label: "Model one"}, {Value: url + "/m2"}}}, nil
 	case protocol.MethodSettingsRun:
 		if mode == "no-settings-run" {
 			return nil, protocol.MethodNotFound(method)

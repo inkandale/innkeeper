@@ -25,7 +25,7 @@ import (
 var catalogInfo = protocol.CatalogInfo{
 	Kinds:   []string{protocol.KindCard, protocol.KindLorebook},
 	Filters: []protocol.CatalogFilter{{Name: "tag", Label: "Tag", Type: protocol.FilterText}},
-	Sorts:   []protocol.CatalogOption{{Value: "name", Label: "Name"}},
+	Sorts:   []protocol.Option{{Value: "name", Label: "Name"}},
 }
 
 var noSource = protocol.Fail("config.source is not set", false)

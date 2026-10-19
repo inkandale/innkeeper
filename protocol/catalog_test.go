@@ -10,12 +10,12 @@ func goodCatalog() CatalogInfo {
 	return CatalogInfo{
 		Kinds: []string{KindCard, KindLorebook},
 		Filters: []CatalogFilter{
-			{Name: "site", Label: "Site", Type: FilterEnum, Options: []CatalogOption{{Value: "chub", Label: "Chub"}}},
+			{Name: "site", Label: "Site", Type: FilterEnum, Options: []Option{{Value: "chub", Label: "Chub"}}},
 			{Name: "tag", Label: "Tag", Type: FilterText},
 			{Name: "added", Label: "Date added", Type: FilterDateRange},
 			{Name: "rating", Label: "Rating", Type: FilterNumberRange},
 		},
-		Sorts: []CatalogOption{{Value: "newest", Label: "Newest"}, {Value: "name", Label: "Name"}},
+		Sorts: []Option{{Value: "newest", Label: "Newest"}, {Value: "name", Label: "Name"}},
 	}
 }
 
@@ -33,7 +33,7 @@ func TestCatalogInfoValidate(t *testing.T) {
 		{"repeated kind", func(c *CatalogInfo) { c.Kinds = []string{"card", "card"} }, `kind "card" listed twice`},
 		{"unknown filter type", func(c *CatalogInfo) { c.Filters[1].Type = "regex" }, `type "regex" must be one of`},
 		{"enum without options", func(c *CatalogInfo) { c.Filters[0].Options = nil }, "only an enum has them"},
-		{"options on text", func(c *CatalogInfo) { c.Filters[1].Options = []CatalogOption{{Value: "a", Label: "A"}} }, "only an enum has them"},
+		{"options on text", func(c *CatalogInfo) { c.Filters[1].Options = []Option{{Value: "a", Label: "A"}} }, "only an enum has them"},
 		{"filter without label", func(c *CatalogInfo) { c.Filters[1].Label = "" }, `filter "tag" has no label`},
 		{"repeated option", func(c *CatalogInfo) { c.Filters[0].Options = append(c.Filters[0].Options, c.Filters[0].Options[0]) }, `option "chub" listed twice`},
 		{"repeated filter", func(c *CatalogInfo) { c.Filters[1].Name = "site" }, `filter "site" listed twice`},

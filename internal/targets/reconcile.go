@@ -156,7 +156,7 @@ func (s *Service) reconcileItem(ctx context.Context, k kind, inst pluginhost.Ins
 	idx index, p ReconcileParams, remoteID string) (ReconcileItem, []string, error) {
 	item, it, err := s.verdict(ctx, k, inst, info, idx, p, remoteID)
 	if err != nil || item.Verdict == VerdictError {
-		item.Options = []Option{{Action: "skip"}}
+		item.Options = []ResolveOption{{Action: "skip"}}
 		return item, nil, err
 	}
 	item, err = suggest(k, info, idx, p, item, it)
@@ -205,10 +205,10 @@ func suggest(k kind, info protocol.TargetInfo, idx index, p ReconcileParams, ite
 		core = append(core, n)
 		appOnly = append(appOnly, only && c.DifferingFields > 0)
 		appChanged = append(appChanged, changed)
-		item.Options = append(item.Options, Option{Action: "bind", CardID: c.CardID})
+		item.Options = append(item.Options, ResolveOption{Action: "bind", CardID: c.CardID})
 	}
-	item.Options = append(item.Options, Option{Action: "import"}, Option{Action: "skip"})
-	bind := func(c Candidate, why string) { item.Suggested = &Option{Action: "bind", CardID: c.CardID, Why: why} }
+	item.Options = append(item.Options, ResolveOption{Action: "import"}, ResolveOption{Action: "skip"})
+	bind := func(c Candidate, why string) { item.Suggested = &ResolveOption{Action: "bind", CardID: c.CardID, Why: why} }
 	switch item.Verdict {
 	case VerdictBound:
 		missing := idx.byRemote[item.RemoteID].remoteState == remoteMissing
@@ -227,14 +227,14 @@ func suggest(k kind, info protocol.TargetInfo, idx index, p ReconcileParams, ite
 			bind(c, fmt.Sprintf("same content as #%d %s", c.CardID, c.Name))
 		} else {
 			c := item.Candidates[0]
-			item.Suggested = &Option{Action: "skip", Why: fmt.Sprintf(
+			item.Suggested = &ResolveOption{Action: "skip", Why: fmt.Sprintf(
 				"same as #%d %s, already bound to another app item: the app has a duplicate", c.CardID, c.Name)}
 		}
 	case VerdictLikely:
 		i := unbound(item.Candidates)
 		switch {
 		case i < 0:
-			item.Suggested = &Option{Action: "import", Why: "every likely match is already bound to another app item"}
+			item.Suggested = &ResolveOption{Action: "import", Why: "every likely match is already bound to another app item"}
 		case k.isLorebook():
 			// split_fields is for cards; a world book binds to its best unbound match.
 			c := item.Candidates[i]
@@ -245,11 +245,11 @@ func suggest(k kind, info protocol.TargetInfo, idx index, p ReconcileParams, ite
 			if core[i] < *p.SplitFields {
 				bind(c, why)
 			} else {
-				item.Suggested = &Option{Action: "import", Why: why}
+				item.Suggested = &ResolveOption{Action: "import", Why: why}
 			}
 		}
 	case VerdictNew:
-		item.Suggested = &Option{Action: "import", Why: "no library card matches"}
+		item.Suggested = &ResolveOption{Action: "import", Why: "no library card matches"}
 	}
 	return item, nil
 }

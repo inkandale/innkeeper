@@ -78,7 +78,7 @@
             "type": "string"
           },
           "suggested": {
-            "$ref": "#/components/schemas/Option"
+            "$ref": "#/components/schemas/ResolveOption"
           }
         },
         "required": [
@@ -632,7 +632,7 @@
           },
           "options": {
             "items": {
-              "$ref": "#/components/schemas/CatalogOption"
+              "$ref": "#/components/schemas/Option"
             },
             "type": [
               "array",
@@ -791,7 +791,7 @@
           },
           "sorts": {
             "items": {
-              "$ref": "#/components/schemas/CatalogOption"
+              "$ref": "#/components/schemas/Option"
             },
             "type": [
               "array",
@@ -850,22 +850,6 @@
           "name",
           "latest_version",
           "hashes"
-        ],
-        "type": "object"
-      },
-      "CatalogOption": {
-        "additionalProperties": false,
-        "properties": {
-          "label": {
-            "type": "string"
-          },
-          "value": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "value",
-          "label"
         ],
         "type": "object"
       },
@@ -3226,24 +3210,15 @@
       "Option": {
         "additionalProperties": false,
         "properties": {
-          "action": {
-            "enum": [
-              "bind",
-              "import",
-              "skip"
-            ],
+          "label": {
             "type": "string"
           },
-          "card_id": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "why": {
+          "value": {
             "type": "string"
           }
         },
         "required": [
-          "action"
+          "value"
         ],
         "type": "object"
       },
@@ -4330,6 +4305,30 @@
         ],
         "type": "object"
       },
+      "ResolveOption": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "bind",
+              "import",
+              "skip"
+            ],
+            "type": "string"
+          },
+          "card_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "why": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
       "ResolveResult": {
         "additionalProperties": false,
         "properties": {
@@ -4687,21 +4686,6 @@
         ],
         "type": "object"
       },
-      "SettingsOption": {
-        "additionalProperties": false,
-        "properties": {
-          "label": {
-            "type": "string"
-          },
-          "value": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "value"
-        ],
-        "type": "object"
-      },
       "SettingsOptionsResult": {
         "additionalProperties": false,
         "properties": {
@@ -4716,7 +4700,7 @@
           },
           "options": {
             "items": {
-              "$ref": "#/components/schemas/SettingsOption"
+              "$ref": "#/components/schemas/Option"
             },
             "type": [
               "array",

@@ -17,7 +17,7 @@ const bulkJob = {
 };
 const exportJob = {
   id: 6, kind: "card.export", status: "succeeded", payload: {}, progress: { done: 2, total: 2, blob: "cd".repeat(32) },
-  attempts: 1, max_attempts: 3, run_after: now, created_at: now, started_at: now, finished_at: now, duration_ms: 90_000,
+  attempts: 1, max_attempts: 3, run_after: now, created_at: now, started_at: new Date(Date.parse(now) + 30_000).toISOString(), finished_at: now, duration_ms: 90_000,
   cards_changed: 0,
 };
 const failedImport = {
@@ -139,6 +139,7 @@ test("a finished export links to its zip and opens no stream", async () => {
   expect(link).toHaveAttribute("href", `/api/blobs/${"cd".repeat(32)}`);
   expect(FakeEventSource.last).toBeNull();
   expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+  expect(screen.getByText("Waited").nextElementSibling).toHaveTextContent("30s");
   expect(screen.getByText("Ran for").nextElementSibling).toHaveTextContent("1m");
   expect(screen.getByText("Cards changed").nextElementSibling).toHaveTextContent("0");
 });
@@ -150,6 +151,13 @@ test("the list shows how long each job ran and the cards it changed", async () =
     within(screen.getByText(text).closest("tr")!).getAllByRole("cell").map((c) => c.textContent);
   expect(cells("card.export").slice(5, 7)).toEqual(["1m", ""]);
   expect(cells("Chub archive").slice(5, 7)).toEqual(["", "12"]);
+});
+
+test("a job that never started shows no wait or run time", async () => {
+  renderAt("/settings/jobs/8");
+  expect((await screen.findByText("Cards changed")).nextElementSibling).toHaveTextContent("12");
+  expect(screen.queryByText("Waited")).not.toBeInTheDocument();
+  expect(screen.queryByText("Ran for")).not.toBeInTheDocument();
 });
 
 test("a job's page shows its log", async () => {

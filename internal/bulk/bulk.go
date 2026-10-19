@@ -164,6 +164,8 @@ func SetArchived(ctx context.Context, lib *library.Library, apps unpublisher, k 
 }
 
 // Tag is the jobs.Handler for TagKind.
+//
+// ponytail: counts the card even when the edit was a no-op.
 func Tag(lib *library.Library) jobs.Handler {
 	return func(ctx context.Context, r *jobs.Run) error {
 		var p tagPayload
@@ -179,6 +181,8 @@ func Tag(lib *library.Library) jobs.Handler {
 }
 
 // Collect is the jobs.Handler for CollectKind.
+//
+// ponytail: counts the card even when the edit was a no-op.
 func Collect(lib *library.Library) jobs.Handler {
 	return func(ctx context.Context, r *jobs.Run) error {
 		var p collectPayload

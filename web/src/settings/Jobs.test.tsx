@@ -17,7 +17,8 @@ const bulkJob = {
 };
 const exportJob = {
   id: 6, kind: "card.export", status: "succeeded", payload: {}, progress: { done: 2, total: 2, blob: "cd".repeat(32) },
-  attempts: 1, max_attempts: 3, run_after: now, created_at: now, started_at: new Date(Date.parse(now) + 30_000).toISOString(), finished_at: now, duration_ms: 90_000,
+  attempts: 1, max_attempts: 3, run_after: now, created_at: now, started_at: new Date(Date.parse(now) + 30_000).toISOString(),
+  finished_at: new Date(Date.parse(now) + 120_000).toISOString(), duration_ms: 90_000,
   cards_changed: 0,
 };
 const failedImport = {

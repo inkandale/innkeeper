@@ -269,7 +269,6 @@ func (s *session) flush(cp json.RawMessage) {
 	var auto []int64
 	cards := 0
 	err := s.im.Lib.ImportBatch(s.ctx, items, func(tx pgx.Tx, got []library.Imported, errs []error) error {
-		cards = 0
 		for i, b := range buf {
 			s.warn(b.name, b.warnings)
 			err := invalid(errs[i])
@@ -294,10 +293,11 @@ func (s *session) flush(cp json.RawMessage) {
 	s.autosync = append(s.autosync, auto...)
 }
 
-// ponytail: updates applied here aren't counted in cards changed; the
-// session holds only binding IDs. Return the binding's kind if it matters.
 // applyAutosync applies each waiting update the import left on a binding
 // with autosync on. One that fails stays in the changes queue.
+//
+// ponytail: updates applied here aren't counted in cards changed; the
+// session holds only binding IDs. Return the binding's kind if it matters.
 func (s *session) applyAutosync() {
 	for _, id := range s.autosync {
 		if _, err := s.im.Targets.ApplyUpdate(s.ctx, id); err != nil {

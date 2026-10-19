@@ -173,7 +173,9 @@ func (s *Server) job(ctx context.Context, id int64) (jobOut, error) {
 		if err != nil {
 			return jobOut{}, s.fail(err)
 		}
-		out.withChildren(children[id])
+		if c, ok := children[id]; ok {
+			out.withChildren(c)
+		}
 		if out.Outcomes, err = s.Queue.ChildOutcomes(ctx, id); err != nil {
 			return jobOut{}, s.fail(err)
 		}

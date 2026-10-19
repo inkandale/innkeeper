@@ -178,13 +178,12 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
           </select>
           <button
             className="button"
-            aria-pressed={ungrouped}
             onClick={() => {
               setUngrouped(!ungrouped);
               saveUngrouped(!ungrouped);
             }}
           >
-            Ungroup variants
+            {ungrouped ? "Group variants" : "Ungroup variants"}
           </button>
           {hits.length > 0 && (
             <>
@@ -236,7 +235,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
         {res.isError && <p className="error">{res.error.message}</p>}
         {scoresOff && <p className="muted">Score filters and sort from this link are off: they read the Scores from instance, and there is none.</p>}
         {unpicked && <p className="muted">Tiles show no score: more than one instance gives scores. Pick one in Settings, under Scores from.</p>}
-        {res.data && <p className="total">{total} {ungrouped ? (total === 1 ? noun.slice(0, -1) : noun) : total === 1 ? "result" : "results"}</p>}
+        {res.data && <p className="total">{total} {total === 1 ? noun.slice(0, -1) : noun}{ungrouped ? "" : ", variants grouped"}</p>}
         {res.data && q.page > last && (
           <p>
             No {noun} on this page. <button className="button" onClick={() => go({ ...q, page: last })}>Go to page {last}</button>

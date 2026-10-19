@@ -124,7 +124,7 @@ test("the URL becomes the search, and hits become tiles", async () => {
   expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ tag: "fantasy" }] }, page: { size: 48, number: 2 } }));
   expect(screen.getByText("+1")).toBeInTheDocument();
   expect(screen.getByTitle("Lumiverse: not pushed")).toBeInTheDocument();
-  expect(screen.getByText("49 results")).toBeInTheDocument();
+  expect(screen.getByText("49 cards, variants grouped")).toBeInTheDocument();
   expect(container.querySelector("img")).toHaveAttribute("src", `/api/blobs/${"ab".repeat(32)}?w=320`);
 });
 
@@ -734,16 +734,19 @@ test("variants group by default, and a family row expands to its members", async
   expect(within(list).getAllByText("matched")).toHaveLength(2);
 });
 
-test("Ungroup variants drops the grouping and is remembered", async () => {
+test("Ungroup variants drops the grouping, flips to Group variants, and is remembered", async () => {
   const { unmount } = renderCards("/cards");
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: "Ungroup variants" }));
   await waitFor(() => expect(mainSearches().at(-1)).not.toHaveProperty("group"));
   expect(localStorage.getItem("innkeeper.library.ungrouped")).toBe("true");
   expect(screen.getByText("49 cards")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Group variants" }));
+  await waitFor(() => expect(mainSearches().at(-1)).toMatchObject({ group: "family" }));
+  await user.click(screen.getByRole("button", { name: "Ungroup variants" }));
   unmount();
   renderCards("/cards");
-  expect(await screen.findByRole("button", { name: "Ungroup variants" })).toHaveAttribute("aria-pressed", "true");
+  expect(await screen.findByRole("button", { name: "Group variants" })).toBeInTheDocument();
 });
 
 test("grouped, select all matching names no count, since total counts families", async () => {

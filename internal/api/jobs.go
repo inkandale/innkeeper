@@ -152,9 +152,11 @@ func (s *Server) job(ctx context.Context, id int64) (jobOut, error) {
 	}
 	out := toJob(j)
 	if j.Kind == bulk.Kind {
-		if out.Children, err = s.Queue.ChildCounts(ctx, id); err != nil {
+		children, err := s.Queue.ChildrenFor(ctx, []int64{id})
+		if err != nil {
 			return jobOut{}, s.fail(err)
 		}
+		out.Children = children[id].Counts
 		if out.Outcomes, err = s.Queue.ChildOutcomes(ctx, id); err != nil {
 			return jobOut{}, s.fail(err)
 		}
@@ -245,14 +247,14 @@ func (s *Server) jobRoutes(api huma.API) {
 					parents = append(parents, j.ID)
 				}
 			}
-			counts, err := s.Queue.ChildCountsFor(ctx, parents)
+			children, err := s.Queue.ChildrenFor(ctx, parents)
 			if err != nil {
 				return nil, s.fail(err)
 			}
 			out := &jobsOut{Body: make([]jobOut, len(list))}
 			for i, j := range list {
 				out.Body[i] = summary(toJob(j))
-				out.Body[i].Children = counts[j.ID]
+				out.Body[i].Children = children[j.ID].Counts
 			}
 			return out, nil
 		})

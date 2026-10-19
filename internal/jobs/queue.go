@@ -418,39 +418,39 @@ func (q *Queue) List(ctx context.Context, o ListOptions) ([]Job, error) {
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Job, error) { return scanJob(row) })
 }
 
-// ChildCounts returns how many of a parent's children have each status.
-func (q *Queue) ChildCounts(ctx context.Context, parent int64) (map[string]int, error) {
-	rows, err := q.pool.Query(ctx, `SELECT status, count(*)::int FROM job WHERE parent_id = $1 GROUP BY status`, parent)
-	if err != nil {
-		return nil, err
-	}
-	out := map[string]int{}
-	var status string
-	var n int
-	_, err = pgx.ForEachRow(rows, []any{&status, &n}, func() error {
-		out[status] = n
-		return nil
-	})
-	return out, err
+// Children sums up a bulk job's children.
+type Children struct {
+	// Counts is how many children have each status.
+	Counts map[string]int
+	// StartedAt is the earliest child's start, nil until one starts.
+	StartedAt    *time.Time
+	CardsChanged int
 }
 
-// ChildCountsFor is ChildCounts for many parents in one query. Parents
-// without children are left out.
-func (q *Queue) ChildCountsFor(ctx context.Context, parents []int64) (map[int64]map[string]int, error) {
-	rows, err := q.pool.Query(ctx, `SELECT parent_id, status, count(*)::int FROM job
-		WHERE parent_id = ANY($1) GROUP BY parent_id, status`, parents)
+// ChildrenFor sums up each parent's children in one query. Parents without
+// children are left out.
+func (q *Queue) ChildrenFor(ctx context.Context, parents []int64) (map[int64]Children, error) {
+	rows, err := q.pool.Query(ctx, `SELECT parent_id, status, count(*)::int, min(started_at), sum(cards_changed)::int
+		FROM job WHERE parent_id = ANY($1) GROUP BY parent_id, status`, parents)
 	if err != nil {
 		return nil, err
 	}
-	out := map[int64]map[string]int{}
+	out := map[int64]Children{}
 	var parent int64
 	var status string
-	var n int
-	_, err = pgx.ForEachRow(rows, []any{&parent, &status, &n}, func() error {
-		if out[parent] == nil {
-			out[parent] = map[string]int{}
+	var n, cards int
+	var started *time.Time
+	_, err = pgx.ForEachRow(rows, []any{&parent, &status, &n, &started, &cards}, func() error {
+		c := out[parent]
+		if c.Counts == nil {
+			c.Counts = map[string]int{}
 		}
-		out[parent][status] = n
+		c.Counts[status] = n
+		c.CardsChanged += cards
+		if started != nil && (c.StartedAt == nil || started.Before(*c.StartedAt)) {
+			c.StartedAt = new(*started)
+		}
+		out[parent] = c
 		return nil
 	})
 	return out, err

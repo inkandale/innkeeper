@@ -222,11 +222,11 @@ func TestCancelParentCancelsChildren(t *testing.T) {
 	if err := q.Cancel(ctx, p.ID); err != nil {
 		t.Fatal(err)
 	}
-	counts, err := q.ChildCounts(ctx, p.ID)
+	children, err := q.ChildrenFor(ctx, []int64{p.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if counts[StatusFailed] != 2 || len(counts) != 1 {
+	if counts := children[p.ID].Counts; counts[StatusFailed] != 2 || len(counts) != 1 {
 		t.Fatalf("children = %v, want 2 failed", counts)
 	}
 	if got, _ := q.Get(ctx, p.ID); got.Status != StatusFailed {
@@ -407,5 +407,27 @@ func TestClaimSetsStartedAtOnce(t *testing.T) {
 	}
 	if got, _ := q.Get(ctx, j.ID); got.StartedAt != nil {
 		t.Fatalf("manually retried job started at %v, want nil", got.StartedAt)
+	}
+}
+
+func TestChildrenForSumsChildMetrics(t *testing.T) {
+	q := newQueue(t)
+	ctx := context.Background()
+	p, _ := q.EnqueueBulk(ctx, Spec{Kind: "bulk"}, []Spec{{Kind: "item"}, {Kind: "item"}, {Kind: "item"}})
+	first, _ := q.claim(ctx, "w1", []string{"item"}, time.Minute)
+	second, _ := q.claim(ctx, "w1", []string{"item"}, time.Minute)
+	for i, c := range []*Job{first, second} {
+		if err := q.finish(ctx, c, "w1", runState{cards: i + 2}, outcome{status: StatusSucceeded}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := q.ChildrenFor(ctx, []int64{p.ID, 999999})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := got[p.ID]
+	if len(got) != 1 || c.Counts[StatusSucceeded] != 2 || c.Counts[StatusQueued] != 1 || c.CardsChanged != 5 ||
+		c.StartedAt == nil || !c.StartedAt.Equal(*first.StartedAt) {
+		t.Fatalf("children = %+v", got)
 	}
 }

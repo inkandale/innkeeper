@@ -9,6 +9,7 @@ import (
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/targets"
 	"github.com/inkandale/innkeeper/internal/tier"
+	"github.com/inkandale/innkeeper/protocol"
 )
 
 type reconcileIn struct{ Body targets.ReconcileParams }
@@ -60,7 +61,7 @@ func (s *Server) reconcileRoutes(api huma.API) {
 			"Each app's snapshot is a finished reconcile job named in the result's apps; read it from GET /jobs/{id}."},
 		func(ctx context.Context, in *syncIn) (*jobResp, error) {
 			if in.Body.InstanceID != 0 {
-				if _, err := s.usable(ctx, in.Body.InstanceID, "pull"); err != nil {
+				if _, err := s.usable(ctx, in.Body.InstanceID, protocol.CapabilityPull); err != nil {
 					return nil, err
 				}
 			}
@@ -75,7 +76,7 @@ func (s *Server) reconcileRoutes(api huma.API) {
 		Path: "/reconciles", Summary: "Sync a target app with the library", Tags: tags, DefaultStatus: http.StatusAccepted,
 		Description: "Queues a sync. With apply obvious (the default) it binds exact matches and imports new items; apply none previews. Read the snapshot from GET /jobs/{id} once the job finishes."},
 		func(ctx context.Context, in *reconcileIn) (*jobResp, error) {
-			if _, err := s.usable(ctx, in.Body.InstanceID, "pull"); err != nil {
+			if _, err := s.usable(ctx, in.Body.InstanceID, protocol.CapabilityPull); err != nil {
 				return nil, err
 			}
 			j, err := s.Targets.EnqueueReconcile(ctx, s.Queue, in.Body)

@@ -20,7 +20,7 @@ const (
 )
 
 // Services maps each service method to the capability that offers it.
-var Services = map[string]string{MethodAIChat: "ai", MethodAIEmbed: "ai", MethodAIDecide: "ai"}
+var Services = map[string]string{MethodAIChat: CapabilityAI, MethodAIEmbed: CapabilityAI, MethodAIDecide: CapabilityAI}
 
 // ServiceSample is a small request to one service, and a check of the reply's
 // shape. The contract check sends it to every provider of the service.

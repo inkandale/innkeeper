@@ -55,7 +55,7 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 	if err := json.Unmarshal(r.Payload, &p); err != nil {
 		return fmt.Errorf("action payload: %w", err)
 	}
-	inst, err := rn.Registry.InstanceWith(ctx, *r.InstanceID, "action")
+	inst, err := rn.Registry.InstanceWith(ctx, *r.InstanceID, protocol.CapabilityAction)
 	if err != nil {
 		return err
 	}

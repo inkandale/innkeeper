@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/inkandale/innkeeper/protocol"
 )
 
 // FakeEnrichments are the keys the fake plugin's enrich.run writes.
@@ -23,7 +25,7 @@ summary = { type = "text", label = "Summary" }
 // a manifest that runs it with args. It returns the folder.
 func FakePlugin(t *testing.T, args ...string) string {
 	t.Helper()
-	return FakePluginWith(t, []string{"push", "pull"}, args...)
+	return FakePluginWith(t, []string{protocol.CapabilityPush, protocol.CapabilityPull}, args...)
 }
 
 // FakePluginWith is FakePlugin with the given capabilities.
@@ -50,7 +52,7 @@ command = [%s]
 capabilities = [%s]
 multiple_instances = true
 `, strings.Join(cmd, ", "), strings.Join(quoted, ", "))
-	if slices.Contains(caps, "codec") {
+	if slices.Contains(caps, protocol.CapabilityCodec) {
 		manifest += "formats = [\"fake\"]\n"
 	}
 	if slices.Contains(args, "-mode=database") {
@@ -61,17 +63,17 @@ multiple_instances = true
 	}
 	// Tables go last; keys after one would belong to it. An importer declares
 	// enrichments too, for emit.card's values.
-	if slices.Contains(caps, "enrich") || slices.Contains(caps, "import") {
+	if slices.Contains(caps, protocol.CapabilityEnrich) || slices.Contains(caps, protocol.CapabilityImport) {
 		manifest += FakeEnrichments
 	}
-	if slices.Contains(caps, "records") {
+	if slices.Contains(caps, protocol.CapabilityRecords) {
 		manifest += `[records.notes]
 label = "Notes"
 import = ["file", "url"]
 schema = {type = "object", required = ["title"], properties = {title = {type = "string"}, body = {type = "string", contentMediaType = "text/markdown"}}}
 `
 	}
-	if slices.Contains(caps, "settings") {
+	if slices.Contains(caps, protocol.CapabilitySettings) {
 		manifest += `[settings.actions]
 test = { label = "Test connection" }
 `

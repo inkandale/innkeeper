@@ -12,6 +12,7 @@ import (
 
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
+	"github.com/inkandale/innkeeper/protocol"
 )
 
 // syncLock is the advisory lock a sync or reconcile run holds for its whole
@@ -161,7 +162,7 @@ func (s *Service) syncApps(ctx context.Context, only int64) ([]int64, error) {
 	if only != 0 {
 		return []int64{only}, nil
 	}
-	insts, err := s.reg.InstancesWith(ctx, "push", "pull")
+	insts, err := s.reg.InstancesWith(ctx, protocol.CapabilityPush, protocol.CapabilityPull)
 	if err != nil {
 		return nil, err
 	}

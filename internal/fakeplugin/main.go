@@ -75,7 +75,7 @@ func main() {
 			case "bad-protocol":
 				res.Protocol = 99
 			case "wrong-caps":
-				res.Capabilities = []string{"push"}
+				res.Capabilities = []string{protocol.CapabilityPush}
 			case "wrong-version":
 				res.Version = "9.9.9"
 			case "slow-init":

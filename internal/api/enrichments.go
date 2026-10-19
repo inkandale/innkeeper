@@ -25,7 +25,7 @@ const scoreInstanceSetting = "score_instance"
 
 // enrichers is the enabled enrich instances.
 func (s *Server) enrichers(ctx context.Context) ([]plugins.InstanceInfo, error) {
-	insts, err := s.Registry.InstancesWith(ctx, "enrich")
+	insts, err := s.Registry.InstancesWith(ctx, protocol.CapabilityEnrich)
 	return slices.DeleteFunc(insts, func(i plugins.InstanceInfo) bool { return i.Disabled }), err
 }
 
@@ -155,7 +155,7 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 			if (len(b.CardIDs) > 0) == (b.Query != nil) {
 				return nil, huma.Error400BadRequest("send card_ids or query")
 			}
-			inst, err := s.usable(ctx, b.InstanceID, "enrich")
+			inst, err := s.usable(ctx, b.InstanceID, protocol.CapabilityEnrich)
 			if err != nil {
 				return nil, err
 			}
@@ -288,7 +288,7 @@ func (s *Server) setScoreInstance(ctx context.Context, lib *int64, id *int64) er
 		if err != nil {
 			return s.fail(err)
 		}
-		if !s.Registry.HasCapability(info.Plugin, "enrich") {
+		if !s.Registry.HasCapability(info.Plugin, protocol.CapabilityEnrich) {
 			return huma.Error400BadRequest(fmt.Sprintf("plugin %s can't enrich", info.Plugin))
 		}
 		v = strconv.FormatInt(*id, 10)

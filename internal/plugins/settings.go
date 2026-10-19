@@ -38,7 +38,7 @@ func (r *Registry) settingsInstance(ctx context.Context, plugin string) (pluginh
 	if !ok {
 		return pluginhost.Instance{}, fmt.Errorf("%w: %s", ErrUnknownPlugin, plugin)
 	}
-	if !m.Has("settings") {
+	if !m.Has(protocol.CapabilitySettings) {
 		return pluginhost.Instance{}, fmt.Errorf("%w: plugin %s has no settings calls", ErrIncapable, plugin)
 	}
 	var changed time.Time
@@ -108,7 +108,7 @@ func (r *Registry) Defaults(ctx context.Context, mgr *pluginhost.Manager, plugin
 		}
 	}
 	out := Defaults{Defaults: schemaDefaults(m.Config), Updated: []string{}}
-	if m.Has("settings") {
+	if m.Has(protocol.CapabilitySettings) {
 		inst, err := r.settingsInstance(ctx, plugin)
 		if err != nil {
 			return out, err

@@ -367,7 +367,7 @@ func (s *Server) revoke(w http.ResponseWriter, r *http.Request) {
 
 // loginProviders are the auth instances that can log the owner in.
 func (s *Server) loginProviders(ctx context.Context) ([]provider, error) {
-	insts, err := s.Registry.InstancesWith(ctx, "auth")
+	insts, err := s.Registry.InstancesWith(ctx, protocol.CapabilityAuth)
 	if err != nil {
 		return nil, err
 	}

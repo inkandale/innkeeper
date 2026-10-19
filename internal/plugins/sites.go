@@ -28,7 +28,7 @@ var ErrBadSource = errors.New("sites plugin sent an invalid source")
 // SitesInstances returns the oldest working instance of each plugin that
 // declares sites, ordered by that instance's ID.
 func (r *Registry) SitesInstances(ctx context.Context) ([]pluginhost.Instance, error) {
-	list, err := r.InstancesWith(ctx, "sites")
+	list, err := r.InstancesWith(ctx, protocol.CapabilitySites)
 	if err != nil {
 		return nil, err
 	}

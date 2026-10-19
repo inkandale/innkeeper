@@ -23,6 +23,7 @@ import (
 	"github.com/inkandale/innkeeper/internal/pluginhost"
 	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/internal/secrets"
+	"github.com/inkandale/innkeeper/protocol"
 )
 
 // services are what the api and worker both use.
@@ -85,7 +86,7 @@ func (s *services) ensureSingletons(ctx context.Context, log *slog.Logger) error
 	if len(created) > 0 {
 		log.Info("created singleton plugin instances", "plugins", created)
 	}
-	if slices.ContainsFunc(created, func(p string) bool { return s.registry.HasCapability(p, "sites") }) {
+	if slices.ContainsFunc(created, func(p string) bool { return s.registry.HasCapability(p, protocol.CapabilitySites) }) {
 		importer.EnqueueDetect(ctx, jobs.New(s.pool), log)
 	}
 	return nil

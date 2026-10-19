@@ -55,7 +55,7 @@ func (s *Server) toolRoutes(api huma.API) {
 		Summary: "List the MCP tools plugin instances offer", Tags: tags,
 		Description: "Instances that are broken, or whose plugin doesn't answer, are left out."},
 		func(ctx context.Context, _ *struct{}) (*pluginToolsOut, error) {
-			insts, err := s.Registry.InstancesWith(ctx, "mcp")
+			insts, err := s.Registry.InstancesWith(ctx, protocol.CapabilityMCP)
 			if err != nil {
 				return nil, s.fail(err)
 			}
@@ -86,7 +86,7 @@ func (s *Server) toolRoutes(api huma.API) {
 		Path: "/instances/{id}/tools/{name}", Summary: "Run a plugin instance's MCP tool", Tags: tags,
 		Description: "Needs the tier the tool declares. A failure the tool reports comes back with is_error set."},
 		func(ctx context.Context, in *callToolIn) (*callToolOut, error) {
-			if _, err := s.usable(ctx, in.ID, "mcp"); err != nil {
+			if _, err := s.usable(ctx, in.ID, protocol.CapabilityMCP); err != nil {
 				return nil, err
 			}
 			inst, tools, err := instanceList(ctx, s, &s.tools, mcpTools, in.ID)

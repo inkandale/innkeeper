@@ -239,7 +239,7 @@ func (rs *resolver) item(ctx context.Context, k kind, r Resolution) (ResolveResu
 		// differs, and this app keeps it.
 		r.Choices, r.Default, r.AcceptedHash = nil, merge.ChooseKeepInApp, ""
 	}
-	bound, err := rs.bind(ctx, k, info, rinfo, it, r, id, inst.Manifest.Has("push"))
+	bound, err := rs.bind(ctx, k, info, rinfo, it, r, id, inst.Manifest.Has(protocol.CapabilityPush))
 	if r.Action == "import" && errors.Is(err, ErrBound) {
 		// A new card can only clash on the item: a concurrent import bound it first.
 		return res, stale

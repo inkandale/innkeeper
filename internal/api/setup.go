@@ -163,7 +163,7 @@ func (s *Server) setupRoutes(api huma.API) {
 			names := slices.Sorted(maps.Keys(manifests))
 			for _, name := range names {
 				m := manifests[name]
-				if !m.Has("auth") {
+				if !m.Has(protocol.CapabilityAuth) {
 					continue
 				}
 				var res protocol.AuthSetupResult
@@ -202,7 +202,7 @@ func (s *Server) setupRoutes(api huma.API) {
 				return nil, refuse()
 			}
 			m := s.Registry.Manifests()[in.Body.Plugin]
-			if m == nil || !m.Has("auth") {
+			if m == nil || !m.Has(protocol.CapabilityAuth) {
 				return nil, huma.Error400BadRequest("no such login plugin: " + in.Body.Plugin)
 			}
 			var res protocol.AuthSetupCompleteResult

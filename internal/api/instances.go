@@ -130,7 +130,7 @@ func (s *Server) instanceRoutes(api huma.API) {
 					Source: "builtin", Builtin: s.Registry.IsBuiltin(m.Name),
 					Description: m.Description, Category: m.Category, MultipleInstances: m.AllowsManyInstances(),
 					Status: plugins.Status(m, byPlugin[m.Name])}
-				if m.Has("enrich") {
+				if m.Has(protocol.CapabilityEnrich) {
 					p.EnrichMaxCards = enrich.MaxCards(m)
 				}
 				if m.Icon != "" {
@@ -258,7 +258,7 @@ func (s *Server) instanceRoutes(api huma.API) {
 // detectWith runs the detect-sources job after a sites instance may have
 // started working, since the job leaves entities queued while none does.
 func (s *Server) detectWith(ctx context.Context, plugin string) {
-	if s.Registry.HasCapability(plugin, "sites") {
+	if s.Registry.HasCapability(plugin, protocol.CapabilitySites) {
 		importer.EnqueueDetect(ctx, s.Queue, s.Log)
 	}
 }
@@ -268,7 +268,7 @@ func (s *Server) detectWith(ctx context.Context, plugin string) {
 // so a client that could change them could make itself the owner.
 func (s *Server) loginGuard(ctx context.Context, plugin string, owner bool) error {
 	client := auth.FromMCP(ctx) || ctx.Value(oauthKey{}) == true
-	if client && (owner || s.Registry.HasCapability(plugin, "auth")) {
+	if client && (owner || s.Registry.HasCapability(plugin, protocol.CapabilityAuth)) {
 		return huma.Error403Forbidden("login providers and owners can't be changed by an OAuth or MCP client; use an API token or the web UI")
 	}
 	return nil

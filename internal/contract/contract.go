@@ -86,18 +86,18 @@ func Check(ctx context.Context, dir string, log *slog.Logger) ([]Result, error) 
 	}
 
 	suites := []suite{
-		{[]string{"push", "pull"}, func() []Result { return checkTarget(ctx, p, m) }, nil},
-		{[]string{"auth"}, func() []Result { return []Result{{"auth.setup returns a form or -32601", checkSetup(ctx, p)}} }, nil},
-		{[]string{"mcp"}, func() []Result { return checkMCP(ctx, p) }, driveMCP},
-		{[]string{"action"}, func() []Result { return checkActions(ctx, p) }, driveActions},
-		{[]string{"records"}, func() []Result { return checkRecords(ctx, p, m, tmp) }, driveRecords(m, tmp)},
-		{[]string{"import"}, func() []Result { return []Result{{checkImportName, checkImport(ctx, p)}} }, driveImport},
-		{[]string{"enrich"}, func() []Result { return []Result{{checkEnrichName, checkEnrich(ctx, p, m)}} }, driveEnrich},
-		{[]string{"settings"}, func() []Result { return checkSettings(ctx, p, m) }, driveSettings(m)},
-		{[]string{"ai"}, func() []Result { return []Result{{checkServicesName, checkServices(ctx, p)}} }, nil},
-		{[]string{"catalog"}, func() []Result { return checkCatalog(ctx, p, tmp) }, nil},
-		{[]string{"sites"}, func() []Result { return checkSites(ctx, p) }, nil},
-		{[]string{"codec"}, func() []Result {
+		{[]string{protocol.CapabilityPush, protocol.CapabilityPull}, func() []Result { return checkTarget(ctx, p, m) }, nil},
+		{[]string{protocol.CapabilityAuth}, func() []Result { return []Result{{"auth.setup returns a form or -32601", checkSetup(ctx, p)}} }, nil},
+		{[]string{protocol.CapabilityMCP}, func() []Result { return checkMCP(ctx, p) }, driveMCP},
+		{[]string{protocol.CapabilityAction}, func() []Result { return checkActions(ctx, p) }, driveActions},
+		{[]string{protocol.CapabilityRecords}, func() []Result { return checkRecords(ctx, p, m, tmp) }, driveRecords(m, tmp)},
+		{[]string{protocol.CapabilityImport}, func() []Result { return []Result{{checkImportName, checkImport(ctx, p)}} }, driveImport},
+		{[]string{protocol.CapabilityEnrich}, func() []Result { return []Result{{checkEnrichName, checkEnrich(ctx, p, m)}} }, driveEnrich},
+		{[]string{protocol.CapabilitySettings}, func() []Result { return checkSettings(ctx, p, m) }, driveSettings(m)},
+		{[]string{protocol.CapabilityAI}, func() []Result { return []Result{{checkServicesName, checkServices(ctx, p)}} }, nil},
+		{[]string{protocol.CapabilityCatalog}, func() []Result { return checkCatalog(ctx, p, tmp) }, nil},
+		{[]string{protocol.CapabilitySites}, func() []Result { return checkSites(ctx, p) }, nil},
+		{[]string{protocol.CapabilityCodec}, func() []Result {
 			return runChecks(ctx, p, []check{
 				{checkRoundTripName, func(ctx context.Context) error { return checkRoundTrip(ctx, p, m, tmp) }},
 				{checkRejectsName, func(ctx context.Context) error { return checkRejects(ctx, p, tmp) }},
@@ -190,7 +190,7 @@ func checkTarget(ctx context.Context, p *pluginhost.Process, m *protocol.Manifes
 			return results
 		}
 	}
-	if m.Has("push") && info.Delete {
+	if m.Has(protocol.CapabilityPush) && info.Delete {
 		err = checkPut(ctx, p, info)
 		results = append(results, Result{checkPutName, err})
 		if dead(err, p) {
@@ -202,7 +202,7 @@ func checkTarget(ctx context.Context, p *pluginhost.Process, m *protocol.Manifes
 	}
 	err = checkLists(ctx, p)
 	results = append(results, Result{"a pull target answers target.list and target.list_lorebooks", err})
-	if m.Has("push") || dead(err, p) {
+	if !m.PullOnly() || dead(err, p) {
 		return results
 	}
 	return append(results, Result{checkGoneName, checkGone(ctx, p, info)})
@@ -301,7 +301,7 @@ func checkDescribe(ctx context.Context, p *pluginhost.Process, m *protocol.Manif
 	if err := info.Validate(); err != nil {
 		return info, err
 	}
-	if info.Pull && !m.Has("pull") {
+	if info.Pull && !m.Has(protocol.CapabilityPull) {
 		return info, errors.New("pull is true, but the manifest doesn't declare the pull capability")
 	}
 	return info, nil

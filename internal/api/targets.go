@@ -11,6 +11,7 @@ import (
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/targets"
 	"github.com/inkandale/innkeeper/internal/tier"
+	"github.com/inkandale/innkeeper/protocol"
 )
 
 type pushIn struct {
@@ -104,7 +105,7 @@ func (s *Server) targetRoutes(api huma.API) {
 				if _, err := ents.Get(ctx, in.ID); err != nil {
 					return nil, s.fail(err)
 				}
-				if _, err := s.usable(ctx, in.Body.InstanceID, "push"); err != nil {
+				if _, err := s.usable(ctx, in.Body.InstanceID, protocol.CapabilityPush); err != nil {
 					return nil, err
 				}
 				if in.Body.Confirm != "" {
@@ -192,7 +193,7 @@ func (s *Server) targetRoutes(api huma.API) {
 		if q.Filter == nil && q.Text == "" {
 			return nil, huma.Error400BadRequest("bulk actions need a filter or text; to select every card, filter on archived")
 		}
-		if _, err := s.usable(ctx, instanceID, "push"); err != nil {
+		if _, err := s.usable(ctx, instanceID, protocol.CapabilityPush); err != nil {
 			return nil, err
 		}
 		if k == library.Lorebook {

@@ -14,6 +14,7 @@ import (
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/tier"
+	"github.com/inkandale/innkeeper/protocol"
 )
 
 // libraryOption is a setting a library can override, stored as its JSON
@@ -158,7 +159,7 @@ func (s *Server) hideRoutes(api huma.API) {
 			p := bulk.HidePayload{Library: in.ID, HideBelow: b.HideBelow.Value, Duplicates: *b.Duplicates.Value,
 				Distance: *b.DuplicateDistance.Value, Keep: *b.DuplicateKeep.Value}
 			if d := b.DuplicateDecide.Value; d != nil && p.Duplicates == "near" {
-				if _, err := s.usable(ctx, *d, "ai"); err != nil {
+				if _, err := s.usable(ctx, *d, protocol.CapabilityAI); err != nil {
 					return nil, err
 				}
 				p.Decide = *d

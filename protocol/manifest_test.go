@@ -449,6 +449,23 @@ func TestAllowsManyInstances(t *testing.T) {
 	}
 }
 
+func TestTargetAndPullOnly(t *testing.T) {
+	for _, c := range []struct {
+		caps             []string
+		target, pullOnly bool
+	}{
+		{[]string{"push"}, true, false},
+		{[]string{"push", "pull"}, true, false},
+		{[]string{"pull"}, true, true},
+		{[]string{"import"}, false, false},
+	} {
+		m := Manifest{Capabilities: c.caps}
+		if m.IsTarget() != c.target || m.PullOnly() != c.pullOnly {
+			t.Errorf("%v: IsTarget %v, PullOnly %v; want %v, %v", c.caps, m.IsTarget(), m.PullOnly(), c.target, c.pullOnly)
+		}
+	}
+}
+
 func TestBulkNeedsImport(t *testing.T) {
 	m, err := LoadManifest(writeManifest(t, `name = "archive"
 version = "1"

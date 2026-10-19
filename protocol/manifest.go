@@ -13,8 +13,29 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
+// The capabilities a plugin may declare. They are untyped so they pass
+// straight into the []string a manifest decodes and a handshake reports.
+const (
+	CapabilityImport   = "import"
+	CapabilityPush     = "push"
+	CapabilityPull     = "pull"
+	CapabilityAction   = "action"
+	CapabilityRecords  = "records"
+	CapabilityEnrich   = "enrich"
+	CapabilityCodec    = "codec"
+	CapabilityAuth     = "auth"
+	CapabilityMCP      = "mcp"
+	CapabilityTheme    = "theme"
+	CapabilityCatalog  = "catalog"
+	CapabilitySites    = "sites"
+	CapabilityAI       = "ai"
+	CapabilitySettings = "settings"
+)
+
 // Capabilities lists every capability a plugin may declare.
-var Capabilities = []string{"import", "push", "pull", "action", "records", "enrich", "codec", "auth", "mcp", "theme", "catalog", "sites", "ai", "settings"}
+var Capabilities = []string{CapabilityImport, CapabilityPush, CapabilityPull, CapabilityAction, CapabilityRecords,
+	CapabilityEnrich, CapabilityCodec, CapabilityAuth, CapabilityMCP, CapabilityTheme, CapabilityCatalog,
+	CapabilitySites, CapabilityAI, CapabilitySettings}
 
 // WithoutRetired drops capabilities an older core defined, so a manifest or
 // handshake that still lists one keeps working.
@@ -256,10 +277,10 @@ func (m *Manifest) Validate() error {
 	if grids > 1 {
 		errs = append(errs, errors.New("at most one enrichment can set grid"))
 	}
-	if m.Has("enrich") && len(m.Enrichments) == 0 {
+	if m.Has(CapabilityEnrich) && len(m.Enrichments) == 0 {
 		errs = append(errs, errors.New("an enrich plugin must declare enrichments"))
 	}
-	hasCodec := m.Has("codec")
+	hasCodec := m.Has(CapabilityCodec)
 	if hasCodec && len(m.Formats) == 0 {
 		errs = append(errs, errors.New("a codec plugin must list its formats"))
 	}
@@ -282,13 +303,13 @@ func (m *Manifest) Validate() error {
 	if m.EnrichMaxCards < 0 {
 		errs = append(errs, errors.New("enrich_max_cards can't be negative"))
 	}
-	if !m.Has("enrich") && m.EnrichMaxCards != 0 {
+	if !m.Has(CapabilityEnrich) && m.EnrichMaxCards != 0 {
 		errs = append(errs, errors.New("enrich_max_cards needs the enrich capability"))
 	}
-	if !m.Has("import") && m.Bulk {
+	if !m.Has(CapabilityImport) && m.Bulk {
 		errs = append(errs, errors.New("bulk needs the import capability"))
 	}
-	if !m.Has("import") && len(m.Inputs) > 0 {
+	if !m.Has(CapabilityImport) && len(m.Inputs) > 0 {
 		errs = append(errs, errors.New("inputs needs the import capability"))
 	}
 	seenInputs := map[string]bool{}
@@ -301,16 +322,16 @@ func (m *Manifest) Validate() error {
 		}
 		seenInputs[in] = true
 	}
-	if m.Has("records") && len(m.Records) == 0 {
+	if m.Has(CapabilityRecords) && len(m.Records) == 0 {
 		errs = append(errs, errors.New("a records plugin must declare a record type"))
 	}
-	if !m.Has("records") && len(m.Records) > 0 {
+	if !m.Has(CapabilityRecords) && len(m.Records) > 0 {
 		errs = append(errs, errors.New("records needs the records capability"))
 	}
 	for _, key := range slices.Sorted(maps.Keys(m.Records)) {
 		errs = append(errs, m.Records[key].validate(key)...)
 	}
-	if len(m.SourceKinds) > 0 && (!m.Has("pull") || m.Has("push")) {
+	if len(m.SourceKinds) > 0 && !m.PullOnly() {
 		errs = append(errs, errors.New("source_kinds needs the pull capability and not push"))
 	}
 	seenKinds := map[string]bool{}
@@ -333,7 +354,7 @@ func (m *Manifest) Validate() error {
 		}
 		seenUses[u] = true
 	}
-	if len(m.Settings.Actions) > 0 && !m.Has("settings") {
+	if len(m.Settings.Actions) > 0 && !m.Has(CapabilitySettings) {
 		errs = append(errs, errors.New("settings.actions needs the settings capability"))
 	}
 	for _, id := range slices.Sorted(maps.Keys(m.Settings.Actions)) {
@@ -373,10 +394,18 @@ func (m *Manifest) CommandPath() string {
 func (m *Manifest) Has(capability string) bool { return slices.Contains(m.Capabilities, capability) }
 
 // AllowsManyInstances reports whether the owner may create more than one instance. Login plugins always may, so setup can replace a broken login.
-func (m *Manifest) AllowsManyInstances() bool { return m.MultipleInstances || m.Has("auth") }
+func (m *Manifest) AllowsManyInstances() bool { return m.MultipleInstances || m.Has(CapabilityAuth) }
 
 // IsTheme reports whether the plugin is a theme: a stylesheet and no process.
-func (m *Manifest) IsTheme() bool { return m.Has("theme") }
+func (m *Manifest) IsTheme() bool { return m.Has(CapabilityTheme) }
+
+// IsTarget reports whether the plugin syncs with an app: it pushes, pulls,
+// or both.
+func (m *Manifest) IsTarget() bool { return m.Has(CapabilityPush) || m.Has(CapabilityPull) }
+
+// PullOnly reports whether the plugin pulls but never pushes, so its
+// instances follow site sources instead of taking the library's copy.
+func (m *Manifest) PullOnly() bool { return m.Has(CapabilityPull) && !m.Has(CapabilityPush) }
 
 // StylesheetPath is the theme's CSS file.
 func (m *Manifest) StylesheetPath() string { return filepath.Join(m.Dir, m.Stylesheet) }

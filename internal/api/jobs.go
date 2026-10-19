@@ -20,6 +20,7 @@ import (
 	"github.com/inkandale/innkeeper/internal/pluginhost"
 	"github.com/inkandale/innkeeper/internal/targets"
 	"github.com/inkandale/innkeeper/internal/tier"
+	"github.com/inkandale/innkeeper/protocol"
 )
 
 // watchInterval is how often a job stream checks the job. Tests shorten it.
@@ -350,13 +351,13 @@ func (s *Server) jobRoutes(api huma.API) {
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			if !s.Registry.HasCapability(inst.Plugin, "import") {
-				if s.Registry.HasCapability(inst.Plugin, "push") {
+			if !s.Registry.HasCapability(inst.Plugin, protocol.CapabilityImport) {
+				if s.Registry.HasCapability(inst.Plugin, protocol.CapabilityPush) {
 					return nil, huma.Error400BadRequest(fmt.Sprintf("plugin %s has no importer; sync the app with POST /reconciles", inst.Plugin))
 				}
 				return nil, huma.Error400BadRequest(fmt.Sprintf("plugin %s can't import", inst.Plugin))
 			}
-			if _, err := s.usable(ctx, in.Body.InstanceID, "import"); err != nil {
+			if _, err := s.usable(ctx, in.Body.InstanceID, protocol.CapabilityImport); err != nil {
 				return nil, err
 			}
 			lib, err := s.checkLibrary(ctx, in.Body.Library)

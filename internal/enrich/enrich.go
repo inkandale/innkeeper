@@ -209,7 +209,7 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 	if err := json.Unmarshal(r.Payload, &p); err != nil {
 		return fmt.Errorf("enrich payload: %w", err)
 	}
-	inst, err := rn.Registry.InstanceWith(ctx, *r.InstanceID, "enrich")
+	inst, err := rn.Registry.InstanceWith(ctx, *r.InstanceID, protocol.CapabilityEnrich)
 	if err != nil {
 		return err
 	}

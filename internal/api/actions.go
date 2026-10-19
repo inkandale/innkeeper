@@ -71,7 +71,7 @@ func (s *Server) actionRoutes(api huma.API) {
 		Summary: "List the actions plugin instances offer", Tags: tags,
 		Description: "Instances that are broken, or whose plugin doesn't answer, are left out."},
 		func(ctx context.Context, in *listActionsIn) (*actionsOut, error) {
-			insts, err := s.Registry.InstancesWith(ctx, "action")
+			insts, err := s.Registry.InstancesWith(ctx, protocol.CapabilityAction)
 			if err != nil {
 				return nil, s.fail(err)
 			}
@@ -93,7 +93,7 @@ func (s *Server) actionRoutes(api huma.API) {
 		Description: "The skills an @skills/ mention can name, as each instance's action.list reports them. " +
 			"Instances that are broken, or whose plugin doesn't answer, are left out."},
 		func(ctx context.Context, _ *struct{}) (*skillsOut, error) {
-			insts, err := s.Registry.InstancesWith(ctx, "action")
+			insts, err := s.Registry.InstancesWith(ctx, protocol.CapabilityAction)
 			if err != nil {
 				return nil, s.fail(err)
 			}
@@ -115,7 +115,7 @@ func (s *Server) actionRoutes(api huma.API) {
 			"Cancel the job to stop the run."},
 		func(ctx context.Context, in *startActionIn) (*jobResp, error) {
 			b := in.Body
-			if _, err := s.usable(ctx, b.InstanceID, "action"); err != nil {
+			if _, err := s.usable(ctx, b.InstanceID, protocol.CapabilityAction); err != nil {
 				return nil, err
 			}
 			_, list, err := instanceList(ctx, s, &s.actions, actionList, b.InstanceID)

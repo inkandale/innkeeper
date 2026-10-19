@@ -14,12 +14,13 @@ import (
 
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/merge"
+	"github.com/inkandale/innkeeper/protocol"
 )
 
 // followers maps each working pull-only instance to the source kinds it
 // follows, maybe none. A kind two plugins claim goes to the oldest instance.
 func (s *Service) followers(ctx context.Context) (map[int64][]string, error) {
-	insts, err := s.reg.InstancesWith(ctx, "pull")
+	insts, err := s.reg.InstancesWith(ctx, protocol.CapabilityPull)
 	if err != nil {
 		return nil, err
 	}
@@ -28,7 +29,7 @@ func (s *Service) followers(ctx context.Context) (map[int64][]string, error) {
 	out := map[int64][]string{}
 	for _, in := range insts {
 		m := manifests[in.Plugin]
-		if !in.Usable() || m == nil || m.Has("push") {
+		if !in.Usable() || m == nil || !m.PullOnly() {
 			continue
 		}
 		out[in.ID] = []string{}

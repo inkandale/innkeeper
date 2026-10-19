@@ -112,7 +112,7 @@ func worker() error {
 			bulk.PurgeKind:           bulk.Purge(svc.lib),
 			bulk.HideKind: bulk.Hide(svc.lib, func(ctx context.Context, id int64, p protocol.AIDecideParams) (protocol.AIDecideResult, error) {
 				var res protocol.AIDecideResult
-				inst, err := svc.registry.InstanceWith(ctx, id, "ai")
+				inst, err := svc.registry.InstanceWith(ctx, id, protocol.CapabilityAI)
 				if err == nil {
 					err = svc.registry.Call(ctx, mgr, inst, protocol.MethodAIDecide, p, &res)
 				}

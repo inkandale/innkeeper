@@ -441,7 +441,7 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 	if err != nil {
 		return err
 	}
-	if e.Disabled != nil && *e.Disabled && r.HasCapability(plugin, "auth") && usable {
+	if e.Disabled != nil && *e.Disabled && r.HasCapability(plugin, protocol.CapabilityAuth) && usable {
 		// One lock for every login disable, so two of them can't each see the other as the survivor.
 		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('login-providers'))`); err != nil {
 			return err
@@ -449,7 +449,7 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 		var others int
 		err := tx.QueryRow(ctx, `SELECT count(*) FROM plugin_instance
 			WHERE id <> $1 AND plugin = ANY($2) AND owner_subject IS NOT NULL AND broken_error IS NULL AND NOT disabled`,
-			id, r.pluginsWith("auth")).Scan(&others)
+			id, r.pluginsWith(protocol.CapabilityAuth)).Scan(&others)
 		if err != nil {
 			return err
 		}
@@ -466,7 +466,7 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 			return err
 		}
 	}
-	if e.SyncLibrary != nil && !(ok && (m.Has("push") || m.Has("pull"))) {
+	if e.SyncLibrary != nil && !(ok && m.IsTarget()) {
 		return fmt.Errorf("%w: plugin %s doesn't sync, so it has no sync library", ErrInvalid, plugin)
 	}
 	if e.Secrets != nil {
@@ -705,7 +705,7 @@ func (r *Registry) CodecInstance(ctx context.Context, format string) (pluginhost
 		return pluginhost.Instance{}, err
 	}
 	for _, i := range all {
-		if m, ok := r.manifest(i.Plugin); ok && m.Has("codec") && slices.Contains(m.Formats, format) {
+		if m, ok := r.manifest(i.Plugin); ok && m.Has(protocol.CapabilityCodec) && slices.Contains(m.Formats, format) {
 			return r.Instance(ctx, i.ID)
 		}
 	}
@@ -761,7 +761,7 @@ func (r *Registry) Check(ctx context.Context, mgr *pluginhost.Manager, id int64)
 			return nil, err
 		}
 	}
-	if inst.Manifest.Has("pull") {
+	if inst.Manifest.Has(protocol.CapabilityPull) {
 		var res protocol.TargetListResult
 		if err := r.Call(ctx, mgr, inst, protocol.MethodTargetList, nil, &res); err != nil && ctx.Err() == nil {
 			return err, nil

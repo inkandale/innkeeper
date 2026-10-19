@@ -211,7 +211,7 @@ func (s *Service) describe(ctx context.Context, instanceID int64) (pluginhost.In
 	if err != nil {
 		return inst, info, err
 	}
-	if !inst.Manifest.Has("push") && !inst.Manifest.Has("pull") {
+	if !inst.Manifest.IsTarget() {
 		return inst, info, fmt.Errorf("%w: %s", ErrCannot, inst.Manifest.Name)
 	}
 	if err := s.reg.Call(ctx, s.plugins, inst, protocol.MethodTargetDescribe, nil, &info); err != nil {
@@ -220,7 +220,7 @@ func (s *Service) describe(ctx context.Context, instanceID int64) (pluginhost.In
 	if err := info.Validate(); err != nil {
 		return inst, info, fmt.Errorf("%w: target.describe: %w", ErrBadReply, err)
 	}
-	info.Pull = info.Pull && inst.Manifest.Has("pull")
+	info.Pull = info.Pull && inst.Manifest.Has(protocol.CapabilityPull)
 	return inst, info, nil
 }
 
@@ -236,7 +236,7 @@ func (s *Service) describePush(ctx context.Context, instanceID int64) (pluginhos
 
 // pushCheck refuses a target that only follows site sources.
 func pushCheck(inst pluginhost.Instance) error {
-	if inst.Manifest.Has("push") {
+	if inst.Manifest.Has(protocol.CapabilityPush) {
 		return nil
 	}
 	return fmt.Errorf("%w: %s only follows site sources", ErrCannot, inst.Manifest.Name)

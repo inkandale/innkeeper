@@ -189,7 +189,7 @@ func checkRecordPath(id string) error {
 
 // recordsInstance is the instance in, if its plugin keeps in.Type.
 func (s *Server) recordsInstance(ctx context.Context, in *recordTypeIn) (pluginhost.Instance, error) {
-	inst, err := s.usable(ctx, in.ID, "records")
+	inst, err := s.usable(ctx, in.ID, protocol.CapabilityRecords)
 	if err != nil {
 		return inst, err
 	}

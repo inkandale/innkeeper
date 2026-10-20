@@ -6,6 +6,7 @@ import { instancesQuery, useFollowers } from "../api/queries";
 import type { components } from "../api/schema";
 import { badgeClass } from "../cards/Tile";
 import { jobToast } from "../settings/jobUtil";
+import { useConfirm } from "../shell/ConfirmDialog";
 import { useToast } from "../shell/Toasts";
 import { useModal } from "../shell/useModal";
 import { PushPreview } from "./PushPreview";
@@ -146,6 +147,7 @@ export function Changes() {
     },
   });
 
+  const [ask, dialog] = useConfirm();
   const unbind = useMutation({
     mutationFn: async (id: number) => must(await api.DELETE("/bindings/{id}", { params: { path: { id } } })),
     onSuccess: done,
@@ -226,7 +228,15 @@ export function Changes() {
             <button
               className="button"
               disabled={unbind.isPending}
-              onClick={() => confirm(`Unbind ${r.name} from ${name(c.instance_id)}? The ${r.kind} stays in the library.`) && unbind.mutate(c.binding_id ?? 0)}
+              onClick={() =>
+                ask({
+                  title: `Unbind ${r.name} from ${name(c.instance_id)}?`,
+                  body: <p>The {r.kind} stays in the library, but its push history with this app is forgotten.</p>,
+                  confirmLabel: "Unbind",
+                  danger: true,
+                  onConfirm: () => unbind.mutate(c.binding_id ?? 0),
+                })
+              }
             >
               Unbind{where}
             </button>
@@ -352,6 +362,7 @@ export function Changes() {
           }}
         />
       )}
+      {dialog}
     </section>
   );
 }

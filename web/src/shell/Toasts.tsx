@@ -9,7 +9,13 @@ declare module "@tanstack/react-query" {
   }
 }
 
-export type ToastSpec = { text: string; link?: { to: string; label: string }; error?: boolean };
+export type ToastSpec = {
+  text: string;
+  link?: { to: string; label: string };
+  /** action is a button, like Undo, that runs once and dismisses the toast. */
+  action?: { label: string; run: () => void };
+  error?: boolean;
+};
 type Toast = ToastSpec & { id: number };
 
 const ToastContext = createContext<(t: ToastSpec) => void>(() => {});
@@ -47,6 +53,17 @@ export function Toasts({ children }: { children: ReactNode }) {
           <div key={t.id} className={t.error ? "toast error" : "toast"}>
             <span>{t.text}</span>
             {t.link && <Link to={t.link.to}>{t.link.label}</Link>}
+            {t.action && (
+              <button
+                className="button"
+                onClick={() => {
+                  t.action?.run();
+                  dismiss(t.id);
+                }}
+              >
+                {t.action.label}
+              </button>
+            )}
             <button className="button" aria-label="Dismiss" onClick={() => dismiss(t.id)}>
               ×
             </button>

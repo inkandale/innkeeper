@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { Link } from "react-router";
 import { api, must, mustOk, thumb } from "../api/client";
 import { collectionsQuery } from "../api/queries";
+import { useConfirm } from "../shell/ConfirmDialog";
 import { useLibrary, withLibrary } from "../shell/library";
 import "./Collections.css";
 
@@ -12,6 +13,7 @@ function nameFrom(e: FormEvent<HTMLFormElement>): string {
 }
 
 export function Collections() {
+  const [ask, dialog] = useConfirm();
   const qc = useQueryClient();
   const library = useLibrary();
   const list = useQuery(collectionsQuery(library));
@@ -86,7 +88,15 @@ export function Collections() {
                 <button
                   className="button"
                   aria-label={`Delete ${c.name}`}
-                  onClick={() => confirm(`Delete ${c.name}? Its cards stay in the library.`) && remove.mutate(c.id)}
+                  onClick={() =>
+                    ask({
+                      title: `Delete ${c.name}?`,
+                      body: <p>Its cards stay in the library.</p>,
+                      confirmLabel: "Delete collection",
+                      danger: true,
+                      onConfirm: () => remove.mutate(c.id),
+                    })
+                  }
                 >
                   Delete
                 </button>
@@ -95,6 +105,7 @@ export function Collections() {
           </article>
         ))}
       </div>
+      {dialog}
     </section>
   );
 }

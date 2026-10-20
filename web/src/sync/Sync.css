@@ -105,6 +105,12 @@
   }
 }
 
+.confirm form,
+.confirm label {
+  display: grid;
+  gap: var(--space);
+}
+
 /* Outranks .card-aside h2, since the push preview opens inside the card page's aside. */
 dialog.dialog h2 {
   font-size: 1.2em;

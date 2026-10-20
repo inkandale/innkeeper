@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { Toasts } from "../shell/Toasts";
@@ -72,23 +72,26 @@ test("create and rename", async () => {
   expect(calls).toEqual(['POST /api/libraries {"name":"Drafts"}', 'PATCH /api/libraries/2 {"name":"Archive"}']);
 });
 
+async function deleteTyping(name: string) {
+  await userEvent.click(await screen.findByRole("button", { name: "Delete Chub archive" }));
+  await userEvent.type(screen.getByLabelText("Type Chub archive to confirm"), name);
+  await userEvent.click(screen.getByRole("button", { name: "Delete library" }));
+}
+
 test("delete sends the typed name and shows the job's progress", async () => {
   localStorage.setItem("innkeeper.library", "2");
-  const ask = vi.fn(() => "Chub archive");
-  vi.stubGlobal("prompt", ask);
   renderLibraries();
-  await userEvent.click(await screen.findByRole("button", { name: "Delete Chub archive" }));
-  expect(ask).toHaveBeenCalledWith(expect.stringContaining("Type Chub archive to confirm"));
-  expect(calls).toEqual(['DELETE /api/libraries/2 {"confirm":"Chub archive"}']);
+  await deleteTyping("Chub archive");
+  await waitFor(() => expect(calls).toEqual(['DELETE /api/libraries/2 {"confirm":"Chub archive"}']));
   expect(await screen.findByRole("link", { name: /Deleting Chub archive: running 100 of 304/ })).toHaveAttribute("href", "/settings/jobs/9");
   // The switcher would otherwise open a library that's gone.
   expect(localStorage.getItem("innkeeper.library")).toBe("1");
 });
 
 test("a wrong name deletes nothing", async () => {
-  vi.stubGlobal("prompt", () => "chub");
   renderLibraries();
-  await userEvent.click(await screen.findByRole("button", { name: "Delete Chub archive" }));
+  await deleteTyping("chub");
+  expect(screen.getByRole("button", { name: "Delete library" })).toBeDisabled();
   expect(calls).toEqual([]);
 });
 
@@ -101,15 +104,7 @@ test("a refused create says why", async () => {
 
 test("a refused delete says why", async () => {
   refuse = { status: 409, detail: "a delete is already running" };
-  vi.stubGlobal("prompt", () => "Chub archive");
   renderLibraries();
-  await userEvent.click(await screen.findByRole("button", { name: "Delete Chub archive" }));
+  await deleteTyping("Chub archive");
   expect(await screen.findByText("a delete is already running")).toBeInTheDocument();
-});
-
-test("a mistyped name says nothing was deleted", async () => {
-  vi.stubGlobal("prompt", () => "chub");
-  renderLibraries();
-  await userEvent.click(await screen.findByRole("button", { name: "Delete Chub archive" }));
-  expect(screen.getByText("That isn't Chub archive's name, so nothing was deleted.")).toBeInTheDocument();
 });

@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -21,7 +21,6 @@ let bodies: string[];
 beforeEach(() => {
   requests = [];
   bodies = [];
-  vi.stubGlobal("confirm", () => true);
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
@@ -93,6 +92,8 @@ function renderPlugins() {
   );
 }
 
+const confirmWith = (label: string) => userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: label }));
+
 const menuOf = (article: HTMLElement, name: string) =>
   document.getElementById(within(article).getByRole("button", { name: `More for ${name}` }).getAttribute("popovertarget")!)!;
 
@@ -116,8 +117,10 @@ test("delete asks, calls the API, and shows a refusal", async () => {
   const user = userEvent.setup();
   renderPlugins();
   await user.click(await screen.findByRole("button", { name: "Delete instance work" }));
+  await confirmWith("Delete instance");
   expect(requests).toContain("DELETE /api/instances/2");
   await user.click(screen.getByRole("button", { name: "Delete instance home" }));
+  await confirmWith("Delete instance");
   expect(await screen.findByText("instance in use")).toBeInTheDocument();
 });
 
@@ -147,17 +150,21 @@ test("rolls back, uninstalls, and removes data only after typing the name", asyn
   await user.click(within(st).getByRole("button", { name: "Roll back to 0.0.9" }));
   expect(requests).toContain("POST /api/plugins/sillytavern/install");
   await user.click(within(st).getByRole("button", { name: "Uninstall" }));
+  await confirmWith("Uninstall");
   expect(requests).toContain("DELETE /api/plugins/sillytavern");
   // A built-in plugin has nothing to uninstall.
   const dusk = screen.getByRole("heading", { name: "dusk" }).closest("article")!;
   expect(within(dusk).queryByRole("button", { name: "Uninstall" })).not.toBeInTheDocument();
 
   const gone = screen.getByRole("heading", { name: "gone" }).closest("article")!;
-  vi.stubGlobal("prompt", () => "nope");
   await user.click(within(gone).getByRole("button", { name: "Remove data" }));
-  expect(requests).not.toContain("DELETE /api/plugins/gone/data");
-  vi.stubGlobal("prompt", () => "gone");
-  await user.click(within(gone).getByRole("button", { name: "Remove data" }));
+  const dialog = screen.getByRole("dialog", { name: "Remove gone's data?" });
+  const typed = within(dialog).getByLabelText("Type gone to confirm");
+  await user.type(typed, "nope");
+  expect(within(dialog).getByRole("button", { name: "Remove data" })).toBeDisabled();
+  await user.clear(typed);
+  await user.type(typed, "gone");
+  await user.click(within(dialog).getByRole("button", { name: "Remove data" }));
   expect(requests).toContain("DELETE /api/plugins/gone/data");
 });
 
@@ -219,6 +226,7 @@ test("a singleton with no settings still links to its instance and can delete it
   expect(within(card).getByText("0.4.0 · built in")).toBeInTheDocument();
   expect(within(card).getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/settings/instances/5");
   await user.click(within(card).getByRole("button", { name: "Delete instance pnglike" }));
+  await confirmWith("Delete instance");
   expect(requests).toContain("DELETE /api/instances/5");
 });
 
@@ -244,12 +252,16 @@ test("two instances are listed, each with its own menu, and no one is Working", 
   expect(screen.queryByText("Working")).toBeNull();
 });
 
-test("Disable sends the flag, and a disabled instance offers Enable", async () => {
+test("Disable sends the flag with Undo, and a disabled instance offers Enable", async () => {
   const user = userEvent.setup();
   renderPlugins();
   await user.click(await screen.findByRole("button", { name: "Disable office" }));
   expect(requests).toContain("PATCH /api/instances/6");
   expect(bodies[requests.indexOf("PATCH /api/instances/6")]).toBe('{"disabled":true}');
+  await user.click(await screen.findByRole("button", { name: "Undo" }));
+  await waitFor(() =>
+    expect(bodies.filter((_, i) => requests[i] === "PATCH /api/instances/6")).toEqual(['{"disabled":true}', '{"disabled":false}']),
+  );
   const paused = screen.getByRole("heading", { name: "paused" }).closest("article")!;
   expect(within(paused).getByText("Disabled")).toBeInTheDocument();
   expect(within(paused).getByRole("button", { name: "Enable napping" })).toBeInTheDocument();
@@ -257,11 +269,10 @@ test("Disable sends the flag, and a disabled instance offers Enable", async () =
 
 test("Delete instance asks, then calls the API", async () => {
   const user = userEvent.setup();
-  const ask = vi.fn(() => true);
-  vi.stubGlobal("confirm", ask);
   renderPlugins();
   await user.click(await screen.findByRole("button", { name: "Delete instance office" }));
-  expect(ask).toHaveBeenCalled();
+  expect(requests.filter((r) => r.startsWith("DELETE"))).toEqual([]);
+  await confirmWith("Delete instance");
   expect(requests).toContain("DELETE /api/instances/6");
 });
 
@@ -273,12 +284,11 @@ test("Enable sends disabled false", async () => {
   expect(bodies[requests.indexOf("PATCH /api/instances/7")]).toBe('{"disabled":false}');
 });
 
-test("declining the Delete instance confirm sends no DELETE", async () => {
+test("cancelling the Delete instance confirm sends no DELETE", async () => {
   const user = userEvent.setup();
-  const ask = vi.fn(() => false);
-  vi.stubGlobal("confirm", ask);
   renderPlugins();
   await user.click(await screen.findByRole("button", { name: "Delete instance office" }));
-  expect(ask).toHaveBeenCalled();
+  await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(requests.filter((r) => r.startsWith("DELETE"))).toEqual([]);
 });

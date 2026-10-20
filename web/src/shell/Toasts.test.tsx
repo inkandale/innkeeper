@@ -4,6 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { Toasts, useToast } from "./Toasts";
 
+const undo = vi.fn();
+
 function Buttons() {
   const toast = useToast();
   const fail = useMutation({ mutationFn: () => Promise.reject(new Error("Refused")) });
@@ -14,6 +16,7 @@ function Buttons() {
       <button onClick={() => quiet.mutate()}>quiet</button>
       <button onClick={() => toast({ text: "Job 5 started", link: { to: "/settings/jobs/5", label: "View job" } })}>info</button>
       <button onClick={() => toast({ text: "Boom", error: true })}>error</button>
+      <button onClick={() => toast({ text: "Archived Brakka", action: { label: "Undo", run: undo } })}>archive</button>
     </>
   );
 }
@@ -58,4 +61,13 @@ test("a failed mutation toasts its error once, unless it opts out", async () => 
   await user.click(screen.getByRole("button", { name: "fail" }));
   expect(await screen.findAllByText("Refused")).toHaveLength(1);
   expect(screen.queryByText("Shown inline")).not.toBeInTheDocument();
+});
+
+test("a toast's action runs once and dismisses it", async () => {
+  renderToasts();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "archive" }));
+  await user.click(screen.getByRole("button", { name: "Undo" }));
+  expect(undo).toHaveBeenCalledOnce();
+  expect(screen.queryByText("Archived Brakka")).not.toBeInTheDocument();
 });

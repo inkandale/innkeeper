@@ -132,9 +132,11 @@
   padding: calc(var(--space) * 0.5);
 }
 
-.menu button {
+.menu button,
+.menu a {
   display: block;
   width: 100%;
+  text-decoration: none;
   text-align: left;
   border: 0;
   background: none;
@@ -144,7 +146,8 @@
   cursor: pointer;
 }
 
-.menu button:hover {
+.menu button:hover,
+.menu a:hover {
   background: var(--bg);
 }
 

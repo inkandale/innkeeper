@@ -12,7 +12,7 @@
 
 .forge-tabs {
   position: sticky;
-  top: 0;
+  top: var(--editor-bar-height, 0px);
   z-index: 5;
   display: flex;
   gap: 2px;
@@ -57,7 +57,7 @@
 /* Runs */
 .forge-progress {
   position: sticky;
-  top: 42px;
+  top: calc(var(--editor-bar-height, 0px) + 42px);
   z-index: 4;
   display: grid;
   gap: 6px;

@@ -7,7 +7,8 @@ import { text, tokens } from "../card/draft";
 import { Section } from "../card/Fields";
 import { OtherLibraries } from "../card/OtherLibraries";
 import { Sources } from "../card/Organize";
-import { Archive, LibraryName, Push, Revisions, Sync } from "../card/Panel";
+import { EditorBar } from "../card/EditorBar";
+import { LibraryName, Revisions, Sync } from "../card/Panel";
 import { VariantOf, Variants } from "../card/Variants";
 import { UpdateBanner } from "../card/Upstream";
 import { useEditor } from "../card/useEditor";
@@ -31,26 +32,11 @@ function LorebookEditor({ id }: { id: number }) {
   if (ed.entity.isPending) return null;
   if (ed.entity.isError) return <p className="error page">{ed.entity.error.message}</p>;
   const head = ed.entity.data;
-  const dirty = ed.dirty.size > 0;
   return (
     <div className="card-page">
       <aside className="card-aside">
-        <input
-          className="input name"
-          aria-label="Name"
-          value={text(ed.data.name)}
-          disabled={!!forge.lock("name")}
-          onChange={(e) => ed.edit("name", e.target.value)}
-        />
         <VariantOf kind="lorebook" entity={head} />
         <LibraryName id={head.library_id} />
-        <div className="row">
-          <button className="button primary" disabled={!dirty || ed.save.isPending || ed.stale} onClick={() => ed.draft && ed.save.mutate(ed.draft)}>
-            Save
-          </button>
-          <Archive kind="lorebook" entity={head} />
-        </div>
-        <Push kind="lorebook" id={id} dirty={dirty} />
         <Sync kind="lorebook" id={id} />
         <LinkedCards ids={head.cards ?? []} library={head.library_id} />
         <Sources kind="lorebook" id={id} />
@@ -59,6 +45,7 @@ function LorebookEditor({ id }: { id: number }) {
         <Revisions kind="lorebook" id={id} />
       </aside>
       <div className="card-main">
+        <EditorBar kind="lorebook" entity={head} ed={ed} lock={forge.lock} />
         <UpdateBanner kind="lorebook" id={id} />
         <Stale kind="lorebook" ed={ed} />
         <Forge

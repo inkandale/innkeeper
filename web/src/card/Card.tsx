@@ -1,10 +1,12 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useFollowLibrary } from "../shell/library";
 import { useParams } from "react-router";
-import { api, ApiError, must } from "../api/client";
+import { api, ApiError, exportFormats, must } from "../api/client";
+import { instancesQuery, pluginsQuery } from "../api/queries";
 import type { components } from "../api/schema";
 import { useToast } from "../shell/Toasts";
 import { Stale } from "./Conflict";
+import { EditorBar } from "./EditorBar";
 import { Panel } from "./Panel";
 import { UpdateBanner } from "./Upstream";
 import { useEditor } from "./useEditor";
@@ -28,6 +30,8 @@ function CardEditor({ id }: { id: number }) {
   const ed = useEditor("card", id);
   const forge = useForge({ subject: cardSubject, id, data: ed.data, library: ed.entity.data?.library_id ?? 1 });
   useFollowLibrary(ed.entity.data?.library_id);
+  const instances = useQuery(instancesQuery);
+  const plugins = useQuery(pluginsQuery);
 
   // An image change saves at once, on the head. A draft started from that
   // head moves onto the new revision, since its data didn't change.
@@ -64,14 +68,23 @@ function CardEditor({ id }: { id: number }) {
         card={head}
         data={ed.data}
         edit={ed.edit}
-        dirty={ed.dirty.size > 0}
-        saving={ed.save.isPending || ed.stale || avatar.isPending}
-        onSave={() => ed.draft && ed.save.mutate(ed.draft)}
         onAvatar={(sha, message) => avatar.mutate({ sha, message, base: head.revision })}
         avatarBusy={avatar.isPending || ed.save.isPending}
         lock={forge.lock}
       />
       <div className="card-main">
+        <EditorBar
+          kind="card"
+          entity={head}
+          ed={ed}
+          lock={forge.lock}
+          busy={avatar.isPending}
+          menu={exportFormats(plugins.data, instances.data).map((f) => (
+            <a key={f} href={`/api/cards/${id}/export?format=${encodeURIComponent(f)}`} download>
+              Export {f.toUpperCase()}
+            </a>
+          ))}
+        />
         <UpdateBanner kind="card" id={id} />
         <Stale kind="card" ed={ed} />
         <Forge

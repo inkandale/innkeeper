@@ -195,6 +195,26 @@ test("editing a field marks it unsaved and saves on the base revision", async ()
   expect(screen.getByLabelText("Description")).toHaveValue("A grumpy dwarf. Old.");
 });
 
+test("the bar counts unsaved fields and ⌘S saves them", async () => {
+  renderAt("/cards/7");
+  await userEvent.type(await screen.findByLabelText("Description"), " Old.");
+  expect(screen.getByText("1 unsaved field")).toBeInTheDocument();
+  await userEvent.type(screen.getByLabelText("Creator"), "x");
+  expect(screen.getByText("2 unsaved fields")).toBeInTheDocument();
+  expect(fireEvent.keyDown(window, { key: "s", metaKey: true })).toBe(false);
+  await waitFor(() => expect(puts).toHaveLength(1));
+  expect(puts[0]).toMatchObject({ path: "/api/cards/7", body: { data: { description: "A grumpy dwarf. Old.", creator: "dgx" } } });
+  await waitFor(() => expect(screen.queryByText(/unsaved field/)).not.toBeInTheDocument());
+});
+
+test("Ctrl+S with nothing unsaved saves nothing and still blocks the browser's save dialog", async () => {
+  renderAt("/cards/7");
+  await screen.findByLabelText("Description");
+  expect(screen.queryByText(/unsaved field/)).not.toBeInTheDocument();
+  expect(fireEvent.keyDown(window, { key: "s", ctrlKey: true })).toBe(false);
+  expect(puts).toHaveLength(0);
+});
+
 test("alternate greetings can be added and removed", async () => {
   renderAt("/cards/7");
   await userEvent.click(await screen.findByRole("button", { name: "Add greeting" }));

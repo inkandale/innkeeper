@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { Toasts } from "../shell/Toasts";
@@ -121,6 +121,15 @@ test("editing an entry marks it and saves every entry", async () => {
   expect(puts[0]?.body.base_revision_id).toBe(21);
   expect(puts[0]?.body.data.entries).toEqual([{ ...anvil, content: "Heavy iron.\nRings when struck. Hot." }, bellows]);
   expect(puts[0]?.body.data.name).toBe("Forge");
+});
+
+test("⌘S saves the lorebook from its bar", async () => {
+  renderAt("/lorebooks/3");
+  await userEvent.type(await screen.findByLabelText("Name"), " Lore");
+  expect(screen.getByText("1 unsaved field")).toBeInTheDocument();
+  fireEvent.keyDown(window, { key: "s", metaKey: true });
+  await waitFor(() => expect(puts).toHaveLength(1));
+  expect(puts[0]?.body.data.name).toBe("Forge Lore");
 });
 
 test("keys, flags, depth, add, move, and delete", async () => {

@@ -1,7 +1,7 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
-import { api, exportFormats, must, mustOk, route, thumb, upload, type Kind } from "../api/client";
+import { api, must, mustOk, route, thumb, upload, type Kind } from "../api/client";
 import { bindingsQuery, instancesQuery, librariesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
 import { badgeClass } from "../cards/Tile";
 import { useToast } from "../shell/Toasts";
@@ -23,9 +23,6 @@ type PanelProps = {
   card: Entity;
   data: Data;
   edit: (key: string, value: unknown) => void;
-  dirty: boolean;
-  saving: boolean;
-  onSave: () => void;
   /** onAvatar saves sha as the image, with message as the revision's. */
   onAvatar: (sha: string, message: string) => void;
   avatarBusy: boolean;
@@ -33,10 +30,8 @@ type PanelProps = {
 };
 
 /** Panel is the card page's left side. */
-export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avatarBusy, lock }: PanelProps) {
+export function Panel({ card, data, edit, onAvatar, avatarBusy, lock }: PanelProps) {
   const avatar = card.revision.avatar;
-  const instances = useQuery(instancesQuery);
-  const plugins = useQuery(pluginsQuery);
   return (
     <aside className="card-aside">
       {avatar ? <img className="portrait" src={thumb(avatar, 640)} alt="" /> : <div className="portrait" />}
@@ -44,18 +39,6 @@ export function Panel({ card, data, edit, dirty, saving, onSave, onAvatar, avata
       <Identity data={data} edit={edit} lock={lock} />
       <VariantOf kind="card" entity={card} />
       <LibraryName id={card.library_id} />
-      <div className="row">
-        <button className="button primary" disabled={!dirty || saving} onClick={onSave}>
-          Save
-        </button>
-        {exportFormats(plugins.data, instances.data).map((f) => (
-          <a key={f} className="button" href={`/api/cards/${card.id}/export?format=${encodeURIComponent(f)}`} download>
-            Export {f.toUpperCase()}
-          </a>
-        ))}
-        <Archive kind="card" entity={card} />
-      </div>
-      <Push kind="card" id={card.id} dirty={dirty} />
       <Collections id={card.id} library={card.library_id} member={card.collections ?? []} />
       <Sources kind="card" id={card.id} />
       <OtherLibraries kind="card" id={card.id} />
@@ -74,12 +57,28 @@ export function LibraryName({ id }: { id: number }) {
   return library ? <p className="muted">Library: {library.name}</p> : null;
 }
 
-/** Identity edits the card's name, nickname, creator, version, and tags. */
-export function Identity({ data, edit, lock }: { data: Data; edit: (key: string, value: unknown) => void; lock?: (key: string) => string | undefined }) {
-  const locked = (key: string) => !!lock?.(key);
-  const field = (key: string, label: string, className = "input") => (
+type IdentityProps = { data: Data; edit: (key: string, value: unknown) => void; lock?: (key: string) => string | undefined };
+
+/** Name edits a card's or lorebook's name. */
+export function Name({ data, edit, lock }: IdentityProps) {
+  return (
     <input
-      className={className}
+      className="input name"
+      aria-label="Name"
+      placeholder="Name"
+      value={text(data.name)}
+      disabled={!!lock?.("name")}
+      onChange={(e) => edit("name", e.target.value)}
+    />
+  );
+}
+
+/** Identity edits the card's nickname, creator, version, and tags. */
+export function Identity({ data, edit, lock }: IdentityProps) {
+  const locked = (key: string) => !!lock?.(key);
+  const field = (key: string, label: string) => (
+    <input
+      className="input"
       aria-label={label}
       placeholder={label}
       value={text(data[key])}
@@ -89,7 +88,6 @@ export function Identity({ data, edit, lock }: { data: Data; edit: (key: string,
   );
   return (
     <>
-      {field("name", "Name", "input name")}
       {field("nickname", "Nickname")}
       {field("creator", "Creator")}
       {field("character_version", "Version")}

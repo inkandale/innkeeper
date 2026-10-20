@@ -10,6 +10,7 @@ import { Collections } from "./collections/Collections";
 import { Login } from "./login/Login";
 import { Setup } from "./login/Setup";
 import { Lorebook } from "./lorebook/Lorebook";
+import { Loading } from "./shell/Loading";
 import { Page } from "./shell/Page";
 import { Shell } from "./shell/Shell";
 import { Changes } from "./sync/Changes";
@@ -33,7 +34,7 @@ import { Welcome } from "./welcome/Welcome";
 // client's middleware.
 function RequireAuth() {
   const me = useQuery(meQuery);
-  if (me.isPending) return null;
+  if (me.isPending) return <Loading />;
   // The middleware is already sending the browser to /login.
   if (me.error instanceof ApiError && me.error.status === 401) return null;
   if (me.isError) return <p className="error">{me.error.message}</p>;
@@ -43,7 +44,7 @@ function RequireAuth() {
 /** Home sends an owner who hasn't finished the setup wizard to it, else goes where a redirect login asked to return, or to the cards. */
 export function Home() {
   const settings = useQuery(settingsQuery);
-  if (settings.isPending) return null;
+  if (settings.isPending) return <Loading />;
   // Read and drop the saved destination either way, so it can't hijack a later visit to /.
   let next = "/";
   try {

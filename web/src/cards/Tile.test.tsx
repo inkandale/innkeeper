@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { enrichmentText, Tile, type Hit, type Names } from "./Tile";
 
@@ -64,4 +64,27 @@ test("a text grid key shows truncated, with the whole value in its title", () =>
     </MemoryRouter>,
   );
   expect(screen.getByRole("img", { name: `Summary ${long}` })).toHaveClass("score", "text");
+});
+
+function renderScore(value: number, stale = false) {
+  const hit: Hit = { id: 7, slug: "brakka", revision_id: 1, fields: { name: "Brakka" }, enrichments: { lint: { value, stale } } };
+  render(
+    <MemoryRouter>
+      <Tile hit={hit} names={names} pick={{ selected: false, locked: false, onPick: () => {} }} grid={{ key: "lint", label: "Lint", type: "score", range: [0, 100] }} />
+    </MemoryRouter>,
+  );
+  return screen.getByRole("img", { name: stale ? `Lint ${value}, stale: from an older revision` : `Lint ${value}` });
+}
+
+test("a score badge names its key and bands by where the value falls in the range, higher being better", () => {
+  expect(renderScore(80)).toHaveTextContent("Lint 80");
+  expect(screen.getByRole("img", { name: "Lint 80" })).toHaveClass("score", "good");
+  cleanup();
+  expect(renderScore(65)).toHaveClass("fair");
+  cleanup();
+  expect(renderScore(0)).toHaveClass("poor");
+});
+
+test("a stale score keeps its band and dims", () => {
+  expect(renderScore(90, true)).toHaveClass("good", "stale");
 });

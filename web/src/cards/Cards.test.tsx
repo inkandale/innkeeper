@@ -247,33 +247,12 @@ test("shift-click selects a range and tags it", async () => {
   expect(screen.getByRole("searchbox", { name: "Search cards" })).toBeInTheDocument();
 });
 
-test("select page from the toolbar picks every card on the page", async () => {
-  renderCards("/cards");
-  const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: "Select page" }));
-  expect(screen.getByText("3 selected")).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Select page" })).not.toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Tag" }));
-  await user.type(screen.getByRole("textbox", { name: "Tags" }), "elf");
-  await user.click(screen.getByRole("button", { name: "Add tags" }));
-  await waitFor(() => expect(posts[0]?.body).toMatchObject({ query: { library: 1, filter: { ids: [7, 8, 9] } } }));
-});
-
 test("select page in the selection bar adds the rest of the page", async () => {
   renderCards("/cards");
   const user = userEvent.setup();
   await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
   await user.click(screen.getByRole("button", { name: "Select page" }));
   expect(screen.getByText("3 selected")).toBeInTheDocument();
-});
-
-test("select all from the toolbar picks every matching card", async () => {
-  localStorage.setItem("innkeeper.library.ungrouped", "true");
-  renderCards("/cards");
-  const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: "Select all" }));
-  expect(screen.getByText("All 49 matching cards")).toBeInTheDocument();
-  expect(screen.getByRole("checkbox", { name: "Select Brakka" })).toBeChecked();
 });
 
 test("select all matching archives the search", async () => {
@@ -667,7 +646,8 @@ test("Evaluate past the plugin's limit asks before sending confirm", async () =>
   localStorage.setItem("innkeeper.library.ungrouped", "true");
   renderCards("/cards");
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: "Select all" }));
+  await user.click(await screen.findByRole("checkbox", { name: "Select Brakka" }));
+  await user.click(screen.getByRole("button", { name: "Select all 49 matching" }));
   await user.click(screen.getByRole("button", { name: "Evaluate" }));
   const run = screen.getByRole("button", { name: "Evaluate 49 cards" });
   expect(run).toBeDisabled();
@@ -734,19 +714,40 @@ test("variants group by default, and a family row expands to its members", async
   expect(within(list).getAllByText("matched")).toHaveLength(2);
 });
 
-test("Ungroup variants drops the grouping, flips to Group variants, and is remembered", async () => {
+test("unchecking Group variants drops the grouping, and is remembered", async () => {
   const { unmount } = renderCards("/cards");
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: "Ungroup variants" }));
+  const group = await screen.findByRole("checkbox", { name: "Group variants" });
+  expect(group).toBeChecked();
+  await user.click(group);
   await waitFor(() => expect(mainSearches().at(-1)).not.toHaveProperty("group"));
   expect(localStorage.getItem("innkeeper.library.ungrouped")).toBe("true");
   expect(screen.getByText("49 cards")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Group variants" }));
+  await user.click(group);
   await waitFor(() => expect(mainSearches().at(-1)).toMatchObject({ group: "family" }));
-  await user.click(screen.getByRole("button", { name: "Ungroup variants" }));
+  await user.click(group);
   unmount();
   renderCards("/cards");
-  expect(await screen.findByRole("button", { name: "Group variants" })).toBeInTheDocument();
+  expect(await screen.findByRole("checkbox", { name: "Group variants" })).not.toBeChecked();
+});
+
+test("the view control switches between grid and list", async () => {
+  renderCards("/cards");
+  const user = userEvent.setup();
+  const view = within(await screen.findByRole("group", { name: "View" }));
+  expect(view.getByRole("button", { name: "Grid" })).toHaveAttribute("aria-pressed", "true");
+  expect(await screen.findAllByRole("article")).toHaveLength(3);
+  await user.click(view.getByRole("button", { name: "List" }));
+  expect(view.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
+  expect(view.getByRole("button", { name: "Grid" })).toHaveAttribute("aria-pressed", "false");
+  expect(await screen.findByRole("table")).toBeInTheDocument();
+  expect(screen.queryAllByRole("article")).toHaveLength(0);
+});
+
+test("the grid shows a loading skeleton until the search answers", async () => {
+  answer("/api/cards/search", never);
+  renderCards("/cards");
+  expect(await screen.findByRole("status", { name: "Loading cards" })).toHaveAttribute("aria-busy", "true");
 });
 
 test("grouped, select all matching names no count, since total counts families", async () => {

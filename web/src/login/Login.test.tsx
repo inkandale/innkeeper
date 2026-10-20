@@ -145,3 +145,9 @@ test("an unclaimed server goes to setup", async () => {
   );
   expect(await screen.findByText("setup page")).toBeInTheDocument();
 });
+
+test("shows a loading status while the login method is fetched", async () => {
+  vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+  renderLogin();
+  expect(await screen.findByRole("status")).toHaveTextContent("Loading…");
+});

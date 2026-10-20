@@ -11,8 +11,10 @@ function json(body: unknown, status = 200) {
 const setting = <T,>(value: T | null, def: T | null, overridden = false) => ({ value, default: def, overridden });
 let current: Record<string, unknown>;
 let calls: string[];
+let refuse: string | undefined;
 beforeEach(() => {
   calls = [];
+  refuse = undefined;
   current = {
     score_instance: setting(5, 5),
     hide_below: setting(null, null),
@@ -27,6 +29,7 @@ beforeEach(() => {
       const path = new URL(req.url).pathname;
       if (req.method !== "GET") calls.push(`${req.method} ${path} ${await req.clone().text()}`);
       if (path === "/api/libraries/2/settings" && req.method === "PATCH") {
+        if (refuse) return json({ detail: refuse }, 400);
         const body = await req.json();
         if ("duplicates" in body) current.duplicates = setting(body.duplicates ?? "off", "off", body.duplicates != null);
         if ("hide_below" in body) current.hide_below = setting(body.hide_below, null, body.hide_below != null);
@@ -72,4 +75,20 @@ test("a blank threshold follows the default", async () => {
   await user.clear(screen.getByRole("spinbutton", { name: /Hide below score/ }));
   await user.tab();
   await waitFor(() => expect(calls).toEqual(['PATCH /api/libraries/2/settings {"hide_below":40}', 'PATCH /api/libraries/2/settings {"hide_below":null}']));
+});
+
+test("a saved change says so next to the settings", async () => {
+  renderIt();
+  const user = userEvent.setup();
+  await user.selectOptions(await screen.findByRole("combobox", { name: /Duplicates/ }), "Exact copies");
+  expect(await screen.findByRole("status")).toHaveTextContent("Saved");
+});
+
+test("a refused change shows why next to the settings", async () => {
+  refuse = "duplicates must be off, exact, or near";
+  renderIt();
+  const user = userEvent.setup();
+  await user.selectOptions(await screen.findByRole("combobox", { name: /Duplicates/ }), "Exact copies");
+  expect(await screen.findByText("duplicates must be off, exact, or near")).toBeInTheDocument();
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
 });

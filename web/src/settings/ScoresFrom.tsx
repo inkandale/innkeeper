@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, must } from "../api/client";
 import { librarySettingsQuery, settingsQuery, useInstancesWith } from "../api/queries";
+import { SaveStatus } from "./SaveStatus";
 
 /**
  * ScoresFrom picks the enrich instance whose values the library grid, filters, and sort use: the default for
@@ -26,6 +27,7 @@ export function ScoresFrom({ library }: { library?: number }) {
       void qc.invalidateQueries({ queryKey: ["enrichment-keys"] });
       void qc.invalidateQueries({ queryKey: ["search"] });
     },
+    meta: { toast: false },
   });
   if (!enrichers.length) return null;
   const automatic = enrichers.length === 1 ? `Automatic (${enrichers[0]!.name})` : "None";
@@ -57,14 +59,14 @@ export function ScoresFrom({ library }: { library?: number }) {
             </option>
           ))}
         </select>
-      </label>
+      </label>{" "}
+      <SaveStatus save={save} />
       {library === undefined && (
         <p className="muted">
           The library grid, score filters, and sort use this instance's values, unless a library picks its own under
           Libraries. Card pages show every instance's.
         </p>
       )}
-      {save.error && <p className="error">{save.error.message}</p>}
     </section>
   );
 }

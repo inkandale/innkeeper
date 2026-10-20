@@ -5,6 +5,7 @@ import { api, must } from "../api/client";
 import { Stale } from "../card/Conflict";
 import { text, tokens } from "../card/draft";
 import { Section } from "../card/Fields";
+import { MacroTextarea } from "../card/MacroTextarea";
 import { OtherLibraries } from "../card/OtherLibraries";
 import { Sources } from "../card/Organize";
 import { EditorBar } from "../card/EditorBar";
@@ -61,13 +62,7 @@ function LorebookEditor({ id }: { id: number }) {
                 lock={lock?.("description")}
                 extra={extra?.("description")}
               >
-                <textarea
-                  className="input grow"
-                  aria-label="Description"
-                  placeholder="Description"
-                  value={text(ed.data.description)}
-                  onChange={(e) => ed.edit("description", e.target.value)}
-                />
+                <MacroTextarea label="Description" value={text(ed.data.description)} onChange={(v) => ed.edit("description", v)} />
               </Section>
               <Entries data={ed.data} base={ed.draft?.base ?? ed.headData} edit={ed.edit} lock={lock?.("entries")} />
             </>

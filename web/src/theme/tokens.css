@@ -59,6 +59,29 @@ textarea {
   border-radius: calc(var(--radius) * 0.75);
   padding: calc(var(--space) * 0.5 * var(--density)) calc(var(--space) * 1.25);
   cursor: pointer;
+  /* A link styled as a button keeps no underline. */
+  text-decoration: none;
+}
+
+.button:has(> .icon) {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--space) * 0.75);
+}
+
+.icon {
+  flex: none;
+}
+
+.button.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-muted);
+}
+
+.button.ghost:hover {
+  border-color: var(--border);
+  color: var(--text);
 }
 
 .button.primary {
@@ -82,4 +105,25 @@ textarea {
 
 .error {
   color: var(--danger);
+}
+
+.loading {
+  color: var(--text-muted);
+}
+
+.skeleton {
+  background: var(--surface-2);
+  border-radius: var(--radius);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton {
+    animation: skeleton-pulse 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes skeleton-pulse {
+  50% {
+    opacity: 0.5;
+  }
 }

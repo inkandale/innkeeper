@@ -75,15 +75,23 @@ export function enrichmentText(value: unknown, range?: number[] | null): string 
   return String(value);
 }
 
-/** Score shows the card's value of the grid key, dimmed when it is about an older revision. */
+// Every scorer so far counts up to its best (card-lint starts at 100 and deducts), so the top quarter is good.
+function band(value: unknown, range?: number[] | null): string | undefined {
+  if (typeof value !== "number" || !range || range.length !== 2) return undefined;
+  const share = (value - range[0]!) / (range[1]! - range[0]!);
+  return share >= 0.75 ? "good" : share >= 0.5 ? "fair" : "poor";
+}
+
+/** Score shows the card's value of the grid key, named by the key's label and dimmed when it is about an older revision. */
 function Score({ hit, grid }: { hit: Hit; grid: EnrichmentKey }) {
   const v = hit.enrichments?.[grid.key];
   if (!v) return null;
   const value = enrichmentText(v.value, grid.range);
+  const score = grid.type === "score";
   const title = v.stale ? `${grid.label} ${value}, stale: from an older revision` : `${grid.label} ${value}`;
   return (
-    <span className={["score", grid.type !== "score" && "text", v.stale && "stale"].filter(Boolean).join(" ")} role="img" aria-label={title} title={title}>
-      {value}
+    <span className={["score", score ? band(v.value, grid.range) : "text", v.stale && "stale"].filter(Boolean).join(" ")} role="img" aria-label={title} title={title}>
+      {score ? `${grid.label} ${value}` : value}
     </span>
   );
 }

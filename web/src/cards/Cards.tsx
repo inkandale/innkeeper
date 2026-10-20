@@ -12,7 +12,9 @@ import { pageLinks } from "./pages";
 import { defaultSort, enrichmentValue, keyRef, parseQuery, parseScore, withScoreInstance, sizes, toggleTerm, toParams, toLorebookSearch, toSearch, valueLabel, type CardQuery, type Sort, type Term } from "./query";
 import { emptySelection, pick, target, type Selection } from "./selection";
 import { useJobEvents } from "../settings/jobUtil";
+import { Icon } from "../shell/Icon";
 import { useLibrary, withLibrary } from "../shell/library";
+import { Loading } from "../shell/Loading";
 import { SelectionBar } from "./SelectionBar";
 import { LorebookRow, Row, Tile, type Names } from "./Tile";
 import "./Cards.css";
@@ -156,7 +158,8 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
         />
       ) : (
         <div className="toolbar">
-          <button className="button" onClick={() => setFacetsOpen(!facetsOpen)} aria-expanded={facetsOpen}>
+          <button className="button ghost" onClick={() => setFacetsOpen(!facetsOpen)} aria-expanded={facetsOpen}>
+            <Icon name="filters" />
             Filters
           </button>
           <form role="search" onSubmit={search}>
@@ -176,32 +179,29 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
                 </option>
               ))}
           </select>
-          <button
-            className="button"
-            onClick={() => {
-              setUngrouped(!ungrouped);
-              saveUngrouped(!ungrouped);
-            }}
-          >
-            {ungrouped ? "Group variants" : "Ungroup variants"}
-          </button>
-          {hits.length > 0 && (
-            <>
-              <button className="button" onClick={pickPage}>
-                Select page
-              </button>
-              <button className="button" onClick={() => setSel({ ...sel, all: true })}>
-                Select all
-              </button>
-            </>
-          )}
           {kind === "card" && (
-            <button className="button" onClick={() => go({ ...q, view: q.view === "grid" ? "list" : "grid" })}>
-              {q.view === "grid" ? "List view" : "Grid view"}
-            </button>
+            <div className="segmented" role="group" aria-label="View">
+              {(["grid", "list"] as const).map((v) => (
+                <button key={v} className="button" aria-pressed={q.view === v} onClick={() => go({ ...q, view: v })}>
+                  {v === "grid" ? "Grid" : "List"}
+                </button>
+              ))}
+            </div>
           )}
+          <label>
+            <input
+              type="checkbox"
+              checked={!ungrouped}
+              onChange={(e) => {
+                setUngrouped(!e.target.checked);
+                saveUngrouped(!e.target.checked);
+              }}
+            />
+            Group variants
+          </label>
           {kind === "card" && (
-            <Link className="button" to={withLibrary("/cards/new", q.library)}>
+            <Link className="button primary" to={withLibrary("/cards/new", q.library)}>
+              <Icon name="plus" />
               New card
             </Link>
           )}
@@ -218,7 +218,8 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
                 aria-label={`Remove ${termLabel(t, names)}`}
                 onClick={() => go(toggleTerm(q, t))}
               >
-                {termLabel(t, names)} ×
+                {termLabel(t, names)}
+                <Icon name="close" />
               </button>
             ))}
           </div>
@@ -241,7 +242,20 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
             No {noun} on this page. <button className="button" onClick={() => go({ ...q, page: last })}>Go to page {last}</button>
           </p>
         )}
-        {kind === "lorebook" ? (
+        {res.isPending ? (
+          kind === "card" && q.view === "grid" ? (
+            <div className="grid" role="status" aria-busy="true" aria-label={`Loading ${noun}`}>
+              {Array.from({ length: 8 }, (_, i) => (
+                <div key={i}>
+                  <div className="skeleton skeleton-art" />
+                  <div className="skeleton skeleton-name" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Loading />
+          )
+        ) : kind === "lorebook" ? (
           <table className="list">
             <tbody>
               {hits.map((h) => (

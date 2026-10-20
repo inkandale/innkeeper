@@ -4,17 +4,18 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { api } from "../api/client";
 import { librariesQuery } from "../api/queries";
 import { rememberLibrary, useLibrary, withLibrary } from "./library";
+import { Icon } from "./Icon";
 import { Mark } from "./Mark";
 import { Toasts } from "./Toasts";
 import "./Shell.css";
 
 const sections = [
-  { to: "/cards", label: "Cards", icon: "▣" },
-  { to: "/lorebooks", label: "Lorebooks", icon: "📖" },
-  { to: "/collections", label: "Collections", icon: "🗂" },
-  { to: "/sync", label: "Sync", icon: "⇅" },
-  { to: "/settings", label: "Settings", icon: "⚙" },
-];
+  { to: "/cards", label: "Cards", icon: "cards" },
+  { to: "/lorebooks", label: "Lorebooks", icon: "lorebooks" },
+  { to: "/collections", label: "Collections", icon: "collections" },
+  { to: "/sync", label: "Sync", icon: "sync" },
+  { to: "/settings", label: "Settings", icon: "settings" },
+] as const;
 
 async function logout() {
   try {
@@ -74,7 +75,7 @@ export function Shell() {
         <LibrarySwitcher />
         {sections.map((s) => (
           <NavLink key={s.to} to={withLibrary(s.to, library)} aria-label={s.label}>
-            <span aria-hidden="true">{s.icon}</span>
+            <Icon name={s.icon} />
             <span className="rail-label">{s.label}</span>
           </NavLink>
         ))}
@@ -85,11 +86,11 @@ export function Shell() {
             aria-expanded={!collapsed}
             aria-label={collapsed ? "Expand menu" : "Collapse menu"}
           >
-            {collapsed ? "»" : "«"}
+            <Icon name={collapsed ? "expand" : "collapse"} />
           </button>{" "}
           <button className="button" onClick={logout} aria-label="Log out">
-            <span aria-hidden="true">⏻</span>
-            <span className="rail-label"> Log out</span>
+            <Icon name="logout" />
+            <span className="rail-label">Log out</span>
           </button>
         </div>
       </nav>

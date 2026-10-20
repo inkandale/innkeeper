@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { api, must } from "../api/client";
 import { instancesQuery, librariesQuery, pluginsQuery } from "../api/queries";
+import { Loading } from "../shell/Loading";
 import { useToast } from "../shell/Toasts";
 import { type InstanceInfo, type Plugin } from "./Plugins";
 import { Records } from "./Records";
@@ -19,7 +20,7 @@ export function Instance() {
   });
   const failed = plugins.error ?? inst.error;
   if (failed) return <p className="error">{failed.message}</p>;
-  if (plugins.isPending || (id !== undefined && inst.isPending)) return null;
+  if (plugins.isPending || (id !== undefined && inst.isPending)) return <Loading />;
   const name = inst.data?.plugin ?? pluginName;
   const plugin = plugins.data?.find((p) => p.name === name);
   if (!plugin) return <p className="error">No plugin named {name} is installed.</p>;

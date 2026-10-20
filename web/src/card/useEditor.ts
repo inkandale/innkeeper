@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import { useBlocker } from "react-router";
+import { useState } from "react";
 import { api, ApiError, must, route, type Kind } from "../api/client";
 import { useToast } from "../shell/Toasts";
+import { useLeaveGuard } from "../shell/useLeaveGuard";
 import { changed, rebase, type Data, type Draft } from "./draft";
 
 /** useEditor loads a card or lorebook and holds its unsaved edits, its save, and the stale-save flow. */
@@ -74,20 +74,3 @@ export function useEditor(kind: Kind, id: number) {
 }
 
 export type Editor = ReturnType<typeof useEditor>;
-
-// useLeaveGuard asks before leaving the page while on is true: in the app
-// through the router, and on reload or close through the browser.
-function useLeaveGuard(on: boolean) {
-  const blocker = useBlocker(({ currentLocation, nextLocation }) => on && currentLocation.pathname !== nextLocation.pathname);
-  useEffect(() => {
-    if (blocker.state !== "blocked") return;
-    if (window.confirm("Leave without saving your edits?")) blocker.proceed();
-    else blocker.reset();
-  }, [blocker]);
-  useEffect(() => {
-    if (!on) return;
-    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [on]);
-}

@@ -1,10 +1,11 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { api, must } from "../api/client";
 import { instancesQuery, librariesQuery, pluginsQuery } from "../api/queries";
 import { Loading } from "../shell/Loading";
 import { useToast } from "../shell/Toasts";
+import { useLeaveGuard } from "../shell/useLeaveGuard";
 import { type InstanceInfo, type Plugin } from "./Plugins";
 import { Records } from "./Records";
 import { FormContext, pointerKey, SchemaForm, unpointerKey, type Schema } from "./SchemaForm";
@@ -80,7 +81,7 @@ export function InstanceForm({
 }: {
   plugin: Plugin;
   instance?: InstanceInfo;
-  /** Runs after a save in place of going back to Settings. */
+  /** Runs after a save in place of staying on, or opening, the instance's page. */
   onSaved?: (saved: InstanceInfo) => void;
   cancelTo?: string;
 }) {
@@ -90,11 +91,20 @@ export function InstanceForm({
   const caps = plugin.capabilities ?? [];
   const [config, setConfig] = useState<unknown>(instance?.config ?? {});
   // What the form started from; a refetch mustn't make an untouched config look changed.
-  const [initial] = useState(() => canon(instance?.config ?? {}));
+  const [initial, setInitial] = useState(() => canon(instance?.config ?? {}));
   // Only typed secrets (a string) and removed ones (null) are sent.
   const [secrets, setSecrets] = useState<Record<string, string | null>>({});
-  const [libraryAccess, setLibraryAccess] = useState(instance?.library_access ?? false);
-  const [syncLibrary, setSyncLibrary] = useState(instance?.sync_library ?? 1);
+  const stored = {
+    name: instance?.name ?? "",
+    owner: instance?.owner_subject ?? "",
+    libraryAccess: instance?.library_access ?? false,
+    syncLibrary: instance?.sync_library ?? 1,
+  };
+  const [name, setName] = useState(stored.name);
+  const [owner, setOwner] = useState(stored.owner);
+  const [libraryAccess, setLibraryAccess] = useState(stored.libraryAccess);
+  const [syncLibrary, setSyncLibrary] = useState(stored.syncLibrary);
+  const [created, setCreated] = useState<number>();
   const libraries = useQuery(librariesQuery).data ?? [];
   // A target app syncs with one library; with only one there's nothing to pick.
   const syncs = !!instance && (caps.includes("push") || caps.includes("pull")) && libraries.length > 1;
@@ -104,6 +114,21 @@ export function InstanceForm({
   // A plugin may have one instance without a name; a singleton's never has one.
   const named = plugin.multiple_instances === true;
   const needsName = named && others.some((i) => !i.name);
+  const dirty =
+    canon(config ?? {}) !== initial ||
+    Object.keys(secrets).length > 0 ||
+    (named && name !== stored.name) ||
+    (caps.includes("auth") && owner !== stored.owner) ||
+    libraryAccess !== stored.libraryAccess ||
+    syncLibrary !== stored.syncLibrary;
+  const discard = () => {
+    setConfig(JSON.parse(initial));
+    setSecrets({});
+    setName(stored.name);
+    setOwner(stored.owner);
+    setLibraryAccess(stored.libraryAccess);
+    setSyncLibrary(stored.syncLibrary);
+  };
   const [tab, setTab] = useState("general");
   const tabIds = ["general", ...tabs.map(([k]) => k)];
   // Arrow keys move between the tabs, selecting as they go.
@@ -145,10 +170,10 @@ export function InstanceForm({
   });
 
   const save = useMutation({
-    mutationFn: async (form: FormData) => {
-      const name = named ? String(form.get("name")).trim() : undefined;
+    mutationFn: async () => {
+      const trimmedName = named ? name.trim() : undefined;
       const cfg = (config ?? {}) as Record<string, unknown>;
-      const owner = caps.includes("auth") ? String(form.get("owner_subject") ?? "").trim() : undefined;
+      const trimmedOwner = caps.includes("auth") ? owner.trim() : undefined;
       const hasSecrets = Object.keys(secrets).length > 0;
       // For each override this edit set, the default it replaced, so the form can say when that default changes.
       const startedFrom = JSON.parse(initial) as unknown;
@@ -161,11 +186,11 @@ export function InstanceForm({
           await api.POST("/instances", {
             body: {
               plugin: plugin.name,
-              name: name || undefined,
+              name: trimmedName || undefined,
               config: cfg,
               default_bases,
               secrets: hasSecrets ? (secrets as Record<string, string>) : undefined,
-              owner_subject: owner || undefined,
+              owner_subject: trimmedOwner || undefined,
               library_access: libraryAccess || undefined,
             },
           }),
@@ -176,11 +201,11 @@ export function InstanceForm({
         await api.PATCH("/instances/{id}", {
           params: { path: { id: instance.id } },
           body: {
-            name,
+            name: trimmedName,
             config: canon(cfg) !== initial ? cfg : undefined,
             default_bases: canon(cfg) !== initial ? default_bases : undefined,
             secrets: hasSecrets ? secrets : undefined,
-            owner_subject: owner !== undefined && owner !== (instance.owner_subject ?? "") ? owner : undefined,
+            owner_subject: trimmedOwner !== undefined && trimmedOwner !== stored.owner ? trimmedOwner : undefined,
             library_access: libraryAccess !== (instance.library_access ?? false) ? libraryAccess : undefined,
             sync_library: syncLibrary !== instance.sync_library ? syncLibrary : undefined,
           },
@@ -192,11 +217,20 @@ export function InstanceForm({
       qc.invalidateQueries({ queryKey: ["instances"] });
       qc.invalidateQueries({ queryKey: ["plugin-defaults", plugin.name] });
       toast({ text: `Saved ${saved.label}.` });
-      if (onSaved) onSaved(saved);
-      else navigate("/settings/plugins");
+      if (onSaved) return onSaved(saved);
+      if (!instance) return setCreated(saved.id);
+      // The rest of the baseline comes from the instance, which the cache update above refreshes.
+      setInitial(canon(saved.config ?? {}));
+      setSecrets({});
     },
     meta: { toast: false },
   });
+
+  useLeaveGuard(dirty && created === undefined);
+  // Opening the new instance waits for the render that lifts the guard.
+  useEffect(() => {
+    if (created !== undefined) navigate(`/settings/instances/${created}`);
+  }, [created, navigate]);
 
   const check = useMutation({
     mutationFn: async (id: number) => must(await api.POST("/instances/{id}/check", { params: { path: { id } } })),
@@ -213,7 +247,7 @@ export function InstanceForm({
       className="instance-form"
       onSubmit={(e) => {
         e.preventDefault();
-        save.mutate(new FormData(e.currentTarget));
+        save.mutate();
       }}
       // A required field on a hidden tab would block the save without showing why, so open the first one's tab.
       onInvalidCapture={(e) => {
@@ -238,7 +272,14 @@ export function InstanceForm({
         <div className="form-field">
           <label>
             <span>Name</span>
-            <input className="input" name="name" required={needsName} placeholder={needsName ? undefined : plugin.name} defaultValue={instance?.name} />
+            <input
+              className="input"
+              name="name"
+              required={needsName}
+              placeholder={needsName ? undefined : plugin.name}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
           </label>
           {needsName && <p className="muted">Another {plugin.name} instance has no name, so this one needs one.</p>}
         </div>
@@ -300,7 +341,7 @@ export function InstanceForm({
             <div className="form-field">
               <label>
                 <span>Owner subject</span>
-                <input className="input" name="owner_subject" defaultValue={instance?.owner_subject} />
+                <input className="input" name="owner_subject" value={owner} onChange={(e) => setOwner(e.target.value)} />
               </label>
               <small className="muted">The login that becomes the owner. Leave empty for none.</small>
             </div>
@@ -375,19 +416,29 @@ export function InstanceForm({
       {check.data && (check.data.ok ? <p>Works.</p> : <p className="error">Doesn't work: {check.data.error}</p>)}
       {check.error && <p className="error">{check.error.message}</p>}
       {save.error && <p className="error">{save.error.message}</p>}
-      <div className="actions">
-        {/* Saving before the defaults load would leave out the bases of the overrides. */}
-        <button className="button primary" disabled={save.isPending || defaults.isPending}>
-          Save
-        </button>
+      <div className={dirty ? "actions unsaved" : "actions"}>
+        {dirty && (
+          <>
+            <span className="muted">Unsaved changes</span>
+            <button type="button" className="button" onClick={discard}>
+              Discard
+            </button>
+          </>
+        )}
         {instance && (
           <button type="button" className="button" title="Tests the saved settings" disabled={check.isPending} onClick={() => check.mutate(instance.id)}>
             Check
           </button>
         )}
-        <Link className="button" to={cancelTo}>
-          Cancel
-        </Link>
+        {/* Saving before the defaults load would leave out the bases of the overrides. */}
+        <button className="button primary" disabled={save.isPending || defaults.isPending}>
+          Save
+        </button>
+        {!dirty && (
+          <Link className="button" to={cancelTo}>
+            Cancel
+          </Link>
+        )}
       </div>
     </form>
   );

@@ -4,6 +4,7 @@ import { api, must } from "../api/client";
 import { librarySettingsQuery } from "../api/queries";
 import type { components } from "../api/schema";
 import { JobLine } from "../cards/ImportForm";
+import { SaveStatus } from "./SaveStatus";
 
 type Patch = components["schemas"]["PatchLibrarySettingsInBody"];
 
@@ -21,6 +22,7 @@ export function Hiding({ library }: { library: number }) {
         librarySettingsQuery(library).queryKey,
         must(await api.PATCH("/libraries/{id}/settings", { params: { path: { id: library } }, body })),
       ),
+    meta: { toast: false },
   });
   const hide = useMutation({
     mutationFn: async () => must(await api.POST("/libraries/{id}/hide", { params: { path: { id: library } } })),
@@ -39,7 +41,9 @@ export function Hiding({ library }: { library: number }) {
   const nothing = s.hide_below.value == null && s.duplicates.value === "off";
   return (
     <fieldset className="hiding" disabled={save.isPending}>
-      <legend>Hiding</legend>
+      <legend>
+        Hiding <SaveStatus save={save} />
+      </legend>
       <label>
         Hide below score{" "}
         <input
@@ -127,7 +131,7 @@ export function Hiding({ library }: { library: number }) {
         Hide now
       </button>
       {job && <JobLine label="Hiding" id={job} to={`/settings/jobs/${job}`} />}
-      {(save.error ?? hide.error) && <p className="error">{(save.error ?? hide.error)!.message}</p>}
+      {hide.error && <p className="error">{hide.error.message}</p>}
     </fieldset>
   );
 }

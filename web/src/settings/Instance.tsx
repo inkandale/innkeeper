@@ -117,8 +117,9 @@ export function InstanceForm({
   const dirty =
     canon(config ?? {}) !== initial ||
     Object.keys(secrets).length > 0 ||
-    (named && name !== stored.name) ||
-    (caps.includes("auth") && owner !== stored.owner) ||
+    // Save trims these, so trailing spaces alone aren't a change.
+    (named && name.trim() !== stored.name) ||
+    (caps.includes("auth") && owner.trim() !== stored.owner) ||
     libraryAccess !== stored.libraryAccess ||
     syncLibrary !== stored.syncLibrary;
   const discard = () => {

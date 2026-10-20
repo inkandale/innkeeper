@@ -79,6 +79,11 @@ beforeEach(() => {
       if (req.method === "GET" && u.pathname === "/api/libraries") return json(libraries);
       if (req.method === "GET" && u.pathname === "/api/instances/3") return json(broken);
       if (req.method === "GET" && u.pathname === "/api/instances/4") return json(owned);
+      if (req.method === "PATCH" && u.pathname === "/api/instances/4") {
+        const body = await req.json();
+        sent.push({ method: req.method, path: u.pathname, body });
+        return json({ ...owned, ...(body as object) });
+      }
       if (req.method === "GET" && u.pathname === "/api/instances/5") return json(forge);
       if (req.method === "GET" && u.pathname === "/api/instances/5/records/skills") return json([{ id: "noir", name: "noir" }]);
       if (u.pathname === "/api/instances/3/check") {
@@ -221,6 +226,17 @@ test("a login provider edits its owner and warns about sessions", async () => {
   await user.click(screen.getByRole("button", { name: "Save" }));
   await vi.waitFor(() => expect(sent).toHaveLength(1));
   expect(sent[0]?.body).toEqual({ name: "pw", owner_subject: "" });
+});
+
+test("an owner saved with trailing spaces leaves the form clean", async () => {
+  const user = userEvent.setup();
+  renderAt("/settings/instances/4");
+  const owner = await screen.findByLabelText("Owner subject");
+  await user.type(owner, "2 ");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await vi.waitFor(() => expect(sent).toHaveLength(1));
+  expect(sent[0]?.body).toEqual({ name: "pw", owner_subject: "me2" });
+  await vi.waitFor(() => expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument());
 });
 
 test("a config edited back to its old value isn't sent", async () => {

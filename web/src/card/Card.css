@@ -386,3 +386,40 @@ fieldset.contents {
   opacity: 0.55;
   font-weight: 400;
 }
+
+.field-outline-head {
+  justify-content: flex-end;
+  margin-bottom: calc(var(--space) * 0.5);
+}
+
+.field-outline-head .muted {
+  margin-right: auto;
+}
+
+.field-outline {
+  margin-bottom: var(--space);
+}
+
+.field-outline .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--space) * 0.5);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 var(--space);
+  cursor: pointer;
+}
+
+.field-outline .chip b {
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 0.85em;
+}
+
+.field-outline .dot {
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: 50%;
+  background: var(--accent);
+}

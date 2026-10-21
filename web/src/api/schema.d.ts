@@ -3635,11 +3635,11 @@ export interface components {
             readonly $schema?: string;
             /** @description For near duplicates, the ai instance that confirms each pair is the same card, or null for distance alone. */
             duplicate_decide: components["schemas"]["LibrarySettingOutInt64"];
-            /** @description For near duplicates, the most bits two cards' text hashes may differ by. */
+            /** @description For near duplicates, the most bits two cards' text or avatar hashes may differ by. */
             duplicate_distance: components["schemas"]["LibrarySettingOutInt"];
             /** @description The duplicate hiding keeps: the best score, the oldest, or the newest. */
             duplicate_keep: components["schemas"]["LibrarySettingOutString"];
-            /** @description Hiding archives duplicates: off, exact (the same content), or near (text within duplicate_distance bits). */
+            /** @description Hiding archives duplicates: off, exact (the same content), or near (text, or the avatar of a card with the same name, within duplicate_distance bits). */
             duplicates: components["schemas"]["LibrarySettingOutString"];
             /** @description Hiding archives cards whose grid score is below this; null hides none for their score. */
             hide_below: components["schemas"]["LibrarySettingOutFloat64"];

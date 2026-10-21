@@ -63,10 +63,10 @@ type DuplicatePair struct {
 }
 
 // DuplicatePairs returns library's pairs of cards whose head revisions have
-// the same content or, unless maxDistance is negative, text within
-// maxDistance bits, in (A, B) order. Cards the owner archived are in no
-// pair. An image alone doesn't make a duplicate: archives reuse art for
-// different characters.
+// the same content or, unless maxDistance is negative, text or the avatar
+// and name within maxDistance bits, in (A, B) order. Cards the owner
+// archived are in no pair. An image alone doesn't make a duplicate: archives
+// reuse art for different characters.
 func (l *Library) DuplicatePairs(ctx context.Context, library int64, maxDistance int) ([]DuplicatePair, error) {
 	if maxDistance > NearDistance {
 		return nil, errWideDistance
@@ -78,7 +78,13 @@ func (l *Library) DuplicatePairs(ctx context.Context, library int64, maxDistance
 	args := []any{library}
 	if maxDistance >= 0 {
 		args = append(args, maxDistance)
-		pairs += `
+		// Matching names first keeps a widely reused avatar from pairing every card that has it.
+		pairs = `WITH named AS (
+			SELECT c.id, lower(btrim(r.data->>'name')) AS name, b.avatar_phash AS phash
+			FROM card c JOIN card_revision r ON r.id = c.head_revision_id JOIN blob b ON b.sha256 = r.avatar_blob
+			WHERE c.library_id = $1 AND ` + hideable + ` AND b.avatar_phash IS NOT NULL AND btrim(r.data->>'name') <> ''
+		)
+		` + pairs + `
 		UNION ALL
 		SELECT c.id, m.id, false FROM card c JOIN card_revision r ON r.id = c.head_revision_id
 		CROSS JOIN LATERAL (
@@ -88,7 +94,10 @@ func (l *Library) DuplicatePairs(ctx context.Context, library int64, maxDistance
 				AND r2.text_bands && hash_bands(r.text_simhash)
 				AND bit_count((r2.text_simhash # r.text_simhash)::bit(64)) <= $2
 		) m
-		WHERE c.library_id = $1 AND ` + hideable + ` AND r.text_simhash IS NOT NULL`
+		WHERE c.library_id = $1 AND ` + hideable + ` AND r.text_simhash IS NOT NULL
+		UNION ALL
+		SELECT a.id, b.id, false FROM named a JOIN named b ON b.name = a.name AND b.id > a.id
+		WHERE bit_count((a.phash # b.phash)::bit(64)) <= $2`
 	}
 	rows, err := l.pool.Query(ctx, pairs, args...)
 	if err != nil {

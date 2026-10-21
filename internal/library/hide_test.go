@@ -48,6 +48,28 @@ func TestDuplicatePairs(t *testing.T) {
 	}
 }
 
+func TestDuplicatePairsMatchANameWithASimilarAvatar(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	const art = 0x0f0f_0f0f_0f0f_0f0f
+	kichiro := avatarCard(t, lib, 0, art, `{"name": "Kichiro", "description": "A shut-in younger brother who codes."}`)
+	repost := avatarCard(t, lib, 1, flip(art, 3, 40), `{"name": " kichiro ", "description": "<overview>Kichiro, 18, studies online.</overview>"}`)
+	avatarCard(t, lib, 2, art, `{"name": "Mira", "description": "A quiet librarian."}`)
+	avatarCard(t, lib, 3, ^art, `{"name": "Kichiro", "description": "A fox spirit guarding a shrine."}`)
+
+	near, err := lib.DuplicatePairs(ctx, DefaultLibrary, NearDistance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Reused art under another name, and the name on other art, are no pair.
+	if !slices.Equal(near, []DuplicatePair{{kichiro, repost, false}}) {
+		t.Fatalf("near pairs = %v", near)
+	}
+	if exact, err := lib.DuplicatePairs(ctx, DefaultLibrary, -1); err != nil || len(exact) != 0 {
+		t.Fatalf("exact pairs = %v, %v", exact, err)
+	}
+}
+
 func TestSetHiddenLeavesTheOwnersArchivedCards(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()

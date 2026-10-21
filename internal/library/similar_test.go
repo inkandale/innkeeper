@@ -83,15 +83,15 @@ func moveCard(t *testing.T, lib *Library, card, library int64) {
 	}
 }
 
-// avatarCard creates a card whose avatar blob has the given phash.
-func avatarCard(t *testing.T, lib *Library, i int, phash int64) int64 {
+// avatarCard creates a card with data whose avatar blob has the given phash.
+func avatarCard(t *testing.T, lib *Library, i int, phash int64, data string) int64 {
 	t.Helper()
 	ctx := context.Background()
 	sha := fmt.Sprintf("%064x", i+1)
 	if _, err := lib.pool.Exec(ctx, `INSERT INTO blob (sha256, size, mime, store, avatar_phash) VALUES ($1, 1, 'image/png', 'library', $2)`, sha, phash); err != nil {
 		t.Fatal(err)
 	}
-	c, _, err := lib.Cards.Create(ctx, DefaultLibrary, fmt.Sprintf("avatar-%d", i), "upload", Edit{Data: json.RawMessage(fmt.Sprintf(`{"name": "Avatar %d"}`, i)), AvatarBlob: sha, Source: "ui"})
+	c, _, err := lib.Cards.Create(ctx, DefaultLibrary, fmt.Sprintf("avatar-%d", i), "upload", Edit{Data: json.RawMessage(data), AvatarBlob: sha, Source: "ui"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestSimilarAvatarsMatchExactScan(t *testing.T) {
 	}
 	ids := make([]int64, len(hashes))
 	for i, h := range hashes {
-		ids[i] = avatarCard(t, lib, i, h)
+		ids[i] = avatarCard(t, lib, i, h, fmt.Sprintf(`{"name": "Avatar %d"}`, i))
 	}
 	near := func(h int64, skip int) []int64 {
 		out := []int64{}

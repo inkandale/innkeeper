@@ -3026,7 +3026,7 @@
           },
           "duplicate_distance": {
             "$ref": "#/components/schemas/LibrarySettingOutInt",
-            "description": "For near duplicates, the most bits two cards' text hashes may differ by."
+            "description": "For near duplicates, the most bits two cards' text or avatar hashes may differ by."
           },
           "duplicate_keep": {
             "$ref": "#/components/schemas/LibrarySettingOutString",
@@ -3034,7 +3034,7 @@
           },
           "duplicates": {
             "$ref": "#/components/schemas/LibrarySettingOutString",
-            "description": "Hiding archives duplicates: off, exact (the same content), or near (text within duplicate_distance bits)."
+            "description": "Hiding archives duplicates: off, exact (the same content), or near (text, or the avatar of a card with the same name, within duplicate_distance bits)."
           },
           "hide_below": {
             "$ref": "#/components/schemas/LibrarySettingOutFloat64",

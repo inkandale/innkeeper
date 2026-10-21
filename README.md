@@ -554,7 +554,7 @@ the default in `PATCH /settings`.
 | Setting | Hides |
 |---|---|
 | `hide_below` | Cards whose grid score, from the library's Scores from instance, is below it |
-| `duplicates` | `exact`: cards with the same content. `near`: also cards whose text differs by at most `duplicate_distance` bits, 3 by default. A matching image alone doesn't count, since archives reuse art |
+| `duplicates` | `exact`: cards with the same content. `near`: also cards whose text, or whose avatar under the same name, differs by at most `duplicate_distance` bits, 3 by default. A matching image alone doesn't count, since archives reuse art |
 | `duplicate_keep` | Which copy of each duplicate group stays: the `best` score, the `oldest`, or the `newest` |
 | `duplicate_decide` | For `near`: an `ai` instance offering `ai.decide`, such as a decision model, asked whether each near pair is the same card. A pair it says isn't stays apart; one it fails on counts by distance. Exact copies aren't asked |
 

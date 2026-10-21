@@ -7,6 +7,7 @@ import { InstanceForm } from "../settings/Instance";
 import { type InstanceInfo, type Plugin } from "../settings/Plugins";
 import type { Schema } from "../settings/SchemaForm";
 import { nextStep, setupPlugins } from "./wizard";
+import { Loading } from "../shell/Loading";
 
 /** SetUpPlugins sets up an instance of each chosen plugin, one plugin per page. */
 export function SetUpPlugins() {
@@ -15,7 +16,7 @@ export function SetUpPlugins() {
   const instances = useQuery(instancesQuery);
   const failed = plugins.error ?? instances.error;
   if (failed) return <p className="error">{failed.message}</p>;
-  if (plugins.isPending || instances.isPending) return null;
+  if (plugins.isPending || instances.isPending) return <Loading />;
   const chosen = setupPlugins(plugins.data ?? []);
   const all = instances.data ?? [];
   if (chosen.length === 0) {

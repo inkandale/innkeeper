@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { text, tokens, type Data } from "../card/draft";
 import { ChipInput } from "../card/ChipInput";
 import { asEntries, blankEntry, firstLine, isEntry, matches, moved, type Entry } from "./entries";
@@ -7,6 +7,20 @@ import { strings } from "../card/draft";
 let lastUid = 0;
 const uid = () => ++lastUid;
 const num = (v: unknown) => (typeof v === "number" ? v : "");
+// Hints follow the character card V2 spec's meaning for each flag.
+const flags = [
+  ["constant", "Always on", "Inserted even without a key match"],
+  ["selective", "Needs a secondary key", "A key from each key list must match"],
+  ["enabled", "Enabled", "Off skips this entry"],
+] as const;
+
+/** Grip is the drag handle's icon: six dots. */
+const Grip = () => (
+  <svg className="grip" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    {[6, 12, 18].map((y) => [9, 15].map((x) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.6" />))}
+  </svg>
+);
+
 const ext = (e: Entry) => (typeof e.extensions === "object" && e.extensions !== null ? (e.extensions as Record<string, unknown>) : {});
 
 /** Entries edits a lorebook's entries: a filter, then one collapsible row per entry. lock names the run that locks them. */
@@ -21,6 +35,7 @@ export function Entries({ data, base, edit, lock }: { data: Data; base: Data; ed
   const [filter, setFilter] = useState("");
   const [opened, setOpened] = useState<number>();
   const [dragging, setDragging] = useState<number>();
+  const hintId = useId();
 
   const set = (next: unknown[], nextUids: number[]) => {
     setUids(nextUids);
@@ -62,7 +77,8 @@ export function Entries({ data, base, edit, lock }: { data: Data; base: Data; ed
             }}
           >
             {/* Only the summary drags, so selecting or dragging text in the fields doesn't move the entry. */}
-            <summary draggable={!lock} onDragStart={() => setDragging(i)} onDragEnd={() => setDragging(undefined)}>
+            <summary draggable={!lock} title={lock ? undefined : "Drag to reorder"} onDragStart={() => setDragging(i)} onDragEnd={() => setDragging(undefined)}>
+              {!lock && <Grip />}
               <strong>{strings(e.keys).join(", ") || "(no keys)"}</strong>
               <span className="muted">{firstLine(e)}</span>
               {unsaved && <span className="unsaved">unsaved</span>}
@@ -72,12 +88,24 @@ export function Entries({ data, base, edit, lock }: { data: Data; base: Data; ed
               <ChipInput label={`Entry ${n} keys`} values={strings(e.keys)} onChange={(v) => update(i, { keys: v })} />
               <ChipInput label={`Entry ${n} secondary keys`} values={strings(e.secondary_keys)} onChange={(v) => update(i, { secondary_keys: v })} />
               <textarea className="input grow" aria-label={`Entry ${n} content`} value={text(e.content)} onChange={(ev) => update(i, { content: ev.target.value })} />
-              <div className="row">
-                {(["constant", "selective", "enabled"] as const).map((k) => (
+              <div className="row entry-flags">
+                {flags.map(([k, label, hint]) => (
                   <label key={k} className="check">
-                    <input type="checkbox" aria-label={`Entry ${n} ${k}`} checked={e[k] === true} onChange={(ev) => update(i, { [k]: ev.target.checked })} /> {k}
+                    <input
+                      type="checkbox"
+                      aria-label={`Entry ${n} ${label}`}
+                      aria-describedby={`${hintId}-${i}-${k}`}
+                      checked={e[k] === true}
+                      onChange={(ev) => update(i, { [k]: ev.target.checked })}
+                    />{" "}
+                    {label}
+                    <span id={`${hintId}-${i}-${k}`} className="muted hint">
+                      {hint}
+                    </span>
                   </label>
                 ))}
+              </div>
+              <div className="row">
                 <label>
                   Order{" "}
                   <input className="input num" type="number" aria-label={`Entry ${n} order`} value={num(e.insertion_order)}

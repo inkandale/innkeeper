@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { Toasts } from "../shell/Toasts";
-import { Libraries } from "./Libraries";
+import { Libraries, Library } from "./Libraries";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -41,10 +41,14 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function renderLibraries() {
-  const router = createMemoryRouter([{ path: "/settings/libraries", element: <Toasts><Libraries /></Toasts> }], {
-    initialEntries: ["/settings/libraries"],
-  });
+function renderLibraries(entry = "/settings/libraries") {
+  const router = createMemoryRouter(
+    [
+      { path: "/settings/libraries", element: <Toasts><Libraries /></Toasts> },
+      { path: "/settings/libraries/:id", element: <Toasts><Library /></Toasts> },
+    ],
+    { initialEntries: [entry] },
+  );
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <RouterProvider router={router} />
@@ -59,6 +63,20 @@ test("lists each library with its counts, and library 1 has no delete", async ()
   expect(screen.getByText("12 cards, 1 lorebook")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Delete Chub archive" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Delete Library" })).not.toBeInTheDocument();
+  expect(within(row).getByRole("link", { name: "Chub archive" })).toHaveAttribute("href", "/settings/libraries/2");
+  expect(screen.queryByRole("group", { name: /Hiding/ })).not.toBeInTheDocument();
+});
+
+test("a library's page shows its counts, rename, and hiding", async () => {
+  renderLibraries("/settings/libraries/2");
+  expect(await screen.findByRole("heading", { name: "Chub archive" })).toBeInTheDocument();
+  expect(screen.getByText("300 cards, 4 lorebooks")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Libraries" })).toHaveAttribute("href", "/settings/libraries");
+  expect(await screen.findByRole("group", { name: /Hiding/ })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Rename Chub archive" }));
+  await userEvent.type(screen.getByRole("textbox", { name: "Name" }), " 2{Enter}");
+  expect(calls).toEqual(['PATCH /api/libraries/2 {"name":"Chub archive 2"}']);
+  expect(screen.queryByRole("button", { name: "Delete Chub archive" })).not.toBeInTheDocument();
 });
 
 test("create and rename", async () => {

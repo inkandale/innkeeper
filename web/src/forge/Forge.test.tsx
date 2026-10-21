@@ -350,7 +350,7 @@ test("the Reforge panel offers a whole-card field action, run without a field", 
   renderAt("/cards/7");
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: /Reforge/ }));
-  await user.click(screen.getByRole("button", { name: /Expand/ }));
+  await user.click(screen.getByRole("button", { name: /^Expand(?! all)/ }));
   await waitFor(() => expect(runs).toHaveLength(1));
   expect(runs[0]).toMatchObject({ action: "expand" });
   expect(runs[0]).not.toHaveProperty("field");

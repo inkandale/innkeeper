@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { Toasts } from "../shell/Toasts";
@@ -123,10 +123,19 @@ test("editing an entry marks it and saves every entry", async () => {
   expect(puts[0]?.body.data.name).toBe("Forge");
 });
 
+test("⌘S saves the lorebook from its bar", async () => {
+  renderAt("/lorebooks/3");
+  await userEvent.type(await screen.findByLabelText("Name"), " Lore");
+  expect(screen.getByText("1 unsaved field")).toBeInTheDocument();
+  fireEvent.keyDown(window, { key: "s", metaKey: true });
+  await waitFor(() => expect(puts).toHaveLength(1));
+  expect(puts[0]?.body.data.name).toBe("Forge Lore");
+});
+
 test("keys, flags, depth, add, move, and delete", async () => {
   renderAt("/lorebooks/3");
   await userEvent.type(await screen.findByLabelText("Add to Entry 1 keys"), "forge{Enter}");
-  await userEvent.click(screen.getByLabelText("Entry 2 constant"));
+  await userEvent.click(screen.getByLabelText("Entry 2 Always on"));
   await userEvent.clear(screen.getByLabelText("Entry 2 depth"));
   await userEvent.type(screen.getByLabelText("Entry 2 depth"), "2");
   await userEvent.click(screen.getByRole("button", { name: "Move entry 2 up" }));
@@ -139,6 +148,14 @@ test("keys, flags, depth, add, move, and delete", async () => {
     { ...bellows, constant: true, extensions: { depth: 2 } },
     { keys: [], content: "New lore.", enabled: true, insertion_order: 100, position: "before_char", extensions: {} },
   ]);
+});
+
+test("entry flags have readable labels with hints, and rows show a drag handle", async () => {
+  renderAt("/lorebooks/3");
+  expect(await screen.findByLabelText("Entry 1 Always on")).toHaveAccessibleDescription("Inserted even without a key match");
+  expect(screen.getByLabelText("Entry 1 Needs a secondary key")).toHaveAccessibleDescription("A key from each key list must match");
+  expect(screen.getByLabelText("Entry 1 Enabled")).toBeChecked();
+  expect(screen.getAllByTitle("Drag to reorder")).toHaveLength(2);
 });
 
 test("the panel names the lorebook's library", async () => {

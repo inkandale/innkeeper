@@ -6,6 +6,7 @@ import { instancesQuery, pluginsQuery } from "../api/queries";
 import { ImportForm, importers, JobLine } from "../cards/ImportForm";
 import type { Job } from "../settings/jobUtil";
 import { useLibrary } from "../shell/library";
+import { Loading } from "../shell/Loading";
 import { useFinish } from "./Welcome";
 
 /** BringInCards syncs the apps that were set up and imports uploaded files and page URLs. */
@@ -29,7 +30,7 @@ export function BringInCards() {
   });
   const failed = plugins.error ?? instances.error;
   if (failed) return <p className="error">{failed.message}</p>;
-  if (plugins.isPending || instances.isPending) return null;
+  if (plugins.isPending || instances.isPending) return <Loading />;
   // An app is read and pushed to; a plugin that only pulls follows site sources instead.
   const apps = withCapability(withCapability(instances.data, plugins.data, "pull"), plugins.data, "push");
   const imp = importers(instances.data, plugins.data);

@@ -6,7 +6,7 @@ import { useLibrary } from "../shell/library";
 import { useToast } from "../shell/Toasts";
 import { Crop } from "./CropDialog";
 import { changed, type Data } from "./draft";
-import { Identity } from "./Panel";
+import { Identity, Name } from "./Panel";
 import { Forge } from "../forge/Forge";
 import { useForge } from "../forge/useForge";
 import { cardSubject } from "./subject";
@@ -66,6 +66,7 @@ export function NewCard() {
       <fieldset className="contents" disabled={save.isPending}>
         <aside className="card-aside">
           <Avatar image={avatar} onChange={setAvatar} />
+          <Name data={data} edit={edit} lock={forge.lock} />
           <Identity data={data} edit={edit} lock={forge.lock} />
           <div className="row">
             <button className="button primary" disabled={(!dirty.size && !avatar) || forgeBusy} onClick={() => save.mutate()}>

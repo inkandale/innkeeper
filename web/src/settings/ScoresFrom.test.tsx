@@ -81,3 +81,13 @@ test("a library follows the default until it picks its own", async () => {
   await userEvent.selectOptions(select, "Same as default (Judge)");
   await waitFor(() => expect(patches).toEqual([{ score_instance: 6 }, { score_instance: null }]));
 });
+
+test("a saved pick says so next to the picker", async () => {
+  renderIt(2);
+  const user = userEvent.setup();
+  const select = await screen.findByRole("combobox", { name: "Scores from" });
+  await waitFor(() => expect(select).toBeEnabled());
+  expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  await user.selectOptions(select, "Second judge");
+  expect(await screen.findByRole("status")).toHaveTextContent("Saved");
+});

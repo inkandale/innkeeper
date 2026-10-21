@@ -30,6 +30,54 @@
   min-width: 0;
 }
 
+/* The Forge's sticky tabs sit below the bar, so the bar keeps to one row of this height. */
+.card-main:has(> .editor-bar) {
+  --editor-bar-height: 52px;
+}
+
+.editor-bar {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  height: var(--editor-bar-height);
+  display: flex;
+  gap: var(--space);
+  align-items: center;
+  padding: 0 var(--space);
+  margin-bottom: var(--space);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.editor-bar .input.name {
+  flex: 1 1 8em;
+  min-width: 0;
+  background: transparent;
+  border-color: transparent;
+}
+
+.editor-bar .row {
+  flex-wrap: nowrap;
+}
+
+.editor-unsaved {
+  color: var(--drift);
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
+.editor-bar kbd {
+  font-size: 0.8em;
+  opacity: 0.7;
+}
+
+.menu-archive {
+  display: grid;
+  gap: calc(var(--space) * 0.5);
+  max-width: 20em;
+}
+
 .portrait {
   width: 100%;
   aspect-ratio: 2 / 3;
@@ -182,6 +230,25 @@
   .card-aside {
     position: static;
     max-height: none;
+  }
+
+  .card-main:has(> .editor-bar) {
+    --editor-bar-height: 0px;
+  }
+
+  .editor-bar {
+    position: static;
+    height: auto;
+    flex-wrap: wrap;
+    padding: var(--space);
+  }
+
+  .editor-bar .input.name {
+    flex-basis: 100%;
+  }
+
+  .editor-bar .row {
+    flex-wrap: wrap;
   }
 }
 
@@ -385,4 +452,41 @@ fieldset.contents {
 .enrichment-list .stale dd {
   opacity: 0.55;
   font-weight: 400;
+}
+
+.field-outline-head {
+  justify-content: flex-end;
+  margin-bottom: calc(var(--space) * 0.5);
+}
+
+.field-outline-head .muted {
+  margin-right: auto;
+}
+
+.field-outline {
+  margin-bottom: var(--space);
+}
+
+.field-outline .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--space) * 0.5);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 var(--space);
+  cursor: pointer;
+}
+
+.field-outline .chip b {
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 0.85em;
+}
+
+.field-outline .dot {
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: 50%;
+  background: var(--accent);
 }

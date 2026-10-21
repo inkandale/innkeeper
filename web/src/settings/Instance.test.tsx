@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
@@ -79,6 +79,11 @@ beforeEach(() => {
       if (req.method === "GET" && u.pathname === "/api/libraries") return json(libraries);
       if (req.method === "GET" && u.pathname === "/api/instances/3") return json(broken);
       if (req.method === "GET" && u.pathname === "/api/instances/4") return json(owned);
+      if (req.method === "PATCH" && u.pathname === "/api/instances/4") {
+        const body = await req.json();
+        sent.push({ method: req.method, path: u.pathname, body });
+        return json({ ...owned, ...(body as object) });
+      }
       if (req.method === "GET" && u.pathname === "/api/instances/5") return json(forge);
       if (req.method === "GET" && u.pathname === "/api/instances/5/records/skills") return json([{ id: "noir", name: "noir" }]);
       if (u.pathname === "/api/instances/3/check") {
@@ -124,7 +129,7 @@ function renderAt(entry: string) {
   return router;
 }
 
-test("creates an instance from the schema form", async () => {
+test("creates an instance from the schema form and opens its page", async () => {
   const user = userEvent.setup();
   const router = renderAt("/settings/plugins/sillytavern/new");
   await user.type(await screen.findByLabelText("Name"), "home");
@@ -133,7 +138,7 @@ test("creates an instance from the schema form", async () => {
   expect(screen.getByText("Not set.")).toBeInTheDocument();
   await user.type(screen.getByLabelText("password"), "pw");
   await user.click(screen.getByRole("button", { name: "Save" }));
-  await vi.waitFor(() => expect(router.state.location.pathname).toBe("/settings/plugins"));
+  await vi.waitFor(() => expect(router.state.location.pathname).toBe("/settings/instances/9"));
   expect(sent).toEqual([
     {
       method: "POST",
@@ -223,6 +228,17 @@ test("a login provider edits its owner and warns about sessions", async () => {
   expect(sent[0]?.body).toEqual({ name: "pw", owner_subject: "" });
 });
 
+test("an owner saved with trailing spaces leaves the form clean", async () => {
+  const user = userEvent.setup();
+  renderAt("/settings/instances/4");
+  const owner = await screen.findByLabelText("Owner subject");
+  await user.type(owner, "2 ");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await vi.waitFor(() => expect(sent).toHaveLength(1));
+  expect(sent[0]?.body).toEqual({ name: "pw", owner_subject: "me2" });
+  await vi.waitFor(() => expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument());
+});
+
 test("a config edited back to its old value isn't sent", async () => {
   const user = userEvent.setup();
   renderAt("/settings/instances/3");
@@ -248,12 +264,53 @@ test("InstanceForm calls onSaved instead of going to Settings", async () => {
       </Toasts>
     </QueryClientProvider>,
   );
-  await user.type(await screen.findByLabelText("Name"), "home");
+  expect(await screen.findByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/welcome");
+  await user.type(screen.getByLabelText("Name"), "home");
   await user.type(screen.getByLabelText("Server URL"), "http://st");
   await user.click(screen.getByRole("button", { name: "Save" }));
   await vi.waitFor(() => expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ id: 9 })));
   expect(router.state.location.pathname).toBe("/");
-  expect(screen.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/welcome");
+});
+
+test("saving an instance stays on its page and clears the unsaved bar", async () => {
+  const user = userEvent.setup();
+  const router = renderAt("/settings/instances/3");
+  const url = await screen.findByLabelText("Server URL");
+  expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
+  await user.clear(url);
+  await user.type(url, "http://other");
+  expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  expect(await screen.findByText(/^Saved /)).toBeInTheDocument();
+  expect(router.state.location.pathname).toBe("/settings/instances/3");
+  expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Server URL")).toHaveValue("http://other");
+});
+
+test("discard puts back the saved values", async () => {
+  const user = userEvent.setup();
+  renderAt("/settings/instances/3");
+  const url = await screen.findByLabelText("Server URL");
+  await user.clear(url);
+  await user.type(url, "http://other");
+  await user.click(screen.getByRole("button", { name: "Remove password" }));
+  await user.click(screen.getByRole("button", { name: "Discard" }));
+  expect(url).toHaveValue("http://st");
+  expect(screen.getByText("Set. Type to replace it.")).toBeInTheDocument();
+  expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Cancel" })).toBeInTheDocument();
+  expect(sent).toEqual([]);
+});
+
+test("leaving with unsaved edits asks first", async () => {
+  const user = userEvent.setup();
+  const ask = vi.fn(() => false);
+  vi.stubGlobal("confirm", ask);
+  const router = renderAt("/settings/instances/3");
+  await user.type(await screen.findByLabelText("Name"), "x");
+  await act(() => router.navigate("/settings/plugins"));
+  expect(ask).toHaveBeenCalledOnce();
+  expect(router.state.location.pathname).toBe("/settings/instances/3");
 });
 
 test("an action plugin's instance turns on Library access", async () => {

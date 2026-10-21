@@ -4,6 +4,7 @@ import { Navigate, useNavigate, useSearchParams } from "react-router";
 import { api, must, nextKey, safeNext } from "../api/client";
 import type { components } from "../api/schema";
 import { formFields, type Field } from "./fields";
+import { Loading } from "../shell/Loading";
 import { Mark } from "../shell/Mark";
 import "./Login.css";
 
@@ -28,10 +29,10 @@ export function Login() {
   const provider = chosen ?? (list.length === 1 && params.has("next") ? list[0]! : null);
 
   let body;
-  if (providers.isPending) body = null;
+  if (providers.isPending) body = <Loading />;
   else if (providers.isError) body = <p className="error">{providers.error.message}</p>;
   else if (list.length === 0)
-    body = setup.isPending ? null : setup.isSuccess ? (
+    body = setup.isPending ? <Loading /> : setup.isSuccess ? (
       <Navigate to="/setup" replace />
     ) : (
       <p>No login provider is set up. The README's "First login" section explains how to add one.</p>
@@ -77,7 +78,7 @@ function ProviderLogin({ provider }: { provider: Provider }) {
     window.location.assign(redirect);
   }, [redirect, next]);
 
-  if (begin.isPending) return null;
+  if (begin.isPending) return <Loading />;
   if (begin.isError) return <p className="error">{begin.error.message}</p>;
   if (redirect) return null;
   const fields: Field[] = formFields(begin.data.form);

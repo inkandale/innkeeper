@@ -23,10 +23,27 @@ const after: [string, string][] = [
 export const fieldLabel = (key: string) =>
   [...before, ...after, ["name", "Name"], ["tags", "Tags"]].find(([k]) => k === key)?.[1] ?? key;
 
-/** Section is one collapsible field: a header with its state and extra, then the field, disabled while locked. */
-export function Section(props: { label: string; dirty?: boolean; count?: number; lock?: string; extra?: ReactNode; children: ReactNode }) {
+type SectionProps = {
+  id?: string;
+  label: string;
+  dirty?: boolean;
+  count?: number;
+  lock?: string;
+  extra?: ReactNode;
+  open?: boolean;
+  onToggle?: (open: boolean) => void;
+  children: ReactNode;
+};
+
+/** Section is one collapsible field: a header with its state and extra, then the field, disabled while locked. It starts open unless open says otherwise. */
+export function Section(props: SectionProps) {
   return (
-    <details className={props.dirty ? "field dirty" : "field"} open>
+    <details
+      id={props.id}
+      className={props.dirty ? "field dirty" : "field"}
+      open={props.open ?? true}
+      onToggle={(e) => props.onToggle?.(e.currentTarget.open)}
+    >
       <summary>
         {props.label}
         {props.dirty && <span className="unsaved">unsaved</span>}
@@ -41,13 +58,14 @@ export function Section(props: { label: string; dirty?: boolean; count?: number;
   );
 }
 
+const greetingList = (v: unknown) => (Array.isArray(v) ? v.map(text) : []);
+
 /** Greetings edits a list of greetings. noun names one, as in "Add greeting". */
-function Greetings({ field, label, noun, data, dirty, edit, lock }: { field: string; label: string; noun: string; data: Data; dirty: Set<string>; edit: Edit; lock?: string }) {
-  const v = data[field];
-  const list = Array.isArray(v) ? v.map(text) : [];
+function Greetings({ field, noun, data, edit }: { field: string; noun: string; data: Data; edit: Edit }) {
+  const list = greetingList(data[field]);
   const Noun = noun[0]!.toUpperCase() + noun.slice(1);
   return (
-    <Section label={label} dirty={dirty.has(field)} count={tokens(list.join(""))} lock={lock}>
+    <>
       {list.map((g, i) => (
         <div key={i} className="greeting">
           <MacroTextarea label={`${Noun} ${i + 1}`} value={g} onChange={(v) => edit(field, list.map((x, j) => (j === i ? v : x)))} />
@@ -59,7 +77,7 @@ function Greetings({ field, label, noun, data, dirty, edit, lock }: { field: str
       <button className="button" onClick={() => edit(field, [...list, ""])}>
         Add {noun}
       </button>
-    </Section>
+    </>
   );
 }
 
@@ -69,7 +87,7 @@ const notesByCode = (v: unknown): Record<string, string> =>
   Object.fromEntries(Object.entries(v && typeof v === "object" ? v : {}).map(([c, n]) => [c, text(n)]));
 
 /** Translations edits creator_notes_multilingual, an object from language code to notes, as rows. */
-function Translations({ data, dirty, edit, lock }: { data: Data; dirty: Set<string>; edit: Edit; lock?: string }) {
+function Translations({ data, edit }: { data: Data; edit: Edit }) {
   const value = notesByCode(data.creator_notes_multilingual);
   // Rows can hold what the object can't: an empty code, or a code two rows share while one is typed.
   const [state, setState] = useState({ rows: Object.entries(value), from: value });
@@ -90,12 +108,7 @@ function Translations({ data, dirty, edit, lock }: { data: Data; dirty: Set<stri
   };
   const put = (i: number, row: Row) => set(rows.map((r, j) => (j === i ? row : r)));
   return (
-    <Section
-      label="Creator notes in other languages"
-      dirty={dirty.has("creator_notes_multilingual")}
-      count={tokens(rows.map(([, n]) => n).join(""))}
-      lock={lock}
-    >
+    <>
       {rows.map(([code, notes], i) => (
         <div key={i} className="greeting">
           <input
@@ -120,37 +133,102 @@ function Translations({ data, dirty, edit, lock }: { data: Data; dirty: Set<stri
       <button className="button" disabled={rows.some(([c]) => c === "")} onClick={() => set([...rows, ["", ""]])}>
         Add language
       </button>
-    </Section>
+    </>
   );
 }
 
-/** Fields is the card's text, one collapsible section per field. extra adds to a text field's header. */
+type Field = { key: string; label: string; count?: number; extra?: ReactNode; body: ReactNode };
+
+/**
+ * Fields is the card's text, one collapsible section per field, under an outline that jumps to each and opens or
+ * closes them all. extra adds to a text field's header.
+ */
 export function Fields(props: { data: Data; dirty: Set<string>; edit: Edit; lock?: Lock; extra?: (key: string) => ReactNode }) {
   const { data, dirty, edit } = props;
   const lock = props.lock ?? (() => undefined);
-  const area = ([key, label]: [string, string]) => (
-    <Section key={key} label={label} dirty={dirty.has(key)} count={tokens(text(data[key]))} lock={lock(key)} extra={props.extra?.(key)}>
-      <MacroTextarea label={label} value={text(data[key])} onChange={(v) => edit(key, v)} start={key === "mes_example"} />
-    </Section>
-  );
+  const [closed, setClosed] = useState(new Set<string>());
+  const area = ([key, label]: [string, string]): Field => ({
+    key,
+    label,
+    count: tokens(text(data[key])),
+    extra: props.extra?.(key),
+    body: <MacroTextarea label={label} value={text(data[key])} onChange={(v) => edit(key, v)} start={key === "mes_example"} />,
+  });
+  const greetings = (key: string, label: string, noun: string): Field => ({
+    key,
+    label,
+    count: tokens(greetingList(data[key]).join("")),
+    body: <Greetings field={key} noun={noun} data={data} edit={edit} />,
+  });
+  // The outline and the sections both read this list, so they can't disagree.
+  const fields: Field[] = [
+    ...before.map(area),
+    greetings("alternate_greetings", "Alternate greetings", "greeting"),
+    greetings("group_only_greetings", "Group-only greetings", "group greeting"),
+    ...after.map(area),
+    {
+      key: "creator_notes_multilingual",
+      label: "Creator notes in other languages",
+      count: tokens(Object.values(notesByCode(data.creator_notes_multilingual)).join("")),
+      body: <Translations data={data} edit={edit} />,
+    },
+    { key: "extensions", label: "Extensions", body: <pre className="extensions">{show(data.extensions ?? {})}</pre> },
+  ];
+  const total = fields.reduce((sum, f) => sum + (f.count ?? 0), 0);
+  const toggle = (key: string, open: boolean) =>
+    setClosed((c) => {
+      if (c.has(key) !== open) return c;
+      const next = new Set(c);
+      if (open) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  const id = (key: string) => `field-${key}`;
+  const jump = (key: string) => {
+    toggle(key, true);
+    document.getElementById(id(key))?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   return (
     <>
-      {before.map(area)}
-      <Greetings field="alternate_greetings" label="Alternate greetings" noun="greeting" data={data} dirty={dirty} edit={edit} lock={lock("alternate_greetings")} />
-      <Greetings
-        field="group_only_greetings"
-        label="Group-only greetings"
-        noun="group greeting"
-        data={data}
-        dirty={dirty}
-        edit={edit}
-        lock={lock("group_only_greetings")}
-      />
-      {after.map(area)}
-      <Translations data={data} dirty={dirty} edit={edit} lock={lock("creator_notes_multilingual")} />
-      <Section label="Extensions">
-        <pre className="extensions">{show(data.extensions ?? {})}</pre>
-      </Section>
+      <div className="row field-outline-head">
+        <span className="muted">~{total} tokens total</span>
+        <button className="button" onClick={() => setClosed(new Set())}>
+          Expand all
+        </button>
+        <button className="button" onClick={() => setClosed(new Set(fields.map((f) => f.key)))}>
+          Collapse all
+        </button>
+      </div>
+      <nav className="row field-outline" aria-label="Fields">
+        {fields.map((f) => (
+          <button key={f.key} className="chip" onClick={() => jump(f.key)}>
+            {dirty.has(f.key) && <span className="dot" aria-hidden="true" />}
+            {f.label}
+            {dirty.has(f.key) && <span className="visually-hidden">, unsaved</span>}
+            {f.count !== undefined && (
+              <>
+                <b aria-hidden="true">{f.count}</b>
+                <span className="visually-hidden">, ~{f.count} tokens</span>
+              </>
+            )}
+          </button>
+        ))}
+      </nav>
+      {fields.map((f) => (
+        <Section
+          key={f.key}
+          id={id(f.key)}
+          label={f.label}
+          dirty={dirty.has(f.key)}
+          count={f.count}
+          lock={lock(f.key)}
+          extra={f.extra}
+          open={!closed.has(f.key)}
+          onToggle={(open) => toggle(f.key, open)}
+        >
+          {f.body}
+        </Section>
+      ))}
     </>
   );
 }

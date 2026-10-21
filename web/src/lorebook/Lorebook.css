@@ -30,3 +30,18 @@
 .input.num {
   width: 6em;
 }
+
+.entry summary .grip {
+  flex: none;
+  align-self: center;
+  color: var(--text-muted);
+}
+
+.entry-flags {
+  align-items: start;
+  gap: calc(var(--space) * 2);
+}
+
+.entry-flags .hint {
+  display: block;
+}

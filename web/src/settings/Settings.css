@@ -15,6 +15,16 @@
   text-decoration: none;
 }
 
+/* The setup wizard leaves Settings, so it sits apart from the tabs. */
+.tabs .button.ghost {
+  margin-left: auto;
+  align-self: center;
+  padding: calc(var(--space) * 0.5) var(--space);
+  background: none;
+  border-color: transparent;
+  color: var(--text-muted);
+}
+
 .tabs a.active {
   color: var(--text);
   border-bottom: 2px solid var(--accent);
@@ -240,4 +250,33 @@
 .instance-tabs [role="tab"].on {
   color: var(--text);
   border-bottom-color: var(--accent);
+}
+
+.saved {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--space) * 0.5);
+  font-size: 0.85em;
+  font-weight: normal;
+  color: var(--ok);
+  animation: saved-fade 3s forwards;
+}
+
+/* Hidden at the end, so it also leaves the accessibility tree. */
+@keyframes saved-fade {
+  0%, 70% { opacity: 1; }
+  100% { opacity: 0; visibility: hidden; }
+}
+
+.actions.unsaved {
+  position: sticky;
+  bottom: 0;
+  align-items: center;
+  padding: var(--space) 0;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+
+.actions.unsaved > span {
+  margin-right: auto;
 }

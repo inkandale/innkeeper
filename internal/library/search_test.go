@@ -727,6 +727,10 @@ func TestSearchGroupsFamilies(t *testing.T) {
 	if err != nil || !slices.Equal(hitIDs(second), []int64{child}) || second.Total != 2 || second.NextCursor != nil {
 		t.Fatalf("page 2 = %+v, %v", second, err)
 	}
+	past, err := lib.Search(ctx, Card, Query{Group: "family", Page: Page{Size: 1, Number: 3}})
+	if err != nil || len(past.Hits) != 0 || past.Total != 2 {
+		t.Fatalf("page past the end = %+v, %v", past, err)
+	}
 
 	archived, err := lib.Search(ctx, Card, Query{Group: "family", Filter: &Filter{Archived: ptr(true)}})
 	if err != nil {

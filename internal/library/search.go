@@ -545,49 +545,52 @@ func familyWalk(k *Kind, cols, cond string) string {
 	)`
 }
 
-// familyCount counts the families with a match for cond.
+// familyCount counts the families with a match for cond, for a page with
+// none to count them by.
 func familyCount(k *Kind, cond string) string {
 	return familyWalk(k, "", cond) + ` SELECT count(*) FROM (
 		SELECT id FROM m WHERE variant_of_id IS NULL UNION SELECT id FROM up WHERE variant_of_id IS NULL) roots`
 }
 
 // familiesOf is a WITH clause whose fam holds each family with a match for
-// cond: its root, its best match's place under o and cursor, whether every
-// match comes after the page cursor (after), and its matches.
+// cond: its root, its best match's place under o, whether every match comes
+// after the page cursor (after), and whether the root itself matches (own).
 func familiesOf(k *Kind, cond string, o order, after string) string {
 	return familyWalk(k, `, row_number() OVER (ORDER BY `+o.sql()+`) AS pos, `+after+` AS after, `+o.cursor()+` AS cur`, cond) + `, fam AS (
-		SELECT root_id, min(pos) AS pos, bool_and(after) AS after, (array_agg(cur ORDER BY pos))[1] AS cur,
-			array_agg(id ORDER BY id) AS matched
-		FROM (SELECT m.id AS root_id, m.id, m.pos, m.after, m.cur FROM m WHERE m.variant_of_id IS NULL
+		SELECT root_id, min(pos) AS pos, bool_and(after) AS after, bool_or(own) AS own
+		FROM (SELECT m.id AS root_id, m.pos, m.after, TRUE AS own FROM m WHERE m.variant_of_id IS NULL
 			UNION ALL
-			SELECT up.id, m.id, m.pos, m.after, m.cur FROM up JOIN m ON m.id = up.member WHERE up.variant_of_id IS NULL) x
+			SELECT up.id, m.pos, m.after, FALSE FROM up JOIN m ON m.id = up.member WHERE up.variant_of_id IS NULL) x
 		GROUP BY root_id
 	)`
 }
 
 // familyPage follows familiesOf: it selects cols for one page of fam's
 // faces after the cursor, best placed first, then each family's root, size,
-// matches, and cursor. The face is the shallowest live member, then the
+// matches, and cursor, and how many families there are. Only the page's
+// families get their matches and cursor, as every family's would cost a sort. The face is the shallowest live member, then the
 // oldest, then the lowest ID; with no live member, the root. all counts
 // archived members in size.
 func familyPage(k *Kind, cols string, all bool, limit, offset string) string {
-	size := `count(*) FILTER (WHERE e.archived_at IS NULL)::int`
+	size := `count(*) FILTER (WHERE d.archived_at IS NULL)::int`
 	if all {
 		size = `count(*)::int`
 	}
 	return `, pg AS (
-		SELECT * FROM fam WHERE after ORDER BY pos LIMIT ` + limit + ` OFFSET ` + offset + `
+		SELECT f.root_id, f.pos, m.cur, array(SELECT f.root_id WHERE f.own
+			UNION SELECT up.member FROM up WHERE up.id = f.root_id AND up.variant_of_id IS NULL ORDER BY 1) AS matched
+		FROM (SELECT * FROM fam WHERE after ORDER BY pos LIMIT ` + limit + ` OFFSET ` + offset + `) f JOIN m ON m.pos = f.pos
 	), down AS (
-		SELECT pg.root_id, pg.root_id AS id, 0 AS depth FROM pg
+		SELECT pg.root_id, e.id, 0 AS depth, e.archived_at, e.created_at FROM pg JOIN ` + k.Table + ` e ON e.id = pg.root_id
 		UNION ALL
-		SELECT down.root_id, e.id, down.depth + 1 FROM down JOIN ` + k.Table + ` e ON e.variant_of_id = down.id
+		SELECT down.root_id, e.id, down.depth + 1, e.archived_at, e.created_at FROM down JOIN ` + k.Table + ` e ON e.variant_of_id = down.id
 	) CYCLE id SET is_cycle USING path, face AS (
 		SELECT pg.root_id, pg.pos, pg.cur, pg.matched, f.id, f.size FROM pg CROSS JOIN LATERAL (
-			SELECT (array_agg(e.id ORDER BY e.archived_at IS NOT NULL, d.depth, e.created_at, e.id))[1] AS id, ` + size + ` AS size
-			FROM down d JOIN ` + k.Table + ` e ON e.id = d.id WHERE d.root_id = pg.root_id
+			SELECT (array_agg(d.id ORDER BY d.archived_at IS NOT NULL, d.depth, d.created_at, d.id))[1] AS id, ` + size + ` AS size
+			FROM down d WHERE d.root_id = pg.root_id
 		) f
 	)
-	SELECT ` + cols + `, face.root_id, face.size, face.matched, face.cur
+	SELECT ` + cols + `, face.root_id, face.size, face.matched, face.cur, (SELECT count(*) FROM fam)
 	FROM face JOIN ` + from(k) + ` ON c.id = face.id ORDER BY face.pos`
 }
 
@@ -805,12 +808,11 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 		return Results{}, fmt.Errorf("%w: unknown group %q", ErrInvalid, q.Group)
 	}
 	res := Results{Hits: []Hit{}}
-	count := `SELECT count(*) FROM ` + from(k) + ` WHERE ` + cond
-	if q.Group == "family" {
-		count = familyCount(k, cond)
-	}
-	if err := l.pool.QueryRow(ctx, count, condArgs...).Scan(&res.Total); err != nil {
-		return Results{}, fmt.Errorf("count matches: %w", err)
+	// A grouped page counts its families itself.
+	if q.Group != "family" {
+		if err := l.pool.QueryRow(ctx, `SELECT count(*) FROM `+from(k)+` WHERE `+cond, condArgs...).Scan(&res.Total); err != nil {
+			return Results{}, fmt.Errorf("count matches: %w", err)
+		}
 	}
 	if len(q.Facets) > 0 {
 		if res.Facets, err = l.facets(ctx, k, q.Facets, cond, condArgs, q.ScoreInstance); err != nil {
@@ -819,7 +821,7 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 	}
 	cols := `c.id, c.slug, r.id, c.archived_at, coalesce(c.archived_reason, ''), r.data, r.avatar_blob, ` + tags + `, ` + books + `, ` + targets + `, ` + cards + `, ` + entries + `, ` + enrichments
 	limit, skip := w.arg(size+1), w.arg(offset)
-	sql := `SELECT ` + cols + `, NULL::bigint, NULL::int, NULL::bigint[], ` + o.cursor() + ` FROM ` + from(k) + `
+	sql := `SELECT ` + cols + `, NULL::bigint, NULL::int, NULL::bigint[], ` + o.cursor() + `, NULL::bigint FROM ` + from(k) + `
 		WHERE ` + cond + ` AND ` + after + ` ORDER BY ` + o.sql() + ` LIMIT ` + limit + ` OFFSET ` + skip
 	if q.Group == "family" {
 		sql = familiesOf(k, cond, o, after) + familyPage(k, cols, mentionsArchived(q.Filter), limit, skip)
@@ -835,7 +837,8 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 	var famSize *int
 	var matched []int64
 	var cur, next string
-	_, err = pgx.ForEachRow(rows, []any{&h.ID, &h.Slug, &h.RevisionID, &h.ArchivedAt, &h.ArchivedReason, &data, &avatar, &h.Tags, &h.Lorebooks, &h.Targets, &h.Cards, &h.Entries, &h.Enrichments, &rootID, &famSize, &matched, &cur},
+	var families *int
+	_, err = pgx.ForEachRow(rows, []any{&h.ID, &h.Slug, &h.RevisionID, &h.ArchivedAt, &h.ArchivedReason, &data, &avatar, &h.Tags, &h.Lorebooks, &h.Targets, &h.Cards, &h.Entries, &h.Enrichments, &rootID, &famSize, &matched, &cur, &families},
 		func() error {
 			if len(res.Hits) == size-1 {
 				next = base64.RawURLEncoding.EncodeToString([]byte(cur))
@@ -868,6 +871,14 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 	if len(res.Hits) > size {
 		res.Hits = res.Hits[:size]
 		res.NextCursor = &next
+	}
+	switch {
+	case families != nil:
+		res.Total = *families
+	case q.Group == "family":
+		if err := l.pool.QueryRow(ctx, familyCount(k, cond), condArgs...).Scan(&res.Total); err != nil {
+			return Results{}, fmt.Errorf("count families: %w", err)
+		}
 	}
 	return res, nil
 }

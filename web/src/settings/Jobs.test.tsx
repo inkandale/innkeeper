@@ -13,17 +13,17 @@ function json(body: unknown) {
 const now = new Date().toISOString();
 const bulkJob = {
   id: 5, kind: "bulk", status: "waiting", payload: { action: "card.tag" }, progress: {}, attempts: 0, max_attempts: 3,
-  run_after: now, created_at: now, children: { succeeded: 1, queued: 1 },
+  run_after: now, created_at: now, children: { succeeded: 1, queued: 1 }, trigger: "automatic",
 };
 const exportJob = {
   id: 6, kind: "card.export", status: "succeeded", payload: {}, progress: { done: 2, total: 2, blob: "cd".repeat(32) },
   attempts: 1, max_attempts: 3, run_after: now, created_at: now, started_at: new Date(Date.parse(now) + 30_000).toISOString(),
   finished_at: new Date(Date.parse(now) + 120_000).toISOString(), duration_ms: 90_000,
-  cards_changed: 0,
+  cards_changed: 0, trigger: "manual",
 };
 const failedImport = {
   id: 8, kind: "import", instance_id: 3, status: "failed", payload: {}, progress: { done: 10, total: 100 }, attempts: 8, max_attempts: 8,
-  run_after: now, created_at: now, finished_at: now, error: "worker stopped renewing its lease", cards_changed: 12,
+  run_after: now, created_at: now, finished_at: now, error: "worker stopped renewing its lease", cards_changed: 12, trigger: "scheduled",
 };
 
 class FakeEventSource {
@@ -54,6 +54,7 @@ beforeEach(() => {
       if (u.pathname === "/api/jobs" && u.searchParams.get("parent") === "5")
         return json([{ ...bulkJob, id: 7, kind: "card.tag", status: "succeeded", children: undefined }]);
       if (u.pathname === "/api/jobs" && u.searchParams.get("plugin") === "chub-archive") return json([failedImport]);
+      if (u.pathname === "/api/jobs" && u.searchParams.has("trigger")) return json([exportJob]);
       if (u.pathname === "/api/jobs") return json([bulkJob, exportJob, failedImport]);
       if (u.pathname === "/api/plugins") return json([{ name: "chub-archive" }, { name: "lumiverse" }]);
       if (u.pathname === "/api/instances") return json([{ id: 3, plugin: "chub-archive", label: "Chub archive" }]);
@@ -110,6 +111,18 @@ test("the list filters by plugin and names each job's instance", async () => {
   expect(requests).toContain("GET /api/jobs?status=failed&plugin=chub-archive");
 });
 
+test("the list hides automatic jobs", async () => {
+  const router = renderAt("/settings/jobs");
+  expect(await screen.findByText("bulk card.tag")).toBeInTheDocument();
+  expect(screen.getByText("automatic")).toBeInTheDocument();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("checkbox", { name: "Hide automatic" }));
+  expect(router.state.location.search).toBe("?automatic=hide");
+  expect(requests).toContain("GET /api/jobs?trigger=manual&trigger=scheduled");
+  expect(await screen.findByText("manual")).toBeInTheDocument();
+  expect(screen.queryByText("bulk card.tag")).not.toBeInTheDocument();
+});
+
 test("a bulk job shows its children, follows events, and cancels", async () => {
   renderAt("/settings/jobs/5");
   expect(await screen.findByText("1 of 2")).toBeInTheDocument();
@@ -150,8 +163,8 @@ test("the list shows how long each job ran and the cards it changed", async () =
   await screen.findByText("card.export");
   const cells = (text: string) =>
     within(screen.getByText(text).closest("tr")!).getAllByRole("cell").map((c) => c.textContent);
-  expect(cells("card.export").slice(5, 7)).toEqual(["1m", ""]);
-  expect(cells("Chub archive").slice(5, 7)).toEqual(["", "12"]);
+  expect(cells("card.export").slice(6, 8)).toEqual(["1m", ""]);
+  expect(cells("Chub archive").slice(6, 8)).toEqual(["", "12"]);
 });
 
 test("a job that never started shows no wait or run time", async () => {

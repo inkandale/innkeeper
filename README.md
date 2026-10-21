@@ -50,8 +50,8 @@ database at startup and stop cleanly on `SIGTERM`.
   while idle.
 - `innkeeper worker` runs jobs: imports, bulk actions, pushes, an hourly
   check of target apps for changes, [scheduled backups](#backup-and-restore),
-  and daily cleanup of unused blobs and of jobs that finished over 30 days
-  ago.
+  and daily cleanup of unused blobs and of finished jobs and their logs
+  older than `INNKEEPER_JOB_RETENTION`.
 
 | Variable | Used by | Meaning |
 |---|---|---|
@@ -69,6 +69,7 @@ database at startup and stop cleanly on `SIGTERM`.
 | `INNKEEPER_BACKUP_ASSETS_EVERY`, `INNKEEPER_BACKUP_CONFIG_EVERY` | `api`, `worker` | How often to back up that type, such as `24h` or `7d`. Unset means no schedule |
 | `INNKEEPER_SYNC_EVERY` | `worker` | How often to sync every app, such as `30m` or `6h`. `0` turns the schedule off. Default `1h` |
 | `INNKEEPER_SOURCE_CHECK_EVERY` | `worker` | How often to check the sites cards and lorebooks came from for updates, such as `12h`. `0` turns the schedule off. Default `24h` |
+| `INNKEEPER_JOB_RETENTION` | `worker` | How long finished jobs and their logs stay, such as `72h`. `0` keeps them forever. Default `168h` (7 days) |
 | `INNKEEPER_BACKUP_ASSETS_KEEP`, `INNKEEPER_BACKUP_CONFIG_KEEP` | `api`, `worker` | How many backups of that type to keep; default 7 |
 | `INNKEEPER_URL`, `INNKEEPER_TOKEN` | `ink` | The site root, such as `http://localhost:8080`, and a token. When `INNKEEPER_TOKEN` is set, `ink` uses these instead of a login from `ink login`. The CLI adds `/api` itself |
 

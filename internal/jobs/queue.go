@@ -23,6 +23,25 @@ const (
 	StatusFailed    = "failed"
 )
 
+// Job triggers: what started a job.
+const (
+	TriggerManual    = "manual"
+	TriggerScheduled = "scheduled"
+	// TriggerAutomatic is a job another job started, such as a sync's pushes.
+	TriggerAutomatic = "automatic"
+)
+
+type inJobKey struct{}
+
+// triggerOf is TriggerAutomatic inside a running job's handler, and
+// TriggerManual anywhere else.
+func triggerOf(ctx context.Context) string {
+	if ctx.Value(inJobKey{}) != nil {
+		return TriggerAutomatic
+	}
+	return TriggerManual
+}
+
 var (
 	ErrNotFound = errors.New("job not found")
 	// ErrRetry marks a handler error as temporary. Wrap it, as in
@@ -60,6 +79,7 @@ type Job struct {
 	// StartedAt is when the first attempt was claimed.
 	StartedAt    *time.Time
 	CardsChanged int
+	Trigger      string
 }
 
 // Spec describes a job to enqueue.
@@ -76,13 +96,13 @@ type Queue struct{ pool *pgxpool.Pool }
 func New(pool *pgxpool.Pool) *Queue { return &Queue{pool: pool} }
 
 const jobCols = `id, kind, instance_id, payload, status, attempts, max_attempts, progress, checkpoint,
-	run_after, parent_id, error, created_at, finished_at, started_at, cards_changed`
+	run_after, parent_id, error, created_at, finished_at, started_at, cards_changed, trigger`
 
 func scanJob(row pgx.Row) (Job, error) {
 	var j Job
 	err := row.Scan(&j.ID, &j.Kind, &j.InstanceID, &j.Payload, &j.Status, &j.Attempts, &j.MaxAttempts,
 		&j.Progress, &j.Checkpoint, &j.RunAfter, &j.ParentID, &j.Error, &j.CreatedAt, &j.FinishedAt,
-		&j.StartedAt, &j.CardsChanged)
+		&j.StartedAt, &j.CardsChanged, &j.Trigger)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Job{}, ErrNotFound
 	}
@@ -102,9 +122,9 @@ func insert(ctx context.Context, db querier, s Spec, parent *int64, status strin
 	if err != nil {
 		return Job{}, err
 	}
-	return scanJob(db.QueryRow(ctx, `INSERT INTO job (kind, instance_id, payload, parent_id, status, finished_at)
-		VALUES ($1, $2, $3, $4, $5, CASE WHEN $5 = 'succeeded' THEN now() END) RETURNING `+jobCols,
-		s.Kind, s.InstanceID, payload, parent, status))
+	return scanJob(db.QueryRow(ctx, `INSERT INTO job (kind, instance_id, payload, parent_id, status, trigger, finished_at)
+		VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $5 = 'succeeded' THEN now() END) RETURNING `+jobCols,
+		s.Kind, s.InstanceID, payload, parent, status, triggerOf(ctx)))
 }
 
 func payloadOf(s Spec) ([]byte, error) {
@@ -159,9 +179,9 @@ func (q *Queue) Record(ctx context.Context, s Spec, progress json.RawMessage, ca
 		status, msg = StatusFailed, &m
 	}
 	return scanJob(q.pool.QueryRow(ctx, `INSERT INTO job (kind, instance_id, payload, status, progress, error, cards_changed,
-			started_at, finished_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now()) RETURNING `+jobCols,
-		s.Kind, s.InstanceID, payload, status, progress, msg, cards))
+			trigger, started_at, finished_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), now()) RETURNING `+jobCols,
+		s.Kind, s.InstanceID, payload, status, progress, msg, cards, triggerOf(ctx)))
 }
 
 // EnqueueBulk adds a parent job with one child job per spec, in one
@@ -208,7 +228,7 @@ func (q *Queue) EnsureScheduled(ctx context.Context, kind string, every time.Dur
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('innkeeper-schedule'))`); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO job (kind) SELECT $1::text WHERE NOT EXISTS (
+	if _, err := tx.Exec(ctx, `INSERT INTO job (kind, trigger) SELECT $1::text, 'scheduled' WHERE NOT EXISTS (
 		SELECT 1 FROM job WHERE kind = $1 AND parent_id IS NULL
 			AND (status IN ('queued', 'running') OR finished_at > now() - make_interval(secs => $2)))`,
 		kind, every.Seconds()); err != nil {
@@ -390,6 +410,8 @@ type ListOptions struct {
 	Instance int64
 	// Plugin lists only jobs run by an instance of that plugin.
 	Plugin string
+	// Triggers lists only jobs started by one of these triggers.
+	Triggers []string
 	// Parent lists that parent's children. Without it, List returns only
 	// top-level jobs.
 	Parent *int64
@@ -411,7 +433,8 @@ func (q *Queue) List(ctx context.Context, o ListOptions) ([]Job, error) {
 			AND parent_id IS NOT DISTINCT FROM $3::bigint AND ($4::bigint = 0 OR id < $4)
 			AND ($6::bigint = 0 OR instance_id = $6) AND ($7::jsonb IS NULL OR payload @> $7::jsonb)
 			AND ($8::text = '' OR instance_id IN (SELECT id FROM plugin_instance WHERE plugin = $8))
-		ORDER BY id DESC LIMIT $5`, o.Status, o.Kind, o.Parent, o.Before, o.Limit, o.Instance, o.Payload, o.Plugin)
+			AND (coalesce(cardinality($9::text[]), 0) = 0 OR trigger = ANY($9))
+		ORDER BY id DESC LIMIT $5`, o.Status, o.Kind, o.Parent, o.Before, o.Limit, o.Instance, o.Payload, o.Plugin, o.Triggers)
 	if err != nil {
 		return nil, err
 	}

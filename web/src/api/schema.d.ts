@@ -3565,6 +3565,11 @@ export interface components {
             started_at?: string;
             /** @enum {string} */
             status: "queued" | "running" | "waiting" | "succeeded" | "failed";
+            /**
+             * @description What started the job: a person, the worker's schedule, or another job, such as a sync's pushes.
+             * @enum {string}
+             */
+            trigger: "manual" | "scheduled" | "automatic";
         };
         LibraryNameInBody: {
             /**
@@ -7435,6 +7440,8 @@ export interface operations {
                 kind?: string;
                 /** @description Only jobs run by an instance of this plugin */
                 plugin?: string;
+                /** @description Only jobs started by one of these triggers; repeat it to list several */
+                trigger?: ("manual" | "scheduled" | "automatic")[] | null;
                 /** @description Only jobs run by this instance */
                 instance_id?: number;
                 /** @description List this bulk job's children instead of top-level jobs */

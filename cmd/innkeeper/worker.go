@@ -32,8 +32,6 @@ import (
 const (
 	blobGCKind   = "blob.gc"
 	jobPruneKind = "job.prune"
-	// jobRetention is how long finished jobs stay in the job list.
-	jobRetention = 30 * 24 * time.Hour
 )
 
 func worker() error {
@@ -50,6 +48,11 @@ func worker() error {
 		return err
 	}
 	sourceCheckEvery, err := everyEnv("INNKEEPER_SOURCE_CHECK_EVERY", 24*time.Hour)
+	if err != nil {
+		return err
+	}
+	// How long finished jobs, and so their logs, stay in the job list.
+	jobRetention, err := everyEnv("INNKEEPER_JOB_RETENTION", 7*24*time.Hour)
 	if err != nil {
 		return err
 	}
@@ -140,7 +143,6 @@ func worker() error {
 		},
 		Schedules: []jobs.Schedule{
 			{Kind: blobGCKind, Every: 24 * time.Hour},
-			{Kind: jobPruneKind, Every: 24 * time.Hour},
 			{Kind: targets.ScanKind, Every: time.Hour},
 			// ponytail: catches entities queued while a detect job was finishing, and enqueues that failed; hourly is the delay then.
 			{Kind: importer.DetectKind, Every: time.Hour},
@@ -148,6 +150,9 @@ func worker() error {
 	}
 	if syncEvery > 0 {
 		w.Schedules = append(w.Schedules, jobs.Schedule{Kind: targets.SyncKind, Every: syncEvery})
+	}
+	if jobRetention > 0 {
+		w.Schedules = append(w.Schedules, jobs.Schedule{Kind: jobPruneKind, Every: 24 * time.Hour})
 	}
 	if sourceCheckEvery > 0 {
 		w.Schedules = append(w.Schedules, jobs.Schedule{Kind: targets.SourceCheckKind, Every: sourceCheckEvery})

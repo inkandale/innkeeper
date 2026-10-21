@@ -47,6 +47,7 @@ type jobOut struct {
 	StartedAt    *time.Time      `json:"started_at,omitempty" doc:"When the first attempt started; a bulk job's is its earliest child's. A manual retry clears it."`
 	DurationMS   *int64          `json:"duration_ms,omitempty" doc:"Milliseconds from started_at to finished_at, once the job finishes."`
 	CardsChanged int             `json:"cards_changed" doc:"Cards the job changed in the library or an app, across every attempt; a bulk job's sums its children's."`
+	Trigger      string          `json:"trigger" enum:"manual,scheduled,automatic" doc:"What started the job: a person, the worker's schedule, or another job, such as a sync's pushes."`
 	Children     map[string]int  `json:"children,omitempty" doc:"A bulk job's children, counted by status. Get-job, cancel-job, watch-job, and list-jobs fill it."`
 	Outcomes     map[string]int  `json:"outcomes,omitempty" doc:"A bulk job's finished children, counted by outcome, such as a resolve's action, stale, conflict, or failed. Only get-job, cancel-job, and watch-job fill it."`
 }
@@ -55,7 +56,7 @@ func toJob(j jobs.Job) jobOut {
 	return jobOut{ID: j.ID, Kind: j.Kind, InstanceID: j.InstanceID, Payload: j.Payload, Status: j.Status,
 		Attempts: j.Attempts, MaxAttempts: j.MaxAttempts, Progress: j.Progress, ParentID: j.ParentID, Error: j.Error,
 		RunAfter: j.RunAfter, CreatedAt: j.CreatedAt, FinishedAt: j.FinishedAt, StartedAt: j.StartedAt,
-		DurationMS: durationMS(j.StartedAt, j.FinishedAt), CardsChanged: j.CardsChanged}
+		DurationMS: durationMS(j.StartedAt, j.FinishedAt), CardsChanged: j.CardsChanged, Trigger: j.Trigger}
 }
 
 func durationMS(start, end *time.Time) *int64 {
@@ -102,15 +103,16 @@ type jobResp struct{ Body jobOut }
 type jobsOut struct{ Body []jobOut }
 
 type listJobsIn struct {
-	Status     string `query:"status" enum:"queued,running,waiting,succeeded,failed"`
-	Kind       string `query:"kind"`
-	Plugin     string `query:"plugin" doc:"Only jobs run by an instance of this plugin"`
-	InstanceID int64  `query:"instance_id" doc:"Only jobs run by this instance"`
-	Parent     int64  `query:"parent" doc:"List this bulk job's children instead of top-level jobs"`
-	CardID     int64  `query:"card_id" doc:"Only top-level jobs whose payload names this card, such as its pushes and action runs"`
-	LorebookID int64  `query:"lorebook_id" doc:"Only top-level jobs whose payload names this lorebook, such as its action runs. Not with card_id"`
-	Before     int64  `query:"before" doc:"Only jobs with smaller IDs, for the next page"`
-	Limit      int    `query:"limit" default:"50" minimum:"1" maximum:"200"`
+	Status     string   `query:"status" enum:"queued,running,waiting,succeeded,failed"`
+	Kind       string   `query:"kind"`
+	Plugin     string   `query:"plugin" doc:"Only jobs run by an instance of this plugin"`
+	Trigger    []string `query:"trigger,explode" enum:"manual,scheduled,automatic" doc:"Only jobs started by one of these triggers; repeat it to list several"`
+	InstanceID int64    `query:"instance_id" doc:"Only jobs run by this instance"`
+	Parent     int64    `query:"parent" doc:"List this bulk job's children instead of top-level jobs"`
+	CardID     int64    `query:"card_id" doc:"Only top-level jobs whose payload names this card, such as its pushes and action runs"`
+	LorebookID int64    `query:"lorebook_id" doc:"Only top-level jobs whose payload names this lorebook, such as its action runs. Not with card_id"`
+	Before     int64    `query:"before" doc:"Only jobs with smaller IDs, for the next page"`
+	Limit      int      `query:"limit" default:"50" minimum:"1" maximum:"200"`
 }
 
 type jobLogsIn struct {
@@ -240,7 +242,7 @@ func (s *Server) jobRoutes(api huma.API) {
 		Summary: "List jobs", Description: "Newest first. A finished reconcile's progress is cut to its totals, an export's card_ids to a count of cards, " +
 			"and an action run's result is left out; get the job for the whole of each.", Tags: tags},
 		func(ctx context.Context, in *listJobsIn) (*jobsOut, error) {
-			o := jobs.ListOptions{Status: in.Status, Kind: in.Kind, Plugin: in.Plugin, Instance: in.InstanceID, Before: in.Before, Limit: in.Limit}
+			o := jobs.ListOptions{Status: in.Status, Kind: in.Kind, Plugin: in.Plugin, Triggers: in.Trigger, Instance: in.InstanceID, Before: in.Before, Limit: in.Limit}
 			if in.Parent != 0 {
 				o.Parent = &in.Parent
 			}

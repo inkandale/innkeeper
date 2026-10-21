@@ -2842,6 +2842,15 @@
               "failed"
             ],
             "type": "string"
+          },
+          "trigger": {
+            "description": "What started the job: a person, the worker's schedule, or another job, such as a sync's pushes.",
+            "enum": [
+              "manual",
+              "scheduled",
+              "automatic"
+            ],
+            "type": "string"
           }
         },
         "required": [
@@ -2854,7 +2863,8 @@
           "progress",
           "run_after",
           "created_at",
-          "cards_changed"
+          "cards_changed",
+          "trigger"
         ],
         "type": "object"
       },
@@ -9808,6 +9818,27 @@
             "schema": {
               "description": "Only jobs run by an instance of this plugin",
               "type": "string"
+            }
+          },
+          {
+            "description": "Only jobs started by one of these triggers; repeat it to list several",
+            "explode": true,
+            "in": "query",
+            "name": "trigger",
+            "schema": {
+              "description": "Only jobs started by one of these triggers; repeat it to list several",
+              "items": {
+                "enum": [
+                  "manual",
+                  "scheduled",
+                  "automatic"
+                ],
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
             }
           },
           {

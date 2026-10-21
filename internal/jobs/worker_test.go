@@ -421,3 +421,43 @@ func TestOnceMakesErrorsFinalAndRefusesASecondAttempt(t *testing.T) {
 		t.Fatalf("success: err = %v", err)
 	}
 }
+
+func TestTriggerTellsScheduledManualAndAutomaticJobsApart(t *testing.T) {
+	q := newQueue(t)
+	ctx := context.Background()
+	started := make(chan int64, 1)
+	startWorker(t, &Worker{Queue: q, Poll: 50 * time.Millisecond,
+		Schedules: []Schedule{{Kind: "tick", Every: time.Hour}},
+		Handlers: map[string]Handler{
+			"tick": func(ctx context.Context, r *Run) error {
+				j, err := q.EnqueueBulk(ctx, Spec{Kind: "bulk"}, []Spec{{Kind: "child"}})
+				started <- j.ID
+				return err
+			},
+		}})
+	manual, err := q.Enqueue(ctx, Spec{Kind: "child"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var bulkID int64
+	select {
+	case bulkID = <-started:
+	case <-time.After(10 * time.Second):
+		t.Fatal("scheduled job never ran")
+	}
+	children, err := q.List(ctx, ListOptions{Parent: &bulkID})
+	if err != nil || len(children) != 1 || children[0].Trigger != TriggerAutomatic {
+		t.Fatalf("children = %+v, %v; want one automatic", children, err)
+	}
+	top, err := q.List(ctx, ListOptions{Triggers: []string{TriggerManual, TriggerScheduled}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, j := range top {
+		got[j.Kind] = j.Trigger
+	}
+	if len(top) != 2 || got["tick"] != TriggerScheduled || got["child"] != TriggerManual || top[1].ID != manual.ID {
+		t.Fatalf("manual and scheduled jobs = %+v; want the tick (scheduled) and the manual child, not the automatic bulk", top)
+	}
+}

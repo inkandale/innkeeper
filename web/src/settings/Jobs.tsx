@@ -8,6 +8,7 @@ export function Jobs() {
   const [params, setParams] = useSearchParams();
   const status = jobStates.find((s) => s === params.get("status"));
   const plugin = params.get("plugin") ?? "";
+  const hideAutomatic = params.get("automatic") === "hide";
   const plugins = useQuery(pluginsQuery);
   const instances = useQuery(instancesQuery);
   const label = new Map((instances.data ?? []).map((i) => [i.id, i.label]));
@@ -18,9 +19,19 @@ export function Jobs() {
       return p;
     });
   const list = useQuery({
-    queryKey: ["jobs", status, plugin],
+    queryKey: ["jobs", status, plugin, hideAutomatic],
     queryFn: async () =>
-      must(await api.GET("/jobs", { params: { query: { ...(status ? { status } : {}), ...(plugin ? { plugin } : {}) } } })),
+      must(
+        await api.GET("/jobs", {
+          params: {
+            query: {
+              ...(status ? { status } : {}),
+              ...(plugin ? { plugin } : {}),
+              ...(hideAutomatic ? { trigger: ["manual", "scheduled"] } : {}),
+            },
+          },
+        }),
+      ),
     // ponytail: polls while jobs run; a stream per row would use up the browser's six connections per host.
     refetchInterval: (q) => (q.state.data?.some((j) => !finished(j)) ? 2000 : false),
   });
@@ -48,6 +59,14 @@ export function Jobs() {
             </option>
           ))}
         </select>
+        <label className="check">
+          <span>Hide automatic</span>
+          <input
+            type="checkbox"
+            checked={hideAutomatic}
+            onChange={(e) => filter("automatic", e.target.checked ? "hide" : "")}
+          />
+        </label>
       </div>
       {list.isError && <p className="error">{list.error.message}</p>}
       <table className="jobs">
@@ -56,6 +75,7 @@ export function Jobs() {
             <th>Job</th>
             <th>Kind</th>
             <th>Instance</th>
+            <th>Trigger</th>
             <th>State</th>
             <th>Progress</th>
             <th>Duration</th>
@@ -71,6 +91,7 @@ export function Jobs() {
               </td>
               <td>{kindLabel(j)}</td>
               <td>{j.instance_id ? (label.get(j.instance_id) ?? `#${j.instance_id}`) : ""}</td>
+              <td>{j.trigger}</td>
               <td className={"state " + j.status}>{j.status}</td>
               <td>{progressText(j)}</td>
               <td>{j.duration_ms != null ? span(j.duration_ms) : ""}</td>

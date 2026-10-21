@@ -277,7 +277,8 @@ func (w *Worker) execute(ctx context.Context, j *Job) {
 	log := w.Log.With("job", j.ID, "kind", j.Kind, "attempt", j.Attempts)
 	run := &Run{Job: *j, q: w.Queue, worker: w.id, lease: w.Lease, log: log, progress: j.Progress, cards: j.CardsChanged}
 	run.Log("info", fmt.Sprintf("Attempt %d of %d started", j.Attempts, j.MaxAttempts))
-	hctx, cancel := context.WithCancelCause(ctx)
+	// Jobs the handler enqueues are automatic.
+	hctx, cancel := context.WithCancelCause(context.WithValue(ctx, inJobKey{}, true))
 	defer cancel(nil)
 	stop := make(chan struct{})
 	var beat sync.WaitGroup

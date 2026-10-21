@@ -117,11 +117,11 @@ test("Edit loads the record and replaces it", async () => {
 
 test("Delete asks first", async () => {
   const user = userEvent.setup();
-  const confirm = vi.fn(() => true);
-  vi.stubGlobal("confirm", confirm);
   renderRecords();
   await user.click(await screen.findByRole("button", { name: "Delete college" }));
-  expect(confirm).toHaveBeenCalledWith("Delete college?");
+  const dialog = screen.getByRole("dialog", { name: "Delete college?" });
+  expect(sent.some((r) => r.method === "DELETE")).toBe(false);
+  await user.click(within(dialog).getByRole("button", { name: "Delete" }));
   await waitFor(() => expect(screen.queryByText("college")).not.toBeInTheDocument());
   expect(sent.some((r) => r.method === "DELETE" && r.path === base + "/college")).toBe(true);
 });

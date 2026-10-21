@@ -3,7 +3,9 @@ import { Link, useNavigate } from "react-router";
 import { api, must, mustOk } from "../api/client";
 import { instancesQuery, pluginsQuery } from "../api/queries";
 import type { components } from "../api/schema";
+import { useConfirm } from "../shell/ConfirmDialog";
 import { Menu } from "../shell/Menu";
+import { useToast } from "../shell/Toasts";
 import { ScoresFrom } from "./ScoresFrom";
 
 export type Plugin = components["schemas"]["PluginOut"];
@@ -13,6 +15,8 @@ type CatalogSource = components["schemas"]["CatalogSourceOut"];
 export function Plugins() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const toast = useToast();
+  const [ask, dialog] = useConfirm();
   const plugins = useQuery(pluginsQuery);
   const instances = useQuery(instancesQuery);
   const sources = useQuery({ queryKey: ["plugin-sources"], queryFn: async () => must(await api.GET("/plugin-sources")) });
@@ -31,9 +35,13 @@ export function Plugins() {
     onSuccess: changed,
   });
   const setDisabled = useMutation({
-    mutationFn: async (v: { id: number; disabled: boolean }) =>
+    mutationFn: async (v: { id: number; label: string; disabled: boolean }) =>
       mustOk(await api.PATCH("/instances/{id}", { params: { path: { id: v.id } }, body: { disabled: v.disabled } })),
-    onSuccess: changed,
+    onSuccess: (_, v) => {
+      changed();
+      if (v.disabled)
+        toast({ text: `Disabled ${v.label}`, action: { label: "Undo", run: () => setDisabled.mutate({ ...v, disabled: false }) } });
+    },
   });
   const install = useMutation({
     mutationFn: async (v: { name: string; source: string; version: string }) =>
@@ -87,13 +95,21 @@ export function Plugins() {
       <button
         aria-label={`${i.disabled ? "Enable" : "Disable"} ${i.label}`}
         disabled={setDisabled.isPending}
-        onClick={() => setDisabled.mutate({ id: i.id, disabled: !i.disabled })}
+        onClick={() => setDisabled.mutate({ id: i.id, label: i.label, disabled: !i.disabled })}
       >
         {i.disabled ? "Enable" : "Disable"}
       </button>
       <button
         aria-label={`Delete instance ${i.label}`}
-        onClick={() => confirm(`Delete ${i.label}? Its jobs stay, and logins through it end.`) && remove.mutate(i.id)}
+        onClick={() =>
+          ask({
+            title: `Delete ${i.label}?`,
+            body: <p>Its jobs stay, and logins through it end.</p>,
+            confirmLabel: "Delete instance",
+            danger: true,
+            onConfirm: () => remove.mutate(i.id),
+          })
+        }
       >
         Delete instance
       </button>
@@ -169,11 +185,18 @@ export function Plugins() {
                 <button
                   disabled={busy}
                   onClick={() =>
-                    confirm(
-                      p.builtin
-                        ? `Uninstall ${p.name}? Innkeeper goes back to its built-in copy.`
-                        : `Uninstall ${p.name}? Its instances and data stay, and come back if you install it again.`,
-                    ) && uninstall.mutate(p.name)
+                    ask({
+                      title: `Uninstall ${p.name}?`,
+                      body: (
+                        <p>
+                          {p.builtin
+                            ? "Innkeeper goes back to its built-in copy."
+                            : "Its instances and data stay, and come back if you install it again."}
+                        </p>
+                      ),
+                      confirmLabel: "Uninstall",
+                      onConfirm: () => uninstall.mutate(p.name),
+                    })
                   }
                 >
                   Uninstall
@@ -231,8 +254,14 @@ export function Plugins() {
                   <button
                     disabled={busy}
                     onClick={() =>
-                      prompt(`Remove ${name}'s instances and database? This can't be undone. Type ${name} to confirm.`) ===
-                        name && removeData.mutate(name)
+                      ask({
+                        title: `Remove ${name}'s data?`,
+                        body: <p>This deletes its instances and database, for good.</p>,
+                        confirmLabel: "Remove data",
+                        danger: true,
+                        typeToConfirm: name,
+                        onConfirm: () => removeData.mutate(name),
+                      })
                     }
                   >
                     Remove data
@@ -294,7 +323,14 @@ export function Plugins() {
                   <button
                     className="button"
                     aria-label={`Delete source ${s.id}`}
-                    onClick={() => confirm(`Delete the source ${s.id}?`) && deleteSource.mutate(s.id)}
+                    onClick={() =>
+                      ask({
+                        title: `Delete the source ${s.id}?`,
+                        confirmLabel: "Delete source",
+                        danger: true,
+                        onConfirm: () => deleteSource.mutate(s.id),
+                      })
+                    }
                   >
                     Delete
                   </button>
@@ -323,6 +359,7 @@ export function Plugins() {
           </button>
         </form>
       </details>
+      {dialog}
     </section>
   );
 }

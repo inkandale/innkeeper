@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router";
 import { api, must } from "../api/client";
 import { librariesQuery } from "../api/queries";
 import type { components } from "../api/schema";
+import { useConfirm } from "../shell/ConfirmDialog";
 import { JobLine } from "../cards/ImportForm";
 import { rememberedLibrary, rememberLibrary } from "../shell/library";
 import { Hiding } from "./Hiding";
@@ -103,7 +104,7 @@ export function Libraries() {
   const list = useQuery(librariesQuery);
   // Delete jobs started here, by library.
   const [deleting, setDeleting] = useState<Record<number, number>>({});
-  const [mistyped, setMistyped] = useState<string>();
+  const [ask, dialog] = useConfirm();
   const onSuccess = () => qc.invalidateQueries({ queryKey: ["libraries"] });
 
   const create = useMutation({
@@ -139,7 +140,6 @@ export function Libraries() {
         </button>
       </form>
       {failed && <p className="error">{failed.message}</p>}
-      {mistyped && <p className="error">{mistyped}</p>}
       <ul className="plain">
         {(list.data ?? []).map((l) => (
           <li key={l.id}>
@@ -149,14 +149,26 @@ export function Libraries() {
                   className="button danger"
                   aria-label={`Delete ${l.name}`}
                   disabled={remove.isPending}
-                  onClick={() => {
-                    const typed = prompt(
-                      `Delete ${l.name} with its ${count(l.cards, "card")} and ${count(l.lorebooks, "lorebook")}? This can't be undone. Type ${l.name} to confirm.`,
-                    );
-                    setMistyped(undefined);
-                    if (typed === l.name) remove.mutate({ id: l.id, confirm: typed });
-                    else if (typed !== null) setMistyped(`That isn't ${l.name}'s name, so nothing was deleted.`);
-                  }}
+                  onClick={() =>
+                    ask({
+                      title: `Delete the library ${l.name}?`,
+                      body: (
+                        <>
+                          <p>This deletes, for good:</p>
+                          <ul>
+                            <li>{count(l.cards, "card")} and their history</li>
+                            <li>{count(l.lorebooks, "lorebook")}</li>
+                            <li>Its collections, and the bindings and sources of what's in it</li>
+                          </ul>
+                          <p className="muted">Copies already pushed to apps stay there.</p>
+                        </>
+                      ),
+                      confirmLabel: "Delete library",
+                      danger: true,
+                      typeToConfirm: l.name,
+                      onConfirm: () => remove.mutate({ id: l.id, confirm: l.name }),
+                    })
+                  }
                 >
                   Delete
                 </button>
@@ -166,6 +178,7 @@ export function Libraries() {
           </li>
         ))}
       </ul>
+      {dialog}
     </section>
   );
 }

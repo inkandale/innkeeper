@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { api, must, mustOk, route, thumb, upload, type Kind } from "../api/client";
 import { bindingsQuery, instancesQuery, librariesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
 import { badgeClass } from "../cards/Tile";
+import { useConfirm } from "../shell/ConfirmDialog";
 import { useToast } from "../shell/Toasts";
 import type { Entity } from "./Card";
 import { Crop } from "./CropDialog";
@@ -100,7 +101,10 @@ export function Identity({ data, edit, lock }: IdentityProps) {
 
 export function Archive({ kind, entity }: { kind: Kind; entity: Entity }) {
   const qc = useQueryClient();
+  const toast = useToast();
+  const [ask, dialog] = useConfirm();
   const archived = !!entity.archived_at;
+  const name = text((entity.revision.data as Data).name);
   const [unpublish, setUnpublish] = useState(false);
   const bindings = useQuery(bindingsQuery(kind, entity.id));
   const instances = useQuery(instancesQuery);
@@ -108,18 +112,42 @@ export function Archive({ kind, entity }: { kind: Kind; entity: Entity }) {
     .filter((b) => b.push)
     .map((b) => instances.data?.find((i) => i.id === b.instance_id)?.label ?? `#${b.instance_id}`);
   const set = useMutation({
-    mutationFn: async () =>
-      mustOk(
-        await api.PUT(route(kind, "/cards/{id}/archived"), {
-          params: { path: { id: entity.id } },
-          body: { archived: !archived, unpublish: !archived && unpublish },
-        }),
-      ),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: [kind, entity.id] }),
+    mutationFn: async (v: { archived: boolean; unpublish: boolean }) =>
+      mustOk(await api.PUT(route(kind, "/cards/{id}/archived"), { params: { path: { id: entity.id } }, body: v })),
+    onSuccess: (_, v) => {
+      void qc.invalidateQueries({ queryKey: [kind, entity.id] });
+      // Unarchiving brings back the card, but not the apps' deleted copies.
+      if (v.archived && !v.unpublish)
+        toast({ text: `Archived ${name}`, action: { label: "Undo", run: () => set.mutate({ archived: false, unpublish: false }) } });
+    },
   });
+  const archive = () => {
+    if (!unpublish) return set.mutate({ archived: true, unpublish: false });
+    ask({
+      title: `Archive ${name} and delete it from ${linked.join(", ")}?`,
+      body: (
+        <>
+          <p>This deletes, for good:</p>
+          <ul>
+            {linked.map((l) => (
+              <li key={l}>The copy in {l}, chats included</li>
+            ))}
+          </ul>
+          <p className="muted">You can unarchive it later, but the apps' copies don't come back.</p>
+        </>
+      ),
+      confirmLabel: "Archive and delete",
+      danger: true,
+      onConfirm: () => set.mutate({ archived: true, unpublish: true }),
+    });
+  };
   return (
     <>
-      <button className={archived ? "button" : "button danger"} disabled={set.isPending} onClick={() => set.mutate()}>
+      <button
+        className={archived ? "button" : "button danger"}
+        disabled={set.isPending}
+        onClick={() => (archived ? set.mutate({ archived: false, unpublish: false }) : archive())}
+      >
         {archived ? "Unarchive" : "Archive"}
       </button>
       {entity.archived_reason && (
@@ -135,6 +163,7 @@ export function Archive({ kind, entity }: { kind: Kind; entity: Entity }) {
         </label>
       )}
       {set.error && <span className="error">{set.error.message}</span>}
+      {dialog}
     </>
   );
 }

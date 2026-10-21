@@ -326,12 +326,31 @@ test("the panel shows sync, lorebooks, collections, and sources", async () => {
   expect(screen.queryByRole("link", { name: "chub: dg/evil" })).not.toBeInTheDocument();
 });
 
-test("archive can also delete the card from the apps it was pushed to", async () => {
+test("archive offers Undo, which unarchives", async () => {
+  renderAt("/cards/7");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Archive" }));
+  await user.click(await screen.findByRole("button", { name: "Undo" }));
+  await waitFor(() =>
+    expect(puts).toEqual([
+      { path: "/api/cards/7/archived", body: { archived: true, unpublish: false } },
+      { path: "/api/cards/7/archived", body: { archived: false, unpublish: false } },
+    ]),
+  );
+  expect(screen.queryByText("Archived Brakka")).not.toBeInTheDocument();
+});
+
+test("archive that also deletes from the apps asks first, and offers no Undo", async () => {
   renderAt("/cards/7");
   const user = userEvent.setup();
   await user.click(await screen.findByRole("checkbox", { name: "Also delete from Lumiverse, chats included" }));
   await user.click(screen.getByRole("button", { name: "Archive" }));
+  const dialog = screen.getByRole("dialog", { name: "Archive Brakka and delete it from Lumiverse?" });
+  expect(puts).toEqual([]);
+  await user.click(within(dialog).getByRole("button", { name: "Archive and delete" }));
   await waitFor(() => expect(puts).toContainEqual({ path: "/api/cards/7/archived", body: { archived: true, unpublish: true } }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Archive" })).toBeEnabled());
+  expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
 });
 
 test("tags are part of the draft and save with it", async () => {

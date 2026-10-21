@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, must, mustOk } from "../api/client";
 import type { components } from "../api/schema";
+import { useConfirm } from "../shell/ConfirmDialog";
 import { useToast } from "../shell/Toasts";
 import { SchemaForm, type Schema } from "./SchemaForm";
 
@@ -11,6 +12,7 @@ type Props = { instance: number; type: string; recordType: RecordType };
 
 /** Records lists one record type a plugin instance keeps, with an editor, delete, and import. */
 export function Records({ instance, type, recordType }: Props) {
+  const [ask, dialog] = useConfirm();
   const qc = useQueryClient();
   const toast = useToast();
   const path = { id: instance, type };
@@ -73,7 +75,14 @@ export function Records({ instance, type, recordType }: Props) {
                 type="button"
                 className="button"
                 aria-label={`Delete ${r.name}`}
-                onClick={() => confirm(`Delete ${r.name}?`) && remove.mutate(r.id)}
+                onClick={() =>
+                  ask({
+                    title: `Delete ${r.name}?`,
+                    confirmLabel: "Delete",
+                    danger: true,
+                    onConfirm: () => remove.mutate(r.id),
+                  })
+                }
               >
                 Delete
               </button>
@@ -115,6 +124,7 @@ export function Records({ instance, type, recordType }: Props) {
           )}
         </div>
       )}
+      {dialog}
     </section>
   );
 }

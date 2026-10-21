@@ -11,7 +11,6 @@ const now = new Date().toISOString();
 let sent: string[];
 beforeEach(() => {
   sent = [];
-  vi.stubGlobal("confirm", () => true);
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
@@ -43,7 +42,9 @@ test("lists tokens and grants, and revokes them", async () => {
   expect(await screen.findByText("laptop")).toBeInTheDocument();
   expect(await screen.findByText("Claude")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Revoke laptop" }));
+  await user.click(screen.getByRole("button", { name: "Revoke token" }));
   await user.click(screen.getByRole("button", { name: "Revoke Claude" }));
+  await user.click(screen.getByRole("button", { name: "Revoke client" }));
   expect(sent).toEqual(["DELETE /api/tokens/1", "DELETE /api/grants/7"]);
 });
 

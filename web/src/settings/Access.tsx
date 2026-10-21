@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, must, mustOk } from "../api/client";
 import { meQuery } from "../api/queries";
 import type { components } from "../api/schema";
+import { useConfirm } from "../shell/ConfirmDialog";
 
 type Tier = components["schemas"]["Token"]["tier"];
 const tiers: Tier[] = ["read", "write", "destructive"];
@@ -9,6 +10,7 @@ const tiers: Tier[] = ["read", "write", "destructive"];
 const when = (t?: string) => (t ? new Date(t).toLocaleString() : "never");
 
 export function Access() {
+  const [ask, dialog] = useConfirm();
   const qc = useQueryClient();
   const me = useQuery(meQuery);
   const tokens = useQuery({ queryKey: ["tokens"], queryFn: async () => must(await api.GET("/tokens")) });
@@ -88,7 +90,15 @@ export function Access() {
                 <button
                   className="button"
                   aria-label={`Revoke ${t.name}`}
-                  onClick={() => confirm(`Revoke ${t.name}? Anything using it stops working.`) && revokeToken.mutate(t.id)}
+                  onClick={() =>
+                    ask({
+                      title: `Revoke ${t.name}?`,
+                      body: <p>Anything using it stops working.</p>,
+                      confirmLabel: "Revoke token",
+                      danger: true,
+                      onConfirm: () => revokeToken.mutate(t.id),
+                    })
+                  }
                 >
                   Revoke
                 </button>
@@ -121,7 +131,15 @@ export function Access() {
                 <button
                   className="button"
                   aria-label={`Revoke ${g.client_name}`}
-                  onClick={() => confirm(`Revoke ${g.client_name}? It has to be approved again.`) && revokeGrant.mutate(g.id)}
+                  onClick={() =>
+                    ask({
+                      title: `Revoke ${g.client_name}?`,
+                      body: <p>It has to be approved again.</p>,
+                      confirmLabel: "Revoke client",
+                      danger: true,
+                      onConfirm: () => revokeGrant.mutate(g.id),
+                    })
+                  }
                 >
                   Revoke
                 </button>
@@ -130,6 +148,7 @@ export function Access() {
           ))}
         </tbody>
       </table>
+      {dialog}
     </section>
   );
 }

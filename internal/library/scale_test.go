@@ -92,6 +92,8 @@ func TestScaleExplain(t *testing.T) {
 	explain("tags and sources facets", search(Query{Facets: []string{"tags", "sources"}, Page: Page{Size: 1}}))
 	explain("tags facet with text", search(Query{Text: "dwarf", Facets: []string{"tags"}, Page: Page{Size: 1}}))
 	explain("family grouping", search(Query{Group: "family"}))
+	explain("rare tag filter", search(Query{Filter: &Filter{Tag: ptr("tag450")}}))
+	explain("common tag filter, grouped", search(Query{Filter: &Filter{Tag: ptr("tag0")}, Group: "family"}))
 	explain("small library beside the big one", func() error {
 		_, err := lib.Search(ctx, Card, Query{Text: "dwarf"})
 		return err

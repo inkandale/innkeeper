@@ -385,7 +385,8 @@ func (w *where) filter(f Filter) (string, error) {
 		// strpos, unlike LIKE, needs no escaping of % and _.
 		return `strpos(lower(r.data->>'name'), lower(` + w.arg(*f.Name) + `)) > 0`, nil
 	case f.Tag != nil:
-		return `EXISTS (SELECT 1 FROM ` + tagsOf + ` WHERE lower(t.t) = lower(` + w.arg(*f.Tag) + `))`, nil
+		// The card_revision_tag_keys index serves this.
+		return `card_tag_keys(r.data) @> ARRAY[lower(` + w.arg(*f.Tag) + `)]`, nil
 	case f.Collection != nil:
 		return `EXISTS (SELECT 1 FROM collection_card cc
 			WHERE cc.card_id = c.id AND cc.collection_id = ` + w.arg(*f.Collection) + `)`, nil

@@ -24,7 +24,7 @@ type Query struct {
 	Include  []string `json:"include,omitempty" doc:"Extra data per hit: tags, lorebooks, targets, enrichments (the score instance's current values of its score keys and grid key). Lorebooks take cards and targets."`
 	Fields   []string `json:"fields,omitempty" doc:"Card data keys to return per hit, plus avatar. Default: name."`
 	Sort     string   `json:"sort,omitempty" pattern:"^(relevance|updated|name|created|enrichment:([1-9][0-9]*:)?[a-z][a-z0-9_]*)$" doc:"relevance, updated, name, created, or enrichment:<key> for the score instance's value of key, highest first and cards without one last; enrichment:<instance>:<key> reads that enrich instance's value instead. Default: relevance with text, newest first without."`
-	Facets   []string `json:"facets,omitempty" doc:"Counts to return over every match: tags, collections, targets, sources, or enrichment:<key> for the values of a text or list key from the score instance, or enrichment:<instance>:<key> from that enrich instance. Enrichment counts are keyed by what follows enrichment:. Lorebooks take targets and sources."`
+	Facets   []string `json:"facets,omitempty" doc:"Counts to return over every match: tags, collections, targets, sources, states (each match once per state it has on any target), or states:<instance>,<instance> for those targets only, or enrichment:<key> for the values of a text or list key from the score instance, or enrichment:<instance>:<key> from that enrich instance. Enrichment counts are keyed by what follows enrichment:. Lorebooks take targets and sources."`
 	Page     Page     `json:"page,omitempty"`
 	Group    string   `json:"group,omitempty" enum:"family" doc:"family returns one hit per family of variants: its face, with the family's matches. Paging and total count families; facets count cards or lorebooks."`
 
@@ -130,6 +130,7 @@ type Facets struct {
 	Collections []CollectionCount `json:"collections,omitempty"`
 	Targets     []TargetCount     `json:"targets,omitempty"`
 	Sources     []SourceCount     `json:"sources,omitempty"`
+	States      []StateCount      `json:"states,omitempty"`
 	// Enrichments are keyed by enrichment key.
 	Enrichments map[string][]ValueCount `json:"enrichments,omitempty" doc:"By key: each text value, or each item of a list value, and how many matching cards have it. Most common first, at most 100."`
 }
@@ -152,6 +153,12 @@ type TargetCount struct {
 	Instance int64  `json:"instance"`
 	Is       string `json:"is"`
 	Cards    int    `json:"cards"`
+}
+
+// StateCount is how many matching cards stand one way on any target.
+type StateCount struct {
+	Is    string `json:"is" enum:"in_sync,ahead,remote_changed,diverged,missing,cant_check"`
+	Cards int    `json:"cards"`
 }
 
 // SourceCount is a source kind and how many matching cards have it.
@@ -292,11 +299,56 @@ func enrichmentFacetSQL(k *Kind, cond, key, inst string) string {
 		GROUP BY x.v ORDER BY count(*) DESC, x.v LIMIT 100`
 }
 
+// statesFacetPrefix starts a states facet that names its targets.
+const statesFacetPrefix = "states:"
+
+// statesFacetInstances returns the targets a states facet counts on, none
+// for all of them, and whether name is a states facet at all.
+func statesFacetInstances(name string) ([]int64, bool, error) {
+	if name == "states" {
+		return []int64{}, true, nil
+	}
+	list, ok := strings.CutPrefix(name, statesFacetPrefix)
+	if !ok {
+		return nil, false, nil
+	}
+	var ids []int64
+	for s := range strings.SplitSeq(list, ",") {
+		id, err := strconv.ParseInt(s, 10, 64)
+		if err != nil || id <= 0 {
+			return nil, true, fmt.Errorf("%w: facet %q must name instance IDs", ErrInvalid, name)
+		}
+		ids = append(ids, id)
+	}
+	return ids, true, nil
+}
+
+// statesFacetSQL counts the matches of cond per state they have on a
+// target, on the instances in arg $inst only when it isn't empty.
+func statesFacetSQL(k *Kind, cond, inst string) string {
+	return `SELECT status, count(DISTINCT ` + k.FK + `)::int FROM ` + pushedStatus + ` bs
+		WHERE ` + k.FK + ` IN (` + matching(k, cond) + `) AND (cardinality(` + inst + `::bigint[]) = 0 OR instance_id = ANY(` + inst + `))
+		GROUP BY status ORDER BY status`
+}
+
 // facets counts the matches of cond for each facet in names; an enrichment
 // facet reads its named instance's values, or score's.
 func (l *Library) facets(ctx context.Context, k *Kind, names []string, cond string, args []any, score int64) (*Facets, error) {
 	f := &Facets{}
 	for _, name := range names {
+		if instances, ok, err := statesFacetInstances(name); ok {
+			if err != nil {
+				return nil, err
+			}
+			rows, err := l.pool.Query(ctx, statesFacetSQL(k, cond, "$"+strconv.Itoa(len(args)+1)), append(slices.Clone(args), instances)...)
+			if err != nil {
+				return nil, err
+			}
+			if f.States, err = pgx.CollectRows(rows, pgx.RowToStructByPos[StateCount]); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		if ref, ok := strings.CutPrefix(name, enrichmentFacetPrefix); ok {
 			inst, key, err := enrichmentRef(ref)
 			if err != nil {
@@ -693,6 +745,12 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 		}
 	}
 	for _, name := range q.Facets {
+		if _, ok, err := statesFacetInstances(name); ok {
+			if err != nil {
+				return Results{}, err
+			}
+			continue
+		}
 		if ref, ok := strings.CutPrefix(name, enrichmentFacetPrefix); ok {
 			if k != Card {
 				return Results{}, fmt.Errorf("%w: lorebooks have no enrichments", ErrInvalid)

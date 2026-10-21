@@ -59,7 +59,7 @@ function useRows(kind: Kind, q: CardQuery, names: Names, sections: TermKind[], o
   const search = (body: Search, enabled: boolean) => ({ ...searchQuery(kind, body), placeholderData: keepPreviousData, enabled });
   const faceted = (["target", "tag", "source", "collection"] as const).filter((s) => sections.includes(s));
   const facetResults = useQueries({ queries: faceted.map((s) => search(countSearch(q, s), open(s))) });
-  const stateResults = useQueries({ queries: targetStates.map((is) => search(stateCountSearch(q, is), open("state"))) });
+  const stateResult = useQuery(search(stateCountSearch(q), open("state")));
   const results = new Map(faceted.map((s, i) => [s as TermKind, facetResults[i]?.data]));
   // The API leaves empty facet lists out, so a section is loading only while its search has no data.
   const listOf = <T,>(s: TermKind, list: (f: FacetLists) => T[] | null | undefined): T[] | undefined => {
@@ -80,9 +80,10 @@ function useRows(kind: Kind, q: CardQuery, names: Names, sections: TermKind[], o
   for (const t of targetFacet ?? [])
     if (!states.length || states.includes(t.is)) byInstance.set(t.instance, (byInstance.get(t.instance) ?? 0) + t.cards);
   const targetRows = targetFacet ? [...byInstance].map(([id, cards]) => ({ value: String(id), label: instanceLabel(String(id)), cards })) : undefined;
-  const stateRows = stateResults.every((r) => r.data)
+  const stateCounts = stateResult.data && new Map((stateResult.data.facets?.states ?? []).map((s) => [s.is, s.cards]));
+  const stateRows = stateCounts
     ? targetStates
-        .map((is, i) => ({ value: is, label: stateLabel(is), cards: stateResults[i]?.data?.total ?? 0, dot: badgeClass[is] }))
+        .map((is) => ({ value: is, label: stateLabel(is), cards: stateCounts.get(is) ?? 0, dot: badgeClass[is] }))
         .filter((r) => r.cards > 0 || picked("state").includes(r.value))
     : undefined;
   return {

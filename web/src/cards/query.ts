@@ -252,10 +252,17 @@ export function valueCountSearch(q: CardQuery, ref: string): Search {
   };
 }
 
-/** stateCountSearch counts the matches in one state; the targets facet can't, as it counts a card once per target. */
-export function stateCountSearch(q: CardQuery, is: TargetIs): Search {
-  const terms: Term[] = [...q.terms.filter((t) => t.kind !== "state"), { kind: "state", value: is, not: false }];
-  return { library: q.library, text: q.text || undefined, filter: filterFor(terms, q.sharesSource), page: { size: 1 } };
+/** stateCountSearch counts the matches in each state over every other section's terms, on the selected targets when there are any. */
+export function stateCountSearch(q: CardQuery): Search {
+  const targets = q.terms.filter((t) => t.kind === "target" && !t.not).map((t) => t.value);
+  return {
+    library: q.library,
+    text: q.text || undefined,
+    // The states facet narrows to the selected targets itself, so they leave the filter.
+    filter: filterFor(q.terms.filter((t) => t.kind !== "state" && (t.kind !== "target" || t.not)), q.sharesSource),
+    facets: [targets.length ? `states:${targets.join(",")}` : "states"],
+    page: { size: 1 },
+  };
 }
 
 // The tag facet groups by lower-cased name and the API filter ignores case, so tags match that way here too.

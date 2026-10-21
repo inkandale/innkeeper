@@ -3276,6 +3276,7 @@ export interface components {
                 [key: string]: components["schemas"]["ValueCount"][] | null;
             };
             sources?: components["schemas"]["SourceCount"][] | null;
+            states?: components["schemas"]["StateCount"][] | null;
             /** @description Most used first. */
             tags?: components["schemas"]["TagCount"][] | null;
             targets?: components["schemas"]["TargetCount"][] | null;
@@ -3977,7 +3978,7 @@ export interface components {
              * @example /api/schemas/Query.json
              */
             readonly $schema?: string;
-            /** @description Counts to return over every match: tags, collections, targets, sources, or enrichment:<key> for the values of a text or list key from the score instance, or enrichment:<instance>:<key> from that enrich instance. Enrichment counts are keyed by what follows enrichment:. Lorebooks take targets and sources. */
+            /** @description Counts to return over every match: tags, collections, targets, sources, states (each match once per state it has on any target), or states:<instance>,<instance> for those targets only, or enrichment:<key> for the values of a text or list key from the score instance, or enrichment:<instance>:<key> from that enrich instance. Enrichment counts are keyed by what follows enrichment:. Lorebooks take targets and sources. */
             facets?: string[] | null;
             /** @description Card data keys to return per hit, plus avatar. Default: name. */
             fields?: string[] | null;
@@ -4384,6 +4385,12 @@ export interface components {
             query?: components["schemas"]["Query"];
             /** @description Also send cards whose head revision already has a value from the instance. Without it, they count as skipped. */
             rescore?: boolean;
+        };
+        StateCount: {
+            /** Format: int64 */
+            cards: number;
+            /** @enum {string} */
+            is: "in_sync" | "ahead" | "remote_changed" | "diverged" | "missing" | "cant_check";
         };
         SyncParams: {
             /**

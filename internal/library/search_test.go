@@ -165,6 +165,42 @@ func TestSearchRejectsBadQueries(t *testing.T) {
 	}
 }
 
+func TestSearchStatesFacetCountsEachCardOncePerState(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	s := seedSearch(t, lib)
+	var a, b int64
+	if err := lib.pool.QueryRow(ctx, `INSERT INTO plugin_instance (plugin, name) VALUES ('fake', 'a'), ('fake', 'b') RETURNING id`).Scan(&a); err != nil {
+		t.Fatal(err)
+	}
+	b = a + 1
+	// Brakka is in sync on a and changed on b; Carrow is missing on a.
+	for _, bind := range []struct {
+		instance, card int64
+		remote         string
+	}{{a, s.brakka, "unchanged"}, {b, s.brakka, "changed"}, {a, s.carrow, "missing"}} {
+		if _, err := lib.pool.Exec(ctx, `WITH b AS (INSERT INTO binding (instance_id, card_id, remote_id, remote_state, accepted_data, accepted_hash)
+			VALUES ($1::bigint, $2::bigint, $1::bigint || '-' || $2::bigint, $3, '{}', 'h') RETURNING id)
+			INSERT INTO push (binding_id, revision_id, pushed_hash, remote_id)
+			SELECT b.id, c.head_revision_id, 'h', 'r' FROM b, card c WHERE c.id = $2::bigint`, bind.instance, bind.card, bind.remote); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := lib.Search(ctx, Card, Query{Facets: []string{"states"}})
+	if err != nil || !slices.Equal(got.Facets.States, []StateCount{{"in_sync", 1}, {"missing", 1}, {"remote_changed", 1}}) {
+		t.Fatalf("states = %+v, %v", got.Facets, err)
+	}
+	// Named targets narrow the count to how cards stand there.
+	got, err = lib.Search(ctx, Card, Query{Facets: []string{fmt.Sprintf("states:%d", a)}})
+	if err != nil || !slices.Equal(got.Facets.States, []StateCount{{"in_sync", 1}, {"missing", 1}}) {
+		t.Fatalf("states on a = %+v, %v", got.Facets, err)
+	}
+	if _, err := lib.Search(ctx, Card, Query{Facets: []string{"states:x"}}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("bad states facet: %v", err)
+	}
+}
+
 func TestSearchIDs(t *testing.T) {
 	lib := newLibrary(t)
 	s := seedSearch(t, lib)

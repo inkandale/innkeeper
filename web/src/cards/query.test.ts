@@ -118,11 +118,18 @@ test("a section's count search leaves out the section's own terms", () => {
   expect(countSearch(q, "target").facets).toEqual(["targets"]);
 });
 
-test("a state's count search swaps in that state and keeps the selected targets", () => {
-  const q = { ...base, terms: [term("target", "2"), term("state", "ahead"), term("tag", "fantasy")] };
-  expect(stateCountSearch(q, "in_sync")).toEqual({
+test("the state count search drops the state terms and counts on the selected targets", () => {
+  const q = { ...base, terms: [term("target", "2"), term("target", "3"), term("state", "ahead"), term("tag", "fantasy")] };
+  expect(stateCountSearch(q)).toEqual({
     library: 1,
-    filter: { and: [{ target_state: { instances: [2], states: ["in_sync"] } }, { tag: "fantasy" }] },
+    filter: { and: [{ tag: "fantasy" }] },
+    facets: ["states:2,3"],
+    page: { size: 1 },
+  });
+  expect(stateCountSearch({ ...base, terms: [{ ...term("target", "2"), not: true }] })).toEqual({
+    library: 1,
+    filter: { and: [{ not: { target_state: { instances: [2] } } }] },
+    facets: ["states"],
     page: { size: 1 },
   });
 });

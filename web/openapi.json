@@ -2116,6 +2116,15 @@
               "null"
             ]
           },
+          "states": {
+            "items": {
+              "$ref": "#/components/schemas/StateCount"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "tags": {
             "description": "Most used first.",
             "items": {
@@ -3926,7 +3935,7 @@
             "type": "string"
           },
           "facets": {
-            "description": "Counts to return over every match: tags, collections, targets, sources, or enrichment:\u003ckey\u003e for the values of a text or list key from the score instance, or enrichment:\u003cinstance\u003e:\u003ckey\u003e from that enrich instance. Enrichment counts are keyed by what follows enrichment:. Lorebooks take targets and sources.",
+            "description": "Counts to return over every match: tags, collections, targets, sources, states (each match once per state it has on any target), or states:\u003cinstance\u003e,\u003cinstance\u003e for those targets only, or enrichment:\u003ckey\u003e for the values of a text or list key from the score instance, or enrichment:\u003cinstance\u003e:\u003ckey\u003e from that enrich instance. Enrichment counts are keyed by what follows enrichment:. Lorebooks take targets and sources.",
             "items": {
               "type": "string"
             },
@@ -4974,6 +4983,31 @@
         },
         "required": [
           "instance_id"
+        ],
+        "type": "object"
+      },
+      "StateCount": {
+        "additionalProperties": false,
+        "properties": {
+          "cards": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "is": {
+            "enum": [
+              "in_sync",
+              "ahead",
+              "remote_changed",
+              "diverged",
+              "missing",
+              "cant_check"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "is",
+          "cards"
         ],
         "type": "object"
       },

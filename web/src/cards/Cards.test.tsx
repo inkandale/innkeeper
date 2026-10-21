@@ -65,6 +65,8 @@ beforeEach(() => {
         searches.push(body);
         const problems = body.page?.size === 1 && body.facets?.find((f: string) => f.endsWith(":problems"))?.slice("enrichment:".length);
         if (problems) return json({ hits: [], total: 4, facets: { enrichments: { [problems]: [{ value: "markup", cards: 3 }, { value: "oversized", cards: 1 }] } } });
+        if (body.page?.size === 1 && body.facets?.[0]?.startsWith("states"))
+          return json({ hits: [], total: 1, facets: { states: [{ is: "ahead", cards: 1 }] } });
         if (body.page?.size === 1 && body.facets?.includes("targets"))
           return json({ hits: [], total: 1, facets: { targets: [{ instance: 2, is: "ahead", cards: 1 }] } });
         if (body.include?.includes("enrichments")) {
@@ -198,7 +200,8 @@ test("a section's counts leave out its own selections", async () => {
   expect(searches).toContainEqual({ library: 1, filter: { and: [{ source: "chub" }] }, facets: ["tags"], page: { size: 1 } });
   expect(searches).toContainEqual({
     library: 1,
-    filter: { and: [{ target_state: { states: ["ahead"] } }, { tag: "fantasy" }, { source: "chub" }] },
+    filter: { and: [{ tag: "fantasy" }, { source: "chub" }] },
+    facets: ["states"],
     page: { size: 1 },
   });
 });

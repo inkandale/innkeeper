@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
-import { api, must, route, type Kind } from "../api/client";
+import type { Kind } from "../api/client";
+import { searchQuery } from "../api/queries";
 import { text } from "../card/draft";
 import { useLibrary } from "../shell/library";
 import type { Hit } from "./Tile";
@@ -24,10 +25,7 @@ export function Family({ kind, hit }: { kind: Kind; hit: Hit }) {
 
 function Members({ kind, name, rootId, matched }: { kind: Kind; name: string; rootId: number; matched: number[] }) {
   const body = { library: useLibrary(), filter: { variant_of_root: rootId }, fields: ["name"], page: { size: 500 } };
-  const members = useQuery({
-    queryKey: ["search", kind, body],
-    queryFn: async () => must(await api.POST(route(kind, "/cards/search"), { body })),
-  });
+  const members = useQuery(searchQuery(kind, body));
   if (members.isPending) return <p className="muted">Loading…</p>;
   if (members.isError) return <p className="error">{members.error.message}</p>;
   return (

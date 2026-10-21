@@ -1,7 +1,7 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { api, must, route, type Kind } from "../api/client";
-import { librariesQuery } from "../api/queries";
+import { librariesQuery, searchQuery } from "../api/queries";
 import { text } from "./draft";
 
 /** OtherLibraries lists the cards or lorebooks in other libraries that look like this one. */
@@ -18,7 +18,7 @@ export function OtherLibraries({ kind, id }: { kind: Kind; id: number }) {
     queries: libraryIds.map((library) => {
       const ids = list.filter((m) => m.library_id === library).map((m) => m.id);
       const body = { library, filter: { ids }, fields: ["name"], page: { size: ids.length } };
-      return { queryKey: ["search", kind, body], queryFn: async () => must(await api.POST(route(kind, "/cards/search"), { body })) };
+      return searchQuery(kind, body);
     }),
   });
   if (!matches.isError && !list.length) return null;

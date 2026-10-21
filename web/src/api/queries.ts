@@ -1,5 +1,6 @@
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { api, followers, must, route, withCapability, type Kind } from "./client";
+import type { components } from "./schema";
 
 export const instancesQuery = queryOptions({ queryKey: ["instances"], queryFn: async () => must(await api.GET("/instances")) });
 
@@ -50,4 +51,12 @@ export const bindingsQuery = (kind: Kind, id: number) =>
   queryOptions({
     queryKey: [kind, id, "bindings"],
     queryFn: async () => must(await api.GET(route(kind, "/cards/{id}/bindings"), { params: { path: { id } } })),
+  });
+
+/** searchQuery is a card or lorebook search. It stays fresh for 30 seconds, and a search nothing shows any more is cancelled. */
+export const searchQuery = (kind: Kind, body: components["schemas"]["Query"]) =>
+  queryOptions({
+    queryKey: ["search", kind, body],
+    queryFn: async ({ signal }) => must(await api.POST(route(kind, "/cards/search"), { body, signal })),
+    staleTime: 30_000,
   });

@@ -724,7 +724,7 @@ test("unchecking Group variants drops the grouping, and is remembered", async ()
   expect(localStorage.getItem("innkeeper.library.ungrouped")).toBe("true");
   expect(screen.getByText("49 cards")).toBeInTheDocument();
   await user.click(group);
-  await waitFor(() => expect(mainSearches().at(-1)).toMatchObject({ group: "family" }));
+  expect(await screen.findByText("49 cards, variants grouped")).toBeInTheDocument();
   await user.click(group);
   unmount();
   renderCards("/cards");

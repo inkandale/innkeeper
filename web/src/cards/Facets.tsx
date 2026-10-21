@@ -1,6 +1,7 @@
 import { keepPreviousData, useQueries, useQuery } from "@tanstack/react-query";
 import { useState, type CSSProperties, type MouseEvent } from "react";
-import { api, must, route, type Kind } from "../api/client";
+import { api, must, type Kind } from "../api/client";
+import { searchQuery } from "../api/queries";
 import type { components } from "../api/schema";
 import { stateLabel } from "../sync/sync";
 import {
@@ -55,12 +56,7 @@ function saveCollapsed(v: string[]) {
 
 /** useRows runs each open section's count searches and turns the results into rows, selected values included. */
 function useRows(kind: Kind, q: CardQuery, names: Names, sections: TermKind[], open: (s: TermKind) => boolean): Partial<Record<TermKind, Row[]>> {
-  const search = (body: Search, enabled: boolean) => ({
-    queryKey: ["search", kind, body],
-    queryFn: async () => must(await api.POST(route(kind, "/cards/search"), { body })),
-    placeholderData: keepPreviousData,
-    enabled,
-  });
+  const search = (body: Search, enabled: boolean) => ({ ...searchQuery(kind, body), placeholderData: keepPreviousData, enabled });
   const faceted = (["target", "tag", "source", "collection"] as const).filter((s) => sections.includes(s));
   const facetResults = useQueries({ queries: faceted.map((s) => search(countSearch(q, s), open(s))) });
   const stateResults = useQueries({ queries: targetStates.map((is) => search(stateCountSearch(q, is), open("state"))) });

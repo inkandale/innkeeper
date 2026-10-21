@@ -1,8 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router";
-import { api, must, route } from "../api/client";
-import { instancesQuery, collectionsQuery, enrichmentKeysQuery, pluginsQuery } from "../api/queries";
+import { instancesQuery, collectionsQuery, enrichmentKeysQuery, pluginsQuery, searchQuery } from "../api/queries";
 import { text } from "../card/draft";
 import { apps } from "../sync/Logo";
 import { stateLabel } from "../sync/sync";
@@ -86,8 +85,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const grid = enrichers.find((e) => e.id === keys.data?.instance_id)?.keys?.find((k) => k.grid);
   const body = { ...(kind === "card" ? toSearch(q, scored) : toLorebookSearch(q)), ...(ungrouped ? {} : { group: "family" as const }) };
   const res = useQuery({
-    queryKey: ["search", kind, body],
-    queryFn: async () => must(await api.POST(route(kind, "/cards/search"), { body })),
+    ...searchQuery(kind, body),
     placeholderData: keepPreviousData,
     // Waits for the keys, so the grid doesn't search once without scores and again with them.
     enabled: kind !== "card" || !keys.isPending,
@@ -124,11 +122,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   // Linked cards' names and avatars for the lorebook rows, in one search.
   const linkedIds = kind === "lorebook" ? [...new Set(hits.flatMap((h) => h.cards ?? []))].slice(0, 500) : [];
   const linkedBody = { library: q.library, filter: { ids: linkedIds }, fields: ["name", "avatar"], page: { size: 500 } };
-  const linked = useQuery({
-    queryKey: ["search", "card", linkedBody],
-    enabled: linkedIds.length > 0,
-    queryFn: async () => must(await api.POST("/cards/search", { body: linkedBody })),
-  });
+  const linked = useQuery({ ...searchQuery("card", linkedBody), enabled: linkedIds.length > 0 });
   const linkedCards = new Map((linked.data?.hits ?? []).map((h) => [h.id, h]));
   const pageIds = hits.map((h) => h.id);
   const pickFor = (id: number) => ({

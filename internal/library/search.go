@@ -480,21 +480,36 @@ func compile(k *Kind, q Query) (string, *where, string, error) {
 	return strings.Join(conds, " AND "), w, text, nil
 }
 
+// familyWalk is a WITH clause whose m holds the matches of cond, with cols,
+// and whose up holds each variant match's ancestors. Most matches are their
+// own root, so only variants walk up.
+func familyWalk(k *Kind, cols, cond string) string {
+	return `WITH RECURSIVE m AS (
+		SELECT c.id, c.variant_of_id` + cols + ` FROM ` + from(k) + ` WHERE ` + cond + `
+	), up AS (
+		SELECT m.id AS member, p.id, p.variant_of_id FROM m JOIN ` + k.Table + ` p ON p.id = m.variant_of_id
+		UNION
+		SELECT up.member, p.id, p.variant_of_id FROM up JOIN ` + k.Table + ` p ON p.id = up.variant_of_id
+	)`
+}
+
+// familyCount counts the families with a match for cond.
+func familyCount(k *Kind, cond string) string {
+	return familyWalk(k, "", cond) + ` SELECT count(*) FROM (
+		SELECT id FROM m WHERE variant_of_id IS NULL UNION SELECT id FROM up WHERE variant_of_id IS NULL) roots`
+}
+
 // familiesOf is a WITH clause whose fam holds each family with a match for
 // cond: its root, its best match's place under o and cursor, whether every
 // match comes after the page cursor (after), and its matches.
 func familiesOf(k *Kind, cond string, o order, after string) string {
-	return `WITH RECURSIVE m AS (
-		SELECT c.id, row_number() OVER (ORDER BY ` + o.sql() + `) AS pos, ` + after + ` AS after, ` + o.cursor() + ` AS cur
-		FROM ` + from(k) + ` WHERE ` + cond + `
-	), up AS (
-		SELECT m.id AS member, e.id, e.variant_of_id FROM m JOIN ` + k.Table + ` e ON e.id = m.id
-		UNION
-		SELECT up.member, p.id, p.variant_of_id FROM up JOIN ` + k.Table + ` p ON p.id = up.variant_of_id
-	), fam AS (
-		SELECT up.id AS root_id, min(m.pos) AS pos, bool_and(m.after) AS after, (array_agg(m.cur ORDER BY m.pos))[1] AS cur,
-			array_agg(m.id ORDER BY m.id) AS matched
-		FROM up JOIN m ON m.id = up.member WHERE up.variant_of_id IS NULL GROUP BY up.id
+	return familyWalk(k, `, row_number() OVER (ORDER BY `+o.sql()+`) AS pos, `+after+` AS after, `+o.cursor()+` AS cur`, cond) + `, fam AS (
+		SELECT root_id, min(pos) AS pos, bool_and(after) AS after, (array_agg(cur ORDER BY pos))[1] AS cur,
+			array_agg(id ORDER BY id) AS matched
+		FROM (SELECT m.id AS root_id, m.id, m.pos, m.after, m.cur FROM m WHERE m.variant_of_id IS NULL
+			UNION ALL
+			SELECT up.id, m.id, m.pos, m.after, m.cur FROM up JOIN m ON m.id = up.member WHERE up.variant_of_id IS NULL) x
+		GROUP BY root_id
 	)`
 }
 
@@ -734,8 +749,7 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 	res := Results{Hits: []Hit{}}
 	count := `SELECT count(*) FROM ` + from(k) + ` WHERE ` + cond
 	if q.Group == "family" {
-		// The count ignores order, whose sort arguments aren't in condArgs.
-		count = familiesOf(k, cond, order{}, "TRUE") + ` SELECT count(*) FROM fam`
+		count = familyCount(k, cond)
 	}
 	if err := l.pool.QueryRow(ctx, count, condArgs...).Scan(&res.Total); err != nil {
 		return Results{}, fmt.Errorf("count matches: %w", err)

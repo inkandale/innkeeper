@@ -121,8 +121,8 @@ func TestScaleExplain(t *testing.T) {
 }
 
 // generateScaleLibrary adds library 2 with n cards, each with tags, a
-// source, random hashes, and an avatar; one in six has a second revision.
-// Library 1 gets 200 cards.
+// source, random hashes, and an avatar; one in six has a second revision,
+// and one in twenty is a variant of the card before it. Library 1 gets 200 cards.
 func generateScaleLibrary(t *testing.T, pool *pgxpool.Pool, n int) {
 	t.Helper()
 	ctx := context.Background()
@@ -160,6 +160,7 @@ func generateScaleLibrary(t *testing.T, pool *pgxpool.Pool, n int) {
 		`UPDATE card c SET head_revision_id = r.id
 			FROM (SELECT card_id, max(id) AS id FROM card_revision GROUP BY card_id) r WHERE r.card_id = c.id`,
 		`INSERT INTO card_source (card_id, kind, ref, linked_by) SELECT id, 'chub', 'creator/' || id, 'auto' FROM card`,
+		`UPDATE card SET variant_of_id = id - 1 WHERE id > 1 AND (id % 20 = 0 OR id % 400 = 1)`,
 		`ANALYZE`,
 	}
 	for _, sql := range steps {

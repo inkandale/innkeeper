@@ -1,6 +1,7 @@
 package library
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -152,6 +153,18 @@ func (s *Entities) prepare(e Edit) (revisionRow, error) {
 	for _, k := range s.k.forbid {
 		if _, ok := top[k]; ok {
 			return revisionRow{}, fmt.Errorf("%w: %s data may not contain %s", ErrInvalid, s.k.Table, k)
+		}
+	}
+	if tags, ok := top["tags"]; ok {
+		unique, err := cardhash.UniqueTags(tags)
+		if err != nil {
+			return revisionRow{}, err
+		}
+		if !bytes.Equal(unique, tags) {
+			top["tags"] = unique
+			if e.Data, err = json.Marshal(top); err != nil {
+				return revisionRow{}, err
+			}
 		}
 	}
 	r := revisionRow{data: e.Data, overrides: e.Overrides, message: e.Message, source: e.Source}

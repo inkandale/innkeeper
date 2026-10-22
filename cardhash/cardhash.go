@@ -23,8 +23,9 @@ var volatile = []string{"creation_date", "modification_date"}
 var appLocalKeys = []string{"fav", "world"}
 
 // CardData returns a CCv3 card's data object as the library stores and
-// hashes it, without character_book or the app-local extensions, and the
-// character_book, or nil. data is nil when the card has no data.
+// hashes it, without character_book, the app-local extensions, or a tag that
+// repeats an earlier one in another case, and the character_book, or nil.
+// data is nil when the card has no data.
 func CardData(card json.RawMessage) (data, book json.RawMessage, err error) {
 	var c struct {
 		Data map[string]json.RawMessage `json:"data"`
@@ -45,8 +46,39 @@ func CardData(card json.RawMessage) (data, book json.RawMessage, err error) {
 			return nil, nil, err
 		}
 	}
+	if tags, ok := c.Data["tags"]; ok {
+		if c.Data["tags"], err = UniqueTags(tags); err != nil {
+			return nil, nil, err
+		}
+	}
 	data, err = json.Marshal(c.Data)
 	return data, book, err
+}
+
+// UniqueTags drops each string tag an earlier one matches in any case, so
+// the library's tag counts see a card once per tag. A non-list, or a list
+// with no repeats, comes back as is.
+func UniqueTags(raw json.RawMessage) (json.RawMessage, error) {
+	var tags []json.RawMessage
+	if json.Unmarshal(raw, &tags) != nil {
+		return raw, nil
+	}
+	seen := map[string]bool{}
+	var kept []json.RawMessage
+	for _, t := range tags {
+		var s string
+		if json.Unmarshal(t, &s) == nil {
+			if seen[strings.ToLower(s)] {
+				continue
+			}
+			seen[strings.ToLower(s)] = true
+		}
+		kept = append(kept, t)
+	}
+	if len(kept) == len(tags) {
+		return raw, nil
+	}
+	return json.Marshal(kept)
 }
 
 // ContentHash returns the hex SHA-256 of the card or lorebook data in

@@ -266,9 +266,11 @@ func matching(k *Kind, cond string) string { return `SELECT c.id FROM ` + from(k
 
 // facetSQL selects each facet's rows for the entities that match cond.
 var facetSQL = map[string]func(k *Kind, cond string) string{
+	// A revision keeps one tag per case (cardhash.UniqueTags), so count(*)
+	// counts cards without the sort a count(DISTINCT) needs.
 	"tags": func(k *Kind, cond string) string {
-		return `SELECT min(t.t), count(DISTINCT c.id)::int FROM ` + from(k) + `, ` + tagsOf + `
-			WHERE ` + cond + ` GROUP BY lower(t.t) ORDER BY count(DISTINCT c.id) DESC, lower(t.t)`
+		return `SELECT min(t.t), count(*)::int FROM ` + from(k) + `, ` + tagsOf + `
+			WHERE ` + cond + ` GROUP BY lower(t.t) ORDER BY count(*) DESC, lower(t.t)`
 	},
 	"collections": func(k *Kind, cond string) string {
 		return `SELECT co.id, co.name, count(*)::int FROM collection_card cc JOIN collection co ON co.id = cc.collection_id

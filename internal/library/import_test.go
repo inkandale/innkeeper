@@ -69,6 +69,31 @@ func importer(t *testing.T, lib *Library) (int64, func(item, data string, change
 	}
 }
 
+func TestReimportingACardWithTagsRepeatedInAnotherCaseChangesNothing(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	_, imp := importer(t, lib)
+	first := imp("brakka.png", `{"name": "Brakka", "tags": ["Dwarf", "dwarf"]}`)
+	if again := imp("brakka.png", `{"name": "Brakka", "tags": ["Dwarf", "dwarf"]}`); first.Outcome != Created || again.Outcome != Unchanged {
+		t.Fatalf("imports = %+v, %+v", first, again)
+	}
+	if tags := headTags(t, lib, first.ID); !slices.Equal(tags, []string{"Dwarf"}) {
+		t.Fatalf("tags = %v", tags)
+	}
+
+	// An update waiting on the owner's edit stays one update when it comes again.
+	if err := lib.EditCardTags(ctx, first.ID, []string{"smith"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	update := `{"name": "Brakka", "description": "v2", "tags": ["Dwarf", "DWARF"]}`
+	if got := imp("brakka.png", update); got.Outcome != Pending {
+		t.Fatalf("update = %+v", got)
+	}
+	if got := imp("brakka.png", update); got.Outcome != Unchanged {
+		t.Fatalf("same update again = %+v", got)
+	}
+}
+
 func (l *Library) countRows(t *testing.T, query string, args ...any) (n int) {
 	t.Helper()
 	if err := l.pool.QueryRow(context.Background(), query, args...).Scan(&n); err != nil {

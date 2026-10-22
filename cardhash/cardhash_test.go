@@ -96,3 +96,13 @@ func TestCardData(t *testing.T) {
 		t.Errorf("no data: got %s, %v", data, err)
 	}
 }
+
+func TestCardDataKeepsTheFirstOfTagsThatDifferOnlyInCase(t *testing.T) {
+	data, _, err := CardData([]byte(`{"spec": "chara_card_v3", "data": {"tags": ["Fantasy", "dwarf", "fantasy", 3, "FANTASY", 3]}}`))
+	if err != nil || string(data) != `{"tags":["Fantasy","dwarf",3,3]}` {
+		t.Fatalf("data = %s, %v", data, err)
+	}
+	if data, _, err := CardData([]byte(`{"spec": "chara_card_v3", "data": {"name": "A"}}`)); err != nil || string(data) != `{"name":"A"}` {
+		t.Fatalf("no tags: data = %s, %v", data, err)
+	}
+}

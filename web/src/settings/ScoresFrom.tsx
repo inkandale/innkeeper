@@ -44,7 +44,7 @@ export function ScoresFrom({ library }: { library?: number }) {
   }
   return (
     <section className="scores-from">
-      <label>
+      <label title="The enrich instance whose scores the library grid, score filters, sort, and Hide below score use.">
         Scores from{" "}
         <select
           className="input"

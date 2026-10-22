@@ -294,7 +294,7 @@ export function Facets({ kind, q, names, enrichers = [], onChange }: { kind: Kin
   };
   return (
     <aside className="facets" aria-label="Filters">
-      <label className="check">
+      <label className="check" title="Shows only cards or lorebooks with a source another one also has, such as the same page imported twice. A fork doesn't count.">
         <input type="checkbox" checked={q.sharesSource} onChange={(e) => onChange({ ...q, sharesSource: e.target.checked, page: 1 })} /> Shares a source
       </label>
       {sections.map((s) => (

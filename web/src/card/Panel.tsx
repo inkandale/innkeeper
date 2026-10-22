@@ -211,7 +211,7 @@ export function Sync({ kind, id }: { kind: Kind; id: number }) {
               <Logo app={logos.get(b.instance_id)} label={name(b.instance_id)} />
             </span>{" "}
             <span className={"badge " + (badgeClass[b.status] ?? "unknown")} aria-hidden="true" /> {name(b.instance_id)}: {stateLabel(b.status)}{" "}
-            <label className="autosync">
+            <label className="autosync" title="Each sync pushes this card when the library's copy is newer and the app's copy hasn't changed.">
               <input
                 type="checkbox"
                 checked={b.autosync}

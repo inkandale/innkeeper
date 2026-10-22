@@ -344,7 +344,7 @@ export function InstanceForm({
                 <span>Owner subject</span>
                 <input className="input" name="owner_subject" value={owner} onChange={(e) => setOwner(e.target.value)} />
               </label>
-              <small className="muted">The login that becomes the owner. Leave empty for none.</small>
+              <small className="muted">Your user ID at this login provider (its subject claim). That login becomes the owner. Leave empty for none.</small>
             </div>
           )}
           {syncs && (
@@ -427,7 +427,7 @@ export function InstanceForm({
           </>
         )}
         {instance && (
-          <button type="button" className="button" title="Tests the saved settings" disabled={check.isPending} onClick={() => check.mutate(instance.id)}>
+          <button type="button" className="button" title="Tests the saved settings. Save first to test your changes." disabled={check.isPending} onClick={() => check.mutate(instance.id)}>
             Check
           </button>
         )}

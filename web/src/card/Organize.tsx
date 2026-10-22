@@ -126,10 +126,10 @@ function Follow({ b, label, edits }: { b: Binding; label: string; edits: ReturnT
       {" "}
       {sourceLabel(b.remote_state, b.remote_id)}
       {b.check_error && <span className="error"> {b.check_error}</span>}{" "}
-      <button className="button" disabled={busy} onClick={() => set({ paused: true })}>
+      <button className="button" title="Stops checking this source for updates." disabled={busy} onClick={() => set({ paused: true })}>
         Ignore all
       </button>{" "}
-      <label className="autosync">
+      <label className="autosync" title="Takes this source's updates without review when they don't conflict with your edits.">
         <input
           type="checkbox"
           checked={b.autosync}

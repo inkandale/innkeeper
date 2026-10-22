@@ -45,7 +45,7 @@ export function Appearance() {
         ))}
       </fieldset>
       {themes.length === 0 && (
-        <p className="muted">No theme plugins are installed. A theme is a plugin with capabilities = ["theme"] and a stylesheet.</p>
+        <p className="muted">No theme plugins are installed. Install one under Plugins to add it here.</p>
       )}
       <p className="muted">Picking a theme previews it. Saving sets it for every page, including login.</p>
       <div className="actions">

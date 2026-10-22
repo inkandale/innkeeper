@@ -37,6 +37,10 @@ export function Access() {
     <section className="access">
       {failed && <p className="error">{failed.message}</p>}
       <h2>API tokens</h2>
+      <p className="muted">
+        A token lets a script or app use the Innkeeper API as you. Read changes nothing. Write edits the library, and
+        revision history can undo it. Destructive also allows what can't be undone, such as pushing to an app.
+      </p>
       <form
         className="toolbar"
         onSubmit={(e) => {

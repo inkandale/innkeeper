@@ -44,7 +44,10 @@ export function Hiding({ library }: { library: number }) {
       <legend>
         Hiding <SaveStatus save={save} />
       </legend>
-      <label>
+      <p className="muted">
+        Hide now archives low-scoring cards and extra duplicates. To bring a card back, open it and choose Unarchive.
+      </p>
+      <label title="Hides cards whose score, from Scores from, is below this. Leave empty to hide none for their score.">
         Hide below score{" "}
         <input
           className="input"
@@ -58,7 +61,7 @@ export function Hiding({ library }: { library: number }) {
           }}
         />
       </label>
-      <label>
+      <label title="Exact copies have the same content. Near copies have text that differs by no more than Distance.">
         Duplicates{" "}
         <select
           className="input"
@@ -74,7 +77,7 @@ export function Hiding({ library }: { library: number }) {
         </select>
       </label>
       {s.duplicates.value === "near" && (
-        <label>
+        <label title="How different two cards' text can be and still count as near copies, from 0 (almost identical) to 8 (loosest).">
           Distance{" "}
           <input
             className="input"
@@ -92,7 +95,7 @@ export function Hiding({ library }: { library: number }) {
         </label>
       )}
       {near && (deciders.data?.length ?? 0) > 0 && (
-        <label>
+        <label title="An AI checks that each near-copy pair is the same card before either is hidden. Without one, Distance alone decides.">
           Confirm near copies with{" "}
           <select
             className="input"
@@ -111,7 +114,7 @@ export function Hiding({ library }: { library: number }) {
         </label>
       )}
       {s.duplicates.value !== "off" && (
-        <label>
+        <label title="Which card in each set of duplicates stays visible.">
           Keep{" "}
           <select
             className="input"

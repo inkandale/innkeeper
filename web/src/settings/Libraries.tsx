@@ -139,6 +139,9 @@ export function Libraries() {
           Create
         </button>
       </form>
+      <p className="muted">
+        Each library holds its own cards and lorebooks. Each app syncs with one library, set in the app's settings.
+      </p>
       {failed && <p className="error">{failed.message}</p>}
       <ul className="plain">
         {(list.data ?? []).map((l) => (

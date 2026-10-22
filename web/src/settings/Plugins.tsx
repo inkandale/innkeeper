@@ -223,7 +223,12 @@ export function Plugins() {
             .filter(Boolean)
             .join(" · ")}
         </span>
-        <button className="button" disabled={catalog.isFetching} onClick={() => catalog.refetch()}>
+        <button
+          className="button"
+          title="Reads the plugin sources for newer versions and for plugins you haven't installed."
+          disabled={catalog.isFetching}
+          onClick={() => catalog.refetch()}
+        >
           {catalog.isFetching ? "Checking…" : "Check for updates"}
         </button>
       </div>

@@ -3640,7 +3640,7 @@ export interface components {
             duplicate_distance: components["schemas"]["LibrarySettingOutInt"];
             /** @description The duplicate hiding keeps: the best score, the oldest, or the newest. */
             duplicate_keep: components["schemas"]["LibrarySettingOutString"];
-            /** @description Hiding archives duplicates: off, exact (the same content), or near (text, or the avatar of a card with the same name, within duplicate_distance bits). */
+            /** @description Hiding archives duplicates: off, exact (the same content), or near (text, or the avatar of a card with the same name, within duplicate_distance bits). When not off, an import that changes cards runs hiding. */
             duplicates: components["schemas"]["LibrarySettingOutString"];
             /** @description Hiding archives cards whose grid score is below this; null hides none for their score. */
             hide_below: components["schemas"]["LibrarySettingOutFloat64"];

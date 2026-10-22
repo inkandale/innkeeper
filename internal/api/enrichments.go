@@ -16,50 +16,11 @@ import (
 	"github.com/inkandale/innkeeper/internal/enrich"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
+	"github.com/inkandale/innkeeper/internal/libsettings"
 	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/internal/tier"
 	"github.com/inkandale/innkeeper/protocol"
 )
-
-const scoreInstanceSetting = "score_instance"
-
-// enrichers is the enabled enrich instances.
-func (s *Server) enrichers(ctx context.Context) ([]plugins.InstanceInfo, error) {
-	insts, err := s.Registry.InstancesWith(ctx, protocol.CapabilityEnrich)
-	return slices.DeleteFunc(insts, func(i plugins.InstanceInfo) bool { return i.Disabled }), err
-}
-
-// scoreNamed is the enrich instance a score_instance setting's value names,
-// or nil: a deleted instance, or one whose plugin no longer enriches, reads
-// as unset.
-func scoreNamed(v string, insts []plugins.InstanceInfo) *plugins.InstanceInfo {
-	id, err := strconv.ParseInt(v, 10, 64)
-	if i := slices.IndexFunc(insts, func(i plugins.InstanceInfo) bool { return i.ID == id }); err == nil && i >= 0 {
-		return &insts[i]
-	}
-	return nil
-}
-
-// scoreInstance is the enrich instance whose values library lib's grid
-// shows and unnamed filters read: the score_instance setting while it names
-// an enrich instance, else the only enrich instance, else nil.
-func (s *Server) scoreInstance(ctx context.Context, lib int64) (*plugins.InstanceInfo, error) {
-	v, _, err := s.librarySetting(ctx, lib, scoreInstanceSetting)
-	if err != nil {
-		return nil, err
-	}
-	insts, err := s.enrichers(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if set := scoreNamed(v, insts); set != nil {
-		return set, nil
-	}
-	if len(insts) == 1 {
-		return &insts[0], nil
-	}
-	return nil, nil
-}
 
 // withScores sets q's score instance, if q uses enrichments, and returns its
 // plugin's declarations.
@@ -67,7 +28,7 @@ func (s *Server) withScores(ctx context.Context, q *library.Query) (map[string]p
 	if !q.UsesEnrichments() {
 		return nil, nil
 	}
-	inst, err := s.scoreInstance(ctx, cmp.Or(q.Library, library.DefaultLibrary))
+	inst, err := s.libSettings().ScoreInstance(ctx, cmp.Or(q.Library, library.DefaultLibrary))
 	if inst == nil {
 		return nil, err
 	}
@@ -228,11 +189,11 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 			if err != nil {
 				return nil, err
 			}
-			score, err := s.scoreInstance(ctx, lib)
+			score, err := s.libSettings().ScoreInstance(ctx, lib)
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			insts, err := s.enrichers(ctx)
+			insts, err := s.libSettings().Enrichers(ctx)
 			if err != nil {
 				return nil, s.fail(err)
 			}
@@ -294,7 +255,7 @@ func (s *Server) setScoreInstance(ctx context.Context, lib *int64, id *int64) er
 		v = strconv.FormatInt(*id, 10)
 	}
 	if lib == nil {
-		return s.fail(s.Registry.SetSetting(ctx, scoreInstanceSetting, v))
+		return s.fail(s.Registry.SetSetting(ctx, libsettings.ScoreInstanceKey, v))
 	}
-	return s.fail(s.Lib.SetLibrarySetting(ctx, *lib, scoreInstanceSetting, v))
+	return s.fail(s.Lib.SetLibrarySetting(ctx, *lib, libsettings.ScoreInstanceKey, v))
 }

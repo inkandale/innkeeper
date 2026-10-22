@@ -7,19 +7,9 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/inkandale/innkeeper/internal/libsettings"
 	"github.com/inkandale/innkeeper/internal/tier"
 )
-
-// librarySetting is a core setting's value for library lib: the library's
-// override, or the core's value, and whether it was overridden.
-func (s *Server) librarySetting(ctx context.Context, lib int64, key string) (string, bool, error) {
-	v, err := s.Lib.LibrarySetting(ctx, lib, key)
-	if v != "" || err != nil {
-		return v, true, err
-	}
-	v, err = s.Registry.Setting(ctx, key)
-	return v, false, err
-}
 
 // librarySettingOut is one library setting.
 type librarySettingOut[T any] struct {
@@ -31,7 +21,7 @@ type librarySettingOut[T any] struct {
 type librarySettings struct {
 	ScoreInstance     librarySettingOut[int64]   `json:"score_instance" doc:"The enrich instance whose values this library's grid shows and hide_below reads, and that enrichment filters and sort naming no instance use."`
 	HideBelow         librarySettingOut[float64] `json:"hide_below" doc:"Hiding archives cards whose grid score is below this; null hides none for their score."`
-	Duplicates        librarySettingOut[string]  `json:"duplicates" doc:"Hiding archives duplicates: off, exact (the same content), or near (text, or the avatar of a card with the same name, within duplicate_distance bits)."`
+	Duplicates        librarySettingOut[string]  `json:"duplicates" doc:"Hiding archives duplicates: off, exact (the same content), or near (text, or the avatar of a card with the same name, within duplicate_distance bits). When not off, an import that changes cards runs hiding."`
 	DuplicateDistance librarySettingOut[int]     `json:"duplicate_distance" doc:"For near duplicates, the most bits two cards' text or avatar hashes may differ by."`
 	DuplicateKeep     librarySettingOut[string]  `json:"duplicate_keep" doc:"The duplicate hiding keeps: the best score, the oldest, or the newest."`
 	DuplicateDecide   librarySettingOut[int64]   `json:"duplicate_decide" doc:"For near duplicates, the ai instance that confirms each pair is the same card, or null for distance alone."`
@@ -52,48 +42,57 @@ type patchLibrarySettingsIn struct {
 	}
 }
 
-func (s *Server) librarySettings(ctx context.Context, id int64) (*librarySettingsOut, error) {
+// libraryExists is nil if library id exists, and a 404 if it doesn't.
+func (s *Server) libraryExists(ctx context.Context, id int64) error {
 	ok, err := s.Lib.HasLibrary(ctx, id)
 	if err != nil {
-		return nil, s.fail(err)
+		return s.fail(err)
 	}
 	if !ok {
-		return nil, huma.Error404NotFound(fmt.Sprintf("library %d doesn't exist", id))
+		return huma.Error404NotFound(fmt.Sprintf("library %d doesn't exist", id))
 	}
-	insts, err := s.enrichers(ctx)
+	return nil
+}
+
+func (s *Server) librarySettings(ctx context.Context, id int64) (*librarySettingsOut, error) {
+	if err := s.libraryExists(ctx, id); err != nil {
+		return nil, err
+	}
+	set := s.libSettings()
+	insts, err := set.Enrichers(ctx)
 	if err != nil {
 		return nil, s.fail(err)
 	}
-	def, err := s.Registry.Setting(ctx, scoreInstanceSetting)
+	def, err := s.Registry.Setting(ctx, libsettings.ScoreInstanceKey)
 	if err != nil {
 		return nil, s.fail(err)
 	}
-	v, overridden, err := s.librarySetting(ctx, id, scoreInstanceSetting)
+	v, overridden, err := set.Get(ctx, id, libsettings.ScoreInstanceKey)
 	if err != nil {
 		return nil, s.fail(err)
 	}
 	out := &librarySettingsOut{}
 	out.Body.ScoreInstance.Overridden = overridden
-	if i := scoreNamed(v, insts); i != nil {
+	if i := libsettings.ScoreNamed(v, insts); i != nil {
 		out.Body.ScoreInstance.Value = &i.ID
 	}
-	if i := scoreNamed(def, insts); i != nil {
+	if i := libsettings.ScoreNamed(def, insts); i != nil {
 		out.Body.ScoreInstance.Default = &i.ID
 	}
 	b := &out.Body
-	if b.HideBelow, err = hideBelow.out(ctx, s, id); err != nil {
+	if b.HideBelow, err = settingOut(ctx, s, libsettings.HideBelow, id); err != nil {
 		return nil, s.fail(err)
 	}
-	if b.Duplicates, err = duplicates.out(ctx, s, id); err != nil {
+	if b.Duplicates, err = settingOut(ctx, s, libsettings.Duplicates, id); err != nil {
 		return nil, s.fail(err)
 	}
-	if b.DuplicateDistance, err = duplicateDistance.out(ctx, s, id); err != nil {
+	if b.DuplicateDistance, err = settingOut(ctx, s, libsettings.DuplicateDistance, id); err != nil {
 		return nil, s.fail(err)
 	}
-	if b.DuplicateKeep, err = duplicateKeep.out(ctx, s, id); err != nil {
+	if b.DuplicateKeep, err = settingOut(ctx, s, libsettings.DuplicateKeep, id); err != nil {
 		return nil, s.fail(err)
 	}
-	if b.DuplicateDecide, err = duplicateDecide.out(ctx, s, id); err != nil {
+	if b.DuplicateDecide, err = settingOut(ctx, s, libsettings.DuplicateDecide, id); err != nil {
 		return nil, s.fail(err)
 	}
 	return out, nil

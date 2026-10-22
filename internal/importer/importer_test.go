@@ -6,13 +6,16 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/inkandale/innkeeper/internal/blobstore"
+	"github.com/inkandale/innkeeper/internal/bulk"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
@@ -245,5 +248,56 @@ func TestCancelledStartLeavesInstanceWorking(t *testing.T) {
 	}
 	if _, err := e.reg.Instance(context.Background(), e.inst); err != nil {
 		t.Fatalf("instance: %v", err)
+	}
+}
+
+// hideJobs returns the payloads of the queued hide jobs.
+func (e *env) hideJobs(t *testing.T) []bulk.HidePayload {
+	t.Helper()
+	rows, err := e.pool.Query(context.Background(), `SELECT payload FROM job WHERE kind = $1 ORDER BY id`, bulk.HideKind)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raws, err := pgx.CollectRows(rows, pgx.RowTo[json.RawMessage])
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := make([]bulk.HidePayload, len(raws))
+	for i, raw := range raws {
+		if err := json.Unmarshal(raw, &out[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return out
+}
+
+func TestImportQueuesHideWhenLibraryHidesDuplicates(t *testing.T) {
+	e := setup(t)
+	ctx := context.Background()
+	if err := e.lib.SetLibrarySetting(ctx, library.DefaultLibrary, "duplicates", `"near"`); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.lib.SetLibrarySetting(ctx, library.DefaultLibrary, "duplicate_keep", `"oldest"`); err != nil {
+		t.Fatal(err)
+	}
+	e.run(t, `{"cards": 2}`)
+	got := e.hideJobs(t)
+	want := []bulk.HidePayload{{Library: library.DefaultLibrary, Duplicates: "near", Distance: 3, Keep: "oldest"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("hide jobs = %+v, want %+v", got, want)
+	}
+
+	// Importing the same cards again changes none, so nothing more is queued.
+	e.run(t, `{"cards": 2}`)
+	if got := e.hideJobs(t); len(got) != 1 {
+		t.Fatalf("re-import queued hide jobs %+v", got)
+	}
+}
+
+func TestImportQueuesNoHideWithDuplicatesOff(t *testing.T) {
+	e := setup(t)
+	e.run(t, `{"cards": 2}`)
+	if got := e.hideJobs(t); len(got) != 0 {
+		t.Fatalf("hide jobs = %+v, want none", got)
 	}
 }

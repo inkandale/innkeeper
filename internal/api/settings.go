@@ -10,6 +10,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/inkandale/innkeeper/internal/libsettings"
 	"github.com/inkandale/innkeeper/internal/tier"
 )
 
@@ -57,35 +58,35 @@ func (s *Server) settings(ctx context.Context) (*settingsOut, error) {
 		return nil, s.fail(err)
 	}
 	out := &settingsOut{Body: settings{Theme: name, OnboardingDone: done == "true"}}
-	score, err := s.Registry.Setting(ctx, scoreInstanceSetting)
+	score, err := s.Registry.Setting(ctx, libsettings.ScoreInstanceKey)
 	if err != nil {
 		return nil, s.fail(err)
 	}
-	insts, err := s.enrichers(ctx)
+	insts, err := s.libSettings().Enrichers(ctx)
 	if err != nil {
 		return nil, s.fail(err)
 	}
-	if i := scoreNamed(score, insts); i != nil {
+	if i := libsettings.ScoreNamed(score, insts); i != nil {
 		out.Body.ScoreInstance = &i.ID
 	}
 	b := &out.Body
-	if b.HideBelow, err = hideBelow.core(ctx, s); err != nil {
+	if b.HideBelow, err = libsettings.HideBelow.Core(ctx, s.libSettings()); err != nil {
 		return nil, s.fail(err)
 	}
-	dups, err := duplicates.core(ctx, s)
+	dups, err := libsettings.Duplicates.Core(ctx, s.libSettings())
 	if err != nil {
 		return nil, s.fail(err)
 	}
-	dist, err := duplicateDistance.core(ctx, s)
+	dist, err := libsettings.DuplicateDistance.Core(ctx, s.libSettings())
 	if err != nil {
 		return nil, s.fail(err)
 	}
-	keep, err := duplicateKeep.core(ctx, s)
+	keep, err := libsettings.DuplicateKeep.Core(ctx, s.libSettings())
 	if err != nil {
 		return nil, s.fail(err)
 	}
 	b.Duplicates, b.DuplicateDistance, b.DuplicateKeep = *dups, *dist, *keep
-	if b.DuplicateDecide, err = duplicateDecide.core(ctx, s); err != nil {
+	if b.DuplicateDecide, err = libsettings.DuplicateDecide.Core(ctx, s.libSettings()); err != nil {
 		return nil, s.fail(err)
 	}
 	return out, nil

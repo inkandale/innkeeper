@@ -108,6 +108,13 @@ func (r *Run) AddCardsChanged(n int) {
 	r.mu.Unlock()
 }
 
+// Cards is how many cards the job has changed, counting earlier attempts.
+func (r *Run) Cards() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.cards
+}
+
 // runState is what a run saves with each renewal and at its finish.
 type runState struct {
 	progress json.RawMessage

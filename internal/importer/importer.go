@@ -15,8 +15,10 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/inkandale/innkeeper/internal/bulk"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
+	"github.com/inkandale/innkeeper/internal/libsettings"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
 	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/internal/targets"
@@ -45,7 +47,8 @@ type Payload struct {
 type Importer struct {
 	plugins.JobRunner
 	Lib *library.Library
-	// Queue gets a DetectKind job after each import.
+	// Queue gets a DetectKind job after each import, and a hide job after
+	// one that changed cards in a library that hides duplicates.
 	Queue *jobs.Queue
 	// Targets applies an import's waiting updates whose binding has autosync on.
 	Targets *targets.Service
@@ -135,7 +138,26 @@ func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
 	if serr := s.failure(); serr != nil {
 		return serr
 	}
+	if err == nil && r.Cards() > 0 {
+		im.enqueueHide(ctx, r, s.library)
+	}
 	return plugins.JobErr(err)
+}
+
+// enqueueHide queues the hide job for library lib when its settings hide
+// duplicates, so cards just imported don't sit beside their copies. A
+// failure goes to the job's log, since hiding never fails an import.
+func (im *Importer) enqueueHide(ctx context.Context, r *jobs.Run, lib int64) {
+	p, err := libsettings.New(im.Lib, im.Registry).HidePayload(ctx, lib)
+	if errors.Is(err, libsettings.ErrNothingToHide) || err == nil && p.Duplicates == "off" {
+		return
+	}
+	if err == nil {
+		_, err = im.Queue.Enqueue(context.WithoutCancel(ctx), jobs.Spec{Kind: bulk.HideKind, Payload: p})
+	}
+	if err != nil {
+		r.Log("warn", fmt.Sprintf("duplicates weren't hidden: %v", err))
+	}
 }
 
 // EnqueueDetect makes sure a DetectKind job will run. A failure is only

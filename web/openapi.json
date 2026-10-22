@@ -3043,7 +3043,7 @@
           },
           "duplicates": {
             "$ref": "#/components/schemas/LibrarySettingOutString",
-            "description": "Hiding archives duplicates: off, exact (the same content), or near (text, or the avatar of a card with the same name, within duplicate_distance bits)."
+            "description": "Hiding archives duplicates: off, exact (the same content), or near (text, or the avatar of a card with the same name, within duplicate_distance bits). When not off, an import that changes cards runs hiding."
           },
           "hide_below": {
             "$ref": "#/components/schemas/LibrarySettingOutFloat64",

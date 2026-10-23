@@ -23,9 +23,9 @@ Each works on one library or across all of them.
 |---|---|
 | Embed instance | One install-wide setting, `embed_instance`, in the `setting` table, naming an instance that offers `ai.embed`. Install-wide because vectors from different models can't be compared, and similar works across libraries. |
 | Core calls `ai.embed` | Core calls the embed instance directly, not through the services broker, since semantic search embeds the query when it runs. |
-| What is embedded | Head revisions of cards only, in every library. Lorebooks are out of scope. |
-| Embedded text | `name`, `description`, `personality`, `scenario`, and `creator_notes`, each cut to 100,000 characters as the `search` column cuts them. `first_mes` and example dialogue are left out, so the vector describes the character rather than its prose style. |
-| When | Automatically. A scheduled `embed` job embeds every head revision without a vector from the current instance, so a new card or edit is embedded within a minute. Changing `embed_instance` queues the job at once. |
+| What is embedded | Cards only, in every library: one vector per card per embed instance, from the card's head revision when it was embedded. Lorebooks are out of scope. |
+| Embedded text | `name`, `description`, `personality`, `scenario`, and `creator_notes`, joined and cut to 8,000 characters. `first_mes` and example dialogue are left out, so the vector describes the character rather than its prose style. |
+| When | Automatically. The `embed` job runs after each import, when `embed_instance` is set, and hourly. The hourly run catches edits, restores, and reconcile pulls. An edited card keeps its old vector until then. |
 | Index | None. An exact cosine scan over 50,000 vectors takes about 100 ms. Add an HNSW index when an archive outgrows that. |
 | Similar fallback | With no embed instance, similar ranks by shared tags. |
 | Similar excludes | The card itself, its variant family, cards with the same `content_hash`, and archived cards. The Variants and OtherLibraries panels already show the first three. |
@@ -39,48 +39,48 @@ Migration `0045_card_embedding.sql`:
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE card_embedding (
+    card_id bigint NOT NULL REFERENCES card (id),
+    instance_id bigint NOT NULL REFERENCES plugin_instance ON DELETE CASCADE,
     revision_id bigint NOT NULL REFERENCES card_revision (id),
-    instance_id bigint NOT NULL REFERENCES plugin_instance (id),
-    model text NOT NULL,
     embedding vector NOT NULL,
-    PRIMARY KEY (revision_id, instance_id)
+    PRIMARY KEY (instance_id, card_id)
 );
 ```
 
-The `vector` column has no fixed dimension, so a model change needs no
-migration. Queries compare only rows of the current `embed_instance`, so
-vectors of different dimensions never meet. Rows from an old instance stay
-until the instance is deleted.
+- `revision_id` is the revision the vector was made from. A card needs
+  embedding when it has no row for the current instance, or its row's
+  `revision_id` is not its head.
+- The `vector` column has no fixed dimension, so a new model needs no
+  migration. Queries compare only the current instance's rows.
+- `ai.embed` doesn't name its model, so a model changed in an instance's
+  config goes unnoticed. Setting `embed_instance`, even to its current
+  value, deletes that instance's rows, so every card is embedded again.
 
-In `internal/library`, `Embeddings` stores and reads vectors. It is built
-with the pool and an embedder, an interface defined here by its consumer:
+`plugins.Registry.Embed(ctx, mgr, id, texts)` calls instance `id`'s
+`ai.embed`, as `Registry.Decide` calls `ai.decide`, and validates the reply.
 
-```go
-type embedder interface {
-	Embed(ctx context.Context, texts []string) (instanceID int64, vectors [][]float32, err error)
-}
-```
-
-The production embedder looks up `embed_instance` and calls `ai.embed`
-through `plugins.Registry.Call`. It returns `ErrNoEmbedInstance` when the
-setting is empty or names an instance that is disabled or gone.
+`library.ErrNoEmbedInstance` means `embed_instance` is empty or names an
+instance that is gone or disabled.
 
 ## Jobs
 
-An `embed` handler joins `jobs.Worker.Handlers`, scheduled every minute
-with `Queue.EnsureScheduled`. A `PATCH /settings` that changes
-`embed_instance` also queues it with `Queue.EnqueueOnce`.
+`embed.Kind` (`embed`) is handled by `embed.Runner`, in a new package
+`internal/embed`. Each run:
 
-- It selects head revisions with no `card_embedding` row for the current
-  instance, in batches of 32, and stops when none are left. Import, edit,
-  restore, and reconcile all move `head_revision_id`, so this one query
-  covers every path without hooks in any of them, and a restarted job
-  resumes where it stopped.
-- It checks each `ai.embed` reply with `AIEmbedResult.Validate`.
-- With no embed instance, it does nothing.
-- A failed call fails the run, and the next scheduled run tries again. A
-  card without a vector is missing from similar and semantic results until
-  it has one.
+1. Reads `embed_instance`. With none, it finishes at once.
+2. Asks `library.Library.Unembedded` for up to 32 cards needing a vector,
+   with their text.
+3. Calls `Registry.Embed`, then stores the vectors with
+   `library.Library.SaveEmbeddings`.
+4. Repeats until no card needs one, reporting progress as it goes.
+
+A failed call fails the run. The next trigger tries again, and finished
+batches are kept. A card without a vector is missing from similar and
+semantic results until it has one.
+
+The importer queues the job with `EnqueueOnce` after each import, as it
+queues source detection. `PATCH /settings` queues it when it sets
+`embed_instance`. The worker schedules it hourly.
 
 ## API
 
@@ -144,7 +144,8 @@ The card search input gains `semantic` (boolean). With `semantic` and `q`:
 ### Settings
 
 `embed_instance` joins the install settings (`GET`/`PATCH /settings`). A
-`PATCH` that changes it queues the `embed` job.
+`PATCH` that sets it deletes that instance's vectors and queues the `embed`
+job. Setting an instance that doesn't offer `ai.embed` is a 400.
 
 ## MCP
 
@@ -173,8 +174,8 @@ The card search input gains `semantic` (boolean). With `semantic` and `q`:
 Database tests run against PostgreSQL with pgvector, as the README
 requires. `fakeplugin` already answers `ai.embed`.
 
-- `TestEmbedJobEmbedsEditedHead`
-- `TestChangingEmbedInstanceQueuesEmbedJob`
+- `TestEmbedJobReembedsEditedCard`
+- `TestSettingEmbedInstanceQueuesEmbedJob`
 - `TestSimilarRanksByEmbeddingDistance`
 - `TestSimilarFallsBackToTagsWithoutEmbedInstance`
 - `TestSimilarExcludesVariantFamilyAndDuplicates`

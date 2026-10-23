@@ -6651,13 +6651,13 @@
             }
           },
           {
-            "description": "Most differing hash bits to count as similar",
+            "description": "Most differing hash bits to count as a match",
             "explode": false,
             "in": "query",
             "name": "max_distance",
             "schema": {
               "default": 8,
-              "description": "Most differing hash bits to count as similar",
+              "description": "Most differing hash bits to count as a match",
               "format": "int64",
               "maximum": 8,
               "minimum": 0,
@@ -6857,13 +6857,13 @@
             }
           },
           {
-            "description": "Most differing hash bits to count as similar",
+            "description": "Most differing hash bits to count as a match",
             "explode": false,
             "in": "query",
             "name": "max_distance",
             "schema": {
               "default": 8,
-              "description": "Most differing hash bits to count as similar",
+              "description": "Most differing hash bits to count as a match",
               "format": "int64",
               "maximum": 8,
               "minimum": 0,
@@ -10889,13 +10889,13 @@
             }
           },
           {
-            "description": "Most differing hash bits to count as similar",
+            "description": "Most differing hash bits to count as a match",
             "explode": false,
             "in": "query",
             "name": "max_distance",
             "schema": {
               "default": 8,
-              "description": "Most differing hash bits to count as similar",
+              "description": "Most differing hash bits to count as a match",
               "format": "int64",
               "maximum": 8,
               "minimum": 0,

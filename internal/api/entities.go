@@ -155,9 +155,9 @@ type removeSourceIn struct {
 	SourceID int64 `path:"source_id"`
 }
 
-type similarIn struct {
+type hashMatchIn struct {
 	ID          int64 `path:"id"`
-	MaxDistance int   `query:"max_distance" default:"8" minimum:"0" maximum:"8" doc:"Most differing hash bits to count as similar"`
+	MaxDistance int   `query:"max_distance" default:"8" minimum:"0" maximum:"8" doc:"Most differing hash bits to count as a match"`
 }
 
 type matchesOut struct{ Body []library.Match }
@@ -454,7 +454,7 @@ func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
 	huma.Register(api, huma.Operation{OperationID: "list-" + singular + "-in-other-libraries", Method: http.MethodGet,
 		Path: item + "/in-other-libraries", Summary: "Find a " + singular + " in other libraries",
 		Description: "Up to 50 " + k.Plural + " in other libraries with the same content, near-identical text, or a similar avatar; closest first.", Tags: tags},
-		func(ctx context.Context, in *similarIn) (*hashMatchesOut, error) {
+		func(ctx context.Context, in *hashMatchIn) (*hashMatchesOut, error) {
 			if _, err := ents.Get(ctx, in.ID); err != nil {
 				return nil, s.fail(err)
 			}
@@ -478,7 +478,7 @@ func (s *Server) cardRoutes(api huma.API) {
 	tags := []string{"Cards"}
 	huma.Register(api, huma.Operation{OperationID: "list-duplicate-cards", Method: http.MethodGet, Path: "/cards/{id}/duplicates",
 		Summary: "Find likely duplicates", Description: "Same content, near-identical text, or a similar avatar; closest first.", Tags: tags},
-		func(ctx context.Context, in *similarIn) (*matchesOut, error) {
+		func(ctx context.Context, in *hashMatchIn) (*matchesOut, error) {
 			if _, err := s.Lib.Cards.Get(ctx, in.ID); err != nil {
 				return nil, s.fail(err)
 			}

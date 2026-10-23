@@ -5454,7 +5454,7 @@ export interface operations {
     "list-duplicate-cards": {
         parameters: {
             query?: {
-                /** @description Most differing hash bits to count as similar */
+                /** @description Most differing hash bits to count as a match */
                 max_distance?: number;
             };
             header?: never;
@@ -5561,7 +5561,7 @@ export interface operations {
     "list-card-in-other-libraries": {
         parameters: {
             query?: {
-                /** @description Most differing hash bits to count as similar */
+                /** @description Most differing hash bits to count as a match */
                 max_distance?: number;
             };
             header?: never;
@@ -8119,7 +8119,7 @@ export interface operations {
     "list-lorebook-in-other-libraries": {
         parameters: {
             query?: {
-                /** @description Most differing hash bits to count as similar */
+                /** @description Most differing hash bits to count as a match */
                 max_distance?: number;
             };
             header?: never;

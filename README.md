@@ -73,6 +73,10 @@ database at startup and stop cleanly on `SIGTERM`.
 | `INNKEEPER_BACKUP_ASSETS_KEEP`, `INNKEEPER_BACKUP_CONFIG_KEEP` | `api`, `worker` | How many backups of that type to keep; default 7 |
 | `INNKEEPER_URL`, `INNKEEPER_TOKEN` | `ink` | The site root, such as `http://localhost:8080`, and a token. When `INNKEEPER_TOKEN` is set, `ink` uses these instead of a login from `ink login`. The CLI adds `/api` itself |
 
+Innkeeper needs PostgreSQL 15 or later with the pgvector extension.
+Migrations run `CREATE EXTENSION vector`, which pgvector allows only a
+superuser, so migrate as one or have an admin create the extension first.
+
 If any installed plugin sets `database = true`, the API and worker give it a
 schema and a login role limited to it at startup. That needs PostgreSQL 15 or
 later, where other roles can't create tables in `public`, and a database user

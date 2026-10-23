@@ -227,7 +227,8 @@ func chatWithTool(ctx context.Context, conn *protocol.Conn, run string, instance
 	}
 }
 
-// aiEmbed returns one two-dimensional vector per text: its length and 1.
+// aiEmbed returns one two-dimensional vector per text: its length and 1. A
+// text containing POISON fails the call, as a model rejecting an input does.
 func aiEmbed(params json.RawMessage) (any, error) {
 	var p protocol.AIEmbedParams
 	if err := json.Unmarshal(params, &p); err != nil || len(p.Texts) == 0 {
@@ -235,6 +236,9 @@ func aiEmbed(params json.RawMessage) (any, error) {
 	}
 	res := protocol.AIEmbedResult{Vectors: make([][]float32, len(p.Texts))}
 	for i, t := range p.Texts {
+		if strings.Contains(t, "POISON") {
+			return nil, protocol.NewError(protocol.CodeInvalidParams, "ai.embed rejects POISON", false)
+		}
 		res.Vectors[i] = []float32{float32(len(t)), 1}
 	}
 	return res, nil

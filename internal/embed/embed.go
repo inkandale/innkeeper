@@ -37,29 +37,75 @@ type Runner struct {
 // does nothing; the job runs again when one is set.
 func (rn *Runner) Run(ctx context.Context, r *jobs.Run) error {
 	inst, err := rn.instance(ctx)
-	if err != nil || inst == 0 {
-		return err
+	if err != nil {
+		return fmt.Errorf("find embed instance: %w", err)
 	}
+	if inst == 0 {
+		return nil
+	}
+	var after int64
 	done := 0
 	for {
-		todo, err := rn.Lib.Unembedded(ctx, inst, batchSize)
+		todo, err := rn.Lib.Unembedded(ctx, inst, after, batchSize)
 		if err != nil || len(todo) == 0 {
 			return err
 		}
-		texts := make([]string, len(todo))
-		for i, c := range todo {
-			texts[i] = c.Text
-		}
-		vectors, err := rn.Registry.Embed(ctx, rn.Plugins, inst, texts)
+		saved, err := rn.embedBatch(ctx, r, inst, todo)
 		if err != nil {
-			return fmt.Errorf("embed %d cards: %w", len(todo), err)
-		}
-		if err := rn.Lib.SaveEmbeddings(ctx, inst, todo, vectors); err != nil {
 			return err
 		}
-		done += len(todo)
+		// Past the batch even if a card was skipped, so it can't stall the rest.
+		after = todo[len(todo)-1].CardID
+		done += saved
 		r.SetProgress(fmt.Appendf(nil, `{"embedded": %d}`, done))
 	}
+}
+
+// embedBatch embeds cards and returns how many it saved. If the batch fails
+// in a way one card could cause, such as the model rejecting a text, it tries
+// each card alone and logs and skips the ones that still fail; they stay due
+// for the next run.
+func (rn *Runner) embedBatch(ctx context.Context, r *jobs.Run, inst int64, cards []library.EmbedText) (int, error) {
+	err := rn.embed(ctx, inst, cards)
+	if err == nil {
+		return len(cards), nil
+	}
+	if !cardFault(ctx, err) {
+		return 0, err
+	}
+	saved := 0
+	for _, c := range cards {
+		err := rn.embed(ctx, inst, []library.EmbedText{c})
+		switch {
+		case err == nil:
+			saved++
+		case cardFault(ctx, err):
+			r.Log("warn", fmt.Sprintf("card %d not embedded: %v", c.CardID, err))
+		default:
+			return saved, err
+		}
+	}
+	return saved, nil
+}
+
+// embed asks the embed instance for cards' vectors and saves them.
+func (rn *Runner) embed(ctx context.Context, inst int64, cards []library.EmbedText) error {
+	texts := make([]string, len(cards))
+	for i, c := range cards {
+		texts[i] = c.Text
+	}
+	vectors, err := rn.Registry.Embed(ctx, rn.Plugins, inst, texts)
+	if err != nil {
+		return fmt.Errorf("embed %d cards: %w", len(cards), plugins.JobErr(err))
+	}
+	return rn.Lib.SaveEmbeddings(ctx, inst, cards, vectors)
+}
+
+// cardFault reports whether err may be one card's fault rather than the
+// plugin's, the connection's, or a cancelled job's.
+func cardFault(ctx context.Context, err error) bool {
+	var startErr *pluginhost.StartError
+	return ctx.Err() == nil && !errors.Is(err, jobs.ErrRetry) && !errors.As(err, &startErr)
 }
 
 // instance is the embed instance's ID, or 0 when the setting is empty or

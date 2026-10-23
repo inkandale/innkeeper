@@ -221,7 +221,7 @@ func TestSettingEmbedInstanceDropsItsVectors(t *testing.T) {
 	ctx := context.Background()
 	inst := e.addBrain(nil)
 	e.createCard(`{"name": "Brakka"}`)
-	todo, err := e.s.Lib.Unembedded(ctx, inst, 10)
+	todo, err := e.s.Lib.Unembedded(ctx, inst, 0, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +229,7 @@ func TestSettingEmbedInstanceDropsItsVectors(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.call("PATCH", "/settings", map[string]any{"embed_instance": inst}, 200, nil)
-	if got, err := e.s.Lib.Unembedded(ctx, inst, 10); err != nil || len(got) != 1 {
+	if got, err := e.s.Lib.Unembedded(ctx, inst, 0, 10); err != nil || len(got) != 1 {
 		t.Fatalf("after setting: %+v, %v; want the card due again", got, err)
 	}
 }

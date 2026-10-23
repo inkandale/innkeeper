@@ -3,11 +3,9 @@ package api
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/fs"
 	"net/http"
 	"os"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -163,16 +161,8 @@ func (s *Server) setEmbedInstance(ctx context.Context, id *int64) error {
 		}
 		return s.fail(s.Registry.SetSetting(ctx, embed.InstanceKey, ""))
 	}
-	inst, err := s.Registry.InstanceWith(ctx, *id, protocol.CapabilityAI)
-	if err != nil {
+	if _, err := s.Registry.InstanceOffering(ctx, s.Plugins, *id, protocol.MethodAIEmbed); err != nil {
 		return s.fail(err)
-	}
-	services, err := s.Registry.Services(ctx, s.Plugins, inst)
-	if err != nil {
-		return s.failAs(inst.Manifest.Name, err)
-	}
-	if !slices.Contains(services, protocol.MethodAIEmbed) {
-		return huma.Error400BadRequest(fmt.Sprintf("instance %d doesn't offer %s", *id, protocol.MethodAIEmbed))
 	}
 	if err := s.Lib.ClearEmbeddings(ctx); err != nil {
 		return s.fail(err)

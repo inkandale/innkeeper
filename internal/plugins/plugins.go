@@ -852,18 +852,28 @@ func (r *Registry) InstancesOffering(ctx context.Context, mgr *pluginhost.Manage
 	return out, nil
 }
 
-// callService sends p to ai instance id's method, which the instance must offer.
-func (r *Registry) callService(ctx context.Context, mgr *pluginhost.Manager, id int64, method string, p, res any) error {
+// InstanceOffering is Instance for an instance that offers service method,
+// or ErrIncapable when it doesn't.
+func (r *Registry) InstanceOffering(ctx context.Context, mgr *pluginhost.Manager, id int64, method string) (pluginhost.Instance, error) {
 	inst, err := r.InstanceWith(ctx, id, protocol.Services[method])
 	if err != nil {
-		return err
+		return pluginhost.Instance{}, err
 	}
 	services, err := r.Services(ctx, mgr, inst)
 	if err != nil {
-		return err
+		return pluginhost.Instance{}, err
 	}
 	if !slices.Contains(services, method) {
-		return fmt.Errorf("%w: instance %d doesn't offer %s", ErrIncapable, id, method)
+		return pluginhost.Instance{}, fmt.Errorf("%w: instance %d doesn't offer %s", ErrIncapable, id, method)
+	}
+	return inst, nil
+}
+
+// callService sends p to ai instance id's method, which the instance must offer.
+func (r *Registry) callService(ctx context.Context, mgr *pluginhost.Manager, id int64, method string, p, res any) error {
+	inst, err := r.InstanceOffering(ctx, mgr, id, method)
+	if err != nil {
+		return err
 	}
 	return r.Call(ctx, mgr, inst, method, p, res)
 }

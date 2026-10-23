@@ -15,7 +15,7 @@ type MoveResult struct {
 	VariantLinksCleared          []int64 `json:"variant_links_cleared" doc:"Moved IDs that are no longer a variant of anything."`
 	CollectionMembershipsDropped int     `json:"collection_memberships_dropped"`
 	FromLibraries                []int64 `json:"from_libraries" doc:"Libraries the moved came from."`
-	BoundInstances               []int64 `json:"bound_instances" doc:"Plugin instances the moved are bound to."`
+	BoundInstances               []int64 `json:"bound_instances" doc:"Target app instances the moved stay bound to."`
 }
 
 // Move moves the entities ids, with every variant below them, to library.
@@ -104,7 +104,7 @@ func (s *Entities) MoveTx(ctx context.Context, tx pgx.Tx, ids []int64, library i
 	if _, err := tx.Exec(ctx, `UPDATE `+s.k.Table+` SET library_id = $2 WHERE id = ANY($1)`, res.Moved, library); err != nil {
 		return MoveResult{}, err
 	}
-	rows, err = tx.Query(ctx, `SELECT DISTINCT instance_id FROM binding WHERE `+s.k.FK+` = ANY($1) ORDER BY instance_id`, res.Moved)
+	rows, err = tx.Query(ctx, `SELECT DISTINCT instance_id FROM binding WHERE `+s.k.FK+` = ANY($1) AND NOT imported ORDER BY instance_id`, res.Moved)
 	if err != nil {
 		return MoveResult{}, err
 	}

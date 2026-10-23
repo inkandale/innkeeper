@@ -7,13 +7,14 @@ import (
 	"testing"
 )
 
-// bindCard binds card to a new plugin instance and returns the instance's ID.
-func bindCard(t *testing.T, lib *Library, card int64) int64 {
+// bindCard binds card to a new plugin instance, as an import binding when
+// imported, and returns the instance's ID.
+func bindCard(t *testing.T, lib *Library, card int64, imported bool) int64 {
 	t.Helper()
 	var instance int64
-	if err := lib.pool.QueryRow(context.Background(), `WITH i AS (INSERT INTO plugin_instance (plugin, name) VALUES ('fake', 'fake') RETURNING id)
-		INSERT INTO binding (instance_id, card_id, remote_id, remote_state, accepted_data, accepted_hash)
-		SELECT i.id, $1, 'r1', 'unchanged', '{}', 'h' FROM i RETURNING instance_id`, card).Scan(&instance); err != nil {
+	if err := lib.pool.QueryRow(context.Background(), `WITH i AS (INSERT INTO plugin_instance (plugin, name) VALUES ('fake', 'fake ' || $2::boolean) RETURNING id)
+		INSERT INTO binding (instance_id, card_id, remote_id, remote_state, accepted_data, accepted_hash, imported)
+		SELECT i.id, $1, 'r1', 'unchanged', '{}', 'h', $2::boolean FROM i RETURNING instance_id`, card, imported).Scan(&instance); err != nil {
 		t.Fatal(err)
 	}
 	return instance
@@ -149,7 +150,8 @@ func TestMoveKeepsLorebookLinksAndBindings(t *testing.T) {
 	if err := lib.LinkLorebook(ctx, id, book); err != nil {
 		t.Fatal(err)
 	}
-	instance := bindCard(t, lib, id)
+	instance := bindCard(t, lib, id, false)
+	bindCard(t, lib, id, true)
 
 	res, err := lib.Cards.Move(ctx, []int64{id}, dest)
 	if err != nil || !slices.Equal(res.BoundInstances, []int64{instance}) {
@@ -159,7 +161,7 @@ func TestMoveKeepsLorebookLinksAndBindings(t *testing.T) {
 		t.Errorf("lorebooks = %v, %v", books, err)
 	}
 	var bindings int
-	if err := lib.pool.QueryRow(ctx, `SELECT count(*) FROM binding WHERE card_id = $1`, id).Scan(&bindings); err != nil || bindings != 1 {
+	if err := lib.pool.QueryRow(ctx, `SELECT count(*) FROM binding WHERE card_id = $1`, id).Scan(&bindings); err != nil || bindings != 2 {
 		t.Errorf("bindings = %d, %v", bindings, err)
 	}
 }

@@ -141,9 +141,58 @@ func (l *Library) discoverPage(ctx context.Context, sql string, limit, offset in
 	if err != nil {
 		return nil, nil, err
 	}
+	if items == nil {
+		items = []DiscoveredCard{}
+	}
 	if len(items) <= limit {
 		return items, nil, nil
 	}
 	next := strconv.Itoa(offset + limit)
 	return items[:limit], &next, nil
+}
+
+// RelatedGroups are the ways a card links to others, in display order.
+var RelatedGroups = []string{"creator", "lorebook", "collection"}
+
+// relatedWhere is each group's condition on c, a candidate, against self
+// and $1. Collections are per-library, so that group never leaves the card's.
+var relatedWhere = map[string]string{
+	"creator": `self.creator <> '' AND lower(btrim(r.data->>'creator')) = self.creator`,
+	"lorebook": `c.id IN (SELECT o.card_id FROM card_lorebook o
+		JOIN card_lorebook mine ON mine.lorebook_id = o.lorebook_id WHERE mine.card_id = $1)`,
+	"collection": `c.id IN (SELECT o.card_id FROM collection_card o
+		JOIN collection_card mine ON mine.collection_id = o.collection_id WHERE mine.card_id = $1)`,
+}
+
+// RelatedPage is one page of one group of related cards.
+type RelatedPage struct {
+	Group      string           `json:"group" enum:"creator,lorebook,collection"`
+	Items      []DiscoveredCard `json:"items"`
+	NextCursor *string          `json:"next_cursor,omitempty"`
+}
+
+// RelatedCards returns one page of the cards linked to cardID by group,
+// lowest ID first, leaving out its variants and archived cards.
+func (l *Library) RelatedCards(ctx context.Context, cardID int64, group string, p Page) (RelatedPage, error) {
+	cond, ok := relatedWhere[group]
+	if !ok {
+		return RelatedPage{}, fmt.Errorf("%w: group must be one of %v", ErrInvalid, RelatedGroups)
+	}
+	limit, offset, err := p.window()
+	if err != nil {
+		return RelatedPage{}, err
+	}
+	// ponytail: the creator group scans every head; add an expression index if it shows up slow.
+	sql := discoverWith + `
+		SELECT c.id, c.library_id, coalesce(r.data->>'name', ''), 0::float8
+		FROM self CROSS JOIN card c
+		JOIN card_revision r ON r.id = c.head_revision_id
+		WHERE ` + discoverWhere + ` AND ` + cond + `
+		ORDER BY c.id
+		LIMIT $2 OFFSET $3`
+	items, next, err := l.discoverPage(ctx, sql, limit, offset, cardID, limit+1, offset)
+	if err != nil {
+		return RelatedPage{}, fmt.Errorf("%s related to card %d: %w", group, cardID, err)
+	}
+	return RelatedPage{Group: group, Items: items, NextCursor: next}, nil
 }

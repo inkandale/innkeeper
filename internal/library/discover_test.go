@@ -2,6 +2,7 @@ package library
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -154,5 +155,75 @@ func TestSimilarPagesByCursor(t *testing.T) {
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("paged = %v, want %v", got, want)
+	}
+}
+
+func TestRelatedGroups(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	me, _ := newCard(t, lib, "me", `{"name": "Brakka", "creator": "DG "}`)
+	byCreator, _ := newCard(t, lib, "by-dg", `{"name": "Dorna", "creator": "dg"}`)
+	newCard(t, lib, "by-other", `{"name": "Lia", "creator": "someone"}`)
+	sharesBook, _ := newCard(t, lib, "book", `{"name": "Grum"}`)
+	inCollection, _ := newCard(t, lib, "coll", `{"name": "Hild"}`)
+
+	book := newLorebook(t, lib, "deeps")
+	for _, c := range []int64{me, sharesBook} {
+		if err := lib.LinkLorebook(ctx, c, book); err != nil {
+			t.Fatal(err)
+		}
+	}
+	coll, err := lib.CreateCollection(ctx, DefaultLibrary, "Dwarves", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []int64{me, inCollection} {
+		if err := lib.AddToCollection(ctx, coll.ID, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for group, want := range map[string][]int64{"creator": {byCreator}, "lorebook": {sharesBook}, "collection": {inCollection}} {
+		got, err := lib.RelatedCards(ctx, me, group, Page{})
+		if err != nil || !slices.Equal(ids(got.Items), want) || got.Group != group {
+			t.Fatalf("%s = %+v, %v; want %v", group, got, err, want)
+		}
+	}
+}
+
+func TestRelatedIgnoresAnEmptyCreator(t *testing.T) {
+	lib := newLibrary(t)
+	me, _ := newCard(t, lib, "me", `{"name": "Brakka"}`)
+	newCard(t, lib, "other", `{"name": "Dorna", "creator": ""}`)
+	got, err := lib.RelatedCards(context.Background(), me, "creator", Page{})
+	if err != nil || got.Items == nil || len(got.Items) != 0 {
+		t.Fatalf("creator = %+v, %v; want an empty non-nil list", got, err)
+	}
+}
+
+func TestRelatedPagesOneGroup(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	me, _ := newCard(t, lib, "me", `{"name": "Me", "creator": "dg"}`)
+	var want []int64
+	for i := range 3 {
+		id, _ := newCard(t, lib, fmt.Sprintf("c%d", i), `{"name": "C", "creator": "dg"}`)
+		want = append(want, id)
+	}
+	first, err := lib.RelatedCards(ctx, me, "creator", Page{Size: 2})
+	if err != nil || len(first.Items) != 2 || first.NextCursor == nil {
+		t.Fatalf("first = %+v, %v", first, err)
+	}
+	second, err := lib.RelatedCards(ctx, me, "creator", Page{Size: 2, Cursor: first.NextCursor})
+	if err != nil || second.NextCursor != nil || !slices.Equal(append(ids(first.Items), ids(second.Items)...), want) {
+		t.Fatalf("second = %+v, %v", second, err)
+	}
+}
+
+func TestRelatedRejectsAnUnknownGroup(t *testing.T) {
+	lib := newLibrary(t)
+	me, _ := newCard(t, lib, "me", `{"name": "Me"}`)
+	if _, err := lib.RelatedCards(context.Background(), me, "colour", Page{}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("err = %v, want ErrInvalid", err)
 	}
 }

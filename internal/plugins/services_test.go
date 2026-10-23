@@ -92,3 +92,36 @@ func TestDecideRefusesAnAIInstanceWithoutAIDecide(t *testing.T) {
 		t.Fatalf("Decide = %+v, %v; want an answer to every question", res, err)
 	}
 }
+
+func TestEmbedRefusesAnAIInstanceWithoutAIEmbed(t *testing.T) {
+	ctx := context.Background()
+	m, err := protocol.LoadManifest(testutil.FakePluginWith(t, []string{"ai"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	box, err := secrets.New(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := New(testdb.New(t), map[string]*protocol.Manifest{"fake": m},
+		&blobstore.Store{Name: "library", Root: t.TempDir()}, box)
+	mgr := pluginhost.NewManager(nil, time.Minute, quiet)
+	t.Cleanup(mgr.Close)
+	create := func(name string, services ...string) int64 {
+		id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: new(name),
+			Config: map[string]any{"services": services}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+
+	if _, err := reg.Embed(ctx, mgr, create("Chat", protocol.MethodAIChat), []string{"hi"}); !errors.Is(err, ErrIncapable) ||
+		!strings.Contains(err.Error(), "doesn't offer ai.embed") {
+		t.Fatalf("Embed on an instance without ai.embed: %v, want ErrIncapable naming ai.embed", err)
+	}
+	got, err := reg.Embed(ctx, mgr, create("Embed", protocol.MethodAIEmbed), []string{"hi", "hello"})
+	if err != nil || len(got) != 2 || got[0][0] != 2 || got[1][0] != 5 {
+		t.Fatalf("Embed = %v, %v; want one vector per text", got, err)
+	}
+}

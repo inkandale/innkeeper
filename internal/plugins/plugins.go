@@ -852,22 +852,40 @@ func (r *Registry) InstancesOffering(ctx context.Context, mgr *pluginhost.Manage
 	return out, nil
 }
 
+// callService sends p to ai instance id's method, which the instance must offer.
+func (r *Registry) callService(ctx context.Context, mgr *pluginhost.Manager, id int64, method string, p, res any) error {
+	inst, err := r.InstanceWith(ctx, id, protocol.Services[method])
+	if err != nil {
+		return err
+	}
+	services, err := r.Services(ctx, mgr, inst)
+	if err != nil {
+		return err
+	}
+	if !slices.Contains(services, method) {
+		return fmt.Errorf("%w: instance %d doesn't offer %s", ErrIncapable, id, method)
+	}
+	return r.Call(ctx, mgr, inst, method, p, res)
+}
+
 // Decide sends p to ai instance id's ai.decide, which the instance must
 // offer.
 func (r *Registry) Decide(ctx context.Context, mgr *pluginhost.Manager, id int64, p protocol.AIDecideParams) (protocol.AIDecideResult, error) {
 	var res protocol.AIDecideResult
-	inst, err := r.InstanceWith(ctx, id, protocol.Services[protocol.MethodAIDecide])
-	if err != nil {
-		return res, err
+	return res, r.callService(ctx, mgr, id, protocol.MethodAIDecide, p, &res)
+}
+
+// Embed returns ai instance id's vector for each of texts, in order. The
+// instance must offer ai.embed.
+func (r *Registry) Embed(ctx context.Context, mgr *pluginhost.Manager, id int64, texts []string) ([][]float32, error) {
+	var res protocol.AIEmbedResult
+	if err := r.callService(ctx, mgr, id, protocol.MethodAIEmbed, protocol.AIEmbedParams{Texts: texts}, &res); err != nil {
+		return nil, err
 	}
-	services, err := r.Services(ctx, mgr, inst)
-	if err != nil {
-		return res, err
+	if err := res.Validate(len(texts)); err != nil {
+		return nil, fmt.Errorf("ai.embed from instance %d: %w", id, err)
 	}
-	if !slices.Contains(services, protocol.MethodAIDecide) {
-		return res, fmt.Errorf("%w: instance %d doesn't offer %s", ErrIncapable, id, protocol.MethodAIDecide)
-	}
-	return res, r.Call(ctx, mgr, inst, protocol.MethodAIDecide, p, &res)
+	return res.Vectors, nil
 }
 
 // Retryable reports whether a failed plugin call may work later: the plugin

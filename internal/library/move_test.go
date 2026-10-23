@@ -253,3 +253,63 @@ func TestMoveTakesLorebookVariants(t *testing.T) {
 		t.Errorf("variant in library %d", got)
 	}
 }
+
+func TestMoveDedupesOverlappingSelection(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	src := newLibraryRow(t, lib, "Source")
+	dest := newLibraryRow(t, lib, "Other")
+	root, _ := newCard(t, lib, "root", `{"name": "R"}`)
+	child, _ := newCard(t, lib, "child", `{"name": "C"}`)
+	setVariantOf(t, lib.Cards, child, root)
+	elsewhere, _, err := lib.Cards.Create(ctx, src, "elsewhere", "upload", edit(`{"name": "E"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := lib.Cards.Move(ctx, []int64{elsewhere.ID, child, root, root}, dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(res.Moved, []int64{root, child, elsewhere.ID}) || !slices.Equal(res.FromLibraries, []int64{DefaultLibrary, src}) {
+		t.Fatalf("result = %+v", res)
+	}
+}
+
+func TestDeletingTheSourceLibraryDuringAMoveKeepsTheMovedCard(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	src := newLibraryRow(t, lib, "Source")
+	dest := newLibraryRow(t, lib, "Other")
+	card, _, err := lib.Cards.Create(ctx, src, "a", "upload", edit(`{"name": "A"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tx, err := lib.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := lib.Cards.MoveTx(ctx, tx, []int64{card.ID}, dest); err != nil {
+		t.Fatal(err)
+	}
+	deleted := make(chan error, 1)
+	go func() { deleted <- lib.DeleteLibrary(ctx, src, func(*Kind, int) {}) }()
+	// The delete must be waiting on the move's row lock before the move commits.
+	for waiting := false; !waiting; {
+		if err := lib.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_stat_activity
+			WHERE datname = current_database() AND wait_event_type = 'Lock')`).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-deleted; err != nil {
+		t.Fatal(err)
+	}
+	if got := libraryOf(t, lib.Cards, card.ID); got != dest {
+		t.Fatalf("card in library %d, want %d", got, dest)
+	}
+}

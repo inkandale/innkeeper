@@ -138,7 +138,8 @@ func (l *Library) DeleteLibrary(ctx context.Context, id int64, progress func(k *
 func (s *Entities) deleteSome(ctx context.Context, library int64) (int, error) {
 	var n int
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `SELECT id FROM `+s.k.Table+` WHERE library_id = $1 ORDER BY id LIMIT $2`, library, deleteBatch)
+		// The lock waits out a move, then rechecks that the entity is still in library.
+		rows, err := tx.Query(ctx, `SELECT id FROM `+s.k.Table+` WHERE library_id = $1 ORDER BY id LIMIT $2 FOR UPDATE`, library, deleteBatch)
 		if err != nil {
 			return err
 		}

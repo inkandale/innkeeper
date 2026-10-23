@@ -6,6 +6,7 @@ import type { components } from "../api/schema";
 import { useConfirm } from "../shell/ConfirmDialog";
 import { Menu } from "../shell/Menu";
 import { useToast } from "../shell/Toasts";
+import { EmbedFrom } from "./EmbedFrom";
 import { ScoresFrom } from "./ScoresFrom";
 
 export type Plugin = components["schemas"]["PluginOut"];
@@ -233,6 +234,7 @@ export function Plugins() {
         </button>
       </div>
       <ScoresFrom />
+      <EmbedFrom />
       {showRecommended && (
         <p className="created" role="status">
           Innkeeper comes with login and card downloads. Check for updates to install the importer and the app

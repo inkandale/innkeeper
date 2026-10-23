@@ -39,14 +39,16 @@ Migration `0045_card_embedding.sql`:
 ```sql
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE card_embedding (
-    card_id bigint NOT NULL REFERENCES card (id),
-    instance_id bigint NOT NULL REFERENCES plugin_instance ON DELETE CASCADE,
-    revision_id bigint NOT NULL REFERENCES card_revision (id),
+    card_id bigint NOT NULL REFERENCES card (id) ON DELETE CASCADE DEFERRABLE INITIALLY IMMEDIATE,
+    instance_id bigint NOT NULL REFERENCES plugin_instance ON DELETE CASCADE DEFERRABLE INITIALLY IMMEDIATE,
+    revision_id bigint NOT NULL,
     embedding vector NOT NULL,
-    PRIMARY KEY (instance_id, card_id)
+    PRIMARY KEY (instance_id, card_id),
+    FOREIGN KEY (revision_id, card_id) REFERENCES card_revision (id, card_id) ON DELETE CASCADE DEFERRABLE INITIALLY IMMEDIATE
 );
 ```
 
+- Deleting a card, revision, or instance deletes its vectors.
 - `revision_id` is the revision the vector was made from. A card needs
   embedding when it has no row for the current instance, or its row's
   `revision_id` is not its head.
@@ -69,13 +71,15 @@ instance that is gone or disabled.
 
 1. Reads `embed_instance`. With none, it finishes at once.
 2. Asks `library.Library.Unembedded` for up to 32 cards needing a vector,
-   with their text.
+   with their text, after the last card it handled.
 3. Calls `Registry.Embed`, then stores the vectors with
    `library.Library.SaveEmbeddings`.
 4. Repeats until no card needs one, reporting progress as it goes.
 
-A failed call fails the run. The next trigger tries again, and finished
-batches are kept. A card without a vector is missing from similar and
+If the model rejects a batch, the job retries its cards one at a time,
+logs each card that still fails, and moves on; that card is tried again on
+the next run. A retryable failure, such as a rate limit, fails the run
+and the jobs package retries it. Finished batches are kept. A card without a vector is missing from similar and
 semantic results until it has one.
 
 The importer queues the job with `EnqueueOnce` after each import, as it

@@ -7,6 +7,7 @@ import { stateLabel } from "../sync/sync";
 import {
   countSearch,
   keyRef,
+  matchesAll,
   onlyTerm,
   parseScore,
   sameValue,
@@ -137,10 +138,12 @@ type SectionProps = {
 };
 
 function Section({ kind, title, instance, section = kind, rows, q, open, onOpen, onChange }: SectionProps) {
-  const [all, setAll] = useState(false);
+  const [more, setMore] = useState(false);
   const [find, setFind] = useState("");
   const name = title ?? titles[kind as Exclude<TermKind, "value">];
   const picked = q.terms.filter((t) => sectionOf(t) === section).length;
+  const included = q.terms.filter((t) => sectionOf(t) === section && !t.not).length;
+  const all = q.all.includes(section);
   const browse = kind === "tag" || kind === "value";
   const findLabel = kind === "tag" ? "Find a tag" : `Find in ${name}`;
   const needle = find.trim().toLowerCase();
@@ -150,7 +153,7 @@ function Section({ kind, title, instance, section = kind, rows, q, open, onOpen,
     ? listed
     : needle
       ? listed.filter((r) => r.label.toLowerCase().includes(needle))
-      : all
+      : more
         ? listed
         : listed.filter((r, i) => i < 10 || isPicked(r));
   if (open && rows?.length === 0 && picked === 0) return null;
@@ -165,6 +168,17 @@ function Section({ kind, title, instance, section = kind, rows, q, open, onOpen,
       </h2>
       {open && (
         <>
+          {matchesAll(section) && included > 0 && (
+            <div className="facet-match" role="group" aria-label={`${name} match`}>
+              {(["any", "all"] as const).map((m) => (
+                <button key={m} aria-pressed={(m === "all") === all}
+                  onClick={() => onChange({ ...q, all: m === "all" ? [...q.all, section] : q.all.filter((s) => s !== section), page: 1 })}
+                  disabled={(m === "all") === all}>
+                  {m === "any" ? "Match any" : "Match all"}
+                </button>
+              ))}
+            </div>
+          )}
           {/* Tags always get the box; a value key only once it lists more than fits. */}
           {browse && (kind === "tag" || listed.length > 10) && (
             <input className="input facet-find" type="search" aria-label={findLabel} placeholder={findLabel} value={find} onChange={(e) => setFind(e.target.value)} />
@@ -175,8 +189,8 @@ function Section({ kind, title, instance, section = kind, rows, q, open, onOpen,
             ))}
           </ul>
           {browse && !needle && listed.length > 10 && (
-            <button className="facet-more" onClick={() => setAll(!all)}>
-              {all ? "Show fewer" : `Show all ${listed.length}`}
+            <button className="facet-more" onClick={() => setMore(!more)}>
+              {more ? "Show fewer" : `Show all ${listed.length}`}
             </button>
           )}
         </>

@@ -554,3 +554,23 @@
   padding-bottom: var(--space);
   border-bottom: 1px solid var(--border);
 }
+
+.facet-match {
+  display: flex;
+  gap: calc(var(--space) * 0.5);
+  margin-bottom: calc(var(--space) * 0.5);
+}
+
+.facet-match button {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.85em;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.facet-match button[aria-pressed="true"] {
+  color: var(--accent);
+  cursor: default;
+}

@@ -206,6 +206,15 @@ test("a section's counts leave out its own selections", async () => {
   });
 });
 
+test("match all ANDs a section's values and keeps them in its counts", async () => {
+  const { router } = renderCards("/cards?f=tag:fantasy&f=tag:pirate");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Match all" }));
+  expect(new URLSearchParams(router.state.location.search).getAll("all")).toEqual(["tag"]);
+  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ tag: "fantasy" }, { tag: "pirate" }] }, sort: "updated" })));
+  expect(searches).toContainEqual({ library: 1, filter: { and: [{ tag: "fantasy" }, { tag: "pirate" }] }, facets: ["tags"], page: { size: 1 } });
+});
+
 test("target rows name the app and state rows show the status dot", async () => {
   const { container } = renderCards("/cards");
   expect(await screen.findByRole("button", { name: /^Lumiverse/ })).toBeInTheDocument();

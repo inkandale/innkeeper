@@ -18,7 +18,7 @@ import {
   valueLabel,
 } from "./query";
 
-const base: CardQuery = { library: 1, text: "", terms: [], sort: "updated", page: 1, size: 48, view: "grid", sharesSource: false };
+const base: CardQuery = { library: 1, text: "", terms: [], sort: "updated", page: 1, size: 48, view: "grid", sharesSource: false, all: [] };
 const term = (kind: Term["kind"], value: string, not = false): Term => ({ kind, value, not });
 
 test("an empty URL is the default query", () => {
@@ -35,6 +35,7 @@ test("a query round-trips through the URL", () => {
     size: 96,
     view: "list",
     sharesSource: true,
+    all: ["tag"],
   };
   expect(parseQuery(toParams(q), 1)).toEqual(q);
 });
@@ -264,4 +265,13 @@ test("valueLabel turns a plugin's code into words and leaves other values alone"
   expect(valueLabel("first_message_copies_description")).toBe("First message copies description");
   expect(valueLabel("markup")).toBe("Markup");
   expect(valueLabel("English")).toBe("English");
+});
+
+test("a section that matches all ANDs its included values and keeps them in its counts", () => {
+  const q = { ...base, terms: [term("tag", "a"), term("tag", "b"), term("tag", "c", true), term("value", "3:genre=x"), term("value", "3:genre=y")], all: ["tag"] };
+  expect(filterFor(q.terms, false, q.all)).toEqual({
+    and: [{ tag: "a" }, { tag: "b" }, { or: [{ enrichment: "genre", instance: 3, is: "x" }, { enrichment: "genre", instance: 3, is: "y" }] }, { not: { tag: "c" } }],
+  });
+  expect(countSearch(q, "tag").filter).toEqual({ and: [{ tag: "a" }, { tag: "b" }, { or: [{ enrichment: "genre", instance: 3, is: "x" }, { enrichment: "genre", instance: 3, is: "y" }] }] });
+  expect(parseQuery(new URLSearchParams("all=tag&all=state&all=value:3:genre"), 1).all).toEqual(["tag", "value:3:genre"]);
 });

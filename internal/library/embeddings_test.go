@@ -74,3 +74,74 @@ func TestDeleteEmbeddingsQueuesEveryCardAgain(t *testing.T) {
 		t.Fatalf("after delete: %+v, %v", got, err)
 	}
 }
+
+func TestDeleteCardsDropsItsEmbeddings(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	inst := newInstanceRow(t, lib)
+	card, _ := newCard(t, lib, "brakka", `{"name": "Brakka"}`)
+	todo, err := lib.Unembedded(ctx, inst, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.SaveEmbeddings(ctx, inst, todo, [][]float32{{1, 2}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := lib.DeleteCards(ctx, []int64{card}); err != nil {
+		t.Fatalf("delete card: %v", err)
+	}
+	var n int
+	if err := lib.pool.QueryRow(ctx, `SELECT count(*) FROM card_embedding`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("embeddings left = %d, %v", n, err)
+	}
+}
+
+func TestSaveEmbeddingsRejectsMismatchedVectors(t *testing.T) {
+	lib := newLibrary(t)
+	inst := newInstanceRow(t, lib)
+	err := lib.SaveEmbeddings(context.Background(), inst, []EmbedText{{CardID: 1, RevisionID: 1}}, nil)
+	if err == nil {
+		t.Fatal("want an error for 0 vectors and 1 card")
+	}
+}
+
+func TestUnembeddedSkipsWhitespaceOnlyText(t *testing.T) {
+	lib := newLibrary(t)
+	inst := newInstanceRow(t, lib)
+	newCard(t, lib, "blank", `{"name": "   "}`)
+	if got, err := lib.Unembedded(context.Background(), inst, 10); err != nil || len(got) != 0 {
+		t.Fatalf("unembedded = %+v, %v", got, err)
+	}
+}
+
+func TestUnembeddedIsPerInstance(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	a := newInstanceRow(t, lib)
+	var b int64
+	if err := lib.pool.QueryRow(ctx,
+		`INSERT INTO plugin_instance (plugin, config) VALUES ('other', '{}') RETURNING id`).Scan(&b); err != nil {
+		t.Fatal(err)
+	}
+	newCard(t, lib, "brakka", `{"name": "Brakka"}`)
+	todo, err := lib.Unembedded(ctx, a, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.SaveEmbeddings(ctx, a, todo, [][]float32{{1, 2}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := lib.Unembedded(ctx, b, 10); err != nil || len(got) != 1 {
+		t.Fatalf("instance b: %+v, %v", got, err)
+	}
+}
+
+func TestUnembeddedLimitKeepsLowestIDs(t *testing.T) {
+	lib := newLibrary(t)
+	inst := newInstanceRow(t, lib)
+	first, _ := newCard(t, lib, "first", `{"name": "First"}`)
+	newCard(t, lib, "second", `{"name": "Second"}`)
+	if got, err := lib.Unembedded(context.Background(), inst, 1); err != nil || len(got) != 1 || got[0].CardID != first {
+		t.Fatalf("unembedded = %+v, %v", got, err)
+	}
+}

@@ -2,6 +2,7 @@ package library
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -24,24 +25,33 @@ const embedChars = 8000
 // who the character is, leaving out greetings and example dialogue.
 func (l *Library) Unembedded(ctx context.Context, instance int64, limit int) ([]EmbedText, error) {
 	rows, err := l.pool.Query(ctx, `
-		SELECT c.id, r.id, left(concat_ws(E'\n', nullif(r.data->>'name', ''), nullif(r.data->>'description', ''),
-			nullif(r.data->>'personality', ''), nullif(r.data->>'scenario', ''), nullif(r.data->>'creator_notes', '')), $3) AS text
+		SELECT c.id, r.id, t.text
 		FROM card c
 		JOIN card_revision r ON r.id = c.head_revision_id
+		CROSS JOIN LATERAL (SELECT left(concat_ws(E'\n',
+			nullif(btrim(r.data->>'name'), ''), nullif(btrim(r.data->>'description'), ''),
+			nullif(btrim(r.data->>'personality'), ''), nullif(btrim(r.data->>'scenario'), ''),
+			nullif(btrim(r.data->>'creator_notes'), '')), $3) AS text) t
 		LEFT JOIN card_embedding e ON e.instance_id = $1 AND e.card_id = c.id
-		WHERE e.revision_id IS DISTINCT FROM c.head_revision_id
-			AND concat(r.data->>'name', r.data->>'description', r.data->>'personality', r.data->>'scenario', r.data->>'creator_notes') <> ''
+		WHERE e.revision_id IS DISTINCT FROM c.head_revision_id AND t.text <> ''
 		ORDER BY c.id
 		LIMIT $2`, instance, limit, embedChars)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list unembedded cards for instance %d: %w", instance, err)
 	}
-	return pgx.CollectRows(rows, pgx.RowToStructByPos[EmbedText])
+	out, err := pgx.CollectRows(rows, pgx.RowToStructByPos[EmbedText])
+	if err != nil {
+		return nil, fmt.Errorf("read unembedded cards for instance %d: %w", instance, err)
+	}
+	return out, nil
 }
 
 // SaveEmbeddings stores vectors[i] as cards[i]'s vector from instance,
 // replacing an older one.
 func (l *Library) SaveEmbeddings(ctx context.Context, instance int64, cards []EmbedText, vectors [][]float32) error {
+	if len(vectors) != len(cards) {
+		return fmt.Errorf("save embeddings: %d vectors for %d cards", len(vectors), len(cards))
+	}
 	ids := make([]int64, len(cards))
 	revs := make([]int64, len(cards))
 	vecs := make([]string, len(cards))
@@ -54,13 +64,19 @@ func (l *Library) SaveEmbeddings(ctx context.Context, instance int64, cards []Em
 		FROM unnest($2::bigint[], $3::bigint[], $4::text[]) AS u (card_id, revision_id, embedding)
 		ON CONFLICT (instance_id, card_id) DO UPDATE SET revision_id = EXCLUDED.revision_id, embedding = EXCLUDED.embedding`,
 		instance, ids, revs, vecs)
-	return err
+	if err != nil {
+		return fmt.Errorf("save embeddings for instance %d: %w", instance, err)
+	}
+	return nil
 }
 
 // DeleteEmbeddings drops instance's vectors, so every card is embedded again.
 func (l *Library) DeleteEmbeddings(ctx context.Context, instance int64) error {
 	_, err := l.pool.Exec(ctx, `DELETE FROM card_embedding WHERE instance_id = $1`, instance)
-	return err
+	if err != nil {
+		return fmt.Errorf("delete embeddings for instance %d: %w", instance, err)
+	}
+	return nil
 }
 
 // vectorText writes v in pgvector's text form, so no pgvector Go package is needed.

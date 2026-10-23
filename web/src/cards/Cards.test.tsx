@@ -79,6 +79,10 @@ beforeEach(() => {
         previews.push(await req.json());
         return json({ total: 1, new: 0, ahead: 1, in_sync: 0, cant_check: 0, drifted: 0, confirm: "q1" });
       }
+      if (path === "/api/cards/move/preview" || path === "/api/cards/move") {
+        posts.push({ path, body: await req.json() });
+        return json({ moved: [7, 8, 9, 10], archived: 2, variant_links_cleared: [8, 9], collection_memberships_dropped: 3, from_libraries: [1], bound_instances: [2] });
+      }
       if (path === "/api/imports") {
         posts.push({ path, body: await req.json() });
         return json({ id: 11, kind: "import", status: "queued" });
@@ -839,4 +843,31 @@ test("switching library clears the imports listed for the old one", async () => 
   expect(await screen.findByText(/^https:\/\/chub.ai\/characters\/u\/brakka/)).toBeInTheDocument();
   await act(() => router.navigate("/cards?library=2"));
   expect(screen.queryByText(/^https:\/\/chub.ai\/characters\/u\/brakka/)).not.toBeInTheDocument();
+});
+
+test("Move to library… previews the move, then moves the picked cards and clears the selection", async () => {
+  renderCards("/cards?library=2");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
+  await user.click(screen.getByRole("button", { name: "Move to library…" }));
+  const dialog = screen.getByRole("dialog", { name: "Move to library" });
+  expect(within(dialog).getAllByRole("option").map((o) => o.textContent)).toEqual(["Pick a library", "Library 1", "Library 3"]);
+  await user.selectOptions(within(dialog).getByRole("combobox", { name: "Library" }), "Library 3");
+  expect(await within(dialog).findByText("Moves 4 cards (1 selected + 3 variants, 2 archived)")).toBeInTheDocument();
+  expect(within(dialog).getByText("2 lose their parent link")).toBeInTheDocument();
+  expect(within(dialog).getByText("Leaves 3 collection places")).toBeInTheDocument();
+  expect(within(dialog).getByText("Keeps syncing to: Lumiverse")).toBeInTheDocument();
+  await user.click(within(dialog).getByRole("button", { name: "Move" }));
+  await waitFor(() => expect(posts.at(-1)).toEqual({ path: "/api/cards/move", body: { ids: [8], library: 3 } }));
+  expect(await screen.findByText("Moved 4 cards to Library 3.")).toBeInTheDocument();
+  expect(screen.queryByText("1 selected")).not.toBeInTheDocument();
+});
+
+test("Move to library… is not offered for select all matching", async () => {
+  renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
+  expect(screen.getByRole("button", { name: "Move to library…" })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Select all matching" }));
+  expect(screen.queryByRole("button", { name: "Move to library…" })).not.toBeInTheDocument();
 });

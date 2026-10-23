@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { Kind } from "../api/client";
+import { MoveLibrary } from "../cards/MoveLibrary";
 import { Menu } from "../shell/Menu";
 import { useSaveShortcut } from "../shell/useSaveShortcut";
 import type { Entity } from "./Card";
@@ -19,6 +20,7 @@ type EditorBarProps = {
 
 /** EditorBar is the card and lorebook editors' header: the name, unsaved count, Push, Save, and an overflow menu. */
 export function EditorBar({ kind, entity, ed, lock, busy = false, menu }: EditorBarProps) {
+  const [moving, setMoving] = useState(false);
   const unsaved = ed.dirty.size;
   const canSave = unsaved > 0 && !ed.save.isPending && !ed.stale && !busy;
   const save = () => ed.draft && ed.save.mutate(ed.draft);
@@ -37,11 +39,16 @@ export function EditorBar({ kind, entity, ed, lock, busy = false, menu }: Editor
       </button>
       <Menu label="More actions">
         {menu}
+        {/* The move refuses an archived card or lorebook. */}
+        {!entity.archived_at && <button onClick={() => setMoving(true)}>Move to library…</button>}
         {/* Archive's unpublish checkbox and error need the menu to stay open on a click. */}
         <div className="menu-archive" onClick={(e) => e.stopPropagation()}>
           <Archive kind={kind} entity={entity} />
         </div>
       </Menu>
+      {moving && (
+        <MoveLibrary kind={kind} ids={[entity.id]} library={entity.library_id} onClose={() => setMoving(false)} onDone={() => setMoving(false)} />
+      )}
     </div>
   );
 }

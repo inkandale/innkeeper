@@ -47,7 +47,9 @@ beforeEach(() => {
         return json({ total: 1, hits: [{ id: 7, slug: "brakka", revision_id: 1, fields: { name: "Brakka", avatar: "ab".repeat(32) } }] });
       }
       if (path === "/api/pushes/preview") return json({ total: 1, new: 1, ahead: 0, in_sync: 0, cant_check: 0, drifted: 0, confirm: "q1" });
-      if (path === "/api/bulk" || path === "/api/pushes") {
+      if (path === "/api/lorebooks/move/preview") return json({ moved: [3], archived: 0, variant_links_cleared: [], collection_memberships_dropped: 0, from_libraries: [1], bound_instances: [2] });
+      if (path === "/api/libraries") return json([1, 2].map((id) => ({ id, name: `Library ${id}`, cards: 0, lorebooks: 0, created_at: "2026-10-01T00:00:00Z" })));
+      if (path === "/api/bulk" || path === "/api/pushes" || path === "/api/lorebooks/move") {
         posts.push({ path, body: await req.json() });
         return json({ id: 5, kind: "bulk", status: "waiting" });
       }
@@ -110,4 +112,16 @@ test("the list reloads when a bulk job it started finishes", async () => {
   const before = searches.filter((s) => s.path === "/api/lorebooks/search").length;
   act(() => FakeEventSource.last?.listener?.({ data: JSON.stringify({ id: 5, kind: "bulk", status: "succeeded" }) }));
   await waitFor(() => expect(searches.filter((s) => s.path === "/api/lorebooks/search").length).toBeGreaterThan(before));
+});
+
+test("Move to library… moves the picked lorebooks", async () => {
+  renderAt("/lorebooks");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Forge" }));
+  await user.click(screen.getByRole("button", { name: "Move to library…" }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "Library" }), "Library 2");
+  expect(await screen.findByText("Moves 1 lorebook")).toBeInTheDocument();
+  expect(screen.getByText("Keeps syncing to: Lumiverse")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Move" }));
+  await waitFor(() => expect(posts).toEqual([{ path: "/api/lorebooks/move", body: { ids: [3], library: 2 } }]));
 });

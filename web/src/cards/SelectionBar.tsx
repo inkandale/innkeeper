@@ -4,6 +4,7 @@ import { api, exportFormats, must } from "../api/client";
 import { collectionsQuery, enrichmentKeysQuery, instancesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
 import type { components } from "../api/schema";
 import { useToast } from "../shell/Toasts";
+import { MoveLibrary } from "./MoveLibrary";
 import { SetParent, type Picked } from "./SetParent";
 import { jobToast } from "../settings/jobUtil";
 import { pushSummary } from "../sync/sync";
@@ -12,7 +13,7 @@ import { TargetPicker } from "../sync/TargetPicker";
 type Search = components["schemas"]["Query"];
 type Bulk = components["schemas"]["BulkInBody"];
 type Job = components["schemas"]["JobOut"];
-type Panel = "tag" | "collection" | "push" | "archive" | "export" | "evaluate" | "delete" | "parent" | null;
+type Panel = "tag" | "collection" | "push" | "archive" | "export" | "evaluate" | "delete" | "parent" | "move" | null;
 
 const labels = {
   tag: "Tag",
@@ -23,6 +24,7 @@ const labels = {
   evaluate: "Evaluate",
   delete: "Delete…",
   parent: "Set parent…",
+  move: "Move to library…",
 };
 
 /** SelectionBar replaces the toolbar while cards are picked, and starts bulk jobs on them. */
@@ -51,8 +53,8 @@ export function SelectionBar(props: {
     kind === "lorebook" ? (["push", "archive"] as const)
     : enrichers.length ? (["tag", "collection", "push", "archive", "export", "evaluate", "delete"] as const)
     : (["tag", "collection", "push", "archive", "export", "delete"] as const);
-  // Set parent sends one call per picked entity, so it needs the IDs "Select all matching" doesn't have.
-  const actions = all ? base : ([...base, "parent"] as const);
+  // Set parent and Move send the picked IDs, which "Select all matching" doesn't have.
+  const actions = all ? base : ([...base, "parent", "move"] as const);
   // Card calls leave kind out, as they did before it existed.
   const kindField = kind === "lorebook" ? { kind } : {};
   const [panel, setPanel] = useState<Panel>(null);
@@ -154,7 +156,8 @@ export function SelectionBar(props: {
       {panel === "parent" && (
         <SetParent kind={kind} picked={ids.map((id) => shown.get(id) ?? { id, name: `#${id}` })} onClose={() => setPanel(null)} onDone={onClear} />
       )}
-      {panel && panel !== "parent" && (
+      {panel === "move" && <MoveLibrary kind={kind} ids={ids} library={library} onClose={() => setPanel(null)} onDone={onClear} />}
+      {panel && panel !== "parent" && panel !== "move" && (
         <div className="bulk-panel">
           {panel === "tag" && (
             <>

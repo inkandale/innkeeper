@@ -108,6 +108,12 @@ beforeEach(() => {
         }
         return new Response(null, { status: 204 });
       }
+      if (path === "/api/cards/move/preview" || path === "/api/cards/move") {
+        const body = await req.json();
+        sent.push({ path, body });
+        if (path === "/api/cards/move") head = { ...head, library_id: body.library };
+        return json({ moved: [7], archived: 0, variant_links_cleared: [], collection_memberships_dropped: 2, from_libraries: [1], bound_instances: [] });
+      }
       if (req.method === "POST" && path === "/api/cards/7/variants") {
         const body = await req.json();
         sent.push({ path, body });
@@ -638,4 +644,19 @@ test("the card's library goes in the URL, so the switcher and rail follow it", a
   head = { ...entity, library_id: 2 };
   const router = renderAt("/cards/7");
   await waitFor(() => expect(router.state.location.search).toBe("?library=2"));
+});
+
+test("Move to library… moves the card, and the page follows it to the new library", async () => {
+  const router = renderAt("/cards/7");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Move to library…" }));
+  const dialog = screen.getByRole("dialog", { name: "Move to library" });
+  await user.selectOptions(within(dialog).getByRole("combobox", { name: "Library" }), "Chub archive");
+  expect(await within(dialog).findByText("Moves 1 card")).toBeInTheDocument();
+  expect(within(dialog).getByText("Leaves 2 collection places")).toBeInTheDocument();
+  expect(within(dialog).queryByText(/Keeps syncing/)).not.toBeInTheDocument();
+  await user.click(within(dialog).getByRole("button", { name: "Move" }));
+  await waitFor(() => expect(sent.at(-1)).toEqual({ path: "/api/cards/move", body: { ids: [7], library: 2 } }));
+  await waitFor(() => expect(router.state.location.search).toBe("?library=2"));
+  expect(screen.getByText("Library: Chub archive")).toBeInTheDocument();
 });

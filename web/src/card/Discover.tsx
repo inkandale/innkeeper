@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
 import { api, must } from "../api/client";
@@ -39,6 +39,7 @@ export function Similar({ id, library }: { id: number; library: number }) {
       must(await api.GET("/cards/{id}/similar", { params: { path: { id }, query: { scope, cursor: pageParam } } })),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next_cursor || undefined,
+    placeholderData: keepPreviousData,
   });
   if (pages.isPending) return null;
   const items = pages.data?.pages.flatMap((p) => p.items ?? []) ?? [];
@@ -56,7 +57,7 @@ export function Similar({ id, library }: { id: number; library: number }) {
           Ranked by shared tags. <Link to="/settings/plugins">Pick an embed instance</Link> to rank by meaning.
         </p>
       )}
-      {pages.isSuccess && !items.length && <p className="muted">None in {scope === "all" ? "any library" : "this library"}.</p>}
+      {pages.isSuccess && !pages.isPlaceholderData && !items.length && <p className="muted">None in {scope === "all" ? "any library" : "this library"}.</p>}
       <CardList items={items} library={library} />
       {pages.hasNextPage && (
         <button className="button ghost" disabled={pages.isFetchingNextPage} onClick={() => void pages.fetchNextPage()}>

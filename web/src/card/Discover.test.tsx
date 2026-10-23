@@ -77,6 +77,29 @@ test("Similar across all libraries names the other library", async () => {
   expect(requested).toContain("/api/cards/7/similar?scope=all");
 });
 
+test("Similar keeps its toggle while the other scope loads", async () => {
+  routes["/api/cards/7/similar?scope=library"] = { basis: "embedding", items: [] };
+  let release = () => {};
+  let asked = false;
+  const held = new Promise<void>((r) => (release = r));
+  const plain = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (req) => {
+    if (new URL((req as Request).url).search === "?scope=all") {
+      asked = true;
+      await held;
+    }
+    return plain(req);
+  });
+  renderIt(<Similar id={7} library={1} />);
+  expect(await screen.findByText("None in this library.")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("checkbox", { name: "All libraries" }));
+  await waitFor(() => expect(asked).toBe(true));
+  expect(screen.getByRole("checkbox", { name: "All libraries" })).toBeChecked();
+  expect(screen.queryByText("None in any library.")).not.toBeInTheDocument();
+  release();
+  expect(await screen.findByText("None in any library.")).toBeInTheDocument();
+});
+
 test("Related shows each group and pages through it", async () => {
   routes["/api/cards/7/related"] = {
     groups: [{ group: "creator", items: [{ card_id: 8, library_id: 1, name: "Dorna" }], next_cursor: "1" }],

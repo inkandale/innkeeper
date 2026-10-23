@@ -552,7 +552,8 @@ new card linked to the compared card. In the API, that is `variant_of` on an
 `POST /cards/move` `{"ids": [...], "library": <id>}`, or the `move_to_library`
 MCP tool, moves cards with every variant below them. A moved card whose parent
 stays behind is unlinked from it, and moved cards leave their collections.
-Lorebook links and app bindings stay. `POST /cards/move/preview` returns the
+Lorebook links and app bindings stay. If any selected item is unknown or
+archived, nothing moves. `POST /cards/move/preview` returns the
 same result without moving anything. Lorebooks move through `/lorebooks/move`.
 
 ## Hiding and purging

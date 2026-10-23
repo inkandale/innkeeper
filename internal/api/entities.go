@@ -241,9 +241,8 @@ func (s *Server) revisionOf(ctx context.Context, ents *library.Entities, id, rev
 }
 
 // entityRoutes registers the routes cards and lorebooks share, under
-// /<plural>. moved, if not nil, runs after a move with the libraries it
-// touched; its failure doesn't fail the committed move.
-func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string, moved func(ctx context.Context, libraries []int64) error) {
+// /<plural>.
+func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
 	ents, singular := s.Lib.Entities(k), k.Name
 	tags := []string{tag}
 	base := "/" + k.Plural
@@ -487,8 +486,9 @@ func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string, moved f
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			if moved != nil && len(res.Moved) > 0 {
-				if err := moved(ctx, append(res.FromLibraries, in.Body.Library)); err != nil {
+			// The hide job only hides cards. The move has committed, so a failure is only logged.
+			if ents.Kind() == library.Card && len(res.Moved) > 0 {
+				if err := s.recheckHide(ctx, append(res.FromLibraries, in.Body.Library)); err != nil {
 					s.Log.Warn("after moving "+k.Plural, "err", err)
 				}
 			}

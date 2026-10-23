@@ -70,11 +70,18 @@ func TestMoveCardsWithVariantsAndPreviewChangesNothing(t *testing.T) {
 func TestMoveCardQueuesHideInLibrariesThatHideDuplicates(t *testing.T) {
 	e := newEnv(t)
 	archive := e.createLibrary("Archive")
-	e.call("PATCH", fmt.Sprintf("/libraries/%d/settings", archive.ID), map[string]any{"duplicates": "exact"}, 200, nil)
+	for _, lib := range []int64{library.DefaultLibrary, archive.ID} {
+		e.call("PATCH", fmt.Sprintf("/libraries/%d/settings", lib), map[string]any{"duplicates": "exact"}, 200, nil)
+	}
 	c := e.createCard(`{"name": "Brakka"}`)
 	e.call("POST", "/cards/move", map[string]any{"ids": []int64{c.ID}, "library": archive.ID}, 200, nil)
-	if p := e.hidePayloads(); len(p) != 1 || p[0].Library != archive.ID || p[0].Duplicates != "exact" {
-		t.Fatalf("hide jobs = %+v", p)
+	var libs []int64
+	for _, p := range e.hidePayloads() {
+		libs = append(libs, p.Library)
+	}
+	slices.Sort(libs)
+	if !slices.Equal(libs, []int64{library.DefaultLibrary, archive.ID}) {
+		t.Fatalf("hide jobs queued for libraries %v", libs)
 	}
 
 	// Lorebooks aren't hidden, so moving one queues nothing.
@@ -89,7 +96,7 @@ func TestMoveCardQueuesHideInLibrariesThatHideDuplicates(t *testing.T) {
 	if lb.LibraryID != archive.ID {
 		t.Fatalf("lorebook in library %d", lb.LibraryID)
 	}
-	if p := e.hidePayloads(); len(p) != 1 {
+	if p := e.hidePayloads(); len(p) != 2 {
 		t.Fatalf("hide jobs after a lorebook move = %+v", p)
 	}
 }

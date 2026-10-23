@@ -859,8 +859,10 @@ test("Move to library… previews the move, then moves the picked cards and clea
   expect(within(dialog).getByText("2 lose their parent link")).toBeInTheDocument();
   expect(within(dialog).getByText("Leaves 3 collection places")).toBeInTheDocument();
   expect(within(dialog).getByText("Keeps syncing to: Lumiverse")).toBeInTheDocument();
+  const collectionGets = gets.length;
   await user.click(within(dialog).getByRole("button", { name: "Move" }));
   await waitFor(() => expect(posts.at(-1)).toEqual({ path: "/api/cards/move", body: { ids: [8], library: 3 } }));
+  await waitFor(() => expect(gets.length).toBeGreaterThan(collectionGets));
   expect(await screen.findByText("Moved 4 cards to Library 3.")).toBeInTheDocument();
   expect(screen.queryByText("1 selected")).not.toBeInTheDocument();
 });

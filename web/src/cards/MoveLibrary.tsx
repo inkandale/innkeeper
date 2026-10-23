@@ -33,6 +33,8 @@ export function MoveLibrary({ kind, ids, library, onClose, onDone }: { kind: Kin
     onSuccess: (r) => {
       void qc.invalidateQueries({ queryKey: [kind] });
       void qc.invalidateQueries({ queryKey: librariesQuery.queryKey });
+      // Moved cards leave their collections.
+      void qc.invalidateQueries({ queryKey: ["collections"] });
       toast({ text: `Moved ${count(r.moved?.length ?? 0, kind)} to ${others.find((l) => l.id === to)?.name}.` });
       onDone();
     },

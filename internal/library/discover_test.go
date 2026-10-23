@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"testing"
 )
@@ -225,5 +226,11 @@ func TestRelatedRejectsAnUnknownGroup(t *testing.T) {
 	me, _ := newCard(t, lib, "me", `{"name": "Me"}`)
 	if _, err := lib.RelatedCards(context.Background(), me, "colour", Page{}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("err = %v, want ErrInvalid", err)
+	}
+}
+
+func TestRelatedGroupsMatchTheirConditions(t *testing.T) {
+	if !slices.Equal(slices.Sorted(maps.Keys(relatedWhere)), slices.Sorted(slices.Values(RelatedGroups))) {
+		t.Fatalf("RelatedGroups %v, conditions for %v", RelatedGroups, slices.Sorted(maps.Keys(relatedWhere)))
 	}
 }

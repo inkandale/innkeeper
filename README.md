@@ -547,6 +547,14 @@ When reviewing a sync, "Import as variant of this" imports the app item as a
 new card linked to the compared card. In the API, that is `variant_of` on an
 `import` resolution.
 
+## Moving to another library
+
+`POST /cards/move` `{"ids": [...], "library": <id>}`, or the `move_to_library`
+MCP tool, moves cards with every variant below them. A moved card whose parent
+stays behind is unlinked from it, and moved cards leave their collections.
+Lorebook links and app bindings stay. `POST /cards/move/preview` returns the
+same result without moving anything. Lorebooks move through `/lorebooks/move`.
+
 ## Hiding and purging
 
 A large library, such as an imported archive, holds many weak cards and many
@@ -571,7 +579,8 @@ next run.
 
 In a library with `duplicates` on, an import that adds or changes cards runs
 the same job when it finishes, so cards from a second source don't sit beside
-their copies. If the settings can't run, the import's log says why.
+their copies. If the settings can't run, the import's log says why. Moving
+cards runs it in the libraries they left and the one they joined.
 
 **Purging** deletes for good. Select cards, such as archived ones scoring
 under 30, and use Delete…, typing how many there are. Cards pushed to an app

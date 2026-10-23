@@ -552,3 +552,17 @@ func TestMCPPluginSettings(t *testing.T) {
 		t.Fatalf("run_settings_action with a wrong key = %s", got)
 	}
 }
+
+func TestMCPFindsSimilarAndRelatedCards(t *testing.T) {
+	e := newEnv(t)
+	s := e.mcpClient(tier.Read)
+	me := e.createCard(`{"name": "Brakka", "creator": "dg", "tags": ["dwarf", "smith"]}`)
+	e.createCard(`{"name": "Dorna", "creator": "dg", "tags": ["dwarf", "smith"]}`)
+
+	if got := tool(t, s, "find_similar_cards", map[string]any{"card_id": me.ID}, false); !strings.Contains(got, "Dorna") || !strings.Contains(got, `"basis":"tags"`) {
+		t.Fatalf("find_similar_cards = %s", got)
+	}
+	if got := tool(t, s, "find_related_cards", map[string]any{"card_id": me.ID, "group": "creator"}, false); !strings.Contains(got, "Dorna") {
+		t.Fatalf("find_related_cards = %s", got)
+	}
+}

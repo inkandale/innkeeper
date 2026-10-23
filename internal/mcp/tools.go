@@ -47,6 +47,18 @@ type searchIn struct {
 	Library int64          `json:"library,omitempty" jsonschema:"A library ID from list_libraries; default 1"`
 }
 
+type similarIn struct {
+	CardID int64  `json:"card_id"`
+	Scope  string `json:"scope,omitempty" jsonschema:"library (default) to look in the card's library, or all for every library"`
+	Cursor string `json:"cursor,omitempty" jsonschema:"next_cursor from the previous page"`
+}
+
+type relatedIn struct {
+	CardID int64  `json:"card_id"`
+	Group  string `json:"group,omitempty" jsonschema:"creator, lorebook, or collection to page through one group; omit for the first page of each"`
+	Cursor string `json:"cursor,omitempty" jsonschema:"next_cursor from the previous page; needs group"`
+}
+
 type createIn struct {
 	Data    map[string]any `json:"data" jsonschema:"The CCv3 data object. A card's may not contain character_book; create a lorebook and link it instead."`
 	Message string         `json:"message,omitempty" jsonschema:"What changed, for the history"`
@@ -252,6 +264,28 @@ var tools = []tool{
 				in.Query["library"] = in.Library
 			}
 			return c.call(ctx, "POST", "/cards/search", in.Query)
+		}),
+	def("find_similar_cards", "List cards that read like a card, closest first: by meaning when an embed instance is set, else by shared tags.", tier.Read,
+		func(ctx context.Context, c caller, in similarIn) (*sdk.CallToolResult, error) {
+			q := url.Values{}
+			if in.Scope != "" {
+				q.Set("scope", in.Scope)
+			}
+			if in.Cursor != "" {
+				q.Set("cursor", in.Cursor)
+			}
+			return c.call(ctx, "GET", fmt.Sprintf("/cards/%d/similar?%s", in.CardID, q.Encode()), nil)
+		}),
+	def("find_related_cards", "List cards linked to a card by the same creator, a shared lorebook, or a shared collection.", tier.Read,
+		func(ctx context.Context, c caller, in relatedIn) (*sdk.CallToolResult, error) {
+			q := url.Values{}
+			if in.Group != "" {
+				q.Set("group", in.Group)
+			}
+			if in.Cursor != "" {
+				q.Set("cursor", in.Cursor)
+			}
+			return c.call(ctx, "GET", fmt.Sprintf("/cards/%d/related?%s", in.CardID, q.Encode()), nil)
 		}),
 	def("get_card", "Get a card: its head revision, linked lorebooks, and its status on each target app.", tier.Read,
 		func(ctx context.Context, c caller, in idIn) (*sdk.CallToolResult, error) {

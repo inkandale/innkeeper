@@ -3,6 +3,7 @@ package mcp
 import (
 	"cmp"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -50,6 +51,7 @@ type createIn struct {
 	Data    map[string]any `json:"data" jsonschema:"The CCv3 data object. A card's may not contain character_book; create a lorebook and link it instead."`
 	Message string         `json:"message,omitempty" jsonschema:"What changed, for the history"`
 	Library int64          `json:"library,omitempty" jsonschema:"A library ID from list_libraries; default 1"`
+	Image   string         `json:"image,omitempty" jsonschema:"An image for it, as base64 bytes, such as a PNG or JPEG"`
 }
 
 type updateIn struct {
@@ -58,6 +60,7 @@ type updateIn struct {
 	Data           map[string]any `json:"data" jsonschema:"The whole new CCv3 data object"`
 	Overrides      map[string]any `json:"overrides,omitempty" jsonschema:"JSON merge patches by plugin instance ID. Omit to keep them."`
 	Message        string         `json:"message,omitempty" jsonschema:"What changed, for the history"`
+	Image          string         `json:"image,omitempty" jsonschema:"A new image for it, as base64 bytes, such as a PNG or JPEG. Omit to keep the current one."`
 }
 
 type linkIn struct {
@@ -260,21 +263,23 @@ var tools = []tool{
 			}
 			return c.call(ctx, "GET", path, nil)
 		}),
-	def("create_card", "Create a card from a CCv3 data object.", tier.Write,
+	def("create_card", "Create a card from a CCv3 data object and, optionally, an image.", tier.Write,
 		func(ctx context.Context, c caller, in createIn) (*sdk.CallToolResult, error) {
-			return c.call(ctx, "POST", "/cards", map[string]any{"data": in.Data, "message": in.Message, "source": "mcp", "library": in.Library})
+			return c.withImage(ctx, "POST", "/cards", in.Image,
+				map[string]any{"data": in.Data, "message": in.Message, "source": "mcp", "library": in.Library})
 		}),
 	def("create_lorebook", "Create a lorebook from a CCv3 character_book object.", tier.Write,
 		func(ctx context.Context, c caller, in createIn) (*sdk.CallToolResult, error) {
-			return c.call(ctx, "POST", "/lorebooks", map[string]any{"data": in.Data, "message": in.Message, "source": "mcp", "library": in.Library})
+			return c.withImage(ctx, "POST", "/lorebooks", in.Image,
+				map[string]any{"data": in.Data, "message": in.Message, "source": "mcp", "library": in.Library})
 		}),
-	def("update_card", "Save a new revision of a card. Send the whole data object, based on the head revision you read.", tier.Write,
+	def("update_card", "Save a new revision of a card, optionally with a new image. Send the whole data object, based on the head revision you read.", tier.Write,
 		func(ctx context.Context, c caller, in updateIn) (*sdk.CallToolResult, error) {
-			return c.call(ctx, "PUT", fmt.Sprintf("/cards/%d", in.ID), update(in))
+			return c.withImage(ctx, "PUT", fmt.Sprintf("/cards/%d", in.ID), in.Image, update(in))
 		}),
 	def("update_lorebook", "Save a new revision of a lorebook. Send the whole data object, based on the head revision you read.", tier.Write,
 		func(ctx context.Context, c caller, in updateIn) (*sdk.CallToolResult, error) {
-			return c.call(ctx, "PUT", fmt.Sprintf("/lorebooks/%d", in.ID), update(in))
+			return c.withImage(ctx, "PUT", fmt.Sprintf("/lorebooks/%d", in.ID), in.Image, update(in))
 		}),
 	def("link_lorebook", "Link a lorebook to a card.", tier.Write,
 		func(ctx context.Context, c caller, in linkIn) (*sdk.CallToolResult, error) {
@@ -544,6 +549,29 @@ func update(in updateIn) map[string]any {
 		body["overrides"] = in.Overrides
 	}
 	return body
+}
+
+// withImage uploads image, base64 bytes, as the body's avatar, then makes
+// the request. With no image, the body is sent as is.
+func (c caller) withImage(ctx context.Context, method, path, image string, body map[string]any) (*sdk.CallToolResult, error) {
+	if image != "" {
+		raw, err := base64.StdEncoding.DecodeString(image)
+		if err != nil {
+			return nil, fmt.Errorf("image: %w", err)
+		}
+		r, err := c.do(ctx, "POST", "/blobs", raw)
+		if err != nil || !r.ok() {
+			return result(r), err
+		}
+		var blob struct {
+			SHA256 string `json:"sha256"`
+		}
+		if err := json.Unmarshal(r.body, &blob); err != nil {
+			return nil, fmt.Errorf("image: %w", err)
+		}
+		body["avatar"] = blob.SHA256
+	}
+	return c.call(ctx, method, path, body)
 }
 
 // both returns an entity and its bindings as one result.

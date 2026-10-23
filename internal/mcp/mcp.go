@@ -86,9 +86,15 @@ type reply struct {
 
 func (r reply) ok() bool { return r.status >= 200 && r.status < 300 }
 
+// do sends body as JSON, or a []byte body as a file.
 func (c caller) do(ctx context.Context, method, path string, body any) (reply, error) {
 	var b []byte
-	if body != nil {
+	contentType := "application/json"
+	switch body := body.(type) {
+	case nil:
+	case []byte:
+		b, contentType = body, "application/octet-stream"
+	default:
 		var err error
 		if b, err = json.Marshal(body); err != nil {
 			return reply{}, err
@@ -99,7 +105,7 @@ func (c caller) do(ctx context.Context, method, path string, body any) (reply, e
 		req.Header.Set("Authorization", c.auth)
 	}
 	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Type", contentType)
 	}
 	rec := httptest.NewRecorder()
 	c.api.ServeHTTP(rec, req)

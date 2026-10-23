@@ -3,6 +3,9 @@ package api
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -122,6 +125,29 @@ func TestMCPCards(t *testing.T) {
 	tool(t, s, "get_history", map[string]any{"kind": "card", "id": c.ID}, false)
 	tool(t, s, "restore_revision", map[string]any{"kind": "card", "id": c.ID, "revision_id": c.Revision.ID,
 		"base_revision_id": c.Revision.ID + 1}, false)
+}
+
+func TestMCPAttachesAnImageToACard(t *testing.T) {
+	e := newEnv(t)
+	s := e.mcpClient(tier.Write)
+	png := append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 32)...)
+	image := base64.StdEncoding.EncodeToString(png)
+	sum := sha256.Sum256(png)
+	want := hex.EncodeToString(sum[:])
+	var c entityOut
+	_ = json.Unmarshal([]byte(tool(t, s, "create_card", map[string]any{"data": map[string]any{"name": "Brakka"}, "image": image}, false)), &c)
+	if c.Revision.Avatar == nil || *c.Revision.Avatar != want {
+		t.Fatalf("created avatar = %v, want %s", c.Revision.Avatar, want)
+	}
+	_ = json.Unmarshal([]byte(tool(t, s, "update_card", map[string]any{"id": c.ID, "base_revision_id": c.Revision.ID,
+		"data": map[string]any{"name": "Brakka", "first_mes": "Hail."}}, false)), &c)
+	if c.Revision.Avatar == nil || *c.Revision.Avatar != want {
+		t.Fatalf("an update without image dropped the avatar: %v", c.Revision.Avatar)
+	}
+	if got := tool(t, s, "update_card", map[string]any{"id": c.ID, "base_revision_id": c.Revision.ID,
+		"data": map[string]any{"name": "Brakka"}, "image": "not base64!"}, true); !strings.Contains(got, "image") {
+		t.Fatalf("bad image = %s", got)
+	}
 }
 
 func TestMCPSources(t *testing.T) {

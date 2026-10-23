@@ -241,10 +241,10 @@ func TestSimilarStaysInLibrary(t *testing.T) {
 	}
 
 	if got, err := lib.DuplicateCards(ctx, orig, NearDistance); err != nil || len(got) != 0 {
-		t.Fatalf("library 1 similar = %+v, %v", got, err)
+		t.Fatalf("library 1 duplicates = %+v, %v", got, err)
 	}
 	if got, err := lib.DuplicateCards(ctx, moved, NearDistance); err != nil || len(got) != 0 {
-		t.Fatalf("archive similar = %+v, %v", got, err)
+		t.Fatalf("archive duplicates = %+v, %v", got, err)
 	}
 	probe := []Hashes{{ContentHash: r.ContentHash, TextSimhash: r.TextSimhash}}
 	got, err := lib.Cards.MatchHashes(ctx, DefaultLibrary, probe, NearDistance)

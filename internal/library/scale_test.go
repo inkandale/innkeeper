@@ -31,7 +31,7 @@ func (tr *tracer) TraceQueryStart(ctx context.Context, _ *pgx.Conn, d pgx.TraceQ
 func (tr *tracer) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
 
 // TestScaleExplain builds a 300k-card library beside a small one and prints
-// EXPLAIN ANALYZE for search, facets, and similar lookup. It takes minutes,
+// EXPLAIN ANALYZE for search, facets, and duplicate lookup. It takes minutes,
 // so CI never runs it.
 func TestScaleExplain(t *testing.T) {
 	if os.Getenv("INNKEEPER_SCALE_TEST") != "1" {
@@ -106,7 +106,7 @@ func TestScaleExplain(t *testing.T) {
 		WHERE c.library_id = $1 ORDER BY c.id LIMIT 1 OFFSET 1000`, archive).Scan(&card, &hashes.ContentHash, &hashes.TextSimhash, &hashes.ImagePhash); err != nil {
 		t.Fatal(err)
 	}
-	explain("similar cards", func() error {
+	explain("duplicate cards", func() error {
 		_, err := lib.DuplicateCards(ctx, card, NearDistance)
 		return err
 	})

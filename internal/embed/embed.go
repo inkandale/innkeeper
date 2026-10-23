@@ -34,18 +34,22 @@ type Runner struct {
 }
 
 // Run embeds batches until no card is due. With no usable embed instance it
-// does nothing; the job runs again when one is set.
+// does nothing; the job runs again when one is set. The instance is read
+// before each batch, so changing it mid-run takes effect.
 func (rn *Runner) Run(ctx context.Context, r *jobs.Run) error {
-	inst, err := rn.instance(ctx)
-	if err != nil {
-		return fmt.Errorf("find embed instance: %w", err)
-	}
-	if inst == 0 {
-		return nil
-	}
-	var after int64
+	var inst, after int64
 	done := 0
 	for {
+		cur, err := rn.instance(ctx)
+		if err != nil {
+			return fmt.Errorf("find embed instance: %w", err)
+		}
+		if cur == 0 {
+			return nil
+		}
+		if cur != inst {
+			inst, after = cur, 0
+		}
 		todo, err := rn.Lib.Unembedded(ctx, inst, after, batchSize)
 		if err != nil || len(todo) == 0 {
 			return err

@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/inkandale/innkeeper/internal/blobstore"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
@@ -24,6 +26,7 @@ import (
 )
 
 type env struct {
+	pool *pgxpool.Pool
 	lib  *library.Library
 	reg  *plugins.Registry
 	q    *jobs.Queue
@@ -54,7 +57,7 @@ func newEnv(t *testing.T) env {
 		t.Fatal(err)
 	}
 	lib := library.New(pool, store)
-	return env{lib: lib, reg: reg, q: jobs.New(pool), run: &Runner{Lib: lib, Registry: reg, Plugins: mgr}, inst: inst}
+	return env{pool: pool, lib: lib, reg: reg, q: jobs.New(pool), run: &Runner{Lib: lib, Registry: reg, Plugins: mgr}, inst: inst}
 }
 
 func (e env) card(t *testing.T, slug, data string) (int64, int64) {
@@ -243,5 +246,35 @@ func TestEmbedJobFailsWithABrokenEmbedInstance(t *testing.T) {
 	}
 	if j := e.runJob(t); j.Status != jobs.StatusFailed {
 		t.Fatalf("job %s; want failed with a broken instance", j.Status)
+	}
+}
+
+func TestEmbedJobSwitchesToANewEmbedInstanceMidRun(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	for i := range batchSize + 3 {
+		e.card(t, "card-"+strconv.Itoa(i), `{"name": "Card `+strconv.Itoa(i)+`"}`)
+	}
+	next, err := e.reg.CreateInstance(ctx, plugins.NewInstance{Plugin: "fake", Name: new("Next"),
+		Config: map[string]any{"services": []string{protocol.MethodAIEmbed}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.reg.SetSetting(ctx, InstanceKey, strconv.FormatInt(e.inst, 10)); err != nil {
+		t.Fatal(err)
+	}
+	// The owner picks the next instance as soon as the first batch is saved.
+	if _, err := e.pool.Exec(ctx, fmt.Sprintf(`
+		CREATE FUNCTION switch_embed_instance() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN UPDATE setting SET value = '%d' WHERE key = '%s'; RETURN NULL; END $$;
+		CREATE TRIGGER switch_embed_instance AFTER INSERT ON card_embedding
+		FOR EACH STATEMENT EXECUTE FUNCTION switch_embed_instance()`, next, InstanceKey)); err != nil {
+		t.Fatal(err)
+	}
+	if j := e.runJob(t); j.Status != jobs.StatusSucceeded {
+		t.Fatalf("job %s: %s", j.Status, *j.Error)
+	}
+	if got, err := e.lib.Unembedded(ctx, next, 0, 100); err != nil || len(got) != 0 {
+		t.Fatalf("left unembedded by the new instance: %d, %v", len(got), err)
 	}
 }

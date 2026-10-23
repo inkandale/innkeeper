@@ -69,12 +69,15 @@ instance that is gone or disabled.
 `embed.Kind` (`embed`) is handled by `embed.Runner`, in a new package
 `internal/embed`. Each run:
 
-1. Reads `embed_instance`. With none, it finishes at once.
+1. Reads `embed_instance`. With none, it finishes at once. If it names a
+   different instance than the last batch used, the run starts again from
+   the first card with that instance.
 2. Asks `library.Library.Unembedded` for up to 32 cards needing a vector,
    with their text, after the last card it handled.
 3. Calls `Registry.Embed`, then stores the vectors with
    `library.Library.SaveEmbeddings`.
-4. Repeats until no card needs one, reporting progress as it goes.
+4. Repeats from step 1 until no card needs one, reporting progress as it
+   goes.
 
 If the model rejects a batch, the job retries its cards one at a time,
 logs each card that still fails, and moves on; that card is tried again on

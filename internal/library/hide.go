@@ -62,6 +62,9 @@ type DuplicatePair struct {
 	Exact bool
 }
 
+// band16Distance is the widest distance hash_bands16's 4 bands always catch.
+const band16Distance = 3
+
 // DuplicatePairs returns library's pairs of cards whose head revisions have
 // the same content or, unless maxDistance is negative, text or the avatar
 // and name within maxDistance bits, in (A, B) order. Cards the owner
@@ -78,6 +81,10 @@ func (l *Library) DuplicatePairs(ctx context.Context, library int64, maxDistance
 	args := []any{library}
 	if maxDistance >= 0 {
 		args = append(args, maxDistance)
+		bands := `r2.text_bands && hash_bands(r.text_simhash)`
+		if maxDistance <= band16Distance {
+			bands = `r2.text_bands16 && hash_bands16(r.text_simhash)`
+		}
 		// Matching names first keeps a widely reused avatar from pairing every card that has it.
 		pairs = `WITH named AS (
 			SELECT c.id, lower(btrim(r.data->>'name')) AS name, b.avatar_phash AS phash
@@ -91,7 +98,7 @@ func (l *Library) DuplicatePairs(ctx context.Context, library int64, maxDistance
 			SELECT e.id FROM card_revision r2
 			JOIN card e ON e.id = r2.card_id AND e.head_revision_id = r2.id
 			WHERE e.library_id = c.library_id AND e.id > c.id AND (e.archived_at IS NULL OR e.archived_reason IS NOT NULL)
-				AND r2.text_bands && hash_bands(r.text_simhash)
+				AND ` + bands + `
 				AND bit_count((r2.text_simhash # r.text_simhash)::bit(64)) <= $2
 		) m
 		WHERE c.library_id = $1 AND ` + hideable + ` AND r.text_simhash IS NOT NULL

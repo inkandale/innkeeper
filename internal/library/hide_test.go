@@ -3,6 +3,7 @@ package library
 import (
 	"context"
 	"maps"
+	"math/rand/v2"
 	"slices"
 	"testing"
 	"time"
@@ -45,6 +46,41 @@ func TestDuplicatePairs(t *testing.T) {
 	}
 	if groups := GroupPairs(near); len(groups) != 1 || !slices.Equal(groups[0], []int64{orig, dup, edited}) {
 		t.Fatalf("groups = %v", groups)
+	}
+}
+
+func TestHashBands16ShareABandWithin3Bits(t *testing.T) {
+	lib := newLibrary(t)
+	rng := rand.New(rand.NewPCG(1, 2))
+	for range 2000 {
+		h := int64(rng.Uint64())
+		near := h
+		for range 1 + rng.IntN(band16Distance) {
+			near ^= 1 << rng.IntN(64)
+		}
+		var share bool
+		if err := lib.pool.QueryRow(context.Background(), `SELECT hash_bands16($1) && hash_bands16($2)`, h, near).Scan(&share); err != nil {
+			t.Fatal(err)
+		}
+		if !share {
+			t.Fatalf("%016x and %016x share no band", uint64(h), uint64(near))
+		}
+	}
+}
+
+func TestDuplicatePairsWithin3BitsFindsNearText(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	orig, _ := newCard(t, lib, "orig", `{"name": "Brakka", "description": "`+brakka+`"}`)
+	edited, _ := newCard(t, lib, "edited", `{"name": "Brakka", "description": "`+brakka+` Gold."}`)
+	// 5 bits from orig: past the asked distance.
+	newCard(t, lib, "far", `{"name": "Brakka", "description": "`+brakka+` Ale."}`)
+	near, err := lib.DuplicatePairs(ctx, DefaultLibrary, band16Distance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(near, []DuplicatePair{{orig, edited, false}}) {
+		t.Fatalf("near pairs = %v", near)
 	}
 }
 

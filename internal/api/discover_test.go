@@ -34,4 +34,5 @@ func TestRelatedRouteListsNonEmptyGroups(t *testing.T) {
 	if len(one.Groups) != 1 || one.Groups[0].Group != "lorebook" || len(one.Groups[0].Items) != 0 {
 		t.Fatalf("one group = %+v", one)
 	}
+	e.call("GET", fmt.Sprintf("/cards/%d/related?cursor=1", me.ID), nil, 422, nil)
 }

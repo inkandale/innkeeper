@@ -34,7 +34,7 @@ type similarCardsOut struct{ Body library.SimilarPage }
 
 type relatedCardsIn struct {
 	DiscoverPageIn
-	Group string `query:"group" enum:"creator,lorebook,collection" doc:"One group to page through; without it, the first page of every group with results."`
+	Group string `query:"group" enum:"creator,lorebook,collection" doc:"One group to page through; without it, the first page of every group with results. A cursor needs it."`
 }
 
 type relatedCardsOut struct {
@@ -67,6 +67,9 @@ func (s *Server) discoverRoutes(api huma.API) {
 		Summary: "Find related cards", Tags: tags,
 		Description: "Cards linked to this one: by the same creator, a shared lorebook, or a shared collection. Leaves out this card's variants and archived cards."},
 		func(ctx context.Context, in *relatedCardsIn) (*relatedCardsOut, error) {
+			if in.Cursor != "" && in.Group == "" {
+				return nil, huma.Error422UnprocessableEntity("a cursor needs a group")
+			}
 			if _, err := s.Lib.Cards.Get(ctx, in.ID); err != nil {
 				return nil, s.fail(err)
 			}

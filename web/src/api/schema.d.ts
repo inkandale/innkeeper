@@ -5995,7 +5995,7 @@ export interface operations {
                 /** @description next_cursor from the previous page. */
                 cursor?: string;
                 limit?: number;
-                /** @description One group to page through; without it, the first page of every group with results. */
+                /** @description One group to page through; without it, the first page of every group with results. A cursor needs it. */
                 group?: "creator" | "lorebook" | "collection";
             };
             header?: never;

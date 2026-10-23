@@ -7453,12 +7453,12 @@
             }
           },
           {
-            "description": "One group to page through; without it, the first page of every group with results.",
+            "description": "One group to page through; without it, the first page of every group with results. A cursor needs it.",
             "explode": false,
             "in": "query",
             "name": "group",
             "schema": {
-              "description": "One group to page through; without it, the first page of every group with results.",
+              "description": "One group to page through; without it, the first page of every group with results. A cursor needs it.",
               "enum": [
                 "creator",
                 "lorebook",

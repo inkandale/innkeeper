@@ -114,15 +114,14 @@ queues source detection. `PATCH /settings` queues it when it sets
 
 ### Related
 
-`GET /cards/{id}/related?group=…&cursor=…&limit=10`
+`GET /cards/{id}/related?group=…&cursor=…&limit=20`
 
 With no `group`, the reply holds the first page of every group that has
 results:
 
 ```json
 {"groups": [
-  {"group": "creator", "items": [{"card_id": 7, "library_id": 2, "name": "Lia"}], "next_cursor": "…"},
-  {"group": "lorebook", "items": [], "next_cursor": null}
+  {"group": "creator", "items": [{"card_id": 7, "library_id": 2, "name": "Lia"}], "next_cursor": "…"}
 ]}
 ```
 
@@ -134,7 +133,7 @@ results:
 
 Each group excludes the card itself, its variant family, and archived
 cards, and orders by `card_id`. With `group`, the reply holds that group
-only, paged by `cursor`.
+only, paged by `cursor`. A cursor needs `group`.
 
 ### Semantic search
 
@@ -170,7 +169,8 @@ that clears it deletes every vector. Setting an instance that doesn't offer `ai.
   library / All libraries toggle, a list of linked card names, and Show
   more. A card from another library shows its library's name. When `basis`
   is `tags`, a note says the list is ranked by shared tags and links to the
-  embed instance setting.
+  embed instance setting. Once loaded, the section always shows; when the
+  list is empty it keeps the toggle and says "None in this library."
 - **Card page, Related panel**: one heading per group with results, each a
   list of linked card names with Show more.
 - **Library list**: a Semantic toggle beside the search box, shown only

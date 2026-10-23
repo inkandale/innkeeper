@@ -78,7 +78,9 @@ instance that is gone or disabled.
 
 If the model rejects a batch, the job retries its cards one at a time,
 logs each card that still fails, and moves on; that card is tried again on
-the next run. A retryable failure, such as a rate limit, fails the run
+the next run. If no card in the batch embeds alone, or the instance is
+broken, disabled, or doesn't offer `ai.embed`, the run fails, since the
+fault isn't one card's. A retryable failure, such as a rate limit, fails the run
 and the jobs package retries it. Finished batches are kept. A card without a vector is missing from similar and
 semantic results until it has one.
 

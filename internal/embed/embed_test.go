@@ -3,6 +3,7 @@ package embed
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -210,5 +211,37 @@ func TestEmbedJobIgnoresADisabledEmbedInstance(t *testing.T) {
 	}
 	if got, _ := e.lib.Unembedded(ctx, e.inst, 0, 10); len(got) != 1 {
 		t.Fatalf("a disabled instance embedded the card: %+v", got)
+	}
+}
+
+func TestEmbedJobFailsWhenTheModelRejectsEveryCard(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	e.card(t, "poison-1", `{"name": "POISON one"}`)
+	e.card(t, "poison-2", `{"name": "POISON two"}`)
+	if err := e.reg.SetSetting(ctx, InstanceKey, strconv.FormatInt(e.inst, 10)); err != nil {
+		t.Fatal(err)
+	}
+	if j := e.runJob(t); j.Status != jobs.StatusFailed {
+		t.Fatalf("job %s; want failed when every card is rejected", j.Status)
+	}
+}
+
+func TestEmbedJobFailsWithABrokenEmbedInstance(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	e.card(t, "brakka", `{"name": "Brakka"}`)
+	if err := e.reg.SetSetting(ctx, InstanceKey, strconv.FormatInt(e.inst, 10)); err != nil {
+		t.Fatal(err)
+	}
+	inst, err := e.reg.Instance(ctx, e.inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.reg.MarkBroken(ctx, e.inst, inst.Version, errors.New("won't start")); err != nil {
+		t.Fatal(err)
+	}
+	if j := e.runJob(t); j.Status != jobs.StatusFailed {
+		t.Fatalf("job %s; want failed with a broken instance", j.Status)
 	}
 }

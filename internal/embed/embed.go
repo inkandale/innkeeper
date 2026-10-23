@@ -64,14 +64,19 @@ func (rn *Runner) Run(ctx context.Context, r *jobs.Run) error {
 // embedBatch embeds cards and returns how many it saved. If the batch fails
 // in a way one card could cause, such as the model rejecting a text, it tries
 // each card alone and logs and skips the ones that still fail; they stay due
-// for the next run.
+// for the next run. If no card gets through alone, the fault isn't one
+// card's, so the batch's error is returned.
 func (rn *Runner) embedBatch(ctx context.Context, r *jobs.Run, inst int64, cards []library.EmbedText) (int, error) {
-	err := rn.embed(ctx, inst, cards)
-	if err == nil {
+	batchErr := rn.embed(ctx, inst, cards)
+	if batchErr == nil {
 		return len(cards), nil
 	}
-	if !cardFault(ctx, err) {
-		return 0, err
+	if !cardFault(ctx, batchErr) {
+		return 0, batchErr
+	}
+	if len(cards) == 1 {
+		r.Log("warn", fmt.Sprintf("card %d not embedded: %v", cards[0].CardID, batchErr))
+		return 0, nil
 	}
 	saved := 0
 	for _, c := range cards {
@@ -84,6 +89,9 @@ func (rn *Runner) embedBatch(ctx context.Context, r *jobs.Run, inst int64, cards
 		default:
 			return saved, err
 		}
+	}
+	if saved == 0 {
+		return 0, batchErr
 	}
 	return saved, nil
 }
@@ -102,10 +110,11 @@ func (rn *Runner) embed(ctx context.Context, inst int64, cards []library.EmbedTe
 }
 
 // cardFault reports whether err may be one card's fault rather than the
-// plugin's, the connection's, or a cancelled job's.
+// instance's, the plugin's, the connection's, or a cancelled job's.
 func cardFault(ctx context.Context, err error) bool {
 	var startErr *pluginhost.StartError
-	return ctx.Err() == nil && !errors.Is(err, jobs.ErrRetry) && !errors.As(err, &startErr)
+	return ctx.Err() == nil && !errors.Is(err, jobs.ErrRetry) && !errors.As(err, &startErr) &&
+		!errors.Is(err, plugins.ErrBroken) && !errors.Is(err, plugins.ErrDisabled) && !errors.Is(err, plugins.ErrIncapable)
 }
 
 // instance is the embed instance's ID, or 0 when the setting is empty or

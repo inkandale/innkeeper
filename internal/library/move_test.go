@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 )
 
 // bindCard binds card to a new plugin instance, as an import binding when
@@ -297,10 +298,19 @@ func TestDeletingTheSourceLibraryDuringAMoveKeepsTheMovedCard(t *testing.T) {
 	deleted := make(chan error, 1)
 	go func() { deleted <- lib.DeleteLibrary(ctx, src, func(*Kind, int) {}) }()
 	// The delete must be waiting on the move's row lock before the move commits.
-	for waiting := false; !waiting; {
+	for {
+		var waiting bool
 		if err := lib.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_stat_activity
 			WHERE datname = current_database() AND wait_event_type = 'Lock')`).Scan(&waiting); err != nil {
 			t.Fatal(err)
+		}
+		if waiting {
+			break
+		}
+		select {
+		case err := <-deleted:
+			t.Fatalf("delete finished without waiting on the move: %v", err)
+		case <-time.After(10 * time.Millisecond):
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {

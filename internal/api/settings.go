@@ -3,21 +3,26 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/inkandale/innkeeper/internal/embed"
 	"github.com/inkandale/innkeeper/internal/libsettings"
 	"github.com/inkandale/innkeeper/internal/tier"
+	"github.com/inkandale/innkeeper/protocol"
 )
 
 type settings struct {
 	Theme          string `json:"theme" doc:"The selected theme plugin, or empty for the default theme."`
 	OnboardingDone bool   `json:"onboarding_done" doc:"Whether the owner finished or skipped the setup wizard."`
 	ScoreInstance  *int64 `json:"score_instance" doc:"The enrich instance whose values the library grid shows and hide_below reads, and that enrichment filters and sort naming no instance use, or null; a library may override it. When null and exactly one enrich instance exists, that one is used."`
+	EmbedInstance  *int64 `json:"embed_instance" doc:"The ai instance whose ai.embed every library's card vectors come from, or null for none."`
 	// The hide job's defaults; see GET /libraries/{id}/settings.
 	HideBelow         *float64 `json:"hide_below"`
 	Duplicates        string   `json:"duplicates" enum:"off,exact,near"`
@@ -33,6 +38,7 @@ type patchSettingsIn struct {
 		Theme          *string         `json:"theme,omitempty" doc:"An installed theme plugin's name, or empty for the default theme."`
 		OnboardingDone *bool           `json:"onboarding_done,omitempty" doc:"true once the owner finishes or skips the setup wizard; false shows it again."`
 		ScoreInstance  optional[int64] `json:"score_instance,omitempty" doc:"An enrich instance's ID, or null to clear it."`
+		EmbedInstance  optional[int64] `json:"embed_instance,omitempty" doc:"An ai instance's ID, or null to clear it. Setting it, even to its current value, embeds every card again."`
 		// Null clears a setting: no hide_below, duplicates off, distance 3, keep best, no decide instance.
 		HideOptionsIn
 	}
@@ -68,6 +74,11 @@ func (s *Server) settings(ctx context.Context) (*settingsOut, error) {
 	}
 	if i := libsettings.ScoreNamed(score, insts); i != nil {
 		out.Body.ScoreInstance = &i.ID
+	}
+	if v, err := s.Registry.Setting(ctx, embed.InstanceKey); err != nil {
+		return nil, s.fail(err)
+	} else if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+		out.Body.EmbedInstance = &id
 	}
 	b := &out.Body
 	if b.HideBelow, err = libsettings.HideBelow.Core(ctx, s.libSettings()); err != nil {
@@ -120,6 +131,11 @@ func (s *Server) settingsRoutes(api huma.API) {
 					return nil, err
 				}
 			}
+			if in.Body.EmbedInstance.Sent {
+				if err := s.setEmbedInstance(ctx, in.Body.EmbedInstance.Value); err != nil {
+					return nil, err
+				}
+			}
 			b := in.Body
 			if err := b.HideOptionsIn.set(ctx, s, nil); err != nil {
 				return nil, err
@@ -134,6 +150,29 @@ func (s *Server) settingsRoutes(api huma.API) {
 			out.Body.Tier = callerTier(ctx).String()
 			return out, nil
 		})
+}
+
+// setEmbedInstance stores the embed instance, or clears it for nil. Setting
+// one drops its vectors, so a model changed in its config takes effect.
+func (s *Server) setEmbedInstance(ctx context.Context, id *int64) error {
+	if id == nil {
+		return s.fail(s.Registry.SetSetting(ctx, embed.InstanceKey, ""))
+	}
+	info, err := s.Registry.GetInstance(ctx, *id)
+	if err != nil {
+		return s.fail(err)
+	}
+	if !s.Registry.HasCapability(info.Plugin, protocol.CapabilityAI) {
+		return huma.Error400BadRequest(fmt.Sprintf("plugin %s offers no AI services", info.Plugin))
+	}
+	if err := s.Lib.DeleteEmbeddings(ctx, *id); err != nil {
+		return s.fail(err)
+	}
+	if err := s.Registry.SetSetting(ctx, embed.InstanceKey, strconv.FormatInt(*id, 10)); err != nil {
+		return s.fail(err)
+	}
+	embed.Enqueue(ctx, s.Queue, s.Log)
+	return nil
 }
 
 // fileRoutes serve theme stylesheets and plugin icons. They're public: the

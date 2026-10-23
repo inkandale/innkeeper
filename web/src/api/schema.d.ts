@@ -3799,6 +3799,11 @@ export interface components {
             /** @description off, exact, or near. */
             duplicates?: string | null;
             /**
+             * Format: int64
+             * @description An ai instance's ID, or null to clear it. Setting it, even to its current value, embeds every card again.
+             */
+            embed_instance?: number | null;
+            /**
              * Format: double
              * @description Hide cards whose grid score is below this.
              */
@@ -4261,6 +4266,11 @@ export interface components {
             duplicate_keep: "best" | "oldest" | "newest";
             /** @enum {string} */
             duplicates: "off" | "exact" | "near";
+            /**
+             * Format: int64
+             * @description The ai instance whose ai.embed every library's card vectors come from, or null for none.
+             */
+            embed_instance: number | null;
             /** Format: double */
             hide_below: number | null;
             /** @description Whether the owner finished or skipped the setup wizard. */

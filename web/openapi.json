@@ -3413,6 +3413,14 @@
               "null"
             ]
           },
+          "embed_instance": {
+            "description": "An ai instance's ID, or null to clear it. Setting it, even to its current value, embeds every card again.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "hide_below": {
             "description": "Hide cards whose grid score is below this.",
             "format": "double",
@@ -4646,6 +4654,14 @@
             ],
             "type": "string"
           },
+          "embed_instance": {
+            "description": "The ai instance whose ai.embed every library's card vectors come from, or null for none.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "hide_below": {
             "format": "double",
             "type": [
@@ -4674,6 +4690,7 @@
           "theme",
           "onboarding_done",
           "score_instance",
+          "embed_instance",
           "hide_below",
           "duplicates",
           "duplicate_distance",

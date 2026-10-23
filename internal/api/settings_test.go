@@ -1,11 +1,14 @@
 package api
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/inkandale/innkeeper/internal/embed"
+	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/protocol"
 )
 
@@ -172,5 +175,61 @@ func TestPluginIconSymlinkEscape(t *testing.T) {
 	}
 	if r := e.send("GET", "/plugins/fake/icon", nil); r.Status != 404 {
 		t.Fatalf("symlinked icon = %s, want 404", r)
+	}
+}
+
+// addBrain installs an ai plugin named brain with one instance and returns its ID.
+func (e *testEnv) addBrain(config map[string]any) int64 {
+	e.t.Helper()
+	brain := *e.manifests["fake"]
+	brain.Name, brain.Capabilities = "brain", []string{protocol.CapabilityAI}
+	brain.Command = []string{brain.Command[0], "-caps=ai", "-name=brain"}
+	e.manifests["brain"] = &brain
+	id, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "brain", Name: new("Brain"), Config: config})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return id
+}
+
+func TestSettingEmbedInstanceQueuesEmbedJob(t *testing.T) {
+	e := newEnv(t)
+	inst := e.addBrain(map[string]any{"services": []string{protocol.MethodAIEmbed}})
+
+	var s settings
+	e.call("PATCH", "/settings", map[string]any{"embed_instance": inst}, 200, &s)
+	if s.EmbedInstance == nil || *s.EmbedInstance != inst {
+		t.Fatalf("settings = %+v", s)
+	}
+	var queued int
+	if err := e.pool.QueryRow(context.Background(), `SELECT count(*) FROM job WHERE kind = $1 AND status = 'queued'`, embed.Kind).Scan(&queued); err != nil {
+		t.Fatal(err)
+	}
+	if queued != 1 {
+		t.Fatalf("embed jobs queued = %d, want 1", queued)
+	}
+
+	e.call("PATCH", "/settings", map[string]any{"embed_instance": e.importID}, 400, nil)
+	e.call("PATCH", "/settings", map[string]any{"embed_instance": nil}, 200, &s)
+	if s.EmbedInstance != nil {
+		t.Fatalf("after clearing: %+v", s)
+	}
+}
+
+func TestSettingEmbedInstanceDropsItsVectors(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	inst := e.addBrain(nil)
+	e.createCard(`{"name": "Brakka"}`)
+	todo, err := e.s.Lib.Unembedded(ctx, inst, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.s.Lib.SaveEmbeddings(ctx, inst, todo, [][]float32{{1, 2}}); err != nil {
+		t.Fatal(err)
+	}
+	e.call("PATCH", "/settings", map[string]any{"embed_instance": inst}, 200, nil)
+	if got, err := e.s.Lib.Unembedded(ctx, inst, 10); err != nil || len(got) != 1 {
+		t.Fatalf("after setting: %+v, %v; want the card due again", got, err)
 	}
 }

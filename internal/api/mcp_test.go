@@ -93,10 +93,15 @@ func TestMCPToolsByTier(t *testing.T) {
 	// Destructive routes keep their own tools, so start_job's annotations hold.
 	tool(t, e.mcpClient(tier.Destructive), "start_job", map[string]any{"operation": "purge-cards", "body": map[string]any{}}, true)
 	if !slices.Contains(read, "search_cards") || slices.Contains(read, "create_card") || slices.Contains(write, "push") ||
-		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 46 ||
+		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 48 ||
 		!slices.Contains(read, "start_job") || slices.Contains(write, "set_autosync") || !slices.Contains(all, "set_autosync") ||
 		!slices.Contains(read, "get_config_defaults") || slices.Contains(write, "list_config_options") || slices.Contains(write, "run_settings_action") {
 		t.Fatalf("read %v\nwrite %v\nall %v", read, write, all)
+	}
+	for _, name := range []string{"find_similar_cards", "find_related_cards"} {
+		if !slices.Contains(read, name) || !slices.Contains(write, name) || !slices.Contains(all, name) {
+			t.Errorf("%s missing from a tier", name)
+		}
 	}
 }
 

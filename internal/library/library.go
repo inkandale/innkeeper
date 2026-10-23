@@ -20,6 +20,8 @@ const DefaultLibrary int64 = 1
 
 var (
 	ErrNotFound = errors.New("not found")
+	// ErrNoEmbedInstance means embed_instance is unset, or names an instance that is gone or disabled.
+	ErrNoEmbedInstance = errors.New("semantic search needs an embed instance; pick one in Settings under Plugins, Embeddings from")
 	// ErrConflict means the write's base revision is no longer the head.
 	ErrConflict  = errors.New("base revision is not the head")
 	ErrSlugTaken = errors.New("slug already in use")

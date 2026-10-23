@@ -18,7 +18,7 @@ import (
 // actions select cards with it too.
 type Query struct {
 	Text     string   `json:"text,omitempty" doc:"Words to match in name, description, personality, scenario, creator notes, and first message. Supports \"quoted phrases\", or, and -excluded words."`
-	Semantic bool     `json:"semantic,omitempty" doc:"Not available yet: needs an embedding enricher."`
+	Semantic bool     `json:"semantic,omitempty" doc:"Rank cards by meaning instead of matching words. Needs text and an embed instance (Settings, Plugins, Embeddings from); sorts by relevance only. Cards not embedded yet are left out."`
 	Filter   *Filter  `json:"filter,omitempty"`
 	Sources  []string `json:"sources,omitempty" doc:"library, or catalog:<instance id> to also search a catalog by text alone. Default: library."`
 	Include  []string `json:"include,omitempty" doc:"Extra data per hit: tags, lorebooks, targets, enrichments (the score instance's current values of its score keys and grid key). Lorebooks take cards and targets."`
@@ -34,6 +34,11 @@ type Query struct {
 	// sort, and include use, or 0 for none. The caller resolves it from the
 	// score_instance setting.
 	ScoreInstance int64 `json:"-"`
+
+	// Embedding is Text's vector from EmbedInstance, for a semantic search.
+	// The caller embeds it.
+	Embedding     []float32 `json:"-"`
+	EmbedInstance int64     `json:"-"`
 }
 
 // Page selects one page of results, by cursor or by number.
@@ -506,9 +511,6 @@ func mentionsArchived(f *Filter) bool {
 // compile returns the WHERE condition for q over k's entity c joined to its
 // head revision r, and the placeholder holding the text query, if any.
 func compile(k *Kind, q Query) (string, *where, string, error) {
-	if q.Semantic {
-		return "", nil, "", fmt.Errorf("%w: semantic search needs an embedding enricher, and none is installed", ErrInvalid)
-	}
 	for _, s := range q.Sources {
 		if s != "library" {
 			return "", nil, "", fmt.Errorf("%w: unknown source %q", ErrInvalid, s)
@@ -527,11 +529,41 @@ func compile(k *Kind, q Query) (string, *where, string, error) {
 		conds = append(conds, "c.archived_at IS NULL")
 	}
 	text := ""
-	if q.Text != "" {
+	switch {
+	case q.Semantic:
+		s, err := w.semantic(q)
+		if err != nil {
+			return "", nil, "", err
+		}
+		conds = append(conds, s)
+	case q.Text != "":
 		text = w.arg(q.Text)
 		conds = append(conds, "r.search @@ websearch_to_tsquery('english', "+text+")")
 	}
 	return strings.Join(conds, " AND "), w, text, nil
+}
+
+// semantic is the condition that a card has a vector from q's embed
+// instance that compares with q's, which has to be the same length.
+func (w *where) semantic(q Query) (string, error) {
+	switch {
+	case w.k != Card:
+		return "", fmt.Errorf("%w: only cards have semantic search", ErrInvalid)
+	case q.Text == "":
+		return "", fmt.Errorf("%w: semantic search needs text", ErrInvalid)
+	case q.Embedding == nil:
+		// Only Search embeds the query; bulk selections never do.
+		return "", fmt.Errorf("%w: semantic search lists cards but can't select them for an action", ErrInvalid)
+	}
+	return `EXISTS (SELECT 1 FROM card_embedding e WHERE e.card_id = c.id AND e.instance_id = ` + w.arg(q.EmbedInstance) +
+		` AND vector_dims(e.embedding) = ` + w.arg(len(q.Embedding)) + `)`, nil
+}
+
+// similarity is a card's cosine similarity to q's vector, as a real so a
+// cursor holds it exactly. compile's semantic condition keeps it non-null.
+func (w *where) similarity(q Query) string {
+	return `(SELECT (1 - (e.embedding <=> ` + w.arg(vectorText(q.Embedding)) + `::vector))::real
+		FROM card_embedding e WHERE e.card_id = c.id AND e.instance_id = ` + w.arg(q.EmbedInstance) + `)`
 }
 
 // familyWalk is a WITH clause whose m holds the matches of cond, with cols,
@@ -690,7 +722,7 @@ func cursorValueIs(typ string, v json.RawMessage) bool {
 }
 
 // Search returns one page of the library's entities of kind k that match q,
-// best match first when q has text, newest first otherwise. With q.Group
+// best match first when q has text, by meaning when q is semantic, newest first otherwise. With q.Group
 // family, a page holds one hit per family, placed by its best match.
 func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error) {
 	cond, w, text, err := compile(k, q)
@@ -774,9 +806,15 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 		}
 	}
 	o := order{desc: true}
+	if q.Semantic && q.Sort != "" && q.Sort != "relevance" {
+		return Results{}, fmt.Errorf("%w: semantic search sorts by relevance only", ErrInvalid)
+	}
 	switch q.Sort {
 	case "", "relevance":
-		if text != "" {
+		switch {
+		case q.Semantic:
+			o.keys = []sortKey{{w.similarity(q), "real"}}
+		case text != "":
 			o.keys = []sortKey{{"ts_rank(r.search, websearch_to_tsquery('english', " + text + "))", "real"}}
 		}
 	case "updated":

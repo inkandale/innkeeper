@@ -148,16 +148,18 @@ func TestSearchRejectsBadQueries(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
 	for name, q := range map[string]Query{
-		"two conditions":   {Filter: &Filter{Tag: ptr("a"), Archived: ptr(true)}},
-		"no condition":     {Filter: &Filter{Not: &Filter{}}},
-		"semantic":         {Semantic: true},
-		"catalog source":   {Sources: []string{"catalog:chub-archive"}},
-		"bad include":      {Include: []string{"summaries"}},
-		"negative size":    {Page: Page{Size: -1}},
-		"huge size":        {Page: Page{Size: 501}},
-		"huge filter":      {Filter: &Filter{Or: manyTags(201)}},
-		"bad cursor":       {Page: Page{Cursor: ptr("abc")}},
-		"bad target state": {Filter: &Filter{TargetState: &TargetFilter{States: []string{"pushed"}}}},
+		"two conditions":          {Filter: &Filter{Tag: ptr("a"), Archived: ptr(true)}},
+		"no condition":            {Filter: &Filter{Not: &Filter{}}},
+		"semantic without text":   {Semantic: true, Embedding: []float32{1, 0}, EmbedInstance: 1},
+		"semantic without vector": {Semantic: true, Text: "smith"},
+		"semantic by name":        {Semantic: true, Text: "smith", Embedding: []float32{1, 0}, EmbedInstance: 1, Sort: "name"},
+		"catalog source":          {Sources: []string{"catalog:chub-archive"}},
+		"bad include":             {Include: []string{"summaries"}},
+		"negative size":           {Page: Page{Size: -1}},
+		"huge size":               {Page: Page{Size: 501}},
+		"huge filter":             {Filter: &Filter{Or: manyTags(201)}},
+		"bad cursor":              {Page: Page{Cursor: ptr("abc")}},
+		"bad target state":        {Filter: &Filter{TargetState: &TargetFilter{States: []string{"pushed"}}}},
 	} {
 		if _, err := lib.Search(ctx, Card, q); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s: got %v, want ErrInvalid", name, err)
@@ -505,10 +507,10 @@ func TestSearchEnrichments(t *testing.T) {
 		"a named instance's values":        {Query{Filter: &Filter{Enrichment: quality, Instance: ptr(int64(other)), Gte: ptr(91.0)}}, []int64{s.carrow}},
 		"one query, two instances": {Query{Filter: &Filter{And: []Filter{
 			{Enrichment: quality, Instance: ptr(int64(other))}, {Enrichment: quality, Lte: ptr(75.0)}}}}, []int64{s.carrow}},
-		"has a value":         {Query{Filter: &Filter{Enrichment: quality}}, []int64{s.carrow, s.brakka}},
-		"missing":             {Query{Filter: &Filter{Enrichment: ptr("voice"), Missing: ptr(true)}}, []int64{s.carrow, s.brakka}},
-		"sort highest first":  {Query{Sort: "enrichment:quality"}, []int64{s.brakka, s.carrow}},
-		"no value sorts last": {Query{Sort: "enrichment:quality", Filter: &Filter{Archived: ptr(true)}}, []int64{s.dellin}},
+		"has a value":                       {Query{Filter: &Filter{Enrichment: quality}}, []int64{s.carrow, s.brakka}},
+		"missing":                           {Query{Filter: &Filter{Enrichment: ptr("voice"), Missing: ptr(true)}}, []int64{s.carrow, s.brakka}},
+		"sort highest first":                {Query{Sort: "enrichment:quality"}, []int64{s.brakka, s.carrow}},
+		"no value sorts last":               {Query{Sort: "enrichment:quality", Filter: &Filter{Archived: ptr(true)}}, []int64{s.dellin}},
 		"sort by a named instance's values": {Query{Sort: fmt.Sprintf("enrichment:%d:quality", other)}, []int64{s.carrow, s.brakka}},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -1032,5 +1034,70 @@ func TestHugeCardAndLorebookStillSave(t *testing.T) {
 	if _, _, err := lib.Lorebooks.Create(ctx, DefaultLibrary, "huge", "upload",
 		edit(fmt.Sprintf(`{"name": "Huge", "entries": [{"keys": ["k"], "content": %s}]}`, text))); err != nil {
 		t.Fatalf("create a lorebook of %d bytes: %v", len(text), err)
+	}
+}
+
+func TestSemanticSearchPagesByCursor(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	inst := newInstanceRow(t, lib)
+	near, _ := newCard(t, lib, "near", `{"name": "Brakka"}`)
+	mid, _ := newCard(t, lib, "mid", `{"name": "Dorna"}`)
+	far, _ := newCard(t, lib, "far", `{"name": "Lia"}`)
+	newCard(t, lib, "unembedded", `{"name": "Grum"}`)
+	embedCards(t, lib, inst, map[int64][]float32{near: {1, 0}, mid: {0.7, 0.7}, far: {0, 1}})
+
+	q := Query{Text: "a dwarf smith", Semantic: true, Embedding: []float32{1, 0.1}, EmbedInstance: inst, Page: Page{Size: 2}}
+	first, err := lib.Search(ctx, Card, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(hitIDs(first), []int64{near, mid}) || first.Total != 3 || first.NextCursor == nil {
+		t.Fatalf("first page = %+v", first)
+	}
+	q.Page.Cursor = first.NextCursor
+	second, err := lib.Search(ctx, Card, q)
+	if err != nil || !slices.Equal(hitIDs(second), []int64{far}) || second.NextCursor != nil {
+		t.Fatalf("second page = %+v, %v", second, err)
+	}
+}
+
+func TestSemanticSearchSkipsVectorsOfAnotherLength(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	inst := newInstanceRow(t, lib)
+	two, _ := newCard(t, lib, "two", `{"name": "Brakka"}`)
+	three, _ := newCard(t, lib, "three", `{"name": "Dorna"}`)
+	embedCards(t, lib, inst, map[int64][]float32{two: {1, 0}, three: {1, 0, 0}})
+
+	res, err := lib.Search(ctx, Card, Query{Text: "smith", Semantic: true, Embedding: []float32{1, 0}, EmbedInstance: inst})
+	if err != nil || !slices.Equal(hitIDs(res), []int64{two}) {
+		t.Fatalf("results = %+v, %v", res, err)
+	}
+}
+
+func TestSemanticSearchGroupsFamilies(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	inst := newInstanceRow(t, lib)
+	root, _ := newCard(t, lib, "root", `{"name": "Brakka"}`)
+	variant, _ := newCard(t, lib, "variant", `{"name": "Brakka, older"}`)
+	other, _ := newCard(t, lib, "other", `{"name": "Lia"}`)
+	if err := lib.Cards.SetVariantOf(ctx, variant, &root); err != nil {
+		t.Fatal(err)
+	}
+	embedCards(t, lib, inst, map[int64][]float32{root: {0, 1}, variant: {1, 0}, other: {0.5, 0.5}})
+
+	res, err := lib.Search(ctx, Card, Query{Text: "smith", Semantic: true, Embedding: []float32{1, 0}, EmbedInstance: inst, Group: "family"})
+	if err != nil || !slices.Equal(hitIDs(res), []int64{root, other}) || res.Total != 2 {
+		t.Fatalf("results = %+v, %v", res, err)
+	}
+}
+
+func TestSemanticSearchCantSelectCards(t *testing.T) {
+	lib := newLibrary(t)
+	q := Query{Text: "smith", Semantic: true}
+	if _, err := lib.SearchIDs(context.Background(), Card, q); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("SearchIDs: got %v, want ErrInvalid", err)
 	}
 }

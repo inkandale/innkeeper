@@ -9,6 +9,7 @@ import { useToast } from "../shell/Toasts";
 import type { Entity } from "./Card";
 import { Crop } from "./CropDialog";
 import { Enrichments } from "./Enrichments";
+import { Related, Similar } from "./Discover";
 import { OtherLibraries } from "./OtherLibraries";
 import { strings, text, type Data } from "./draft";
 import { Logo, apps } from "../sync/Logo";
@@ -43,6 +44,8 @@ export function Panel({ card, data, edit, onAvatar, avatarBusy, lock }: PanelPro
       <Collections id={card.id} library={card.library_id} member={card.collections ?? []} />
       <Sources kind="card" id={card.id} />
       <OtherLibraries kind="card" id={card.id} />
+      <Similar id={card.id} library={card.library_id} />
+      <Related id={card.id} library={card.library_id} />
       <Sync kind="card" id={card.id} />
       <Lorebooks ids={card.lorebooks ?? []} />
       <Enrichments id={card.id} />

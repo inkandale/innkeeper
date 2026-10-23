@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -14,6 +15,7 @@ import (
 
 	"github.com/inkandale/innkeeper/internal/embed"
 	"github.com/inkandale/innkeeper/internal/libsettings"
+	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/internal/tier"
 	"github.com/inkandale/innkeeper/protocol"
 )
@@ -78,7 +80,13 @@ func (s *Server) settings(ctx context.Context) (*settingsOut, error) {
 	if v, err := s.Registry.Setting(ctx, embed.InstanceKey); err != nil {
 		return nil, s.fail(err)
 	} else if id, err := strconv.ParseInt(v, 10, 64); err == nil {
-		out.Body.EmbedInstance = &id
+		info, err := s.Registry.GetInstance(ctx, id)
+		if err != nil && !errors.Is(err, plugins.ErrNotFound) {
+			return nil, s.fail(err)
+		}
+		if err == nil && !info.Disabled {
+			out.Body.EmbedInstance = &id
+		}
 	}
 	b := &out.Body
 	if b.HideBelow, err = libsettings.HideBelow.Core(ctx, s.libSettings()); err != nil {
@@ -158,12 +166,16 @@ func (s *Server) setEmbedInstance(ctx context.Context, id *int64) error {
 	if id == nil {
 		return s.fail(s.Registry.SetSetting(ctx, embed.InstanceKey, ""))
 	}
-	info, err := s.Registry.GetInstance(ctx, *id)
+	inst, err := s.Registry.InstanceWith(ctx, *id, protocol.CapabilityAI)
 	if err != nil {
 		return s.fail(err)
 	}
-	if !s.Registry.HasCapability(info.Plugin, protocol.CapabilityAI) {
-		return huma.Error400BadRequest(fmt.Sprintf("plugin %s offers no AI services", info.Plugin))
+	services, err := s.Registry.Services(ctx, s.Plugins, inst)
+	if err != nil {
+		return s.failAs(inst.Manifest.Name, err)
+	}
+	if !slices.Contains(services, protocol.MethodAIEmbed) {
+		return huma.Error400BadRequest(fmt.Sprintf("instance %d doesn't offer %s", *id, protocol.MethodAIEmbed))
 	}
 	if err := s.Lib.DeleteEmbeddings(ctx, *id); err != nil {
 		return s.fail(err)

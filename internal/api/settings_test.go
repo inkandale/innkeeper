@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -219,7 +220,7 @@ func TestSettingEmbedInstanceQueuesEmbedJob(t *testing.T) {
 func TestSettingEmbedInstanceDropsItsVectors(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
-	inst := e.addBrain(nil)
+	inst := e.addBrain(map[string]any{"services": []string{protocol.MethodAIEmbed}})
 	e.createCard(`{"name": "Brakka"}`)
 	todo, err := e.s.Lib.Unembedded(ctx, inst, 0, 10)
 	if err != nil {
@@ -231,5 +232,43 @@ func TestSettingEmbedInstanceDropsItsVectors(t *testing.T) {
 	e.call("PATCH", "/settings", map[string]any{"embed_instance": inst}, 200, nil)
 	if got, err := e.s.Lib.Unembedded(ctx, inst, 0, 10); err != nil || len(got) != 1 {
 		t.Fatalf("after setting: %+v, %v; want the card due again", got, err)
+	}
+}
+
+func TestSettingEmbedInstanceRejectsAnAIInstanceWithoutEmbed(t *testing.T) {
+	e := newEnv(t)
+	inst := e.addBrain(map[string]any{"services": []string{protocol.MethodAIChat}})
+	e.call("PATCH", "/settings", map[string]any{"embed_instance": inst}, 400, nil)
+}
+
+func TestSettingEmbedInstanceRejectsAMissingAndADisabledInstance(t *testing.T) {
+	e := newEnv(t)
+	inst := e.addBrain(map[string]any{"services": []string{protocol.MethodAIEmbed}})
+	e.call("PATCH", "/settings", map[string]any{"embed_instance": inst + 1000}, 404, nil)
+	e.call("PATCH", fmt.Sprintf("/instances/%d", inst), map[string]any{"disabled": true}, 200, nil)
+	e.call("PATCH", "/settings", map[string]any{"embed_instance": inst}, 409, nil)
+}
+
+func TestSettingsForgetADeletedEmbedInstance(t *testing.T) {
+	e := newEnv(t)
+	inst := e.addBrain(map[string]any{"services": []string{protocol.MethodAIEmbed}})
+	e.call("PATCH", "/settings", map[string]any{"embed_instance": inst}, 200, nil)
+	e.call("DELETE", fmt.Sprintf("/instances/%d", inst), nil, 204, nil)
+	var s settings
+	e.call("GET", "/settings", nil, 200, &s)
+	if s.EmbedInstance != nil {
+		t.Fatalf("settings = %+v", s)
+	}
+}
+
+func TestSettingsIgnoreADisabledEmbedInstance(t *testing.T) {
+	e := newEnv(t)
+	inst := e.addBrain(map[string]any{"services": []string{protocol.MethodAIEmbed}})
+	e.call("PATCH", "/settings", map[string]any{"embed_instance": inst}, 200, nil)
+	e.call("PATCH", fmt.Sprintf("/instances/%d", inst), map[string]any{"disabled": true}, 200, nil)
+	var s settings
+	e.call("GET", "/settings", nil, 200, &s)
+	if s.EmbedInstance != nil {
+		t.Fatalf("settings = %+v", s)
 	}
 }

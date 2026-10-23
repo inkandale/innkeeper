@@ -32,6 +32,9 @@ type Kind struct {
 	forkCopies []string
 	// deleteLinks delete the rows only this kind hangs off entities $1.
 	deleteLinks []string
+	// dropCollections deletes entities $1's collection memberships, which a
+	// move to another library can't keep.
+	dropCollections string
 }
 
 var (
@@ -46,7 +49,8 @@ var (
 		},
 		deleteLinks: []string{
 			`DELETE FROM collection_card WHERE card_id = ANY($1)`,
-		}}
+		},
+		dropCollections: `DELETE FROM collection_card WHERE card_id = ANY($1)`}
 	Lorebook = &Kind{Name: "lorebook", Plural: "lorebooks", Table: "lorebook", RevTable: "lorebook_revision",
 		SourceTable: "lorebook_source", FK: "lorebook_id", Schema: merge.Lorebook, simhash: cardhash.LorebookSimhash}
 	// Kinds is every kind the library holds.

@@ -30,7 +30,7 @@ Each works on one library or across all of them.
 | Similar fallback | With no embed instance, similar ranks by shared tags. |
 | Similar excludes | The card itself, its variant family, cards with the same `content_hash`, and archived cards. The Variants and OtherLibraries panels already show the first three. |
 | Naming | `GET /cards/{id}/similar` (likely duplicates) becomes `GET /cards/{id}/duplicates`. Nothing in the web UI or MCP calls it. "Similar" then means this design's meaning only. |
-| Paging | Every list pages with `library.Page` and returns `next_cursor`, as search does. |
+| Paging | Every list pages with `library.Page` and returns `next_cursor`, as search does. Similar and Related cursors are offsets: an exact scan ranks every candidate anyway. |
 
 ## Model
 
@@ -100,7 +100,7 @@ queues source detection. `PATCH /settings` queues it when it sets
 
 ```json
 {"basis": "embedding",
- "items": [{"card_id": 41, "library_id": 1, "score": 0.91}],
+ "items": [{"card_id": 41, "library_id": 1, "name": "Brakka", "score": 0.91}],
  "next_cursor": "…"}
 ```
 
@@ -110,7 +110,6 @@ queues source detection. `PATCH /settings` queues it when it sets
   vector yet. Candidates share at least two tags, found through the
   `card_tag_keys` GIN index with `&&`. `score` is the Jaccard index of the
   two tag sets.
-- The cursor is `(score, card_id)`.
 - `scope` defaults to `library`.
 
 ### Related
@@ -122,7 +121,7 @@ results:
 
 ```json
 {"groups": [
-  {"group": "creator", "items": [{"card_id": 7, "library_id": 2}], "next_cursor": "…"},
+  {"group": "creator", "items": [{"card_id": 7, "library_id": 2, "name": "Lia"}], "next_cursor": "…"},
   {"group": "lorebook", "items": [], "next_cursor": null}
 ]}
 ```
@@ -167,13 +166,13 @@ that clears it deletes every vector. Setting an instance that doesn't offer `ai.
 
 ## Web
 
-- **Card page, Similar panel**: a This library / All libraries toggle and
-  a tile list that loads the next page on scroll. When `basis` is `tags`, a
-  note says the list is ranked by shared tags and links to the embed
-  instance setting. A card from another library shows its library and an
-  Import button, using the action `OtherLibraries` already has.
-- **Card page, Related panel**: one collapsible section per group with
-  results, each with Show more.
+- **Card page, Similar panel**: a section in the side panel with a This
+  library / All libraries toggle, a list of linked card names, and Show
+  more. A card from another library shows its library's name. When `basis`
+  is `tags`, a note says the list is ranked by shared tags and links to the
+  embed instance setting.
+- **Card page, Related panel**: one heading per group with results, each a
+  list of linked card names with Show more.
 - **Library list**: a Semantic toggle beside the search box, shown only
   when an embed instance is set.
 - **Settings**: an Embed instance picker listing instances that offer

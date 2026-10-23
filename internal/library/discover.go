@@ -57,14 +57,15 @@ func (p Page) window() (limit, offset int, err error) {
 }
 
 // discoverWith is the WITH clause discovery queries share: fam holds every
-// card in $1's variant family, and self is $1's head.
+// card in $1's variant family, and self is $1's head, materialized so its
+// tags are computed once rather than per candidate.
 const discoverWith = `WITH RECURSIVE up AS (
 		SELECT id, variant_of_id FROM card WHERE id = $1
 		UNION SELECT p.id, p.variant_of_id FROM card p JOIN up ON p.id = up.variant_of_id
 	), fam AS (
 		SELECT id FROM up WHERE variant_of_id IS NULL
 		UNION SELECT x.id FROM card x JOIN fam ON x.variant_of_id = fam.id
-	), self AS (
+	), self AS MATERIALIZED (
 		SELECT c.library_id, r.content_hash, card_tag_keys(r.data) AS tags, lower(btrim(r.data->>'creator')) AS creator
 		FROM card c JOIN card_revision r ON r.id = c.head_revision_id WHERE c.id = $1
 	)`
@@ -87,7 +88,7 @@ func (l *Library) SimilarCards(ctx context.Context, cardID int64, o SimilarOptio
 	}
 	// ponytail: exact scan over every vector; add an HNSW index when an archive makes this slow.
 	sql := discoverWith + `, q AS (SELECT embedding FROM card_embedding WHERE instance_id = $2 AND card_id = $1)
-		SELECT c.id, c.library_id, coalesce(r.data->>'name', ''), 1 - (e.embedding <=> q.embedding)
+		SELECT c.id, c.library_id, coalesce(r.data->>'name', ''), greatest(0, 1 - (e.embedding <=> q.embedding))
 		FROM self CROSS JOIN q
 		JOIN card_embedding e ON e.instance_id = $2 AND vector_dims(e.embedding) = vector_dims(q.embedding)
 		JOIN card c ON c.id = e.card_id
@@ -123,8 +124,11 @@ func (l *Library) similarBasis(ctx context.Context, cardID, instance int64) (str
 	var has bool
 	err := l.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM card_embedding WHERE instance_id = $1 AND card_id = $2)`,
 		instance, cardID).Scan(&has)
-	if err != nil || !has {
-		return "tags", err
+	switch {
+	case err != nil:
+		return "", err
+	case !has:
+		return "tags", nil
 	}
 	return "embedding", nil
 }

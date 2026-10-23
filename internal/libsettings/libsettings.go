@@ -13,6 +13,7 @@ import (
 	"strconv"
 
 	"github.com/inkandale/innkeeper/internal/bulk"
+	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/protocol"
@@ -204,4 +205,19 @@ func (s *Settings) HidePayload(ctx context.Context, lib int64) (bulk.HidePayload
 		return p, ErrNoGridScore
 	}
 	return p, nil
+}
+
+// EnqueueHide queues the hide job for library lib when its settings hide
+// duplicates, so cards that just arrived don't sit beside their copies.
+// Hiding by score alone queues nothing, since arrivals change no one's score.
+func (s *Settings) EnqueueHide(ctx context.Context, q *jobs.Queue, lib int64) error {
+	p, err := s.HidePayload(ctx, lib)
+	if errors.Is(err, ErrNothingToHide) || err == nil && p.Duplicates == "off" {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	_, err = q.Enqueue(context.WithoutCancel(ctx), jobs.Spec{Kind: bulk.HideKind, Payload: p})
+	return err
 }

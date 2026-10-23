@@ -85,6 +85,12 @@ type variantOfIn struct {
 	VariantOf *int64 `json:"variant_of,omitempty" jsonschema:"The card or lorebook of the same kind it is a variant of; null or left out unlinks it"`
 }
 
+type moveIn struct {
+	kindIn
+	IDs     []int64 `json:"ids" jsonschema:"The cards or lorebooks to move"`
+	Library int64   `json:"library" jsonschema:"A library ID from list_libraries"`
+}
+
 type previewIn struct {
 	entityIn
 	InstanceID int64 `json:"instance_id" jsonschema:"The target plugin instance"`
@@ -319,6 +325,15 @@ var tools = []tool{
 				return c.call(ctx, "DELETE", path, nil)
 			}
 			return c.call(ctx, "PUT", path, map[string]any{"id": *in.VariantOf})
+		}),
+	def("move_to_library", "Move cards or lorebooks, with their variants, to another library. A variant whose parent stays behind "+
+		"is unlinked from it, and cards leave their collections; lorebook links and app bindings stay.", tier.Write,
+		func(ctx context.Context, c caller, in moveIn) (*sdk.CallToolResult, error) {
+			k, err := in.kind()
+			if err != nil {
+				return nil, err
+			}
+			return c.call(ctx, "POST", "/"+k.Plural+"/move", map[string]any{"ids": in.IDs, "library": in.Library})
 		}),
 	def("preview_push", "Show what pushing a card or lorebook to a target app would do: the fields it would change in the app, "+
 		"with the app's value as before and the pushed one as after, fields it would drop, and lorebooks it would create. "+

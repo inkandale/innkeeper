@@ -93,7 +93,7 @@ func TestMCPToolsByTier(t *testing.T) {
 	// Destructive routes keep their own tools, so start_job's annotations hold.
 	tool(t, e.mcpClient(tier.Destructive), "start_job", map[string]any{"operation": "purge-cards", "body": map[string]any{}}, true)
 	if !slices.Contains(read, "search_cards") || slices.Contains(read, "create_card") || slices.Contains(write, "push") ||
-		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 45 ||
+		!slices.Contains(write, "create_card") || !slices.Contains(all, "push") || builtIn(all) != 46 ||
 		!slices.Contains(read, "start_job") || slices.Contains(write, "set_autosync") || !slices.Contains(all, "set_autosync") ||
 		!slices.Contains(read, "get_config_defaults") || slices.Contains(write, "list_config_options") || slices.Contains(write, "run_settings_action") {
 		t.Fatalf("read %v\nwrite %v\nall %v", read, write, all)
@@ -504,6 +504,24 @@ func TestMCPLibraries(t *testing.T) {
 	}
 	if got := tool(t, s, "create_card", map[string]any{"data": map[string]any{"name": "X"}, "library": 999}, true); !strings.HasPrefix(got, "422") {
 		t.Fatalf("missing library = %s", got)
+	}
+}
+
+func TestMCPMoveToLibrary(t *testing.T) {
+	e := newEnv(t)
+	archive := e.createLibrary("Archive")
+	s := e.mcpClient(tier.Write)
+	var lb entityOut
+	if err := json.Unmarshal([]byte(tool(t, s, "create_lorebook", map[string]any{"data": map[string]any{"name": "Lore", "entries": []any{}}}, false)), &lb); err != nil {
+		t.Fatal(err)
+	}
+	var res library.MoveResult
+	if err := json.Unmarshal([]byte(tool(t, s, "move_to_library", map[string]any{"kind": "lorebook", "ids": []int64{lb.ID}, "library": archive.ID}, false)), &res); err != nil ||
+		!slices.Equal(res.Moved, []int64{lb.ID}) {
+		t.Fatalf("move_to_library = %+v, %v", res, err)
+	}
+	if got := tool(t, s, "move_to_library", map[string]any{"ids": []int64{lb.ID}, "library": archive.ID}, true); !strings.HasPrefix(got, "404") {
+		t.Fatalf("moving a lorebook ID as a card = %s", got)
 	}
 }
 

@@ -135,8 +135,8 @@ func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
 	s.applyAutosync()
 	if !s.bulk {
 		EnqueueDetect(ctx, im.Queue, im.Log)
-		embed.Enqueue(ctx, im.Queue, im.Log)
 	}
+	embed.Enqueue(ctx, im.Queue, im.Log)
 	if serr := s.failure(); serr != nil {
 		return serr
 	}

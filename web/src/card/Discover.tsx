@@ -105,7 +105,7 @@ export function Related({ id, library }: { id: number; library: number }) {
       <h2>Related</h2>
       {related.isError && <p className="error">{related.error.message}</p>}
       {groups.map((g) => (
-        <RelatedGroup key={`${id}:${g.group}`} id={id} library={library} first={g} />
+        <RelatedGroup key={`${id}:${g.group}:${related.dataUpdatedAt}`} id={id} library={library} first={g} />
       ))}
     </section>
   );

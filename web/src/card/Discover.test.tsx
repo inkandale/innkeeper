@@ -30,10 +30,10 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function renderIt(element: React.ReactNode) {
+function renderIt(element: React.ReactNode, client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   const router = createMemoryRouter([{ path: "*", element }]);
   return render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <QueryClientProvider client={client}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
@@ -114,6 +114,22 @@ test("Related shows each group and pages through it", async () => {
   expect(await screen.findByRole("link", { name: "Brakka" })).toBeInTheDocument();
   expect(requested).toContain("/api/cards/7/related?group=creator&cursor=1");
   expect(screen.queryByRole("button", { name: "Show more" })).not.toBeInTheDocument();
+});
+
+test("Related drops a group's later pages when the overview refetches", async () => {
+  routes["/api/cards/7/related"] = {
+    groups: [{ group: "creator", items: [{ card_id: 8, library_id: 1, name: "Dorna" }], next_cursor: "1" }],
+  };
+  routes["/api/cards/7/related?group=creator&cursor=1"] = {
+    groups: [{ group: "creator", items: [{ card_id: 9, library_id: 1, name: "Brakka" }] }],
+  };
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  renderIt(<Related id={7} library={1} />, client);
+  await userEvent.click(await screen.findByRole("button", { name: "Show more" }));
+  expect(await screen.findByRole("link", { name: "Brakka" })).toBeInTheDocument();
+  await client.refetchQueries({ queryKey: ["card", 7, "related"] });
+  await waitFor(() => expect(screen.queryByRole("link", { name: "Brakka" })).not.toBeInTheDocument());
+  expect(screen.getByRole("button", { name: "Show more" })).toBeInTheDocument();
 });
 
 test("Related with no groups renders nothing", async () => {

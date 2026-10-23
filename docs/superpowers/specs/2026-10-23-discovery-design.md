@@ -56,7 +56,8 @@ CREATE TABLE card_embedding (
   migration. Queries compare only the current instance's rows.
 - `ai.embed` doesn't name its model, so a model changed in an instance's
   config goes unnoticed. Setting `embed_instance`, even to its current
-  value, deletes that instance's rows, so every card is embedded again.
+  value, deletes every vector, so every card is embedded again. Clearing
+  it deletes every vector too, since only the current instance's are read.
 
 `plugins.Registry.Embed(ctx, mgr, id, texts)` calls instance `id`'s
 `ai.embed`, as `Registry.Decide` calls `ai.decide`, and validates the reply.
@@ -153,8 +154,8 @@ The card search input gains `semantic` (boolean). With `semantic` and `q`:
 ### Settings
 
 `embed_instance` joins the install settings (`GET`/`PATCH /settings`). A
-`PATCH` that sets it deletes that instance's vectors and queues the `embed`
-job. Setting an instance that doesn't offer `ai.embed` is a 400.
+`PATCH` that sets it deletes every vector and queues the `embed` job; one
+that clears it deletes every vector. Setting an instance that doesn't offer `ai.embed` is a 400.
 
 ## MCP
 

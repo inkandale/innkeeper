@@ -160,10 +160,14 @@ func (s *Server) settingsRoutes(api huma.API) {
 		})
 }
 
-// setEmbedInstance stores the embed instance, or clears it for nil. Setting
-// one drops its vectors, so a model changed in its config takes effect.
+// setEmbedInstance stores the embed instance, or clears it for nil. Either
+// drops every vector: only the current instance's are read, and re-setting
+// it makes a model changed in its config take effect.
 func (s *Server) setEmbedInstance(ctx context.Context, id *int64) error {
 	if id == nil {
+		if err := s.Lib.ClearEmbeddings(ctx); err != nil {
+			return s.fail(err)
+		}
 		return s.fail(s.Registry.SetSetting(ctx, embed.InstanceKey, ""))
 	}
 	inst, err := s.Registry.InstanceWith(ctx, *id, protocol.CapabilityAI)
@@ -177,7 +181,7 @@ func (s *Server) setEmbedInstance(ctx context.Context, id *int64) error {
 	if !slices.Contains(services, protocol.MethodAIEmbed) {
 		return huma.Error400BadRequest(fmt.Sprintf("instance %d doesn't offer %s", *id, protocol.MethodAIEmbed))
 	}
-	if err := s.Lib.DeleteEmbeddings(ctx, *id); err != nil {
+	if err := s.Lib.ClearEmbeddings(ctx); err != nil {
 		return s.fail(err)
 	}
 	if err := s.Registry.SetSetting(ctx, embed.InstanceKey, strconv.FormatInt(*id, 10)); err != nil {

@@ -55,23 +55,30 @@ func TestUnembeddedSkipsCardsWithNoText(t *testing.T) {
 	}
 }
 
-func TestDeleteEmbeddingsQueuesEveryCardAgain(t *testing.T) {
+func TestClearEmbeddingsDropsEveryInstancesVectors(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
-	inst := newInstanceRow(t, lib)
 	newCard(t, lib, "brakka", `{"name": "Brakka"}`)
-	todo, err := lib.Unembedded(ctx, inst, 0, 10)
-	if err != nil {
+	var other int64
+	if err := lib.pool.QueryRow(ctx,
+		`INSERT INTO plugin_instance (plugin, config) VALUES ('other', '{}') RETURNING id`).Scan(&other); err != nil {
 		t.Fatal(err)
 	}
-	if err := lib.SaveEmbeddings(ctx, inst, todo, [][]float32{{1, 2}}); err != nil {
+	for _, inst := range []int64{newInstanceRow(t, lib), other} {
+		todo, err := lib.Unembedded(ctx, inst, 0, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := lib.SaveEmbeddings(ctx, inst, todo, [][]float32{{1, 2}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := lib.ClearEmbeddings(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := lib.DeleteEmbeddings(ctx, inst); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := lib.Unembedded(ctx, inst, 0, 10); err != nil || len(got) != 1 {
-		t.Fatalf("after delete: %+v, %v", got, err)
+	var n int
+	if err := lib.pool.QueryRow(ctx, `SELECT count(*) FROM card_embedding`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("embeddings left = %d, %v", n, err)
 	}
 }
 

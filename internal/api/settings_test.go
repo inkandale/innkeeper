@@ -217,21 +217,44 @@ func TestSettingEmbedInstanceQueuesEmbedJob(t *testing.T) {
 	}
 }
 
-func TestSettingEmbedInstanceDropsItsVectors(t *testing.T) {
+func TestSettingOrClearingEmbedInstanceDropsEveryVector(t *testing.T) {
 	e := newEnv(t)
 	ctx := context.Background()
 	inst := e.addBrain(map[string]any{"services": []string{protocol.MethodAIEmbed}})
-	e.createCard(`{"name": "Brakka"}`)
-	todo, err := e.s.Lib.Unembedded(ctx, inst, 0, 10)
+	other, err := e.s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: "brain", Name: new("Other")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := e.s.Lib.SaveEmbeddings(ctx, inst, todo, [][]float32{{1, 2}}); err != nil {
-		t.Fatal(err)
+	e.createCard(`{"name": "Brakka"}`)
+	embedAll := func() {
+		t.Helper()
+		for _, id := range []int64{inst, other} {
+			todo, err := e.s.Lib.Unembedded(ctx, id, 0, 10)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := e.s.Lib.SaveEmbeddings(ctx, id, todo, [][]float32{{1, 2}}); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
+	vectors := func() int {
+		t.Helper()
+		var n int
+		if err := e.pool.QueryRow(ctx, `SELECT count(*) FROM card_embedding`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	embedAll()
 	e.call("PATCH", "/settings", map[string]any{"embed_instance": inst}, 200, nil)
-	if got, err := e.s.Lib.Unembedded(ctx, inst, 0, 10); err != nil || len(got) != 1 {
-		t.Fatalf("after setting: %+v, %v; want the card due again", got, err)
+	if n := vectors(); n != 0 {
+		t.Fatalf("vectors after setting = %d, want 0", n)
+	}
+	embedAll()
+	e.call("PATCH", "/settings", map[string]any{"embed_instance": nil}, 200, nil)
+	if n := vectors(); n != 0 {
+		t.Fatalf("vectors after clearing = %d, want 0", n)
 	}
 }
 

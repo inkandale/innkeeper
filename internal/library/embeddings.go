@@ -71,11 +71,10 @@ func (l *Library) SaveEmbeddings(ctx context.Context, instance int64, cards []Em
 	return nil
 }
 
-// DeleteEmbeddings drops instance's vectors, so every card is embedded again.
-func (l *Library) DeleteEmbeddings(ctx context.Context, instance int64) error {
-	_, err := l.pool.Exec(ctx, `DELETE FROM card_embedding WHERE instance_id = $1`, instance)
-	if err != nil {
-		return fmt.Errorf("delete embeddings for instance %d: %w", instance, err)
+// ClearEmbeddings drops every vector, so every card is embedded again.
+func (l *Library) ClearEmbeddings(ctx context.Context) error {
+	if _, err := l.pool.Exec(ctx, `DELETE FROM card_embedding`); err != nil {
+		return fmt.Errorf("clear embeddings: %w", err)
 	}
 	return nil
 }

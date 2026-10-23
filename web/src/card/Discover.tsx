@@ -54,7 +54,7 @@ export function Similar({ id, library }: { id: number; library: number }) {
       {pages.isError && <p className="error">{pages.error.message}</p>}
       {basis === "tags" && (
         <p className="muted">
-          Ranked by shared tags. <Link to="/settings/plugins">Pick an embed instance</Link> to rank by meaning.
+          Ranked by shared tags until this card has an embedding. <Link to="/settings/plugins">Embed instance</Link>
         </p>
       )}
       {pages.isSuccess && !pages.isPlaceholderData && !items.length && <p className="muted">None in {scope === "all" ? "any library" : "this library"}.</p>}

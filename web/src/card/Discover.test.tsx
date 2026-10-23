@@ -59,8 +59,8 @@ test("Similar links each card and shows more on demand", async () => {
 test("Similar ranked by tags points to the embed setting", async () => {
   routes["/api/cards/7/similar"] = { basis: "tags", items: [{ card_id: 8, library_id: 1, name: "Dorna" }] };
   renderIt(<Similar id={7} library={1} />);
-  expect(await screen.findByText(/Ranked by shared tags/)).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Pick an embed instance" })).toHaveAttribute("href", "/settings/plugins");
+  expect(await screen.findByText(/Ranked by shared tags until this card has an embedding\./)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Embed instance" })).toHaveAttribute("href", "/settings/plugins");
 });
 
 test("Similar across all libraries names the other library", async () => {

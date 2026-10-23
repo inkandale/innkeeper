@@ -40,7 +40,7 @@ func (rn *Runner) Run(ctx context.Context, r *jobs.Run) error {
 	var inst, after int64
 	done := 0
 	for {
-		cur, err := rn.instance(ctx)
+		cur, err := Instance(ctx, rn.Registry)
 		if err != nil {
 			return fmt.Errorf("find embed instance: %w", err)
 		}
@@ -121,10 +121,11 @@ func cardFault(ctx context.Context, err error) bool {
 		!errors.Is(err, plugins.ErrBroken) && !errors.Is(err, plugins.ErrDisabled) && !errors.Is(err, plugins.ErrIncapable)
 }
 
-// instance is the embed instance's ID, or 0 when the setting is empty or
-// names an instance that is gone or disabled.
-func (rn *Runner) instance(ctx context.Context) (int64, error) {
-	v, err := rn.Registry.Setting(ctx, InstanceKey)
+// Instance is the embed instance's ID, or 0 when the setting is empty or
+// names an instance that is gone or disabled. A broken instance still
+// counts, so the job fails visibly until someone fixes it.
+func Instance(ctx context.Context, reg *plugins.Registry) (int64, error) {
+	v, err := reg.Setting(ctx, InstanceKey)
 	if err != nil || v == "" {
 		return 0, err
 	}
@@ -132,7 +133,7 @@ func (rn *Runner) instance(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("setting %s = %q: %w", InstanceKey, v, err)
 	}
-	info, err := rn.Registry.GetInstance(ctx, id)
+	info, err := reg.GetInstance(ctx, id)
 	if errors.Is(err, plugins.ErrNotFound) || (err == nil && info.Disabled) {
 		return 0, nil
 	}

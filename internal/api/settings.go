@@ -15,7 +15,6 @@ import (
 
 	"github.com/inkandale/innkeeper/internal/embed"
 	"github.com/inkandale/innkeeper/internal/libsettings"
-	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/internal/tier"
 	"github.com/inkandale/innkeeper/protocol"
 )
@@ -77,16 +76,10 @@ func (s *Server) settings(ctx context.Context) (*settingsOut, error) {
 	if i := libsettings.ScoreNamed(score, insts); i != nil {
 		out.Body.ScoreInstance = &i.ID
 	}
-	if v, err := s.Registry.Setting(ctx, embed.InstanceKey); err != nil {
+	if id, err := embed.Instance(ctx, s.Registry); err != nil {
 		return nil, s.fail(err)
-	} else if id, err := strconv.ParseInt(v, 10, 64); err == nil {
-		info, err := s.Registry.GetInstance(ctx, id)
-		if err != nil && !errors.Is(err, plugins.ErrNotFound) {
-			return nil, s.fail(err)
-		}
-		if err == nil && !info.Disabled {
-			out.Body.EmbedInstance = &id
-		}
+	} else if id != 0 {
+		out.Body.EmbedInstance = &id
 	}
 	b := &out.Body
 	if b.HideBelow, err = libsettings.HideBelow.Core(ctx, s.libSettings()); err != nil {

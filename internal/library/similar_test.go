@@ -13,7 +13,7 @@ import (
 	"github.com/inkandale/innkeeper/cardhash"
 )
 
-func TestSimilarCards(t *testing.T) {
+func TestDuplicateCards(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
 	const text = "Brakka is a grumpy dwarf blacksmith who runs the forge at the edge of town. " +
@@ -23,7 +23,7 @@ func TestSimilarCards(t *testing.T) {
 	edited, _ := newCard(t, lib, "edited", `{"name": "Brakka 2", "description": "`+text+` She has a cat."}`)
 	newCard(t, lib, "elf", `{"name": "Lia", "description": "A cheerful elven bard wanders the coast singing songs of the sea."}`)
 
-	got, err := lib.SimilarCards(ctx, orig, NearDistance)
+	got, err := lib.DuplicateCards(ctx, orig, NearDistance)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestSimilarAvatarsMatchExactScan(t *testing.T) {
 	}
 	probes := make([]Hashes, len(hashes))
 	for i, h := range hashes {
-		got, err := lib.SimilarCards(ctx, ids[i], NearDistance)
+		got, err := lib.DuplicateCards(ctx, ids[i], NearDistance)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -206,7 +206,7 @@ func TestSimilarTextMatchesExactScan(t *testing.T) {
 	}
 	pairs := 0
 	for i := range ids {
-		got, err := lib.SimilarCards(ctx, ids[i], NearDistance)
+		got, err := lib.DuplicateCards(ctx, ids[i], NearDistance)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -240,10 +240,10 @@ func TestSimilarStaysInLibrary(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got, err := lib.SimilarCards(ctx, orig, NearDistance); err != nil || len(got) != 0 {
+	if got, err := lib.DuplicateCards(ctx, orig, NearDistance); err != nil || len(got) != 0 {
 		t.Fatalf("library 1 similar = %+v, %v", got, err)
 	}
-	if got, err := lib.SimilarCards(ctx, moved, NearDistance); err != nil || len(got) != 0 {
+	if got, err := lib.DuplicateCards(ctx, moved, NearDistance); err != nil || len(got) != 0 {
 		t.Fatalf("archive similar = %+v, %v", got, err)
 	}
 	probe := []Hashes{{ContentHash: r.ContentHash, TextSimhash: r.TextSimhash}}
@@ -261,8 +261,8 @@ func TestSimilarRefusesWideDistance(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
 	c, _ := newCard(t, lib, "brakka", `{"name": "Brakka"}`)
-	if _, err := lib.SimilarCards(ctx, c, NearDistance+1); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("SimilarCards: %v", err)
+	if _, err := lib.DuplicateCards(ctx, c, NearDistance+1); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("DuplicateCards: %v", err)
 	}
 	if _, err := lib.Cards.MatchHashes(ctx, DefaultLibrary, []Hashes{{ContentHash: "x"}}, NearDistance+1); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("MatchHashes: %v", err)

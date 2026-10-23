@@ -107,7 +107,7 @@ func TestScaleExplain(t *testing.T) {
 		t.Fatal(err)
 	}
 	explain("similar cards", func() error {
-		_, err := lib.SimilarCards(ctx, card, NearDistance)
+		_, err := lib.DuplicateCards(ctx, card, NearDistance)
 		return err
 	})
 	explain("match hashes, 20 items", func() error {

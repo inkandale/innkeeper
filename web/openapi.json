@@ -6619,6 +6619,69 @@
         ]
       }
     },
+    "/cards/{id}/duplicates": {
+      "get": {
+        "description": "Same content, near-identical text, or a similar avatar; closest first.",
+        "operationId": "list-duplicate-cards",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Most differing hash bits to count as similar",
+            "explode": false,
+            "in": "query",
+            "name": "max_distance",
+            "schema": {
+              "default": 8,
+              "description": "Most differing hash bits to count as similar",
+              "format": "int64",
+              "maximum": 8,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Match"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Find likely duplicates",
+        "tags": [
+          "Cards"
+        ]
+      }
+    },
     "/cards/{id}/enrichments": {
       "get": {
         "description": "Every instance's current value of each key, by instance and key. A stale value is about a revision that is no longer the head.",
@@ -7225,69 +7288,6 @@
           }
         },
         "summary": "Compare two revisions of a card",
-        "tags": [
-          "Cards"
-        ]
-      }
-    },
-    "/cards/{id}/similar": {
-      "get": {
-        "description": "Same content, near-identical text, or a similar avatar; closest first.",
-        "operationId": "list-similar-cards",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          },
-          {
-            "description": "Most differing hash bits to count as similar",
-            "explode": false,
-            "in": "query",
-            "name": "max_distance",
-            "schema": {
-              "default": 8,
-              "description": "Most differing hash bits to count as similar",
-              "format": "int64",
-              "maximum": 8,
-              "minimum": 0,
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/Match"
-                  },
-                  "type": [
-                    "array",
-                    "null"
-                  ]
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "default": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorModel"
-                }
-              }
-            },
-            "description": "Error"
-          }
-        },
-        "summary": "Find likely duplicates",
         "tags": [
           "Cards"
         ]

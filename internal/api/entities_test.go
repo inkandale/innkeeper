@@ -86,7 +86,7 @@ func TestCardErrors(t *testing.T) {
 	e := newEnv(t)
 	other := e.createCard(`{"name": "Other"}`)
 	e.call("GET", "/cards/999", nil, 404, nil)
-	e.call("GET", "/cards/999/similar", nil, 404, nil)
+	e.call("GET", "/cards/999/duplicates", nil, 404, nil)
 	e.call("POST", "/cards", map[string]any{"data": json.RawMessage(`{"name": "A", "character_book": {}}`)}, 400, nil)
 	e.call("POST", "/cards", map[string]any{"slug": "Not A Slug", "data": json.RawMessage(`{"name": "A"}`)}, 422, nil)
 	e.call("POST", "/cards", map[string]any{"slug": "other", "data": json.RawMessage(`{"name": "A"}`)}, 409, nil)
@@ -206,9 +206,9 @@ func TestCardLinksAndExport(t *testing.T) {
 		CardID int64  `json:"card_id"`
 		Reason string `json:"reason"`
 	}
-	e.call("GET", path+"/similar", nil, 200, &matches)
+	e.call("GET", path+"/duplicates", nil, 200, &matches)
 	if len(matches) == 0 || matches[0].CardID != other.ID || matches[0].Reason != "content" {
-		t.Fatalf("similar = %+v", matches)
+		t.Fatalf("duplicates = %+v", matches)
 	}
 }
 

@@ -476,13 +476,13 @@ func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
 // cardRoutes registers the routes only cards have.
 func (s *Server) cardRoutes(api huma.API) {
 	tags := []string{"Cards"}
-	huma.Register(api, huma.Operation{OperationID: "list-similar-cards", Method: http.MethodGet, Path: "/cards/{id}/similar",
+	huma.Register(api, huma.Operation{OperationID: "list-duplicate-cards", Method: http.MethodGet, Path: "/cards/{id}/duplicates",
 		Summary: "Find likely duplicates", Description: "Same content, near-identical text, or a similar avatar; closest first.", Tags: tags},
 		func(ctx context.Context, in *similarIn) (*matchesOut, error) {
 			if _, err := s.Lib.Cards.Get(ctx, in.ID); err != nil {
 				return nil, s.fail(err)
 			}
-			m, err := s.Lib.SimilarCards(ctx, in.ID, in.MaxDistance)
+			m, err := s.Lib.DuplicateCards(ctx, in.ID, in.MaxDistance)
 			if err != nil {
 				return nil, s.fail(err)
 			}

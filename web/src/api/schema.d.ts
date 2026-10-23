@@ -476,6 +476,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cards/{id}/duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Find likely duplicates
+         * @description Same content, near-identical text, or a similar avatar; closest first.
+         */
+        get: operations["list-duplicate-cards"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cards/{id}/enrichments": {
         parameters: {
             query?: never;
@@ -660,26 +680,6 @@ export interface paths {
         };
         /** Compare two revisions of a card */
         get: operations["compare-card-revisions"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/cards/{id}/similar": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Find likely duplicates
-         * @description Same content, near-identical text, or a similar avatar; closest first.
-         */
-        get: operations["list-similar-cards"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5441,6 +5441,40 @@ export interface operations {
             };
         };
     };
+    "list-duplicate-cards": {
+        parameters: {
+            query?: {
+                /** @description Most differing hash bits to count as similar */
+                max_distance?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Match"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "get-card-enrichments": {
         parameters: {
             query?: {
@@ -5794,40 +5828,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RevisionDiff"];
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ErrorModel"];
-                };
-            };
-        };
-    };
-    "list-similar-cards": {
-        parameters: {
-            query?: {
-                /** @description Most differing hash bits to count as similar */
-                max_distance?: number;
-            };
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Match"][] | null;
                 };
             };
             /** @description Error */

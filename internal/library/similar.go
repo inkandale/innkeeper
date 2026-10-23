@@ -20,9 +20,9 @@ type Match struct {
 	Distance int `json:"distance"`
 }
 
-// SimilarCards returns the other cards in cardID's library whose head
+// DuplicateCards returns the other cards in cardID's library whose head
 // revision is like cardID's, within maxDistance bits, closest first.
-func (l *Library) SimilarCards(ctx context.Context, cardID int64, maxDistance int) ([]Match, error) {
+func (l *Library) DuplicateCards(ctx context.Context, cardID int64, maxDistance int) ([]Match, error) {
 	if maxDistance > NearDistance {
 		return nil, errWideDistance
 	}
@@ -95,10 +95,10 @@ func (s *Entities) InOtherLibraries(ctx context.Context, id int64, maxDistance i
 	return pgx.CollectRows(rows, pgx.RowToStructByPos[HashMatch])
 }
 
-var errWideDistance = fmt.Errorf("%w: similar lookup finds at most %d differing bits", ErrInvalid, NearDistance)
+var errWideDistance = fmt.Errorf("%w: duplicate lookup finds at most %d differing bits", ErrInvalid, NearDistance)
 
 // NearDistance is the most differing hash bits that count as a near match.
-// GET /cards/{id}/similar defaults to the same.
+// GET /cards/{id}/duplicates defaults to the same.
 const NearDistance = 8
 
 // Hashes are an outside item's fingerprints, as cardhash computes them.

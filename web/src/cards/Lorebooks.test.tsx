@@ -47,9 +47,12 @@ beforeEach(() => {
         return json({ total: 1, hits: [{ id: 7, slug: "brakka", revision_id: 1, fields: { name: "Brakka", avatar: "ab".repeat(32) } }] });
       }
       if (path === "/api/pushes/preview") return json({ total: 1, new: 1, ahead: 0, in_sync: 0, cant_check: 0, drifted: 0, confirm: "q1" });
-      if (path === "/api/lorebooks/move/preview") return json({ moved: [3], archived: 0, variant_links_cleared: [], collection_memberships_dropped: 0, from_libraries: [1], bound_instances: [2] });
+      if (path === "/api/lorebooks/move/preview" || path === "/api/lorebooks/move") {
+        if (path === "/api/lorebooks/move") posts.push({ path, body: await req.json() });
+        return json({ moved: [3], archived: 0, variant_links_cleared: [], collection_memberships_dropped: 0, from_libraries: [1], bound_instances: [2] });
+      }
       if (path === "/api/libraries") return json([1, 2].map((id) => ({ id, name: `Library ${id}`, cards: 0, lorebooks: 0, created_at: "2026-10-01T00:00:00Z" })));
-      if (path === "/api/bulk" || path === "/api/pushes" || path === "/api/lorebooks/move") {
+      if (path === "/api/bulk" || path === "/api/pushes") {
         posts.push({ path, body: await req.json() });
         return json({ id: 5, kind: "bulk", status: "waiting" });
       }
@@ -124,4 +127,5 @@ test("Move to library… moves the picked lorebooks", async () => {
   expect(screen.getByText("Keeps syncing to: Lumiverse")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Move" }));
   await waitFor(() => expect(posts).toEqual([{ path: "/api/lorebooks/move", body: { ids: [3], library: 2 } }]));
+  expect(await screen.findByText("Moved 1 lorebook to Library 2.")).toBeInTheDocument();
 });

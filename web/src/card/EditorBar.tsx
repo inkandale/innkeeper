@@ -1,5 +1,7 @@
+import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import type { Kind } from "../api/client";
+import { librariesQuery } from "../api/queries";
 import { MoveLibrary } from "../cards/MoveLibrary";
 import { Menu } from "../shell/Menu";
 import { useSaveShortcut } from "../shell/useSaveShortcut";
@@ -21,6 +23,7 @@ type EditorBarProps = {
 /** EditorBar is the card and lorebook editors' header: the name, unsaved count, Push, Save, and an overflow menu. */
 export function EditorBar({ kind, entity, ed, lock, busy = false, menu }: EditorBarProps) {
   const [moving, setMoving] = useState(false);
+  const libraries = useQuery(librariesQuery);
   const unsaved = ed.dirty.size;
   const canSave = unsaved > 0 && !ed.save.isPending && !ed.stale && !busy;
   const save = () => ed.draft && ed.save.mutate(ed.draft);
@@ -39,8 +42,8 @@ export function EditorBar({ kind, entity, ed, lock, busy = false, menu }: Editor
       </button>
       <Menu label="More actions">
         {menu}
-        {/* The move refuses an archived card or lorebook. */}
-        {!entity.archived_at && <button onClick={() => setMoving(true)}>Move to library…</button>}
+        {/* The move refuses an archived card or lorebook, and needs another library to go to. */}
+        {!entity.archived_at && (libraries.data?.length ?? 0) > 1 && <button onClick={() => setMoving(true)}>Move to library…</button>}
         {/* Archive's unpublish checkbox and error need the menu to stay open on a click. */}
         <div className="menu-archive" onClick={(e) => e.stopPropagation()}>
           <Archive kind={kind} entity={entity} />

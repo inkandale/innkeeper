@@ -1,10 +1,9 @@
 import { Fragment, useState } from "react";
 import { Link, useParams } from "react-router";
 import { finished, progressText, useJob } from "../settings/jobUtil";
+import { count } from "../shell/count";
 import { optionLabel, reviewPath, rowKey, rows, snapshotOf, type Candidate, type Item } from "./sync";
 import "./Sync.css";
-
-const plural = (n: number, s: string) => `${n} ${s}${n === 1 ? "" : "s"}`;
 
 const chipLabel: Record<string, string> = { auto_bound: "linked (auto)", auto_imported: "imported (auto)" };
 const verdictLabel = (i: Item) => (i.auto_bound ? "linked (auto)" : i.auto_imported ? "imported (auto)" : i.verdict);
@@ -43,8 +42,8 @@ export function Queue() {
 
   const note = (!!snap?.missing?.length || !!snap?.unpushed?.length) && (
     <p className="muted">
-      {!!snap.missing?.length && `${plural(snap.missing.length, "bound card")} the app no longer has. `}
-      {!!snap.unpushed?.length && `${plural(snap.unpushed.length, "card")} never pushed here.`}
+      {!!snap.missing?.length && `${count(snap.missing.length, "bound card")} the app no longer has. `}
+      {!!snap.unpushed?.length && `${count(snap.unpushed.length, "card")} never pushed here.`}
     </p>
   );
 
@@ -107,7 +106,7 @@ export function Queue() {
                         {top && (
                           <>
                             {top.name} <span className="muted">{reasons(top)}</span>
-                            {top.differing_fields > 0 && <span className="muted"> · {plural(top.differing_fields, "field")} differ</span>}
+                            {top.differing_fields > 0 && <span className="muted"> · {count(top.differing_fields, "field")} differ</span>}
                           </>
                         )}
                       </td>

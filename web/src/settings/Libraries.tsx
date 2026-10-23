@@ -5,6 +5,7 @@ import { api, must } from "../api/client";
 import { librariesQuery } from "../api/queries";
 import type { components } from "../api/schema";
 import { useConfirm } from "../shell/ConfirmDialog";
+import { count } from "../shell/count";
 import { JobLine } from "../cards/ImportForm";
 import { rememberedLibrary, rememberLibrary } from "../shell/library";
 import { Hiding } from "./Hiding";
@@ -14,8 +15,6 @@ function nameFrom(e: FormEvent<HTMLFormElement>): string {
   e.preventDefault();
   return String(new FormData(e.currentTarget).get("name") ?? "").trim();
 }
-
-const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 
 type LibrarySummary = components["schemas"]["LibrarySummary"];
 

@@ -1,7 +1,7 @@
 import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, exportFormats, must } from "../api/client";
-import { collectionsQuery, enrichmentKeysQuery, instancesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
+import { collectionsQuery, enrichmentKeysQuery, instancesQuery, librariesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
 import type { components } from "../api/schema";
 import { useToast } from "../shell/Toasts";
 import { MoveLibrary } from "./MoveLibrary";
@@ -53,8 +53,10 @@ export function SelectionBar(props: {
     kind === "lorebook" ? (["push", "archive"] as const)
     : enrichers.length ? (["tag", "collection", "push", "archive", "export", "evaluate", "delete"] as const)
     : (["tag", "collection", "push", "archive", "export", "delete"] as const);
-  // Set parent and Move send the picked IDs, which "Select all matching" doesn't have.
-  const actions = all ? base : ([...base, "parent", "move"] as const);
+  const libraries = useQuery(librariesQuery);
+  // Set parent and Move send the picked IDs, which "Select all matching" doesn't have. Move needs somewhere to go.
+  const canMove = (libraries.data?.length ?? 0) > 1;
+  const actions = all ? base : canMove ? ([...base, "parent", "move"] as const) : ([...base, "parent"] as const);
   // Card calls leave kind out, as they did before it existed.
   const kindField = kind === "lorebook" ? { kind } : {};
   const [panel, setPanel] = useState<Panel>(null);

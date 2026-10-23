@@ -3,12 +3,11 @@ import { useState } from "react";
 import { api, must, route, type Kind } from "../api/client";
 import { instancesQuery, librariesQuery } from "../api/queries";
 import type { components } from "../api/schema";
+import { count } from "../shell/count";
 import { useToast } from "../shell/Toasts";
 import { useModal } from "../shell/useModal";
 
 type MoveResult = components["schemas"]["MoveResult"];
-
-const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
 
 /** MoveLibrary asks which library to move cards or lorebooks to, previews what moving them changes, and moves them. */
 export function MoveLibrary({ kind, ids, library, onClose, onDone }: { kind: Kind; ids: number[]; library: number; onClose: () => void; onDone: () => void }) {
@@ -24,17 +23,20 @@ export function MoveLibrary({ kind, ids, library, onClose, onDone }: { kind: Kin
   const preview = useQuery({
     queryKey: ["move-preview", kind, ids, to],
     enabled: to !== undefined,
+    // Each run moves and rolls back, so don't keep or refresh one nobody is looking at.
+    gcTime: 0,
+    refetchOnWindowFocus: false,
     queryFn: async () => must(await api.POST(route(kind, "/cards/move/preview"), { body })),
   });
   const move = useMutation({
     mutationFn: async () => must(await api.POST(route(kind, "/cards/move"), { body })),
     onSuccess: (r) => {
-      void qc.invalidateQueries({ queryKey: ["search"] });
       void qc.invalidateQueries({ queryKey: [kind] });
       void qc.invalidateQueries({ queryKey: librariesQuery.queryKey });
       toast({ text: `Moved ${count(r.moved?.length ?? 0, kind)} to ${others.find((l) => l.id === to)?.name}.` });
       onDone();
     },
+    meta: { toast: false },
   });
   const label = (id: number) => instances.data?.find((i) => i.id === id)?.label ?? `#${id}`;
   return (
@@ -54,7 +56,7 @@ export function MoveLibrary({ kind, ids, library, onClose, onDone }: { kind: Kin
       {preview.error && <p className="error">{preview.error.message}</p>}
       {move.error && <p className="error">{move.error.message}</p>}
       <div className="row">
-        <button className="button primary" disabled={!preview.data || move.isPending} onClick={() => move.mutate()}>
+        <button className="button primary" disabled={!preview.data || preview.isFetching || move.isPending} onClick={() => move.mutate()}>
           Move
         </button>
         <button className="button" onClick={onClose}>

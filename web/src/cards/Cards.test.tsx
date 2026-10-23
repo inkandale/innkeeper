@@ -41,7 +41,9 @@ let family: unknown;
 let puts: { path: string; body: unknown }[];
 let gets: string[];
 let judgeMax: number | undefined;
+let libraryIds: number[];
 beforeEach(() => {
+  libraryIds = [1, 2, 3];
   localStorage.clear();
   keys = { instance_id: null, instances: [] };
   judgeMax = undefined;
@@ -55,7 +57,7 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (req: Request) => {
       const path = new URL(req.url).pathname;
-      if (path === "/api/libraries") return new Response(JSON.stringify([1, 2, 3].map((id) => ({ id, name: `Library ${id}`, cards: 0, lorebooks: 0, created_at: "2026-10-01T00:00:00Z" }))), { headers: { "Content-Type": "application/json" } });
+      if (path === "/api/libraries") return new Response(JSON.stringify(libraryIds.map((id) => ({ id, name: `Library ${id}`, cards: 0, lorebooks: 0, created_at: "2026-10-01T00:00:00Z" }))), { headers: { "Content-Type": "application/json" } });
       if (req.method === "PUT") {
         puts.push({ path, body: await req.json() });
         return new Response(null, { status: 204 });
@@ -869,5 +871,14 @@ test("Move to library… is not offered for select all matching", async () => {
   await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
   expect(screen.getByRole("button", { name: "Move to library…" })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Select all matching" }));
+  expect(screen.queryByRole("button", { name: "Move to library…" })).not.toBeInTheDocument();
+});
+
+test("Move to library… is not offered with only one library", async () => {
+  libraryIds = [1];
+  renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
+  expect(screen.getByRole("button", { name: "Set parent…" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Move to library…" })).not.toBeInTheDocument();
 });

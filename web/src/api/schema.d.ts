@@ -654,6 +654,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cards/{id}/related": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Find related cards
+         * @description Cards linked to this one: by the same creator, a shared lorebook, or a shared collection. Leaves out this card's variants and archived cards.
+         */
+        get: operations["list-related-cards"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cards/{id}/restore": {
         parameters: {
             query?: never;
@@ -720,6 +740,26 @@ export interface paths {
         };
         /** Compare two revisions of a card */
         get: operations["compare-card-revisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cards/{id}/similar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Find similar cards
+         * @description Cards that read like this one, closest first: by meaning when an embed instance is set, else by shared tags. Leaves out exact copies, this card's variants, and archived cards.
+         */
+        get: operations["list-similar-cards"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3181,6 +3221,18 @@ export interface components {
             /** @description The library's exact name */
             confirm: string;
         };
+        DiscoveredCard: {
+            /** Format: int64 */
+            card_id: number;
+            /** Format: int64 */
+            library_id: number;
+            name: string;
+            /**
+             * Format: double
+             * @description How alike, 0 to 1; similar cards only.
+             */
+            score?: number;
+        };
         DismissInBody: {
             /**
              * Format: uri
@@ -4198,6 +4250,21 @@ export interface components {
             readonly $schema?: string;
             id: string;
         };
+        RelatedCardsOutBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/RelatedCardsOutBody.json
+             */
+            readonly $schema?: string;
+            groups: components["schemas"]["RelatedPage"][] | null;
+        };
+        RelatedPage: {
+            /** @enum {string} */
+            group: "creator" | "lorebook" | "collection";
+            items: components["schemas"]["DiscoveredCard"][] | null;
+            next_cursor?: string;
+        };
         RenameLibraryInBody: {
             /**
              * Format: uri
@@ -4435,6 +4502,21 @@ export interface components {
             /** @description JSON Schema of the fields to ask for. */
             form: unknown;
             plugin: string;
+        };
+        SimilarPage: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/SimilarPage.json
+             */
+            readonly $schema?: string;
+            /**
+             * @description embedding ranks by meaning; tags, by shared tags, when there is no embed instance or the card has no vector yet.
+             * @enum {string}
+             */
+            basis: "embedding" | "tags";
+            items: components["schemas"]["DiscoveredCard"][] | null;
+            next_cursor?: string;
         };
         Source: {
             /**
@@ -5907,6 +5989,43 @@ export interface operations {
             };
         };
     };
+    "list-related-cards": {
+        parameters: {
+            query?: {
+                /** @description next_cursor from the previous page. */
+                cursor?: string;
+                limit?: number;
+                /** @description One group to page through; without it, the first page of every group with results. */
+                group?: "creator" | "lorebook" | "collection";
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelatedCardsOutBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "restore-card": {
         parameters: {
             query?: never;
@@ -6025,6 +6144,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RevisionDiff"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-similar-cards": {
+        parameters: {
+            query?: {
+                /** @description next_cursor from the previous page. */
+                cursor?: string;
+                limit?: number;
+                /** @description library looks in the card's library; all, in every library. */
+                scope?: "library" | "all";
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SimilarPage"];
                 };
             };
             /** @description Error */

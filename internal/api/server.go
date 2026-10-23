@@ -165,6 +165,7 @@ func (s *Server) routes(api huma.API) {
 	s.setupRoutes(api)
 	s.entityRoutes(api, library.Card, "Cards")
 	s.cardRoutes(api)
+	s.discoverRoutes(api)
 	s.entityRoutes(api, library.Lorebook, "Lorebooks")
 	s.organizeRoutes(api)
 	s.searchRoutes(api)

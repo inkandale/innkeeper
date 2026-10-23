@@ -1632,6 +1632,33 @@
         ],
         "type": "object"
       },
+      "DiscoveredCard": {
+        "additionalProperties": false,
+        "properties": {
+          "card_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "library_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "score": {
+            "description": "How alike, 0 to 1; similar cards only.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "card_id",
+          "library_id",
+          "name"
+        ],
+        "type": "object"
+      },
       "DismissInBody": {
         "additionalProperties": false,
         "properties": {
@@ -4307,6 +4334,63 @@
         ],
         "type": "object"
       },
+      "RelatedCardsOutBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/RelatedCardsOutBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/RelatedPage"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "groups"
+        ],
+        "type": "object"
+      },
+      "RelatedPage": {
+        "additionalProperties": false,
+        "properties": {
+          "group": {
+            "enum": [
+              "creator",
+              "lorebook",
+              "collection"
+            ],
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DiscoveredCard"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next_cursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "group",
+          "items"
+        ],
+        "type": "object"
+      },
       "RenameLibraryInBody": {
         "additionalProperties": false,
         "properties": {
@@ -4907,6 +4991,45 @@
         "required": [
           "plugin",
           "form"
+        ],
+        "type": "object"
+      },
+      "SimilarPage": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/SimilarPage.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "basis": {
+            "description": "embedding ranks by meaning; tags, by shared tags, when there is no embed instance or the card has no vector yet.",
+            "enum": [
+              "embedding",
+              "tags"
+            ],
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DiscoveredCard"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "next_cursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "basis",
+          "items"
         ],
         "type": "object"
       },
@@ -7293,6 +7416,86 @@
         ]
       }
     },
+    "/cards/{id}/related": {
+      "get": {
+        "description": "Cards linked to this one: by the same creator, a shared lorebook, or a shared collection. Leaves out this card's variants and archived cards.",
+        "operationId": "list-related-cards",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "next_cursor from the previous page.",
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "next_cursor from the previous page.",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "One group to page through; without it, the first page of every group with results.",
+            "explode": false,
+            "in": "query",
+            "name": "group",
+            "schema": {
+              "description": "One group to page through; without it, the first page of every group with results.",
+              "enum": [
+                "creator",
+                "lorebook",
+                "collection"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelatedCardsOutBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Find related cards",
+        "tags": [
+          "Cards"
+        ]
+      }
+    },
     "/cards/{id}/restore": {
       "post": {
         "description": "Adds a revision with the old revision's content on top of base_revision_id. Keeps the base revision's avatar unless avatar is revision.",
@@ -7501,6 +7704,86 @@
           }
         },
         "summary": "Compare two revisions of a card",
+        "tags": [
+          "Cards"
+        ]
+      }
+    },
+    "/cards/{id}/similar": {
+      "get": {
+        "description": "Cards that read like this one, closest first: by meaning when an embed instance is set, else by shared tags. Leaves out exact copies, this card's variants, and archived cards.",
+        "operationId": "list-similar-cards",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "next_cursor from the previous page.",
+            "explode": false,
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "description": "next_cursor from the previous page.",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "library looks in the card's library; all, in every library.",
+            "explode": false,
+            "in": "query",
+            "name": "scope",
+            "schema": {
+              "default": "library",
+              "description": "library looks in the card's library; all, in every library.",
+              "enum": [
+                "library",
+                "all"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimilarPage"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Find similar cards",
         "tags": [
           "Cards"
         ]

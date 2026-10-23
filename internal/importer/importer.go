@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/inkandale/innkeeper/internal/bulk"
+	"github.com/inkandale/innkeeper/internal/embed"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/libsettings"
@@ -134,6 +135,7 @@ func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
 	s.applyAutosync()
 	if !s.bulk {
 		EnqueueDetect(ctx, im.Queue, im.Log)
+		embed.Enqueue(ctx, im.Queue, im.Log)
 	}
 	if serr := s.failure(); serr != nil {
 		return serr

@@ -136,6 +136,15 @@ type variantOfIn struct {
 	}
 }
 
+type moveIn struct {
+	Body struct {
+		IDs     []int64 `json:"ids" doc:"The cards or lorebooks to move. Their variants come along."`
+		Library int64   `json:"library" doc:"The library to move them to"`
+	}
+}
+
+type moveOut struct{ Body library.MoveResult }
+
 type sourcesOut struct{ Body []library.Source }
 
 type sourceResp struct{ Body library.Source }
@@ -232,8 +241,9 @@ func (s *Server) revisionOf(ctx context.Context, ents *library.Entities, id, rev
 }
 
 // entityRoutes registers the routes cards and lorebooks share, under
-// /<plural>.
-func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
+// /<plural>. moved, if not nil, runs after a move with the libraries it
+// touched; its failure doesn't fail the committed move.
+func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string, moved func(ctx context.Context, libraries []int64) error) {
 	ents, singular := s.Lib.Entities(k), k.Name
 	tags := []string{tag}
 	base := "/" + k.Plural
@@ -449,6 +459,40 @@ func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
 		Description: "Makes no revision. A link that would make it its own ancestor returns 409; one to another library, 400.", Tags: tags, DefaultStatus: http.StatusNoContent},
 		func(ctx context.Context, in *variantOfIn) (*struct{}, error) {
 			return nil, s.fail(ents.SetVariantOf(ctx, in.ID, &in.Body.ID))
+		})
+
+	moveDesc := "Moves the " + k.Plural + " ids, with every variant below them, to library. A moved " + singular +
+		" whose parent stays behind stops being its variant, and cards leave their collections. Lorebook links and app bindings stay."
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "preview-move-" + k.Plural, Method: http.MethodPost,
+		Path: base + "/move/preview", Summary: "Preview moving " + k.Plural + " to another library",
+		Description: "What a move would change, changing nothing. " + moveDesc, Tags: tags},
+		func(ctx context.Context, in *moveIn) (*moveOut, error) {
+			if len(in.Body.IDs) == 0 {
+				return nil, huma.Error400BadRequest("ids is empty")
+			}
+			res, err := ents.PreviewMove(ctx, in.Body.IDs, in.Body.Library)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			return &moveOut{Body: res}, nil
+		})
+
+	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "move-" + k.Plural, Method: http.MethodPost,
+		Path: base + "/move", Summary: "Move " + k.Plural + " to another library", Description: moveDesc, Tags: tags},
+		func(ctx context.Context, in *moveIn) (*moveOut, error) {
+			if len(in.Body.IDs) == 0 {
+				return nil, huma.Error400BadRequest("ids is empty")
+			}
+			res, err := ents.Move(ctx, in.Body.IDs, in.Body.Library)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			if moved != nil && len(res.Moved) > 0 {
+				if err := moved(ctx, append(res.FromLibraries, in.Body.Library)); err != nil {
+					s.Log.Warn("after moving "+k.Plural, "err", err)
+				}
+			}
+			return &moveOut{Body: res}, nil
 		})
 
 	huma.Register(api, huma.Operation{OperationID: "list-" + singular + "-in-other-libraries", Method: http.MethodGet,

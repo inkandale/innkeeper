@@ -30,6 +30,16 @@ func (s *Entities) Move(ctx context.Context, ids []int64, library int64) (MoveRe
 	return res, err
 }
 
+// PreviewMove is what Move would change, changing nothing.
+func (s *Entities) PreviewMove(ctx context.Context, ids []int64, library int64) (MoveResult, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return MoveResult{}, fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback(context.WithoutCancel(ctx))
+	return s.MoveTx(ctx, tx, ids, library)
+}
+
 // MoveTx is Move inside the caller's transaction. An unknown or archived id,
 // or a library that doesn't exist, is ErrNotFound. Variants come along
 // whether archived or not; a moved entity whose parent stays behind loses the

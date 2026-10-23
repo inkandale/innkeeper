@@ -3226,6 +3226,118 @@
         ],
         "type": "object"
       },
+      "MoveInBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/MoveInBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "ids": {
+            "description": "The cards or lorebooks to move. Their variants come along.",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "library": {
+            "description": "The library to move them to",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ids",
+          "library"
+        ],
+        "type": "object"
+      },
+      "MoveResult": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/MoveResult.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "archived": {
+            "description": "How many of the moved are archived.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "bound_instances": {
+            "description": "Target app instances the moved stay bound to.",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "collection_memberships_dropped": {
+            "description": "How many collection memberships the moved cards lost.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "from_libraries": {
+            "description": "Libraries the moved came from.",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "moved": {
+            "description": "IDs moved, the selection's variants included, ascending.",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "variant_links_cleared": {
+            "description": "Moved IDs that are no longer a variant of anything.",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "moved",
+          "archived",
+          "variant_links_cleared",
+          "collection_memberships_dropped",
+          "from_libraries",
+          "bound_instances"
+        ],
+        "type": "object"
+      },
       "Option": {
         "additionalProperties": false,
         "properties": {
@@ -6308,6 +6420,90 @@
           }
         },
         "summary": "Create a card",
+        "tags": [
+          "Cards"
+        ]
+      }
+    },
+    "/cards/move": {
+      "post": {
+        "description": "Moves the cards ids, with every variant below them, to library. A moved card whose parent stays behind stops being its variant, and cards leave their collections. Lorebook links and app bindings stay.",
+        "operationId": "move-cards",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoveResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Move cards to another library",
+        "tags": [
+          "Cards"
+        ]
+      }
+    },
+    "/cards/move/preview": {
+      "post": {
+        "description": "What a move would change, changing nothing. Moves the cards ids, with every variant below them, to library. A moved card whose parent stays behind stops being its variant, and cards leave their collections. Lorebook links and app bindings stay.",
+        "operationId": "preview-move-cards",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoveResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Preview moving cards to another library",
         "tags": [
           "Cards"
         ]
@@ -10588,6 +10784,90 @@
           }
         },
         "summary": "Create a lorebook",
+        "tags": [
+          "Lorebooks"
+        ]
+      }
+    },
+    "/lorebooks/move": {
+      "post": {
+        "description": "Moves the lorebooks ids, with every variant below them, to library. A moved lorebook whose parent stays behind stops being its variant, and cards leave their collections. Lorebook links and app bindings stay.",
+        "operationId": "move-lorebooks",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoveResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Move lorebooks to another library",
+        "tags": [
+          "Lorebooks"
+        ]
+      }
+    },
+    "/lorebooks/move/preview": {
+      "post": {
+        "description": "What a move would change, changing nothing. Moves the lorebooks ids, with every variant below them, to library. A moved lorebook whose parent stays behind stops being its variant, and cards leave their collections. Lorebook links and app bindings stay.",
+        "operationId": "preview-move-lorebooks",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoveResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Preview moving lorebooks to another library",
         "tags": [
           "Lorebooks"
         ]

@@ -163,9 +163,10 @@ func config() huma.Config {
 func (s *Server) routes(api huma.API) {
 	s.authRoutes(api)
 	s.setupRoutes(api)
-	s.entityRoutes(api, library.Card, "Cards")
+	s.entityRoutes(api, library.Card, "Cards", s.recheckHide)
 	s.cardRoutes(api)
-	s.entityRoutes(api, library.Lorebook, "Lorebooks")
+	// The hide job only hides cards.
+	s.entityRoutes(api, library.Lorebook, "Lorebooks", nil)
 	s.organizeRoutes(api)
 	s.searchRoutes(api)
 	s.libraryRoutes(api)

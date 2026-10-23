@@ -77,6 +77,18 @@ func setSent[T comparable](ctx context.Context, s *Server, lib *int64, o libsett
 	return setSetting(ctx, s, o, lib, v.Value)
 }
 
+// recheckHide queues the hide job for each of libraries whose settings
+// hide duplicates, since cards moving in or out make or break duplicates.
+func (s *Server) recheckHide(ctx context.Context, libraries []int64) error {
+	var errs []error
+	for _, lib := range libraries {
+		if err := s.libSettings().EnqueueHide(ctx, s.Queue, lib); err != nil {
+			errs = append(errs, fmt.Errorf("queue hide for library %d: %w", lib, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
 type hideIn struct {
 	ID int64 `path:"id"`
 }

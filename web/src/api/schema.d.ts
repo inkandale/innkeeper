@@ -361,6 +361,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cards/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move cards to another library
+         * @description Moves the cards ids, with every variant below them, to library. A moved card whose parent stays behind stops being its variant, and cards leave their collections. Lorebook links and app bindings stay.
+         */
+        post: operations["move-cards"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cards/move/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview moving cards to another library
+         * @description What a move would change, changing nothing. Moves the cards ids, with every variant below them, to library. A moved card whose parent stays behind stops being its variant, and cards leave their collections. Lorebook links and app bindings stay.
+         */
+        post: operations["preview-move-cards"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cards/purge": {
         parameters: {
             query?: never;
@@ -1662,6 +1702,46 @@ export interface paths {
         put?: never;
         /** Create a lorebook */
         post: operations["create-lorebook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lorebooks/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move lorebooks to another library
+         * @description Moves the lorebooks ids, with every variant below them, to library. A moved lorebook whose parent stays behind stops being its variant, and cards leave their collections. Lorebook links and app bindings stay.
+         */
+        post: operations["move-lorebooks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/lorebooks/move/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview moving lorebooks to another library
+         * @description What a move would change, changing nothing. Moves the lorebooks ids, with every variant below them, to library. A moved lorebook whose parent stays behind stops being its variant, and cards leave their collections. Lorebook links and app bindings stay.
+         */
+        post: operations["preview-move-lorebooks"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3704,6 +3784,47 @@ export interface components {
             /** @description What the caller's credentials may do. */
             tier: string;
         };
+        MoveInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/MoveInBody.json
+             */
+            readonly $schema?: string;
+            /** @description The cards or lorebooks to move. Their variants come along. */
+            ids: number[] | null;
+            /**
+             * Format: int64
+             * @description The library to move them to
+             */
+            library: number;
+        };
+        MoveResult: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/MoveResult.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description How many of the moved are archived.
+             */
+            archived: number;
+            /** @description Target app instances the moved stay bound to. */
+            bound_instances: number[] | null;
+            /**
+             * Format: int64
+             * @description How many collection memberships the moved cards lost.
+             */
+            collection_memberships_dropped: number;
+            /** @description Libraries the moved came from. */
+            from_libraries: number[] | null;
+            /** @description IDs moved, the selection's variants included, ascending. */
+            moved: number[] | null;
+            /** @description Moved IDs that are no longer a variant of anything. */
+            variant_links_cleared: number[] | null;
+        };
         Option: {
             label?: string;
             value: string;
@@ -5207,6 +5328,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntityOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "move-cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveInBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoveResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "preview-move-cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveInBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoveResult"];
                 };
             };
             /** @description Error */
@@ -7905,6 +8092,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntityOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "move-lorebooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveInBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoveResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "preview-move-lorebooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveInBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoveResult"];
                 };
             };
             /** @description Error */

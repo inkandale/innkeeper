@@ -210,6 +210,7 @@ func (s *Settings) HidePayload(ctx context.Context, lib int64) (bulk.HidePayload
 // EnqueueHide queues the hide job for library lib when its settings hide
 // duplicates, so cards that just arrived don't sit beside their copies.
 // Hiding by score alone queues nothing, since arrivals change no one's score.
+// It joins a hide job already queued, so a run of arrivals queues one.
 func (s *Settings) EnqueueHide(ctx context.Context, q *jobs.Queue, lib int64) error {
 	// The caller's change has committed, so a client leaving mustn't stop the job.
 	ctx = context.WithoutCancel(ctx)
@@ -220,6 +221,6 @@ func (s *Settings) EnqueueHide(ctx context.Context, q *jobs.Queue, lib int64) er
 	if err != nil {
 		return err
 	}
-	_, err = q.Enqueue(ctx, jobs.Spec{Kind: bulk.HideKind, Payload: p})
+	_, err = q.EnqueueUnlessQueued(ctx, jobs.Spec{Kind: bulk.HideKind, Payload: p})
 	return err
 }

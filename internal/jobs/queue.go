@@ -142,6 +142,22 @@ func (q *Queue) Enqueue(ctx context.Context, s Spec) (Job, error) {
 // EnqueueOnce returns the queued or running top-level job of s's kind, or
 // enqueues s when there is none.
 func (q *Queue) EnqueueOnce(ctx context.Context, s Spec) (Job, error) {
+	return q.enqueueUnless(ctx, s, `kind = $1 AND status IN ('queued', 'running')`, s.Kind)
+}
+
+// EnqueueUnlessQueued returns the queued top-level job matching s's kind and
+// payload, or enqueues s. It skips running jobs, which may predate the change.
+func (q *Queue) EnqueueUnlessQueued(ctx context.Context, s Spec) (Job, error) {
+	payload, err := payloadOf(s)
+	if err != nil {
+		return Job{}, err
+	}
+	return q.enqueueUnless(ctx, s, `kind = $1 AND payload = $2::jsonb AND status = 'queued'`, s.Kind, payload)
+}
+
+// enqueueUnless returns the oldest top-level job matching the where clause,
+// or enqueues s when there is none.
+func (q *Queue) enqueueUnless(ctx context.Context, s Spec, where string, args ...any) (Job, error) {
 	tx, err := q.pool.Begin(ctx)
 	if err != nil {
 		return Job{}, err
@@ -151,8 +167,8 @@ func (q *Queue) EnqueueOnce(ctx context.Context, s Spec) (Job, error) {
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('innkeeper-schedule'))`); err != nil {
 		return Job{}, err
 	}
-	j, err := scanJob(tx.QueryRow(ctx, `SELECT `+jobCols+` FROM job WHERE kind = $1 AND parent_id IS NULL
-		AND status IN ('queued', 'running') ORDER BY id LIMIT 1`, s.Kind))
+	j, err := scanJob(tx.QueryRow(ctx, `SELECT `+jobCols+` FROM job WHERE `+where+` AND parent_id IS NULL
+		ORDER BY id LIMIT 1`, args...))
 	if errors.Is(err, ErrNotFound) {
 		j, err = insert(ctx, tx, s, nil, StatusQueued)
 	}

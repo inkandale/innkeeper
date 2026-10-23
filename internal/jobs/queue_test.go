@@ -359,6 +359,32 @@ func TestEnqueueOnce(t *testing.T) {
 	}
 }
 
+func TestEnqueueUnlessQueuedJoinsOnlyAQueuedJobWithTheSamePayload(t *testing.T) {
+	q := newQueue(t)
+	ctx := context.Background()
+	lib1 := Spec{Kind: "t.unless", Payload: map[string]int{"library": 1}}
+	a, err := q.EnqueueUnlessQueued(ctx, lib1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := q.EnqueueUnlessQueued(ctx, lib1)
+	if err != nil || b.ID != a.ID {
+		t.Fatalf("second start = %d, %v; want job %d", b.ID, err, a.ID)
+	}
+	other, err := q.EnqueueUnlessQueued(ctx, Spec{Kind: "t.unless", Payload: map[string]int{"library": 2}})
+	if err != nil || other.ID == a.ID {
+		t.Fatalf("start for another library = %d, %v; want a new job", other.ID, err)
+	}
+	// A running job may have read the library already, so a start queues another.
+	if _, err := q.pool.Exec(ctx, `UPDATE job SET status = 'running' WHERE id = $1`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	c, err := q.EnqueueUnlessQueued(ctx, lib1)
+	if err != nil || c.ID == a.ID || c.Status != StatusQueued {
+		t.Fatalf("start while running = %+v, %v", c, err)
+	}
+}
+
 func TestRecord(t *testing.T) {
 	q := newQueue(t)
 	ctx := context.Background()

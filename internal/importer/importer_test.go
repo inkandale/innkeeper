@@ -294,6 +294,18 @@ func TestImportQueuesHideWhenLibraryHidesDuplicates(t *testing.T) {
 	}
 }
 
+func TestImportsJoinTheQueuedHideJob(t *testing.T) {
+	e := setup(t)
+	if err := e.lib.SetLibrarySetting(context.Background(), library.DefaultLibrary, "duplicates", `"near"`); err != nil {
+		t.Fatal(err)
+	}
+	e.run(t, `{"cards": 2}`)
+	e.run(t, `{"cards": 4}`)
+	if got := e.hideJobs(t); len(got) != 1 {
+		t.Fatalf("two imports queued hide jobs %+v, want one", got)
+	}
+}
+
 func TestImportQueuesNoHideWithDuplicatesOff(t *testing.T) {
 	e := setup(t)
 	e.run(t, `{"cards": 2}`)

@@ -649,6 +649,13 @@ func TestSearchEnrichmentValues(t *testing.T) {
 	if err != nil || !slices.Equal(got.Facets.Enrichments["7:language"], []ValueCount{{"en", 1}, {"zh", 1}}) {
 		t.Fatalf("named instance's facet without a score instance = %+v, %v", got.Facets, err)
 	}
+	got, err = lib.Search(ctx, Card, Query{Facets: []string{"enrichment:language", "enrichment:7:language", "enrichment:language", "enrichment:unset"}, ScoreInstance: lint})
+	if err != nil || !slices.Equal(got.Facets.Enrichments["language"], languages) || !slices.Equal(got.Facets.Enrichments["7:language"], languages) {
+		t.Fatalf("one key under two names = %+v, %v", got.Facets, err)
+	}
+	if unset, ok := got.Facets.Enrichments["unset"]; !ok || len(unset) != 0 {
+		t.Fatalf("key no card has = %v, %v; want an empty list", unset, ok)
+	}
 
 	for name, q := range map[string]Query{
 		"facet without a score instance": {Facets: []string{"enrichment:language"}},

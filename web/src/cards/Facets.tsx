@@ -33,6 +33,7 @@ const titles: Record<Exclude<TermKind, "value">, string> = { target: "Target", s
 
 type EnrichmentKey = components["schemas"]["EnrichmentKey"];
 type Enricher = components["schemas"]["EnrichmentInstance"];
+type ValueCount = components["schemas"]["ValueCount"];
 
 const collapsedKey = "innkeeper.facets.collapsed";
 
@@ -199,13 +200,20 @@ function Section({ kind, title, instance, section = kind, rows, q, open, onOpen,
   );
 }
 
-/** ValueSection counts one text or list key's values from one enrich instance, each a row to include or exclude. */
-function ValueSection({ instance, instanceLabel, k, q, open, onOpen, onChange }: { instance: number; instanceLabel?: string; k: EnrichmentKey; q: CardQuery; open: boolean; onOpen: () => void; onChange: (q: CardQuery) => void }) {
+/** useValueCounts counts each open value section's values, ref to counts: the sections with nothing picked share one search, as their filters are the same. */
+function useValueCounts(q: CardQuery, refs: string[]): Map<string, ValueCount[] | undefined> {
+  const picked = (ref: string) => q.terms.some((t) => sectionOf(t) === `value:${ref}`);
+  const shared = refs.filter((ref) => !picked(ref));
+  const groups = [...(shared.length ? [shared] : []), ...refs.filter(picked).map((ref) => [ref])];
+  const results = useQueries({ queries: groups.map((g) => ({ ...searchQuery("card", valueCountSearch(q, g)), placeholderData: keepPreviousData })) });
+  return new Map(groups.flatMap((g, i) => g.map((ref) => [ref, results[i]?.data && (results[i].data.facets?.enrichments?.[ref] ?? [])] as const)));
+}
+
+/** ValueSection lists one text or list key's values from one enrich instance, each a row to include or exclude. */
+function ValueSection({ instance, instanceLabel, k, counts, q, open, onOpen, onChange }: { instance: number; instanceLabel?: string; k: EnrichmentKey; counts?: ValueCount[]; q: CardQuery; open: boolean; onOpen: () => void; onChange: (q: CardQuery) => void }) {
   const ref = keyRef(instance, k.key);
-  const body = valueCountSearch(q, ref);
-  const res = useQuery({ ...searchQuery("card", body), placeholderData: keepPreviousData, enabled: open });
   const section = `value:${ref}`;
-  const counted = res.data && (res.data.facets?.enrichments?.[ref] ?? []).map((v) => ({ value: `${ref}=${v.value}`, label: valueLabel(v.value), cards: v.cards }));
+  const counted = counts?.map((v) => ({ value: `${ref}=${v.value}`, label: valueLabel(v.value), cards: v.cards }));
   // A selected value with no matches still gets a row, so it can be cleared.
   const rows = counted && [
     ...counted,
@@ -296,6 +304,8 @@ export function Facets({ kind, q, names, enrichers = [], onChange }: { kind: Kin
   const open = (s: string) => !collapsed.includes(s);
   const rows = useRows(kind, q, names, sections, open);
   const scored = enrichers.filter((e) => scoreKeys(e).length > 0);
+  const valueKeys = enrichers.flatMap((e) => (e.keys ?? []).filter((k) => k.type === "text" || k.type === "list").map((k) => ({ e, k, ref: keyRef(e.id, k.key) })));
+  const valueCounts = useValueCounts(q, valueKeys.map((v) => v.ref).filter((ref) => open(`value:${ref}`)));
   const flip = (s: string) => {
     const next = open(s) ? [...collapsed, s] : collapsed.filter((x) => x !== s);
     setCollapsed(next);
@@ -309,15 +319,11 @@ export function Facets({ kind, q, names, enrichers = [], onChange }: { kind: Kin
       {sections.map((s) => (
         <Section key={s} kind={s} rows={rows[s]} q={q} open={open(s)} onOpen={() => flip(s)} onChange={onChange} />
       ))}
-      {enrichers.flatMap((e) =>
-        (e.keys ?? [])
-          .filter((k) => k.type === "text" || k.type === "list")
-          .map((k) => {
-            const section = `value:${keyRef(e.id, k.key)}`;
-            const instanceLabel = enrichers.length > 1 ? e.label : undefined;
-            return <ValueSection key={section} instance={e.id} instanceLabel={instanceLabel} k={k} q={q} open={open(section)} onOpen={() => flip(section)} onChange={onChange} />;
-          }),
-      )}
+      {valueKeys.map(({ e, k, ref }) => {
+        const section = `value:${ref}`;
+        const instanceLabel = enrichers.length > 1 ? e.label : undefined;
+        return <ValueSection key={section} instance={e.id} instanceLabel={instanceLabel} k={k} counts={valueCounts.get(ref)} q={q} open={open(section)} onOpen={() => flip(section)} onChange={onChange} />;
+      })}
       {scored.length > 0 && <ScoreSection enrichers={scored} q={q} open={open("score")} onOpen={() => flip("score")} onChange={onChange} />}
     </aside>
   );

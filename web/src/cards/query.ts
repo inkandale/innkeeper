@@ -248,9 +248,9 @@ export function toLorebookSearch(q: CardQuery): Search {
 
 const facetOf = { target: "targets", tag: "tags", source: "sources", collection: "collections" } as const;
 
-/** othersFilter is q's filter without section's terms, but for its included values when they must all match, as each narrows the counts. */
-function othersFilter(q: CardQuery, section: string): Filter | undefined {
-  const kept = q.terms.filter((t) => sectionOf(t) !== section || (q.all.includes(section) && !t.not));
+/** othersFilter is q's filter without the sections' terms, but for their included values when they must all match, as each narrows the counts. */
+function othersFilter(q: CardQuery, ...sections: string[]): Filter | undefined {
+  const kept = q.terms.filter((t) => !sections.includes(sectionOf(t)) || (q.all.includes(sectionOf(t)) && !t.not));
   return filterFor(kept, q.sharesSource, q.all);
 }
 
@@ -268,13 +268,13 @@ export function countSearch(q: CardQuery, section: keyof typeof facetOf): Search
   };
 }
 
-/** valueCountSearch counts a value key's values over every other filter, the key's own terms aside; ref is as keyRef names it. */
-export function valueCountSearch(q: CardQuery, ref: string): Search {
+/** valueCountSearch counts value keys' values over every other filter, the keys' own terms aside; refs are as keyRef names them. */
+export function valueCountSearch(q: CardQuery, refs: string[]): Search {
   return {
     library: q.library,
     text: countText(q),
-    filter: othersFilter(q, `value:${ref}`),
-    facets: [`enrichment:${ref}`],
+    filter: othersFilter(q, ...refs.map((ref) => `value:${ref}`)),
+    facets: refs.map((ref) => `enrichment:${ref}`),
     facets_only: true,
   };
 }

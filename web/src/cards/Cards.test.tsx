@@ -682,6 +682,22 @@ test("a list key's values count in the sidebar, and a click filters on one", asy
   expect((counts.at(-1) as { filter?: unknown }).filter).toBeUndefined();
 });
 
+test("value sections with nothing picked share one count search", async () => {
+  keys = { instance_id: 5, instances: [{ id: 5, label: "Lint", keys: [{ key: "problems", label: "Problems", type: "list" }, { key: "language", label: "Language", type: "text" }] }] };
+  renderCards("/cards");
+  const user = userEvent.setup();
+  const valueCounts = () => searches.map((s) => (s as { facets?: string[] }).facets ?? []).filter((f) => f.some((n) => n.startsWith("enrichment:")));
+  await user.click(await screen.findByRole("button", { name: /^Markup\s*3/ }));
+  expect(valueCounts()[0]).toEqual(["enrichment:5:problems", "enrichment:5:language"]);
+  // A picked section counts without its own terms, so it leaves the shared search.
+  await waitFor(() =>
+    expect(searches).toContainEqual(expect.objectContaining({ facets: ["enrichment:5:language"], filter: { and: [{ enrichment: "problems", instance: 5, is: "markup" }] } })),
+  );
+  const own = searches.filter((s) => (s as { facets?: string[] }).facets?.join() === "enrichment:5:problems");
+  expect(own).toHaveLength(1);
+  expect((own[0] as { filter?: unknown }).filter).toBeUndefined();
+});
+
 test("Evaluate past the plugin's limit asks before sending confirm", async () => {
   keys = scored;
   judgeMax = 10;

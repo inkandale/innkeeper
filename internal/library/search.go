@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -293,18 +294,48 @@ var facetSQL = map[string]func(k *Kind, cond string) string{
 // enrichmentFacetPrefix starts a facet on an enrichment key's values.
 const enrichmentFacetPrefix = "enrichment:"
 
-// enrichmentFacetSQL counts the matches of cond per string value, or list
-// item, of the current value of the key and instance in args $key and $inst.
-// A lateral join looks the value up once; a scalar subquery reruns per use.
-func enrichmentFacetSQL(k *Kind, cond, key, inst string) string {
-	return `SELECT x.v, count(*)::int FROM ` + from(k) + `,
-		LATERAL (SELECT e.value FROM enrichment e WHERE e.card_id = c.id AND e.key = ` + key + ` AND e.instance_id = ` + inst + `
-			ORDER BY e.revision_id DESC, e.created_at DESC, e.id DESC LIMIT 1) m,
+// enrichmentFacetSQL counts the matches of cond per key and string value, or
+// list item, of the current values of the keys in arg $keys from instance
+// $inst, the top 100 values of each key. One pass over the matches serves
+// every key, and a lateral join looks each card's values up once.
+func enrichmentFacetSQL(k *Kind, cond, keys, inst string) string {
+	return `SELECT key, v, n FROM (
+		SELECT m.key, x.v, count(*)::int AS n, row_number() OVER (PARTITION BY m.key ORDER BY count(*) DESC, x.v) AS rank
+		FROM ` + from(k) + `,
+		LATERAL (SELECT DISTINCT ON (e.key) e.key, e.value FROM enrichment e
+			WHERE e.card_id = c.id AND e.key = ANY(` + keys + `) AND e.instance_id = ` + inst + `
+			ORDER BY e.key, e.revision_id DESC, e.created_at DESC, e.id DESC) m,
 		LATERAL (SELECT m.value #>> '{}' AS v WHERE jsonb_typeof(m.value) = 'string'
 			UNION SELECT i #>> '{}' FROM jsonb_array_elements(CASE jsonb_typeof(m.value) WHEN 'array' THEN m.value ELSE '[]' END) i
 			WHERE jsonb_typeof(i) = 'string') x
 		WHERE ` + cond + `
-		GROUP BY x.v ORDER BY count(*) DESC, x.v LIMIT 100`
+		GROUP BY m.key, x.v) counted
+	WHERE rank <= 100 ORDER BY key, rank`
+}
+
+// enrichmentFacets fills f's enrichment facets in refs, instance to key to
+// the refs that name it, with one query per instance.
+func (l *Library) enrichmentFacets(ctx context.Context, k *Kind, cond string, args []any, refs map[int64]map[string][]string, f *Facets) error {
+	for inst, byKey := range refs {
+		n := len(args)
+		rows, err := l.pool.Query(ctx, enrichmentFacetSQL(k, cond, "$"+strconv.Itoa(n+1), "$"+strconv.Itoa(n+2)),
+			append(slices.Clone(args), slices.Collect(maps.Keys(byKey)), inst)...)
+		if err != nil {
+			return err
+		}
+		var key string
+		var count ValueCount
+		_, err = pgx.ForEachRow(rows, []any{&key, &count.Value, &count.Cards}, func() error {
+			for _, ref := range byKey[key] {
+				f.Enrichments[ref] = append(f.Enrichments[ref], count)
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // statesFacetPrefix starts a states facet that names its targets.
@@ -343,6 +374,7 @@ func statesFacetSQL(k *Kind, cond, inst string) string {
 // facet reads its named instance's values, or score's.
 func (l *Library) facets(ctx context.Context, k *Kind, names []string, cond string, args []any, score int64) (*Facets, error) {
 	f := &Facets{}
+	refs := map[int64]map[string][]string{}
 	for _, name := range names {
 		if instances, ok, err := statesFacetInstances(name); ok {
 			if err != nil {
@@ -362,19 +394,18 @@ func (l *Library) facets(ctx context.Context, k *Kind, names []string, cond stri
 			if err != nil {
 				return nil, err
 			}
-			n := len(args)
-			rows, err := l.pool.Query(ctx, enrichmentFacetSQL(k, cond, "$"+strconv.Itoa(n+1), "$"+strconv.Itoa(n+2)), append(slices.Clone(args), key, cmp.Or(inst, score))...)
-			if err != nil {
-				return nil, err
-			}
-			counts, err := pgx.CollectRows(rows, pgx.RowToStructByPos[ValueCount])
-			if err != nil {
-				return nil, err
-			}
 			if f.Enrichments == nil {
 				f.Enrichments = map[string][]ValueCount{}
 			}
-			f.Enrichments[ref] = counts
+			if _, dup := f.Enrichments[ref]; dup {
+				continue
+			}
+			f.Enrichments[ref] = []ValueCount{}
+			inst = cmp.Or(inst, score)
+			if refs[inst] == nil {
+				refs[inst] = map[string][]string{}
+			}
+			refs[inst][key] = append(refs[inst][key], ref)
 			continue
 		}
 		rows, err := l.pool.Query(ctx, facetSQL[name](k, cond), args...)
@@ -394,6 +425,9 @@ func (l *Library) facets(ctx context.Context, k *Kind, names []string, cond stri
 		if err != nil {
 			return nil, err
 		}
+	}
+	if err := l.enrichmentFacets(ctx, k, cond, args, refs, f); err != nil {
+		return nil, err
 	}
 	return f, nil
 }

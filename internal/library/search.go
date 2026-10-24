@@ -560,9 +560,11 @@ func (w *where) semantic(q Query) (string, error) {
 }
 
 // similarity is a card's cosine similarity to q's vector, as a real so a
-// cursor holds it exactly. compile's semantic condition keeps it non-null.
+// cursor holds it exactly. It is null for another length, which <=> would
+// refuse even where the cursor predicate runs before compile's condition.
 func (w *where) similarity(q Query) string {
-	return `(SELECT (1 - (e.embedding <=> ` + w.arg(vectorText(q.Embedding)) + `::vector))::real
+	return `(SELECT CASE WHEN vector_dims(e.embedding) = ` + w.arg(len(q.Embedding)) +
+		` THEN (1 - (e.embedding <=> ` + w.arg(vectorText(q.Embedding)) + `::vector))::real END
 		FROM card_embedding e WHERE e.card_id = c.id AND e.instance_id = ` + w.arg(q.EmbedInstance) + `)`
 }
 

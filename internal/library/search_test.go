@@ -1076,6 +1076,44 @@ func TestSemanticSearchSkipsVectorsOfAnotherLength(t *testing.T) {
 	}
 }
 
+func TestSemanticSearchPagesPastVectorsOfAnotherLength(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	inst := newInstanceRow(t, lib)
+	vectors := map[int64][]float32{}
+	want := map[int64]bool{}
+	for i := range 4 {
+		two, _ := newCard(t, lib, fmt.Sprintf("two%d", i), `{"name": "Brakka"}`)
+		three, _ := newCard(t, lib, fmt.Sprintf("three%d", i), `{"name": "Dorna"}`)
+		vectors[two] = []float32{1, float32(i)}
+		vectors[three] = []float32{1, 0, float32(i)}
+		want[two] = true
+	}
+	embedCards(t, lib, inst, vectors)
+
+	q := Query{Text: "smith", Semantic: true, Embedding: []float32{1, 0}, EmbedInstance: inst, Page: Page{Size: 1}}
+	got := 0
+	for {
+		res, err := lib.Search(ctx, Card, q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, id := range hitIDs(res) {
+			if !want[id] {
+				t.Fatalf("card %d has a vector of another length", id)
+			}
+			got++
+		}
+		if res.NextCursor == nil {
+			break
+		}
+		q.Page.Cursor = res.NextCursor
+	}
+	if got != len(want) {
+		t.Fatalf("paged %d cards, want %d", got, len(want))
+	}
+}
+
 func TestSemanticSearchGroupsFamilies(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()

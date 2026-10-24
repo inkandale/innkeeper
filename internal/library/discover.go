@@ -67,7 +67,7 @@ const discoverWith = `WITH RECURSIVE up AS (
 		SELECT id FROM up WHERE variant_of_id IS NULL
 		UNION SELECT x.id FROM card x JOIN fam ON x.variant_of_id = fam.id
 	), self AS MATERIALIZED (
-		SELECT c.library_id, r.content_hash, card_tag_keys(r.data) AS tags, lower(btrim(r.data->>'creator')) AS creator
+		SELECT c.library_id, r.content_hash, tag_keys(r.tags) AS tags, lower(btrim(r.data->>'creator')) AS creator
 		FROM card c JOIN card_revision r ON r.id = c.head_revision_id WHERE c.id = $1
 	)`
 
@@ -101,10 +101,10 @@ func (l *Library) SimilarCards(ctx context.Context, cardID int64, o SimilarOptio
 		sql = discoverWith + `
 		SELECT c.id, c.library_id, coalesce(r.data->>'name', ''), coalesce(r.avatar_blob, ''), x.shared::float8 / (cardinality(self.tags) + x.n - x.shared)
 		FROM self
-		JOIN card_revision r ON card_tag_keys(r.data) && self.tags
+		JOIN card_revision r ON tag_keys(r.tags) && self.tags
 		JOIN card c ON c.head_revision_id = r.id
 		CROSS JOIN LATERAL (SELECT count(*) FILTER (WHERE t = ANY(self.tags)) AS shared, count(*) AS n
-			FROM unnest(card_tag_keys(r.data)) t) x
+			FROM unnest(tag_keys(r.tags)) t) x
 		WHERE ` + discoverWhere + ` AND r.content_hash <> self.content_hash AND ($3 OR c.library_id = self.library_id)
 			AND x.shared >= ` + strconv.Itoa(minSharedTags) + ` AND $2::bigint IS NOT NULL
 		ORDER BY 5 DESC, c.id

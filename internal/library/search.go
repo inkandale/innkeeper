@@ -515,8 +515,8 @@ func (w *where) filter(f Filter) (string, error) {
 		// strpos, unlike LIKE, needs no escaping of % and _.
 		return `strpos(lower(r.data->>'name'), lower(` + w.arg(*f.Name) + `)) > 0`, nil
 	case f.Tag != nil:
-		// The card_revision_tag_keys index serves this.
-		return `card_tag_keys(r.data) @> ARRAY[lower(` + w.arg(*f.Tag) + `)]`, nil
+		// The card_revision_tag_keys_of_tags index serves this.
+		return `tag_keys(r.tags) @> ARRAY[lower(` + w.arg(*f.Tag) + `)]`, nil
 	case f.Collection != nil:
 		return `EXISTS (SELECT 1 FROM collection_card cc
 			WHERE cc.card_id = c.id AND cc.collection_id = ` + w.arg(*f.Collection) + `)`, nil
@@ -964,8 +964,13 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 	}
 	cols := `c.id, c.slug, r.id, c.archived_at, coalesce(c.archived_reason, ''), r.data, r.avatar_blob, ` + tags + `, ` + books + `, ` + targets + `, ` + cards + `, ` + entries + `, ` + enrichments
 	limit, skip := w.arg(size+1), w.arg(offset)
-	sql := `SELECT ` + cols + `, ` + famCols + `, ` + o.cursor() + `, NULL::bigint FROM ` + from(k) + `
-		WHERE ` + cond + ` AND ` + after + ` ORDER BY ` + o.sql() + ` LIMIT ` + limit + ` OFFSET ` + skip
+	page := `SELECT ` + cols + `, ` + famCols + `, ` + o.cursor() + `, NULL::bigint FROM ` + from(k) + ` WHERE `
+	sql := page + cond + ` AND ` + after + ` ORDER BY ` + o.sql() + ` LIMIT ` + limit + ` OFFSET ` + skip
+	if q.Filter != nil || text != "" {
+		// Walking the sort order, the planner bets matches come early; a filter's can be rare among recent cards.
+		sql = `WITH m AS MATERIALIZED (` + matching(k, cond) + `) ` + page + `c.id IN (SELECT id FROM m) AND ` + after +
+			` ORDER BY ` + o.sql() + ` LIMIT ` + limit + ` OFFSET ` + skip
+	}
 	if walk {
 		sql = familiesOf(k, cond, o, after) + familyPage(k, cols, mentionsArchived(q.Filter), limit, skip)
 	}

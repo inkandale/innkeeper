@@ -26,7 +26,7 @@ Spec: `docs/superpowers/specs/2026-10-23-discovery-design.md`, section "Semantic
 | `semantic` without `text` | 400 |
 | `semantic` on a lorebook search | 400 |
 | `semantic` with a sort other than `relevance` | 400; semantic results sort by similarity only |
-| `semantic` in a bulk selection (`SearchIDs`, `CountMatches`) | 400. These never embed the query. The web drops `semantic` and `text` from an all-matching selection instead. |
+| `semantic` in a bulk selection (`SearchIDs`, `CountMatches`) | 400. These never embed the query. The Cards page offers no select-all for a semantic search, only picks. |
 | Card without a vector from the embed instance, or with a vector of another length | Not a match |
 | Facet counts on the Cards page while semantic | Counted without `text`, so the page doesn't embed the query once per facet |
 

@@ -37,6 +37,31 @@ func TestClaimTakesEachJobOnce(t *testing.T) {
 	}
 }
 
+func TestClaimWaitsWhileTheSameJobRuns(t *testing.T) {
+	q := newQueue(t)
+	ctx := context.Background()
+	lib1 := Spec{Kind: "test", Payload: map[string]int{"library": 1}}
+	first, _ := q.Enqueue(ctx, lib1)
+	if c, err := q.claim(ctx, "w1", []string{"test"}, time.Minute); err != nil || c == nil || c.ID != first.ID {
+		t.Fatalf("first claim = %v, %v", c, err)
+	}
+	same, _ := q.Enqueue(ctx, lib1)
+	other, _ := q.Enqueue(ctx, Spec{Kind: "test", Payload: map[string]int{"library": 2}})
+	if c, err := q.claim(ctx, "w2", []string{"test"}, time.Minute); err != nil || c == nil || c.ID != other.ID {
+		t.Fatalf("claim while library 1 runs = %v, %v; want job %d", c, err, other.ID)
+	}
+	if c, err := q.claim(ctx, "w2", []string{"test"}, time.Minute); err != nil || c != nil {
+		t.Fatalf("claim of the same job = %v, %v; want nothing", c, err)
+	}
+	// A lease nobody renews doesn't hold the next run back.
+	if _, err := q.pool.Exec(ctx, `UPDATE job SET locked_until = now() - interval '1 second' WHERE id = $1`, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	if c, err := q.claim(ctx, "w2", []string{"test"}, time.Minute); err != nil || c == nil || c.ID != same.ID {
+		t.Fatalf("claim after the lease expired = %v, %v; want job %d", c, err, same.ID)
+	}
+}
+
 func TestReapRequeuesExpiredLease(t *testing.T) {
 	q := newQueue(t)
 	ctx := context.Background()

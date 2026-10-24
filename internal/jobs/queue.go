@@ -254,13 +254,17 @@ func (q *Queue) EnsureScheduled(ctx context.Context, kind string, every time.Dur
 }
 
 // claim marks the next due job of one of kinds as running and leases it to
-// worker. It returns nil when no job is due.
+// worker. A top-level job waits while one with its kind and payload holds a
+// lease, so repeated starts run one after another. It returns nil when no
+// job is due.
 func (q *Queue) claim(ctx context.Context, worker string, kinds []string, lease time.Duration) (*Job, error) {
 	j, err := scanJob(q.pool.QueryRow(ctx, `UPDATE job SET status = 'running', attempts = attempts + 1,
 			started_at = coalesce(started_at, now()),
 			locked_by = $1, locked_until = now() + make_interval(secs => $2)
 		WHERE id = (
-			SELECT id FROM job WHERE status = 'queued' AND run_after <= now() AND kind = ANY($3)
+			SELECT id FROM job j WHERE status = 'queued' AND run_after <= now() AND kind = ANY($3)
+				AND (parent_id IS NOT NULL OR NOT EXISTS (SELECT 1 FROM job r WHERE r.status = 'running'
+					AND r.parent_id IS NULL AND r.kind = j.kind AND r.payload = j.payload AND r.locked_until > now()))
 			ORDER BY run_after, id LIMIT 1 FOR UPDATE SKIP LOCKED)
 		RETURNING `+jobCols, worker, lease.Seconds(), kinds))
 	if errors.Is(err, ErrNotFound) {

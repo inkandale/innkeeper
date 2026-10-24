@@ -180,11 +180,8 @@ func from(k *Kind) string {
 	return k.Table + ` c JOIN ` + k.RevTable + ` r ON r.id = c.head_revision_id`
 }
 
-// tagsOf is r's string tags as rows (t.t, in card order as t.ord); non-string
-// elements like null would break scans, and a missing or non-list tags is none.
-const tagsOf = `LATERAL (SELECT e #>> '{}' AS t, ord FROM jsonb_array_elements(
-	CASE jsonb_typeof(r.data->'tags') WHEN 'array' THEN r.data->'tags' ELSE '[]' END) WITH ORDINALITY x(e, ord)
-	WHERE jsonb_typeof(e) = 'string') t`
+// tagsOf is r's string tags as rows (t.t, in card order as t.ord).
+const tagsOf = `LATERAL unnest(r.tags) WITH ORDINALITY t(t, ord)`
 
 // cardOnly names the facets and includes that need card tags, collections,
 // or linked lorebooks.
@@ -766,7 +763,7 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 		}
 		switch inc {
 		case "tags":
-			tags = `array(SELECT t.t FROM ` + tagsOf + ` ORDER BY t.ord)`
+			tags = `r.tags`
 		case "lorebooks":
 			books = `array(SELECT lorebook_id FROM card_lorebook WHERE card_id = c.id ORDER BY lorebook_id)`
 		case "cards":

@@ -43,7 +43,7 @@ type entityIn struct {
 }
 
 type searchIn struct {
-	Query   map[string]any `json:"query,omitempty" jsonschema:"The search query, as the API's POST /cards/search body: text, semantic (true to rank by meaning, with text; needs an embed instance), filter, sources (library, or catalog:<instance id> to search a catalog too), include, fields, sort, facets, page. A filter or sort on an enrichment, such as {\"enrichment\": \"quality\", \"gte\": 70}, {\"enrichment\": \"language\", \"is\": \"English\"}, or sort enrichment:quality, uses the score instance's values unless the filter names an instance. Facet enrichment:<key> counts a text or list key's values"`
+	Query   map[string]any `json:"query,omitempty" jsonschema:"The search query, as the API's POST /cards/search body: text, semantic (true to rank by meaning, with text; needs an embed instance), filter, sources (library, or catalog:<instance id> to search a catalog too), include, fields, sort, facets, page. A filter or sort on an enrichment names its instance, such as {\"enrichment\": \"language\", \"instance\": 5, \"is\": \"English\"} or sort enrichment:5:quality; one naming no instance, such as {\"enrichment\": \"quality\", \"gte\": 70}, must name a grid key and reads the grid score: each card's value from the highest-priority scorer that has one. Facet enrichment:<instance>:<key> counts a text or list key's values"`
 	Library int64          `json:"library,omitempty" jsonschema:"A library ID from list_libraries; default 1"`
 }
 
@@ -201,7 +201,7 @@ type librarySettingsIn struct {
 
 type updateLibrarySettingsIn struct {
 	Library  int64          `json:"library" jsonschema:"A library ID from list_libraries"`
-	Settings map[string]any `json:"settings" jsonschema:"The settings to change, as get_library_settings names them, each a value or null to follow the default: score_instance, hide_below, duplicates (off, exact, near), duplicate_distance (0 to 8), duplicate_keep (best, oldest, newest), duplicate_decide (an ai instance that confirms near duplicates). Settings left out don't change."`
+	Settings map[string]any `json:"settings" jsonschema:"The settings to change, as get_library_settings names them, each a value or null to follow the default: duplicates (off, exact, near), duplicate_distance (0 to 8), duplicate_keep (best, oldest, newest), duplicate_decide (an ai instance that confirms near duplicates). Settings left out don't change."`
 }
 
 type changesIn struct {
@@ -540,8 +540,8 @@ var tools = []tool{
 		func(ctx context.Context, c caller, in updateLibrarySettingsIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "PATCH", fmt.Sprintf("/libraries/%d/settings", in.Library), in.Settings)
 		}),
-	def("hide_cards", "Archive a library's cards scoring below its hide_below and its duplicates but the one duplicate_keep picks, "+
-		"recording why; cards hidden before that now pass come back. Cards the owner archived are left alone. Starts a job.", tier.Write,
+	def("hide_cards", "Archive a library's duplicates but the one duplicate_keep picks, "+
+		"recording why; cards hidden before that are no longer duplicates come back. Cards the owner archived are left alone. Starts a job.", tier.Write,
 		func(ctx context.Context, c caller, in librarySettingsIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", fmt.Sprintf("/libraries/%d/hide", in.Library), nil)
 		}),

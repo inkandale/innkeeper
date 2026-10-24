@@ -558,22 +558,21 @@ same result without moving anything. Lorebooks move through `/lorebooks/move`.
 
 ## Hiding and purging
 
-A large library, such as an imported archive, holds many weak cards and many
-copies of the same card. **Hiding** archives them, so search leaves them out,
-without deleting anything. Set it per library under Settings > Libraries, or
-with `PATCH /libraries/{id}/settings`; a library without its own value follows
-the default in `PATCH /settings`.
+A large library, such as an imported archive, holds many copies of the same
+card. **Hiding** archives the extras, so search leaves them out, without
+deleting anything. Set it per library under Settings > Libraries, or with
+`PATCH /libraries/{id}/settings`; a library without its own value follows the
+default in `PATCH /settings`. To leave weak cards out, filter by score.
 
 | Setting | Hides |
 |---|---|
-| `hide_below` | Cards whose grid score, from the library's Scores from instance, is below it |
 | `duplicates` | `exact`: cards with the same content. `near`: also cards whose text, or whose avatar under the same name, differs by at most `duplicate_distance` bits, 3 by default. A matching image alone doesn't count, since archives reuse art |
-| `duplicate_keep` | Which copy of each duplicate group stays: the `best` score, the `oldest`, or the `newest` |
+| `duplicate_keep` | Which copy of each duplicate group stays: the `best` grid score, the `oldest`, or the `newest` |
 | `duplicate_decide` | For `near`: an `ai` instance offering `ai.decide`, such as a decision model, asked whether each near pair is the same card. A pair it says isn't stays apart; one it fails on counts by distance. Exact copies aren't asked |
 
 "Hide now", `POST /libraries/{id}/hide`, or the `hide_cards` MCP tool runs a
-job that archives what the settings pick and records why: `low_score` or
-`duplicate`. A later run unarchives the cards it hid that now pass. It never
+job that archives what the settings pick and records why: `duplicate`. A later
+run unarchives the cards it hid that are no longer duplicates. It never
 touches a card you archived yourself, and archiving or unarchiving a card by
 hand clears its reason. An unarchived duplicate can be hidden again by the
 next run.

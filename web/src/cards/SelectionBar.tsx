@@ -48,7 +48,7 @@ export function SelectionBar(props: {
   const { all, total, query, library, ids, shown, onAll, onPage, onClear, onStarted, kind = "card" } = props;
   const plural = (n?: number) => (n === undefined ? `all matching ${kind}s` : `${n} ${kind}${n === 1 ? "" : "s"}`);
   const enrichers = useInstancesWith("enrich");
-  const keys = useQuery({ ...enrichmentKeysQuery(library), enabled: kind === "card" });
+  const keys = useQuery({ ...enrichmentKeysQuery, enabled: kind === "card" });
   // Lorebooks have no tags, collections, bulk export, or enrichments.
   const base =
     kind === "lorebook" ? (["push", "archive"] as const)
@@ -91,7 +91,7 @@ export function SelectionBar(props: {
   const bulk = (body: Omit<Bulk, "query">) =>
     start.mutate(async () => must(await api.POST("/bulk", { body: { query, ...kindField, ...body } })));
   const collectionId = collection ?? collections.data?.[0]?.id ?? 0;
-  const enricherId = enricher ?? keys.data?.instance_id ?? enrichers[0]?.id ?? 0;
+  const enricherId = enricher ?? keys.data?.scorers?.[0]?.instance ?? enrichers[0]?.id ?? 0;
   const enricherLabel = enrichers.find((i) => i.id === enricherId)?.label ?? "the plugin";
   const enricherPlugin = instances.data?.find((i) => i.id === enricherId)?.plugin;
   const maxCards = plugins.data?.find((p) => p.name === enricherPlugin)?.enrich_max_cards;

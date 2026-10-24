@@ -11,7 +11,7 @@ export const targetStates: TargetIs[] = ["in_sync", "ahead", "remote_changed", "
 const kinds = ["target", "state", "tag", "source", "collection", "score", "value"] as const;
 const sorts = ["relevance", "updated", "name", "created"] as const;
 const enrichmentSort = /^enrichment:(?:[1-9]\d*:)?[a-z][a-z0-9_]*$/;
-// Score and value terms name their key as instance:key; a bare key, from older links, reads the score instance.
+// Score and value terms name their key as instance:key; a bare grid key reads the grid score.
 const ref = String.raw`(?:([1-9]\d*):)?([a-z][a-z0-9_]*)`;
 // A score term's value: key:low..high, either end optional, or key:none for cards without a value.
 const num = String.raw`-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?`;
@@ -48,7 +48,7 @@ export const sectionsFor = (entity: "card" | "lorebook"): TermKind[] =>
 /** matchesAll says whether a section can switch between any and all: a card has one state, and targets go with states. */
 export const matchesAll = (section: string) => section !== "target" && section !== "state" && section !== "score";
 
-/** keyRef names an enrichment key as terms, sorts, and facets do: instance:key, or key alone for the score instance. */
+/** keyRef names an enrichment key as terms, sorts, and facets do: instance:key, or a grid key alone for the grid score. */
 export const keyRef = (instance: number | undefined, key: string) => (instance ? `${instance}:${key}` : key);
 
 /** Score is a score term's value: a range, or none for cards without a value. */
@@ -84,23 +84,15 @@ export function enrichmentValue(value: string): { instance?: number; key: string
 }
 
 /**
- * withScoreInstance gives the score and value terms and enrichment sort that name no instance the score instance,
- * or drops them when there is none. It returns q itself when nothing changes.
+ * withoutUnnamed drops the score and value terms and enrichment sort that name no instance, from older links,
+ * unless they name one of gridKeys, which the core reads as the grid score. It returns q itself when nothing changes.
  */
-export function withScoreInstance(q: CardQuery, score: number | null): CardQuery {
-  let changed = false;
-  const terms = q.terms.flatMap((t): Term[] => {
-    const s = t.kind === "score" ? parseScore(t.value) : undefined;
-    const v = t.kind === "value" ? enrichmentValue(t.value) : undefined;
-    if ((!s && !v) || (s ?? v)!.instance) return [t];
-    changed = true;
-    if (!score) return [];
-    return [{ ...t, value: s ? scoreTerm({ ...s, instance: score })!.value : `${keyRef(score, v!.key)}=${v!.value}` }];
-  });
-  let sort = q.sort;
-  const key = sort.startsWith("enrichment:") ? sort.slice("enrichment:".length) : undefined;
-  if (key && !key.includes(":")) sort = score ? `enrichment:${keyRef(score, key)}` : defaultSort(q.text);
-  return changed || sort !== q.sort ? { ...q, terms, sort } : q;
+export function withoutUnnamed(q: CardQuery, gridKeys: string[]): CardQuery {
+  const kept = (ref?: { instance?: number; key: string }) => !ref || ref.instance !== undefined || gridKeys.includes(ref.key);
+  const terms = q.terms.filter((t) => kept(t.kind === "score" ? parseScore(t.value) : t.kind === "value" ? enrichmentValue(t.value) : undefined));
+  const key = q.sort.startsWith("enrichment:") ? q.sort.slice("enrichment:".length) : undefined;
+  const sort = key && !key.includes(":") && !gridKeys.includes(key) ? defaultSort(q.text) : q.sort;
+  return terms.length !== q.terms.length || sort !== q.sort ? { ...q, terms, sort } : q;
 }
 
 /** setScore replaces the score term for s's instance and key with s's. */
@@ -236,7 +228,7 @@ export function toSearch(q: CardQuery, scores = false): Search {
     sort: q.semantic ? "relevance" : q.sort,
     filter: filterFor(q.terms, q.sharesSource, q.all),
     fields: ["name", "avatar"],
-    include: ["tags", "lorebooks", "targets", ...(scores ? ["enrichments"] : [])],
+    include: ["tags", "lorebooks", "targets", ...(scores ? ["score"] : [])],
     page: { size: q.size, number: q.page },
   };
 }

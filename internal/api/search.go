@@ -73,8 +73,7 @@ func (s *Server) search(ctx context.Context, k *library.Kind, q library.Query) (
 	out := &searchOut{Body: searchResults{Results: library.Results{Hits: []library.Hit{}}}}
 	if len(rest) > 0 || len(catalogs) == 0 {
 		q.Sources = rest
-		decl, err := s.withScores(ctx, &q)
-		if err != nil {
+		if err := s.withScores(ctx, &q); err != nil {
 			return nil, s.fail(err)
 		}
 		if err := s.withEmbedding(ctx, k, &q); err != nil {
@@ -88,7 +87,6 @@ func (s *Server) search(ctx context.Context, k *library.Kind, q library.Query) (
 		if err != nil {
 			return nil, s.fail(err)
 		}
-		shownOnHits(res.Hits, decl)
 		out.Body.Results = res
 	}
 	// Catalogs return only their first page, so later library pages leave them out.

@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import { enrichmentText, Tile, type Hit, type Names } from "./Tile";
+import { enrichmentText, Tile, type Hit, type Names, type Scorer } from "./Tile";
 
 const names: Names = {
   instances: new Map([
@@ -18,7 +18,7 @@ function renderTile(targets: Hit["targets"]) {
   const hit: Hit = { id: 7, slug: "brakka", revision_id: 1, fields: { name: "Brakka" }, targets };
   render(
     <MemoryRouter>
-      <Tile hit={hit} names={names} pick={{ selected: false, locked: false, onPick: () => {} }} />
+      <Tile hit={hit} names={names} pick={{ selected: false, locked: false, onPick: () => {} }} scorers={new Map()} />
     </MemoryRouter>,
   );
 }
@@ -57,34 +57,55 @@ test("enrichment values format by their range", () => {
 
 test("a text grid key shows truncated, with the whole value in its title", () => {
   const long = "A very long summary of the card that goes on and on";
-  const hit: Hit = { id: 7, slug: "brakka", revision_id: 1, fields: { name: "Brakka" }, enrichments: { summary: { value: long, stale: false } } };
+  const hit: Hit = { id: 7, slug: "brakka", revision_id: 1, fields: { name: "Brakka" }, score: { instance: 4, key: "summary", value: long, stale: false } };
+  const scorers = new Map<number, Scorer>([[4, { key: { key: "summary", label: "Summary", type: "text" } }]]);
   render(
     <MemoryRouter>
-      <Tile hit={hit} names={names} pick={{ selected: false, locked: false, onPick: () => {} }} grid={{ key: "summary", label: "Summary", type: "text" }} />
+      <Tile hit={hit} names={names} pick={{ selected: false, locked: false, onPick: () => {} }} scorers={scorers} />
     </MemoryRouter>,
   );
   expect(screen.getByRole("img", { name: `Summary ${long}` })).toHaveClass("score", "text");
 });
 
-function renderScore(value: number, stale = false) {
-  const hit: Hit = { id: 7, slug: "brakka", revision_id: 1, fields: { name: "Brakka" }, enrichments: { lint: { value, stale } } };
+const ranked = new Map<number, Scorer>([
+  [5, { key: { key: "quality", label: "Quality", type: "score", range: [0, 100] }, medal: "gold" }],
+  [6, { key: { key: "quality", label: "Crucible quality", type: "score", range: [0, 100] }, medal: "silver" }],
+  [7, { key: { key: "lint", label: "Lint", type: "score", range: [0, 100] }, medal: "bronze" }],
+  [8, { key: { key: "score", label: "Other", type: "score", range: [0, 100] } }],
+]);
+
+function renderScore(instance: number, key: string, value: number, stale = false) {
+  const hit: Hit = { id: 7, slug: "brakka", revision_id: 1, fields: { name: "Brakka" }, score: { instance, key, value, stale } };
   render(
     <MemoryRouter>
-      <Tile hit={hit} names={names} pick={{ selected: false, locked: false, onPick: () => {} }} grid={{ key: "lint", label: "Lint", type: "score", range: [0, 100] }} />
+      <Tile hit={hit} names={names} pick={{ selected: false, locked: false, onPick: () => {} }} scorers={ranked} />
     </MemoryRouter>,
   );
-  return screen.getByRole("img", { name: stale ? `Lint ${value}, stale: from an older revision` : `Lint ${value}` });
 }
 
-test("a score badge names its key and bands by where the value falls in the range, higher being better", () => {
-  expect(renderScore(80)).toHaveTextContent("Lint 80");
-  expect(screen.getByRole("img", { name: "Lint 80" })).toHaveClass("score", "good");
+test("a score badge wears its scorer's medal and names the key in its title", () => {
+  renderScore(5, "quality", 80);
+  expect(screen.getByRole("img", { name: "Quality 80" })).toHaveClass("score", "gold");
+  expect(screen.getByRole("img", { name: "Quality 80" })).toHaveTextContent("★ 80");
   cleanup();
-  expect(renderScore(65)).toHaveClass("fair");
+  renderScore(6, "quality", 65);
+  expect(screen.getByRole("img", { name: "Crucible quality 65" })).toHaveClass("silver");
   cleanup();
-  expect(renderScore(0)).toHaveClass("poor");
+  renderScore(7, "lint", 40);
+  expect(screen.getByRole("img", { name: "Lint 40" })).toHaveClass("bronze");
+  cleanup();
+  renderScore(8, "score", 30);
+  const plain = screen.getByRole("img", { name: "Other 30" });
+  expect(plain).toHaveTextContent(/^30$/);
+  expect(plain).not.toHaveClass("gold");
 });
 
-test("a stale score keeps its band and dims", () => {
-  expect(renderScore(90, true)).toHaveClass("good", "stale");
+test("a stale score keeps its medal and dims", () => {
+  renderScore(5, "quality", 90, true);
+  expect(screen.getByRole("img", { name: "Quality 90, stale: from an older revision" })).toHaveClass("gold", "stale");
+});
+
+test("a score from an instance that is no scorer shows no badge", () => {
+  renderScore(9, "quality", 90);
+  expect(screen.queryByRole("img", { name: /90/ })).not.toBeInTheDocument();
 });

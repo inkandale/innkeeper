@@ -5,45 +5,28 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"net/http"
 	"reflect"
 	"slices"
-	"strconv"
 
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/inkandale/innkeeper/internal/enrich"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
-	"github.com/inkandale/innkeeper/internal/libsettings"
 	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/internal/tier"
 	"github.com/inkandale/innkeeper/protocol"
 )
 
-// withScores sets q's score instance, if q uses enrichments, and returns its
-// plugin's declarations.
-func (s *Server) withScores(ctx context.Context, q *library.Query) (map[string]protocol.Enrichment, error) {
-	if !q.UsesEnrichments() {
-		return nil, nil
+// withScores sets q's scorers, if q may read the grid score.
+func (s *Server) withScores(ctx context.Context, q *library.Query) error {
+	if !q.UsesScore() {
+		return nil
 	}
-	inst, err := s.libSettings().ScoreInstance(ctx, cmp.Or(q.Library, library.DefaultLibrary))
-	if inst == nil {
-		return nil, err
-	}
-	q.ScoreInstance = inst.ID
-	return s.Registry.Manifests()[inst.Plugin].Enrichments, nil
-}
-
-// shownOnHits keeps the enrichments that hits carry: score keys and the grid key.
-func shownOnHits(hits []library.Hit, decl map[string]protocol.Enrichment) {
-	for _, h := range hits {
-		maps.DeleteFunc(h.Enrichments, func(k string, _ library.HitEnrichment) bool {
-			d := decl[k]
-			return d.Type != "score" && !d.Grid
-		})
-	}
+	var err error
+	q.Scorers, err = s.libSettings().Scorers(ctx)
+	return err
 }
 
 // searchIDs is library.SearchIDs with the score instance, for a bulk
@@ -53,7 +36,7 @@ func (s *Server) searchIDs(ctx context.Context, k *library.Kind, q library.Query
 	if q.Library, err = s.checkLibrary(ctx, q.Library); err != nil {
 		return nil, err
 	}
-	if _, err := s.withScores(ctx, &q); err != nil {
+	if err := s.withScores(ctx, &q); err != nil {
 		return nil, err
 	}
 	return s.Lib.SearchIDs(ctx, k, q)
@@ -90,8 +73,8 @@ type enrichmentInstance struct {
 
 type enrichmentKeysOut struct {
 	Body struct {
-		InstanceID *int64               `json:"instance_id" doc:"The score instance, or null when there is none."`
-		Instances  []enrichmentInstance `json:"instances" doc:"Each enabled enrich instance, with the keys its plugin declares."`
+		Scorers   []library.Scorer     `json:"scorers" doc:"The grid keys a card's grid score reads, highest priority first."`
+		Instances []enrichmentInstance `json:"instances" doc:"Each enabled enrich instance, with the keys its plugin declares."`
 	}
 }
 
@@ -128,14 +111,14 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 				if q.Library, err = s.checkLibrary(ctx, q.Library); err != nil {
 					return nil, err
 				}
-				if _, err := s.withScores(ctx, &q); err != nil {
+				if err := s.withScores(ctx, &q); err != nil {
 					return nil, s.fail(err)
 				}
 				if n, err = s.Lib.CountMatches(ctx, library.Card, q); err != nil {
 					return nil, s.fail(err)
 				}
 				q.Page = library.Page{}
-				p.Query, p.ScoreInstance = &q, q.ScoreInstance
+				p.Query, p.Scorers = &q, q.Scorers
 			} else {
 				p.CardIDs = slices.Compact(slices.Sorted(slices.Values(b.CardIDs)))
 				n = len(p.CardIDs)
@@ -183,23 +166,16 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 
 	huma.Register(api, huma.Operation{OperationID: "list-enrichment-keys", Method: http.MethodGet, Path: "/enrichments/keys",
 		Summary: "List enrichment keys", Tags: tags,
-		Description: "The library's score instance, and the keys each enabled enrich instance's plugin declares: those that enrichment filters and sort can use, naming the instance."},
-		func(ctx context.Context, in *libraryQuery) (*enrichmentKeysOut, error) {
-			lib, err := s.checkLibrary(ctx, in.Library)
-			if err != nil {
-				return nil, err
-			}
-			score, err := s.libSettings().ScoreInstance(ctx, lib)
-			if err != nil {
+		Description: "The scorers, and the keys each enabled enrich instance's plugin declares: those that enrichment filters and sort can use, naming the instance."},
+		func(ctx context.Context, _ *struct{}) (*enrichmentKeysOut, error) {
+			out := &enrichmentKeysOut{}
+			var err error
+			if out.Body.Scorers, err = s.libSettings().Scorers(ctx); err != nil {
 				return nil, s.fail(err)
 			}
 			insts, err := s.libSettings().Enrichers(ctx)
 			if err != nil {
 				return nil, s.fail(err)
-			}
-			out := &enrichmentKeysOut{}
-			if score != nil {
-				out.Body.InstanceID = &score.ID
 			}
 			out.Body.Instances = []enrichmentInstance{}
 			for _, inst := range insts {
@@ -237,25 +213,4 @@ func (o optional[T]) Schema(r huma.Registry) *huma.Schema {
 	schema := *r.Schema(reflect.TypeFor[T](), false, "")
 	schema.Nullable = true
 	return &schema
-}
-
-// setScoreInstance stores the score_instance setting, the core's for a nil
-// lib and library lib's override otherwise: an enrich instance, or none for nil.
-func (s *Server) setScoreInstance(ctx context.Context, lib *int64, id *int64) error {
-	v := ""
-	if id != nil {
-		// A broken instance may be picked, once it is an enrich instance; it may be fixed later.
-		info, err := s.Registry.GetInstance(ctx, *id)
-		if err != nil {
-			return s.fail(err)
-		}
-		if !s.Registry.HasCapability(info.Plugin, protocol.CapabilityEnrich) {
-			return huma.Error400BadRequest(fmt.Sprintf("plugin %s can't enrich", info.Plugin))
-		}
-		v = strconv.FormatInt(*id, 10)
-	}
-	if lib == nil {
-		return s.fail(s.Registry.SetSetting(ctx, libsettings.ScoreInstanceKey, v))
-	}
-	return s.fail(s.Lib.SetLibrarySetting(ctx, *lib, libsettings.ScoreInstanceKey, v))
 }

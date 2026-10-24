@@ -47,17 +47,15 @@ func setSetting[T comparable](ctx context.Context, s *Server, o libsettings.Opti
 // HideOptionsIn are the hide settings a settings PATCH may change, each a
 // value or null.
 type HideOptionsIn struct {
-	HideBelow         optional[float64] `json:"hide_below,omitempty" doc:"Hide cards whose grid score is below this."`
-	Duplicates        optional[string]  `json:"duplicates,omitempty" doc:"off, exact, or near."`
-	DuplicateDistance optional[int]     `json:"duplicate_distance,omitempty" doc:"0 to 8."`
-	DuplicateKeep     optional[string]  `json:"duplicate_keep,omitempty" doc:"best, oldest, or newest."`
-	DuplicateDecide   optional[int64]   `json:"duplicate_decide,omitempty" doc:"An ai instance offering ai.decide, which confirms near duplicates."`
+	Duplicates        optional[string] `json:"duplicates,omitempty" doc:"off, exact, or near."`
+	DuplicateDistance optional[int]    `json:"duplicate_distance,omitempty" doc:"0 to 8."`
+	DuplicateKeep     optional[string] `json:"duplicate_keep,omitempty" doc:"best, oldest, or newest."`
+	DuplicateDecide   optional[int64]  `json:"duplicate_decide,omitempty" doc:"An ai instance offering ai.decide, which confirms near duplicates."`
 }
 
 // set stores each sent setting, for library lib or, for a nil lib, the core.
 func (in HideOptionsIn) set(ctx context.Context, s *Server, lib *int64) error {
 	for _, f := range []func() error{
-		func() error { return setSent(ctx, s, lib, libsettings.HideBelow, in.HideBelow) },
 		func() error { return setSent(ctx, s, lib, libsettings.Duplicates, in.Duplicates) },
 		func() error { return setSent(ctx, s, lib, libsettings.DuplicateDistance, in.DuplicateDistance) },
 		func() error { return setSent(ctx, s, lib, libsettings.DuplicateKeep, in.DuplicateKeep) },
@@ -95,17 +93,16 @@ type hideIn struct {
 
 func (s *Server) hideRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "hide-cards", Method: http.MethodPost,
-		Path: "/libraries/{id}/hide", Summary: "Archive a library's low-scoring and duplicate cards", Tags: []string{"Libraries"},
-		Description: "Queues a job that archives, by the library's settings, each card scoring below hide_below and every " +
-			"duplicate but the one duplicate_keep picks, and records why. Cards it archived on an earlier run that now pass " +
-			"are unarchived. Cards the owner archived are left alone. Its progress counts each.",
+		Path: "/libraries/{id}/hide", Summary: "Archive a library's duplicate cards", Tags: []string{"Libraries"},
+		Description: "Queues a job that archives, by the library's settings, every duplicate but the one duplicate_keep picks, " +
+			"and records why. Cards it archived on an earlier run that are no longer duplicates are unarchived. Cards the owner archived are left alone. Its progress counts each.",
 		DefaultStatus: http.StatusAccepted},
 		func(ctx context.Context, in *hideIn) (*jobResp, error) {
 			if err := s.libraryExists(ctx, in.ID); err != nil {
 				return nil, err
 			}
 			p, err := s.libSettings().HidePayload(ctx, in.ID)
-			if errors.Is(err, libsettings.ErrNothingToHide) || errors.Is(err, libsettings.ErrNoGridScore) {
+			if errors.Is(err, libsettings.ErrNothingToHide) {
 				return nil, huma.Error400BadRequest(err.Error())
 			}
 			if err != nil {

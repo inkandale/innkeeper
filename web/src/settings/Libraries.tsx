@@ -10,7 +10,6 @@ import { JobLine } from "../cards/ImportForm";
 import { rememberedLibrary, rememberLibrary } from "../shell/library";
 import { EmbedNow } from "./EmbedFrom";
 import { Hiding } from "./Hiding";
-import { ScoresFrom } from "./ScoresFrom";
 
 function nameFrom(e: FormEvent<HTMLFormElement>): string {
   e.preventDefault();
@@ -88,7 +87,6 @@ export function Library() {
       {l ? (
         <>
           <LibraryName library={l} />
-          <ScoresFrom library={l.id} />
           <Hiding library={l.id} />
           <EmbedNow library={l.id} />
         </>

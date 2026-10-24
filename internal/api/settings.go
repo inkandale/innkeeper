@@ -20,14 +20,12 @@ import (
 type settings struct {
 	Theme          string `json:"theme" doc:"The selected theme plugin, or empty for the default theme."`
 	OnboardingDone bool   `json:"onboarding_done" doc:"Whether the owner finished or skipped the setup wizard."`
-	ScoreInstance  *int64 `json:"score_instance" doc:"The enrich instance whose values the library grid shows and hide_below reads, and that enrichment filters and sort naming no instance use, or null; a library may override it. When null and exactly one enrich instance exists, that one is used."`
 	EmbedInstance  *int64 `json:"embed_instance" doc:"The ai instance whose ai.embed every library's card vectors come from, or null for none."`
 	// The hide job's defaults; see GET /libraries/{id}/settings.
-	HideBelow         *float64 `json:"hide_below"`
-	Duplicates        string   `json:"duplicates" enum:"off,exact,near"`
-	DuplicateDistance int      `json:"duplicate_distance"`
-	DuplicateKeep     string   `json:"duplicate_keep" enum:"best,oldest,newest"`
-	DuplicateDecide   *int64   `json:"duplicate_decide"`
+	Duplicates        string `json:"duplicates" enum:"off,exact,near"`
+	DuplicateDistance int    `json:"duplicate_distance"`
+	DuplicateKeep     string `json:"duplicate_keep" enum:"best,oldest,newest"`
+	DuplicateDecide   *int64 `json:"duplicate_decide"`
 }
 
 type settingsOut struct{ Body settings }
@@ -36,9 +34,8 @@ type patchSettingsIn struct {
 	Body struct {
 		Theme          *string         `json:"theme,omitempty" doc:"An installed theme plugin's name, or empty for the default theme."`
 		OnboardingDone *bool           `json:"onboarding_done,omitempty" doc:"true once the owner finishes or skips the setup wizard; false shows it again."`
-		ScoreInstance  optional[int64] `json:"score_instance,omitempty" doc:"An enrich instance's ID, or null to clear it."`
 		EmbedInstance  optional[int64] `json:"embed_instance,omitempty" doc:"An ai instance's ID, or null to clear it. Setting it, even to its current value, embeds every card again."`
-		// Null clears a setting: no hide_below, duplicates off, distance 3, keep best, no decide instance.
+		// Null clears a setting: duplicates off, distance 3, keep best, no decide instance.
 		HideOptionsIn
 	}
 }
@@ -63,26 +60,12 @@ func (s *Server) settings(ctx context.Context) (*settingsOut, error) {
 		return nil, s.fail(err)
 	}
 	out := &settingsOut{Body: settings{Theme: name, OnboardingDone: done == "true"}}
-	score, err := s.Registry.Setting(ctx, libsettings.ScoreInstanceKey)
-	if err != nil {
-		return nil, s.fail(err)
-	}
-	insts, err := s.libSettings().Enrichers(ctx)
-	if err != nil {
-		return nil, s.fail(err)
-	}
-	if i := libsettings.ScoreNamed(score, insts); i != nil {
-		out.Body.ScoreInstance = &i.ID
-	}
 	if id, err := embed.Instance(ctx, s.Registry); err != nil {
 		return nil, s.fail(err)
 	} else if id != 0 {
 		out.Body.EmbedInstance = &id
 	}
 	b := &out.Body
-	if b.HideBelow, err = libsettings.HideBelow.Core(ctx, s.libSettings()); err != nil {
-		return nil, s.fail(err)
-	}
 	dups, err := libsettings.Duplicates.Core(ctx, s.libSettings())
 	if err != nil {
 		return nil, s.fail(err)
@@ -123,11 +106,6 @@ func (s *Server) settingsRoutes(api huma.API) {
 				}
 				if err := s.Registry.SetSetting(ctx, "onboarding_done", v); err != nil {
 					return nil, s.fail(err)
-				}
-			}
-			if in.Body.ScoreInstance.Sent {
-				if err := s.setScoreInstance(ctx, nil, in.Body.ScoreInstance.Value); err != nil {
-					return nil, err
 				}
 			}
 			if in.Body.EmbedInstance.Sent {

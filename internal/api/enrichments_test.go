@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -231,36 +232,6 @@ func TestEnrichRunOverAQuery(t *testing.T) {
 	}
 }
 
-func TestSettingsForgetADeletedScoreInstance(t *testing.T) {
-	e := newEnrichEnv(t)
-	second, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "judge", Name: new("Second")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	e.call("PATCH", "/settings", map[string]any{"score_instance": second}, 200, nil)
-	e.call("DELETE", fmt.Sprintf("/instances/%d", second), nil, 204, nil)
-	var s settings
-	e.call("GET", "/settings", nil, 200, &s)
-	if s.ScoreInstance != nil {
-		t.Fatalf("settings = %+v", s)
-	}
-}
-
-func TestSettingsIgnoreADisabledScoreInstance(t *testing.T) {
-	e := newEnrichEnv(t)
-	second, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "judge", Name: new("Second")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	e.call("PATCH", "/settings", map[string]any{"score_instance": second}, 200, nil)
-	e.call("PATCH", fmt.Sprintf("/instances/%d", second), map[string]any{"disabled": true}, 200, nil)
-	var s settings
-	e.call("GET", "/settings", nil, 200, &s)
-	if s.ScoreInstance != nil {
-		t.Fatalf("settings = %+v", s)
-	}
-}
-
 func TestEnrichRunFailsWhenEveryBatchFails(t *testing.T) {
 	e := newEnrichEnv(t)
 	j, p := e.evaluate(e.instID, 999998, 999999)
@@ -317,17 +288,16 @@ func TestStartEnrichRunNeedsConfirmPastThePluginsCardCap(t *testing.T) {
 	}
 }
 
-func TestEnrichmentSearchUsesTheScoreInstance(t *testing.T) {
+func TestGridScoreReadsTheHighestPriorityScorer(t *testing.T) {
 	e := newEnrichEnv(t)
 	high := e.card("High", strings.Repeat("x", 90))
 	low := e.card("Low", strings.Repeat("x", 20))
 	none := e.card("None", "x")
 	e.evaluate(e.instID, high, low)
 
-	// The only enrich instance is the score instance.
 	var keys enrichmentKeysOut
 	e.call("GET", "/enrichments/keys", nil, 200, &keys.Body)
-	if keys.Body.InstanceID == nil || *keys.Body.InstanceID != e.instID || len(keys.Body.Instances) != 1 {
+	if !slices.Equal(keys.Body.Scorers, []library.Scorer{{Instance: e.instID, Key: "quality"}}) || len(keys.Body.Instances) != 1 {
 		t.Fatalf("keys = %+v", keys.Body)
 	}
 	if k := keys.Body.Instances[0].Keys; len(k) != 3 || k[0].Key != "quality" || !k[0].Grid || k[1].Key != "summary" {
@@ -347,61 +317,50 @@ func TestEnrichmentSearchUsesTheScoreInstance(t *testing.T) {
 	if got := ids(e.search(map[string]any{"filter": map[string]any{"enrichment": "quality", "missing": true}}, 200)); !slices.Equal(got, []int64{none}) {
 		t.Fatalf("missing = %v", got)
 	}
-	res := e.search(map[string]any{"sort": "enrichment:quality", "include": []string{"enrichments"}}, 200)
+	res := e.search(map[string]any{"sort": "enrichment:quality", "include": []string{"score"}}, 200)
 	if got := ids(res); !slices.Equal(got, []int64{high, low, none}) {
 		t.Fatalf("sorted = %v", got)
 	}
-	if v := res.Hits[0].Enrichments["quality"]; string(v.Value) != "90" || v.Stale || len(res.Hits[0].Enrichments) != 2 {
-		t.Fatalf("included = %+v, want the score keys only", res.Hits[0].Enrichments)
+	if v := res.Hits[0].Score; v == nil || v.Instance != e.instID || v.Key != "quality" || string(v.Value) != "90" || v.Stale {
+		t.Fatalf("included = %+v", v)
 	}
+	// A key naming no instance must be a grid key.
+	e.search(map[string]any{"filter": map[string]any{"enrichment": "voice", "gte": 1}}, 400)
 
-	// A second instance with no setting leaves no score instance.
-	second, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "judge", Name: new("Second")})
+	// A higher-priority scorer goes first, and wins for the cards it scored.
+	critic := *e.manifests["judge"]
+	critic.Name, critic.Command = "critic", []string{critic.Command[0], "-caps=enrich", "-name=critic"}
+	critic.Enrichments = maps.Clone(critic.Enrichments)
+	grid := critic.Enrichments["quality"]
+	grid.Priority = 200
+	critic.Enrichments["quality"] = grid
+	e.manifests["critic"] = &critic
+	second, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "critic", Name: new("Critic")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.search(map[string]any{"filter": quality}, 400)
-	e.search(map[string]any{"sort": "enrichment:quality"}, 400)
+	e.evaluate(second, low)
 	e.call("GET", "/enrichments/keys", nil, 200, &keys.Body)
-	if keys.Body.InstanceID != nil || len(keys.Body.Instances) != 2 || keys.Body.Instances[1].ID != second || len(keys.Body.Instances[1].Keys) != 3 {
-		t.Fatalf("keys without a score instance = %+v", keys.Body)
+	if !slices.Equal(keys.Body.Scorers, []library.Scorer{{Instance: second, Key: "quality"}, {Instance: e.instID, Key: "quality"}}) {
+		t.Fatalf("scorers = %+v", keys.Body.Scorers)
 	}
-	// A filter or sort that names its instance needs no score instance.
-	named := map[string]any{"enrichment": "quality", "gte": 50, "instance": e.instID}
-	if got := ids(e.search(map[string]any{"filter": named, "sort": fmt.Sprintf("enrichment:%d:quality", e.instID)}, 200)); !slices.Equal(got, []int64{high}) {
-		t.Fatalf("named instance without a score instance = %v", got)
+	res = e.search(map[string]any{"sort": "enrichment:quality", "include": []string{"score"}}, 200)
+	if got := ids(res); !slices.Equal(got, []int64{high, low, none}) || res.Hits[0].Score.Instance != e.instID || res.Hits[1].Score.Instance != second {
+		t.Fatalf("ranked = %v, %+v, %+v", got, res.Hits[0].Score, res.Hits[1].Score)
 	}
-	// Bulk selections use the same rule.
-	e.call("POST", "/bulk", map[string]any{"action": "tag", "tags": []string{"good"}, "query": map[string]any{"filter": quality}}, 400, nil)
-
-	// The second instance has no values, so its filter matches nothing.
-	var s settings
-	e.call("PATCH", "/settings", map[string]any{"score_instance": second}, 200, &s)
-	if s.ScoreInstance == nil || *s.ScoreInstance != second {
-		t.Fatalf("settings = %+v", s)
+	// A filter or sort that names its instance reads only that instance.
+	named := map[string]any{"enrichment": "quality", "gte": 1, "instance": second}
+	if got := ids(e.search(map[string]any{"filter": named, "sort": fmt.Sprintf("enrichment:%d:quality", second)}, 200)); !slices.Equal(got, []int64{low}) {
+		t.Fatalf("named instance = %v", got)
 	}
-	if got := ids(e.search(map[string]any{"filter": quality}, 200)); len(got) != 0 {
-		t.Fatalf("second instance's gte 50 = %v", got)
-	}
-	e.call("PATCH", "/settings", map[string]any{"score_instance": e.instID}, 200, &s)
-	if got := ids(e.search(map[string]any{"filter": quality}, 200)); !slices.Equal(got, []int64{high}) {
-		t.Fatalf("first instance's gte 50 = %v", got)
-	}
-	e.call("PATCH", "/settings", map[string]any{"score_instance": e.importID}, 400, nil)
-	e.markBroken(e.importID, "boom")
-	e.call("PATCH", "/settings", map[string]any{"score_instance": e.importID}, 400, nil)
-	e.call("PATCH", "/settings", map[string]any{"score_instance": 999999}, 404, nil)
-	e.call("PATCH", "/settings", map[string]any{"theme": ""}, 200, &s)
-	if s.ScoreInstance == nil || *s.ScoreInstance != e.instID {
-		t.Fatalf("a patch without score_instance changed it: %+v", s)
-	}
-	e.call("PATCH", "/settings", map[string]any{"score_instance": nil}, 200, &s)
-	if s.ScoreInstance != nil {
-		t.Fatalf("after null: %+v", s)
+	// A disabled instance scores nothing.
+	e.call("PATCH", fmt.Sprintf("/instances/%d", second), map[string]any{"disabled": true}, 200, nil)
+	e.call("GET", "/enrichments/keys", nil, 200, &keys.Body)
+	if !slices.Equal(keys.Body.Scorers, []library.Scorer{{Instance: e.instID, Key: "quality"}}) {
+		t.Fatalf("scorers with one disabled = %+v", keys.Body.Scorers)
 	}
 
 	// search_cards over MCP takes the same filters.
-	e.call("PATCH", "/settings", map[string]any{"score_instance": e.instID}, 200, nil)
 	text := tool(t, e.mcpClient(tier.Read), "search_cards", map[string]any{"query": map[string]any{"filter": quality}}, false)
 	var mres library.Results
 	if err := json.Unmarshal([]byte(text), &mres); err != nil || !slices.Equal(ids(mres), []int64{high}) {

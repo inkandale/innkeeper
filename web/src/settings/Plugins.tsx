@@ -7,7 +7,6 @@ import { useConfirm } from "../shell/ConfirmDialog";
 import { Menu } from "../shell/Menu";
 import { useToast } from "../shell/Toasts";
 import { EmbedFrom } from "./EmbedFrom";
-import { ScoresFrom } from "./ScoresFrom";
 
 export type Plugin = components["schemas"]["PluginOut"];
 export type InstanceInfo = components["schemas"]["InstanceInfo"];
@@ -233,7 +232,6 @@ export function Plugins() {
           {catalog.isFetching ? "Checking…" : "Check for updates"}
         </button>
       </div>
-      <ScoresFrom />
       <EmbedFrom />
       {showRecommended && (
         <p className="created" role="status">

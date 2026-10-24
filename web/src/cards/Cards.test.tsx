@@ -48,7 +48,7 @@ let libraryIds: number[];
 beforeEach(() => {
   libraryIds = [1, 2, 3];
   localStorage.clear();
-  keys = { instance_id: null, instances: [] };
+  keys = { scorers: [], instances: [] };
   judgeMax = undefined;
   embedInstance = null;
   settingsGate = undefined;
@@ -78,9 +78,9 @@ beforeEach(() => {
           return json({ hits: [], total: 1, facets: { states: [{ is: "ahead", cards: 1 }] } });
         if (body.facets_only && body.facets?.includes("targets"))
           return json({ hits: [], total: 1, facets: { targets: [{ instance: 2, is: "ahead", cards: 1 }] } });
-        if (body.include?.includes("enrichments")) {
-          const scores: Record<number, unknown> = { 7: { quality: { value: 78, stale: false } }, 8: { quality: { value: 40, stale: true } } };
-          return json({ ...results, hits: results.hits.map((h) => ({ ...h, enrichments: scores[h.id] })) });
+        if (body.include?.includes("score")) {
+          const scores: Record<number, unknown> = { 7: { instance: 5, key: "quality", value: 78, stale: false }, 8: { instance: 5, key: "quality", value: 40, stale: true } };
+          return json({ ...results, hits: results.hits.map((h) => ({ ...h, score: scores[h.id] })) });
         }
         return json(family ? { ...results, hits: [{ ...results.hits[0]!, family }, ...results.hits.slice(1)] } : results);
       }
@@ -601,23 +601,24 @@ const judgeKeys = [
   { key: "quality", label: "Quality", type: "score", range: [0, 100], grid: true },
   { key: "summary", label: "Summary", type: "text" },
 ];
-const scored = { instance_id: 5, instances: [{ id: 5, label: "Judge", keys: judgeKeys }] };
+const scored = { scorers: [{ instance: 5, key: "quality" }], instances: [{ id: 5, label: "Judge", keys: judgeKeys }] };
 
-test("tiles show the grid score, dimmed when stale", async () => {
+test("tiles show the grid score on the top scorer's gold medal, dimmed when stale", async () => {
   keys = scored;
   renderCards("/cards");
   const fresh = await screen.findByRole("img", { name: "Quality 78" });
+  expect(fresh).toHaveClass("gold");
   expect(fresh).not.toHaveClass("stale");
   const stale = screen.getByRole("img", { name: "Quality 40, stale: from an older revision" });
   expect(stale).toHaveClass("stale");
-  expect(searches).toContainEqual(expect.objectContaining({ include: ["tags", "lorebooks", "targets", "enrichments"] }));
+  expect(searches).toContainEqual(expect.objectContaining({ include: ["tags", "lorebooks", "targets", "score"] }));
 });
 
-test("without a score instance the grid asks for no scores", async () => {
+test("without a scorer the grid asks for no scores", async () => {
   renderCards("/cards");
   await screen.findByText("Brakka");
   expect(screen.queryByRole("img", { name: /^Quality/ })).not.toBeInTheDocument();
-  expect(searches).not.toContainEqual(expect.objectContaining({ include: expect.arrayContaining(["enrichments"]) }));
+  expect(searches).not.toContainEqual(expect.objectContaining({ include: expect.arrayContaining(["score"]) }));
 });
 
 test("a score range filters, and Not evaluated replaces it", async () => {
@@ -681,7 +682,7 @@ test("Evaluate re-scores cards already scored when asked", async () => {
 });
 
 test("a list key's values count in the sidebar, and a click filters on one", async () => {
-  keys = { instance_id: 5, instances: [{ id: 5, label: "Lint", keys: [{ key: "problems", label: "Problems", type: "list" }] }] };
+  keys = { scorers: [], instances: [{ id: 5, label: "Lint", keys: [{ key: "problems", label: "Problems", type: "list" }] }] };
   const { router } = renderCards("/cards");
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: /^Markup\s*3/ }));
@@ -700,7 +701,7 @@ test("a list key's values count in the sidebar, and a click filters on one", asy
 });
 
 test("value sections with nothing picked share one count search", async () => {
-  keys = { instance_id: 5, instances: [{ id: 5, label: "Lint", keys: [{ key: "problems", label: "Problems", type: "list" }, { key: "language", label: "Language", type: "text" }] }] };
+  keys = { scorers: [], instances: [{ id: 5, label: "Lint", keys: [{ key: "problems", label: "Problems", type: "list" }, { key: "language", label: "Language", type: "text" }] }] };
   renderCards("/cards");
   const user = userEvent.setup();
   const valueCounts = () => searches.map((s) => (s as { facets?: string[] }).facets ?? []).filter((f) => f.some((n) => n.startsWith("enrichment:")));
@@ -717,7 +718,7 @@ test("value sections with nothing picked share one count search", async () => {
 
 test("each instance's value sections share their own count search", async () => {
   keys = {
-    instance_id: 5,
+    scorers: [],
     instances: [
       { id: 5, label: "Lint", keys: [{ key: "problems", label: "Problems", type: "list" }, { key: "language", label: "Language", type: "text" }] },
       { id: 7, label: "Judge", keys: [{ key: "pov", label: "POV", type: "text" }] },
@@ -745,18 +746,16 @@ test("Evaluate past the plugin's limit asks before sending confirm", async () =>
   await waitFor(() => expect(posts).toEqual([{ path: "/api/enrichments/runs", body: expect.objectContaining({ instance_id: 5, confirm: true }) }]));
 });
 
-test("a score filter and sort from an older link read the score instance", async () => {
+test("a score filter and sort from an older link on a grid key read the grid score", async () => {
   keys = scored;
   renderCards("/cards?f=score:quality:70..&sort=enrichment:quality");
-  await waitFor(() =>
-    expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "quality", instance: 5, gte: 70 }] }, sort: "enrichment:5:quality" })),
-  );
-  expect(screen.getByRole("slider", { name: "Quality at least" })).toHaveValue("70");
+  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "quality", gte: 70 }] }, sort: "enrichment:quality" })));
+  expect(screen.queryByText(/from this link are off/)).not.toBeInTheDocument();
 });
 
-test("without a score instance, score filters and sort from an older link are dropped with a note", async () => {
+test("without a scorer, score filters and sort from an older link are dropped with a note", async () => {
   renderCards("/cards?f=score:quality:70..&f=tag:fantasy&sort=enrichment:quality");
-  expect(await screen.findByText(/Score filters and sort from this link are off/)).toBeInTheDocument();
+  expect(await screen.findByText(/Some score filters or the sort from this link are off/)).toBeInTheDocument();
   await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ tag: "fantasy" }] }, sort: "updated" })));
   expect(searches).not.toContainEqual(expect.objectContaining({ sort: "enrichment:quality" }));
 });
@@ -766,11 +765,10 @@ const lintKeys = [
   { key: "problems", label: "Problems", type: "list" },
 ];
 
-test("with two instances and none picked, both instances' keys filter and sort, and a note says why tiles have no score", async () => {
-  keys = { instance_id: null, instances: [{ id: 5, label: "Judge", keys: judgeKeys }, { id: 7, label: "Lint", keys: lintKeys }] };
+test("with two instances, both instances' keys filter and sort", async () => {
+  keys = { scorers: [{ instance: 5, key: "quality" }], instances: [{ id: 5, label: "Judge", keys: judgeKeys }, { id: 7, label: "Lint", keys: lintKeys }] };
   const { router } = renderCards("/cards");
-  expect(await screen.findByText(/Tiles show no score: more than one instance gives scores/)).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Judge" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Judge" })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "Lint" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Problems · Lint" })).toBeInTheDocument();
   expect(screen.getByRole("option", { name: "Tokens · Lint" })).toBeInTheDocument();
@@ -786,7 +784,6 @@ test("with two instances and none picked, both instances' keys filter and sort, 
       expect.objectContaining({ filter: { and: [{ enrichment: "quality", instance: 5, gte: 70 }, { enrichment: "tokens", instance: 7, lte: 2000 }] } }),
     ),
   );
-  expect(searches).not.toContainEqual(expect.objectContaining({ include: expect.arrayContaining(["enrichments"]) }));
 });
 
 const mainSearches = () => searches.filter((s) => (s as { page?: { size?: number } }).page?.size === 48);

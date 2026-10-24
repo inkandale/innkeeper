@@ -4,13 +4,12 @@
 package libsettings
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"slices"
-	"strconv"
 
 	"github.com/inkandale/innkeeper/internal/bulk"
 	"github.com/inkandale/innkeeper/internal/jobs"
@@ -19,15 +18,8 @@ import (
 	"github.com/inkandale/innkeeper/protocol"
 )
 
-// ScoreInstanceKey names the enrich instance whose values a library's grid shows.
-const ScoreInstanceKey = "score_instance"
-
-var (
-	// ErrNothingToHide means a library's settings hide no cards.
-	ErrNothingToHide = errors.New("nothing to hide: set hide_below or duplicates")
-	// ErrNoGridScore means hide_below is set but no score instance shows a score on the grid.
-	ErrNoGridScore = errors.New("hide_below needs a score instance whose plugin shows a score on the grid")
-)
+// ErrNothingToHide means a library's settings hide no cards.
+var ErrNothingToHide = errors.New("nothing to hide: set duplicates")
 
 // Settings reads library and core settings.
 type Settings struct {
@@ -55,36 +47,33 @@ func (s *Settings) Enrichers(ctx context.Context) ([]plugins.InstanceInfo, error
 	return slices.DeleteFunc(insts, func(i plugins.InstanceInfo) bool { return i.Disabled }), err
 }
 
-// ScoreNamed is the enrich instance a score_instance setting's value names,
-// or nil: a deleted instance, or one whose plugin no longer enriches, reads
-// as unset.
-func ScoreNamed(v string, insts []plugins.InstanceInfo) *plugins.InstanceInfo {
-	id, err := strconv.ParseInt(v, 10, 64)
-	if i := slices.IndexFunc(insts, func(i plugins.InstanceInfo) bool { return i.ID == id }); err == nil && i >= 0 {
-		return &insts[i]
-	}
-	return nil
-}
-
-// ScoreInstance is the enrich instance whose values library lib's grid
-// shows and unnamed filters read: the score_instance setting while it names
-// an enrich instance, else the only enrich instance, else nil.
-func (s *Settings) ScoreInstance(ctx context.Context, lib int64) (*plugins.InstanceInfo, error) {
-	v, _, err := s.Get(ctx, lib, ScoreInstanceKey)
-	if err != nil {
-		return nil, err
-	}
+// Scorers are the enabled enrich instances' grid keys, highest priority
+// first, then oldest instance first.
+func (s *Settings) Scorers(ctx context.Context) ([]library.Scorer, error) {
 	insts, err := s.Enrichers(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if set := ScoreNamed(v, insts); set != nil {
-		return set, nil
+	type ranked struct {
+		library.Scorer
+		priority int
 	}
-	if len(insts) == 1 {
-		return &insts[0], nil
+	var all []ranked
+	for _, inst := range insts {
+		for k, d := range s.reg.Manifests()[inst.Plugin].Enrichments {
+			if d.Grid {
+				all = append(all, ranked{library.Scorer{Instance: inst.ID, Key: k}, d.Priority})
+			}
+		}
 	}
-	return nil, nil
+	slices.SortFunc(all, func(a, b ranked) int {
+		return cmp.Or(cmp.Compare(b.priority, a.priority), cmp.Compare(a.Instance, b.Instance))
+	})
+	out := make([]library.Scorer, len(all))
+	for i, r := range all {
+		out[i] = r.Scorer
+	}
+	return out, nil
 }
 
 // Option is a setting a library can override, stored as its JSON encoding.
@@ -133,12 +122,6 @@ func oneOf(values ...string) func(string) error {
 
 // The hide job's settings.
 var (
-	HideBelow = Option[float64]{Key: "hide_below", Check: func(v float64) error {
-		if math.IsNaN(v) || math.IsInf(v, 0) {
-			return fmt.Errorf("want a number")
-		}
-		return nil
-	}}
 	Duplicates        = Option[string]{Key: "duplicates", Def: new("off"), Check: oneOf("off", "exact", "near")}
 	DuplicateDistance = Option[int]{Key: "duplicate_distance", Def: new(3), Check: func(v int) error {
 		if v < 0 || v > library.NearDistance {
@@ -156,15 +139,11 @@ var (
 )
 
 // HidePayload is the hide job's payload for library lib from its settings.
-// It fails with ErrNothingToHide or ErrNoGridScore when the settings can't
-// run, and with the registry's error when duplicate_decide names an instance
+// It fails with ErrNothingToHide when the settings hide nothing, and with the registry's error when duplicate_decide names an instance
 // that can't decide.
 func (s *Settings) HidePayload(ctx context.Context, lib int64) (bulk.HidePayload, error) {
 	p := bulk.HidePayload{Library: lib}
 	var err error
-	if p.HideBelow, _, _, err = HideBelow.Value(ctx, s, lib); err != nil {
-		return p, err
-	}
 	var dups, keep *string
 	var dist *int
 	var decide *int64
@@ -187,35 +166,21 @@ func (s *Settings) HidePayload(ctx context.Context, lib int64) (bulk.HidePayload
 		}
 		p.Decide = *decide
 	}
-	if p.HideBelow == nil && p.Duplicates == "off" {
+	if p.Duplicates == "off" {
 		return p, ErrNothingToHide
 	}
-	inst, err := s.ScoreInstance(ctx, lib)
-	if err != nil {
-		return p, err
-	}
-	if inst != nil {
-		for k, d := range s.reg.Manifests()[inst.Plugin].Enrichments {
-			if d.Grid {
-				p.ScoreInstance, p.ScoreKey = inst.ID, k
-			}
-		}
-	}
-	if p.HideBelow != nil && p.ScoreKey == "" {
-		return p, ErrNoGridScore
-	}
-	return p, nil
+	p.Scorers, err = s.Scorers(ctx)
+	return p, err
 }
 
 // EnqueueHide queues the hide job for library lib when its settings hide
 // duplicates, so cards that just arrived don't sit beside their copies.
-// Hiding by score alone queues nothing, since arrivals change no one's score.
 // It joins a hide job already queued, so a run of arrivals queues one.
 func (s *Settings) EnqueueHide(ctx context.Context, q *jobs.Queue, lib int64) error {
 	// The caller's change has committed, so a client leaving mustn't stop the job.
 	ctx = context.WithoutCancel(ctx)
 	p, err := s.HidePayload(ctx, lib)
-	if errors.Is(err, ErrNothingToHide) || err == nil && p.Duplicates == "off" {
+	if errors.Is(err, ErrNothingToHide) {
 		return nil
 	}
 	if err != nil {

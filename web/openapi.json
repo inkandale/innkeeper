@@ -1760,14 +1760,6 @@
             "readOnly": true,
             "type": "string"
           },
-          "instance_id": {
-            "description": "The score instance, or null when there is none.",
-            "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
           "instances": {
             "description": "Each enabled enrich instance, with the keys its plugin declares.",
             "items": {
@@ -1777,10 +1769,20 @@
               "array",
               "null"
             ]
+          },
+          "scorers": {
+            "description": "The grid keys a card's grid score reads, highest priority first.",
+            "items": {
+              "$ref": "#/components/schemas/Scorer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           }
         },
         "required": [
-          "instance_id",
+          "scorers",
           "instances"
         ],
         "type": "object"
@@ -1900,7 +1902,6 @@
           },
           "archived_reason": {
             "enum": [
-              "low_score",
               "duplicate"
             ],
             "type": "string"
@@ -2477,13 +2478,6 @@
               "null"
             ]
           },
-          "enrichments": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/HitEnrichment"
-            },
-            "description": "With include enrichments: the score instance's current value of each key.",
-            "type": "object"
-          },
           "entries": {
             "description": "Lorebooks only: how many entries it has.",
             "format": "int64",
@@ -2514,6 +2508,10 @@
           "revision_id": {
             "format": "int64",
             "type": "integer"
+          },
+          "score": {
+            "$ref": "#/components/schemas/HitScore",
+            "description": "With include score: the card's grid score, from the highest-priority scorer that has one."
           },
           "slug": {
             "type": "string"
@@ -2546,9 +2544,16 @@
         ],
         "type": "object"
       },
-      "HitEnrichment": {
+      "HitScore": {
         "additionalProperties": false,
         "properties": {
+          "instance": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "key": {
+            "type": "string"
+          },
           "stale": {
             "description": "Whether the value is about an older revision than the head.",
             "type": "boolean"
@@ -2556,6 +2561,8 @@
           "value": {}
         },
         "required": [
+          "instance",
+          "key",
           "value",
           "stale"
         ],
@@ -2934,36 +2941,6 @@
         ],
         "type": "object"
       },
-      "LibrarySettingOutFloat64": {
-        "additionalProperties": false,
-        "properties": {
-          "default": {
-            "description": "The core's value, which a library without an override follows.",
-            "format": "double",
-            "type": [
-              "number",
-              "null"
-            ]
-          },
-          "overridden": {
-            "type": "boolean"
-          },
-          "value": {
-            "description": "What the library uses: its override, or the default.",
-            "format": "double",
-            "type": [
-              "number",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "value",
-          "default",
-          "overridden"
-        ],
-        "type": "object"
-      },
       "LibrarySettingOutInt": {
         "additionalProperties": false,
         "properties": {
@@ -3079,19 +3056,9 @@
           "duplicates": {
             "$ref": "#/components/schemas/LibrarySettingOutString",
             "description": "Hiding archives duplicates: off, exact (the same content), or near (text, or the avatar of a card with the same name, within duplicate_distance bits). When not off, an import that changes cards runs hiding."
-          },
-          "hide_below": {
-            "$ref": "#/components/schemas/LibrarySettingOutFloat64",
-            "description": "Hiding archives cards whose grid score is below this; null hides none for their score."
-          },
-          "score_instance": {
-            "$ref": "#/components/schemas/LibrarySettingOutInt64",
-            "description": "The enrich instance whose values this library's grid shows and hide_below reads, and that enrichment filters and sort naming no instance use."
           }
         },
         "required": [
-          "score_instance",
-          "hide_below",
           "duplicates",
           "duplicate_distance",
           "duplicate_keep",
@@ -3498,22 +3465,6 @@
               "string",
               "null"
             ]
-          },
-          "hide_below": {
-            "description": "Hide cards whose grid score is below this.",
-            "format": "double",
-            "type": [
-              "number",
-              "null"
-            ]
-          },
-          "score_instance": {
-            "description": "An enrich instance's ID, or null to follow the default.",
-            "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
           }
         },
         "type": "object"
@@ -3568,25 +3519,9 @@
               "null"
             ]
           },
-          "hide_below": {
-            "description": "Hide cards whose grid score is below this.",
-            "format": "double",
-            "type": [
-              "number",
-              "null"
-            ]
-          },
           "onboarding_done": {
             "description": "true once the owner finishes or skips the setup wizard; false shows it again.",
             "type": "boolean"
-          },
-          "score_instance": {
-            "description": "An enrich instance's ID, or null to clear it.",
-            "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
           },
           "theme": {
             "description": "An installed theme plugin's name, or empty for the default theme.",
@@ -4090,7 +4025,7 @@
             "type": "string"
           },
           "facets": {
-            "description": "Counts to return over every match: tags, collections, targets, sources, states (each match once per state it has on any target), or states:\u003cinstance\u003e,\u003cinstance\u003e for those targets only, or enrichment:\u003ckey\u003e for the values of a text or list key from the score instance, or enrichment:\u003cinstance\u003e:\u003ckey\u003e from that enrich instance. Enrichment counts are keyed by what follows enrichment:. Lorebooks take targets and sources.",
+            "description": "Counts to return over every match: tags, collections, targets, sources, states (each match once per state it has on any target), or states:\u003cinstance\u003e,\u003cinstance\u003e for those targets only, or enrichment:\u003cinstance\u003e:\u003ckey\u003e for the values of a text or list key from that enrich instance. Enrichment counts are keyed by what follows enrichment:. Lorebooks take targets and sources.",
             "items": {
               "type": "string"
             },
@@ -4124,7 +4059,7 @@
             "type": "string"
           },
           "include": {
-            "description": "Extra data per hit: tags, lorebooks, targets, enrichments (the score instance's current values of its score keys and grid key). Lorebooks take cards and targets.",
+            "description": "Extra data per hit: tags, lorebooks, targets, score (the grid score). Lorebooks take cards and targets.",
             "items": {
               "type": "string"
             },
@@ -4146,7 +4081,7 @@
             "type": "boolean"
           },
           "sort": {
-            "description": "relevance, updated, name, created, or enrichment:\u003ckey\u003e for the score instance's value of key, highest first and cards without one last; enrichment:\u003cinstance\u003e:\u003ckey\u003e reads that enrich instance's value instead. Default: relevance with text, newest first without.",
+            "description": "relevance, updated, name, created, or enrichment:\u003cinstance\u003e:\u003ckey\u003e for that enrich instance's value of key, highest first and cards without one last; enrichment:\u003ckey\u003e, naming a grid key, sorts by the grid score. Default: relevance with text, newest first without.",
             "pattern": "^(relevance|updated|name|created|enrichment:([1-9][0-9]*:)?[a-z][a-z0-9_]*)$",
             "type": "string"
           },
@@ -4774,6 +4709,23 @@
         ],
         "type": "object"
       },
+      "Scorer": {
+        "additionalProperties": false,
+        "properties": {
+          "instance": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "instance",
+          "key"
+        ],
+        "type": "object"
+      },
       "SearchResults": {
         "additionalProperties": false,
         "properties": {
@@ -4870,24 +4822,9 @@
               "null"
             ]
           },
-          "hide_below": {
-            "format": "double",
-            "type": [
-              "number",
-              "null"
-            ]
-          },
           "onboarding_done": {
             "description": "Whether the owner finished or skipped the setup wizard.",
             "type": "boolean"
-          },
-          "score_instance": {
-            "description": "The enrich instance whose values the library grid shows and hide_below reads, and that enrichment filters and sort naming no instance use, or null; a library may override it. When null and exactly one enrich instance exists, that one is used.",
-            "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
           },
           "theme": {
             "description": "The selected theme plugin, or empty for the default theme.",
@@ -4897,9 +4834,7 @@
         "required": [
           "theme",
           "onboarding_done",
-          "score_instance",
           "embed_instance",
-          "hide_below",
           "duplicates",
           "duplicate_distance",
           "duplicate_keep",
@@ -8599,21 +8534,8 @@
     },
     "/enrichments/keys": {
       "get": {
-        "description": "The library's score instance, and the keys each enabled enrich instance's plugin declares: those that enrichment filters and sort can use, naming the instance.",
+        "description": "The scorers, and the keys each enabled enrich instance's plugin declares: those that enrichment filters and sort can use, naming the instance.",
         "operationId": "list-enrichment-keys",
-        "parameters": [
-          {
-            "description": "The library; default 1",
-            "explode": false,
-            "in": "query",
-            "name": "library",
-            "schema": {
-              "description": "The library; default 1",
-              "format": "int64",
-              "type": "integer"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "content": {
@@ -10951,7 +10873,7 @@
     },
     "/libraries/{id}/hide": {
       "post": {
-        "description": "Queues a job that archives, by the library's settings, each card scoring below hide_below and every duplicate but the one duplicate_keep picks, and records why. Cards it archived on an earlier run that now pass are unarchived. Cards the owner archived are left alone. Its progress counts each.",
+        "description": "Queues a job that archives, by the library's settings, every duplicate but the one duplicate_keep picks, and records why. Cards it archived on an earlier run that are no longer duplicates are unarchived. Cards the owner archived are left alone. Its progress counts each.",
         "operationId": "hide-cards",
         "parameters": [
           {
@@ -10986,7 +10908,7 @@
             "description": "Error"
           }
         },
-        "summary": "Archive a library's low-scoring and duplicate cards",
+        "summary": "Archive a library's duplicate cards",
         "tags": [
           "Libraries"
         ]

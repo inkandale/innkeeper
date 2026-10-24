@@ -8,14 +8,14 @@ import { stateLabel } from "../sync/sync";
 import { Facets } from "./Facets";
 import { ImportForm, importers } from "./ImportForm";
 import { pageLinks } from "./pages";
-import { defaultSort, enrichmentValue, keyRef, parseQuery, parseScore, withScoreInstance, sizes, toggleTerm, toParams, toLorebookSearch, toSearch, valueLabel, type CardQuery, type Sort, type Term } from "./query";
+import { defaultSort, enrichmentValue, keyRef, parseQuery, parseScore, withoutUnnamed, sizes, toggleTerm, toParams, toLorebookSearch, toSearch, valueLabel, type CardQuery, type Sort, type Term } from "./query";
 import { emptySelection, pick, target, type Selection } from "./selection";
 import { useJobEvents } from "../settings/jobUtil";
 import { Icon } from "../shell/Icon";
 import { useLibrary, withLibrary } from "../shell/library";
 import { Loading } from "../shell/Loading";
 import { SelectionBar } from "./SelectionBar";
-import { LorebookRow, Row, Tile, type Names } from "./Tile";
+import { LorebookRow, Row, Tile, medals, type Names } from "./Tile";
 import "./Cards.css";
 
 const sortLabels: Record<string, string> = { relevance: "Best match", updated: "Updated", name: "Name", created: "Created" };
@@ -62,11 +62,11 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const Noun = kind === "card" ? "Cards" : "Lorebooks";
   const [params, setParams] = useSearchParams();
   const asked = parseQuery(params, useLibrary());
-  const keys = useQuery({ ...enrichmentKeysQuery(asked.library), enabled: kind === "card" });
-  const scored = keys.data?.instance_id != null;
-  // Terms that name no instance, from older links, read the score instance; without one they'd be refused.
-  const scoredQ = keys.data ? withScoreInstance(asked, keys.data.instance_id) : asked;
-  const scoresOff = !scored && scoredQ !== asked;
+  const keys = useQuery({ ...enrichmentKeysQuery, enabled: kind === "card" });
+  const scored = (keys.data?.scorers?.length ?? 0) > 0;
+  // The core refuses a term naming no instance unless it names a grid key.
+  const scoredQ = keys.data ? withoutUnnamed(asked, (keys.data.scorers ?? []).map((s) => s.key)) : asked;
+  const scoresOff = scoredQ !== asked;
   const settings = useQuery(settingsQuery);
   const embeds = kind === "card" && settings.data?.embed_instance != null;
   // A semantic link with no text, or opened after the embed instance was cleared, searches by words.
@@ -86,7 +86,12 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const go = (next: CardQuery) => setParams(toParams(next));
 
   const enrichers = keys.data?.instances ?? [];
-  const grid = enrichers.find((e) => e.id === keys.data?.instance_id)?.keys?.find((k) => k.grid);
+  const scorers = new Map(
+    (keys.data?.scorers ?? []).flatMap((s, i) => {
+      const key = enrichers.find((e) => e.id === s.instance)?.keys?.find((k) => k.key === s.key);
+      return key ? [[s.instance, { key, medal: medals[i] }] as const] : [];
+    }),
+  );
   const body = { ...(kind === "card" ? toSearch(q, scored) : toLorebookSearch(q)), ...(ungrouped ? {} : { group: "family" as const }) };
   const res = useQuery({
     ...searchQuery(kind, body),
@@ -111,8 +116,6 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
     logos: apps(instances.data, plugins.data),
   };
   const imp = importers(instances.data, plugins.data);
-  // With two or more, the core picks none until Scores from names one.
-  const unpicked = !scored && enrichers.length > 1;
 
   const search = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -241,8 +244,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
           </section>
         )}
         {res.isError && <p className="error">{res.error.message}</p>}
-        {scoresOff && <p className="muted">Score filters and sort from this link are off: they read the Scores from instance, and there is none.</p>}
-        {unpicked && <p className="muted">Tiles show no score: more than one instance gives scores. Pick one in Settings, under Scores from.</p>}
+        {scoresOff && <p className="muted">Some score filters or the sort from this link are off: they name no instance.</p>}
         {res.data && <p className="total">{total} {total === 1 ? noun.slice(0, -1) : noun}{ungrouped ? "" : ", variants grouped"}</p>}
         {res.data && q.page > last && (
           <p>
@@ -273,7 +275,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
         ) : q.view === "grid" ? (
           <div className="grid">
             {hits.map((h) => (
-              <Tile key={h.id} hit={h} names={names} pick={pickFor(h.id)} grid={grid} />
+              <Tile key={h.id} hit={h} names={names} pick={pickFor(h.id)} scorers={scorers} />
             ))}
           </div>
         ) : (

@@ -124,11 +124,11 @@ func TestSetHiddenLeavesTheOwnersArchivedCards(t *testing.T) {
 		return e.ArchivedAt != nil, e.ArchivedReason
 	}
 
-	hidden, unhidden, err := lib.SetHidden(ctx, DefaultLibrary, map[int64]string{a: ReasonLowScore, owned: ReasonDuplicate})
+	hidden, unhidden, err := lib.SetHidden(ctx, DefaultLibrary, map[int64]string{a: ReasonDuplicate, owned: ReasonDuplicate})
 	if err != nil || hidden != 1 || unhidden != 0 {
 		t.Fatalf("first run: %d hidden, %d unhidden, %v", hidden, unhidden, err)
 	}
-	if archived, r := reason(a); !archived || r != ReasonLowScore {
+	if archived, r := reason(a); !archived || r != ReasonDuplicate {
 		t.Fatalf("a = %v %q", archived, r)
 	}
 	if archived, r := reason(owned); !archived || r != "" {
@@ -168,45 +168,57 @@ func TestPlanHide(t *testing.T) {
 	}
 	groups := [][]int64{{1, 2, 3}, {4, 5}}
 	cases := []struct {
-		keep      string
-		threshold *float64
-		want      map[int64]string
+		keep string
+		want map[int64]string
 	}{
-		{"best", nil, map[int64]string{1: ReasonDuplicate, 3: ReasonDuplicate, 5: ReasonDuplicate}},
-		{"oldest", nil, map[int64]string{2: ReasonDuplicate, 3: ReasonDuplicate, 5: ReasonDuplicate}},
-		{"newest", nil, map[int64]string{1: ReasonDuplicate, 2: ReasonDuplicate, 4: ReasonDuplicate}},
-		// A low score wins over duplicate; a card without a score isn't low.
-		{"best", score(50), map[int64]string{1: ReasonLowScore, 3: ReasonDuplicate, 4: ReasonLowScore, 5: ReasonDuplicate}},
+		{"best", map[int64]string{1: ReasonDuplicate, 3: ReasonDuplicate, 5: ReasonDuplicate}},
+		{"oldest", map[int64]string{2: ReasonDuplicate, 3: ReasonDuplicate, 5: ReasonDuplicate}},
+		{"newest", map[int64]string{1: ReasonDuplicate, 2: ReasonDuplicate, 4: ReasonDuplicate}},
 	}
 	for _, c := range cases {
-		if got := PlanHide(cands, groups, c.threshold, c.keep); !maps.Equal(got, c.want) {
-			t.Errorf("keep %s, threshold %v: %v, want %v", c.keep, c.threshold, got, c.want)
+		if got := PlanHide(cands, groups, c.keep); !maps.Equal(got, c.want) {
+			t.Errorf("keep %s: %v, want %v", c.keep, got, c.want)
 		}
 	}
 }
 
-func TestHideCandidatesReadTheScoreInstance(t *testing.T) {
+func TestHideCandidatesReadTheHighestPriorityScore(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
-	scored, rev := newCard(t, lib, "scored", `{"name": "Scored"}`)
+	both, bothRev := newCard(t, lib, "both", `{"name": "Both"}`)
+	linted, lintedRev := newCard(t, lib, "linted", `{"name": "Linted"}`)
 	unscored, _ := newCard(t, lib, "unscored", `{"name": "Unscored"}`)
 	owned, _ := newCard(t, lib, "owned", `{"name": "Owned"}`)
 	if err := lib.Cards.SetArchived(ctx, owned, true); err != nil {
 		t.Fatal(err)
 	}
-	var inst int64
-	if err := lib.pool.QueryRow(ctx, `INSERT INTO plugin_instance (plugin, name) VALUES ('fake', 'fake') RETURNING id`).Scan(&inst); err != nil {
+	var eval, lint int64
+	if err := lib.pool.QueryRow(ctx, `INSERT INTO plugin_instance (plugin, name) VALUES ('fake', 'eval') RETURNING id`).Scan(&eval); err != nil {
 		t.Fatal(err)
 	}
-	if err := lib.AddEnrichments(ctx, inst, []NewEnrichment{{CardID: scored, RevisionID: rev, Key: "quality", Value: []byte(`72`)},
-		{CardID: scored, RevisionID: rev, Key: "voice", Value: []byte(`5`)}}); err != nil {
+	if err := lib.pool.QueryRow(ctx, `INSERT INTO plugin_instance (plugin, name) VALUES ('fake', 'lint') RETURNING id`).Scan(&lint); err != nil {
 		t.Fatal(err)
 	}
-	got, err := lib.HideCandidates(ctx, DefaultLibrary, inst, "quality")
+	if err := lib.AddEnrichments(ctx, eval, []NewEnrichment{{CardID: both, RevisionID: bothRev, Key: "quality", Value: []byte(`72`)},
+		{CardID: both, RevisionID: bothRev, Key: "voice", Value: []byte(`5`)}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.AddEnrichments(ctx, lint, []NewEnrichment{{CardID: both, RevisionID: bothRev, Key: "lint", Value: []byte(`99`)},
+		{CardID: linted, RevisionID: lintedRev, Key: "lint", Value: []byte(`30`)}}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := lib.HideCandidates(ctx, DefaultLibrary, []Scorer{{eval, "quality"}, {lint, "lint"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 || got[0].ID != scored || got[0].Score == nil || *got[0].Score != 72 || got[1].ID != unscored || got[1].Score != nil {
+	score := func(c HideCandidate) any {
+		if c.Score == nil {
+			return nil
+		}
+		return *c.Score
+	}
+	if len(got) != 3 || got[0].ID != both || score(got[0]) != 72.0 || got[1].ID != linted || score(got[1]) != 30.0 ||
+		got[2].ID != unscored || got[2].Score != nil {
 		t.Fatalf("candidates %+v", got)
 	}
 }

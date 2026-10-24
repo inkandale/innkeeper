@@ -11,7 +11,7 @@ type Patch = components["schemas"]["PatchLibrarySettingsInBody"];
 const matchLabels: Record<string, string> = { off: "Off", exact: "Exact copies", near: "Near copies" };
 const keepLabels: Record<string, string> = { best: "Best score", oldest: "Oldest", newest: "Newest" };
 
-/** Hiding sets how a library's hide job archives low-scoring and duplicate cards, and runs it. */
+/** Hiding sets how a library's hide job archives duplicate cards, and runs it. */
 export function Hiding({ library }: { library: number }) {
   const qc = useQueryClient();
   const settings = useQuery(librarySettingsQuery(library));
@@ -38,29 +38,15 @@ export function Hiding({ library }: { library: number }) {
   if (!s) return null;
   // A blank number follows the default.
   const number = (v: string) => (v.trim() === "" ? null : Number(v));
-  const nothing = s.hide_below.value == null && s.duplicates.value === "off";
+  const nothing = s.duplicates.value === "off";
   return (
     <fieldset className="hiding" disabled={save.isPending}>
       <legend>
         Hiding <SaveStatus save={save} />
       </legend>
       <p className="muted">
-        Hide now archives low-scoring cards and extra duplicates. To bring a card back, open it and choose Unarchive.
+        Hide now archives extra duplicates. To bring a card back, open it and choose Unarchive.
       </p>
-      <label title="Hides cards whose score, from Scores from, is below this. Leave empty to hide none for their score.">
-        Hide below score{" "}
-        <input
-          className="input"
-          type="number"
-          key={String(s.hide_below.value)}
-          defaultValue={s.hide_below.overridden ? (s.hide_below.value ?? "") : ""}
-          placeholder={s.hide_below.default == null ? "Off" : `Default (${s.hide_below.default})`}
-          onBlur={(e) => {
-            const v = number(e.target.value);
-            if (v !== (s.hide_below.overridden ? s.hide_below.value : null)) save.mutate({ hide_below: v });
-          }}
-        />
-      </label>
       <label title="Exact copies have the same content. Near copies have text that differs by no more than Distance.">
         Duplicates{" "}
         <select

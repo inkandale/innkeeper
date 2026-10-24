@@ -16,8 +16,6 @@ beforeEach(() => {
   calls = [];
   refuse = undefined;
   current = {
-    score_instance: setting(5, 5),
-    hide_below: setting(null, null),
     duplicates: setting("off", "off"),
     duplicate_distance: setting(3, 3),
     duplicate_keep: setting("best", "best"),
@@ -32,7 +30,6 @@ beforeEach(() => {
         if (refuse) return json({ detail: refuse }, 400);
         const body = await req.json();
         if ("duplicates" in body) current.duplicates = setting(body.duplicates ?? "off", "off", body.duplicates != null);
-        if ("hide_below" in body) current.hide_below = setting(body.hide_below, null, body.hide_below != null);
       }
       if (path === "/api/libraries/2/settings") return json(current);
       if (path === "/api/libraries/2/hide") return json({ id: 9, kind: "library.hide", status: "queued", created_at: "", payload: {} }, 202);
@@ -63,18 +60,6 @@ test("hide now waits for something to hide, then runs the job", async () => {
   await user.click(hide);
   await waitFor(() => expect(calls).toContain("POST /api/libraries/2/hide "));
   expect(await screen.findByRole("link", { name: /Hiding/ })).toHaveAttribute("href", "/settings/jobs/9");
-});
-
-test("a blank threshold follows the default", async () => {
-  renderIt();
-  const user = userEvent.setup();
-  const below = await screen.findByRole("spinbutton", { name: /Hide below score/ });
-  await user.type(below, "40");
-  await user.tab();
-  await waitFor(() => expect(calls).toEqual(['PATCH /api/libraries/2/settings {"hide_below":40}']));
-  await user.clear(screen.getByRole("spinbutton", { name: /Hide below score/ }));
-  await user.tab();
-  await waitFor(() => expect(calls).toEqual(['PATCH /api/libraries/2/settings {"hide_below":40}', 'PATCH /api/libraries/2/settings {"hide_below":null}']));
 });
 
 test("a saved change says so next to the settings", async () => {

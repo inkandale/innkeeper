@@ -134,6 +134,10 @@ type Enrichment struct {
 	Range []float64 `toml:"range"`
 	// Grid shows the key on the library grid. At most one key sets it.
 	Grid bool `toml:"grid"`
+	// Priority orders grid keys across plugins: a card's tile shows the
+	// highest-priority value it has. Space values apart, such as by 100, so
+	// later plugins fit between.
+	Priority int `toml:"priority"`
 }
 
 // LoadManifest reads and validates dir/plugin.toml. Unknown keys are errors,
@@ -257,6 +261,9 @@ func (m *Manifest) Validate() error {
 		}
 		if e.Type == "score" && (len(e.Range) != 2 || !(e.Range[0] < e.Range[1])) {
 			errs = append(errs, fmt.Errorf("enrichment %q: score needs range = [low, high]", key))
+		}
+		if e.Priority != 0 && !e.Grid {
+			errs = append(errs, fmt.Errorf("enrichment %q: priority needs grid", key))
 		}
 	}
 	grids := 0

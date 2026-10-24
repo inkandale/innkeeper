@@ -246,21 +246,19 @@ func Purge(lib *library.Library) jobs.Handler {
 	}
 }
 
-// HideKind archives a library's low-scoring and duplicate cards.
+// HideKind archives a library's duplicate cards.
 const HideKind = "library.hide"
 
 // HidePayload is a HideKind job's payload: the library's settings when the
-// job was queued. ScoreInstance and ScoreKey name the score it reads, if any;
-// Decide, if set, is the ai instance that confirms near duplicates.
+// job was queued. Scorers give the grid score that keep best reads; Decide,
+// if set, is the ai instance that confirms near duplicates.
 type HidePayload struct {
-	Library       int64    `json:"library"`
-	ScoreInstance int64    `json:"score_instance,omitempty"`
-	ScoreKey      string   `json:"score_key,omitempty"`
-	HideBelow     *float64 `json:"hide_below,omitempty"`
-	Duplicates    string   `json:"duplicates"`
-	Distance      int      `json:"distance"`
-	Keep          string   `json:"keep"`
-	Decide        int64    `json:"decide,omitempty"`
+	Library    int64            `json:"library"`
+	Scorers    []library.Scorer `json:"scorers,omitempty"`
+	Duplicates string           `json:"duplicates"`
+	Distance   int              `json:"distance"`
+	Keep       string           `json:"keep"`
+	Decide     int64            `json:"decide,omitempty"`
 }
 
 // HideProgress counts what a HideKind job did. Rejected are near pairs the
@@ -268,7 +266,6 @@ type HidePayload struct {
 // on, which stay duplicates as their distance says.
 type HideProgress struct {
 	Groups     int `json:"groups"`
-	LowScore   int `json:"low_score"`
 	Duplicate  int `json:"duplicate"`
 	Archived   int `json:"archived"`
 	Unarchived int `json:"unarchived"`
@@ -287,7 +284,7 @@ func Hide(lib *library.Library, decide Decider) jobs.Handler {
 		if err := json.Unmarshal(r.Payload, &p); err != nil {
 			return err
 		}
-		cands, err := lib.HideCandidates(ctx, p.Library, p.ScoreInstance, p.ScoreKey)
+		cands, err := lib.HideCandidates(ctx, p.Library, p.Scorers)
 		if err != nil {
 			return err
 		}
@@ -308,15 +305,8 @@ func Hide(lib *library.Library, decide Decider) jobs.Handler {
 			}
 		}
 		groups := library.GroupPairs(pairs)
-		hidden := library.PlanHide(cands, groups, p.HideBelow, p.Keep)
-		prog.Groups = len(groups)
-		for _, reason := range hidden {
-			if reason == library.ReasonLowScore {
-				prog.LowScore++
-			} else {
-				prog.Duplicate++
-			}
-		}
+		hidden := library.PlanHide(cands, groups, p.Keep)
+		prog.Groups, prog.Duplicate = len(groups), len(hidden)
 		if prog.Archived, prog.Unarchived, err = lib.SetHidden(ctx, p.Library, hidden); err != nil {
 			return err
 		}

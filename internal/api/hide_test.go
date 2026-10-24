@@ -14,7 +14,7 @@ import (
 	"github.com/inkandale/innkeeper/protocol"
 )
 
-func TestHideArchivesLowScoresAndDuplicates(t *testing.T) {
+func TestHideArchivesDuplicates(t *testing.T) {
 	e := newEnrichEnv(t)
 	w := &jobs.Worker{Queue: e.s.Queue, Log: quiet, Poll: 50 * time.Millisecond,
 		Handlers: map[string]jobs.Handler{bulk.HideKind: bulk.Hide(e.s.Lib, nil)}}
@@ -33,8 +33,8 @@ func TestHideArchivesLowScoresAndDuplicates(t *testing.T) {
 
 	e.call("POST", "/libraries/1/hide", nil, 400, nil) // nothing set
 	var set librarySettings
-	e.call("PATCH", "/libraries/1/settings", map[string]any{"hide_below": 50, "duplicates": "exact", "duplicate_keep": "oldest"}, 200, &set)
-	if *set.HideBelow.Value != 50 || *set.Duplicates.Value != "exact" || *set.DuplicateDistance.Value != 3 || !set.Duplicates.Overridden {
+	e.call("PATCH", "/libraries/1/settings", map[string]any{"duplicates": "exact", "duplicate_keep": "oldest"}, 200, &set)
+	if *set.Duplicates.Value != "exact" || *set.DuplicateDistance.Value != 3 || !set.Duplicates.Overridden {
 		t.Fatalf("settings %+v", set)
 	}
 	e.call("PATCH", "/libraries/1/settings", map[string]any{"duplicates": "fuzzy"}, 422, nil)
@@ -63,28 +63,28 @@ func TestHideArchivesLowScoresAndDuplicates(t *testing.T) {
 		return c.ArchivedAt != nil, c.ArchivedReason
 	}
 
-	if p := hide(); p.Groups != 1 || p.LowScore != 1 || p.Duplicate != 1 || p.Archived != 2 {
+	if p := hide(); p.Groups != 1 || p.Duplicate != 1 || p.Archived != 1 {
 		t.Fatalf("progress %+v", p)
 	}
-	for id, want := range map[int64]string{copied: "duplicate", low: "low_score"} {
-		if archived, r := reason(id); !archived || r != want {
-			t.Errorf("card %d = %v %q, want %q", id, archived, r, want)
-		}
+	if archived, r := reason(copied); !archived || r != "duplicate" {
+		t.Errorf("the copy = %v %q", archived, r)
 	}
-	if archived, _ := reason(first); archived {
-		t.Error("the kept copy was archived")
+	for _, id := range []int64{first, low} {
+		if archived, _ := reason(id); archived {
+			t.Errorf("card %d was archived", id)
+		}
 	}
 	if archived, r := reason(owned); !archived || r != "" {
 		t.Errorf("the owner's card = %v %q", archived, r)
 	}
 
-	// Without a threshold, the low card comes back.
-	e.call("PATCH", "/libraries/1/settings", map[string]any{"hide_below": nil}, 200, nil)
-	if p := hide(); p.Unarchived != 1 {
+	// Keeping the newest swaps which copy is hidden.
+	e.call("PATCH", "/libraries/1/settings", map[string]any{"duplicate_keep": "newest"}, 200, nil)
+	if p := hide(); p.Archived != 1 || p.Unarchived != 1 {
 		t.Fatalf("second progress %+v", p)
 	}
-	if archived, _ := reason(low); archived {
-		t.Error("the low card is still archived")
+	if archived, _ := reason(copied); archived {
+		t.Error("the newest copy is still archived")
 	}
 }
 
@@ -92,7 +92,7 @@ func TestHideDefaultsFollowTheCore(t *testing.T) {
 	e := newEnv(t)
 	var s settings
 	e.call("PATCH", "/settings", map[string]any{"duplicates": "near", "duplicate_distance": 5}, 200, &s)
-	if s.Duplicates != "near" || s.DuplicateDistance != 5 || s.DuplicateKeep != "best" || s.HideBelow != nil {
+	if s.Duplicates != "near" || s.DuplicateDistance != 5 || s.DuplicateKeep != "best" {
 		t.Fatalf("settings %+v", s)
 	}
 	var set librarySettings

@@ -22,10 +22,10 @@ type Query struct {
 	Semantic bool     `json:"semantic,omitempty" doc:"Rank cards by meaning instead of matching words. Needs text and an embed instance (Settings, Plugins, Embeddings from); sorts by relevance only. Cards not embedded yet are left out."`
 	Filter   *Filter  `json:"filter,omitempty"`
 	Sources  []string `json:"sources,omitempty" doc:"library, or catalog:<instance id> to also search a catalog by text alone. Default: library."`
-	Include  []string `json:"include,omitempty" doc:"Extra data per hit: tags, lorebooks, targets, enrichments (the score instance's current values of its score keys and grid key). Lorebooks take cards and targets."`
+	Include  []string `json:"include,omitempty" doc:"Extra data per hit: tags, lorebooks, targets, score (the grid score). Lorebooks take cards and targets."`
 	Fields   []string `json:"fields,omitempty" doc:"Card data keys to return per hit, plus avatar. Default: name."`
-	Sort     string   `json:"sort,omitempty" pattern:"^(relevance|updated|name|created|enrichment:([1-9][0-9]*:)?[a-z][a-z0-9_]*)$" doc:"relevance, updated, name, created, or enrichment:<key> for the score instance's value of key, highest first and cards without one last; enrichment:<instance>:<key> reads that enrich instance's value instead. Default: relevance with text, newest first without."`
-	Facets   []string `json:"facets,omitempty" doc:"Counts to return over every match: tags, collections, targets, sources, states (each match once per state it has on any target), or states:<instance>,<instance> for those targets only, or enrichment:<key> for the values of a text or list key from the score instance, or enrichment:<instance>:<key> from that enrich instance. Enrichment counts are keyed by what follows enrichment:. Lorebooks take targets and sources."`
+	Sort     string   `json:"sort,omitempty" pattern:"^(relevance|updated|name|created|enrichment:([1-9][0-9]*:)?[a-z][a-z0-9_]*)$" doc:"relevance, updated, name, created, or enrichment:<instance>:<key> for that enrich instance's value of key, highest first and cards without one last; enrichment:<key>, naming a grid key, sorts by the grid score. Default: relevance with text, newest first without."`
+	Facets   []string `json:"facets,omitempty" doc:"Counts to return over every match: tags, collections, targets, sources, states (each match once per state it has on any target), or states:<instance>,<instance> for those targets only, or enrichment:<instance>:<key> for the values of a text or list key from that enrich instance. Enrichment counts are keyed by what follows enrichment:. Lorebooks take targets and sources."`
 	Page     Page     `json:"page,omitempty"`
 	// FacetsOnly saves a filter sidebar the count and page queries it would throw away.
 	FacetsOnly bool   `json:"facets_only,omitempty" doc:"Return only the facets: no hits, total, or next_cursor."`
@@ -33,10 +33,9 @@ type Query struct {
 
 	Library int64 `json:"library,omitempty" doc:"The library to search; default 1."`
 
-	// ScoreInstance is the enrich instance whose values enrichment filters,
-	// sort, and include use, or 0 for none. The caller resolves it from the
-	// score_instance setting.
-	ScoreInstance int64 `json:"-"`
+	// Scorers are the grid keys, highest priority first, that the grid score
+	// reads. The caller resolves them from the enrich instances.
+	Scorers []Scorer `json:"-"`
 
 	// SampleOver, when more cards than it match, counts the facets over a
 	// sample of 1 in sampleRate matches and marks them approximate. 0 counts
@@ -101,7 +100,7 @@ type Hit struct {
 	Slug       string     `json:"slug"`
 	RevisionID int64      `json:"revision_id"`
 	ArchivedAt *time.Time `json:"archived_at,omitempty"`
-	// ArchivedReason is why the hide job archived it: low_score or duplicate.
+	// ArchivedReason is why the hide job archived it: duplicate.
 	ArchivedReason string         `json:"archived_reason,omitempty"`
 	Fields         map[string]any `json:"fields"`
 	Tags           []string       `json:"tags,omitempty"`
@@ -109,9 +108,8 @@ type Hit struct {
 	Targets        []TargetState  `json:"targets,omitempty" doc:"With include targets: how the card stands on each target it's pushed to."`
 	Cards          []int64        `json:"cards,omitempty" doc:"Lorebooks with include cards: IDs of linked cards."`
 	Entries        *int           `json:"entries,omitempty" doc:"Lorebooks only: how many entries it has."`
-	// Enrichments are keyed by enrichment key.
-	Enrichments map[string]HitEnrichment `json:"enrichments,omitempty" doc:"With include enrichments: the score instance's current value of each key."`
-	Family      *Family                  `json:"family,omitempty" doc:"With group family: the family this hit is the face of."`
+	Score          *HitScore      `json:"score,omitempty" doc:"With include score: the card's grid score, from the highest-priority scorer that has one."`
+	Family         *Family        `json:"family,omitempty" doc:"With group family: the family this hit is the face of."`
 }
 
 // Family is a grouped hit's family of variants.
@@ -123,10 +121,18 @@ type Family struct {
 	Matched []int64 `json:"matched"`
 }
 
-// HitEnrichment is a card's current value of one enrichment key.
-type HitEnrichment struct {
-	Value json.RawMessage `json:"value"`
-	Stale bool            `json:"stale" doc:"Whether the value is about an older revision than the head."`
+// Scorer is an enrich instance and the grid key its plugin declares.
+type Scorer struct {
+	Instance int64  `json:"instance"`
+	Key      string `json:"key"`
+}
+
+// HitScore is a card's grid score and the scorer it came from.
+type HitScore struct {
+	Instance int64           `json:"instance"`
+	Key      string          `json:"key"`
+	Value    json.RawMessage `json:"value"`
+	Stale    bool            `json:"stale" doc:"Whether the value is about an older revision than the head."`
 }
 
 // Results is one page of hits.
@@ -223,29 +229,54 @@ const tagsOf = `LATERAL unnest(r.tags) WITH ORDINALITY t(t, ord)`
 // cardOnly names the facets and includes that need card tags, collections,
 // or linked lorebooks.
 func cardOnly(name string) bool {
-	return name == "tags" || name == "collections" || name == "lorebooks" || name == "enrichments"
+	return name == "tags" || name == "collections" || name == "lorebooks" || name == "score"
 }
 
-// errNoScoreInstance refuses an enrichment filter, sort, or include.
-var errNoScoreInstance = fmt.Errorf("%w: enrichment filters, sort, and include need a score instance; pick one in Settings under Scores from", ErrInvalid)
+// gridSQL selects cols, from s (the scorer) and e (its current value), for
+// the first of the scorers in args $instances and $keys that has a value for
+// card c.
+func gridSQL(cols, instances, keys string) string {
+	return `(SELECT ` + cols + ` FROM unnest(` + instances + `::bigint[], ` + keys + `::text[]) WITH ORDINALITY s(instance, key, ord)
+		CROSS JOIN LATERAL (SELECT e.value, e.revision_id FROM enrichment e
+			WHERE e.card_id = c.id AND e.instance_id = s.instance AND e.key = s.key
+			ORDER BY e.revision_id DESC, e.created_at DESC, e.id DESC LIMIT 1) e
+		ORDER BY s.ord LIMIT 1)`
+}
+
+// scorerArgs are scorers as the instance and key arrays gridSQL takes.
+func scorerArgs(scorers []Scorer) (instances []int64, keys []string) {
+	for _, s := range scorers {
+		instances, keys = append(instances, s.Instance), append(keys, s.Key)
+	}
+	return instances, keys
+}
+
+// gridScoreSQL is gridSQL for w's scorers.
+func (w *where) gridScoreSQL(cols string) string {
+	instances, keys := scorerArgs(w.scorers)
+	return gridSQL(cols, w.arg(instances), w.arg(keys))
+}
 
 // enrichmentSQL is the current value of key from enrich instance inst for
-// card c, or NULL, as a jsonb expression. Instance 0 means the score instance.
+// card c, or NULL, as a jsonb expression. Instance 0 means the grid score,
+// and key must then be a scorer's grid key.
 func (w *where) enrichmentSQL(key string, inst int64) (string, error) {
 	if w.k != Card {
 		return "", fmt.Errorf("%w: lorebooks have no enrichments", ErrInvalid)
 	}
-	inst = cmp.Or(inst, w.score)
 	if inst == 0 {
-		return "", errNoScoreInstance
+		if !slices.ContainsFunc(w.scorers, func(s Scorer) bool { return s.Key == key }) {
+			return "", fmt.Errorf("%w: enrichment %q names no instance and is no scorer's grid key", ErrInvalid, key)
+		}
+		return w.gridScoreSQL(`e.value`), nil
 	}
 	return `(SELECT e.value FROM enrichment e WHERE e.card_id = c.id AND e.key = ` + w.arg(key) +
 		` AND e.instance_id = ` + w.arg(inst) + ` ORDER BY e.revision_id DESC, e.created_at DESC, e.id DESC LIMIT 1)`, nil
 }
 
 // enrichmentRef reads a sort or facet's reference to an enrichment key:
-// key for the score instance's values, or <instance>:<key> for that enrich
-// instance's. Instance 0 means the score instance.
+// <instance>:<key> for that enrich instance's values, or key alone, with
+// instance 0, for the grid score.
 func enrichmentRef(ref string) (int64, string, error) {
 	id, key, ok := strings.Cut(ref, ":")
 	if !ok {
@@ -407,8 +438,8 @@ func statesFacetSQL(k *Kind, cond, inst string) string {
 }
 
 // facets counts the matches of cond for each facet in names; an enrichment
-// facet reads its named instance's values, or score's.
-func (l *Library) facets(ctx context.Context, k *Kind, names []string, cond string, args []any, score int64) (*Facets, error) {
+// facet reads its named instance's values.
+func (l *Library) facets(ctx context.Context, k *Kind, names []string, cond string, args []any) (*Facets, error) {
 	f := &Facets{}
 	refs := map[int64]map[string][]string{}
 	for _, name := range names {
@@ -437,7 +468,6 @@ func (l *Library) facets(ctx context.Context, k *Kind, names []string, cond stri
 				continue
 			}
 			f.Enrichments[ref] = []ValueCount{}
-			inst = cmp.Or(inst, score)
 			if refs[inst] == nil {
 				refs[inst] = map[string][]string{}
 			}
@@ -470,10 +500,10 @@ func (l *Library) facets(ctx context.Context, k *Kind, names []string, cond stri
 
 // where collects SQL conditions and their arguments.
 type where struct {
-	k     *Kind
-	score int64 // the score instance, or 0
-	args  []any
-	n     int
+	k       *Kind
+	scorers []Scorer
+	args    []any
+	n       int
 }
 
 func (w *where) arg(v any) string {
@@ -587,7 +617,7 @@ func compile(k *Kind, q Query) (string, *where, string, error) {
 			return "", nil, "", fmt.Errorf("%w: unknown source %q", ErrInvalid, s)
 		}
 	}
-	w := &where{k: k, score: q.ScoreInstance}
+	w := &where{k: k, scorers: q.Scorers}
 	conds := []string{"c.library_id = " + w.arg(cmp.Or(q.Library, DefaultLibrary))}
 	if q.Filter != nil {
 		s, err := w.filter(*q.Filter)
@@ -825,7 +855,7 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 	if len(fields) == 0 {
 		fields = []string{"name"}
 	}
-	tags, books, targets, cards, entries, enrichments := `NULL::text[]`, `NULL::bigint[]`, `NULL::jsonb`, `NULL::bigint[]`, `NULL::int`, `NULL::jsonb`
+	tags, books, targets, cards, entries, score := `NULL::text[]`, `NULL::bigint[]`, `NULL::jsonb`, `NULL::bigint[]`, `NULL::int`, `NULL::jsonb`
 	if k != Card {
 		entries = `CASE jsonb_typeof(r.data->'entries') WHEN 'array' THEN jsonb_array_length(r.data->'entries') ELSE 0 END`
 	}
@@ -843,14 +873,8 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 		case "targets":
 			targets = `(SELECT jsonb_agg(jsonb_build_object('instance', instance_id, 'is', status) ORDER BY instance_id)
 				FROM ` + pushedStatus + ` bs WHERE ` + k.FK + ` = c.id)`
-		case "enrichments":
-			if q.ScoreInstance == 0 {
-				return Results{}, errNoScoreInstance
-			}
-			enrichments = `(SELECT jsonb_object_agg(x.key, jsonb_build_object('value', x.value, 'stale', x.revision_id <> c.head_revision_id))
-				FROM (SELECT DISTINCT ON (e.key) e.key, e.value, e.revision_id FROM enrichment e
-					WHERE e.card_id = c.id AND e.instance_id = ` + w.arg(q.ScoreInstance) + `
-					ORDER BY e.key, e.revision_id DESC, e.created_at DESC, e.id DESC) x)`
+		case "score":
+			score = w.gridScoreSQL(`jsonb_build_object('instance', s.instance, 'key', s.key, 'value', e.value, 'stale', e.revision_id <> c.head_revision_id)`)
 		default:
 			return Results{}, fmt.Errorf("%w: unknown include %q", ErrInvalid, inc)
 		}
@@ -870,8 +894,8 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 			if err != nil {
 				return Results{}, err
 			}
-			if inst == 0 && q.ScoreInstance == 0 {
-				return Results{}, errNoScoreInstance
+			if inst == 0 {
+				return Results{}, fmt.Errorf("%w: facet %q must name its enrich instance", ErrInvalid, name)
 			}
 			continue
 		}
@@ -933,7 +957,7 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 				facetCond, scale = cond+` AND `+sampleOf, sampleRate
 			}
 		}
-		if res.Facets, err = l.facets(ctx, k, q.Facets, facetCond, condArgs, q.ScoreInstance); err != nil {
+		if res.Facets, err = l.facets(ctx, k, q.Facets, facetCond, condArgs); err != nil {
 			return Results{}, err
 		}
 		if scale > 1 {
@@ -962,7 +986,7 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 			return Results{}, fmt.Errorf("count matches: %w", err)
 		}
 	}
-	cols := `c.id, c.slug, r.id, c.archived_at, coalesce(c.archived_reason, ''), r.data, r.avatar_blob, ` + tags + `, ` + books + `, ` + targets + `, ` + cards + `, ` + entries + `, ` + enrichments
+	cols := `c.id, c.slug, r.id, c.archived_at, coalesce(c.archived_reason, ''), r.data, r.avatar_blob, ` + tags + `, ` + books + `, ` + targets + `, ` + cards + `, ` + entries + `, ` + score
 	limit, skip := w.arg(size+1), w.arg(offset)
 	page := `SELECT ` + cols + `, ` + famCols + `, ` + o.cursor() + `, NULL::bigint FROM ` + from(k) + ` WHERE `
 	sql := page + cond + ` AND ` + after + ` ORDER BY ` + o.sql() + ` LIMIT ` + limit + ` OFFSET ` + skip
@@ -986,7 +1010,7 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 	var matched []int64
 	var cur, next string
 	var families *int
-	_, err = pgx.ForEachRow(rows, []any{&h.ID, &h.Slug, &h.RevisionID, &h.ArchivedAt, &h.ArchivedReason, &data, &avatar, &h.Tags, &h.Lorebooks, &h.Targets, &h.Cards, &h.Entries, &h.Enrichments, &rootID, &famSize, &matched, &cur, &families},
+	_, err = pgx.ForEachRow(rows, []any{&h.ID, &h.Slug, &h.RevisionID, &h.ArchivedAt, &h.ArchivedReason, &data, &avatar, &h.Tags, &h.Lorebooks, &h.Targets, &h.Cards, &h.Entries, &h.Score, &rootID, &famSize, &matched, &cur, &families},
 		func() error {
 			if len(res.Hits) == size-1 {
 				next = base64.RawURLEncoding.EncodeToString([]byte(cur))
@@ -1031,11 +1055,9 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 	return res, nil
 }
 
-// UsesEnrichments reports whether q filters, sorts, or includes by
-// enrichment, and so needs ScoreInstance.
-func (q Query) UsesEnrichments() bool {
-	return strings.HasPrefix(q.Sort, "enrichment:") || slices.Contains(q.Include, "enrichments") || filtersEnrichments(q.Filter) ||
-		slices.ContainsFunc(q.Facets, func(f string) bool { return strings.HasPrefix(f, enrichmentFacetPrefix) })
+// UsesScore reports whether q may read the grid score, and so needs Scorers.
+func (q Query) UsesScore() bool {
+	return strings.HasPrefix(q.Sort, "enrichment:") || slices.Contains(q.Include, "score") || filtersEnrichments(q.Filter)
 }
 
 func filtersEnrichments(f *Filter) bool {

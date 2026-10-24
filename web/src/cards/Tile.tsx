@@ -9,6 +9,9 @@ import { Family } from "./Family";
 export type Hit = components["schemas"]["Hit"];
 type EnrichmentKey = components["schemas"]["EnrichmentKey"];
 export type Names = { instances: Map<number, string>; collections: Map<number, string>; logos: Map<number, App> };
+/** Scorer is an instance's grid key and, for the top three by priority, its medal. */
+export type Scorer = { key: EnrichmentKey; medal?: (typeof medals)[number] };
+export const medals = ["gold", "silver", "bronze"] as const;
 
 export const badgeClass: Record<string, string> = {
   in_sync: "ok",
@@ -75,28 +78,22 @@ export function enrichmentText(value: unknown, range?: number[] | null): string 
   return String(value);
 }
 
-// Every scorer so far counts up to its best (card-lint starts at 100 and deducts), so the top quarter is good.
-function band(value: unknown, range?: number[] | null): string | undefined {
-  if (typeof value !== "number" || !range || range.length !== 2) return undefined;
-  const share = (value - range[0]!) / (range[1]! - range[0]!);
-  return share >= 0.75 ? "good" : share >= 0.5 ? "fair" : "poor";
-}
-
-/** Score shows the card's value of the grid key, named by the key's label and dimmed when it is about an older revision. */
-function Score({ hit, grid }: { hit: Hit; grid: EnrichmentKey }) {
-  const v = hit.enrichments?.[grid.key];
-  if (!v) return null;
-  const value = enrichmentText(v.value, grid.range);
-  const score = grid.type === "score";
-  const title = v.stale ? `${grid.label} ${value}, stale: from an older revision` : `${grid.label} ${value}`;
+/** Score shows the card's grid score on its scorer's medal, named by the key's label and dimmed when it is about an older revision. */
+function Score({ hit, scorers }: { hit: Hit; scorers: Map<number, Scorer> }) {
+  const v = hit.score;
+  const s = v && scorers.get(v.instance);
+  if (!s) return null;
+  const value = enrichmentText(v.value, s.key.range);
+  const title = v.stale ? `${s.key.label} ${value}, stale: from an older revision` : `${s.key.label} ${value}`;
   return (
-    <span className={["score", score ? band(v.value, grid.range) : "text", v.stale && "stale"].filter(Boolean).join(" ")} role="img" aria-label={title} title={title}>
-      {score ? `${grid.label} ${value}` : value}
+    <span className={["score", s.medal, s.key.type !== "score" && "text", v.stale && "stale"].filter(Boolean).join(" ")} role="img" aria-label={title} title={title}>
+      {s.medal && <span aria-hidden="true">★ </span>}
+      {value}
     </span>
   );
 }
 
-export function Tile({ hit, names, pick, grid }: { hit: Hit; names: Names; pick: PickProps; grid?: EnrichmentKey }) {
+export function Tile({ hit, names, pick, scorers }: { hit: Hit; names: Names; pick: PickProps; scorers: Map<number, Scorer> }) {
   const tags = hit.tags ?? [];
   const books = hit.lorebooks?.length ?? 0;
   return (
@@ -105,7 +102,7 @@ export function Tile({ hit, names, pick, grid }: { hit: Hit; names: Names; pick:
       <Link to={`/cards/${hit.id}`} className="tile-image">
         <Avatar hit={hit} w={320} />
         <Badges hit={hit} names={names} />
-        {grid && <Score hit={hit} grid={grid} />}
+        <Score hit={hit} scorers={scorers} />
         {books > 0 && <span className="lorebooks" role="img" aria-label={`${books} ${books === 1 ? "lorebook" : "lorebooks"}`}>
             <span aria-hidden="true">📖</span> {books}
           </span>}

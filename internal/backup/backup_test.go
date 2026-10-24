@@ -56,7 +56,7 @@ func seed(t *testing.T, lib *library.Library) (avatar, unused string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := lib.SetLibrarySetting(ctx, library.DefaultLibrary, "score_instance", "7"); err != nil {
+	if err := lib.SetLibrarySetting(ctx, library.DefaultLibrary, "duplicate_distance", "7"); err != nil {
 		t.Fatal(err)
 	}
 	if err := lib.LinkLorebook(ctx, c.ID, b.ID); err != nil {

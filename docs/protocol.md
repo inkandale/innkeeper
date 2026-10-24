@@ -99,7 +99,7 @@ Each plugin folder has a `plugin.toml`:
 | `capabilities` | yes | Any of `import`, `push`, `pull`, `action`, `records`, `enrich`, `codec`, `auth`, `mcp`, `catalog`, `sites`, `ai`, `settings`, or `theme`. A theme lists no other capability |
 | `secrets` | no | Names of secrets the owner enters for each instance, in lowercase `snake_case` |
 | `config` | no | JSON Schema with `type = "object"` for instance settings; the UI renders a form from it. See [The config form](#the-config-form) |
-| `enrichments` | for `enrich` | Keys the plugin writes, in lowercase `snake_case`; see [`enrich`](#enrich), and `emit.card`'s `values` under [`import`](#import). Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list`. `grid = true` shows the key on the library grid, for at most one key. An `enrich` plugin must declare at least one |
+| `enrichments` | for `enrich` | Keys the plugin writes, in lowercase `snake_case`; see [`enrich`](#enrich), and `emit.card`'s `values` under [`import`](#import). Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list`. `grid = true` shows the key on the library grid, for at most one key. The grid key's `priority`, an integer, orders plugins: a tile shows the highest-priority score a card has, and the top three wear gold, silver, and bronze. Space priorities apart, such as by 100, so other plugins fit between. An `enrich` plugin must declare at least one |
 | `formats` | only for `codec` | What `codec.encode` writes, each listed once: lowercase words of letters and digits joined by single hyphens, such as `png`. A codec plugin must list at least one. `json` is taken: the core exports CCv3 JSON itself |
 | `bulk` | no; only for `import` | `true` for imports of large sources, such as a site dump. The core stores the cards sent between two checkpoints, about 1,000, in one transaction with the second checkpoint, and doesn't queue them for source detection |
 | `inputs` | no; only for `import` | What the web UI may send to `import.run`, each listed once: `file` sends params `blob` and `name`, `url` sends `url`. Leave it out and the UI's upload and page URL boxes don't use the plugin |
@@ -959,10 +959,10 @@ a record with the same ID.
 ### `enrich`
 
 An `enrich` plugin computes values about a card revision, such as an AI's
-quality score. The core stores every result, and the library grid, filters,
-and sort use the values of the instance the owner picks under **Scores
-from**, for every library or for one. The core sends revisions only when
-the owner asks, never on save.
+quality score. The core stores every result, and filters and sort can use
+any instance's values. A card's **grid score**, on its tile, is its value of
+the grid key from the highest-priority instance that has one. The core sends
+revisions only when the owner asks, never on save.
 
 Declare each key in the manifest:
 
@@ -970,7 +970,7 @@ Declare each key in the manifest:
 capabilities = ["enrich"]
 
 [enrichments]
-quality = { type = "score", range = [0, 100], label = "Quality", grid = true }
+quality = { type = "score", range = [0, 100], label = "Quality", grid = true, priority = 300 }
 voice = { type = "score", range = [0, 100], label = "Voice" }
 summary = { type = "text", label = "Summary" }
 ```

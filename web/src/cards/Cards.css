@@ -384,7 +384,7 @@
   border-radius: 50%;
 }
 
-/* The grid key's score, bottom left, across from the lorebook count. */
+/* The grid score, bottom left, across from the lorebook count. */
 .tile-image .score {
   position: absolute;
   left: var(--space);
@@ -396,10 +396,10 @@
   font-weight: 600;
 }
 
-/* Grid scores run from worst at the range's low end to best at its high end. */
-.tile-image .score.good { color: var(--ok); box-shadow: inset 0 0 0 1px var(--ok); }
-.tile-image .score.fair { color: var(--drift); box-shadow: inset 0 0 0 1px var(--drift); }
-.tile-image .score.poor { color: var(--danger); box-shadow: inset 0 0 0 1px var(--danger); }
+/* The medal says which scorer the score is from: gold for the highest priority. Dark text reads on all three in either theme. */
+.tile-image .score.gold { background: #e8b923; color: #2b2100; }
+.tile-image .score.silver { background: #c4cad0; color: #1d2329; }
+.tile-image .score.bronze { background: #c98a4b; color: #2a1606; }
 
 .tile-image .score.text {
   max-width: calc(100% - 2 * var(--space) - 3em);

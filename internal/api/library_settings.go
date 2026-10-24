@@ -19,12 +19,10 @@ type librarySettingOut[T any] struct {
 }
 
 type librarySettings struct {
-	ScoreInstance     librarySettingOut[int64]   `json:"score_instance" doc:"The enrich instance whose values this library's grid shows and hide_below reads, and that enrichment filters and sort naming no instance use."`
-	HideBelow         librarySettingOut[float64] `json:"hide_below" doc:"Hiding archives cards whose grid score is below this; null hides none for their score."`
-	Duplicates        librarySettingOut[string]  `json:"duplicates" doc:"Hiding archives duplicates: off, exact (the same content), or near (text, or the avatar of a card with the same name, within duplicate_distance bits). When not off, an import that changes cards runs hiding."`
-	DuplicateDistance librarySettingOut[int]     `json:"duplicate_distance" doc:"For near duplicates, the most bits two cards' text or avatar hashes may differ by."`
-	DuplicateKeep     librarySettingOut[string]  `json:"duplicate_keep" doc:"The duplicate hiding keeps: the best score, the oldest, or the newest."`
-	DuplicateDecide   librarySettingOut[int64]   `json:"duplicate_decide" doc:"For near duplicates, the ai instance that confirms each pair is the same card, or null for distance alone."`
+	Duplicates        librarySettingOut[string] `json:"duplicates" doc:"Hiding archives duplicates: off, exact (the same content), or near (text, or the avatar of a card with the same name, within duplicate_distance bits). When not off, an import that changes cards runs hiding."`
+	DuplicateDistance librarySettingOut[int]    `json:"duplicate_distance" doc:"For near duplicates, the most bits two cards' text or avatar hashes may differ by."`
+	DuplicateKeep     librarySettingOut[string] `json:"duplicate_keep" doc:"The duplicate hiding keeps: the best score, the oldest, or the newest."`
+	DuplicateDecide   librarySettingOut[int64]  `json:"duplicate_decide" doc:"For near duplicates, the ai instance that confirms each pair is the same card, or null for distance alone."`
 }
 
 type librarySettingsOut struct{ Body librarySettings }
@@ -36,7 +34,6 @@ type librarySettingsIn struct {
 type patchLibrarySettingsIn struct {
 	ID   int64 `path:"id"`
 	Body struct {
-		ScoreInstance optional[int64] `json:"score_instance,omitempty" doc:"An enrich instance's ID, or null to follow the default."`
 		// Null follows the default.
 		HideOptionsIn
 	}
@@ -58,31 +55,9 @@ func (s *Server) librarySettings(ctx context.Context, id int64) (*librarySetting
 	if err := s.libraryExists(ctx, id); err != nil {
 		return nil, err
 	}
-	set := s.libSettings()
-	insts, err := set.Enrichers(ctx)
-	if err != nil {
-		return nil, s.fail(err)
-	}
-	def, err := s.Registry.Setting(ctx, libsettings.ScoreInstanceKey)
-	if err != nil {
-		return nil, s.fail(err)
-	}
-	v, overridden, err := set.Get(ctx, id, libsettings.ScoreInstanceKey)
-	if err != nil {
-		return nil, s.fail(err)
-	}
 	out := &librarySettingsOut{}
-	out.Body.ScoreInstance.Overridden = overridden
-	if i := libsettings.ScoreNamed(v, insts); i != nil {
-		out.Body.ScoreInstance.Value = &i.ID
-	}
-	if i := libsettings.ScoreNamed(def, insts); i != nil {
-		out.Body.ScoreInstance.Default = &i.ID
-	}
 	b := &out.Body
-	if b.HideBelow, err = settingOut(ctx, s, libsettings.HideBelow, id); err != nil {
-		return nil, s.fail(err)
-	}
+	var err error
 	if b.Duplicates, err = settingOut(ctx, s, libsettings.Duplicates, id); err != nil {
 		return nil, s.fail(err)
 	}
@@ -114,13 +89,7 @@ func (s *Server) librarySettingsRoutes(api huma.API) {
 			if _, err := s.librarySettings(ctx, in.ID); err != nil {
 				return nil, err
 			}
-			b := in.Body
-			if b.ScoreInstance.Sent {
-				if err := s.setScoreInstance(ctx, &in.ID, b.ScoreInstance.Value); err != nil {
-					return nil, err
-				}
-			}
-			if err := b.HideOptionsIn.set(ctx, s, &in.ID); err != nil {
+			if err := in.Body.HideOptionsIn.set(ctx, s, &in.ID); err != nil {
 				return nil, err
 			}
 			return s.librarySettings(ctx, in.ID)

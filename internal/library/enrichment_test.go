@@ -87,11 +87,11 @@ func TestEnrichmentOnAnOlderRevisionDoesNotReplaceANewerOne(t *testing.T) {
 	if len(list) != 2 || string(list[0].Value) != "80" || !list[0].Current || list[0].Stale || list[1].Current {
 		t.Fatalf("values = %+v", list)
 	}
-	res, err := lib.Search(ctx, Card, Query{ScoreInstance: 1, Include: []string{"enrichments"}, Filter: &Filter{Enrichment: ptr("quality"), Gte: ptr(70.0)}})
+	res, err := lib.Search(ctx, Card, Query{Scorers: []Scorer{{1, "quality"}}, Include: []string{"score"}, Filter: &Filter{Enrichment: ptr("quality"), Gte: ptr(70.0)}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Hits) != 1 || string(res.Hits[0].Enrichments["quality"].Value) != "80" {
+	if len(res.Hits) != 1 || string(res.Hits[0].Score.Value) != "80" {
 		t.Fatalf("search = %+v", res.Hits)
 	}
 }

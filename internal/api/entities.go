@@ -41,20 +41,20 @@ func toRevision(r library.Revision, full bool) revisionOut {
 }
 
 type entityOut struct {
-	ID          int64               `json:"id"`
-	LibraryID   int64               `json:"library_id" doc:"The library it belongs to"`
-	Slug        string              `json:"slug"`
-	Provenance  string              `json:"provenance"`
-	ArchivedAt  *time.Time          `json:"archived_at,omitempty"`
+	ID         int64      `json:"id"`
+	LibraryID  int64      `json:"library_id" doc:"The library it belongs to"`
+	Slug       string     `json:"slug"`
+	Provenance string     `json:"provenance"`
+	ArchivedAt *time.Time `json:"archived_at,omitempty"`
 	// ArchivedReason is why the hide job archived it.
-	ArchivedReason string              `json:"archived_reason,omitempty" enum:"low_score,duplicate"`
+	ArchivedReason string              `json:"archived_reason,omitempty" enum:"duplicate"`
 	CreatedAt      time.Time           `json:"created_at"`
-	Revision    revisionOut         `json:"revision" doc:"The head revision"`
-	Lorebooks   []int64             `json:"lorebooks,omitempty" doc:"Cards only: IDs of linked lorebooks"`
-	Collections []int64             `json:"collections,omitempty" doc:"Cards only: IDs of the collections it's in"`
-	Cards       []int64             `json:"cards,omitempty" doc:"Lorebooks only: IDs of linked cards"`
-	VariantOf   *library.EntityRef  `json:"variant_of,omitempty" doc:"The card or lorebook this is a variant of. Absent for none."`
-	Variants    []library.EntityRef `json:"variants" doc:"Its direct variants, oldest first"`
+	Revision       revisionOut         `json:"revision" doc:"The head revision"`
+	Lorebooks      []int64             `json:"lorebooks,omitempty" doc:"Cards only: IDs of linked lorebooks"`
+	Collections    []int64             `json:"collections,omitempty" doc:"Cards only: IDs of the collections it's in"`
+	Cards          []int64             `json:"cards,omitempty" doc:"Lorebooks only: IDs of linked cards"`
+	VariantOf      *library.EntityRef  `json:"variant_of,omitempty" doc:"The card or lorebook this is a variant of. Absent for none."`
+	Variants       []library.EntityRef `json:"variants" doc:"Its direct variants, oldest first"`
 }
 
 type entityResp struct{ Body entityOut }
@@ -442,7 +442,7 @@ func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
 		Description: "Copies the head revision, and a card's collections and lorebook links, into a new " + singular +
 			" that is a variant of this one. Sources and bindings aren't copied; the new one gets a source of kind " + library.ForkSourceKind +
 			" whose ref is this one's ID. Forked into another library, it isn't a variant and gets no collections.",
-			Tags: tags, DefaultStatus: http.StatusCreated},
+		Tags: tags, DefaultStatus: http.StatusCreated},
 		func(ctx context.Context, in *forkIn) (*entityResp, error) {
 			lib := in.Body.Library
 			if lib != 0 {

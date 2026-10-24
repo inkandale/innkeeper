@@ -1005,7 +1005,7 @@ export interface paths {
         };
         /**
          * List enrichment keys
-         * @description The library's score instance, and the keys each enabled enrich instance's plugin declares: those that enrichment filters and sort can use, naming the instance.
+         * @description The scorers, and the keys each enabled enrich instance's plugin declares: those that enrichment filters and sort can use, naming the instance.
          */
         get: operations["list-enrichment-keys"];
         put?: never;
@@ -1717,8 +1717,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Archive a library's low-scoring and duplicate cards
-         * @description Queues a job that archives, by the library's settings, each card scoring below hide_below and every duplicate but the one duplicate_keep picks, and records why. Cards it archived on an earlier run that now pass are unarchived. Cards the owner archived are left alone. Its progress counts each.
+         * Archive a library's duplicate cards
+         * @description Queues a job that archives, by the library's settings, every duplicate but the one duplicate_keep picks, and records why. Cards it archived on an earlier run that are no longer duplicates are unarchived. Cards the owner archived are left alone. Its progress counts each.
          */
         post: operations["hide-cards"];
         delete?: never;
@@ -3287,13 +3287,10 @@ export interface components {
              * @example /api/schemas/EnrichmentKeysOutBody.json
              */
             readonly $schema?: string;
-            /**
-             * Format: int64
-             * @description The score instance, or null when there is none.
-             */
-            instance_id: number | null;
             /** @description Each enabled enrich instance, with the keys its plugin declares. */
             instances: components["schemas"]["EnrichmentInstance"][] | null;
+            /** @description The grid keys a card's grid score reads, highest priority first. */
+            scorers: components["schemas"]["Scorer"][] | null;
         };
         EnrichmentOut: {
             /** @description Whether the library grid shows this key. */
@@ -3334,7 +3331,7 @@ export interface components {
             /** Format: date-time */
             archived_at?: string;
             /** @enum {string} */
-            archived_reason?: "low_score" | "duplicate";
+            archived_reason?: "duplicate";
             /** @description Lorebooks only: IDs of linked cards */
             cards?: number[] | null;
             /** @description Cards only: IDs of the collections it's in */
@@ -3554,10 +3551,6 @@ export interface components {
             archived_reason?: string;
             /** @description Lorebooks with include cards: IDs of linked cards. */
             cards?: number[] | null;
-            /** @description With include enrichments: the score instance's current value of each key. */
-            enrichments?: {
-                [key: string]: components["schemas"]["HitEnrichment"];
-            };
             /**
              * Format: int64
              * @description Lorebooks only: how many entries it has.
@@ -3573,12 +3566,17 @@ export interface components {
             lorebooks?: number[] | null;
             /** Format: int64 */
             revision_id: number;
+            /** @description With include score: the card's grid score, from the highest-priority scorer that has one. */
+            score?: components["schemas"]["HitScore"];
             slug: string;
             tags?: string[] | null;
             /** @description With include targets: how the card stands on each target it's pushed to. */
             targets?: components["schemas"]["TargetState"][] | null;
         };
-        HitEnrichment: {
+        HitScore: {
+            /** Format: int64 */
+            instance: number;
+            key: string;
             /** @description Whether the value is about an older revision than the head. */
             stale: boolean;
             value: unknown;
@@ -3737,19 +3735,6 @@ export interface components {
             readonly $schema?: string;
             name: string;
         };
-        LibrarySettingOutFloat64: {
-            /**
-             * Format: double
-             * @description The core's value, which a library without an override follows.
-             */
-            default: number | null;
-            overridden: boolean;
-            /**
-             * Format: double
-             * @description What the library uses: its override, or the default.
-             */
-            value: number | null;
-        };
         LibrarySettingOutInt: {
             /**
              * Format: int64
@@ -3798,10 +3783,6 @@ export interface components {
             duplicate_keep: components["schemas"]["LibrarySettingOutString"];
             /** @description Hiding archives duplicates: off, exact (the same content), or near (text, or the avatar of a card with the same name, within duplicate_distance bits). When not off, an import that changes cards runs hiding. */
             duplicates: components["schemas"]["LibrarySettingOutString"];
-            /** @description Hiding archives cards whose grid score is below this; null hides none for their score. */
-            hide_below: components["schemas"]["LibrarySettingOutFloat64"];
-            /** @description The enrich instance whose values this library's grid shows and hide_below reads, and that enrichment filters and sort naming no instance use. */
-            score_instance: components["schemas"]["LibrarySettingOutInt64"];
         };
         LibrarySummary: {
             /**
@@ -3963,16 +3944,6 @@ export interface components {
             duplicate_keep?: string | null;
             /** @description off, exact, or near. */
             duplicates?: string | null;
-            /**
-             * Format: double
-             * @description Hide cards whose grid score is below this.
-             */
-            hide_below?: number | null;
-            /**
-             * Format: int64
-             * @description An enrich instance's ID, or null to follow the default.
-             */
-            score_instance?: number | null;
         };
         PatchSettingsInBody: {
             /**
@@ -4000,18 +3971,8 @@ export interface components {
              * @description An ai instance's ID, or null to clear it. Setting it, even to its current value, embeds every card again.
              */
             embed_instance?: number | null;
-            /**
-             * Format: double
-             * @description Hide cards whose grid score is below this.
-             */
-            hide_below?: number | null;
             /** @description true once the owner finishes or skips the setup wizard; false shows it again. */
             onboarding_done?: boolean;
-            /**
-             * Format: int64
-             * @description An enrich instance's ID, or null to clear it.
-             */
-            score_instance?: number | null;
             /** @description An installed theme plugin's name, or empty for the default theme. */
             theme?: string;
         };
@@ -4180,7 +4141,7 @@ export interface components {
              * @example /api/schemas/Query.json
              */
             readonly $schema?: string;
-            /** @description Counts to return over every match: tags, collections, targets, sources, states (each match once per state it has on any target), or states:<instance>,<instance> for those targets only, or enrichment:<key> for the values of a text or list key from the score instance, or enrichment:<instance>:<key> from that enrich instance. Enrichment counts are keyed by what follows enrichment:. Lorebooks take targets and sources. */
+            /** @description Counts to return over every match: tags, collections, targets, sources, states (each match once per state it has on any target), or states:<instance>,<instance> for those targets only, or enrichment:<instance>:<key> for the values of a text or list key from that enrich instance. Enrichment counts are keyed by what follows enrichment:. Lorebooks take targets and sources. */
             facets?: string[] | null;
             /** @description Return only the facets: no hits, total, or next_cursor. */
             facets_only?: boolean;
@@ -4192,7 +4153,7 @@ export interface components {
              * @enum {string}
              */
             group?: "family";
-            /** @description Extra data per hit: tags, lorebooks, targets, enrichments (the score instance's current values of its score keys and grid key). Lorebooks take cards and targets. */
+            /** @description Extra data per hit: tags, lorebooks, targets, score (the grid score). Lorebooks take cards and targets. */
             include?: string[] | null;
             /**
              * Format: int64
@@ -4202,7 +4163,7 @@ export interface components {
             page?: components["schemas"]["Page"];
             /** @description Rank cards by meaning instead of matching words. Needs text and an embed instance (Settings, Plugins, Embeddings from); sorts by relevance only. Cards not embedded yet are left out. */
             semantic?: boolean;
-            /** @description relevance, updated, name, created, or enrichment:<key> for the score instance's value of key, highest first and cards without one last; enrichment:<instance>:<key> reads that enrich instance's value instead. Default: relevance with text, newest first without. */
+            /** @description relevance, updated, name, created, or enrichment:<instance>:<key> for that enrich instance's value of key, highest first and cards without one last; enrichment:<key>, naming a grid key, sorts by the grid score. Default: relevance with text, newest first without. */
             sort?: string;
             /** @description library, or catalog:<instance id> to also search a catalog by text alone. Default: library. */
             sources?: string[] | null;
@@ -4447,6 +4408,11 @@ export interface components {
                 [key: string]: string | null;
             };
         };
+        Scorer: {
+            /** Format: int64 */
+            instance: number;
+            key: string;
+        };
         SearchResults: {
             /**
              * Format: uri
@@ -4485,15 +4451,8 @@ export interface components {
              * @description The ai instance whose ai.embed every library's card vectors come from, or null for none.
              */
             embed_instance: number | null;
-            /** Format: double */
-            hide_below: number | null;
             /** @description Whether the owner finished or skipped the setup wizard. */
             onboarding_done: boolean;
-            /**
-             * Format: int64
-             * @description The enrich instance whose values the library grid shows and hide_below reads, and that enrichment filters and sort naming no instance use, or null; a library may override it. When null and exactly one enrich instance exists, that one is used.
-             */
-            score_instance: number | null;
             /** @description The selected theme plugin, or empty for the default theme. */
             theme: string;
         };
@@ -6744,10 +6703,7 @@ export interface operations {
     };
     "list-enrichment-keys": {
         parameters: {
-            query?: {
-                /** @description The library; default 1 */
-                library?: number;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;

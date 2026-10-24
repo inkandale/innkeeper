@@ -11,11 +11,8 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Why the hide job archived a card.
-const (
-	ReasonLowScore  = "low_score"
-	ReasonDuplicate = "duplicate"
-)
+// ReasonDuplicate is why the hide job archives a card.
+const ReasonDuplicate = "duplicate"
 
 // hideable is a card the hide job may group or archive: not archived by the owner.
 const hideable = `(c.archived_at IS NULL OR c.archived_reason IS NOT NULL)`
@@ -169,36 +166,31 @@ func GroupPairs(pairs []DuplicatePair) [][]int64 {
 type HideCandidate struct {
 	ID        int64
 	CreatedAt time.Time
-	// Score is the score instance's current value of the key, if it has one.
+	// Score is the card's grid score, if it has a number for one.
 	Score *float64
 }
 
 // HideCandidates returns library's cards the hide job may archive, in ID
-// order, with their current value of key from the enrich instance.
-func (l *Library) HideCandidates(ctx context.Context, library, instance int64, key string) ([]HideCandidate, error) {
+// order, with their grid score from scorers.
+func (l *Library) HideCandidates(ctx context.Context, library int64, scorers []Scorer) ([]HideCandidate, error) {
+	instances, keys := scorerArgs(scorers)
 	rows, err := l.pool.Query(ctx, `SELECT c.id, c.created_at,
-			(SELECT CASE WHEN jsonb_typeof(e.value) = 'number' THEN e.value::float8 END FROM enrichment e
-			 WHERE e.card_id = c.id AND e.key = $3 AND e.instance_id = $2
-			 ORDER BY e.revision_id DESC, e.created_at DESC, e.id DESC LIMIT 1)
-		FROM card c WHERE c.library_id = $1 AND `+hideable+` ORDER BY c.id`, library, instance, key)
+			`+gridSQL(`CASE WHEN jsonb_typeof(e.value) = 'number' THEN e.value::float8 END`, "$2", "$3")+`
+		FROM card c WHERE c.library_id = $1 AND `+hideable+` ORDER BY c.id`, library, instances, keys)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(rows, pgx.RowToStructByPos[HideCandidate])
 }
 
-// PlanHide is what the hide job archives, card ID to reason: every candidate
-// scoring below threshold, if set, and in each duplicate group every card
-// but the one keep picks: best (highest score, then oldest), oldest, or
-// newest. A card both low and a duplicate is low.
-func PlanHide(cands []HideCandidate, groups [][]int64, threshold *float64, keep string) map[int64]string {
+// PlanHide is what the hide job archives, card ID to reason: in each
+// duplicate group every card but the one keep picks: best (highest score,
+// then oldest), oldest, or newest.
+func PlanHide(cands []HideCandidate, groups [][]int64, keep string) map[int64]string {
 	byID := map[int64]HideCandidate{}
 	hidden := map[int64]string{}
 	for _, c := range cands {
 		byID[c.ID] = c
-		if threshold != nil && c.Score != nil && *c.Score < *threshold {
-			hidden[c.ID] = ReasonLowScore
-		}
 	}
 	better := func(a, b HideCandidate) bool {
 		switch keep {
@@ -221,7 +213,7 @@ func PlanHide(cands []HideCandidate, groups [][]int64, threshold *float64, keep 
 			}
 		}
 		for _, id := range g {
-			if _, low := hidden[id]; id != kept.ID && !low {
+			if id != kept.ID {
 				hidden[id] = ReasonDuplicate
 			}
 		}

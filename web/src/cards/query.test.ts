@@ -11,7 +11,7 @@ import {
   sameValue,
   setScore,
   parseScore,
-  withScoreInstance,
+  withoutUnnamed,
   toggleTerm,
   type CardQuery,
   type Term,
@@ -221,16 +221,12 @@ test("setScore keeps the same key from another instance", () => {
   expect(setScore(q, { instance: 5, key: "quality", lte: 20 }).terms).toEqual([term("score", "7:quality:none"), term("score", "5:quality:..20")]);
 });
 
-test("withScoreInstance names the score instance in old terms and sorts, or drops them without one", () => {
+test("withoutUnnamed keeps old terms and sorts naming a grid key and drops the rest", () => {
   const q: CardQuery = { ...base, terms: [term("tag", "a"), term("score", "quality:1.."), term("value", "language=en", true), term("score", "7:lint:none")], sort: "enrichment:quality" };
-  expect(withScoreInstance(q, 5)).toEqual({
-    ...q,
-    terms: [term("tag", "a"), term("score", "5:quality:1.."), term("value", "5:language=en", true), term("score", "7:lint:none")],
-    sort: "enrichment:5:quality",
-  });
-  expect(withScoreInstance(q, null)).toEqual({ ...base, terms: [term("tag", "a"), term("score", "7:lint:none")] });
+  expect(withoutUnnamed(q, ["quality", "lint"])).toEqual({ ...q, terms: [term("tag", "a"), term("score", "quality:1.."), term("score", "7:lint:none")] });
+  expect(withoutUnnamed(q, [])).toEqual({ ...base, terms: [term("tag", "a"), term("score", "7:lint:none")] });
   const named = { ...q, terms: [term("score", "7:lint:none")], sort: "enrichment:7:lint" as const };
-  expect(withScoreInstance(named, null)).toBe(named);
+  expect(withoutUnnamed(named, [])).toBe(named);
 });
 
 test("Shares a source is shared=1 in the URL and a shares_source filter", () => {
@@ -259,7 +255,7 @@ test("value terms OR within a key, AND across keys, and only clears its own key"
   ]);
   expect(parseQuery(toParams(q), 1).terms).toEqual(q.terms);
   expect(parseQuery(new URLSearchParams("f=value:Bad=x&f=value:nokey"), 1).terms).toEqual([]);
-  expect(withScoreInstance(q, null).terms).toEqual([]);
+  expect(withoutUnnamed(q, []).terms).toEqual([]);
 });
 
 test("valueLabel turns a plugin's code into words and leaves other values alone", () => {

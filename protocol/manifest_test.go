@@ -94,6 +94,7 @@ func TestManifestErrors(t *testing.T) {
 		{"two grid keys", `summary = { type = "text", label = "AI summary" }`,
 			`summary = { type = "text", label = "AI summary", grid = true }
 extra = { type = "text", label = "Extra", grid = true }`, "at most one enrichment can set grid"},
+		{"priority off the grid", `label = "AI summary" }`, `label = "AI summary", priority = 100 }`, "priority needs grid"},
 		{"unknown use", `secrets = ["api_key"]`, `secrets = ["api_key"]
 uses = ["ai.draw"]`, `uses "ai.draw"`},
 		{"config not an object schema", "[config]\ntype = \"object\"", "[config]\ntype = \"string\"", "config must be a JSON Schema with type object"},

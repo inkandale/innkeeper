@@ -32,6 +32,7 @@ export function Report({ report, subject, onRefine }: { report: ReportT; subject
     const k = x.f.fields?.[0] ?? "";
     groups.set(k, [...(groups.get(k) ?? []), x]);
   }
+  const refinable = !!onRefine && (findings.length > 0 || suggestions.length > 0);
   const check = (id: string) => <input type="checkbox" checked={ticked.has(id)} onChange={() => tick(id)} />;
   const refine = () =>
     onRefine?.(
@@ -73,6 +74,7 @@ export function Report({ report, subject, onRefine }: { report: ReportT; subject
           </tbody>
         </table>
       )}
+      {refinable && <p className="muted">Tick findings and suggestions to include them when you refine.</p>}
       {groups.size > 0 && <h3>Findings</h3>}
       {[...groups].map(([k, list]) => (
         <section key={k} id={`report-${k}`} className="field forge-section">
@@ -82,14 +84,20 @@ export function Report({ report, subject, onRefine }: { report: ReportT; subject
           ))}
         </section>
       ))}
-      {suggestions.length > 0 && <h3>Suggestions</h3>}
-      {suggestions.map(({ s, id }) => (
-        <label key={id} className="forge-check">
-          {check(id)}
-          <span>{s}</span>
-        </label>
-      ))}
-      {onRefine && (findings.length > 0 || suggestions.length > 0) && (
+      {suggestions.length > 0 && (
+        <>
+          <h3>Also consider</h3>
+          <section className="field forge-section">
+            {suggestions.map(({ s, id }) => (
+              <label key={id} className="forge-check">
+                {check(id)}
+                <span>{s}</span>
+              </label>
+            ))}
+          </section>
+        </>
+      )}
+      {refinable && (
         <div className="forge-footer">
           <button className="button primary" disabled={!ticked.size} onClick={refine}>
             Refine with {ticked.size} selected

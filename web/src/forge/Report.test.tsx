@@ -29,3 +29,12 @@ test("Refine builds its instruction from the ticked findings and suggestions", a
   await user.click(screen.getByRole("button", { name: "Refine with 2 selected" }));
   expect(onRefine).toHaveBeenCalledWith("Fix these problems:\n- Description, Scenario: Too short.\n\nApply these suggestions:\n- Give her a rival.");
 });
+
+test("the checkboxes say they feed Refine only when there is a Refine", () => {
+  const hint = "Tick findings and suggestions to include them when you refine.";
+  const { rerender } = render(<Report report={report} subject={cardSubject} onRefine={vi.fn()} />);
+  expect(screen.getByText(hint)).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Also consider" })).toBeInTheDocument();
+  rerender(<Report report={report} subject={cardSubject} />);
+  expect(screen.queryByText(hint)).toBeNull();
+});

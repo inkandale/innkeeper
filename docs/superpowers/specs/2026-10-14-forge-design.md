@@ -138,7 +138,7 @@ Opens when a proposal arrives. One row per changed field:
 - Findings grouped by field, each with severity, text, and a checkbox. A
   finding on several fields appears under the first, with "Also: …". A
   "move" finding shows the excerpt and its destination field.
-- Suggestions with checkboxes.
+- Suggestions with checkboxes, under "Also consider".
 - **Refine with {n} selected** runs the revise action with the ticked
   findings and suggestions as its instruction, and opens Review when done.
 

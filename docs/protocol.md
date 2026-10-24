@@ -808,6 +808,11 @@ A report:
 move's `to` must not be empty. A reply with an invalid report, or a `proposal`
 that isn't an object, fails the run.
 
+A finding is a problem with what the entity already holds. A suggestion is an
+improvement that no finding covers, such as content the entity lacks. Don't
+repeat a finding as a suggestion: the owner can tick both, and Refine then asks
+for the same change twice.
+
 The core then keeps only the changes in the action's scope:
 
 - A field action may change only its `field`. Run without a field, a

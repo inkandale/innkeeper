@@ -1,9 +1,11 @@
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
-import { api, must } from "../api/client";
+import { api, must, thumb } from "../api/client";
 import { librariesQuery } from "../api/queries";
 import type { components } from "../api/schema";
+import "../cards/Cards.css";
+import "./Card.css";
 
 type Found = components["schemas"]["DiscoveredCard"];
 type RelatedPage = components["schemas"]["RelatedPage"];
@@ -14,19 +16,31 @@ const groupNames: Record<RelatedPage["group"], string> = {
   collection: "Shares a collection",
 };
 
-/** CardList links each found card, naming its library when it isn't this card's. */
+/** CardList shows the found cards as tiles, naming a card's library when it isn't this card's. */
 function CardList({ items, library }: { items: Found[]; library: number }) {
   const libraries = useQuery(librariesQuery);
   const libraryName = (n: number) => libraries.data?.find((l) => l.id === n)?.name ?? `Library ${n}`;
   return (
-    <ul className="plain">
-      {items.map((c) => (
-        <li key={c.card_id}>
-          <Link to={`/cards/${c.card_id}`}>{c.name || `#${c.card_id}`}</Link>
-          {c.library_id !== library && <span className="muted"> in {libraryName(c.library_id)}</span>}
-        </li>
-      ))}
-    </ul>
+    <div className="grid discover">
+      {items.map((c) => {
+        const name = c.name || `#${c.card_id}`;
+        return (
+          <article key={c.card_id} className="tile">
+            <Link to={`/cards/${c.card_id}`} className="tile-name">
+              {c.avatar ? (
+                <img className="avatar" src={thumb(c.avatar, 320)} alt="" loading="lazy" />
+              ) : (
+                <span className="avatar empty" aria-hidden="true">
+                  {name.slice(0, 1)}
+                </span>
+              )}
+              {name}
+            </Link>
+            {c.library_id !== library && <span className="muted">in {libraryName(c.library_id)}</span>}
+          </article>
+        );
+      })}
+    </div>
   );
 }
 

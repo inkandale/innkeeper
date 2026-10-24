@@ -1635,6 +1635,10 @@
       "DiscoveredCard": {
         "additionalProperties": false,
         "properties": {
+          "avatar": {
+            "description": "The head revision's avatar blob, if it has one.",
+            "type": "string"
+          },
           "card_id": {
             "format": "int64",
             "type": "integer"

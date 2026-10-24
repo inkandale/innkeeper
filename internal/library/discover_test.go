@@ -234,3 +234,20 @@ func TestRelatedGroupsMatchTheirConditions(t *testing.T) {
 		t.Fatalf("RelatedGroups %v, conditions for %v", RelatedGroups, slices.Sorted(maps.Keys(relatedWhere)))
 	}
 }
+
+func TestDiscoveredCardsCarryTheirAvatar(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	me, _ := newCard(t, lib, "me", `{"name": "Brakka", "creator": "Ann", "tags": ["dwarf", "smith"]}`)
+	other := avatarCard(t, lib, 0, 1, `{"name": "Dorna", "creator": "Ann", "tags": ["dwarf", "smith"]}`)
+	want := fmt.Sprintf("%064x", 1)
+
+	similar, err := lib.SimilarCards(ctx, me, SimilarOptions{})
+	if err != nil || !slices.Equal(ids(similar.Items), []int64{other}) || similar.Items[0].Avatar != want {
+		t.Fatalf("similar = %+v, %v", similar, err)
+	}
+	related, err := lib.RelatedCards(ctx, me, "creator", Page{})
+	if err != nil || !slices.Equal(ids(related.Items), []int64{other}) || related.Items[0].Avatar != want {
+		t.Fatalf("related = %+v, %v", related, err)
+	}
+}

@@ -490,3 +490,12 @@ fieldset.contents {
   border-radius: 50%;
   background: var(--accent);
 }
+
+/* The side panel fits two or three found cards across. */
+.discover {
+  --tile-width: 88px;
+}
+
+.discover .grid {
+  gap: var(--space);
+}

@@ -14,6 +14,7 @@ type DiscoveredCard struct {
 	CardID    int64   `json:"card_id"`
 	LibraryID int64   `json:"library_id"`
 	Name      string  `json:"name"`
+	Avatar    string  `json:"avatar,omitempty" doc:"The head revision's avatar blob, if it has one."`
 	Score     float64 `json:"score,omitempty" doc:"How alike, 0 to 1; similar cards only."`
 }
 
@@ -88,7 +89,7 @@ func (l *Library) SimilarCards(ctx context.Context, cardID int64, o SimilarOptio
 	}
 	// ponytail: exact scan over every vector; add an HNSW index when an archive makes this slow.
 	sql := discoverWith + `, q AS (SELECT embedding FROM card_embedding WHERE instance_id = $2 AND card_id = $1)
-		SELECT c.id, c.library_id, coalesce(r.data->>'name', ''), greatest(0, 1 - (e.embedding <=> q.embedding))
+		SELECT c.id, c.library_id, coalesce(r.data->>'name', ''), coalesce(r.avatar_blob, ''), greatest(0, 1 - (e.embedding <=> q.embedding))
 		FROM self CROSS JOIN q
 		JOIN card_embedding e ON e.instance_id = $2 AND vector_dims(e.embedding) = vector_dims(q.embedding)
 		JOIN card c ON c.id = e.card_id
@@ -98,7 +99,7 @@ func (l *Library) SimilarCards(ctx context.Context, cardID int64, o SimilarOptio
 		LIMIT $4 OFFSET $5`
 	if basis == "tags" {
 		sql = discoverWith + `
-		SELECT c.id, c.library_id, coalesce(r.data->>'name', ''), x.shared::float8 / (cardinality(self.tags) + x.n - x.shared)
+		SELECT c.id, c.library_id, coalesce(r.data->>'name', ''), coalesce(r.avatar_blob, ''), x.shared::float8 / (cardinality(self.tags) + x.n - x.shared)
 		FROM self
 		JOIN card_revision r ON card_tag_keys(r.data) && self.tags
 		JOIN card c ON c.head_revision_id = r.id
@@ -106,7 +107,7 @@ func (l *Library) SimilarCards(ctx context.Context, cardID int64, o SimilarOptio
 			FROM unnest(card_tag_keys(r.data)) t) x
 		WHERE ` + discoverWhere + ` AND r.content_hash <> self.content_hash AND ($3 OR c.library_id = self.library_id)
 			AND x.shared >= ` + strconv.Itoa(minSharedTags) + ` AND $2::bigint IS NOT NULL
-		ORDER BY 4 DESC, c.id
+		ORDER BY 5 DESC, c.id
 		LIMIT $4 OFFSET $5`
 	}
 	items, next, err := l.discoverPage(ctx, sql, limit, offset, cardID, o.Instance, o.AllLibraries, limit+1, offset)
@@ -134,7 +135,7 @@ func (l *Library) similarBasis(ctx context.Context, cardID, instance int64) (str
 }
 
 // discoverPage runs a discovery query that selects (id, library_id, name,
-// score), asked for limit+1 rows, and returns limit of them and the next
+// avatar, score), asked for limit+1 rows, and returns limit of them and the next
 // cursor when there are more.
 func (l *Library) discoverPage(ctx context.Context, sql string, limit, offset int, args ...any) ([]DiscoveredCard, *string, error) {
 	rows, err := l.pool.Query(ctx, sql, args...)
@@ -188,7 +189,7 @@ func (l *Library) RelatedCards(ctx context.Context, cardID int64, group string, 
 	}
 	// ponytail: the creator group scans every head; add an expression index if it shows up slow.
 	sql := discoverWith + `
-		SELECT c.id, c.library_id, coalesce(r.data->>'name', ''), 0::float8
+		SELECT c.id, c.library_id, coalesce(r.data->>'name', ''), coalesce(r.avatar_blob, ''), 0::float8
 		FROM self CROSS JOIN card c
 		JOIN card_revision r ON r.id = c.head_revision_id
 		WHERE ` + discoverWhere + ` AND ` + cond + `

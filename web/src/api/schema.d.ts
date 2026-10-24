@@ -3222,6 +3222,8 @@ export interface components {
             confirm: string;
         };
         DiscoveredCard: {
+            /** @description The head revision's avatar blob, if it has one. */
+            avatar?: string;
             /** Format: int64 */
             card_id: number;
             /** Format: int64 */

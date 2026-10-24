@@ -484,6 +484,46 @@
   gap: 4px;
 }
 
+/* A phone stacks each change: field, draft, proposal, then the choice in a row. */
+@media (max-width: 640px) {
+  .forge-review table,
+  .forge-review tbody,
+  .forge-review tr,
+  .forge-review th,
+  .forge-review td {
+    display: block;
+  }
+
+  .forge-review thead {
+    display: none;
+  }
+
+  .forge-review tr {
+    padding: calc(var(--space) * 0.75) 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .forge-review th,
+  .forge-review td {
+    padding: calc(var(--space) * 0.25) 0;
+    border-bottom: none;
+  }
+
+  .forge-review td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.85em;
+    margin-bottom: 2px;
+  }
+
+  .forge-toggle {
+    grid-auto-flow: column;
+    justify-content: start;
+    gap: var(--space);
+  }
+}
+
 .forge-review .forge-footer,
 .forge-report .forge-footer {
   position: sticky;

@@ -54,10 +54,10 @@ export function Review(props: {
                 {r.change && <small className={`forge-change ${r.change}`}>{r.change}</small>}
                 {r.edited && <small className="muted forge-edited">You've edited this since the run started.</small>}
               </th>
-              <td>
+              <td data-label="Your draft">
                 <div className="forge-text">{r.mine || absent}</div>
               </td>
-              <td>
+              <td data-label="Proposal">
                 <div className="forge-text hunks">{r.after === undefined ? absent : <Words runs={wordDiff(r.before, r.after)} />}</div>
               </td>
               <td>

@@ -146,6 +146,11 @@ The card search input gains `semantic` (boolean). With `semantic` and `q`:
   is a candidate, ordered by distance to `q`.
 - With no embed instance, the request fails with `ErrNoEmbedInstance`,
   which `Server.failAs` maps to 409, with a message naming the setting.
+- Semantic results sort by similarity only; another `sort` is a 400, as are
+  a semantic search without `text` and one on lorebooks.
+- A bulk selection can't be semantic, since only search embeds the query.
+  The Cards page selects all matches by their filter alone, and counts
+  facets without the text.
 
 `search_cards` in MCP reaches this through the shared search code.
 

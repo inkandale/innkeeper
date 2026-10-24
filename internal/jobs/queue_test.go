@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -59,6 +62,35 @@ func TestClaimWaitsWhileTheSameJobRuns(t *testing.T) {
 	}
 	if c, err := q.claim(ctx, "w2", []string{"test"}, time.Minute); err != nil || c == nil || c.ID != same.ID {
 		t.Fatalf("claim after the lease expired = %v, %v; want job %d", c, err, same.ID)
+	}
+}
+
+// Workers starting together, as after a deploy, must not both claim a requeued pair.
+func TestConcurrentClaimsTakeOneOfTheSameJob(t *testing.T) {
+	q := newQueue(t)
+	ctx := context.Background()
+	for round := range 20 {
+		if _, err := q.pool.Exec(ctx, `DELETE FROM job`); err != nil {
+			t.Fatal(err)
+		}
+		for range 2 {
+			q.Enqueue(ctx, Spec{Kind: "test", Payload: map[string]int{"library": 1}})
+		}
+		var wg sync.WaitGroup
+		var claimed atomic.Int32
+		for w := range 4 {
+			wg.Go(func() {
+				if c, err := q.claim(ctx, fmt.Sprint("w", w), []string{"test"}, time.Minute); err != nil {
+					t.Error(err)
+				} else if c != nil {
+					claimed.Add(1)
+				}
+			})
+		}
+		wg.Wait()
+		if n := claimed.Load(); n != 1 {
+			t.Fatalf("round %d: %d workers claimed the same job, want 1", round, n)
+		}
 	}
 }
 

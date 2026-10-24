@@ -258,7 +258,16 @@ func (q *Queue) EnsureScheduled(ctx context.Context, kind string, every time.Dur
 // lease, so repeated starts run one after another. It returns nil when no
 // job is due.
 func (q *Queue) claim(ctx context.Context, worker string, kinds []string, lease time.Duration) (*Job, error) {
-	j, err := scanJob(q.pool.QueryRow(ctx, `UPDATE job SET status = 'running', attempts = attempts + 1,
+	tx, err := q.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	// Without it, two claims at once can't see each other's job and both start the same one.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('innkeeper-claim'))`); err != nil {
+		return nil, err
+	}
+	j, err := scanJob(tx.QueryRow(ctx, `UPDATE job SET status = 'running', attempts = attempts + 1,
 			started_at = coalesce(started_at, now()),
 			locked_by = $1, locked_until = now() + make_interval(secs => $2)
 		WHERE id = (
@@ -271,6 +280,9 @@ func (q *Queue) claim(ctx context.Context, worker string, kinds []string, lease 
 		return nil, nil
 	}
 	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	return &j, nil

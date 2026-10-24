@@ -93,13 +93,14 @@ func (l *Library) DuplicatePairs(ctx context.Context, library int64, maxDistance
 		)
 		` + pairs + `
 		UNION ALL
-		SELECT c.id, m.id, false FROM card c JOIN card_revision r ON r.id = c.head_revision_id
+		SELECT c.id, m.card_id, false FROM card c JOIN card_revision r ON r.id = c.head_revision_id
 		CROSS JOIN LATERAL (
-			SELECT e.id FROM card_revision r2
-			JOIN card e ON e.id = r2.card_id AND e.head_revision_id = r2.id
-			WHERE e.library_id = c.library_id AND e.id > c.id AND (e.archived_at IS NULL OR e.archived_reason IS NOT NULL)
-				AND ` + bands + `
-				AND bit_count((r2.text_simhash # r.text_simhash)::bit(64)) <= $2
+			-- Each card's few band matches lead, each checked by primary key. A join to card here was
+			-- planned as every pair of cards, and card_id + 0 keeps its index out of the band lookup.
+			SELECT r2.card_id FROM card_revision r2
+			WHERE ` + bands + ` AND bit_count((r2.text_simhash # r.text_simhash)::bit(64)) <= $2 AND r2.card_id + 0 > c.id
+				AND EXISTS (SELECT 1 FROM card e WHERE e.id = r2.card_id AND e.head_revision_id = r2.id
+					AND e.library_id = c.library_id AND (e.archived_at IS NULL OR e.archived_reason IS NOT NULL))
 		) m
 		WHERE c.library_id = $1 AND ` + hideable + ` AND r.text_simhash IS NOT NULL
 		UNION ALL

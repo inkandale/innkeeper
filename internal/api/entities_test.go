@@ -82,6 +82,15 @@ func TestCardLifecycle(t *testing.T) {
 	}
 }
 
+func TestLorebookOverAMegabyteCanBeCreatedAndEdited(t *testing.T) {
+	e := newEnv(t)
+	entry := `{"keys": ["k"], "content": "` + strings.Repeat("Lore. ", 200_000) + `"}`
+	var lb entityResult
+	e.call("POST", "/lorebooks", map[string]any{"data": json.RawMessage(`{"name": "Big", "entries": [` + entry + `]}`)}, 201, &lb)
+	e.call("PUT", fmt.Sprintf("/lorebooks/%d", lb.ID), map[string]any{"base_revision_id": lb.Revision.ID,
+		"data": json.RawMessage(`{"name": "Bigger", "entries": [` + entry + `]}`)}, 200, nil)
+}
+
 func TestCardErrors(t *testing.T) {
 	e := newEnv(t)
 	other := e.createCard(`{"name": "Other"}`)

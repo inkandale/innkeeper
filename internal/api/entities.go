@@ -240,6 +240,10 @@ func (s *Server) revisionOf(ctx context.Context, ents *library.Entities, id, rev
 	return r, nil
 }
 
+// maxEntityBytes caps a card or lorebook body. Imported lorebooks can pass
+// huma's 1 MB default, and the owner must still be able to edit them.
+const maxEntityBytes = library.MaxBlobBytes
+
 // entityRoutes registers the routes cards and lorebooks share, under
 // /<plural>.
 func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
@@ -249,7 +253,7 @@ func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
 	item := base + "/{id}"
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "create-" + singular, Method: http.MethodPost, Path: base,
-		Summary: "Create a " + singular, Tags: tags, DefaultStatus: http.StatusCreated},
+		Summary: "Create a " + singular, Tags: tags, DefaultStatus: http.StatusCreated, MaxBodyBytes: maxEntityBytes},
 		func(ctx context.Context, in *createEntityIn) (*entityResp, error) {
 			lib, err := s.checkLibrary(ctx, in.Body.Library)
 			if err != nil {
@@ -275,7 +279,8 @@ func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
 		})
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "update-" + singular, Method: http.MethodPut, Path: item,
-		Summary: "Edit a " + singular, Description: "Adds a revision on top of base_revision_id.", Tags: tags},
+		Summary: "Edit a " + singular, Description: "Adds a revision on top of base_revision_id.", Tags: tags,
+		MaxBodyBytes: maxEntityBytes},
 		func(ctx context.Context, in *updateEntityIn) (*entityResp, error) {
 			if _, err := ents.Get(ctx, in.ID); err != nil {
 				return nil, s.fail(err)

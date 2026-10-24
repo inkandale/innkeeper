@@ -74,6 +74,12 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+          # The port opens once migrations finish; this gives them up to 30 minutes before liveness counts.
+          startupProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 10
+            failureThreshold: 180
           readinessProbe:
             tcpSocket:
               port: http

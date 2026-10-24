@@ -58,7 +58,7 @@ test("enrichment values format by their range", () => {
 test("a text grid key shows truncated, with the whole value in its title", () => {
   const long = "A very long summary of the card that goes on and on";
   const hit: Hit = { id: 7, slug: "brakka", revision_id: 1, fields: { name: "Brakka" }, score: { instance: 4, key: "summary", value: long, stale: false } };
-  const scorers = new Map<number, Scorer>([[4, { key: { key: "summary", label: "Summary", type: "text" } }]]);
+  const scorers = new Map<number, Scorer>([[4, { keys: [{ key: "summary", label: "Summary", type: "text" }] }]]);
   render(
     <MemoryRouter>
       <Tile hit={hit} names={names} pick={{ selected: false, locked: false, onPick: () => {} }} scorers={scorers} />
@@ -68,10 +68,10 @@ test("a text grid key shows truncated, with the whole value in its title", () =>
 });
 
 const ranked = new Map<number, Scorer>([
-  [5, { key: { key: "quality", label: "Quality", type: "score", range: [0, 100] }, medal: "gold" }],
-  [6, { key: { key: "quality", label: "Crucible quality", type: "score", range: [0, 100] }, medal: "silver" }],
-  [7, { key: { key: "lint", label: "Lint", type: "score", range: [0, 100] }, medal: "bronze" }],
-  [8, { key: { key: "score", label: "Other", type: "score", range: [0, 100] } }],
+  [5, { keys: [{ key: "quality", label: "Quality", type: "score", range: [0, 100] }], medal: "gold" }],
+  [6, { keys: [{ key: "quality", label: "Crucible quality", type: "score", range: [0, 100] }, { key: "voice", label: "Voice", type: "score", range: [0, 100] }], medal: "silver" }],
+  [7, { keys: [{ key: "lint", label: "Lint", type: "score", range: [0, 100] }], medal: "bronze" }],
+  [8, { keys: [{ key: "score", label: "Other", type: "score", range: [0, 100] }] }],
 ]);
 
 function renderScore(instance: number, key: string, value: number, stale = false) {
@@ -108,4 +108,9 @@ test("a stale score keeps its medal and dims", () => {
 test("a score from an instance that is no scorer shows no badge", () => {
   renderScore(9, "quality", 90);
   expect(screen.queryByRole("img", { name: /90/ })).not.toBeInTheDocument();
+});
+
+test("a score of the key sorted by wears its instance's medal", () => {
+  renderScore(6, "voice", 70);
+  expect(screen.getByRole("img", { name: "Voice 70" })).toHaveClass("silver");
 });

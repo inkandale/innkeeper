@@ -9,8 +9,8 @@ import { Family } from "./Family";
 export type Hit = components["schemas"]["Hit"];
 type EnrichmentKey = components["schemas"]["EnrichmentKey"];
 export type Names = { instances: Map<number, string>; collections: Map<number, string>; logos: Map<number, App> };
-/** Scorer is an instance's grid key and, for the top three by priority, its medal. */
-export type Scorer = { key: EnrichmentKey; medal?: (typeof medals)[number] };
+/** Scorer is an enrich instance's keys and, for the top three scorers by priority, its medal. */
+export type Scorer = { keys: EnrichmentKey[]; medal?: (typeof medals)[number] };
 export const medals = ["gold", "silver", "bronze"] as const;
 
 export const badgeClass: Record<string, string> = {
@@ -78,15 +78,16 @@ export function enrichmentText(value: unknown, range?: number[] | null): string 
   return String(value);
 }
 
-/** Score shows the card's grid score on its scorer's medal, named by the key's label and dimmed when it is about an older revision. */
+/** Score shows the card's score on its instance's medal, named by the key's label and dimmed when it is about an older revision. */
 function Score({ hit, scorers }: { hit: Hit; scorers: Map<number, Scorer> }) {
   const v = hit.score;
   const s = v && scorers.get(v.instance);
-  if (!s) return null;
-  const value = enrichmentText(v.value, s.key.range);
-  const title = v.stale ? `${s.key.label} ${value}, stale: from an older revision` : `${s.key.label} ${value}`;
+  const key = s?.keys.find((k) => k.key === v?.key);
+  if (!v || !s || !key) return null;
+  const value = enrichmentText(v.value, key.range);
+  const title = v.stale ? `${key.label} ${value}, stale: from an older revision` : `${key.label} ${value}`;
   return (
-    <span className={["score", s.medal, s.key.type !== "score" && "text", v.stale && "stale"].filter(Boolean).join(" ")} role="img" aria-label={title} title={title}>
+    <span className={["score", s.medal, key.type !== "score" && "text", v.stale && "stale"].filter(Boolean).join(" ")} role="img" aria-label={title} title={title}>
       {s.medal && <span aria-hidden="true">★ </span>}
       {value}
     </span>

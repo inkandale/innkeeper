@@ -4153,7 +4153,7 @@ export interface components {
              * @enum {string}
              */
             group?: "family";
-            /** @description Extra data per hit: tags, lorebooks, targets, score (the grid score). Lorebooks take cards and targets. */
+            /** @description Extra data per hit: tags, lorebooks, targets, score (the grid score, or under sort enrichment:<instance>:<key> the value sorted by). Lorebooks take cards and targets. */
             include?: string[] | null;
             /**
              * Format: int64
@@ -4161,6 +4161,8 @@ export interface components {
              */
             library?: number;
             page?: components["schemas"]["Page"];
+            /** @description Reverses the sort. Cards without the value sorted by stay last. */
+            reverse?: boolean;
             /** @description Rank cards by meaning instead of matching words. Needs text and an embed instance (Settings, Plugins, Embeddings from); sorts by relevance only. Cards not embedded yet are left out. */
             semantic?: boolean;
             /** @description relevance, updated, name, created, or enrichment:<instance>:<key> for that enrich instance's value of key, highest first and cards without one last; enrichment:<key>, naming a grid key, sorts by the grid score. Default: relevance with text, newest first without. */

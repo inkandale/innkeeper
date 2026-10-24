@@ -18,7 +18,7 @@ import {
   valueLabel,
 } from "./query";
 
-const base: CardQuery = { library: 1, text: "", semantic: false, terms: [], sort: "updated", page: 1, size: 48, view: "grid", sharesSource: false, all: [] };
+const base: CardQuery = { library: 1, text: "", semantic: false, terms: [], sort: "updated", reverse: false, page: 1, size: 48, view: "grid", sharesSource: false, all: [] };
 const term = (kind: Term["kind"], value: string, not = false): Term => ({ kind, value, not });
 
 test("an empty URL is the default query", () => {
@@ -32,6 +32,7 @@ test("a query round-trips through the URL", () => {
     semantic: false,
     terms: [term("tag", "fantasy"), term("tag", "a:b", true), term("target", "2"), term("state", "ahead"), term("collection", "4")],
     sort: "name",
+    reverse: true,
     page: 3,
     size: 96,
     view: "list",
@@ -44,6 +45,13 @@ test("a query round-trips through the URL", () => {
 test("defaults stay out of the URL, but the library is always named", () => {
   expect(toParams(base).toString()).toBe("library=1");
   expect(toParams({ ...base, text: "x", sort: "relevance" }).toString()).toBe("q=x&library=1");
+});
+
+test("reverse is rev=1 in the URL and reverse in the search, except for a semantic search", () => {
+  expect(toParams({ ...base, reverse: true }).toString()).toBe("rev=1&library=1");
+  expect(toSearch({ ...base, reverse: true }).reverse).toBe(true);
+  expect(toSearch(base).reverse).toBeUndefined();
+  expect(toSearch({ ...base, text: "x", semantic: true, reverse: true }).reverse).toBeUndefined();
 });
 
 test("without ?library= the query is in the given library", () => {

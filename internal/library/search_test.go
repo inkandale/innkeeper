@@ -599,6 +599,29 @@ func TestSearchEnrichments(t *testing.T) {
 	if c, b := got.Hits[0].Score, got.Hits[1].Score; c.Instance != other || string(c.Value) != "95" || b.Instance != score || string(b.Value) != "90" {
 		t.Fatalf("ranked scores = %+v, %+v", c, b)
 	}
+	// Sorted by a named instance's key, each hit's score is the value sorted by.
+	got, err = lib.Search(ctx, Card, Query{Include: []string{"score"}, Sort: fmt.Sprintf("enrichment:%d:quality", score), Scorers: ranked})
+	if err != nil || !slices.Equal(hitIDs(got), []int64{s.brakka, s.carrow}) {
+		t.Fatalf("named sort = %v, %v", hitIDs(got), err)
+	}
+	if b, c := got.Hits[0].Score, got.Hits[1].Score; b.Instance != score || string(b.Value) != "90" || c.Instance != score || string(c.Value) != "70" {
+		t.Fatalf("named sort scores = %+v, %+v", b, c)
+	}
+
+	// Reversed, the lowest comes first and a card without a value stays last.
+	all := &Filter{Or: []Filter{{Archived: ptr(true)}, {Archived: ptr(false)}}}
+	got, err = lib.Search(ctx, Card, Query{Sort: "enrichment:quality", Reverse: true, Scorers: scorers, Filter: all})
+	if err != nil || !slices.Equal(hitIDs(got), []int64{s.carrow, s.brakka, s.dellin}) {
+		t.Fatalf("reversed = %v, %v", hitIDs(got), err)
+	}
+	byName, err := lib.Search(ctx, Card, Query{Sort: "name", Filter: all})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reversed, err := lib.Search(ctx, Card, Query{Sort: "name", Reverse: true, Filter: all})
+	if want := slices.Clone(hitIDs(byName)); err != nil || !slices.Equal(hitIDs(reversed), reverseIDs(want)) {
+		t.Fatalf("name reversed = %v, by name %v, %v", hitIDs(reversed), hitIDs(byName), err)
+	}
 
 	for name, q := range map[string]Query{
 		"filter without scorers":        {Filter: &Filter{Enrichment: quality}},
@@ -1246,4 +1269,9 @@ func TestSemanticSearchCantSelectCards(t *testing.T) {
 	if _, err := lib.SearchIDs(context.Background(), Card, q); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("SearchIDs: got %v, want ErrInvalid", err)
 	}
+}
+
+func reverseIDs(ids []int64) []int64 {
+	slices.Reverse(ids)
+	return ids
 }

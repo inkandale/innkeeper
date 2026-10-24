@@ -639,6 +639,17 @@ test("a score range filters, and Not evaluated replaces it", async () => {
   expect(screen.queryByRole("slider", { name: "Summary at least" })).not.toBeInTheDocument();
 });
 
+test("Reverse order flips the sort in the URL and the search", async () => {
+  const { router } = renderCards("/cards?sort=name");
+  const user = userEvent.setup();
+  const reverse = await screen.findByRole("button", { name: "Reverse order" });
+  expect(reverse).toHaveAttribute("aria-pressed", "false");
+  await user.click(reverse);
+  expect(new URLSearchParams(router.state.location.search).get("rev")).toBe("1");
+  expect(reverse).toHaveAttribute("aria-pressed", "true");
+  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ sort: "name", reverse: true })));
+});
+
 test("a score slider applies its range on release", async () => {
   keys = scored;
   const { router } = renderCards("/cards");

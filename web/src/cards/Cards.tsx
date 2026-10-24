@@ -86,10 +86,12 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const go = (next: CardQuery) => setParams(toParams(next));
 
   const enrichers = keys.data?.instances ?? [];
+  const ranked = (keys.data?.scorers ?? []).map((s) => s.instance);
+  // A tile shows the grid score, or the value sorted by, which may be any instance's.
   const scorers = new Map(
-    (keys.data?.scorers ?? []).flatMap((s, i) => {
-      const key = enrichers.find((e) => e.id === s.instance)?.keys?.find((k) => k.key === s.key);
-      return key ? [[s.instance, { key, medal: medals[i] }] as const] : [];
+    enrichers.map((e) => {
+      const place = ranked.indexOf(e.id);
+      return [e.id, { keys: e.keys ?? [], ...(place >= 0 && { medal: medals[place] }) }] as const;
     }),
   );
   const body = { ...(kind === "card" ? toSearch(q, scored) : toLorebookSearch(q)), ...(ungrouped ? {} : { group: "family" as const }) };
@@ -188,6 +190,16 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
                 </option>
               ))}
           </select>
+          <button
+            className="button"
+            aria-label="Reverse order"
+            title="Reverse order"
+            aria-pressed={q.reverse}
+            disabled={q.semantic}
+            onClick={() => go({ ...q, reverse: !q.reverse, page: 1 })}
+          >
+            {q.reverse ? "↑" : "↓"}
+          </button>
           {kind === "card" && (
             <div className="segmented" role="group" aria-label="View">
               {(["grid", "list"] as const).map((v) => (

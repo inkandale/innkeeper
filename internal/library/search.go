@@ -22,9 +22,10 @@ type Query struct {
 	Semantic bool     `json:"semantic,omitempty" doc:"Rank cards by meaning instead of matching words. Needs text and an embed instance (Settings, Plugins, Embeddings from); sorts by relevance only. Cards not embedded yet are left out."`
 	Filter   *Filter  `json:"filter,omitempty"`
 	Sources  []string `json:"sources,omitempty" doc:"library, or catalog:<instance id> to also search a catalog by text alone. Default: library."`
-	Include  []string `json:"include,omitempty" doc:"Extra data per hit: tags, lorebooks, targets, score (the grid score). Lorebooks take cards and targets."`
+	Include  []string `json:"include,omitempty" doc:"Extra data per hit: tags, lorebooks, targets, score (the grid score, or under sort enrichment:<instance>:<key> the value sorted by). Lorebooks take cards and targets."`
 	Fields   []string `json:"fields,omitempty" doc:"Card data keys to return per hit, plus avatar. Default: name."`
 	Sort     string   `json:"sort,omitempty" pattern:"^(relevance|updated|name|created|enrichment:([1-9][0-9]*:)?[a-z][a-z0-9_]*)$" doc:"relevance, updated, name, created, or enrichment:<instance>:<key> for that enrich instance's value of key, highest first and cards without one last; enrichment:<key>, naming a grid key, sorts by the grid score. Default: relevance with text, newest first without."`
+	Reverse  bool     `json:"reverse,omitempty" doc:"Reverses the sort. Cards without the value sorted by stay last."`
 	Facets   []string `json:"facets,omitempty" doc:"Counts to return over every match: tags, collections, targets, sources, states (each match once per state it has on any target), or states:<instance>,<instance> for those targets only, or enrichment:<instance>:<key> for the values of a text or list key from that enrich instance. Enrichment counts are keyed by what follows enrichment:. Lorebooks take targets and sources."`
 	Page     Page     `json:"page,omitempty"`
 	// FacetsOnly saves a filter sidebar the count and page queries it would throw away.
@@ -251,10 +252,23 @@ func scorerArgs(scorers []Scorer) (instances []int64, keys []string) {
 	return instances, keys
 }
 
-// gridScoreSQL is gridSQL for w's scorers.
-func (w *where) gridScoreSQL(cols string) string {
-	instances, keys := scorerArgs(w.scorers)
+// gridScoreSQL is gridSQL for scorers.
+func (w *where) gridScoreSQL(cols string, scorers []Scorer) string {
+	instances, keys := scorerArgs(scorers)
 	return gridSQL(cols, w.arg(instances), w.arg(keys))
+}
+
+// shownScorers are the scorers include score reads: the instance and key a
+// sort names, so a badge shows what the grid is sorted by, else q's.
+func shownScorers(q Query) []Scorer {
+	ref, ok := strings.CutPrefix(q.Sort, "enrichment:")
+	if !ok {
+		return q.Scorers
+	}
+	if inst, key, err := enrichmentRef(ref); err == nil && inst != 0 {
+		return []Scorer{{inst, key}}
+	}
+	return q.Scorers
 }
 
 // enrichmentSQL is the current value of key from enrich instance inst for
@@ -268,7 +282,7 @@ func (w *where) enrichmentSQL(key string, inst int64) (string, error) {
 		if !slices.ContainsFunc(w.scorers, func(s Scorer) bool { return s.Key == key }) {
 			return "", fmt.Errorf("%w: enrichment %q names no instance and is no scorer's grid key", ErrInvalid, key)
 		}
-		return w.gridScoreSQL(`e.value`), nil
+		return w.gridScoreSQL(`e.value`, w.scorers), nil
 	}
 	return `(SELECT e.value FROM enrichment e WHERE e.card_id = c.id AND e.key = ` + w.arg(key) +
 		` AND e.instance_id = ` + w.arg(inst) + ` ORDER BY e.revision_id DESC, e.created_at DESC, e.id DESC LIMIT 1)`, nil
@@ -874,7 +888,7 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 			targets = `(SELECT jsonb_agg(jsonb_build_object('instance', instance_id, 'is', status) ORDER BY instance_id)
 				FROM ` + pushedStatus + ` bs WHERE ` + k.FK + ` = c.id)`
 		case "score":
-			score = w.gridScoreSQL(`jsonb_build_object('instance', s.instance, 'key', s.key, 'value', e.value, 'stale', e.revision_id <> c.head_revision_id)`)
+			score = w.gridScoreSQL(`jsonb_build_object('instance', s.instance, 'key', s.key, 'value', e.value, 'stale', e.revision_id <> c.head_revision_id)`, shownScorers(q))
 		default:
 			return Results{}, fmt.Errorf("%w: unknown include %q", ErrInvalid, inc)
 		}
@@ -903,7 +917,14 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 			return Results{}, fmt.Errorf("%w: unknown facet %q", ErrInvalid, name)
 		}
 	}
-	o := order{desc: true}
+	// Each sort's own direction, flipped by Reverse; a row without the value sorted by goes last either way.
+	o := order{desc: !q.Reverse}
+	last := func(expr string) sortKey {
+		if o.desc {
+			return sortKey{expr + " IS NOT NULL", "boolean"}
+		}
+		return sortKey{expr + " IS NULL", "boolean"}
+	}
 	if q.Semantic && q.Sort != "" && q.Sort != "relevance" {
 		return Results{}, fmt.Errorf("%w: semantic search sorts by relevance only", ErrInvalid)
 	}
@@ -919,7 +940,8 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 		o.keys = []sortKey{{"c.head_revision_id", "bigint"}}
 	case "name":
 		name := "lower(r.data->>'name')"
-		o = order{keys: []sortKey{{name + " IS NULL", "boolean"}, {"coalesce(" + name + ", '')", "text"}}}
+		o.desc = q.Reverse
+		o.keys = []sortKey{last(name), {"coalesce(" + name + ", '')", "text"}}
 	case "created":
 	default:
 		ref, ok := strings.CutPrefix(q.Sort, "enrichment:")
@@ -934,7 +956,7 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 		if err != nil {
 			return Results{}, err
 		}
-		o.keys = []sortKey{{cur + " IS NOT NULL", "boolean"}, {"coalesce(" + cur + ", 'null')", "jsonb"}}
+		o.keys = []sortKey{last(cur), {"coalesce(" + cur + ", 'null')", "jsonb"}}
 	}
 	after := "TRUE"
 	if q.Page.Cursor != nil {

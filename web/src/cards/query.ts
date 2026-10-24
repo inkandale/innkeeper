@@ -31,6 +31,8 @@ export type CardQuery = {
   semantic: boolean;
   terms: Term[];
   sort: Sort;
+  /** reverse flips the sort; cards without the value sorted by stay last. */
+  reverse: boolean;
   page: number;
   size: number;
   view: "grid" | "list";
@@ -138,6 +140,7 @@ export function parseQuery(p: URLSearchParams, library: number): CardQuery {
     semantic: p.get("semantic") === "1",
     terms,
     sort: sorts.some((s) => s === sort) || enrichmentSort.test(sort ?? "") ? sort : defaultSort(text),
+    reverse: p.get("rev") === "1",
     page: Number.isInteger(page) && page > 0 ? page : 1,
     size: sizes.includes(size) ? size : 48,
     view: p.get("view") === "list" ? "list" : "grid",
@@ -153,6 +156,7 @@ export function toParams(q: CardQuery): URLSearchParams {
   if (q.semantic) p.set("semantic", "1");
   for (const t of q.terms) p.append("f", `${t.not ? "-" : ""}${t.kind}:${t.value}`);
   if (q.sort !== defaultSort(q.text)) p.set("sort", q.sort);
+  if (q.reverse) p.set("rev", "1");
   if (q.page !== 1) p.set("page", String(q.page));
   if (q.size !== 48) p.set("size", String(q.size));
   if (q.view !== "grid") p.set("view", q.view);
@@ -226,6 +230,7 @@ export function toSearch(q: CardQuery, scores = false): Search {
     ...(q.semantic && { semantic: true }),
     // Semantic search sorts by similarity alone.
     sort: q.semantic ? "relevance" : q.sort,
+    ...(q.reverse && !q.semantic && { reverse: true }),
     filter: filterFor(q.terms, q.sharesSource, q.all),
     fields: ["name", "avatar"],
     include: ["tags", "lorebooks", "targets", ...(scores ? ["score"] : [])],

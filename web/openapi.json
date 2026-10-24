@@ -4059,7 +4059,7 @@
             "type": "string"
           },
           "include": {
-            "description": "Extra data per hit: tags, lorebooks, targets, score (the grid score). Lorebooks take cards and targets.",
+            "description": "Extra data per hit: tags, lorebooks, targets, score (the grid score, or under sort enrichment:\u003cinstance\u003e:\u003ckey\u003e the value sorted by). Lorebooks take cards and targets.",
             "items": {
               "type": "string"
             },
@@ -4075,6 +4075,10 @@
           },
           "page": {
             "$ref": "#/components/schemas/Page"
+          },
+          "reverse": {
+            "description": "Reverses the sort. Cards without the value sorted by stay last.",
+            "type": "boolean"
           },
           "semantic": {
             "description": "Rank cards by meaning instead of matching words. Needs text and an embed instance (Settings, Plugins, Embeddings from); sorts by relevance only. Cards not embedded yet are left out.",

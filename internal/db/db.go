@@ -30,6 +30,10 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('innkeeper-migrate'))`); err != nil {
 		return err
 	}
+	// A migration that rewrites a big table may rightly take longer than a query may.
+	if _, err := tx.Exec(ctx, `SET LOCAL statement_timeout = 0`); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migration (
 		name text PRIMARY KEY,
 		applied_at timestamptz NOT NULL DEFAULT now()

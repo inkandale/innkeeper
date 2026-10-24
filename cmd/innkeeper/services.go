@@ -90,7 +90,8 @@ func (s *services) ensureSingletons(ctx context.Context, log *slog.Logger) error
 
 // openDB connects to INNKEEPER_DATABASE_URL and migrates the schema. The pool's
 // MaxConns is raised to at least maxConnsAtLeast; 0 keeps the URL's setting.
-// JIT is off unless the URL sets jit.
+// JIT is off and statements stop after 15 minutes unless the URL sets jit or
+// statement_timeout.
 func openDB(ctx context.Context, maxConnsAtLeast int) (*pgxpool.Pool, error) {
 	url := os.Getenv("INNKEEPER_DATABASE_URL")
 	if url == "" {
@@ -106,6 +107,10 @@ func openDB(ctx context.Context, maxConnsAtLeast int) (*pgxpool.Pool, error) {
 	// Compiling a search's plan can take longer than running it.
 	if _, ok := cfg.ConnConfig.RuntimeParams["jit"]; !ok {
 		cfg.ConnConfig.RuntimeParams["jit"] = "off"
+	}
+	// A bad plan fails instead of holding the database for hours.
+	if _, ok := cfg.ConnConfig.RuntimeParams["statement_timeout"]; !ok {
+		cfg.ConnConfig.RuntimeParams["statement_timeout"] = "15min"
 	}
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {

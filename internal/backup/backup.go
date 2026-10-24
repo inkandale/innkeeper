@@ -167,6 +167,10 @@ func snapshot(ctx context.Context, conn *pgxpool.Conn, t Type, o Options, part s
 		return err
 	}
 	defer tx.Rollback(ctx)
+	// Copying a big table may rightly take longer than a query may.
+	if _, err := tx.Exec(ctx, `SET LOCAL statement_timeout = 0`); err != nil {
+		return err
+	}
 	if err := tx.QueryRow(ctx, `SELECT max(name) FROM schema_migration`).Scan(&m.Schema); err != nil {
 		return err
 	}

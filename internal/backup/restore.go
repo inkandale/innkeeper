@@ -131,6 +131,10 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (res Result, er
 	if _, err := tx.Exec(ctx, safePath); err != nil {
 		return Result{}, err
 	}
+	// Loading a big table may rightly take longer than a query may.
+	if _, err := tx.Exec(ctx, `SET LOCAL statement_timeout = 0`); err != nil {
+		return Result{}, err
+	}
 
 	var schema string
 	if err := tx.QueryRow(ctx, `SELECT max(name) FROM public.schema_migration`).Scan(&schema); err != nil {

@@ -13,6 +13,7 @@ import { useEditor } from "./useEditor";
 import { Forge } from "../forge/Forge";
 import { useForge } from "../forge/useForge";
 import { cardSubject } from "./subject";
+import { Similar } from "./Discover";
 import { Fields } from "./Fields";
 import "./Card.css";
 
@@ -94,6 +95,7 @@ function CardEditor({ id }: { id: number }) {
           fields={(lock, extra) => <Fields data={ed.data} dirty={ed.dirty} edit={ed.edit} lock={lock} extra={extra} />}
           avatar={head.revision.avatar}
         />
+        <Similar id={head.id} library={head.library_id} />
       </div>
     </div>
   );

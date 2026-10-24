@@ -698,6 +698,20 @@ test("value sections with nothing picked share one count search", async () => {
   expect((own[0] as { filter?: unknown }).filter).toBeUndefined();
 });
 
+test("each instance's value sections share their own count search", async () => {
+  keys = {
+    instance_id: 5,
+    instances: [
+      { id: 5, label: "Lint", keys: [{ key: "problems", label: "Problems", type: "list" }, { key: "language", label: "Language", type: "text" }] },
+      { id: 7, label: "Judge", keys: [{ key: "pov", label: "POV", type: "text" }] },
+    ],
+  };
+  renderCards("/cards");
+  expect(await screen.findByRole("button", { name: /^Markup\s*3/ })).toBeInTheDocument();
+  const valueCounts = searches.map((s) => (s as { facets?: string[] }).facets ?? []).filter((f) => f.some((n) => n.startsWith("enrichment:")));
+  expect(valueCounts).toEqual([["enrichment:5:problems", "enrichment:5:language"], ["enrichment:7:pov"]]);
+});
+
 test("Evaluate past the plugin's limit asks before sending confirm", async () => {
   keys = scored;
   judgeMax = 10;

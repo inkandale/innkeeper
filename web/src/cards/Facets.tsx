@@ -200,11 +200,15 @@ function Section({ kind, title, instance, section = kind, rows, q, open, onOpen,
   );
 }
 
-/** useValueCounts counts each open value section's values, ref to counts: the sections with nothing picked share one search, as their filters are the same. */
-function useValueCounts(q: CardQuery, refs: string[]): Map<string, ValueCount[] | undefined> {
+/**
+ * useValueCounts counts each open value section's values, ref to counts. An instance's sections with nothing picked share one search,
+ * as their filters are the same; each instance gets its own, so the server counts them in parallel.
+ */
+function useValueCounts(q: CardQuery, keys: { instance: number; ref: string }[]): Map<string, ValueCount[] | undefined> {
   const picked = (ref: string) => q.terms.some((t) => sectionOf(t) === `value:${ref}`);
-  const shared = refs.filter((ref) => !picked(ref));
-  const groups = [...(shared.length ? [shared] : []), ...refs.filter(picked).map((ref) => [ref])];
+  const shared = new Map<number, string[]>();
+  for (const { instance, ref } of keys) if (!picked(ref)) shared.set(instance, [...(shared.get(instance) ?? []), ref]);
+  const groups = [...shared.values(), ...keys.filter((k) => picked(k.ref)).map((k) => [k.ref])];
   const results = useQueries({ queries: groups.map((g) => ({ ...searchQuery("card", valueCountSearch(q, g)), placeholderData: keepPreviousData })) });
   return new Map(groups.flatMap((g, i) => g.map((ref) => [ref, results[i]?.data && (results[i].data.facets?.enrichments?.[ref] ?? [])] as const)));
 }
@@ -305,7 +309,7 @@ export function Facets({ kind, q, names, enrichers = [], onChange }: { kind: Kin
   const rows = useRows(kind, q, names, sections, open);
   const scored = enrichers.filter((e) => scoreKeys(e).length > 0);
   const valueKeys = enrichers.flatMap((e) => (e.keys ?? []).filter((k) => k.type === "text" || k.type === "list").map((k) => ({ e, k, ref: keyRef(e.id, k.key) })));
-  const valueCounts = useValueCounts(q, valueKeys.map((v) => v.ref).filter((ref) => open(`value:${ref}`)));
+  const valueCounts = useValueCounts(q, valueKeys.filter((v) => open(`value:${v.ref}`)).map((v) => ({ instance: v.e.id, ref: v.ref })));
   const flip = (s: string) => {
     const next = open(s) ? [...collapsed, s] : collapsed.filter((x) => x !== s);
     setCollapsed(next);

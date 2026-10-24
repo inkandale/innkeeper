@@ -295,13 +295,15 @@ const enrichmentFacetPrefix = "enrichment:"
 
 // enrichmentFacetSQL counts the matches of cond per string value, or list
 // item, of the current value of the key and instance in args $key and $inst.
+// A lateral join looks the value up once; a scalar subquery reruns per use.
 func enrichmentFacetSQL(k *Kind, cond, key, inst string) string {
-	return `SELECT x.v, count(*)::int FROM (SELECT (SELECT e.value FROM enrichment e WHERE e.card_id = c.id AND e.key = ` + key +
-		` AND e.instance_id = ` + inst + ` ORDER BY e.revision_id DESC, e.created_at DESC, e.id DESC LIMIT 1) AS value
-			FROM ` + from(k) + ` WHERE ` + cond + `) m,
+	return `SELECT x.v, count(*)::int FROM ` + from(k) + `,
+		LATERAL (SELECT e.value FROM enrichment e WHERE e.card_id = c.id AND e.key = ` + key + ` AND e.instance_id = ` + inst + `
+			ORDER BY e.revision_id DESC, e.created_at DESC, e.id DESC LIMIT 1) m,
 		LATERAL (SELECT m.value #>> '{}' AS v WHERE jsonb_typeof(m.value) = 'string'
 			UNION SELECT i #>> '{}' FROM jsonb_array_elements(CASE jsonb_typeof(m.value) WHEN 'array' THEN m.value ELSE '[]' END) i
 			WHERE jsonb_typeof(i) = 'string') x
+		WHERE ` + cond + `
 		GROUP BY x.v ORDER BY count(*) DESC, x.v LIMIT 100`
 }
 

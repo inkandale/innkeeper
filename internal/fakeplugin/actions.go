@@ -82,6 +82,8 @@ func actionRun(ctx context.Context, conn *protocol.Conn, params json.RawMessage,
 				{Severity: "medium", Text: "Belongs in the description.", Fields: []string{"personality"},
 					Move: &protocol.FindingMove{Excerpt: "Gruff", To: "description"}}},
 			Suggestions: []string{"Give the card a rival."}}
+		res.Values = map[string]json.RawMessage{"quality": json.RawMessage(`64`), "voice": json.RawMessage(`80`)}
+		res.Meta = json.RawMessage(`{"prompt":"evaluate"}`)
 	case "generate":
 		data = map[string]any{"name": "Generated", "description": p.Instruction}
 		images, _ := json.Marshal(p.Images)

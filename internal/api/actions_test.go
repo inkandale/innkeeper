@@ -9,17 +9,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/BurntSushi/toml"
 	"github.com/inkandale/innkeeper/internal/actions"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
 	"github.com/inkandale/innkeeper/internal/plugins"
+	"github.com/inkandale/innkeeper/internal/testutil"
 	"github.com/inkandale/innkeeper/internal/tier"
 	"github.com/inkandale/innkeeper/protocol"
 )
 
 // actionEnv adds the fake plugin as an action plugin, forge, with one
-// instance, and runs a worker for action jobs.
+// instance that declares testutil.FakeEnrichments, and runs a worker for
+// action jobs.
 type actionEnv struct {
 	*testEnv
 	instID int64
@@ -33,6 +36,9 @@ func newActionEnv(t *testing.T) *actionEnv {
 	forge := *e.manifests["fake"]
 	forge.Name, forge.Capabilities = "forge", []string{"action"}
 	forge.Command = []string{forge.Command[0], "-caps=action", "-name=forge"}
+	if _, err := toml.Decode(testutil.FakeEnrichments, &forge); err != nil {
+		t.Fatal(err)
+	}
 	e.manifests["forge"] = &forge
 	id, err := e.s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: "forge", Name: new("Forge")})
 	if err != nil {
@@ -196,6 +202,37 @@ func TestActionRunReportOnly(t *testing.T) {
 	res, proposal := e.succeeded(e.start("evaluate", map[string]any{}).ID)
 	if proposal != nil || res.Report == nil || res.Report.Summary != "Needs work." || len(res.Warnings) != 1 {
 		t.Fatalf("result %+v", res)
+	}
+}
+
+// scores returns the test card's current values from the forge instance, by key.
+func (e *actionEnv) scores() map[string]string {
+	e.t.Helper()
+	var vals []library.Enrichment
+	e.call("GET", fmt.Sprintf("/cards/%d/enrichments", e.cardID), nil, 200, &vals)
+	out := map[string]string{}
+	for _, v := range vals {
+		if v.InstanceID == e.instID && !v.Stale {
+			out[v.Key] = string(v.Value)
+		}
+	}
+	return out
+}
+
+func TestActionRunStoresValuesOnUnchangedCard(t *testing.T) {
+	e := newActionEnv(t)
+	e.succeeded(e.start("evaluate", map[string]any{}).ID)
+	if got := e.scores(); got["quality"] != "64" || got["voice"] != "80" {
+		t.Fatalf("scores %v", got)
+	}
+}
+
+func TestActionRunStoresNoValuesForUnsavedDraft(t *testing.T) {
+	e := newActionEnv(t)
+	e.succeeded(e.start("evaluate", map[string]any{"entity": map[string]any{"kind": "card", "id": e.cardID,
+		"data": map[string]any{"name": "Brakka", "description": "Bigger."}}}).ID)
+	if got := e.scores(); len(got) != 0 {
+		t.Fatalf("scores %v", got)
 	}
 }
 

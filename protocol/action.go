@@ -130,6 +130,12 @@ type ActionRunResult struct {
 	Proposal json.RawMessage `json:"proposal,omitempty"`
 	Report   *Report         `json:"report,omitempty"`
 	Raw      string          `json:"raw,omitempty"`
+	// Values are enrichment values about the entity's data, by a key the
+	// manifest's [enrichments] declares. Core stores them on a saved card
+	// whose head revision holds that data, so an enrich run can skip it.
+	Values map[string]json.RawMessage `json:"values,omitempty"`
+	// Meta is stored with Values, as with enrich.run's.
+	Meta json.RawMessage `json:"meta,omitempty"`
 }
 
 // Report is an action's judgment of an entity. Summary is Markdown.

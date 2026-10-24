@@ -8,6 +8,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/inkandale/innkeeper/internal/enrich"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/mcp"
@@ -70,11 +71,43 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 	if err != nil {
 		return fmt.Errorf("plugin sent an invalid proposal: %w", err)
 	}
+	warnings = append(warnings, rn.storeValues(ctx, inst, *r.InstanceID, p, res)...)
 	s.mu.Lock()
 	s.p.Result = &Result{Proposal: proposal, Report: res.Report, Raw: res.Raw, Warnings: orEmpty(warnings)}
 	s.mu.Unlock()
 	s.publish()
 	return nil
+}
+
+// storeValues stores res's enrichment values on the run's card when its head
+// revision holds the data the run had, and returns why it stored fewer.
+// Failures are warnings, so the owner still gets the report they paid for.
+func (rn *Runner) storeValues(ctx context.Context, inst pluginhost.Instance, instanceID int64, p Payload, res protocol.ActionRunResult) []string {
+	if len(res.Values) == 0 || p.CardID == 0 {
+		return nil
+	}
+	c, err := rn.Lib.Cards.Get(ctx, p.CardID)
+	var head library.Revision
+	if err == nil {
+		head, err = rn.Lib.Cards.Revision(ctx, c.HeadRevisionID)
+	}
+	if err != nil {
+		return []string{fmt.Sprintf("kept no scores: %v", err)}
+	}
+	// A draft with unsaved edits matches no revision.
+	if !sameValue(head.Data, p.Entity.Data) {
+		return nil
+	}
+	sent := protocol.EnrichRevision{CardID: p.CardID, RevisionID: head.ID, Data: head.Data}
+	checked := enrich.Check(inst.Manifest.Enrichments, []protocol.EnrichRevision{sent},
+		protocol.EnrichRunResult{Results: []protocol.EnrichResult{{RevisionID: head.ID, Values: res.Values, Meta: res.Meta}}})
+	if len(checked.Values) == 0 {
+		return checked.Warnings
+	}
+	if err := rn.Lib.AddEnrichments(ctx, instanceID, checked.Values); err != nil {
+		return append(checked.Warnings, fmt.Sprintf("storing the scores failed: %v", err))
+	}
+	return checked.Warnings
 }
 
 // declaration is the action id that inst's plugin offers now.

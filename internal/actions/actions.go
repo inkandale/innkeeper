@@ -87,7 +87,7 @@ type Result struct {
 	Proposal json.RawMessage  `json:"proposal,omitempty"`
 	Report   *protocol.Report `json:"report,omitempty"`
 	Raw      string           `json:"raw,omitempty"`
-	// Warnings name the proposal's changes the core dropped.
+	// Warnings name what the core dropped from the reply.
 	Warnings []string `json:"warnings"`
 }
 

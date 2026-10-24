@@ -125,6 +125,11 @@ export function useForge({ subject, id, data, library }: { subject: Subject; id?
   // A proposal opens Review only when it has rows; a lorebook's entry order isn't reviewed.
   const pending = shown.find((r) => r.job.status === "succeeded" && r.result?.proposal && subject.review(r.start, data, r.result.proposal).rows.length > 0);
   const reportRun = [...runs].reverse().find((r) => r.result?.report);
+  // A finished report may have stored scores on the entity.
+  const reportRunId = reportRun?.id;
+  useEffect(() => {
+    if (reportRunId !== undefined) void qc.invalidateQueries({ queryKey: [subject.kind, id, "enrichments"] });
+  }, [reportRunId, qc, subject.kind, id]);
 
   // A run starts from the draft as it is when it starts, which for a waiting run is later than when it was asked for.
   const dataRef = useRef(data);

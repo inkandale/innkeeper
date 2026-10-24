@@ -787,6 +787,11 @@ Reply with:
 | `proposal` | The entity's complete new `data`, or absent. Include unchanged keys: a key you leave out counts as removed |
 | `report` | A report, or absent |
 | `raw` | The model's raw output, which the owner can open. Optional |
+| `values`, `meta` | Enrichment values about the entity, as in an `enrich.run` result. Optional |
+
+The core stores `values` only when the run was on a saved card and the data
+it sent is the card's head revision, unchanged. Values are then checked as
+`enrich.run`'s are, and an enrich run without rescore skips that revision.
 
 A report:
 

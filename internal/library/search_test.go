@@ -738,6 +738,49 @@ func TestSearchVariantOfRoot(t *testing.T) {
 	}
 }
 
+func TestSearchGroupsALibraryWithoutVariantsOneCardAFamily(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	a, _ := newCard(t, lib, "a", `{"name": "A", "description": "A dwarf."}`)
+	b, _ := newCard(t, lib, "b", `{"name": "B", "description": "An elf."}`)
+	c, _ := newCard(t, lib, "c", `{"name": "C", "description": "A dwarf."}`)
+	gone, _ := newCard(t, lib, "gone", `{"name": "Gone"}`)
+	if err := lib.Cards.SetArchived(ctx, gone, true); err != nil {
+		t.Fatal(err)
+	}
+	solo := func(r Results, ids ...int64) bool {
+		if !slices.Equal(hitIDs(r), ids) {
+			return false
+		}
+		for _, h := range r.Hits {
+			if h.Family == nil || h.Family.RootID != h.ID || h.Family.Size != 1 || !slices.Equal(h.Family.Matched, []int64{h.ID}) {
+				return false
+			}
+		}
+		return true
+	}
+	first, err := lib.Search(ctx, Card, Query{Group: "family", Page: Page{Size: 2}})
+	if err != nil || !solo(first, c, b) || first.Total != 3 || first.NextCursor == nil {
+		t.Fatalf("page 1 = %+v, %v", first, err)
+	}
+	rest, err := lib.Search(ctx, Card, Query{Group: "family", Page: Page{Size: 2, Cursor: first.NextCursor}})
+	if err != nil || !solo(rest, a) || rest.NextCursor != nil {
+		t.Fatalf("page after the cursor = %+v, %v", rest, err)
+	}
+	past, err := lib.Search(ctx, Card, Query{Group: "family", Page: Page{Size: 2, Number: 3}})
+	if err != nil || len(past.Hits) != 0 || past.Total != 3 {
+		t.Fatalf("page past the end = %+v, %v", past, err)
+	}
+	text, err := lib.Search(ctx, Card, Query{Group: "family", Text: "dwarf"})
+	if err != nil || !solo(text, c, a) || text.Total != 2 {
+		t.Fatalf("text = %+v, %v", text, err)
+	}
+	archived, err := lib.Search(ctx, Card, Query{Group: "family", Filter: &Filter{Archived: ptr(true)}})
+	if err != nil || !solo(archived, gone) || archived.Total != 1 {
+		t.Fatalf("archived = %+v, %v", archived, err)
+	}
+}
+
 func TestSearchGroupsFamilies(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()

@@ -943,17 +943,30 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 	if q.FacetsOnly {
 		return res, nil
 	}
-	// A grouped page counts its families itself.
-	if q.Group != "family" {
+	walk, famCols := q.Group == "family", `NULL::bigint, NULL::int, NULL::bigint[]`
+	if walk {
+		// Without variants every family is one card, so a flat page is the grouped one.
+		// ponytail: one variant brings back the walk over every match; walk only family members if that's slow.
+		var variants bool
+		if err := l.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM `+k.Table+` WHERE variant_of_id IS NOT NULL AND library_id = $1)`,
+			cmp.Or(q.Library, DefaultLibrary)).Scan(&variants); err != nil {
+			return Results{}, fmt.Errorf("find variants: %w", err)
+		}
+		if !variants {
+			walk, famCols = false, `c.id, 1, ARRAY[c.id]`
+		}
+	}
+	// A walked page counts its families itself.
+	if !walk {
 		if err := l.pool.QueryRow(ctx, `SELECT count(*) FROM `+from(k)+` WHERE `+cond, condArgs...).Scan(&res.Total); err != nil {
 			return Results{}, fmt.Errorf("count matches: %w", err)
 		}
 	}
 	cols := `c.id, c.slug, r.id, c.archived_at, coalesce(c.archived_reason, ''), r.data, r.avatar_blob, ` + tags + `, ` + books + `, ` + targets + `, ` + cards + `, ` + entries + `, ` + enrichments
 	limit, skip := w.arg(size+1), w.arg(offset)
-	sql := `SELECT ` + cols + `, NULL::bigint, NULL::int, NULL::bigint[], ` + o.cursor() + `, NULL::bigint FROM ` + from(k) + `
+	sql := `SELECT ` + cols + `, ` + famCols + `, ` + o.cursor() + `, NULL::bigint FROM ` + from(k) + `
 		WHERE ` + cond + ` AND ` + after + ` ORDER BY ` + o.sql() + ` LIMIT ` + limit + ` OFFSET ` + skip
-	if q.Group == "family" {
+	if walk {
 		sql = familiesOf(k, cond, o, after) + familyPage(k, cols, mentionsArchived(q.Filter), limit, skip)
 	}
 	rows, err := l.pool.Query(ctx, sql, w.args...)
@@ -1005,7 +1018,7 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 	switch {
 	case families != nil:
 		res.Total = *families
-	case q.Group == "family":
+	case walk:
 		if err := l.pool.QueryRow(ctx, familyCount(k, cond), condArgs...).Scan(&res.Total); err != nil {
 			return Results{}, fmt.Errorf("count families: %w", err)
 		}

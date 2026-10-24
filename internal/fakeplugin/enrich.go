@@ -14,7 +14,8 @@ import (
 // quality is the description's length, at most 100. A card whose name holds
 // "fail" gets an error, "skip" is left out of the reply, "bad" gets an
 // undeclared key, a string voice, and quality 150, "nul" gets a NUL in its
-// summary and meta, and "slow" takes a second.
+// summary and meta, and "slow" takes a second. A thorough run's meta names
+// model fake-thorough.
 func enrichRun(ctx context.Context, conn *protocol.Conn, params json.RawMessage, mode string) (any, error) {
 	var p protocol.EnrichRunParams
 	if err := json.Unmarshal(params, &p); err != nil {
@@ -27,6 +28,9 @@ func enrichRun(ctx context.Context, conn *protocol.Conn, params json.RawMessage,
 		_ = json.Unmarshal(rev.Data, &data)
 		name := strings.ToLower(data.Name)
 		r := protocol.EnrichResult{RevisionID: rev.RevisionID, Meta: json.RawMessage(`{"model": "fake-1"}`)}
+		if p.Thorough {
+			r.Meta = json.RawMessage(`{"model": "fake-thorough"}`)
+		}
 		quality := min(len(data.Description), 100)
 		r.Values = map[string]json.RawMessage{
 			"quality": json.RawMessage(fmt.Sprint(quality)),

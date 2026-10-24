@@ -106,6 +106,19 @@ func (e *enrichEnv) search(q map[string]any, status int) library.Results {
 	return res
 }
 
+func TestEnrichRunPassesThoroughToThePlugin(t *testing.T) {
+	e := newEnrichEnv(t)
+	id := e.card("Brakka", "x")
+	if j, _ := e.startRun(map[string]any{"instance_id": e.instID, "card_ids": []int64{id}, "thorough": true}); j.Status != jobs.StatusSucceeded {
+		t.Fatalf("job %s", j.Status)
+	}
+	var vals []enrichmentValue
+	e.call("GET", fmt.Sprintf("/cards/%d/enrichments", id), nil, 200, &vals)
+	if len(vals) == 0 || string(vals[0].Meta) != `{"model":"fake-thorough"}` {
+		t.Fatalf("values = %+v", vals)
+	}
+}
+
 func TestEnrichRunStoresCheckedValues(t *testing.T) {
 	e := newEnrichEnv(t)
 	good := e.card("Brakka", strings.Repeat("x", 78))

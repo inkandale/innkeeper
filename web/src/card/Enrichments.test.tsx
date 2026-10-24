@@ -33,7 +33,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-test("values show with stale ones marked, and Evaluate reruns on the card", async () => {
+test("values show with stale ones marked, and Rescore reruns the full evaluation on the card", async () => {
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <Enrichments id={7} />
@@ -42,7 +42,7 @@ test("values show with stale ones marked, and Evaluate reruns on the card", asyn
   expect(await screen.findByText("78")).toBeInTheDocument();
   expect(screen.getByText("Voice").parentElement).toHaveClass("stale");
   expect(screen.getByText("(stale)")).toBeInTheDocument();
-  await userEvent.setup().click(await screen.findByRole("button", { name: "Evaluate" }));
-  await waitFor(() => expect(runs).toEqual([{ instance_id: 5, card_ids: [7], rescore: true }]));
-  expect(await screen.findByRole("button", { name: "Evaluating…" })).toBeDisabled();
+  await userEvent.setup().click(await screen.findByRole("button", { name: "Rescore" }));
+  await waitFor(() => expect(runs).toEqual([{ instance_id: 5, card_ids: [7], rescore: true, thorough: true }]));
+  expect(await screen.findByRole("button", { name: "Rescoring…" })).toBeDisabled();
 });

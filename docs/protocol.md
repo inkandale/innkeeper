@@ -992,6 +992,7 @@ summary = { type = "text", label = "Summary" }
 |---|---|
 | `run` | Token for this call, an opaque string. Put it in every notification you send for it |
 | `revisions` | `[{"card_id", "revision_id", "data"}]`, 1 to 20 of them. `data` is CCv3 `data` without `character_book` |
+| `thorough` | `true` when the owner rescored a card from its page and wants your most careful values, not a fast bulk path. Optional |
 
 While it runs, send `progress` notifications with `run`, `message`, and
 optional `done` and `total`, as in `action.run`. The owner sees the latest

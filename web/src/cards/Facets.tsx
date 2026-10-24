@@ -273,7 +273,7 @@ function ScoreFilter({ instance, k, q, onChange }: { instance: number; k: Enrich
     <div className={"score-filter" + (term ? " included" : "") + (score?.none ? " none" : "")}>
       <span className="score-name" title={k.label}>{k.label}</span>
       <span className="score-value">{!score?.none && (lo > low || hi < high) && `${lo}–${hi}`}</span>
-      <label className="score-none" title="Not evaluated">
+      <label className="score-none" title="Not scored">
         <input type="checkbox" aria-label={`${k.label} not evaluated`} checked={!!score?.none}
           onChange={(e) => onChange(setScore(q, { instance, key: k.key, none: e.target.checked }))} />
         none

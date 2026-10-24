@@ -5182,6 +5182,10 @@
           "rescore": {
             "description": "Also send cards whose head revision already has a value from the instance. Without it, they count as skipped.",
             "type": "boolean"
+          },
+          "thorough": {
+            "description": "Ask the plugin for its most careful values rather than its fast bulk path, such as a full model evaluation.",
+            "type": "boolean"
           }
         },
         "required": [

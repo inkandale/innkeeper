@@ -47,6 +47,8 @@ type Payload struct {
 	Rescore bool `json:"rescore,omitempty"`
 	// Confirmed lifts the plugin's card cap: the owner agreed to the run's size.
 	Confirmed bool `json:"confirmed,omitempty"`
+	// Thorough is sent to the plugin with each batch.
+	Thorough bool `json:"thorough,omitempty"`
 }
 
 // batches returns the payload's cards a batch at a time, reading a query's
@@ -225,7 +227,7 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 			break
 		}
 		batches++
-		checked, err := rn.batch(ctx, inst, *r.InstanceID, token, ids, p.Rescore)
+		checked, err := rn.batch(ctx, inst, *r.InstanceID, token, ids, p)
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -254,13 +256,13 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 // batch sends the head revisions of ids to the plugin and stores the values
 // that pass Check. A card that doesn't exist counts as failed. Without
 // rescore, a head that already holds a value from the instance is skipped.
-func (rn *Runner) batch(ctx context.Context, inst pluginhost.Instance, instanceID int64, token string, ids []int64, rescore bool) (Checked, error) {
+func (rn *Runner) batch(ctx context.Context, inst pluginhost.Instance, instanceID int64, token string, ids []int64, p Payload) (Checked, error) {
 	revs, missing := rn.heads(ctx, ids)
 	if len(revs) == 0 {
 		return Checked{}, errors.New("none of its cards exist")
 	}
 	skipped := 0
-	if !rescore {
+	if !p.Rescore {
 		all := len(revs)
 		var err error
 		if revs, err = rn.unscored(ctx, instanceID, revs); err != nil {
@@ -273,7 +275,7 @@ func (rn *Runner) batch(ctx context.Context, inst pluginhost.Instance, instanceI
 	}
 	var reply protocol.EnrichRunResult
 	if err := rn.Registry.Call(ctx, rn.Plugins, inst, protocol.MethodEnrichRun,
-		protocol.EnrichRunParams{Run: token, Revisions: revs}, &reply); err != nil {
+		protocol.EnrichRunParams{Run: token, Revisions: revs, Thorough: p.Thorough}, &reply); err != nil {
 		return Checked{}, err
 	}
 	checked := Check(inst.Manifest.Enrichments, revs, reply)

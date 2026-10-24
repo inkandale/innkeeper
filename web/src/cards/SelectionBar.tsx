@@ -21,7 +21,7 @@ const labels = {
   push: "Push",
   archive: "Archive",
   export: "Export",
-  evaluate: "Evaluate",
+  evaluate: "Score",
   delete: "Delete…",
   parent: "Set parent…",
   move: "Move to library…",
@@ -229,7 +229,7 @@ export function SelectionBar(props: {
             <>
               {/* With one enricher there's nothing to ask. */}
               {enrichers.length > 1 && (
-                <select className="input" aria-label="Evaluate with" value={enricherId} onChange={(e) => setEnricher(Number(e.target.value))}>
+                <select className="input" aria-label="Score with" value={enricherId} onChange={(e) => setEnricher(Number(e.target.value))}>
                   {enrichers.map((i) => (
                     <option key={i.id} value={i.id}>
                       {i.label}
@@ -250,7 +250,7 @@ export function SelectionBar(props: {
                 </label>
               )}
               <button className="button primary" disabled={busy || !enricherId || (big && !confirmBig)} onClick={evaluate}>
-                Evaluate {plural(n)}
+                Score {plural(n)}
               </button>
               {start.error && <span className="error">{start.error.message}</span>}
             </>

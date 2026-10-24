@@ -25,7 +25,7 @@ export function Enrichments({ id }: { id: number }) {
     if (done) void qc.invalidateQueries({ queryKey: ["card", id, "enrichments"] });
   }, [done, qc, id]);
   const start = useMutation({
-    mutationFn: async (instance_id: number) => must(await api.POST("/enrichments/runs", { body: { instance_id, card_ids: [id], rescore: true } })),
+    mutationFn: async (instance_id: number) => must(await api.POST("/enrichments/runs", { body: { instance_id, card_ids: [id], rescore: true, thorough: true } })),
     onSuccess: (j) => setJobId(j.id),
   });
 
@@ -57,11 +57,11 @@ export function Enrichments({ id }: { id: number }) {
           </div>
         );
       })}
-      {values.data && !list.length && <p className="muted">Not evaluated yet.</p>}
+      {values.data && !list.length && <p className="muted">Not scored yet.</p>}
       {enrichers.length > 0 && (
         <div className="row">
           {enrichers.length > 1 && (
-            <select className="input" aria-label="Evaluate with" value={instanceId} onChange={(e) => setPicked(Number(e.target.value))}>
+            <select className="input" aria-label="Score with" value={instanceId} onChange={(e) => setPicked(Number(e.target.value))}>
               {enrichers.map((i) => (
                 <option key={i.id} value={i.id}>
                   {i.label}
@@ -70,7 +70,7 @@ export function Enrichments({ id }: { id: number }) {
             </select>
           )}
           <button className="button" disabled={running || instanceId === undefined} onClick={() => start.mutate(instanceId!)}>
-            {running ? "Evaluating…" : "Evaluate"}
+            {running ? "Rescoring…" : "Rescore"}
           </button>
         </div>
       )}

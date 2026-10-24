@@ -85,6 +85,7 @@ type startEnrichIn struct {
 		Query      *library.Query `json:"query,omitempty" doc:"Enriches every card the query matches, as POST /bulk selects them. Send this or card_ids."`
 		Rescore    bool           `json:"rescore,omitempty" doc:"Also send cards whose head revision already has a value from the instance. Without it, they count as skipped."`
 		Confirm    bool           `json:"confirm,omitempty" doc:"Run past the plugin's enrich_max_cards. Without it, a larger run is refused."`
+		Thorough   bool           `json:"thorough,omitempty" doc:"Ask the plugin for its most careful values rather than its fast bulk path, such as a full model evaluation."`
 	}
 }
 
@@ -103,7 +104,7 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 			if err != nil {
 				return nil, err
 			}
-			p := enrich.Payload{Rescore: b.Rescore}
+			p := enrich.Payload{Rescore: b.Rescore, Thorough: b.Thorough}
 			n := 0
 			if b.Query != nil {
 				// The job reads the query's cards as it goes, so the payload holds the query, not its IDs.

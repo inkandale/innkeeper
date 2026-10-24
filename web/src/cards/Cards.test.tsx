@@ -671,24 +671,24 @@ test("each score key is a sort", async () => {
   await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ sort: "enrichment:5:quality" })));
 });
 
-test("Evaluate starts a run on the selection", async () => {
+test("Score starts a run on the selection", async () => {
   keys = scored;
   renderCards("/cards");
   const user = userEvent.setup();
   await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
-  await user.click(screen.getByRole("button", { name: "Evaluate" }));
-  await user.click(screen.getByRole("button", { name: "Evaluate 1 card" }));
+  await user.click(screen.getByRole("button", { name: "Score" }));
+  await user.click(screen.getByRole("button", { name: "Score 1 card" }));
   await waitFor(() => expect(posts).toEqual([{ path: "/api/enrichments/runs", body: { instance_id: 5, query: { library: 1, filter: { ids: [8] } }, rescore: false } }]));
 });
 
-test("Evaluate re-scores cards already scored when asked", async () => {
+test("Score re-scores cards already scored when asked", async () => {
   keys = scored;
   renderCards("/cards");
   const user = userEvent.setup();
   await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
-  await user.click(screen.getByRole("button", { name: "Evaluate" }));
+  await user.click(screen.getByRole("button", { name: "Score" }));
   await user.click(screen.getByRole("checkbox", { name: "Re-score cards already scored" }));
-  await user.click(screen.getByRole("button", { name: "Evaluate 1 card" }));
+  await user.click(screen.getByRole("button", { name: "Score 1 card" }));
   await waitFor(() => expect(posts).toEqual([{ path: "/api/enrichments/runs", body: { instance_id: 5, query: { library: 1, filter: { ids: [8] } }, rescore: true } }]));
 });
 
@@ -741,7 +741,7 @@ test("each instance's value sections share their own count search", async () => 
   expect(valueCounts).toEqual([["enrichment:5:problems", "enrichment:5:language"], ["enrichment:7:pov"]]);
 });
 
-test("Evaluate past the plugin's limit asks before sending confirm", async () => {
+test("Score past the plugin's limit asks before sending confirm", async () => {
   keys = scored;
   judgeMax = 10;
   localStorage.setItem("innkeeper.library.ungrouped", "true");
@@ -749,8 +749,8 @@ test("Evaluate past the plugin's limit asks before sending confirm", async () =>
   const user = userEvent.setup();
   await user.click(await screen.findByRole("checkbox", { name: "Select Brakka" }));
   await user.click(screen.getByRole("button", { name: "Select all 49 matching" }));
-  await user.click(screen.getByRole("button", { name: "Evaluate" }));
-  const run = screen.getByRole("button", { name: "Evaluate 49 cards" });
+  await user.click(screen.getByRole("button", { name: "Score" }));
+  const run = screen.getByRole("button", { name: "Score 49 cards" });
   expect(run).toBeDisabled();
   await user.click(screen.getByRole("checkbox", { name: "Send all 49 cards to Judge, over its usual limit of 10" }));
   await user.click(run);

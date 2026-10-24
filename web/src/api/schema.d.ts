@@ -4585,6 +4585,8 @@ export interface components {
             query?: components["schemas"]["Query"];
             /** @description Also send cards whose head revision already has a value from the instance. Without it, they count as skipped. */
             rescore?: boolean;
+            /** @description Ask the plugin for its most careful values rather than its fast bulk path, such as a full model evaluation. */
+            thorough?: boolean;
         };
         StateCount: {
             /** Format: int64 */

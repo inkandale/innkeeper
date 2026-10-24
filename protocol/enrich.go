@@ -29,6 +29,8 @@ type EnrichRevision struct {
 type EnrichRunParams struct {
 	Run       string           `json:"run"`
 	Revisions []EnrichRevision `json:"revisions"`
+	// Thorough asks for the plugin's most careful values, not its fast bulk path.
+	Thorough bool `json:"thorough,omitempty"`
 }
 
 // EnrichResult is one revision's values, or why it has none.

@@ -220,9 +220,12 @@ func (l *Library) importItemTx(ctx context.Context, tx pgx.Tx, it PluginItem) (I
 		}
 		edit.AvatarBlob = b.SHA256
 	}
+	if book, err = importedBook(book, name); err != nil {
+		return Imported{}, err
+	}
 	var lorebook Imported
 	if book != nil {
-		lorebook, err = l.importEntity(ctx, tx, l.Lorebooks, it, cmp.Or(DataName(book), name+" lorebook"),
+		lorebook, err = l.importEntity(ctx, tx, l.Lorebooks, it, DataName(book),
 			Edit{Data: book, Source: it.Source, Message: "Split from imported card", Created: it.Created})
 		if err != nil {
 			return Imported{}, err
@@ -249,6 +252,43 @@ func (l *Library) importItemTx(ctx context.Context, tx pgx.Tx, it PluginItem) (I
 	}
 	card.Autosync = append(lorebook.Autosync, card.Autosync...)
 	return card, nil
+}
+
+// importedBook returns the character_book a plugin's card brings, named
+// after the card when it has no name, or nil when it has no entries: many
+// sites export an empty book with every card.
+func importedBook(book json.RawMessage, card string) (json.RawMessage, error) {
+	if book == nil {
+		return nil, nil
+	}
+	var b map[string]json.RawMessage
+	if err := json.Unmarshal(book, &b); err != nil {
+		return nil, fmt.Errorf("%w: character_book: %w", ErrInvalid, err)
+	}
+	// Entries may be a list or, from older exports, an object keyed by ID.
+	var entries any
+	_ = json.Unmarshal(b["entries"], &entries)
+	switch e := entries.(type) {
+	case nil:
+		return nil, nil
+	case []any:
+		if len(e) == 0 {
+			return nil, nil
+		}
+	case map[string]any:
+		if len(e) == 0 {
+			return nil, nil
+		}
+	}
+	if strings.TrimSpace(DataName(book)) != "" {
+		return book, nil
+	}
+	name, err := json.Marshal(card + " lorebook")
+	if err != nil {
+		return nil, err
+	}
+	b["name"] = name
+	return json.Marshal(b)
 }
 
 // ImportBatch stores items in one transaction, each as ImportItemTx does,

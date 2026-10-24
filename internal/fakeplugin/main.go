@@ -358,7 +358,7 @@ func importRun(conn *protocol.Conn, blobTmp string, params json.RawMessage) (any
 			data["source"] = []string{fmt.Sprintf("https://fake.example/u/card-%d", i)}
 		}
 		if opts.Book {
-			data["character_book"] = map[string]any{"name": fmt.Sprintf("Lore %d", i), "entries": []any{}}
+			data["character_book"] = map[string]any{"name": fmt.Sprintf("Lore %d", i), "entries": []any{map[string]any{"keys": []any{"lore"}, "content": "Lore."}}}
 		}
 		card := map[string]any{"spec": "chara_card_v3", "spec_version": "3.0", "data": data}
 		if opts.Bad != nil && *opts.Bad == i {

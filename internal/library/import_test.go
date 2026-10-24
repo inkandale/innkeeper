@@ -311,7 +311,7 @@ func TestImportCardQueuesCardAndLorebook(t *testing.T) {
 	inst, imp := importer(t, lib)
 	var id int64
 	for range 2 {
-		id = imp("1", `{"name":"A","character_book":{"name":"L","entries":[]}}`).ID
+		id = imp("1", `{"name":"A","character_book":{"name":"L","entries":[{"keys":["k"],"content":"c"}]}}`).ID
 	}
 	books, err := lib.CardLorebooks(ctx, id)
 	if err != nil || len(books) != 1 {
@@ -331,6 +331,35 @@ func TestImportCardQueuesCardAndLorebook(t *testing.T) {
 	want := []DetectItem{{Card, id}, {Lorebook, books[0]}, {Lorebook, lb.ID}}
 	if err != nil || !slices.Equal(q, want) {
 		t.Fatalf("queue = %+v, %v; want %+v", q, err, want)
+	}
+}
+
+func TestImportSkipsAnEmbeddedLorebookWithNoEntries(t *testing.T) {
+	lib := newLibrary(t)
+	_, imp := importer(t, lib)
+	id := imp("1", `{"name":"A","character_book":{"name":"","entries":[],"scan_depth":50}}`).ID
+	books, err := lib.CardLorebooks(context.Background(), id)
+	if err != nil || len(books) != 0 {
+		t.Fatalf("lorebooks = %v, %v", books, err)
+	}
+}
+
+func TestImportNamesANamelessEmbeddedLorebookAfterItsCard(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	_, imp := importer(t, lib)
+	id := imp("1", `{"name":"Marshal","character_book":{"name":" ","entries":[{"keys":["Reed"],"content":"His brother."}]}}`).ID
+	books, err := lib.CardLorebooks(ctx, id)
+	if err != nil || len(books) != 1 {
+		t.Fatalf("lorebooks = %v, %v", books, err)
+	}
+	book, err := lib.Lorebooks.Get(ctx, books[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	head, err := lib.Lorebooks.Revision(ctx, book.HeadRevisionID)
+	if err != nil || DataName(head.Data) != "Marshal lorebook" {
+		t.Fatalf("lorebook name = %q, %v", DataName(head.Data), err)
 	}
 }
 

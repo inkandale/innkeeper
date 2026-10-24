@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/protocol"
@@ -45,6 +46,29 @@ func TestSearchRoute(t *testing.T) {
 	e.call("POST", "/search", map[string]any{"semantic": true}, 400, nil)
 	e.call("POST", "/search", map[string]any{"filter": map[string]any{"tag": "a", "archived": true}}, 400, nil)
 	e.call("POST", "/search", map[string]any{"filter": map[string]any{"bogus": 1}}, 422, nil)
+}
+
+func TestFacetSearchAnswersFromASampleThenFromExactCounts(t *testing.T) {
+	e := newEnv(t)
+	for range 30 {
+		e.createCard(`{"name": "C", "tags": ["all"]}`)
+	}
+	e.s.facets.sampleOver = 5
+	body := map[string]any{"facets": []string{"tags"}, "facets_only": true}
+	var res library.Results
+	e.call("POST", "/cards/search", body, 200, &res)
+	if res.Facets == nil || !res.Facets.Approximate {
+		t.Fatalf("first answer = %+v, want sampled counts", res.Facets)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for res.Facets.Approximate && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+		res = library.Results{}
+		e.call("POST", "/cards/search", body, 200, &res)
+	}
+	if res.Facets.Approximate || len(res.Facets.Tags) != 1 || res.Facets.Tags[0].Cards != 30 {
+		t.Fatalf("answer after the recount = %+v, want exact counts", res.Facets)
+	}
 }
 
 func TestSearchLorebooksRoute(t *testing.T) {

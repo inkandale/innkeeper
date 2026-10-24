@@ -455,6 +455,36 @@ func TestSearchFacetsOnlySkipsHitsAndTotal(t *testing.T) {
 	}
 }
 
+func TestSearchSamplesTheFacetsOfABigMatch(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	sampled := 0
+	rare := int64(0)
+	for i := range 40 {
+		id, _ := newCard(t, lib, fmt.Sprintf("c%d", i), `{"name": "C", "tags": ["all"]}`)
+		if id%10 == 0 {
+			sampled++
+		} else if rare == 0 {
+			rare = id
+		}
+	}
+	if err := lib.EditCardTags(ctx, rare, []string{"rare"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	q := Query{Facets: []string{"tags"}, FacetsOnly: true, SampleOver: 20}
+	got, err := lib.Search(ctx, Card, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Facets.Approximate || !slices.Equal(got.Facets.Tags, []TagCount{{"all", 10 * sampled}}) {
+		t.Fatalf("sampled facets = %+v", got.Facets)
+	}
+	q.SampleOver = 40
+	if got, err = lib.Search(ctx, Card, q); err != nil || got.Facets.Approximate || !slices.Equal(got.Facets.Tags, []TagCount{{"all", 40}, {"rare", 1}}) {
+		t.Fatalf("facets of a match no bigger than SampleOver = %+v, %v", got.Facets, err)
+	}
+}
+
 func TestSearchTagFacetCountsEveryTagOncePerCard(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()

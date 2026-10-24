@@ -2116,6 +2116,10 @@
       "Facets": {
         "additionalProperties": false,
         "properties": {
+          "approximate": {
+            "description": "The counts come from a sample of the matches, scaled up; rare values may be missing.",
+            "type": "boolean"
+          },
           "collections": {
             "items": {
               "$ref": "#/components/schemas/CollectionCount"

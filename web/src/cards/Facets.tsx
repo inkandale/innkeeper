@@ -27,7 +27,8 @@ import { badgeClass, type Names } from "./Tile";
 
 type Search = components["schemas"]["Query"];
 type FacetLists = components["schemas"]["Facets"];
-type Row = { value: string; label: string; cards: number; dot?: string };
+/** approx marks a count from a sample of the matches. */
+type Row = { value: string; label: string; cards: number; dot?: string; approx?: boolean };
 
 const titles: Record<Exclude<TermKind, "value">, string> = { target: "Target", state: "State", tag: "Tags", source: "Sources", collection: "Collections", score: "Scores" };
 
@@ -56,12 +57,21 @@ function saveCollapsed(v: string[]) {
   }
 }
 
+/** countQuery runs a count search, again every few seconds while its counts come from a sample, until the server has exact ones. */
+const countQuery = (kind: Kind, body: Search, enabled = true) => ({
+  ...searchQuery(kind, body),
+  placeholderData: keepPreviousData,
+  enabled,
+  refetchInterval: (query: { state: { data?: { facets?: { approximate?: boolean } | null } } }) => (query.state.data?.facets?.approximate ? 3000 : false),
+});
+
+const approxCount = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 });
+
 /** useRows runs each open section's count searches and turns the results into rows, selected values included. */
 function useRows(kind: Kind, q: CardQuery, names: Names, sections: TermKind[], open: (s: TermKind) => boolean): Partial<Record<TermKind, Row[]>> {
-  const search = (body: Search, enabled: boolean) => ({ ...searchQuery(kind, body), placeholderData: keepPreviousData, enabled });
   const faceted = (["target", "tag", "source", "collection"] as const).filter((s) => sections.includes(s));
-  const facetResults = useQueries({ queries: faceted.map((s) => search(countSearch(q, s), open(s))) });
-  const stateResult = useQuery(search(stateCountSearch(q), open("state")));
+  const facetResults = useQueries({ queries: faceted.map((s) => countQuery(kind, countSearch(q, s), open(s))) });
+  const stateResult = useQuery(countQuery(kind, stateCountSearch(q), open("state")));
   const results = new Map(faceted.map((s, i) => [s as TermKind, facetResults[i]?.data]));
   // The API leaves empty facet lists out, so a section is loading only while its search has no data.
   const listOf = <T,>(s: TermKind, list: (f: FacetLists) => T[] | null | undefined): T[] | undefined => {
@@ -88,16 +98,19 @@ function useRows(kind: Kind, q: CardQuery, names: Names, sections: TermKind[], o
         .map((is) => ({ value: is, label: stateLabel(is), cards: stateCounts.get(is) ?? 0, dot: badgeClass[is] }))
         .filter((r) => r.cards > 0 || picked("state").includes(r.value))
     : undefined;
+  const approx = new Map<TermKind, boolean | undefined>([...results].map(([s, data]) => [s, data?.facets?.approximate]));
+  approx.set("state", stateResult.data?.facets?.approximate);
+  const marked = (s: TermKind, rows: Row[] | undefined) => (approx.get(s) ? rows?.map((r) => ({ ...r, approx: true })) : rows);
   return {
-    target: withPicked("target", targetRows, instanceLabel),
-    state: stateRows,
-    tag: withPicked("tag", listOf("tag", (f) => f.tags)?.map((t) => ({ value: t.name, label: t.name, cards: t.cards })), (v) => v),
-    source: withPicked("source", listOf("source", (f) => f.sources)?.map((s) => ({ value: s.kind, label: s.kind, cards: s.cards })), (v) => v),
-    collection: withPicked(
+    target: marked("target", withPicked("target", targetRows, instanceLabel)),
+    state: marked("state", stateRows),
+    tag: marked("tag", withPicked("tag", listOf("tag", (f) => f.tags)?.map((t) => ({ value: t.name, label: t.name, cards: t.cards })), (v) => v)),
+    source: marked("source", withPicked("source", listOf("source", (f) => f.sources)?.map((s) => ({ value: s.kind, label: s.kind, cards: s.cards })), (v) => v)),
+    collection: marked("collection", withPicked(
       "collection",
       listOf("collection", (f) => f.collections)?.map((c) => ({ value: String(c.id), label: c.name, cards: c.cards })),
       (v) => names.collections.get(Number(v)) ?? "#" + v,
-    ),
+    )),
   };
 }
 
@@ -112,7 +125,7 @@ function FacetRow({ kind, row, q, onChange }: { kind: TermKind; row: Row; q: Car
           {term?.not ? "not " : ""}
           {row.label}
         </span>{" "}
-        <span className="count">{row.cards.toLocaleString()}</span>
+        <span className="count">{row.approx ? "~" + approxCount.format(row.cards) : row.cards.toLocaleString()}</span>
       </button>
       <button className="facet-act" aria-label={`Only ${row.label}`} onClick={() => onChange(onlyTerm(q, { kind, value: row.value, not: false }))}>
         only
@@ -204,20 +217,25 @@ function Section({ kind, title, instance, section = kind, rows, q, open, onOpen,
  * useValueCounts counts each open value section's values, ref to counts. An instance's sections with nothing picked share one search,
  * as their filters are the same; each instance gets its own, so the server counts them in parallel.
  */
-function useValueCounts(q: CardQuery, keys: { instance: number; ref: string }[]): Map<string, ValueCount[] | undefined> {
+function useValueCounts(q: CardQuery, keys: { instance: number; ref: string }[]): Map<string, { counts?: ValueCount[]; approx?: boolean }> {
   const picked = (ref: string) => q.terms.some((t) => sectionOf(t) === `value:${ref}`);
   const shared = new Map<number, string[]>();
   for (const { instance, ref } of keys) if (!picked(ref)) shared.set(instance, [...(shared.get(instance) ?? []), ref]);
   const groups = [...shared.values(), ...keys.filter((k) => picked(k.ref)).map((k) => [k.ref])];
-  const results = useQueries({ queries: groups.map((g) => ({ ...searchQuery("card", valueCountSearch(q, g)), placeholderData: keepPreviousData })) });
-  return new Map(groups.flatMap((g, i) => g.map((ref) => [ref, results[i]?.data && (results[i].data.facets?.enrichments?.[ref] ?? [])] as const)));
+  const results = useQueries({ queries: groups.map((g) => countQuery("card", valueCountSearch(q, g))) });
+  return new Map(
+    groups.flatMap((g, i) => {
+      const facets = results[i]?.data && (results[i].data.facets ?? {});
+      return g.map((ref) => [ref, { counts: facets && (facets.enrichments?.[ref] ?? []), approx: facets?.approximate }] as const);
+    }),
+  );
 }
 
 /** ValueSection lists one text or list key's values from one enrich instance, each a row to include or exclude. */
-function ValueSection({ instance, instanceLabel, k, counts, q, open, onOpen, onChange }: { instance: number; instanceLabel?: string; k: EnrichmentKey; counts?: ValueCount[]; q: CardQuery; open: boolean; onOpen: () => void; onChange: (q: CardQuery) => void }) {
+function ValueSection({ instance, instanceLabel, k, counts, approx, q, open, onOpen, onChange }: { instance: number; instanceLabel?: string; k: EnrichmentKey; counts?: ValueCount[]; approx?: boolean; q: CardQuery; open: boolean; onOpen: () => void; onChange: (q: CardQuery) => void }) {
   const ref = keyRef(instance, k.key);
   const section = `value:${ref}`;
-  const counted = counts?.map((v) => ({ value: `${ref}=${v.value}`, label: valueLabel(v.value), cards: v.cards }));
+  const counted = counts?.map((v) => ({ value: `${ref}=${v.value}`, label: valueLabel(v.value), cards: v.cards, approx }));
   // A selected value with no matches still gets a row, so it can be cleared.
   const rows = counted && [
     ...counted,
@@ -326,7 +344,7 @@ export function Facets({ kind, q, names, enrichers = [], onChange }: { kind: Kin
       {valueKeys.map(({ e, k, ref }) => {
         const section = `value:${ref}`;
         const instanceLabel = enrichers.length > 1 ? e.label : undefined;
-        return <ValueSection key={section} instance={e.id} instanceLabel={instanceLabel} k={k} counts={valueCounts.get(ref)} q={q} open={open(section)} onOpen={() => flip(section)} onChange={onChange} />;
+        return <ValueSection key={section} instance={e.id} instanceLabel={instanceLabel} k={k} {...valueCounts.get(ref)} q={q} open={open(section)} onOpen={() => flip(section)} onChange={onChange} />;
       })}
       {scored.length > 0 && <ScoreSection enrichers={scored} q={q} open={open("score")} onOpen={() => flip("score")} onChange={onChange} />}
     </aside>

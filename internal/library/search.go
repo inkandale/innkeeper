@@ -38,6 +38,11 @@ type Query struct {
 	// score_instance setting.
 	ScoreInstance int64 `json:"-"`
 
+	// SampleOver, when more cards than it match, counts the facets over a
+	// sample of 1 in sampleRate matches and marks them approximate. 0 counts
+	// every match.
+	SampleOver int `json:"-"`
+
 	// Embedding is Text's vector from EmbedInstance, for a semantic search.
 	// The caller embeds it.
 	Embedding     []float32 `json:"-"`
@@ -141,6 +146,37 @@ type Facets struct {
 	States      []StateCount      `json:"states,omitempty"`
 	// Enrichments are keyed by enrichment key.
 	Enrichments map[string][]ValueCount `json:"enrichments,omitempty" doc:"By key: each text value, or each item of a list value, and how many matching cards have it. Most common first, at most 100."`
+	Approximate bool                    `json:"approximate,omitempty" doc:"The counts come from a sample of the matches, scaled up; rare values may be missing."`
+}
+
+// sampleRate is how many matches one sampled card stands for; sampleOf picks them.
+const sampleRate = 10
+
+var sampleOf = `c.id % ` + strconv.Itoa(sampleRate) + ` = 0`
+
+// scale multiplies every count by n and marks them approximate.
+func (f *Facets) scale(n int) {
+	for i := range f.Tags {
+		f.Tags[i].Cards *= n
+	}
+	for i := range f.Collections {
+		f.Collections[i].Cards *= n
+	}
+	for i := range f.Targets {
+		f.Targets[i].Cards *= n
+	}
+	for i := range f.Sources {
+		f.Sources[i].Cards *= n
+	}
+	for i := range f.States {
+		f.States[i].Cards *= n
+	}
+	for _, counts := range f.Enrichments {
+		for i := range counts {
+			counts[i].Cards *= n
+		}
+	}
+	f.Approximate = true
 }
 
 // ValueCount is an enrichment value and how many matching cards have it.
@@ -887,8 +923,21 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 	}
 	res := Results{Hits: []Hit{}}
 	if len(q.Facets) > 0 {
-		if res.Facets, err = l.facets(ctx, k, q.Facets, cond, condArgs, q.ScoreInstance); err != nil {
+		facetCond, scale := cond, 1
+		if q.SampleOver > 0 {
+			var sampled int
+			if err := l.pool.QueryRow(ctx, `SELECT count(*) FROM `+from(k)+` WHERE `+cond+` AND `+sampleOf, condArgs...).Scan(&sampled); err != nil {
+				return Results{}, fmt.Errorf("count sample: %w", err)
+			}
+			if sampled*sampleRate > q.SampleOver {
+				facetCond, scale = cond+` AND `+sampleOf, sampleRate
+			}
+		}
+		if res.Facets, err = l.facets(ctx, k, q.Facets, facetCond, condArgs, q.ScoreInstance); err != nil {
 			return Results{}, err
+		}
+		if scale > 1 {
+			res.Facets.scale(scale)
 		}
 	}
 	if q.FacetsOnly {

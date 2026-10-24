@@ -389,6 +389,23 @@ test("a section with no values has no header", async () => {
   expect(screen.queryByRole("button", { name: "Sources" })).not.toBeInTheDocument();
 });
 
+test("sampled counts show as approximate until the exact ones arrive", async () => {
+  let sampled = true;
+  answer("/api/cards/search", async (req, rest) => {
+    const body = await req.clone().json();
+    if (!body.facets?.includes("tags")) return rest(req);
+    const answer = sampled
+      ? { hits: [], total: 0, facets: { tags: [{ name: "fantasy", cards: 12_340 }], approximate: true } }
+      : { hits: [], total: 0, facets: { tags: [{ name: "fantasy", cards: 12_345 }, { name: "pirate", cards: 9 }] } };
+    sampled = false;
+    return json(answer);
+  });
+  renderCards("/cards");
+  expect(await screen.findByRole("button", { name: /^fantasy\s*~12\.3K/ })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: /^pirate\s*9/ }, { timeout: 5000 })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^fantasy\s*12,345/ })).toBeInTheDocument();
+});
+
 test("no collections sends no collections count", async () => {
   answer("/api/collections", async () => json([]));
   renderCards("/cards");

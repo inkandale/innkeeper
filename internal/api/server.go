@@ -58,6 +58,8 @@ type Server struct {
 	// backup routes return 409.
 	Backups backup.Settings
 
+	// facets caches the exact sidebar counts of big searches.
+	facets facetCache
 	// loginSlot lets one login run at a time.
 	loginSlot chan struct{}
 	// setupMu guards setupCode, which claims the server while it has no

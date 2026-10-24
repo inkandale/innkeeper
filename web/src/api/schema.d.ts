@@ -3424,6 +3424,8 @@ export interface components {
             type: string;
         };
         Facets: {
+            /** @description The counts come from a sample of the matches, scaled up; rare values may be missing. */
+            approximate?: boolean;
             collections?: components["schemas"]["CollectionCount"][] | null;
             /** @description By key: each text value, or each item of a list value, and how many matching cards have it. Most common first, at most 100. */
             enrichments?: {

@@ -80,7 +80,11 @@ func (s *Server) search(ctx context.Context, k *library.Kind, q library.Query) (
 		if err := s.withEmbedding(ctx, k, &q); err != nil {
 			return nil, s.fail(err)
 		}
-		res, err := s.Lib.Search(ctx, k, q)
+		search := s.Lib.Search
+		if q.FacetsOnly {
+			search = s.facetSearch
+		}
+		res, err := search(ctx, k, q)
 		if err != nil {
 			return nil, s.fail(err)
 		}

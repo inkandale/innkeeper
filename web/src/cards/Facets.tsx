@@ -1,6 +1,6 @@
 import { keepPreviousData, useQueries, useQuery } from "@tanstack/react-query";
 import { useState, type CSSProperties, type MouseEvent } from "react";
-import { api, must, type Kind } from "../api/client";
+import { type Kind } from "../api/client";
 import { searchQuery } from "../api/queries";
 import type { components } from "../api/schema";
 import { stateLabel } from "../sync/sync";
@@ -203,12 +203,7 @@ function Section({ kind, title, instance, section = kind, rows, q, open, onOpen,
 function ValueSection({ instance, instanceLabel, k, q, open, onOpen, onChange }: { instance: number; instanceLabel?: string; k: EnrichmentKey; q: CardQuery; open: boolean; onOpen: () => void; onChange: (q: CardQuery) => void }) {
   const ref = keyRef(instance, k.key);
   const body = valueCountSearch(q, ref);
-  const res = useQuery({
-    queryKey: ["search", "card", body],
-    queryFn: async () => must(await api.POST("/cards/search", { body })),
-    placeholderData: keepPreviousData,
-    enabled: open,
-  });
+  const res = useQuery({ ...searchQuery("card", body), placeholderData: keepPreviousData, enabled: open });
   const section = `value:${ref}`;
   const counted = res.data && (res.data.facets?.enrichments?.[ref] ?? []).map((v) => ({ value: `${ref}=${v.value}`, label: valueLabel(v.value), cards: v.cards }));
   // A selected value with no matches still gets a row, so it can be cleared.

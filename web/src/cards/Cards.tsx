@@ -231,7 +231,8 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
           </div>
         </div>
       )}
-      <div className="results">
+      {/* Busy while the last search's hits stand in for the next one's. */}
+      <div className="results" aria-busy={res.isPlaceholderData}>
         {/* Hidden, not unmounted, so closing it keeps the started imports listed. */}
         {(imp.file || imp.url) && (
           <section className="import-panel" aria-label={`Import ${noun}`} hidden={!importOpen}>

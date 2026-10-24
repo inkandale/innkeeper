@@ -43,6 +43,7 @@ let gets: string[];
 let judgeMax: number | undefined;
 let embedInstance: number | null;
 let settingsGate: Promise<void> | undefined;
+let resultsGate: Promise<void> | undefined;
 let libraryIds: number[];
 beforeEach(() => {
   libraryIds = [1, 2, 3];
@@ -51,6 +52,7 @@ beforeEach(() => {
   judgeMax = undefined;
   embedInstance = null;
   settingsGate = undefined;
+  resultsGate = undefined;
   searches = [];
   posts = [];
   previews = [];
@@ -69,11 +71,12 @@ beforeEach(() => {
       if (path === "/api/cards/search") {
         const body = await req.json();
         searches.push(body);
-        const problems = body.page?.size === 1 && body.facets?.find((f: string) => f.endsWith(":problems"))?.slice("enrichment:".length);
+        if (!body.facets_only) await resultsGate;
+        const problems = body.facets_only && body.facets?.find((f: string) => f.endsWith(":problems"))?.slice("enrichment:".length);
         if (problems) return json({ hits: [], total: 4, facets: { enrichments: { [problems]: [{ value: "markup", cards: 3 }, { value: "oversized", cards: 1 }] } } });
-        if (body.page?.size === 1 && body.facets?.[0]?.startsWith("states"))
+        if (body.facets_only && body.facets?.[0]?.startsWith("states"))
           return json({ hits: [], total: 1, facets: { states: [{ is: "ahead", cards: 1 }] } });
-        if (body.page?.size === 1 && body.facets?.includes("targets"))
+        if (body.facets_only && body.facets?.includes("targets"))
           return json({ hits: [], total: 1, facets: { targets: [{ instance: 2, is: "ahead", cards: 1 }] } });
         if (body.include?.includes("enrichments")) {
           const scores: Record<number, unknown> = { 7: { quality: { value: 78, stale: false } }, 8: { quality: { value: 40, stale: true } } };
@@ -153,6 +156,21 @@ test("a facet click filters and shift-click excludes", async () => {
   expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["tag:pirate", "-tag:fantasy"]);
 });
 
+test("the last results show as busy until a facet click's search answers", async () => {
+  const { container } = renderCards("/cards");
+  const user = userEvent.setup();
+  const pirate = await screen.findByRole("button", { name: /^pirate/ });
+  const results = container.querySelector(".results")!;
+  expect(results).toHaveAttribute("aria-busy", "false");
+  let answer!: () => void;
+  resultsGate = new Promise((resolve) => (answer = resolve));
+  await user.click(pirate);
+  await waitFor(() => expect(results).toHaveAttribute("aria-busy", "true"));
+  expect(screen.getByText("Brakka")).toBeInTheDocument();
+  answer();
+  await waitFor(() => expect(results).toHaveAttribute("aria-busy", "false"));
+});
+
 test("a chip removes its filter", async () => {
   const { router } = renderCards("/cards?f=tag:fantasy");
   const user = userEvent.setup();
@@ -209,12 +227,12 @@ test("a count past 1,000 shows in full", async () => {
 test("a section's counts leave out its own selections", async () => {
   renderCards("/cards?f=tag:fantasy&f=source:chub");
   await screen.findByRole("button", { name: /^pirate/ });
-  expect(searches).toContainEqual({ library: 1, filter: { and: [{ source: "chub" }] }, facets: ["tags"], page: { size: 1 } });
+  expect(searches).toContainEqual({ library: 1, filter: { and: [{ source: "chub" }] }, facets: ["tags"], facets_only: true });
   expect(searches).toContainEqual({
     library: 1,
     filter: { and: [{ tag: "fantasy" }, { source: "chub" }] },
     facets: ["states"],
-    page: { size: 1 },
+    facets_only: true,
   });
 });
 
@@ -224,7 +242,7 @@ test("match all ANDs a section's values and keeps them in its counts", async () 
   await user.click(await screen.findByRole("button", { name: "Match all" }));
   expect(new URLSearchParams(router.state.location.search).getAll("all")).toEqual(["tag"]);
   await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ tag: "fantasy" }, { tag: "pirate" }] }, sort: "updated" })));
-  expect(searches).toContainEqual({ library: 1, filter: { and: [{ tag: "fantasy" }, { tag: "pirate" }] }, facets: ["tags"], page: { size: 1 } });
+  expect(searches).toContainEqual({ library: 1, filter: { and: [{ tag: "fantasy" }, { tag: "pirate" }] }, facets: ["tags"], facets_only: true });
 });
 
 test("target rows name the app and state rows show the status dot", async () => {

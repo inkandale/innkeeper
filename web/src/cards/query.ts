@@ -257,14 +257,14 @@ function othersFilter(q: CardQuery, section: string): Filter | undefined {
 /** countText is the text facet counts search by: none for a semantic search, which would embed it once per count. */
 const countText = (q: CardQuery) => (q.semantic ? undefined : q.text || undefined);
 
-/** countSearch counts a section's values over every other section's terms; size 1 because 0 means the default. */
+/** countSearch counts a section's values over every other section's terms. */
 export function countSearch(q: CardQuery, section: keyof typeof facetOf): Search {
   return {
     library: q.library,
     text: countText(q),
     filter: othersFilter(q, section),
     facets: [facetOf[section]],
-    page: { size: 1 },
+    facets_only: true,
   };
 }
 
@@ -275,7 +275,7 @@ export function valueCountSearch(q: CardQuery, ref: string): Search {
     text: countText(q),
     filter: othersFilter(q, `value:${ref}`),
     facets: [`enrichment:${ref}`],
-    page: { size: 1 },
+    facets_only: true,
   };
 }
 
@@ -288,7 +288,7 @@ export function stateCountSearch(q: CardQuery): Search {
     // The states facet narrows to the selected targets itself, so they leave the filter.
     filter: filterFor(q.terms.filter((t) => t.kind !== "state" && (t.kind !== "target" || t.not)), q.sharesSource, q.all),
     facets: [targets.length ? `states:${targets.join(",")}` : "states"],
-    page: { size: 1 },
+    facets_only: true,
   };
 }
 

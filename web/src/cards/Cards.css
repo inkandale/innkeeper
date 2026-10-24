@@ -223,6 +223,13 @@
 .results {
   grid-area: main;
   padding: calc(var(--space) * 2);
+  transition: opacity 0.15s;
+}
+
+/* Delayed, so a fast search doesn't flicker. */
+.results[aria-busy="true"] {
+  opacity: 0.55;
+  transition-delay: 0.1s;
 }
 
 .total {

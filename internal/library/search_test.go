@@ -434,6 +434,27 @@ func TestSearchLorebookSourcesAndBareEntries(t *testing.T) {
 	}
 }
 
+func TestSearchFacetsOnlySkipsHitsAndTotal(t *testing.T) {
+	lib := newLibrary(t)
+	s := seedSearch(t, lib)
+	if err := lib.EditCardTags(context.Background(), s.carrow, []string{"fantasy"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	got, err := lib.Search(context.Background(), Card, Query{Facets: []string{"tags"}, FacetsOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Hits) != 0 || got.Total != 0 || got.NextCursor != nil {
+		t.Fatalf("facets-only search returned hits %d, total %d, cursor %v", len(got.Hits), got.Total, got.NextCursor)
+	}
+	if got.Facets == nil || !slices.Equal(got.Facets.Tags, []TagCount{{"fantasy", 2}, {"pirate", 1}}) {
+		t.Fatalf("facets = %+v", got.Facets)
+	}
+	if _, err := lib.Search(context.Background(), Card, Query{Facets: []string{"nope"}, FacetsOnly: true}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("unknown facet: err = %v, want ErrInvalid", err)
+	}
+}
+
 func TestSearchTagFacetCountsEveryTagOncePerCard(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()

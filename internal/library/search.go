@@ -26,7 +26,9 @@ type Query struct {
 	Sort     string   `json:"sort,omitempty" pattern:"^(relevance|updated|name|created|enrichment:([1-9][0-9]*:)?[a-z][a-z0-9_]*)$" doc:"relevance, updated, name, created, or enrichment:<key> for the score instance's value of key, highest first and cards without one last; enrichment:<instance>:<key> reads that enrich instance's value instead. Default: relevance with text, newest first without."`
 	Facets   []string `json:"facets,omitempty" doc:"Counts to return over every match: tags, collections, targets, sources, states (each match once per state it has on any target), or states:<instance>,<instance> for those targets only, or enrichment:<key> for the values of a text or list key from the score instance, or enrichment:<instance>:<key> from that enrich instance. Enrichment counts are keyed by what follows enrichment:. Lorebooks take targets and sources."`
 	Page     Page     `json:"page,omitempty"`
-	Group    string   `json:"group,omitempty" enum:"family" doc:"family returns one hit per family of variants: its face, with the family's matches. Paging and total count families; facets count cards or lorebooks."`
+	// FacetsOnly saves a filter sidebar the count and page queries it would throw away.
+	FacetsOnly bool   `json:"facets_only,omitempty" doc:"Return only the facets: no hits, total, or next_cursor."`
+	Group      string `json:"group,omitempty" enum:"family" doc:"family returns one hit per family of variants: its face, with the family's matches. Paging and total count families; facets count cards or lorebooks."`
 
 	Library int64 `json:"library,omitempty" doc:"The library to search; default 1."`
 
@@ -851,15 +853,18 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 		return Results{}, fmt.Errorf("%w: unknown group %q", ErrInvalid, q.Group)
 	}
 	res := Results{Hits: []Hit{}}
+	if len(q.Facets) > 0 {
+		if res.Facets, err = l.facets(ctx, k, q.Facets, cond, condArgs, q.ScoreInstance); err != nil {
+			return Results{}, err
+		}
+	}
+	if q.FacetsOnly {
+		return res, nil
+	}
 	// A grouped page counts its families itself.
 	if q.Group != "family" {
 		if err := l.pool.QueryRow(ctx, `SELECT count(*) FROM `+from(k)+` WHERE `+cond, condArgs...).Scan(&res.Total); err != nil {
 			return Results{}, fmt.Errorf("count matches: %w", err)
-		}
-	}
-	if len(q.Facets) > 0 {
-		if res.Facets, err = l.facets(ctx, k, q.Facets, cond, condArgs, q.ScoreInstance); err != nil {
-			return Results{}, err
 		}
 	}
 	cols := `c.id, c.slug, r.id, c.archived_at, coalesce(c.archived_reason, ''), r.data, r.avatar_blob, ` + tags + `, ` + books + `, ` + targets + `, ` + cards + `, ` + entries + `, ` + enrichments

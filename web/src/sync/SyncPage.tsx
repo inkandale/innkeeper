@@ -48,7 +48,7 @@ export function Sync() {
   const libraryName = useQuery(librariesQuery).data?.find((l) => l.id === library)?.name ?? `library ${library}`;
   const facets = useQuery({
     queryKey: ["search", "card", "sync-counts", library],
-    queryFn: async () => must(await api.POST("/cards/search", { body: { library, facets: ["targets"], page: { size: 1 } } })),
+    queryFn: async () => must(await api.POST("/cards/search", { body: { library, facets: ["targets"], facets_only: true } })),
   });
   const runs = useQuery({
     queryKey: ["jobs", "target.reconcile"],

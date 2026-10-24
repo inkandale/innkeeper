@@ -4158,6 +4158,8 @@ export interface components {
             readonly $schema?: string;
             /** @description Counts to return over every match: tags, collections, targets, sources, states (each match once per state it has on any target), or states:<instance>,<instance> for those targets only, or enrichment:<key> for the values of a text or list key from the score instance, or enrichment:<instance>:<key> from that enrich instance. Enrichment counts are keyed by what follows enrichment:. Lorebooks take targets and sources. */
             facets?: string[] | null;
+            /** @description Return only the facets: no hits, total, or next_cursor. */
+            facets_only?: boolean;
             /** @description Card data keys to return per hit, plus avatar. Default: name. */
             fields?: string[] | null;
             filter?: components["schemas"]["Filter"];

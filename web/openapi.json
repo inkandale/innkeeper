@@ -4091,6 +4091,10 @@
               "null"
             ]
           },
+          "facets_only": {
+            "description": "Return only the facets: no hits, total, or next_cursor.",
+            "type": "boolean"
+          },
           "fields": {
             "description": "Card data keys to return per hit, plus avatar. Default: name.",
             "items": {

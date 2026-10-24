@@ -115,7 +115,7 @@ test("a section's count search leaves out the section's own terms", () => {
     text: "dwarf",
     filter: { and: [{ target_state: { states: ["ahead"] } }, { source: "chub" }] },
     facets: ["tags"],
-    page: { size: 1 },
+    facets_only: true,
   });
   expect(countSearch(q, "target").facets).toEqual(["targets"]);
 });
@@ -126,13 +126,13 @@ test("the state count search drops the state terms and counts on the selected ta
     library: 1,
     filter: { and: [{ tag: "fantasy" }] },
     facets: ["states:2,3"],
-    page: { size: 1 },
+    facets_only: true,
   });
   expect(stateCountSearch({ ...base, terms: [{ ...term("target", "2"), not: true }] })).toEqual({
     library: 1,
     filter: { and: [{ not: { target_state: { instances: [2] } } }] },
     facets: ["states"],
-    page: { size: 1 },
+    facets_only: true,
   });
 });
 

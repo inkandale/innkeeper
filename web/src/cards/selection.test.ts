@@ -29,3 +29,9 @@ test("target sends picked IDs, or the search without paging", () => {
   expect(target({ ...emptySelection("k"), all: true }, search)).toEqual({ text: "dwarf", filter: search.filter });
   expect(target({ ...emptySelection("k"), all: true }, {})).toEqual({ filter: { archived: false } });
 });
+
+test("an all-matching semantic selection keeps the filter but not the text", () => {
+  const all = { ...emptySelection("k"), all: true };
+  expect(target(all, { library: 1, text: "dwarf", semantic: true, filter: { tag: "smith" } })).toEqual({ library: 1, filter: { tag: "smith" } });
+  expect(target(all, { library: 1, text: "dwarf", semantic: true })).toEqual({ library: 1, filter: { archived: false } });
+});

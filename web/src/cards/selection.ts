@@ -21,7 +21,9 @@ export function pick(s: Selection, id: number, shift: boolean, page: number[]): 
 export function target(s: Selection, search: Search): Search {
   const library = search.library;
   if (!s.all) return { library, filter: { ids: s.ids } };
-  if (search.text || search.filter) return { library, text: search.text, filter: search.filter };
+  // Every card with a vector matches a semantic search, so its text selects nothing; the filter does.
+  const text = search.semantic ? undefined : search.text;
+  if (text || search.filter) return { library, text, filter: search.filter };
   // /bulk refuses a query with no filter or text, so name every unarchived card.
   return { library, filter: { archived: false } };
 }

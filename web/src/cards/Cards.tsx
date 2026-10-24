@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router";
-import { instancesQuery, collectionsQuery, enrichmentKeysQuery, pluginsQuery, searchQuery } from "../api/queries";
+import { instancesQuery, collectionsQuery, enrichmentKeysQuery, pluginsQuery, searchQuery, settingsQuery } from "../api/queries";
 import { text } from "../card/draft";
 import { apps } from "../sync/Logo";
 import { stateLabel } from "../sync/sync";
@@ -65,10 +65,14 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const keys = useQuery({ ...enrichmentKeysQuery(asked.library), enabled: kind === "card" });
   const scored = keys.data?.instance_id != null;
   // Terms that name no instance, from older links, read the score instance; without one they'd be refused.
-  const q = keys.data ? withScoreInstance(asked, keys.data.instance_id) : asked;
-  const scoresOff = !scored && q !== asked;
+  const scoredQ = keys.data ? withScoreInstance(asked, keys.data.instance_id) : asked;
+  const scoresOff = !scored && scoredQ !== asked;
+  const settings = useQuery(settingsQuery);
+  // A semantic link opened after the embed instance was cleared searches by words.
+  const embeds = kind === "card" && settings.data?.embed_instance != null;
+  const q = scoredQ.semantic && !embeds ? { ...scoredQ, semantic: false } : scoredQ;
   // The selection belongs to one search: paging keeps it, a new search clears it.
-  const key = JSON.stringify([q.library, q.text, q.terms]);
+  const key = JSON.stringify([q.library, q.text, q.semantic, q.terms]);
   const [stored, setSel] = useState<Selection>(() => emptySelection(key));
   // Reset rather than hide, so going back to an earlier search doesn't revive its picks.
   if (stored.key !== key) setSel(emptySelection(key));
@@ -159,14 +163,21 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
           <form role="search" onSubmit={search}>
             <input key={q.text} className="input" type="search" name="q" defaultValue={q.text} placeholder={`Search ${noun}`} aria-label={`Search ${noun}`} />
           </form>
+          {embeds && (
+            <label title="Rank cards by meaning instead of matching words. Cards not embedded yet are left out.">
+              <input type="checkbox" checked={q.semantic} onChange={(e) => go({ ...q, semantic: e.target.checked, page: 1 })} />
+              Semantic
+            </label>
+          )}
           <select
             className="input"
             aria-label="Sort"
-            value={q.sort}
+            value={q.semantic ? "relevance" : q.sort}
+            disabled={q.semantic}
             onChange={(e) => go({ ...q, sort: e.target.value as Sort, page: 1 })}
           >
             {sorts
-              .filter(([s]) => s !== "relevance" || q.text || q.sort === "relevance")
+              .filter(([s]) => s !== "relevance" || q.text || q.sort === "relevance" || q.semantic)
               .map(([s, label]) => (
                 <option key={s} value={s}>
                   {label}

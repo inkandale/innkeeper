@@ -27,6 +27,8 @@ export type Sort = (typeof sorts)[number] | `enrichment:${string}`;
 export type CardQuery = {
   library: number;
   text: string;
+  /** semantic ranks by meaning instead of matching words. It needs text and an embed instance. */
+  semantic: boolean;
   terms: Term[];
   sort: Sort;
   page: number;
@@ -141,6 +143,7 @@ export function parseQuery(p: URLSearchParams, library: number): CardQuery {
   return {
     library: libraryParam(p) ?? library,
     text,
+    semantic: p.get("semantic") === "1",
     terms,
     sort: sorts.some((s) => s === sort) || enrichmentSort.test(sort ?? "") ? sort : defaultSort(text),
     page: Number.isInteger(page) && page > 0 ? page : 1,
@@ -155,6 +158,7 @@ export function parseQuery(p: URLSearchParams, library: number): CardQuery {
 export function toParams(q: CardQuery): URLSearchParams {
   const p = new URLSearchParams();
   if (q.text) p.set("q", q.text);
+  if (q.semantic) p.set("semantic", "1");
   for (const t of q.terms) p.append("f", `${t.not ? "-" : ""}${t.kind}:${t.value}`);
   if (q.sort !== defaultSort(q.text)) p.set("sort", q.sort);
   if (q.page !== 1) p.set("page", String(q.page));
@@ -227,8 +231,10 @@ export function toSearch(q: CardQuery, scores = false): Search {
   return {
     library: q.library,
     text: q.text || undefined,
+    ...(q.semantic && { semantic: true }),
+    // Semantic search sorts by similarity alone.
+    sort: q.semantic ? "relevance" : q.sort,
     filter: filterFor(q.terms, q.sharesSource, q.all),
-    sort: q.sort,
     fields: ["name", "avatar"],
     include: ["tags", "lorebooks", "targets", ...(scores ? ["enrichments"] : [])],
     page: { size: q.size, number: q.page },
@@ -248,11 +254,14 @@ function othersFilter(q: CardQuery, section: string): Filter | undefined {
   return filterFor(kept, q.sharesSource, q.all);
 }
 
+/** countText is the text facet counts search by: none for a semantic search, which would embed it once per count. */
+const countText = (q: CardQuery) => (q.semantic ? undefined : q.text || undefined);
+
 /** countSearch counts a section's values over every other section's terms; size 1 because 0 means the default. */
 export function countSearch(q: CardQuery, section: keyof typeof facetOf): Search {
   return {
     library: q.library,
-    text: q.text || undefined,
+    text: countText(q),
     filter: othersFilter(q, section),
     facets: [facetOf[section]],
     page: { size: 1 },
@@ -263,7 +272,7 @@ export function countSearch(q: CardQuery, section: keyof typeof facetOf): Search
 export function valueCountSearch(q: CardQuery, ref: string): Search {
   return {
     library: q.library,
-    text: q.text || undefined,
+    text: countText(q),
     filter: othersFilter(q, `value:${ref}`),
     facets: [`enrichment:${ref}`],
     page: { size: 1 },
@@ -275,7 +284,7 @@ export function stateCountSearch(q: CardQuery): Search {
   const targets = q.terms.filter((t) => t.kind === "target" && !t.not).map((t) => t.value);
   return {
     library: q.library,
-    text: q.text || undefined,
+    text: countText(q),
     // The states facet narrows to the selected targets itself, so they leave the filter.
     filter: filterFor(q.terms.filter((t) => t.kind !== "state" && (t.kind !== "target" || t.not)), q.sharesSource, q.all),
     facets: [targets.length ? `states:${targets.join(",")}` : "states"],

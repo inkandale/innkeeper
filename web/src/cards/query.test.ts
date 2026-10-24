@@ -18,7 +18,7 @@ import {
   valueLabel,
 } from "./query";
 
-const base: CardQuery = { library: 1, text: "", terms: [], sort: "updated", page: 1, size: 48, view: "grid", sharesSource: false, all: [] };
+const base: CardQuery = { library: 1, text: "", semantic: false, terms: [], sort: "updated", page: 1, size: 48, view: "grid", sharesSource: false, all: [] };
 const term = (kind: Term["kind"], value: string, not = false): Term => ({ kind, value, not });
 
 test("an empty URL is the default query", () => {
@@ -29,6 +29,7 @@ test("a query round-trips through the URL", () => {
   const q: CardQuery = {
     library: 2,
     text: "dwarf smith",
+    semantic: false,
     terms: [term("tag", "fantasy"), term("tag", "a:b", true), term("target", "2"), term("state", "ahead"), term("collection", "4")],
     sort: "name",
     page: 3,
@@ -274,4 +275,18 @@ test("a section that matches all ANDs its included values and keeps them in its 
   });
   expect(countSearch(q, "tag").filter).toEqual({ and: [{ tag: "a" }, { tag: "b" }, { or: [{ enrichment: "genre", instance: 3, is: "x" }, { enrichment: "genre", instance: 3, is: "y" }] }] });
   expect(parseQuery(new URLSearchParams("all=tag&all=state&all=value:3:genre"), 1).all).toEqual(["tag", "value:3:genre"]);
+});
+
+test("semantic round-trips through the URL and searches by relevance", () => {
+  const q = parseQuery(new URLSearchParams("q=grumpy+dwarf&semantic=1&sort=name"), 1);
+  expect(q.semantic).toBe(true);
+  expect(toParams(q).get("semantic")).toBe("1");
+  expect(toSearch(q)).toMatchObject({ text: "grumpy dwarf", semantic: true, sort: "relevance" });
+  expect(parseQuery(new URLSearchParams("q=x"), 1).semantic).toBe(false);
+});
+
+test("facet counts leave the text out of a semantic search", () => {
+  const q = parseQuery(new URLSearchParams("q=grumpy+dwarf&semantic=1"), 1);
+  expect(countSearch(q, "tag").text).toBeUndefined();
+  expect(countSearch({ ...q, semantic: false }, "tag").text).toBe("grumpy dwarf");
 });

@@ -41,12 +41,14 @@ let family: unknown;
 let puts: { path: string; body: unknown }[];
 let gets: string[];
 let judgeMax: number | undefined;
+let embedInstance: number | null;
 let libraryIds: number[];
 beforeEach(() => {
   libraryIds = [1, 2, 3];
   localStorage.clear();
   keys = { instance_id: null, instances: [] };
   judgeMax = undefined;
+  embedInstance = null;
   searches = [];
   posts = [];
   previews = [];
@@ -110,6 +112,7 @@ beforeEach(() => {
       if (path === "/api/collections") gets.push(path + new URL(req.url).search);
       if (path === "/api/collections") return json([{ id: 4, name: "Elves", cards: 0 }]);
       if (path === "/api/enrichments/keys") return json(keys);
+      if (path === "/api/settings") return json({ theme: "", onboarding_done: true, embed_instance: embedInstance });
       return json([]);
     }),
   );
@@ -883,4 +886,18 @@ test("Move to library… is not offered with only one library", async () => {
   await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
   expect(screen.getByRole("button", { name: "Set parent…" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Move to library…" })).not.toBeInTheDocument();
+});
+
+test("the Semantic checkbox searches by meaning and sorts by relevance", async () => {
+  embedInstance = 5;
+  renderCards("/cards?q=dwarf&library=1");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Semantic" }));
+  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ semantic: true, text: "dwarf", sort: "relevance" })));
+});
+
+test("without an embed instance there is no Semantic checkbox", async () => {
+  renderCards("/cards?q=dwarf&library=1");
+  await screen.findByText("Brakka");
+  expect(screen.queryByRole("checkbox", { name: "Semantic" })).toBeNull();
 });

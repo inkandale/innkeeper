@@ -16,7 +16,7 @@ const (
 	// facetFresh is how long cached counts go without a recount.
 	facetFresh = time.Minute
 	// facetKeep is how long unread counts stay cached.
-	facetKeep = 10 * time.Minute
+	facetKeep = 24 * time.Hour
 	// facetRecount bounds a background recount.
 	facetRecount = 5 * time.Minute
 )

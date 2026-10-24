@@ -76,7 +76,7 @@ func TestEmbedJobDoesNothingWithoutEmbedInstance(t *testing.T) {
 	if err := e.run.Run(context.Background(), &jobs.Run{}); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := e.lib.Unembedded(context.Background(), e.inst, 0, 10); len(got) != 1 {
+	if got, _ := e.lib.Unembedded(context.Background(), e.inst, 0, 0, 10); len(got) != 1 {
 		t.Fatalf("a run without an embed instance embedded the card: %+v", got)
 	}
 }
@@ -94,7 +94,7 @@ func TestEmbedJobEmbedsEveryCardInBatches(t *testing.T) {
 	if err := e.run.Run(ctx, r); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := e.lib.Unembedded(ctx, e.inst, 0, 100); err != nil || len(got) != 0 {
+	if got, err := e.lib.Unembedded(ctx, e.inst, 0, 0, 100); err != nil || len(got) != 0 {
 		t.Fatalf("left unembedded: %d, %v", len(got), err)
 	}
 }
@@ -112,13 +112,13 @@ func TestEmbedJobReembedsEditedCard(t *testing.T) {
 	if _, err := e.lib.Cards.Update(ctx, id, rev, library.Edit{Data: json.RawMessage(`{"name": "Brakka the Bold"}`), Source: "ui"}); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := e.lib.Unembedded(ctx, e.inst, 0, 10); len(got) != 1 {
+	if got, _ := e.lib.Unembedded(ctx, e.inst, 0, 0, 10); len(got) != 1 {
 		t.Fatalf("an edited card isn't due: %+v", got)
 	}
 	if err := e.run.Run(ctx, &jobs.Run{}); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := e.lib.Unembedded(ctx, e.inst, 0, 10); len(got) != 0 {
+	if got, _ := e.lib.Unembedded(ctx, e.inst, 0, 0, 10); len(got) != 0 {
 		t.Fatalf("still due after a run: %+v", got)
 	}
 }
@@ -133,6 +133,22 @@ func TestEmbedJobIgnoresADeletedEmbedInstance(t *testing.T) {
 	if err := e.run.Run(ctx, &jobs.Run{}); err != nil {
 		t.Fatalf("a run naming a missing instance: %v, want nil", err)
 	}
+}
+
+// warnings are the warn lines job j logged.
+func (e env) warnings(t *testing.T, j jobs.Job) []string {
+	t.Helper()
+	logs, err := e.q.Logs(context.Background(), j.ID, 0, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, l := range logs {
+		if l.Level == "warn" {
+			out = append(out, l.Message)
+		}
+	}
+	return out
 }
 
 // runJob runs an embed job on a real worker, so the run can log, and
@@ -180,21 +196,11 @@ func TestEmbedJobSkipsACardTheModelRejects(t *testing.T) {
 	if j.Status != jobs.StatusSucceeded {
 		t.Fatalf("job %s: %s", j.Status, *j.Error)
 	}
-	got, err := e.lib.Unembedded(ctx, e.inst, 0, 100)
+	got, err := e.lib.Unembedded(ctx, e.inst, 0, 0, 100)
 	if err != nil || len(got) != 1 || got[0].CardID != poison {
 		t.Fatalf("left unembedded: %+v, %v; want only the rejected card", got, err)
 	}
-	logs, err := e.q.Logs(ctx, j.ID, 0, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var warnings []string
-	for _, l := range logs {
-		if l.Level == "warn" {
-			warnings = append(warnings, l.Message)
-		}
-	}
-	if len(warnings) != 1 || !strings.Contains(warnings[0], fmt.Sprintf("card %d ", poison)) {
+	if warnings := e.warnings(t, j); len(warnings) != 1 || !strings.Contains(warnings[0], fmt.Sprintf("card %d ", poison)) {
 		t.Fatalf("warnings = %q; want one naming card %d", warnings, poison)
 	}
 }
@@ -212,7 +218,7 @@ func TestEmbedJobIgnoresADisabledEmbedInstance(t *testing.T) {
 	if err := e.run.Run(ctx, &jobs.Run{}); err != nil {
 		t.Fatalf("a run with a disabled instance: %v, want nil", err)
 	}
-	if got, _ := e.lib.Unembedded(ctx, e.inst, 0, 10); len(got) != 1 {
+	if got, _ := e.lib.Unembedded(ctx, e.inst, 0, 0, 10); len(got) != 1 {
 		t.Fatalf("a disabled instance embedded the card: %+v", got)
 	}
 }
@@ -274,7 +280,51 @@ func TestEmbedJobSwitchesToANewEmbedInstanceMidRun(t *testing.T) {
 	if j := e.runJob(t); j.Status != jobs.StatusSucceeded {
 		t.Fatalf("job %s: %s", j.Status, *j.Error)
 	}
-	if got, err := e.lib.Unembedded(ctx, next, 0, 100); err != nil || len(got) != 0 {
+	if got, err := e.lib.Unembedded(ctx, next, 0, 0, 100); err != nil || len(got) != 0 {
 		t.Fatalf("left unembedded by the new instance: %d, %v", len(got), err)
+	}
+}
+
+func TestEmbedJobFailsAtAnInstanceFaultWithoutTryingEachCard(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	e.card(t, "denied-1", `{"name": "DENIED one"}`)
+	e.card(t, "denied-2", `{"name": "DENIED two"}`)
+	if err := e.reg.SetSetting(ctx, InstanceKey, strconv.FormatInt(e.inst, 10)); err != nil {
+		t.Fatal(err)
+	}
+	j := e.runJob(t)
+	if j.Status != jobs.StatusFailed {
+		t.Fatalf("job %s; want failed when the instance refuses every call", j.Status)
+	}
+	if warnings := e.warnings(t, j); len(warnings) != 0 {
+		t.Fatalf("warnings = %q; want none, since no card is at fault", warnings)
+	}
+}
+
+func TestEmbedJobForALibraryEmbedsOnlyItsCards(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	e.card(t, "home", `{"name": "Home"}`)
+	archive, err := e.lib.CreateLibrary(ctx, "Archive")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := e.lib.Cards.Create(ctx, archive.ID, "away", "upload",
+		library.Edit{Data: json.RawMessage(`{"name": "Away"}`), Source: "ui"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.reg.SetSetting(ctx, InstanceKey, strconv.FormatInt(e.inst, 10)); err != nil {
+		t.Fatal(err)
+	}
+	payload, _ := json.Marshal(Payload{Library: archive.ID})
+	if err := e.run.Run(ctx, &jobs.Run{Job: jobs.Job{Payload: payload}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := e.lib.Unembedded(ctx, e.inst, archive.ID, 0, 10); err != nil || len(got) != 0 {
+		t.Fatalf("left unembedded in the library: %+v, %v", got, err)
+	}
+	if got, err := e.lib.Unembedded(ctx, e.inst, library.DefaultLibrary, 0, 10); err != nil || len(got) != 1 {
+		t.Fatalf("unembedded in another library = %+v, %v; want its one card left alone", got, err)
 	}
 }

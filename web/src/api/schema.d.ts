@@ -1687,6 +1687,26 @@ export interface paths {
         patch: operations["rename-library"];
         trace?: never;
     };
+    "/libraries/{id}/embed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Embed a library's cards now
+         * @description Queues a job that gives the library's cards a vector from the embed instance, ahead of the hourly run over every library. Returns the job already queued for this library, if there is one.
+         */
+        post: operations["embed-library"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/libraries/{id}/hide": {
         parameters: {
             query?: never;
@@ -8122,6 +8142,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibrarySummary"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "embed-library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
                 };
             };
             /** @description Error */

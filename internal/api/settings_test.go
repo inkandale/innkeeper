@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -229,7 +230,7 @@ func TestSettingOrClearingEmbedInstanceDropsEveryVector(t *testing.T) {
 	embedAll := func() {
 		t.Helper()
 		for _, id := range []int64{inst, other} {
-			todo, err := e.s.Lib.Unembedded(ctx, id, 0, 10)
+			todo, err := e.s.Lib.Unembedded(ctx, id, 0, 0, 10)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -294,4 +295,23 @@ func TestSettingsIgnoreADisabledEmbedInstance(t *testing.T) {
 	if s.EmbedInstance != nil {
 		t.Fatalf("settings = %+v", s)
 	}
+}
+
+func TestEmbedLibraryQueuesOneJobForThatLibrary(t *testing.T) {
+	e := newEnv(t)
+	e.call("POST", "/libraries/1/embed", nil, 409, nil)
+	inst := e.addBrain(map[string]any{"services": []string{protocol.MethodAIEmbed}})
+	e.call("PATCH", "/settings", map[string]any{"embed_instance": inst}, 200, nil)
+
+	var first, again jobOut
+	e.call("POST", "/libraries/1/embed", nil, 202, &first)
+	var p embed.Payload
+	if err := json.Unmarshal(first.Payload, &p); err != nil || first.Kind != embed.Kind || p.Library != 1 {
+		t.Fatalf("job = %s %s, %v", first.Kind, first.Payload, err)
+	}
+	e.call("POST", "/libraries/1/embed", nil, 202, &again)
+	if again.ID != first.ID {
+		t.Fatalf("a second start queued job %d; want the queued %d", again.ID, first.ID)
+	}
+	e.call("POST", "/libraries/999/embed", nil, 404, nil)
 }

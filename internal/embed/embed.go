@@ -4,6 +4,7 @@ package embed
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,6 +14,7 @@ import (
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
 	"github.com/inkandale/innkeeper/internal/plugins"
+	"github.com/inkandale/innkeeper/protocol"
 )
 
 // Kind is the job kind that embeds cards whose vector is missing or stale.
@@ -22,6 +24,12 @@ const Kind = "embed"
 // library's vectors come from. One instance for all libraries, since
 // vectors from different models can't be compared.
 const InstanceKey = "embed_instance"
+
+// Payload is an embed job's input. Library limits the run to one library's
+// cards; 0 means every library.
+type Payload struct {
+	Library int64 `json:"library,omitempty"`
+}
 
 // batchSize is how many texts go in one ai.embed call.
 const batchSize = 32
@@ -37,6 +45,12 @@ type Runner struct {
 // does nothing; the job runs again when one is set. The instance is read
 // before each batch, so changing it mid-run takes effect.
 func (rn *Runner) Run(ctx context.Context, r *jobs.Run) error {
+	var p Payload
+	if len(r.Payload) > 0 {
+		if err := json.Unmarshal(r.Payload, &p); err != nil {
+			return fmt.Errorf("read embed payload: %w", err)
+		}
+	}
 	var inst, after int64
 	done := 0
 	for {
@@ -50,7 +64,7 @@ func (rn *Runner) Run(ctx context.Context, r *jobs.Run) error {
 		if cur != inst {
 			inst, after = cur, 0
 		}
-		todo, err := rn.Lib.Unembedded(ctx, inst, after, batchSize)
+		todo, err := rn.Lib.Unembedded(ctx, inst, p.Library, after, batchSize)
 		if err != nil || len(todo) == 0 {
 			return err
 		}
@@ -113,12 +127,11 @@ func (rn *Runner) embed(ctx context.Context, inst int64, cards []library.EmbedTe
 	return rn.Lib.SaveEmbeddings(ctx, inst, cards, vectors)
 }
 
-// cardFault reports whether err may be one card's fault rather than the
-// instance's, the plugin's, the connection's, or a cancelled job's.
+// cardFault reports whether err may be one card's fault: the provider refused
+// the request as invalid. Anything else, such as a refused key, fails every card.
 func cardFault(ctx context.Context, err error) bool {
-	var startErr *pluginhost.StartError
-	return ctx.Err() == nil && !errors.Is(err, jobs.ErrRetry) && !errors.As(err, &startErr) &&
-		!errors.Is(err, plugins.ErrBroken) && !errors.Is(err, plugins.ErrDisabled) && !errors.Is(err, plugins.ErrIncapable)
+	var rpcErr *protocol.Error
+	return ctx.Err() == nil && errors.As(err, &rpcErr) && rpcErr.Code == protocol.CodeAIRejected
 }
 
 // Instance is the embed instance's ID, or 0 when the setting is empty or
@@ -143,6 +156,7 @@ func Instance(ctx context.Context, reg *plugins.Registry) (int64, error) {
 // Enqueue makes sure an embed job will run. A failure is only logged; the
 // hourly run catches up.
 func Enqueue(ctx context.Context, q *jobs.Queue, log *slog.Logger) {
+	// ponytail: joins a one-library run too, leaving other libraries to the hourly run; match on payload if that wait matters.
 	if _, err := q.EnqueueOnce(context.WithoutCancel(ctx), jobs.Spec{Kind: Kind}); err != nil {
 		log.Error("enqueue embedding", "err", err)
 	}

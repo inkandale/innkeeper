@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { api, must } from "../api/client";
 import { settingsQuery } from "../api/queries";
+import { JobLine } from "../cards/ImportForm";
 import { SaveStatus } from "./SaveStatus";
 
 /** EmbedFrom picks the ai instance whose ai.embed every library's card vectors come from. */
@@ -42,6 +44,27 @@ export function EmbedFrom() {
         Every card in every library is sent to this instance to find similar cards. Picking it again embeds every
         card again.
       </p>
+    </section>
+  );
+}
+
+/** EmbedNow embeds one library's cards ahead of the hourly run over every library. */
+export function EmbedNow({ library }: { library: number }) {
+  const settings = useQuery(settingsQuery);
+  const [job, setJob] = useState<number>();
+  const start = useMutation({
+    mutationFn: async () => must(await api.POST("/libraries/{id}/embed", { params: { path: { id: library } } })),
+    onSuccess: (j) => setJob(j.id),
+  });
+  if (settings.data?.embed_instance == null) return null;
+  return (
+    <section>
+      <button className="button" disabled={start.isPending} onClick={() => start.mutate()}>
+        Embed now
+      </button>{" "}
+      <span className="muted">Gives this library's cards their vectors first, for similar cards and semantic search.</span>
+      {job && <JobLine label="Embedding" id={job} to={`/settings/jobs/${job}`} />}
+      {start.error && <p className="error">{start.error.message}</p>}
     </section>
   );
 }

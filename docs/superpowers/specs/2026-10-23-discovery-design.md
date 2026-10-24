@@ -80,17 +80,21 @@ instance that is gone or disabled.
 4. Repeats from step 1 until no card needs one, reporting progress as it
    goes.
 
-If the model rejects a batch, the job retries its cards one at a time,
-logs each card that still fails, and moves on; that card is tried again on
-the next run. If no card in the batch embeds alone, or the instance is
-broken, disabled, or doesn't offer `ai.embed`, the run fails, since the
-fault isn't one card's. A retryable failure, such as a rate limit, fails the run
-and the jobs package retries it. Finished batches are kept. A card without a vector is missing from similar and
-semantic results until it has one.
+If the model rejects a batch as invalid (`-32010`), the job retries its
+cards one at a time, logs each card that still fails, and moves on; that
+card is tried again on the next run. If no card in the batch embeds alone,
+the run fails. Any other error, such as a refused key or a broken, disabled,
+or incapable instance, fails the run at once without trying each card. A
+retryable failure, such as a rate limit, fails the run and the jobs package
+retries it. Finished batches are kept. A card without a vector is missing
+from similar and semantic results until it has one.
 
 The importer queues the job with `EnqueueOnce` after each import, as it
 queues source detection. `PATCH /settings` queues it when it sets
 `embed_instance`. The worker schedules it hourly.
+`POST /libraries/{id}/embed`, the **Embed now** button in a library's
+settings, queues a run limited to that library, with payload
+`{"library": id}`.
 
 ## API
 

@@ -21,10 +21,11 @@ type EmbedText struct {
 const embedChars = 8000
 
 // Unembedded returns up to limit cards with an ID above after and text whose
-// head revision has no vector from instance, lowest ID first. The text is the
+// head revision has no vector from instance, lowest ID first, in library or
+// in every library for 0. The text is the
 // fields that say who the character is, leaving out greetings and example
 // dialogue.
-func (l *Library) Unembedded(ctx context.Context, instance, after int64, limit int) ([]EmbedText, error) {
+func (l *Library) Unembedded(ctx context.Context, instance, library, after int64, limit int) ([]EmbedText, error) {
 	rows, err := l.pool.Query(ctx, `
 		SELECT c.id, r.id, t.text
 		FROM card c
@@ -35,8 +36,9 @@ func (l *Library) Unembedded(ctx context.Context, instance, after int64, limit i
 			nullif(btrim(r.data->>'creator_notes'), '')), $3) AS text) t
 		LEFT JOIN card_embedding e ON e.instance_id = $1 AND e.card_id = c.id
 		WHERE e.revision_id IS DISTINCT FROM c.head_revision_id AND t.text <> '' AND c.id > $4
+			AND ($5 = 0 OR c.library_id = $5)
 		ORDER BY c.id
-		LIMIT $2`, instance, limit, embedChars, after)
+		LIMIT $2`, instance, limit, embedChars, after, library)
 	if err != nil {
 		return nil, fmt.Errorf("list unembedded cards for instance %d: %w", instance, err)
 	}

@@ -8,6 +8,7 @@ import { useConfirm } from "../shell/ConfirmDialog";
 import { count } from "../shell/count";
 import { JobLine } from "../cards/ImportForm";
 import { rememberedLibrary, rememberLibrary } from "../shell/library";
+import { EmbedNow } from "./EmbedFrom";
 import { Hiding } from "./Hiding";
 import { ScoresFrom } from "./ScoresFrom";
 
@@ -89,6 +90,7 @@ export function Library() {
           <LibraryName library={l} />
           <ScoresFrom library={l.id} />
           <Hiding library={l.id} />
+          <EmbedNow library={l.id} />
         </>
       ) : (
         <p className="error">No library {id}.</p>

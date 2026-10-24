@@ -16,16 +16,17 @@ export function kindLabel(j: Job): string {
   return j.kind === "bulk" && typeof action === "string" ? `bulk ${action}` : j.kind;
 }
 
-/** progressText is "done of total" from a bulk job's children or a job's progress, plus any skipped, or "". */
+/** progressText is "done of total" from a bulk job's children or a job's progress, plus any failed and skipped, or "". */
 export function progressText(j: Job): string {
   if (j.children) {
     const counts = Object.values(j.children);
     const total = counts.reduce((a, b) => a + b, 0);
     return `${(j.children.succeeded ?? 0) + (j.children.failed ?? 0)} of ${total}`;
   }
-  const p = j.progress as { done?: unknown; total?: unknown; skipped?: unknown } | null;
+  const p = j.progress as { done?: unknown; total?: unknown; failed?: unknown; skipped?: unknown } | null;
   if (typeof p?.done !== "number" || typeof p.total !== "number") return "";
-  return typeof p.skipped === "number" && p.skipped > 0 ? `${p.done} of ${p.total}, ${p.skipped} skipped` : `${p.done} of ${p.total}`;
+  const extra = (n: unknown, label: string) => (typeof n === "number" && n > 0 ? `, ${n} ${label}` : "");
+  return `${p.done} of ${p.total}${extra(p.failed, "failed")}${extra(p.skipped, "skipped")}`;
 }
 
 /** span is a length of time, short: 30s, 45m, 10h, 4d. */

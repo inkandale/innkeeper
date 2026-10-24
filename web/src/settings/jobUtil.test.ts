@@ -5,7 +5,7 @@ const job = (j: Partial<Job>): Job => ({ id: 1, kind: "bulk", status: "running",
 test("progressText shows children, then done of total", () => {
   expect(progressText(job({ children: { succeeded: 2, failed: 1, queued: 3 } }))).toBe("3 of 6");
   expect(progressText(job({ kind: "card.export", progress: { done: 4, total: 10 } }))).toBe("4 of 10");
-  expect(progressText(job({ kind: "enrich", progress: { done: 3, failed: 1, skipped: 6, total: 10 } }))).toBe("3 of 10, 6 skipped");
+  expect(progressText(job({ kind: "enrich", progress: { done: 3, failed: 1, skipped: 6, total: 10 } }))).toBe("3 of 10, 1 failed, 6 skipped");
   expect(progressText(job({ kind: "enrich", progress: { done: 4, skipped: 0, total: 4 } }))).toBe("4 of 4");
   expect(progressText(job({ progress: {} }))).toBe("");
 });

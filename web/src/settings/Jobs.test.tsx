@@ -26,6 +26,12 @@ const failedImport = {
   run_after: now, created_at: now, finished_at: now, error: "worker stopped renewing its lease", cards_changed: 12, trigger: "scheduled",
 };
 
+const enrichJob = {
+  id: 9, kind: "enrich", status: "succeeded", payload: {}, attempts: 1, max_attempts: 8, run_after: now, created_at: now,
+  progress: { done: 10, failed: 2, skipped: 0, total: 12, warnings: ["Talira: context deadline exceeded"] },
+  cards_changed: 10, trigger: "manual",
+};
+
 class FakeEventSource {
   static last: FakeEventSource | null = null;
   listener: ((e: { data: string }) => void) | null = null;
@@ -69,6 +75,7 @@ beforeEach(() => {
           { id: 2, at: now, level: "error", message: "The worker stopped renewing its lease after attempt 8 of 8; out of attempts" },
         ]);
       if (u.pathname === "/api/jobs/8") return json(failedImport);
+      if (u.pathname === "/api/jobs/9") return json(enrichJob);
       return json([]);
     }),
   );
@@ -179,6 +186,13 @@ test("a job's page shows its log", async () => {
   const log = await screen.findByRole("region", { name: "Log" });
   expect(log).toHaveTextContent("Attempt 8 of 8 started");
   expect(screen.getByText(/out of attempts/).closest("li")).toHaveClass("error");
+});
+
+test("a job's page counts its failed cards and lists their warnings", async () => {
+  renderAt("/settings/jobs/9");
+  const warnings = await screen.findByRole("region", { name: "Warnings" });
+  expect(warnings).toHaveTextContent("Talira: context deadline exceeded");
+  expect(screen.getByText("Progress").nextElementSibling).toHaveTextContent("10 of 12, 2 failed");
 });
 
 test("a failed job retries from its page", async () => {

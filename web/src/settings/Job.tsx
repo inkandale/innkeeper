@@ -70,6 +70,7 @@ export function Job() {
   if (job.isError) return <p className="error">{job.error.message}</p>;
   if (!j) return null;
   const blob = j.kind === "card.export" ? (j.progress as { blob?: string } | null)?.blob : undefined;
+  const warnings = (j.progress as { warnings?: unknown } | null)?.warnings;
   return (
     <section className="job">
       <p>
@@ -153,6 +154,18 @@ export function Job() {
             </tbody>
           </table>
         </>
+      )}
+      {Array.isArray(warnings) && warnings.length > 0 && (
+        <section aria-label="Warnings">
+          <h2>Warnings</h2>
+          <ul className="job-log">
+            {warnings.map((w, i) => (
+              <li key={i} className="warn">
+                {String(w)}
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
       <Logs job={j} />
     </section>

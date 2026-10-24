@@ -1,10 +1,12 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
 	"github.com/inkandale/innkeeper/internal/library"
+	"github.com/inkandale/innkeeper/protocol"
 )
 
 func TestSearchRoute(t *testing.T) {
@@ -67,4 +69,36 @@ func TestSearchLorebooksRoute(t *testing.T) {
 		t.Fatalf("all = %+v", res)
 	}
 	e.call("POST", "/lorebooks/search", map[string]any{"facets": []string{"tags"}}, 400, nil)
+}
+
+func TestSemanticSearchRanksByMeaning(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	inst := e.addBrain(map[string]any{"services": []string{protocol.MethodAIEmbed}})
+	e.call("PATCH", "/settings", map[string]any{"embed_instance": inst}, 200, nil)
+	near := e.createCard(`{"name": "Brakka"}`)
+	far := e.createCard(`{"name": "Lia"}`)
+	e.createCard(`{"name": "Grum"}`)
+	for id, v := range map[int64][]float32{near.ID: {3, 1}, far.ID: {1, 3}} {
+		c, err := e.s.Lib.Cards.Get(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := e.s.Lib.SaveEmbeddings(ctx, inst, []library.EmbedText{{CardID: id, RevisionID: c.HeadRevisionID}}, [][]float32{v}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var res library.Results
+	e.call("POST", "/cards/search", map[string]any{"text": "abc", "semantic": true}, 200, &res)
+	if len(res.Hits) != 2 || res.Hits[0].ID != near.ID || res.Hits[1].ID != far.ID {
+		t.Fatalf("hits = %+v", res.Hits)
+	}
+	e.call("POST", "/cards/search", map[string]any{"text": "abc", "semantic": true, "sort": "name"}, 400, nil)
+	e.call("POST", "/lorebooks/search", map[string]any{"text": "abc", "semantic": true}, 400, nil)
+}
+
+func TestSemanticSearchWithoutEmbedInstanceIs409(t *testing.T) {
+	e := newEnv(t)
+	e.call("POST", "/cards/search", map[string]any{"text": "abc", "semantic": true}, 409, nil)
 }

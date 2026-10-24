@@ -43,7 +43,7 @@ type entityIn struct {
 }
 
 type searchIn struct {
-	Query   map[string]any `json:"query,omitempty" jsonschema:"The search query, as the API's POST /cards/search body: text, filter, sources (library, or catalog:<instance id> to search a catalog too), include, fields, sort, facets, page. A filter or sort on an enrichment, such as {\"enrichment\": \"quality\", \"gte\": 70}, {\"enrichment\": \"language\", \"is\": \"English\"}, or sort enrichment:quality, uses the score instance's values unless the filter names an instance. Facet enrichment:<key> counts a text or list key's values"`
+	Query   map[string]any `json:"query,omitempty" jsonschema:"The search query, as the API's POST /cards/search body: text, semantic (true to rank by meaning, with text; needs an embed instance), filter, sources (library, or catalog:<instance id> to search a catalog too), include, fields, sort, facets, page. A filter or sort on an enrichment, such as {\"enrichment\": \"quality\", \"gte\": 70}, {\"enrichment\": \"language\", \"is\": \"English\"}, or sort enrichment:quality, uses the score instance's values unless the filter names an instance. Facet enrichment:<key> counts a text or list key's values"`
 	Library int64          `json:"library,omitempty" jsonschema:"A library ID from list_libraries; default 1"`
 }
 

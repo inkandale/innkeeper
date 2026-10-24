@@ -312,6 +312,7 @@ func (s *Server) failAs(who string, err error) error {
 		return huma.Error404NotFound("not found")
 	case errors.Is(err, library.ErrConflict), errors.Is(err, library.ErrSlugTaken), errors.Is(err, library.ErrNameTaken),
 		errors.Is(err, library.ErrVariantCycle),
+		errors.Is(err, library.ErrNoEmbedInstance),
 		errors.Is(err, plugins.ErrNameTaken), errors.Is(err, plugins.ErrNeedsName), errors.Is(err, plugins.ErrSingleton), errors.Is(err, jobs.ErrFinished), errors.Is(err, jobs.ErrNotRetryable), errors.Is(err, plugins.ErrInUse), errors.Is(err, plugins.ErrLastLogin), errors.Is(err, plugins.ErrSourceInUse),
 		errors.Is(err, targets.ErrNewCopy),
 		errors.Is(err, targets.ErrBound):

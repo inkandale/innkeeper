@@ -4130,7 +4130,7 @@
             "$ref": "#/components/schemas/Page"
           },
           "semantic": {
-            "description": "Not available yet: needs an embedding enricher.",
+            "description": "Rank cards by meaning instead of matching words. Needs text and an embed instance (Settings, Plugins, Embeddings from); sorts by relevance only. Cards not embedded yet are left out.",
             "type": "boolean"
           },
           "sort": {

@@ -722,8 +722,9 @@ func cursorValueIs(typ string, v json.RawMessage) bool {
 }
 
 // Search returns one page of the library's entities of kind k that match q,
-// best match first when q has text, by meaning when q is semantic, newest first otherwise. With q.Group
-// family, a page holds one hit per family, placed by its best match.
+// best match first when q has text, by meaning when q is semantic, newest
+// first otherwise. With q.Group family, a page holds one hit per family,
+// placed by its best match.
 func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error) {
 	cond, w, text, err := compile(k, q)
 	if err != nil {

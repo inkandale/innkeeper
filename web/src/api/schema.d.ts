@@ -4174,7 +4174,7 @@ export interface components {
              */
             library?: number;
             page?: components["schemas"]["Page"];
-            /** @description Not available yet: needs an embedding enricher. */
+            /** @description Rank cards by meaning instead of matching words. Needs text and an embed instance (Settings, Plugins, Embeddings from); sorts by relevance only. Cards not embedded yet are left out. */
             semantic?: boolean;
             /** @description relevance, updated, name, created, or enrichment:<key> for the score instance's value of key, highest first and cards without one last; enrichment:<instance>:<key> reads that enrich instance's value instead. Default: relevance with text, newest first without. */
             sort?: string;

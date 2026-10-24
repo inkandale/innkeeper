@@ -11,12 +11,35 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/inkandale/innkeeper/internal/embed"
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/tier"
 	"github.com/inkandale/innkeeper/protocol"
 )
 
 type searchIn struct{ Body library.Query }
+
+// withEmbedding embeds q's text with the embed instance when q is a
+// semantic card search, for Search to rank by. Anything else is left for
+// Search to refuse with a 400.
+func (s *Server) withEmbedding(ctx context.Context, k *library.Kind, q *library.Query) error {
+	if !q.Semantic || q.Text == "" || k != library.Card {
+		return nil
+	}
+	inst, err := embed.Instance(ctx, s.Registry)
+	if err != nil {
+		return err
+	}
+	if inst == 0 {
+		return library.ErrNoEmbedInstance
+	}
+	vectors, err := s.Registry.Embed(ctx, s.Plugins, inst, []string{q.Text})
+	if err != nil {
+		return err
+	}
+	q.Embedding, q.EmbedInstance = vectors[0], inst
+	return nil
+}
 
 // searchResults are the library's hits and a page from each catalog source.
 type searchResults struct {
@@ -52,6 +75,9 @@ func (s *Server) search(ctx context.Context, k *library.Kind, q library.Query) (
 		q.Sources = rest
 		decl, err := s.withScores(ctx, &q)
 		if err != nil {
+			return nil, s.fail(err)
+		}
+		if err := s.withEmbedding(ctx, k, &q); err != nil {
 			return nil, s.fail(err)
 		}
 		res, err := s.Lib.Search(ctx, k, q)

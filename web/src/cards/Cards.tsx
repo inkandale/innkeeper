@@ -68,9 +68,9 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const scoredQ = keys.data ? withScoreInstance(asked, keys.data.instance_id) : asked;
   const scoresOff = !scored && scoredQ !== asked;
   const settings = useQuery(settingsQuery);
-  // A semantic link opened after the embed instance was cleared searches by words.
   const embeds = kind === "card" && settings.data?.embed_instance != null;
-  const q = scoredQ.semantic && !embeds ? { ...scoredQ, semantic: false } : scoredQ;
+  // A semantic link with no text, or opened after the embed instance was cleared, searches by words.
+  const q = scoredQ.semantic && !(embeds && scoredQ.text) ? { ...scoredQ, semantic: false } : scoredQ;
   // The selection belongs to one search: paging keeps it, a new search clears it.
   const key = JSON.stringify([q.library, q.text, q.semantic, q.terms]);
   const [stored, setSel] = useState<Selection>(() => emptySelection(key));
@@ -91,8 +91,8 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const res = useQuery({
     ...searchQuery(kind, body),
     placeholderData: keepPreviousData,
-    // Waits for the keys, so the grid doesn't search once without scores and again with them.
-    enabled: kind !== "card" || !keys.isPending,
+    // Waits for the keys and settings, so the grid doesn't search once without scores or by words and again with them.
+    enabled: kind !== "card" || !(keys.isPending || settings.isPending),
   });
   const sorts: [Sort, string][] = [
     ...(Object.entries(sortLabels) as [Sort, string][]),
@@ -149,7 +149,8 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
           query={target(sel, body)}
           ids={sel.ids}
           shown={new Map(hits.map((h) => [h.id, { id: h.id, name: text(h.fields.name), family: h.family }]))}
-          onAll={() => setSel({ ...sel, all: true })}
+          // A semantic search matches every embedded card, so "all matching" would act on far more than the results.
+          onAll={q.semantic ? undefined : () => setSel({ ...sel, all: true })}
           onPage={pageIds.some((id) => !sel.ids.includes(id)) ? pickPage : undefined}
           onClear={() => setSel(emptySelection(key))}
           onStarted={setWatching}
@@ -164,8 +165,8 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
             <input key={q.text} className="input" type="search" name="q" defaultValue={q.text} placeholder={`Search ${noun}`} aria-label={`Search ${noun}`} />
           </form>
           {embeds && (
-            <label title="Rank cards by meaning instead of matching words. Cards not embedded yet are left out.">
-              <input type="checkbox" checked={q.semantic} onChange={(e) => go({ ...q, semantic: e.target.checked, page: 1 })} />
+            <label title={q.text ? "Rank cards by meaning instead of matching words. Cards not embedded yet are left out." : "Semantic search needs search text."}>
+              <input type="checkbox" checked={q.semantic} disabled={!q.text} onChange={(e) => go({ ...q, semantic: e.target.checked, page: 1 })} />
               Semantic
             </label>
           )}

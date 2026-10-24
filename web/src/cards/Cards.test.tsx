@@ -34,7 +34,7 @@ const results = {
 };
 
 let keys: unknown;
-let searches: unknown[];
+let searches: { semantic?: boolean; fields?: string[] }[];
 let posts: { path: string; body: unknown }[];
 let previews: unknown[];
 let family: unknown;
@@ -42,6 +42,7 @@ let puts: { path: string; body: unknown }[];
 let gets: string[];
 let judgeMax: number | undefined;
 let embedInstance: number | null;
+let settingsGate: Promise<void> | undefined;
 let libraryIds: number[];
 beforeEach(() => {
   libraryIds = [1, 2, 3];
@@ -49,6 +50,7 @@ beforeEach(() => {
   keys = { instance_id: null, instances: [] };
   judgeMax = undefined;
   embedInstance = null;
+  settingsGate = undefined;
   searches = [];
   posts = [];
   previews = [];
@@ -112,6 +114,7 @@ beforeEach(() => {
       if (path === "/api/collections") gets.push(path + new URL(req.url).search);
       if (path === "/api/collections") return json([{ id: 4, name: "Elves", cards: 0 }]);
       if (path === "/api/enrichments/keys") return json(keys);
+      if (path === "/api/settings") await settingsGate;
       if (path === "/api/settings") return json({ theme: "", onboarding_done: true, embed_instance: embedInstance });
       return json([]);
     }),
@@ -900,4 +903,34 @@ test("without an embed instance there is no Semantic checkbox", async () => {
   renderCards("/cards?q=dwarf&library=1");
   await screen.findByText("Brakka");
   expect(screen.queryByRole("checkbox", { name: "Semantic" })).toBeNull();
+});
+
+test("a semantic search offers picks but not select all matching", async () => {
+  embedInstance = 5;
+  renderCards("/cards?q=dwarf&semantic=1&library=1");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
+  expect(screen.getByText("1 selected")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Select all .*matching/ })).not.toBeInTheDocument();
+});
+
+test("a semantic link without text searches by words and the checkbox waits for text", async () => {
+  embedInstance = 5;
+  renderCards("/cards?semantic=1&library=1");
+  const box = await screen.findByRole("checkbox", { name: "Semantic" });
+  expect(box).toBeDisabled();
+  expect(box).not.toBeChecked();
+  expect(searches.length).toBeGreaterThan(0);
+  expect(searches.every((s) => !s.semantic)).toBe(true);
+});
+
+test("a semantic link waits for settings, so it never searches by words first", async () => {
+  embedInstance = 5;
+  let open!: () => void;
+  settingsGate = new Promise((resolve) => (open = resolve));
+  renderCards("/cards?q=dwarf&semantic=1&library=1");
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(searches.filter((s) => s.fields)).toEqual([]);
+  open();
+  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ semantic: true, fields: expect.anything() })));
 });

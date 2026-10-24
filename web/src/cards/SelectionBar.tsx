@@ -37,7 +37,8 @@ export function SelectionBar(props: {
   ids: number[];
   /** shown is the picked entries on this page, by ID. */
   shown: Map<number, Picked>;
-  onAll: () => void;
+  /** onAll is left out when the search can't be selected whole. */
+  onAll?: () => void;
   /** onPage adds the rest of this page; left out once the whole page is picked. */
   onPage?: () => void;
   onClear: () => void;
@@ -140,7 +141,7 @@ export function SelectionBar(props: {
           Select page
         </button>
       )}
-      {!all && (total === undefined || count < total) && (
+      {!all && onAll && (total === undefined || count < total) && (
         <button className="button" onClick={onAll}>
           Select all {total === undefined ? "" : `${total} `}matching
         </button>

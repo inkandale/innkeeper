@@ -355,3 +355,13 @@ test("the Reforge panel offers a whole-card field action, run without a field", 
   expect(runs[0]).toMatchObject({ action: "expand" });
   expect(runs[0]).not.toHaveProperty("field");
 });
+
+test("the Report tab runs its report action again once a report is in", async () => {
+  jobs = [job({ id: 5, status: "succeeded", payload: { action: "evaluate" }, progress: { result: { report: { summary: "Solid.", score: 70 } } } })];
+  renderAt("/cards/7");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("tab", { name: "Report" }));
+  expect(await screen.findByText("Solid.")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: /Evaluate again/ }));
+  await waitFor(() => expect(runs).toEqual([expect.objectContaining({ action: "evaluate" })]));
+});

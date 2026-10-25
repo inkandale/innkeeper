@@ -170,21 +170,23 @@ export function Forge(props: {
           }}
         />
       )}
-      {shown === "report" &&
-        (forge.report ? (
-          <Report key={forge.reportId} report={forge.report} subject={forge.subject} onRefine={revise && ((text) => forge.start({ action: revise, instruction: text }))} />
-        ) : (
+      {shown === "report" && (
+        <>
+          {forge.report && (
+            <Report key={forge.reportId} report={forge.report} subject={forge.subject} onRefine={revise && ((text) => forge.start({ action: revise, instruction: text }))} />
+          )}
           <div className="forge-empty">
-            <p>No report yet.</p>
+            {!forge.report && <p>No report yet.</p>}
             {forge.mine
               .filter((a) => a.applies === kind && a.report_only)
               .map((a) => (
-                <button key={a.id} className="button primary" onClick={() => (asks(a) ? open({ action: a }) : forge.start({ action: a }))}>
-                  <Hammer /> {a.label}
+                <button key={a.id} className={forge.report ? "button" : "button primary"} onClick={() => (asks(a) ? open({ action: a }) : forge.start({ action: a }))}>
+                  <Hammer /> {forge.report ? `${a.label} again` : a.label}
                 </button>
               ))}
           </div>
-        ))}
+        </>
+      )}
       </div>
 
       {panel && (

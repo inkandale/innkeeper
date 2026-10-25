@@ -162,7 +162,8 @@ var RelatedGroups = []string{"creator", "lorebook", "collection"}
 // relatedWhere is each group's condition on c, a candidate, against self
 // and $1. Collections are per-library, so that group never leaves the card's.
 var relatedWhere = map[string]string{
-	"creator": `self.creator <> '' AND lower(btrim(r.data->>'creator')) = self.creator`,
+	// "Anonymous" is a placeholder for an unknown author, not a shared one.
+	"creator": `self.creator NOT IN ('', 'anonymous') AND lower(btrim(r.data->>'creator')) = self.creator`,
 	"lorebook": `c.id IN (SELECT o.card_id FROM card_lorebook o
 		JOIN card_lorebook mine ON mine.lorebook_id = o.lorebook_id WHERE mine.card_id = $1)`,
 	"collection": `c.id IN (SELECT o.card_id FROM collection_card o

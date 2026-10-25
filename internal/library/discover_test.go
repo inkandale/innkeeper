@@ -202,6 +202,16 @@ func TestRelatedIgnoresAnEmptyCreator(t *testing.T) {
 	}
 }
 
+func TestRelatedIgnoresAnAnonymousCreator(t *testing.T) {
+	lib := newLibrary(t)
+	me, _ := newCard(t, lib, "me", `{"name": "Paige", "creator": "Anonymous"}`)
+	newCard(t, lib, "other", `{"name": "Dorna", "creator": "anonymous "}`)
+	got, err := lib.RelatedCards(context.Background(), me, "creator", Page{})
+	if err != nil || len(got.Items) != 0 {
+		t.Fatalf("creator = %+v, %v; want none", got, err)
+	}
+}
+
 func TestRelatedPagesOneGroup(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()

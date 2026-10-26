@@ -57,6 +57,7 @@ database at startup and stop cleanly on `SIGTERM`.
 |---|---|---|
 | `INNKEEPER_DATABASE_URL` | `migrate`, `api`, `worker`, `token`, `backup`, `restore` | PostgreSQL URL |
 | `INNKEEPER_SECRETS_KEY` | `api`, `worker`, `backup`, `restore` | Encrypts plugin secrets. Generate with `openssl rand -base64 32`. Losing it loses every stored secret |
+| `INNKEEPER_SECRETS_KEY_FILE` | `api`, `worker`, `backup`, `restore` | Where the key lives when `INNKEEPER_SECRETS_KEY` is unset; the first start creates it. `/data/secrets.key` in the image |
 | `INNKEEPER_BLOB_DIR` | `api`, `worker`, `backup`, `restore` | The library's blob store folder |
 | `INNKEEPER_PLUGINS_DIR` | `api`, `worker`, `restore` | Writable folder that plugins install into; `/data/plugins` in the image. The API and worker must share it |
 | `INNKEEPER_BUILTIN_PLUGINS_DIR` | `api`, `worker`, `restore` | Read-only folder of plugins that ship with Innkeeper, one subfolder each; an installed plugin of the same name overrides one |
@@ -89,7 +90,6 @@ superuser.
 source:
 
 ```bash
-echo "INNKEEPER_SECRETS_KEY=$(openssl rand -base64 32)" > .env
 docker compose up -d --build
 export INNKEEPER_URL=http://localhost:8080
 export INNKEEPER_TOKEN=$(docker compose exec -T api innkeeper token create admin destructive)
@@ -107,8 +107,8 @@ clone of `main`; pass `--build-arg PLUGINS_REF=<commit>` or build with
 `--no-cache` for newer ones. Install other plugins at runtime; see
 [Plugins](#plugins).
 
-Compose keeps blobs and installed plugins in one volume at `/data`.
-`docker compose down -v` deletes the database and that volume.
+Compose keeps blobs, installed plugins, and the secrets key in one volume at
+`/data`. `docker compose down -v` deletes the database and that volume.
 
 ## Kubernetes
 
@@ -857,9 +857,11 @@ ink backups
 ink backups download <name> assets.tar.gz
 ```
 
-A download is one unencrypted `.tar.gz`. Keep `INNKEEPER_SECRETS_KEY` with
-config backups, stored separately: without it, restored plugin secrets can't
-be read.
+A download is one unencrypted `.tar.gz`. Keep the secrets key with config
+backups, stored separately: without it, restored plugin secrets can't be read.
+Backups never include it. Unless you set `INNKEEPER_SECRETS_KEY`, it is the
+file `INNKEEPER_SECRETS_KEY_FILE` names; copy it with
+`docker compose cp api:/data/secrets.key .`.
 
 `innkeeper backup <dir> [assets|config]` writes the same backups into `<dir>`
 without the API. When a plugin has a database, backing up config needs

@@ -12,11 +12,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
 // EnvVar holds the key: 32 random bytes, base64-encoded.
 const EnvVar = "INNKEEPER_SECRETS_KEY"
+
+// KeyFileEnvVar names a file that holds the key when EnvVar is unset. The
+// first process to start creates it.
+const KeyFileEnvVar = "INNKEEPER_SECRETS_KEY_FILE"
 
 // Box seals and opens secrets with AES-256-GCM.
 type Box struct {
@@ -24,17 +31,61 @@ type Box struct {
 	key  []byte
 }
 
-// FromEnv returns a Box with the key in EnvVar.
+// FromEnv returns a Box with the key in EnvVar, or else in the file
+// KeyFileEnvVar names.
 func FromEnv() (*Box, error) {
-	v := os.Getenv(EnvVar)
+	from, v := EnvVar, os.Getenv(EnvVar)
 	if v == "" {
-		return nil, fmt.Errorf("%s is not set; generate one with: openssl rand -base64 32", EnvVar)
+		from = os.Getenv(KeyFileEnvVar)
+		if from == "" {
+			return nil, fmt.Errorf("%s is not set; generate one with: openssl rand -base64 32", EnvVar)
+		}
+		var err error
+		if v, err = readOrCreateKey(from); err != nil {
+			return nil, err
+		}
 	}
 	key, err := base64.StdEncoding.DecodeString(v)
 	if err != nil {
-		return nil, fmt.Errorf("%s is not valid base64: %w", EnvVar, err)
+		return nil, fmt.Errorf("%s is not valid base64: %w", from, err)
 	}
 	return New(key)
+}
+
+// readOrCreateKey reads the key in path, creating it if it is missing.
+func readOrCreateKey(path string) (string, error) {
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		err = createKey(path)
+		if err == nil || errors.Is(err, fs.ErrExist) {
+			raw, err = os.ReadFile(path)
+		}
+	}
+	if err != nil {
+		return "", fmt.Errorf("secrets key file: %w", err)
+	}
+	return strings.TrimSpace(string(raw)), nil
+}
+
+// createKey writes a new key to path, or fails with fs.ErrExist if another
+// process got there first. Linking a finished temp file means no process can
+// read a half-written key.
+func createKey(path string) error {
+	key := make([]byte, 32)
+	rand.Read(key)
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".secrets-key-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.WriteString(base64.StdEncoding.EncodeToString(key) + "\n"); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Link(tmp.Name(), path)
 }
 
 // New returns a Box with a 32-byte key.

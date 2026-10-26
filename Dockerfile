@@ -43,6 +43,7 @@ COPY --from=plugins /plugins /usr/lib/innkeeper/plugins
 USER innkeeper
 ENV INNKEEPER_BLOB_DIR=/data/blobs \
     INNKEEPER_PLUGINS_DIR=/data/plugins \
+    INNKEEPER_SECRETS_KEY_FILE=/data/secrets.key \
     INNKEEPER_BUILTIN_PLUGINS_DIR=/usr/lib/innkeeper/plugins \
     INNKEEPER_LISTEN=:8080
 EXPOSE 8080

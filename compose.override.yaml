@@ -1,0 +1,9 @@
+# In a checkout, Compose merges this into compose.yaml, so the stack runs the
+# local source instead of the released image.
+services:
+  api:
+    build: .
+    image: innkeeper:dev
+  worker:
+    build: .
+    image: innkeeper:dev

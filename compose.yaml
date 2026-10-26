@@ -1,11 +1,10 @@
-# Local test stack: PostgreSQL, the API on http://localhost:8080 (INNKEEPER_PORT
-# changes it), and the worker.
+# Innkeeper with PostgreSQL: the API on http://localhost:8080 (INNKEEPER_PORT
+# changes it), and the worker. In a checkout, compose.override.yaml builds
+# the local source instead.
 # See "Try it with Docker Compose" in README.md.
 
 x-innkeeper: &innkeeper
-  build:
-    context: .
-  image: innkeeper:dev
+  image: ghcr.io/inkandale/innkeeper:1.0.0 # x-release-please-version
   environment:
     INNKEEPER_DATABASE_URL: postgres://innkeeper:innkeeper@db:5432/innkeeper?sslmode=disable
     # Unset, the first start creates /data/secrets.key.

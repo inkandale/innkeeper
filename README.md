@@ -86,21 +86,25 @@ superuser.
 
 ## Try it with Docker Compose
 
-`compose.yaml` runs PostgreSQL, the API, and the worker from the local
-source:
+`compose.yaml` runs PostgreSQL, the API, and the worker from the released
+image:
 
 ```bash
-docker compose up -d --build
-export INNKEEPER_URL=http://localhost:8080
-export INNKEEPER_TOKEN=$(docker compose exec -T api innkeeper token create admin destructive)
-curl -H "Authorization: Bearer $INNKEEPER_TOKEN" "$INNKEEPER_URL/api/tags"
+curl -LO https://github.com/inkandale/innkeeper/releases/latest/download/compose.yaml
+docker compose up -d
 ```
+
+Then open `http://localhost:8080` and claim the server (see
+[First login](#first-login)). The port listens on this machine only; to
+reach it from other devices, change `127.0.0.1:` in the `api` service's
+`ports`.
 
 If something else already listens on port 8080, set `INNKEEPER_PORT` in
 `.env`. Docker doesn't report the clash; requests just reach the other
 program.
 
-The image builds its three built-in plugins, `password-login`,
+In a checkout, Compose also reads `compose.override.yaml`, which builds the
+local source: run `docker compose up -d --build`. The image builds its three built-in plugins, `password-login`,
 `card-codec`, and `url-import`, from `innkeeper-plugins` at the branch or commit in the
 `PLUGINS_REF` build argument, `main` by default. A rebuild reuses its cached
 clone of `main`; pass `--build-arg PLUGINS_REF=<commit>` or build with

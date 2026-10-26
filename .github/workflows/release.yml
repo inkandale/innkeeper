@@ -111,6 +111,7 @@ jobs:
             CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
               -ldflags="-s -w -X main.version=$VERSION" -o "dist/ink_${VERSION}_${os}_${arch}${ext}" ./cmd/ink
           done
+          cp compose.yaml dist/
           (cd dist && sha256sum -- * > checksums.txt)
           gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
         env:

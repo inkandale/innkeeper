@@ -6,6 +6,7 @@
       "release-type": "simple",
       "package-name": "innkeeper",
       "extra-files": [
+        "compose.yaml",
         {
           "type": "yaml",
           "path": "chart/Chart.yaml",

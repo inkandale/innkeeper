@@ -2,41 +2,22 @@
 
 The single source of truth for roleplay character cards and lorebooks across
 RP apps. Plugins live in
-[innkeeper-plugins](https://github.com/inkandale/innkeeper-plugins).
+[innkeeper-plugins](https://github.com/inkandale/innkeeper-plugins). To work
+on Innkeeper itself, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Design: [docs/superpowers/specs/2026-10-03-innkeeper-core-design.md](docs/superpowers/specs/2026-10-03-innkeeper-core-design.md).
+## Quick start
 
-## Development
-
-Database tests need PostgreSQL with pgvector and a role that can create
-databases. Without `INNKEEPER_TEST_DATABASE_URL` they are skipped locally and
-fail in CI.
+You need Docker with Compose.
 
 ```bash
-docker run -d --name innkeeper-pg -e POSTGRES_PASSWORD=postgres -p 55432:5432 pgvector/pgvector:pg18
-export INNKEEPER_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:55432/postgres
-go test -race ./...
+curl -LO https://github.com/inkandale/innkeeper/releases/latest/download/compose.yaml
+docker compose up -d
+docker compose logs api | grep "setup code"
 ```
 
-### Card corpus
-
-`testdata/corpus` holds real cards and golden files of what the codec,
-SillyTavern and Lumiverse return for each. `TestCorpusHashes` checks that
-every app's copy hashes like the codec's, reading only the goldens. After an
-app or plugin upgrade, recapture them against throwaway servers, from the
-repo root:
-
-```bash
-make -C ../innkeeper-plugins install DEST=/tmp/innkeeper-plugins
-docker compose -f testdata/corpus/compose.yaml up -d --wait
-INNKEEPER_CORPUS_CAPTURE=1 INNKEEPER_PLUGINS_DIR=/tmp/innkeeper-plugins go test ./internal/corpus -run TestCapture -count=1
-docker compose -f testdata/corpus/compose.yaml down -v
-```
-
-The capture refuses to run against a server that already has cards or
-lorebooks, so start the servers fresh each time. The golden diff shows any
-change in an app's format; if `TestCorpusHashes` then fails, fix the cause
-before committing the goldens.
+Open `http://localhost:8080`, enter the setup code, and choose a password.
+The setup wizard then installs plugins for your apps and brings in your
+cards. [Docker Compose](#docker-compose) has the details.
 
 ## Running
 
@@ -84,18 +65,11 @@ later, where other roles can't create tables in `public`, and a database user
 with `CREATEROLE` and `CREATE` on the database. The Compose stack's user is a
 superuser.
 
-## Try it with Docker Compose
+## Docker Compose
 
-`compose.yaml` runs PostgreSQL, the API, and the worker from the released
-image:
-
-```bash
-curl -LO https://github.com/inkandale/innkeeper/releases/latest/download/compose.yaml
-docker compose up -d
-```
-
-Then open `http://localhost:8080` and claim the server (see
-[First login](#first-login)). The port listens on this machine only; to
+`compose.yaml`, from the [Quick start](#quick-start), runs PostgreSQL, the
+API, and the worker from the released image. The port listens on this
+machine only; to
 reach it from other devices, change `127.0.0.1:` in the `api` service's
 `ports`.
 
@@ -116,20 +90,12 @@ Compose keeps blobs, installed plugins, and the secrets key in one volume at
 
 ## Kubernetes
 
-Work lands on `develop`. Every push to `develop` publishes
-`ghcr.io/inkandale/innkeeper:latest` and `:sha-<commit>`, for amd64 and arm64.
-Merging `develop` into `main` updates release-please's release PR, so merge
-with a merge commit, not a squash, to keep each commit's type. Merging the
-release PR tags `v<version>`, publishes the image as `:<version>` and
-`:<major>.<minor>`, and publishes the Helm chart in `chart/` to
-`oci://ghcr.io/inkandale/charts/innkeeper`. The chart's `version` and
-`appVersion` both follow the release, and the chart runs the image matching
-its `appVersion` unless `image.tag` says otherwise. For testing, set
-`image.tag=latest` and `image.pullPolicy=Always`, and restart the deployment
-to pick up a new build.
-
-Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/):
-`feat:` and `fix:` decide the next version, and `feat!:` marks a breaking change.
+Each release publishes the image `ghcr.io/inkandale/innkeeper` as
+`:<version>` and `:<major>.<minor>`, for amd64 and arm64, and the Helm chart
+to `oci://ghcr.io/inkandale/charts/innkeeper`. The chart runs the image
+matching its `appVersion` unless `image.tag` says otherwise. `:latest`
+follows the `develop` branch; to test it, set `image.tag=latest` and
+`image.pullPolicy=Always`, and restart the deployment to pick up a new build.
 
 The chart runs the API and the worker as two containers in one pod, sharing
 the blob volume and a plugins volume (`persistence.plugins.size`, 1Gi). It creates no Secrets; point it at yours:
@@ -200,7 +166,7 @@ clearing `owner_subject` logs that identity out.
 
 After the claim, the setup wizard at `/welcome` walks you through choosing
 plugins from the catalog, setting up each one, and importing cards. It shows
-once; to open it again, use "Set up apps and import" in Settings.
+once; to open it again, use "Run setup wizard" in Settings.
 
 To work on the UI, run `innkeeper api` and then, in `web/`:
 
@@ -220,7 +186,7 @@ install only themes you trust.
 
 ## Plugins
 
-Innkeeper ships `password-login` and `card-codec`. Install other plugins
+Innkeeper ships `password-login`, `card-codec`, and `url-import`. Install other plugins
 from a source, an `index.toml` that lists plugin versions. The official
 `innkeeper-plugins` source is there by default:
 

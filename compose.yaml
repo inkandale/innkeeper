@@ -1,7 +1,7 @@
 # Innkeeper with PostgreSQL: the API on http://localhost:8080 (INNKEEPER_PORT
 # changes it), and the worker. In a checkout, compose.override.yaml builds
 # the local source instead.
-# See "Try it with Docker Compose" in README.md.
+# See "Docker Compose" in README.md.
 
 x-innkeeper: &innkeeper
   image: ghcr.io/inkandale/innkeeper:1.0.0 # x-release-please-version

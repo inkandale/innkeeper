@@ -1,5 +1,7 @@
 # syntax=docker/dockerfile:1
-FROM node:24-alpine AS web
+# Build stages run on the builder's platform and cross-compile, which beats
+# emulating the target.
+FROM --platform=$BUILDPLATFORM node:24-alpine AS web
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
@@ -7,10 +9,12 @@ COPY web/ ./
 # CI type-checks, so skip the tsc step that `npm run build` adds.
 RUN npx vite build
 
-FROM golang:1.27-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
+ARG TARGETOS TARGETARCH
+ENV GOOS=$TARGETOS GOARCH=$TARGETARCH
 COPY . .
 COPY --from=web /web/dist ./web/dist
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /innkeeper ./cmd/innkeeper
@@ -18,7 +22,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /ink ./cmd/ink
 
 # The built-in plugins, built against this core's protocol package. Owners
 # install the rest at runtime.
-FROM golang:1.27-alpine AS plugins
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS plugins
 # A branch or commit. CI passes main's commit, so a new one skips the cached clone.
 ARG PLUGINS_REF=main
 RUN apk add --no-cache git make
@@ -26,6 +30,8 @@ RUN git clone https://github.com/inkandale/innkeeper-plugins.git /plugins-src \
     && git -C /plugins-src checkout --detach "$PLUGINS_REF"
 COPY . /core
 WORKDIR /plugins-src
+ARG TARGETOS TARGETARCH
+ENV GOOS=$TARGETOS GOARCH=$TARGETARCH
 # ponytail: no go mod tidy, so this needs innkeeper-plugins' go.sum to cover
 # everything protocol/ imports; add tidy if a build reports a missing entry.
 RUN go mod edit -replace github.com/inkandale/innkeeper=/core \

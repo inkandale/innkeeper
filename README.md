@@ -113,7 +113,7 @@ Compose keeps blobs, installed plugins, and the secrets key in one volume at
 ## Kubernetes
 
 Work lands on `develop`. Every push to `develop` publishes
-`ghcr.io/inkandale/innkeeper:latest` and `:sha-<commit>`, for amd64 only.
+`ghcr.io/inkandale/innkeeper:latest` and `:sha-<commit>`, for amd64 and arm64.
 Merging `develop` into `main` updates release-please's release PR, so merge
 with a merge commit, not a squash, to keep each commit's type. Merging the
 release PR tags `v<version>`, publishes the image as `:<version>` and

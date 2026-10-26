@@ -30,6 +30,27 @@ test("Refine builds its instruction from the ticked findings and suggestions", a
   expect(onRefine).toHaveBeenCalledWith("Fix these problems:\n- Description, Scenario: Too short.\n\nApply these suggestions:\n- Give her a rival.");
 });
 
+test("Refine adds the owner's feedback after the ticked items", async () => {
+  const onRefine = vi.fn();
+  render(<Report report={report} subject={cardSubject} onRefine={onRefine} />);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("checkbox", { name: "Give her a rival." }));
+  await user.type(screen.getByRole("textbox", { name: "Feedback" }), "Keep her accent.");
+  await user.click(screen.getByRole("button", { name: "Refine with 1 selected" }));
+  expect(onRefine).toHaveBeenCalledWith("Apply these suggestions:\n- Give her a rival.\n\nKeep her accent.");
+});
+
+test("Refine runs on feedback alone", async () => {
+  const onRefine = vi.fn();
+  render(<Report report={{ summary: "Fine." }} subject={cardSubject} onRefine={onRefine} />);
+  const user = userEvent.setup();
+  const refine = screen.getByRole("button", { name: "Refine" });
+  expect(refine).toBeDisabled();
+  await user.type(screen.getByRole("textbox", { name: "Feedback" }), "  Make her older.  ");
+  await user.click(refine);
+  expect(onRefine).toHaveBeenCalledWith("Make her older.");
+});
+
 test("the checkboxes say they feed Refine only when there is a Refine", () => {
   const hint = "Tick findings and suggestions to include them when you refine.";
   const { rerender } = render(<Report report={report} subject={cardSubject} onRefine={vi.fn()} />);

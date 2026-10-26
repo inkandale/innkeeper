@@ -14,11 +14,12 @@ export function reportAnchor(report: ReportT, key: string): string | undefined {
 
 /**
  * Report shows an evaluation: score, summary, dimensions, findings by field, and suggestions. Refine runs onRefine with
- * the ticked items as an instruction; without refine, there is no action to run it.
+ * the ticked items and the owner's feedback as an instruction; without refine, there is no action to run it.
  */
 export function Report({ report, subject, onRefine }: { report: ReportT; subject: Subject; onRefine?: (instruction: string) => void }) {
   const { label } = subject;
   const [ticked, setTicked] = useState<Set<string>>(new Set());
+  const [feedback, setFeedback] = useState("");
   const tick = (id: string) =>
     setTicked((t) => {
       const next = new Set(t);
@@ -32,16 +33,18 @@ export function Report({ report, subject, onRefine }: { report: ReportT; subject
     const k = x.f.fields?.[0] ?? "";
     groups.set(k, [...(groups.get(k) ?? []), x]);
   }
-  const refinable = !!onRefine && (findings.length > 0 || suggestions.length > 0);
+  const tickable = !!onRefine && (findings.length > 0 || suggestions.length > 0);
   const check = (id: string) => <input type="checkbox" checked={ticked.has(id)} onChange={() => tick(id)} />;
-  const refine = () =>
-    onRefine?.(
-      refineInstruction(
-        findings.filter((x) => ticked.has(x.id)).map((x) => x.f),
-        suggestions.filter((x) => ticked.has(x.id)).map((x) => x.s),
-        label,
-      ),
-    );
+  const instruction = [
+    refineInstruction(
+      findings.filter((x) => ticked.has(x.id)).map((x) => x.f),
+      suggestions.filter((x) => ticked.has(x.id)).map((x) => x.s),
+      label,
+    ),
+    feedback.trim(),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   return (
     <div className="forge-report">
@@ -74,7 +77,7 @@ export function Report({ report, subject, onRefine }: { report: ReportT; subject
           </tbody>
         </table>
       )}
-      {refinable && <p className="muted">Tick findings and suggestions to include them when you refine.</p>}
+      {tickable && <p className="muted">Tick findings and suggestions to include them when you refine.</p>}
       {groups.size > 0 && <h3>Findings</h3>}
       {[...groups].map(([k, list]) => (
         <section key={k} id={`report-${k}`} className="field forge-section">
@@ -97,10 +100,11 @@ export function Report({ report, subject, onRefine }: { report: ReportT; subject
           </section>
         </>
       )}
-      {refinable && (
+      {onRefine && (
         <div className="forge-footer">
-          <button className="button primary" disabled={!ticked.size} onClick={refine}>
-            Refine with {ticked.size} selected
+          <textarea aria-label="Feedback" placeholder="Anything else to change" rows={2} value={feedback} onChange={(e) => setFeedback(e.target.value)} />
+          <button className="button primary" disabled={!instruction} onClick={() => onRefine(instruction)}>
+            {ticked.size ? `Refine with ${ticked.size} selected` : "Refine"}
           </button>
         </div>
       )}

@@ -524,6 +524,10 @@
   }
 }
 
+.forge-report .forge-footer textarea {
+  flex: 1 1 16rem;
+}
+
 .forge-review .forge-footer,
 .forge-report .forge-footer {
   position: sticky;

@@ -111,9 +111,31 @@ func crossSite(secFetchSite string) bool {
 
 // cookie returns an HttpOnly cookie for the whole site. A negative maxAge
 // deletes it.
-func (s *Server) cookie(name, value string, maxAge time.Duration) *http.Cookie {
+func (s *Server) cookie(ctx context.Context, name, value string, maxAge time.Duration) *http.Cookie {
 	return &http.Cookie{Name: name, Value: value, Path: "/", MaxAge: int(maxAge.Seconds()), HttpOnly: true,
-		Secure: !strings.HasPrefix(s.PublicURL, "http://"), SameSite: http.SameSiteLaxMode}
+		Secure: s.secureCookies(ctx), SameSite: http.SameSiteLaxMode}
+}
+
+type httpsKey struct{}
+
+// withScheme records whether the browser reached the server over https,
+// directly or through a proxy.
+func withScheme(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		https := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), httpsKey{}, https)))
+	})
+}
+
+// secureCookies reports whether cookies need Secure. The public URL decides;
+// without one the request does, since a browser drops a Secure cookie sent
+// over plain http.
+func (s *Server) secureCookies(ctx context.Context) bool {
+	if s.PublicURL != "" {
+		return !strings.HasPrefix(s.PublicURL, "http://")
+	}
+	https, known := ctx.Value(httpsKey{}).(bool)
+	return https || !known
 }
 
 func (s *Server) callbackURL(id int64) string {
@@ -182,7 +204,7 @@ func (s *Server) login(ctx context.Context, id int64, state string, params map[s
 	if err != nil {
 		return nil, s.fail(err)
 	}
-	return []*http.Cookie{s.cookie(sessionCookie, secret, auth.SessionTTL), s.cookie(stateCookie, "", -time.Second)}, nil
+	return []*http.Cookie{s.cookie(ctx, sessionCookie, secret, auth.SessionTTL), s.cookie(ctx, stateCookie, "", -time.Second)}, nil
 }
 
 // callback finishes a redirect login: the provider sends the browser here
@@ -216,7 +238,7 @@ func (s *Server) callback(w http.ResponseWriter, r *http.Request) {
 	}
 	// A login started by an OAuth client's authorization goes back to it.
 	if c, err := r.Cookie(returnCookie); err == nil {
-		http.SetCookie(w, s.cookie(returnCookie, "", -time.Second))
+		http.SetCookie(w, s.cookie(r.Context(), returnCookie, "", -time.Second))
 		resume(w, r, c.Value)
 		return
 	}
@@ -307,8 +329,8 @@ func (s *Server) authRoutes(api huma.API) {
 			state := base64.RawURLEncoding.EncodeToString([]byte(res.State))
 			// This is the UI's login; drop a return left by an abandoned OAuth login.
 			out := &beginOut{SetCookie: []*http.Cookie{
-				s.cookie(stateCookie, state, 10*time.Minute),
-				s.cookie(returnCookie, "", -time.Second),
+				s.cookie(ctx, stateCookie, state, 10*time.Minute),
+				s.cookie(ctx, returnCookie, "", -time.Second),
 			}}
 			out.Body.Redirect, out.Body.Form = res.Redirect, res.Form
 			return out, nil
@@ -337,7 +359,7 @@ func (s *Server) authRoutes(api huma.API) {
 					return nil, s.fail(err)
 				}
 			}
-			return &cookiesOut{SetCookie: []*http.Cookie{s.cookie(sessionCookie, "", -time.Second)}}, nil
+			return &cookiesOut{SetCookie: []*http.Cookie{s.cookie(ctx, sessionCookie, "", -time.Second)}}, nil
 		})
 
 	tags = []string{"Tokens"}

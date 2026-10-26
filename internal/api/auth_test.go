@@ -114,6 +114,30 @@ func (e *testEnv) login(password string) result {
 		map[string]any{"params": map[string]string{"password": password}}, "Cookie", e.begin())
 }
 
+// Without a public URL the request decides: a cookie marked Secure over plain
+// http is dropped by the browser, and the login silently fails.
+func TestSessionCookieSecureFollowsRequestWithoutPublicURL(t *testing.T) {
+	e := newEnv(t)
+	login := func(headers ...string) *http.Cookie {
+		r := e.send("POST", fmt.Sprintf("/auth/%d/complete", e.loginID),
+			map[string]any{"params": map[string]string{"password": "letmein"}}, append([]string{"Cookie", e.begin()}, headers...)...)
+		if r.Status != 200 {
+			t.Fatalf("login: %s", r)
+		}
+		return r.cookie(t, sessionCookie)
+	}
+	if c := login(); c.Secure {
+		t.Errorf("plain http: session cookie is Secure")
+	}
+	if c := login("X-Forwarded-Proto", "https"); !c.Secure {
+		t.Errorf("behind an https proxy: session cookie is not Secure")
+	}
+	e.s.PublicURL = "https://innkeeper.example.com"
+	if c := login(); !c.Secure {
+		t.Errorf("https public URL: session cookie is not Secure")
+	}
+}
+
 func TestLogin(t *testing.T) {
 	e := newEnv(t)
 	var providers []provider
@@ -135,7 +159,7 @@ func TestLogin(t *testing.T) {
 		t.Fatalf("login: %s", ok)
 	}
 	session := ok.cookie(t, sessionCookie)
-	if !session.HttpOnly || !session.Secure || session.SameSite != http.SameSiteLaxMode {
+	if !session.HttpOnly || session.SameSite != http.SameSiteLaxMode {
 		t.Fatalf("session cookie = %+v", session)
 	}
 	cookie := sessionCookie + "=" + session.Value

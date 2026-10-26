@@ -61,7 +61,7 @@ database at startup and stop cleanly on `SIGTERM`.
 | `INNKEEPER_PLUGINS_DIR` | `api`, `worker`, `restore` | Writable folder that plugins install into; `/data/plugins` in the image. The API and worker must share it |
 | `INNKEEPER_BUILTIN_PLUGINS_DIR` | `api`, `worker`, `restore` | Read-only folder of plugins that ship with Innkeeper, one subfolder each; an installed plugin of the same name overrides one |
 | `INNKEEPER_LISTEN` | `api` | Listen address; default `:8080` |
-| `INNKEEPER_PUBLIC_URL` | `api` | Where browsers reach the API, such as `https://innkeeper.example.com`. Needed for redirect logins, `ink login`, and MCP clients that connect through OAuth, such as claude.ai. An `http://` URL sends cookies without `Secure` |
+| `INNKEEPER_PUBLIC_URL` | `api` | Where browsers reach the API, such as `https://innkeeper.example.com`. Needed for redirect logins, `ink login`, and MCP clients that connect through OAuth, such as claude.ai. An `http://` URL sends cookies without `Secure`. Unset, cookies get `Secure` only over https or behind a proxy that sends `X-Forwarded-Proto: https` |
 | `INNKEEPER_OWNER_PASSWORD_HASH` | `api` | A bcrypt hash from `password-login hash`. On a server with no login provider, the API creates the owner's password login from it at startup. Ignored once the server is claimed |
 | `INNKEEPER_WORKER_CONCURRENCY` | `worker` | Jobs run at once; default 4 |
 | `INNKEEPER_METRICS_LISTEN` | `worker` | Address to serve Prometheus metrics on at `/metrics`, such as `:9090`: `innkeeper_job_duration_seconds{kind,status}`, `innkeeper_cards_changed_total{kind}`, and Go runtime metrics. Unset serves none |

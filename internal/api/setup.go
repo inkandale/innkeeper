@@ -234,6 +234,6 @@ func (s *Server) setupRoutes(api huma.API) {
 			if err != nil {
 				return nil, s.fail(err)
 			}
-			return &cookiesOut{SetCookie: []*http.Cookie{s.cookie(sessionCookie, secret, auth.SessionTTL)}}, nil
+			return &cookiesOut{SetCookie: []*http.Cookie{s.cookie(ctx, sessionCookie, secret, auth.SessionTTL)}}, nil
 		})
 }

@@ -289,7 +289,7 @@ func (s *Server) Handler() http.Handler {
 			s.UI.ServeHTTP(w, r)
 		})
 	}
-	return mux
+	return withScheme(mux)
 }
 
 // fail turns an error into an HTTP error. Unexpected errors are logged and

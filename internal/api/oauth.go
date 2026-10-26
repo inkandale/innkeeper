@@ -258,7 +258,7 @@ func (s *Server) authorize(w http.ResponseWriter, r *http.Request) {
 	}
 	csrf := randomString()
 	http.SetCookie(w, &http.Cookie{Name: csrfCookie, Value: csrf, Path: "/oauth/", MaxAge: 600, HttpOnly: true,
-		Secure: s.cookie("", "", 0).Secure, SameSite: http.SameSiteStrictMode})
+		Secure: s.secureCookies(r.Context()), SameSite: http.SameSiteStrictMode})
 	s.page(w, http.StatusOK, consentPage, map[string]any{
 		"Client": req.client.Name, "Redirect": req.params.Get("redirect_uri"), "Params": req.params, "CSRF": csrf,
 	})
@@ -423,9 +423,9 @@ func (s *Server) beginLogin(w http.ResponseWriter, r *http.Request, id int64, re
 		s.page(w, http.StatusServiceUnavailable, errorPage, "That login provider isn't answering.")
 		return
 	}
-	http.SetCookie(w, s.cookie(stateCookie, base64.RawURLEncoding.EncodeToString([]byte(res.State)), 10*time.Minute))
+	http.SetCookie(w, s.cookie(r.Context(), stateCookie, base64.RawURLEncoding.EncodeToString([]byte(res.State)), 10*time.Minute))
 	if res.Redirect != "" {
-		http.SetCookie(w, s.cookie(returnCookie, ret, 10*time.Minute))
+		http.SetCookie(w, s.cookie(r.Context(), returnCookie, ret, 10*time.Minute))
 		http.Redirect(w, r, res.Redirect, http.StatusSeeOther)
 		return
 	}

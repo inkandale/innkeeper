@@ -8,7 +8,8 @@ x-innkeeper: &innkeeper
   image: innkeeper:dev
   environment:
     INNKEEPER_DATABASE_URL: postgres://innkeeper:innkeeper@db:5432/innkeeper?sslmode=disable
-    INNKEEPER_SECRETS_KEY: ${INNKEEPER_SECRETS_KEY:?set INNKEEPER_SECRETS_KEY in .env; see README.md}
+    # Unset, the first start creates /data/secrets.key.
+    INNKEEPER_SECRETS_KEY: ${INNKEEPER_SECRETS_KEY:-}
     # Plain http for local testing, so browsers keep the session cookie.
     INNKEEPER_PUBLIC_URL: http://localhost:${INNKEEPER_PORT:-8080}
     # Claims a new server without the setup code; see "First login" in README.md.
@@ -40,7 +41,8 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "innkeeper", "-d", "innkeeper"]
+      # TCP, since the init-time server listens only on the socket.
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "innkeeper", "-d", "innkeeper"]
       interval: 2s
       retries: 30
 

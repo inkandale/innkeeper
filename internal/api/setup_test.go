@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/inkandale/innkeeper/internal/plugins"
 )
@@ -199,6 +200,23 @@ func TestSetupMakesACodeWhenNeeded(t *testing.T) {
 	e.call("GET", "/setup", nil, http.StatusOK, nil)
 	if e.s.currentSetupCode() == "" {
 		t.Fatal("no setup code")
+	}
+}
+
+// Opening /setup logs the code again, so it is near the end of the log when
+// the owner goes looking, but not on every reload.
+func TestSetupLogsTheCodeAgainWhenOpened(t *testing.T) {
+	e := unclaimedEnv(t)
+	if err := e.s.Bootstrap(context.Background(), ""); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	e.s.Log = slog.New(slog.NewTextHandler(&buf, nil))
+	e.s.setupLogged = time.Now().Add(-setupLogEvery)
+	e.call("GET", "/setup", nil, http.StatusOK, nil)
+	e.call("GET", "/setup", nil, http.StatusOK, nil)
+	if n := strings.Count(buf.String(), e.s.currentSetupCode()); n != 1 {
+		t.Fatalf("logged the code %d times: %q", n, buf.String())
 	}
 }
 

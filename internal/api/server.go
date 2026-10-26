@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
@@ -64,8 +65,9 @@ type Server struct {
 	loginSlot chan struct{}
 	// setupMu guards setupCode, which claims the server while it has no
 	// login provider. Empty until needed.
-	setupMu   sync.Mutex
-	setupCode string
+	setupMu     sync.Mutex
+	setupCode   string
+	setupLogged time.Time
 	// tools, actions, and catalogInfo cache each plugin instance's
 	// mcp.tools, action.list, and catalog.describe, by instance version.
 	tools, actions, catalogInfo sync.Map

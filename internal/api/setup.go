@@ -73,12 +73,22 @@ func (s *Server) createOwnerLogin(ctx context.Context, plugin string, secrets ma
 	}
 }
 
-// ensureSetupCode returns the setup code, making and logging one if needed.
+// setupLogEvery limits how often opening /setup logs the code, since
+// anyone can open it.
+const setupLogEvery = time.Minute
+
+// ensureSetupCode returns the setup code, making one if needed. It logs the
+// code unless it did within setupLogEvery, so the owner finds it near the end
+// of the log.
 func (s *Server) ensureSetupCode() string {
 	s.setupMu.Lock()
 	defer s.setupMu.Unlock()
 	if s.setupCode == "" {
 		s.setupCode = groupCode(rand.Text())
+		s.setupLogged = time.Time{}
+	}
+	if time.Since(s.setupLogged) >= setupLogEvery {
+		s.setupLogged = time.Now()
 		s.Log.Warn("server is unclaimed; open /setup and enter the setup code", "code", s.setupCode)
 	}
 	return s.setupCode

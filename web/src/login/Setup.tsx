@@ -60,7 +60,11 @@ function ClaimForm({ plugin, form }: { plugin: string; form: unknown }) {
 
   return (
     <form onSubmit={submit} className="login-form">
-      <p>Enter the setup code from the server log, then choose your password.</p>
+      <p>Enter the setup code from the server log, then choose your password. To find it, run:</p>
+      <pre className="hint">docker compose logs api | grep "setup code"</pre>
+      <p className="hint">
+        On Kubernetes: <code>kubectl logs deploy/innkeeper -c api | grep "setup code"</code>
+      </p>
       <label>
         Setup code
         <input className="input" name="code" required autoComplete="off" />

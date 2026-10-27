@@ -35,7 +35,7 @@ export function Login() {
     body = setup.isPending ? <Loading /> : setup.isSuccess ? (
       <Navigate to="/setup" replace />
     ) : (
-      <p>No login provider is set up. The README's "First login" section explains how to add one.</p>
+      <p>No login provider is set up. "First login" in docs/running.md explains how to add one.</p>
     );
   else if (!provider)
     body = list.map((p) => (

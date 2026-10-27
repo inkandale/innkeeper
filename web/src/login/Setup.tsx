@@ -23,7 +23,7 @@ export function Setup() {
     );
   else if (setup.isError) body = <p className="error">{setup.error.message}</p>;
   else if (list.length === 0)
-    body = <p>No installed login plugin can claim a server. The README's "First login" section explains how to add one.</p>;
+    body = <p>No installed login plugin can claim a server. "First login" in docs/running.md explains how to add one.</p>;
   else if (!plugin)
     body = list.map((p) => (
       <button key={p.plugin} className="button" onClick={() => setChosen(p.plugin)}>

@@ -16,8 +16,18 @@ go test -race ./...
 ```
 
 To run the stack from your checkout, `docker compose up -d --build`;
-`compose.override.yaml` builds the local source. To work on the web UI, see
-[Web UI](README.md#web-ui).
+`compose.override.yaml` builds the local source.
+
+To work on the web UI, run `innkeeper api` and then, in `web/`:
+
+```bash
+npm install
+npm run dev
+```
+
+Vite serves the UI with hot reload and proxies `/api`, `/auth`, and `/oauth`
+to `INNKEEPER_URL`, which defaults to `http://localhost:8080`. After changing
+the API, run `npm run gen` to regenerate the client; it needs Go.
 
 ### Card corpus
 

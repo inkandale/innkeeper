@@ -23,7 +23,7 @@ const usage = `usage:
   innkeeper backup <dir> [assets|config]
   innkeeper restore [--replace] <archive-or-backup-dir>...
 
-The API commands moved to the ink client; see README.md.`
+The API commands moved to the ink client; see docs/cli.md.`
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {

@@ -40,7 +40,7 @@ persistence:
   plugins:
     size: 1Gi
 
-# Scheduled backups; see "Backup and restore" in the README. An empty
+# Scheduled backups; see "Backup and restore" in docs/running.md. An empty
 # `every` turns that type's schedule off.
 backup:
   assets:

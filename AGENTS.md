@@ -2,7 +2,7 @@
 
 Rules for any AI agent writing code in this repo. The core is Go
 (`cmd/`, `internal/`, `cardhash/`, `protocol/`); the web UI is React and
-TypeScript (`web/src`). Setup and tests are in the [README](README.md).
+TypeScript (`web/src`). Setup and tests are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Before you write code
 

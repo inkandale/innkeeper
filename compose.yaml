@@ -1,7 +1,7 @@
 # Innkeeper with PostgreSQL: the API, on http://localhost:8080 (INNKEEPER_PORT
 # changes it), and the worker, in one container. In a checkout,
 # compose.override.yaml builds the local source instead.
-# See "Docker Compose" in README.md.
+# See "Docker Compose" in docs/running.md.
 
 services:
   db:
@@ -27,9 +27,9 @@ services:
       INNKEEPER_SECRETS_KEY: ${INNKEEPER_SECRETS_KEY:-}
       # Plain http for local testing, so browsers keep the session cookie.
       INNKEEPER_PUBLIC_URL: http://localhost:${INNKEEPER_PORT:-8080}
-      # Claims a new server without the setup code; see "First login" in README.md.
+      # Claims a new server without the setup code; see "First login" in docs/running.md.
       # INNKEEPER_OWNER_PASSWORD_HASH: ${INNKEEPER_OWNER_PASSWORD_HASH}
-      # Scheduled backups; see "Backup and restore" in README.md. On Linux the
+      # Scheduled backups; see "Backup and restore" in docs/running.md. On Linux the
       # host folder must be writable by uid 10001.
       # INNKEEPER_BACKUP_DIR: /backups
       # INNKEEPER_BACKUP_ASSETS_EVERY: 24h
@@ -38,7 +38,7 @@ services:
       # INNKEEPER_BACKUP_CONFIG_KEEP: 7
     volumes:
       - data:/data
-      # Folder imports read from here; see "Importing" in README.md.
+      # Folder imports read from here; see "Importing" in docs/using.md.
       - ${INNKEEPER_IMPORT_DIR:-./import}:/import:ro
       # - ./backups:/backups
     ports:

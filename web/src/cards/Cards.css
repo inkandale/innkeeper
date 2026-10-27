@@ -232,6 +232,11 @@
   transition-delay: 0.1s;
 }
 
+.empty-library {
+  margin: calc(var(--space) * 4) 0;
+  text-align: center;
+}
+
 .total {
   color: var(--text-muted);
   margin: 0 0 var(--space);

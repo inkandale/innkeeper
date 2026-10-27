@@ -45,7 +45,9 @@ let embedInstance: number | null;
 let settingsGate: Promise<void> | undefined;
 let resultsGate: Promise<void> | undefined;
 let libraryIds: number[];
+let emptyResults: boolean;
 beforeEach(() => {
+  emptyResults = false;
   libraryIds = [1, 2, 3];
   localStorage.clear();
   keys = { scorers: [], instances: [] };
@@ -72,6 +74,7 @@ beforeEach(() => {
         const body = await req.json();
         searches.push(body);
         if (!body.facets_only) await resultsGate;
+        if (emptyResults && !body.facets_only) return json({ hits: [], total: 0 });
         const problems = body.facets_only && body.facets?.find((f: string) => f.endsWith(":problems"))?.slice("enrichment:".length);
         if (problems) return json({ hits: [], total: 4, facets: { enrichments: { [problems]: [{ value: "markup", cards: 3 }, { value: "oversized", cards: 1 }] } } });
         if (body.facets_only && body.facets?.[0]?.startsWith("states"))
@@ -134,6 +137,20 @@ function renderCards(entry: string) {
   );
   return { router, container, unmount };
 }
+
+test("an empty library points to importing and the setup wizard", async () => {
+  emptyResults = true;
+  renderCards("/cards");
+  expect(await screen.findByText("No cards in this library yet.")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Run the setup wizard" })).toHaveAttribute("href", "/welcome");
+});
+
+test("a search that matches nothing doesn't offer the setup wizard", async () => {
+  emptyResults = true;
+  renderCards("/cards?q=brakka");
+  expect(await screen.findByText("0 cards, variants grouped")).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Run the setup wizard" })).not.toBeInTheDocument();
+});
 
 test("the URL becomes the search, and hits become tiles", async () => {
   const { container } = renderCards("/cards?f=tag:fantasy&page=2");
@@ -250,7 +267,7 @@ test("target rows name the app and state rows show the status dot", async () => 
   expect(await screen.findByRole("button", { name: /^Lumiverse/ })).toBeInTheDocument();
   const ahead = await screen.findByRole("button", { name: /^not pushed/ });
   expect(ahead.querySelector(".badge.ahead")).not.toBeNull();
-  expect(container.querySelector(".facets")).toHaveTextContent("Target");
+  expect(container.querySelector(".facets")).toHaveTextContent("App");
 });
 
 test("chips name targets and states", async () => {
@@ -349,7 +366,7 @@ test("push offers only targets that push", async () => {
   const user = userEvent.setup();
   await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
   await user.click(screen.getByRole("button", { name: "Push" }));
-  const targets = await screen.findByRole("group", { name: "Targets" });
+  const targets = await screen.findByRole("group", { name: "Apps" });
   expect(within(targets).getAllByRole("checkbox").map((c) => c.closest("label")!.textContent!.trim())).toEqual(["Lumiverse"]);
   expect(await screen.findByText("1 not pushed")).toBeInTheDocument();
   expect(previews).toEqual([{ instance_id: 2, query: { library: 1, filter: { ids: [8] } } }]);
@@ -366,7 +383,7 @@ test("export offers PNG only when a codec instance writes it", async () => {
   await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
   // Push's target list waits for plugins and instances, so both have loaded.
   await user.click(screen.getByRole("button", { name: "Push" }));
-  await screen.findByRole("group", { name: "Targets" });
+  await screen.findByRole("group", { name: "Apps" });
   await user.click(screen.getByRole("button", { name: "Export" }));
   const format = screen.getByRole("combobox", { name: "Format" });
   expect(Array.from((format as HTMLSelectElement).options).map((o) => o.text)).toEqual(["JSON"]);

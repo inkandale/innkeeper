@@ -82,7 +82,7 @@ export function Sync() {
       <h1>Sync</h1>
       {instances.data && plugins.data && !targets.length && (
         <p>
-          No target apps yet. Add one in <Link to="/settings/plugins">Settings</Link>.
+          No apps yet. Set one up in <Link to="/settings/plugins">Settings</Link>.
         </p>
       )}
       {!!targets.length && (
@@ -105,7 +105,7 @@ export function Sync() {
         <table>
           <thead>
             <tr>
-              <th>Target</th>
+              <th>App</th>
               <th>In sync (cards)</th>
               <th>Needs you</th>
               <th>Not pushed</th>

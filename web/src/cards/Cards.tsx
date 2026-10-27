@@ -257,7 +257,21 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
         )}
         {res.isError && <p className="error">{res.error.message}</p>}
         {scoresOff && <p className="muted">Some score filters or the sort from this link are off: they name no instance.</p>}
-        {res.data && <p className="total">{total} {total === 1 ? noun.slice(0, -1) : noun}{ungrouped ? "" : ", variants grouped"}</p>}
+        {res.data && total === 0 && !q.text && !q.terms.length && !q.sharesSource ? (
+          <div className="empty-library">
+            <p>No {noun} in this library yet.</p>
+            <p>
+              {(imp.file || imp.url || imp.folder) && (
+                <button className="button primary" onClick={() => setImportOpen(true)}>
+                  Import {noun}
+                </button>
+              )}{" "}
+              <Link to="/welcome">Run the setup wizard</Link>
+            </p>
+          </div>
+        ) : (
+          res.data && <p className="total">{total} {total === 1 ? noun.slice(0, -1) : noun}{ungrouped ? "" : ", variants grouped"}</p>
+        )}
         {res.data && q.page > last && (
           <p>
             No {noun} on this page. <button className="button" onClick={() => go({ ...q, page: last })}>Go to page {last}</button>

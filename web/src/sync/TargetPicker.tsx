@@ -4,7 +4,7 @@ import "./Sync.css";
 /** TargetPicker is a checkbox per app that takes pushes. */
 export function TargetPicker({ targets, picked, onChange }: { targets: Target[]; picked: number[]; onChange: (ids: number[]) => void }) {
   return (
-    <fieldset className="targets" aria-label="Targets">
+    <fieldset className="targets" aria-label="Apps">
       {targets.map((t) => (
         <label key={t.id}>
           <input

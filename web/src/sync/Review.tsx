@@ -9,23 +9,7 @@ import { useJob } from "../settings/jobUtil";
 import { useLibrary } from "../shell/library";
 import { useToast } from "../shell/Toasts";
 import { Diff, type Choices, type Sides } from "./Diff";
-import {
-  changePath,
-  changesFilter,
-  changesPath,
-  compareItem,
-  optionKey,
-  optionLabel,
-  queueReviews,
-  resolution,
-  resolveItem,
-  siteOf,
-  snapshotOf,
-  findItem,
-  type Comparison,
-  type Item,
-  type Option,
-} from "./sync";
+import { changePath, changesFilter, changesPath, compareItem, optionKey, optionLabel, queueReviews, resolution, resolveItem, siteOf, snapshotOf, findItem, statusLabel, type Comparison, type Item, type Option } from "./sync";
 import "./Sync.css";
 
 /** Review is the diff editor: one app item against a library card, decided hunk by hunk, with the card's world books nested. */
@@ -201,7 +185,7 @@ function ReviewItem() {
       <section aria-label={name}>
         <div className="row">
           <h1>{name}</h1>
-          {item && <span className="muted">{item.verdict}</span>}
+          {item && <span className="muted">{statusLabel[item.verdict]}</span>}
           {at >= 0 && <span className="muted">{`${at + 1} of ${reviews.length}`}</span>}
           {!followed && (
             <span className="row" role="radiogroup" aria-label="Action">
@@ -326,7 +310,7 @@ function NestedLorebook(props: {
   return (
     <section className="nested-item" aria-label={`World book ${lb.name || lb.remote_id}`}>
       <h2>
-        {lb.name || lb.remote_id} <span className="muted">{lb.verdict}</span>
+        {lb.name || lb.remote_id} <span className="muted">{statusLabel[lb.verdict]}</span>
       </h2>
       {lb.error && <p className="error">{lb.error}</p>}
       {!!lb.options?.length && (

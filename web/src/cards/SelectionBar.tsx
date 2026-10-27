@@ -210,7 +210,7 @@ export function SelectionBar(props: {
                 })}
               </>
             ) : (
-              <span>No target can take pushes. Add one in Settings.</span>
+              <span>No app can take pushes. Set one up in Settings.</span>
             ))}
           {panel === "archive" && (
             <>

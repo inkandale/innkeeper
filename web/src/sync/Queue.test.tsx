@@ -79,7 +79,7 @@ test("is a record: no checkboxes or Apply, and a note pointing at Changes", asyn
 
 test("verdict chips filter the rows", async () => {
   renderQueue();
-  await userEvent.click(await screen.findByRole("button", { name: "new 2" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Not in the library 2" }));
   expect(screen.queryByRole("link", { name: "World" })).not.toBeInTheDocument();
   // Ann stays: her nested world book is new.
   expect(screen.getByRole("link", { name: "Ann" })).toBeInTheDocument();
@@ -109,7 +109,7 @@ test("with nothing left to review, shows a summary instead of the table", async 
   renderQueue();
   expect(await screen.findByText("Nothing to review. 2 imported, 1 linked")).toBeInTheDocument();
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
-  expect(screen.queryByRole("group", { name: "Verdicts" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("group", { name: "Filter by status" })).not.toBeInTheDocument();
 });
 
 test("a drifted bound item, or one with an error, is still left to review", async () => {
@@ -154,7 +154,7 @@ test("auto rows are labelled", async () => {
     totals: { new: 1, likely: 1, auto_imported: 1 },
   });
   renderQueue();
-  expect(await screen.findByText("imported (auto)")).toBeInTheDocument();
+  expect(await screen.findByText("Imported automatically")).toBeInTheDocument();
 });
 
 test("the auto_imported chip shows the auto-imported rows, with the same label on world books", async () => {
@@ -166,8 +166,8 @@ test("the auto_imported chip shows the auto-imported rows, with the same label o
     totals: { new: 1, likely: 1, auto_imported: 1 },
   });
   renderQueue();
-  await userEvent.click(await screen.findByRole("button", { name: "imported (auto) 1" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Imported automatically 1" }));
   expect(screen.getByRole("link", { name: "Ann" })).toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "Bo" })).not.toBeInTheDocument();
-  expect(screen.getAllByText("imported (auto)")).toHaveLength(2);
+  expect(screen.getAllByText("Imported automatically")).toHaveLength(2);
 });

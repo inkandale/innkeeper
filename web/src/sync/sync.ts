@@ -19,6 +19,17 @@ export type Candidate = {
   conflicts: number;
   bound_to?: string;
 };
+/** statusLabel is a sync verdict, or an auto-applied one, in the owner's words. */
+export const statusLabel: Record<string, string> = {
+  bound: "Linked",
+  exact: "Same as a library card",
+  likely: "Probably a library card",
+  new: "Not in the library",
+  error: "Couldn't read",
+  auto_bound: "Linked automatically",
+  auto_imported: "Imported automatically",
+};
+
 export type Item = {
   remote_id: string;
   name: string;

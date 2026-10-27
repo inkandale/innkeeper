@@ -2,11 +2,10 @@ import { Fragment, useState } from "react";
 import { Link, useParams } from "react-router";
 import { finished, progressText, useJob } from "../settings/jobUtil";
 import { count } from "../shell/count";
-import { optionLabel, reviewPath, rowKey, rows, snapshotOf, type Candidate, type Item } from "./sync";
+import { optionLabel, reviewPath, rowKey, rows, snapshotOf, statusLabel, type Candidate, type Item } from "./sync";
 import "./Sync.css";
 
-const chipLabel: Record<string, string> = { auto_bound: "linked (auto)", auto_imported: "imported (auto)" };
-const verdictLabel = (i: Item) => (i.auto_bound ? "linked (auto)" : i.auto_imported ? "imported (auto)" : i.verdict);
+const verdictLabel = (i: Item) => statusLabel[i.auto_bound ? "auto_bound" : i.auto_imported ? "auto_imported" : i.verdict];
 
 /** reasons lists the signals a candidate matched on, with their distances. */
 const reasons = (c: Candidate) =>
@@ -73,10 +72,10 @@ export function Queue() {
         </>
       ) : (
         <>
-          <p className="chips" role="group" aria-label="Verdicts">
+          <p className="chips" role="group" aria-label="Filter by status">
             {Object.entries(snap.totals ?? {}).map(([v, n]) => (
               <button key={v} className="chip" aria-pressed={verdict === v} onClick={() => setVerdict(verdict === v ? undefined : v)}>
-                {chipLabel[v] ?? v} {n}
+                {statusLabel[v] ?? v} {n}
               </button>
             ))}
           </p>
@@ -85,9 +84,9 @@ export function Queue() {
             <thead>
               <tr>
                 <th>App item</th>
-                <th>Library match</th>
-                <th>Verdict</th>
-                <th>Suggested</th>
+                <th>Closest library card</th>
+                <th>Status</th>
+                <th>Suggestion</th>
               </tr>
             </thead>
             <tbody>

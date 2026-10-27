@@ -30,7 +30,7 @@ type FacetLists = components["schemas"]["Facets"];
 /** approx marks a count from a sample of the matches. */
 type Row = { value: string; label: string; cards: number; dot?: string; approx?: boolean };
 
-const titles: Record<Exclude<TermKind, "value">, string> = { target: "Target", state: "State", tag: "Tags", source: "Sources", collection: "Collections", score: "Scores" };
+const titles: Record<Exclude<TermKind, "value">, string> = { target: "App", state: "State", tag: "Tags", source: "Sources", collection: "Collections", score: "Scores" };
 
 type EnrichmentKey = components["schemas"]["EnrichmentKey"];
 type Enricher = components["schemas"]["EnrichmentInstance"];

@@ -80,14 +80,10 @@ export function Name({ data, edit, lock }: IdentityProps) {
 export function Identity({ data, edit, lock }: IdentityProps) {
   const locked = (key: string) => !!lock?.(key);
   const field = (key: string, label: string) => (
-    <input
-      className="input"
-      aria-label={label}
-      placeholder={label}
-      value={text(data[key])}
-      disabled={locked(key)}
-      onChange={(e) => edit(key, e.target.value)}
-    />
+    <label className="aside-field">
+      <span>{label}</span>
+      <input className="input" value={text(data[key])} disabled={locked(key)} onChange={(e) => edit(key, e.target.value)} />
+    </label>
   );
   return (
     <>
@@ -175,8 +171,11 @@ export function Push({ kind, id, dirty }: { kind: Kind; id: number; dirty: boole
   const [picked, setPicked] = useState<number[]>();
   const [previewing, setPreviewing] = useState(false);
   const targets = useInstancesWith("push");
+  const bindings = useQuery(bindingsQuery(kind, id));
   if (!targets.length) return null;
-  const chosen = targets.filter((t) => (picked ?? [targets[0]!.id]).includes(t.id));
+  // Pushing to an app without a copy makes a new character there, so that's picked on purpose, not by default.
+  const holding = (bindings.data ?? []).filter((b) => b.push).map((b) => b.instance_id);
+  const chosen = targets.filter((t) => (picked ?? holding).includes(t.id));
   return (
     <div className="row">
       <TargetPicker targets={targets} picked={chosen.map((t) => t.id)} onChange={setPicked} />

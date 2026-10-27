@@ -18,6 +18,16 @@
   gap: var(--space);
 }
 
+.aside-field {
+  display: grid;
+  gap: 2px;
+}
+
+.aside-field > span {
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
 .card-aside h2 {
   font-size: 0.85em;
   text-transform: uppercase;

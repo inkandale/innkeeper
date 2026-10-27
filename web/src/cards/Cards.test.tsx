@@ -366,7 +366,7 @@ test("push offers only targets that push", async () => {
   const user = userEvent.setup();
   await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
   await user.click(screen.getByRole("button", { name: "Push" }));
-  const targets = await screen.findByRole("group", { name: "Apps" });
+  const targets = await screen.findByRole("group", { name: "Push to" });
   expect(within(targets).getAllByRole("checkbox").map((c) => c.closest("label")!.textContent!.trim())).toEqual(["Lumiverse"]);
   expect(await screen.findByText("1 not pushed")).toBeInTheDocument();
   expect(previews).toEqual([{ instance_id: 2, query: { library: 1, filter: { ids: [8] } } }]);
@@ -383,7 +383,7 @@ test("export offers PNG only when a codec instance writes it", async () => {
   await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
   // Push's target list waits for plugins and instances, so both have loaded.
   await user.click(screen.getByRole("button", { name: "Push" }));
-  await screen.findByRole("group", { name: "Apps" });
+  await screen.findByRole("group", { name: "Push to" });
   await user.click(screen.getByRole("button", { name: "Export" }));
   const format = screen.getByRole("combobox", { name: "Format" });
   expect(Array.from((format as HTMLSelectElement).options).map((o) => o.text)).toEqual(["JSON"]);

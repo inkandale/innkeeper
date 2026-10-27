@@ -44,8 +44,11 @@ let patches: { path: string; body: unknown }[];
 let pngCodec: boolean;
 // Whether the URL import plugin, which follows sources, is installed.
 let followerPlugin: boolean;
+// Whether Lumiverse holds a copy of the card.
+let inLumiverse: boolean;
 beforeEach(() => {
   followerPlugin = true;
+  inLumiverse = true;
   followed = [];
   sent = [];
   dismissFails = undefined;
@@ -136,7 +139,8 @@ beforeEach(() => {
         return json(head);
       }
       if (path === "/api/cards/7/revisions") return json([head.revision]);
-      if (path === "/api/cards/7/bindings") return json([{ ...lumiverse, status: bindingStatus, remote_state: appRemoteState }, ...followed]);
+      if (path === "/api/cards/7/bindings")
+        return json([...(inLumiverse ? [{ ...lumiverse, status: bindingStatus, remote_state: appRemoteState }] : []), ...followed]);
       if (path === "/api/cards/7/push") {
         pushPosts++;
         return json({ id: 9, kind: "target.push", status: "queued" }, 202);
@@ -445,7 +449,7 @@ test("an upload saves a revision named Replace image", async () => {
 test("Export PNG hides when no codec instance writes PNG", async () => {
   renderAt("/cards/7");
   // The target picker needs plugins and instances, so both have loaded.
-  await screen.findByRole("group", { name: "Apps" });
+  await screen.findByRole("group", { name: "Push to" });
   expect(screen.queryByRole("link", { name: "Export PNG" })).not.toBeInTheDocument();
 });
 
@@ -503,6 +507,20 @@ test("the autosync box turns autosync on for that app", async () => {
   expect(box).not.toBeChecked();
   await userEvent.click(box);
   await waitFor(() => expect(patches).toEqual([{ path: "/api/bindings/1", body: { autosync: true } }]));
+});
+
+test("Push starts with the apps that hold a copy of the card", async () => {
+  renderAt("/cards/7");
+  const apps = await screen.findByRole("group", { name: "Push to" });
+  await waitFor(() => expect(within(apps).getByRole("checkbox", { name: "Lumiverse" })).toBeChecked());
+});
+
+test("Push starts with no app picked when no app holds the card", async () => {
+  inLumiverse = false;
+  renderAt("/cards/7");
+  const apps = await screen.findByRole("group", { name: "Push to" });
+  expect(within(apps).getByRole("checkbox", { name: "Lumiverse" })).not.toBeChecked();
+  expect(screen.getByRole("button", { name: "Push" })).toBeDisabled();
 });
 
 test("Push previews before pushing", async () => {

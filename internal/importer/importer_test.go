@@ -16,6 +16,7 @@ import (
 
 	"github.com/inkandale/innkeeper/internal/blobstore"
 	"github.com/inkandale/innkeeper/internal/bulk"
+	"github.com/inkandale/innkeeper/internal/enrich"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
@@ -311,5 +312,63 @@ func TestImportQueuesNoHideWithDuplicatesOff(t *testing.T) {
 	e.run(t, `{"cards": 2}`)
 	if got := e.hideJobs(t); len(got) != 0 {
 		t.Fatalf("hide jobs = %+v, want none", got)
+	}
+}
+
+// enrichJobs are the queued enrich jobs' instances and payloads.
+func (e *env) enrichJobs(t *testing.T) (instances []int64, payloads []enrich.Payload) {
+	t.Helper()
+	rows, err := e.pool.Query(context.Background(), `SELECT instance_id, payload FROM job WHERE kind = $1 ORDER BY id`, enrich.Kind)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var inst int64
+		var raw json.RawMessage
+		var p enrich.Payload
+		if err := rows.Scan(&inst, &raw); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(raw, &p); err != nil {
+			t.Fatal(err)
+		}
+		instances, payloads = append(instances, inst), append(payloads, p)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return instances, payloads
+}
+
+func TestImportQueuesEnrichForPluginThatScoresOnImport(t *testing.T) {
+	e := setupCaps(t, []string{protocol.CapabilityImport, protocol.CapabilityEnrich}, "-mode=enrich-on-import")
+	e.run(t, `{"cards": 3}`)
+	var cards []int64
+	rows, err := e.pool.Query(context.Background(), `SELECT id FROM card ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cards, err = pgx.CollectRows(rows, pgx.RowTo[int64]); err != nil {
+		t.Fatal(err)
+	}
+	insts, payloads := e.enrichJobs(t)
+	want := []enrich.Payload{{CardIDs: cards}}
+	if !reflect.DeepEqual(insts, []int64{e.inst}) || !reflect.DeepEqual(payloads, want) {
+		t.Fatalf("enrich jobs on %v = %+v, want one on %d with %+v", insts, payloads, e.inst, want)
+	}
+
+	// Importing the same cards again changes none, so nothing more is queued.
+	e.run(t, `{"cards": 3}`)
+	if _, payloads := e.enrichJobs(t); len(payloads) != 1 {
+		t.Fatalf("re-import queued enrich jobs %+v", payloads)
+	}
+}
+
+func TestImportQueuesNoEnrichForPluginWithoutEnrichOnImport(t *testing.T) {
+	e := setupCaps(t, []string{protocol.CapabilityImport, protocol.CapabilityEnrich})
+	e.run(t, `{"cards": 3}`)
+	if _, payloads := e.enrichJobs(t); len(payloads) != 0 {
+		t.Fatalf("enrich jobs = %+v, want none", payloads)
 	}
 }

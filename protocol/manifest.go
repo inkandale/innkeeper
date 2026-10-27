@@ -89,6 +89,10 @@ type Manifest struct {
 	// or 0 for the core's default. A plugin whose calls cost nothing can raise it.
 	EnrichMaxCards int `toml:"enrich_max_cards"`
 
+	// EnrichOnImport makes the core score each import's new and revised cards
+	// with the plugin's enabled instances. Only a plugin whose calls cost nothing should set it.
+	EnrichOnImport bool `toml:"enrich_on_import"`
+
 	// SourceKinds are the site source kinds a pull-only plugin follows: the
 	// core binds each such source to its instance as remote_id kind:ref.
 	SourceKinds []string `toml:"source_kinds"`
@@ -354,6 +358,7 @@ var capabilityKeys = []struct {
 	{CapabilityTheme, "stylesheet", true, false, func(m *Manifest) bool { return m.Stylesheet != "" }},
 	{CapabilityEnrich, "enrichments", false, true, func(m *Manifest) bool { return len(m.Enrichments) > 0 }},
 	{CapabilityEnrich, "enrich_max_cards", true, false, func(m *Manifest) bool { return m.EnrichMaxCards != 0 }},
+	{CapabilityEnrich, "enrich_on_import", true, false, func(m *Manifest) bool { return m.EnrichOnImport }},
 	{CapabilityCodec, "formats", true, true, func(m *Manifest) bool { return len(m.Formats) > 0 }},
 	{CapabilityImport, "bulk", true, false, func(m *Manifest) bool { return m.Bulk }},
 	{CapabilityImport, "inputs", true, false, func(m *Manifest) bool { return len(m.Inputs) > 0 }},

@@ -559,6 +559,7 @@ func TestManifestCapabilityKeys(t *testing.T) {
 		{"stylesheet without theme", []string{"push"}, func(m *Manifest) { m.Stylesheet = "a.css" }, "stylesheet needs the theme capability"},
 		{"enrich without enrichments", []string{"enrich"}, func(*Manifest) {}, "an enrich plugin must declare enrichments"},
 		{"enrich_max_cards without enrich", []string{"push"}, func(m *Manifest) { m.EnrichMaxCards = 5 }, "enrich_max_cards needs the enrich capability"},
+		{"enrich_on_import without enrich", []string{"push"}, func(m *Manifest) { m.EnrichOnImport = true }, "enrich_on_import needs the enrich capability"},
 		{"codec without formats", []string{"codec"}, func(*Manifest) {}, "a codec plugin must declare formats"},
 		{"formats without codec", []string{"push"}, func(m *Manifest) { m.Formats = []string{"png"} }, "formats needs the codec capability"},
 		{"bulk without import", []string{"push"}, func(m *Manifest) { m.Bulk = true }, "bulk needs the import capability"},

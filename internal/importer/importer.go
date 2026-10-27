@@ -48,7 +48,8 @@ type Importer struct {
 	plugins.JobRunner
 	Lib *library.Library
 	// Queue gets a DetectKind job after each import, and a hide job after
-	// one that changed cards in a library that hides duplicates.
+	// one that changed cards in a library that hides duplicates, and enrich
+	// jobs for the changed cards.
 	Queue *jobs.Queue
 	// Targets applies an import's waiting updates whose binding has autosync on.
 	Targets *targets.Service
@@ -96,6 +97,8 @@ type session struct {
 	// returns: applying one waits for a running sync, which must not stall
 	// reading the plugin's notifications.
 	autosync []int64
+	// changed are the cards this attempt created or revised, for enrich_on_import plugins to score.
+	changed []int64
 	// decl is the plugin's [enrichments], which values must match.
 	decl map[string]protocol.Enrichment
 
@@ -136,12 +139,19 @@ func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
 		EnqueueDetect(ctx, im.Queue, im.Log)
 	}
 	embed.Enqueue(ctx, im.Queue, im.Log)
+	settings := libsettings.New(im.Lib, im.Registry)
+	// Even when this attempt failed: a retry counts the cards it stored as skipped, so it won't queue them.
+	if len(s.changed) > 0 {
+		if err := settings.EnqueueEnrichOnImport(ctx, im.Queue, s.changed); err != nil {
+			r.Log("warn", fmt.Sprintf("new cards weren't queued for scoring: %v", err))
+		}
+	}
 	if serr := s.failure(); serr != nil {
 		return serr
 	}
 	if err == nil && r.Cards() > 0 {
 		// Hiding never fails an import, so a failure only goes to the job's log.
-		if err := libsettings.New(im.Lib, im.Registry).EnqueueHide(ctx, im.Queue, s.library); err != nil {
+		if err := settings.EnqueueHide(ctx, im.Queue, s.library); err != nil {
 			r.Log("warn", fmt.Sprintf("duplicates weren't hidden: %v", err))
 		}
 	}
@@ -264,6 +274,7 @@ func (s *session) store(item string, it library.PluginItem, warnings ...string) 
 	s.count(item, got, err)
 	if cardChanged(it, got, err) {
 		s.run.AddCardsChanged(1)
+		s.changed = append(s.changed, got.ID)
 	}
 	s.autosync = append(s.autosync, got.Autosync...)
 }
@@ -281,33 +292,33 @@ func (s *session) flush(cp json.RawMessage) {
 	before := s.p
 	before.Errors, before.Warnings = slices.Clone(s.p.Errors), slices.Clone(s.p.Warnings)
 	s.mu.Unlock()
-	var auto []int64
-	cards := 0
+	var auto, changed []int64
 	err := s.im.Lib.ImportBatch(s.ctx, items, func(tx pgx.Tx, got []library.Imported, errs []error) error {
 		for i, b := range buf {
 			s.warn(b.name, b.warnings)
 			err := invalid(errs[i])
 			s.count(b.name, got[i], err)
 			if cardChanged(b.it, got[i], err) {
-				cards++
+				changed = append(changed, got[i].ID)
 			}
 			auto = append(auto, got[i].Autosync...)
 		}
 		s.publish()
 		// Added before the checkpoint so both commit together; undone below on rollback.
-		s.run.AddCardsChanged(cards)
+		s.run.AddCardsChanged(len(changed))
 		return s.run.SaveCheckpointTx(s.ctx, tx, cp)
 	})
 	if err != nil {
 		s.mu.Lock()
 		s.p = before
 		s.mu.Unlock()
-		s.run.AddCardsChanged(-cards)
+		s.run.AddCardsChanged(-len(changed))
 		s.publish()
 		s.fail(retryable(err))
 		return
 	}
 	s.autosync = append(s.autosync, auto...)
+	s.changed = append(s.changed, changed...)
 }
 
 // applyAutosync applies each waiting update the import left on a binding

@@ -1,6 +1,7 @@
 // Package libsettings reads the settings a library can override: the
 // library's own value, else the core's. It also turns a library's hide
-// settings into a hide job's payload.
+// settings into a hide job's payload, and queues the enrich jobs an import's
+// new cards start.
 package libsettings
 
 import (
@@ -12,6 +13,7 @@ import (
 	"slices"
 
 	"github.com/inkandale/innkeeper/internal/bulk"
+	"github.com/inkandale/innkeeper/internal/enrich"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/plugins"
@@ -188,4 +190,29 @@ func (s *Settings) EnqueueHide(ctx context.Context, q *jobs.Queue, lib int64) er
 	}
 	_, err = q.EnqueueUnlessQueued(ctx, jobs.Spec{Kind: bulk.HideKind, Payload: p})
 	return err
+}
+
+// EnqueueEnrichOnImport queues one enrich job for cardIDs, which an import
+// just created or revised, on each enabled instance whose plugin sets
+// enrich_on_import. A job takes at most enrich.MaxCards of them.
+func (s *Settings) EnqueueEnrichOnImport(ctx context.Context, q *jobs.Queue, cardIDs []int64) error {
+	ctx = context.WithoutCancel(ctx)
+	insts, err := s.Enrichers(ctx)
+	if err != nil {
+		return err
+	}
+	ids := slices.Compact(slices.Sorted(slices.Values(cardIDs)))
+	manifests := s.reg.Manifests()
+	var errs []error
+	for _, inst := range insts {
+		m := manifests[inst.Plugin]
+		if !m.EnrichOnImport {
+			continue
+		}
+		p := enrich.Payload{CardIDs: ids[:min(len(ids), enrich.MaxCards(m))]}
+		if _, err := q.Enqueue(ctx, jobs.Spec{Kind: enrich.Kind, InstanceID: &inst.ID, Payload: p}); err != nil {
+			errs = append(errs, fmt.Errorf("queue enrich on instance %d: %w", inst.ID, err))
+		}
+	}
+	return errors.Join(errs...)
 }

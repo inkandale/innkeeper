@@ -9,6 +9,9 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
+// The API names a plugin with no manifest title by its name.
+const titled = <P extends { name: string }>(plugins: P[]) => plugins.map((p) => ({ title: p.name, ...p }));
+
 const now = new Date().toISOString();
 const inst = (id: number, plugin: string, name: string, broken?: string, status?: string) => ({
   id, plugin, name, label: name, config: {}, secrets: [], created_at: now, updated_at: now,
@@ -28,7 +31,7 @@ beforeEach(() => {
       requests.push(`${req.method} ${u.pathname}`);
       bodies.push(await req.clone().text());
       if (u.pathname === "/api/plugins")
-        return json([
+        return json(titled([
           { name: "dusk", version: "1.0.0", capabilities: ["theme"], secrets: [], source: "builtin", builtin: true,
             multiple_instances: false, status: "ready" },
           {
@@ -49,7 +52,7 @@ beforeEach(() => {
             category: "Import", multiple_instances: false, status: "ready" },
           { name: "pnglike", version: "0.4.0", capabilities: ["codec"], secrets: [], source: "builtin", builtin: true,
             category: "Formats", multiple_instances: false, status: "ready" },
-        ]);
+        ]));
       if (u.pathname === "/api/plugin-sources") return json([{ id: "official", url: "https://example.com/index.toml" }]);
       if (u.pathname === "/api/plugin-catalog")
         return json([

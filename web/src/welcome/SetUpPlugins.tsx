@@ -110,7 +110,7 @@ function PluginStep({ plugin, done, next }: { plugin: Plugin; done: InstanceInfo
   if (done.length > 0) {
     return (
       <div className="panel">
-        <h2>{plugin.name}</h2>
+        <h2>{plugin.title}</h2>
         {done.map((i) => (
           <p key={i.id}>✓ {i.label}</p>
         ))}
@@ -123,7 +123,7 @@ function PluginStep({ plugin, done, next }: { plugin: Plugin; done: InstanceInfo
   if (bare) {
     return (
       <div className="panel">
-        <h2>{plugin.name}</h2>
+        <h2>{plugin.title}</h2>
         {create.error ? <p className="error">{create.error.message}</p> : <p className="muted">Setting up…</p>}
         {create.error && (
           <Link className="button" to={next}>

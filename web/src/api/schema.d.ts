@@ -2974,6 +2974,7 @@ export interface components {
             protocol: number;
             recommended?: boolean;
             released?: string;
+            title?: string;
             version: string;
             versions: string[] | null;
         };
@@ -4041,6 +4042,8 @@ export interface components {
              * @enum {string}
              */
             status: "ready" | "needs_setup" | "broken" | "disabled";
+            /** @description The name to show: the manifest's title, or name without one */
+            title: string;
             version: string;
         };
         PluginSkill: {

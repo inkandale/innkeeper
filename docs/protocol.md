@@ -109,6 +109,7 @@ Each plugin folder has a `plugin.toml`:
 | `records` | only for `records` | The record types the plugin keeps; see [`records`](#records). A `records` plugin must declare at least one |
 | `database` | no | `true` gives the plugin its own PostgreSQL schema, `plugin_<name>` with `-` as `_`, and a login role limited to it |
 | `multiple_instances` | no | `true` lets the owner create more than one instance, such as one per app server. Without it, the plugin has at most one, and the core creates it when the plugin needs no secrets and no required config, except for an `auth` plugin, which always allows many. A theme can't set it |
+| `title` | no | The name the UI shows, such as `SillyTavern`, and an unnamed instance's label. Without one, the UI shows `name` |
 | `description` | no | One line saying what the plugin does, shown on the Plugins page |
 | `category` | no | The group the Plugins page shows the plugin under, such as `Apps`. Without one, it shows under Other |
 | `uses` | no | Service methods the plugin calls on other instances, each listed once, such as `["ai.chat"]`; see [`ai`](#ai) |
@@ -1293,6 +1294,7 @@ categories = ["Apps", "Import", "Login"]
 
 [[plugin]]
 name = "lumiverse"
+title = "Lumiverse"
 version = "0.2.0"
 protocol = 1
 capabilities = ["push", "pull"]
@@ -1311,8 +1313,10 @@ sha256 = "<hex sha256 of the tarball>"
   newest.
 - `category` groups a plugin in the setup wizard. `categories` is the order
   the wizard shows them in; unlisted ones follow alphabetically.
-- `recommended = true` marks a plugin the Plugins page suggests. Innkeeper
-  shows the mark only for the `official` source.
+- `title` is the name the setup wizard shows, as in the manifest.
+- `recommended = true` marks a plugin the Plugins page suggests, and the setup
+  wizard starts with it chosen. Innkeeper does both only for the `official`
+  source.
 - `os` and `arch` use Go's names, such as `linux` and `arm64`.
 - `url` may be relative to the index. An `https://` index must point at
   `https://` tarballs, and a `file://` index at local files.

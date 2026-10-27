@@ -71,13 +71,13 @@ export function ChoosePlugins() {
                   <span>
                     <input
                       type="checkbox"
-                      aria-label={p.name}
+                      aria-label={p.title || p.name}
                       aria-describedby={errors[p.name] ? errorId : undefined}
                       checked={have || chosen.has(p.name)}
                       disabled={have || locked}
                       onChange={() => toggle(p.name)}
                     />{" "}
-                    {p.name}
+                    {p.title || p.name}
                     {have && <span className="badge">installed</span>}
                   </span>
                 </div>

@@ -559,6 +559,9 @@ func (r *Registry) scanInfo(row pgx.Row) (InstanceInfo, error) {
 		return i, err
 	}
 	i.Label = i.Plugin
+	if m, ok := r.manifest(i.Plugin); ok {
+		i.Label = m.DisplayName()
+	}
 	if i.Name != nil {
 		i.Label = *i.Name
 	}

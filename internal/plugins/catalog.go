@@ -31,6 +31,7 @@ type Entry struct {
 	Version      string   `toml:"version" json:"version"`
 	Protocol     int      `toml:"protocol" json:"protocol"`
 	Capabilities []string `toml:"capabilities" json:"capabilities"`
+	Title        string   `toml:"title" json:"title,omitempty"`
 	Description  string   `toml:"description" json:"description"`
 	// Category groups the plugin in the setup wizard, such as "Apps".
 	Category string `toml:"category" json:"category,omitempty"`

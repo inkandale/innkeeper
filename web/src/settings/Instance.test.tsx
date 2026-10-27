@@ -10,6 +10,9 @@ function json(body: unknown) {
   return new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
 }
 
+// The API names a plugin with no manifest title by its name.
+const titled = <P extends { name: string }>(plugins: P[]) => plugins.map((p) => ({ title: p.name, ...p }));
+
 const now = new Date().toISOString();
 const st = {
   name: "sillytavern", version: "0.1.0", capabilities: ["push", "pull"], secrets: ["password"],
@@ -74,7 +77,7 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (req: Request) => {
       const u = new URL(req.url);
-      if (u.pathname === "/api/plugins") return json([login, st, ai, conf, required]);
+      if (u.pathname === "/api/plugins") return json(titled([login, st, ai, conf, required]));
       if (req.method === "GET" && u.pathname === "/api/instances") return json(instances);
       if (req.method === "GET" && u.pathname === "/api/libraries") return json(libraries);
       if (req.method === "GET" && u.pathname === "/api/instances/3") return json(broken);
@@ -136,7 +139,7 @@ test("creates an instance from the schema form and opens its page", async () => 
   await user.type(screen.getByLabelText("Server URL"), "http://st");
   await user.selectOptions(screen.getByLabelText("Login"), "basic");
   expect(screen.getByText("Not set.")).toBeInTheDocument();
-  await user.type(screen.getByLabelText("password"), "pw");
+  await user.type(screen.getByLabelText("Password"), "pw");
   await user.click(screen.getByRole("button", { name: "Save" }));
   await vi.waitFor(() => expect(router.state.location.pathname).toBe("/settings/instances/9"));
   expect(sent).toEqual([
@@ -254,7 +257,7 @@ test("InstanceForm calls onSaved instead of going to Settings", async () => {
   const user = userEvent.setup();
   const onSaved = vi.fn();
   const router = createMemoryRouter(
-    [{ path: "/", element: <InstanceForm plugin={{ ...st, source: "official", builtin: false } satisfies Plugin} onSaved={onSaved} cancelTo="/welcome" /> }],
+    [{ path: "/", element: <InstanceForm plugin={{ ...st, title: "SillyTavern", source: "official", builtin: false } satisfies Plugin} onSaved={onSaved} cancelTo="/welcome" /> }],
     { initialEntries: ["/"] },
   );
   render(
@@ -380,7 +383,7 @@ test("saving an override sends the default it replaced", async () => {
 test("a settings button runs against the draft and shows each check", async () => {
   const user = userEvent.setup();
   renderAt("/settings/instances/6");
-  await user.type(await screen.findByLabelText("api_key"), "nope");
+  await user.type(await screen.findByLabelText("API key"), "nope");
   await user.click(screen.getByRole("button", { name: "Test connection" }));
   expect((await screen.findByText("The key was refused.")).closest('[role="status"]')).toHaveTextContent("12 ms");
   expect(screen.getByText(/chat/)).toHaveTextContent("12 ms");
@@ -421,7 +424,7 @@ test("saving refetches the defaults, so a saved override's update mark is curren
   const user = userEvent.setup();
   const onSaved = vi.fn();
   const router = createMemoryRouter(
-    [{ path: "/", element: <InstanceForm plugin={{ ...conf, source: "official", builtin: false } satisfies Plugin} instance={{ ...confInst, library_access: false }} onSaved={onSaved} /> }],
+    [{ path: "/", element: <InstanceForm plugin={{ ...conf, title: "conf", source: "official", builtin: false } satisfies Plugin} instance={{ ...confInst, library_access: false }} onSaved={onSaved} /> }],
     { initialEntries: ["/"] },
   );
   render(

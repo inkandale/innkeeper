@@ -910,6 +910,9 @@
           "released": {
             "type": "string"
           },
+          "title": {
+            "type": "string"
+          },
           "version": {
             "type": "string"
           },
@@ -3707,12 +3710,17 @@
             ],
             "type": "string"
           },
+          "title": {
+            "description": "The name to show: the manifest's title, or name without one",
+            "type": "string"
+          },
           "version": {
             "type": "string"
           }
         },
         "required": [
           "name",
+          "title",
           "version",
           "multiple_instances",
           "status",

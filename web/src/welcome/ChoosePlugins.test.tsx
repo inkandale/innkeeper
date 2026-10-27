@@ -15,7 +15,7 @@ const offer = (name: string, category: string, recommended = false) => ({
 
 let installs: { path: string; body: unknown }[];
 let installStatus: number;
-let offers: ReturnType<typeof offer>[];
+let offers: (ReturnType<typeof offer> & { title?: string })[];
 let pluginsHang: boolean;
 beforeEach(() => {
   installs = [];
@@ -100,6 +100,12 @@ test("recommended plugins start chosen, and the rest wait under More plugins", a
   await user.click(screen.getByRole("button", { name: "Install and continue" }));
   expect(await screen.findByText("setup step")).toBeInTheDocument();
   expect(installs.map((i) => i.path)).toEqual(["/api/plugins/lumiverse/install"]);
+});
+
+test("offers show the plugin's title", async () => {
+  offers = [{ ...offer("sillytavern", "Apps"), title: "SillyTavern" }];
+  renderStep();
+  expect(await screen.findByRole("checkbox", { name: "SillyTavern" })).toBeInTheDocument();
 });
 
 test("a failed install shows its error and stays on the step", async () => {

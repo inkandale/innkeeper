@@ -142,7 +142,7 @@ export function Plugins() {
       <article key={p.name} className="plugin">
         <header>
           <div className="about">
-            <h3>{p.name}</h3>{" "}
+            <h3>{p.title}</h3>{" "}
             <span className="muted">{p.source === "builtin" ? `${p.version} · built in` : `${p.source}/${p.version}`}</span>
             {p.description && <p className="muted">{p.description}</p>}
           </div>

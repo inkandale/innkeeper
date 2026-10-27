@@ -257,7 +257,7 @@ export function InstanceForm({
         if (panel) setTab(panel.id.replace("panel-", ""));
       }}
     >
-      <h2>{instance ? instance.label : `New ${plugin.name} instance`}</h2>
+      <h2>{instance ? instance.label : `Set up ${plugin.title}`}</h2>
       {instance?.broken_error && (
         <p className="error">
           Broken since {new Date(instance.broken_at ?? instance.updated_at).toLocaleString()}: {instance.broken_error}.
@@ -282,7 +282,7 @@ export function InstanceForm({
               onChange={(e) => setName(e.target.value)}
             />
           </label>
-          {needsName && <p className="muted">Another {plugin.name} instance has no name, so this one needs one.</p>}
+          {needsName && <p className="muted">Another {plugin.title} instance has no name, so this one needs one.</p>}
         </div>
       )}
       <FormContext.Provider value={helpers}>
@@ -318,7 +318,7 @@ export function InstanceForm({
             return (
               <div className="form-field" key={s}>
                 <label>
-                  <span>{s}</span>
+                  <span>{secretLabel(s)}</span>
                   <input
                     className="input"
                     type="password"
@@ -443,4 +443,11 @@ export function InstanceForm({
       </div>
     </form>
   );
+}
+
+/** secretLabel turns a manifest's snake_case secret name into a label: api_key reads "API key". */
+export function secretLabel(name: string): string {
+  const words = name.split("_").map((w) => (["api", "id", "url"].includes(w) ? w.toUpperCase() : w));
+  const first = words[0] ?? "";
+  return [first.charAt(0).toUpperCase() + first.slice(1), ...words.slice(1)].join(" ");
 }

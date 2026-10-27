@@ -32,7 +32,7 @@ export function Welcome() {
         <NavLink to="/welcome/setup">Set up plugins</NavLink>
         {chosen.map((p) => (
           <NavLink key={p.name} className="sub" to={`/welcome/setup/${encodeURIComponent(p.name)}`}>
-            {p.name}
+            {p.title}
           </NavLink>
         ))}
         <NavLink to="/welcome/cards">Bring in cards</NavLink>

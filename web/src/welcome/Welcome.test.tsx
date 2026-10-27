@@ -8,6 +8,9 @@ function json(body: unknown) {
   return new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
 }
 
+// The API names a plugin with no manifest title by its name.
+const titled = <P extends { name: string }>(plugins: P[]) => plugins.map((p) => ({ title: p.name, ...p }));
+
 let sent: { method: string; path: string; body: unknown }[];
 beforeEach(() => {
   sent = [];
@@ -16,10 +19,10 @@ beforeEach(() => {
     vi.fn(async (req: Request) => {
       const u = new URL(req.url);
       if (u.pathname === "/api/plugins")
-        return json([
+        return json(titled([
           { name: "lumiverse", source: "official", builtin: false, version: "1", capabilities: ["push", "pull"], secrets: [] },
           { name: "card-codec", source: "builtin", builtin: true, version: "1", capabilities: ["codec"], secrets: [] },
-        ]);
+        ]));
       const body = await req.json();
       sent.push({ method: req.method, path: u.pathname, body });
       return json({ theme: "", ...(body as object) });

@@ -10,6 +10,9 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
+// The API names a plugin with no manifest title by its name.
+const titled = <P extends { name: string }>(plugins: P[]) => plugins.map((p) => ({ title: p.name, ...p }));
+
 const plugin = (name: string, capabilities: string[], config?: unknown) => ({
   name, source: "official", version: "0.1.0", capabilities, secrets: [], ...(config ? { config } : {}),
 });
@@ -29,7 +32,7 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (req: Request) => {
       const u = new URL(req.url);
-      if (u.pathname === "/api/plugins") return json(installed);
+      if (u.pathname === "/api/plugins") return json(titled(installed as { name: string }[]));
       if (req.method === "POST" && u.pathname === "/api/instances") {
         const body = (await req.json()) as { plugin: string };
         sent.push({ method: "POST", path: u.pathname, body });

@@ -28,6 +28,7 @@ type EnrichmentOut struct {
 
 type pluginOut struct {
 	Name              string                   `json:"name"`
+	Title             string                   `json:"title" doc:"The name to show: the manifest's title, or name without one"`
 	Version           string                   `json:"version"`
 	Description       string                   `json:"description,omitempty"`
 	Category          string                   `json:"category,omitempty" doc:"The group the Plugins page shows the plugin under"`
@@ -125,7 +126,7 @@ func (s *Server) instanceRoutes(api huma.API) {
 			}
 			out := &pluginsOut{Body: []pluginOut{}}
 			for _, m := range s.Registry.Manifests() {
-				p := pluginOut{Name: m.Name, Version: m.Version, Capabilities: m.Capabilities,
+				p := pluginOut{Name: m.Name, Title: m.DisplayName(), Version: m.Version, Capabilities: m.Capabilities,
 					Secrets: orEmpty(m.Secrets), Formats: m.Formats, Inputs: m.Inputs, Config: m.Config,
 					Source: "builtin", Builtin: s.Registry.IsBuiltin(m.Name),
 					Description: m.Description, Category: m.Category, MultipleInstances: m.AllowsManyInstances(),

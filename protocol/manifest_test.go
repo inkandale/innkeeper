@@ -18,6 +18,7 @@ func writeManifest(t *testing.T, body string) string {
 
 const validManifest = `
 name = "lumiverse"
+title = "Lumiverse"
 version = "0.1.0"
 protocol = 1
 command = ["./lumiverse-plugin", "--quiet"]
@@ -38,7 +39,7 @@ func TestLoadManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Name != "lumiverse" || len(m.Capabilities) != 2 || m.Secrets[0] != "api_key" {
+	if m.Name != "lumiverse" || m.DisplayName() != "Lumiverse" || len(m.Capabilities) != 2 || m.Secrets[0] != "api_key" {
 		t.Fatalf("unexpected manifest: %+v", m)
 	}
 	if got := m.Enrichments["quality"].Range; len(got) != 2 || got[1] != 5 {
@@ -46,6 +47,12 @@ func TestLoadManifest(t *testing.T) {
 	}
 	if got, want := m.CommandPath(), filepath.Join(m.Dir, "lumiverse-plugin"); got != want {
 		t.Fatalf("CommandPath = %q, want %q", got, want)
+	}
+}
+
+func TestDisplayNameFallsBackToName(t *testing.T) {
+	if got := (&Manifest{Name: "card-import"}).DisplayName(); got != "card-import" {
+		t.Fatalf("DisplayName = %q, want card-import", got)
 	}
 }
 

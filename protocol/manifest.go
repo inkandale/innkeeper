@@ -106,6 +106,9 @@ type Manifest struct {
 	// without it, a plugin has at most one.
 	MultipleInstances bool `toml:"multiple_instances"`
 
+	// Title is the name the UI shows, such as "SillyTavern".
+	Title string `toml:"title"`
+
 	// Description is one line saying what the plugin does.
 	Description string `toml:"description"`
 
@@ -124,6 +127,14 @@ type Manifest struct {
 
 	// Dir is the absolute path of the plugin's folder.
 	Dir string `toml:"-"`
+}
+
+// DisplayName is the plugin's Title, or its Name without one.
+func (m *Manifest) DisplayName() string {
+	if m.Title != "" {
+		return m.Title
+	}
+	return m.Name
 }
 
 // Enrichment declares one enrichment key a plugin writes and how the UI

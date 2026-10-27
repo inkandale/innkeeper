@@ -160,6 +160,8 @@ func config() huma.Config {
 		"session": {Type: "apiKey", In: "cookie", Name: sessionCookie},
 	}
 	cfg.Security = []map[string][]string{{"token": {}}, {"session": {}}}
+	// First, so later transformers see the ErrorModel the client gets.
+	cfg.Transformers = append([]huma.Transformer{showPluginReasons}, cfg.Transformers...)
 	return cfg
 }
 
@@ -296,7 +298,49 @@ func (s *Server) Handler() http.Handler {
 
 // fail turns an error into an HTTP error. Unexpected errors are logged and
 // hidden from the client. A nil error stays nil.
-func (s *Server) fail(err error) error { return s.failAs("plugin", err) }
+func (s *Server) fail(err error) error {
+	who := "plugin"
+	if callErr := (*pluginhost.CallError)(nil); errors.As(err, &callErr) {
+		who = callErr.Plugin
+	}
+	return s.failAs(who, err)
+}
+
+// pluginError is a failed plugin call. Its reason can name files on the
+// server, so showPluginReasons serves it only to callers who may configure
+// plugins anyway.
+type pluginError struct {
+	*huma.ErrorModel
+	shown string
+}
+
+// newPluginError says what happened to who; its detail sends the client to
+// the server log, where err is.
+func newPluginError(status int, who, what string, err error) error {
+	reason := err.Error()
+	if rpcErr := (*protocol.Error)(nil); errors.As(err, &rpcErr) {
+		reason = rpcErr.Message
+	}
+	return &pluginError{
+		ErrorModel: &huma.ErrorModel{Status: status, Title: http.StatusText(status), Detail: who + " " + what + "; see the server log"},
+		shown:      who + " " + what + ": " + reason,
+	}
+}
+
+// showPluginReasons is a response transformer: a destructive-tier caller
+// gets a plugin error's reason, and every caller a plain ErrorModel.
+func showPluginReasons(ctx huma.Context, _ string, v any) (any, error) {
+	pe, ok := v.(*pluginError)
+	if !ok {
+		return v, nil
+	}
+	if !callerTier(ctx.Context()).Allows(tier.Destructive) {
+		return pe.ErrorModel, nil
+	}
+	shown := *pe.ErrorModel
+	shown.Detail = pe.shown
+	return &shown, nil
+}
 
 // failAs is fail, naming the plugin who in the message for a failed call.
 func (s *Server) failAs(who string, err error) error {
@@ -334,20 +378,18 @@ func (s *Server) failAs(who string, err error) error {
 		return huma.Error422UnprocessableEntity(err.Error())
 	case errors.Is(err, plugins.ErrSource), errors.Is(err, plugins.ErrBadSource):
 		return huma.Error502BadGateway(err.Error())
-	// A plugin's error text can name files on the server, and read-tier
-	// clients see these, so it goes only to the log.
 	case errors.As(err, &rpcErr) && rpcErr.Code == protocol.CodeInvalidParams:
 		s.Log.Warn("plugin rejected the request", "plugin", who, "err", err)
-		return huma.Error400BadRequest(who + " rejected the request; see the server log")
+		return newPluginError(http.StatusBadRequest, who, "rejected the request", err)
 	case errors.As(err, &rpcErr) && rpcErr.Code == protocol.CodeRemoteNotFound:
 		s.Log.Info("plugin has no such item", "plugin", who, "err", err)
 		return huma.Error404NotFound(who + " has no such item")
 	case errors.As(err, &startErr), errors.Is(err, context.DeadlineExceeded), plugins.Retryable(err):
 		s.Log.Warn("plugin unavailable", "plugin", who, "err", err)
-		return huma.Error503ServiceUnavailable(who + " is unavailable; see the server log")
+		return newPluginError(http.StatusServiceUnavailable, who, "is unavailable", err)
 	case errors.As(err, &rpcErr):
 		s.Log.Error("plugin failed", "plugin", who, "err", err)
-		return huma.Error502BadGateway(who + " failed; see the server log")
+		return newPluginError(http.StatusBadGateway, who, "failed", err)
 	case errors.Is(err, targets.ErrBadReply), errors.Is(err, export.ErrBadCodec):
 		return huma.Error502BadGateway("plugin: " + err.Error())
 	}

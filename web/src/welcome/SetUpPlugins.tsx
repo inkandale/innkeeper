@@ -46,11 +46,13 @@ function PluginStep({ plugin, done, next }: { plugin: Plugin; done: InstanceInfo
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [saved, setSaved] = useState<InstanceInfo>();
+  const [editing, setEditing] = useState(false);
   const check = useMutation({
     mutationFn: async (id: number) => must(await api.GET("/instances/{id}/items", { params: { path: { id } } })),
     meta: { toast: false },
   });
   const afterSave = (inst: InstanceInfo) => {
+    setEditing(false);
     if (!plugin.capabilities?.includes("pull") || !plugin.capabilities.includes("push")) return navigate(next);
     setSaved(inst);
     check.mutate(inst.id);
@@ -74,6 +76,13 @@ function PluginStep({ plugin, done, next }: { plugin: Plugin; done: InstanceInfo
     create.mutate();
   }, [bare, done.length, create]);
 
+  if (saved && editing) {
+    return (
+      <div className="panel">
+        <InstanceForm plugin={plugin} instance={saved} onSaved={afterSave} cancelTo={next} />
+      </div>
+    );
+  }
   if (saved) {
     return (
       <div className="panel">
@@ -93,6 +102,9 @@ function PluginStep({ plugin, done, next }: { plugin: Plugin; done: InstanceInfo
             <div className="toolbar">
               <button className="button" onClick={() => check.mutate(saved.id)}>
                 Retry
+              </button>
+              <button className="button" onClick={() => setEditing(true)}>
+                Edit
               </button>
               <Link className="button" to={next}>
                 Skip

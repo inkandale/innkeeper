@@ -35,6 +35,11 @@ beforeEach(() => {
         sent.push({ method: "POST", path: u.pathname, body });
         return json({ id: 9, config: {}, secrets: [], label: body.plugin, ...body });
       }
+      if (req.method === "PATCH" && u.pathname === "/api/instances/9") {
+        const body = (await req.json()) as { config?: unknown };
+        sent.push({ method: "PATCH", path: u.pathname, body });
+        return json({ id: 9, plugin: "sillytavern", config: body.config, secrets: [], label: "sillytavern" });
+      }
       if (u.pathname === "/api/instances") return json([]);
       if (u.pathname === "/api/instances/9/items") {
         sent.push({ method: "GET", path: u.pathname });
@@ -94,6 +99,22 @@ test("a failed check shows its error and can be retried", async () => {
   expect(screen.getByRole("link", { name: "Skip" })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Retry" }));
   await vi.waitFor(() => expect(sent.filter((s) => s.path === "/api/instances/9/items")).toHaveLength(2));
+});
+
+test("a failed check can fix the saved instance's settings", async () => {
+  installed = [st];
+  itemsStatus = 502;
+  renderAt("/welcome/setup/sillytavern");
+  const user = await saveSillyTavern();
+  await user.click(await screen.findByRole("button", { name: "Edit" }));
+  const url = await screen.findByLabelText("Server URL");
+  expect(url).toHaveValue("http://st");
+  await user.clear(url);
+  await user.type(url, "http://st.lan");
+  itemsStatus = 200;
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  expect(await screen.findByText("✓ Connected")).toBeInTheDocument();
+  expect(sent.find((s) => s.method === "PATCH")?.body).toMatchObject({ config: { url: "http://st.lan" } });
 });
 
 test("a plugin with config properties gets the form", async () => {

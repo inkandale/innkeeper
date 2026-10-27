@@ -226,6 +226,10 @@ Every API token has a tier, and every route needs one:
 `innkeeper token create <name>` makes a `read` token unless you name a tier.
 A token can't create one with a higher tier. A browser login has every tier.
 
+When a plugin call fails, only a `destructive` caller sees the plugin's reason,
+since it can name files on the server. Other tiers see which plugin failed,
+and the reason goes to the server log.
+
 ## MCP
 
 The API serves MCP at `/mcp`, so Claude can search and edit the library,

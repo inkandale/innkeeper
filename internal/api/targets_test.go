@@ -17,6 +17,7 @@ import (
 	"github.com/inkandale/innkeeper/internal/pluginhost"
 	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/internal/targets"
+	"github.com/inkandale/innkeeper/internal/tier"
 	"github.com/inkandale/innkeeper/protocol"
 )
 
@@ -546,5 +547,25 @@ func TestArchiveUnpublishDeletesTheAppCopy(t *testing.T) {
 	e.call("GET", path+"/bindings", nil, 200, &list)
 	if got, _ := e.s.Lib.Cards.Get(context.Background(), c.ID); got.ArchivedAt == nil || len(list) != 0 {
 		t.Fatalf("archived_at = %v, bindings = %+v", got.ArchivedAt, list)
+	}
+}
+
+// The owner setting up an app needs the reason it can't be reached. A
+// plugin's error text can name files on the server, so read-tier callers
+// still get only the plugin's name.
+func TestAppErrorReasonShowsOnlyToDestructiveCallers(t *testing.T) {
+	e := newEnv(t)
+	inst, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "target", Name: new("App"),
+		Config: map[string]any{"dir": t.TempDir(), "fail_list": "retryable"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := fmt.Sprintf("/instances/%d/cards", inst)
+	if r := e.call("GET", path, nil, 503, nil); !strings.Contains(string(r.Body), "target is unavailable: app unavailable") {
+		t.Fatalf("destructive caller: %s", r)
+	}
+	r := e.send("GET", path, nil, "Authorization", "Bearer "+e.tokenWith(tier.Read))
+	if r.Status != 503 || strings.Contains(string(r.Body), "app unavailable") || !strings.Contains(string(r.Body), "target is unavailable") {
+		t.Fatalf("read caller: %s", r)
 	}
 }

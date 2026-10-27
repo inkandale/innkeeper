@@ -55,14 +55,18 @@ func NewManager(core protocol.Handler, idle time.Duration, log *slog.Logger) *Ma
 	return &Manager{core: core, idle: idle, log: log, running: map[string]*entry{}, latest: map[string]int64{}}
 }
 
-// Call sends method to the instance's plugin, starting it if needed.
+// Call sends method to the instance's plugin, starting it if needed. Errors
+// are CallErrors.
 func (m *Manager) Call(ctx context.Context, inst Instance, method string, params, result any) error {
 	e, err := m.acquire(ctx, inst)
-	if err != nil {
-		return err
+	if err == nil {
+		defer m.release(e)
+		err = e.proc.Call(ctx, method, params, result)
 	}
-	defer m.release(e)
-	return e.proc.Call(ctx, method, params, result)
+	if err != nil {
+		return &CallError{Plugin: inst.Manifest.Name, Err: err}
+	}
+	return nil
 }
 
 // Start starts the instance's plugin if it isn't running.
@@ -177,6 +181,16 @@ func (m *Manager) stopWhere(match func(*entry) bool) {
 
 // StartError means the plugin failed to start or failed its handshake.
 type StartError struct{ Err error }
+
+// CallError is a failed call, naming the plugin. Its text is Err's, so
+// stored and logged errors read as before.
+type CallError struct {
+	Plugin string
+	Err    error
+}
+
+func (e *CallError) Error() string { return e.Err.Error() }
+func (e *CallError) Unwrap() error { return e.Err }
 
 func (e *StartError) Error() string { return e.Err.Error() }
 func (e *StartError) Unwrap() error { return e.Err }

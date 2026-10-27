@@ -38,7 +38,7 @@ func TestReconcileLive(t *testing.T) {
 	}
 	ctx := context.Background()
 	pool := liveCopy(t, env["INNKEEPER_LIVE_DATABASE_URL"])
-	manifests, err := plugins.LoadDir(env["INNKEEPER_PLUGINS_DIR"], quiet)
+	manifests, err := plugins.LoadDir(env["INNKEEPER_PLUGINS_DIR"])
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -50,7 +50,7 @@ func TestCapture(t *testing.T) {
 	if dir == "" {
 		t.Fatal("INNKEEPER_PLUGINS_DIR is not set")
 	}
-	manifests, err := plugins.LoadDir(dir, log)
+	manifests, err := plugins.LoadDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}

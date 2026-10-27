@@ -87,7 +87,9 @@ local source: run `docker compose up -d --build`. The image builds its three bui
 `card-codec`, and `url-import`, from `innkeeper-plugins` at the branch or commit in the
 `PLUGINS_REF` build argument, `main` by default. A rebuild reuses its cached
 clone of `main`; pass `--build-arg PLUGINS_REF=<commit>` or build with
-`--no-cache` for newer ones. Install other plugins at runtime; see
+`--no-cache` for newer ones. If a built-in plugin needs a newer core than the
+checkout, Innkeeper won't start and logs which one; update the checkout or
+pass an older `PLUGINS_REF`. Install other plugins at runtime; see
 [Plugins](#plugins).
 
 Compose keeps blobs, installed plugins, and the secrets key in one volume at

@@ -53,9 +53,10 @@ var (
 	ErrSingleton = errors.New("plugin allows one instance and already has it")
 )
 
-// LoadDir loads the manifest in each folder of dir. A folder with an invalid
-// manifest is logged and left out, so one bad plugin doesn't stop the rest.
-func LoadDir(dir string, log *slog.Logger) (map[string]*protocol.Manifest, error) {
+// LoadDir loads the manifest in each folder of dir, the image's built-in
+// plugins. A bad one is an error, not skipped: without password-login a new
+// server can't be claimed.
+func LoadDir(dir string) (map[string]*protocol.Manifest, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
@@ -67,12 +68,10 @@ func LoadDir(dir string, log *slog.Logger) (map[string]*protocol.Manifest, error
 		}
 		m, err := protocol.LoadManifest(filepath.Join(dir, e.Name()))
 		if err != nil {
-			log.Error("skip plugin", "dir", e.Name(), "err", err)
-			continue
+			return nil, fmt.Errorf("built-in plugin %s: %w", e.Name(), err)
 		}
 		if _, dup := out[m.Name]; dup {
-			log.Error("skip plugin: name already loaded", "dir", e.Name(), "plugin", m.Name)
-			continue
+			return nil, fmt.Errorf("built-in plugin %s: another folder is also named %s", e.Name(), m.Name)
 		}
 		out[m.Name] = m
 	}
@@ -189,7 +188,7 @@ func (r *Registry) Sync(ctx context.Context) error {
 	}
 	builtin := map[string]*protocol.Manifest{}
 	if r.dirs.Builtin != "" {
-		if builtin, err = LoadDir(r.dirs.Builtin, r.log); err != nil {
+		if builtin, err = LoadDir(r.dirs.Builtin); err != nil {
 			return err
 		}
 	}

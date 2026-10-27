@@ -33,7 +33,7 @@ func writeManifest(t *testing.T, dir, body string) {
 	}
 }
 
-func TestLoadDirSkipsBadPlugins(t *testing.T) {
+func TestLoadDirRejectsABadPlugin(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, filepath.Join(dir, "good"), `name = "good"
 version = "1.0.0"
@@ -41,18 +41,19 @@ protocol = 1
 command = ["./good"]
 capabilities = ["import"]
 `)
-	writeManifest(t, filepath.Join(dir, "bad"), `name = "bad"
-protocol = 99
-`)
 	if err := os.WriteFile(filepath.Join(dir, "index.toml"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, err := LoadDir(dir, quiet)
-	if err != nil {
-		t.Fatal(err)
+	got, err := LoadDir(dir)
+	if err != nil || len(got) != 1 || got["good"] == nil {
+		t.Fatalf("LoadDir = %v, %v; want only good", got, err)
 	}
-	if len(got) != 1 || got["good"] == nil {
-		t.Fatalf("loaded %v, want only good", got)
+
+	writeManifest(t, filepath.Join(dir, "bad"), `name = "bad"
+protocol = 99
+`)
+	if _, err := LoadDir(dir); err == nil || !strings.Contains(err.Error(), "bad") {
+		t.Fatalf("LoadDir with a bad plugin = %v, want an error naming it", err)
 	}
 }
 
@@ -404,6 +405,19 @@ func openWith(t *testing.T, pool *pgxpool.Pool, dirs Dirs) *Registry {
 		t.Fatal(err)
 	}
 	return reg
+}
+
+func TestOpenFailsOnABadBuiltinPlugin(t *testing.T) {
+	dirs := Dirs{Builtin: t.TempDir(), Installed: t.TempDir()}
+	writeManifest(t, filepath.Join(dirs.Builtin, "password-login"), manifestFor("password-login", "1.0.0")+"unknown_key = 1\n")
+	box, err := secrets.New(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Open(context.Background(), testdb.New(t), dirs, &blobstore.Store{Name: "library", Root: t.TempDir()}, box, "", quiet)
+	if err == nil || !strings.Contains(err.Error(), "password-login") {
+		t.Fatalf("Open = %v, want an error naming password-login", err)
+	}
 }
 
 func TestSyncReloadsAfterGeneration(t *testing.T) {

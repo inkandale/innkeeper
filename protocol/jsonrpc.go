@@ -57,7 +57,13 @@ type Error struct {
 	Data    json.RawMessage `json:"data,omitempty"`
 }
 
-func (e *Error) Error() string { return fmt.Sprintf("jsonrpc error %d: %s", e.Code, e.Message) }
+// Error is the message alone, since it reaches the owner; callers branch on Code through errors.As.
+func (e *Error) Error() string {
+	if e.Message == "" {
+		return fmt.Sprintf("jsonrpc error %d", e.Code)
+	}
+	return e.Message
+}
 
 // Retryable reports whether the caller may retry the same call later.
 func (e *Error) Retryable() bool {

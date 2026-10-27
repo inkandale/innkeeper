@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"testing"
 	"time"
@@ -352,5 +353,19 @@ func TestHandlerCanNotifyItsPeer(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the notification never arrived")
+	}
+}
+
+func TestErrorReadsAsItsMessage(t *testing.T) {
+	err := fmt.Errorf("import: %w", NewError(CodeRemoteNotFound, "No card at that chub.ai address", false))
+	if got := err.Error(); got != "import: No card at that chub.ai address" {
+		t.Errorf("Error() = %q", got)
+	}
+	var rpc *Error
+	if !errors.As(err, &rpc) || rpc.Code != CodeRemoteNotFound {
+		t.Errorf("errors.As lost the code: %v", rpc)
+	}
+	if got := (&Error{Code: CodeInternalError}).Error(); got != "jsonrpc error -32603" {
+		t.Errorf("empty message: Error() = %q", got)
 	}
 }

@@ -901,6 +901,16 @@
           "name": {
             "type": "string"
           },
+          "needs": {
+            "description": "Capabilities the plugin needs another plugin to offer, such as ai",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "protocol": {
             "format": "int64",
             "type": "integer"
@@ -3665,6 +3675,16 @@
           },
           "name": {
             "type": "string"
+          },
+          "needs": {
+            "description": "Capabilities the plugin needs another plugin to offer, such as ai",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "previous_source": {
             "description": "Source of the version a rollback returns to",

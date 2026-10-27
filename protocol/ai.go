@@ -22,6 +22,18 @@ const (
 // Services maps each service method to the capability that offers it.
 var Services = map[string]string{MethodAIChat: CapabilityAI, MethodAIEmbed: CapabilityAI, MethodAIDecide: CapabilityAI}
 
+// Needs is the capabilities that offer the service methods in uses, sorted.
+func Needs(uses []string) []string {
+	var caps []string
+	for _, u := range uses {
+		if c, ok := Services[u]; ok && !slices.Contains(caps, c) {
+			caps = append(caps, c)
+		}
+	}
+	slices.Sort(caps)
+	return caps
+}
+
 // ServiceSample is a small request to one service, and a check of the reply's
 // shape. The contract check sends it to every provider of the service.
 type ServiceSample struct {

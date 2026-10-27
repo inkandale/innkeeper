@@ -31,8 +31,10 @@ type Entry struct {
 	Version      string   `toml:"version" json:"version"`
 	Protocol     int      `toml:"protocol" json:"protocol"`
 	Capabilities []string `toml:"capabilities" json:"capabilities"`
-	Title        string   `toml:"title" json:"title,omitempty"`
-	Description  string   `toml:"description" json:"description"`
+	// Uses are the service methods the plugin calls; the API shows them as needs.
+	Uses        []string `toml:"uses" json:"-"`
+	Title       string   `toml:"title" json:"title,omitempty"`
+	Description string   `toml:"description" json:"description"`
 	// Category groups the plugin in the setup wizard, such as "Apps".
 	Category string `toml:"category" json:"category,omitempty"`
 	// Recommended marks a plugin the Plugins page suggests on a fresh install.

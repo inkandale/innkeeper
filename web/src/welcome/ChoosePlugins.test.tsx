@@ -134,3 +134,20 @@ test("an empty catalog says so and offers only Skip", async () => {
   expect(screen.queryByRole("button", { name: "Install and continue" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Skip" })).toBeEnabled();
 });
+
+test("choosing a plugin that needs another chooses that one too", async () => {
+  offers = [
+    { ...offer("forge-ai", "AI"), title: "Forge", needs: ["ai"] } as (typeof offers)[number],
+    { ...offer("ai", "AI"), title: "AI", capabilities: ["ai"] } as (typeof offers)[number],
+  ];
+  const user = userEvent.setup();
+  renderStep();
+  expect(await screen.findByText("Needs AI")).toBeInTheDocument();
+  const forge = screen.getByRole("checkbox", { name: "Forge" });
+  await vi.waitFor(() => expect(forge).toBeEnabled());
+  await user.click(forge);
+  expect(screen.getByRole("checkbox", { name: "AI" })).toBeChecked();
+  await user.click(screen.getByRole("button", { name: "Install and continue" }));
+  expect(await screen.findByText("setup step")).toBeInTheDocument();
+  expect(installs.map((i) => i.path).sort()).toEqual(["/api/plugins/ai/install", "/api/plugins/forge-ai/install"]);
+});

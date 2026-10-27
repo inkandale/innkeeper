@@ -1,4 +1,4 @@
-import { createContext, useContext, useId, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 /** Schema is the part of JSON Schema the form renders. */
 export type Schema = {
@@ -81,6 +81,15 @@ export function SchemaForm({ schema, label, value, onChange, required, path = ""
   // Decided once, so a field doesn't swap kinds mid-typing, as 1.5 in an integer field would.
   const [fitsAtMount] = useState(() => value === undefined || fit?.(value) === true);
   const known = fit !== undefined && fitsAtMount;
+  const candidates =
+    known && t === "integer" && schema.format === "instance" && schema["x-offers"] && helpers.instances
+      ? helpers.instances(schema["x-offers"])
+      : undefined;
+  const sole = required && value === undefined && candidates?.length === 1 ? candidates[0]!.id : undefined;
+  // Keyed on sole alone: onChange is new each render, and the only choice is picked once.
+  useEffect(() => {
+    if (sole !== undefined) onChange(sole);
+  }, [sole]);
 
   if (known && t === "object" && schema.properties) {
     const obj = (value ?? {}) as Record<string, unknown>;
@@ -119,16 +128,23 @@ export function SchemaForm({ schema, label, value, onChange, required, path = ""
   const loadOptions = schema["x-options"] && known && t === "string" ? helpers.loadOptions : undefined;
 
   let control: ReactNode;
-  if (known && t === "integer" && schema.format === "instance" && schema["x-offers"] && helpers.instances) {
+  if (candidates) {
     control = (
-      <select className="input" required={required} value={(shown as number) ?? ""} onChange={(e) => set(e.target.value ? Number(e.target.value) : undefined)}>
-        <option value="">—</option>
-        {helpers.instances(schema["x-offers"]).map((i) => (
-          <option key={i.id} value={i.id}>
-            {i.label}
-          </option>
-        ))}
-      </select>
+      <>
+        <select className="input" required={required} value={(shown as number) ?? ""} onChange={(e) => set(e.target.value ? Number(e.target.value) : undefined)}>
+          <option value="">—</option>
+          {candidates.map((i) => (
+            <option key={i.id} value={i.id}>
+              {i.label}
+            </option>
+          ))}
+        </select>
+        {candidates.length === 0 && (
+          <small className="muted">
+            Nothing set up offers this yet. <a href="/settings/plugins">Set one up in Settings › Plugins</a>, then come back.
+          </small>
+        )}
+      </>
     );
   } else if (known && t === "array" && schema.items?.type === "string" && schema.items.enum?.every((e) => typeof e === "string")) {
     const choices = schema.items.enum as string[];

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import { api, must, mustOk } from "../api/client";
 import { pluginsQuery } from "../api/queries";
-import { groupCatalog, pickGroups, recommended, type Offer } from "./wizard";
+import { choose, groupCatalog, pickGroups, providerTitles, recommended, type Offer } from "./wizard";
 
 /** ChoosePlugins offers the catalog's plugins by category and installs the ones the owner picks. */
 export function ChoosePlugins() {
@@ -46,13 +46,9 @@ export function ChoosePlugins() {
     },
   });
 
-  const toggle = (name: string) =>
-    setPicked(() => {
-      const next = new Set(chosen);
-      if (!next.delete(name)) next.add(name);
-      return next;
-    });
-  const pending = groups.flatMap((g) => g.plugins).filter((o) => chosen.has(o.name) && !installed.has(o.name));
+  const offers = groups.flatMap((g) => g.plugins);
+  const toggle = (name: string) => setPicked(choose(chosen, name, offers, plugins.data ?? []));
+  const pending = offers.filter((o) => chosen.has(o.name) && !installed.has(o.name));
   // Until /plugins answers, an installed plugin would look unchosen and get installed again.
   const locked = !plugins.isSuccess || install.isPending;
   const empty = catalog.isSuccess && groups.length === 0 && !catalog.data?.some((s) => s.error);
@@ -82,6 +78,11 @@ export function ChoosePlugins() {
                   </span>
                 </div>
                 <div className="desc">{p.description}</div>
+                {providerTitles(p, offers).map((t) => (
+                  <div key={t} className="needs">
+                    Needs {t}
+                  </div>
+                ))}
               </label>
               {errors[p.name] && (
                 <p id={errorId} className="error" role="alert">

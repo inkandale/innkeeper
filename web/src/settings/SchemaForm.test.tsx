@@ -173,6 +173,28 @@ test("format instance picks from the instances offering the service", async () =
   expect(value()).toEqual({ connection: 7 });
 });
 
+const requiredConn: Schema = {
+  type: "object",
+  required: ["connection"],
+  properties: { connection: { type: "integer", title: "Connection", format: "instance", "x-offers": "ai.chat" } },
+};
+
+test("a required instance picker with one choice starts with it chosen", () => {
+  render(<WithHelpers schema={requiredConn} initial={{}} helpers={{ instances: () => [{ id: 7, label: "Local LLM" }] }} />);
+  expect(value()).toEqual({ connection: 7 });
+});
+
+test("a required instance picker with several choices waits for the owner", () => {
+  const two = () => [{ id: 7, label: "Local LLM" }, { id: 8, label: "OpenAI" }];
+  render(<WithHelpers schema={requiredConn} initial={{}} helpers={{ instances: two }} />);
+  expect(value()).toEqual({});
+});
+
+test("an instance picker with no choices says where to set one up", () => {
+  render(<WithHelpers schema={requiredConn} initial={{}} helpers={{ instances: () => [] }} />);
+  expect(screen.getByRole("link", { name: "Set one up in Settings › Plugins" })).toHaveAttribute("href", "/settings/plugins");
+});
+
 const kindsWithDefault: Schema = {
   type: "object",
   properties: { kinds: { type: "array", title: "Kinds", items: { type: "string", enum: ["chat", "embed"] } } },

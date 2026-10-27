@@ -1,4 +1,4 @@
-import { groupCatalog, nextStep, wizardPlugin } from "./wizard";
+import { choose, groupCatalog, nextStep, providerTitles, setupPlugins, wizardPlugin, type Offer } from "./wizard";
 
 const entry = (name: string, category?: string, capabilities = ["push"]) => ({
   name, version: "1.0.0", protocol: 1, capabilities, description: name, versions: ["1.0.0"], category,
@@ -41,4 +41,31 @@ test("nextStep goes to the next chosen plugin without an instance, then to cards
   expect(nextStep(plugins, [], "b")).toBe("/welcome/setup/c");
   expect(nextStep(plugins, [{ plugin: "c" }], "b")).toBe("/welcome/cards");
   expect(nextStep(plugins.slice(0, 1), [])).toBe("/welcome/cards");
+});
+
+const offer = (name: string, capabilities: string[], needs?: string[]): Offer => ({
+  ...entry(name, undefined, capabilities), title: name.toUpperCase(), needs, source: "official",
+});
+
+test("choose also chooses a provider for each need nothing chosen or installed offers", () => {
+  const offers = [offer("forge", ["action"], ["ai"]), offer("ai", ["ai"]), offer("ai2", ["ai"])];
+  expect([...choose(new Set(), "forge", offers, [])]).toEqual(["forge", "ai"]);
+  expect([...choose(new Set(["ai2"]), "forge", offers, [])]).toEqual(["ai2", "forge"]);
+  expect([...choose(new Set(), "forge", offers, [{ name: "local-ai", capabilities: ["ai"] }])]).toEqual(["forge"]);
+  expect([...choose(new Set(["forge", "ai"]), "forge", offers, [])]).toEqual(["ai"]);
+});
+
+test("providerTitles names what can meet each need", () => {
+  const offers = [offer("forge", ["action"], ["ai"]), offer("ai", ["ai"]), offer("ai2", ["ai"])];
+  expect(providerTitles(offers[0]!, offers)).toEqual(["AI or AI2"]);
+  expect(providerTitles(offers[1]!, offers)).toEqual([]);
+});
+
+test("setupPlugins sets up providers before the plugins that need them", () => {
+  const plugins = [
+    { name: "forge", source: "official", capabilities: ["action"], needs: ["ai"] },
+    { name: "lumiverse", source: "official", capabilities: ["push"] },
+    { name: "ai", source: "official", capabilities: ["ai"] },
+  ];
+  expect(setupPlugins(plugins).map((p) => p.name)).toEqual(["ai", "forge", "lumiverse"]);
 });

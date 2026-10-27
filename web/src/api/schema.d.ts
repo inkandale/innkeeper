@@ -2970,6 +2970,8 @@ export interface components {
             category?: string;
             description: string;
             name: string;
+            /** @description Capabilities the plugin needs another plugin to offer, such as ai */
+            needs?: string[] | null;
             /** Format: int64 */
             protocol: number;
             recommended?: boolean;
@@ -4022,6 +4024,8 @@ export interface components {
             /** @description The owner may create more than one instance */
             multiple_instances: boolean;
             name: string;
+            /** @description Capabilities the plugin needs another plugin to offer, such as ai */
+            needs?: string[] | null;
             /** @description Source of the version a rollback returns to */
             previous_source?: string;
             /** @description Version a rollback returns to */

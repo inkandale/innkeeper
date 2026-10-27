@@ -63,3 +63,31 @@ func TestPluginStore(t *testing.T) {
 	e.call(http.MethodDelete, "/plugins/good/data", nil, http.StatusNoContent, nil)
 	e.call(http.MethodDelete, "/plugins/good", nil, http.StatusNotFound, nil)
 }
+
+func TestPluginNeedsWhatItUsesOffer(t *testing.T) {
+	e := newEnv(t)
+	box, err := secrets.New(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg, err := plugins.Open(context.Background(), e.pool, plugins.Dirs{Installed: t.TempDir()},
+		&blobstore.Store{Name: "library", Root: t.TempDir()}, box, "", quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.s.Registry = reg
+	src := testutil.PluginSource(t, testutil.PluginRelease{Name: "writer", Version: "1.0.0", Uses: []string{"ai.chat", "ai.decide"}})
+	e.call(http.MethodPost, "/plugin-sources", map[string]string{"id": "local", "url": src}, http.StatusCreated, nil)
+
+	var catalog []catalogSourceOut
+	e.call(http.MethodGet, "/plugin-catalog", nil, http.StatusOK, &catalog)
+	if got := catalog[0].Plugins[0].Needs; !slices.Equal(got, []string{"ai"}) {
+		t.Fatalf("catalog needs = %v; want [ai]", got)
+	}
+	e.call(http.MethodPost, "/plugins/writer/install", map[string]string{"source": "local", "version": "1.0.0"}, http.StatusNoContent, nil)
+	var list []pluginOut
+	e.call(http.MethodGet, "/plugins", nil, http.StatusOK, &list)
+	if len(list) != 1 || !slices.Equal(list[0].Needs, []string{"ai"}) {
+		t.Fatalf("plugins = %+v; want writer needing [ai]", list)
+	}
+}

@@ -85,6 +85,12 @@
   -webkit-box-orient: vertical;
 }
 
+.welcome .offer .needs {
+  margin-top: calc(var(--space) * 0.25);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
 .welcome .badge {
   margin-left: calc(var(--space) * 0.5);
   border: 1px solid var(--accent);

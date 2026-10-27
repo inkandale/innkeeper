@@ -11,6 +11,7 @@ import (
 	"github.com/inkandale/innkeeper/internal/importer"
 	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/internal/tier"
+	"github.com/inkandale/innkeeper/protocol"
 )
 
 type pluginSourcesOut struct{ Body []plugins.PluginSource }
@@ -39,6 +40,7 @@ type catalogPluginOut struct {
 	plugins.Entry
 	// Versions is newest first.
 	Versions []string `json:"versions"`
+	Needs    []string `json:"needs,omitempty" doc:"Capabilities the plugin needs another plugin to offer, such as ai"`
 }
 
 type catalogSourceOut struct {
@@ -150,6 +152,7 @@ func catalog(entries []plugins.Entry) []catalogPluginOut {
 	}
 	out := []catalogPluginOut{}
 	for _, p := range byName {
+		p.Needs = protocol.Needs(p.Uses)
 		slices.SortFunc(p.Versions, func(a, b string) int {
 			if plugins.Newer(a, b) {
 				return -1

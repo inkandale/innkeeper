@@ -44,11 +44,53 @@ export function pickGroups(groups: Group[], keep: (o: Offer) => boolean): Group[
   return groups.map((g) => ({ ...g, plugins: g.plugins.filter(keep) })).filter((g) => g.plugins.length > 0);
 }
 
-type Installed = { name: string; source: string; capabilities?: string[] | null };
+type Capable = { name: string; capabilities?: string[] | null };
+type Installed = Capable & { source: string; needs?: string[] | null };
 
-/** setupPlugins is the installed plugins the wizard sets up: not built in, and ones it offers. */
+const offering = (cap: string) => (p: Capable) => !!p.capabilities?.includes(cap);
+
+/**
+ * choose toggles name in chosen. Choosing a plugin also chooses, for each need that no chosen or installed
+ * plugin meets, the first offer that does.
+ */
+export function choose(chosen: Set<string>, name: string, offers: Offer[], installed: Capable[]): Set<string> {
+  const next = new Set(chosen);
+  if (next.delete(name)) return next;
+  next.add(name);
+  const have = [...installed, ...offers.filter((o) => next.has(o.name))];
+  for (const need of offers.find((o) => o.name === name)?.needs ?? []) {
+    if (have.some(offering(need))) continue;
+    const provider = offers.find(offering(need));
+    if (provider) next.add(provider.name);
+  }
+  return next;
+}
+
+/** providerTitles lists, for each of o's needs, the offers that meet it, as "A or B". */
+export function providerTitles(o: Offer, offers: Offer[]): string[] {
+  return (o.needs ?? [])
+    .map((need) =>
+      offers
+        .filter(offering(need))
+        .map((p) => p.title || p.name)
+        .join(" or "),
+    )
+    .filter(Boolean);
+}
+
+/** setupPlugins is the installed plugins the wizard sets up, not built in and ones it offers, each after the plugins that meet its needs. */
 export function setupPlugins<P extends Installed>(plugins: P[]): P[] {
-  return plugins.filter((p) => p.source !== "builtin" && wizardPlugin(p));
+  const list = plugins.filter((p) => p.source !== "builtin" && wizardPlugin(p));
+  const ordered: P[] = [];
+  // path stops plugins that need each other from recursing forever.
+  const visit = (p: P, path: Set<P>) => {
+    if (ordered.includes(p) || path.has(p)) return;
+    path.add(p);
+    for (const need of p.needs ?? []) list.filter((q) => q !== p && offering(need)(q)).forEach((q) => visit(q, path));
+    ordered.push(p);
+  };
+  list.forEach((p) => visit(p, new Set()));
+  return ordered;
 }
 
 /** nextStep is the first plugin after current with no instance yet, or the cards step when none is left. */

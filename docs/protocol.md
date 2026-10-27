@@ -1314,6 +1314,9 @@ sha256 = "<hex sha256 of the tarball>"
 - `category` groups a plugin in the setup wizard. `categories` is the order
   the wizard shows them in; unlisted ones follow alphabetically.
 - `title` is the name the setup wizard shows, as in the manifest.
+- `uses` lists the service methods the plugin calls, as in the manifest. The
+  setup wizard then chooses a plugin that offers them, and sets that one up
+  first.
 - `recommended = true` marks a plugin the Plugins page suggests, and the setup
   wizard starts with it chosen. Innkeeper does both only for the `official`
   source.

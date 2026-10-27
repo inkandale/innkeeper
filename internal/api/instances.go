@@ -35,6 +35,7 @@ type pluginOut struct {
 	MultipleInstances bool                     `json:"multiple_instances" doc:"The owner may create more than one instance"`
 	Status            string                   `json:"status" enum:"ready,needs_setup,broken,disabled" doc:"Sums up the plugin's instances: broken or needs_setup if any instance is, disabled if every one is, needs_setup with none. A theme is ready."`
 	Capabilities      []string                 `json:"capabilities"`
+	Needs             []string                 `json:"needs,omitempty" doc:"Capabilities the plugin needs another plugin to offer, such as ai"`
 	Secrets           []string                 `json:"secrets"`
 	Formats           []string                 `json:"formats,omitempty" doc:"File formats a codec plugin reads and writes"`
 	Inputs            []string                 `json:"inputs,omitempty" doc:"What an import plugin takes from the UI: file (params blob and name), url (params url), or both"`
@@ -126,7 +127,7 @@ func (s *Server) instanceRoutes(api huma.API) {
 			}
 			out := &pluginsOut{Body: []pluginOut{}}
 			for _, m := range s.Registry.Manifests() {
-				p := pluginOut{Name: m.Name, Title: m.DisplayName(), Version: m.Version, Capabilities: m.Capabilities,
+				p := pluginOut{Name: m.Name, Title: m.DisplayName(), Version: m.Version, Capabilities: m.Capabilities, Needs: protocol.Needs(m.Uses),
 					Secrets: orEmpty(m.Secrets), Formats: m.Formats, Inputs: m.Inputs, Config: m.Config,
 					Source: "builtin", Builtin: s.Registry.IsBuiltin(m.Name),
 					Description: m.Description, Category: m.Category, MultipleInstances: m.AllowsManyInstances(),

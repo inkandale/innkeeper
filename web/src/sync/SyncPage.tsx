@@ -86,14 +86,21 @@ export function Sync() {
         </p>
       )}
       {!!targets.length && (
-        <div className="toolbar">
-          <button className="button" disabled={refresh.busy} onClick={refresh.start}>
-            Refresh
-          </button>
-          <button className="button primary" disabled={sync.busy} onClick={sync.start}>
-            Sync
-          </button>
-        </div>
+        <>
+          <div className="toolbar">
+            <button className="button" disabled={refresh.busy} onClick={refresh.start}>
+              Refresh
+            </button>
+            <button className="button primary" disabled={sync.busy} onClick={sync.start}>
+              Sync
+            </button>
+          </div>
+          <p className="muted">
+            Refresh checks every app for changes and changes nothing. Sync also brings in edits made only in an app,
+            imports characters the library doesn't have, binds characters that match a library card exactly, and lists
+            the rest under Needs you.
+          </p>
+        </>
       )}
       {[facets, runs, changes].map((q, n) => q.isError && <p key={n} className="error">{q.error.message}</p>)}
       {(!!targets.length || !!follows.size) && (
@@ -106,9 +113,9 @@ export function Sync() {
           <thead>
             <tr>
               <th>App</th>
-              <th>In sync (cards)</th>
+              <th>Up to date</th>
               <th>Needs you</th>
-              <th>Not pushed</th>
+              <th>Edits not pushed</th>
               <th>Missing</th>
               {cantCheck && <th>Can't check</th>}
               <th>Last sync</th>

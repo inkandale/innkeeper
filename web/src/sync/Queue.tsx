@@ -5,7 +5,9 @@ import { count } from "../shell/count";
 import { optionLabel, reviewPath, rowKey, rows, snapshotOf, statusLabel, type Candidate, type Item } from "./sync";
 import "./Sync.css";
 
-const verdictLabel = (i: Item) => statusLabel[i.auto_bound ? "auto_bound" : i.auto_imported ? "auto_imported" : i.verdict];
+/** auto is what a sync did to an item by itself, or undefined. */
+const auto = (i: Item) => (i.auto_bound ? "auto_bound" : i.auto_imported ? "auto_imported" : i.auto_pulled ? "auto_pulled" : undefined);
+const verdictLabel = (i: Item) => statusLabel[auto(i) ?? i.verdict];
 
 /** reasons lists the signals a candidate matched on, with their distances. */
 const reasons = (c: Candidate) =>
@@ -23,17 +25,18 @@ export function Queue() {
 
   const all = snap ? rows(snap) : [];
   const ownMatch = (i: Item) =>
-    !verdict || i.verdict === verdict || (verdict === "auto_bound" && !!i.auto_bound) || (verdict === "auto_imported" && !!i.auto_imported);
+    !verdict || i.verdict === verdict || auto(i) === verdict;
   // A character shown only for a matching world book is context.
   const shown = all.filter((r) => ownMatch(r.item) || r.item.lorebooks?.some((lb) => lb.verdict === verdict));
   const instance = snap?.params.instance_id ?? 0;
 
   // Matches the CLI: bound items without a suggestion or error are in sync, and auto-applied rows are done.
-  const left = (i: Item) => !i.auto_bound && !i.auto_imported && (i.verdict !== "bound" || !!i.suggested || !!i.error);
+  const left = (i: Item) => !auto(i) && (i.verdict !== "bound" || !!i.suggested || !!i.error);
   const nothingLeft = !all.some((r) => left(r.item) || r.item.lorebooks?.some(left));
   const summary = [
     [snap?.totals?.auto_imported, "imported"],
-    [snap?.totals?.auto_bound, "linked"],
+    [snap?.totals?.auto_bound, "bound"],
+    [snap?.totals?.auto_pulled, "brought in from the app"],
   ]
     .filter(([n]) => n)
     .map(([n, w]) => `${n} ${w}`)
@@ -42,7 +45,7 @@ export function Queue() {
   const note = (!!snap?.missing?.length || !!snap?.unpushed?.length) && (
     <p className="muted">
       {!!snap.missing?.length && `${count(snap.missing.length, "bound card")} the app no longer has. `}
-      {!!snap.unpushed?.length && `${count(snap.unpushed.length, "card")} never pushed here.`}
+      {!!snap.unpushed?.length && `${count(snap.unpushed.length, "library card")} with no copy in this app.`}
     </p>
   );
 
@@ -114,8 +117,8 @@ export function Queue() {
                         {it.error && <span className="error"> {it.error}</span>}
                       </td>
                       <td>
-                        {it.suggested && optionLabel(it.suggested, it.candidates)}
-                        {it.suggested?.why && <div className="muted">{it.suggested.why}</div>}
+                        {!auto(it) && it.suggested && optionLabel(it.suggested, it.candidates)}
+                        {!auto(it) && it.suggested?.why && <div className="muted">{it.suggested.why}</div>}
                       </td>
                     </tr>
                     {(it.lorebooks ?? []).map((lb) => (

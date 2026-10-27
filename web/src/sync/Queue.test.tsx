@@ -61,7 +61,7 @@ test("lists each app item with its match and suggestion", async () => {
   renderQueue();
   expect(await screen.findByRole("link", { name: "Ann" })).toHaveAttribute("href", "/sync/3/card/a?job=5");
   expect(screen.getByRole("link", { name: "World" })).toHaveAttribute("href", "/sync/3/lorebook/w?job=5");
-  expect(screen.getByRole("row", { name: /Bo/ })).toHaveTextContent("Import as new");
+  expect(screen.getByRole("row", { name: /^Bo / })).toHaveTextContent("Import as new");
   expect(screen.getByText("bad JSON")).toBeInTheDocument();
   expect(screen.getByText(/Ann's world/)).toBeInTheDocument();
   expect(screen.getByText(/1 bound card the app no longer has/)).toBeInTheDocument();
@@ -107,9 +107,25 @@ test("with nothing left to review, shows a summary instead of the table", async 
     totals: { new: 2, exact: 1, bound: 1, auto_imported: 2, auto_bound: 1 },
   });
   renderQueue();
-  expect(await screen.findByText("Nothing to review. 2 imported, 1 linked")).toBeInTheDocument();
+  expect(await screen.findByText("Nothing to review. 2 imported, 1 bound")).toBeInTheDocument();
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
   expect(screen.queryByRole("group", { name: "Filter by status" })).not.toBeInTheDocument();
+});
+
+test("an app edit the sync brought in is done, labelled in words, with no suggestion left", async () => {
+  const pulled = { action: "bind" as const, card_id: 4, why: "changed only in the app" };
+  progress = done({
+    items: [
+      { ...auto, remote_id: "h", name: "Helka", verdict: "bound", auto_pulled: true, options: [pulled], suggested: pulled },
+      { ...auto, remote_id: "z", name: "Zed", verdict: "new", options: [{ action: "import" }], suggested: { action: "import" } },
+    ],
+    totals: { bound: 1, new: 1, auto_pulled: 1 },
+  });
+  renderQueue();
+  const row = await screen.findByRole("row", { name: /^Helka / });
+  expect(row).toHaveTextContent("App edits brought in");
+  expect(row).not.toHaveTextContent("Bind to");
+  expect(screen.getByRole("button", { name: "App edits brought in 1" })).toBeInTheDocument();
 });
 
 test("a drifted bound item, or one with an error, is still left to review", async () => {

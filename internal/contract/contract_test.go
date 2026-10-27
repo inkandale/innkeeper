@@ -2,6 +2,7 @@ package contract
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/inkandale/innkeeper/internal/testutil"
+	"github.com/inkandale/innkeeper/protocol"
 )
 
 var quiet = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -23,6 +25,11 @@ func failed(results []Result) map[string]error {
 		}
 	}
 	return out
+}
+
+func methodNotFound(err error) bool {
+	var rpcErr *protocol.Error
+	return errors.As(err, &rpcErr) && rpcErr.Code == protocol.CodeMethodNotFound
 }
 
 // The check sends no config, so the fake's list and delete methods return an error,
@@ -134,7 +141,7 @@ func TestToolChecks(t *testing.T) {
 	}
 	tests := []struct{ mode, check, wantErr string }{
 		{"bad-tools", checkMCPToolsName, "lowercase letters"},
-		{"no-tool-call", checkMCPCallsName, "-32601"},
+		{"no-tool-call", checkMCPCallsName, "method not found"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.mode, func(t *testing.T) {
@@ -191,7 +198,7 @@ func TestImportChecks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := failed(results)[checkImportName]; got == nil || !strings.Contains(got.Error(), "-32601") {
+	if got := failed(results)[checkImportName]; !methodNotFound(got) {
 		t.Fatalf("an importer without import.run: got %v, want a -32601 failure", got)
 	}
 }
@@ -390,7 +397,7 @@ func TestDeleteCheckFailsATargetWithoutTheMethod(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := failed(results)[checkDeleteName]; got == nil || !strings.Contains(got.Error(), "-32601") {
+	if got := failed(results)[checkDeleteName]; !methodNotFound(got) {
 		t.Fatalf("a target claiming delete without target.delete: got %v, want a -32601 failure", got)
 	}
 }

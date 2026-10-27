@@ -301,6 +301,21 @@ func TestStartEnrichRunNeedsConfirmPastThePluginsCardCap(t *testing.T) {
 	}
 }
 
+func TestEnrichmentKeysSayWhetherAnInstanceScoredAnything(t *testing.T) {
+	e := newEnrichEnv(t)
+	card := e.card("Card", "x")
+	var keys enrichmentKeysOut
+	e.call("GET", "/enrichments/keys", nil, 200, &keys.Body)
+	if len(keys.Body.Instances) != 1 || keys.Body.Instances[0].Scored {
+		t.Fatalf("before a run: %+v", keys.Body.Instances)
+	}
+	e.evaluate(e.instID, card)
+	e.call("GET", "/enrichments/keys", nil, 200, &keys.Body)
+	if !keys.Body.Instances[0].Scored {
+		t.Fatalf("after a run: %+v", keys.Body.Instances)
+	}
+}
+
 func TestGridScoreReadsTheHighestPriorityScorer(t *testing.T) {
 	e := newEnrichEnv(t)
 	high := e.card("High", strings.Repeat("x", 90))

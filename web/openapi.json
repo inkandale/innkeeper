@@ -1719,12 +1719,17 @@
           },
           "label": {
             "type": "string"
+          },
+          "scored": {
+            "description": "Whether the instance has stored a value for any card",
+            "type": "boolean"
           }
         },
         "required": [
           "id",
           "label",
-          "keys"
+          "keys",
+          "scored"
         ],
         "type": "object"
       },

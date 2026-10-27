@@ -325,8 +325,10 @@ export function Facets({ kind, q, names, enrichers = [], onChange }: { kind: Kin
   const sections = sectionsFor(kind).filter((s) => s !== "collection" || names.collections.size > 0);
   const open = (s: string) => !collapsed.includes(s);
   const rows = useRows(kind, q, names, sections, open);
-  const scored = enrichers.filter((e) => scoreKeys(e).length > 0);
-  const valueKeys = enrichers.flatMap((e) => (e.keys ?? []).filter((k) => k.type === "text" || k.type === "list").map((k) => ({ e, k, ref: keyRef(e.id, k.key) })));
+  // An instance that has scored nothing has nothing to filter by.
+  const ran = enrichers.filter((e) => e.scored);
+  const scored = ran.filter((e) => scoreKeys(e).length > 0);
+  const valueKeys = ran.flatMap((e) => (e.keys ?? []).filter((k) => k.type === "text" || k.type === "list").map((k) => ({ e, k, ref: keyRef(e.id, k.key) })));
   const valueCounts = useValueCounts(q, valueKeys.filter((v) => open(`value:${v.ref}`)).map((v) => ({ instance: v.e.id, ref: v.ref })));
   const flip = (s: string) => {
     const next = open(s) ? [...collapsed, s] : collapsed.filter((x) => x !== s);

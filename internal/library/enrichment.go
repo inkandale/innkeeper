@@ -68,6 +68,13 @@ func (l *Library) Enrichments(ctx context.Context, cardID int64, history bool) (
 	return pgx.CollectRows(rows, pgx.RowToStructByPos[Enrichment])
 }
 
+// HasEnrichments reports whether instanceID has stored a value for any card.
+func (l *Library) HasEnrichments(ctx context.Context, instanceID int64) (bool, error) {
+	var has bool
+	err := l.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM enrichment WHERE instance_id = $1)`, instanceID).Scan(&has)
+	return has, err
+}
+
 // EnrichedRevisions returns the revisions in revIDs, of the cards in cardIDs,
 // that hold at least one value from instanceID.
 func (l *Library) EnrichedRevisions(ctx context.Context, instanceID int64, cardIDs, revIDs []int64) ([]int64, error) {

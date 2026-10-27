@@ -69,6 +69,7 @@ type enrichmentInstance struct {
 	ID    int64           `json:"id"`
 	Label string          `json:"label"`
 	Keys  []enrichmentKey `json:"keys" doc:"The grid key first, then the rest by label."`
+	Scored bool `json:"scored" doc:"Whether the instance has stored a value for any card"`
 }
 
 type enrichmentKeysOut struct {
@@ -193,7 +194,11 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 					}
 					return cmp.Compare(a.Label, b.Label)
 				})
-				out.Body.Instances = append(out.Body.Instances, enrichmentInstance{inst.ID, inst.Label, keys})
+				scored, err := s.Lib.HasEnrichments(ctx, inst.ID)
+				if err != nil {
+					return nil, s.fail(err)
+				}
+				out.Body.Instances = append(out.Body.Instances, enrichmentInstance{inst.ID, inst.Label, keys, scored})
 			}
 			return out, nil
 		})

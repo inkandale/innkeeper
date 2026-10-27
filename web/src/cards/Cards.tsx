@@ -86,6 +86,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const go = (next: CardQuery) => setParams(toParams(next));
 
   const enrichers = keys.data?.instances ?? [];
+  const unscored = enrichers.filter((e) => !e.scored);
   const ranked = (keys.data?.scorers ?? []).map((s) => s.instance);
   // A tile shows the grid score, or the value sorted by, which may be any instance's.
   const scorers = new Map(
@@ -209,7 +210,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
               ))}
             </div>
           )}
-          <label>
+          <label title="Shows a card and its variants, such as forks and alternate versions, as one tile.">
             <input
               type="checkbox"
               checked={!ungrouped}
@@ -257,6 +258,12 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
         )}
         {res.isError && <p className="error">{res.error.message}</p>}
         {scoresOff && <p className="muted">Some score filters or the sort from this link are off: they name no instance.</p>}
+        {kind === "card" && total > 0 && unscored.length > 0 && (
+          <p className="muted">
+            {unscored.map((e) => e.label).join(", ")} {unscored.length === 1 ? "hasn't" : "haven't"} scored any cards yet. Select
+            cards, then choose Score.
+          </p>
+        )}
         {res.data && total === 0 && !q.text && !q.terms.length && !q.sharesSource ? (
           <div className="empty-library">
             <p>No {noun} in this library yet.</p>

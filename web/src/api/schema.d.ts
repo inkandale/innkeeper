@@ -3274,6 +3274,8 @@ export interface components {
             /** @description The grid key first, then the rest by label. */
             keys: components["schemas"]["EnrichmentKey"][] | null;
             label: string;
+            /** @description Whether the instance has stored a value for any card */
+            scored: boolean;
         };
         EnrichmentKey: {
             /** @description Whether the library grid shows this key. */

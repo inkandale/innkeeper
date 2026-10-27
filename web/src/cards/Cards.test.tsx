@@ -618,7 +618,7 @@ const judgeKeys = [
   { key: "quality", label: "Quality", type: "score", range: [0, 100], grid: true },
   { key: "summary", label: "Summary", type: "text" },
 ];
-const scored = { scorers: [{ instance: 5, key: "quality" }], instances: [{ id: 5, label: "Judge", keys: judgeKeys }] };
+const scored = { scorers: [{ instance: 5, key: "quality" }], instances: [{ id: 5, label: "Judge", scored: true, keys: judgeKeys }] };
 
 test("tiles show the grid score on the top scorer's gold medal, dimmed when stale", async () => {
   keys = scored;
@@ -629,6 +629,14 @@ test("tiles show the grid score on the top scorer's gold medal, dimmed when stal
   const stale = screen.getByRole("img", { name: "Quality 40, stale: from an older revision" });
   expect(stale).toHaveClass("stale");
   expect(searches).toContainEqual(expect.objectContaining({ include: ["tags", "lorebooks", "targets", "score"] }));
+});
+
+test("an instance that has scored nothing gets no filters, and a hint on how to run it", async () => {
+  keys = { scorers: [], instances: [{ id: 5, label: "Judge", scored: false, keys: judgeKeys }] };
+  renderCards("/cards");
+  expect(await screen.findByText(/Judge hasn't scored any cards yet/)).toBeInTheDocument();
+  expect(screen.queryByRole("slider", { name: "Quality at least" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /^Scores/ })).not.toBeInTheDocument();
 });
 
 test("without a scorer the grid asks for no scores", async () => {
@@ -710,7 +718,7 @@ test("Score re-scores cards already scored when asked", async () => {
 });
 
 test("a list key's values count in the sidebar, and a click filters on one", async () => {
-  keys = { scorers: [], instances: [{ id: 5, label: "Lint", keys: [{ key: "problems", label: "Problems", type: "list" }] }] };
+  keys = { scorers: [], instances: [{ id: 5, label: "Lint", scored: true, keys: [{ key: "problems", label: "Problems", type: "list" }] }] };
   const { router } = renderCards("/cards");
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: /^Markup\s*3/ }));
@@ -729,7 +737,7 @@ test("a list key's values count in the sidebar, and a click filters on one", asy
 });
 
 test("value sections with nothing picked share one count search", async () => {
-  keys = { scorers: [], instances: [{ id: 5, label: "Lint", keys: [{ key: "problems", label: "Problems", type: "list" }, { key: "language", label: "Language", type: "text" }] }] };
+  keys = { scorers: [], instances: [{ id: 5, label: "Lint", scored: true, keys: [{ key: "problems", label: "Problems", type: "list" }, { key: "language", label: "Language", type: "text" }] }] };
   renderCards("/cards");
   const user = userEvent.setup();
   const valueCounts = () => searches.map((s) => (s as { facets?: string[] }).facets ?? []).filter((f) => f.some((n) => n.startsWith("enrichment:")));
@@ -748,8 +756,8 @@ test("each instance's value sections share their own count search", async () => 
   keys = {
     scorers: [],
     instances: [
-      { id: 5, label: "Lint", keys: [{ key: "problems", label: "Problems", type: "list" }, { key: "language", label: "Language", type: "text" }] },
-      { id: 7, label: "Judge", keys: [{ key: "pov", label: "POV", type: "text" }] },
+      { id: 5, label: "Lint", scored: true, keys: [{ key: "problems", label: "Problems", type: "list" }, { key: "language", label: "Language", type: "text" }] },
+      { id: 7, label: "Judge", scored: true, keys: [{ key: "pov", label: "POV", type: "text" }] },
     ],
   };
   renderCards("/cards");
@@ -794,7 +802,7 @@ const lintKeys = [
 ];
 
 test("with two instances, both instances' keys filter and sort", async () => {
-  keys = { scorers: [{ instance: 5, key: "quality" }], instances: [{ id: 5, label: "Judge", keys: judgeKeys }, { id: 7, label: "Lint", keys: lintKeys }] };
+  keys = { scorers: [{ instance: 5, key: "quality" }], instances: [{ id: 5, label: "Judge", scored: true, keys: judgeKeys }, { id: 7, label: "Lint", scored: true, keys: lintKeys }] };
   const { router } = renderCards("/cards");
   expect(await screen.findByRole("heading", { name: "Judge" })).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "Lint" })).toBeInTheDocument();

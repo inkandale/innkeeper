@@ -19,15 +19,7 @@ export function SetUpPlugins() {
   if (plugins.isPending || instances.isPending) return <Loading />;
   const chosen = setupPlugins(plugins.data ?? []);
   const all = instances.data ?? [];
-  if (chosen.length === 0) {
-    return (
-      <div className="panel">
-        <p>
-          No plugins to set up. <Link to="/welcome/plugins">Choose some first.</Link>
-        </p>
-      </div>
-    );
-  }
+  if (chosen.length === 0) return <Navigate to="/welcome/cards" replace />;
   if (!name) return <Navigate to={nextStep(chosen, all)} replace />;
   const plugin = chosen.find((p) => p.name === name);
   if (!plugin) return <p className="error">No plugin named {name} is installed.</p>;

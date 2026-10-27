@@ -34,6 +34,16 @@ export function groupCatalog(sources: CatalogSource[]): Group[] {
     .map(([category, plugins]) => ({ category, plugins }));
 }
 
+/** recommended reports whether the official source recommends an offer. */
+export function recommended(o: Offer): boolean {
+  return o.source === "official" && !!o.recommended;
+}
+
+/** pickGroups keeps the offers keep accepts, dropping groups left empty. */
+export function pickGroups(groups: Group[], keep: (o: Offer) => boolean): Group[] {
+  return groups.map((g) => ({ ...g, plugins: g.plugins.filter(keep) })).filter((g) => g.plugins.length > 0);
+}
+
 type Installed = { name: string; source: string; capabilities?: string[] | null };
 
 /** setupPlugins is the installed plugins the wizard sets up: not built in, and ones it offers. */

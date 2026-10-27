@@ -132,10 +132,10 @@ test("a plugin with nothing to configure is created without a click", async () =
   expect(sent).toEqual([{ method: "POST", path: "/api/instances", body: { plugin: "hello" } }]);
 });
 
-test("with nothing installed, points back to choosing plugins", async () => {
+test("with nothing to set up, moves on to bringing in cards", async () => {
   installed = [{ ...plugin("card-codec", ["codec"]), source: "builtin" }];
   renderAt("/welcome/setup");
-  expect(await screen.findByRole("link", { name: "Choose some first." })).toBeInTheDocument();
+  expect(await screen.findByText("cards step")).toBeInTheDocument();
 });
 
 test("a plugin that pulls without pushing moves on without checking an app", async () => {

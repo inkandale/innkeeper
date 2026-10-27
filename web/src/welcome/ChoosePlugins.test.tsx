@@ -8,9 +8,9 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
-const offer = (name: string, category: string, released?: string) => ({
+const offer = (name: string, category: string, recommended = false) => ({
   name, version: "0.1.0", versions: ["0.1.0"], protocol: 1, capabilities: [], description: `${name} plugin`, category,
-  ...(released ? { released } : {}),
+  released: "2026-10-06", recommended,
 });
 
 let installs: { path: string; body: unknown }[];
@@ -20,7 +20,7 @@ let pluginsHang: boolean;
 beforeEach(() => {
   installs = [];
   installStatus = 204;
-  offers = [offer("lumiverse", "Apps", "2026-10-06"), offer("sillytavern", "Apps"), offer("card-import", "Import")];
+  offers = [offer("lumiverse", "Apps"), offer("sillytavern", "Apps"), offer("card-import", "Import")];
   pluginsHang = false;
   vi.stubGlobal(
     "fetch",
@@ -68,7 +68,7 @@ test("groups the catalog and installs the chosen plugins", async () => {
   renderStep();
   expect(await screen.findByText("Apps")).toBeInTheDocument();
   expect(screen.getByText("Import")).toBeInTheDocument();
-  expect(screen.getByText("v0.1.0 · 2026-10-06")).toBeInTheDocument();
+  expect(screen.queryByText(/v0\.1\.0|2026-10-06/)).not.toBeInTheDocument();
   const installed = await screen.findByRole("checkbox", { name: "card-import" });
   await vi.waitFor(() => expect(installed).toBeChecked());
   expect(installed).toBeDisabled();
@@ -76,6 +76,30 @@ test("groups the catalog and installs the chosen plugins", async () => {
   await user.click(screen.getByRole("button", { name: "Install and continue" }));
   expect(await screen.findByText("setup step")).toBeInTheDocument();
   expect(installs).toEqual([{ path: "/api/plugins/lumiverse/install", body: { source: "official", version: "0.1.0" } }]);
+});
+
+test("recommended plugins start chosen, and the rest wait under More plugins", async () => {
+  offers = [
+    offer("lumiverse", "Apps", true),
+    offer("sillytavern", "Apps", true),
+    offer("card-import", "Import", true),
+    offer("card-lint", "Quality"),
+  ];
+  const user = userEvent.setup();
+  renderStep();
+  const lumiverse = await screen.findByRole("checkbox", { name: "lumiverse" });
+  await vi.waitFor(() => expect(lumiverse).toBeEnabled());
+  expect(lumiverse).toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "sillytavern" })).toBeChecked();
+  const lint = screen.getByRole("checkbox", { name: "card-lint" });
+  expect(lint).not.toBeChecked();
+  expect(lint).not.toBeVisible();
+  await user.click(screen.getByText("More plugins"));
+  expect(lint).toBeVisible();
+  await user.click(screen.getByRole("checkbox", { name: "sillytavern" }));
+  await user.click(screen.getByRole("button", { name: "Install and continue" }));
+  expect(await screen.findByText("setup step")).toBeInTheDocument();
+  expect(installs.map((i) => i.path)).toEqual(["/api/plugins/lumiverse/install"]);
 });
 
 test("a failed install shows its error and stays on the step", async () => {

@@ -60,7 +60,7 @@ beforeEach(() => {
             source: { id: "official", url: "https://example.com/index.toml" },
             plugins: [
               { name: "sillytavern", version: "0.2.0", versions: ["0.2.0", "0.1.0"], protocol: 1, capabilities: [], description: "ST" },
-              { name: "card-import", version: "0.1.0", versions: ["0.1.0"], protocol: 1, capabilities: [], description: "Import cards.", recommended: true },
+              { name: "card-import", title: "Card import", category: "Import", version: "0.1.0", versions: ["0.1.0"], protocol: 1, capabilities: [], description: "Import cards.", recommended: true },
             ],
           },
           { source: { id: "broken", url: "https://example.org/index.toml" }, plugins: [], error: "plugin source: 404" },
@@ -127,20 +127,34 @@ test("delete asks, calls the API, and shows a refusal", async () => {
   expect(await screen.findByText("instance in use")).toBeInTheDocument();
 });
 
-test("checks sources only when asked, then offers updates and installs", async () => {
+test("lists what the sources offer on load, by category, and offers updates", async () => {
   const user = userEvent.setup();
   renderPlugins();
   const st = (await screen.findByRole("heading", { name: "sillytavern" })).closest("article")!;
-  expect(within(st).getByText("official/0.1.0")).toBeInTheDocument();
-  expect(requests).not.toContain("GET /api/plugin-catalog");
+  // With one source there's nothing to tell apart, so the version stands alone.
+  expect(within(st).getByText("0.1.0")).toBeInTheDocument();
 
-  await user.click(screen.getByRole("button", { name: "Check for updates" }));
   await user.click(await within(st).findByRole("button", { name: "Update to 0.2.0" }));
   expect(requests).toContain("POST /api/plugins/sillytavern/install");
   expect(screen.getByText("broken: plugin source: 404")).toBeInTheDocument();
-  expect(screen.getByText(/official\/card-import/)).toHaveTextContent("official/card-import (recommended)");
-  await user.click(screen.getByRole("button", { name: "Install official/card-import" }));
+  const available = screen.getByRole("region", { name: "Available" });
+  expect(within(available).getByRole("heading", { name: "Import" })).toBeInTheDocument();
+  expect(within(available).getByText("Card import (recommended)")).toBeInTheDocument();
+  await user.click(within(available).getByRole("button", { name: "Install Card import" }));
   expect(requests).toContain("POST /api/plugins/card-import/install");
+});
+
+test("names the source of an offer when there are several", async () => {
+  const fetch = globalThis.fetch;
+  vi.stubGlobal("fetch", async (req: Request) =>
+    new URL(req.url).pathname === "/api/plugin-sources"
+      ? json([{ id: "official", url: "https://example.com/index.toml" }, { id: "mine", url: "https://example.net/index.toml" }])
+      : fetch(req),
+  );
+  renderPlugins();
+  const st = (await screen.findByRole("heading", { name: "sillytavern" })).closest("article")!;
+  expect(await within(st).findByText("official/0.1.0")).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Install official/Card import" })).toBeInTheDocument();
 });
 
 test("rolls back, uninstalls, and removes data only after typing the name", async () => {
@@ -179,21 +193,6 @@ test("adds a source", async () => {
   await user.type(screen.getByRole("textbox", { name: "Source URL" }), "https://example.net/index.toml");
   await user.click(screen.getByRole("button", { name: "Add source" }));
   expect(requests).toContain("POST /api/plugin-sources");
-});
-
-test("recommends plugins until one is installed", async () => {
-  renderPlugins();
-  await screen.findByRole("heading", { name: "sillytavern" });
-  expect(screen.queryByText(/comes with login/)).not.toBeInTheDocument();
-});
-
-test("recommends plugins on a fresh install", async () => {
-  const fetch = globalThis.fetch;
-  vi.stubGlobal("fetch", async (req: Request) =>
-    new URL(req.url).pathname === "/api/plugins" ? json([]) : fetch(req),
-  );
-  renderPlugins();
-  expect(await screen.findByText(/comes with login/)).toBeInTheDocument();
 });
 
 test("groups plugins by category, alphabetically, with Other last", async () => {

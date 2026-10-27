@@ -20,11 +20,11 @@ export function Plugins() {
   const plugins = useQuery(pluginsQuery);
   const instances = useQuery(instancesQuery);
   const sources = useQuery({ queryKey: ["plugin-sources"], queryFn: async () => must(await api.GET("/plugin-sources")) });
-  // Sources are read only when the owner asks, never in the background.
+  // Read when the page opens and when the owner asks, never on a timer.
   const catalog = useQuery({
     queryKey: ["plugin-catalog"],
     queryFn: async () => must(await api.GET("/plugin-catalog")),
-    enabled: false,
+    staleTime: Infinity,
   });
   const changed = () => {
     qc.invalidateQueries({ queryKey: ["plugins"] });
@@ -83,9 +83,8 @@ export function Plugins() {
   const orphans = plugins.data ? all.filter((i) => !names.has(i.plugin)) : [];
   const orphanPlugins = [...new Set(orphans.map((i) => i.plugin))].sort();
   const offers = catalogOffers(catalog.data ?? [], installed);
-  // The index that names them isn't read until asked, so this goes by what they do.
-  const showRecommended =
-    plugins.data !== undefined && !installed.some((p) => p.capabilities?.some((c) => c === "import" || c === "push"));
+  // A source needs naming only when there's another to tell it from.
+  const from = (source: string) => ((sources.data?.length ?? 0) > 1 ? `${source}/` : "");
 
   const needSetup = installed.filter((p) => p.status === "needs_setup").length;
   const addURL = (p: Plugin) => `/settings/plugins/${encodeURIComponent(p.name)}/new`;
@@ -143,7 +142,7 @@ export function Plugins() {
         <header>
           <div className="about">
             <h3>{p.title}</h3>{" "}
-            <span className="muted">{p.source === "builtin" ? `${p.version} · built in` : `${p.source}/${p.version}`}</span>
+            <span className="muted">{p.source === "builtin" ? `${p.version} · built in` : `${from(p.source)}${p.version}`}</span>
             {p.description && <p className="muted">{p.description}</p>}
           </div>
           {!listed && <StatusText status={p.status} error={only?.broken_error} />}
@@ -233,12 +232,6 @@ export function Plugins() {
         </button>
       </div>
       <EmbedFrom />
-      {showRecommended && (
-        <p className="created" role="status">
-          Innkeeper comes with login and card downloads. Check for updates to install the importer and the app
-          targets.
-        </p>
-      )}
       {byCategory(installed).map(([category, list]) => (
         <section key={category} className="plugin-group">
           <h2>{category}</h2>
@@ -279,8 +272,8 @@ export function Plugins() {
         </section>
       )}
       {catalog.data && (
-        <section className="plugin-group">
-          <h2>Available</h2>
+        <section className="plugin-group" aria-labelledby="available-heading">
+          <h2 id="available-heading">Available</h2>
           {catalog.data
             .filter((s) => s.error)
             .map((s) => (
@@ -291,26 +284,32 @@ export function Plugins() {
           {offers.available.length === 0 ? (
             <p className="muted">Every plugin the sources offer is installed.</p>
           ) : (
-            offers.available.map((o) => (
-              <article key={`${o.source}/${o.name}`} className="plugin available">
-                <header>
-                  <div className="about">
-                    <span>
-                      {o.source}/{o.name}
-                      {o.source === "official" && o.recommended && " (recommended)"}
-                    </span>
-                    <p className="muted">{o.description}</p>
-                  </div>
-                  <button
-                    className="button primary"
-                    disabled={busy}
-                    aria-label={`Install ${o.source}/${o.name}`}
-                    onClick={() => install.mutate({ name: o.name, source: o.source, version: o.version })}
-                  >
-                    Install {o.version}
-                  </button>
-                </header>
-              </article>
+            byCategory(offers.available).map(([category, list]) => (
+              <div key={category}>
+                <h3>{category}</h3>
+                {list.map((o) => (
+                  <article key={`${o.source}/${o.name}`} className="plugin available">
+                    <header>
+                      <div className="about">
+                        <span>
+                          {from(o.source)}
+                          {o.title}
+                          {o.source === "official" && o.recommended && " (recommended)"}
+                        </span>
+                        <p className="muted">{o.description}</p>
+                      </div>
+                      <button
+                        className="button primary"
+                        disabled={busy}
+                        aria-label={`Install ${from(o.source)}${o.title}`}
+                        onClick={() => install.mutate({ name: o.name, source: o.source, version: o.version })}
+                      >
+                        Install {o.version}
+                      </button>
+                    </header>
+                  </article>
+                ))}
+              </div>
             ))
           )}
         </section>
@@ -392,8 +391,8 @@ function StatusText({ status, error }: { status: keyof typeof statusWords; error
 }
 
 /** byCategory groups plugins under their category, alphabetically, with Other last. */
-function byCategory(list: Plugin[]): [string, Plugin[]][] {
-  const groups = new Map<string, Plugin[]>();
+function byCategory<P extends { category?: string | null }>(list: P[]): [string, P[]][] {
+  const groups = new Map<string, P[]>();
   for (const p of list) {
     const c = p.category || "Other";
     groups.set(c, [...(groups.get(c) ?? []), p]);
@@ -401,7 +400,7 @@ function byCategory(list: Plugin[]): [string, Plugin[]][] {
   return [...groups].sort(([a], [b]) => (a === "Other" ? 1 : b === "Other" ? -1 : a.localeCompare(b)));
 }
 
-type Offer = { source: string; name: string; version: string; description: string; recommended?: boolean };
+type Offer = { source: string; name: string; title: string; category?: string; version: string; description: string; recommended?: boolean };
 
 /** catalogOffers splits what the sources list into updates for installed
  * plugins, from the source each came from, and plugins not installed. */
@@ -413,8 +412,8 @@ function catalogOffers(catalog: CatalogSource[], installed: Plugin[]) {
     for (const p of s.plugins ?? []) {
       const have = byName.get(p.name);
       if (!have) {
-        const { name, version, description, recommended } = p;
-        available.push({ source: s.source.id, name, version, description, recommended });
+        const { name, version, description, recommended, category } = p;
+        available.push({ source: s.source.id, name, title: p.title || name, category, version, description, recommended });
       } else if (have.source === s.source.id && p.version !== have.version) {
         // p.version is the source's newest, so anything else installed is older.
         updates.set(p.name, p.version);

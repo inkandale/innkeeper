@@ -1,34 +1,7 @@
-# Innkeeper with PostgreSQL: the API on http://localhost:8080 (INNKEEPER_PORT
-# changes it), and the worker. In a checkout, compose.override.yaml builds
-# the local source instead.
+# Innkeeper with PostgreSQL: the API, on http://localhost:8080 (INNKEEPER_PORT
+# changes it), and the worker, in one container. In a checkout,
+# compose.override.yaml builds the local source instead.
 # See "Docker Compose" in README.md.
-
-x-innkeeper: &innkeeper
-  image: ghcr.io/inkandale/innkeeper:1.0.0 # x-release-please-version
-  environment:
-    INNKEEPER_DATABASE_URL: postgres://innkeeper:innkeeper@db:5432/innkeeper?sslmode=disable
-    # Unset, the first start creates /data/secrets.key.
-    INNKEEPER_SECRETS_KEY: ${INNKEEPER_SECRETS_KEY:-}
-    # Plain http for local testing, so browsers keep the session cookie.
-    INNKEEPER_PUBLIC_URL: http://localhost:${INNKEEPER_PORT:-8080}
-    # Claims a new server without the setup code; see "First login" in README.md.
-    # INNKEEPER_OWNER_PASSWORD_HASH: ${INNKEEPER_OWNER_PASSWORD_HASH}
-    # Scheduled backups; see "Backup and restore" in README.md. Both services
-    # mount the folder; on Linux the host folder must be writable by uid 10001.
-    # INNKEEPER_BACKUP_DIR: /backups
-    # INNKEEPER_BACKUP_ASSETS_EVERY: 24h
-    # INNKEEPER_BACKUP_ASSETS_KEEP: 7
-    # INNKEEPER_BACKUP_CONFIG_EVERY: 7d
-    # INNKEEPER_BACKUP_CONFIG_KEEP: 7
-  volumes:
-    - data:/data
-    # Folder imports read from here; see "Importing" in README.md.
-    - ${INNKEEPER_IMPORT_DIR:-./import}:/import:ro
-    # - ./backups:/backups
-  depends_on:
-    db:
-      condition: service_healthy
-  restart: unless-stopped
 
 services:
   db:
@@ -46,14 +19,34 @@ services:
       retries: 30
 
   api:
-    <<: *innkeeper
-    command: ["api"]
+    image: ghcr.io/inkandale/innkeeper:1.0.0 # x-release-please-version
+    command: ["serve"]
+    environment:
+      INNKEEPER_DATABASE_URL: postgres://innkeeper:innkeeper@db:5432/innkeeper?sslmode=disable
+      # Unset, the first start creates /data/secrets.key.
+      INNKEEPER_SECRETS_KEY: ${INNKEEPER_SECRETS_KEY:-}
+      # Plain http for local testing, so browsers keep the session cookie.
+      INNKEEPER_PUBLIC_URL: http://localhost:${INNKEEPER_PORT:-8080}
+      # Claims a new server without the setup code; see "First login" in README.md.
+      # INNKEEPER_OWNER_PASSWORD_HASH: ${INNKEEPER_OWNER_PASSWORD_HASH}
+      # Scheduled backups; see "Backup and restore" in README.md. On Linux the
+      # host folder must be writable by uid 10001.
+      # INNKEEPER_BACKUP_DIR: /backups
+      # INNKEEPER_BACKUP_ASSETS_EVERY: 24h
+      # INNKEEPER_BACKUP_ASSETS_KEEP: 7
+      # INNKEEPER_BACKUP_CONFIG_EVERY: 7d
+      # INNKEEPER_BACKUP_CONFIG_KEEP: 7
+    volumes:
+      - data:/data
+      # Folder imports read from here; see "Importing" in README.md.
+      - ${INNKEEPER_IMPORT_DIR:-./import}:/import:ro
+      # - ./backups:/backups
     ports:
       - "127.0.0.1:${INNKEEPER_PORT:-8080}:8080"
-
-  worker:
-    <<: *innkeeper
-    command: ["worker"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   pgdata:

@@ -33,6 +33,9 @@ database at startup and stop cleanly on `SIGTERM`.
   check of target apps for changes, [scheduled backups](#backup-and-restore),
   and daily cleanup of unused blobs and of finished jobs and their logs
   older than `INNKEEPER_JOB_RETENTION`.
+- `innkeeper serve` runs both in one process, and reads the settings of
+  both. It is the image's default command and what Compose runs. If either
+  half fails, the process exits.
 
 | Variable | Used by | Meaning |
 |---|---|---|
@@ -67,8 +70,10 @@ superuser.
 
 ## Docker Compose
 
-`compose.yaml`, from the [Quick start](#quick-start), runs PostgreSQL, the
-API, and the worker from the released image. The port listens on this
+`compose.yaml`, from the [Quick start](#quick-start), runs PostgreSQL and
+`innkeeper serve` from the released image. If you used an earlier
+`compose.yaml` with a separate `worker` service, run
+`docker compose up -d --remove-orphans` once to remove it. The port listens on this
 machine only; to
 reach it from other devices, change `127.0.0.1:` in the `api` service's
 `ports`.

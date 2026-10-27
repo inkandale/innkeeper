@@ -61,3 +61,15 @@ func apiServer() error {
 	defer cancel()
 	return srv.Shutdown(sctx)
 }
+
+// serve runs the api and the worker in one process. It returns once both
+// stop, or with the first error, after which main exits and ends the other.
+func serve() error {
+	errc := make(chan error, 2)
+	go func() { errc <- apiServer() }()
+	go func() { errc <- worker() }()
+	if err := <-errc; err != nil {
+		return err
+	}
+	return <-errc
+}

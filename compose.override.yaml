@@ -4,6 +4,3 @@ services:
   api:
     build: .
     image: innkeeper:dev
-  worker:
-    build: .
-    image: innkeeper:dev

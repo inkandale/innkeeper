@@ -54,4 +54,4 @@ ENV INNKEEPER_BLOB_DIR=/data/blobs \
     INNKEEPER_LISTEN=:8080
 EXPOSE 8080
 ENTRYPOINT ["/sbin/tini", "--", "innkeeper"]
-CMD ["api"]
+CMD ["serve"]

@@ -168,6 +168,22 @@ type = "string"
 x-when = { auth = ["basic", "account"] }
 ```
 
+`x-options-needs` on an `x-options` field names the siblings **Load
+choices** needs first, each with an `x-when` condition under which it is
+needed; `{}` means always. The button stays disabled, and says which fields
+to fill in, until each needed sibling or its default has a value:
+
+```toml
+[config.properties.model]
+type = "string"
+x-options = true
+x-options-needs = { provider = {}, base_url = { provider = ["openai-compatible"] } }
+```
+
+`"x-advanced": true` on a property moves it into a collapsed **Advanced**
+section at the end of its group. The section starts open when one of its
+fields is set.
+
 `x-secrets` on `config` describes the secrets: a `title` and `description`
 for each, and an `x-when` that works as above. Each key must be in `secrets`.
 Without a `title`, the form labels a secret from its name, so `api_key` reads

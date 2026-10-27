@@ -171,6 +171,15 @@
   margin: 0 0 calc(var(--space) * 1.5);
 }
 
+.schema-advanced {
+  margin: 0 0 calc(var(--space) * 1.5);
+}
+
+.schema-advanced > summary {
+  cursor: pointer;
+  margin-bottom: var(--space);
+}
+
 /* The root config object needs no frame of its own. */
 .instance-form > .schema-object {
   border: 0;

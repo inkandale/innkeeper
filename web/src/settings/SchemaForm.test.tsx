@@ -291,3 +291,47 @@ test("an x-options field without a loader has no datalist", () => {
   render(<Harness schema={model} initial={{}} />);
   expect(screen.getByLabelText("Model")).not.toHaveAttribute("list");
 });
+
+const providerModel: Schema = {
+  type: "object",
+  properties: {
+    provider: { type: "string", title: "Provider", enum: ["hosted", "compatible"] },
+    base_url: { type: "string", title: "Base URL" },
+    model: { type: "string", title: "Model", "x-options": true, "x-options-needs": { provider: {}, base_url: { provider: ["compatible"] } } },
+  },
+};
+
+test("load choices waits for the fields it needs, as they apply", async () => {
+  const user = userEvent.setup();
+  render(<WithHelpers schema={providerModel} initial={{}} helpers={{ loadOptions: vi.fn(async () => []) }} />);
+  const button = screen.getByRole("button", { name: "Load choices for Model" });
+  expect(button).toBeDisabled();
+  expect(screen.getByText("Fill in Provider first.")).toBeInTheDocument();
+  await user.selectOptions(screen.getByLabelText("Provider"), "compatible");
+  expect(button).toBeDisabled();
+  expect(screen.getByText("Fill in Base URL first.")).toBeInTheDocument();
+  await user.type(screen.getByLabelText("Base URL"), "http://x");
+  expect(button).toBeEnabled();
+  await user.clear(screen.getByLabelText("Base URL"));
+  await user.selectOptions(screen.getByLabelText("Provider"), "hosted");
+  expect(button).toBeEnabled();
+});
+
+const tuned: Schema = {
+  type: "object",
+  properties: {
+    connection: { type: "string", title: "Connection" },
+    temperature: { type: "number", title: "Temperature", "x-advanced": true },
+  },
+};
+
+test("advanced fields sit in a collapsed section, open once one is changed", () => {
+  const { container, unmount } = render(<Harness schema={tuned} initial={{}} />);
+  const details = container.querySelector("details")!;
+  expect(details).not.toHaveAttribute("open");
+  expect(details).toContainElement(screen.getByLabelText("Temperature"));
+  expect(details).not.toContainElement(screen.getByLabelText("Connection"));
+  unmount();
+  render(<Harness schema={tuned} initial={{ temperature: 0.5 }} />);
+  expect(document.querySelector("details")).toHaveAttribute("open");
+});

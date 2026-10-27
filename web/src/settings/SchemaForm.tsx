@@ -16,6 +16,10 @@ export type Schema = {
   "x-offers"?: string;
   /** The plugin lists this string's choices with settings.options. */
   "x-options"?: boolean;
+  /** The siblings Load choices needs filled first, each needed while its x-when-style condition holds. */
+  "x-options-needs"?: Record<string, Record<string, unknown[]>>;
+  /** Shows the field under a collapsed Advanced section. */
+  "x-advanced"?: boolean;
   items?: Schema;
   properties?: Record<string, Schema>;
   /** The order to show properties in; core sets it from the manifest's order. */
@@ -68,6 +72,8 @@ type Props = {
   required?: boolean;
   /** path is the field's JSON pointer, "" for the root. */
   path?: string;
+  /** The titles of the siblings Load choices still needs filled. */
+  waitingOn?: string[];
 };
 
 const fits: Record<string, (v: unknown) => boolean> = {
@@ -94,7 +100,7 @@ const unordered = (v: unknown) => (Array.isArray(v) && v.every((e) => typeof e =
  * an instance picker, and objects with properties.
  * Anything else is raw JSON. A field with a default shows it until overridden, and offers a reset once it is.
  */
-export function SchemaForm({ schema, label, value, onChange, required, path = "" }: Props) {
+export function SchemaForm({ schema, label, value, onChange, required, path = "", waitingOn = [] }: Props) {
   const helpers = useContext(FormContext);
   // Above the object branch's early return, so every render calls the same hooks.
   const [options, setOptions] = useState<{ value: string; label?: string }[]>([]);
@@ -123,26 +129,39 @@ export function SchemaForm({ schema, label, value, onChange, required, path = ""
   if (known && t === "object" && schema.properties) {
     const obj = (value ?? {}) as Record<string, unknown>;
     const sibling = (k: string) => obj[k] ?? helpers.defaults[`${path}/${pointerKey(k)}`];
+    const shownFields = orderedProperties(schema).filter(([, s]) => shownWhen(s["x-when"], sibling));
+    const field = ([k, s]: [string, Schema]) => (
+      <SchemaForm
+        key={k}
+        schema={s}
+        label={k}
+        value={obj[k]}
+        required={schema.required?.includes(k)}
+        path={`${path}/${pointerKey(k)}`}
+        waitingOn={Object.entries(s["x-options-needs"] ?? {})
+          .filter(([n, when]) => (sibling(n) ?? "") === "" && shownWhen(when, sibling))
+          .map(([n]) => schema.properties?.[n]?.title ?? n)}
+        onChange={(v) => {
+          const { [k]: _, ...rest } = obj;
+          const next = v === undefined ? rest : { ...rest, [k]: v };
+          // An emptied object is absent, so clearing its fields isn't a config change.
+          onChange(Object.keys(next).length > 0 ? next : undefined);
+        }}
+      />
+    );
+    const advanced = shownFields.filter(([, s]) => s["x-advanced"]);
     return (
       <fieldset className="schema-object">
         {title && <legend>{title}</legend>}
         {schema.description && <small className="muted">{schema.description}</small>}
-        {orderedProperties(schema).filter(([, s]) => shownWhen(s["x-when"], sibling)).map(([k, s]) => (
-          <SchemaForm
-            key={k}
-            schema={s}
-            label={k}
-            value={obj[k]}
-            required={schema.required?.includes(k)}
-            path={`${path}/${pointerKey(k)}`}
-            onChange={(v) => {
-              const { [k]: _, ...rest } = obj;
-              const next = v === undefined ? rest : { ...rest, [k]: v };
-              // An emptied object is absent, so clearing its fields isn't a config change.
-              onChange(Object.keys(next).length > 0 ? next : undefined);
-            }}
-          />
-        ))}
+        {shownFields.filter(([, s]) => !s["x-advanced"]).map(field)}
+        {advanced.length > 0 && (
+          // Starts open when an advanced field is already changed, so the change isn't hidden.
+          <details className="schema-advanced" open={advanced.some(([k]) => obj[k] !== undefined)}>
+            <summary>Advanced</summary>
+            {advanced.map(field)}
+          </details>
+        )}
       </fieldset>
     );
   }
@@ -289,12 +308,13 @@ export function SchemaForm({ schema, label, value, onChange, required, path = ""
             type="button"
             className="button"
             aria-label={`Load choices for ${title}`}
-            disabled={loadingOptions}
+            disabled={loadingOptions || waitingOn.length > 0}
             aria-busy={loadingOptions}
             onClick={() => load(loadOptions)}
           >
             Load choices
           </button>
+          {waitingOn.length > 0 && <small className="muted">Fill in {waitingOn.join(" and ")} first.</small>}
           {optionsError && (
             <small className="error" role="alert">
               {optionsError}

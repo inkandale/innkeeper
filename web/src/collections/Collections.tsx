@@ -40,6 +40,10 @@ export function Collections() {
   return (
     <section className="page">
       <h1>Collections</h1>
+      <p className="muted">
+        A collection is a group of cards you pick by hand, such as one story's cast. A card can be in several. Unlike tags,
+        collections stay in Innkeeper and aren't sent to apps; unlike libraries, they don't split what apps sync.
+      </p>
       <form
         className="collection-new"
         onSubmit={(e) => {

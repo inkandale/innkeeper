@@ -56,10 +56,10 @@ export function Reforge(props: {
     props.onClose();
   };
   return (
-    <dialog className="forge-panel" aria-label={`Reforge ${props.name}`} {...modal}>
+    <dialog className="forge-panel" aria-label={`Forge ${props.name}`} {...modal}>
       <div className="forge-panel-head">
         <Hammer />
-        <strong>Reforge {props.name || `this ${kind}`}</strong>
+        <strong>Forge {props.name || `this ${kind}`}</strong>
         {target && (
           <span className="forge-target muted">
             Runs <strong>{target.action.label}</strong>

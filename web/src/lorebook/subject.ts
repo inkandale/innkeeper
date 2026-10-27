@@ -81,7 +81,7 @@ export const lorebookSubject: Subject = {
   kind: "lorebook",
   label,
   jobFilter: (id) => ({ lorebook_id: id }),
-  placeholder: "Reforge this lorebook… e.g. add entries for the northern clans · @cards/Billy is their chief",
+  placeholder: "Describe a change to this lorebook… e.g. add entries for the northern clans · @cards/Billy is their chief",
   review: (start, draft, proposal) => {
     const keys = changedKeys(start, proposal).filter((k) => k !== "entries");
     const [before, after, mine] = [list(start.entries), list(proposal.entries), list(draft.entries)];

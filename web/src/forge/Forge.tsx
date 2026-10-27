@@ -138,8 +138,8 @@ export function Forge(props: {
               </button>
             ))}
           </div>
-          <button className="button primary forge-open" onClick={() => open()} title={isNew ? "Forge (Ctrl+K)" : "Reforge (Ctrl+K)"}>
-            <Hammer /> {isNew ? "Forge" : "Reforge"} <kbd>⌘K</kbd>
+          <button className="button primary forge-open" onClick={() => open()} title="Forge (Ctrl+K)">
+            <Hammer /> Forge <kbd>⌘K</kbd>
           </button>
         </div>
       )}

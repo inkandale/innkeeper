@@ -10,10 +10,19 @@ export const jobStates: Job["status"][] = ["queued", "running", "waiting", "succ
 
 export const finished = (j: Job) => j.status === "succeeded" || j.status === "failed";
 
-/** kindLabel is a job's kind, with the action for a bulk job. */
-export function kindLabel(j: Job): string {
-  const action = (j.payload as { action?: unknown } | null)?.action;
-  return j.kind === "bulk" && typeof action === "string" ? `bulk ${action}` : j.kind;
+/** importText is a finished import's outcome in words, such as "3 imported, 1 skipped", or "". */
+export function importText(j: Job): string {
+  const p = j.progress as Record<string, unknown> | null;
+  if (!finished(j) || typeof p?.imported !== "number") return "";
+  const n = (k: string) => (typeof p[k] === "number" ? (p[k] as number) : 0);
+  const parts = [
+    [n("imported"), "imported"],
+    [n("revised"), "updated"],
+    [n("pending"), "waiting for review"],
+    [n("skipped"), "skipped"],
+    [n("failed"), "failed"],
+  ].filter(([c]) => (c as number) > 0);
+  return parts.length ? parts.map(([c, w]) => `${c} ${w}`).join(", ") : "Nothing found";
 }
 
 /** progressText is "done of total" from a bulk job's children or a job's progress, plus any failed and skipped, or "". */
@@ -75,5 +84,9 @@ export function useJob(id: number, { follow = true, ...opts }: { follow?: boolea
   return job;
 }
 
-/** jobToast is the toast for a job that just started, linking to its page. */
-export const jobToast = (j: Job, text = `Job ${j.id} started`): ToastSpec => ({ text, link: { to: `/settings/jobs/${j.id}`, label: "View job" } });
+/** jobToast is the toast for a job that just started: text while it runs, then done or its error, linking to its page. */
+export const jobToast = (j: Job, text = `${j.label}…`, done = `${j.label}: done`): ToastSpec => ({
+  text,
+  job: { id: j.id, done },
+  link: { to: `/settings/jobs/${j.id}`, label: "View job" },
+});

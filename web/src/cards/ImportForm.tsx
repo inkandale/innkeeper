@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { api, must, upload, withCapability } from "../api/client";
-import { progressText, useJob, type Job } from "../settings/jobUtil";
+import { importText, progressText, useJob, type Job } from "../settings/jobUtil";
 
 type Plugin = { name: string; capabilities?: string[] | null; inputs?: string[] | null };
 type Instance = { id: number; plugin: string; label: string };
@@ -27,7 +27,7 @@ export function JobLine({ label, id, to }: { label: string; id: number; to: stri
   return (
     <p>
       <Link to={to}>
-        {label}: {j?.status} {j && progressText(j)}
+        {label}: {j && (importText(j) || [j.status, progressText(j)].filter(Boolean).join(" "))}
       </Link>
       {j?.error && <span className="error"> {j.error}</span>}
     </p>

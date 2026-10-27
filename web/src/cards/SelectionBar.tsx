@@ -118,7 +118,7 @@ export function SelectionBar(props: {
         if (res.response.status === 409) void previews[i]!.refetch();
         try {
           const j = must(res);
-          toast(jobToast(j));
+          toast(jobToast(j, `Pushing to ${t.label}…`, `Pushed to ${t.label}`));
           onStarted?.(j.id);
           setPicked((ids) => (ids ?? chosen.map((c) => c.id)).filter((id) => id !== t.id));
         } catch (e) {

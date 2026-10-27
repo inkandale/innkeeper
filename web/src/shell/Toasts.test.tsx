@@ -17,14 +17,15 @@ function Buttons() {
       <button onClick={() => toast({ text: "Job 5 started", link: { to: "/settings/jobs/5", label: "View job" } })}>info</button>
       <button onClick={() => toast({ text: "Boom", error: true })}>error</button>
       <button onClick={() => toast({ text: "Archived Brakka", action: { label: "Undo", run: undo } })}>archive</button>
+      <button onClick={() => toast({ text: "Pushing to Lumiverse…", job: { id: 7, done: "Pushed to Lumiverse" } })}>push</button>
     </>
   );
 }
 
-function renderToasts() {
+function renderToasts(qc = new QueryClient()) {
   const router = createMemoryRouter([{ path: "/", element: <Toasts><Buttons /></Toasts> }]);
   render(
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={qc}>
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
@@ -61,6 +62,22 @@ test("a failed mutation toasts its error once, unless it opts out", async () => 
   await user.click(screen.getByRole("button", { name: "fail" }));
   expect(await screen.findAllByText("Refused")).toHaveLength(1);
   expect(screen.queryByText("Shown inline")).not.toBeInTheDocument();
+});
+
+test("a job's toast says it's under way, then how it ended", async () => {
+  const qc = new QueryClient();
+  const job = { id: 7, kind: "target.push", label: "Push to app", status: "running", payload: {}, progress: {} };
+  qc.setQueryData(["job", 7], job);
+  renderToasts(qc);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "push" }));
+  expect(screen.getByText("Pushing to Lumiverse…")).toBeInTheDocument();
+  act(() => qc.setQueryData(["job", 7], { ...job, status: "succeeded" }));
+  expect(await screen.findByText("Pushed to Lumiverse")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "push" }));
+  act(() => qc.setQueryData(["job", 7], { ...job, status: "failed", error: "Lumiverse refused the login" }));
+  expect(await screen.findAllByText("Push to app failed: Lumiverse refused the login")).toHaveLength(2);
 });
 
 test("a toast's action runs once and dismisses it", async () => {

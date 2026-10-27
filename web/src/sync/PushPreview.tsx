@@ -38,7 +38,8 @@ export function PushPreview(props: { kind: Kind; id: number; targets: Target[]; 
         const p = t.preview.data!;
         try {
           const body = { instance_id: t.id, confirm: p.confirm, ...(p.new_copy ? { new_copy: true } : {}) };
-          toast(jobToast(must(await api.POST(route(kind, "/cards/{id}/push"), { params: { path: { id } }, body }))));
+          const job = must(await api.POST(route(kind, "/cards/{id}/push"), { params: { path: { id } }, body }));
+          toast(jobToast(job, `Pushing to ${t.label}…`, `Pushed to ${t.label}`));
           setPushed((all) => [...all, t.id]);
         } catch (e) {
           const changed = e instanceof ApiError && e.status === 409;

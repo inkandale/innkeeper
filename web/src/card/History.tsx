@@ -2,12 +2,22 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { api, ApiError, must, route, thumb, type Kind } from "../api/client";
+import { pluginsQuery } from "../api/queries";
 import { useToast } from "../shell/Toasts";
 import { useModal } from "../shell/useModal";
 import { Diff } from "../sync/Diff";
 import "./Card.css";
 
 type AvatarPick = "keep" | "revision";
+
+/** actor names who made a revision, from its source: ui, mcp, reconcile, or plugin:<name>. */
+function actor(source: string, plugins: { name: string; title?: string }[]): string {
+  if (source.startsWith("plugin:")) {
+    const name = source.slice("plugin:".length);
+    return plugins.find((p) => p.name === name)?.title || name;
+  }
+  return { ui: "You", mcp: "An AI assistant", reconcile: "Sync" }[source] ?? source;
+}
 
 /** AvatarChoice asks which image a restore keeps when the revision's differs from the head's. */
 function AvatarChoice({ head, rev, busy, onPick, onCancel }: {
@@ -50,6 +60,7 @@ export function History({ kind = "card" }: { kind?: Kind }) {
   const [params, setParams] = useSearchParams();
   const qc = useQueryClient();
   const toast = useToast();
+  const plugins = useQuery(pluginsQuery);
   const revs = useQuery({
     queryKey: [kind, id, "revisions"],
     queryFn: async () => must(await api.GET(route(kind, "/cards/{id}/revisions"), { params: { path: { id } } })),
@@ -109,7 +120,7 @@ export function History({ kind = "card" }: { kind?: Kind }) {
               <button className="revision" aria-current={r.id === rev?.id ? "true" : undefined} onClick={() => set({ rev: String(r.id) })}>
                 <strong>{r.message || `Revision ${r.id}`}</strong>
                 <span className="muted">
-                  {new Date(r.created_at).toLocaleString()} · {r.source}
+                  {new Date(r.created_at).toLocaleString()} · {actor(r.source, plugins.data ?? [])}
                 </span>
               </button>
             </li>

@@ -1,4 +1,4 @@
-import { age, kindLabel, progressText, span, type Job } from "./jobUtil";
+import { age, importText, progressText, span, type Job } from "./jobUtil";
 
 const job = (j: Partial<Job>): Job => ({ id: 1, kind: "bulk", status: "running", payload: {}, progress: {}, attempts: 1, max_attempts: 3, run_after: "", created_at: "", ...j }) as Job;
 
@@ -10,9 +10,13 @@ test("progressText shows children, then done of total", () => {
   expect(progressText(job({ progress: {} }))).toBe("");
 });
 
-test("kindLabel names a bulk job's action", () => {
-  expect(kindLabel(job({ payload: { action: "card.tag" } }))).toBe("bulk card.tag");
-  expect(kindLabel(job({ kind: "target.push" }))).toBe("target.push");
+test("importText counts what a finished import did, or says it found nothing", () => {
+  const done = (progress: object) => job({ kind: "import", status: "succeeded", progress });
+  expect(importText(done({ imported: 3, revised: 0, pending: 0, skipped: 1, failed: 0 }))).toBe("3 imported, 1 skipped");
+  expect(importText(done({ imported: 0, revised: 2, pending: 1, skipped: 0, failed: 1 }))).toBe("2 updated, 1 waiting for review, 1 failed");
+  expect(importText(done({ imported: 0, revised: 0, pending: 0, skipped: 0, failed: 0 }))).toBe("Nothing found");
+  expect(importText(job({ kind: "import", status: "running", progress: { imported: 1 } }))).toBe("");
+  expect(importText(job({ kind: "target.reconcile", status: "succeeded", progress: { totals: {} } }))).toBe("");
 });
 
 test("age is short", () => {

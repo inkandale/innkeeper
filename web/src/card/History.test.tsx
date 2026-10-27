@@ -55,6 +55,7 @@ beforeEach(() => {
       requests.push(path);
       if (path === "/api/cards/7/revisions") return json(revisions);
       if (path.startsWith("/api/cards/7/revisions/")) return json(diff);
+      if (path === "/api/plugins") return json([{ name: "card-import", title: "Card import" }]);
       if (path === "/api/cards/7/restore") {
         posts.push(await req.json());
         if (staleHead) return json({ detail: "the card changed" }, 409);
@@ -86,6 +87,20 @@ test("the head shows what it changed from the revision before, word by word", as
   expect(screen.queryByText("name")).not.toBeInTheDocument();
   expect(screen.queryByRole("radio", { name: "Before" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Restore" })).not.toBeInTheDocument();
+});
+
+test("each revision names who made it in words", async () => {
+  revisions = [
+    { ...plain[0]!, id: 14, source: "plugin:card-import" },
+    { ...plain[0]!, id: 13, source: "reconcile" },
+    { ...plain[0]!, id: 12, source: "mcp" },
+    plain[1]!,
+  ];
+  renderAt("/cards/7/history");
+  const list = await screen.findByRole("navigation", { name: "Revisions" });
+  await waitFor(() => expect(list).toHaveTextContent("Card import"));
+  for (const who of ["Sync", "An AI assistant", "You"]) expect(list).toHaveTextContent(who);
+  expect(list).not.toHaveTextContent("plugin:card-import");
 });
 
 test("an older revision compares with the head and can be restored", async () => {

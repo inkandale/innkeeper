@@ -151,6 +151,14 @@
   gap: calc(var(--space) * 0.5);
 }
 
+/* A checkbox sits beside its words, not on a grid row of its own. */
+.form-field > label.check {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--space) * 0.5);
+  width: fit-content;
+}
+
 /* The native required attribute drives the marker. */
 .form-field > label:has(:required) > span::after {
   content: " *";

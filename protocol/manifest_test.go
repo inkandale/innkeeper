@@ -3,6 +3,7 @@ package protocol
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -47,6 +48,40 @@ func TestLoadManifest(t *testing.T) {
 	}
 	if got, want := m.CommandPath(), filepath.Join(m.Dir, "lumiverse-plugin"); got != want {
 		t.Fatalf("CommandPath = %q, want %q", got, want)
+	}
+}
+
+func TestLoadManifestKeepsConfigFieldOrder(t *testing.T) {
+	dir := writeManifest(t, `
+name = "app"
+version = "0.1.0"
+protocol = 1
+command = ["./app"]
+capabilities = ["push"]
+
+[config]
+type = "object"
+
+[config.properties.url]
+type = "string"
+
+[config.properties.auth]
+type = "string"
+
+[config.properties.tuning]
+type = "object"
+properties = { zeta = { type = "integer" }, alpha = { type = "integer" } }
+`)
+	m, err := LoadManifest(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Config["x-order"]; !reflect.DeepEqual(got, []any{"url", "auth", "tuning"}) {
+		t.Fatalf("x-order = %v, want [url auth tuning]", got)
+	}
+	tuning := m.Config["properties"].(map[string]any)["tuning"].(map[string]any)
+	if got := tuning["x-order"]; !reflect.DeepEqual(got, []any{"zeta", "alpha"}) {
+		t.Fatalf("tuning x-order = %v, want [zeta alpha]", got)
 	}
 }
 
@@ -108,6 +143,7 @@ uses = ["ai.draw"]`, `uses "ai.draw"`},
 		{"config without a type", "[config]\ntype = \"object\"", "[config]\ntitle = \"Settings\"", "config must be a JSON Schema with type object"},
 		{"duplicate use", `secrets = ["api_key"]`, `secrets = ["api_key"]
 uses = ["ai.chat", "ai.chat"]`, `uses "ai.chat" listed twice`},
+		{"x-secrets names no secret", "[config]\ntype = \"object\"", "[config]\ntype = \"object\"\nx-secrets = { token = { title = \"Token\" } }", `x-secrets "token" is not in secrets`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

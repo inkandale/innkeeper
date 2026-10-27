@@ -25,6 +25,15 @@ const st = {
     },
   },
 };
+// gated shows its password only once Login is basic.
+const gated = {
+  ...st,
+  name: "gated",
+  config: {
+    ...st.config,
+    "x-secrets": { password: { title: "Server password", description: "SillyTavern's login password.", "x-when": { auth: ["basic"] } } },
+  },
+};
 const login = { name: "password-login", version: "0.1.0", capabilities: ["auth"], secrets: ["password_hash"], multiple_instances: true };
 const ai = {
   name: "forge-ai", version: "0.1.0", capabilities: ["action", "records"], secrets: [],
@@ -77,7 +86,7 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (req: Request) => {
       const u = new URL(req.url);
-      if (u.pathname === "/api/plugins") return json(titled([login, st, ai, conf, required]));
+      if (u.pathname === "/api/plugins") return json(titled([login, st, ai, conf, required, gated]));
       if (req.method === "GET" && u.pathname === "/api/instances") return json(instances);
       if (req.method === "GET" && u.pathname === "/api/libraries") return json(libraries);
       if (req.method === "GET" && u.pathname === "/api/instances/3") return json(broken);
@@ -149,6 +158,16 @@ test("creates an instance from the schema form and opens its page", async () => 
       body: { plugin: "sillytavern", name: "home", config: { url: "http://st", auth: "basic" }, secrets: { password: "pw" } },
     },
   ]);
+});
+
+test("a secret with x-when shows, titled and described, only once its condition holds", async () => {
+  const user = userEvent.setup();
+  renderAt("/settings/plugins/gated/new");
+  await screen.findByLabelText("Server URL");
+  expect(screen.queryByLabelText("Server password")).not.toBeInTheDocument();
+  await user.selectOptions(screen.getByLabelText("Login"), "basic");
+  expect(screen.getByLabelText("Server password")).toBeInTheDocument();
+  expect(screen.getByText("SillyTavern's login password.")).toBeInTheDocument();
 });
 
 test("a singleton's form has no Name", async () => {

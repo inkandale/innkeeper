@@ -6,6 +6,8 @@ export type Schema = {
   title?: string;
   description?: string;
   enum?: unknown[];
+  /** Choices with labels: each a const with a title. */
+  oneOf?: { const?: unknown; title?: string }[];
   default?: unknown;
   /** Any media type marks a string as long text, edited in a multi-line box. */
   contentMediaType?: string;
@@ -16,8 +18,34 @@ export type Schema = {
   "x-options"?: boolean;
   items?: Schema;
   properties?: Record<string, Schema>;
+  /** The order to show properties in; core sets it from the manifest's order. */
+  "x-order"?: string[];
+  /** Shows the field only while each named sibling, or its default, has one of the listed values. */
+  "x-when"?: Record<string, unknown[]>;
+  /** On the config root: how to show each of the manifest's secrets. */
+  "x-secrets"?: Record<string, { title?: string; description?: string; "x-when"?: Record<string, unknown[]> }>;
   required?: string[];
 };
+
+/** choicesOf lists a string schema's allowed values with their labels, from enum or from oneOf consts. */
+function choicesOf(s: Schema | undefined): { value: string; label: string }[] | undefined {
+  if (s?.enum?.every((e) => typeof e === "string")) return (s.enum as string[]).map((e) => ({ value: e, label: e }));
+  if (s?.oneOf?.length && s.oneOf.every((o) => typeof o.const === "string"))
+    return s.oneOf.map((o) => ({ value: o.const as string, label: o.title ?? (o.const as string) }));
+  return undefined;
+}
+
+/** orderedProperties is a schema's properties in x-order, then the rest. */
+export function orderedProperties(s: Schema | undefined): [string, Schema][] {
+  const order = s?.["x-order"] ?? [];
+  const rank = (k: string) => (order.includes(k) ? order.indexOf(k) : order.length);
+  return Object.entries(s?.properties ?? {}).sort(([a], [b]) => rank(a) - rank(b));
+}
+
+/** shownWhen reports whether an x-when condition holds, reading each sibling through valueOf. */
+export function shownWhen(when: Record<string, unknown[]> | undefined, valueOf: (key: string) => unknown): boolean {
+  return Object.entries(when ?? {}).every(([k, allowed]) => allowed.some((a) => same(a, valueOf(k))));
+}
 
 /** FormHelpers is what fields need from the form around them. */
 export type FormHelpers = {
@@ -62,7 +90,8 @@ const unordered = (v: unknown) => (Array.isArray(v) && v.every((e) => typeof e =
 
 /**
  * SchemaForm renders inputs for a JSON Schema: string (long text with contentMediaType), number, integer,
- * boolean, string enum, an array of string enum (checkboxes), an instance picker, and objects with properties.
+ * boolean, string choices (enum or oneOf), an array of string choices (checkboxes), a string list (one per line),
+ * an instance picker, and objects with properties.
  * Anything else is raw JSON. A field with a default shows it until overridden, and offers a reset once it is.
  */
 export function SchemaForm({ schema, label, value, onChange, required, path = "" }: Props) {
@@ -93,11 +122,12 @@ export function SchemaForm({ schema, label, value, onChange, required, path = ""
 
   if (known && t === "object" && schema.properties) {
     const obj = (value ?? {}) as Record<string, unknown>;
+    const sibling = (k: string) => obj[k] ?? helpers.defaults[`${path}/${pointerKey(k)}`];
     return (
       <fieldset className="schema-object">
         {title && <legend>{title}</legend>}
         {schema.description && <small className="muted">{schema.description}</small>}
-        {Object.entries(schema.properties).map(([k, s]) => (
+        {orderedProperties(schema).filter(([, s]) => shownWhen(s["x-when"], sibling)).map(([k, s]) => (
           <SchemaForm
             key={k}
             schema={s}
@@ -126,6 +156,8 @@ export function SchemaForm({ schema, label, value, onChange, required, path = ""
   // With a default, emptying a field is an override; Reset is the way back to the default.
   const emptied = (empty: unknown) => (hasDefault ? empty : undefined);
   const loadOptions = schema["x-options"] && known && t === "string" ? helpers.loadOptions : undefined;
+  const choices = choicesOf(schema);
+  const itemChoices = schema.items?.type === "string" ? choicesOf(schema.items) : undefined;
 
   let control: ReactNode;
   if (candidates) {
@@ -146,23 +178,23 @@ export function SchemaForm({ schema, label, value, onChange, required, path = ""
         )}
       </>
     );
-  } else if (known && t === "array" && schema.items?.type === "string" && schema.items.enum?.every((e) => typeof e === "string")) {
-    const choices = schema.items.enum as string[];
+  } else if (known && t === "array" && itemChoices) {
+    const choices = itemChoices.map((c) => c.value);
     const picked = (shown as string[] | undefined) ?? [];
     return (
       <fieldset className="form-field checks">
         <legend>{title}</legend>
-        {choices.map((choice) => (
-          <label key={choice} className="check">
+        {itemChoices.map((choice) => (
+          <label key={choice.value} className="check">
             <input
               type="checkbox"
-              checked={picked.includes(choice)}
+              checked={picked.includes(choice.value)}
               onChange={(e) => {
-                const next = choices.filter((c) => (c === choice ? e.target.checked : picked.includes(c)));
+                const next = choices.filter((c) => (c === choice.value ? e.target.checked : picked.includes(c)));
                 set(next.length > 0 ? next : emptied([]));
               }}
             />
-            <span>{choice}</span>
+            <span>{choice.label}</span>
           </label>
         ))}
         {overridden && <ResetButton title={title} onReset={() => onChange(undefined)} />}
@@ -170,12 +202,28 @@ export function SchemaForm({ schema, label, value, onChange, required, path = ""
         {schema.description && <small className="muted">{schema.description}</small>}
       </fieldset>
     );
-  } else if (known && t === "string" && schema.enum?.every((e) => typeof e === "string")) {
+  } else if (known && t === "array" && schema.items?.type === "string") {
+    const lines = ((shown as string[] | undefined) ?? []).join("\n");
+    control = (
+      <textarea
+        className="input"
+        rows={3}
+        required={required}
+        value={lines}
+        onChange={(e) => {
+          const next = e.target.value.split("\n");
+          set(next.length === 1 && next[0] === "" ? emptied([]) : next);
+        }}
+      />
+    );
+  } else if (known && t === "string" && choices) {
     control = (
       <select className="input" required={required} value={(shown as string) ?? ""} onChange={(e) => set(e.target.value || undefined)}>
         <option value="">—</option>
-        {(schema.enum as string[]).map((e) => (
-          <option key={e}>{e}</option>
+        {choices.map((c) => (
+          <option key={c.value} value={c.value}>
+            {c.label}
+          </option>
         ))}
       </select>
     );

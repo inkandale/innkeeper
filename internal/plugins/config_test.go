@@ -27,18 +27,22 @@ func configRegistry(t *testing.T) *Registry {
 			"url":      map[string]any{"type": "string"},
 			"port":     map[string]any{"type": "integer", "default": 8000},
 			"auth":     map[string]any{"type": "string", "enum": []any{"none", "basic"}},
-			"username": map[string]any{"type": "string"},
+			"username": map[string]any{"type": "string", "x-when": map[string]any{"auth": []any{"basic"}}},
 			"provider": map[string]any{"type": "integer", "format": "instance", "x-offers": "ai.chat"},
+			"mode": map[string]any{"type": "string", "oneOf": []any{
+				map[string]any{"const": "fast", "title": "Fast"}, map[string]any{"const": "slow", "title": "Slow"}}},
 		},
-		"if":   map[string]any{"properties": map[string]any{"auth": map[string]any{"const": "basic"}}},
-		"then": map[string]any{"required": []any{"username"}},
+		"x-order":   []any{"url", "auth", "username", "port", "provider", "mode"},
+		"x-secrets": map[string]any{"password": map[string]any{"title": "Password", "x-when": map[string]any{"auth": []any{"basic"}}}},
+		"if":        map[string]any{"properties": map[string]any{"auth": map[string]any{"const": "basic"}}},
+		"then":      map[string]any{"required": []any{"username"}},
 	}}
 	return New(testdb.New(t), map[string]*protocol.Manifest{"app": m}, &blobstore.Store{Name: "library", Root: t.TempDir()}, box)
 }
 
 func TestCreateInstanceRejectsConfigThatBreaksTheSchema(t *testing.T) {
 	reg := configRegistry(t)
-	for _, config := range []map[string]any{{"port": "eight"}, {"auth": "oauth"}} {
+	for _, config := range []map[string]any{{"port": "eight"}, {"auth": "oauth"}, {"mode": "medium"}} {
 		_, err := reg.CreateInstance(context.Background(), NewInstance{Plugin: "app", Config: config})
 		if !errors.Is(err, ErrInvalid) {
 			t.Fatalf("create with %v: %v, want ErrInvalid", config, err)
@@ -53,7 +57,7 @@ func TestCreateInstanceRejectsConfigThatBreaksTheSchema(t *testing.T) {
 // A missing required key is needs_setup, not an error.
 func TestCreateInstanceAcceptsConfigMissingRequiredKeys(t *testing.T) {
 	reg := configRegistry(t)
-	for _, config := range []map[string]any{nil, {"auth": "basic"}, {"url": "http://app", "port": float64(8080), "provider": float64(3)}} {
+	for _, config := range []map[string]any{nil, {"auth": "basic"}, {"url": "http://app", "port": float64(8080), "provider": float64(3), "mode": "slow"}} {
 		if _, err := reg.CreateInstance(context.Background(), NewInstance{Plugin: "app", Config: config}); err != nil {
 			t.Fatalf("create with %v: %v", config, err)
 		}

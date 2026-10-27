@@ -142,19 +142,42 @@ runs on the UI's origin, so install only themes you trust.
 The UI renders the instance form from `config`. Each top-level property that
 is an object with `properties` gets its own tab, titled by its `title`; the
 other properties, the secrets, and the [`settings`](#settings) buttons go on
-**General**.
+**General**. Fields show in the order `plugin.toml` lists them.
 
 | Schema | Renders as |
 |---|---|
 | `string`, `number`, `integer`, `boolean` | A text box, number box, or checkbox |
 | `string` with `enum` | A drop-down |
+| `string` with `oneOf`, each `{const = "<value>", title = "<label>"}` | A drop-down that shows each `title` and saves its `const` |
 | `string` with `contentMediaType` | A multi-line box, whatever the media type |
 | `string` with `"x-options": true` | A text box with **Load choices**, which asks the plugin for suggestions with `settings.options`. Needs the `settings` capability |
 | `integer` with `"format": "instance"` and `"x-offers": "<method>"` | A drop-down of the working instances that offer that service, such as `ai.chat`. The value is the instance's ID |
-| `array` whose `items` is a `string` with `enum` | A checkbox per choice |
+| `array` whose `items` is a `string` with `enum` or `oneOf` | A checkbox per choice |
+| `array` whose `items` is any other `string` | A multi-line box, one item per line |
 | `object` with `properties` | A group of its properties |
 
 Anything else, or a saved value of the wrong type, is edited as raw JSON.
+
+`x-when` on a property shows it only while each named sibling, or that
+sibling's default, has one of the listed values. It hides the field and
+nothing else, so require the field with `if` and `then` as well:
+
+```toml
+[config.properties.username]
+type = "string"
+x-when = { auth = ["basic", "account"] }
+```
+
+`x-secrets` on `config` describes the secrets: a `title` and `description`
+for each, and an `x-when` that works as above. Each key must be in `secrets`.
+Without a `title`, the form labels a secret from its name, so `api_key` reads
+"API key".
+
+```toml
+[config.x-secrets.password]
+title = "Password"
+x-when = { auth = ["basic", "account"] }
+```
 
 A field with a `default` shows it until the owner changes it, and then offers
 **Reset**. A field left at its default, or typed back to it, is absent from

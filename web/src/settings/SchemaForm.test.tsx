@@ -94,6 +94,52 @@ function WithHelpers({ schema, initial, helpers }: { schema: Schema; initial?: u
   );
 }
 
+test("oneOf choices show their titles and store their values", async () => {
+  const user = userEvent.setup();
+  const labelled: Schema = {
+    type: "object",
+    properties: {
+      provider: { type: "string", title: "Provider", oneOf: [{ const: "llamacpp", title: "llama.cpp" }, { const: "openai", title: "OpenAI" }] },
+      kinds: { type: "array", title: "Provides", items: { type: "string", oneOf: [{ const: "chat", title: "Chat" }, { const: "embed", title: "Search by meaning" }] } },
+    },
+  };
+  render(<Harness schema={labelled} initial={{}} />);
+  await user.selectOptions(screen.getByLabelText("Provider"), "llama.cpp");
+  await user.click(screen.getByLabelText("Search by meaning"));
+  expect(value()).toEqual({ provider: "llamacpp", kinds: ["embed"] });
+});
+
+test("fields follow x-order", () => {
+  const ordered: Schema = { type: "object", "x-order": ["url", "auth"], properties: { auth: { type: "string", title: "Login" }, url: { type: "string", title: "Server URL" } } };
+  render(<Harness schema={ordered} initial={{}} />);
+  expect(screen.getAllByRole("textbox").map((b) => b.closest("label")?.textContent)).toEqual(["Server URL", "Login"]);
+});
+
+test("x-when hides a field until a sibling, or its default, has a listed value", async () => {
+  const user = userEvent.setup();
+  const conditional: Schema = {
+    type: "object",
+    properties: {
+      auth: { type: "string", title: "Login", enum: ["none", "basic"] },
+      username: { type: "string", title: "Username", "x-when": { auth: ["basic"] } },
+    },
+  };
+  render(<WithHelpers schema={conditional} initial={{}} helpers={{ defaults: { "/auth": "none" } }} />);
+  expect(screen.queryByLabelText("Username")).not.toBeInTheDocument();
+  await user.selectOptions(screen.getByLabelText("Login"), "basic");
+  expect(screen.getByLabelText("Username")).toBeInTheDocument();
+});
+
+test("a list of strings is edited one per line and shows its default", async () => {
+  const user = userEvent.setup();
+  const list: Schema = { type: "object", properties: { folders: { type: "array", title: "Folders", items: { type: "string" } } } };
+  render(<WithHelpers schema={list} initial={{}} helpers={{ defaults: { "/folders": ["/a"] } }} />);
+  const box = screen.getByLabelText("Folders");
+  expect(box).toHaveValue("/a");
+  await user.type(box, "{Enter}/b");
+  expect(value()).toEqual({ folders: ["/a", "/b"] });
+});
+
 const prompts: Schema = {
   type: "object",
   properties: { prompts: { type: "object", properties: { greet: { type: "string", title: "Greet", contentMediaType: "text/plain" } } } },

@@ -175,6 +175,7 @@ func LoadManifest(dir string) (*Manifest, error) {
 	if len(unknown) > 0 {
 		return nil, fmt.Errorf("manifest %s: unknown keys: %s", abs, strings.Join(unknown, ", "))
 	}
+	orderProperties(m.Config, md.Keys())
 	m.Dir = abs
 	m.Capabilities = WithoutRetired(m.Capabilities)
 	if err := m.Validate(); err != nil {
@@ -191,6 +192,28 @@ func LoadManifest(dir string) (*Manifest, error) {
 		}
 	}
 	return &m, nil
+}
+
+// orderProperties sets x-order on each object in the config schema to its
+// properties in the order the manifest lists them, which a map loses.
+func orderProperties(config map[string]any, keys []toml.Key) {
+	for _, k := range keys {
+		n := len(k)
+		if n < 3 || k[0] != "config" || k[n-2] != "properties" {
+			continue
+		}
+		parent := config
+		for _, step := range k[1 : n-2] {
+			parent, _ = parent[step].(map[string]any)
+		}
+		if parent == nil {
+			continue
+		}
+		order, _ := parent["x-order"].([]any)
+		if !slices.Contains(order, any(k[n-1])) {
+			parent["x-order"] = append(order, k[n-1])
+		}
+	}
 }
 
 // checkFile reports whether rel is a regular file in dir. OpenInRoot
@@ -245,6 +268,12 @@ func (m *Manifest) Validate() error {
 	if len(m.Config) > 0 {
 		if raw, err := json.Marshal(m.Config); err != nil || !objectSchema(raw) {
 			errs = append(errs, errors.New("config must be a JSON Schema with type object"))
+		}
+		described, _ := m.Config["x-secrets"].(map[string]any)
+		for _, name := range slices.Sorted(maps.Keys(described)) {
+			if !slices.Contains(m.Secrets, name) {
+				errs = append(errs, fmt.Errorf("config x-secrets %q is not in secrets", name))
+			}
 		}
 	}
 	if strings.ContainsAny(m.Description, "\r\n") {

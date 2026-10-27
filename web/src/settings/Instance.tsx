@@ -8,7 +8,7 @@ import { useToast } from "../shell/Toasts";
 import { useLeaveGuard } from "../shell/useLeaveGuard";
 import { type InstanceInfo, type Plugin } from "./Plugins";
 import { Records } from "./Records";
-import { FormContext, pointerKey, SchemaForm, unpointerKey, type Schema } from "./SchemaForm";
+import { FormContext, orderedProperties, pointerKey, SchemaForm, shownWhen, unpointerKey, type Schema } from "./SchemaForm";
 
 /** Instance adds an instance at /settings/plugins/:plugin/new and edits one at /settings/instances/:id. */
 export function Instance() {
@@ -54,7 +54,7 @@ const isTab = (s: Schema) => s.type === "object" && s.properties !== undefined;
 
 /** tabsOf splits a config schema: each top-level object is a tab, and the rest go on General. */
 function tabsOf(schema: Schema | undefined): { general: Schema; tabs: [string, Schema][] } {
-  const props = Object.entries(schema?.properties ?? {});
+  const props = orderedProperties(schema);
   return {
     general: { ...schema, properties: Object.fromEntries(props.filter(([, s]) => !isTab(s))) },
     tabs: props.filter(([, s]) => isTab(s)),
@@ -313,12 +313,15 @@ export function InstanceForm({
         >
           {schema && <SchemaForm schema={general} label="" value={config} onChange={setConfig} />}
           {(plugin.secrets ?? []).map((s) => {
+            const about = schema?.["x-secrets"]?.[s];
+            const configured = (config ?? {}) as Record<string, unknown>;
+            if (!shownWhen(about?.["x-when"], (k) => configured[k] ?? defs[`/${pointerKey(k)}`])) return null;
             const set = instance?.secrets?.includes(s) ?? false;
             const pending = secrets[s];
             return (
               <div className="form-field" key={s}>
                 <label>
-                  <span>{secretLabel(s)}</span>
+                  <span>{about?.title ?? secretLabel(s)}</span>
                   <input
                     className="input"
                     type="password"
@@ -329,6 +332,7 @@ export function InstanceForm({
                     }
                   />
                 </label>
+                {about?.description && <small className="muted">{about.description}</small>}
                 <small className="muted">{pending === null ? "Removed when you save." : set ? "Set. Type to replace it." : "Not set."}</small>
                 {set && pending === undefined && (
                   <button type="button" className="button" aria-label={`Remove ${s}`} onClick={() => setSecrets((x) => ({ ...x, [s]: null }))}>

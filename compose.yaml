@@ -43,6 +43,9 @@ services:
       # - ./backups:/backups
     ports:
       - "127.0.0.1:${INNKEEPER_PORT:-8080}:8080"
+    # Lets plugins reach apps on this machine at host.docker.internal, on Linux too.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy

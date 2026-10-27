@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import { api, must, mustOk } from "../api/client";
 import { pluginsQuery } from "../api/queries";
-import { choose, groupCatalog, pickGroups, providerTitles, recommended, type Offer } from "./wizard";
+import { alternatives, choose, groupCatalog, pickGroups, providerTitles, recommended, startChosen, type Offer } from "./wizard";
 
 /** ChoosePlugins offers the catalog's plugins by category and installs the ones the owner picks. */
 export function ChoosePlugins() {
@@ -15,8 +15,9 @@ export function ChoosePlugins() {
   const [picked, setPicked] = useState<Set<string> | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const installed = new Set((plugins.data ?? []).map((p) => p.name));
+  const builtin = new Set((plugins.data ?? []).filter((p) => p.builtin).map((p) => p.name));
   const groups = groupCatalog(catalog.data ?? []);
-  const chosen = picked ?? new Set(groups.flatMap((g) => g.plugins).filter(recommended).map((o) => o.name));
+  const chosen = picked ?? startChosen(groups);
   const top = pickGroups(groups, recommended);
   const more = pickGroups(groups, (o) => !recommended(o));
 
@@ -53,52 +54,81 @@ export function ChoosePlugins() {
   const locked = !plugins.isSuccess || install.isPending;
   const empty = catalog.isSuccess && groups.length === 0 && !catalog.data?.some((s) => s.error);
 
-  const group = (g: (typeof groups)[number]) => (
-    <div key={g.category}>
-      <div className="group">{g.category}</div>
-      <div className="grid">
-        {g.plugins.map((p) => {
-          const have = installed.has(p.name);
-          const errorId = `install-error-${p.name}`;
-          return (
-            <div key={p.name}>
-              <label className="offer">
-                <div className="top">
-                  <span>
-                    <input
-                      type="checkbox"
-                      aria-label={p.title || p.name}
-                      aria-describedby={errors[p.name] ? errorId : undefined}
-                      checked={have || chosen.has(p.name)}
-                      disabled={have || locked}
-                      onChange={() => toggle(p.name)}
-                    />{" "}
-                    {p.title || p.name}
-                    {have && <span className="badge">installed</span>}
-                  </span>
-                </div>
-                <div className="desc">{p.description}</div>
-                {providerTitles(p, offers).map((t) => (
-                  <div key={t} className="needs">
-                    Needs {t}
+  const group = (g: (typeof groups)[number]) => {
+    const body = (
+      <>
+        {alternatives(g) && <p className="muted">Pick the ones you use.</p>}
+        <div className="grid">
+          {g.plugins.map((p) => {
+            const have = installed.has(p.name);
+            const errorId = `install-error-${p.name}`;
+            if (builtin.has(p.name)) {
+              return (
+                <div key={p.name} className="offer">
+                  <div className="top">
+                    <span>{p.title || p.name}</span>
+                    <span className="badge">Included</span>
                   </div>
-                ))}
-              </label>
-              {errors[p.name] && (
-                <p id={errorId} className="error" role="alert">
-                  {errors[p.name]}
-                </p>
-              )}
-            </div>
-          );
-        })}
+                  <div className="desc">{p.description}</div>
+                </div>
+              );
+            }
+            return (
+              <div key={p.name}>
+                <label className="offer">
+                  <div className="top">
+                    <span>
+                      <input
+                        type="checkbox"
+                        aria-label={p.title || p.name}
+                        aria-describedby={errors[p.name] ? errorId : undefined}
+                        checked={have || chosen.has(p.name)}
+                        disabled={have || locked}
+                        onChange={() => toggle(p.name)}
+                      />{" "}
+                      {p.title || p.name}
+                      {have && <span className="badge">installed</span>}
+                    </span>
+                  </div>
+                  <div className="desc">{p.description}</div>
+                  {providerTitles(p, offers).map((t) => (
+                    <div key={t} className="needs">
+                      Needs {t}
+                    </div>
+                  ))}
+                </label>
+                {errors[p.name] && (
+                  <p id={errorId} className="error" role="alert">
+                    {errors[p.name]}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </>
+    );
+    // The index's Advanced category holds plugins few owners need, so it starts folded.
+    return g.category === "Advanced" ? (
+      <details key={g.category} className="more">
+        <summary className="group">{g.category}</summary>
+        {body}
+      </details>
+    ) : (
+      <div key={g.category}>
+        <div className="group">{g.category}</div>
+        {body}
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="panel">
-      <h2>Plugins from the official catalog</h2>
+      <h2>Welcome to Innkeeper</h2>
+      <p>
+        Innkeeper keeps one library of your character cards and lorebooks, in step with the apps you chat in.
+        Plugins add those apps, ways to bring cards in, and optional AI tools.
+      </p>
       <p className="muted">Pick what you use. You can add or remove plugins later in Settings.</p>
       {catalog.isPending && <p className="muted">Reading the catalog…</p>}
       {(catalog.error ?? plugins.error) && <p className="error">{(catalog.error ?? plugins.error)!.message}</p>}

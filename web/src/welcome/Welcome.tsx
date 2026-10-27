@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink, Outlet, useNavigate } from "react-router";
 import { api, must } from "../api/client";
-import { pluginsQuery, settingsQuery } from "../api/queries";
+import { instancesQuery, pluginsQuery, settingsQuery } from "../api/queries";
 import { setupPlugins } from "./wizard";
 import "./Welcome.css";
 
@@ -22,6 +22,8 @@ export function useFinish() {
 /** Welcome is the setup wizard: a rail of steps beside the current one. */
 export function Welcome() {
   const plugins = useQuery(pluginsQuery);
+  const instances = useQuery(instancesQuery);
+  const setUp = new Set((instances.data ?? []).map((i) => i.plugin));
   const finish = useFinish();
   const chosen = setupPlugins(plugins.data ?? []);
   return (
@@ -32,6 +34,7 @@ export function Welcome() {
         <NavLink to="/welcome/setup">Set up plugins</NavLink>
         {chosen.map((p) => (
           <NavLink key={p.name} className="sub" to={`/welcome/setup/${encodeURIComponent(p.name)}`}>
+            {setUp.has(p.name) && "✓ "}
             {p.title}
           </NavLink>
         ))}

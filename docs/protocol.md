@@ -1312,14 +1312,17 @@ sha256 = "<hex sha256 of the tarball>"
 - List every version you want owners to be able to install, not only the
   newest.
 - `category` groups a plugin in the setup wizard. `categories` is the order
-  the wizard shows them in; unlisted ones follow alphabetically.
+  the wizard shows them in; unlisted ones follow alphabetically. The wizard
+  folds a category named `Advanced`, for plugins few owners need.
 - `title` is the name the setup wizard shows, as in the manifest.
 - `uses` lists the service methods the plugin calls, as in the manifest. The
   setup wizard then chooses a plugin that offers them, and sets that one up
   first.
 - `recommended = true` marks a plugin the Plugins page suggests, and the setup
   wizard starts with it chosen. Innkeeper does both only for the `official`
-  source.
+  source. When a category recommends several plugins with the same
+  capabilities, such as two apps, the wizard chooses none of them and asks the
+  owner to pick.
 - `os` and `arch` use Go's names, such as `linux` and `arm64`.
 - `url` may be relative to the index. An `https://` index must point at
   `https://` tarballs, and a `file://` index at local files.

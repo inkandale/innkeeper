@@ -43,6 +43,12 @@ export function BringInCards() {
           Nothing to import from yet. <Link to="/welcome/plugins">Set up an app or the importer first.</Link>
         </p>
       )}
+      {apps.length > 0 && (
+        <p className="muted">
+          Syncing an app copies the app's characters and world books into your library and binds each one, so edits
+          can flow both ways. Anything that looks like a card you already have waits for you on Sync.
+        </p>
+      )}
       {apps.map((i) => (
         <div key={i.id}>
           {started[i.id] ? (

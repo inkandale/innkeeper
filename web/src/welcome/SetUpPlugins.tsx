@@ -29,12 +29,16 @@ export function SetUpPlugins() {
       plugin={plugin}
       done={all.filter((i) => i.plugin === name)}
       next={nextStep(chosen, all, name)}
+      skip={nextStep(chosen, [], name)}
     />
   );
 }
 
-/** PluginStep sets up one plugin, then checks it can reach its app if it reads one. */
-function PluginStep({ plugin, done, next }: { plugin: Plugin; done: InstanceInfo[]; next: string }) {
+/**
+ * PluginStep sets up one plugin, then checks it can reach its app if it reads one. Next skips plugins already
+ * set up; skip goes to the next plugin in the list.
+ */
+function PluginStep({ plugin, done, next, skip }: { plugin: Plugin; done: InstanceInfo[]; next: string; skip: string }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [saved, setSaved] = useState<InstanceInfo>();
@@ -98,7 +102,7 @@ function PluginStep({ plugin, done, next }: { plugin: Plugin; done: InstanceInfo
               <button className="button" onClick={() => setEditing(true)}>
                 Edit
               </button>
-              <Link className="button" to={next}>
+              <Link className="button" to={skip}>
                 Skip
               </Link>
             </div>
@@ -126,7 +130,7 @@ function PluginStep({ plugin, done, next }: { plugin: Plugin; done: InstanceInfo
         <h2>{plugin.title}</h2>
         {create.error ? <p className="error">{create.error.message}</p> : <p className="muted">Setting up…</p>}
         {create.error && (
-          <Link className="button" to={next}>
+          <Link className="button" to={skip}>
             Skip this plugin
           </Link>
         )}
@@ -135,8 +139,9 @@ function PluginStep({ plugin, done, next }: { plugin: Plugin; done: InstanceInfo
   }
   return (
     <div className="panel">
+      {plugin.description && <p className="muted">{plugin.description}</p>}
       <InstanceForm plugin={plugin} onSaved={afterSave} cancelTo="/welcome/plugins" />
-      <Link to={next}>Skip this plugin</Link>
+      <Link to={skip}>Skip this plugin</Link>
     </div>
   );
 }

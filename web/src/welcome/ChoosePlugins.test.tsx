@@ -9,7 +9,7 @@ function json(body: unknown, status = 200) {
 }
 
 const offer = (name: string, category: string, recommended = false) => ({
-  name, version: "0.1.0", versions: ["0.1.0"], protocol: 1, capabilities: [], description: `${name} plugin`, category,
+  name, version: "0.1.0", versions: ["0.1.0"], protocol: 1, capabilities: [] as string[], description: `${name} plugin`, category,
   released: "2026-10-06", recommended,
 });
 
@@ -17,11 +17,13 @@ let installs: { path: string; body: unknown }[];
 let installStatus: number;
 let offers: (ReturnType<typeof offer> & { title?: string })[];
 let pluginsHang: boolean;
+let pluginsBody: unknown[];
 beforeEach(() => {
   installs = [];
   installStatus = 204;
   offers = [offer("lumiverse", "Apps"), offer("sillytavern", "Apps"), offer("card-import", "Import")];
   pluginsHang = false;
+  pluginsBody = [{ name: "card-import", source: "official", builtin: false, version: "0.1.0", capabilities: ["import"], secrets: [] }];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
@@ -35,7 +37,7 @@ beforeEach(() => {
         ]);
       if (u.pathname === "/api/plugins" && pluginsHang) return new Promise<Response>(() => {});
       if (u.pathname === "/api/plugins")
-        return json([{ name: "card-import", source: "official", builtin: false, version: "0.1.0", capabilities: ["import"], secrets: [] }]);
+        return json(pluginsBody);
       if (req.method === "POST") {
         installs.push({ path: u.pathname, body: await req.json() });
         return installStatus === 204
@@ -80,17 +82,19 @@ test("groups the catalog and installs the chosen plugins", async () => {
 
 test("recommended plugins start chosen, and the rest wait under More plugins", async () => {
   offers = [
-    offer("lumiverse", "Apps", true),
-    offer("sillytavern", "Apps", true),
-    offer("card-import", "Import", true),
+    { ...offer("lumiverse", "Apps", true), capabilities: ["push", "pull"] },
+    { ...offer("sillytavern", "Apps", true), capabilities: ["push", "pull"] },
+    { ...offer("card-import", "Import", true), capabilities: ["import"] },
     offer("card-lint", "Quality"),
   ];
   const user = userEvent.setup();
   renderStep();
   const lumiverse = await screen.findByRole("checkbox", { name: "lumiverse" });
   await vi.waitFor(() => expect(lumiverse).toBeEnabled());
-  expect(lumiverse).toBeChecked();
-  expect(screen.getByRole("checkbox", { name: "sillytavern" })).toBeChecked();
+  // Two apps that do the same job: the owner picks the one they use.
+  expect(lumiverse).not.toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "sillytavern" })).not.toBeChecked();
+  expect(screen.getByText(/Pick the ones you use/)).toBeInTheDocument();
   const lint = screen.getByRole("checkbox", { name: "card-lint" });
   expect(lint).not.toBeChecked();
   expect(lint).not.toBeVisible();
@@ -99,7 +103,32 @@ test("recommended plugins start chosen, and the rest wait under More plugins", a
   await user.click(screen.getByRole("checkbox", { name: "sillytavern" }));
   await user.click(screen.getByRole("button", { name: "Install and continue" }));
   expect(await screen.findByText("setup step")).toBeInTheDocument();
-  expect(installs.map((i) => i.path)).toEqual(["/api/plugins/lumiverse/install"]);
+  expect(installs.map((i) => i.path)).toEqual(["/api/plugins/sillytavern/install"]);
+});
+
+test("opens by saying what Innkeeper does", async () => {
+  renderStep();
+  expect(await screen.findByRole("heading", { name: "Welcome to Innkeeper" })).toBeInTheDocument();
+  expect(screen.getByText(/in step with the apps you chat in/)).toBeInTheDocument();
+});
+
+test("a built-in plugin shows as included, not as a choice", async () => {
+  offers = [offer("url-import", "Import"), offer("card-import", "Import")];
+  pluginsBody = [{ name: "url-import", title: "URL import", source: "builtin", builtin: true, version: "0.1.0", capabilities: ["import"], secrets: [] }];
+  renderStep();
+  expect(await screen.findByText("Included")).toBeInTheDocument();
+  expect(screen.queryByRole("checkbox", { name: "url-import" })).not.toBeInTheDocument();
+});
+
+test("the Advanced category starts folded", async () => {
+  offers = [offer("card-import", "Import", true), offer("chub-archive", "Advanced")];
+  const user = userEvent.setup();
+  renderStep();
+  await user.click(await screen.findByText("More plugins"));
+  const chub = screen.getByRole("checkbox", { name: "chub-archive" });
+  expect(chub).not.toBeVisible();
+  await user.click(screen.getByText("Advanced"));
+  expect(chub).toBeVisible();
 });
 
 test("offers show the plugin's title", async () => {

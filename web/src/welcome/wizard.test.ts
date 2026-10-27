@@ -1,4 +1,4 @@
-import { choose, groupCatalog, nextStep, providerTitles, setupPlugins, wizardPlugin, type Offer } from "./wizard";
+import { alternatives, choose, groupCatalog, nextStep, providerTitles, setupPlugins, startChosen, wizardPlugin, type Offer } from "./wizard";
 
 const entry = (name: string, category?: string, capabilities = ["push"]) => ({
   name, version: "1.0.0", protocol: 1, capabilities, description: name, versions: ["1.0.0"], category,
@@ -68,4 +68,20 @@ test("setupPlugins sets up providers before the plugins that need them", () => {
     { name: "ai", source: "official", capabilities: ["ai"] },
   ];
   expect(setupPlugins(plugins).map((p) => p.name)).toEqual(["ai", "forge", "lumiverse"]);
+});
+
+const rec = (name: string, category: string, capabilities: string[], recommended = true): Offer => ({
+  ...entry(name, category, capabilities), recommended, source: "official",
+});
+
+test("startChosen leaves alternatives the index recommends for the owner to pick", () => {
+  const groups = groupCatalog([
+    { source: { id: "official", url: "u" }, plugins: [
+      rec("lumiverse", "Apps", ["push", "pull"]), rec("sillytavern", "Apps", ["pull", "push"]),
+      rec("card-import", "Import", ["import"]), rec("chub-archive", "Import", ["import"], false),
+      rec("card-lint", "Quality", ["enrich"], false),
+    ] },
+  ]);
+  expect([...startChosen(groups)]).toEqual(["card-import"]);
+  expect(groups.map(alternatives)).toEqual([true, true, false]);
 });

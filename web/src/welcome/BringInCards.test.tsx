@@ -78,6 +78,13 @@ test("syncs an app that can be read", async () => {
   expect(await screen.findByRole("link", { name: /queued/ })).toHaveAttribute("href", "/sync/reconciles/1");
 });
 
+test("says what syncing an app does", async () => {
+  plugins = [plugin("lumiverse", ["push", "pull"])];
+  instances = [instance(5, "lumiverse", "Lumiverse")];
+  renderStep();
+  expect(await screen.findByText(/copies the app's characters and world books into your library/)).toBeInTheDocument();
+});
+
 test("imports the folder an importer reads", async () => {
   plugins = [{ ...plugin("card-import", ["import"]), inputs: ["file", "folder"] }];
   instances = [instance(6, "card-import", "Card import")];

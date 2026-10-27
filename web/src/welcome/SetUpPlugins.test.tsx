@@ -23,10 +23,12 @@ const cardImport = plugin("card-import", ["import"], { type: "object", propertie
 const bare = plugin("hello", ["push"]);
 
 let installed: unknown[];
+let instances: unknown[];
 let itemsStatus: number;
 let sent: { method: string; path: string; body?: unknown }[];
 beforeEach(() => {
   sent = [];
+  instances = [];
   itemsStatus = 200;
   vi.stubGlobal(
     "fetch",
@@ -43,7 +45,7 @@ beforeEach(() => {
         sent.push({ method: "PATCH", path: u.pathname, body });
         return json({ id: 9, plugin: "sillytavern", config: body.config, secrets: [], label: "sillytavern" });
       }
-      if (u.pathname === "/api/instances") return json([]);
+      if (u.pathname === "/api/instances") return json(instances);
       if (u.pathname === "/api/instances/9/items") {
         sent.push({ method: "GET", path: u.pathname });
         return itemsStatus === 200
@@ -146,4 +148,17 @@ test("a plugin that pulls without pushing moves on without checking an app", asy
   renderAt("/welcome/setup/site-follower");
   expect(await screen.findByText("cards step")).toBeInTheDocument();
   expect(sent).toEqual([{ method: "POST", path: "/api/instances", body: { plugin: "site-follower" } }]);
+});
+
+test("a setup step says what the plugin does", async () => {
+  installed = [{ ...cardImport, description: "Bring in card files you already have." }];
+  renderAt("/welcome/setup/card-import");
+  expect(await screen.findByText("Bring in card files you already have.")).toBeInTheDocument();
+});
+
+test("Skip this plugin goes to the next plugin in the list, even one already set up", async () => {
+  installed = [cardImport, st];
+  instances = [{ id: 3, plugin: "sillytavern", label: "SillyTavern", config: {}, secrets: [] }];
+  renderAt("/welcome/setup/card-import");
+  expect(await screen.findByRole("link", { name: "Skip this plugin" })).toHaveAttribute("href", "/welcome/setup/sillytavern");
 });

@@ -39,6 +39,26 @@ export function recommended(o: Offer): boolean {
   return o.source === "official" && !!o.recommended;
 }
 
+const capsKey = (o: Offer) => [...(o.capabilities ?? [])].sort().join(",");
+
+/** alternatives reports whether a group's offers all do the same job, so the owner picks the ones they use. */
+export function alternatives(g: Group): boolean {
+  return g.plugins.length > 1 && new Set(g.plugins.map(capsKey)).size === 1;
+}
+
+/**
+ * startChosen is the offers the wizard starts with chosen: the recommended ones, except where a category
+ * recommends several that do the same job, such as two apps; the owner picks among those.
+ */
+export function startChosen(groups: Group[]): Set<string> {
+  const chosen = new Set<string>();
+  for (const g of groups) {
+    const rec = g.plugins.filter(recommended);
+    for (const o of rec) if (rec.filter((r) => capsKey(r) === capsKey(o)).length === 1) chosen.add(o.name);
+  }
+  return chosen;
+}
+
 /** pickGroups keeps the offers keep accepts, dropping groups left empty. */
 export function pickGroups(groups: Group[], keep: (o: Offer) => boolean): Group[] {
   return groups.map((g) => ({ ...g, plugins: g.plugins.filter(keep) })).filter((g) => g.plugins.length > 0);

@@ -426,15 +426,16 @@ innkeeper restore [--replace] <archive-or-backup-dir>...
 
 ## Importing
 
-The bundled `card-import` plugin reads CCv3, V2, and V1 cards as PNG or
-JSON, and lorebooks as CCv3 or SillyTavern world info JSON. Importing the
-same file again adds nothing.
+The `card-import` plugin, which the setup wizard installs, reads CCv3, V2,
+and V1 cards as PNG or JSON, and lorebooks as CCv3 or SillyTavern world info
+JSON. Importing the same file again adds nothing.
 
 To import a folder, put it under `./import`, or set `INNKEEPER_IMPORT_DIR`
-in `.env`. Compose mounts it read-only at `/import`:
+in `.env`. Compose mounts it read-only at `/import`, the folder `card-import`
+reads unless its settings name another. Then use **Import folder** in the
+wizard's "Bring in cards" step or on the Cards page, or:
 
 ```bash
-ink instances create card-import Import '{"folder": "/import"}'
 ink import <instance-id>                         # everything in /import
 ink import <instance-id> '{"path": "fantasy"}'   # only /import/fantasy
 ```

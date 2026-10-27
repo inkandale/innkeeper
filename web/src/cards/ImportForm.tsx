@@ -5,10 +5,10 @@ import { api, must, upload, withCapability } from "../api/client";
 import { progressText, useJob, type Job } from "../settings/jobUtil";
 
 type Plugin = { name: string; capabilities?: string[] | null; inputs?: string[] | null };
-type Instance = { id: number; plugin: string };
+type Instance = { id: number; plugin: string; label: string };
 
-/** Importers are the import instances that take files and page URLs, if any. */
-export type Importers = { file?: Instance; url?: Instance };
+/** Importers are the import instances that take files, page URLs, and their own folder, if any. */
+export type Importers = { file?: Instance; url?: Instance; folder?: Instance };
 
 /** importers picks, for each input, the first import instance whose manifest declares it. */
 export function importers(instances: Instance[] | null | undefined, plugins: Plugin[] | null | undefined): Importers {
@@ -17,6 +17,7 @@ export function importers(instances: Instance[] | null | undefined, plugins: Plu
   return {
     file: all.find((i) => inputs.get(i.plugin)?.includes("file")),
     url: all.find((i) => inputs.get(i.plugin)?.includes("url")),
+    folder: all.find((i) => inputs.get(i.plugin)?.includes("folder")),
   };
 }
 
@@ -36,8 +37,8 @@ export function JobLine({ label, id, to }: { label: string; id: number; to: stri
 /** Upload is a file or page URL sent to an importer, and its job. */
 type Upload = { key: number; name: string; job?: number; error?: string };
 
-/** ImportForm imports uploaded files and page URLs into library, and lists each one's job. */
-export function ImportForm({ file, url, library }: Importers & { library: number }) {
+/** ImportForm imports uploaded files, page URLs, and an importer's folder into library, and lists each one's job. */
+export function ImportForm({ file, url, folder, library }: Importers & { library: number }) {
   const qc = useQueryClient();
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [pageURL, setPageURL] = useState("");
@@ -62,11 +63,11 @@ export function ImportForm({ file, url, library }: Importers & { library: number
       setUploads((all) => all.map((x) => (x.key === u.key ? u : x)));
     }
   };
-  const sendURL = async (instance_id: number, page: string) => {
-    let u: Upload = { key: nextKey.current++, name: page };
+  const send = async (instance_id: number, name: string, params: Record<string, string>) => {
+    let u: Upload = { key: nextKey.current++, name };
     setUploads((all) => [...all, u]);
     try {
-      u = { ...u, job: track(must(await api.POST("/imports", { body: { instance_id, library, params: { url: page } } }))) };
+      u = { ...u, job: track(must(await api.POST("/imports", { body: { instance_id, library, params } }))) };
     } catch (e) {
       u = { ...u, error: (e as Error).message };
     }
@@ -96,7 +97,8 @@ export function ImportForm({ file, url, library }: Importers & { library: number
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            void sendURL(url.id, pageURL.trim());
+            const page = pageURL.trim();
+            void send(url.id, page, { url: page });
             setPageURL("");
           }}
         >
@@ -114,6 +116,14 @@ export function ImportForm({ file, url, library }: Importers & { library: number
             Import
           </button>
         </form>
+      )}
+      {folder && (
+        <p>
+          <button className="button" disabled={sending} onClick={() => void send(folder.id, folder.label, {})}>
+            Import folder
+          </button>{" "}
+          <span className="muted">Imports everything in the folder set in {folder.label}'s settings.</span>
+        </p>
       )}
       {uploads.map((u) =>
         u.job ? (

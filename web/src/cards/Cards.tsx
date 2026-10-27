@@ -226,7 +226,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
               New card
             </Link>
           )}
-          {(imp.file || imp.url) && (
+          {(imp.file || imp.url || imp.folder) && (
             <button className="button" onClick={() => setImportOpen(!importOpen)} aria-expanded={importOpen}>
               Import {noun}
             </button>
@@ -249,7 +249,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
       {/* Busy while the last search's hits stand in for the next one's. */}
       <div className="results" aria-busy={res.isPlaceholderData}>
         {/* Hidden, not unmounted, so closing it keeps the started imports listed. */}
-        {(imp.file || imp.url) && (
+        {(imp.file || imp.url || imp.folder) && (
           <section className="import-panel" aria-label={`Import ${noun}`} hidden={!importOpen}>
             {/* Keyed by library, so a switch clears the imports listed for the old one. */}
             <ImportForm key={q.library} {...imp} library={q.library} />

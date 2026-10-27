@@ -38,7 +38,7 @@ export function BringInCards() {
   return (
     <div className="panel">
       <h2>Bring in cards</h2>
-      {!apps.length && !imp.file && !imp.url && (
+      {!apps.length && !imp.file && !imp.url && !imp.folder && (
         <p>
           Nothing to import from yet. <Link to="/welcome/plugins">Set up an app or the importer first.</Link>
         </p>

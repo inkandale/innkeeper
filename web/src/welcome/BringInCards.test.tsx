@@ -78,6 +78,17 @@ test("syncs an app that can be read", async () => {
   expect(await screen.findByRole("link", { name: /queued/ })).toHaveAttribute("href", "/sync/reconciles/1");
 });
 
+test("imports the folder an importer reads", async () => {
+  plugins = [{ ...plugin("card-import", ["import"]), inputs: ["file", "folder"] }];
+  instances = [instance(6, "card-import", "Card import")];
+  renderStep();
+  await userEvent.click(await screen.findByRole("button", { name: "Import folder" }));
+  await vi.waitFor(() =>
+    expect(sent).toEqual([{ method: "POST", path: "/api/imports", body: { instance_id: 6, library: 1, params: {} } }]),
+  );
+  expect(await screen.findByRole("link", { name: /Card import/ })).toHaveAttribute("href", "/settings/jobs/1");
+});
+
 test("uploads files to the card importer", async () => {
   plugins = [{ ...plugin("card-import", ["import"]), inputs: ["file"] }];
   instances = [instance(6, "card-import", "card-import")];

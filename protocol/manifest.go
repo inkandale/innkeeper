@@ -47,8 +47,9 @@ func WithoutRetired(capabilities []string) []string {
 
 var enrichmentTypes = []string{"text", "score", "list"}
 
-// importInputs are the import params the UI can send: file sends blob and name, url sends url.
-var importInputs = []string{"file", "url"}
+// importInputs are the import params the UI can send: file sends blob and name, url sends url,
+// and folder sends none, importing the folder the instance's config names.
+var importInputs = []string{"file", "url", "folder"}
 
 // Names become PostgreSQL schema and role names (plugin_<name>, with - as
 // _). 41 characters makes that 48 bytes, leaving headroom under Postgres's

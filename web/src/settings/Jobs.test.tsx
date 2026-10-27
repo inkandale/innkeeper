@@ -12,22 +12,22 @@ function json(body: unknown) {
 
 const now = new Date().toISOString();
 const bulkJob = {
-  id: 5, kind: "bulk", status: "waiting", payload: { action: "card.tag" }, progress: {}, attempts: 0, max_attempts: 3,
+  id: 5, kind: "bulk", label: "Tag cards", status: "waiting", payload: { action: "card.tag" }, progress: {}, attempts: 0, max_attempts: 3,
   run_after: now, created_at: now, children: { succeeded: 1, queued: 1 }, trigger: "automatic",
 };
 const exportJob = {
-  id: 6, kind: "card.export", status: "succeeded", payload: {}, progress: { done: 2, total: 2, blob: "cd".repeat(32) },
+  id: 6, kind: "card.export", label: "Export cards", status: "succeeded", payload: {}, progress: { done: 2, total: 2, blob: "cd".repeat(32) },
   attempts: 1, max_attempts: 3, run_after: now, created_at: now, started_at: new Date(Date.parse(now) + 30_000).toISOString(),
   finished_at: new Date(Date.parse(now) + 120_000).toISOString(), duration_ms: 90_000,
   cards_changed: 0, trigger: "manual",
 };
 const failedImport = {
-  id: 8, kind: "import", instance_id: 3, status: "failed", payload: {}, progress: { done: 10, total: 100 }, attempts: 8, max_attempts: 8,
+  id: 8, kind: "import", label: "Import", instance_id: 3, status: "failed", payload: {}, progress: { done: 10, total: 100 }, attempts: 8, max_attempts: 8,
   run_after: now, created_at: now, finished_at: now, error: "worker stopped renewing its lease", cards_changed: 12, trigger: "scheduled",
 };
 
 const enrichJob = {
-  id: 9, kind: "enrich", status: "succeeded", payload: {}, attempts: 1, max_attempts: 8, run_after: now, created_at: now,
+  id: 9, kind: "enrich", label: "Score cards", status: "succeeded", payload: {}, attempts: 1, max_attempts: 8, run_after: now, created_at: now,
   progress: { done: 10, failed: 2, skipped: 0, total: 12, warnings: ["Talira: context deadline exceeded"] },
   cards_changed: 10, trigger: "manual",
 };
@@ -100,9 +100,9 @@ function renderAt(entry: string) {
 
 test("the list shows jobs and filters by state", async () => {
   const router = renderAt("/settings/jobs");
-  expect(await screen.findByText("bulk card.tag")).toBeInTheDocument();
+  expect(await screen.findByText("Tag cards")).toBeInTheDocument();
   expect(screen.getByText("1 of 2")).toBeInTheDocument();
-  expect(screen.getByText("card.export")).toBeInTheDocument();
+  expect(screen.getByText("Export cards")).toBeInTheDocument();
   const user = userEvent.setup();
   await user.selectOptions(screen.getByRole("combobox", { name: "State" }), "failed");
   expect(router.state.location.search).toBe("?status=failed");
@@ -120,14 +120,14 @@ test("the list filters by plugin and names each job's instance", async () => {
 
 test("the list hides automatic jobs", async () => {
   const router = renderAt("/settings/jobs");
-  expect(await screen.findByText("bulk card.tag")).toBeInTheDocument();
+  expect(await screen.findByText("Tag cards")).toBeInTheDocument();
   expect(screen.getByText("automatic")).toBeInTheDocument();
   const user = userEvent.setup();
   await user.click(screen.getByRole("checkbox", { name: "Hide automatic" }));
   expect(router.state.location.search).toBe("?automatic=hide");
   expect(requests).toContain("GET /api/jobs?trigger=manual&trigger=scheduled");
   expect(await screen.findByText("manual")).toBeInTheDocument();
-  expect(screen.queryByText("bulk card.tag")).not.toBeInTheDocument();
+  expect(screen.queryByText("Tag cards")).not.toBeInTheDocument();
 });
 
 test("a bulk job shows its children, follows events, and cancels", async () => {
@@ -167,10 +167,10 @@ test("a finished export links to its zip and opens no stream", async () => {
 
 test("the list shows how long each job ran and the cards it changed", async () => {
   renderAt("/settings/jobs");
-  await screen.findByText("card.export");
+  await screen.findByText("Export cards");
   const cells = (text: string) =>
     within(screen.getByText(text).closest("tr")!).getAllByRole("cell").map((c) => c.textContent);
-  expect(cells("card.export").slice(6, 8)).toEqual(["1m", ""]);
+  expect(cells("Export cards").slice(6, 8)).toEqual(["1m", ""]);
   expect(cells("Chub archive").slice(6, 8)).toEqual(["", "12"]);
 });
 

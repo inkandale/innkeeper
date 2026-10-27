@@ -71,7 +71,7 @@ beforeEach(() => {
       }
       if (req.method === "POST") {
         posts.push({ path: u.pathname, body: await req.json() });
-        return json({ id: 9, kind: "bulk", status: "waiting" }, 202);
+        return json({ id: 9, kind: "bulk", label: "Apply review choices", status: "waiting" }, 202);
       }
       return json({}, 404);
     }),
@@ -145,7 +145,7 @@ test("Apply suggested resolves the checked reviews", async () => {
       { remote_id: "a", action: "bind", card_id: 1, app_hash: "ha", base_revision_id: 118, accepted_hash: "", default: "library", instance_id: 2 },
     ],
   });
-  expect(await screen.findByText(/Job 9 started/)).toBeInTheDocument();
+  expect(await screen.findByText("Apply review choices…")).toBeInTheDocument();
 });
 
 test("Apply suggested with an ahead row asks with the push preview first", async () => {

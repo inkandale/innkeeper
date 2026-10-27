@@ -8,6 +8,9 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// GarbageKind is the job kind that runs CollectGarbage.
+const GarbageKind = "blob.gc"
+
 // CollectGarbage deletes blobs in this library's store that no revision
 // or waiting import update references, and leftover files in its tmp and staging folders. It only
 // touches what is older than grace, which keeps it clear of imports in

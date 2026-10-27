@@ -3703,6 +3703,8 @@ export interface components {
             /** Format: int64 */
             instance_id?: number;
             kind: string;
+            /** @description The kind in words, such as Push to app; a bulk job's names its action. An unknown kind's label is the kind. */
+            label: string;
             /** Format: int64 */
             max_attempts: number;
             /** @description A bulk job's finished children, counted by outcome, such as a resolve's action, stale, conflict, or failed. Only get-job, cancel-job, and watch-job fill it. */

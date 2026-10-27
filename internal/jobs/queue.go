@@ -529,6 +529,9 @@ func (q *Queue) ChildOutcomes(ctx context.Context, parent int64) (map[string]int
 	return out, err
 }
 
+// PruneKind is the job kind that runs Prune.
+const PruneKind = "job.prune"
+
 // Prune deletes top-level jobs that finished more than age ago, with their
 // children.
 func (q *Queue) Prune(ctx context.Context, age time.Duration) (int64, error) {

@@ -21,6 +21,7 @@ import (
 	exporter "github.com/inkandale/innkeeper/internal/export"
 	"github.com/inkandale/innkeeper/internal/importer"
 	"github.com/inkandale/innkeeper/internal/jobs"
+	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
 	iservices "github.com/inkandale/innkeeper/internal/services"
 	"github.com/inkandale/innkeeper/internal/targets"
@@ -28,11 +29,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-)
-
-const (
-	blobGCKind   = "blob.gc"
-	jobPruneKind = "job.prune"
 )
 
 func worker() error {
@@ -128,7 +124,7 @@ func worker() error {
 			backup.Kind(backup.Assets): backup.BackupHandler(svc.backups, svc.pool, backupOpts, backup.Assets),
 			backup.Kind(backup.Config): backup.BackupHandler(svc.backups, svc.pool, backupOpts, backup.Config),
 			backup.RestoreKind:         backup.RestoreHandler(svc.backups, restoreOpts, afterConfig),
-			blobGCKind: func(ctx context.Context, r *jobs.Run) error {
+			library.GarbageKind: func(ctx context.Context, r *jobs.Run) error {
 				blobs, leftovers, err := svc.lib.CollectGarbage(ctx, 24*time.Hour)
 				if err == nil && svc.backups.Dir != "" {
 					var uploads int
@@ -138,14 +134,14 @@ func worker() error {
 				r.SetProgress(fmt.Appendf(nil, `{"blobs": %d, "leftovers": %d}`, blobs, leftovers))
 				return err
 			},
-			jobPruneKind: func(ctx context.Context, r *jobs.Run) error {
+			jobs.PruneKind: func(ctx context.Context, r *jobs.Run) error {
 				n, err := q.Prune(ctx, jobRetention)
 				r.SetProgress(fmt.Appendf(nil, `{"deleted": %d}`, n))
 				return err
 			},
 		},
 		Schedules: []jobs.Schedule{
-			{Kind: blobGCKind, Every: 24 * time.Hour},
+			{Kind: library.GarbageKind, Every: 24 * time.Hour},
 			{Kind: targets.ScanKind, Every: time.Hour},
 			// ponytail: catches entities queued while a detect job was finishing, and enqueues that failed; hourly is the delay then.
 			{Kind: importer.DetectKind, Every: time.Hour},
@@ -157,7 +153,7 @@ func worker() error {
 		w.Schedules = append(w.Schedules, jobs.Schedule{Kind: targets.SyncKind, Every: syncEvery})
 	}
 	if jobRetention > 0 {
-		w.Schedules = append(w.Schedules, jobs.Schedule{Kind: jobPruneKind, Every: 24 * time.Hour})
+		w.Schedules = append(w.Schedules, jobs.Schedule{Kind: jobs.PruneKind, Every: 24 * time.Hour})
 	}
 	if sourceCheckEvery > 0 {
 		w.Schedules = append(w.Schedules, jobs.Schedule{Kind: targets.SourceCheckKind, Every: sourceCheckEvery})

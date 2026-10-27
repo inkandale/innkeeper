@@ -383,3 +383,40 @@ func TestBulkLorebooks(t *testing.T) {
 	e.call("POST", "/bulk", map[string]any{"kind": "lorebook", "query": pick, "action": "tag", "tags": []string{"x"}}, 400, nil)
 	e.call("POST", "/bulk", map[string]any{"kind": "spell", "query": pick, "action": "archive"}, 422, nil)
 }
+
+func TestJobsNameTheirKindInWords(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	enqueue := func(s jobs.Spec) int64 {
+		j, err := e.s.Queue.Enqueue(ctx, s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return j.ID
+	}
+	bulkJob := func(j jobs.Job, err error) int64 {
+		if err != nil {
+			t.Fatal(err)
+		}
+		return j.ID
+	}
+	push := enqueue(jobs.Spec{Kind: targets.PushKind})
+	want := map[int64]string{
+		push: "Push to app",
+		enqueue(jobs.Spec{Kind: "someday.maybe"}):                              "someday.maybe",
+		bulkJob(bulk.EnqueueExport(ctx, e.s.Queue, []int64{1}, "png")):         "Export cards",
+		bulkJob(bulk.EnqueueArchive(ctx, e.s.Queue, []int64{1}, false, false)): "Unarchive cards",
+	}
+	var list []jobOut
+	e.call("GET", "/jobs", nil, 200, &list)
+	for _, j := range list {
+		if j.Label != want[j.ID] {
+			t.Errorf("job %d (%s) label = %q, want %q", j.ID, j.Kind, j.Label, want[j.ID])
+		}
+	}
+	var one jobOut
+	e.call("GET", fmt.Sprintf("/jobs/%d", push), nil, 200, &one)
+	if one.Label != "Push to app" {
+		t.Errorf("got job label = %q", one.Label)
+	}
+}

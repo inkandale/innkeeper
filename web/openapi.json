@@ -2869,6 +2869,10 @@
           "kind": {
             "type": "string"
           },
+          "label": {
+            "description": "The kind in words, such as Push to app; a bulk job's names its action. An unknown kind's label is the kind.",
+            "type": "string"
+          },
           "max_attempts": {
             "format": "int64",
             "type": "integer"
@@ -2921,6 +2925,7 @@
         "required": [
           "id",
           "kind",
+          "label",
           "payload",
           "status",
           "attempts",

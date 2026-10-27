@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router";
 import { api, must } from "../api/client";
 import { instancesQuery, pluginsQuery } from "../api/queries";
-import { age, finished, jobStates, kindLabel, progressText, span } from "./jobUtil";
+import { age, finished, jobStates, progressText, span } from "./jobUtil";
 
 export function Jobs() {
   const [params, setParams] = useSearchParams();
@@ -89,7 +89,7 @@ export function Jobs() {
               <td>
                 <Link to={`/settings/jobs/${j.id}`}>#{j.id}</Link>
               </td>
-              <td>{kindLabel(j)}</td>
+              <td>{j.label}</td>
               <td>{j.instance_id ? (label.get(j.instance_id) ?? `#${j.instance_id}`) : ""}</td>
               <td>{j.trigger}</td>
               <td className={"state " + j.status}>{j.status}</td>

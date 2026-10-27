@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -13,7 +14,10 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/inkandale/innkeeper/internal/actions"
+	"github.com/inkandale/innkeeper/internal/backup"
 	"github.com/inkandale/innkeeper/internal/bulk"
+	"github.com/inkandale/innkeeper/internal/embed"
+	"github.com/inkandale/innkeeper/internal/enrich"
 	"github.com/inkandale/innkeeper/internal/importer"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
@@ -33,6 +37,7 @@ var pingInterval = 15 * time.Second
 type jobOut struct {
 	ID           int64           `json:"id"`
 	Kind         string          `json:"kind"`
+	Label        string          `json:"label" doc:"The kind in words, such as Push to app; a bulk job's names its action. An unknown kind's label is the kind."`
 	InstanceID   *int64          `json:"instance_id,omitempty"`
 	Payload      json.RawMessage `json:"payload"`
 	Status       string          `json:"status" enum:"queued,running,waiting,succeeded,failed"`
@@ -52,8 +57,64 @@ type jobOut struct {
 	Outcomes     map[string]int  `json:"outcomes,omitempty" doc:"A bulk job's finished children, counted by outcome, such as a resolve's action, stale, conflict, or failed. Only get-job, cancel-job, and watch-job fill it."`
 }
 
+// kindLabels name each job kind for people.
+var kindLabels = map[string]string{
+	importer.Kind:              "Import",
+	importer.DetectKind:        "Find sources",
+	actions.Kind:               "Run action",
+	embed.Kind:                 "Index for search by meaning",
+	enrich.Kind:                "Score cards",
+	bulk.ArchiveKind:           "Archive card",
+	bulk.LorebookArchiveKind:   "Archive lorebook",
+	bulk.TagKind:               "Tag card",
+	bulk.CollectKind:           "Change collections",
+	bulk.ExportKind:            "Export cards",
+	bulk.DeleteLibraryKind:     "Delete library",
+	bulk.PurgeKind:             "Purge cards",
+	bulk.HideKind:              "Hide duplicates",
+	targets.PushKind:           "Push to app",
+	targets.ScanKind:           "Check apps for changes",
+	targets.ReconcileKind:      "Sync app",
+	targets.ResolveKind:        "Apply review choice",
+	targets.SyncKind:           "Sync every app",
+	targets.SourceCheckKind:    "Check sources for updates",
+	backup.Kind(backup.Assets): "Back up library",
+	backup.Kind(backup.Config): "Back up settings",
+	backup.RestoreKind:         "Restore backup",
+	library.GarbageKind:        "Clean up unused files",
+	jobs.PruneKind:             "Clean up old jobs",
+}
+
+// bulkLabels name a bulk job by its action, the kind of its children.
+var bulkLabels = map[string]string{
+	bulk.ArchiveKind:         "Archive cards",
+	bulk.LorebookArchiveKind: "Archive lorebooks",
+	bulk.TagKind:             "Tag cards",
+	bulk.CollectKind:         "Change collections",
+	bulk.ExportKind:          "Export cards",
+	targets.ResolveKind:      "Apply review choices",
+	targets.PushKind:         "Push to app",
+}
+
+func kindLabel(kind string, payload json.RawMessage) string {
+	if kind != bulk.Kind {
+		return cmp.Or(kindLabels[kind], kind)
+	}
+	var p struct {
+		Action   string
+		Archived *bool
+	}
+	if json.Unmarshal(payload, &p) != nil || bulkLabels[p.Action] == "" {
+		return "Bulk change"
+	}
+	if p.Archived != nil && !*p.Archived {
+		return "Un" + strings.ToLower(bulkLabels[p.Action][:1]) + bulkLabels[p.Action][1:]
+	}
+	return bulkLabels[p.Action]
+}
+
 func toJob(j jobs.Job) jobOut {
-	return jobOut{ID: j.ID, Kind: j.Kind, InstanceID: j.InstanceID, Payload: j.Payload, Status: j.Status,
+	return jobOut{ID: j.ID, Kind: j.Kind, Label: kindLabel(j.Kind, j.Payload), InstanceID: j.InstanceID, Payload: j.Payload, Status: j.Status,
 		Attempts: j.Attempts, MaxAttempts: j.MaxAttempts, Progress: j.Progress, ParentID: j.ParentID, Error: j.Error,
 		RunAfter: j.RunAfter, CreatedAt: j.CreatedAt, FinishedAt: j.FinishedAt, StartedAt: j.StartedAt,
 		DurationMS: durationMS(j.StartedAt, j.FinishedAt), CardsChanged: j.CardsChanged, Trigger: j.Trigger}

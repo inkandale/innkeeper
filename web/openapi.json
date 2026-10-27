@@ -69,6 +69,7 @@
             "enum": [
               "differs",
               "both_changed",
+              "remote_changed",
               "ahead",
               "missing",
               "error",
@@ -13154,6 +13155,7 @@
               "enum": [
                 "differs",
                 "both_changed",
+                "remote_changed",
                 "ahead",
                 "missing",
                 "error",

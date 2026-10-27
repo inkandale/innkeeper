@@ -2680,7 +2680,7 @@ export interface components {
             /** Format: int64 */
             source_id?: number;
             /** @enum {string} */
-            state: "differs" | "both_changed" | "ahead" | "missing" | "error" | "new" | "update";
+            state: "differs" | "both_changed" | "remote_changed" | "ahead" | "missing" | "error" | "new" | "update";
             suggested?: components["schemas"]["ResolveOption"];
         };
         ArchiveInBody: {
@@ -9769,7 +9769,7 @@ export interface operations {
                 /** @description Only this app's changes; counts still cover every app */
                 instance_id?: number;
                 /** @description Only this state */
-                state?: "differs" | "both_changed" | "ahead" | "missing" | "error" | "new" | "update";
+                state?: "differs" | "both_changed" | "remote_changed" | "ahead" | "missing" | "error" | "new" | "update";
             };
             header?: never;
             path?: never;

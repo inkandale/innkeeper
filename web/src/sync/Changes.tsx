@@ -33,7 +33,7 @@ import "./Sync.css";
 type ChangeRow = components["schemas"]["ChangeRow"];
 type Job = components["schemas"]["JobOut"];
 
-const states = ["differs", "both_changed", "new", "error", "ahead", "missing", "update"] as const;
+const states = ["differs", "both_changed", "remote_changed", "new", "error", "ahead", "missing", "update"] as const;
 const rowKey = (r: ChangeRow) =>
   r.card_id ? `card/${r.card_id}`
   : r.lorebook_id ? `lorebook/${r.lorebook_id}`
@@ -213,6 +213,7 @@ export function Changes() {
     switch (c.state) {
       case "differs":
       case "both_changed":
+      case "remote_changed":
       case "new":
         return review;
       case "ahead":

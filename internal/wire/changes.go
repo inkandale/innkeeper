@@ -4,10 +4,12 @@ package wire
 const (
 	ChangeDiffers     = "differs"
 	ChangeBothChanged = "both_changed"
-	ChangeAhead       = "ahead"
-	ChangeMissing     = "missing"
-	ChangeError       = "error"
-	ChangeNew         = "new"
+	// ChangeRemoteChanged is a bound card edited only in the app, which the next sync brings in.
+	ChangeRemoteChanged = "remote_changed"
+	ChangeAhead         = "ahead"
+	ChangeMissing       = "missing"
+	ChangeError         = "error"
+	ChangeNew           = "new"
 	// ChangeUpdate is a followed site source whose author changed it.
 	ChangeUpdate = "update"
 )
@@ -15,7 +17,7 @@ const (
 // AppChange is an app's or source's change, or an app item no card matches.
 type AppChange struct {
 	InstanceID int64  `json:"instance_id"`
-	State      string `json:"state" enum:"differs,both_changed,ahead,missing,error,new,update"`
+	State      string `json:"state" enum:"differs,both_changed,remote_changed,ahead,missing,error,new,update"`
 	RemoteID   string `json:"remote_id,omitempty"`
 	// Name is the app item's name.
 	Name      string `json:"name,omitempty"`
@@ -25,7 +27,7 @@ type AppChange struct {
 	Push bool `json:"push"`
 	// SourceID is a followed source's card_source or lorebook_source ID, for removing it.
 	SourceID int64 `json:"source_id,omitempty"`
-	// JobID is the reconcile job whose snapshot the state came from; 0 for ahead and missing.
+	// JobID is the reconcile job whose snapshot the state came from; 0 for a state read from a binding.
 	JobID     int64          `json:"job_id,omitempty"`
 	AppHash   string         `json:"app_hash,omitempty"`
 	Suggested *ResolveOption `json:"suggested,omitempty"`

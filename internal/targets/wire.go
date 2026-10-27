@@ -32,11 +32,12 @@ const (
 	ApplyNone     = wire.ApplyNone
 	SyncKind      = wire.SyncKind
 
-	ChangeDiffers     = wire.ChangeDiffers
-	ChangeBothChanged = wire.ChangeBothChanged
-	ChangeAhead       = wire.ChangeAhead
-	ChangeMissing     = wire.ChangeMissing
-	ChangeError       = wire.ChangeError
-	ChangeNew         = wire.ChangeNew
-	ChangeUpdate      = wire.ChangeUpdate
+	ChangeDiffers       = wire.ChangeDiffers
+	ChangeBothChanged   = wire.ChangeBothChanged
+	ChangeRemoteChanged = wire.ChangeRemoteChanged
+	ChangeAhead         = wire.ChangeAhead
+	ChangeMissing       = wire.ChangeMissing
+	ChangeError         = wire.ChangeError
+	ChangeNew           = wire.ChangeNew
+	ChangeUpdate        = wire.ChangeUpdate
 )

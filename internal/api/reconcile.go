@@ -47,7 +47,7 @@ type resolutionsIn struct {
 
 type changesIn struct {
 	InstanceID int64  `query:"instance_id" doc:"Only this app's changes; counts still cover every app"`
-	State      string `query:"state" enum:"differs,both_changed,ahead,missing,error,new,update" doc:"Only this state"`
+	State      string `query:"state" enum:"differs,both_changed,remote_changed,ahead,missing,error,new,update" doc:"Only this state"`
 }
 
 type changesOut struct{ Body targets.Changes }

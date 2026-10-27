@@ -1,4 +1,4 @@
-import { bulkResolutions, changePath, dismissBinding, jsonKey, optionLabel, pushSummary, queueReviews, resolution, reviewPath, rows, sentenceCount, siteOf, snapshotOf, sourceLabel, sourceRemoteId, stateCounts, wordDiff, type Comparison, type Snapshot } from "./sync";
+import { bulkResolutions, changePath, dismissBinding, jsonKey, needsYou, optionLabel, pushSummary, queueReviews, resolution, reviewPath, rows, sentenceCount, siteOf, snapshotOf, sourceLabel, sourceRemoteId, stateCounts, wordDiff, type Comparison, type Snapshot } from "./sync";
 
 const cmp: Comparison = {
   instance_id: 3, remote_id: "a", card_id: 1, head_revision_id: 118, accepted_hash: "", base: "none", app_hash: "fresh", fields: [],
@@ -140,4 +140,8 @@ test("dismissBinding sends the app_hash the owner saw", async () => {
   expect(sent?.url).toMatch(/\/api\/bindings\/21\/dismiss$/);
   expect(JSON.parse(sent?.body ?? "")).toEqual({ app_hash: "site-hash" });
   vi.unstubAllGlobals();
+});
+
+test("an edit made only in the app needs the owner, like other drift", () => {
+  expect(needsYou({ remote_changed: 1, both_changed: 2, ahead: 5 })).toBe(3);
 });

@@ -199,7 +199,8 @@ func (s *Service) Changes(ctx context.Context, f ChangesFilter) (Changes, error)
 	st, err := s.pool.Query(ctx, `SELECT coalesce(b.card_id, 0), coalesce(b.lorebook_id, 0), b.instance_id, b.id, b.remote_id, s.status
 		FROM binding b JOIN binding_status s ON s.binding_id = b.id
 		LEFT JOIN card c ON c.id = b.card_id LEFT JOIN lorebook l ON l.id = b.lorebook_id
-		WHERE coalesce(c.archived_at, l.archived_at) IS NULL AND b.push AND s.status IN ('ahead', 'missing') ORDER BY b.id`)
+		WHERE coalesce(c.archived_at, l.archived_at) IS NULL AND b.push
+			AND s.status IN ('ahead', 'missing', 'remote_changed', 'diverged') ORDER BY b.id`)
 	if err != nil {
 		return out, err
 	}
@@ -207,6 +208,10 @@ func (s *Service) Changes(ctx context.Context, f ChangesFilter) (Changes, error)
 	var status string
 	if _, err := pgx.ForEachRow(st, []any{&card, &book, &inst, &binding, &remote, &status}, func() error {
 		isBook, id := book != 0, cmp.Or(card, book)
+		// App edits come from a check, such as Refresh, made since the latest snapshot.
+		if status == "diverged" {
+			status = ChangeBothChanged
+		}
 		if !seen[[3]int64{boolInt(isBook), id, inst}] {
 			add(isBook, id, AppChange{InstanceID: inst, State: status, RemoteID: remote, BindingID: binding, Push: true})
 		}

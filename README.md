@@ -715,8 +715,9 @@ and `--json` for the whole snapshot.
 
 The changes queue lists every card an app needs you for, built from each
 app's latest sync and the binding statuses, with app items no card matches
-first. Each app's state is `differs`, `both_changed`, `ahead`, `missing`,
-`error`, or `new`. List it with
+first. Each app's state is `differs`, `both_changed`, `remote_changed`,
+`ahead`, `missing`, `error`, or `new`. `remote_changed` is a card edited only
+in the app, which the next sync brings in. List it with
 `ink sync changes [--app <instance-id>] [--state <state>]`. The CLI and web
 print states from the library's side: `ahead` is "not pushed",
 `remote_changed` "changed in app", and `diverged` and `both_changed` "changed

@@ -21,13 +21,14 @@ export type Candidate = {
 };
 /** statusLabel is a sync verdict, or an auto-applied one, in the owner's words. */
 export const statusLabel: Record<string, string> = {
-  bound: "Linked",
+  bound: "Bound",
   exact: "Same as a library card",
   likely: "Probably a library card",
   new: "Not in the library",
   error: "Couldn't read",
-  auto_bound: "Linked automatically",
+  auto_bound: "Bound automatically",
   auto_imported: "Imported automatically",
+  auto_pulled: "App edits brought in",
 };
 
 export type Item = {
@@ -43,6 +44,7 @@ export type Item = {
   lorebooks?: Item[];
   auto_bound?: boolean;
   auto_imported?: boolean;
+  auto_pulled?: boolean;
 };
 export type Snapshot = {
   params: { instance_id: number };
@@ -180,7 +182,7 @@ export function reviewPath(
 
 /** reviewable changes open Review; the others are pushed again, unbound, ignored, or only shown. */
 export const reviewable = (c: AppChange) =>
-  c.state === "differs" || c.state === "both_changed" || c.state === "new" || c.state === "ahead" || c.state === "update";
+  c.state === "differs" || c.state === "both_changed" || c.state === "remote_changed" || c.state === "new" || c.state === "ahead" || c.state === "update";
 
 /**
  * QueueChange is a queue entry with its row's kind and card or lorebook, which Review compares with when there's no
@@ -231,7 +233,7 @@ export const changePath = (c: QueueChange, f: ChangesFilter = {}) => {
 };
 
 /** needsYou counts an app's changes that need a decision, from GET /sync/changes counts. */
-export const needsYou = (c: Record<string, number> = {}) => (c.differs ?? 0) + (c.both_changed ?? 0) + (c.error ?? 0) + (c.new ?? 0);
+export const needsYou = (c: Record<string, number> = {}) => (c.differs ?? 0) + (c.both_changed ?? 0) + (c.remote_changed ?? 0) + (c.error ?? 0) + (c.new ?? 0);
 
 export type Counts = Record<"in_sync" | "ahead" | "drifted" | "missing" | "cant_check" | "bound", number>;
 

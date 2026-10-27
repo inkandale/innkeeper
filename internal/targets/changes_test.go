@@ -147,6 +147,39 @@ func TestChangesOneItemPerCard(t *testing.T) {
 	}
 }
 
+func TestChangesListAppEditsFoundSinceTheLastSync(t *testing.T) {
+	e := setup(t, nil)
+	app := e.push(e.card)
+	both := e.libCard(map[string]any{"name": "Tova", "description": "A smith."})
+	bb := e.push(both)
+	if _, err := e.s.Sync(e.ctx, SyncParams{Apply: ApplyNone}, nil); err != nil {
+		t.Fatal(err)
+	}
+	// Edited after the sync and found only by a check, as Refresh does.
+	e.editRemote(app.RemoteID, "description", "Edited in the app.")
+	e.check(app)
+	e.editRemote(bb.RemoteID, "description", "Edited in the app.")
+	e.update(both, func(ed *library.Edit) { ed.Data = setField(ed.Data, "first_mes", "Edited in the library.") })
+	e.check(bb)
+
+	ch, err := e.s.Changes(e.ctx, ChangesFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	states := map[int64]string{}
+	for _, r := range ch.Rows {
+		for _, c := range r.Apps {
+			states[r.CardID] = c.State
+		}
+	}
+	if states[e.card] != ChangeRemoteChanged || states[both] != ChangeBothChanged || len(states) != 2 {
+		t.Errorf("states = %v, want card %d %s and card %d %s", states, e.card, ChangeRemoteChanged, both, ChangeBothChanged)
+	}
+	if ch.Counts[e.inst][ChangeRemoteChanged] != 1 || ch.Counts[e.inst][ChangeBothChanged] != 1 {
+		t.Errorf("counts = %v", ch.Counts)
+	}
+}
+
 func TestChangesIncludeWorldBooks(t *testing.T) {
 	e := setup(t, map[string]any{"lorebooks": "standalone"})
 	// ahead: pushed, then edited in the library only.

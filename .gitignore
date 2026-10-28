@@ -4,5 +4,5 @@
 /.superpowers/
 /web/dist/*
 !/web/dist/.gitkeep
-/web/node_modules/
+/web/node_modules
 /ink

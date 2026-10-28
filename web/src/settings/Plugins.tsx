@@ -150,9 +150,9 @@ export function Plugins() {
             <button
               className="button primary"
               disabled={busy}
-              onClick={() => install.mutate({ name: p.name, source: p.source, version: update })}
+              onClick={() => install.mutate({ name: p.name, source: p.source, version: update.version })}
             >
-              Update to {update}
+              Update to {update.version}
             </button>
           )}
           {p.capabilities?.includes("theme") ? (
@@ -204,6 +204,17 @@ export function Plugins() {
             </Menu>
           )}
         </header>
+        {update && update.notes.length > 0 && (
+          <details className="release-notes">
+            <summary>What's new</summary>
+            {update.notes.map(([version, text]) => (
+              <section key={version}>
+                <h4>{version}</h4>
+                <p>{text}</p>
+              </section>
+            ))}
+          </details>
+        )}
         {listed && instanceRows(list)}
       </article>
     );
@@ -400,12 +411,13 @@ function byCategory<P extends { category?: string | null }>(list: P[]): [string,
   return [...groups].sort(([a], [b]) => (a === "Other" ? 1 : b === "Other" ? -1 : a.localeCompare(b)));
 }
 
+type Update = { version: string; notes: [version: string, text: string][] };
 type Offer = { source: string; name: string; title: string; category?: string; version: string; description: string; recommended?: boolean };
 
 /** catalogOffers splits what the sources list into updates for installed
  * plugins, from the source each came from, and plugins not installed. */
 function catalogOffers(catalog: CatalogSource[], installed: Plugin[]) {
-  const updates = new Map<string, string>();
+  const updates = new Map<string, Update>();
   const available: Offer[] = [];
   const byName = new Map(installed.map((p) => [p.name, p]));
   for (const s of catalog) {
@@ -416,7 +428,12 @@ function catalogOffers(catalog: CatalogSource[], installed: Plugin[]) {
         available.push({ source: s.source.id, name, title: p.title || name, category, version, description, recommended });
       } else if (have.source === s.source.id && p.version !== have.version) {
         // p.version is the source's newest, so anything else installed is older.
-        updates.set(p.name, p.version);
+        // versions is newest first; without the installed one listed, only the newest's notes apply.
+        const versions = p.versions ?? [];
+        const at = versions.indexOf(have.version);
+        const newer = at < 0 ? [p.version] : versions.slice(0, at);
+        const notes = newer.flatMap((v): Update["notes"] => (p.notes?.[v] ? [[v, p.notes[v]]] : []));
+        updates.set(p.name, { version: p.version, notes });
       }
     }
   }

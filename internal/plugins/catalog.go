@@ -40,7 +40,9 @@ type Entry struct {
 	// Recommended marks a plugin the Plugins page suggests on a fresh install.
 	Recommended bool `toml:"recommended" json:"recommended,omitempty"`
 	// Released is the version's publish date, YYYY-MM-DD.
-	Released  string     `toml:"released" json:"released,omitempty"`
+	Released string `toml:"released" json:"released,omitempty"`
+	// Notes say what changed since the previous version, as the Plugins page shows them.
+	Notes     string     `toml:"notes" json:"-"`
 	Artifacts []Artifact `toml:"artifact" json:"-"`
 }
 

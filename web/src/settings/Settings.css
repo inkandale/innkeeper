@@ -130,6 +130,21 @@
   flex: 1;
 }
 
+.plugin .release-notes {
+  margin-top: calc(var(--space) * 0.5);
+}
+
+.plugin .release-notes h4 {
+  margin: calc(var(--space) * 0.5) 0 0;
+  font-size: 0.9em;
+}
+
+/* Notes are plain text, one change per line. */
+.plugin .release-notes p {
+  margin: 0;
+  white-space: pre-line;
+}
+
 .state.setup { color: var(--drift); }
 .state.disabled { color: var(--text-muted); }
 

@@ -1340,6 +1340,7 @@ version = "0.2.0"
 protocol = 1
 capabilities = ["push", "pull"]
 description = "Push and pull cards and lorebooks with a Lumiverse server."
+notes = "- Push lorebooks as world books\n- Read cards back after a push"
 category = "Apps"
 recommended = true
 
@@ -1356,6 +1357,9 @@ sha256 = "<hex sha256 of the tarball>"
   the wizard shows them in; unlisted ones follow alphabetically. The wizard
   folds a category named `Advanced`, for plugins few owners need.
 - `title` is the name the setup wizard shows, as in the manifest.
+- `notes` says what changed in that version, as plain text with one change
+  per line. The Plugins page shows the notes of every version newer than the
+  installed one next to its update button.
 - `uses` lists the service methods the plugin calls, as in the manifest. The
   setup wizard then chooses a plugin that offers them, and sets that one up
   first.

@@ -59,7 +59,8 @@ beforeEach(() => {
           {
             source: { id: "official", url: "https://example.com/index.toml" },
             plugins: [
-              { name: "sillytavern", version: "0.2.0", versions: ["0.2.0", "0.1.0"], protocol: 1, capabilities: [], description: "ST" },
+              { name: "sillytavern", version: "0.2.0", versions: ["0.2.0", "0.1.5", "0.1.0", "0.0.9"],
+                notes: { "0.2.0": "Push lorebooks", "0.1.5": "Fix login", "0.1.0": "Already installed" }, protocol: 1, capabilities: [], description: "ST" },
               { name: "card-import", title: "Card import", category: "Import", version: "0.1.0", versions: ["0.1.0"], protocol: 1, capabilities: [], description: "Import cards.", recommended: true },
             ],
           },
@@ -134,7 +135,12 @@ test("lists what the sources offer on load, by category, and offers updates", as
   // With one source there's nothing to tell apart, so the version stands alone.
   expect(within(st).getByText("0.1.0")).toBeInTheDocument();
 
-  await user.click(await within(st).findByRole("button", { name: "Update to 0.2.0" }));
+  // Notes cover every version newer than the installed one, and no older.
+  await user.click(await within(st).findByText("What's new"));
+  expect(within(st).getByText("Push lorebooks")).toBeVisible();
+  expect(within(st).getByText("Fix login")).toBeVisible();
+  expect(within(st).queryByText("Already installed")).not.toBeInTheDocument();
+  await user.click(within(st).getByRole("button", { name: "Update to 0.2.0" }));
   expect(requests).toContain("POST /api/plugins/sillytavern/install");
   expect(screen.getByText("broken: plugin source: 404")).toBeInTheDocument();
   const available = screen.getByRole("region", { name: "Available" });

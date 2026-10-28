@@ -26,7 +26,7 @@ func TestPluginStore(t *testing.T) {
 	e.s.Registry = reg
 	src := testutil.PluginSource(t,
 		testutil.PluginRelease{Name: "good", Version: "1.0.0"},
-		testutil.PluginRelease{Name: "good", Version: "2.0.0"})
+		testutil.PluginRelease{Name: "good", Version: "2.0.0", Notes: "- Push lorebooks"})
 
 	e.call(http.MethodPost, "/plugin-sources", map[string]string{"id": "local", "url": src}, http.StatusCreated, nil)
 	e.call(http.MethodPost, "/plugin-sources", map[string]string{"id": "web", "url": "http://example.com/i.toml"}, http.StatusBadRequest, nil)
@@ -34,7 +34,8 @@ func TestPluginStore(t *testing.T) {
 	var catalog []catalogSourceOut
 	e.call(http.MethodGet, "/plugin-catalog", nil, http.StatusOK, &catalog)
 	if len(catalog) != 1 || len(catalog[0].Plugins) != 1 || catalog[0].Plugins[0].Version != "2.0.0" ||
-		len(catalog[0].Plugins[0].Versions) != 2 || catalog[0].Plugins[0].Versions[1] != "1.0.0" {
+		len(catalog[0].Plugins[0].Versions) != 2 || catalog[0].Plugins[0].Versions[1] != "1.0.0" ||
+		len(catalog[0].Plugins[0].Notes) != 1 || catalog[0].Plugins[0].Notes["2.0.0"] != "- Push lorebooks" {
 		t.Fatalf("catalog = %+v", catalog)
 	}
 

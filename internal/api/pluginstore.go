@@ -40,7 +40,9 @@ type catalogPluginOut struct {
 	plugins.Entry
 	// Versions is newest first.
 	Versions []string `json:"versions"`
-	Needs    []string `json:"needs,omitempty" doc:"Capabilities the plugin needs another plugin to offer, such as ai"`
+	// Notes maps a version to what changed in it, for versions that have notes.
+	Notes map[string]string `json:"notes,omitempty"`
+	Needs []string          `json:"needs,omitempty" doc:"Capabilities the plugin needs another plugin to offer, such as ai"`
 }
 
 type catalogSourceOut struct {
@@ -149,6 +151,12 @@ func catalog(entries []plugins.Entry) []catalogPluginOut {
 			p.Entry = e
 		}
 		p.Versions = append(p.Versions, e.Version)
+		if e.Notes != "" {
+			if p.Notes == nil {
+				p.Notes = map[string]string{}
+			}
+			p.Notes[e.Version] = e.Notes
+		}
 	}
 	out := []catalogPluginOut{}
 	for _, p := range byName {

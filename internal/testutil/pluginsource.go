@@ -26,6 +26,8 @@ type PluginRelease struct {
 	SHA256 string
 	// Uses are the service methods the plugin calls, in its manifest and index entry.
 	Uses []string
+	// Notes are the index entry's release notes.
+	Notes string
 }
 
 // PluginSource writes a tarball per release and an index.toml listing them
@@ -48,9 +50,9 @@ func PluginSource(t *testing.T, releases ...PluginRelease) string {
 		if r.SHA256 != "" {
 			hash = r.SHA256
 		}
-		fmt.Fprintf(&index, "[[plugin]]\nname = %q\nversion = %q\nprotocol = %d\ncapabilities = [\"import\"]\n%sdescription = \"Test plugin.\"\n\n"+
+		fmt.Fprintf(&index, "[[plugin]]\nname = %q\nversion = %q\nprotocol = %d\ncapabilities = [\"import\"]\n%snotes = %q\ndescription = \"Test plugin.\"\n\n"+
 			"[[plugin.artifact]]\nos = %q\narch = %q\nurl = %q\nsha256 = %q\n\n",
-			r.Name, r.Version, r.Protocol, usesLine(r.Uses), runtime.GOOS, runtime.GOARCH, file, hash)
+			r.Name, r.Version, r.Protocol, usesLine(r.Uses), r.Notes, runtime.GOOS, runtime.GOARCH, file, hash)
 	}
 	path := filepath.Join(dir, "index.toml")
 	if err := os.WriteFile(path, []byte(index.String()), 0o644); err != nil {

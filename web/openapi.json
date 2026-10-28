@@ -911,6 +911,12 @@
               "null"
             ]
           },
+          "notes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
           "protocol": {
             "format": "int64",
             "type": "integer"

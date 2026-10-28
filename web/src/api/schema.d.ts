@@ -2972,6 +2972,9 @@ export interface components {
             name: string;
             /** @description Capabilities the plugin needs another plugin to offer, such as ai */
             needs?: string[] | null;
+            notes?: {
+                [key: string]: string;
+            };
             /** Format: int64 */
             protocol: number;
             recommended?: boolean;

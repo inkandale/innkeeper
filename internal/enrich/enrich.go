@@ -11,6 +11,7 @@ import (
 	"maps"
 	"math"
 	"slices"
+	"strings"
 	"sync"
 	"unicode/utf8"
 
@@ -227,7 +228,7 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 			break
 		}
 		batches++
-		checked, err := rn.batch(ctx, inst, *r.InstanceID, token, ids, p)
+		checked, err := rn.batch(ctx, r, inst, token, ids, p)
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -253,10 +254,12 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 	return nil
 }
 
-// batch sends the head revisions of ids to the plugin and stores the values
-// that pass Check. A card that doesn't exist counts as failed. Without
-// rescore, a head that already holds a value from the instance is skipped.
-func (rn *Runner) batch(ctx context.Context, inst pluginhost.Instance, instanceID int64, token string, ids []int64, p Payload) (Checked, error) {
+// batch sends the head revisions of ids to the plugin, stores the values
+// that pass Check, and logs each scored card. A card that doesn't exist
+// counts as failed. Without rescore, a head that already holds a value from
+// the instance is skipped.
+func (rn *Runner) batch(ctx context.Context, r *jobs.Run, inst pluginhost.Instance, token string, ids []int64, p Payload) (Checked, error) {
+	instanceID := *r.InstanceID
 	revs, missing := rn.heads(ctx, ids)
 	if len(revs) == 0 {
 		return Checked{}, errors.New("none of its cards exist")
@@ -273,6 +276,11 @@ func (rn *Runner) batch(ctx context.Context, inst pluginhost.Instance, instanceI
 			return Checked{Failed: len(missing), Skipped: skipped, Warnings: missing}, nil
 		}
 	}
+	names := make([]string, len(revs))
+	for i, rev := range revs {
+		names[i] = library.DataName(rev.Data)
+	}
+	r.Log("info", "Scoring "+strings.Join(names, ", "))
 	var reply protocol.EnrichRunResult
 	if err := rn.Registry.Call(ctx, rn.Plugins, inst, protocol.MethodEnrichRun,
 		protocol.EnrichRunParams{Run: token, Revisions: revs, Thorough: p.Thorough}, &reply); err != nil {
@@ -288,6 +296,10 @@ func (rn *Runner) batch(ctx context.Context, inst pluginhost.Instance, instanceI
 		if len(vals) == 0 {
 			continue
 		}
+		line, err := rn.scoreLine(ctx, inst.Manifest.Enrichments, instanceID, rev, vals)
+		if err != nil {
+			return Checked{}, err
+		}
 		if err := rn.Lib.AddEnrichments(ctx, instanceID, vals); err != nil {
 			if ctx.Err() != nil {
 				return Checked{}, err
@@ -295,9 +307,37 @@ func (rn *Runner) batch(ctx context.Context, inst pluginhost.Instance, instanceI
 			checked.Done--
 			checked.Failed++
 			checked.Warnings = append(checked.Warnings, fmt.Sprintf("%s: storing its values failed: %v", library.DataName(rev.Data), err))
+			continue
 		}
+		r.Log("info", line)
 	}
 	return checked, nil
+}
+
+// scoreLine says rev's card was scored and, when the plugin declares a grid
+// key and vals hold it, its new value beside the instance's current one.
+func (rn *Runner) scoreLine(ctx context.Context, decl map[string]protocol.Enrichment, instanceID int64,
+	rev protocol.EnrichRevision, vals []library.NewEnrichment) (string, error) {
+	line := "Scored " + library.DataName(rev.Data)
+	key := ""
+	for k, d := range decl {
+		if d.Grid {
+			key = k
+		}
+	}
+	i := slices.IndexFunc(vals, func(v library.NewEnrichment) bool { return v.Key == key })
+	if i < 0 {
+		return line, nil
+	}
+	line += fmt.Sprintf(": %s %s", cmp.Or(decl[key].Label, key), vals[i].Value)
+	current, err := rn.Lib.Enrichments(ctx, rev.CardID, false)
+	if err != nil {
+		return "", fmt.Errorf("read card %d's scores: %w", rev.CardID, err)
+	}
+	if j := slices.IndexFunc(current, func(e library.Enrichment) bool { return e.InstanceID == instanceID && e.Key == key }); j >= 0 {
+		line += fmt.Sprintf(" (was %s)", current[j].Value)
+	}
+	return line, nil
 }
 
 // heads returns the head revision of each card in ids, and a warning for

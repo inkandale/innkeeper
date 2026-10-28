@@ -156,7 +156,14 @@ func TestEnrichRunStoresCheckedValues(t *testing.T) {
 	if !vals[0].Stale {
 		t.Fatalf("after an edit: %+v", vals[0])
 	}
-	e.evaluate(e.instID, good)
+	j, _ = e.evaluate(e.instID, good)
+	var lines []jobs.LogLine
+	e.call("GET", fmt.Sprintf("/jobs/%d/logs", j.ID), nil, 200, &lines)
+	for _, want := range []string{"Scoring Brakka", "Scored Brakka: Quality 90 (was 78)"} {
+		if !slices.ContainsFunc(lines, func(l jobs.LogLine) bool { return l.Level == "info" && l.Message == want }) {
+			t.Errorf("no log line %q in %+v", want, lines)
+		}
+	}
 	e.call("GET", fmt.Sprintf("/cards/%d/enrichments?history=true", good), nil, 200, &vals)
 	if len(vals) != 6 || string(vals[0].Value) != "90" || vals[0].Stale || !vals[0].Current ||
 		string(vals[1].Value) != "78" || vals[1].Current || !vals[1].Stale {

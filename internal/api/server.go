@@ -58,6 +58,8 @@ type Server struct {
 	// Backups is where backups live and their schedules. Without a Dir, the
 	// backup routes return 409.
 	Backups backup.Settings
+	// Version is Innkeeper's release version, or how it was built.
+	Version string
 
 	// facets caches the exact sidebar counts of big searches.
 	facets facetCache

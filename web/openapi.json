@@ -4878,9 +4878,15 @@
           "theme": {
             "description": "The selected theme plugin, or empty for the default theme.",
             "type": "string"
+          },
+          "version": {
+            "description": "Innkeeper's version.",
+            "readOnly": true,
+            "type": "string"
           }
         },
         "required": [
+          "version",
           "theme",
           "onboarding_done",
           "embed_instance",

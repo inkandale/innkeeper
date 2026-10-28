@@ -6,7 +6,6 @@ import type { components } from "../api/schema";
 import { useConfirm } from "../shell/ConfirmDialog";
 import { Menu } from "../shell/Menu";
 import { useToast } from "../shell/Toasts";
-import { EmbedFrom } from "./EmbedFrom";
 
 export type Plugin = components["schemas"]["PluginOut"];
 export type InstanceInfo = components["schemas"]["InstanceInfo"];
@@ -156,7 +155,7 @@ export function Plugins() {
             </button>
           )}
           {p.capabilities?.includes("theme") ? (
-            <Link to="/settings/appearance">Select in Appearance</Link>
+            <Link to="/settings/general">Select in General</Link>
           ) : (
             <>
               {only && (
@@ -242,7 +241,6 @@ export function Plugins() {
           {catalog.isFetching ? "Checking…" : "Check for updates"}
         </button>
       </div>
-      <EmbedFrom />
       {byCategory(installed).map(([category, list]) => (
         <section key={category} className="plugin-group">
           <h2>{category}</h2>

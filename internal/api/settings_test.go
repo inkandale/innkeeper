@@ -25,6 +25,16 @@ func (e *testEnv) addTheme(name, css string) {
 		Capabilities: []string{"theme"}, Stylesheet: "theme.css", Dir: dir}
 }
 
+func TestSettingsShowTheVersion(t *testing.T) {
+	e := newEnv(t)
+	e.s.Version = "1.2.3"
+	var settings struct{ Version string }
+	e.call("GET", "/settings", nil, 200, &settings)
+	if settings.Version != "1.2.3" {
+		t.Fatalf("version = %q, want 1.2.3", settings.Version)
+	}
+}
+
 func TestThemeRoutes(t *testing.T) {
 	e := newEnv(t)
 	e.addTheme("dusk", ":root { --accent: #c33; }")

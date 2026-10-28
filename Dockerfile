@@ -17,8 +17,10 @@ ARG TARGETOS TARGETARCH
 ENV GOOS=$TARGETOS GOARCH=$TARGETARCH
 COPY . .
 COPY --from=web /web/dist ./web/dist
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /innkeeper ./cmd/innkeeper
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /ink ./cmd/ink
+# The release version, or a develop build's commit; Settings shows it.
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=$VERSION" -o /innkeeper ./cmd/innkeeper
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=$VERSION" -o /ink ./cmd/ink
 
 # The built-in plugins, built against this core's protocol package. Owners
 # install the rest at runtime.

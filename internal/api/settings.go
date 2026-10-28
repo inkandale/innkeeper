@@ -18,6 +18,7 @@ import (
 )
 
 type settings struct {
+	Version        string `json:"version" readOnly:"true" doc:"Innkeeper's version."`
 	Theme          string `json:"theme" doc:"The selected theme plugin, or empty for the default theme."`
 	OnboardingDone bool   `json:"onboarding_done" doc:"Whether the owner finished or skipped the setup wizard."`
 	EmbedInstance  *int64 `json:"embed_instance" doc:"The ai instance whose ai.embed every library's card vectors come from, or null for none."`
@@ -59,7 +60,7 @@ func (s *Server) settings(ctx context.Context) (*settingsOut, error) {
 	if err != nil {
 		return nil, s.fail(err)
 	}
-	out := &settingsOut{Body: settings{Theme: name, OnboardingDone: done == "true"}}
+	out := &settingsOut{Body: settings{Version: s.Version, Theme: name, OnboardingDone: done == "true"}}
 	if id, err := embed.Instance(ctx, s.Registry); err != nil {
 		return nil, s.fail(err)
 	} else if id != 0 {

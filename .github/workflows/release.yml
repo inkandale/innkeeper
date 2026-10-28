@@ -58,11 +58,17 @@ jobs:
           ref=$(git ls-remote https://github.com/inkandale/innkeeper-plugins.git refs/heads/main | cut -f1)
           test -n "$ref"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
+      - id: version
+        run: echo "version=${RELEASE:-develop-${GITHUB_SHA::7}}" >> "$GITHUB_OUTPUT"
+        env:
+          RELEASE: ${{ needs.release-please.outputs.created == 'true' && needs.release-please.outputs.version || '' }}
       - uses: docker/build-push-action@v7
         with:
           context: .
           push: true
-          build-args: PLUGINS_REF=${{ steps.plugins.outputs.ref }}
+          build-args: |
+            PLUGINS_REF=${{ steps.plugins.outputs.ref }}
+            VERSION=${{ steps.version.outputs.version }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64,linux/arm64

@@ -18,7 +18,7 @@ import { Queue } from "./sync/Queue";
 import { Review } from "./sync/Review";
 import { Sync } from "./sync/SyncPage";
 import { Access } from "./settings/Access";
-import { Appearance } from "./settings/Appearance";
+import { General } from "./settings/General";
 import { Instance } from "./settings/Instance";
 import { Job } from "./settings/Job";
 import { Jobs } from "./settings/Jobs";
@@ -84,7 +84,8 @@ export const router = createBrowserRouter([
             path: "settings",
             element: <Settings />,
             children: [
-              { index: true, element: <Navigate to="plugins" replace /> },
+              { index: true, element: <Navigate to="general" replace /> },
+              { path: "general", element: <General /> },
               { path: "plugins", element: <Plugins /> },
               { path: "plugins/:plugin/new", element: <Instance /> },
               { path: "instances/:id", element: <Instance /> },
@@ -93,7 +94,6 @@ export const router = createBrowserRouter([
               { path: "jobs", element: <Jobs /> },
               { path: "jobs/:id", element: <Job /> },
               { path: "access", element: <Access /> },
-              { path: "appearance", element: <Appearance /> },
             ],
           },
           {

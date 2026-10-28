@@ -6,7 +6,7 @@ type CatalogPlugin = components["schemas"]["CatalogPluginOut"];
 export type Offer = CatalogPlugin & { source: string };
 type Group = { category: string; plugins: Offer[] };
 
-/** wizardPlugin reports whether the wizard offers a plugin: codecs are built in, themes live in Appearance. */
+/** wizardPlugin reports whether the wizard offers a plugin: codecs are built in, themes live in Settings, General. */
 export function wizardPlugin(p: { capabilities?: string[] | null }): boolean {
   const caps = p.capabilities ?? [];
   return !caps.includes("codec") && !caps.includes("theme");

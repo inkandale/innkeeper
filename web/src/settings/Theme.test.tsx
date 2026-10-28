@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { themeLink } from "../theme/link";
-import { Appearance } from "./Appearance";
+import { Theme } from "./Theme";
 
 function json(body: unknown) {
   return new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
@@ -32,17 +32,17 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function renderAppearance() {
+function renderTheme() {
   return render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <Appearance />
+      <Theme />
     </QueryClientProvider>,
   );
 }
 
 test("previews a theme and saves it", async () => {
   const user = userEvent.setup();
-  const { unmount } = renderAppearance();
+  const { unmount } = renderTheme();
   expect(await screen.findByRole("radio", { name: /Default/ })).toBeChecked();
   await user.click(await screen.findByRole("radio", { name: /dusk/ }));
   expect(screen.queryByRole("radio", { name: /sillytavern/ })).not.toBeInTheDocument();
@@ -56,7 +56,7 @@ test("previews a theme and saves it", async () => {
 
 test("leaving without saving puts the saved theme back", async () => {
   const user = userEvent.setup();
-  const { unmount } = renderAppearance();
+  const { unmount } = renderTheme();
   await user.click(await screen.findByRole("radio", { name: /dusk/ }));
   expect(themeLink().disabled).toBe(false);
   unmount();

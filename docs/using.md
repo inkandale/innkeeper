@@ -31,9 +31,8 @@ plugins from the catalog, setting up each one, and importing cards. It shows
 once; to open it again, use "Run setup wizard" in Settings.
 
 To restyle the UI, install a [theme plugin](protocol.md#themes) and
-select it with `ink call PATCH /settings '{"theme": "<name>"}'`; an
-empty name restores the default. A theme's CSS runs on the UI's origin, so
-install only themes you trust.
+select it under Settings › General, which also shows Innkeeper's version.
+A theme's CSS runs on the UI's origin, so install only themes you trust.
 
 ## Importing
 

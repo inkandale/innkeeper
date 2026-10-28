@@ -110,7 +110,7 @@ test("lists plugins with their instances and status", async () => {
   expect(within(st).queryByRole("link", { name: "Add instance" })).not.toBeInTheDocument();
   const dusk = screen.getByRole("heading", { name: "dusk" }).closest("article")!;
   expect(within(dusk).queryByRole("link", { name: "Add instance" })).not.toBeInTheDocument();
-  expect(within(dusk).getByRole("link", { name: "Select in Appearance" })).toBeInTheDocument();
+  expect(within(dusk).getByRole("link", { name: "Select in General" })).toBeInTheDocument();
   // An instance whose plugin was removed stays visible so it can be deleted.
   expect(screen.getByRole("link", { name: "old" })).toBeInTheDocument();
   await user.click(within(menuOf(st, "sillytavern")).getByRole("button", { name: "Add instance" }));

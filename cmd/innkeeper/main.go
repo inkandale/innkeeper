@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"runtime/debug"
 
 	"github.com/inkandale/innkeeper/internal/contract"
 )
@@ -24,6 +25,17 @@ const usage = `usage:
   innkeeper restore [--replace] <archive-or-backup-dir>...
 
 The API commands moved to the ink client; see docs/cli.md.`
+
+// version is set at build with -ldflags "-X main.version=...".
+var version = "dev"
+
+// buildVersion is the version set at build, or the module version for go install.
+func buildVersion() string {
+	if info, ok := debug.ReadBuildInfo(); ok && version == "dev" && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return version
+}
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {

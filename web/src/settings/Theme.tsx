@@ -4,7 +4,7 @@ import { api, must } from "../api/client";
 import { pluginsQuery, settingsQuery } from "../api/queries";
 import { showTheme } from "../theme/link";
 
-export function Appearance() {
+export function Theme() {
   const qc = useQueryClient();
   const plugins = useQuery(pluginsQuery);
   const settings = useQuery(settingsQuery);
@@ -31,7 +31,7 @@ export function Appearance() {
   const changed = picked !== null && picked !== saved;
 
   return (
-    <section className="appearance">
+    <section className="theme">
       {failed && <p className="error">{failed.message}</p>}
       {/* Picks wait for the saved theme, and for a save in flight. */}
       <fieldset disabled={!ready || save.isPending}>

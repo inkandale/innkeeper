@@ -4471,6 +4471,8 @@ export interface components {
             onboarding_done: boolean;
             /** @description The selected theme plugin, or empty for the default theme. */
             theme: string;
+            /** @description Innkeeper's version. */
+            readonly version: string;
         };
         SettingsCheck: {
             /** Format: int64 */

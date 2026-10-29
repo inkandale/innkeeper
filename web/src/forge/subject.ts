@@ -6,14 +6,18 @@ export type Row = { key: string; label: string; change?: "added" | "removed" | "
 /** Proposed is a proposal's rows, and apply, the draft changes that taking some of them makes. */
 export type Proposed = { rows: Row[]; apply: (taken: Set<string>) => Data };
 
+/** Shown is one titled piece of text in a preview of an entity's data. */
+export type Shown = { title: string; text: string };
+
 /**
- * Subject is what a Forge works on: the entity kind, how its data keys are named, how a proposal is reviewed, the job
- * list filter that finds its runs, and the instruction box's placeholder.
+ * Subject is what a Forge works on: the entity kind, how its data keys are named, how a proposal is reviewed, how its
+ * data reads in a preview, the job list filter that finds its runs, and the instruction box's placeholder.
  */
 export type Subject = {
   kind: "card" | "lorebook";
   label: (key: string) => string;
   review: (start: Data, draft: Data, proposal: Data) => Proposed;
+  preview: (data: Data) => Shown[];
   jobFilter: (id: number | undefined) => { card_id?: number; lorebook_id?: number };
   placeholder: string;
 };

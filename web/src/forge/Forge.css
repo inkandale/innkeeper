@@ -664,3 +664,38 @@
   gap: var(--space);
   justify-items: start;
 }
+
+/* Show draft: the card as it reads with the chosen changes, over the review. The body holds the padding, so a click outside it is a click on the backdrop. */
+.forge-preview[open] {
+  display: block;
+  padding: 0;
+}
+
+.forge-preview-body {
+  padding: calc(var(--space) * 2);
+}
+
+.forge-preview-head {
+  position: sticky;
+  top: calc(var(--space) * -2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space);
+  margin: calc(var(--space) * -2) calc(var(--space) * -2) 0;
+  padding: calc(var(--space) * 2);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.forge-preview h3 {
+  margin: calc(var(--space) * 2) 0 calc(var(--space) * 0.5);
+  color: var(--text-muted);
+  font-size: 0.85em;
+  font-weight: normal;
+  text-transform: uppercase;
+}
+
+.forge-preview section > :last-child {
+  margin-bottom: 0;
+}

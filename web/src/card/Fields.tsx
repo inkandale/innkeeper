@@ -6,13 +6,14 @@ type Edit = (key: string, value: unknown) => void;
 /** Lock returns the label of the run that locks a field, if one does. */
 type Lock = (key: string) => string | undefined;
 
-const before: [string, string][] = [
+/** beforeGreetings and afterGreetings are the text fields, in order, either side of the greetings. */
+export const beforeGreetings: [string, string][] = [
   ["description", "Description"],
   ["personality", "Personality"],
   ["scenario", "Scenario"],
   ["first_mes", "First message"],
 ];
-const after: [string, string][] = [
+export const afterGreetings: [string, string][] = [
   ["mes_example", "Example dialogue"],
   ["system_prompt", "System prompt"],
   ["post_history_instructions", "Post-history instructions"],
@@ -21,7 +22,7 @@ const after: [string, string][] = [
 
 /** fieldLabel names a card data key, as the Fields tab does. */
 export const fieldLabel = (key: string) =>
-  [...before, ...after, ["name", "Name"], ["tags", "Tags"]].find(([k]) => k === key)?.[1] ?? key;
+  [...beforeGreetings, ...afterGreetings, ["name", "Name"], ["tags", "Tags"]].find(([k]) => k === key)?.[1] ?? key;
 
 type SectionProps = {
   id?: string;
@@ -58,7 +59,7 @@ export function Section(props: SectionProps) {
   );
 }
 
-const greetingList = (v: unknown) => (Array.isArray(v) ? v.map(text) : []);
+export const greetingList = (v: unknown) => (Array.isArray(v) ? v.map(text) : []);
 
 /** Greetings edits a list of greetings. noun names one, as in "Add greeting". */
 function Greetings({ field, noun, data, edit }: { field: string; noun: string; data: Data; edit: Edit }) {
@@ -162,10 +163,10 @@ export function Fields(props: { data: Data; dirty: Set<string>; edit: Edit; lock
   });
   // The outline and the sections both read this list, so they can't disagree.
   const fields: Field[] = [
-    ...before.map(area),
+    ...beforeGreetings.map(area),
     greetings("alternate_greetings", "Alternate greetings", "greeting"),
     greetings("group_only_greetings", "Group-only greetings", "group greeting"),
-    ...after.map(area),
+    ...afterGreetings.map(area),
     {
       key: "creator_notes_multilingual",
       label: "Creator notes in other languages",

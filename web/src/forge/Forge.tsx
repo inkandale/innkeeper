@@ -162,6 +162,7 @@ export function Forge(props: {
           proposed={proposed}
           warnings={pending.result?.warnings}
           saves={!!props.save}
+          preview={(changes) => forge.subject.preview({ ...data, ...changes })}
           onApply={(changes) => {
             if (props.save) props.save(changes);
             else for (const [k, v] of Object.entries(changes)) props.edit(k, v);

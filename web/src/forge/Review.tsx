@@ -1,26 +1,32 @@
 import { useState } from "react";
+import Markdown from "react-markdown";
 import type { Data } from "../card/draft";
+import { useModal } from "../shell/useModal";
 import { Words } from "../sync/Diff";
 import { wordDiff } from "../sync/sync";
-import type { Proposed } from "./subject";
+import type { Proposed, Shown } from "./subject";
 
 const absent = <em className="muted">(empty)</em>;
 
 /**
  * Review puts a proposal against the draft, one row per change, each word diff taken against the data the run began
- * from. onApply gets the draft changes the taken rows make; saves says whether applying them also saves.
+ * from. onApply gets the draft changes the taken rows make; saves says whether applying them also saves. preview reads
+ * the draft with a set of changes made, for Show draft.
  */
 export function Review(props: {
   title: string;
   proposed: Proposed;
   warnings?: string[] | null;
   saves?: boolean;
+  preview: (changes: Data) => Shown[];
   onApply: (changes: Data) => void;
   onDiscard: () => void;
 }) {
   const { rows, apply } = props.proposed;
   // A row the owner edited during the run keeps the edit unless they take the proposal.
-  const [taken, setTaken] = useState(() => new Set(rows.filter((r) => !r.edited).map((r) => r.key)));
+  const [taken, setTaken] = useState(
+    () => new Set(rows.filter((r) => !r.edited).map((r) => r.key)),
+  );
   const choose = (k: string, take: boolean) =>
     setTaken((s) => {
       const next = new Set(s);
@@ -28,18 +34,35 @@ export function Review(props: {
       else next.delete(k);
       return next;
     });
-  const [showDraft, setShowDraft] = useState(false);
+  const [showOriginal, setShowOriginal] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   return (
     <div className="forge-review">
       <div className="forge-review-bar">
         <span className="forge-review-title">
-          {props.title} proposes {rows.length} change{rows.length === 1 ? "" : "s"}.{!props.saves && " Nothing saves until you press Save."}
+          {props.title} proposes {rows.length} change
+          {rows.length === 1 ? "" : "s"}.
+          {!props.saves && " Nothing saves until you press Save."}
         </span>
         <label className="check">
-          <input type="checkbox" checked={showDraft} onChange={(e) => setShowDraft(e.target.checked)} /> Show your draft
+          <input
+            type="checkbox"
+            checked={showOriginal}
+            onChange={(e) => setShowOriginal(e.target.checked)}
+          />{" "}
+          Show original
         </label>
-        <button className="button primary" disabled={!taken.size} onClick={() => props.onApply(apply(taken))}>
-          {props.saves ? `Save ${taken.size} of ${rows.length} changes` : `Apply ${taken.size} of ${rows.length} changes to draft`}
+        <button className="button" onClick={() => setPreviewing(true)}>
+          Show draft
+        </button>
+        <button
+          className="button primary"
+          disabled={!taken.size}
+          onClick={() => props.onApply(apply(taken))}
+        >
+          {props.saves
+            ? `Save ${taken.size} of ${rows.length} changes`
+            : `Apply ${taken.size} of ${rows.length} changes to draft`}
         </button>
         <button className="button" onClick={props.onDiscard}>
           Discard
@@ -51,33 +74,108 @@ export function Review(props: {
         </p>
       ))}
       {rows.map((r) => (
-        <section key={r.key} className={taken.has(r.key) ? "forge-row take" : "forge-row keep"} aria-label={r.label}>
+        <section
+          key={r.key}
+          className={taken.has(r.key) ? "forge-row take" : "forge-row keep"}
+          aria-label={r.label}
+        >
           <div className="forge-row-head">
             <strong>{r.label}</strong>
-            {r.change && <small className={`forge-change ${r.change}`}>{r.change}</small>}
-            {r.edited && <small className="muted">You've edited this since the run started.</small>}
-            <div className="forge-toggle" role="radiogroup" aria-label={`Choice for ${r.label}${r.change ? ` (${r.change})` : ""}`}>
+            {r.change && (
+              <small className={`forge-change ${r.change}`}>{r.change}</small>
+            )}
+            {r.edited && (
+              <small className="muted">
+                You've edited this since the run started.
+              </small>
+            )}
+            <div
+              className="forge-toggle"
+              role="radiogroup"
+              aria-label={`Choice for ${r.label}${r.change ? ` (${r.change})` : ""}`}
+            >
               <label className="check">
-                <input type="radio" name={`take-${r.key}`} checked={taken.has(r.key)} onChange={() => choose(r.key, true)} /> Take proposal
+                <input
+                  type="radio"
+                  name={`take-${r.key}`}
+                  checked={taken.has(r.key)}
+                  onChange={() => choose(r.key, true)}
+                />{" "}
+                Take proposal
               </label>
               <label className="check">
-                <input type="radio" name={`take-${r.key}`} checked={!taken.has(r.key)} onChange={() => choose(r.key, false)} /> Keep mine
+                <input
+                  type="radio"
+                  name={`take-${r.key}`}
+                  checked={!taken.has(r.key)}
+                  onChange={() => choose(r.key, false)}
+                />{" "}
+                Keep mine
               </label>
             </div>
           </div>
-          {/* The diff runs from where the run began, so an edit made since shows only in the draft. */}
-          <div className={showDraft || r.edited ? "forge-row-body both" : "forge-row-body"}>
-            {(showDraft || r.edited) && (
-              <div className="forge-text mine" data-label="Your draft">
+          {/* The diff runs from where the run began, so an edit made since shows only in the original. */}
+          <div
+            className={
+              showOriginal || r.edited
+                ? "forge-row-body both"
+                : "forge-row-body"
+            }
+          >
+            {(showOriginal || r.edited) && (
+              <div className="forge-text mine" data-label="Original">
                 {r.mine || absent}
               </div>
             )}
             <div className="forge-text hunks" data-label="Proposal">
-              {r.after === undefined ? absent : <Words runs={wordDiff(r.before, r.after)} />}
+              {r.after === undefined ? (
+                absent
+              ) : (
+                <Words runs={wordDiff(r.before, r.after)} />
+              )}
             </div>
           </div>
         </section>
       ))}
+      {previewing && (
+        <Preview
+          title={`Draft with ${taken.size} of ${rows.length} changes`}
+          shown={props.preview(apply(taken))}
+          onClose={() => setPreviewing(false)}
+        />
+      )}
     </div>
+  );
+}
+
+// Preview lays the draft out as it reads, over the review; Escape, the backdrop or Close shuts it.
+function Preview(props: {
+  title: string;
+  shown: Shown[];
+  onClose: () => void;
+}) {
+  const modal = useModal(props.onClose);
+  return (
+    <dialog
+      {...modal}
+      className="dialog forge-preview"
+      aria-label={props.title}
+      onClick={(e) => e.target === e.currentTarget && props.onClose()}
+    >
+      <div className="forge-preview-body">
+        <div className="forge-preview-head">
+          <h2>{props.title}</h2>
+          <button className="button" onClick={props.onClose}>
+            Close
+          </button>
+        </div>
+        {props.shown.map((s, i) => (
+          <section key={i} aria-label={s.title}>
+            <h3>{s.title}</h3>
+            <Markdown>{s.text}</Markdown>
+          </section>
+        ))}
+      </div>
+    </dialog>
   );
 }

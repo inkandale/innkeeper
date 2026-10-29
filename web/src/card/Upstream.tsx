@@ -2,13 +2,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { api, ApiError, must, route, type Kind } from "../api/client";
 import { bindingsQuery } from "../api/queries";
-import { useToast } from "../shell/Toasts";
 import { dismissBinding, editBinding, reviewPath, siteOf, type BindingEdit } from "../sync/sync";
+import { toastError } from "../shell/Toasts";
 
 /** useBindingEdits changes a card's or lorebook's bindings, or checks its sources now, then refreshes them and the queue. */
 export function useBindingEdits(kind: Kind, id: number) {
   const qc = useQueryClient();
-  const toast = useToast();
   const key = bindingsQuery(kind, id).queryKey;
   const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: key }), qc.invalidateQueries({ queryKey: ["sync", "changes"] })]);
   const edit = useMutation({
@@ -22,7 +21,7 @@ export function useBindingEdits(kind: Kind, id: number) {
     onError: (e, { remoteId }) => {
       const stale = e instanceof ApiError && e.status === 409;
       if (stale) void refresh();
-      toast({ text: stale ? `This changed on ${siteOf(remoteId)} again. Check the new change.` : e.message, error: true });
+      toastError(stale ? `This changed on ${siteOf(remoteId)} again. Check the new change.` : e.message);
     },
   });
   const check = useMutation({

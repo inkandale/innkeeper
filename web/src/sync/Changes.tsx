@@ -5,11 +5,10 @@ import { api, ApiError, must } from "../api/client";
 import { instancesQuery, useFollowers } from "../api/queries";
 import type { components } from "../api/schema";
 import { badgeClass } from "../cards/Tile";
-import { jobToast } from "../settings/jobUtil";
 import { useConfirm } from "../shell/ConfirmDialog";
-import { useToast } from "../shell/Toasts";
 import { useModal } from "../shell/useModal";
 import { PushPreview } from "./PushPreview";
+import { toastError, toastJob } from "../shell/Toasts";
 import {
   bulkResolutions,
   changePath,
@@ -58,7 +57,6 @@ function groupBy<T, K>(xs: T[], key: (x: T) => K): Map<K, T[]> {
  */
 export function Changes() {
   const qc = useQueryClient();
-  const toast = useToast();
   const [params, setParams] = useSearchParams();
   const filter = changesFilter(params);
   const { instance_id: instance, state } = filter;
@@ -140,7 +138,7 @@ export function Changes() {
       return jobs;
     },
     onSuccess: (jobs) => {
-      for (const j of jobs) toast(jobToast(j));
+      for (const j of jobs) toastJob(j);
       setAsking(false);
       setChecked({});
       done();
@@ -167,7 +165,7 @@ export function Changes() {
     onError: (e, { r, c }) => {
       const stale = e instanceof ApiError && e.status === 409;
       if (stale) done();
-      toast({ text: stale ? `${r.name} changed on ${siteOf(c.remote_id ?? "")} again. Check the new change.` : e.message, error: true });
+      toastError(stale ? `${r.name} changed on ${siteOf(c.remote_id ?? "")} again. Check the new change.` : e.message);
     },
   });
 

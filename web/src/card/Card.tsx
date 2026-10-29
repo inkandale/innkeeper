@@ -4,7 +4,6 @@ import { useParams } from "react-router";
 import { api, ApiError, exportFormats, must } from "../api/client";
 import { instancesQuery, pluginsQuery } from "../api/queries";
 import type { components } from "../api/schema";
-import { useToast } from "../shell/Toasts";
 import { Stale } from "./Conflict";
 import { EditorBar } from "./EditorBar";
 import { Panel } from "./Panel";
@@ -16,6 +15,7 @@ import { cardSubject } from "./subject";
 import { Similar } from "./Discover";
 import { Fields } from "./Fields";
 import "./Card.css";
+import { toastError } from "../shell/Toasts";
 
 export type Entity = components["schemas"]["EntityOut"];
 
@@ -27,7 +27,6 @@ export function Card() {
 
 function CardEditor({ id }: { id: number }) {
   const qc = useQueryClient();
-  const toast = useToast();
   const ed = useEditor("card", id);
   const forge = useForge({ subject: cardSubject, id, data: ed.data, library: ed.entity.data?.library_id ?? 1 });
   useFollowLibrary(ed.entity.data?.library_id);
@@ -54,8 +53,8 @@ function CardEditor({ id }: { id: number }) {
       if (e instanceof ApiError && e.status === 409) {
         // The head moved on, so the button's base is stale; refetch it.
         void qc.invalidateQueries({ queryKey: ["card", id] });
-        toast({ text: "This card changed elsewhere. Try again.", error: true });
-      } else toast({ text: e.message, error: true });
+        toastError("This card changed elsewhere. Try again.");
+      } else toastError(e.message);
     },
   });
 

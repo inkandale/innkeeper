@@ -7,10 +7,11 @@ import { instancesQuery, useFollowers } from "../api/queries";
 import { text } from "../card/draft";
 import { useJob } from "../settings/jobUtil";
 import { useLibrary } from "../shell/library";
-import { useToast } from "../shell/Toasts";
 import { Diff, type Choices, type Sides } from "./Diff";
 import { changePath, changesFilter, changesPath, compareItem, optionKey, optionLabel, queueReviews, resolution, resolveItem, siteOf, snapshotOf, findItem, statusLabel, type Comparison, type Item, type Option } from "./sync";
 import "./Sync.css";
+import { toastError } from "../shell/Toasts";
+import { toast } from "sonner";
 
 /** Review is the diff editor: one app item against a library card, decided hunk by hunk, with the card's world books nested. */
 export function Review() {
@@ -41,7 +42,6 @@ function ReviewItem() {
   const navigate = useNavigate();
   const location = useLocation();
   const qc = useQueryClient();
-  const toast = useToast();
 
   const job = useJob(jobId, { enabled: !!jobId, follow: false });
   const changes = useQuery({
@@ -144,7 +144,7 @@ function ReviewItem() {
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["search"] });
-      toast({ text: followed ? `Resolved ${name}.` : `Resolved ${item?.name || remoteId}. Push to send the library's side to the app.` });
+      toast.success(followed ? `Resolved ${name}.` : `Resolved ${item?.name || remoteId}. Push to send the library's side to the app.`);
       if (queue) {
         void qc.invalidateQueries({ queryKey: ["sync", "changes"] });
         onward();
@@ -164,7 +164,7 @@ function ReviewItem() {
       }
       // Nested world book imports carry the snapshot's hash, which only a new sync refreshes.
       const more = e instanceof ApiError && e.status === 409 ? " If this keeps happening, run Sync again." : "";
-      toast({ text: e.message + more, error: true });
+      toastError(e.message + more);
     },
   });
 

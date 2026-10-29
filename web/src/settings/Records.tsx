@@ -3,8 +3,8 @@ import { useState } from "react";
 import { api, must, mustOk } from "../api/client";
 import type { components } from "../api/schema";
 import { useConfirm } from "../shell/ConfirmDialog";
-import { useToast } from "../shell/Toasts";
 import { SchemaForm, type Schema } from "./SchemaForm";
+import { toast } from "sonner";
 
 export type RecordType = components["schemas"]["RecordTypeOut"];
 
@@ -14,7 +14,6 @@ type Props = { instance: number; type: string; recordType: RecordType };
 export function Records({ instance, type, recordType }: Props) {
   const [ask, dialog] = useConfirm();
   const qc = useQueryClient();
-  const toast = useToast();
   const path = { id: instance, type };
   const listKey = ["records", instance, type];
   // undefined: no editor; "": a new record; otherwise the ID being edited.
@@ -25,7 +24,7 @@ export function Records({ instance, type, recordType }: Props) {
   });
   const imported = (got: { name: string }[] | null) => {
     qc.invalidateQueries({ queryKey: listKey });
-    toast({ text: `Imported ${got?.map((r) => r.name).join(", ") || "nothing"}.` });
+    toast.success(`Imported ${got?.map((r) => r.name).join(", ") || "nothing"}.`);
   };
   const remove = useMutation({
     mutationFn: async (record: string) =>

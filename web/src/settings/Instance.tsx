@@ -4,11 +4,11 @@ import { Link, useNavigate, useParams } from "react-router";
 import { api, must } from "../api/client";
 import { instancesQuery, librariesQuery, pluginsQuery } from "../api/queries";
 import { Loading } from "../shell/Loading";
-import { useToast } from "../shell/Toasts";
 import { useLeaveGuard } from "../shell/useLeaveGuard";
 import { type InstanceInfo, type Plugin } from "./Plugins";
 import { Records } from "./Records";
 import { FormContext, orderedProperties, pointerKey, SchemaForm, shownWhen, unpointerKey, type Schema } from "./SchemaForm";
+import { toast } from "sonner";
 
 /** Instance adds an instance at /settings/plugins/:plugin/new and edits one at /settings/instances/:id. */
 export function Instance() {
@@ -87,7 +87,6 @@ export function InstanceForm({
 }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const toast = useToast();
   const caps = plugin.capabilities ?? [];
   const [config, setConfig] = useState<unknown>(instance?.config ?? {});
   // What the form started from; a refetch mustn't make an untouched config look changed.
@@ -217,7 +216,7 @@ export function InstanceForm({
       qc.setQueryData(["instance", saved.id], saved);
       qc.invalidateQueries({ queryKey: ["instances"] });
       qc.invalidateQueries({ queryKey: ["plugin-defaults", plugin.name] });
-      toast({ text: `Saved ${saved.label}.` });
+      toast.success(`Saved ${saved.label}.`);
       if (onSaved) return onSaved(saved);
       if (!instance) return setCreated(saved.id);
       // The rest of the baseline comes from the instance, which the cache update above refreshes.

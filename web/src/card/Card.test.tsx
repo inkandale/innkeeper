@@ -347,7 +347,7 @@ test("archive offers Undo, which unarchives", async () => {
       { path: "/api/cards/7/archived", body: { archived: false, unpublish: false } },
     ]),
   );
-  expect(screen.queryByText("Archived Brakka")).not.toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByText("Archived Brakka")).not.toBeInTheDocument());
 });
 
 test("archive that also deletes from the apps asks first, and offers no Undo", async () => {

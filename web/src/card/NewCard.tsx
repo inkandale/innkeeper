@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { api, must, upload } from "../api/client";
 import { useLibrary } from "../shell/library";
-import { useToast } from "../shell/Toasts";
 import { Crop } from "./CropDialog";
 import { changed, type Data } from "./draft";
 import { Identity, Name } from "./Panel";
@@ -12,6 +11,7 @@ import { useForge } from "../forge/useForge";
 import { cardSubject } from "./subject";
 import { Fields } from "./Fields";
 import "./Card.css";
+import { toastError } from "../shell/Toasts";
 
 const draftKey = "innkeeper.newCard";
 
@@ -92,7 +92,6 @@ export function NewCard() {
 
 /** Avatar picks the new card's image and crops it, holding it until Save uploads it. */
 function Avatar({ image, onChange }: { image: Blob | null; onChange: (b: Blob) => void }) {
-  const toast = useToast();
   const [cropping, setCropping] = useState(false);
   const [src, setSrc] = useState<string>();
   useEffect(() => {
@@ -132,7 +131,7 @@ function Avatar({ image, onChange }: { image: Blob | null; onChange: (b: Blob) =
             onChange(png);
             setCropping(false);
           }}
-          onError={(text) => toast({ text, error: true })}
+          onError={toastError}
           onCancel={() => setCropping(false)}
         />
       )}

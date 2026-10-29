@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { useJobEvents } from "../settings/jobUtil";
 import type { Progress } from "./actions";
 import { Hammer } from "./Hammer";
@@ -18,16 +19,33 @@ function useNow(on: boolean) {
   return now;
 }
 
-/** RunHeader shows a run: while it runs, its progress and Stop; once it ends, how it ended, its raw response, and dismiss. */
+/**
+ * RunHeader shows a run: while it runs, its progress and Stop. A run that succeeds turns into a toast, and settles unless
+ * it has a proposal for Review to settle; one that fails or stops shows how it ended, its raw response, and dismiss.
+ */
 export function RunHeader({ run, label, onStop, onDismiss }: { run: Run; label: (key: string) => string; onStop: () => void; onDismiss: () => void }) {
   useJobEvents(run.id, run.live);
   const now = useNow(run.live);
   const { job } = run;
   const end = job.finished_at ? Date.parse(job.finished_at) : now;
   const seconds = Math.max(0, Math.round((end - Date.parse(job.created_at)) / 1000));
+  const succeeded = !run.live && job.status === "succeeded";
+  // Only a run seen finishing toasts; one that finished before a reload settles quietly.
+  const wasLive = useRef(run.live);
+  const toastText = `${title(run, label)} finished in ${seconds}s on ${run.instance}`;
+  const proposal = !!run.result?.proposal;
+  useEffect(() => {
+    if (!succeeded) return;
+    if (wasLive.current) toast.success(toastText);
+    if (!proposal) onDismiss();
+    // Keyed on succeeded alone: onDismiss is a new function each render, and this must run once.
+  }, [succeeded]);
+  useEffect(() => {
+    wasLive.current = run.live;
+  });
+  if (succeeded) return null;
   if (!run.live) {
-    const outcome =
-      job.status === "succeeded" ? `finished in ${seconds}s on ${run.instance}` : job.error === "cancelled" ? "stopped. Nothing changed." : `failed: ${job.error}`;
+    const outcome = job.error === "cancelled" ? "stopped. Nothing changed." : `failed: ${job.error}`;
     return (
       <div className={job.status === "failed" ? "forge-last error" : "forge-last"}>
         <Hammer />

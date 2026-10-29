@@ -5,7 +5,7 @@ import { instancesQuery, pluginsQuery } from "../api/queries";
 import type { components } from "../api/schema";
 import { useConfirm } from "../shell/ConfirmDialog";
 import { Menu } from "../shell/Menu";
-import { useToast } from "../shell/Toasts";
+import { toast } from "sonner";
 
 export type Plugin = components["schemas"]["PluginOut"];
 export type InstanceInfo = components["schemas"]["InstanceInfo"];
@@ -14,7 +14,6 @@ type CatalogSource = components["schemas"]["CatalogSourceOut"];
 export function Plugins() {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const toast = useToast();
   const [ask, dialog] = useConfirm();
   const plugins = useQuery(pluginsQuery);
   const instances = useQuery(instancesQuery);
@@ -39,7 +38,7 @@ export function Plugins() {
     onSuccess: (_, v) => {
       changed();
       if (v.disabled)
-        toast({ text: `Disabled ${v.label}`, action: { label: "Undo", run: () => setDisabled.mutate({ ...v, disabled: false }) } });
+        toast.success(`Disabled ${v.label}`, { action: { label: "Undo", onClick: () => setDisabled.mutate({ ...v, disabled: false }) } });
     },
   });
   const install = useMutation({

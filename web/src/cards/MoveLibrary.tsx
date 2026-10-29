@@ -4,15 +4,14 @@ import { api, must, route, type Kind } from "../api/client";
 import { instancesQuery, librariesQuery } from "../api/queries";
 import type { components } from "../api/schema";
 import { count } from "../shell/count";
-import { useToast } from "../shell/Toasts";
 import { useModal } from "../shell/useModal";
+import { toast } from "sonner";
 
 type MoveResult = components["schemas"]["MoveResult"];
 
 /** MoveLibrary asks which library to move cards or lorebooks to, previews what moving them changes, and moves them. */
 export function MoveLibrary({ kind, ids, library, onClose, onDone }: { kind: Kind; ids: number[]; library: number; onClose: () => void; onDone: () => void }) {
   const qc = useQueryClient();
-  const toast = useToast();
   const modal = useModal(onClose);
   const [to, setTo] = useState<number>();
   const libraries = useQuery(librariesQuery);
@@ -35,7 +34,7 @@ export function MoveLibrary({ kind, ids, library, onClose, onDone }: { kind: Kin
       void qc.invalidateQueries({ queryKey: librariesQuery.queryKey });
       // Moved cards leave their collections.
       void qc.invalidateQueries({ queryKey: ["collections"] });
-      toast({ text: `Moved ${count(r.moved?.length ?? 0, kind)} to ${others.find((l) => l.id === to)?.name}.` });
+      toast.success(`Moved ${count(r.moved?.length ?? 0, kind)} to ${others.find((l) => l.id === to)?.name}.`);
       onDone();
     },
     meta: { toast: false },

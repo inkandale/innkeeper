@@ -3,12 +3,11 @@ import { useState } from "react";
 import { api, exportFormats, must } from "../api/client";
 import { collectionsQuery, enrichmentKeysQuery, instancesQuery, librariesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
 import type { components } from "../api/schema";
-import { useToast } from "../shell/Toasts";
 import { MoveLibrary } from "./MoveLibrary";
 import { SetParent, type Picked } from "./SetParent";
-import { jobToast } from "../settings/jobUtil";
 import { pushSummary } from "../sync/sync";
 import { TargetPicker } from "../sync/TargetPicker";
+import { toastJob } from "../shell/Toasts";
 
 type Search = components["schemas"]["Query"];
 type Bulk = components["schemas"]["BulkInBody"];
@@ -71,7 +70,6 @@ export function SelectionBar(props: {
   const [unpublish, setUnpublish] = useState(false);
   // The count typed to confirm a delete; the server refuses one that no longer matches.
   const [typed, setTyped] = useState("");
-  const toast = useToast();
   const count = ids.length;
   const n = all ? total : count;
 
@@ -82,8 +80,9 @@ export function SelectionBar(props: {
 
   const start = useMutation({
     mutationFn: (call: () => Promise<Job>) => call(),
+    meta: { toast: false },
     onSuccess: (j) => {
-      toast(jobToast(j));
+      toastJob(j);
       onStarted?.(j.id);
       onClear();
     },
@@ -118,7 +117,7 @@ export function SelectionBar(props: {
         if (res.response.status === 409) void previews[i]!.refetch();
         try {
           const j = must(res);
-          toast(jobToast(j, `Pushing to ${t.label}…`, `Pushed to ${t.label}`));
+          toastJob(j, `Pushing to ${t.label}…`, `Pushed to ${t.label}`);
           onStarted?.(j.id);
           setPicked((ids) => (ids ?? chosen.map((c) => c.id)).filter((id) => id !== t.id));
         } catch (e) {
@@ -132,7 +131,10 @@ export function SelectionBar(props: {
   const busy = start.isPending || push.isPending;
   const tagList = () => tags.split(",").map((t) => t.trim()).filter(Boolean);
 
-  const toggle = (p: Panel) => setPanel(panel === p ? null : p);
+  const toggle = (p: Panel) => {
+    start.reset();
+    setPanel(panel === p ? null : p);
+  };
   return (
     <div className="toolbar selection-bar">
       <strong>{all ? (total === undefined ? `All matching ${kind}s` : `All ${total} matching ${kind}${total === 1 ? "" : "s"}`) : `${count} selected`}</strong>
@@ -252,7 +254,6 @@ export function SelectionBar(props: {
               <button className="button primary" disabled={busy || !enricherId || (big && !confirmBig)} onClick={evaluate}>
                 Score {plural(n)}
               </button>
-              {start.error && <span className="error">{start.error.message}</span>}
             </>
           )}
           {panel === "delete" && (
@@ -275,7 +276,6 @@ export function SelectionBar(props: {
               >
                 Delete {plural(n)} permanently
               </button>
-              {start.error && <span className="error">{start.error.message}</span>}
             </>
           )}
           {panel === "export" && (
@@ -292,6 +292,7 @@ export function SelectionBar(props: {
               </button>
             </>
           )}
+          {start.error && <span className="error">{start.error.message}</span>}
         </div>
       )}
     </div>

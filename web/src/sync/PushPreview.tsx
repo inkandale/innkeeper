@@ -3,10 +3,9 @@ import { useState } from "react";
 import { api, ApiError, must, route, type Kind } from "../api/client";
 import type { components } from "../api/schema";
 import { show } from "../card/draft";
-import { jobToast } from "../settings/jobUtil";
-import { useToast } from "../shell/Toasts";
 import { useModal } from "../shell/useModal";
 import "./Sync.css";
+import { toastJob } from "../shell/Toasts";
 
 type Preview = components["schemas"]["Preview"];
 
@@ -16,7 +15,6 @@ export type Target = { id: number; label: string };
 /** PushPreview shows what pushing one card or lorebook changes in each target app, and pushes once the owner confirms. */
 export function PushPreview(props: { kind: Kind; id: number; targets: Target[]; onClose: () => void }) {
   const { kind, id, targets, onClose } = props;
-  const toast = useToast();
   const modal = useModal(onClose);
   const [pushed, setPushed] = useState<number[]>([]);
   const [errors, setErrors] = useState<Record<number, string>>({});
@@ -39,7 +37,7 @@ export function PushPreview(props: { kind: Kind; id: number; targets: Target[]; 
         try {
           const body = { instance_id: t.id, confirm: p.confirm, ...(p.new_copy ? { new_copy: true } : {}) };
           const job = must(await api.POST(route(kind, "/cards/{id}/push"), { params: { path: { id } }, body }));
-          toast(jobToast(job, `Pushing to ${t.label}…`, `Pushed to ${t.label}`));
+          toastJob(job, `Pushing to ${t.label}…`, `Pushed to ${t.label}`);
           setPushed((all) => [...all, t.id]);
         } catch (e) {
           const changed = e instanceof ApiError && e.status === 409;

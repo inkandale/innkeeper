@@ -5,7 +5,6 @@ import { api, must, mustOk, route, thumb, upload, type Kind } from "../api/clien
 import { bindingsQuery, instancesQuery, librariesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
 import { badgeClass } from "../cards/Tile";
 import { useConfirm } from "../shell/ConfirmDialog";
-import { useToast } from "../shell/Toasts";
 import type { Entity } from "./Card";
 import { Crop } from "./CropDialog";
 import { Enrichments } from "./Enrichments";
@@ -20,6 +19,8 @@ import { ChipInput } from "./ChipInput";
 import { Collections, Sources } from "./Organize";
 import { useBindingEdits } from "./Upstream";
 import { VariantOf, Variants } from "./Variants";
+import { toastError } from "../shell/Toasts";
+import { toast } from "sonner";
 
 type PanelProps = {
   card: Entity;
@@ -99,7 +100,6 @@ export function Identity({ data, edit, lock }: IdentityProps) {
 
 export function Archive({ kind, entity }: { kind: Kind; entity: Entity }) {
   const qc = useQueryClient();
-  const toast = useToast();
   const [ask, dialog] = useConfirm();
   const archived = !!entity.archived_at;
   const name = text((entity.revision.data as Data).name);
@@ -110,13 +110,14 @@ export function Archive({ kind, entity }: { kind: Kind; entity: Entity }) {
     .filter((b) => b.push)
     .map((b) => instances.data?.find((i) => i.id === b.instance_id)?.label ?? `#${b.instance_id}`);
   const set = useMutation({
+    meta: { toast: false },
     mutationFn: async (v: { archived: boolean; unpublish: boolean }) =>
       mustOk(await api.PUT(route(kind, "/cards/{id}/archived"), { params: { path: { id: entity.id } }, body: v })),
     onSuccess: (_, v) => {
       void qc.invalidateQueries({ queryKey: [kind, entity.id] });
       // Unarchiving brings back the card, but not the apps' deleted copies.
       if (v.archived && !v.unpublish)
-        toast({ text: `Archived ${name}`, action: { label: "Undo", run: () => set.mutate({ archived: false, unpublish: false }) } });
+        toast.success(`Archived ${name}`, { action: { label: "Undo", onClick: () => set.mutate({ archived: false, unpublish: false }) } });
     },
   });
   const archive = () => {
@@ -287,7 +288,6 @@ export function Revisions({ kind, id }: { kind: Kind; id: number }) {
 }
 
 function Image({ sha, busy, onAvatar }: { sha?: string; busy: boolean; onAvatar: PanelProps["onAvatar"] }) {
-  const toast = useToast();
   const [cropping, setCropping] = useState(false);
   const up = useMutation({
     mutationFn: ({ file }: { file: Blob; message: string }) => upload(file),
@@ -323,7 +323,7 @@ function Image({ sha, busy, onAvatar }: { sha?: string; busy: boolean; onAvatar:
           src={`/api/blobs/${sha}`}
           busy={up.isPending}
           onDone={(png) => up.mutate({ file: png, message: "Crop image" })}
-          onError={(text) => toast({ text, error: true })}
+          onError={toastError}
           onCancel={() => setCropping(false)}
         />
       )}

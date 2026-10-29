@@ -3,10 +3,11 @@ import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router";
 import { api, ApiError, must, route, thumb, type Kind } from "../api/client";
 import { pluginsQuery } from "../api/queries";
-import { useToast } from "../shell/Toasts";
 import { useModal } from "../shell/useModal";
 import { Diff } from "../sync/Diff";
 import "./Card.css";
+import { toastError } from "../shell/Toasts";
+import { toast } from "sonner";
 
 type AvatarPick = "keep" | "revision";
 
@@ -59,7 +60,6 @@ export function History({ kind = "card" }: { kind?: Kind }) {
   const id = Number(useParams().id);
   const [params, setParams] = useSearchParams();
   const qc = useQueryClient();
-  const toast = useToast();
   const plugins = useQuery(pluginsQuery);
   const revs = useQuery({
     queryKey: [kind, id, "revisions"],
@@ -96,13 +96,13 @@ export function History({ kind = "card" }: { kind?: Kind }) {
     onSuccess: (_, r) => {
       void qc.invalidateQueries({ queryKey: [kind, id] });
       setParams({});
-      toast({ text: `Restored revision ${r.id}` });
+      toast.success(`Restored revision ${r.id}`);
     },
     meta: { toast: false },
     onError: (e) => {
       void qc.invalidateQueries({ queryKey: [kind, id, "revisions"] });
       const stale = e instanceof ApiError && e.status === 409;
-      toast({ text: stale ? `The ${kind} changed since you opened this page. Check the new head, then restore again.` : e.message, error: true });
+      toastError(stale ? `The ${kind} changed since you opened this page. Check the new head, then restore again.` : e.message);
     },
   });
 

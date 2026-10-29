@@ -2,9 +2,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, mustOk, route, type Kind } from "../api/client";
 import type { components } from "../api/schema";
-import { useToast } from "../shell/Toasts";
 import { useModal } from "../shell/useModal";
 import "../sync/Sync.css";
+import { toast } from "sonner";
 
 /** Picked is a selected card or lorebook as the list shows it. */
 export type Picked = { id: number; name: string; family?: components["schemas"]["Family"] };
@@ -19,11 +19,11 @@ export function recommendParent(picked: Picked[]): number {
 /** SetParent asks which picked card or lorebook the others become variants of, and links them. */
 export function SetParent({ kind, picked, onClose, onDone }: { kind: Kind; picked: Picked[]; onClose: () => void; onDone: () => void }) {
   const qc = useQueryClient();
-  const toast = useToast();
   const modal = useModal(onClose);
   const recommended = recommendParent(picked);
   const [parent, setParent] = useState(recommended);
   const set = useMutation({
+    meta: { toast: false },
     mutationFn: async (to: Picked) => {
       const failed: string[] = [];
       for (const p of picked.filter((p) => p.id !== to.id)) {
@@ -37,7 +37,7 @@ export function SetParent({ kind, picked, onClose, onDone }: { kind: Kind; picke
       if (failed.length) throw new Error(failed.join("; "));
     },
     onSuccess: (_, to) => {
-      toast({ text: `Made ${picked.length - 1} ${kind}${picked.length === 2 ? "" : "s"} variants of ${to.name}.` });
+      toast.success(`Made ${picked.length - 1} ${kind}${picked.length === 2 ? "" : "s"} variants of ${to.name}.`);
       onDone();
     },
   });

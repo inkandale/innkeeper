@@ -63,6 +63,7 @@ export function Job() {
     onSuccess: (data) => qc.setQueryData(["job", id], data),
   });
   const retry = useMutation({
+    meta: { toast: false },
     mutationFn: async () => must(await api.POST("/jobs/{id}/retry", { params: { path: { id } } })),
     onSuccess: (data) => qc.setQueryData(["job", id], data),
   });

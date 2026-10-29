@@ -2,7 +2,6 @@ import { useQuery, useQueryClient, type UseQueryOptions } from "@tanstack/react-
 import { useEffect } from "react";
 import { api, must } from "../api/client";
 import type { components } from "../api/schema";
-import type { ToastSpec } from "../shell/Toasts";
 
 export type Job = components["schemas"]["JobOut"];
 
@@ -83,10 +82,3 @@ export function useJob(id: number, { follow = true, ...opts }: { follow?: boolea
   useJobEvents(id, follow && !!job.data && !finished(job.data));
   return job;
 }
-
-/** jobToast is the toast for a job that just started: text while it runs, then done or its error, linking to its page. */
-export const jobToast = (j: Job, text = `${j.label}…`, done = `${j.label}: done`): ToastSpec => ({
-  text,
-  job: { id: j.id, done },
-  link: { to: `/settings/jobs/${j.id}`, label: "View job" },
-});

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { Card } from "../card/Card";
@@ -24,7 +24,7 @@ const allActions = [
   { ...decl, id: "generate", label: "Forge", applies: "new", instruction: true, inputs: { type: "object", properties: { point_of_view: { type: "string", enum: ["first", "third"] } } } },
 ];
 
-type JobT = { id: number; status: string; payload: { action: string; field?: string }; progress?: unknown; error?: string };
+type JobT = { id: number; status: string; payload: { action: string; field?: string }; progress?: unknown; error?: string; finished_at?: string };
 const job = (j: JobT) => ({
   kind: "action",
   instance_id: 1,
@@ -135,6 +135,20 @@ test("a report-only run locks nothing", async () => {
   expect(await screen.findByText("Evaluate")).toBeInTheDocument();
   expect(screen.getByLabelText("Description")).toBeEnabled();
   expect(screen.queryByText(/locked while/)).not.toBeInTheDocument();
+});
+
+test("a run that succeeds while watched turns into a toast and settles, leaving no header", async () => {
+  let send = (_: MessageEvent) => {};
+  vi.stubGlobal("EventSource", class { addEventListener(_: string, f: (e: MessageEvent) => void) { send = f; } close() {} });
+  jobs = [job({ id: 5, status: "running", payload: { action: "evaluate" } })];
+  renderAt("/cards/7");
+  expect(await screen.findByRole("button", { name: "Stop" })).toBeInTheDocument();
+  jobs = [job({ id: 5, status: "succeeded", payload: { action: "evaluate" }, finished_at: now })];
+  act(() => send(new MessageEvent("job", { data: JSON.stringify(jobs[0]) })));
+  expect(await screen.findByText(/^Evaluate finished in \d+s/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Stop" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Dismiss Evaluate" })).not.toBeInTheDocument();
+  expect(JSON.parse(localStorage.getItem("innkeeper.forge.settled")!)).toEqual([5]);
 });
 
 const tightened = (id: number) =>

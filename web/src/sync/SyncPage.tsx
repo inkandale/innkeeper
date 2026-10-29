@@ -3,16 +3,15 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { api, followers, must, withCapability } from "../api/client";
 import { instancesQuery, librariesQuery, pluginsQuery } from "../api/queries";
-import { age, finished, jobToast, useJob, type Job } from "../settings/jobUtil";
+import { age, finished, useJob, type Job } from "../settings/jobUtil";
 import { useLibrary } from "../shell/library";
-import { useToast } from "../shell/Toasts";
 import { needsYou, stateCounts } from "./sync";
 import "./Sync.css";
+import { toastJob } from "../shell/Toasts";
 
 /** useRun starts a job and watches it until it finishes, then refreshes the page's counts. */
 function useRun(start: () => Promise<Job>, text: string) {
   const qc = useQueryClient();
-  const toast = useToast();
   const [id, setId] = useState<number>();
   const job = useJob(id ?? 0, {
     enabled: id !== undefined,
@@ -34,7 +33,7 @@ function useRun(start: () => Promise<Job>, text: string) {
       // The response is the job, so a joined run doesn't read as finished from an older fetch.
       qc.setQueryData(["job", j.id], j);
       setId(j.id);
-      toast(jobToast(j, text));
+      toastJob(j, text);
     },
   });
   return { start: () => run.mutate(), busy: run.isPending || id !== undefined };

@@ -1,14 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, ApiError, must, route, type Kind } from "../api/client";
-import { useToast } from "../shell/Toasts";
 import { useLeaveGuard } from "../shell/useLeaveGuard";
 import { changed, rebase, type Data, type Draft } from "./draft";
+import { toastError } from "../shell/Toasts";
+import { toast } from "sonner";
 
 /** useEditor loads a card or lorebook and holds its unsaved edits, its save, and the stale-save flow. */
 export function useEditor(kind: Kind, id: number) {
   const qc = useQueryClient();
-  const toast = useToast();
   const entity = useQuery({
     queryKey: [kind, id],
     queryFn: async () => must(await api.GET(route(kind, "/cards/{id}"), { params: { path: { id } } })),
@@ -38,10 +38,10 @@ export function useEditor(kind: Kind, id: number) {
       });
       setStale(false);
       setComparing(false);
-      toast({ text: "Saved" });
+      toast.success("Saved");
     },
     meta: { toast: false },
-    onError: (e) => (e instanceof ApiError && e.status === 409 ? setStale(true) : toast({ text: e.message, error: true })),
+    onError: (e) => (e instanceof ApiError && e.status === 409 ? setStale(true) : toastError(e.message)),
   });
 
   const head = entity.data;

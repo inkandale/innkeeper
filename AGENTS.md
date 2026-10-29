@@ -105,6 +105,22 @@ Reject these in your own output:
 - Placeholder code: `TODO: implement`, stub returns, fake data in non-test
   code.
 
+## UI feedback
+
+Tell the user about an event in exactly one place:
+
+| Use | When | How |
+|---|---|---|
+| Toast | The outcome of an action the user fires and moves on from: a confirmation, an Undo, a background job | `toast.success` from `sonner`; `toastJob` for a job; `toastError` for an error |
+| Inline | The outcome belongs to a form or panel the user is still looking at: validation, save state, a connection test | An `.error` or `role="status"` element by the control, and `meta: { toast: false }` on the mutation |
+| Banner | A state of the page, not an event: a conflict, a stale preview | `.banner`, shown until the state changes |
+| Run header | Only while a forge run locks the page | `RunHeader`; a run that succeeds becomes a toast |
+
+- Every failed mutation shows a toast unless it sets
+  `meta: { toast: false }`. A mutation that shows its error inline must set
+  it, or the error shows twice.
+- Successes close themselves; errors stay until dismissed.
+
 ## Tests
 
 - Test behavior through the public surface, not private helpers.

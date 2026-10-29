@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Review } from "./Review";
 import { cardSubject } from "../card/subject";
@@ -39,4 +39,22 @@ test("a field edited since the run started defaults to Keep mine", async () => {
   expect(screen.getAllByRole("radio", { name: "Keep mine" })[0]).toBeChecked();
   await userEvent.click(screen.getByRole("button", { name: "Apply 1 of 2 changes to draft" }));
   expect(onApply).toHaveBeenCalledWith({ scenario: "A cold forge." });
+});
+
+test("the draft shows beside a proposal only when asked, or when it changed during the run", async () => {
+  const start = { description: "A dwarf.", scenario: "A forge." };
+  render(
+    <Review
+      title="Reforge"
+      proposed={cardSubject.review(start, { ...start, description: "A grumpy dwarf." }, { description: "A tall dwarf.", scenario: "A cold forge." })}
+      onApply={() => {}}
+      onDiscard={() => {}}
+    />,
+  );
+  const scenario = screen.getByRole("region", { name: "Scenario" });
+  expect(screen.getByText("A grumpy dwarf.")).toBeInTheDocument();
+  // The diff's own text nodes also read "A forge.", so look in the draft alone.
+  expect(within(scenario).queryByText("A forge.", { selector: ".mine" })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("checkbox", { name: "Show your draft" }));
+  expect(within(scenario).getByText("A forge.", { selector: ".mine" })).toBeInTheDocument();
 });

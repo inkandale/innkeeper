@@ -412,37 +412,68 @@
   object-fit: cover;
 }
 
-/* Review */
-.forge-review table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
+/* Review: a bar under the tabs, then each change with its choice stuck under the bar while it scrolls. */
+.forge-review {
+  --review-top: calc(var(--editor-bar-height, 0px) + 42px);
+  --review-bar-height: 48px;
 }
 
-.forge-review th,
-.forge-review td {
-  text-align: left;
-  vertical-align: top;
-  padding: calc(var(--space) * 0.75);
+.forge-review-bar {
+  position: sticky;
+  top: var(--review-top);
+  z-index: 4;
+  height: var(--review-bar-height);
+  display: flex;
+  gap: var(--space);
+  align-items: center;
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
 
-.forge-review thead th {
+.forge-review-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-muted);
-  font-weight: normal;
+}
+
+.forge-row {
+  margin-bottom: calc(var(--space) * 2);
+}
+
+.forge-row-head {
+  position: sticky;
+  top: calc(var(--review-top) + var(--review-bar-height));
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space);
+  align-items: center;
+  background: var(--bg);
+  padding: var(--space) 0;
+}
+
+.forge-row-body {
+  display: grid;
+  gap: var(--space);
+}
+
+.forge-row-body.both {
+  grid-template-columns: 1fr 1fr;
+}
+
+.forge-row-body.both .forge-text::before {
+  content: attr(data-label);
+  display: block;
+  color: var(--text-muted);
   font-size: 0.85em;
+  margin-bottom: 2px;
 }
 
-.forge-review thead th:first-child {
-  width: 9em;
-}
-
-.forge-review thead th:last-child {
-  width: 9em;
-}
-
-.forge-review tr.keep td:nth-child(3),
-.forge-review tr.take td:nth-child(2) {
+.forge-row.keep .hunks,
+.forge-row.take .mine {
   opacity: 0.45;
 }
 
@@ -453,18 +484,6 @@
   border: 1px solid var(--border);
   border-radius: calc(var(--radius) * 0.75);
   padding: calc(var(--space) * 0.75);
-}
-
-.forge-edited {
-  display: block;
-  font-weight: normal;
-  margin-top: 4px;
-}
-
-.forge-change {
-  display: block;
-  font-weight: normal;
-  margin-top: 4px;
 }
 
 .forge-change.added {
@@ -480,47 +499,30 @@
 }
 
 .forge-toggle {
-  display: grid;
-  gap: 4px;
+  display: flex;
+  gap: calc(var(--space) * 1.5);
+  margin-left: auto;
 }
 
-/* A phone stacks each change: field, draft, proposal, then the choice in a row. */
+/* A phone has no room for a one-row bar or side-by-side text: the bar wraps, and nothing but it sticks. */
 @media (max-width: 640px) {
-  .forge-review table,
-  .forge-review tbody,
-  .forge-review tr,
-  .forge-review th,
-  .forge-review td {
-    display: block;
+  .forge-review-bar {
+    height: auto;
+    flex-wrap: wrap;
+    padding: var(--space) 0;
   }
 
-  .forge-review thead {
-    display: none;
+  .forge-review-title {
+    flex-basis: 100%;
+    white-space: normal;
   }
 
-  .forge-review tr {
-    padding: calc(var(--space) * 0.75) 0;
-    border-bottom: 1px solid var(--border);
+  .forge-row-head {
+    position: static;
   }
 
-  .forge-review th,
-  .forge-review td {
-    padding: calc(var(--space) * 0.25) 0;
-    border-bottom: none;
-  }
-
-  .forge-review td[data-label]::before {
-    content: attr(data-label);
-    display: block;
-    color: var(--text-muted);
-    font-size: 0.85em;
-    margin-bottom: 2px;
-  }
-
-  .forge-toggle {
-    grid-auto-flow: column;
-    justify-content: start;
-    gap: var(--space);
+  .forge-row-body.both {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -528,7 +530,6 @@
   flex: 1 1 16rem;
 }
 
-.forge-review .forge-footer,
 .forge-report .forge-footer {
   position: sticky;
   bottom: 0;

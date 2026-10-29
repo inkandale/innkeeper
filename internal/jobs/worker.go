@@ -10,6 +10,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -303,7 +304,8 @@ func (w *Worker) execute(ctx context.Context, j *Job) {
 	switch {
 	case err == nil:
 	case errors.Is(err, ErrFinal):
-		o = outcome{status: StatusFailed, err: err.Error()}
+		// The marker is for the worker; the owner reads the reason alone.
+		o = outcome{status: StatusFailed, err: strings.TrimPrefix(err.Error(), ErrFinal.Error()+": ")}
 	case ctx.Err() != nil:
 		o = outcome{status: StatusQueued, err: "worker stopped", refund: true}
 	case errors.Is(err, ErrRetry) && j.Attempts < j.MaxAttempts:

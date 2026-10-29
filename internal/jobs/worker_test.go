@@ -325,8 +325,8 @@ func TestFinalErrorFailsEvenOnShutdown(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := q.Get(context.Background(), j.ID); got.Status != StatusFailed {
-		t.Fatalf("job after shutdown = %+v", got)
+	if got, _ := q.Get(context.Background(), j.ID); got.Status != StatusFailed || errText(got) != "the app may have the card" {
+		t.Fatalf("job after shutdown = %+v, want failed with the handler's message alone", got)
 	}
 }
 

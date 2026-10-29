@@ -241,7 +241,7 @@ test("Reforge runs the lorebook's instruction action on the lorebook", async () 
   });
 });
 
-test("Review offers each changed entry, and Apply merges only the taken ones", async () => {
+test("Review offers each changed entry, and one click saves only the taken ones", async () => {
   actions = forgeActions;
   const proposal = { ...data, entries: [{ ...anvil, content: "Heavier iron." }, { keys: ["hammer"], content: "Rings." }] };
   jobs = [job({ id: 6, status: "succeeded", payload: { action: "lore" }, progress: { result: { proposal, warnings: [] } } })];
@@ -252,8 +252,7 @@ test("Review offers each changed entry, and Apply merges only the taken ones", a
   expect(screen.getByText("added")).toBeInTheDocument();
   const user = userEvent.setup();
   await user.click(within(screen.getByRole("radiogroup", { name: "Choice for Entry 2 · bellows (removed)" })).getByRole("radio", { name: "Keep mine" }));
-  await user.click(screen.getByRole("button", { name: "Apply 2 of 3 changes to draft" }));
-  await user.click(screen.getByRole("button", { name: "Save" }));
+  await user.click(screen.getByRole("button", { name: "Save 2 of 3 changes" }));
   await waitFor(() => expect(puts).toHaveLength(1));
   expect(puts[0]?.body.data.entries).toEqual([{ ...anvil, content: "Heavier iron." }, bellows, { keys: ["hammer"], content: "Rings." }]);
 });

@@ -49,7 +49,9 @@ let runs: unknown[];
 let created: ReturnType<typeof job>[];
 let runFails: boolean;
 let mentionSearches: unknown[];
+let puts: { data: Record<string, unknown> }[];
 beforeEach(() => {
+  puts = [];
   mentionSearches = [];
   actions = allActions;
   jobs = [];
@@ -62,7 +64,10 @@ beforeEach(() => {
     vi.fn(async (req: Request) => {
       const url = new URL(req.url);
       const path = url.pathname;
-      if (path === "/api/cards/7") return json(entity);
+      if (path === "/api/cards/7") {
+        if (req.method === "PUT") puts.push(await req.json());
+        return json(entity);
+      }
       if (path === "/api/actions") return json(actions);
       if (path === "/api/actions/skills") return json(skills);
       if (path === "/api/jobs") return json(url.searchParams.get("card_id") === "7" ? jobs : []);
@@ -154,14 +159,14 @@ test("a run that succeeds while watched turns into a toast and settles, leaving 
 const tightened = (id: number) =>
   job({ id, status: "succeeded", payload: { action: "tighten", field: "description" }, progress: { result: { proposal: { ...data, description: "A dwarf." }, raw: "{}", warnings: [] } } });
 
-test("an unreviewed run from before a reload opens Review", async () => {
+test("an unreviewed run from before a reload opens Review, whose one click saves it", async () => {
   jobs = [tightened(6)];
   renderAt("/cards/7");
-  const apply = await screen.findByRole("button", { name: "Apply 1 of 1 changes to draft" });
+  const save = await screen.findByRole("button", { name: "Save 1 of 1 changes" });
   expect(screen.getByRole("tab", { name: "Review (1)" })).toHaveAttribute("aria-selected", "true");
-  await userEvent.click(apply);
-  expect(screen.getByLabelText("Description")).toHaveValue("A dwarf.");
-  expect(screen.getByText("unsaved")).toBeInTheDocument();
+  await userEvent.click(save);
+  await waitFor(() => expect(puts).toHaveLength(1));
+  expect(puts[0]?.data).toMatchObject({ description: "A dwarf." });
   expect(JSON.parse(localStorage.getItem("innkeeper.forge.settled")!)).toEqual([6]);
 });
 

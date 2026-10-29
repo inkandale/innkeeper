@@ -30,6 +30,8 @@ export function Forge(props: {
   isNew?: boolean;
   data: Data;
   edit: (key: string, value: unknown) => void;
+  /** save saves the draft with a reviewed proposal's changes; without it, Review only applies them to the draft. */
+  save?: (changes: Data) => void;
   fields: (lock?: Lock, extra?: (key: string) => ReactNode) => ReactNode;
   avatar?: Blob | string;
 }) {
@@ -159,8 +161,10 @@ export function Forge(props: {
           title={pending.field ? `${pending.label} on ${label(pending.field)}` : pending.label}
           proposed={proposed}
           warnings={pending.result?.warnings}
+          saves={!!props.save}
           onApply={(changes) => {
-            for (const [k, v] of Object.entries(changes)) props.edit(k, v);
+            if (props.save) props.save(changes);
+            else for (const [k, v] of Object.entries(changes)) props.edit(k, v);
             forge.settle(pending.id);
             setTab("fields");
           }}

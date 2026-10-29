@@ -53,6 +53,7 @@ function LorebookEditor({ id }: { id: number }) {
           forge={forge}
           data={ed.data}
           edit={ed.edit}
+          save={ed.saveWith}
           fields={(lock, extra) => (
             <>
               <Section

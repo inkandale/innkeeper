@@ -52,6 +52,14 @@ export function useEditor(kind: Kind, id: number) {
       const d = cur ?? { baseId: head.revision.id, base: headData, data: headData };
       return { ...d, data: { ...d.data, [key]: value } };
     });
+  // saveWith saves the draft with changes on top, as one step, such as a reviewed Forge proposal.
+  const saveWith = (changes: Data) => {
+    if (!head) return;
+    const d = draft ?? { baseId: head.revision.id, base: headData, data: headData };
+    const next = { ...d, data: { ...d.data, ...changes } };
+    setDraft(next);
+    save.mutate(next);
+  };
   const reload = () => {
     setDraft(null);
     setStale(false);
@@ -70,7 +78,7 @@ export function useEditor(kind: Kind, id: number) {
   };
   const use = (key: string) => setDraft((cur) => cur && { ...cur, data: { ...cur.data, [key]: headData[key] } });
 
-  return { entity, headData, data: draft?.data ?? headData, draft, setDraft, dirty, edit, save, stale, comparing, reload, compare, keep, use };
+  return { entity, headData, data: draft?.data ?? headData, draft, setDraft, dirty, edit, save, saveWith, stale, comparing, reload, compare, keep, use };
 }
 
 export type Editor = ReturnType<typeof useEditor>;

@@ -91,6 +91,7 @@ function CardEditor({ id }: { id: number }) {
           forge={forge}
           data={ed.data}
           edit={ed.edit}
+          save={ed.saveWith}
           fields={(lock, extra) => <Fields data={ed.data} dirty={ed.dirty} edit={ed.edit} lock={lock} extra={extra} />}
           avatar={head.revision.avatar}
         />

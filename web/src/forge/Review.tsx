@@ -8,12 +8,13 @@ const absent = <em className="muted">(empty)</em>;
 
 /**
  * Review puts a proposal against the draft, one row per change, each word diff taken against the data the run began
- * from. onApply gets the draft changes the taken rows make.
+ * from. onApply gets the draft changes the taken rows make; saves says whether applying them also saves.
  */
 export function Review(props: {
   title: string;
   proposed: Proposed;
   warnings?: string[] | null;
+  saves?: boolean;
   onApply: (changes: Data) => void;
   onDiscard: () => void;
 }) {
@@ -32,13 +33,13 @@ export function Review(props: {
     <div className="forge-review">
       <div className="forge-review-bar">
         <span className="forge-review-title">
-          {props.title} proposes {rows.length} change{rows.length === 1 ? "" : "s"}. Nothing saves until you press Save.
+          {props.title} proposes {rows.length} change{rows.length === 1 ? "" : "s"}.{!props.saves && " Nothing saves until you press Save."}
         </span>
         <label className="check">
           <input type="checkbox" checked={showDraft} onChange={(e) => setShowDraft(e.target.checked)} /> Show your draft
         </label>
         <button className="button primary" disabled={!taken.size} onClick={() => props.onApply(apply(taken))}>
-          Apply {taken.size} of {rows.length} changes to draft
+          {props.saves ? `Save ${taken.size} of ${rows.length} changes` : `Apply ${taken.size} of ${rows.length} changes to draft`}
         </button>
         <button className="button" onClick={props.onDiscard}>
           Discard

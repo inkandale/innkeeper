@@ -2538,6 +2538,16 @@
             "$ref": "#/components/schemas/HitScore",
             "description": "With include score: the card's grid score, from the highest-priority scorer that has one."
           },
+          "scores": {
+            "description": "With include score: each scorer's current value, highest priority first; scorers without one are left out.",
+            "items": {
+              "$ref": "#/components/schemas/HitScore"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "slug": {
             "type": "string"
           },

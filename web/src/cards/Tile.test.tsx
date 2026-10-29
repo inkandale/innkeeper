@@ -114,3 +114,26 @@ test("a score of the key sorted by wears its instance's medal", () => {
   renderScore(6, "voice", 70);
   expect(screen.getByRole("img", { name: "Voice 70" })).toHaveClass("silver");
 });
+
+test("a score badge's title lists every scored rank, the shown one first", () => {
+  const hit: Hit = {
+    id: 7,
+    slug: "brakka",
+    revision_id: 1,
+    fields: { name: "Brakka" },
+    score: { instance: 6, key: "voice", value: 70, stale: false },
+    scores: [
+      { instance: 5, key: "quality", value: 80, stale: false },
+      { instance: 7, key: "lint", value: 40, stale: true },
+    ],
+  };
+  render(
+    <MemoryRouter>
+      <Tile hit={hit} names={names} pick={{ selected: false, locked: false, onPick: () => {} }} scorers={ranked} />
+    </MemoryRouter>,
+  );
+  expect(screen.getByRole("img", { name: "Voice 70" })).toHaveAttribute(
+    "title",
+    "Voice 70\nQuality 80\nLint 40, stale: from an older revision",
+  );
+});

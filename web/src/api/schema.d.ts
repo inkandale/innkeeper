@@ -3576,6 +3576,8 @@ export interface components {
             revision_id: number;
             /** @description With include score: the card's grid score, from the highest-priority scorer that has one. */
             score?: components["schemas"]["HitScore"];
+            /** @description With include score: each scorer's current value, highest priority first; scorers without one are left out. */
+            scores?: components["schemas"]["HitScore"][] | null;
             slug: string;
             tags?: string[] | null;
             /** @description With include targets: how the card stands on each target it's pushed to. */

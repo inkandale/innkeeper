@@ -110,6 +110,7 @@ type Hit struct {
 	Cards          []int64        `json:"cards,omitempty" doc:"Lorebooks with include cards: IDs of linked cards."`
 	Entries        *int           `json:"entries,omitempty" doc:"Lorebooks only: how many entries it has."`
 	Score          *HitScore      `json:"score,omitempty" doc:"With include score: the card's grid score, from the highest-priority scorer that has one."`
+	Scores         []HitScore     `json:"scores,omitempty" doc:"With include score: each scorer's current value, highest priority first; scorers without one are left out."`
 	Family         *Family        `json:"family,omitempty" doc:"With group family: the family this hit is the face of."`
 }
 
@@ -237,11 +238,16 @@ func cardOnly(name string) bool {
 // the first of the scorers in args $instances and $keys that has a value for
 // card c.
 func gridSQL(cols, instances, keys string) string {
-	return `(SELECT ` + cols + ` FROM unnest(` + instances + `::bigint[], ` + keys + `::text[]) WITH ORDINALITY s(instance, key, ord)
+	return `(SELECT ` + cols + ` FROM ` + scorerValuesSQL(instances, keys) + ` ORDER BY s.ord LIMIT 1)`
+}
+
+// scorerValuesSQL joins each scorer s, at rank s.ord, to its current value e
+// for card c, dropping scorers without one.
+func scorerValuesSQL(instances, keys string) string {
+	return `unnest(` + instances + `::bigint[], ` + keys + `::text[]) WITH ORDINALITY s(instance, key, ord)
 		CROSS JOIN LATERAL (SELECT e.value, e.revision_id FROM enrichment e
 			WHERE e.card_id = c.id AND e.instance_id = s.instance AND e.key = s.key
-			ORDER BY e.revision_id DESC, e.created_at DESC, e.id DESC LIMIT 1) e
-		ORDER BY s.ord LIMIT 1)`
+			ORDER BY e.revision_id DESC, e.created_at DESC, e.id DESC LIMIT 1) e`
 }
 
 // scorerArgs are scorers as the instance and key arrays gridSQL takes.
@@ -869,7 +875,7 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 	if len(fields) == 0 {
 		fields = []string{"name"}
 	}
-	tags, books, targets, cards, entries, score := `NULL::text[]`, `NULL::bigint[]`, `NULL::jsonb`, `NULL::bigint[]`, `NULL::int`, `NULL::jsonb`
+	tags, books, targets, cards, entries, score, scores := `NULL::text[]`, `NULL::bigint[]`, `NULL::jsonb`, `NULL::bigint[]`, `NULL::int`, `NULL::jsonb`, `NULL::jsonb`
 	if k != Card {
 		entries = `CASE jsonb_typeof(r.data->'entries') WHEN 'array' THEN jsonb_array_length(r.data->'entries') ELSE 0 END`
 	}
@@ -888,7 +894,10 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 			targets = `(SELECT jsonb_agg(jsonb_build_object('instance', instance_id, 'is', status) ORDER BY instance_id)
 				FROM ` + pushedStatus + ` bs WHERE ` + k.FK + ` = c.id)`
 		case "score":
-			score = w.gridScoreSQL(`jsonb_build_object('instance', s.instance, 'key', s.key, 'value', e.value, 'stale', e.revision_id <> c.head_revision_id)`, shownScorers(q))
+			const scoreJSON = `jsonb_build_object('instance', s.instance, 'key', s.key, 'value', e.value, 'stale', e.revision_id <> c.head_revision_id)`
+			score = w.gridScoreSQL(scoreJSON, shownScorers(q))
+			instances, keys := scorerArgs(q.Scorers)
+			scores = `(SELECT jsonb_agg(` + scoreJSON + ` ORDER BY s.ord) FROM ` + scorerValuesSQL(w.arg(instances), w.arg(keys)) + `)`
 		default:
 			return Results{}, fmt.Errorf("%w: unknown include %q", ErrInvalid, inc)
 		}
@@ -1008,7 +1017,7 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 			return Results{}, fmt.Errorf("count matches: %w", err)
 		}
 	}
-	cols := `c.id, c.slug, r.id, c.archived_at, coalesce(c.archived_reason, ''), r.data, r.avatar_blob, ` + tags + `, ` + books + `, ` + targets + `, ` + cards + `, ` + entries + `, ` + score
+	cols := `c.id, c.slug, r.id, c.archived_at, coalesce(c.archived_reason, ''), r.data, r.avatar_blob, ` + tags + `, ` + books + `, ` + targets + `, ` + cards + `, ` + entries + `, ` + score + `, ` + scores
 	limit, skip := w.arg(size+1), w.arg(offset)
 	page := `SELECT ` + cols + `, ` + famCols + `, ` + o.cursor() + `, NULL::bigint FROM ` + from(k) + ` WHERE `
 	sql := page + cond + ` AND ` + after + ` ORDER BY ` + o.sql() + ` LIMIT ` + limit + ` OFFSET ` + skip
@@ -1032,7 +1041,7 @@ func (l *Library) Search(ctx context.Context, k *Kind, q Query) (Results, error)
 	var matched []int64
 	var cur, next string
 	var families *int
-	_, err = pgx.ForEachRow(rows, []any{&h.ID, &h.Slug, &h.RevisionID, &h.ArchivedAt, &h.ArchivedReason, &data, &avatar, &h.Tags, &h.Lorebooks, &h.Targets, &h.Cards, &h.Entries, &h.Score, &rootID, &famSize, &matched, &cur, &families},
+	_, err = pgx.ForEachRow(rows, []any{&h.ID, &h.Slug, &h.RevisionID, &h.ArchivedAt, &h.ArchivedReason, &data, &avatar, &h.Tags, &h.Lorebooks, &h.Targets, &h.Cards, &h.Entries, &h.Score, &h.Scores, &rootID, &famSize, &matched, &cur, &families},
 		func() error {
 			if len(res.Hits) == size-1 {
 				next = base64.RawURLEncoding.EncodeToString([]byte(cur))

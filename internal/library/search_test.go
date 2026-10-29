@@ -599,6 +599,17 @@ func TestSearchEnrichments(t *testing.T) {
 	if c, b := got.Hits[0].Score, got.Hits[1].Score; c.Instance != other || string(c.Value) != "95" || b.Instance != score || string(b.Value) != "90" {
 		t.Fatalf("ranked scores = %+v, %+v", c, b)
 	}
+	// Scores lists every ranked scorer that has a value, in rank order.
+	scoreList := func(h Hit) (out []string) {
+		for _, v := range h.Scores {
+			out = append(out, fmt.Sprintf("%d:%s:%t", v.Instance, v.Value, v.Stale))
+		}
+		return out
+	}
+	if c, b := scoreList(got.Hits[0]), scoreList(got.Hits[1]); !slices.Equal(c, []string{fmt.Sprintf("%d:95:true", other), fmt.Sprintf("%d:70:true", score)}) ||
+		!slices.Equal(b, []string{fmt.Sprintf("%d:90:false", score)}) {
+		t.Fatalf("ranked score lists = %v, %v", c, b)
+	}
 	// Sorted by a named instance's key, each hit's score is the value sorted by.
 	got, err = lib.Search(ctx, Card, Query{Include: []string{"score"}, Sort: fmt.Sprintf("enrichment:%d:quality", score), Scorers: ranked})
 	if err != nil || !slices.Equal(hitIDs(got), []int64{s.brakka, s.carrow}) {

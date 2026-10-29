@@ -78,16 +78,28 @@ export function enrichmentText(value: unknown, range?: number[] | null): string 
   return String(value);
 }
 
-/** Score shows the card's score on its instance's medal, named by the key's label and dimmed when it is about an older revision. */
+type HitScore = NonNullable<Hit["score"]>;
+
+/** scoreLabel names a score by its key's label, or is undefined when its instance is no scorer. */
+function scoreLabel(v: HitScore, scorers: Map<number, Scorer>): string | undefined {
+  const key = scorers.get(v.instance)?.keys.find((k) => k.key === v.key);
+  if (!key) return undefined;
+  const label = `${key.label} ${enrichmentText(v.value, key.range)}`;
+  return v.stale ? `${label}, stale: from an older revision` : label;
+}
+
+/** Score shows the card's score on its instance's medal, dimmed when it is about an older revision; its title lists every scorer's value. */
 function Score({ hit, scorers }: { hit: Hit; scorers: Map<number, Scorer> }) {
   const v = hit.score;
   const s = v && scorers.get(v.instance);
   const key = s?.keys.find((k) => k.key === v?.key);
   if (!v || !s || !key) return null;
   const value = enrichmentText(v.value, key.range);
-  const title = v.stale ? `${key.label} ${value}, stale: from an older revision` : `${key.label} ${value}`;
+  const label = scoreLabel(v, scorers)!;
+  const others = (hit.scores ?? []).filter((o) => o.instance !== v.instance || o.key !== v.key).map((o) => scoreLabel(o, scorers));
+  const title = [label, ...others].filter(Boolean).join("\n");
   return (
-    <span className={["score", s.medal, key.type !== "score" && "text", v.stale && "stale"].filter(Boolean).join(" ")} role="img" aria-label={title} title={title}>
+    <span className={["score", s.medal, key.type !== "score" && "text", v.stale && "stale"].filter(Boolean).join(" ")} role="img" aria-label={label} title={title}>
       {s.medal && <span aria-hidden="true">★ </span>}
       {value}
     </span>

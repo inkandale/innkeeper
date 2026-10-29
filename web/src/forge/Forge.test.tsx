@@ -37,6 +37,8 @@ const job = (j: JobT) => ({
   payload: { ...j.payload, card_id: 7, entity: { kind: "card", data } },
 });
 
+const listed = (j: ReturnType<typeof job>) => ({ ...j, progress: j.progress && { ...(j.progress as object), result: undefined } });
+
 let actions: unknown[];
 const skills = [
   { name: "college", description: "Campus life.", instance_id: 1, instance_name: "Local model" },
@@ -48,6 +50,8 @@ let runs: unknown[];
 // Jobs the tab started; the card's job list holds only jobs.
 let created: ReturnType<typeof job>[];
 let runFails: boolean;
+// detailDelay holds GET /jobs/{id} back, as the network does, so a stream event lands before the whole job.
+let detailDelay: number;
 let mentionSearches: unknown[];
 let puts: { data: Record<string, unknown> }[];
 beforeEach(() => {
@@ -58,6 +62,7 @@ beforeEach(() => {
   runs = [];
   created = [];
   runFails = false;
+  detailDelay = 0;
   localStorage.clear();
   vi.stubGlobal(
     "fetch",
@@ -70,8 +75,10 @@ beforeEach(() => {
       }
       if (path === "/api/actions") return json(actions);
       if (path === "/api/actions/skills") return json(skills);
-      if (path === "/api/jobs") return json(url.searchParams.get("card_id") === "7" ? jobs : []);
+      // Like the server, the list leaves an action run's result out; GET /jobs/{id} has it.
+      if (path === "/api/jobs") return json(url.searchParams.get("card_id") === "7" ? jobs.map(listed) : []);
       const one = /^\/api\/jobs\/(\d+)$/.exec(path);
+      if (one) await new Promise((r) => setTimeout(r, detailDelay));
       if (one) return json([...jobs, ...created].find((j) => j.id === Number(one[1])));
       if (path === "/api/actions/runs") {
         if (runFails) return json({ detail: "the plugin is busy" }, 503);
@@ -148,8 +155,8 @@ test("a run that succeeds while watched turns into a toast and settles, leaving 
   jobs = [job({ id: 5, status: "running", payload: { action: "evaluate" } })];
   renderAt("/cards/7");
   expect(await screen.findByRole("button", { name: "Stop" })).toBeInTheDocument();
-  jobs = [job({ id: 5, status: "succeeded", payload: { action: "evaluate" }, finished_at: now })];
-  act(() => send(new MessageEvent("job", { data: JSON.stringify(jobs[0]) })));
+  jobs = [job({ id: 5, status: "succeeded", payload: { action: "evaluate" }, finished_at: now, progress: { result: { report: { summary: "Solid." } } } })];
+  act(() => send(new MessageEvent("job", { data: JSON.stringify(listed(jobs[0]!)) })));
   expect(await screen.findByText(/^Evaluate finished in \d+s/)).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Stop" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Dismiss Evaluate" })).not.toBeInTheDocument();
@@ -158,6 +165,19 @@ test("a run that succeeds while watched turns into a toast and settles, leaving 
 
 const tightened = (id: number) =>
   job({ id, status: "succeeded", payload: { action: "tighten", field: "description" }, progress: { result: { proposal: { ...data, description: "A dwarf." }, raw: "{}", warnings: [] } } });
+
+test("a watched run whose proposal the stream leaves out opens Review instead of settling", async () => {
+  let send = (_: MessageEvent) => {};
+  vi.stubGlobal("EventSource", class { addEventListener(_: string, f: (e: MessageEvent) => void) { send = f; } close() {} });
+  jobs = [job({ id: 6, status: "running", payload: { action: "tighten", field: "description" } })];
+  renderAt("/cards/7");
+  expect(await screen.findByRole("button", { name: "Stop" })).toBeInTheDocument();
+  jobs = [{ ...tightened(6), finished_at: now }];
+  detailDelay = 50;
+  act(() => send(new MessageEvent("job", { data: JSON.stringify(listed(jobs[0]!)) })));
+  expect(await screen.findByRole("tab", { name: "Review (1)" })).toHaveAttribute("aria-selected", "true");
+  expect(localStorage.getItem("innkeeper.forge.settled")).toBeNull();
+});
 
 test("an unreviewed run from before a reload opens Review, whose one click saves it", async () => {
   jobs = [tightened(6)];

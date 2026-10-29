@@ -33,15 +33,17 @@ export function RunHeader({ run, label, onStop, onDismiss }: { run: Run; label: 
   // Only a run seen finishing toasts; one that finished before a reload settles quietly.
   const wasLive = useRef(run.live);
   const toastText = `${title(run, label)} finished in ${seconds}s on ${run.instance}`;
+  // Lists and streams leave the result out, so wait for the whole job before deciding there's no proposal.
+  const done = succeeded && !!run.result;
   const proposal = !!run.result?.proposal;
   useEffect(() => {
-    if (!succeeded) return;
+    if (!done) return;
     if (wasLive.current) toast.success(toastText);
     if (!proposal) onDismiss();
-    // Keyed on succeeded alone: onDismiss is a new function each render, and this must run once.
-  }, [succeeded]);
+    // Keyed on done alone: onDismiss is a new function each render, and this must run once.
+  }, [done]);
   useEffect(() => {
-    wasLive.current = run.live;
+    if (run.live) wasLive.current = true;
   });
   if (succeeded) return null;
   if (!run.live) {

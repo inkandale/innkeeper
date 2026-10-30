@@ -444,7 +444,7 @@ fieldset.contents {
 .metadata-list,
 .enrichment-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 4px calc(var(--space) * 2);
   margin: 0 0 var(--space);
 }
@@ -466,6 +466,18 @@ fieldset.contents {
   margin: 0;
   font-weight: 700;
   text-align: right;
+}
+
+.enrichment-instance h3 {
+  font-size: 0.95em;
+  margin: 0;
+}
+
+#page-tabpanel h2 {
+  font-size: 0.85em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: var(--space) 0 calc(var(--space) * 0.5);
 }
 
 .enrichment-instance {

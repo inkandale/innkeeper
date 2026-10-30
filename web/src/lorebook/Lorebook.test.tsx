@@ -163,6 +163,13 @@ test("the panel names the lorebook's library", async () => {
   expect(await screen.findByText("Library: Chub archive")).toBeInTheDocument();
 });
 
+test("the Metadata tab shows the core facts and no enrichments", async () => {
+  renderAt("/lorebooks/3");
+  await userEvent.setup().click(await screen.findByRole("tab", { name: "Metadata" }));
+  expect(await screen.findByRole("heading", { name: "Details" })).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Enrichments" })).not.toBeInTheDocument();
+});
+
 test("the panel links to history", async () => {
   renderAt("/lorebooks/3");
   expect(await screen.findByRole("link", { name: "All history" })).toHaveAttribute("href", "/lorebooks/3/history");

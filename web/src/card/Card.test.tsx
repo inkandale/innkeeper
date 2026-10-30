@@ -164,6 +164,8 @@ beforeEach(() => {
           { id: 2, name: "Pirates" },
         ]);
       if (path === "/api/lorebooks/3") return json({ id: 3, revision: { id: 1, data: { name: "Forge" } } });
+      if (path === "/api/cards/7/enrichments")
+        return json([{ instance_id: 5, instance_name: "Judge", revision_id: 1, key: "quality", label: "Quality", type: "score", value: 78, meta: {}, created_at: now, current: true, stale: false }]);
       return json([]);
     }),
   );
@@ -334,6 +336,13 @@ test("the panel shows sync, lorebooks, collections, and sources", async () => {
   expect(await screen.findByRole("link", { name: "chub: dg/brakka" })).toHaveAttribute("href", "https://chub.ai/characters/dg/brakka");
   expect(screen.getByText("chub: dg/evil")).not.toHaveAttribute("href");
   expect(screen.queryByRole("link", { name: "chub: dg/evil" })).not.toBeInTheDocument();
+});
+
+test("the Metadata tab shows the core facts and the enrichments", async () => {
+  renderAt("/cards/7");
+  await userEvent.setup().click(await screen.findByRole("tab", { name: "Metadata" }));
+  expect(await screen.findByRole("heading", { name: "Details" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Enrichments" })).toBeInTheDocument();
 });
 
 test("archive offers Undo, which unarchives", async () => {

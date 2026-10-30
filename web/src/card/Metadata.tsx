@@ -9,11 +9,12 @@ import type { Entity } from "./Card";
 
 /** Metadata lists a card's or lorebook's stored facts: dates, IDs, library, and provenance. */
 export function Metadata({ kind, entity }: { kind: Kind; entity: Entity }) {
-  const library = useQuery(librariesQuery).data?.find((l) => l.id === entity.library_id);
+  const libraries = useQuery(librariesQuery).data;
+  const library = libraries?.find((l) => l.id === entity.library_id);
   const rev = entity.revision;
   const hash = rev.content_hash;
   const copy = () =>
-    navigator.clipboard.writeText(hash).then(
+    (navigator.clipboard?.writeText(hash) ?? Promise.reject(new Error("Clipboard unavailable"))).then(
       () => toast.success("Copied the content hash"),
       (e: Error) => toastError(e.message),
     );
@@ -23,7 +24,7 @@ export function Metadata({ kind, entity }: { kind: Kind; entity: Entity }) {
     ["Revision", `${rev.id} (${rev.source})`],
     ["Slug", entity.slug],
     ["ID", entity.id],
-    ["Library", library?.name ?? `#${entity.library_id}`],
+    ["Library", library?.name ?? (libraries && `#${entity.library_id}`)],
     ["Provenance", entity.provenance],
     [
       "Content hash",

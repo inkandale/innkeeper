@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { useFollowLibrary } from "../shell/library";
 import { Link, useParams } from "react-router";
 import { namesQuery } from "../api/queries";
@@ -7,13 +8,14 @@ import { text, tokens } from "../card/draft";
 import { Section } from "../card/Fields";
 import { MacroTextarea } from "../card/MacroTextarea";
 import { OtherLibraries } from "../card/OtherLibraries";
+import { PageTabs } from "../card/PageTabs";
 import { Sources } from "../card/Organize";
 import { EditorBar } from "../card/EditorBar";
 import { LibraryName, Revisions, Sync } from "../card/Panel";
 import { VariantOf, Variants } from "../card/Variants";
 import { UpdateBanner } from "../card/Upstream";
 import { useEditor } from "../card/useEditor";
-import { Forge } from "../forge/Forge";
+import { useForgeView } from "../forge/Forge";
 import { useForge } from "../forge/useForge";
 import { lorebookSubject } from "./subject";
 import { Entries } from "./EntryEditor";
@@ -30,6 +32,8 @@ function LorebookEditor({ id }: { id: number }) {
   const ed = useEditor("lorebook", id);
   const forge = useForge({ subject: lorebookSubject, id, data: ed.data, library: ed.entity.data?.library_id ?? 1 });
   useFollowLibrary(ed.entity.data?.library_id);
+  const [tab, setTab] = useState<string>();
+  const view = useForgeView({ forge, data: ed.data, edit: ed.edit, save: ed.saveWith, setTab });
   if (ed.entity.isPending) return null;
   if (ed.entity.isError) return <p className="error page">{ed.entity.error.message}</p>;
   const head = ed.entity.data;
@@ -49,26 +53,35 @@ function LorebookEditor({ id }: { id: number }) {
         <EditorBar kind="lorebook" entity={head} ed={ed} lock={forge.lock} />
         <UpdateBanner kind="lorebook" id={id} />
         <Stale kind="lorebook" ed={ed} />
-        <Forge
-          forge={forge}
-          data={ed.data}
-          edit={ed.edit}
-          save={ed.saveWith}
-          fields={(lock, extra) => (
-            <>
-              <Section
-                label="Description"
-                dirty={ed.dirty.has("description")}
-                count={tokens(text(ed.data.description))}
-                lock={lock?.("description")}
-                extra={extra?.("description")}
-              >
-                <MacroTextarea label="Description" value={text(ed.data.description)} onChange={(v) => ed.edit("description", v)} />
-              </Section>
-              <Entries data={ed.data} base={ed.draft?.base ?? ed.headData} edit={ed.edit} lock={lock?.("entries")} />
-            </>
-          )}
+        <PageTabs
+          label="Lorebook"
+          selected={tab ?? ""}
+          onSelect={setTab}
+          tabs={[
+            {
+              id: "fields",
+              label: "Fields",
+              panel: (
+                <>
+                  <Section
+                    label="Description"
+                    dirty={ed.dirty.has("description")}
+                    count={tokens(text(ed.data.description))}
+                    lock={view.lock?.("description")}
+                    extra={view.extra?.("description")}
+                  >
+                    <MacroTextarea label="Description" value={text(ed.data.description)} onChange={(v) => ed.edit("description", v)} />
+                  </Section>
+                  <Entries data={ed.data} base={ed.draft?.base ?? ed.headData} edit={ed.edit} lock={view.lock?.("entries")} />
+                </>
+              ),
+            },
+            ...view.tabs,
+          ]}
+          actions={view.actions}
+          notices={view.notices}
         />
+        {view.overlays}
       </div>
     </div>
   );

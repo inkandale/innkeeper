@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import type { PageTab } from "../card/PageTabs";
 import type { Data } from "../card/draft";
 import { ConfirmDialog } from "../shell/ConfirmDialog";
 import { changedKeys, instructionAction, newAction, type Action, type Report as ReportT, type Severity } from "./actions";
@@ -13,32 +14,41 @@ import { RunHeader, WaitingHeader } from "./RunHeader";
 import type { Forge as ForgeState } from "./useForge";
 import "./Forge.css";
 
-type Tab = "start" | "fields" | "review" | "report";
-
 const severities: Severity[] = ["high", "medium", "low"];
 
 /** Lock returns the label of the run that locks a data key, if one does. */
 export type Lock = (key: string) => string | undefined;
 
-/**
- * Forge is a card or lorebook page's main column: the Fields tab, and with an action plugin, Review, Report, the
- * Reforge panel, and the runs. fields renders the Fields tab; with an action plugin it gets the locks and extra, a
- * text field's header additions. A new card has a Start tab instead of Report. avatar is the current avatar: a blob
- * SHA, or a new card's file.
- */
-export function Forge(props: {
+/** ForgeView is the Forge's part of a card or lorebook page. Without an action plugin for the page's kind, it adds no tabs or actions. */
+export type ForgeView = {
+  /** start is a new card's Start tab, which goes before Fields. */
+  start?: PageTab;
+  /** tabs go after Fields: Review, and Report on a saved card or lorebook. */
+  tabs: PageTab[];
+  actions?: ReactNode;
+  /** notices are the run headers. */
+  notices: ReactNode;
+  /** lock and extra go to the Fields tab. */
+  lock?: Lock;
+  extra?: (key: string) => ReactNode;
+  /** overlays are the Reforge panel and the repeat-run dialog. */
+  overlays: ReactNode;
+};
+
+/** useForgeView builds the Forge's tabs, actions, and overlays. setTab selects a page tab: the Forge opens Review, Report, Start, and Fields itself. */
+export function useForgeView(props: {
   forge: ForgeState;
   isNew?: boolean;
   data: Data;
   edit: (key: string, value: unknown) => void;
   /** save saves the draft with a reviewed proposal's changes; without it, Review only applies them to the draft. */
   save?: (changes: Data) => void;
-  fields: (lock?: Lock, extra?: (key: string) => ReactNode) => ReactNode;
+  /** avatar is the current avatar: a blob SHA, or a new card's file. */
   avatar?: Blob | string;
-}) {
-  const { forge, data, isNew } = props;
+  setTab: (tab: string) => void;
+}): ForgeView {
+  const { forge, data, isNew, setTab } = props;
   const { kind, label } = forge.subject;
-  const [tab, setTab] = useState<Tab>();
   const [panel, setPanel] = useState(false);
   const [target, setTarget] = useState<Target>();
   const [instruction, setInstruction] = useState<Instruction>(emptyInstruction);
@@ -105,99 +115,58 @@ export function Forge(props: {
   const pending = forge.pending;
   const proposed = pending?.result?.proposal && forge.subject.review(pending.start, data, pending.result.proposal);
   const reviewCount = proposed ? proposed.rows.length : 0;
-  const tabs: [Tab, string][] = isNew
-    ? [["start", "Start"], ["fields", "Fields"], ["review", `Review${pending ? ` (${reviewCount})` : ""}`]]
-    : [["fields", "Fields"], ["review", `Review${pending ? ` (${reviewCount})` : ""}`], ["report", "Report"]];
   const revise = instructionAction(forge.mine, kind);
-  const shown: Tab = on ? (tab ?? (isNew ? "start" : "fields")) : "fields";
-  const tabId = (t: Tab) => `forge-tab-${t}`;
-  const usable = tabs.filter(([t]) => t !== "review" || pending).map(([t]) => t);
-  // Arrow keys move between the usable tabs, selecting as they go.
-  const arrow = (key: string) => {
-    const step = key === "ArrowRight" ? 1 : key === "ArrowLeft" ? -1 : 0;
-    if (!step) return;
-    const next = usable[(usable.indexOf(shown) + step + usable.length) % usable.length]!;
-    setTab(next);
-    document.getElementById(tabId(next))?.focus();
-  };
-
-  return (
-    <div className="forge">
-      {on && (
-        <div className="forge-tabs">
-          <div role="tablist" aria-label="Forge" onKeyDown={(e) => arrow(e.key)}>
-            {tabs.map(([t, label]) => (
-              <button
-                key={t}
-                id={tabId(t)}
-                role="tab"
-                aria-selected={shown === t}
-                aria-controls="forge-tabpanel"
-                tabIndex={shown === t ? 0 : -1}
-                className={shown === t ? "on" : undefined}
-                disabled={!usable.includes(t)}
-                onClick={() => setTab(t)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <button className="button primary forge-open" onClick={() => open()} title={`${verb} (Ctrl+K)`}>
-            <Hammer /> {verb} <kbd>⌘K</kbd>
-          </button>
-        </div>
+  const review = pending && proposed && (
+    <Review
+      key={pending.id}
+      title={pending.field ? `${pending.label} on ${label(pending.field)}` : pending.label}
+      proposed={proposed}
+      warnings={pending.result?.warnings}
+      instruction={pending.instruction}
+      stale={changedKeys(pending.start, data).length ? kind : undefined}
+      saves={!!props.save}
+      preview={(changes) => forge.subject.preview({ ...data, ...changes })}
+      onApply={(changes) => {
+        if (props.save) props.save(changes);
+        else for (const [k, v] of Object.entries(changes)) props.edit(k, v);
+        forge.settlePending();
+        setTab("fields");
+      }}
+      onDiscard={() => {
+        forge.settlePending();
+        setTab("fields");
+      }}
+    />
+  );
+  const report = (
+    <>
+      {forge.report && (
+        <Report key={forge.reportId} report={forge.report} subject={forge.subject} changed={changedKeys(forge.reportStart ?? data, data)} onRefine={revise && ((text) => forge.start({ action: revise, instruction: text }))} />
       )}
+      <div className="forge-empty">
+        {!forge.report && <p>No report yet.</p>}
+        {forge.mine
+          .filter((a) => a.applies === kind && a.report_only)
+          .map((a) => (
+            <button key={a.id} className={forge.report ? "button" : "button primary"} onClick={() => (asks(a) ? open({ action: a }) : forge.start({ action: a }))}>
+              <Hammer /> {forge.report ? `${a.label} again` : a.label}
+            </button>
+          ))}
+      </div>
+    </>
+  );
+  const notices = (
+    <>
       {forge.runs.map((r) => (
         <RunHeader key={r.id} run={r} label={label} onStop={() => forge.stop(r.id)} onDismiss={() => forge.settle(r.id)} />
       ))}
       {forge.waiting.map((w) => (
         <WaitingHeader key={w.key} w={w} label={label} onCancel={() => forge.unwait(w.key)} />
       ))}
-
-      <div id="forge-tabpanel" role={on ? "tabpanel" : undefined} aria-labelledby={on ? tabId(shown) : undefined}>
-      {shown === "start" && <Start forge={forge} avatar={props.avatar} />}
-      {shown === "fields" && (on ? props.fields(forge.lock, extra) : props.fields())}
-      {shown === "review" && pending && proposed && (
-        <Review
-          key={pending.id}
-          title={pending.field ? `${pending.label} on ${label(pending.field)}` : pending.label}
-          proposed={proposed}
-          warnings={pending.result?.warnings}
-          instruction={pending.instruction}
-          stale={changedKeys(pending.start, data).length ? kind : undefined}
-          saves={!!props.save}
-          preview={(changes) => forge.subject.preview({ ...data, ...changes })}
-          onApply={(changes) => {
-            if (props.save) props.save(changes);
-            else for (const [k, v] of Object.entries(changes)) props.edit(k, v);
-            forge.settlePending();
-            setTab("fields");
-          }}
-          onDiscard={() => {
-            forge.settlePending();
-            setTab("fields");
-          }}
-        />
-      )}
-      {shown === "report" && (
-        <>
-          {forge.report && (
-            <Report key={forge.reportId} report={forge.report} subject={forge.subject} changed={changedKeys(forge.reportStart ?? data, data)} onRefine={revise && ((text) => forge.start({ action: revise, instruction: text }))} />
-          )}
-          <div className="forge-empty">
-            {!forge.report && <p>No report yet.</p>}
-            {forge.mine
-              .filter((a) => a.applies === kind && a.report_only)
-              .map((a) => (
-                <button key={a.id} className={forge.report ? "button" : "button primary"} onClick={() => (asks(a) ? open({ action: a }) : forge.start({ action: a }))}>
-                  <Hammer /> {forge.report ? `${a.label} again` : a.label}
-                </button>
-              ))}
-          </div>
-        </>
-      )}
-      </div>
-
+    </>
+  );
+  const overlays = (
+    <>
       {forge.repeat && (
         <ConfirmDialog
           title="A proposal from this run is waiting"
@@ -222,8 +191,23 @@ export function Forge(props: {
           onClose={() => setPanel(false)}
         />
       )}
-    </div>
+    </>
   );
+  if (!on) return { tabs: [], notices, overlays };
+  const reviewTab: PageTab = { id: "review", label: `Review${pending ? ` (${reviewCount})` : ""}`, disabled: !pending, panel: review };
+  return {
+    start: isNew ? { id: "start", label: "Start", panel: <Start forge={forge} avatar={props.avatar} /> } : undefined,
+    tabs: isNew ? [reviewTab] : [reviewTab, { id: "report", label: "Report", panel: report }],
+    actions: (
+      <button className="button primary forge-open" onClick={() => open()} title={`${verb} (Ctrl+K)`}>
+        <Hammer /> {verb} <kbd>⌘K</kbd>
+      </button>
+    ),
+    notices,
+    lock: forge.lock,
+    extra,
+    overlays,
+  };
 }
 
 /** Badges counts a field's findings per severity; each opens the Report at them. */

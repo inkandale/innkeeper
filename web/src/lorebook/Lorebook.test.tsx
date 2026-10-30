@@ -263,7 +263,9 @@ test("a plugin with only card actions shows no Forge on the lorebook page", asyn
   await screen.findByLabelText("Entry 1 content");
   await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.objectContaining({ url: expect.stringContaining("/api/actions") })));
   expect(screen.queryByRole("button", { name: /^Reforge ⌘K/ })).not.toBeInTheDocument();
-  expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Fields" })).toBeInTheDocument();
+  expect(screen.queryByRole("tab", { name: /^Review/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("tab", { name: "Report" })).not.toBeInTheDocument();
 });
 
 test("a proposal that only reorders entries opens no Review", async () => {

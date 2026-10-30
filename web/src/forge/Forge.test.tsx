@@ -120,6 +120,8 @@ test("without an action plugin the card page is the plain editor", async () => {
   await screen.findByLabelText("Description");
   expect(screen.queryByRole("button", { name: /^Reforge ⌘K/ })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Forge actions for Description" })).not.toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Fields" })).toBeInTheDocument();
+  expect(screen.queryByRole("tab", { name: "Report" })).not.toBeInTheDocument();
 });
 
 test("field locks follow the scope of the runs picked up from the job list", async () => {

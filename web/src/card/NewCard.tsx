@@ -6,10 +6,11 @@ import { useLibrary } from "../shell/library";
 import { Crop } from "./CropDialog";
 import { changed, type Data } from "./draft";
 import { Identity, Name } from "./Panel";
-import { Forge } from "../forge/Forge";
+import { useForgeView } from "../forge/Forge";
 import { useForge } from "../forge/useForge";
 import { cardSubject } from "./subject";
 import { Fields } from "./Fields";
+import { PageTabs } from "./PageTabs";
 import "./Card.css";
 import { toastError } from "../shell/Toasts";
 
@@ -47,6 +48,8 @@ export function NewCard() {
   const dirty = changed({ baseId: 0, base: {}, data });
   const forge = useForge({ subject: cardSubject, data, library });
   const forgeBusy = forge.runs.some((r) => r.live) || forge.waiting.length > 0 || !!forge.pending;
+  const [tab, setTab] = useState<string>();
+  const view = useForgeView({ forge, isNew: true, data, edit, avatar: avatar ?? undefined, setTab });
   const save = useMutation({
     mutationFn: async () => {
       const sha = avatar ? await upload(avatar) : undefined;
@@ -76,14 +79,19 @@ export function NewCard() {
           {forgeBusy && <p className="muted">Save waits for the Forge run to finish and be reviewed: the run belongs to this page, not the saved card.</p>}
         </aside>
         <div className="card-main">
-          <Forge
-            forge={forge}
-            isNew
-            data={data}
-            edit={edit}
-            fields={(lock, extra) => <Fields data={data} dirty={dirty} edit={edit} lock={lock} extra={extra} />}
-            avatar={avatar ?? undefined}
+          <PageTabs
+            label="New card"
+            selected={tab ?? ""}
+            onSelect={setTab}
+            tabs={[
+              ...(view.start ? [view.start] : []),
+              { id: "fields", label: "Fields", panel: <Fields data={data} dirty={dirty} edit={edit} lock={view.lock} extra={view.extra} /> },
+              ...view.tabs,
+            ]}
+            actions={view.actions}
+            notices={view.notices}
           />
+          {view.overlays}
         </div>
       </fieldset>
     </div>

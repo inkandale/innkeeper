@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { useFollowLibrary } from "../shell/library";
 import { useParams } from "react-router";
 import { api, ApiError, exportFormats, must } from "../api/client";
@@ -9,11 +10,12 @@ import { EditorBar } from "./EditorBar";
 import { Panel } from "./Panel";
 import { UpdateBanner } from "./Upstream";
 import { useEditor } from "./useEditor";
-import { Forge } from "../forge/Forge";
+import { useForgeView } from "../forge/Forge";
 import { useForge } from "../forge/useForge";
 import { cardSubject } from "./subject";
 import { Similar } from "./Discover";
 import { Fields } from "./Fields";
+import { PageTabs } from "./PageTabs";
 import "./Card.css";
 import { toastError } from "../shell/Toasts";
 
@@ -58,6 +60,9 @@ function CardEditor({ id }: { id: number }) {
     },
   });
 
+  const [tab, setTab] = useState<string>();
+  const view = useForgeView({ forge, data: ed.data, edit: ed.edit, save: ed.saveWith, avatar: ed.entity.data?.revision.avatar, setTab });
+
   if (ed.entity.isPending) return null;
   if (ed.entity.isError) return <p className="error page">{ed.entity.error.message}</p>;
   const head = ed.entity.data;
@@ -87,14 +92,18 @@ function CardEditor({ id }: { id: number }) {
         />
         <UpdateBanner kind="card" id={id} />
         <Stale kind="card" ed={ed} />
-        <Forge
-          forge={forge}
-          data={ed.data}
-          edit={ed.edit}
-          save={ed.saveWith}
-          fields={(lock, extra) => <Fields data={ed.data} dirty={ed.dirty} edit={ed.edit} lock={lock} extra={extra} />}
-          avatar={head.revision.avatar}
+        <PageTabs
+          label="Card"
+          selected={tab ?? ""}
+          onSelect={setTab}
+          tabs={[
+            { id: "fields", label: "Fields", panel: <Fields data={ed.data} dirty={ed.dirty} edit={ed.edit} lock={view.lock} extra={view.extra} /> },
+            ...view.tabs,
+          ]}
+          actions={view.actions}
+          notices={view.notices}
         />
+        {view.overlays}
         <Similar id={head.id} library={head.library_id} />
       </div>
     </div>

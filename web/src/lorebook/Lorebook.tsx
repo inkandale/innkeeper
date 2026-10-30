@@ -14,7 +14,7 @@ import { EditorBar } from "../card/EditorBar";
 import { Metadata } from "../card/Metadata";
 import { Group } from "../card/Group";
 import { Revisions, Sync } from "../card/Panel";
-import { VariantOf, Variants } from "../card/Variants";
+import { Variants } from "../card/Variants";
 import { UpdateBanner } from "../card/Upstream";
 import { useEditor } from "../card/useEditor";
 import { useForgeView } from "../forge/Forge";
@@ -44,7 +44,6 @@ function LorebookEditor({ id }: { id: number }) {
       <aside className="card-aside">
         <Group title="Links">
           <Sources kind="lorebook" id={id} />
-          <VariantOf kind="lorebook" entity={head} />
           <Variants kind="lorebook" entity={head} />
           <OtherLibraries kind="lorebook" id={id} />
           <LinkedCards ids={head.cards ?? []} library={head.library_id} />

@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { api, must, mustOk, route, thumb, upload, type Kind } from "../api/client";
 import { bindingsQuery, instancesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
 import { badgeClass } from "../cards/Tile";
+import { count } from "../shell/count";
 import { useConfirm } from "../shell/ConfirmDialog";
 import type { Entity } from "./Card";
 import { CardLorebooks } from "./CardLorebooks";
@@ -18,7 +19,7 @@ import { ChipInput } from "./ChipInput";
 import { Group } from "./Group";
 import { Collections, Sources } from "./Organize";
 import { useBindingEdits } from "./Upstream";
-import { VariantOf, Variants } from "./Variants";
+import { Variants } from "./Variants";
 import { toastError } from "../shell/Toasts";
 import { toast } from "sonner";
 
@@ -42,7 +43,6 @@ export function Panel({ card, data, edit, onAvatar, avatarBusy, lock }: PanelPro
       <Identity data={data} edit={edit} lock={lock} />
       <Group title="Links">
         <Sources kind="card" id={card.id} />
-        <VariantOf kind="card" entity={card} />
         <Variants kind="card" entity={card} />
         <OtherLibraries kind="card" id={card.id} />
         <CardLorebooks card={card} />
@@ -243,7 +243,7 @@ export function Revisions({ kind, id }: { kind: Kind; id: number }) {
     queryFn: async () => must(await api.GET(route(kind, "/cards/{id}/revisions"), { params: { path: { id } } })),
   });
   const n = revs.data?.length;
-  return <Link to={`/${kind}s/${id}/history`}>History{n ? ` (${n} revision${n === 1 ? "" : "s"})` : ""}</Link>;
+  return <Link to={`/${kind}s/${id}/history`}>History{n ? ` (${count(n, "revision")})` : ""}</Link>;
 }
 
 function Image({ sha, busy, onAvatar }: { sha?: string; busy: boolean; onAvatar: PanelProps["onAvatar"] }) {

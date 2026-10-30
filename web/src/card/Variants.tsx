@@ -14,7 +14,7 @@ function useRefresh(kind: Kind) {
 }
 
 /** VariantOf links to the card or lorebook this one is a variant of, with × to unlink. */
-export function VariantOf({ kind, entity }: { kind: Kind; entity: Entity }) {
+function VariantOf({ kind, entity }: { kind: Kind; entity: Entity }) {
   const refresh = useRefresh(kind);
   const unlink = useMutation({
     mutationFn: async () => mustOk(await api.DELETE(route(kind, "/cards/{id}/variant_of"), { params: { path: { id: entity.id } } })),
@@ -73,6 +73,7 @@ export function Variants({ kind, entity }: { kind: Kind; entity: Entity }) {
           </button>
         </Menu>
       </div>
+      <VariantOf kind={kind} entity={entity} />
       <ul className="plain">
         {(entity.variants ?? []).map((v) => (
           <li key={v.id}>

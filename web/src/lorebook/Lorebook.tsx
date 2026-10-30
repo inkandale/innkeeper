@@ -11,6 +11,7 @@ import { OtherLibraries } from "../card/OtherLibraries";
 import { PageTabs } from "../card/PageTabs";
 import { Sources } from "../card/Organize";
 import { EditorBar } from "../card/EditorBar";
+import { Metadata } from "../card/Metadata";
 import { LibraryName, Revisions, Sync } from "../card/Panel";
 import { VariantOf, Variants } from "../card/Variants";
 import { UpdateBanner } from "../card/Upstream";
@@ -32,7 +33,7 @@ function LorebookEditor({ id }: { id: number }) {
   const ed = useEditor("lorebook", id);
   const forge = useForge({ subject: lorebookSubject, id, data: ed.data, library: ed.entity.data?.library_id ?? 1 });
   useFollowLibrary(ed.entity.data?.library_id);
-  const [tab, setTab] = useState<string>();
+  const [tab, setTab] = useState("");
   const view = useForgeView({ forge, data: ed.data, edit: ed.edit, save: ed.saveWith, setTab });
   if (ed.entity.isPending) return null;
   if (ed.entity.isError) return <p className="error page">{ed.entity.error.message}</p>;
@@ -55,7 +56,7 @@ function LorebookEditor({ id }: { id: number }) {
         <Stale kind="lorebook" ed={ed} />
         <PageTabs
           label="Lorebook"
-          selected={tab ?? ""}
+          selected={tab}
           onSelect={setTab}
           tabs={[
             {
@@ -77,6 +78,7 @@ function LorebookEditor({ id }: { id: number }) {
               ),
             },
             ...view.tabs,
+            { id: "metadata", label: "Metadata", panel: <Metadata kind="lorebook" entity={head} /> },
           ]}
           actions={view.actions}
           notices={view.notices}

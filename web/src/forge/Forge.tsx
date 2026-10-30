@@ -35,7 +35,7 @@ export type ForgeView = {
   overlays: ReactNode;
 };
 
-/** useForgeView builds the Forge's tabs, actions, and overlays. setTab selects a page tab: the Forge opens Review, Report, Start, and Fields itself. */
+/** useForgeView builds the Forge's tabs, actions, and overlays. setTab selects a page tab: the Forge opens Review, Report, Start, and Fields itself, so it must be stable, such as a useState setter. */
 export function useForgeView(props: {
   forge: ForgeState;
   isNew?: boolean;

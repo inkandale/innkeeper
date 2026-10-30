@@ -7,6 +7,8 @@ import { instancesQuery, pluginsQuery } from "../api/queries";
 import type { components } from "../api/schema";
 import { Stale } from "./Conflict";
 import { EditorBar } from "./EditorBar";
+import { Enrichments } from "./Enrichments";
+import { Metadata } from "./Metadata";
 import { Panel } from "./Panel";
 import { UpdateBanner } from "./Upstream";
 import { useEditor } from "./useEditor";
@@ -60,7 +62,7 @@ function CardEditor({ id }: { id: number }) {
     },
   });
 
-  const [tab, setTab] = useState<string>();
+  const [tab, setTab] = useState("");
   const view = useForgeView({ forge, data: ed.data, edit: ed.edit, save: ed.saveWith, avatar: ed.entity.data?.revision.avatar, setTab });
 
   if (ed.entity.isPending) return null;
@@ -94,11 +96,12 @@ function CardEditor({ id }: { id: number }) {
         <Stale kind="card" ed={ed} />
         <PageTabs
           label="Card"
-          selected={tab ?? ""}
+          selected={tab}
           onSelect={setTab}
           tabs={[
             { id: "fields", label: "Fields", panel: <Fields data={ed.data} dirty={ed.dirty} edit={ed.edit} lock={view.lock} extra={view.extra} /> },
             ...view.tabs,
+            { id: "metadata", label: "Metadata", panel: <><Metadata kind="card" entity={head} /><Enrichments id={head.id} /></> },
           ]}
           actions={view.actions}
           notices={view.notices}

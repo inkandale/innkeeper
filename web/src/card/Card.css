@@ -441,25 +441,50 @@ fieldset.contents {
   display: contents;
 }
 
-.enrichment-list {
+.metadata-list,
+.enrichment-grid {
   display: grid;
-  gap: 2px;
-  margin: 0;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 4px calc(var(--space) * 2);
+  margin: 0 0 var(--space);
 }
 
-.enrichment-list > div {
+.metadata-list > div,
+.enrichment-grid > div {
   display: flex;
   justify-content: space-between;
   gap: var(--space);
 }
 
-.enrichment-list dd {
+.metadata-list dt,
+.enrichment-grid dt {
+  color: var(--text-muted);
+}
+
+.metadata-list dd,
+.enrichment-grid dd {
   margin: 0;
   font-weight: 700;
   text-align: right;
 }
 
-.enrichment-list .stale dd {
+.enrichment-instance {
+  margin-bottom: calc(var(--space) * 2);
+}
+
+.enrichment-long h4 {
+  margin: var(--space) 0 calc(var(--space) * 0.5);
+  font-size: 0.9em;
+  color: var(--text-muted);
+}
+
+.enrichment-long ul,
+.enrichment-long p {
+  margin: 0;
+}
+
+.enrichment-grid .stale dd,
+.enrichment-long.stale {
   opacity: 0.55;
   font-weight: 400;
 }

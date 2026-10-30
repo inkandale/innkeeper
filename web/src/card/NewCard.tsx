@@ -48,7 +48,7 @@ export function NewCard() {
   const dirty = changed({ baseId: 0, base: {}, data });
   const forge = useForge({ subject: cardSubject, data, library });
   const forgeBusy = forge.runs.some((r) => r.live) || forge.waiting.length > 0 || !!forge.pending;
-  const [tab, setTab] = useState<string>();
+  const [tab, setTab] = useState("");
   const view = useForgeView({ forge, isNew: true, data, edit, avatar: avatar ?? undefined, setTab });
   const save = useMutation({
     mutationFn: async () => {
@@ -81,7 +81,7 @@ export function NewCard() {
         <div className="card-main">
           <PageTabs
             label="New card"
-            selected={tab ?? ""}
+            selected={tab}
             onSelect={setTab}
             tabs={[
               ...(view.start ? [view.start] : []),

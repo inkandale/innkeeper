@@ -8,7 +8,6 @@ import { useConfirm } from "../shell/ConfirmDialog";
 import type { Entity } from "./Card";
 import { CardLorebooks } from "./CardLorebooks";
 import { Crop } from "./CropDialog";
-import { Enrichments } from "./Enrichments";
 import { Related } from "./Discover";
 import { OtherLibraries } from "./OtherLibraries";
 import { nsfw, strings, text, type Data } from "./draft";
@@ -49,7 +48,6 @@ export function Panel({ card, data, edit, onAvatar, avatarBusy, lock }: PanelPro
       <Related id={card.id} library={card.library_id} />
       <Sync kind="card" id={card.id} />
       <CardLorebooks card={card} />
-      <Enrichments id={card.id} />
       <Variants kind="card" entity={card} />
       <Revisions kind="card" id={card.id} />
     </aside>

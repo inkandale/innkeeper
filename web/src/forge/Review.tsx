@@ -17,6 +17,10 @@ export function Review(props: {
   title: string;
   proposed: Proposed;
   warnings?: string[] | null;
+  /** instruction is what the owner asked the run for. */
+  instruction?: string;
+  /** stale names the entity when it has changed since the run began. */
+  stale?: string;
   saves?: boolean;
   preview: (changes: Data) => Shown[];
   onApply: (changes: Data) => void;
@@ -68,6 +72,13 @@ export function Review(props: {
           Discard
         </button>
       </div>
+      {props.stale && <p className="banner">This {props.stale} has changed since the run started.</p>}
+      {props.instruction && (
+        <details className="forge-instruction">
+          <summary>Instruction</summary>
+          <p>{props.instruction}</p>
+        </details>
+      )}
       {props.warnings?.map((w) => (
         <p key={w} className="banner">
           {w}

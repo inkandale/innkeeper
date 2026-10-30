@@ -24,7 +24,7 @@ const allActions = [
   { ...decl, id: "generate", label: "Forge", applies: "new", instruction: true, inputs: { type: "object", properties: { point_of_view: { type: "string", enum: ["first", "third"] } } } },
 ];
 
-type JobT = { id: number; status: string; payload: { action: string; field?: string }; progress?: unknown; error?: string; finished_at?: string };
+type JobT = { id: number; status: string; payload: { action: string; field?: string; instruction?: string }; progress?: unknown; error?: string; finished_at?: string };
 const job = (j: JobT) => ({
   kind: "action",
   instance_id: 1,
@@ -403,4 +403,58 @@ test("the Report tab runs its report action again once a report is in", async ()
   expect(await screen.findByText("Solid.")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: /Evaluate again/ }));
   await waitFor(() => expect(runs).toEqual([expect.objectContaining({ action: "evaluate" })]));
+});
+
+const reforged = (id: number, description: string, instruction: string) =>
+  job({ id, status: "succeeded", payload: { action: "reforge", instruction }, progress: { result: { proposal: { ...data, description }, raw: "{}", warnings: [] } } });
+
+test("Review offers the newest proposal with its instruction, and saving it settles the older ones", async () => {
+  jobs = [reforged(6, "A dwarf.", "Older ask."), reforged(8, "A short dwarf.", "Newer ask.")];
+  renderAt("/cards/7");
+  const save = await screen.findByRole("button", { name: "Save 1 of 1 changes" });
+  expect(screen.getByText("Newer ask.")).toBeInTheDocument();
+  expect(screen.queryByText(/has changed since the run started/)).not.toBeInTheDocument();
+  await userEvent.click(save);
+  await waitFor(() => expect(puts).toHaveLength(1));
+  expect(puts[0]?.data).toMatchObject({ description: "A short dwarf." });
+  expect(JSON.parse(localStorage.getItem("innkeeper.forge.settled")!)).toEqual([6, 8]);
+});
+
+describe("refining again from the Report", () => {
+  const asked = "Apply these suggestions:\n- Make him shorter.";
+  beforeEach(() => {
+    jobs = [
+      reforged(8, "A short dwarf.", asked),
+      job({ id: 5, status: "succeeded", payload: { action: "evaluate" }, progress: { result: { report: { summary: "Solid.", suggestions: ["Make him shorter."] } } } }),
+    ];
+  });
+  const refine = async (feedback?: string) => {
+    renderAt("/cards/7");
+    const user = userEvent.setup();
+    await screen.findByRole("button", { name: "Save 1 of 1 changes" });
+    await user.click(screen.getByRole("tab", { name: "Report" }));
+    await user.click(await screen.findByRole("checkbox", { name: "Make him shorter." }));
+    if (feedback) await user.type(screen.getByRole("textbox", { name: "Feedback" }), feedback);
+    await user.click(screen.getByRole("button", { name: "Refine with 1 selected" }));
+    return user;
+  };
+
+  test("with the same source asks first, and Open Review runs nothing", async () => {
+    const user = await refine();
+    await user.click(await screen.findByRole("button", { name: "Open Review" }));
+    expect(screen.getByRole("tab", { name: "Review (1)" })).toHaveAttribute("aria-selected", "true");
+    expect(runs).toEqual([]);
+  });
+
+  test("with the same source runs on Run again", async () => {
+    const user = await refine();
+    await user.click(await screen.findByRole("button", { name: "Run again" }));
+    await waitFor(() => expect(runs).toEqual([expect.objectContaining({ action: "reforge", instruction: asked })]));
+  });
+
+  test("with a different instruction runs without asking", async () => {
+    await refine("Keep the beard.");
+    await waitFor(() => expect(runs).toEqual([expect.objectContaining({ instruction: `${asked}\n\nKeep the beard.` })]));
+    expect(screen.queryByRole("button", { name: "Run again" })).not.toBeInTheDocument();
+  });
 });

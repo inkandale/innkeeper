@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import type { Data } from "../card/draft";
-import { instructionAction, newAction, type Action, type Report as ReportT, type Severity } from "./actions";
+import { ConfirmDialog } from "../shell/ConfirmDialog";
+import { changedKeys, instructionAction, newAction, type Action, type Report as ReportT, type Severity } from "./actions";
 import { Hammer } from "./Hammer";
 import { ActionOptions, asks, imagesOf, ModelPicker, noOptions, type Options } from "./Inputs";
 import { blocking, emptyInstruction, MentionBox, useMentions, type Instruction } from "./MentionBox";
@@ -161,16 +162,18 @@ export function Forge(props: {
           title={pending.field ? `${pending.label} on ${label(pending.field)}` : pending.label}
           proposed={proposed}
           warnings={pending.result?.warnings}
+          instruction={pending.instruction}
+          stale={changedKeys(pending.start, data).length ? kind : undefined}
           saves={!!props.save}
           preview={(changes) => forge.subject.preview({ ...data, ...changes })}
           onApply={(changes) => {
             if (props.save) props.save(changes);
             else for (const [k, v] of Object.entries(changes)) props.edit(k, v);
-            forge.settle(pending.id);
+            forge.settlePending();
             setTab("fields");
           }}
           onDiscard={() => {
-            forge.settle(pending.id);
+            forge.settlePending();
             setTab("fields");
           }}
         />
@@ -194,6 +197,17 @@ export function Forge(props: {
       )}
       </div>
 
+      {forge.repeat && (
+        <ConfirmDialog
+          title="A proposal from this run is waiting"
+          body={<p>Review already has a proposal from the same {kind} and instruction.</p>}
+          confirmLabel="Run again"
+          cancelLabel="Open Review"
+          onConfirm={forge.runAgain}
+          onCancel={() => setTab("review")}
+          onClose={forge.unrepeat}
+        />
+      )}
       {panel && (
         <Reforge
           forge={forge}

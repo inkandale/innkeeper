@@ -2,7 +2,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { useEffect, useRef, useState } from "react";
 import { api, must, upload } from "../api/client";
 import type { components } from "../api/schema";
-import type { Data } from "../card/draft";
+import { same, type Data } from "../card/draft";
 import { finished, type Job } from "../settings/jobUtil";
 import type { Subject } from "./subject";
 import { overlaps, readSettled, scopeOf, settle as remember, lockOf, type Action, type Payload, type Progress, type Result, type Scope } from "./actions";
@@ -29,6 +29,7 @@ export type Run = {
   instance: string;
   /** start is the draft the run began from. */
   start: Data;
+  instruction?: string;
   live: boolean;
   result?: Result;
 };
@@ -113,6 +114,7 @@ export function useForge({ subject, id, data, library }: { subject: Subject; id?
         scope: scopeOf(decl, p.field),
         instance: nameOf(job.instance_id),
         start: p.entity.data ?? {},
+        instruction: p.instruction,
         live: !finished(job),
         result: (job.progress as Progress | null)?.result,
       },
@@ -123,7 +125,9 @@ export function useForge({ subject, id, data, library }: { subject: Subject; id?
   const busy = [...runs.filter((r) => r.live), ...waiting];
   const lock = lockOf(busy);
   // A proposal opens Review only when it has rows; a lorebook's entry order isn't reviewed.
-  const pending = shown.find((r) => r.job.status === "succeeded" && r.result?.proposal && subject.review(r.start, data, r.result.proposal).rows.length > 0);
+  const proposals = shown.filter((r) => r.job.status === "succeeded" && r.result?.proposal && subject.review(r.start, data, r.result.proposal).rows.length > 0);
+  // Review offers the newest proposal; settling it settles the older ones it supersedes.
+  const pending = proposals.at(-1);
   const reportRun = [...runs].reverse().find((r) => r.result?.report);
   // A finished report may have stored scores on the entity.
   const reportRunId = reportRun?.id;
@@ -159,11 +163,32 @@ export function useForge({ subject, id, data, library }: { subject: Subject; id?
     },
   });
 
+  // repeat is a run whose source matches the proposal in Review, held until the owner picks Review or a new run.
+  const [repeat, setRepeat] = useState<RunRequest>();
+  // Context isn't compared: the server rewrites it, and its mentions are in the instruction.
+  const sameSource = (req: RunRequest) => {
+    const p = pending?.job.payload as (Payload & { inputs?: unknown }) | undefined;
+    return (
+      !!p &&
+      pending!.job.instance_id === req.action.instance_id &&
+      p.action === req.action.id &&
+      p.field === req.field &&
+      (p.instruction ?? "") === (req.instruction ?? "") &&
+      same(p.inputs, req.inputs) &&
+      same(p.entity.data, dataRef.current)
+    );
+  };
+
   /**
-   * start runs req, or holds it until the runs it overlaps finish. It resolves to whether the run started or is held;
-   * a failed start's error shows as a toast.
+   * start runs req, or holds it until the runs it overlaps finish. A req with the source of the proposal in Review
+   * waits in repeat unless again is set. It resolves to whether the run started or is held; a failed start's error
+   * shows as a toast.
    */
-  const start = async (req: RunRequest) => {
+  const start = async (req: RunRequest, again = false) => {
+    if (!again && sameSource(req)) {
+      setRepeat(req);
+      return true;
+    }
     const w: Waiting = { key: ++waitingKey, req, label: req.action.label, field: req.field, scope: scopeOf(req.action, req.field), instance: req.action.instance_name };
     if (post.isPending || busy.some((b) => overlaps(b.scope, w.scope))) {
       setWaiting((list) => [...list, w]);
@@ -190,9 +215,9 @@ export function useForge({ subject, id, data, library }: { subject: Subject; id?
       void qc.invalidateQueries({ queryKey: listKey });
     },
   });
-  const settle = (id: number) => {
-    remember(id);
-    setSettled((s) => new Set(s).add(id));
+  const settle = (...ids: number[]) => {
+    ids.forEach(remember);
+    setSettled((s) => new Set([...s, ...ids]));
   };
 
   return {
@@ -210,6 +235,16 @@ export function useForge({ subject, id, data, library }: { subject: Subject; id?
     started,
     lock,
     pending,
+    /** settlePending settles the proposal in Review and the older ones it supersedes. */
+    settlePending: () => settle(...proposals.map((r) => r.id)),
+    /** repeat is a run held because the proposal in Review came from the same source. */
+    repeat,
+    /** runAgain starts repeat anyway. */
+    runAgain: () => {
+      if (repeat) void start(repeat, true);
+      setRepeat(undefined);
+    },
+    unrepeat: () => setRepeat(undefined),
     /** report is the newest report, from the run reportId. */
     report: reportRun?.result?.report ?? undefined,
     reportId: reportRun?.id,

@@ -12,12 +12,20 @@ export type Confirmation = {
   /** The confirm button stays disabled until this is typed. */
   typeToConfirm?: string;
   onConfirm: () => void;
+  /** Names the cancel button, which defaults to "Cancel". */
+  cancelLabel?: string;
+  /** onCancel runs on Cancel or Escape. */
+  onCancel?: () => void;
 };
 
 /** ConfirmDialog asks before an action that can't be undone, and runs it on confirm. Cancel and Escape close it. */
 export function ConfirmDialog(props: Confirmation & { onClose: () => void }) {
-  const { title, body, confirmLabel, danger, typeToConfirm, onConfirm, onClose } = props;
-  const modal = useModal(onClose);
+  const { title, body, confirmLabel, danger, typeToConfirm, onConfirm, cancelLabel, onCancel, onClose } = props;
+  const cancel = () => {
+    onCancel?.();
+    onClose();
+  };
+  const modal = useModal(cancel);
   const [typed, setTyped] = useState("");
   const ready = typeToConfirm === undefined || typed === typeToConfirm;
   return (
@@ -41,8 +49,8 @@ export function ConfirmDialog(props: Confirmation & { onClose: () => void }) {
           </label>
         )}
         <div className="row">
-          <button type="button" className="button" onClick={onClose}>
-            Cancel
+          <button type="button" className="button" onClick={cancel}>
+            {cancelLabel ?? "Cancel"}
           </button>
           <button className={danger ? "button danger" : "button primary"} disabled={!ready}>
             {confirmLabel}

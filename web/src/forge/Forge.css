@@ -439,6 +439,10 @@
   color: var(--text-muted);
 }
 
+.forge-instruction p {
+  white-space: pre-wrap;
+}
+
 .forge-row {
   margin-bottom: calc(var(--space) * 2);
 }

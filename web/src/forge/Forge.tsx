@@ -20,7 +20,7 @@ const severities: Severity[] = ["high", "medium", "low"];
 export type Lock = (key: string) => string | undefined;
 
 /** ForgeView is the Forge's part of a card or lorebook page. Without an action plugin for the page's kind, it adds no tabs or actions. */
-export type ForgeView = {
+type ForgeView = {
   /** start is a new card's Start tab, which goes before Fields. */
   start?: PageTab;
   /** tabs go after Fields: Review, and Report on a saved card or lorebook. */

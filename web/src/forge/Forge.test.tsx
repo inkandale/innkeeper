@@ -121,6 +121,7 @@ test("without an action plugin the card page is the plain editor", async () => {
   expect(screen.queryByRole("button", { name: /^Reforge ⌘K/ })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Forge actions for Description" })).not.toBeInTheDocument();
   expect(screen.getByRole("tab", { name: "Fields" })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Metadata" })).toBeInTheDocument();
   expect(screen.queryByRole("tab", { name: "Report" })).not.toBeInTheDocument();
 });
 

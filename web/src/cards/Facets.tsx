@@ -30,7 +30,7 @@ type FacetLists = components["schemas"]["Facets"];
 /** approx marks a count from a sample of the matches. */
 type Row = { value: string; label: string; cards: number; dot?: string; approx?: boolean };
 
-const titles: Record<Exclude<TermKind, "value">, string> = { target: "App", state: "State", tag: "Tags", source: "Sources", collection: "Collections", score: "Scores" };
+const titles: Record<Exclude<TermKind, "value" | "creator" | "lorebook">, string> = { target: "App", state: "State", tag: "Tags", source: "Sources", collection: "Collections", score: "Scores" };
 
 type EnrichmentKey = components["schemas"]["EnrichmentKey"];
 type Enricher = components["schemas"]["EnrichmentInstance"];
@@ -154,7 +154,7 @@ type SectionProps = {
 function Section({ kind, title, instance, section = kind, rows, q, open, onOpen, onChange }: SectionProps) {
   const [more, setMore] = useState(false);
   const [find, setFind] = useState("");
-  const name = title ?? titles[kind as Exclude<TermKind, "value">];
+  const name = title ?? titles[kind as keyof typeof titles];
   const picked = q.terms.filter((t) => sectionOf(t) === section).length;
   const included = q.terms.filter((t) => sectionOf(t) === section && !t.not).length;
   const all = q.all.includes(section);

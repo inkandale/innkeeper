@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { api, must, thumb } from "../api/client";
 import { librariesQuery } from "../api/queries";
 import type { components } from "../api/schema";
+import { nsfw } from "./draft";
 import "../cards/Cards.css";
 import "./Card.css";
 
@@ -28,7 +29,7 @@ function CardList({ items, library }: { items: Found[]; library: number }) {
           <article key={c.card_id} className="tile">
             <Link to={`/cards/${c.card_id}`} className="tile-name">
               {c.avatar ? (
-                <img className="avatar" src={thumb(c.avatar, 320)} alt="" loading="lazy" />
+                <img className={nsfw(c.tags) ? "avatar nsfw" : "avatar"} src={thumb(c.avatar, 320)} alt="" loading="lazy" />
               ) : (
                 <span className="avatar empty" aria-hidden="true">
                   {name.slice(0, 1)}

@@ -3260,6 +3260,7 @@ export interface components {
              * @description How alike, 0 to 1; similar cards only.
              */
             score?: number;
+            tags: string[] | null;
         };
         DismissInBody: {
             /**

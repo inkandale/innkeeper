@@ -11,11 +11,12 @@ import (
 
 // DiscoveredCard is a card found from another: similar or related to it.
 type DiscoveredCard struct {
-	CardID    int64   `json:"card_id"`
-	LibraryID int64   `json:"library_id"`
-	Name      string  `json:"name"`
-	Avatar    string  `json:"avatar,omitempty" doc:"The head revision's avatar blob, if it has one."`
-	Score     float64 `json:"score,omitempty" doc:"How alike, 0 to 1; similar cards only."`
+	CardID    int64    `json:"card_id"`
+	LibraryID int64    `json:"library_id"`
+	Name      string   `json:"name"`
+	Avatar    string   `json:"avatar,omitempty" doc:"The head revision's avatar blob, if it has one."`
+	Tags      []string `json:"tags"`
+	Score     float64  `json:"score,omitempty" doc:"How alike, 0 to 1; similar cards only."`
 }
 
 // SimilarPage is one page of similar cards.
@@ -89,7 +90,7 @@ func (l *Library) SimilarCards(ctx context.Context, cardID int64, o SimilarOptio
 	}
 	// ponytail: exact scan over every vector; add an HNSW index when an archive makes this slow.
 	sql := discoverWith + `, q AS (SELECT embedding FROM card_embedding WHERE instance_id = $2 AND card_id = $1)
-		SELECT c.id, c.library_id, coalesce(r.data->>'name', ''), coalesce(r.avatar_blob, ''), greatest(0, 1 - (e.embedding <=> q.embedding))
+		SELECT c.id, c.library_id, coalesce(r.data->>'name', ''), coalesce(r.avatar_blob, ''), coalesce(r.tags, '{}'), greatest(0, 1 - (e.embedding <=> q.embedding))
 		FROM self CROSS JOIN q
 		JOIN card_embedding e ON e.instance_id = $2 AND vector_dims(e.embedding) = vector_dims(q.embedding)
 		JOIN card c ON c.id = e.card_id
@@ -99,7 +100,7 @@ func (l *Library) SimilarCards(ctx context.Context, cardID int64, o SimilarOptio
 		LIMIT $4 OFFSET $5`
 	if basis == "tags" {
 		sql = discoverWith + `
-		SELECT c.id, c.library_id, coalesce(r.data->>'name', ''), coalesce(r.avatar_blob, ''), x.shared::float8 / (cardinality(self.tags) + x.n - x.shared)
+		SELECT c.id, c.library_id, coalesce(r.data->>'name', ''), coalesce(r.avatar_blob, ''), coalesce(r.tags, '{}'), x.shared::float8 / (cardinality(self.tags) + x.n - x.shared)
 		FROM self
 		JOIN card_revision r ON tag_keys(r.tags) && self.tags
 		JOIN card c ON c.head_revision_id = r.id
@@ -190,7 +191,7 @@ func (l *Library) RelatedCards(ctx context.Context, cardID int64, group string, 
 	}
 	// ponytail: the creator group scans every head; add an expression index if it shows up slow.
 	sql := discoverWith + `
-		SELECT c.id, c.library_id, coalesce(r.data->>'name', ''), coalesce(r.avatar_blob, ''), 0::float8
+		SELECT c.id, c.library_id, coalesce(r.data->>'name', ''), coalesce(r.avatar_blob, ''), coalesce(r.tags, '{}'), 0::float8
 		FROM self CROSS JOIN card c
 		JOIN card_revision r ON r.id = c.head_revision_id
 		WHERE ` + discoverWhere + ` AND ` + cond + `

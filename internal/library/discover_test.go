@@ -261,3 +261,20 @@ func TestDiscoveredCardsCarryTheirAvatar(t *testing.T) {
 		t.Fatalf("related = %+v, %v", related, err)
 	}
 }
+
+func TestDiscoveredCardsCarryTheirTags(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	me, _ := newCard(t, lib, "me", `{"name": "Brakka", "creator": "Ann", "tags": ["dwarf", "smith"]}`)
+	other, _ := newCard(t, lib, "other", `{"name": "Dorna", "creator": "Ann", "tags": ["dwarf", "smith", "NSFW"]}`)
+	want := []string{"dwarf", "smith", "NSFW"}
+
+	similar, err := lib.SimilarCards(ctx, me, SimilarOptions{})
+	if err != nil || !slices.Equal(ids(similar.Items), []int64{other}) || !slices.Equal(similar.Items[0].Tags, want) {
+		t.Fatalf("similar = %+v, %v", similar, err)
+	}
+	related, err := lib.RelatedCards(ctx, me, "creator", Page{})
+	if err != nil || !slices.Equal(ids(related.Items), []int64{other}) || !slices.Equal(related.Items[0].Tags, want) {
+		t.Fatalf("related = %+v, %v", related, err)
+	}
+}

@@ -1674,12 +1674,22 @@
             "description": "How alike, 0 to 1; similar cards only.",
             "format": "double",
             "type": "number"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           }
         },
         "required": [
           "card_id",
           "library_id",
-          "name"
+          "name",
+          "tags"
         ],
         "type": "object"
       },

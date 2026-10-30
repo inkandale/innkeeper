@@ -139,3 +139,17 @@ test("Related with no groups renders nothing", async () => {
   await new Promise((r) => setTimeout(r, 50));
   expect(container).toBeEmptyDOMElement();
 });
+
+test("a found card tagged NSFW marks its image for blurring", async () => {
+  routes["/api/cards/7/similar?scope=library"] = {
+    basis: "embedding",
+    items: [
+      { card_id: 8, library_id: 1, name: "Dorna", avatar: "ab".repeat(32), tags: ["nsfw"] },
+      { card_id: 9, library_id: 1, name: "Brakka", avatar: "cd".repeat(32), tags: ["dwarf"] },
+    ],
+  };
+  renderIt(<Similar id={7} library={1} />);
+  const dorna = await screen.findByRole("link", { name: "Dorna" });
+  expect(dorna.querySelector("img")).toHaveClass("nsfw");
+  expect(screen.getByRole("link", { name: "Brakka" }).querySelector("img")).not.toHaveClass("nsfw");
+});

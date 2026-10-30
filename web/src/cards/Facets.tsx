@@ -14,6 +14,7 @@ import {
   scoreTerm,
   sectionOf,
   sectionsFor,
+  type FacetKind,
   setScore,
   stateCountSearch,
   targetStates,
@@ -30,7 +31,7 @@ type FacetLists = components["schemas"]["Facets"];
 /** approx marks a count from a sample of the matches. */
 type Row = { value: string; label: string; cards: number; dot?: string; approx?: boolean };
 
-const titles: Record<Exclude<TermKind, "value" | "creator" | "lorebook">, string> = { target: "App", state: "State", tag: "Tags", source: "Sources", collection: "Collections", score: "Scores" };
+const titles: Record<FacetKind | "score", string> = { target: "App", state: "State", tag: "Tags", source: "Sources", collection: "Collections", score: "Scores" };
 
 type EnrichmentKey = components["schemas"]["EnrichmentKey"];
 type Enricher = components["schemas"]["EnrichmentInstance"];
@@ -138,7 +139,7 @@ function FacetRow({ kind, row, q, onChange }: { kind: TermKind; row: Row; q: Car
 }
 
 type SectionProps = {
-  kind: TermKind;
+  kind: FacetKind | "value";
   /** title and section name a value key's section; other kinds take theirs from kind. */
   title?: string;
   /** instance names the enrich instance a value key comes from, when there are several. */
@@ -154,7 +155,7 @@ type SectionProps = {
 function Section({ kind, title, instance, section = kind, rows, q, open, onOpen, onChange }: SectionProps) {
   const [more, setMore] = useState(false);
   const [find, setFind] = useState("");
-  const name = title ?? titles[kind as keyof typeof titles];
+  const name = title ?? (kind === "value" ? "" : titles[kind]);
   const picked = q.terms.filter((t) => sectionOf(t) === section).length;
   const included = q.terms.filter((t) => sectionOf(t) === section && !t.not).length;
   const all = q.all.includes(section);

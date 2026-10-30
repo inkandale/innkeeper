@@ -7,8 +7,11 @@ type TargetIs = components["schemas"]["TargetState"]["is"];
 
 // Typed from the schema so a new state fails the build here.
 export const targetStates: TargetIs[] = ["in_sync", "ahead", "remote_changed", "diverged", "missing", "cant_check"];
-/** kinds are the filter terms. Sidebar sections are sectionsFor's; creator and lorebook arrive by link only. score filters on enrichment numbers, value on text and list enrichments. */
-const kinds = ["target", "state", "tag", "source", "collection", "creator", "lorebook", "score", "value"] as const;
+/** facetKinds are the terms with a sidebar section, in sidebar order. */
+const facetKinds = ["target", "state", "tag", "source", "collection"] as const;
+export type FacetKind = (typeof facetKinds)[number];
+/** kinds are the filter terms; sectionsFor lists the ones with a sidebar section, and creator and lorebook arrive only by link. score filters on enrichment numbers, value on text and list enrichments. */
+const kinds = [...facetKinds, "creator", "lorebook", "score", "value"] as const;
 const sorts = ["relevance", "updated", "name", "created"] as const;
 const enrichmentSort = /^enrichment:(?:[1-9]\d*:)?[a-z][a-z0-9_]*$/;
 // Score and value terms name their key as instance:key; a bare grid key reads the grid score.
@@ -44,8 +47,8 @@ export type CardQuery = {
 export const defaultSort = (text: string): Sort => (text ? "relevance" : "updated");
 
 /** sectionsFor lists the sidebar sections a kind of entity has; lorebooks have no tags or collections. */
-export const sectionsFor = (entity: "card" | "lorebook"): TermKind[] =>
-  entity === "card" ? ["target", "state", "tag", "source", "collection"] : ["target", "state", "source"];
+export const sectionsFor = (entity: "card" | "lorebook"): FacetKind[] =>
+  entity === "card" ? [...facetKinds] : ["target", "state", "source"];
 
 /** matchesAll says whether a section can switch between any and all: a card has one state, and targets go with states. */
 export const matchesAll = (section: string) => section !== "target" && section !== "state" && section !== "score";

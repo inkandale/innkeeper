@@ -94,6 +94,20 @@ test("the original shows beside a proposal only when asked, or when it changed d
   ).toBeInTheDocument();
 });
 
+test("the bar totals the lines every proposed change removes and adds", () => {
+  const start = { description: "A dwarf.\nShort.", scenario: "A forge." };
+  render(
+    <Review
+      title="Reforge"
+      proposed={cardSubject.review(start, start, { description: "A dwarf.\nTall.\nBroad.", scenario: "A cold forge." })}
+      preview={preview(start)}
+      onApply={() => {}}
+      onDiscard={() => {}}
+    />,
+  );
+  expect(screen.getByLabelText("2 lines removed, 3 added")).toHaveTextContent("−2 +3");
+});
+
 test("Show draft shows the whole card with only the taken changes made", async () => {
   const start = {
     name: "Brakka",

@@ -1,4 +1,4 @@
-import { bulkResolutions, changePath, dismissBinding, jsonKey, needsYou, optionLabel, pushSummary, queueReviews, resolution, reviewPath, rows, sentenceCount, siteOf, snapshotOf, sourceLabel, sourceRemoteId, stateCounts, wordDiff, type Comparison, type Snapshot } from "./sync";
+import { bulkResolutions, changePath, dismissBinding, jsonKey, lineCounts, needsYou, optionLabel, pushSummary, queueReviews, resolution, reviewPath, rows, sentenceCount, siteOf, snapshotOf, sourceLabel, sourceRemoteId, stateCounts, wordDiff, type Comparison, type Snapshot } from "./sync";
 
 const cmp: Comparison = {
   instance_id: 3, remote_id: "a", card_id: 1, head_revision_id: 118, accepted_hash: "", base: "none", app_hash: "fresh", fields: [],
@@ -83,6 +83,13 @@ test("wordDiff marks the words each side changed and keeps the rest", () => {
   expect(wordDiff("", "New text")).toEqual([{ op: "ins", text: "New text" }]);
   expect(wordDiff("Gone now", "")).toEqual([{ op: "del", text: "Gone now" }]);
   expect(wordDiff("", "")).toEqual([]);
+});
+
+test("lineCounts counts a changed line as one removed and one added, and leaves the rest", () => {
+  expect(lineCounts("A dwarf.\nShort.\nGruff.", "A dwarf.\nTall.\nBroad.\nGruff.")).toEqual({ removed: 1, added: 2 });
+  expect(lineCounts("", "One\nTwo")).toEqual({ removed: 0, added: 2 });
+  expect(lineCounts("One\nTwo\n", "")).toEqual({ removed: 2, added: 0 });
+  expect(lineCounts("Same", "Same")).toEqual({ removed: 0, added: 0 });
 });
 
 test("wordDiff works on characters, not bytes, so curly quotes and dashes stay whole", () => {

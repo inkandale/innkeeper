@@ -3,7 +3,7 @@ import Markdown from "react-markdown";
 import type { Data } from "../card/draft";
 import { useModal } from "../shell/useModal";
 import { Words } from "../sync/Diff";
-import { wordDiff } from "../sync/sync";
+import { lineCounts, wordDiff } from "../sync/sync";
 import type { Proposed, Shown } from "./subject";
 
 const absent = <em className="muted">(empty)</em>;
@@ -40,6 +40,9 @@ export function Review(props: {
     });
   const [showOriginal, setShowOriginal] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  const lines = rows
+    .map((r) => lineCounts(r.before, r.after ?? ""))
+    .reduce((sum, c) => ({ removed: sum.removed + c.removed, added: sum.added + c.added }), { removed: 0, added: 0 });
   return (
     <div className="forge-review">
       <div className="forge-review-bar">
@@ -47,6 +50,9 @@ export function Review(props: {
           {props.title} proposes {rows.length} change
           {rows.length === 1 ? "" : "s"}.
           {!props.saves && " Nothing saves until you press Save."}
+        </span>
+        <span className="forge-line-counts" aria-label={`${lines.removed} lines removed, ${lines.added} added`}>
+          <span className="removed">−{lines.removed}</span> <span className="added">+{lines.added}</span>
         </span>
         <label className="check">
           <input

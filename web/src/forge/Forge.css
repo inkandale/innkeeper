@@ -502,6 +502,19 @@
   color: var(--danger);
 }
 
+.forge-line-counts {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.forge-line-counts .added {
+  color: var(--ok);
+}
+
+.forge-line-counts .removed {
+  color: var(--danger);
+}
+
 .forge-change.changed {
   color: var(--drift);
 }

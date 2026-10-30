@@ -270,9 +270,23 @@ export type Run = { op: "same" | "del" | "ins"; text: string };
 const words = (s: string) => s.match(/\s*\S+\s*/g) ?? (s ? [s] : []);
 
 /** wordDiff lines up two texts word by word: same runs, then what only the library (del) or the app (ins) has. */
-export function wordDiff(library: string, app: string): Run[] {
-  const a = words(library);
-  const b = words(app);
+export const wordDiff = (library: string, app: string) => tokenDiff(words(library), words(app));
+
+// Each line keeps its newline, so a run's text splits back into the lines it holds.
+const lines = (s: string) => s.match(/[^\n]*\n|[^\n]+/g) ?? [];
+
+/** lineCounts counts the lines removed from before and added in after, as git diff --numstat does. */
+export function lineCounts(before: string, after: string): { removed: number; added: number } {
+  const counts = { removed: 0, added: 0 };
+  for (const r of tokenDiff(lines(before), lines(after))) {
+    if (r.op === "del") counts.removed += lines(r.text).length;
+    if (r.op === "ins") counts.added += lines(r.text).length;
+  }
+  return counts;
+}
+
+/** tokenDiff lines up two token lists, merging neighbors with the same op into one run. */
+function tokenDiff(a: string[], b: string[]): Run[] {
   const w = b.length + 1;
   // ponytail: O(n·m) LCS table; fine for one hunk, switch to Myers if hunks grow to whole fields.
   const lcs = new Int32Array((a.length + 1) * w);

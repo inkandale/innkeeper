@@ -229,6 +229,17 @@ and in `ServiceSamples`:
 	MethodVectorQuery: {VectorQueryParams{Text: "OK"}, decoded(func(r VectorValue) error { return r.Validate() })},
 ```
 
+Add to `AIEmbedResult`, so a plugin can name the model in a vector's space:
+
+```go
+	// Model is the model that made the vectors, if the provider says.
+	Model string `json:"model,omitempty"`
+```
+
+and in `protocol/serve.go`, change the `Services` field's comment to
+"Services lists the service methods an instance offers: ai's, or
+vector.query for an enrich plugin; nil for any other."
+
 In `protocol/messages.go`, add to `InitializeParams`:
 
 ```go
@@ -1464,7 +1475,106 @@ git commit -m "docs: pgvector is optional; document vector enrichments and vecto
 
 ---
 
-### Task 9: Full check
+### Task 9: The contract kit's model serves embeddings
+
+**Files:** `internal/contract/model.go`, `internal/contract/contract_test.go`
+
+The plugin repo's `make check` runs every plugin with `uses` against the
+`ai` plugin talking to this fake model. It answers only
+`/chat/completions`, so a plugin that uses `ai.embed` (plan 4's
+`card-embed`) fails its check.
+
+- [ ] **Step 1: Write the failing test**
+
+In `internal/contract/contract_test.go`, following how it exercises the
+model server's chat route:
+
+```go
+func TestModelServerEmbeds(t *testing.T) {
+	s := newModelServer()
+	defer s.Close()
+	resp, err := http.Post(s.URL+"/v1/embeddings", "application/json", strings.NewReader(`{"model": "contract", "input": ["a", "bc"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Data []struct {
+			Index     int       `json:"index"`
+			Embedding []float32 `json:"embedding"`
+		} `json:"data"`
+		Model string `json:"model"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil || len(out.Data) != 2 || out.Data[1].Index != 1 || len(out.Data[1].Embedding) != 2 {
+		t.Fatalf("reply %+v, %v", out, err)
+	}
+}
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+```bash
+go test ./internal/contract -run TestModelServerEmbeds
+```
+
+Expected: FAIL: 404 decodes to no data.
+
+- [ ] **Step 3: Serve `/embeddings`**
+
+In `newModelServer`'s handler:
+
+```go
+		switch {
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/chat/completions"):
+			s.chat(w, r)
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/embeddings"):
+			s.embed(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+```
+
+and add:
+
+```go
+// embed answers an OpenAI embeddings request with [length, 1] per input.
+func (s *modelServer) embed(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Model string   `json:"model"`
+		Input []string `json:"input"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	type datum struct {
+		Object    string    `json:"object"`
+		Index     int       `json:"index"`
+		Embedding []float32 `json:"embedding"`
+	}
+	data := make([]datum, len(req.Input))
+	for i, in := range req.Input {
+		data[i] = datum{Object: "embedding", Index: i, Embedding: []float32{float32(len(in)), 1}}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"object": "list", "data": data, "model": req.Model})
+}
+```
+
+If the server counts requests for the chat checks, count embeddings in the
+same counter only if a check relies on the total; otherwise leave it.
+
+- [ ] **Step 4: Run and commit**
+
+```bash
+go test ./internal/contract -count=1
+git add internal/contract
+git commit -m "test(contract): serve embeddings from the kit's fake model"
+```
+
+---
+
+### Task 10: Full check
 
 - [ ] **Step 1: Run what CI runs**
 

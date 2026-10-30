@@ -120,8 +120,8 @@ already have the table.
 
 ### Archived cards
 
-`heads()` in `internal/enrich` drops cards that are archived or in an
-archived library, and the job's progress counts them as skipped. Every
+`heads()` in `internal/enrich` drops archived cards, and the job's
+progress counts them as skipped. Every
 trigger passes through it. Archiving keeps a card's values and vectors;
 Similar and search already exclude archived cards.
 

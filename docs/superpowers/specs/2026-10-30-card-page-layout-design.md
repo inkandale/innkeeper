@@ -25,7 +25,7 @@ the rest to the main column.
 
 ## Tab bar
 
-`web/src/card/PageTabs.tsx` renders the bar alone:
+`web/src/card/PageTabs.tsx` renders the bar and the selected tab's panel:
 
 ```ts
 type PageTab = { id: string; label: string; disabled?: boolean; panel: ReactNode };
@@ -36,13 +36,15 @@ function PageTabs(props: {
   selected: string;
   onSelect: (id: string) => void;
   actions?: ReactNode;
+  notices?: ReactNode;
 });
 ```
 
 It takes over from `forge/Forge.tsx` the bar's sticky position below the
 editor bar, arrow-key movement between enabled tabs, and the ARIA roles
 (`tablist`, `tab`, `tabpanel`). The `forge-tabs` CSS moves to a core class
-in `card/Card.css`. `actions` renders at the bar's right end.
+in `card/Card.css`. `actions` renders at the bar's right end, and `notices`
+between the bar and the panel.
 
 The page holds the selected tab and passes `setTab` to the Forge, which
 still switches tabs itself: to Review when a proposal arrives, to Report

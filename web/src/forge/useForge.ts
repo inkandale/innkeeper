@@ -248,6 +248,8 @@ export function useForge({ subject, id, data, library }: { subject: Subject; id?
     /** report is the newest report, from the run reportId. */
     report: reportRun?.result?.report ?? undefined,
     reportId: reportRun?.id,
+    /** reportStart is the draft the report's run started from. */
+    reportStart: reportRun?.start,
     start,
     stop: (id: number) => cancel.mutate(id),
     unwait: (key: number) => setWaiting((list) => list.filter((w) => w.key !== key)),

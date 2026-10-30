@@ -622,6 +622,18 @@
   margin: 0 0 4px;
 }
 
+.forge-stale {
+  opacity: 0.6;
+}
+
+.forge-stale summary {
+  cursor: pointer;
+}
+
+.forge-stale summary h4 {
+  display: inline;
+}
+
 .forge-check {
   display: flex;
   gap: var(--space);

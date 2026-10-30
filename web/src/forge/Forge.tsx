@@ -181,7 +181,7 @@ export function Forge(props: {
       {shown === "report" && (
         <>
           {forge.report && (
-            <Report key={forge.reportId} report={forge.report} subject={forge.subject} onRefine={revise && ((text) => forge.start({ action: revise, instruction: text }))} />
+            <Report key={forge.reportId} report={forge.report} subject={forge.subject} changed={changedKeys(forge.reportStart ?? data, data)} onRefine={revise && ((text) => forge.start({ action: revise, instruction: text }))} />
           )}
           <div className="forge-empty">
             {!forge.report && <p>No report yet.</p>}

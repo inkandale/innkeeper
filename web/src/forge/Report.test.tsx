@@ -59,3 +59,11 @@ test("the checkboxes say they feed Refine only when there is a Refine", () => {
   rerender(<Report report={report} subject={cardSubject} />);
   expect(screen.queryByText(hint)).toBeNull();
 });
+
+test("findings on fields changed since the evaluation fold away under a banner", () => {
+  const { container } = render(<Report report={report} subject={cardSubject} changed={["description"]} />);
+  expect(screen.getByText("This card has changed since the evaluation ran.")).toBeInTheDocument();
+  expect(container.querySelector("#report-description")?.tagName).toBe("DETAILS");
+  expect(container.querySelector("#report-description")).not.toHaveAttribute("open");
+  expect(container.querySelector("#report-scenario")?.tagName).toBe("SECTION");
+});

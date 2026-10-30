@@ -14,9 +14,10 @@ export function reportAnchor(report: ReportT, key: string): string | undefined {
 
 /**
  * Report shows an evaluation: score, summary, dimensions, findings by field, and suggestions. Refine runs onRefine with
- * the ticked items and the owner's feedback as an instruction; without refine, there is no action to run it.
+ * the ticked items and the owner's feedback as an instruction; without refine, there is no action to run it. changed
+ * lists the fields edited since the evaluation ran; their findings fold away, greyed.
  */
-export function Report({ report, subject, onRefine }: { report: ReportT; subject: Subject; onRefine?: (instruction: string) => void }) {
+export function Report({ report, subject, changed = [], onRefine }: { report: ReportT; subject: Subject; changed?: string[]; onRefine?: (instruction: string) => void }) {
   const { label } = subject;
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [feedback, setFeedback] = useState("");
@@ -48,6 +49,7 @@ export function Report({ report, subject, onRefine }: { report: ReportT; subject
 
   return (
     <div className="forge-report">
+      {changed.length > 0 && <p className="banner">This {subject.kind} has changed since the evaluation ran.</p>}
       <div className="forge-rhead">
         {typeof report.score === "number" && (
           <div className="forge-ring" style={{ "--p": pct(report.score), "--tone": tone(report.score) } as CSSProperties} role="img" aria-label={`Score ${report.score} of 100`}>
@@ -79,14 +81,23 @@ export function Report({ report, subject, onRefine }: { report: ReportT; subject
       )}
       {tickable && <p className="muted">Tick findings and suggestions to include them when you refine.</p>}
       {groups.size > 0 && <h3>Findings</h3>}
-      {[...groups].map(([k, list]) => (
-        <section key={k} id={`report-${k}`} className="field forge-section">
-          <h4>{k ? label(k) : `The whole ${subject.kind}`}</h4>
-          {list.map(({ f, id }) => (
-            <FindingRow key={id} f={f} check={check(id)} label={label} />
-          ))}
-        </section>
-      ))}
+      {[...groups].map(([k, list]) => {
+        const title = k ? label(k) : `The whole ${subject.kind}`;
+        const rows = list.map(({ f, id }) => <FindingRow key={id} f={f} check={check(id)} label={label} />);
+        return changed.includes(k) ? (
+          <details key={k} id={`report-${k}`} className="field forge-section forge-stale">
+            <summary>
+              <h4>{title}</h4> <span className="muted">changed since</span>
+            </summary>
+            {rows}
+          </details>
+        ) : (
+          <section key={k} id={`report-${k}`} className="field forge-section">
+            <h4>{title}</h4>
+            {rows}
+          </section>
+        );
+      })}
       {suggestions.length > 0 && (
         <>
           <h3>Also consider</h3>

@@ -1042,6 +1042,50 @@ A revision whose only value was a vector now has no values left in the
 per-revision loop; it was already counted done by `Check`, which is right:
 its vector was stored.
 
+- [ ] **Step 4b: Count a stored vector as enriched**
+
+Without this, a plugin that writes only a vector is re-run on every card
+each time, since `unscored` finds no `enrichment` row. Add to
+`TestEnrichRunStoresVectors`, at its end:
+
+```go
+	j, p = e.evaluate(e.instID, id)
+	if j.Status != jobs.StatusSucceeded || p.Skipped != 1 {
+		t.Fatalf("second run: job %s, progress %+v", j.Status, p)
+	}
+```
+
+That passes today only because the fake also writes score values, so also
+add a vector-only case: give `enrichRun` a config `vectors_only` that sets
+`r.Values` to just the embedding, and repeat the two runs with
+`newEnrichEnv(t, map[string]any{"vectors": true, "vectors_only": true})`,
+expecting `Skipped == 1` on the second.
+
+In `internal/library/enrichment.go`, replace `EnrichedRevisions`:
+
+```go
+// EnrichedRevisions returns which of revIDs hold a value or a vector from
+// instanceID.
+func (l *Library) EnrichedRevisions(ctx context.Context, instanceID int64, cardIDs, revIDs []int64) ([]int64, error) {
+	vectors, err := l.HasVectors(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// card_id leads the index; revision_id alone would scan the table.
+	sql := `SELECT revision_id FROM enrichment WHERE card_id = ANY($2) AND instance_id = $1 AND revision_id = ANY($3)`
+	if vectors {
+		sql += ` UNION SELECT revision_id FROM card_embedding WHERE card_id = ANY($2) AND instance_id = $1 AND revision_id = ANY($3)`
+	}
+	rows, err := l.pool.Query(ctx, sql, instanceID, cardIDs, revIDs)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[int64])
+}
+```
+
+`UNION` already removes duplicates, so `DISTINCT` goes.
+
 - [ ] **Step 5: Delete the embed job**
 
 ```bash

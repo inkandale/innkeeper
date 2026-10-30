@@ -56,9 +56,11 @@ page:
 
 | Field | Contents |
 |---|---|
-| `tabs` | Review and Report on a saved card or lorebook; Start and Review on a new card |
+| `start` | A new card's Start tab, placed before Fields |
+| `tabs` | Review, and Report on a saved card or lorebook, placed after Fields |
 | `actions` | The Reforge ⌘K button (Forge ⌘K on a new card) |
-| `fields(lock, extra)` | The field badges and hammer menus the Fields tab already takes |
+| `notices` | The run headers, between the bar and the panel |
+| `lock`, `extra` | The field locks, badges, and hammer menus the Fields tab takes |
 | `overlays` | The Reforge panel and the repeat-run dialog |
 
 Without an action plugin for the page's kind, `tabs` and `actions` are empty

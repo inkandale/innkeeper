@@ -1,4 +1,4 @@
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
 import { api, must, mustOk, route, thumb, upload, type Kind } from "../api/client";
@@ -6,6 +6,7 @@ import { bindingsQuery, instancesQuery, librariesQuery, pluginsQuery, useInstanc
 import { badgeClass } from "../cards/Tile";
 import { useConfirm } from "../shell/ConfirmDialog";
 import type { Entity } from "./Card";
+import { CardLorebooks } from "./CardLorebooks";
 import { Crop } from "./CropDialog";
 import { Enrichments } from "./Enrichments";
 import { Related } from "./Discover";
@@ -47,7 +48,7 @@ export function Panel({ card, data, edit, onAvatar, avatarBusy, lock }: PanelPro
       <OtherLibraries kind="card" id={card.id} />
       <Related id={card.id} library={card.library_id} />
       <Sync kind="card" id={card.id} />
-      <Lorebooks ids={card.lorebooks ?? []} />
+      <CardLorebooks card={card} />
       <Enrichments id={card.id} />
       <Variants kind="card" entity={card} />
       <Revisions kind="card" id={card.id} />
@@ -237,28 +238,6 @@ export function Sync({ kind, id }: { kind: Kind; id: number }) {
                 </>
               )
             )}
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-function Lorebooks({ ids }: { ids: number[] }) {
-  const books = useQueries({
-    queries: ids.map((id) => ({
-      queryKey: ["lorebook", id],
-      queryFn: async () => must(await api.GET("/lorebooks/{id}", { params: { path: { id } } })),
-    })),
-  });
-  if (!ids.length) return null;
-  return (
-    <section>
-      <h2>Lorebooks</h2>
-      <ul className="plain">
-        {ids.map((id, i) => (
-          <li key={id}>
-            <Link to={`/lorebooks/${id}`}>{text((books[i]?.data?.revision.data as Data | undefined)?.name) || `#${id}`}</Link>
           </li>
         ))}
       </ul>

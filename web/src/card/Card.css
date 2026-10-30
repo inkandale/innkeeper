@@ -509,3 +509,33 @@ fieldset.contents {
 .discover .grid {
   gap: var(--space);
 }
+
+.page-tabs {
+  position: sticky;
+  top: var(--editor-bar-height, 0px);
+  z-index: 5;
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space);
+}
+
+.page-tabs [role="tab"] {
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  padding: var(--space) calc(var(--space) * 1.5);
+  cursor: pointer;
+}
+
+.page-tabs [role="tab"].on {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.page-tabs [role="tab"]:disabled {
+  opacity: 0.4;
+  cursor: default;

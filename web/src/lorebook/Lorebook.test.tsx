@@ -158,9 +158,10 @@ test("entry flags have readable labels with hints, and rows show a drag handle",
   expect(screen.getAllByTitle("Drag to reorder")).toHaveLength(2);
 });
 
-test("the panel names the lorebook's library", async () => {
+test("the Metadata tab names the lorebook's library", async () => {
   renderAt("/lorebooks/3");
-  expect(await screen.findByText("Library: Chub archive")).toBeInTheDocument();
+  await userEvent.click(await screen.findByRole("tab", { name: "Metadata" }));
+  expect(await screen.findByText("Chub archive")).toBeInTheDocument();
 });
 
 test("the Metadata tab shows the core facts and no enrichments", async () => {
@@ -172,7 +173,7 @@ test("the Metadata tab shows the core facts and no enrichments", async () => {
 
 test("the panel links to history", async () => {
   renderAt("/lorebooks/3");
-  expect(await screen.findByRole("link", { name: "All history" })).toHaveAttribute("href", "/lorebooks/3/history");
+  expect(await screen.findByRole("link", { name: /^History/ })).toHaveAttribute("href", "/lorebooks/3/history");
 });
 
 test("saving keeps entries that aren't objects, and a cleared depth removes the key", async () => {

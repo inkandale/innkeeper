@@ -48,7 +48,7 @@ export function CardLorebooks({ card }: { card: Entity }) {
   });
   return (
     <section>
-      <h2>Lorebooks</h2>
+      <h3>Lorebooks</h3>
       <ul className="plain">
         {ids.map((id, i) => {
           const name = text((books[i]?.data?.revision.data as Data | undefined)?.name) || `#${id}`;

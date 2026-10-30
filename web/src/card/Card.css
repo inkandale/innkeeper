@@ -35,6 +35,38 @@
   margin: var(--space) 0 calc(var(--space) * 0.5);
 }
 
+.aside-group > summary {
+  font-size: 0.85em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  cursor: pointer;
+  margin: var(--space) 0 calc(var(--space) * 0.5);
+}
+
+.aside-group {
+  display: grid;
+  gap: calc(var(--space) * 0.5);
+}
+
+.card-aside h3 {
+  font-size: 0.9em;
+  margin: calc(var(--space) * 0.5) 0 0;
+}
+
+.aside-heading {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.card-aside .truncate {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
 .card-main {
   grid-area: main;
   min-width: 0;

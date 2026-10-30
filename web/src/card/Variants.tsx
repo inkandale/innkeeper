@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router";
 import { api, must, mustOk, route, type Kind } from "../api/client";
 import { librariesQuery } from "../api/queries";
 import { CardPicker } from "../cards/CardPicker";
+import { Menu } from "../shell/Menu";
 import type { Entity } from "./Card";
 
 /** useRefresh reloads every card or lorebook page and search, since a link shows on both ends and in grouped lists. */
@@ -58,7 +59,20 @@ export function Variants({ kind, entity }: { kind: Kind; entity: Entity }) {
   });
   return (
     <section>
-      <h2>Variants</h2>
+      <div className="row aside-heading">
+        <h3>Variants</h3>
+        <Menu label="Variant actions">
+          <button disabled={fork.isPending} onClick={() => fork.mutate(undefined)}>
+            New variant
+          </button>
+          <button aria-expanded={forking} onClick={() => setForking(!forking)}>
+            Fork into…
+          </button>
+          <button aria-expanded={linking} onClick={() => setLinking(!linking)}>
+            Link existing…
+          </button>
+        </Menu>
+      </div>
       <ul className="plain">
         {(entity.variants ?? []).map((v) => (
           <li key={v.id}>
@@ -66,17 +80,6 @@ export function Variants({ kind, entity }: { kind: Kind; entity: Entity }) {
           </li>
         ))}
       </ul>
-      <div className="row">
-        <button className="button" disabled={fork.isPending} onClick={() => fork.mutate(undefined)}>
-          New variant
-        </button>
-        <button className="button" aria-expanded={forking} onClick={() => setForking(!forking)}>
-          Fork into…
-        </button>
-        <button className="button" aria-expanded={linking} onClick={() => setLinking(!linking)}>
-          Link existing…
-        </button>
-      </div>
       {forking && (
         <div className="row" role="group" aria-label="Fork into">
           {(libraries.data ?? []).map((l) => (

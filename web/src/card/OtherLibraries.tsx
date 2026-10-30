@@ -25,7 +25,7 @@ export function OtherLibraries({ kind, id }: { kind: Kind; id: number }) {
   const libraryName = (n: number) => libraries.data?.find((l) => l.id === n)?.name ?? `Library ${n}`;
   return (
     <section>
-      <h2>In other libraries</h2>
+      <h3>In other libraries</h3>
       {matches.isError && <p className="error">{matches.error.message}</p>}
       <ul className="plain">
         {list.map((m) => (

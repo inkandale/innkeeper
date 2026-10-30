@@ -294,7 +294,7 @@ test("leaving with unsaved edits asks first", async () => {
   const ask = vi.spyOn(window, "confirm").mockReturnValue(false);
   const router = renderAt("/cards/7");
   await userEvent.type(await screen.findByLabelText("Description"), "!");
-  await userEvent.click(screen.getByRole("link", { name: "All history" }));
+  await userEvent.click(screen.getByRole("link", { name: /^History/ }));
   await waitFor(() => expect(ask).toHaveBeenCalled());
   expect(router.state.location.pathname).toBe("/cards/7");
   ask.mockRestore();
@@ -637,9 +637,23 @@ test("Link existing makes the picked card a variant of this one", async () => {
   await waitFor(() => expect(puts).toContainEqual({ path: "/api/cards/9/variant_of", body: { id: 7 } }));
 });
 
-test("the panel names the card's library", async () => {
+test("the panel groups links, sync, and collections, with Related left to the main column", async () => {
   renderAt("/cards/7");
-  expect(await screen.findByText("Library: Main")).toBeInTheDocument();
+  const links = (await screen.findByText("Links", { selector: "summary" })).closest("details")!;
+  expect(links).toHaveAttribute("open");
+  expect(within(links).getByRole("link", { name: "chub: dg/brakka" })).toBeInTheDocument();
+  expect(within(links).getByRole("link", { name: /^History/ })).toHaveAttribute("href", "/cards/7/history");
+  const collections = screen.getByText("Collections", { selector: "summary" }).closest("details")!;
+  expect(collections).not.toHaveAttribute("open");
+  const aside = links.closest("aside")!;
+  expect(within(aside).queryByRole("heading", { name: "Related" })).not.toBeInTheDocument();
+  expect(within(aside).queryByText(/^Library:/)).not.toBeInTheDocument();
+});
+
+test("adding a source opens its URL box on demand", async () => {
+  renderAt("/cards/7");
+  await userEvent.click(await screen.findByRole("button", { name: "+ Add source" }));
+  expect(screen.getByRole("textbox", { name: "Add source URL" })).toHaveFocus();
 });
 
 test("Fork into… lists every library and opens the fork made in the chosen one", async () => {
@@ -685,5 +699,6 @@ test("Move to library… moves the card, and the page follows it to the new libr
   await user.click(within(dialog).getByRole("button", { name: "Move" }));
   await waitFor(() => expect(sent.at(-1)).toEqual({ path: "/api/cards/move", body: { ids: [7], library: 2 } }));
   await waitFor(() => expect(router.state.location.search).toBe("?library=2"));
-  expect(screen.getByText("Library: Chub archive")).toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "Metadata" }));
+  expect(await screen.findByText("Chub archive")).toBeInTheDocument();
 });

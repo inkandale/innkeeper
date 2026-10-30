@@ -3,6 +3,7 @@ import { useState } from "react";
 import { api, must, mustOk, route, type Kind } from "../api/client";
 import { bindingsQuery, collectionsQuery, useFollowers } from "../api/queries";
 import type { components } from "../api/schema";
+import { Group } from "./Panel";
 import { removeSource, sourceLabel, sourceRemoteId } from "../sync/sync";
 import { useBindingEdits } from "./Upstream";
 
@@ -24,8 +25,7 @@ export function Collections({ id, library, member }: { id: number; library: numb
   });
   if (!all.data?.length) return null;
   return (
-    <section>
-      <h2>Collections</h2>
+    <Group title="Collections" open={false}>
       {all.data.map((c) => (
         <label key={c.id} className="check">
           <input
@@ -37,7 +37,7 @@ export function Collections({ id, library, member }: { id: number; library: numb
           {c.name}
         </label>
       ))}
-    </section>
+    </Group>
   );
 }
 
@@ -45,6 +45,7 @@ export function Collections({ id, library, member }: { id: number; library: numb
 export function Sources({ kind, id }: { kind: Kind; id: number }) {
   const qc = useQueryClient();
   const [url, setUrl] = useState("");
+  const [adding, setAdding] = useState(false);
   const list = useQuery({
     queryKey: [kind, id, "sources"],
     queryFn: async () => must(await api.GET(route(kind, "/cards/{id}/sources"), { params: { path: { id } } })),
@@ -57,6 +58,7 @@ export function Sources({ kind, id }: { kind: Kind; id: number }) {
     mutationFn: async (u: string) => must(await api.PUT(route(kind, "/cards/{id}/sources"), { params: { path: { id } }, body: { url: u } })),
     onSuccess: () => {
       setUrl("");
+      setAdding(false);
       done();
     },
   });
@@ -68,7 +70,14 @@ export function Sources({ kind, id }: { kind: Kind; id: number }) {
   const following = (s: { kind: string; ref: string }) => bindings.data?.find((b) => !b.push && b.remote_id === sourceRemoteId(s));
   return (
     <section>
-      <h2>Sources</h2>
+      <div className="row aside-heading">
+        <h3>Sources</h3>
+        {!!list.data?.length && !!followers?.size && (
+          <button className="button ghost" disabled={edits.check.isPending} onClick={() => edits.check.mutate()}>
+            Check for updates
+          </button>
+        )}
+      </div>
       <ul className="plain">
         {(list.data ?? []).map((s) => {
           const b = following(s);
@@ -76,7 +85,7 @@ export function Sources({ kind, id }: { kind: Kind; id: number }) {
             <li key={s.id}>
               {/* Only https links, so a stored URL can't run script. */}
               {s.url?.startsWith("https://") ? (
-                <a href={s.url} target="_blank" rel="noreferrer">
+                <a className="truncate" href={s.url} title={s.url} target="_blank" rel="noreferrer">
                   {s.kind}: {s.ref}
                 </a>
               ) : (
@@ -90,19 +99,20 @@ export function Sources({ kind, id }: { kind: Kind; id: number }) {
           );
         })}
       </ul>
-      {!!list.data?.length && !!followers?.size && (
-        <button className="button" disabled={edits.check.isPending} onClick={() => edits.check.mutate()}>
-          Check for updates
+      {adding ? (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (url.trim()) add.mutate(url.trim());
+          }}
+        >
+          <input className="input" aria-label="Add source URL" placeholder="Source URL" autoFocus value={url} onChange={(e) => setUrl(e.target.value)} />
+        </form>
+      ) : (
+        <button className="button ghost" onClick={() => setAdding(true)}>
+          + Add source
         </button>
       )}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (url.trim()) add.mutate(url.trim());
-        }}
-      >
-        <input className="input" aria-label="Add source URL" placeholder="Source URL" value={url} onChange={(e) => setUrl(e.target.value)} />
-      </form>
     </section>
   );
 }

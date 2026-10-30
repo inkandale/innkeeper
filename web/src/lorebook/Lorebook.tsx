@@ -12,7 +12,7 @@ import { PageTabs } from "../card/PageTabs";
 import { Sources } from "../card/Organize";
 import { EditorBar } from "../card/EditorBar";
 import { Metadata } from "../card/Metadata";
-import { LibraryName, Revisions, Sync } from "../card/Panel";
+import { Group, Revisions, Sync } from "../card/Panel";
 import { VariantOf, Variants } from "../card/Variants";
 import { UpdateBanner } from "../card/Upstream";
 import { useEditor } from "../card/useEditor";
@@ -41,14 +41,15 @@ function LorebookEditor({ id }: { id: number }) {
   return (
     <div className="card-page">
       <aside className="card-aside">
-        <VariantOf kind="lorebook" entity={head} />
-        <LibraryName id={head.library_id} />
+        <Group title="Links">
+          <Sources kind="lorebook" id={id} />
+          <VariantOf kind="lorebook" entity={head} />
+          <Variants kind="lorebook" entity={head} />
+          <OtherLibraries kind="lorebook" id={id} />
+          <LinkedCards ids={head.cards ?? []} library={head.library_id} />
+          <Revisions kind="lorebook" id={id} />
+        </Group>
         <Sync kind="lorebook" id={id} />
-        <LinkedCards ids={head.cards ?? []} library={head.library_id} />
-        <Sources kind="lorebook" id={id} />
-        <OtherLibraries kind="lorebook" id={id} />
-        <Variants kind="lorebook" entity={head} />
-        <Revisions kind="lorebook" id={id} />
       </aside>
       <div className="card-main">
         <EditorBar kind="lorebook" entity={head} ed={ed} lock={forge.lock} />
@@ -95,7 +96,7 @@ function LinkedCards({ ids, library }: { ids: number[]; library: number }) {
   const names = new Map((cards.data?.hits ?? []).map((h) => [h.id, text(h.fields.name)]));
   return (
     <section>
-      <h2>Cards</h2>
+      <h3>Cards</h3>
       <ul className="plain">
         {ids.map((id) => (
           <li key={id}>

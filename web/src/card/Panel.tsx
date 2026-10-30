@@ -1,14 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { api, must, mustOk, route, thumb, upload, type Kind } from "../api/client";
-import { bindingsQuery, instancesQuery, librariesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
+import { bindingsQuery, instancesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
 import { badgeClass } from "../cards/Tile";
 import { useConfirm } from "../shell/ConfirmDialog";
 import type { Entity } from "./Card";
 import { CardLorebooks } from "./CardLorebooks";
 import { Crop } from "./CropDialog";
-import { Related } from "./Discover";
 import { OtherLibraries } from "./OtherLibraries";
 import { nsfw, strings, text, type Data } from "./draft";
 import { Logo, apps } from "../sync/Logo";
@@ -40,24 +39,28 @@ export function Panel({ card, data, edit, onAvatar, avatarBusy, lock }: PanelPro
       {avatar ? <img className={nsfw(data.tags) ? "portrait nsfw" : "portrait"} src={thumb(avatar, 640)} alt="" /> : <div className="portrait" />}
       <Image sha={avatar} busy={avatarBusy} onAvatar={onAvatar} />
       <Identity data={data} edit={edit} lock={lock} />
-      <VariantOf kind="card" entity={card} />
-      <LibraryName id={card.library_id} />
-      <Collections id={card.id} library={card.library_id} member={card.collections ?? []} />
-      <Sources kind="card" id={card.id} />
-      <OtherLibraries kind="card" id={card.id} />
-      <Related id={card.id} library={card.library_id} />
+      <Group title="Links">
+        <Sources kind="card" id={card.id} />
+        <VariantOf kind="card" entity={card} />
+        <Variants kind="card" entity={card} />
+        <OtherLibraries kind="card" id={card.id} />
+        <CardLorebooks card={card} />
+        <Revisions kind="card" id={card.id} />
+      </Group>
       <Sync kind="card" id={card.id} />
-      <CardLorebooks card={card} />
-      <Variants kind="card" entity={card} />
-      <Revisions kind="card" id={card.id} />
+      <Collections id={card.id} library={card.library_id} member={card.collections ?? []} />
     </aside>
   );
 }
 
-/** LibraryName names the library a card or lorebook is in. */
-export function LibraryName({ id }: { id: number }) {
-  const library = useQuery(librariesQuery).data?.find((l) => l.id === id);
-  return library ? <p className="muted">Library: {library.name}</p> : null;
+/** Group is a collapsible block of the side panel. */
+export function Group({ title, open = true, children }: { title: string; open?: boolean; children: ReactNode }) {
+  return (
+    <details className="aside-group" open={open}>
+      <summary>{title}</summary>
+      {children}
+    </details>
+  );
 }
 
 type IdentityProps = { data: Data; edit: (key: string, value: unknown) => void; lock?: (key: string) => string | undefined };
@@ -203,8 +206,7 @@ export function Sync({ kind, id }: { kind: Kind; id: number }) {
   const pushed = (bindings.data ?? []).filter((b) => b.push);
   if (!pushed.length) return null;
   return (
-    <section>
-      <h2>Sync</h2>
+    <Group title="Sync">
       <ul className="plain">
         {pushed.map((b) => (
           <li key={b.id}>
@@ -239,29 +241,18 @@ export function Sync({ kind, id }: { kind: Kind; id: number }) {
           </li>
         ))}
       </ul>
-    </section>
+    </Group>
   );
 }
 
+/** Revisions links to the history page with the revision count. */
 export function Revisions({ kind, id }: { kind: Kind; id: number }) {
   const revs = useQuery({
     queryKey: [kind, id, "revisions"],
     queryFn: async () => must(await api.GET(route(kind, "/cards/{id}/revisions"), { params: { path: { id } } })),
   });
-  return (
-    <section>
-      <h2>History</h2>
-      <ul className="plain">
-        {(revs.data ?? []).slice(0, 5).map((r) => (
-          <li key={r.id}>
-            <Link to={`/${kind}s/${id}/history?rev=${r.id}`}>{r.message || `Revision ${r.id}`}</Link>{" "}
-            <span className="muted">{new Date(r.created_at).toLocaleDateString()}</span>
-          </li>
-        ))}
-      </ul>
-      <Link to={`/${kind}s/${id}/history`}>All history</Link>
-    </section>
-  );
+  const n = revs.data?.length;
+  return <Link to={`/${kind}s/${id}/history`}>History{n ? ` (${n} revision${n === 1 ? "" : "s"})` : ""}</Link>;
 }
 
 function Image({ sha, busy, onAvatar }: { sha?: string; busy: boolean; onAvatar: PanelProps["onAvatar"] }) {

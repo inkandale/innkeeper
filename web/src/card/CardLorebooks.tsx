@@ -49,12 +49,19 @@ export function CardLorebooks({ card }: { card: Entity }) {
   return (
     <section>
       <h3>Lorebooks</h3>
+      {!ids.length && <p className="muted">None linked.</p>}
       <ul className="plain">
         {ids.map((id, i) => {
-          const name = text((books[i]?.data?.revision.data as Data | undefined)?.name) || `#${id}`;
+          const data = books[i]?.data?.revision.data as Data | undefined;
+          const name = text(data?.name) || `#${id}`;
+          const entries = Array.isArray(data?.entries) ? data.entries.length : undefined;
           return (
-            <li key={id}>
-              <Link to={`/lorebooks/${id}`}>{name}</Link>
+            <li key={id} className="linked-item">
+              <span aria-hidden="true">📖</span>
+              <Link className="truncate" to={`/lorebooks/${id}`}>
+                {name}
+              </Link>
+              {entries !== undefined && <span className="muted">{entries === 1 ? "1 entry" : `${entries} entries`}</span>}
               <button className="chip-x" aria-label={`Unlink ${name}`} disabled={unlink.isPending} onClick={() => unlink.mutate(id)}>
                 ×
               </button>
@@ -64,10 +71,10 @@ export function CardLorebooks({ card }: { card: Entity }) {
       </ul>
       <div className="row">
         <button className="button" disabled={create.isPending} onClick={() => create.mutate()}>
-          New lorebook
+          Create
         </button>
         <button className="button" aria-expanded={linking} onClick={() => setLinking(!linking)}>
-          Link lorebook…
+          Link…
         </button>
       </div>
       {linking && (

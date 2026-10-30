@@ -60,7 +60,7 @@ function CardList({ items, library }: { items: Found[]; library: number }) {
 
 /** Similar lists the cards that read like this one, in its library or all of them. */
 export function Similar({ id, library }: { id: number; library: number }) {
-  const [scope, setScope] = useState<"library" | "all">("library");
+  const [scope, setScope] = useState<Scope>("library");
   const pages = useInfiniteQuery({
     queryKey: ["card", id, "similar", scope],
     queryFn: async ({ pageParam }) =>
@@ -73,12 +73,14 @@ export function Similar({ id, library }: { id: number; library: number }) {
   const items = pages.data?.pages.flatMap((p) => p.items ?? []) ?? [];
   const basis = pages.data?.pages[0]?.basis;
   return (
-    <section className="metadata-section">
-      <h2>Similar</h2>
-      <label>
-        <input type="checkbox" checked={scope === "all"} onChange={(e) => setScope(e.target.checked ? "all" : "library")} /> All
-        libraries
-      </label>
+    <div>
+      <h3>
+        Similar{" "}
+        <span className="scope">
+          (<ScopeOption scope="library" current={scope} onPick={setScope} /> /{" "}
+          <ScopeOption scope="all" current={scope} onPick={setScope} />)
+        </span>
+      </h3>
       {pages.isError && <p className="error">{pages.error.message}</p>}
       {basis === "tags" && (
         <p className="muted">
@@ -92,7 +94,18 @@ export function Similar({ id, library }: { id: number; library: number }) {
           Show more
         </button>
       )}
-    </section>
+    </div>
+  );
+}
+
+type Scope = "library" | "all";
+
+/** ScopeOption is one of Similar's scopes, a link until it's picked. */
+function ScopeOption({ scope, current, onPick }: { scope: Scope; current: Scope; onPick: (s: Scope) => void }) {
+  return (
+    <button className="link-button" aria-pressed={scope === current} onClick={() => onPick(scope)}>
+      {scope === "library" ? "This library" : "All libraries"}
+    </button>
   );
 }
 
@@ -107,8 +120,7 @@ export function Related({ card }: { card: Entity }) {
   // Search covers one library, so the gallery shows the rest from the card's own library.
   const seeAll = (g: RelatedPage) => `/cards?${toParams({ ...parseQuery(new URLSearchParams(), card.library_id), terms: galleryTerms(g.group, card) })}`;
   return (
-    <section className="metadata-section">
-      <h2>Related</h2>
+    <>
       {related.isError && <p className="error">{related.error.message}</p>}
       {groups.map((g) => (
         <div key={g.group}>
@@ -117,6 +129,17 @@ export function Related({ card }: { card: Entity }) {
           {g.next_cursor && <Link to={seeAll(g)}>See all</Link>}
         </div>
       ))}
+    </>
+  );
+}
+
+/** Discover gathers the cards like this one and the cards linked to it. */
+export function Discover({ card }: { card: Entity }) {
+  return (
+    <section className="metadata-section">
+      <h2>Discover</h2>
+      <Similar id={card.id} library={card.library_id} />
+      <Related card={card} />
     </section>
   );
 }

@@ -24,7 +24,7 @@ beforeEach(() => {
       const path = new URL(req.url).pathname;
       const body = req.method === "GET" || req.method === "DELETE" ? null : await req.json().catch(() => null);
       sent.push({ method: req.method, path, body });
-      if (req.method === "GET" && path === "/api/lorebooks/3") return json({ id: 3, revision: { id: 1, data: { name: "Forge" } } });
+      if (req.method === "GET" && path === "/api/lorebooks/3") return json({ id: 3, revision: { id: 1, data: { name: "Forge", entries: [{}, {}] } } });
       if (req.method === "POST" && path === "/api/lorebooks/search") return json({ hits: [{ id: 5, fields: { name: "Mines" } }], total: 1 });
       if (req.method === "POST" && path === "/api/lorebooks") return json({ id: 9, revision: { id: 1, data: body } }, 201);
       return new Response(null, { status: 204 });
@@ -49,15 +49,21 @@ function renderLorebooks() {
 
 const writes = () => sent.filter((s) => s.method !== "GET" && !s.path.endsWith("/search"));
 
+test("a linked lorebook shows its entry count beside its name", async () => {
+  renderLorebooks();
+  expect(await screen.findByRole("link", { name: "Forge" })).toHaveAttribute("href", "/lorebooks/3");
+  expect(await screen.findByText("2 entries")).toBeInTheDocument();
+});
+
 test("× unlinks a linked lorebook from the card", async () => {
   renderLorebooks();
   await userEvent.click(await screen.findByRole("button", { name: "Unlink Forge" }));
   await waitFor(() => expect(writes()).toEqual([{ method: "DELETE", path: "/api/cards/7/lorebooks/3", body: null }]));
 });
 
-test("Link lorebook searches the card's library and links the picked lorebook", async () => {
+test("Link searches the card's library and links the picked lorebook", async () => {
   renderLorebooks();
-  await userEvent.click(screen.getByRole("button", { name: "Link lorebook…" }));
+  await userEvent.click(screen.getByRole("button", { name: "Link…" }));
   await userEvent.type(screen.getByRole("textbox", { name: "Find a lorebook" }), "mines");
   await userEvent.click(screen.getByRole("button", { name: "Search" }));
   await userEvent.click(await screen.findByRole("button", { name: "Mines" }));
@@ -65,9 +71,9 @@ test("Link lorebook searches the card's library and links the picked lorebook", 
   expect(sent.find((s) => s.path === "/api/lorebooks/search")?.body).toMatchObject({ library: 2, text: "mines" });
 });
 
-test("New lorebook creates an empty one named for the card in its library, links it, and opens it", async () => {
+test("Create makes an empty one named for the card in its library, links it, and opens it", async () => {
   renderLorebooks();
-  await userEvent.click(screen.getByRole("button", { name: "New lorebook" }));
+  await userEvent.click(screen.getByRole("button", { name: "Create" }));
   expect(await screen.findByText("Lorebook page")).toBeInTheDocument();
   expect(writes()).toEqual([
     {

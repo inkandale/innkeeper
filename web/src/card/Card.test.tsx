@@ -297,7 +297,7 @@ test("leaving with unsaved edits asks first", async () => {
   const ask = vi.spyOn(window, "confirm").mockReturnValue(false);
   const router = renderAt("/cards/7");
   await userEvent.type(await screen.findByLabelText("Description"), "!");
-  await userEvent.click(screen.getByRole("link", { name: /^History/ }));
+  await userEvent.click(screen.getByRole("link", { name: /revision/ }));
   await waitFor(() => expect(ask).toHaveBeenCalled());
   expect(router.state.location.pathname).toBe("/cards/7");
   ask.mockRestore();
@@ -332,7 +332,8 @@ test("after a stale save, reload drops my edits", async () => {
 
 test("the panel shows sync, lorebooks, collections, and sources", async () => {
   renderAt("/cards/7");
-  expect(await screen.findByText("Lumiverse: not pushed")).toBeInTheDocument();
+  const lumiverse = (await screen.findByText("Lumiverse", { selector: "strong" })).closest("li")!;
+  expect(within(lumiverse).getByText("not pushed")).toHaveClass("sync-status");
   expect(await screen.findByRole("link", { name: "Forge" })).toHaveAttribute("href", "/lorebooks/3");
   expect(await screen.findByRole("checkbox", { name: "Favorites" })).toBeChecked();
   expect(screen.getByRole("checkbox", { name: "Pirates" })).not.toBeChecked();
@@ -640,18 +641,18 @@ test("Link existing makes the picked card a variant of this one", async () => {
   await waitFor(() => expect(puts).toContainEqual({ path: "/api/cards/9/variant_of", body: { id: 7 } }));
 });
 
-test("the panel groups links, sync, and collections, with Related left to the main column", async () => {
+test("the panel groups links, sync, and collections, with Discover left to the main column", async () => {
   related = { groups: [{ group: "creator", items: [{ card_id: 8, library_id: 1, name: "Dorna" }] }] };
   renderAt("/cards/7");
   const links = (await screen.findByRole("heading", { name: "Links" })).closest("details")!;
   expect(links).toHaveAttribute("open");
   expect(within(links).getByRole("link", { name: "chub: dg/brakka" })).toBeInTheDocument();
-  expect(within(links).getByRole("link", { name: /^History/ })).toHaveAttribute("href", "/cards/7/history");
+  expect(within(links).getByRole("link", { name: /revision/ })).toHaveAttribute("href", "/cards/7/history");
   const collections = screen.getByRole("heading", { name: "Collections" }).closest("details")!;
   expect(collections).not.toHaveAttribute("open");
   const aside = links.closest("aside")!;
-  expect(within(aside).queryByRole("heading", { name: "Related" })).not.toBeInTheDocument();
-  expect(await screen.findByRole("heading", { name: "Related" })).toBeInTheDocument();
+  expect(within(aside).queryByRole("heading", { name: "Discover" })).not.toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Same creator" })).toBeInTheDocument();
   expect(within(aside).queryByText(/^Library:/)).not.toBeInTheDocument();
 });
 

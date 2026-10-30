@@ -83,13 +83,13 @@ test("Similar across all libraries names the other library", async () => {
   };
   renderIt(<Similar id={7} library={1} />);
   expect(await screen.findByText("None in this library.")).toBeInTheDocument();
-  await userEvent.click(screen.getByRole("checkbox", { name: "All libraries" }));
+  await userEvent.click(screen.getByRole("button", { name: "All libraries" }));
   expect(await screen.findByRole("link", { name: "Dorna" })).toBeInTheDocument();
   expect(await screen.findByText("in Archive")).toBeInTheDocument();
   expect(requested).toContain("/api/cards/7/similar?scope=all&limit=8");
 });
 
-test("Similar keeps its toggle while the other scope loads", async () => {
+test("Similar keeps its scope while the other scope loads", async () => {
   routes["/api/cards/7/similar?scope=library&limit=8"] = { basis: "embedding", items: [] };
   let release = () => {};
   let asked = false;
@@ -104,9 +104,9 @@ test("Similar keeps its toggle while the other scope loads", async () => {
   });
   renderIt(<Similar id={7} library={1} />);
   expect(await screen.findByText("None in this library.")).toBeInTheDocument();
-  await userEvent.click(screen.getByRole("checkbox", { name: "All libraries" }));
+  await userEvent.click(screen.getByRole("button", { name: "All libraries" }));
   await waitFor(() => expect(asked).toBe(true));
-  expect(screen.getByRole("checkbox", { name: "All libraries" })).toBeChecked();
+  expect(screen.getByRole("button", { name: "All libraries" })).toHaveAttribute("aria-pressed", "true");
   expect(screen.queryByText("None in any library.")).not.toBeInTheDocument();
   release();
   expect(await screen.findByText("None in any library.")).toBeInTheDocument();

@@ -200,11 +200,11 @@ export function Sync({ kind, id }: { kind: Kind; id: number }) {
     <Group title="Sync">
       <ul className="plain">
         {pushed.map((b) => (
-          <li key={b.id}>
+          <li key={b.id} className="sync-item">
             <span aria-hidden="true">
               <Logo app={logos.get(b.instance_id)} label={name(b.instance_id)} />
-            </span>{" "}
-            <span className={"badge " + (badgeClass[b.status] ?? "unknown")} aria-hidden="true" /> {name(b.instance_id)}: {stateLabel(b.status)}{" "}
+            </span>
+            <strong className="truncate">{name(b.instance_id)}</strong>
             <label className="autosync" title="Each sync pushes this card when the library's copy is newer and the app's copy hasn't changed.">
               <input
                 type="checkbox"
@@ -215,20 +215,17 @@ export function Sync({ kind, id }: { kind: Kind; id: number }) {
               />{" "}
               autosync
             </label>
-            {/* The queue lists drift only after a sync reads the app, so drift opens Review. */}
-            {b.status === "ahead" || b.status === "missing" ? (
-              <>
-                {" "}
+            <span className="sync-state">
+              <span className={"sync-status " + (badgeClass[b.status] ?? "unknown")}>{stateLabel(b.status)}</span>
+              {/* The queue lists drift only after a sync reads the app, so drift opens Review. */}
+              {b.status === "ahead" || b.status === "missing" ? (
                 <Link to={`/sync/changes?instance_id=${b.instance_id}`}>Changes</Link>
-              </>
-            ) : (
-              (b.status === "remote_changed" || b.status === "diverged") && (
-                <>
-                  {" "}
+              ) : (
+                (b.status === "remote_changed" || b.status === "diverged") && (
                   <Link to={reviewPath(b.instance_id, kind, b.remote_id, { card: id })}>Review</Link>
-                </>
-              )
-            )}
+                )
+              )}
+            </span>
           </li>
         ))}
       </ul>
@@ -242,8 +239,12 @@ export function Revisions({ kind, id }: { kind: Kind; id: number }) {
     queryKey: [kind, id, "revisions"],
     queryFn: async () => must(await api.GET(route(kind, "/cards/{id}/revisions"), { params: { path: { id } } })),
   });
-  const n = revs.data?.length;
-  return <Link to={`/${kind}s/${id}/history`}>History{n ? ` (${count(n, "revision")})` : ""}</Link>;
+  return (
+    <section>
+      <h3>History</h3>
+      <Link to={`/${kind}s/${id}/history`}>{revs.data ? count(revs.data.length, "revision") : "Revisions"}</Link>
+    </section>
+  );
 }
 
 function Image({ sha, busy, onAvatar }: { sha?: string; busy: boolean; onAvatar: PanelProps["onAvatar"] }) {

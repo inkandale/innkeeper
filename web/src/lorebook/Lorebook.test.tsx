@@ -173,7 +173,7 @@ test("the Metadata tab shows the core facts and no enrichments", async () => {
 
 test("the panel links to history", async () => {
   renderAt("/lorebooks/3");
-  expect(await screen.findByRole("link", { name: /^History/ })).toHaveAttribute("href", "/lorebooks/3/history");
+  expect(await screen.findByRole("link", { name: /revision/ })).toHaveAttribute("href", "/lorebooks/3/history");
 });
 
 test("saving keeps entries that aren't objects, and a cleared depth removes the key", async () => {

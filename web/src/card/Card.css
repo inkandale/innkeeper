@@ -15,7 +15,10 @@
   max-height: 100vh;
   overflow: auto;
   display: grid;
+  /* minmax(0, 1fr) keeps a long name or a picker from widening the panel past its column. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space);
+  padding-inline: var(--space);
 }
 
 .aside-field {
@@ -46,6 +49,7 @@
 
 .aside-group-body {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: calc(var(--space) * 0.5);
 }
 
@@ -619,3 +623,58 @@ fieldset.contents {
   opacity: 0.4;
   cursor: default;
 }
+
+.card-aside .plain li.linked-item {
+  flex-wrap: nowrap;
+  padding: 4px var(--space);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 0.75);
+  background: var(--surface-2);
+}
+
+.metadata-section h3 {
+  font-size: 0.9em;
+  margin: var(--space) 0 calc(var(--space) * 0.5);
+}
+
+.metadata-section h3 .scope {
+  font-weight: normal;
+  color: var(--text-muted);
+}
+
+.link-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.link-button[aria-pressed="true"] {
+  color: var(--text);
+  text-decoration: none;
+  cursor: default;
+}
+
+/* Logo and app name on the first line, the state in its color under the name. */
+.card-aside .plain li.sync-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 2px calc(var(--space) * 0.5);
+}
+
+.sync-state {
+  grid-column: 2 / -1;
+  display: flex;
+  gap: calc(var(--space) * 0.5);
+  font-size: 0.85em;
+}
+
+.sync-status { display: inline-block; }
+.sync-status::first-letter { text-transform: uppercase; }
+.sync-status.ok { color: var(--ok); }
+.sync-status.ahead { color: var(--ahead); }
+.sync-status.drift { color: var(--drift); }
+.sync-status.unknown { color: var(--unknown); }

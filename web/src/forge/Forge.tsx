@@ -45,6 +45,7 @@ export function Forge(props: {
   // A plugin whose actions are all for other kinds leaves this page the plain editor.
   const on = forge.actions.some((a) => a.applies === forge.subject.kind || (isNew && a.applies === "new"));
   const name = typeof data.name === "string" ? data.name : "";
+  const verb = isNew ? "Forge" : "Reforge";
 
   const open = (t?: Target) => {
     if (isNew && !t) return setTab("start");
@@ -141,8 +142,8 @@ export function Forge(props: {
               </button>
             ))}
           </div>
-          <button className="button primary forge-open" onClick={() => open()} title="Forge (Ctrl+K)">
-            <Hammer /> Forge <kbd>⌘K</kbd>
+          <button className="button primary forge-open" onClick={() => open()} title={`${verb} (Ctrl+K)`}>
+            <Hammer /> {verb} <kbd>⌘K</kbd>
           </button>
         </div>
       )}
@@ -212,6 +213,7 @@ export function Forge(props: {
         <Reforge
           forge={forge}
           name={name}
+          verb={verb}
           target={target}
           setTarget={setTarget}
           instruction={instruction}

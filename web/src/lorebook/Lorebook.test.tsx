@@ -219,7 +219,7 @@ test("a whole-lorebook run locks the name, the description, and the entries", as
 test("Reforge runs the lorebook's instruction action on the lorebook", async () => {
   actions = forgeActions;
   renderAt("/lorebooks/3");
-  await screen.findByRole("button", { name: /^Forge ⌘K/ });
+  await screen.findByRole("button", { name: /^Reforge ⌘K/ });
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: "Forge actions for Description" }));
   expect(screen.getAllByRole("menuitem").map((m) => m.textContent)).toEqual(["Tighten"]);
@@ -227,7 +227,7 @@ test("Reforge runs the lorebook's instruction action on the lorebook", async () 
   await user.keyboard("{Control>}k{/Control}");
   const box = await screen.findByRole("combobox", { name: "Instruction" });
   expect(box).toHaveAttribute("placeholder", expect.stringContaining("Describe a change to this lorebook"));
-  expect(screen.queryByText("Or change the whole lorebook")).not.toBeInTheDocument();
+  expect(screen.queryByText("Quick actions")).not.toBeInTheDocument();
   await user.type(box, "Add a hammer @skills/noir please");
   await waitFor(() => expect(screen.getByRole("button", { name: "Run" })).toBeEnabled());
   await user.click(screen.getByRole("button", { name: "Run" }));
@@ -262,7 +262,7 @@ test("a plugin with only card actions shows no Forge on the lorebook page", asyn
   renderAt("/lorebooks/3");
   await screen.findByLabelText("Entry 1 content");
   await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.objectContaining({ url: expect.stringContaining("/api/actions") })));
-  expect(screen.queryByRole("button", { name: /^Forge ⌘K/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /^Reforge ⌘K/ })).not.toBeInTheDocument();
   expect(screen.queryByRole("tab")).not.toBeInTheDocument();
 });
 

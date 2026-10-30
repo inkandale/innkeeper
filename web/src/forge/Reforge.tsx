@@ -17,6 +17,8 @@ export type Target = { action: Action; field?: string };
 export function Reforge(props: {
   forge: Forge;
   name: string;
+  /** verb heads the panel: Reforge for an entity that exists. */
+  verb: string;
   target?: Target;
   setTarget: (t?: Target) => void;
   instruction: Instruction;
@@ -29,7 +31,8 @@ export function Reforge(props: {
   const { kind, label } = forge.subject;
   const revise = instructionAction(forge.mine, kind);
   const current: Target | undefined = target ?? (revise && { action: revise });
-  const others = wholeActions(forge.mine, kind).filter((a) => a !== revise);
+  // Evaluate has its own place on the Report tab.
+  const others = wholeActions(forge.mine, kind).filter((a) => a !== revise && !a.report_only);
   const mentions = useMentions(instruction, forge.instance?.id, forge.library);
   const [options, setOptions] = useState<Options>(noOptions);
   // The panel stays open, with its instruction, until the run has started.
@@ -56,10 +59,12 @@ export function Reforge(props: {
     props.onClose();
   };
   return (
-    <dialog className="forge-panel" aria-label={`Forge ${props.name}`} {...modal}>
+    <dialog className="forge-panel" aria-label={`${props.verb} ${props.name}`} {...modal}>
       <div className="forge-panel-head">
         <Hammer />
-        <strong>Forge {props.name || `this ${kind}`}</strong>
+        <strong>
+          {props.verb} {props.name || `this ${kind}`}
+        </strong>
         {target && (
           <span className="forge-target muted">
             Runs <strong>{target.action.label}</strong>
@@ -86,13 +91,12 @@ export function Reforge(props: {
       {current && <ActionOptions action={current.action} value={options} onChange={setOptions} hasAvatar={!!props.avatar} />}
       {others.length > 0 && (
         <>
-          <div className="forge-group">Or change the whole {kind}</div>
+          <div className="forge-group">Quick actions</div>
           <ul className="plain forge-presets">
             {others.map((a) => (
               <li key={a.id}>
-                <button className={target?.action.id === a.id && !target.field ? "on" : undefined} disabled={starting} onClick={() => (asks(a) || a.images ? choose({ action: a }) : void run({ action: a }, noOptions))}>
+                <button className={target?.action.id === a.id && !target.field ? "on" : undefined} title={a.description} disabled={starting} onClick={() => (asks(a) || a.images ? choose({ action: a }) : void run({ action: a }, noOptions))}>
                   <strong>{a.label}</strong>
-                  <span className="muted">{a.description}</span>
                 </button>
               </li>
             ))}

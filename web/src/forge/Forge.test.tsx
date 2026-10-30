@@ -118,7 +118,7 @@ test("without an action plugin the card page is the plain editor", async () => {
   actions = [];
   renderAt("/cards/7");
   await screen.findByLabelText("Description");
-  expect(screen.queryByRole("button", { name: /^Forge ⌘K/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /^Reforge ⌘K/ })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Forge actions for Description" })).not.toBeInTheDocument();
 });
 
@@ -222,7 +222,7 @@ test("a field action with an instruction opens the Reforge panel set to it", asy
 test("an unknown mention blocks Run; a picked one sends its ID and the text as typed", async () => {
   renderAt("/cards/7");
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: /^Forge ⌘K/ }));
+  await user.click(await screen.findByRole("button", { name: /^Reforge ⌘K/ }));
   const box = screen.getByLabelText("Instruction");
   await user.type(box, "@cards/Nobody ");
   expect(await screen.findByText(/no card has this name/)).toBeInTheDocument();
@@ -257,7 +257,7 @@ test("a whole-card run waits while another runs", async () => {
   jobs = [job({ id: 5, status: "running", payload: { action: "reforge" } })];
   renderAt("/cards/7");
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: /^Forge ⌘K/ }));
+  await user.click(await screen.findByRole("button", { name: /^Reforge ⌘K/ }));
   await user.type(screen.getByLabelText("Instruction"), "Robots{Enter}");
   expect(await screen.findByText(/waiting for the run before it/)).toBeInTheDocument();
   expect(runs).toHaveLength(0);
@@ -266,7 +266,7 @@ test("a whole-card run waits while another runs", async () => {
 test("after a pick the list closes, so Enter runs instead of picking again", async () => {
   renderAt("/cards/7");
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: /^Forge ⌘K/ }));
+  await user.click(await screen.findByRole("button", { name: /^Reforge ⌘K/ }));
   const box = screen.getByRole("combobox", { name: "Instruction" });
   await user.type(box, "@cards/Bil");
   expect(await screen.findByRole("option", { name: /^Billy card/ })).toHaveAttribute("aria-selected", "true");
@@ -283,7 +283,7 @@ test("the Reforge panel keeps the instruction open until the run starts", async 
   runFails = true;
   renderAt("/cards/7");
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: /^Forge ⌘K/ }));
+  await user.click(await screen.findByRole("button", { name: /^Reforge ⌘K/ }));
   await user.type(screen.getByLabelText("Instruction"), "Robots{Enter}");
   expect(await screen.findByText("the plugin is busy")).toBeInTheDocument();
   expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -331,7 +331,7 @@ test("a new card offers no report-only actions and can't be saved while a run is
 test("skill autocomplete offers the chosen model setup's skills, and a picked skill's name goes in context", async () => {
   renderAt("/cards/7");
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: /^Forge ⌘K/ }));
+  await user.click(await screen.findByRole("button", { name: /^Reforge ⌘K/ }));
   const box = screen.getByLabelText("Instruction");
   await user.type(box, "@skills/");
   expect(await screen.findByRole("option", { name: "college Campus life." })).toBeInTheDocument();
@@ -349,7 +349,7 @@ test("skill autocomplete offers the chosen model setup's skills, and a picked sk
 test("a typed skill name resolves, and one the model setup lacks blocks Run", async () => {
   renderAt("/cards/7");
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: /^Forge ⌘K/ }));
+  await user.click(await screen.findByRole("button", { name: /^Reforge ⌘K/ }));
   const box = screen.getByLabelText("Instruction");
   await user.type(box, "@skills/space ");
   expect(await screen.findByText(/this model setup has no skill by this name/)).toBeInTheDocument();
@@ -388,8 +388,13 @@ test("the Reforge panel offers a whole-card field action, run without a field", 
   actions = [...allActions, { ...decl, id: "expand", label: "Expand", description: "Add detail.", fields: ["description", "personality"], whole_card: true }];
   renderAt("/cards/7");
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: /^Forge ⌘K/ }));
-  await user.click(screen.getByRole("button", { name: /^Expand(?! all)/ }));
+  await user.click(await screen.findByRole("button", { name: /^Reforge ⌘K/ }));
+  expect(screen.getByRole("dialog", { name: /^Reforge / })).toBeInTheDocument();
+  expect(screen.getByText("Quick actions")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Evaluate" })).not.toBeInTheDocument();
+  const expand = screen.getByRole("button", { name: "Expand" });
+  expect(expand).toHaveAccessibleDescription("Add detail.");
+  await user.click(expand);
   await waitFor(() => expect(runs).toHaveLength(1));
   expect(runs[0]).toMatchObject({ action: "expand" });
   expect(runs[0]).not.toHaveProperty("field");

@@ -212,6 +212,20 @@ the `grids` loop, add:
 	if vectors > 1 {
 		errs = append(errs, errors.New("at most one vector enrichment"))
 	}
+	// One instance per vector plugin, so an install holds one set of vectors per plugin.
+	if vectors > 0 && m.MultipleInstances {
+		errs = append(errs, errors.New("a plugin with a vector enrichment can't set multiple_instances"))
+	}
+```
+
+Add to `TestManifestAllowsOneVectorKey`, after the one-key case:
+
+```go
+	m.MultipleInstances = true
+	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "multiple_instances") {
+		t.Fatalf("vector plugin with multiple instances: %v", err)
+	}
+	m.MultipleInstances = false
 ```
 
 - [ ] **Step 5: Make `vector.query` a service and add features**
@@ -822,12 +836,17 @@ In `internal/plugins/plugins.go`, replace `Embed` with:
 // different models can't be compared.
 const VectorInstanceKey = "vector_instance"
 
-// VectorInstance returns the vector instance, or 0 when none is set or it
-// is gone or disabled.
+// VectorInstance returns the vector instance: the one the setting names,
+// or with none named, the only enabled instance whose plugin declares a
+// vector enrichment. It is 0 when there is none, or the named one is gone
+// or disabled.
 func (r *Registry) VectorInstance(ctx context.Context) (int64, error) {
 	v, err := r.Setting(ctx, VectorInstanceKey)
-	if err != nil || v == "" {
+	if err != nil {
 		return 0, err
+	}
+	if v == "" {
+		return r.onlyVectorInstance(ctx)
 	}
 	id, err := strconv.ParseInt(v, 10, 64)
 	if err != nil {
@@ -838,6 +857,29 @@ func (r *Registry) VectorInstance(ctx context.Context) (int64, error) {
 		return 0, nil
 	}
 	return id, err
+}
+
+// onlyVectorInstance is the one enabled instance whose plugin declares a
+// vector enrichment, or 0 when there are none or several.
+func (r *Registry) onlyVectorInstance(ctx context.Context) (int64, error) {
+	insts, err := r.InstancesWith(ctx, protocol.CapabilityEnrich)
+	if err != nil {
+		return 0, err
+	}
+	manifests := r.Manifests()
+	var found []int64
+	for _, inst := range insts {
+		m := manifests[inst.Plugin]
+		if inst.Disabled || m == nil || !slices.ContainsFunc(slices.Collect(maps.Values(m.Enrichments)),
+			func(e protocol.Enrichment) bool { return e.Type == "vector" }) {
+			continue
+		}
+		found = append(found, inst.ID)
+	}
+	if len(found) != 1 {
+		return 0, nil
+	}
+	return found[0], nil
 }
 
 // VectorQuery returns instance id's vector for a search query. The
@@ -1240,7 +1282,8 @@ In the PATCH handler, `in.Body.EmbedInstance` becomes
 
 ```go
 // setVectorInstance stores the vector instance, or clears it for nil.
-// Vectors stay: each instance's are kept apart, and spaces keep models apart.
+// Setting one deletes every other instance's vectors, so the install holds
+// one set; clearing keeps them for the instance core falls back to.
 func (s *Server) setVectorInstance(ctx context.Context, id *int64) error {
 	if id == nil {
 		return s.fail(s.Registry.SetSetting(ctx, plugins.VectorInstanceKey, ""))
@@ -1248,9 +1291,46 @@ func (s *Server) setVectorInstance(ctx context.Context, id *int64) error {
 	if _, err := s.Registry.InstanceOffering(ctx, s.Plugins, *id, protocol.MethodVectorQuery); err != nil {
 		return s.fail(err)
 	}
+	if err := s.Lib.DeleteVectorsExcept(ctx, *id); err != nil {
+		return s.fail(err)
+	}
 	return s.fail(s.Registry.SetSetting(ctx, plugins.VectorInstanceKey, strconv.FormatInt(*id, 10)))
 }
 ```
+
+Add to `internal/library/embeddings.go`:
+
+```go
+// DeleteVectorsExcept deletes every vector not from instance.
+func (l *Library) DeleteVectorsExcept(ctx context.Context, instance int64) error {
+	if ok, err := l.HasVectors(ctx); err != nil || !ok {
+		return err
+	}
+	if _, err := l.pool.Exec(ctx, `DELETE FROM card_embedding WHERE instance_id <> $1`, instance); err != nil {
+		return fmt.Errorf("delete vectors not from instance %d: %w", instance, err)
+	}
+	return nil
+}
+```
+
+and to `TestSettingVectorInstance`, before setting the instance, a vector
+row from another instance (insert it with `e.s.Lib.SaveVectors` for a
+second instance row) that must be gone afterwards. Also add:
+
+```go
+func TestTheOnlyVectorInstanceNeedsNoSetting(t *testing.T) {
+	e := newEnrichEnv(t, map[string]any{"vectors": true, "services": []string{protocol.MethodVectorQuery}})
+	var s settings
+	e.call("GET", "/settings", nil, 200, &s)
+	if s.VectorInstance == nil || *s.VectorInstance != e.instID {
+		t.Fatalf("settings = %+v", s)
+	}
+}
+```
+
+The judge fake declares a vector key, so `newEnrichEnv` gives it the only
+vector instance. If other tests' fakes also declare one, give this test
+its own env.
 
 - [ ] **Step 4: Search, Similar, and errors**
 
@@ -1328,7 +1408,8 @@ cd web && git mv src/settings/EmbedFrom.tsx src/settings/VectorsFrom.tsx && git 
 In `VectorsFrom.test.tsx`, keep the file's mocking setup and change it to:
 
 - mock `GET /instances` with query `offers: "vector.query"`;
-- read and patch `vector_instance`;
+- read and patch `vector_instance`, with two sources mocked (with one,
+  the component renders nothing, which gets its own case);
 - add a case where settings has `vectors_available: false`, asserting the
   text "Similar cards by meaning and semantic search need pgvector" shows
   and no select renders;
@@ -1372,7 +1453,8 @@ export function VectorsFrom() {
       </p>
     );
   }
-  if (!sources.data?.length) return null;
+  // With one vector source, core uses it without asking.
+  if ((sources.data?.length ?? 0) < 2) return null;
   const saved = settings.data?.vector_instance;
   return (
     <section className="scores-from">

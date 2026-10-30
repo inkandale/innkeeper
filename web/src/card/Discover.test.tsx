@@ -117,16 +117,17 @@ test("Related asks for 8 cards a group and links each group's rest to the galler
     groups: [
       { group: "creator", items: [{ card_id: 8, library_id: 1, name: "Dorna" }], next_cursor: "8" },
       { group: "lorebook", items: [{ card_id: 10, library_id: 1, name: "Ilse" }], next_cursor: "8" },
-      { group: "collection", items: [{ card_id: 11, library_id: 1, name: "Pell" }] },
+      { group: "collection", items: [{ card_id: 11, library_id: 1, name: "Pell" }], next_cursor: "8" },
     ],
   };
   renderIt(<Related card={card} />);
   expect(await screen.findByRole("heading", { name: "Same creator" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Dorna" })).toHaveAttribute("href", "/cards/8");
   const all = screen.getAllByRole("link", { name: "See all" }).map((a) => new URL(a.getAttribute("href")!, "http://x"));
-  expect(all.map((u) => u.pathname)).toEqual(["/cards", "/cards"]);
+  expect(all.map((u) => u.pathname)).toEqual(["/cards", "/cards", "/cards"]);
   expect(all[0]!.searchParams.getAll("f")).toEqual(["creator:OnlyYa"]);
   expect(all[1]!.searchParams.getAll("f")).toEqual(["lorebook:3", "lorebook:4"]);
+  expect(all[2]!.searchParams.getAll("f")).toEqual(["collection:9"]);
   expect(all[0]!.searchParams.get("library")).toBe("1");
 });
 

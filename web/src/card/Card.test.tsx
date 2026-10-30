@@ -38,6 +38,7 @@ let appRemoteState: string;
 let pushPosts: number;
 // A save waits on gate when it's set.
 let gate: Promise<void> | undefined;
+let related: { groups: unknown[] };
 let puts: { path: string; body: unknown }[];
 let patches: { path: string; body: unknown }[];
 // Whether a card-codec instance, which writes PNG, exists.
@@ -64,6 +65,7 @@ beforeEach(() => {
   gate = undefined;
   puts = [];
   patches = [];
+  related = { groups: [] };
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
@@ -164,6 +166,7 @@ beforeEach(() => {
           { id: 2, name: "Pirates" },
         ]);
       if (path === "/api/lorebooks/3") return json({ id: 3, revision: { id: 1, data: { name: "Forge" } } });
+      if (path === "/api/cards/7/related") return json(related);
       if (path === "/api/cards/7/enrichments")
         return json([{ instance_id: 5, instance_name: "Judge", revision_id: 1, key: "quality", label: "Quality", type: "score", value: 78, meta: {}, created_at: now, current: true, stale: false }]);
       return json([]);
@@ -638,6 +641,7 @@ test("Link existing makes the picked card a variant of this one", async () => {
 });
 
 test("the panel groups links, sync, and collections, with Related left to the main column", async () => {
+  related = { groups: [{ group: "creator", items: [{ card_id: 8, library_id: 1, name: "Dorna" }] }] };
   renderAt("/cards/7");
   const links = (await screen.findByRole("heading", { name: "Links" })).closest("details")!;
   expect(links).toHaveAttribute("open");
@@ -647,6 +651,7 @@ test("the panel groups links, sync, and collections, with Related left to the ma
   expect(collections).not.toHaveAttribute("open");
   const aside = links.closest("aside")!;
   expect(within(aside).queryByRole("heading", { name: "Related" })).not.toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Related" })).toBeInTheDocument();
   expect(within(aside).queryByText(/^Library:/)).not.toBeInTheDocument();
 });
 

@@ -12,9 +12,11 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"log/slog"
 	"sync"
 	"unicode/utf8"
 
+	"github.com/inkandale/innkeeper/internal/embed"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
@@ -186,6 +188,10 @@ func Check(decl map[string]protocol.Enrichment, sent []protocol.EnrichRevision, 
 type Runner struct {
 	plugins.JobRunner
 	Lib *library.Library
+	// Queue and Log queue an embed job after a run stores values of a key
+	// that declares embed, so vectors follow the new text.
+	Queue *jobs.Queue
+	Log   *slog.Logger
 }
 
 // Run is the jobs.Handler for Kind. It runs once: each call costs the owner
@@ -247,6 +253,9 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 		}
 		pr.Publish(prog)
 		mu.Unlock()
+	}
+	if prog.Done > 0 && slices.ContainsFunc(slices.Collect(maps.Values(inst.Manifest.Enrichments)), func(e protocol.Enrichment) bool { return e.Embed }) {
+		embed.Enqueue(ctx, rn.Queue, rn.Log)
 	}
 	if batches > 0 && failedBatches == batches {
 		return fmt.Errorf("every batch failed: %w", lastErr)

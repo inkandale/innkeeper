@@ -76,7 +76,7 @@ func TestEmbedJobDoesNothingWithoutEmbedInstance(t *testing.T) {
 	if err := e.run.Run(context.Background(), &jobs.Run{}); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := e.lib.Unembedded(context.Background(), e.inst, 0, 0, 10); len(got) != 1 {
+	if got, _ := e.lib.Unembedded(context.Background(), e.inst, nil, 0, 0, 10); len(got) != 1 {
 		t.Fatalf("a run without an embed instance embedded the card: %+v", got)
 	}
 }
@@ -94,7 +94,7 @@ func TestEmbedJobEmbedsEveryCardInBatches(t *testing.T) {
 	if err := e.run.Run(ctx, r); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := e.lib.Unembedded(ctx, e.inst, 0, 0, 100); err != nil || len(got) != 0 {
+	if got, err := e.lib.Unembedded(ctx, e.inst, nil, 0, 0, 100); err != nil || len(got) != 0 {
 		t.Fatalf("left unembedded: %d, %v", len(got), err)
 	}
 }
@@ -112,13 +112,13 @@ func TestEmbedJobReembedsEditedCard(t *testing.T) {
 	if _, err := e.lib.Cards.Update(ctx, id, rev, library.Edit{Data: json.RawMessage(`{"name": "Brakka the Bold"}`), Source: "ui"}); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := e.lib.Unembedded(ctx, e.inst, 0, 0, 10); len(got) != 1 {
+	if got, _ := e.lib.Unembedded(ctx, e.inst, nil, 0, 0, 10); len(got) != 1 {
 		t.Fatalf("an edited card isn't due: %+v", got)
 	}
 	if err := e.run.Run(ctx, &jobs.Run{}); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := e.lib.Unembedded(ctx, e.inst, 0, 0, 10); len(got) != 0 {
+	if got, _ := e.lib.Unembedded(ctx, e.inst, nil, 0, 0, 10); len(got) != 0 {
 		t.Fatalf("still due after a run: %+v", got)
 	}
 }
@@ -196,7 +196,7 @@ func TestEmbedJobSkipsACardTheModelRejects(t *testing.T) {
 	if j.Status != jobs.StatusSucceeded {
 		t.Fatalf("job %s: %s", j.Status, *j.Error)
 	}
-	got, err := e.lib.Unembedded(ctx, e.inst, 0, 0, 100)
+	got, err := e.lib.Unembedded(ctx, e.inst, nil, 0, 0, 100)
 	if err != nil || len(got) != 1 || got[0].CardID != poison {
 		t.Fatalf("left unembedded: %+v, %v; want only the rejected card", got, err)
 	}
@@ -218,7 +218,7 @@ func TestEmbedJobIgnoresADisabledEmbedInstance(t *testing.T) {
 	if err := e.run.Run(ctx, &jobs.Run{}); err != nil {
 		t.Fatalf("a run with a disabled instance: %v, want nil", err)
 	}
-	if got, _ := e.lib.Unembedded(ctx, e.inst, 0, 0, 10); len(got) != 1 {
+	if got, _ := e.lib.Unembedded(ctx, e.inst, nil, 0, 0, 10); len(got) != 1 {
 		t.Fatalf("a disabled instance embedded the card: %+v", got)
 	}
 }
@@ -280,7 +280,7 @@ func TestEmbedJobSwitchesToANewEmbedInstanceMidRun(t *testing.T) {
 	if j := e.runJob(t); j.Status != jobs.StatusSucceeded {
 		t.Fatalf("job %s: %s", j.Status, *j.Error)
 	}
-	if got, err := e.lib.Unembedded(ctx, next, 0, 0, 100); err != nil || len(got) != 0 {
+	if got, err := e.lib.Unembedded(ctx, next, nil, 0, 0, 100); err != nil || len(got) != 0 {
 		t.Fatalf("left unembedded by the new instance: %d, %v", len(got), err)
 	}
 }
@@ -321,10 +321,42 @@ func TestEmbedJobForALibraryEmbedsOnlyItsCards(t *testing.T) {
 	if err := e.run.Run(ctx, &jobs.Run{Job: jobs.Job{Payload: payload}}); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := e.lib.Unembedded(ctx, e.inst, archive.ID, 0, 10); err != nil || len(got) != 0 {
+	if got, err := e.lib.Unembedded(ctx, e.inst, nil, archive.ID, 0, 10); err != nil || len(got) != 0 {
 		t.Fatalf("left unembedded in the library: %+v, %v", got, err)
 	}
-	if got, err := e.lib.Unembedded(ctx, e.inst, library.DefaultLibrary, 0, 10); err != nil || len(got) != 1 {
+	if got, err := e.lib.Unembedded(ctx, e.inst, nil, library.DefaultLibrary, 0, 10); err != nil || len(got) != 1 {
 		t.Fatalf("unembedded in another library = %+v, %v; want its one card left alone", got, err)
+	}
+}
+
+func TestSourcesAreEnabledEnrichInstancesEmbedKeys(t *testing.T) {
+	ctx := context.Background()
+	pool := testdb.New(t)
+	m, err := protocol.LoadManifest(testutil.FakePluginWith(t, []string{"enrich"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary := m.Enrichments["summary"]
+	summary.Embed = true
+	m.Enrichments["summary"] = summary
+	box, err := secrets.New(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := plugins.New(pool, map[string]*protocol.Manifest{"fake": m}, &blobstore.Store{Name: "library", Root: t.TempDir()}, box)
+	on, err := reg.CreateInstance(ctx, plugins.NewInstance{Plugin: "fake", Name: new("On")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	off, err := reg.CreateInstance(ctx, plugins.NewInstance{Plugin: "fake", Name: new("Off")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.UpdateInstance(ctx, off, plugins.InstanceEdit{Disabled: new(true)}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Sources(ctx, reg)
+	if err != nil || len(got) != 1 || got[0] != (library.EmbedSource{Instance: on, Key: "summary"}) {
+		t.Fatalf("sources = %+v, %v", got, err)
 	}
 }

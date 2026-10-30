@@ -86,7 +86,7 @@ func worker() error {
 	// Serves library.call's tools in process; nothing listens on it.
 	tools := &api.Server{Lib: svc.lib, Queue: q, Registry: svc.registry, Auth: auth.New(svc.pool), Targets: tg, Plugins: mgr, Log: log}
 	runner := &actions.Runner{Lib: svc.lib, Registry: svc.registry, Plugins: mgr, Runs: runs, API: tools.APIHandler()}
-	enricher := &enrich.Runner{Lib: svc.lib, Registry: svc.registry, Plugins: mgr, Runs: runs}
+	enricher := &enrich.Runner{Lib: svc.lib, Registry: svc.registry, Plugins: mgr, Runs: runs, Queue: q, Log: log}
 	embedder := &embed.Runner{Lib: svc.lib, Registry: svc.registry, Plugins: mgr}
 	ex := &exporter.Exporter{Lib: svc.lib, Registry: svc.registry, Plugins: mgr, Log: log}
 	dbURL := os.Getenv("INNKEEPER_DATABASE_URL")

@@ -154,6 +154,10 @@ type Enrichment struct {
 	// highest-priority value it has. Space values apart, such as by 100, so
 	// later plugins fit between.
 	Priority int `toml:"priority"`
+	// Embed makes the key's value, on text or list keys, the text a card's
+	// vector is made from in place of its own fields. Values of several
+	// such keys are joined, ordered by key.
+	Embed bool `toml:"embed"`
 }
 
 // LoadManifest reads and validates dir/plugin.toml. Unknown keys are errors,
@@ -306,6 +310,9 @@ func (m *Manifest) Validate() error {
 		}
 		if e.Type == "score" && (len(e.Range) != 2 || !(e.Range[0] < e.Range[1])) {
 			errs = append(errs, fmt.Errorf("enrichment %q: score needs range = [low, high]", key))
+		}
+		if e.Embed && e.Type != "text" && e.Type != "list" {
+			errs = append(errs, fmt.Errorf("enrichment %q: embed needs type text or list", key))
 		}
 		if e.Priority != 0 && !e.Grid {
 			errs = append(errs, fmt.Errorf("enrichment %q: priority needs grid", key))

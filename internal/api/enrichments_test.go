@@ -12,6 +12,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/inkandale/innkeeper/internal/embed"
 	"github.com/inkandale/innkeeper/internal/enrich"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
@@ -45,7 +46,7 @@ func newEnrichEnv(t *testing.T) *enrichEnv {
 	runs := pluginhost.NewRuns(quiet)
 	mgr := pluginhost.NewManager(runs.Handle, time.Minute, quiet)
 	t.Cleanup(mgr.Close)
-	rn := &enrich.Runner{Lib: e.s.Lib, Registry: e.s.Registry, Plugins: mgr, Runs: runs}
+	rn := &enrich.Runner{Lib: e.s.Lib, Registry: e.s.Registry, Plugins: mgr, Runs: runs, Queue: e.s.Queue, Log: quiet}
 	w := &jobs.Worker{Queue: e.s.Queue, Log: quiet, Poll: 50 * time.Millisecond, Lease: 600 * time.Millisecond,
 		Handlers: map[string]jobs.Handler{enrich.Kind: rn.Run}}
 	wctx, cancel := context.WithCancel(context.Background())
@@ -104,6 +105,27 @@ func (e *enrichEnv) search(q map[string]any, status int) library.Results {
 	var res library.Results
 	e.call("POST", "/cards/search", q, status, &res)
 	return res
+}
+
+func TestEnrichRunQueuesEmbedOnlyForEmbedKeys(t *testing.T) {
+	e := newEnrichEnv(t)
+	queued := func() int {
+		var n int
+		if err := e.pool.QueryRow(context.Background(), `SELECT count(*) FROM job WHERE kind = $1 AND status = 'queued'`, embed.Kind).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	card := e.card("Brakka", "A dwarf smith.")
+	if e.evaluate(e.instID, card); queued() != 0 {
+		t.Fatal("a run with no embed key queued an embed job")
+	}
+	summary := e.manifests["judge"].Enrichments["summary"]
+	summary.Embed = true
+	e.manifests["judge"].Enrichments["summary"] = summary
+	if e.startRun(map[string]any{"instance_id": e.instID, "card_ids": []int64{card}, "rescore": true}); queued() != 1 {
+		t.Fatal("a run that stored an embed key's value queued no embed job")
+	}
 }
 
 func TestEnrichRunPassesThoroughToThePlugin(t *testing.T) {

@@ -51,6 +51,10 @@ func (rn *Runner) Run(ctx context.Context, r *jobs.Run) error {
 			return fmt.Errorf("read embed payload: %w", err)
 		}
 	}
+	sources, err := Sources(ctx, rn.Registry)
+	if err != nil {
+		return err
+	}
 	var inst, after int64
 	done := 0
 	for {
@@ -64,7 +68,7 @@ func (rn *Runner) Run(ctx context.Context, r *jobs.Run) error {
 		if cur != inst {
 			inst, after = cur, 0
 		}
-		todo, err := rn.Lib.Unembedded(ctx, inst, p.Library, after, batchSize)
+		todo, err := rn.Lib.Unembedded(ctx, inst, sources, p.Library, after, batchSize)
 		if err != nil || len(todo) == 0 {
 			return err
 		}
@@ -151,6 +155,27 @@ func Instance(ctx context.Context, reg *plugins.Registry) (int64, error) {
 		return 0, nil
 	}
 	return id, err
+}
+
+// Sources are the enabled enrich instances' keys whose values a card's
+// vector is made from in place of its own fields.
+func Sources(ctx context.Context, reg *plugins.Registry) ([]library.EmbedSource, error) {
+	insts, err := reg.InstancesWith(ctx, protocol.CapabilityEnrich)
+	if err != nil {
+		return nil, fmt.Errorf("list enrich instances: %w", err)
+	}
+	var out []library.EmbedSource
+	for _, inst := range insts {
+		if inst.Disabled {
+			continue
+		}
+		for key, d := range reg.Manifests()[inst.Plugin].Enrichments {
+			if d.Embed {
+				out = append(out, library.EmbedSource{Instance: inst.ID, Key: key})
+			}
+		}
+	}
+	return out, nil
 }
 
 // Enqueue makes sure an embed job will run. A failure is only logged; the

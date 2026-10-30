@@ -406,6 +406,21 @@ func TestEnrichNeedsEnrichments(t *testing.T) {
 	}
 }
 
+func TestEmbedNeedsTextOrListEnrichment(t *testing.T) {
+	m := &Manifest{Name: "judge", Version: "1", Protocol: Version, Command: []string{"judge"}, Capabilities: []string{"enrich"},
+		Enrichments: map[string]Enrichment{
+			"premise": {Type: "text", Label: "Premise", Embed: true},
+			"themes":  {Type: "list", Label: "Themes", Embed: true},
+		}}
+	if err := m.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	m.Enrichments["quality"] = Enrichment{Type: "score", Label: "Quality", Range: []float64{0, 100}, Embed: true}
+	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), `enrichment "quality": embed needs type text or list`) {
+		t.Fatalf("got %v", err)
+	}
+}
+
 func TestManifestUses(t *testing.T) {
 	body := strings.Replace(validManifest, `secrets = ["api_key"]`, `secrets = ["api_key"]
 uses = ["ai.chat", "ai.embed"]`, 1)

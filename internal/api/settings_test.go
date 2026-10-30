@@ -240,7 +240,7 @@ func TestSettingOrClearingEmbedInstanceDropsEveryVector(t *testing.T) {
 	embedAll := func() {
 		t.Helper()
 		for _, id := range []int64{inst, other} {
-			todo, err := e.s.Lib.Unembedded(ctx, id, 0, 0, 10)
+			todo, err := e.s.Lib.Unembedded(ctx, id, nil, 0, 0, 10)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { api, must, mustOk, route, type Kind } from "../api/client";
 import { bindingsQuery, collectionsQuery, useFollowers } from "../api/queries";
 import type { components } from "../api/schema";
-import { Group } from "./Panel";
+import { Group } from "./Group";
 import { removeSource, sourceLabel, sourceRemoteId } from "../sync/sync";
 import { useBindingEdits } from "./Upstream";
 
@@ -106,7 +106,7 @@ export function Sources({ kind, id }: { kind: Kind; id: number }) {
             if (url.trim()) add.mutate(url.trim());
           }}
         >
-          <input className="input" aria-label="Add source URL" placeholder="Source URL" autoFocus value={url} onChange={(e) => setUrl(e.target.value)} />
+          <input className="input" aria-label="Add source URL" placeholder="Source URL" autoFocus value={url} onKeyDown={(e) => e.key === "Escape" && setAdding(false)} onChange={(e) => setUrl(e.target.value)} />
         </form>
       ) : (
         <button className="button ghost" onClick={() => setAdding(true)}>

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { Link } from "react-router";
 import { api, must, mustOk, route, thumb, upload, type Kind } from "../api/client";
 import { bindingsQuery, instancesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
@@ -15,6 +15,7 @@ import { PushPreview } from "../sync/PushPreview";
 import { TargetPicker } from "../sync/TargetPicker";
 import { reviewPath, stateLabel } from "../sync/sync";
 import { ChipInput } from "./ChipInput";
+import { Group } from "./Group";
 import { Collections, Sources } from "./Organize";
 import { useBindingEdits } from "./Upstream";
 import { VariantOf, Variants } from "./Variants";
@@ -50,16 +51,6 @@ export function Panel({ card, data, edit, onAvatar, avatarBusy, lock }: PanelPro
       <Sync kind="card" id={card.id} />
       <Collections id={card.id} library={card.library_id} member={card.collections ?? []} />
     </aside>
-  );
-}
-
-/** Group is a collapsible block of the side panel. */
-export function Group({ title, open = true, children }: { title: string; open?: boolean; children: ReactNode }) {
-  return (
-    <details className="aside-group" open={open}>
-      <summary>{title}</summary>
-      {children}
-    </details>
   );
 }
 

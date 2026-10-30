@@ -36,14 +36,14 @@
 }
 
 .aside-group > summary {
-  font-size: 0.85em;
-  text-transform: uppercase;
-  color: var(--text-muted);
   cursor: pointer;
-  margin: var(--space) 0 calc(var(--space) * 0.5);
 }
 
-.aside-group {
+.aside-group > summary h2 {
+  display: inline;
+}
+
+.aside-group-body {
   display: grid;
   gap: calc(var(--space) * 0.5);
 }
@@ -58,9 +58,17 @@
   align-items: center;
 }
 
+.card-aside .plain li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
 .card-aside .truncate {
+  min-width: 0;
+  flex: 1 1 auto;
   display: inline-block;
-  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

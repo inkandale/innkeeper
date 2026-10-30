@@ -639,11 +639,11 @@ test("Link existing makes the picked card a variant of this one", async () => {
 
 test("the panel groups links, sync, and collections, with Related left to the main column", async () => {
   renderAt("/cards/7");
-  const links = (await screen.findByText("Links", { selector: "summary" })).closest("details")!;
+  const links = (await screen.findByRole("heading", { name: "Links" })).closest("details")!;
   expect(links).toHaveAttribute("open");
   expect(within(links).getByRole("link", { name: "chub: dg/brakka" })).toBeInTheDocument();
   expect(within(links).getByRole("link", { name: /^History/ })).toHaveAttribute("href", "/cards/7/history");
-  const collections = screen.getByText("Collections", { selector: "summary" }).closest("details")!;
+  const collections = screen.getByRole("heading", { name: "Collections" }).closest("details")!;
   expect(collections).not.toHaveAttribute("open");
   const aside = links.closest("aside")!;
   expect(within(aside).queryByRole("heading", { name: "Related" })).not.toBeInTheDocument();

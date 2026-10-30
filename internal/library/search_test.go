@@ -1290,7 +1290,7 @@ func reverseIDs(ids []int64) []int64 {
 func TestSearchFiltersByCreatorIgnoringCase(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
-	mine, _ := newCard(t, lib, "mine", `{"name": "Mine", "creator": "OnlyYa"}`)
+	mine, _ := newCard(t, lib, "mine", `{"name": "Mine", "creator": " OnlyYa "}`)
 	newCard(t, lib, "theirs", `{"name": "Theirs", "creator": "someone"}`)
 	got, err := lib.Search(ctx, Card, Query{Filter: &Filter{Creator: ptr(" onlyya ")}})
 	if err != nil || !slices.Equal(hitIDs(got), []int64{mine}) {

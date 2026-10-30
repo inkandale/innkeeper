@@ -1,4 +1,4 @@
-import { changed, clashes, rebase, show, strings, tokens, type Draft } from "./draft";
+import { changed, clashes, rebase, same, show, strings, tokens, type Draft } from "./draft";
 
 const draft: Draft = { baseId: 1, base: { a: "x", b: "x", list: ["1"] }, data: { a: "y", b: "x", list: ["1"] } };
 
@@ -36,4 +36,10 @@ test("show prints strings as they are and anything else as JSON", () => {
 test("strings keeps the strings in an array", () => {
   expect(strings(["a", 1, "b"])).toEqual(["a", "b"]);
   expect(strings("a")).toEqual([]);
+});
+
+test("same ignores object key order at any depth, but not array order", () => {
+  expect(same({ a: 1, b: { c: 2, d: 3 } }, { b: { d: 3, c: 2 }, a: 1 })).toBe(true);
+  expect(same([1, 2], [2, 1])).toBe(false);
+  expect(same({ a: 1 }, { a: 2 })).toBe(false);
 });

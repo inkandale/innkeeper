@@ -6,8 +6,12 @@ export type Draft = { baseId: number; base: Data; data: Data };
 /** nsfw reports whether tags, a card's tags field, has an NSFW tag in any case. */
 export const nsfw = (tags: unknown) => Array.isArray(tags) && tags.some((t) => typeof t === "string" && t.toLowerCase() === "nsfw");
 
+/** sorted is v with its object keys in order, so key order doesn't count; jsonb reorders them. */
+const sorted = (_: string, v: unknown) =>
+  v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : v;
+
 /** same compares two JSON values by content. */
-export const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+export const same = (a: unknown, b: unknown) => JSON.stringify(a, sorted) === JSON.stringify(b, sorted);
 
 /** changed lists the fields whose edited value differs from the base revision's. */
 export function changed(d: Draft | null): Set<string> {

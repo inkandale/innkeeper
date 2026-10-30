@@ -53,8 +53,9 @@ export const bindingsQuery = (kind: Kind, id: number) =>
   });
 
 /** namesQuery looks up the names of the ids in one library, and waits while there are none. */
+// 500 is the API's page maximum; IDs past it show as #id.
 export const namesQuery = (kind: Kind, library: number, ids: number[]) => ({
-  ...searchQuery(kind, { library, filter: { ids }, fields: ["name"], page: { size: ids.length } }),
+  ...searchQuery(kind, { library, filter: { ids }, fields: ["name"], page: { size: Math.min(ids.length, 500) } }),
   enabled: ids.length > 0,
 });
 

@@ -19,7 +19,7 @@ const groupNames: Record<RelatedPage["group"], string> = {
   collection: "Shares a collection",
 };
 
-// Two rows of tiles in the main column.
+// Enough to recognize the group; See all opens the rest.
 const shown = 8;
 
 /** galleryTerms are the gallery terms that list a related group in full. */
@@ -73,7 +73,7 @@ export function Similar({ id, library }: { id: number; library: number }) {
   const items = pages.data?.pages.flatMap((p) => p.items ?? []) ?? [];
   const basis = pages.data?.pages[0]?.basis;
   return (
-    <section>
+    <section className="metadata-section">
       <h2>Similar</h2>
       <label>
         <input type="checkbox" checked={scope === "all"} onChange={(e) => setScope(e.target.checked ? "all" : "library")} /> All
@@ -107,7 +107,7 @@ export function Related({ card }: { card: Entity }) {
   // Search covers one library, so the gallery shows the rest from the card's own library.
   const seeAll = (g: RelatedPage) => `/cards?${toParams({ ...parseQuery(new URLSearchParams(), card.library_id), terms: galleryTerms(g.group, card) })}`;
   return (
-    <section>
+    <section className="metadata-section">
       <h2>Related</h2>
       {related.isError && <p className="error">{related.error.message}</p>}
       {groups.map((g) => (

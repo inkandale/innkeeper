@@ -28,7 +28,8 @@
   color: var(--text-muted);
 }
 
-.card-aside h2 {
+.card-aside h2,
+.metadata-section > h2 {
   font-size: 0.85em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -80,7 +81,7 @@
   min-width: 0;
 }
 
-/* The Forge's sticky tabs sit below the bar, so the bar keeps to one row of this height. */
+/* The sticky page tabs sit below the bar, so the bar keeps to one row of this height. */
 .card-main:has(> .editor-bar) {
   --editor-bar-height: 52px;
 }
@@ -291,6 +292,14 @@
     height: auto;
     flex-wrap: wrap;
     padding: var(--space);
+  }
+
+  .page-tabs {
+    flex-wrap: wrap;
+  }
+
+  .page-tabs [role="tablist"] {
+    overflow-x: auto;
   }
 
   .editor-bar .input.name {
@@ -513,13 +522,6 @@ fieldset.contents {
   margin: 0;
 }
 
-#page-tabpanel h2 {
-  font-size: 0.85em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  margin: var(--space) 0 calc(var(--space) * 0.5);
-}
-
 .enrichment-instance {
   margin-bottom: calc(var(--space) * 2);
 }
@@ -578,7 +580,7 @@ fieldset.contents {
   background: var(--accent);
 }
 
-/* The side panel fits two or three found cards across. */
+/* Small tiles, so the main column fits several found cards across. */
 .discover {
   --tile-width: 88px;
 }

@@ -25,7 +25,7 @@ export function Enrichments({ id }: { id: number }) {
   const name = (inst: number) =>
     enrichers.find((e) => e.id === inst)?.label ?? (list.find((v) => v.instance_id === inst)?.instance_name || `Deleted instance #${inst}`);
   return (
-    <section>
+    <section className="metadata-section">
       <h2>Enrichments</h2>
       {values.data && !list.length && <p className="muted">Not scored yet.</p>}
       {instances.map((inst) => (

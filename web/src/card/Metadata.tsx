@@ -24,7 +24,7 @@ export function Metadata({ kind, entity }: { kind: Kind; entity: Entity }) {
     ["Revision", `${rev.id} (${rev.source})`],
     ["Slug", entity.slug],
     ["ID", entity.id],
-    ["Library", library?.name ?? (libraries && `#${entity.library_id}`)],
+    ["Library", library?.name ?? (libraries && `Library ${entity.library_id}`)],
     ["Provenance", entity.provenance],
     [
       "Content hash",
@@ -34,7 +34,7 @@ export function Metadata({ kind, entity }: { kind: Kind; entity: Entity }) {
     ],
   ];
   return (
-    <section>
+    <section className="metadata-section">
       <h2>Details</h2>
       <dl className="metadata-list">
         {rows.map(([label, value]) => (

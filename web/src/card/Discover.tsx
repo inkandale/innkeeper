@@ -1,10 +1,12 @@
-import { keepPreviousData, useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
 import { api, must, thumb } from "../api/client";
 import { librariesQuery } from "../api/queries";
 import type { components } from "../api/schema";
-import { nsfw } from "./draft";
+import { parseQuery, toParams, type Term } from "../cards/query";
+import type { Entity } from "./Card";
+import { nsfw, text, type Data } from "./draft";
 import "../cards/Cards.css";
 import "./Card.css";
 
@@ -16,6 +18,17 @@ const groupNames: Record<RelatedPage["group"], string> = {
   lorebook: "Shares a lorebook",
   collection: "Shares a collection",
 };
+
+// Two rows of tiles in the main column.
+const shown = 8;
+
+/** galleryTerms are the gallery terms that list a related group in full. */
+function galleryTerms(group: RelatedPage["group"], card: Entity): Term[] {
+  const term = (kind: Term["kind"], value: string): Term => ({ kind, value, not: false });
+  if (group === "creator") return [term("creator", text((card.revision.data as Data).creator))];
+  if (group === "lorebook") return (card.lorebooks ?? []).map((id) => term("lorebook", String(id)));
+  return (card.collections ?? []).map((id) => term("collection", String(id)));
+}
 
 /** CardList shows the found cards as tiles, naming a card's library when it isn't this card's. */
 function CardList({ items, library }: { items: Found[]; library: number }) {
@@ -51,7 +64,7 @@ export function Similar({ id, library }: { id: number; library: number }) {
   const pages = useInfiniteQuery({
     queryKey: ["card", id, "similar", scope],
     queryFn: async ({ pageParam }) =>
-      must(await api.GET("/cards/{id}/similar", { params: { path: { id }, query: { scope, cursor: pageParam } } })),
+      must(await api.GET("/cards/{id}/similar", { params: { path: { id }, query: { scope, cursor: pageParam, limit: shown } } })),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next_cursor || undefined,
     placeholderData: keepPreviousData,
@@ -83,44 +96,26 @@ export function Similar({ id, library }: { id: number; library: number }) {
   );
 }
 
-/** RelatedGroup shows one group from the overview and fetches its later pages on demand. */
-function RelatedGroup({ id, library, first }: { id: number; library: number; first: RelatedPage }) {
-  const [later, setLater] = useState<RelatedPage[]>([]);
-  const cursor = (later.at(-1) ?? first).next_cursor;
-  const more = useMutation({
-    mutationFn: async () =>
-      must(await api.GET("/cards/{id}/related", { params: { path: { id }, query: { group: first.group, cursor } } })).groups?.[0],
-    onSuccess: (page) => page && setLater((pages) => [...pages, page]),
-  });
-  const items = [first, ...later].flatMap((p) => p.items ?? []);
-  return (
-    <>
-      <h3>{groupNames[first.group]}</h3>
-      <CardList items={items} library={library} />
-      {more.isError && <p className="error">{more.error.message}</p>}
-      {cursor && (
-        <button className="button ghost" disabled={more.isPending} onClick={() => more.mutate()}>
-          Show more
-        </button>
-      )}
-    </>
-  );
-}
-
-/** Related lists the cards linked to this one by creator, lorebook, or collection. */
-export function Related({ id, library }: { id: number; library: number }) {
+/** Related shows the first cards linked to this one by creator, lorebook, or collection, each group linking to the gallery for the rest. */
+export function Related({ card }: { card: Entity }) {
   const related = useQuery({
-    queryKey: ["card", id, "related"],
-    queryFn: async () => must(await api.GET("/cards/{id}/related", { params: { path: { id } } })),
+    queryKey: ["card", card.id, "related"],
+    queryFn: async () => must(await api.GET("/cards/{id}/related", { params: { path: { id: card.id }, query: { limit: shown } } })),
   });
   const groups = related.data?.groups ?? [];
   if (!related.isError && !groups.length) return null;
+  // Search covers one library, so the gallery shows the rest from the card's own library.
+  const seeAll = (g: RelatedPage) => `/cards?${toParams({ ...parseQuery(new URLSearchParams(), card.library_id), terms: galleryTerms(g.group, card) })}`;
   return (
     <section>
       <h2>Related</h2>
       {related.isError && <p className="error">{related.error.message}</p>}
       {groups.map((g) => (
-        <RelatedGroup key={`${id}:${g.group}:${related.dataUpdatedAt}`} id={id} library={library} first={g} />
+        <div key={g.group}>
+          <h3>{groupNames[g.group]}</h3>
+          <CardList items={g.items ?? []} library={card.library_id} />
+          {g.next_cursor && <Link to={seeAll(g)}>See all</Link>}
+        </div>
       ))}
     </section>
   );

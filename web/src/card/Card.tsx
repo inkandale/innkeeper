@@ -15,7 +15,7 @@ import { useEditor } from "./useEditor";
 import { useForgeView } from "../forge/Forge";
 import { useForge } from "../forge/useForge";
 import { cardSubject } from "./subject";
-import { Similar } from "./Discover";
+import { Related, Similar } from "./Discover";
 import { Fields } from "./Fields";
 import { PageTabs } from "./PageTabs";
 import "./Card.css";
@@ -107,6 +107,7 @@ function CardEditor({ id }: { id: number }) {
           notices={view.notices}
         />
         {view.overlays}
+        <Related card={head} />
         <Similar id={head.id} library={head.library_id} />
       </div>
     </div>

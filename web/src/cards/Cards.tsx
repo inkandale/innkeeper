@@ -51,6 +51,7 @@ function termLabel(t: Term, names: Names): string {
   const value =
     t.kind === "score" ? scoreLabel(t.value)
     : t.kind === "collection" ? (names.collections.get(Number(t.value)) ?? "#" + t.value)
+    : t.kind === "lorebook" ? (names.lorebooks.get(Number(t.value)) ?? "#" + t.value)
     : t.kind === "target" ? (names.instances.get(Number(t.value)) ?? "#" + t.value)
     : t.kind === "state" ? stateLabel(t.value)
     : t.value;
@@ -113,9 +114,15 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const instances = useQuery(instancesQuery);
   const plugins = useQuery(pluginsQuery);
   const collections = useQuery(collectionsQuery(q.library));
+  const lorebookIds = q.terms.filter((t) => t.kind === "lorebook").map((t) => Number(t.value));
+  const lorebooks = useQuery({
+    ...searchQuery("lorebook", { library: q.library, filter: { ids: lorebookIds }, fields: ["name"], page: { size: lorebookIds.length } }),
+    enabled: lorebookIds.length > 0,
+  });
   const names: Names = {
     instances: new Map((instances.data ?? []).map((i) => [i.id, i.label])),
     collections: new Map((collections.data ?? []).map((c) => [c.id, c.name])),
+    lorebooks: new Map((lorebooks.data?.hits ?? []).map((h) => [h.id, String(h.fields.name ?? "")])),
     logos: apps(instances.data, plugins.data),
   };
   const imp = importers(instances.data, plugins.data);

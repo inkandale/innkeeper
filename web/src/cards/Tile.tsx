@@ -8,7 +8,7 @@ import { Family } from "./Family";
 
 export type Hit = components["schemas"]["Hit"];
 type EnrichmentKey = components["schemas"]["EnrichmentKey"];
-export type Names = { instances: Map<number, string>; collections: Map<number, string>; logos: Map<number, App> };
+export type Names = { instances: Map<number, string>; collections: Map<number, string>; lorebooks: Map<number, string>; logos: Map<number, App> };
 /** Scorer is an enrich instance's keys and, for the top three scorers by priority, its medal. */
 export type Scorer = { keys: EnrichmentKey[]; medal?: (typeof medals)[number] };
 export const medals = ["gold", "silver", "bronze"] as const;

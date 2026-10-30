@@ -294,3 +294,18 @@ test("facet counts leave the text out of a semantic search", () => {
   expect(countSearch(q, "tag").text).toBeUndefined();
   expect(countSearch({ ...q, semantic: false }, "tag").text).toBe("grumpy dwarf");
 });
+
+test("creator and lorebook terms survive the URL and OR within their section", () => {
+  const q = parseQuery(new URLSearchParams("library=1&f=creator:OnlyYa&f=lorebook:4&f=lorebook:5"), 1);
+  expect(q.terms).toEqual([
+    { kind: "creator", value: "OnlyYa", not: false },
+    { kind: "lorebook", value: "4", not: false },
+    { kind: "lorebook", value: "5", not: false },
+  ]);
+  expect(parseQuery(toParams(q), 1)).toEqual(q);
+  expect(filterFor(q.terms)).toEqual({ and: [{ creator: "OnlyYa" }, { or: [{ lorebook: 4 }, { lorebook: 5 }] }] });
+});
+
+test("a lorebook term must name an ID", () => {
+  expect(parseQuery(new URLSearchParams("f=lorebook:forge"), 1).terms).toEqual([]);
+});

@@ -7,8 +7,8 @@ type TargetIs = components["schemas"]["TargetState"]["is"];
 
 // Typed from the schema so a new state fails the build here.
 export const targetStates: TargetIs[] = ["in_sync", "ahead", "remote_changed", "diverged", "missing", "cant_check"];
-/** kinds are the filter sections, in sidebar order. score filters on enrichment numbers, value on text and list enrichments. */
-const kinds = ["target", "state", "tag", "source", "collection", "score", "value"] as const;
+/** kinds are the filter terms. Sidebar sections are sectionsFor's; creator and lorebook arrive by link only. score filters on enrichment numbers, value on text and list enrichments. */
+const kinds = ["target", "state", "tag", "source", "collection", "creator", "lorebook", "score", "value"] as const;
 const sorts = ["relevance", "updated", "name", "created"] as const;
 const enrichmentSort = /^enrichment:(?:[1-9]\d*:)?[a-z][a-z0-9_]*$/;
 // Score and value terms name their key as instance:key; a bare grid key reads the grid score.
@@ -112,7 +112,7 @@ const id = (v: string) => /^[1-9]\d*$/.test(v);
 
 /** valid says whether value can be a term of kind. */
 function valid(kind: TermKind, value: string): boolean {
-  if (kind === "target" || kind === "collection") return id(value);
+  if (kind === "target" || kind === "collection" || kind === "lorebook") return id(value);
   if (kind === "state") return targetStates.some((s) => s === value);
   if (kind === "score") return parseScore(value) !== undefined;
   if (kind === "value") return enrichmentValue(value) !== undefined;
@@ -179,6 +179,10 @@ function condition(kind: TermKind, value: string): Filter {
       return { source: value };
     case "collection":
       return { collection: Number(value) };
+    case "creator":
+      return { creator: value };
+    case "lorebook":
+      return { lorebook: Number(value) };
     case "score": {
       const { instance, key, gte, lte, none } = parseScore(value)!;
       return { enrichment: key, ...(instance && { instance }), ...(none ? { missing: true } : { gte, lte }) };
@@ -207,7 +211,7 @@ export function filterFor(terms: Term[], sharesSource = false, all: string[] = [
     if (all.includes(section)) parts.push(first, ...rest);
     else parts.push(rest.length ? { or: [first, ...rest] } : first);
   };
-  for (const kind of ["tag", "source", "collection"] as const) join(kind, included(kind).map((v) => condition(kind, v)));
+  for (const kind of ["tag", "source", "collection", "creator", "lorebook"] as const) join(kind, included(kind).map((v) => condition(kind, v)));
   // Each score key narrows on its own.
   for (const t of terms.filter((t) => t.kind === "score" && !t.not)) parts.push(condition(t.kind, t.value));
   // A value key is a section of its own.

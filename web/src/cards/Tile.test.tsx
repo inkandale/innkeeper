@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router";
 import { enrichmentText, Tile, type Hit, type Names, type Scorer } from "./Tile";
 
 const names: Names = {
+  lorebooks: new Map(),
   instances: new Map([
     [2, "Home ST"],
     [3, "Lumiverse"],

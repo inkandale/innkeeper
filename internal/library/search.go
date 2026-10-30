@@ -66,6 +66,8 @@ type Filter struct {
 	Name          *string       `json:"name,omitempty" maxLength:"200" doc:"Name contains this, in any case."`
 	Tag           *string       `json:"tag,omitempty" doc:"Has this tag, in any case."`
 	Collection    *int64        `json:"collection,omitempty" doc:"Is in this collection."`
+	Creator       *string       `json:"creator,omitempty" maxLength:"200" doc:"Creator is this, in any case, ignoring spaces around it. Cards only."`
+	Lorebook      *int64        `json:"lorebook,omitempty" doc:"Is linked to this lorebook. Cards only."`
 	Source        *string       `json:"source,omitempty" doc:"Has a source of this kind, such as chub."`
 	Archived      *bool         `json:"archived,omitempty"`
 	TargetState   *TargetFilter `json:"target_state,omitempty" doc:"Is pushed to one of instances and stands as one of states there. An empty list matches any value."`
@@ -537,7 +539,7 @@ func (w *where) filter(f Filter) (string, error) {
 		return "", fmt.Errorf("%w: filter has more than 200 conditions", ErrInvalid)
 	}
 	set := 0
-	for _, ok := range []bool{f.And != nil, f.Or != nil, f.Not != nil, f.IDs != nil, f.Name != nil, f.Tag != nil, f.Collection != nil, f.Source != nil, f.Archived != nil, f.TargetState != nil, f.Enrichment != nil, f.VariantOfRoot != nil, f.SharesSource != nil} {
+	for _, ok := range []bool{f.And != nil, f.Or != nil, f.Not != nil, f.IDs != nil, f.Name != nil, f.Tag != nil, f.Collection != nil, f.Creator != nil, f.Lorebook != nil, f.Source != nil, f.Archived != nil, f.TargetState != nil, f.Enrichment != nil, f.VariantOfRoot != nil, f.SharesSource != nil} {
 		if ok {
 			set++
 		}
@@ -548,8 +550,8 @@ func (w *where) filter(f Filter) (string, error) {
 	if f.Enrichment == nil && (f.Gte != nil || f.Lte != nil || f.Missing != nil || f.Is != nil || f.Instance != nil) {
 		return "", fmt.Errorf("%w: gte, lte, missing, is, and instance go with enrichment", ErrInvalid)
 	}
-	if w.k != Card && (f.Tag != nil || f.Collection != nil) {
-		return "", fmt.Errorf("%w: lorebooks have no tags or collections", ErrInvalid)
+	if w.k != Card && (f.Tag != nil || f.Collection != nil || f.Creator != nil || f.Lorebook != nil) {
+		return "", fmt.Errorf("%w: tag, collection, creator, and lorebook filter cards only", ErrInvalid)
 	}
 	switch {
 	case f.And != nil:
@@ -570,6 +572,12 @@ func (w *where) filter(f Filter) (string, error) {
 	case f.Collection != nil:
 		return `EXISTS (SELECT 1 FROM collection_card cc
 			WHERE cc.card_id = c.id AND cc.collection_id = ` + w.arg(*f.Collection) + `)`, nil
+	case f.Creator != nil:
+		// Matches the Related creator group, which compares lower(btrim(creator)).
+		return `lower(btrim(r.data->>'creator')) = lower(btrim(` + w.arg(*f.Creator) + `))`, nil
+	case f.Lorebook != nil:
+		return `EXISTS (SELECT 1 FROM card_lorebook cl
+			WHERE cl.card_id = c.id AND cl.lorebook_id = ` + w.arg(*f.Lorebook) + `)`, nil
 	case f.Source != nil:
 		return `EXISTS (SELECT 1 FROM ` + w.k.SourceTable + ` cs
 			WHERE cs.` + w.k.FK + ` = c.id AND cs.kind = ` + w.arg(*f.Source) + ` AND cs.removed_at IS NULL)`, nil

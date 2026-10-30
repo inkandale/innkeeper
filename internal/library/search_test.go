@@ -1286,3 +1286,39 @@ func reverseIDs(ids []int64) []int64 {
 	slices.Reverse(ids)
 	return ids
 }
+
+func TestSearchFiltersByCreatorIgnoringCase(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	mine, _ := newCard(t, lib, "mine", `{"name": "Mine", "creator": "OnlyYa"}`)
+	newCard(t, lib, "theirs", `{"name": "Theirs", "creator": "someone"}`)
+	got, err := lib.Search(ctx, Card, Query{Filter: &Filter{Creator: ptr(" onlyya ")}})
+	if err != nil || !slices.Equal(hitIDs(got), []int64{mine}) {
+		t.Fatalf("hits = %v, %v", hitIDs(got), err)
+	}
+}
+
+func TestSearchFiltersByLorebook(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	s := seedSearch(t, lib)
+	one := newLorebook(t, lib, "one")
+	two := newLorebook(t, lib, "two")
+	if err := lib.LinkLorebook(ctx, s.brakka, one); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.LinkLorebook(ctx, s.carrow, two); err != nil {
+		t.Fatal(err)
+	}
+	got, err := lib.Search(ctx, Card, Query{Filter: &Filter{Lorebook: &one}})
+	if err != nil || !slices.Equal(hitIDs(got), []int64{s.brakka}) {
+		t.Fatalf("one: hits = %v, %v", hitIDs(got), err)
+	}
+	either, err := lib.Search(ctx, Card, Query{Filter: &Filter{Or: []Filter{{Lorebook: &one}, {Lorebook: &two}}}})
+	if err != nil || !slices.Equal(slices.Sorted(slices.Values(hitIDs(either))), slices.Sorted(slices.Values([]int64{s.brakka, s.carrow}))) {
+		t.Fatalf("either: hits = %v, %v", hitIDs(either), err)
+	}
+	if _, err := lib.Search(ctx, Lorebook, Query{Filter: &Filter{Lorebook: &one}}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("lorebook search by lorebook: err = %v, want ErrInvalid", err)
+	}
+}

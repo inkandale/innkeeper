@@ -3463,6 +3463,8 @@ export interface components {
              * @description Is in this collection.
              */
             collection?: number;
+            /** @description Creator is this, in any case, ignoring spaces around it. Cards only. */
+            creator?: string;
             /** @description Has a current value for this enrichment key from the score instance. With gte and lte, a number in that range; with missing, no value. Cards only. */
             enrichment?: string;
             /**
@@ -3479,6 +3481,11 @@ export interface components {
             instance?: number;
             /** @description With enrichment: the value is this text, or a list holding it. */
             is?: string;
+            /**
+             * Format: int64
+             * @description Is linked to this lorebook. Cards only.
+             */
+            lorebook?: number;
             /**
              * Format: double
              * @description With enrichment: the value is at most this.

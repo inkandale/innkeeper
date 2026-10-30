@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router";
-import { instancesQuery, collectionsQuery, enrichmentKeysQuery, pluginsQuery, searchQuery, settingsQuery } from "../api/queries";
+import { instancesQuery, collectionsQuery, enrichmentKeysQuery, pluginsQuery, namesQuery, searchQuery, settingsQuery } from "../api/queries";
 import { text } from "../card/draft";
 import { apps } from "../sync/Logo";
 import { stateLabel } from "../sync/sync";
@@ -51,7 +51,7 @@ function termLabel(t: Term, names: Names): string {
   const value =
     t.kind === "score" ? scoreLabel(t.value)
     : t.kind === "collection" ? (names.collections.get(Number(t.value)) ?? "#" + t.value)
-    : t.kind === "lorebook" ? (names.lorebooks.get(Number(t.value)) ?? "#" + t.value)
+    : t.kind === "lorebook" ? (names.lorebooks.get(Number(t.value)) || "#" + t.value)
     : t.kind === "target" ? (names.instances.get(Number(t.value)) ?? "#" + t.value)
     : t.kind === "state" ? stateLabel(t.value)
     : t.value;
@@ -115,14 +115,11 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const plugins = useQuery(pluginsQuery);
   const collections = useQuery(collectionsQuery(q.library));
   const lorebookIds = q.terms.filter((t) => t.kind === "lorebook").map((t) => Number(t.value));
-  const lorebooks = useQuery({
-    ...searchQuery("lorebook", { library: q.library, filter: { ids: lorebookIds }, fields: ["name"], page: { size: lorebookIds.length } }),
-    enabled: lorebookIds.length > 0,
-  });
+  const lorebooks = useQuery(namesQuery("lorebook", q.library, lorebookIds));
   const names: Names = {
     instances: new Map((instances.data ?? []).map((i) => [i.id, i.label])),
     collections: new Map((collections.data ?? []).map((c) => [c.id, c.name])),
-    lorebooks: new Map((lorebooks.data?.hits ?? []).map((h) => [h.id, String(h.fields.name ?? "")])),
+    lorebooks: new Map((lorebooks.data?.hits ?? []).map((h) => [h.id, text(h.fields.name)])),
     logos: apps(instances.data, plugins.data),
   };
   const imp = importers(instances.data, plugins.data);

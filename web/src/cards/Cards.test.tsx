@@ -46,8 +46,10 @@ let settingsGate: Promise<void> | undefined;
 let resultsGate: Promise<void> | undefined;
 let libraryIds: number[];
 let emptyResults: boolean;
+let lorebookHits: unknown[];
 beforeEach(() => {
   emptyResults = false;
+  lorebookHits = [];
   libraryIds = [1, 2, 3];
   localStorage.clear();
   keys = { scorers: [], instances: [] };
@@ -69,6 +71,10 @@ beforeEach(() => {
       if (req.method === "PUT") {
         puts.push({ path, body: await req.json() });
         return new Response(null, { status: 204 });
+      }
+      if (path === "/api/lorebooks/search") {
+        searches.push(await req.json());
+        return json({ hits: lorebookHits, total: lorebookHits.length });
       }
       if (path === "/api/cards/search") {
         const body = await req.json();
@@ -193,6 +199,18 @@ test("a chip removes its filter", async () => {
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: "Remove tag: fantasy" }));
   expect(router.state.location.search).toBe("?library=1");
+});
+
+test("a lorebook chip shows the lorebook's name", async () => {
+  lorebookHits = [{ id: 4, slug: "eldoria", revision_id: 1, fields: { name: "Eldoria" } }];
+  renderCards("/cards?library=1&f=lorebook:4");
+  expect(await screen.findByRole("button", { name: "Remove lorebook: Eldoria" })).toBeInTheDocument();
+  expect(searches).toContainEqual({ library: 1, filter: { ids: [4] }, fields: ["name"], page: { size: 1 } });
+});
+
+test("a lorebook chip falls back to its ID when the name is unknown", async () => {
+  renderCards("/cards?library=1&f=lorebook:4");
+  expect(await screen.findByRole("button", { name: "Remove lorebook: #4" })).toBeInTheDocument();
 });
 
 test("the search box sets the text", async () => {

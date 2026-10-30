@@ -52,6 +52,12 @@ export const bindingsQuery = (kind: Kind, id: number) =>
     queryFn: async () => must(await api.GET(route(kind, "/cards/{id}/bindings"), { params: { path: { id } } })),
   });
 
+/** namesQuery looks up the names of the ids in one library, and waits while there are none. */
+export const namesQuery = (kind: Kind, library: number, ids: number[]) => ({
+  ...searchQuery(kind, { library, filter: { ids }, fields: ["name"], page: { size: ids.length } }),
+  enabled: ids.length > 0,
+});
+
 /** searchQuery is a card or lorebook search. It stays fresh for 30 seconds, and a search nothing shows any more is cancelled. */
 export const searchQuery = (kind: Kind, body: components["schemas"]["Query"]) =>
   queryOptions({

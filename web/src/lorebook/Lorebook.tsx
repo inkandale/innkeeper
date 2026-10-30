@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useFollowLibrary } from "../shell/library";
 import { Link, useParams } from "react-router";
-import { api, must } from "../api/client";
+import { namesQuery } from "../api/queries";
 import { Stale } from "../card/Conflict";
 import { text, tokens } from "../card/draft";
 import { Section } from "../card/Fields";
@@ -75,12 +75,7 @@ function LorebookEditor({ id }: { id: number }) {
 }
 
 function LinkedCards({ ids, library }: { ids: number[]; library: number }) {
-  const body = { library, filter: { ids }, fields: ["name"], page: { size: 500 } };
-  const cards = useQuery({
-    queryKey: ["search", "card", body],
-    enabled: ids.length > 0,
-    queryFn: async () => must(await api.POST("/cards/search", { body })),
-  });
+  const cards = useQuery(namesQuery("card", library, ids));
   if (!ids.length) return null;
   const names = new Map((cards.data?.hits ?? []).map((h) => [h.id, text(h.fields.name)]));
   return (

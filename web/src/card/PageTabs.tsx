@@ -1,11 +1,11 @@
-import type { ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 
 export type PageTab = { id: string; label: string; disabled?: boolean; panel: ReactNode };
 
 type PageTabsProps = {
   label: string;
   tabs: PageTab[];
-  /** selected falls back to the first usable tab when it names none. */
+  /** selected falls back to the first usable tab when it names none, so at least one tab must be enabled. */
   selected: string;
   onSelect: (id: string) => void;
   /** actions sit at the bar's right end. */
@@ -19,10 +19,10 @@ export function PageTabs({ label, tabs, selected, onSelect, actions, notices }: 
   const usable = tabs.filter((t) => !t.disabled);
   const shown = usable.find((t) => t.id === selected) ?? usable[0]!;
   const tabId = (id: string) => `page-tab-${id}`;
-  // Arrow keys move between the usable tabs, selecting as they go.
-  const arrow = (key: string) => {
-    const step = key === "ArrowRight" ? 1 : key === "ArrowLeft" ? -1 : 0;
+  const arrow = (e: KeyboardEvent<HTMLDivElement>) => {
+    const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
     if (!step) return;
+    e.preventDefault();
     const next = usable[(usable.indexOf(shown) + step + usable.length) % usable.length]!;
     onSelect(next.id);
     document.getElementById(tabId(next.id))?.focus();
@@ -30,7 +30,7 @@ export function PageTabs({ label, tabs, selected, onSelect, actions, notices }: 
   return (
     <>
       <div className="page-tabs">
-        <div role="tablist" aria-label={label} onKeyDown={(e) => arrow(e.key)}>
+        <div role="tablist" aria-label={label} onKeyDown={arrow}>
           {tabs.map((t) => (
             <button
               key={t.id}

@@ -26,14 +26,17 @@ test("arrow keys skip a disabled tab and show the next panel", async () => {
   expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", metadata.id);
 });
 
-test("a disabled or unknown selection shows the first usable tab", () => {
-  render(<Harness start="review" />);
+test.each(["review", "nope"])("a disabled or unknown selection (%s) shows the first usable tab", (start) => {
+  render(<Harness start={start} />);
   expect(screen.getByRole("tab", { name: "Fields" })).toHaveAttribute("aria-selected", "true");
   expect(screen.getByRole("tabpanel")).toHaveTextContent("fields panel");
 });
 
 test("actions sit in the bar and notices above the panel", () => {
   render(<Harness />);
-  expect(screen.getByRole("button", { name: "Reforge" })).toBeInTheDocument();
-  expect(screen.getByText("run header")).toBeInTheDocument();
+  const bar = screen.getByRole("tablist").parentElement!;
+  expect(bar).toContainElement(screen.getByRole("button", { name: "Reforge" }));
+  const notice = screen.getByText("run header");
+  expect(bar).not.toContainElement(notice);
+  expect(notice.compareDocumentPosition(screen.getByRole("tabpanel")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });

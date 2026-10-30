@@ -122,3 +122,23 @@ describe("library switcher", () => {
     expect(router.state.location.pathname + router.state.location.search).toBe("/cards?library=2");
   });
 });
+
+test("the eye button blurs NSFW card images and remembers it", async () => {
+  localStorage.clear();
+  const router = createMemoryRouter([{ path: "/", element: <Shell />, children: [{ index: true, element: <img className="nsfw" alt="art" /> }] }]);
+  const view = () =>
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+  const { unmount } = view();
+  const eye = screen.getByRole("button", { name: "Blur NSFW cards" });
+  expect(screen.getByAltText("art").closest(".blur-nsfw")).toBeNull();
+  await userEvent.click(eye);
+  expect(eye).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByAltText("art").closest(".blur-nsfw")).not.toBeNull();
+  unmount();
+  view();
+  expect(screen.getByAltText("art").closest(".blur-nsfw")).not.toBeNull();
+});

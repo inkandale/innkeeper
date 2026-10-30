@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 import { thumb } from "../api/client";
 import type { components } from "../api/schema";
-import { text } from "../card/draft";
+import { nsfw, text } from "../card/draft";
 import { Logo, type App } from "../sync/Logo";
 import { stateLabel } from "../sync/sync";
 import { Family } from "./Family";
@@ -49,7 +49,7 @@ function Avatar({ hit, w }: { hit: Hit; w: 160 | 320 }) {
   const name = text(hit.fields.name);
   const avatar = text(hit.fields.avatar);
   if (!avatar) return <span className="avatar empty">{name.slice(0, 1)}</span>;
-  return <img className="avatar" src={thumb(avatar, w)} alt="" loading="lazy" />;
+  return <img className={nsfw(hit.tags) ? "avatar nsfw" : "avatar"} src={thumb(avatar, w)} alt="" loading="lazy" />;
 }
 
 type PickProps = { selected: boolean; locked: boolean; onPick: (shift: boolean) => void };

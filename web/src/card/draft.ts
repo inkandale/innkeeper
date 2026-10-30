@@ -3,6 +3,9 @@ export type Data = Record<string, unknown>;
 /** Draft is unsaved edits on top of the revision they started from. */
 export type Draft = { baseId: number; base: Data; data: Data };
 
+/** nsfw reports whether tags, a card's tags field, has an NSFW tag in any case. */
+export const nsfw = (tags: unknown) => Array.isArray(tags) && tags.some((t) => typeof t === "string" && t.toLowerCase() === "nsfw");
+
 /** same compares two JSON values by content. */
 export const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 

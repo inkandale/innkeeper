@@ -137,3 +137,13 @@ test("a score badge's title lists every scored rank, the shown one first", () =>
     "Voice 70\nQuality 80\nLint 40, stale: from an older revision",
   );
 });
+
+test("a card tagged NSFW in any case marks its image for blurring", () => {
+  const hit: Hit = { id: 7, slug: "brakka", revision_id: 1, fields: { name: "Brakka", avatar: "ab".repeat(32) }, tags: ["Fantasy", "NSFW"] };
+  const { container } = render(
+    <MemoryRouter>
+      <Tile hit={hit} names={names} pick={{ selected: false, locked: false, onPick: () => {} }} scorers={new Map()} />
+    </MemoryRouter>,
+  );
+  expect(container.querySelector("img.avatar")).toHaveClass("nsfw");
+});

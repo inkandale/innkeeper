@@ -27,6 +27,15 @@
   padding: var(--space);
 }
 
+.rail-brand .button {
+  margin-left: auto;
+  padding: 2px;
+}
+
+.blur-nsfw img.nsfw {
+  filter: blur(16px);
+}
+
 .rail a {
   display: flex;
   gap: var(--space);

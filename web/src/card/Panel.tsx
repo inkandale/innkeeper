@@ -10,7 +10,7 @@ import { Crop } from "./CropDialog";
 import { Enrichments } from "./Enrichments";
 import { Related } from "./Discover";
 import { OtherLibraries } from "./OtherLibraries";
-import { strings, text, type Data } from "./draft";
+import { nsfw, strings, text, type Data } from "./draft";
 import { Logo, apps } from "../sync/Logo";
 import { PushPreview } from "../sync/PushPreview";
 import { TargetPicker } from "../sync/TargetPicker";
@@ -37,7 +37,7 @@ export function Panel({ card, data, edit, onAvatar, avatarBusy, lock }: PanelPro
   const avatar = card.revision.avatar;
   return (
     <aside className="card-aside">
-      {avatar ? <img className="portrait" src={thumb(avatar, 640)} alt="" /> : <div className="portrait" />}
+      {avatar ? <img className={nsfw(data.tags) ? "portrait nsfw" : "portrait"} src={thumb(avatar, 640)} alt="" /> : <div className="portrait" />}
       <Image sha={avatar} busy={avatarBusy} onAvatar={onAvatar} />
       <Identity data={data} edit={edit} lock={lock} />
       <VariantOf kind="card" entity={card} />

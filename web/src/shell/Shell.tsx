@@ -62,15 +62,37 @@ function LibrarySwitcher() {
   );
 }
 
+const blurKey = "innkeeper.blurNsfw";
+
+function readBlur() {
+  try {
+    return localStorage.getItem(blurKey) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function Shell() {
   const [collapsed, setCollapsed] = useState(false);
+  const [blur, setBlur] = useState(readBlur);
+  const toggleBlur = () => {
+    setBlur(!blur);
+    try {
+      localStorage.setItem(blurKey, blur ? "0" : "1");
+    } catch {
+      // Kept for this page only.
+    }
+  };
   const library = useLibrary();
   return (
-    <div className={collapsed ? "shell collapsed" : "shell"}>
+    <div className={["shell", collapsed && "collapsed", blur && "blur-nsfw"].filter(Boolean).join(" ")}>
       <nav className="rail" aria-label="Sections">
         <div className="rail-brand">
           <Mark size={24} />
           <span className="rail-label">Innkeeper</span>
+          <button className="button" onClick={toggleBlur} aria-pressed={blur} aria-label="Blur NSFW cards" title={blur ? "Show NSFW cards" : "Blur NSFW cards"}>
+            <Icon name={blur ? "eye-off" : "eye"} />
+          </button>
         </div>
         <LibrarySwitcher />
         {sections.map((s) => (

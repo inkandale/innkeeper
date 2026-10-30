@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, type ReactNode } from "react";
 import { Link } from "react-router";
 import { toast, Toaster } from "sonner";
+import "sonner/dist/styles.css";
 import { useJob, type Job } from "../settings/jobUtil";
 
 declare module "@tanstack/react-query" {

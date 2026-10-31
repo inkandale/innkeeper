@@ -24,7 +24,13 @@ type InitializeParams struct {
 	BlobStores  map[string]string `json:"blob_stores"`
 	BlobTmp     string            `json:"blob_tmp"`
 	DatabaseURL string            `json:"database_url"`
+	// Features are the optional core features this install has, such as
+	// FeatureVectors. A plugin skips work whose results core would drop.
+	Features []string `json:"features,omitempty"`
 }
+
+// FeatureVectors means core stores vector enrichments: pgvector is installed.
+const FeatureVectors = "vectors"
 
 // InitializeResult is the plugin's reply to initialize.
 type InitializeResult struct {

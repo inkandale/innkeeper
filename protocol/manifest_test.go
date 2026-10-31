@@ -406,18 +406,35 @@ func TestEnrichNeedsEnrichments(t *testing.T) {
 	}
 }
 
-func TestEmbedNeedsTextOrListEnrichment(t *testing.T) {
-	m := &Manifest{Name: "judge", Version: "1", Protocol: Version, Command: []string{"judge"}, Capabilities: []string{"enrich"},
-		Enrichments: map[string]Enrichment{
-			"premise": {Type: "text", Label: "Premise", Embed: true},
-			"themes":  {Type: "list", Label: "Themes", Embed: true},
-		}}
+func vectorManifest() *Manifest {
+	return &Manifest{Name: "judge", Version: "1", Protocol: Version, Command: []string{"judge"}, Capabilities: []string{"enrich"},
+		Enrichments: map[string]Enrichment{"embedding": {Type: "vector", Label: "Embedding"}}}
+}
+
+func TestManifestAllowsOneVectorKey(t *testing.T) {
+	m := vectorManifest()
 	if err := m.Validate(); err != nil {
-		t.Fatal(err)
+		t.Fatalf("one vector key: %v", err)
 	}
-	m.Enrichments["quality"] = Enrichment{Type: "score", Label: "Quality", Range: []float64{0, 100}, Embed: true}
-	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), `enrichment "quality": embed needs type text or list`) {
-		t.Fatalf("got %v", err)
+	m.Enrichments["other"] = Enrichment{Type: "vector", Label: "Other"}
+	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "at most one vector") {
+		t.Fatalf("two vector keys: %v", err)
+	}
+}
+
+func TestVectorPluginCannotHaveMultipleInstances(t *testing.T) {
+	m := vectorManifest()
+	m.MultipleInstances = true
+	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "multiple_instances") {
+		t.Fatalf("vector plugin with multiple instances: %v", err)
+	}
+}
+
+func TestManifestStillLoadsTheRetiredEmbedFlag(t *testing.T) {
+	m := vectorManifest()
+	m.Enrichments = map[string]Enrichment{"quality": {Type: "score", Label: "Quality", Range: []float64{0, 100}, Embed: true}}
+	if err := m.Validate(); err != nil {
+		t.Fatalf("embed on a score key: %v", err)
 	}
 }
 

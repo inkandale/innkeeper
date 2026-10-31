@@ -16,8 +16,8 @@ type Plugin[S any] struct {
 	// answers shutdown itself when it isn't here. The state comes first so
 	// a method expression such as (*instance).get fits.
 	Methods map[string]func(s *S, ctx context.Context, params json.RawMessage) (any, error)
-	// Services lists the service methods an instance offers, for an ai
-	// plugin; nil for any other.
+	// Services lists the service methods an instance offers, ai's, or
+	// vector.query for an enrich plugin; nil for any other.
 	Services func(s *S) []string
 }
 

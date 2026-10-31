@@ -74,3 +74,23 @@ func TestCheckValuesDropsUndeclaredAndInvalid(t *testing.T) {
 		t.Fatalf("problems = %q, want %q", problems, want)
 	}
 }
+
+func TestVectorEnrichmentCheck(t *testing.T) {
+	d := Enrichment{Type: "vector", Label: "Embedding"}
+	for value, ok := range map[string]bool{
+		`{"space": "m1", "vector": [0.5, -1]}`: true,
+		`{"space": "", "vector": [1]}`:         false,
+		`{"space": "m1", "vector": []}`:        false,
+		`{"space": "m1"}`:                      false,
+		`[1, 2]`:                               false,
+		`"text"`:                               false,
+	} {
+		if err := d.Check(json.RawMessage(value)); (err == nil) != ok {
+			t.Errorf("Check(%s) = %v, want ok %v", value, err, ok)
+		}
+	}
+	long := `{"space": "` + strings.Repeat("x", 201) + `", "vector": [1]}`
+	if d.Check(json.RawMessage(long)) == nil {
+		t.Error("a 201-character space passed")
+	}
+}

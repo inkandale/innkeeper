@@ -14,6 +14,38 @@ import (
 // scores, for the keys the manifest's [enrichments] declares.
 const MethodEnrichRun = "enrich.run"
 
+// MaxSpace is the longest vector space name.
+const MaxSpace = 200
+
+// VectorValue is a vector enrichment's value and vector.query's result.
+// Vectors compare only within one Space, which the plugin derives from
+// the models and prompt that made them.
+type VectorValue struct {
+	Space  string    `json:"space"`
+	Vector []float32 `json:"vector"`
+}
+
+// Validate reports a value core can't store or rank.
+func (v VectorValue) Validate() error {
+	switch {
+	case v.Space == "" || len(v.Space) > MaxSpace:
+		return fmt.Errorf("space must be 1 to %d characters", MaxSpace)
+	case len(v.Vector) == 0:
+		return errors.New("vector is empty")
+	}
+	return nil
+}
+
+// MethodVectorQuery asks a vector instance for a search query's vector, in
+// the space of the vectors it gives cards.
+const MethodVectorQuery = "vector.query"
+
+// VectorQueryParams is vector.query's input.
+type VectorQueryParams struct {
+	ServiceCall
+	Text string `json:"text"`
+}
+
 // MaxEnrichBatch is the most revisions one enrich.run carries.
 const MaxEnrichBatch = 20
 
@@ -100,7 +132,7 @@ func CheckMeta(meta json.RawMessage) error {
 }
 
 // Check reports whether v is a valid value for e: a string for text, a
-// number within the range for score, and an array of strings for list, at
+// number within the range for score, an array of strings for list, a VectorValue for vector, at
 // most MaxEnrichValue bytes, that PostgreSQL can store.
 func (e Enrichment) Check(v json.RawMessage) error {
 	if err := storable(v, MaxEnrichValue); err != nil {
@@ -125,6 +157,12 @@ func (e Enrichment) Check(v json.RawMessage) error {
 		if json.Unmarshal(v, &l) != nil || l == nil {
 			return errors.New("it must be a list of strings")
 		}
+	case "vector":
+		var vv VectorValue
+		if err := json.Unmarshal(v, &vv); err != nil {
+			return errors.New("it must be an object with space and vector")
+		}
+		return vv.Validate()
 	default:
 		return fmt.Errorf("unknown type %q", e.Type)
 	}

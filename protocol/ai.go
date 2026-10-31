@@ -20,7 +20,8 @@ const (
 )
 
 // Services maps each service method to the capability that offers it.
-var Services = map[string]string{MethodAIChat: CapabilityAI, MethodAIEmbed: CapabilityAI, MethodAIDecide: CapabilityAI}
+var Services = map[string]string{MethodAIChat: CapabilityAI, MethodAIEmbed: CapabilityAI, MethodAIDecide: CapabilityAI,
+	MethodVectorQuery: CapabilityEnrich}
 
 // Needs is the capabilities that offer the service methods in uses, sorted.
 func Needs(uses []string) []string {
@@ -51,8 +52,9 @@ var (
 var ServiceSamples = map[string]ServiceSample{
 	MethodAIChat: {AIChatParams{Messages: []ChatMessage{{Role: "user", Content: "Say OK."}}},
 		decoded(func(r AIChatResult) error { return r.Validate() })},
-	MethodAIEmbed:  {sampleEmbed, decoded(func(r AIEmbedResult) error { return r.Validate(len(sampleEmbed.Texts)) })},
-	MethodAIDecide: {sampleDecide, decoded(func(r AIDecideResult) error { return r.Validate(sampleDecide.Questions) })},
+	MethodAIEmbed:     {sampleEmbed, decoded(func(r AIEmbedResult) error { return r.Validate(len(sampleEmbed.Texts)) })},
+	MethodAIDecide:    {sampleDecide, decoded(func(r AIDecideResult) error { return r.Validate(sampleDecide.Questions) })},
+	MethodVectorQuery: {VectorQueryParams{Text: "OK"}, decoded(func(r VectorValue) error { return r.Validate() })},
 }
 
 func decoded[T any](check func(T) error) func(json.RawMessage) error {
@@ -152,6 +154,8 @@ type AIEmbedParams struct {
 // AIEmbedResult holds the vectors in the order of the texts.
 type AIEmbedResult struct {
 	Vectors [][]float32 `json:"vectors"`
+	// Model is the model that made the vectors, if the provider says.
+	Model string `json:"model,omitempty"`
 }
 
 // Validate reports a reply without one non-empty vector for each of texts,

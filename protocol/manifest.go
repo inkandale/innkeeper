@@ -45,7 +45,7 @@ func WithoutRetired(capabilities []string) []string {
 	return slices.DeleteFunc(slices.Clone(capabilities), func(c string) bool { return c == "search" })
 }
 
-var enrichmentTypes = []string{"text", "score", "list"}
+var enrichmentTypes = []string{"text", "score", "list", "vector"}
 
 // importInputs are the import params the UI can send: file sends blob and name, url sends url,
 // and folder sends none, importing the folder the instance's config names.
@@ -154,9 +154,7 @@ type Enrichment struct {
 	// highest-priority value it has. Space values apart, such as by 100, so
 	// later plugins fit between.
 	Priority int `toml:"priority"`
-	// Embed makes the key's value, on text or list keys, the text a card's
-	// vector is made from in place of its own fields. Values of several
-	// such keys are joined, ordered by key.
+	// Embed is retired and ignored; kept so manifests that still set it load.
 	Embed bool `toml:"embed"`
 }
 
@@ -311,21 +309,29 @@ func (m *Manifest) Validate() error {
 		if e.Type == "score" && (len(e.Range) != 2 || !(e.Range[0] < e.Range[1])) {
 			errs = append(errs, fmt.Errorf("enrichment %q: score needs range = [low, high]", key))
 		}
-		if e.Embed && e.Type != "text" && e.Type != "list" {
-			errs = append(errs, fmt.Errorf("enrichment %q: embed needs type text or list", key))
-		}
 		if e.Priority != 0 && !e.Grid {
 			errs = append(errs, fmt.Errorf("enrichment %q: priority needs grid", key))
 		}
 	}
-	grids := 0
+	grids, vectors := 0, 0
 	for _, e := range m.Enrichments {
 		if e.Grid {
 			grids++
 		}
+		if e.Type == "vector" {
+			vectors++
+		}
 	}
 	if grids > 1 {
 		errs = append(errs, errors.New("at most one enrichment can set grid"))
+	}
+	// One vector key per plugin, so vector.query has one space to answer in.
+	if vectors > 1 {
+		errs = append(errs, errors.New("at most one vector enrichment"))
+	}
+	// One instance per vector plugin, so an install holds one set of vectors per plugin.
+	if vectors > 0 && m.MultipleInstances {
+		errs = append(errs, errors.New("a plugin with a vector enrichment can't set multiple_instances"))
 	}
 	errs = append(errs, unique("format", m.Formats, matches(formatPattern))...)
 	if slices.Contains(m.Formats, "json") {

@@ -53,9 +53,9 @@ type CatalogInfo struct {
 
 // CatalogFilter is one filter search accepts. Only an enum has Options.
 type CatalogFilter struct {
-	Name    string          `json:"name"`
-	Label   string          `json:"label"`
-	Type    string          `json:"type"`
+	Name    string   `json:"name"`
+	Label   string   `json:"label"`
+	Type    string   `json:"type"`
 	Options []Option `json:"options,omitempty"`
 }
 

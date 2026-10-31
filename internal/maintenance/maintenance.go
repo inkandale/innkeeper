@@ -6,10 +6,12 @@ package maintenance
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/inkandale/innkeeper/internal/jobs"
@@ -168,7 +170,10 @@ func (m *Maintenance) Vacuum(ctx context.Context) (int64, error) {
 		return err
 	})
 	if err != nil {
-		return 0, fmt.Errorf("vacuum (the database user must own Innkeeper's tables): %w", err)
+		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "42501" { // insufficient_privilege
+			return 0, fmt.Errorf("vacuum (the database user must own Innkeeper's tables): %w", err)
+		}
+		return 0, fmt.Errorf("vacuum: %w", err)
 	}
 	var size int64
 	err = m.pool.QueryRow(ctx, `SELECT pg_database_size(current_database())`).Scan(&size)

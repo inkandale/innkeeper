@@ -8,8 +8,8 @@ ALTER TABLE plugin_instance ADD COLUMN enrich_on_change_since timestamptz NOT NU
 ALTER TABLE card ADD COLUMN restored_at timestamptz;
 ALTER TABLE lorebook ADD COLUMN restored_at timestamptz;
 
--- Revisions an instance's plugin failed on. The sweep doesn't send them
--- again; a bulk run the owner starts does.
+-- Revisions an instance's plugin failed on. The sweep retries each after a
+-- day; a bulk run the owner starts sends them at once.
 CREATE TABLE enrich_failure (
     instance_id bigint NOT NULL REFERENCES plugin_instance ON DELETE CASCADE DEFERRABLE INITIALLY IMMEDIATE,
     card_id bigint NOT NULL,

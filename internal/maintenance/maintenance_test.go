@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -228,6 +229,15 @@ func TestVacuumRunsOutsideATransaction(t *testing.T) {
 	m, _, _ := newMaintenance(t)
 	if size, err := m.Vacuum(context.Background()); err != nil || size <= 0 {
 		t.Fatalf("vacuum = %d, %v", size, err)
+	}
+}
+
+func TestVacuumHintsAtOwnershipOnlyForPermissionErrors(t *testing.T) {
+	m, _, _ := newMaintenance(t)
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := m.Vacuum(cancelled); err == nil || strings.Contains(err.Error(), "must own") {
+		t.Fatalf("vacuum with a cancelled context = %v, want an error without the ownership hint", err)
 	}
 }
 

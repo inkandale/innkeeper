@@ -21,7 +21,7 @@ type settings struct {
 	Version          string `json:"version" readOnly:"true" doc:"Innkeeper's version."`
 	Theme            string `json:"theme" doc:"The selected theme plugin, or empty for the default theme."`
 	OnboardingDone   bool   `json:"onboarding_done" doc:"Whether the owner finished or skipped the setup wizard."`
-	VectorInstance   *int64 `json:"vector_instance" doc:"The enrich instance whose card vectors similar cards and semantic search read, or null for none."`
+	VectorInstance   *int64 `json:"vector_instance" doc:"The enrich instance whose card vectors similar cards and semantic search read. When none is chosen, the only working enrich instance that makes vectors is used and reported here; null when there are none or several."`
 	VectorsAvailable bool   `json:"vectors_available" readOnly:"true" doc:"Whether this install has pgvector. Without it, similar cards rank by tags and semantic search is off."`
 	// The hide job's defaults; see GET /libraries/{id}/settings.
 	Duplicates        string `json:"duplicates" enum:"off,exact,near"`
@@ -36,7 +36,7 @@ type patchSettingsIn struct {
 	Body struct {
 		Theme          *string         `json:"theme,omitempty" doc:"An installed theme plugin's name, or empty for the default theme."`
 		OnboardingDone *bool           `json:"onboarding_done,omitempty" doc:"true once the owner finishes or skips the setup wizard; false shows it again."`
-		VectorInstance optional[int64] `json:"vector_instance,omitempty" doc:"An enrich instance that offers vector.query, or null to clear it."`
+		VectorInstance optional[int64] `json:"vector_instance,omitempty" doc:"An enrich instance that offers vector.query. Null returns to automatic: the only working vector instance is still used, and with several, none is."`
 		// Null clears a setting: duplicates off, distance 3, keep best, no decide instance.
 		HideOptionsIn
 	}
@@ -134,9 +134,11 @@ func (s *Server) settingsRoutes(api huma.API) {
 		})
 }
 
-// setVectorInstance stores the vector instance, or clears it for nil.
+// setVectorInstance stores the vector instance. Nil returns to automatic,
+// not off: with exactly one working vector instance core still uses it.
 // Setting one deletes every other instance's vectors, so the install holds
-// one set; clearing keeps them for the instance core falls back to.
+// one set; clearing keeps them. The setting is saved first, so a failure
+// before the delete leaves only unreachable rows, never no vectors.
 func (s *Server) setVectorInstance(ctx context.Context, id *int64) error {
 	if id == nil {
 		return s.fail(s.Registry.SetSetting(ctx, plugins.VectorInstanceKey, ""))
@@ -144,10 +146,10 @@ func (s *Server) setVectorInstance(ctx context.Context, id *int64) error {
 	if _, err := s.Registry.InstanceOffering(ctx, s.Plugins, *id, protocol.MethodVectorQuery); err != nil {
 		return s.fail(err)
 	}
-	if err := s.Lib.DeleteVectorsExcept(ctx, *id); err != nil {
+	if err := s.Registry.SetSetting(ctx, plugins.VectorInstanceKey, strconv.FormatInt(*id, 10)); err != nil {
 		return s.fail(err)
 	}
-	return s.fail(s.Registry.SetSetting(ctx, plugins.VectorInstanceKey, strconv.FormatInt(*id, 10)))
+	return s.fail(s.Lib.DeleteVectorsExcept(ctx, *id))
 }
 
 // fileRoutes serve theme stylesheets and plugin icons. They're public: the

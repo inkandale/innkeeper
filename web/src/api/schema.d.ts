@@ -3972,7 +3972,7 @@ export interface components {
             theme?: string;
             /**
              * Format: int64
-             * @description An enrich instance that offers vector.query, or null to clear it.
+             * @description An enrich instance that offers vector.query. Null returns to automatic: the only working vector instance is still used, and with several, none is.
              */
             vector_instance?: number | null;
         };
@@ -4458,7 +4458,7 @@ export interface components {
             theme: string;
             /**
              * Format: int64
-             * @description The enrich instance whose card vectors similar cards and semantic search read, or null for none.
+             * @description The enrich instance whose card vectors similar cards and semantic search read. When none is chosen, the only working enrich instance that makes vectors is used and reported here; null when there are none or several.
              */
             vector_instance: number | null;
             /** @description Whether this install has pgvector. Without it, similar cards rank by tags and semantic search is off. */

@@ -12,6 +12,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/inkandale/innkeeper/internal/library"
+	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/internal/tier"
 	"github.com/inkandale/innkeeper/protocol"
 )
@@ -36,6 +37,9 @@ func (s *Server) withEmbedding(ctx context.Context, k *library.Kind, q *library.
 		return library.ErrNoVectorInstance
 	}
 	v, err := s.Registry.VectorQuery(ctx, s.Plugins, inst, q.Text)
+	if errors.Is(err, plugins.ErrIncapable) {
+		return library.ErrNoVectorInstance // the saved instance stopped offering vector.query
+	}
 	if err != nil {
 		return err
 	}

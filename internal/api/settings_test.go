@@ -230,9 +230,31 @@ func TestSettingVectorInstance(t *testing.T) {
 	if err := e.pool.QueryRow(ctx, `SELECT count(*) FROM card_embedding WHERE instance_id <> $1`, e.instID).Scan(&n); err != nil || n != 0 {
 		t.Fatalf("other instances' vectors = %d, %v; want 0", n, err)
 	}
+	// Cleared with one vector instance left, automatic picks it.
+	e.call("DELETE", fmt.Sprintf("/instances/%d", other), nil, 204, nil)
 	e.call("PATCH", "/settings", map[string]any{"vector_instance": nil}, 200, &s)
-	if s.VectorInstance != nil && *s.VectorInstance != e.instID {
+	e.call("GET", "/settings", nil, 200, &s)
+	if s.VectorInstance == nil || *s.VectorInstance != e.instID {
 		t.Fatalf("cleared: %+v", s) // the only vector instance is still picked
+	}
+}
+
+func TestSettingVectorInstanceWithTwoInstancesNeedsAChoice(t *testing.T) {
+	e := newEnrichEnv(t, vectorCfg)
+	ctx := context.Background()
+	other, err := e.s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: "judge", Name: new("Other"), Config: vectorCfg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s settings
+	e.call("GET", "/settings", nil, 200, &s)
+	if s.VectorInstance != nil {
+		t.Fatalf("two vector instances, none chosen: %+v", s)
+	}
+	e.call("POST", "/cards/search", map[string]any{"text": "abc", "semantic": true}, 409, nil)
+	e.call("PATCH", "/settings", map[string]any{"vector_instance": other}, 200, &s)
+	if s.VectorInstance == nil || *s.VectorInstance != other {
+		t.Fatalf("chose %d: %+v", other, s)
 	}
 }
 

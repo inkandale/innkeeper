@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -111,5 +112,13 @@ func TestSemanticSearchRanksByMeaning(t *testing.T) {
 
 func TestSemanticSearchWithoutAVectorInstanceIs409(t *testing.T) {
 	e := newEnv(t)
+	e.call("POST", "/cards/search", map[string]any{"text": "abc", "semantic": true}, 409, nil)
+}
+
+func TestSemanticSearchWhenTheSavedInstanceStopsOfferingVectorQueryIs409(t *testing.T) {
+	e := newEnrichEnv(t, vectorCfg)
+	e.call("PATCH", "/settings", map[string]any{"vector_instance": e.instID}, 200, nil)
+	e.card("Brakka", "abc")
+	e.call("PATCH", fmt.Sprintf("/instances/%d", e.instID), map[string]any{"config": map[string]any{"vectors": true}}, 200, nil)
 	e.call("POST", "/cards/search", map[string]any{"text": "abc", "semantic": true}, 409, nil)
 }

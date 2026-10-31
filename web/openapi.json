@@ -3580,7 +3580,7 @@
             "type": "string"
           },
           "vector_instance": {
-            "description": "An enrich instance that offers vector.query, or null to clear it.",
+            "description": "An enrich instance that offers vector.query. Null returns to automatic: the only working vector instance is still used, and with several, none is.",
             "format": "int64",
             "type": [
               "integer",
@@ -4902,7 +4902,7 @@
             "type": "string"
           },
           "vector_instance": {
-            "description": "The enrich instance whose card vectors similar cards and semantic search read, or null for none.",
+            "description": "The enrich instance whose card vectors similar cards and semantic search read. When none is chosen, the only working enrich instance that makes vectors is used and reported here; null when there are none or several.",
             "format": "int64",
             "type": [
               "integer",

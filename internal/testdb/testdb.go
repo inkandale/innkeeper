@@ -56,7 +56,7 @@ func New(t *testing.T) *pgxpool.Pool {
 	if err := db.Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
-	// The test image has pgvector, as the old migration assumed.
+	// Tests need card vectors; the test image has pgvector.
 	if err := db.EnableVectors(ctx, pool); err != nil {
 		t.Fatal(err)
 	}

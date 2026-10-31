@@ -22,6 +22,7 @@ import { General } from "./settings/General";
 import { Instance } from "./settings/Instance";
 import { Job } from "./settings/Job";
 import { Jobs } from "./settings/Jobs";
+import { Maintenance } from "./settings/Maintenance";
 import { Libraries, Library } from "./settings/Libraries";
 import { Plugins } from "./settings/Plugins";
 import { Settings } from "./settings/Settings";
@@ -93,6 +94,7 @@ export const router = createBrowserRouter([
               { path: "libraries/:id", element: <Library /> },
               { path: "jobs", element: <Jobs /> },
               { path: "jobs/:id", element: <Job /> },
+              { path: "maintenance", element: <Maintenance /> },
               { path: "access", element: <Access /> },
             ],
           },

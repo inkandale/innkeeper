@@ -5,6 +5,7 @@ package library
 import (
 	"context"
 	"errors"
+	"sync"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -20,8 +21,10 @@ const DefaultLibrary int64 = 1
 
 var (
 	ErrNotFound = errors.New("not found")
-	// ErrNoEmbedInstance means embed_instance is unset, or names an instance that is gone or disabled.
-	ErrNoEmbedInstance = errors.New("semantic search needs an embed instance; pick one in Settings under Plugins, Embeddings from")
+	// ErrNoVectorInstance means vector_instance is unset, or names an instance that is gone or disabled.
+	ErrNoVectorInstance = errors.New("semantic search needs a vector source; pick one in Settings under Plugins, Vectors from")
+	// ErrNoVectors means pgvector isn't installed, so semantic search is off.
+	ErrNoVectors = errors.New("semantic search needs pgvector; see docs/running.md")
 	// ErrConflict means the write's base revision is no longer the head.
 	ErrConflict  = errors.New("base revision is not the head")
 	ErrSlugTaken = errors.New("slug already in use")
@@ -40,6 +43,10 @@ type Library struct {
 
 	pool  *pgxpool.Pool
 	blobs *blobstore.Store
+
+	vectorsOnce sync.Once
+	vectors     bool
+	vectorsErr  error
 }
 
 // New returns a Library that writes new blobs to blobs.

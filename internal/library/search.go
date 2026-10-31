@@ -19,7 +19,7 @@ import (
 // actions select cards with it too.
 type Query struct {
 	Text     string   `json:"text,omitempty" doc:"Words to match in name, description, personality, scenario, creator notes, and first message. Supports \"quoted phrases\", or, and -excluded words."`
-	Semantic bool     `json:"semantic,omitempty" doc:"Rank cards by meaning instead of matching words. Needs text and an embed instance (Settings, Plugins, Embeddings from); sorts by relevance only. Cards not embedded yet are left out."`
+	Semantic bool     `json:"semantic,omitempty" doc:"Rank cards by meaning instead of matching words. Needs text and a vector source (Settings, Plugins, Vectors from); sorts by relevance only. Cards not embedded yet are left out."`
 	Filter   *Filter  `json:"filter,omitempty"`
 	Sources  []string `json:"sources,omitempty" doc:"library, or catalog:<instance id> to also search a catalog by text alone. Default: library."`
 	Include  []string `json:"include,omitempty" doc:"Extra data per hit: tags, lorebooks, targets, score (the grid score, or under sort enrichment:<instance>:<key> the value sorted by). Lorebooks take cards and targets."`
@@ -47,6 +47,8 @@ type Query struct {
 	// The caller embeds it.
 	Embedding     []float32 `json:"-"`
 	EmbedInstance int64     `json:"-"`
+	// EmbedSpace is Embedding's space; only vectors in it are compared.
+	EmbedSpace string `json:"-"`
 }
 
 // Page selects one page of results, by cursor or by number.
@@ -672,8 +674,8 @@ func compile(k *Kind, q Query) (string, *where, string, error) {
 	return strings.Join(conds, " AND "), w, text, nil
 }
 
-// semantic is the condition that a card has a vector from q's embed
-// instance that compares with q's, which has to be the same length.
+// semantic is the condition that a card has a vector from q's vector
+// instance in q's space.
 func (w *where) semantic(q Query) (string, error) {
 	switch {
 	case w.k != Card:
@@ -685,16 +687,15 @@ func (w *where) semantic(q Query) (string, error) {
 		return "", fmt.Errorf("%w: semantic search lists cards but can't select them for an action", ErrInvalid)
 	}
 	return `EXISTS (SELECT 1 FROM card_embedding e WHERE e.card_id = c.id AND e.instance_id = ` + w.arg(q.EmbedInstance) +
-		` AND vector_dims(e.embedding) = ` + w.arg(len(q.Embedding)) + `)`, nil
+		` AND e.space = ` + w.arg(q.EmbedSpace) + `)`, nil
 }
 
 // similarity is a card's cosine similarity to q's vector, as a real so a
-// cursor holds it exactly. It is null for another length, which <=> would
-// refuse even where the cursor predicate runs before compile's condition.
+// cursor holds it exactly, or null for a vector in another space.
 func (w *where) similarity(q Query) string {
-	return `(SELECT CASE WHEN vector_dims(e.embedding) = ` + w.arg(len(q.Embedding)) +
-		` THEN (1 - (e.embedding <=> ` + w.arg(vectorText(q.Embedding)) + `::vector))::real END
-		FROM card_embedding e WHERE e.card_id = c.id AND e.instance_id = ` + w.arg(q.EmbedInstance) + `)`
+	return `(SELECT (1 - (e.embedding <=> ` + w.arg(vectorText(q.Embedding)) + `::vector))::real
+		FROM card_embedding e WHERE e.card_id = c.id AND e.instance_id = ` + w.arg(q.EmbedInstance) +
+		` AND e.space = ` + w.arg(q.EmbedSpace) + `)`
 }
 
 // familyWalk is a WITH clause whose m holds the matches of cond, with cols,

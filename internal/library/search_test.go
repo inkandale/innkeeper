@@ -150,9 +150,9 @@ func TestSearchRejectsBadQueries(t *testing.T) {
 	for name, q := range map[string]Query{
 		"two conditions":          {Filter: &Filter{Tag: ptr("a"), Archived: ptr(true)}},
 		"no condition":            {Filter: &Filter{Not: &Filter{}}},
-		"semantic without text":   {Semantic: true, Embedding: []float32{1, 0}, EmbedInstance: 1},
+		"semantic without text":   {Semantic: true, Embedding: []float32{1, 0}, EmbedInstance: 1, EmbedSpace: "s1"},
 		"semantic without vector": {Semantic: true, Text: "smith"},
-		"semantic by name":        {Semantic: true, Text: "smith", Embedding: []float32{1, 0}, EmbedInstance: 1, Sort: "name"},
+		"semantic by name":        {Semantic: true, Text: "smith", Embedding: []float32{1, 0}, EmbedInstance: 1, EmbedSpace: "s1", Sort: "name"},
 		"catalog source":          {Sources: []string{"catalog:chub-archive"}},
 		"bad include":             {Include: []string{"summaries"}},
 		"negative size":           {Page: Page{Size: -1}},
@@ -1189,7 +1189,7 @@ func TestSemanticSearchPagesByCursor(t *testing.T) {
 	newCard(t, lib, "unembedded", `{"name": "Grum"}`)
 	embedCards(t, lib, inst, map[int64][]float32{near: {1, 0}, mid: {0.7, 0.7}, far: {0, 1}})
 
-	q := Query{Text: "a dwarf smith", Semantic: true, Embedding: []float32{1, 0.1}, EmbedInstance: inst, Page: Page{Size: 2}}
+	q := Query{Text: "a dwarf smith", Semantic: true, Embedding: []float32{1, 0.1}, EmbedInstance: inst, EmbedSpace: "s1", Page: Page{Size: 2}}
 	first, err := lib.Search(ctx, Card, q)
 	if err != nil {
 		t.Fatal(err)
@@ -1204,36 +1204,38 @@ func TestSemanticSearchPagesByCursor(t *testing.T) {
 	}
 }
 
-func TestSemanticSearchSkipsVectorsOfAnotherLength(t *testing.T) {
+func TestSemanticSearchSkipsVectorsOfAnotherSpace(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
 	inst := newInstanceRow(t, lib)
 	two, _ := newCard(t, lib, "two", `{"name": "Brakka"}`)
 	three, _ := newCard(t, lib, "three", `{"name": "Dorna"}`)
-	embedCards(t, lib, inst, map[int64][]float32{two: {1, 0}, three: {1, 0, 0}})
+	embedCardsIn(t, lib, inst, "s1", map[int64][]float32{two: {1, 0}})
+	embedCardsIn(t, lib, inst, "s2", map[int64][]float32{three: {1, 0, 0}})
 
-	res, err := lib.Search(ctx, Card, Query{Text: "smith", Semantic: true, Embedding: []float32{1, 0}, EmbedInstance: inst})
+	res, err := lib.Search(ctx, Card, Query{Text: "smith", Semantic: true, Embedding: []float32{1, 0}, EmbedInstance: inst, EmbedSpace: "s1"})
 	if err != nil || !slices.Equal(hitIDs(res), []int64{two}) {
 		t.Fatalf("results = %+v, %v", res, err)
 	}
 }
 
-func TestSemanticSearchPagesPastVectorsOfAnotherLength(t *testing.T) {
+func TestSemanticSearchPagesPastVectorsOfAnotherSpace(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
 	inst := newInstanceRow(t, lib)
-	vectors := map[int64][]float32{}
+	vectors, others := map[int64][]float32{}, map[int64][]float32{}
 	want := map[int64]bool{}
 	for i := range 4 {
 		two, _ := newCard(t, lib, fmt.Sprintf("two%d", i), `{"name": "Brakka"}`)
 		three, _ := newCard(t, lib, fmt.Sprintf("three%d", i), `{"name": "Dorna"}`)
 		vectors[two] = []float32{1, float32(i)}
-		vectors[three] = []float32{1, 0, float32(i)}
+		others[three] = []float32{1, 0, float32(i)}
 		want[two] = true
 	}
-	embedCards(t, lib, inst, vectors)
+	embedCardsIn(t, lib, inst, "s1", vectors)
+	embedCardsIn(t, lib, inst, "s2", others)
 
-	q := Query{Text: "smith", Semantic: true, Embedding: []float32{1, 0}, EmbedInstance: inst, Page: Page{Size: 1}}
+	q := Query{Text: "smith", Semantic: true, Embedding: []float32{1, 0}, EmbedInstance: inst, EmbedSpace: "s1", Page: Page{Size: 1}}
 	got := 0
 	for {
 		res, err := lib.Search(ctx, Card, q)
@@ -1242,7 +1244,7 @@ func TestSemanticSearchPagesPastVectorsOfAnotherLength(t *testing.T) {
 		}
 		for _, id := range hitIDs(res) {
 			if !want[id] {
-				t.Fatalf("card %d has a vector of another length", id)
+				t.Fatalf("card %d has a vector of another space", id)
 			}
 			got++
 		}
@@ -1268,7 +1270,7 @@ func TestSemanticSearchGroupsFamilies(t *testing.T) {
 	}
 	embedCards(t, lib, inst, map[int64][]float32{root: {0, 1}, variant: {1, 0}, other: {0.5, 0.5}})
 
-	res, err := lib.Search(ctx, Card, Query{Text: "smith", Semantic: true, Embedding: []float32{1, 0}, EmbedInstance: inst, Group: "family"})
+	res, err := lib.Search(ctx, Card, Query{Text: "smith", Semantic: true, Embedding: []float32{1, 0}, EmbedInstance: inst, EmbedSpace: "s1", Group: "family"})
 	if err != nil || !slices.Equal(hitIDs(res), []int64{root, other}) || res.Total != 2 {
 		t.Fatalf("results = %+v, %v", res, err)
 	}

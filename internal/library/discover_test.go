@@ -9,18 +9,26 @@ import (
 	"testing"
 )
 
-// embedCards saves vec[i] as cards[i]'s vector from instance, from each card's head.
+// embedCards saves vecs[i] as card i's vector from instance in space "s1",
+// from each card's head.
 func embedCards(t *testing.T, lib *Library, instance int64, vecs map[int64][]float32) {
 	t.Helper()
+	embedCardsIn(t, lib, instance, "s1", vecs)
+}
+
+func embedCardsIn(t *testing.T, lib *Library, instance int64, space string, vecs map[int64][]float32) {
+	t.Helper()
 	ctx := context.Background()
+	var vals []NewVector
 	for id, v := range vecs {
 		c, err := lib.Cards.Get(ctx, id)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := lib.SaveEmbeddings(ctx, instance, []EmbedText{{CardID: id, RevisionID: c.HeadRevisionID}}, [][]float32{v}); err != nil {
-			t.Fatal(err)
-		}
+		vals = append(vals, NewVector{CardID: id, RevisionID: c.HeadRevisionID, Space: space, Vector: v})
+	}
+	if err := lib.SaveVectors(ctx, instance, vals); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -276,5 +284,23 @@ func TestDiscoveredCardsCarryTheirTags(t *testing.T) {
 	related, err := lib.RelatedCards(ctx, me, "creator", Page{})
 	if err != nil || !slices.Equal(ids(related.Items), []int64{other}) || !slices.Equal(related.Items[0].Tags, want) {
 		t.Fatalf("related = %+v, %v", related, err)
+	}
+}
+
+func TestSimilarComparesOnlyWithinASpace(t *testing.T) {
+	lib := newLibrary(t)
+	inst := newInstanceRow(t, lib)
+	me, _ := newCard(t, lib, "me", `{"name": "Me"}`)
+	same, _ := newCard(t, lib, "same", `{"name": "Same"}`)
+	other, _ := newCard(t, lib, "other", `{"name": "Other"}`)
+	embedCardsIn(t, lib, inst, "s1", map[int64][]float32{me: {1, 0}, same: {0, 1}})
+	embedCardsIn(t, lib, inst, "s2", map[int64][]float32{other: {1, 0, 0}})
+
+	got, err := lib.SimilarCards(context.Background(), me, SimilarOptions{Instance: inst})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Basis != "embedding" || len(got.Items) != 1 || got.Items[0].CardID != same {
+		t.Fatalf("similar = %+v", got)
 	}
 }

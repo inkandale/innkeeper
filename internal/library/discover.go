@@ -21,14 +21,14 @@ type DiscoveredCard struct {
 
 // SimilarPage is one page of similar cards.
 type SimilarPage struct {
-	Basis      string           `json:"basis" enum:"embedding,tags" doc:"embedding ranks by meaning; tags, by shared tags, when there is no embed instance or the card has no vector yet."`
+	Basis      string           `json:"basis" enum:"embedding,tags" doc:"embedding ranks by meaning; tags, by shared tags, when there is no vector source or pgvector, or the card has no vector yet."`
 	Items      []DiscoveredCard `json:"items"`
 	NextCursor *string          `json:"next_cursor,omitempty"`
 }
 
 // SimilarOptions narrows SimilarCards.
 type SimilarOptions struct {
-	// Instance is the embed instance, or 0 to rank by tags.
+	// Instance is the vector instance, or 0 to rank by tags.
 	Instance     int64
 	AllLibraries bool
 	Page         Page
@@ -89,10 +89,10 @@ func (l *Library) SimilarCards(ctx context.Context, cardID int64, o SimilarOptio
 		return SimilarPage{}, err
 	}
 	// ponytail: exact scan over every vector; add an HNSW index when an archive makes this slow.
-	sql := discoverWith + `, q AS (SELECT embedding FROM card_embedding WHERE instance_id = $2 AND card_id = $1)
+	sql := discoverWith + `, q AS (SELECT embedding, space FROM card_embedding WHERE instance_id = $2 AND card_id = $1)
 		SELECT c.id, c.library_id, coalesce(r.data->>'name', ''), coalesce(r.avatar_blob, ''), coalesce(r.tags, '{}'), greatest(0, 1 - (e.embedding <=> q.embedding))
 		FROM self CROSS JOIN q
-		JOIN card_embedding e ON e.instance_id = $2 AND vector_dims(e.embedding) = vector_dims(q.embedding)
+		JOIN card_embedding e ON e.instance_id = $2 AND e.space = q.space
 		JOIN card c ON c.id = e.card_id
 		JOIN card_revision r ON r.id = c.head_revision_id
 		WHERE ` + discoverWhere + ` AND r.content_hash <> self.content_hash AND ($3 OR c.library_id = self.library_id)
@@ -122,6 +122,9 @@ func (l *Library) SimilarCards(ctx context.Context, cardID int64, o SimilarOptio
 func (l *Library) similarBasis(ctx context.Context, cardID, instance int64) (string, error) {
 	if instance == 0 {
 		return "tags", nil
+	}
+	if ok, err := l.HasVectors(ctx); err != nil || !ok {
+		return "tags", err
 	}
 	var has bool
 	err := l.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM card_embedding WHERE instance_id = $1 AND card_id = $2)`,

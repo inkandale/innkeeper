@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"testing"
 )
 
@@ -10,7 +11,7 @@ func TestOpenDBTurnsJITOffUnlessTheURLSetsIt(t *testing.T) {
 	ctx := context.Background()
 	for _, c := range []struct{ query, want string }{{"", "off"}, {"?jit=on", "on"}} {
 		t.Setenv("INNKEEPER_DATABASE_URL", dbURL+c.query)
-		pool, err := openDB(ctx, 0)
+		pool, err := openDB(ctx, slog.Default(), 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -28,7 +29,7 @@ func TestOpenDBCapsStatementsUnlessTheURLSetsATimeout(t *testing.T) {
 	ctx := context.Background()
 	for _, c := range []struct{ query, want string }{{"", "15min"}, {"?statement_timeout=0", "0"}} {
 		t.Setenv("INNKEEPER_DATABASE_URL", dbURL+c.query)
-		pool, err := openDB(ctx, 0)
+		pool, err := openDB(ctx, slog.Default(), 0)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -56,7 +56,7 @@ func openServices(ctx context.Context, log *slog.Logger, maxConnsAtLeast int) (*
 	if err != nil {
 		return nil, err
 	}
-	pool, err := openDB(ctx, maxConnsAtLeast)
+	pool, err := openDB(ctx, log, maxConnsAtLeast)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +92,7 @@ func (s *services) ensureSingletons(ctx context.Context, log *slog.Logger) error
 // MaxConns is raised to at least maxConnsAtLeast; 0 keeps the URL's setting.
 // JIT is off and statements stop after 15 minutes unless the URL sets jit or
 // statement_timeout.
-func openDB(ctx context.Context, maxConnsAtLeast int) (*pgxpool.Pool, error) {
+func openDB(ctx context.Context, log *slog.Logger, maxConnsAtLeast int) (*pgxpool.Pool, error) {
 	url := os.Getenv("INNKEEPER_DATABASE_URL")
 	if url == "" {
 		return nil, errors.New("INNKEEPER_DATABASE_URL is not set")
@@ -119,6 +119,12 @@ func openDB(ctx context.Context, maxConnsAtLeast int) (*pgxpool.Pool, error) {
 	if err := db.Migrate(ctx, pool); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
+	}
+	if err := db.EnableVectors(ctx, pool); errors.Is(err, db.ErrNoVectors) {
+		log.Warn("vector features are off; install pgvector, or have an admin run CREATE EXTENSION vector, then restart", "err", err)
+	} else if err != nil {
+		pool.Close()
+		return nil, err
 	}
 	return pool, nil
 }

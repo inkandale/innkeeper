@@ -56,5 +56,9 @@ func New(t *testing.T) *pgxpool.Pool {
 	if err := db.Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
+	// The test image has pgvector, as the old migration assumed.
+	if err := db.EnableVectors(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
 	return pool
 }

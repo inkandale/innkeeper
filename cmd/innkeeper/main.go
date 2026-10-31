@@ -104,7 +104,7 @@ func pluginCheck(dir string) error {
 }
 
 func migrate() error {
-	pool, err := openDB(context.Background(), 0)
+	pool, err := openDB(context.Background(), slog.Default(), 0)
 	if err != nil {
 		return err
 	}

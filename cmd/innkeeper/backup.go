@@ -50,7 +50,7 @@ func backupCmd(args []string) error {
 		return err
 	}
 	ctx := context.Background()
-	pool, err := openDB(ctx, 0)
+	pool, err := openDB(ctx, slog.Default(), 0)
 	if err != nil {
 		return err
 	}

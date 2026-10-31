@@ -24,6 +24,7 @@ import (
 	"github.com/inkandale/innkeeper/internal/export"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
+	"github.com/inkandale/innkeeper/internal/maintenance"
 	"github.com/inkandale/innkeeper/internal/mcp"
 	"github.com/inkandale/innkeeper/internal/merge"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
@@ -35,10 +36,12 @@ import (
 
 // Server holds what the API's handlers use.
 type Server struct {
-	Lib      *library.Library
-	Queue    *jobs.Queue
-	Registry *plugins.Registry
-	Auth     *auth.Auth
+	Lib   *library.Library
+	Queue *jobs.Queue
+	// Maintenance previews the database cleanups.
+	Maintenance *maintenance.Maintenance
+	Registry    *plugins.Registry
+	Auth        *auth.Auth
 	// Targets must use Plugins.
 	Targets *targets.Service
 	// Plugins runs plugins for interactive calls, such as logins. Its core
@@ -194,6 +197,7 @@ func (s *Server) routes(api huma.API) {
 	s.recordRoutes(api)
 	s.settingsRoutes(api)
 	s.backupRoutes(api)
+	s.maintenanceRoutes(api)
 }
 
 // Spec returns the OpenAPI spec as indented JSON, without a database or

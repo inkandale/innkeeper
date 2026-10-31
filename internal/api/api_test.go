@@ -20,6 +20,7 @@ import (
 	"github.com/inkandale/innkeeper/internal/blobstore"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
+	"github.com/inkandale/innkeeper/internal/maintenance"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
 	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/internal/secrets"
@@ -74,7 +75,7 @@ func newEnv(t *testing.T) *testEnv {
 	mgr := pluginhost.NewManager(NoCore, time.Minute, quiet)
 	t.Cleanup(mgr.Close)
 	lib := library.New(pool, store)
-	e := &testEnv{t: t, pool: pool, manifests: manifests, s: &Server{Lib: lib, Queue: jobs.New(pool), Registry: reg, Auth: auth.New(pool),
+	e := &testEnv{t: t, pool: pool, manifests: manifests, s: &Server{Lib: lib, Queue: jobs.New(pool), Maintenance: maintenance.New(pool, lib), Registry: reg, Auth: auth.New(pool),
 		Targets: targets.New(pool, lib, reg, mgr, quiet), Plugins: mgr, Log: quiet}}
 	// Keeps tests offline: the default source is on GitHub.
 	if _, err := pool.Exec(ctx, `DELETE FROM plugin_source`); err != nil {

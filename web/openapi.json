@@ -3253,6 +3253,156 @@
         ],
         "type": "object"
       },
+      "MaintenancePreview": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/MaintenancePreview.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "database_bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "failures": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "history": {
+            "$ref": "#/components/schemas/MaintenancePreviewHistoryStruct"
+          },
+          "largest": {
+            "description": "The five largest tables.",
+            "items": {
+              "$ref": "#/components/schemas/Table"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "last_backup": {
+            "description": "When the last backup job succeeded, if any has.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "purge": {
+            "$ref": "#/components/schemas/MaintenancePreviewPurgeStruct"
+          },
+          "vectors": {
+            "$ref": "#/components/schemas/MaintenancePreviewVectorsStruct"
+          }
+        },
+        "required": [
+          "database_bytes",
+          "largest",
+          "history",
+          "vectors",
+          "failures",
+          "purge"
+        ],
+        "type": "object"
+      },
+      "MaintenancePreviewHistoryStruct": {
+        "additionalProperties": false,
+        "properties": {
+          "rows": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "trimmable": {
+            "description": "Rows trim would delete for keep.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rows",
+          "trimmable"
+        ],
+        "type": "object"
+      },
+      "MaintenancePreviewPurgeStruct": {
+        "additionalProperties": false,
+        "properties": {
+          "cards": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "lorebooks": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cards",
+          "lorebooks"
+        ],
+        "type": "object"
+      },
+      "MaintenancePreviewVectorsStruct": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "rows": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "available",
+          "rows"
+        ],
+        "type": "object"
+      },
+      "MaintenanceRunInBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/MaintenanceRunInBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "action": {
+            "enum": [
+              "trim-history",
+              "stale-vectors",
+              "clear-failures",
+              "vacuum",
+              "purge"
+            ],
+            "type": "string"
+          },
+          "days": {
+            "default": 30,
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "keep": {
+            "default": 3,
+            "format": "int64",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
       "Match": {
         "additionalProperties": false,
         "properties": {
@@ -5338,6 +5488,23 @@
             "type": "integer"
           }
         },
+        "type": "object"
+      },
+      "Table": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "bytes"
+        ],
         "type": "object"
       },
       "TagCount": {
@@ -12184,6 +12351,108 @@
         "summary": "Make a variant of a lorebook",
         "tags": [
           "Lorebooks"
+        ]
+      }
+    },
+    "/maintenance": {
+      "get": {
+        "operationId": "preview-maintenance",
+        "parameters": [
+          {
+            "description": "Values to keep per instance, card and key.",
+            "explode": false,
+            "in": "query",
+            "name": "keep",
+            "schema": {
+              "default": 3,
+              "description": "Values to keep per instance, card and key.",
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Purge cards archived at least this many days ago.",
+            "explode": false,
+            "in": "query",
+            "name": "days",
+            "schema": {
+              "default": 30,
+              "description": "Purge cards archived at least this many days ago.",
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaintenancePreview"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Preview the database cleanups",
+        "tags": [
+          "Maintenance"
+        ]
+      }
+    },
+    "/maintenance/runs": {
+      "post": {
+        "description": "Queues the cleanup. While one is queued or running, returns it instead. Trim, stale vectors, and purge can't be undone.",
+        "operationId": "run-maintenance",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaintenanceRunInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Run a database cleanup",
+        "tags": [
+          "Maintenance"
         ]
       }
     },

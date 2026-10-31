@@ -2122,6 +2122,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/maintenance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview the database cleanups */
+        get: operations["preview-maintenance"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/maintenance/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run a database cleanup
+         * @description Queues the cleanup. While one is queued or running, returns it instead. Trim, stale vectors, and purge can't be undone.
+         */
+        post: operations["run-maintenance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/plugin-catalog": {
         parameters: {
             query?: never;
@@ -3827,6 +3864,68 @@ export interface components {
             text: string;
             type: string;
         };
+        MaintenancePreview: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/MaintenancePreview.json
+             */
+            readonly $schema?: string;
+            /** Format: int64 */
+            database_bytes: number;
+            /** Format: int64 */
+            failures: number;
+            history: components["schemas"]["MaintenancePreviewHistoryStruct"];
+            /** @description The five largest tables. */
+            largest: components["schemas"]["Table"][] | null;
+            /**
+             * Format: date-time
+             * @description When the last backup job succeeded, if any has.
+             */
+            last_backup?: string;
+            purge: components["schemas"]["MaintenancePreviewPurgeStruct"];
+            vectors: components["schemas"]["MaintenancePreviewVectorsStruct"];
+        };
+        MaintenancePreviewHistoryStruct: {
+            /** Format: int64 */
+            rows: number;
+            /**
+             * Format: int64
+             * @description Rows trim would delete for keep.
+             */
+            trimmable: number;
+        };
+        MaintenancePreviewPurgeStruct: {
+            /** Format: int64 */
+            cards: number;
+            /** Format: int64 */
+            lorebooks: number;
+        };
+        MaintenancePreviewVectorsStruct: {
+            available: boolean;
+            /** Format: int64 */
+            rows: number;
+        };
+        MaintenanceRunInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/MaintenanceRunInBody.json
+             */
+            readonly $schema?: string;
+            /** @enum {string} */
+            action: "trim-history" | "stale-vectors" | "clear-failures" | "vacuum" | "purge";
+            /**
+             * Format: int64
+             * @default 30
+             */
+            days: number;
+            /**
+             * Format: int64
+             * @default 3
+             */
+            keep: number;
+        };
         Match: {
             /** Format: int64 */
             card_id: number;
@@ -4616,6 +4715,11 @@ export interface components {
             apply?: "obvious" | "none";
             /** Format: int64 */
             instance_id?: number;
+        };
+        Table: {
+            /** Format: int64 */
+            bytes: number;
+            name: string;
         };
         TagCount: {
             /** Format: int64 */
@@ -8968,6 +9072,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntityOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "preview-maintenance": {
+        parameters: {
+            query?: {
+                /** @description Values to keep per instance, card and key. */
+                keep?: number;
+                /** @description Purge cards archived at least this many days ago. */
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaintenancePreview"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "run-maintenance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaintenanceRunInBody"];
+            };
+        };
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
                 };
             };
             /** @description Error */

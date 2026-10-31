@@ -10,6 +10,7 @@ import (
 	"github.com/inkandale/innkeeper/internal/api"
 	"github.com/inkandale/innkeeper/internal/auth"
 	"github.com/inkandale/innkeeper/internal/jobs"
+	"github.com/inkandale/innkeeper/internal/maintenance"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
 	"github.com/inkandale/innkeeper/internal/targets"
 	"github.com/inkandale/innkeeper/web"
@@ -36,7 +37,8 @@ func apiServer() error {
 	go stopIdlePlugins(ctx, mgr)
 
 	stopping := make(chan struct{})
-	s := &api.Server{Lib: svc.lib, Queue: jobs.New(svc.pool), Registry: svc.registry, Auth: auth.New(svc.pool),
+	s := &api.Server{Lib: svc.lib, Queue: jobs.New(svc.pool), Maintenance: maintenance.New(svc.pool, svc.lib),
+		Registry: svc.registry, Auth: auth.New(svc.pool),
 		Targets: targets.New(svc.pool, svc.lib, svc.registry, mgr, log), Plugins: mgr, Log: log,
 		PublicURL: os.Getenv("INNKEEPER_PUBLIC_URL"), Stopping: stopping, Backups: svc.backups,
 		UI: web.Handler(web.Dist()), Version: buildVersion()}

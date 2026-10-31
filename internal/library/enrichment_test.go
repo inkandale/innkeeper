@@ -103,8 +103,11 @@ func TestChangedUnenrichedListsOnlyNewUnscoredUnfailedCards(t *testing.T) {
 	ctx := context.Background()
 	inst := newInstanceRow(t, lib)
 	old, _ := newCard(t, lib, "old", `{"name": "Old"}`)
-	since := time.Now()
-	time.Sleep(10 * time.Millisecond)
+	// The database's clock, so the test can't skew against it.
+	var since time.Time
+	if err := lib.pool.QueryRow(ctx, `SELECT now()`).Scan(&since); err != nil {
+		t.Fatal(err)
+	}
 	fresh, _ := newCard(t, lib, "fresh", `{"name": "Fresh"}`)
 	scored, scoredRev := newCard(t, lib, "scored", `{"name": "Scored"}`)
 	failed, failedRev := newCard(t, lib, "failed", `{"name": "Failed"}`)
@@ -133,5 +136,42 @@ func TestChangedUnenrichedListsOnlyNewUnscoredUnfailedCards(t *testing.T) {
 	}
 	if got, _ = lib.ChangedUnenriched(ctx, inst, since, 10); !slices.Equal(got, []int64{old, fresh}) {
 		t.Fatalf("after restore = %v", got)
+	}
+}
+
+func TestChangedUnenrichedEdgeCases(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	inst := newInstanceRow(t, lib)
+	rescored, oldRev := newCard(t, lib, "rescored", `{"name": "Rescored"}`)
+	if err := lib.AddEnrichments(ctx, inst, []NewEnrichment{{CardID: rescored, RevisionID: oldRev, Key: "k", Value: json.RawMessage(`"v"`)}}); err != nil {
+		t.Fatal(err)
+	}
+	var since time.Time
+	if err := lib.pool.QueryRow(ctx, `SELECT now()`).Scan(&since); err != nil {
+		t.Fatal(err)
+	}
+	// Scored at an old revision, then edited: the new head holds no value.
+	if _, err := lib.Cards.Update(ctx, rescored, oldRev, edit(`{"name": "Rescored", "description": "More."}`)); err != nil {
+		t.Fatal(err)
+	}
+	embedded, _ := newCard(t, lib, "embedded", `{"name": "Embedded"}`)
+	retry, retryRev := newCard(t, lib, "retry", `{"name": "Retry"}`)
+	embedCards(t, lib, inst, map[int64][]float32{embedded: {1, 2}})
+	if err := lib.RecordEnrichFailures(ctx, inst, []RevisionRef{{CardID: retry, RevisionID: retryRev}}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := lib.ChangedUnenriched(ctx, inst, since, 10)
+	if err != nil || !slices.Equal(got, []int64{rescored}) {
+		t.Fatalf("changed = %v, %v; want only the re-edited card (embedded has a vector, retry just failed)", got, err)
+	}
+
+	// A failure older than a day no longer suppresses the card.
+	if _, err := lib.pool.Exec(ctx, `UPDATE enrich_failure SET failed_at = now() - interval '25 hours'`); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = lib.ChangedUnenriched(ctx, inst, since, 10); !slices.Equal(got, []int64{rescored, retry}) {
+		t.Fatalf("after the failure aged = %v", got)
 	}
 }

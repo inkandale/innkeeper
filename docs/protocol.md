@@ -1020,13 +1020,13 @@ change:
   still queued.
 - Hourly, a "Catch up changed cards" job queues the cards changed or
   restored since the setting was turned on that hold no value or vector
-  from the instance at their head revision and haven't failed on it. It
-  sends at most the plugin's card cap per run, and none while another
-  enrich run for that instance is queued or running.
+  from the instance at their head revision and haven't failed on it in
+  the last day. It sends at most the plugin's card cap per run, and none
+  while another enrich run for that instance is queued or running.
 - Turning the setting on doesn't score older cards; a run the owner starts
   does.
-- A plugin's failure on a card is remembered, so the job doesn't resend it.
-  Storage failures are retried.
+- A card that failed, whether in the plugin or in storing its values, is
+  tried again a day later.
 - Archived cards are never sent, whatever started the run.
 
 Declare each key in the manifest:

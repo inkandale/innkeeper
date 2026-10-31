@@ -102,7 +102,7 @@ type RevisionRef struct {
 }
 
 // RecordEnrichFailures records that instance's plugin failed on revs, so
-// the sweep doesn't send them again.
+// the sweep doesn't send them again until failureRetry has passed.
 func (l *Library) RecordEnrichFailures(ctx context.Context, instance int64, revs []RevisionRef) error {
 	cards, ids := make([]int64, len(revs)), make([]int64, len(revs))
 	for i, r := range revs {
@@ -117,9 +117,17 @@ func (l *Library) RecordEnrichFailures(ctx context.Context, instance int64, revs
 	return nil
 }
 
+// failureRetry is how long a recorded failure suppresses a card: a failing
+// card is retried once a day, so failures can't fill the sweep window forever.
+const failureRetry = 24 * time.Hour
+
 // ChangedUnenriched returns up to limit live cards changed after since
 // whose head holds no value or vector from instance and hasn't failed on
-// it, lowest ID first.
+// it within failureRetry, lowest ID first.
+//
+// ponytail: this joins every card to its head revision each hour. If that
+// gets slow, index card_revision(created_at) and card(restored_at) and split
+// the greatest() filter into a UNION of the two indexed conditions.
 func (l *Library) ChangedUnenriched(ctx context.Context, instance int64, since time.Time, limit int) ([]int64, error) {
 	vectors, err := l.HasVectors(ctx)
 	if err != nil {
@@ -133,8 +141,8 @@ func (l *Library) ChangedUnenriched(ctx context.Context, instance int64, since t
 	rows, err := l.pool.Query(ctx, `SELECT c.id FROM card c JOIN card_revision r ON r.id = c.head_revision_id
 		WHERE c.archived_at IS NULL AND greatest(r.created_at, c.restored_at) > $2
 			AND NOT EXISTS (SELECT 1 FROM enrichment e WHERE e.card_id = c.id AND e.instance_id = $1 AND e.revision_id = c.head_revision_id)
-			AND NOT EXISTS (SELECT 1 FROM enrich_failure f WHERE f.instance_id = $1 AND f.revision_id = c.head_revision_id)`+noVector+`
-		ORDER BY c.id LIMIT $3`, instance, since, limit)
+			AND NOT EXISTS (SELECT 1 FROM enrich_failure f WHERE f.instance_id = $1 AND f.revision_id = c.head_revision_id AND f.failed_at > now() - $4::interval)`+noVector+`
+		ORDER BY c.id LIMIT $3`, instance, since, limit, failureRetry)
 	if err != nil {
 		return nil, fmt.Errorf("list changed cards for instance %d: %w", instance, err)
 	}

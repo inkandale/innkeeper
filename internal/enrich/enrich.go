@@ -314,11 +314,13 @@ func (rn *Runner) batch(ctx context.Context, r *jobs.Run, inst pluginhost.Instan
 		}
 	}
 	dropped := 0
-	// Storage failures aren't the plugin's, so they aren't recorded: the sweep retries them.
-	fail := func(rev protocol.EnrichRevision, format string, args ...any) {
+	// Storage failures are recorded like the plugin's, so a card that keeps
+	// failing can't fill the sweep window; the sweep retries it a day later.
+	fail := func(rev protocol.EnrichRevision, format string, args ...any) error {
 		checked.Done--
 		checked.Failed++
 		checked.Warnings = append(checked.Warnings, library.DataName(rev.Data)+": "+fmt.Sprintf(format, args...))
+		return rn.Lib.RecordEnrichFailures(ctx, instanceID, []library.RevisionRef{{CardID: rev.CardID, RevisionID: rev.RevisionID}})
 	}
 	// One insert per revision, so a row the database refuses loses only its own revision's values.
 	for _, rev := range revs {
@@ -329,7 +331,9 @@ func (rn *Runner) batch(ctx context.Context, r *jobs.Run, inst pluginhost.Instan
 		}
 		if vi >= 0 && !hasVectors {
 			if len(vals) == 0 {
-				fail(rev, "its vector was dropped: this install has no pgvector")
+				if err := fail(rev, "its vector was dropped: this install has no pgvector"); err != nil {
+					return Checked{}, err
+				}
 				continue
 			}
 			dropped++
@@ -344,7 +348,9 @@ func (rn *Runner) batch(ctx context.Context, r *jobs.Run, inst pluginhost.Instan
 				if ctx.Err() != nil {
 					return Checked{}, err
 				}
-				fail(rev, "storing its values failed: %v", err)
+				if err := fail(rev, "storing its values failed: %v", err); err != nil {
+					return Checked{}, err
+				}
 				continue
 			}
 		}
@@ -353,7 +359,9 @@ func (rn *Runner) batch(ctx context.Context, r *jobs.Run, inst pluginhost.Instan
 				if ctx.Err() != nil {
 					return Checked{}, err
 				}
-				fail(rev, "storing its vector failed: %v", err)
+				if err := fail(rev, "storing its vector failed: %v", err); err != nil {
+					return Checked{}, err
+				}
 				continue
 			}
 		}

@@ -189,6 +189,11 @@ func TestEnrichRunFailsOnlyTheRevisionWhoseVectorIsRefused(t *testing.T) {
 		!slices.ContainsFunc(p.Warnings, func(s string) bool { return strings.Contains(s, "its vector failed") }) {
 		t.Fatalf("job %s, progress %+v", j.Status, p)
 	}
+	var n int
+	if err := e.pool.QueryRow(context.Background(), `SELECT count(*) FROM enrich_failure f JOIN card c ON c.head_revision_id = f.revision_id
+		WHERE c.id = $1 AND f.instance_id = $2`, id, e.instID).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("recorded failures = %d, %v", n, err)
+	}
 }
 
 func TestEnrichRunPassesThoroughToThePlugin(t *testing.T) {

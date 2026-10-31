@@ -3,6 +3,7 @@ package plugins
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -93,9 +94,10 @@ func TestDecideRefusesAnAIInstanceWithoutAIDecide(t *testing.T) {
 	}
 }
 
-func TestEmbedRefusesAnAIInstanceWithoutAIEmbed(t *testing.T) {
-	ctx := context.Background()
-	m, err := protocol.LoadManifest(testutil.FakePluginWith(t, []string{"ai"}))
+// newServiceInstance creates a fake instance with caps that offers service.
+func newServiceInstance(t *testing.T, caps []string, service string) (*Registry, *pluginhost.Manager, int64) {
+	t.Helper()
+	m, err := protocol.LoadManifest(testutil.FakePluginWith(t, caps))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,21 +109,36 @@ func TestEmbedRefusesAnAIInstanceWithoutAIEmbed(t *testing.T) {
 		&blobstore.Store{Name: "library", Root: t.TempDir()}, box)
 	mgr := pluginhost.NewManager(nil, time.Minute, quiet)
 	t.Cleanup(mgr.Close)
-	create := func(name string, services ...string) int64 {
-		id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: new(name),
-			Config: map[string]any{"services": services}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return id
+	id, err := reg.CreateInstance(context.Background(), NewInstance{Plugin: "fake", Name: new("Svc"),
+		Config: map[string]any{"services": []string{service}}})
+	if err != nil {
+		t.Fatal(err)
 	}
+	return reg, mgr, id
+}
 
-	if _, err := reg.Embed(ctx, mgr, create("Chat", protocol.MethodAIChat), []string{"hi"}); !errors.Is(err, ErrIncapable) ||
-		!strings.Contains(err.Error(), "doesn't offer ai.embed") {
-		t.Fatalf("Embed on an instance without ai.embed: %v, want ErrIncapable naming ai.embed", err)
+func TestVectorQueryReturnsTheInstancesVector(t *testing.T) {
+	r, mgr, id := newServiceInstance(t, []string{"enrich"}, protocol.MethodVectorQuery)
+	got, err := r.VectorQuery(context.Background(), mgr, id, "abc")
+	if err != nil || got.Space != "fake" || len(got.Vector) != 2 || got.Vector[0] != 3 {
+		t.Fatalf("VectorQuery = %+v, %v", got, err)
 	}
-	got, err := reg.Embed(ctx, mgr, create("Embed", protocol.MethodAIEmbed), []string{"hi", "hello"})
-	if err != nil || len(got) != 2 || got[0][0] != 2 || got[1][0] != 5 {
-		t.Fatalf("Embed = %v, %v; want one vector per text", got, err)
+}
+
+func TestVectorInstanceIgnoresAMissingOrDisabledInstance(t *testing.T) {
+	r, _, id := newServiceInstance(t, []string{"enrich"}, protocol.MethodVectorQuery)
+	ctx := context.Background()
+	if err := r.SetSetting(ctx, VectorInstanceKey, strconv.FormatInt(id, 10)); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := r.VectorInstance(ctx); err != nil || got != id {
+		t.Fatalf("set: %d, %v", got, err)
+	}
+	disabled := true
+	if err := r.UpdateInstance(ctx, id, InstanceEdit{Disabled: &disabled}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := r.VectorInstance(ctx); err != nil || got != 0 {
+		t.Fatalf("disabled: %d, %v", got, err)
 	}
 }

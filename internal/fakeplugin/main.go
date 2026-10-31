@@ -248,6 +248,12 @@ func main() {
 			})
 		case protocol.MethodAIEmbed:
 			return aiEmbed(params)
+		case protocol.MethodVectorQuery:
+			var p protocol.VectorQueryParams
+			if err := json.Unmarshal(params, &p); err != nil {
+				return nil, protocol.InvalidParams(err)
+			}
+			return protocol.VectorValue{Space: "fake", Vector: []float32{float32(len(p.Text)), 1}}, nil
 		case protocol.MethodAIDecide:
 			if *mode == "bad-decide" {
 				return protocol.AIDecideResult{Model: "fake"}, nil

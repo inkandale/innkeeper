@@ -718,6 +718,7 @@ func (r *Registry) load(ctx context.Context, id int64) (inst pluginhost.Instance
 			BlobStores:  map[string]string{r.blobs.Name: r.blobs.Root},
 			BlobTmp:     r.blobs.TmpDir(),
 			DatabaseURL: r.dsn(plugin),
+			Features:    r.features(ctx),
 		},
 	}, st, nil
 }
@@ -887,17 +888,77 @@ func (r *Registry) Decide(ctx context.Context, mgr *pluginhost.Manager, id int64
 	return res, r.callService(ctx, mgr, id, protocol.MethodAIDecide, p, &res)
 }
 
-// Embed returns ai instance id's vector for each of texts, in order. The
-// instance must offer ai.embed.
-func (r *Registry) Embed(ctx context.Context, mgr *pluginhost.Manager, id int64, texts []string) ([][]float32, error) {
-	var res protocol.AIEmbedResult
-	if err := r.callService(ctx, mgr, id, protocol.MethodAIEmbed, protocol.AIEmbedParams{Texts: texts}, &res); err != nil {
-		return nil, err
+// VectorInstanceKey is the setting naming the enrich instance whose vectors
+// Similar and semantic search read. One for the install, since vectors from
+// different models can't be compared.
+const VectorInstanceKey = "vector_instance"
+
+// VectorInstance returns the vector instance: the one the setting names,
+// or with none named, the only enabled instance whose plugin declares a
+// vector enrichment. It is 0 when there is none, or the named one is gone
+// or disabled.
+func (r *Registry) VectorInstance(ctx context.Context) (int64, error) {
+	v, err := r.Setting(ctx, VectorInstanceKey)
+	if err != nil {
+		return 0, err
 	}
-	if err := res.Validate(len(texts)); err != nil {
-		return nil, fmt.Errorf("ai.embed from instance %d: %w", id, err)
+	if v == "" {
+		return r.onlyVectorInstance(ctx)
 	}
-	return res.Vectors, nil
+	id, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("setting %s = %q: %w", VectorInstanceKey, v, err)
+	}
+	info, err := r.GetInstance(ctx, id)
+	if errors.Is(err, ErrNotFound) || (err == nil && info.Disabled) {
+		return 0, nil
+	}
+	return id, err
+}
+
+// onlyVectorInstance is the one enabled instance whose plugin declares a
+// vector enrichment, or 0 when there are none or several.
+func (r *Registry) onlyVectorInstance(ctx context.Context) (int64, error) {
+	insts, err := r.InstancesWith(ctx, protocol.CapabilityEnrich)
+	if err != nil {
+		return 0, err
+	}
+	manifests := r.Manifests()
+	var found []int64
+	for _, inst := range insts {
+		m := manifests[inst.Plugin]
+		if inst.Disabled || m == nil || !slices.ContainsFunc(slices.Collect(maps.Values(m.Enrichments)),
+			func(e protocol.Enrichment) bool { return e.Type == "vector" }) {
+			continue
+		}
+		found = append(found, inst.ID)
+	}
+	if len(found) != 1 {
+		return 0, nil
+	}
+	return found[0], nil
+}
+
+// VectorQuery returns instance id's vector for a search query. The
+// instance must offer vector.query.
+func (r *Registry) VectorQuery(ctx context.Context, mgr *pluginhost.Manager, id int64, text string) (protocol.VectorValue, error) {
+	var res protocol.VectorValue
+	if err := r.callService(ctx, mgr, id, protocol.MethodVectorQuery, protocol.VectorQueryParams{Text: text}, &res); err != nil {
+		return res, err
+	}
+	if err := res.Validate(); err != nil {
+		return res, fmt.Errorf("vector.query from instance %d: %w", id, err)
+	}
+	return res, nil
+}
+
+// features are the optional core features plugins are told about.
+func (r *Registry) features(ctx context.Context) []string {
+	// ponytail: asks once per instance load; cache on the Registry if loads get hot.
+	if ok, err := db.VectorsAvailable(ctx, r.pool); err == nil && ok {
+		return []string{protocol.FeatureVectors}
+	}
+	return nil
 }
 
 // Retryable reports whether a failed plugin call may work later: the plugin

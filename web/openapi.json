@@ -2773,6 +2773,13 @@
           "disabled": {
             "type": "boolean"
           },
+          "enrich_on_change": {
+            "type": "boolean"
+          },
+          "enrich_on_change_since": {
+            "format": "date-time",
+            "type": "string"
+          },
           "id": {
             "format": "int64",
             "type": "integer"
@@ -2830,6 +2837,8 @@
           "created_at",
           "updated_at",
           "disabled",
+          "enrich_on_change",
+          "enrich_on_change_since",
           "status"
         ],
         "type": "object"
@@ -5573,6 +5582,10 @@
           },
           "disabled": {
             "description": "true keeps the instance but stops everything using it; false turns it back on. Disabling a login provider ends its sessions.",
+            "type": "boolean"
+          },
+          "enrich_on_change": {
+            "description": "For an enrich instance: run it on the cards an import or an edit changes. Turning it on doesn't score older cards; start a run for those.",
             "type": "boolean"
           },
           "library_access": {

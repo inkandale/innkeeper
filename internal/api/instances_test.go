@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/plugins"
@@ -220,4 +221,28 @@ func TestInstanceSyncLibrary(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.call("PATCH", fmt.Sprintf("/instances/%d", id), map[string]any{"sync_library": archive.ID}, 400, nil)
+}
+
+func TestInstanceEnrichOnChangeFollowsThePluginUntilSet(t *testing.T) {
+	e := newEnrichEnv(t)
+	var inst plugins.InstanceInfo
+	e.call("GET", fmt.Sprintf("/instances/%d", e.instID), nil, 200, &inst)
+	if inst.EnrichOnChange {
+		t.Fatal("judge's manifest doesn't set enrich_on_change, so the instance shouldn't")
+	}
+	before := inst.EnrichOnChangeSince
+	time.Sleep(10 * time.Millisecond)
+	e.call("PATCH", fmt.Sprintf("/instances/%d", e.instID), map[string]any{"enrich_on_change": true}, 200, &inst)
+	if !inst.EnrichOnChange || !inst.EnrichOnChangeSince.After(before) {
+		t.Fatalf("turned on: %+v", inst)
+	}
+	since := inst.EnrichOnChangeSince
+	e.call("PATCH", fmt.Sprintf("/instances/%d", e.instID), map[string]any{"enrich_on_change": true}, 200, &inst)
+	if !inst.EnrichOnChangeSince.Equal(since) {
+		t.Fatal("turning it on again moved since")
+	}
+	e.call("PATCH", fmt.Sprintf("/instances/%d", e.instID), map[string]any{"enrich_on_change": false}, 200, &inst)
+	if inst.EnrichOnChange {
+		t.Fatal("turned off, still on")
+	}
 }

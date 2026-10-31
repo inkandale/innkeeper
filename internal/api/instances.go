@@ -85,14 +85,15 @@ type createInstanceIn struct {
 type updateInstanceIn struct {
 	ID   int64 `path:"id"`
 	Body struct {
-		Name          *string            `json:"name,omitempty" doc:"Empty clears it. A singleton's instance never keeps one."`
-		Config        map[string]any     `json:"config,omitempty" doc:"Replaces the whole config."`
-		Secrets       map[string]*string `json:"secrets,omitempty" doc:"Sets each secret named; null removes it. Secrets not named stay."`
-		OwnerSubject  *string            `json:"owner_subject,omitempty" doc:"Empty clears it, which logs the owner out of this provider."`
-		LibraryAccess *bool              `json:"library_access,omitempty" doc:"Lets an action plugin read the library while it runs an action that asks to."`
-		Disabled      *bool              `json:"disabled,omitempty" doc:"true keeps the instance but stops everything using it; false turns it back on. Disabling a login provider ends its sessions."`
-		SyncLibrary   *int64             `json:"sync_library,omitempty" doc:"For a target app: the library its syncs match against and import new items into."`
-		DefaultBases  map[string]any     `json:"default_bases,omitempty" doc:"For each JSON pointer the owner just overrode, the default it replaced, so the form can mark it once the default changes."`
+		Name           *string            `json:"name,omitempty" doc:"Empty clears it. A singleton's instance never keeps one."`
+		Config         map[string]any     `json:"config,omitempty" doc:"Replaces the whole config."`
+		Secrets        map[string]*string `json:"secrets,omitempty" doc:"Sets each secret named; null removes it. Secrets not named stay."`
+		OwnerSubject   *string            `json:"owner_subject,omitempty" doc:"Empty clears it, which logs the owner out of this provider."`
+		LibraryAccess  *bool              `json:"library_access,omitempty" doc:"Lets an action plugin read the library while it runs an action that asks to."`
+		EnrichOnChange *bool              `json:"enrich_on_change,omitempty" doc:"For an enrich instance: run it on the cards an import or an edit changes. Turning it on doesn't score older cards; start a run for those."`
+		Disabled       *bool              `json:"disabled,omitempty" doc:"true keeps the instance but stops everything using it; false turns it back on. Disabling a login provider ends its sessions."`
+		SyncLibrary    *int64             `json:"sync_library,omitempty" doc:"For a target app: the library its syncs match against and import new items into."`
+		DefaultBases   map[string]any     `json:"default_bases,omitempty" doc:"For each JSON pointer the owner just overrode, the default it replaced, so the form can mark it once the default changes."`
 	}
 }
 
@@ -214,7 +215,7 @@ func (s *Server) instanceRoutes(api huma.API) {
 				return nil, err
 			}
 			err = s.Registry.UpdateInstance(ctx, in.ID, plugins.InstanceEdit{Name: in.Body.Name, Config: in.Body.Config,
-				Secrets: in.Body.Secrets, OwnerSubject: in.Body.OwnerSubject, LibraryAccess: in.Body.LibraryAccess, Disabled: in.Body.Disabled, SyncLibrary: in.Body.SyncLibrary,
+				Secrets: in.Body.Secrets, OwnerSubject: in.Body.OwnerSubject, LibraryAccess: in.Body.LibraryAccess, EnrichOnChange: in.Body.EnrichOnChange, Disabled: in.Body.Disabled, SyncLibrary: in.Body.SyncLibrary,
 				DefaultBases: in.Body.DefaultBases})
 			if err != nil {
 				return nil, s.fail(err)

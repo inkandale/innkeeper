@@ -97,11 +97,13 @@ export function InstanceForm({
     name: instance?.name ?? "",
     owner: instance?.owner_subject ?? "",
     libraryAccess: instance?.library_access ?? false,
+    enrichOnChange: instance?.enrich_on_change ?? false,
     syncLibrary: instance?.sync_library ?? 1,
   };
   const [name, setName] = useState(stored.name);
   const [owner, setOwner] = useState(stored.owner);
   const [libraryAccess, setLibraryAccess] = useState(stored.libraryAccess);
+  const [enrichOnChange, setEnrichOnChange] = useState(stored.enrichOnChange);
   const [syncLibrary, setSyncLibrary] = useState(stored.syncLibrary);
   const [created, setCreated] = useState<number>();
   const libraries = useQuery(librariesQuery).data ?? [];
@@ -120,6 +122,7 @@ export function InstanceForm({
     (named && name.trim() !== stored.name) ||
     (caps.includes("auth") && owner.trim() !== stored.owner) ||
     libraryAccess !== stored.libraryAccess ||
+    enrichOnChange !== stored.enrichOnChange ||
     syncLibrary !== stored.syncLibrary;
   const discard = () => {
     setConfig(JSON.parse(initial));
@@ -127,6 +130,7 @@ export function InstanceForm({
     setName(stored.name);
     setOwner(stored.owner);
     setLibraryAccess(stored.libraryAccess);
+    setEnrichOnChange(stored.enrichOnChange);
     setSyncLibrary(stored.syncLibrary);
   };
   const [tab, setTab] = useState("general");
@@ -192,6 +196,7 @@ export function InstanceForm({
               secrets: hasSecrets ? (secrets as Record<string, string>) : undefined,
               owner_subject: trimmedOwner || undefined,
               library_access: libraryAccess || undefined,
+              enrich_on_change: enrichOnChange || undefined,
             },
           }),
         );
@@ -207,6 +212,7 @@ export function InstanceForm({
             secrets: hasSecrets ? secrets : undefined,
             owner_subject: trimmedOwner !== undefined && trimmedOwner !== stored.owner ? trimmedOwner : undefined,
             library_access: libraryAccess !== (instance.library_access ?? false) ? libraryAccess : undefined,
+            enrich_on_change: enrichOnChange !== stored.enrichOnChange ? enrichOnChange : undefined,
             sync_library: syncLibrary !== instance.sync_library ? syncLibrary : undefined,
           },
         }),
@@ -372,6 +378,15 @@ export function InstanceForm({
                 <input type="checkbox" checked={libraryAccess} onChange={(e) => setLibraryAccess(e.target.checked)} />
               </label>
               <small className="muted">Lets actions that ask for it read your cards and lorebooks while they run.</small>
+            </div>
+          )}
+          {caps.includes("enrich") && (
+            <div className="form-field">
+              <label className="check">
+                <span>Update cards as they change</span>
+                <input type="checkbox" checked={enrichOnChange} onChange={(e) => setEnrichOnChange(e.target.checked)} />
+              </label>
+              <small className="muted">Runs this on cards an import or an edit changes. It doesn't score older cards; start a run from the library for those.</small>
             </div>
           )}
           {Object.keys(plugin.settings_actions ?? {}).length > 0 && (

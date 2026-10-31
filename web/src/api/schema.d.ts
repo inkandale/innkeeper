@@ -3644,6 +3644,9 @@ export interface components {
             /** Format: date-time */
             created_at: string;
             disabled: boolean;
+            enrich_on_change: boolean;
+            /** Format: date-time */
+            enrich_on_change_since: string;
             /** Format: int64 */
             id: number;
             label: string;
@@ -4709,6 +4712,8 @@ export interface components {
             };
             /** @description true keeps the instance but stops everything using it; false turns it back on. Disabling a login provider ends its sessions. */
             disabled?: boolean;
+            /** @description For an enrich instance: run it on the cards an import or an edit changes. Turning it on doesn't score older cards; start a run for those. */
+            enrich_on_change?: boolean;
             /** @description Lets an action plugin read the library while it runs an action that asks to. */
             library_access?: boolean;
             /** @description Empty clears it. A singleton's instance never keeps one. */

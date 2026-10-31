@@ -42,10 +42,12 @@ const ai = {
 const broken = {
   id: 3, plugin: "sillytavern", label: "home", name: "home", config: { url: "http://st", auth: "none" }, secrets: ["password"],
   broken_error: "connection refused", disabled: false, status: "broken" as const, broken_at: now, created_at: now, updated_at: now,
-  sync_library: 1,
+  sync_library: 1, enrich_on_change: false, enrich_on_change_since: now,
 };
 const owned = { ...broken, id: 4, plugin: "password-login", label: "pw", name: "pw", config: {}, secrets: [], owner_subject: "me" };
 const forge = { ...broken, id: 5, plugin: "forge-ai", label: "ai", name: "ai", config: {}, secrets: [], broken_error: undefined, library_access: false };
+const judge = { name: "judge", version: "0.1.0", capabilities: ["enrich"], secrets: [], multiple_instances: true, status: "ready" as const };
+const judgeInst = { ...forge, id: 7, plugin: "judge", label: "judge", name: "judge", enrich_on_change: false };
 const conf = {
   name: "conf", version: "0.1.0", capabilities: ["settings"], secrets: ["api_key"],
   multiple_instances: false, status: "ready" as const,
@@ -86,7 +88,7 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (req: Request) => {
       const u = new URL(req.url);
-      if (u.pathname === "/api/plugins") return json(titled([login, st, ai, conf, required, gated]));
+      if (u.pathname === "/api/plugins") return json(titled([login, st, ai, conf, required, gated, judge]));
       if (req.method === "GET" && u.pathname === "/api/instances") return json(instances);
       if (req.method === "GET" && u.pathname === "/api/libraries") return json(libraries);
       if (req.method === "GET" && u.pathname === "/api/instances/3") return json(broken);
@@ -95,6 +97,10 @@ beforeEach(() => {
         const body = await req.json();
         sent.push({ method: req.method, path: u.pathname, body });
         return json({ ...owned, ...(body as object) });
+      }
+      if (u.pathname === "/api/instances/7") {
+        if (req.method === "PATCH") sent.push({ method: req.method, path: u.pathname, body: await req.json() });
+        return json(judgeInst);
       }
       if (req.method === "GET" && u.pathname === "/api/instances/5") return json(forge);
       if (req.method === "GET" && u.pathname === "/api/instances/5/records/skills") return json([{ id: "noir", name: "noir" }]);
@@ -346,6 +352,23 @@ test("an action plugin's instance turns on Library access", async () => {
   expect(sent[0]?.body).toEqual({ library_access: true });
 });
 
+test("an enrich plugin's instance turns on Update cards as they change", async () => {
+  const user = userEvent.setup();
+  renderAt("/settings/instances/7");
+  const box = await screen.findByLabelText("Update cards as they change");
+  expect(box).not.toBeChecked();
+  await user.click(box);
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await vi.waitFor(() => expect(sent).toHaveLength(1));
+  expect(sent[0]?.body).toMatchObject({ enrich_on_change: true });
+});
+
+test("other plugins have no Update cards as they change setting", async () => {
+  renderAt("/settings/instances/3");
+  expect(await screen.findByLabelText("Name")).toBeInTheDocument();
+  expect(screen.queryByLabelText("Update cards as they change")).toBeNull();
+});
+
 test("other plugins have no Library access setting", async () => {
   renderAt("/settings/instances/3");
   expect(await screen.findByLabelText("Name")).toBeInTheDocument();
@@ -443,7 +466,7 @@ test("saving refetches the defaults, so a saved override's update mark is curren
   const user = userEvent.setup();
   const onSaved = vi.fn();
   const router = createMemoryRouter(
-    [{ path: "/", element: <InstanceForm plugin={{ ...conf, title: "conf", source: "official", builtin: false } satisfies Plugin} instance={{ ...confInst, library_access: false }} onSaved={onSaved} /> }],
+    [{ path: "/", element: <InstanceForm plugin={{ ...conf, title: "conf", source: "official", builtin: false } satisfies Plugin} instance={{ ...confInst, library_access: false, enrich_on_change: false, enrich_on_change_since: now }} onSaved={onSaved} /> }],
     { initialEntries: ["/"] },
   );
   render(

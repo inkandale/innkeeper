@@ -278,6 +278,11 @@ type InstanceInfo struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	Disabled    bool       `json:"disabled"`
+	// EnrichOnChange is whether an enrich instance runs on cards as they
+	// change: the owner's choice, or the plugin's default until they make one.
+	EnrichOnChange bool `json:"enrich_on_change"`
+	// EnrichOnChangeSince is when EnrichOnChange was last turned on.
+	EnrichOnChangeSince time.Time `json:"enrich_on_change_since"`
 	// Status is disabled, broken, needs_setup, or ready, in that order.
 	Status string `json:"status" enum:"ready,needs_setup,broken,disabled"`
 }
@@ -328,6 +333,8 @@ type InstanceEdit struct {
 	OwnerSubject  *string
 	LibraryAccess *bool
 	Disabled      *bool
+	// EnrichOnChange sets whether an enrich instance runs on cards as they change.
+	EnrichOnChange *bool
 	// SyncLibrary is the library a target app syncs with.
 	SyncLibrary *int64
 	// DefaultBases maps a JSON pointer the owner just overrode to the default it replaced.
@@ -508,8 +515,11 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 			secrets = $4, owner_subject = CASE WHEN $5 THEN nullif($6::text, '') ELSE owner_subject END,
 			library_access = coalesce($7, library_access), default_hashes = coalesce($8, default_hashes),
 			disabled = coalesce($9, disabled), sync_library = coalesce($11, sync_library),
+			enrich_on_change_since = CASE WHEN $12 AND enrich_on_change IS DISTINCT FROM true
+				THEN now() ELSE enrich_on_change_since END,
+			enrich_on_change = coalesce($12, enrich_on_change),
 			broken_error = NULL, broken_at = NULL, updated_at = now()
-		WHERE id = $1`, id, e.Name, config, sealed, e.OwnerSubject != nil, owner, e.LibraryAccess, newHashes, e.Disabled, single, e.SyncLibrary)
+		WHERE id = $1`, id, e.Name, config, sealed, e.OwnerSubject != nil, owner, e.LibraryAccess, newHashes, e.Disabled, single, e.SyncLibrary, e.EnrichOnChange)
 	if err != nil {
 		return writeErr(err)
 	}
@@ -549,13 +559,14 @@ func deleteInstances(ctx context.Context, db interface {
 }
 
 const infoCols = `id, plugin, name, config, secrets, owner_subject, library_access, broken_error, broken_at,
-	created_at, updated_at, disabled, coalesce(sync_library, 1)`
+	created_at, updated_at, disabled, coalesce(sync_library, 1), enrich_on_change, enrich_on_change_since`
 
 func (r *Registry) scanInfo(row pgx.Row) (InstanceInfo, error) {
 	var i InstanceInfo
 	var sealed []byte
+	var onChange *bool
 	err := row.Scan(&i.ID, &i.Plugin, &i.Name, &i.Config, &sealed, &i.OwnerSubject, &i.LibraryAccess,
-		&i.BrokenError, &i.BrokenAt, &i.CreatedAt, &i.UpdatedAt, &i.Disabled, &i.SyncLibrary)
+		&i.BrokenError, &i.BrokenAt, &i.CreatedAt, &i.UpdatedAt, &i.Disabled, &i.SyncLibrary, &onChange, &i.EnrichOnChangeSince)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return i, ErrNotFound
 	}
@@ -565,6 +576,10 @@ func (r *Registry) scanInfo(row pgx.Row) (InstanceInfo, error) {
 	i.Label = i.Plugin
 	if m, ok := r.manifest(i.Plugin); ok {
 		i.Label = m.DisplayName()
+		i.EnrichOnChange = m.EnrichOnChange
+	}
+	if onChange != nil {
+		i.EnrichOnChange = *onChange
 	}
 	if i.Name != nil {
 		i.Label = *i.Name

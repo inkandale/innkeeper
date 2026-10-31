@@ -39,9 +39,13 @@ database at startup and stop cleanly on `SIGTERM`.
 | `INNKEEPER_BACKUP_ASSETS_KEEP`, `INNKEEPER_BACKUP_CONFIG_KEEP` | `api`, `worker` | How many backups of that type to keep; default 7 |
 | `INNKEEPER_URL`, `INNKEEPER_TOKEN` | `ink` | The site root, such as `http://localhost:8080`, and a token. When `INNKEEPER_TOKEN` is set, `ink` uses these instead of a login from `ink login`. The CLI adds `/api` itself |
 
-Innkeeper needs PostgreSQL 15 or later with the pgvector extension.
-Migrations run `CREATE EXTENSION vector`, which pgvector allows only a
-superuser, so migrate as one or have an admin create the extension first.
+Innkeeper needs PostgreSQL 15 or later. pgvector is optional: with it,
+similar cards rank by meaning and semantic search works; without it,
+similar cards rank by shared tags. At startup Innkeeper runs
+`CREATE EXTENSION IF NOT EXISTS vector`, which needs a superuser. If
+pgvector isn't installed or the role can't create the extension, Innkeeper
+logs a warning and runs without vector features. To turn them on, install
+pgvector, or have an admin run `CREATE EXTENSION vector`, then restart.
 
 If any installed plugin sets `database = true`, the API and worker give it a
 schema and a login role limited to it at startup. That needs PostgreSQL 15 or

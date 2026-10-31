@@ -6,8 +6,8 @@ image:
 
 # Existing Secrets the chart reads; it creates none.
 database:
-  # A postgres:// URL. PostgreSQL 15 or later with pgvector. Migrations run
-  # CREATE EXTENSION vector, which needs a superuser unless an admin ran it first.
+  # A postgres:// URL. PostgreSQL 15 or later. pgvector is optional; startup runs
+  # CREATE EXTENSION IF NOT EXISTS vector, and without it vector features stay off.
   secretName: ""
   key: uri
 secretsKey:

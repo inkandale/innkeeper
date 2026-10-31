@@ -99,7 +99,7 @@ Each plugin folder has a `plugin.toml`:
 | `capabilities` | yes | Any of `import`, `push`, `pull`, `action`, `records`, `enrich`, `codec`, `auth`, `mcp`, `catalog`, `sites`, `ai`, `settings`, or `theme`. A theme lists no other capability |
 | `secrets` | no | Names of secrets the owner enters for each instance, in lowercase `snake_case` |
 | `config` | no | JSON Schema with `type = "object"` for instance settings; the UI renders a form from it. See [The config form](#the-config-form) |
-| `enrichments` | for `enrich` | Keys the plugin writes, in lowercase `snake_case`; see [`enrich`](#enrich), and `emit.card`'s `values` under [`import`](#import). Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list`. `grid = true` shows the key on the library grid, for at most one key. The grid key's `priority`, an integer, orders plugins: a tile shows the highest-priority score a card has, and the top three wear gold, silver, and bronze. Space priorities apart, such as by 100, so other plugins fit between. `embed = true`, on a `text` or `list` key, makes a card's value on its head revision the text its search and similarity vector is made from, in place of the card's own fields; values of several such keys are joined in key order, and a new value re-embeds the card. An `enrich` plugin must declare at least one |
+| `enrichments` | for `enrich` | Keys the plugin writes, in lowercase `snake_case`; see [`enrich`](#enrich), and `emit.card`'s `values` under [`import`](#import). Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list`. `grid = true` shows the key on the library grid, for at most one key. The grid key's `priority`, an integer, orders plugins: a tile shows the highest-priority score a card has, and the top three wear gold, silver, and bronze. Space priorities apart, such as by 100, so other plugins fit between. `embed` is retired and ignored. An `enrich` plugin must declare at least one |
 | `enrich_on_import` | no; only for `enrich` | `true` makes the core score the cards each import creates or revises, with one run per enabled instance of the plugin, up to the plugin's card cap. Set it only when your calls cost the owner nothing, since the owner didn't ask for the run |
 | `formats` | only for `codec` | What `codec.encode` writes, each listed once: lowercase words of letters and digits joined by single hyphens, such as `png`. A codec plugin must list at least one. `json` is taken: the core exports CCv3 JSON itself |
 | `bulk` | no; only for `import` | `true` for imports of large sources, such as a site dump. The core stores the cards sent between two checkpoints, about 1,000, in one transaction with the second checkpoint, and doesn't queue them for source detection |
@@ -218,11 +218,13 @@ setup**. Config saved before a schema change is checked when it is next saved.
    | `blob_stores` | Blob store paths, by store name |
    | `blob_tmp` | Folder for new blob files |
    | `database_url` | PostgreSQL URL for the plugin's role, whose `search_path` is its schema. Empty unless the manifest sets `database = true` |
+   | `features` | The optional core features this install has. `vectors` means core stores `vector` enrichment values; without it, skip computing them |
 
    Reply with `protocol`, `name`, `version`, and `capabilities`. These must
    match the manifest, or the core stops the plugin. An `ai` plugin also
    replies with `services`: the service methods this instance offers, such
-   as `["ai.chat"]`. The core stops a plugin that lists a service outside its
+   as `["ai.chat"]`. An `enrich` plugin with a `vector` key replies with
+   `["vector.query"]`. The core stops a plugin that lists a service outside its
    capabilities.
 
    Don't contact external services during `initialize`. Report bad
@@ -1027,6 +1029,7 @@ summary = { type = "text", label = "Summary" }
 | `text` | A JSON string |
 | `score` | A JSON number within `range`, ends included |
 | `list` | A JSON array of strings |
+| `vector` | An object `{"space": "...", "vector": [numbers]}`. Core stores it as the card's vector, not as an enrichment value. `space` (1 to 200 bytes) names what made the vector; core compares only vectors in one space. At most one `vector` key per plugin, it can't set `multiple_instances`, and the plugin must offer `vector.query`. A value is at most 64 KiB of JSON, about 4,000 dimensions |
 
 **`enrich.run`** computes values for up to 20 revisions.
 
@@ -1057,6 +1060,11 @@ warning for each. A revision with `error`, or missing from
 `results`, stores nothing and counts as failed; the rest of the reply still
 counts. Reply with a JSON-RPC error only when the whole call failed, such as
 a missing API key: every revision in it fails.
+
+**`vector.query`** takes `text` (plus `instance`, as for the `ai` methods) and
+replies with a vector value, `{"space", "vector"}`, in the same space as the
+plugin's card vectors. Core calls it to turn a search query into a vector.
+The plugin offers it by listing it in `initialize`'s `services`.
 
 A run isn't retried. When the owner stops one, the core sends `cancel` and
 keeps what earlier calls stored.
@@ -1116,7 +1124,8 @@ without tool support, replies `-32010`. Rate limits and timeouts are
 retryable errors.
 
 **`ai.embed`** takes `instance` and `texts`, and replies with `vectors`, one
-array of numbers per text, in order. Reply `-32010` only when the provider
+array of numbers per text, in order, and optionally `model`, the model that
+made them. Reply `-32010` only when the provider
 refuses a text, so the core can skip that card. Any other error, such as a
 refused key, is that card's error in the enrich run's report.
 

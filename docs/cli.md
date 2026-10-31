@@ -162,7 +162,9 @@ card meanwhile, the error names the file that holds your edit.
 filter on `archived`. It touches only cards not already in the target state.
 The API's `POST /bulk` also tags, collects, and exports; see `/api/docs`.
 `POST /cards/purge` deletes the cards a query matches for good, given their
-count as `confirm`. It can't be undone, and it keeps cards pushed to an app.
+count as `confirm`. It can't be undone. A pushed card is deleted with its
+link to the app; the app's copy stays, so archive with unpublish first to
+remove it.
 
 `sync push` prints what it would replace in the app. For one card, that's
 each field it changes; for a query, how many matching cards are new, not

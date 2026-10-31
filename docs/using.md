@@ -168,8 +168,41 @@ their copies. If the settings can't run, the import's log says why. Moving
 cards runs it in the libraries they left and the one they joined.
 
 **Purging** deletes for good. Select cards, such as archived ones scoring
-under 30, and use Delete…, typing how many there are. Cards pushed to an app
-are kept. See `POST /cards/purge`.
+under 30, and use Delete…, typing how many there are. A card pushed to an
+app is deleted too, with its link to the app; the app's copy stays there.
+Archive with unpublish first to remove it. See `POST /cards/purge`. To clear
+out old archived cards in one step, see [Maintenance](#maintenance).
+
+## Maintenance
+
+Settings › Maintenance shows the database's size and its five largest
+tables, and what each action below would remove before you run it. Each
+action is a job, listed under Jobs, and only one runs at a time; starting
+another while one is queued or running returns the running one. Nothing runs
+on its own. The tab and its API (`GET /maintenance`, `POST /maintenance/runs`)
+need an owner login or a `destructive` token.
+
+- **Trim enrichment history** keeps the newest N values (3 by default, 1 to
+  100) for each card and key of each plugin instance. It never changes a
+  card's current value. It can't be undone.
+- **Remove stale vectors** deletes vectors from other plugins or made by an
+  older model, which Similar cards and search can't use. With no vector
+  source set it removes nothing. Affected cards rank by tags until their
+  plugin runs on them again. It can't be undone, and the tab shows it only
+  when vectors are available.
+- **Clear recorded failures** forgets the cards a plugin failed on, so the
+  next sweep retries them now instead of a day later.
+- **Vacuum and analyze** makes space freed by deletes reusable and refreshes
+  query plans. Files on disk don't shrink. The database user must own
+  Innkeeper's tables, or the job fails and says so.
+- **Purge archived cards** deletes cards archived at least N days ago (30 by
+  default), with their history, and then the archived lorebooks no live card
+  links to. A live variant of a purged card moves up to its nearest surviving
+  ancestor. A pushed card loses its link to the app, but the app's copy
+  stays in the app; archive with unpublish first to remove it. Type `purge`
+  to enable the button. It can't be undone, so check when the last backup
+  ran (the tab shows it): a [backup](running.md#backup-and-restore) is the only way
+  back.
 
 ## Sync
 

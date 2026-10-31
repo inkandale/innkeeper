@@ -1118,7 +1118,7 @@ retryable errors.
 **`ai.embed`** takes `instance` and `texts`, and replies with `vectors`, one
 array of numbers per text, in order. Reply `-32010` only when the provider
 refuses a text, so the core can skip that card. Any other error, such as a
-refused key, fails the embed job.
+refused key, is that card's error in the enrich run's report.
 
 **`ai.decide`** asks questions about one state and gets each answer as
 probabilities, not text, in the shape of a decision model's `/v1/systemone`.

@@ -157,10 +157,36 @@ func TestEnrichRunDropsVectorsWithoutPgvector(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	has := func(p enrich.Progress, w string) bool {
+		return slices.ContainsFunc(p.Warnings, func(s string) bool { return strings.Contains(s, w) })
+	}
 	e := newEnrichEnvWith(t, drop, map[string]any{"vectors": true})
 	id := e.card("Brakka", "abc")
 	j, p := e.evaluate(e.instID, id)
-	if j.Status != jobs.StatusSucceeded || p.Done != 1 || !slices.ContainsFunc(p.Warnings, func(w string) bool { return strings.Contains(w, "pgvector") }) {
+	if j.Status != jobs.StatusSucceeded || p.Done != 1 || !has(p, "pgvector") {
+		t.Fatalf("job %s, progress %+v", j.Status, p)
+	}
+
+	// A revision whose only value was a vector stored nothing, so it is not done.
+	e = newEnrichEnvWith(t, drop, map[string]any{"vectors": true, "vectors_only": true})
+	id = e.card("Brakka", "abc")
+	j, p = e.evaluate(e.instID, id)
+	if j.Status != jobs.StatusSucceeded || p.Done != 0 || p.Failed != 1 || !has(p, "pgvector") {
+		t.Fatalf("vectors only: job %s, progress %+v", j.Status, p)
+	}
+}
+
+func TestEnrichRunFailsOnlyTheRevisionWhoseVectorIsRefused(t *testing.T) {
+	refuse := func(e *testEnv) {
+		if _, err := e.pool.Exec(context.Background(), `ALTER TABLE card_embedding ADD CONSTRAINT refuse CHECK (false)`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e := newEnrichEnvWith(t, refuse, map[string]any{"vectors": true})
+	id := e.card("Brakka", "abc")
+	j, p := e.evaluate(e.instID, id)
+	if j.Status != jobs.StatusSucceeded || p.Done != 0 || p.Failed != 1 ||
+		!slices.ContainsFunc(p.Warnings, func(s string) bool { return strings.Contains(s, "its vector failed") }) {
 		t.Fatalf("job %s, progress %+v", j.Status, p)
 	}
 }

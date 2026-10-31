@@ -291,42 +291,70 @@ func (rn *Runner) batch(ctx context.Context, r *jobs.Run, inst pluginhost.Instan
 	checked.Failed += len(missing)
 	checked.Skipped = skipped
 	checked.Warnings = append(missing, checked.Warnings...)
-	vectors, err := rn.vectors(ctx, inst.Manifest.Enrichments, &checked)
+	vectors, err := rn.vectors(inst.Manifest.Enrichments, &checked)
 	if err != nil {
 		return Checked{}, err
 	}
-	if len(vectors) > 0 {
-		if err := rn.Lib.SaveVectors(ctx, instanceID, vectors); err != nil {
+	hasVectors := len(vectors) == 0
+	if !hasVectors {
+		if hasVectors, err = rn.Lib.HasVectors(ctx); err != nil {
 			return Checked{}, err
 		}
+	}
+	dropped := 0
+	fail := func(rev protocol.EnrichRevision, format string, args ...any) {
+		checked.Done--
+		checked.Failed++
+		checked.Warnings = append(checked.Warnings, library.DataName(rev.Data)+": "+fmt.Sprintf(format, args...))
 	}
 	// One insert per revision, so a row the database refuses loses only its own revision's values.
 	for _, rev := range revs {
 		vals := slices.DeleteFunc(slices.Clone(checked.Values), func(v library.NewEnrichment) bool { return v.RevisionID != rev.RevisionID })
-		if len(vals) == 0 {
+		vi := slices.IndexFunc(vectors, func(v library.NewVector) bool { return v.RevisionID == rev.RevisionID })
+		if len(vals) == 0 && vi < 0 {
 			continue
+		}
+		if vi >= 0 && !hasVectors {
+			if len(vals) == 0 {
+				fail(rev, "its vector was dropped: this install has no pgvector")
+				continue
+			}
+			dropped++
+			vi = -1
 		}
 		line, err := rn.scoreLine(ctx, inst.Manifest.Enrichments, instanceID, rev, vals)
 		if err != nil {
 			return Checked{}, err
 		}
-		if err := rn.Lib.AddEnrichments(ctx, instanceID, vals); err != nil {
-			if ctx.Err() != nil {
-				return Checked{}, err
+		if len(vals) > 0 {
+			if err := rn.Lib.AddEnrichments(ctx, instanceID, vals); err != nil {
+				if ctx.Err() != nil {
+					return Checked{}, err
+				}
+				fail(rev, "storing its values failed: %v", err)
+				continue
 			}
-			checked.Done--
-			checked.Failed++
-			checked.Warnings = append(checked.Warnings, fmt.Sprintf("%s: storing its values failed: %v", library.DataName(rev.Data), err))
-			continue
+		}
+		if vi >= 0 {
+			if err := rn.Lib.SaveVectors(ctx, instanceID, vectors[vi:vi+1]); err != nil {
+				if ctx.Err() != nil {
+					return Checked{}, err
+				}
+				fail(rev, "storing its vector failed: %v", err)
+				continue
+			}
 		}
 		r.Log("info", line)
+	}
+	if dropped > 0 {
+		checked.Warnings = append(checked.Warnings, fmt.Sprintf("dropped %d vectors: this install has no pgvector", dropped))
 	}
 	return checked, nil
 }
 
 // vectors takes checked's vector values out of its Values, as NewVectors to
-// store, or drops them with a warning when this install has no pgvector.
-func (rn *Runner) vectors(ctx context.Context, decl map[string]protocol.Enrichment, checked *Checked) ([]library.NewVector, error) {
+// store.
+func (rn *Runner) vectors(decl map[string]protocol.Enrichment, checked *Checked) ([]library.NewVector, error) {
 	var out []library.NewVector
 	kept := checked.Values[:0]
 	for _, v := range checked.Values {
@@ -341,17 +369,6 @@ func (rn *Runner) vectors(ctx context.Context, decl map[string]protocol.Enrichme
 		out = append(out, library.NewVector{CardID: v.CardID, RevisionID: v.RevisionID, Space: vv.Space, Vector: vv.Vector})
 	}
 	checked.Values = kept
-	if len(out) == 0 {
-		return nil, nil
-	}
-	ok, err := rn.Lib.HasVectors(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		checked.Warnings = append(checked.Warnings, fmt.Sprintf("dropped %d vectors: this install has no pgvector", len(out)))
-		return nil, nil
-	}
 	return out, nil
 }
 

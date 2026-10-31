@@ -95,6 +95,25 @@ func TestEnrichedRevisionsCountsAStoredVector(t *testing.T) {
 	}
 }
 
+func TestEnrichedRevisionsIgnoresAnOldRevisionsVector(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	inst := newInstanceRow(t, lib)
+	id, rev := newCard(t, lib, "brakka", `{"name": "Brakka"}`)
+	if err := lib.SaveVectors(ctx, inst, []NewVector{{CardID: id, RevisionID: rev, Space: "s1", Vector: []float32{1, 0}}}); err != nil {
+		t.Fatal(err)
+	}
+	next, err := lib.Cards.Update(ctx, id, rev, edit(`{"name": "Brakka", "description": "Edited."}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	head := next.ID
+	got, err := lib.EnrichedRevisions(ctx, inst, []int64{id}, []int64{head})
+	if err != nil || len(got) != 0 {
+		t.Fatalf("enriched = %v, %v; want none", got, err)
+	}
+}
+
 func TestDeleteVectorsExceptKeepsOnlyThatInstance(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()

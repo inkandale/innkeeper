@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/protocol"
 )
 
@@ -42,6 +43,10 @@ func TestCheck(t *testing.T) {
 	}
 	if got.Done != 2 || got.Failed != 3 {
 		t.Errorf("done %d, failed %d; want 2 and 3", got.Done, got.Failed)
+	}
+	wantFailed := []library.RevisionRef{{CardID: 30, RevisionID: 3}, {CardID: 50, RevisionID: 5}, {CardID: 40, RevisionID: 4}}
+	if !slices.Equal(got.FailedRevisions, wantFailed) {
+		t.Errorf("failed revisions %v, want %v", got.FailedRevisions, wantFailed)
 	}
 	for _, w := range []string{"Bad: dropped meta: it isn't an object", "Bad: dropped mood, which the plugin doesn't declare", "Bad: dropped quality: 150 is outside",
 		"Failing: the model returned no JSON", "Junk: dropped summary", "Junk: no valid values", "Skipped: the plugin sent no result",

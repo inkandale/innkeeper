@@ -302,7 +302,9 @@ func (s *Entities) History(ctx context.Context, id int64) ([]Revision, error) {
 // out of the hide job's hands.
 func (s *Entities) SetArchived(ctx context.Context, id int64, archived bool) error {
 	tag, err := s.pool.Exec(ctx, `UPDATE `+s.k.Table+`
-		SET archived_at = CASE WHEN $2 THEN coalesce(archived_at, now()) END, archived_reason = NULL WHERE id = $1`, id, archived)
+		SET archived_at = CASE WHEN $2 THEN coalesce(archived_at, now()) END,
+			restored_at = CASE WHEN NOT $2 AND archived_at IS NOT NULL THEN now() ELSE restored_at END,
+			archived_reason = NULL WHERE id = $1`, id, archived)
 	if err != nil {
 		return err
 	}

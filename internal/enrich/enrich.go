@@ -127,6 +127,10 @@ type Checked struct {
 	// Skipped counts revisions not sent because they already hold a value.
 	Skipped  int
 	Warnings []string
+	// FailedRevisions are the revisions the plugin answered with an error,
+	// no valid value, or nothing. A failed call records none: the plugin
+	// may work later.
+	FailedRevisions []library.RevisionRef
 }
 
 // Check keeps the values in reply that decl declares with a valid value, for
@@ -149,6 +153,7 @@ func Check(decl map[string]protocol.Enrichment, sent []protocol.EnrichRevision, 
 		name := library.DataName(rev.Data)
 		if res.Error != "" {
 			out.Failed++
+			out.FailedRevisions = append(out.FailedRevisions, library.RevisionRef{CardID: rev.CardID, RevisionID: rev.RevisionID})
 			out.Warnings = append(out.Warnings, fmt.Sprintf("%s: %s", name, cut(res.Error, maxWarning)))
 			continue
 		}
@@ -169,6 +174,7 @@ func Check(decl map[string]protocol.Enrichment, sent []protocol.EnrichRevision, 
 		}
 		if len(kept) == 0 {
 			out.Failed++
+			out.FailedRevisions = append(out.FailedRevisions, library.RevisionRef{CardID: rev.CardID, RevisionID: rev.RevisionID})
 			out.Warnings = append(out.Warnings, fmt.Sprintf("%s: no valid values", name))
 			continue
 		}
@@ -177,6 +183,7 @@ func Check(decl map[string]protocol.Enrichment, sent []protocol.EnrichRevision, 
 	for _, r := range sent {
 		if !answered[r.RevisionID] {
 			out.Failed++
+			out.FailedRevisions = append(out.FailedRevisions, library.RevisionRef{CardID: r.CardID, RevisionID: r.RevisionID})
 			out.Warnings = append(out.Warnings, fmt.Sprintf("%s: the plugin sent no result", library.DataName(r.Data)))
 		}
 	}
@@ -288,6 +295,11 @@ func (rn *Runner) batch(ctx context.Context, r *jobs.Run, inst pluginhost.Instan
 		return Checked{}, err
 	}
 	checked := Check(inst.Manifest.Enrichments, revs, reply)
+	if len(checked.FailedRevisions) > 0 {
+		if err := rn.Lib.RecordEnrichFailures(ctx, instanceID, checked.FailedRevisions); err != nil {
+			return Checked{}, err
+		}
+	}
 	checked.Failed += len(missing)
 	checked.Skipped = skipped
 	checked.Warnings = append(missing, checked.Warnings...)
@@ -302,6 +314,7 @@ func (rn *Runner) batch(ctx context.Context, r *jobs.Run, inst pluginhost.Instan
 		}
 	}
 	dropped := 0
+	// Storage failures aren't the plugin's, so they aren't recorded: the sweep retries them.
 	fail := func(rev protocol.EnrichRevision, format string, args ...any) {
 		checked.Done--
 		checked.Failed++

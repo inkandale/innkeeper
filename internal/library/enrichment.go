@@ -3,6 +3,7 @@ package library
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -90,6 +91,52 @@ func (l *Library) EnrichedRevisions(ctx context.Context, instanceID int64, cardI
 	rows, err := l.pool.Query(ctx, sql, instanceID, cardIDs, revIDs)
 	if err != nil {
 		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[int64])
+}
+
+// RevisionRef names one revision of one card.
+type RevisionRef struct {
+	CardID     int64
+	RevisionID int64
+}
+
+// RecordEnrichFailures records that instance's plugin failed on revs, so
+// the sweep doesn't send them again.
+func (l *Library) RecordEnrichFailures(ctx context.Context, instance int64, revs []RevisionRef) error {
+	cards, ids := make([]int64, len(revs)), make([]int64, len(revs))
+	for i, r := range revs {
+		cards[i], ids[i] = r.CardID, r.RevisionID
+	}
+	_, err := l.pool.Exec(ctx, `INSERT INTO enrich_failure (instance_id, card_id, revision_id)
+		SELECT $1, c, r FROM unnest($2::bigint[], $3::bigint[]) x (c, r)
+		ON CONFLICT (instance_id, revision_id) DO UPDATE SET failed_at = now()`, instance, cards, ids)
+	if err != nil {
+		return fmt.Errorf("record %d enrich failures for instance %d: %w", len(revs), instance, err)
+	}
+	return nil
+}
+
+// ChangedUnenriched returns up to limit live cards changed after since
+// whose head holds no value or vector from instance and hasn't failed on
+// it, lowest ID first.
+func (l *Library) ChangedUnenriched(ctx context.Context, instance int64, since time.Time, limit int) ([]int64, error) {
+	vectors, err := l.HasVectors(ctx)
+	if err != nil {
+		return nil, err
+	}
+	noVector := ""
+	if vectors {
+		noVector = ` AND NOT EXISTS (SELECT 1 FROM card_embedding v
+			WHERE v.card_id = c.id AND v.instance_id = $1 AND v.revision_id = c.head_revision_id)`
+	}
+	rows, err := l.pool.Query(ctx, `SELECT c.id FROM card c JOIN card_revision r ON r.id = c.head_revision_id
+		WHERE c.archived_at IS NULL AND greatest(r.created_at, c.restored_at) > $2
+			AND NOT EXISTS (SELECT 1 FROM enrichment e WHERE e.card_id = c.id AND e.instance_id = $1 AND e.revision_id = c.head_revision_id)
+			AND NOT EXISTS (SELECT 1 FROM enrich_failure f WHERE f.instance_id = $1 AND f.revision_id = c.head_revision_id)`+noVector+`
+		ORDER BY c.id LIMIT $3`, instance, since, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list changed cards for instance %d: %w", instance, err)
 	}
 	return pgx.CollectRows(rows, pgx.RowTo[int64])
 }

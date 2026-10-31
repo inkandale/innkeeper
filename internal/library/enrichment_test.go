@@ -3,7 +3,9 @@ package library
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"testing"
+	"time"
 )
 
 func TestEnrichmentCurrentAndStale(t *testing.T) {
@@ -93,5 +95,43 @@ func TestEnrichmentOnAnOlderRevisionDoesNotReplaceANewerOne(t *testing.T) {
 	}
 	if len(res.Hits) != 1 || string(res.Hits[0].Score.Value) != "80" {
 		t.Fatalf("search = %+v", res.Hits)
+	}
+}
+
+func TestChangedUnenrichedListsOnlyNewUnscoredUnfailedCards(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	inst := newInstanceRow(t, lib)
+	old, _ := newCard(t, lib, "old", `{"name": "Old"}`)
+	since := time.Now()
+	time.Sleep(10 * time.Millisecond)
+	fresh, _ := newCard(t, lib, "fresh", `{"name": "Fresh"}`)
+	scored, scoredRev := newCard(t, lib, "scored", `{"name": "Scored"}`)
+	failed, failedRev := newCard(t, lib, "failed", `{"name": "Failed"}`)
+	archived, _ := newCard(t, lib, "archived", `{"name": "Archived"}`)
+	if err := lib.AddEnrichments(ctx, inst, []NewEnrichment{{CardID: scored, RevisionID: scoredRev, Key: "k", Value: json.RawMessage(`"v"`)}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.RecordEnrichFailures(ctx, inst, []RevisionRef{{CardID: failed, RevisionID: failedRev}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.Cards.SetArchived(ctx, archived, true); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := lib.ChangedUnenriched(ctx, inst, since, 10)
+	if err != nil || !slices.Equal(got, []int64{fresh}) {
+		t.Fatalf("changed = %v, %v", got, err)
+	}
+
+	// Restoring an old card counts as a change.
+	if err := lib.Cards.SetArchived(ctx, old, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.Cards.SetArchived(ctx, old, false); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = lib.ChangedUnenriched(ctx, inst, since, 10); !slices.Equal(got, []int64{old, fresh}) {
+		t.Fatalf("after restore = %v", got)
 	}
 }

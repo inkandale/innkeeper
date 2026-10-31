@@ -67,3 +67,14 @@ func vectorText(v []float32) string {
 	b.WriteByte(']')
 	return b.String()
 }
+
+// DeleteVectorsExcept deletes every vector not from instance.
+func (l *Library) DeleteVectorsExcept(ctx context.Context, instance int64) error {
+	if ok, err := l.HasVectors(ctx); err != nil || !ok {
+		return err
+	}
+	if _, err := l.pool.Exec(ctx, `DELETE FROM card_embedding WHERE instance_id <> $1`, instance); err != nil {
+		return fmt.Errorf("delete vectors not from instance %d: %w", instance, err)
+	}
+	return nil
+}

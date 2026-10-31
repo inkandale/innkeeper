@@ -757,7 +757,7 @@ export interface paths {
         };
         /**
          * Find similar cards
-         * @description Cards that read like this one, closest first: by meaning when an embed instance is set, else by shared tags. Leaves out exact copies, this card's variants, and archived cards.
+         * @description Cards that read like this one, closest first: by meaning when a vector source is set, else by shared tags. Leaves out exact copies, this card's variants, and archived cards.
          */
         get: operations["list-similar-cards"];
         put?: never;
@@ -1685,26 +1685,6 @@ export interface paths {
          * @description A taken name returns 409.
          */
         patch: operations["rename-library"];
-        trace?: never;
-    };
-    "/libraries/{id}/embed": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Embed a library's cards now
-         * @description Queues a job that gives the library's cards a vector from the embed instance, ahead of the hourly run over every library. Returns the job already queued for this library, if there is one.
-         */
-        post: operations["embed-library"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/libraries/{id}/hide": {
@@ -3986,15 +3966,15 @@ export interface components {
             duplicate_keep?: string | null;
             /** @description off, exact, or near. */
             duplicates?: string | null;
-            /**
-             * Format: int64
-             * @description An ai instance's ID, or null to clear it. Setting it, even to its current value, embeds every card again.
-             */
-            embed_instance?: number | null;
             /** @description true once the owner finishes or skips the setup wizard; false shows it again. */
             onboarding_done?: boolean;
             /** @description An installed theme plugin's name, or empty for the default theme. */
             theme?: string;
+            /**
+             * Format: int64
+             * @description An enrich instance that offers vector.query, or null to clear it.
+             */
+            vector_instance?: number | null;
         };
         PluginAction: {
             /** @enum {string} */
@@ -4187,7 +4167,7 @@ export interface components {
             page?: components["schemas"]["Page"];
             /** @description Reverses the sort. Cards without the value sorted by stay last. */
             reverse?: boolean;
-            /** @description Rank cards by meaning instead of matching words. Needs text and an embed instance (Settings, Plugins, Embeddings from); sorts by relevance only. Cards not embedded yet are left out. */
+            /** @description Rank cards by meaning instead of matching words. Needs text and a vector source (Settings, Plugins, Vectors from); sorts by relevance only. Cards not embedded yet are left out. */
             semantic?: boolean;
             /** @description relevance, updated, name, created, or enrichment:<instance>:<key> for that enrich instance's value of key, highest first and cards without one last; enrichment:<key>, naming a grid key, sorts by the grid score. Default: relevance with text, newest first without. */
             sort?: string;
@@ -4472,15 +4452,17 @@ export interface components {
             duplicate_keep: "best" | "oldest" | "newest";
             /** @enum {string} */
             duplicates: "off" | "exact" | "near";
-            /**
-             * Format: int64
-             * @description The ai instance whose ai.embed every library's card vectors come from, or null for none.
-             */
-            embed_instance: number | null;
             /** @description Whether the owner finished or skipped the setup wizard. */
             onboarding_done: boolean;
             /** @description The selected theme plugin, or empty for the default theme. */
             theme: string;
+            /**
+             * Format: int64
+             * @description The enrich instance whose card vectors similar cards and semantic search read, or null for none.
+             */
+            vector_instance: number | null;
+            /** @description Whether this install has pgvector. Without it, similar cards rank by tags and semantic search is off. */
+            readonly vectors_available: boolean;
             /** @description Innkeeper's version. */
             readonly version: string;
         };
@@ -4524,7 +4506,7 @@ export interface components {
              */
             readonly $schema?: string;
             /**
-             * @description embedding ranks by meaning; tags, by shared tags, when there is no embed instance or the card has no vector yet.
+             * @description embedding ranks by meaning; tags, by shared tags, when there is no vector source or pgvector, or the card has no vector yet.
              * @enum {string}
              */
             basis: "embedding" | "tags";
@@ -8130,37 +8112,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibrarySummary"];
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ErrorModel"];
-                };
-            };
-        };
-    };
-    "embed-library": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Accepted */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["JobOut"];
                 };
             };
             /** @description Error */

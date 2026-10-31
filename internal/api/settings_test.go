@@ -2,14 +2,13 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/inkandale/innkeeper/internal/embed"
+	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/protocol"
 )
@@ -204,124 +203,78 @@ func (e *testEnv) addBrain(config map[string]any) int64 {
 	return id
 }
 
-func TestSettingEmbedInstanceQueuesEmbedJob(t *testing.T) {
-	e := newEnv(t)
-	inst := e.addBrain(map[string]any{"services": []string{protocol.MethodAIEmbed}})
+var vectorCfg = map[string]any{"vectors": true, "services": []string{protocol.MethodVectorQuery}}
 
-	var s settings
-	e.call("PATCH", "/settings", map[string]any{"embed_instance": inst}, 200, &s)
-	if s.EmbedInstance == nil || *s.EmbedInstance != inst {
-		t.Fatalf("settings = %+v", s)
-	}
-	var queued int
-	if err := e.pool.QueryRow(context.Background(), `SELECT count(*) FROM job WHERE kind = $1 AND status = 'queued'`, embed.Kind).Scan(&queued); err != nil {
-		t.Fatal(err)
-	}
-	if queued != 1 {
-		t.Fatalf("embed jobs queued = %d, want 1", queued)
-	}
-
-	e.call("PATCH", "/settings", map[string]any{"embed_instance": e.importID}, 400, nil)
-	e.call("PATCH", "/settings", map[string]any{"embed_instance": nil}, 200, &s)
-	if s.EmbedInstance != nil {
-		t.Fatalf("after clearing: %+v", s)
-	}
-}
-
-func TestSettingOrClearingEmbedInstanceDropsEveryVector(t *testing.T) {
-	e := newEnv(t)
+func TestSettingVectorInstance(t *testing.T) {
+	e := newEnrichEnv(t, vectorCfg)
 	ctx := context.Background()
-	inst := e.addBrain(map[string]any{"services": []string{protocol.MethodAIEmbed}})
-	other, err := e.s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: "brain", Name: new("Other")})
+	other, err := e.s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: "judge", Name: new("Other")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.createCard(`{"name": "Brakka"}`)
-	embedAll := func() {
-		t.Helper()
-		for _, id := range []int64{inst, other} {
-			todo, err := e.s.Lib.Unembedded(ctx, id, nil, 0, 0, 10)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := e.s.Lib.SaveEmbeddings(ctx, id, todo, [][]float32{{1, 2}}); err != nil {
-				t.Fatal(err)
-			}
-		}
+	card := e.card("Brakka", "abc")
+	c, err := e.s.Lib.Cards.Get(ctx, card)
+	if err != nil {
+		t.Fatal(err)
 	}
-	vectors := func() int {
-		t.Helper()
-		var n int
-		if err := e.pool.QueryRow(ctx, `SELECT count(*) FROM card_embedding`).Scan(&n); err != nil {
-			t.Fatal(err)
-		}
-		return n
+	if err := e.s.Lib.SaveVectors(ctx, other, []library.NewVector{{CardID: card, RevisionID: c.HeadRevisionID, Space: "fake", Vector: []float32{1, 2}}}); err != nil {
+		t.Fatal(err)
 	}
-	embedAll()
-	e.call("PATCH", "/settings", map[string]any{"embed_instance": inst}, 200, nil)
-	if n := vectors(); n != 0 {
-		t.Fatalf("vectors after setting = %d, want 0", n)
+
+	var s settings
+	e.call("PATCH", "/settings", map[string]any{"vector_instance": e.instID}, 200, &s)
+	if s.VectorInstance == nil || *s.VectorInstance != e.instID || !s.VectorsAvailable {
+		t.Fatalf("settings = %+v", s)
 	}
-	embedAll()
-	e.call("PATCH", "/settings", map[string]any{"embed_instance": nil}, 200, nil)
-	if n := vectors(); n != 0 {
-		t.Fatalf("vectors after clearing = %d, want 0", n)
+	var n int
+	if err := e.pool.QueryRow(ctx, `SELECT count(*) FROM card_embedding WHERE instance_id <> $1`, e.instID).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("other instances' vectors = %d, %v; want 0", n, err)
+	}
+	e.call("PATCH", "/settings", map[string]any{"vector_instance": nil}, 200, &s)
+	if s.VectorInstance != nil && *s.VectorInstance != e.instID {
+		t.Fatalf("cleared: %+v", s) // the only vector instance is still picked
 	}
 }
 
-func TestSettingEmbedInstanceRejectsAnAIInstanceWithoutEmbed(t *testing.T) {
-	e := newEnv(t)
-	inst := e.addBrain(map[string]any{"services": []string{protocol.MethodAIChat}})
-	e.call("PATCH", "/settings", map[string]any{"embed_instance": inst}, 400, nil)
+func TestSettingVectorInstanceRejectsAnInstanceWithoutVectorQuery(t *testing.T) {
+	e := newEnrichEnv(t)
+	e.call("PATCH", "/settings", map[string]any{"vector_instance": e.instID}, 400, nil)
 }
 
-func TestSettingEmbedInstanceRejectsAMissingAndADisabledInstance(t *testing.T) {
-	e := newEnv(t)
-	inst := e.addBrain(map[string]any{"services": []string{protocol.MethodAIEmbed}})
-	e.call("PATCH", "/settings", map[string]any{"embed_instance": inst + 1000}, 404, nil)
-	e.call("PATCH", fmt.Sprintf("/instances/%d", inst), map[string]any{"disabled": true}, 200, nil)
-	e.call("PATCH", "/settings", map[string]any{"embed_instance": inst}, 409, nil)
+func TestSettingVectorInstanceRejectsAMissingAndADisabledInstance(t *testing.T) {
+	e := newEnrichEnv(t, vectorCfg)
+	e.call("PATCH", "/settings", map[string]any{"vector_instance": e.instID + 1000}, 404, nil)
+	e.call("PATCH", fmt.Sprintf("/instances/%d", e.instID), map[string]any{"disabled": true}, 200, nil)
+	e.call("PATCH", "/settings", map[string]any{"vector_instance": e.instID}, 409, nil)
 }
 
-func TestSettingsForgetADeletedEmbedInstance(t *testing.T) {
-	e := newEnv(t)
-	inst := e.addBrain(map[string]any{"services": []string{protocol.MethodAIEmbed}})
-	e.call("PATCH", "/settings", map[string]any{"embed_instance": inst}, 200, nil)
-	e.call("DELETE", fmt.Sprintf("/instances/%d", inst), nil, 204, nil)
+func TestSettingsForgetADeletedVectorInstance(t *testing.T) {
+	e := newEnrichEnv(t, vectorCfg)
+	e.call("PATCH", "/settings", map[string]any{"vector_instance": e.instID}, 200, nil)
+	e.call("DELETE", fmt.Sprintf("/instances/%d", e.instID), nil, 204, nil)
 	var s settings
 	e.call("GET", "/settings", nil, 200, &s)
-	if s.EmbedInstance != nil {
+	if s.VectorInstance != nil {
 		t.Fatalf("settings = %+v", s)
 	}
 }
 
-func TestSettingsIgnoreADisabledEmbedInstance(t *testing.T) {
-	e := newEnv(t)
-	inst := e.addBrain(map[string]any{"services": []string{protocol.MethodAIEmbed}})
-	e.call("PATCH", "/settings", map[string]any{"embed_instance": inst}, 200, nil)
-	e.call("PATCH", fmt.Sprintf("/instances/%d", inst), map[string]any{"disabled": true}, 200, nil)
+func TestSettingsIgnoreADisabledVectorInstance(t *testing.T) {
+	e := newEnrichEnv(t, vectorCfg)
+	e.call("PATCH", "/settings", map[string]any{"vector_instance": e.instID}, 200, nil)
+	e.call("PATCH", fmt.Sprintf("/instances/%d", e.instID), map[string]any{"disabled": true}, 200, nil)
 	var s settings
 	e.call("GET", "/settings", nil, 200, &s)
-	if s.EmbedInstance != nil {
+	if s.VectorInstance != nil {
 		t.Fatalf("settings = %+v", s)
 	}
 }
 
-func TestEmbedLibraryQueuesOneJobForThatLibrary(t *testing.T) {
-	e := newEnv(t)
-	e.call("POST", "/libraries/1/embed", nil, 409, nil)
-	inst := e.addBrain(map[string]any{"services": []string{protocol.MethodAIEmbed}})
-	e.call("PATCH", "/settings", map[string]any{"embed_instance": inst}, 200, nil)
-
-	var first, again jobOut
-	e.call("POST", "/libraries/1/embed", nil, 202, &first)
-	var p embed.Payload
-	if err := json.Unmarshal(first.Payload, &p); err != nil || first.Kind != embed.Kind || p.Library != 1 {
-		t.Fatalf("job = %s %s, %v", first.Kind, first.Payload, err)
+func TestTheOnlyVectorInstanceNeedsNoSetting(t *testing.T) {
+	e := newEnrichEnv(t, vectorCfg)
+	var s settings
+	e.call("GET", "/settings", nil, 200, &s)
+	if s.VectorInstance == nil || *s.VectorInstance != e.instID {
+		t.Fatalf("settings = %+v", s)
 	}
-	e.call("POST", "/libraries/1/embed", nil, 202, &again)
-	if again.ID != first.ID {
-		t.Fatalf("a second start queued job %d; want the queued %d", again.ID, first.ID)
-	}
-	e.call("POST", "/libraries/999/embed", nil, 404, nil)
 }

@@ -69,7 +69,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const scoredQ = keys.data ? withoutUnnamed(asked, (keys.data.scorers ?? []).map((s) => s.key)) : asked;
   const scoresOff = scoredQ !== asked;
   const settings = useQuery(settingsQuery);
-  const embeds = kind === "card" && settings.data?.embed_instance != null;
+  const embeds = kind === "card" && settings.data?.vector_instance != null;
   // A semantic link with no text, or opened after the embed instance was cleared, searches by words.
   const q = scoredQ.semantic && !(embeds && scoredQ.text) ? { ...scoredQ, semantic: false } : scoredQ;
   // The selection belongs to one search: paging keeps it, a new search clears it.

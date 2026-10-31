@@ -6,10 +6,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/inkandale/innkeeper/internal/embed"
-	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
-	"github.com/inkandale/innkeeper/internal/tier"
 )
 
 // DiscoverPageIn is exported because huma skips unexported embedded structs.
@@ -45,42 +42,16 @@ type relatedCardsOut struct {
 	}
 }
 
-type embedLibraryIn struct {
-	ID int64 `path:"id"`
-}
-
 func (s *Server) discoverRoutes(api huma.API) {
 	tags := []string{"Cards"}
-	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "embed-library", Method: http.MethodPost,
-		Path: "/libraries/{id}/embed", Summary: "Embed a library's cards now", Tags: []string{"Libraries"}, DefaultStatus: http.StatusAccepted,
-		Description: "Queues a job that gives the library's cards a vector from the embed instance, ahead of the hourly run over " +
-			"every library. Returns the job already queued for this library, if there is one."},
-		func(ctx context.Context, in *embedLibraryIn) (*jobResp, error) {
-			if err := s.libraryExists(ctx, in.ID); err != nil {
-				return nil, err
-			}
-			inst, err := embed.Instance(ctx, s.Registry)
-			if err != nil {
-				return nil, s.fail(err)
-			}
-			if inst == 0 {
-				return nil, s.fail(library.ErrNoEmbedInstance)
-			}
-			j, err := s.Queue.EnqueueUnlessQueued(ctx, jobs.Spec{Kind: embed.Kind, Payload: embed.Payload{Library: in.ID}})
-			if err != nil {
-				return nil, s.fail(err)
-			}
-			return &jobResp{Body: toJob(j)}, nil
-		})
-
 	huma.Register(api, huma.Operation{OperationID: "list-similar-cards", Method: http.MethodGet, Path: "/cards/{id}/similar",
 		Summary: "Find similar cards", Tags: tags,
-		Description: "Cards that read like this one, closest first: by meaning when an embed instance is set, else by shared tags. Leaves out exact copies, this card's variants, and archived cards."},
+		Description: "Cards that read like this one, closest first: by meaning when a vector source is set, else by shared tags. Leaves out exact copies, this card's variants, and archived cards."},
 		func(ctx context.Context, in *similarCardsIn) (*similarCardsOut, error) {
 			if _, err := s.Lib.Cards.Get(ctx, in.ID); err != nil {
 				return nil, s.fail(err)
 			}
-			inst, err := embed.Instance(ctx, s.Registry)
+			inst, err := s.Registry.VectorInstance(ctx)
 			if err != nil {
 				return nil, s.fail(err)
 			}

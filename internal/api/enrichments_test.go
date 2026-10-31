@@ -425,7 +425,7 @@ func TestGridScoreReadsTheHighestPriorityScorer(t *testing.T) {
 	if !slices.Equal(keys.Body.Scorers, []library.Scorer{{Instance: e.instID, Key: "quality"}}) || len(keys.Body.Instances) != 1 {
 		t.Fatalf("keys = %+v", keys.Body)
 	}
-	if k := keys.Body.Instances[0].Keys; len(k) != 3 || k[0].Key != "quality" || !k[0].Grid || k[1].Key != "summary" {
+	if k := keys.Body.Instances[0].Keys; len(k) != 4 || k[0].Key != "quality" || !k[0].Grid || k[1].Key != "embedding" || k[2].Key != "summary" {
 		t.Fatalf("instance keys = %+v", k)
 	}
 	ids := func(r library.Results) []int64 {

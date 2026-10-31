@@ -43,7 +43,7 @@ type entityIn struct {
 }
 
 type searchIn struct {
-	Query   map[string]any `json:"query,omitempty" jsonschema:"The search query, as the API's POST /cards/search body: text, semantic (true to rank by meaning, with text; needs an embed instance), filter, sources (library, or catalog:<instance id> to search a catalog too), include, fields, sort, facets, page. A filter or sort on an enrichment names its instance, such as {\"enrichment\": \"language\", \"instance\": 5, \"is\": \"English\"} or sort enrichment:5:quality; one naming no instance, such as {\"enrichment\": \"quality\", \"gte\": 70}, must name a grid key and reads the grid score: each card's value from the highest-priority scorer that has one. Facet enrichment:<instance>:<key> counts a text or list key's values"`
+	Query   map[string]any `json:"query,omitempty" jsonschema:"The search query, as the API's POST /cards/search body: text, semantic (true to rank by meaning, with text; needs a vector source), filter, sources (library, or catalog:<instance id> to search a catalog too), include, fields, sort, facets, page. A filter or sort on an enrichment names its instance, such as {\"enrichment\": \"language\", \"instance\": 5, \"is\": \"English\"} or sort enrichment:5:quality; one naming no instance, such as {\"enrichment\": \"quality\", \"gte\": 70}, must name a grid key and reads the grid score: each card's value from the highest-priority scorer that has one. Facet enrichment:<instance>:<key> counts a text or list key's values"`
 	Library int64          `json:"library,omitempty" jsonschema:"A library ID from list_libraries; default 1"`
 }
 
@@ -265,7 +265,7 @@ var tools = []tool{
 			}
 			return c.call(ctx, "POST", "/cards/search", in.Query)
 		}),
-	def("find_similar_cards", "List cards that read like a card, closest first: by meaning when an embed instance is set, else by shared tags.", tier.Read,
+	def("find_similar_cards", "List cards that read like a card, closest first: by meaning when a vector source is set, else by shared tags.", tier.Read,
 		func(ctx context.Context, c caller, in similarIn) (*sdk.CallToolResult, error) {
 			q := url.Values{}
 			if in.Scope != "" {

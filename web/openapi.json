@@ -3571,14 +3571,6 @@
               "null"
             ]
           },
-          "embed_instance": {
-            "description": "An ai instance's ID, or null to clear it. Setting it, even to its current value, embeds every card again.",
-            "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
           "onboarding_done": {
             "description": "true once the owner finishes or skips the setup wizard; false shows it again.",
             "type": "boolean"
@@ -3586,6 +3578,14 @@
           "theme": {
             "description": "An installed theme plugin's name, or empty for the default theme.",
             "type": "string"
+          },
+          "vector_instance": {
+            "description": "An enrich instance that offers vector.query, or null to clear it.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "type": "object"
@@ -4156,7 +4156,7 @@
             "type": "boolean"
           },
           "semantic": {
-            "description": "Rank cards by meaning instead of matching words. Needs text and an embed instance (Settings, Plugins, Embeddings from); sorts by relevance only. Cards not embedded yet are left out.",
+            "description": "Rank cards by meaning instead of matching words. Needs text and a vector source (Settings, Plugins, Vectors from); sorts by relevance only. Cards not embedded yet are left out.",
             "type": "boolean"
           },
           "sort": {
@@ -4893,14 +4893,6 @@
             ],
             "type": "string"
           },
-          "embed_instance": {
-            "description": "The ai instance whose ai.embed every library's card vectors come from, or null for none.",
-            "format": "int64",
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
           "onboarding_done": {
             "description": "Whether the owner finished or skipped the setup wizard.",
             "type": "boolean"
@@ -4908,6 +4900,19 @@
           "theme": {
             "description": "The selected theme plugin, or empty for the default theme.",
             "type": "string"
+          },
+          "vector_instance": {
+            "description": "The enrich instance whose card vectors similar cards and semantic search read, or null for none.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "vectors_available": {
+            "description": "Whether this install has pgvector. Without it, similar cards rank by tags and semantic search is off.",
+            "readOnly": true,
+            "type": "boolean"
           },
           "version": {
             "description": "Innkeeper's version.",
@@ -4919,7 +4924,8 @@
           "version",
           "theme",
           "onboarding_done",
-          "embed_instance",
+          "vector_instance",
+          "vectors_available",
           "duplicates",
           "duplicate_distance",
           "duplicate_keep",
@@ -5039,7 +5045,7 @@
             "type": "string"
           },
           "basis": {
-            "description": "embedding ranks by meaning; tags, by shared tags, when there is no embed instance or the card has no vector yet.",
+            "description": "embedding ranks by meaning; tags, by shared tags, when there is no vector source or pgvector, or the card has no vector yet.",
             "enum": [
               "embedding",
               "tags"
@@ -7747,7 +7753,7 @@
     },
     "/cards/{id}/similar": {
       "get": {
-        "description": "Cards that read like this one, closest first: by meaning when an embed instance is set, else by shared tags. Leaves out exact copies, this card's variants, and archived cards.",
+        "description": "Cards that read like this one, closest first: by meaning when a vector source is set, else by shared tags. Leaves out exact copies, this card's variants, and archived cards.",
         "operationId": "list-similar-cards",
         "parameters": [
           {
@@ -10912,49 +10918,6 @@
           }
         },
         "summary": "Rename a library",
-        "tags": [
-          "Libraries"
-        ]
-      }
-    },
-    "/libraries/{id}/embed": {
-      "post": {
-        "description": "Queues a job that gives the library's cards a vector from the embed instance, ahead of the hourly run over every library. Returns the job already queued for this library, if there is one.",
-        "operationId": "embed-library",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "int64",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JobOut"
-                }
-              }
-            },
-            "description": "Accepted"
-          },
-          "default": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorModel"
-                }
-              }
-            },
-            "description": "Error"
-          }
-        },
-        "summary": "Embed a library's cards now",
         "tags": [
           "Libraries"
         ]

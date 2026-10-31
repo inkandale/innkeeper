@@ -11,17 +11,18 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/inkandale/innkeeper/internal/embed"
 	"github.com/inkandale/innkeeper/internal/libsettings"
+	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/internal/tier"
 	"github.com/inkandale/innkeeper/protocol"
 )
 
 type settings struct {
-	Version        string `json:"version" readOnly:"true" doc:"Innkeeper's version."`
-	Theme          string `json:"theme" doc:"The selected theme plugin, or empty for the default theme."`
-	OnboardingDone bool   `json:"onboarding_done" doc:"Whether the owner finished or skipped the setup wizard."`
-	EmbedInstance  *int64 `json:"embed_instance" doc:"The ai instance whose ai.embed every library's card vectors come from, or null for none."`
+	Version          string `json:"version" readOnly:"true" doc:"Innkeeper's version."`
+	Theme            string `json:"theme" doc:"The selected theme plugin, or empty for the default theme."`
+	OnboardingDone   bool   `json:"onboarding_done" doc:"Whether the owner finished or skipped the setup wizard."`
+	VectorInstance   *int64 `json:"vector_instance" doc:"The enrich instance whose card vectors similar cards and semantic search read, or null for none."`
+	VectorsAvailable bool   `json:"vectors_available" readOnly:"true" doc:"Whether this install has pgvector. Without it, similar cards rank by tags and semantic search is off."`
 	// The hide job's defaults; see GET /libraries/{id}/settings.
 	Duplicates        string `json:"duplicates" enum:"off,exact,near"`
 	DuplicateDistance int    `json:"duplicate_distance"`
@@ -35,7 +36,7 @@ type patchSettingsIn struct {
 	Body struct {
 		Theme          *string         `json:"theme,omitempty" doc:"An installed theme plugin's name, or empty for the default theme."`
 		OnboardingDone *bool           `json:"onboarding_done,omitempty" doc:"true once the owner finishes or skips the setup wizard; false shows it again."`
-		EmbedInstance  optional[int64] `json:"embed_instance,omitempty" doc:"An ai instance's ID, or null to clear it. Setting it, even to its current value, embeds every card again."`
+		VectorInstance optional[int64] `json:"vector_instance,omitempty" doc:"An enrich instance that offers vector.query, or null to clear it."`
 		// Null clears a setting: duplicates off, distance 3, keep best, no decide instance.
 		HideOptionsIn
 	}
@@ -61,10 +62,13 @@ func (s *Server) settings(ctx context.Context) (*settingsOut, error) {
 		return nil, s.fail(err)
 	}
 	out := &settingsOut{Body: settings{Version: s.Version, Theme: name, OnboardingDone: done == "true"}}
-	if id, err := embed.Instance(ctx, s.Registry); err != nil {
+	if id, err := s.Registry.VectorInstance(ctx); err != nil {
 		return nil, s.fail(err)
 	} else if id != 0 {
-		out.Body.EmbedInstance = &id
+		out.Body.VectorInstance = &id
+	}
+	if out.Body.VectorsAvailable, err = s.Lib.HasVectors(ctx); err != nil {
+		return nil, s.fail(err)
 	}
 	b := &out.Body
 	dups, err := libsettings.Duplicates.Core(ctx, s.libSettings())
@@ -109,8 +113,8 @@ func (s *Server) settingsRoutes(api huma.API) {
 					return nil, s.fail(err)
 				}
 			}
-			if in.Body.EmbedInstance.Sent {
-				if err := s.setEmbedInstance(ctx, in.Body.EmbedInstance.Value); err != nil {
+			if in.Body.VectorInstance.Sent {
+				if err := s.setVectorInstance(ctx, in.Body.VectorInstance.Value); err != nil {
 					return nil, err
 				}
 			}
@@ -130,27 +134,20 @@ func (s *Server) settingsRoutes(api huma.API) {
 		})
 }
 
-// setEmbedInstance stores the embed instance, or clears it for nil. Either
-// drops every vector: only the current instance's are read, and re-setting
-// it makes a model changed in its config take effect.
-func (s *Server) setEmbedInstance(ctx context.Context, id *int64) error {
+// setVectorInstance stores the vector instance, or clears it for nil.
+// Setting one deletes every other instance's vectors, so the install holds
+// one set; clearing keeps them for the instance core falls back to.
+func (s *Server) setVectorInstance(ctx context.Context, id *int64) error {
 	if id == nil {
-		if err := s.Lib.ClearEmbeddings(ctx); err != nil {
-			return s.fail(err)
-		}
-		return s.fail(s.Registry.SetSetting(ctx, embed.InstanceKey, ""))
+		return s.fail(s.Registry.SetSetting(ctx, plugins.VectorInstanceKey, ""))
 	}
-	if _, err := s.Registry.InstanceOffering(ctx, s.Plugins, *id, protocol.MethodAIEmbed); err != nil {
+	if _, err := s.Registry.InstanceOffering(ctx, s.Plugins, *id, protocol.MethodVectorQuery); err != nil {
 		return s.fail(err)
 	}
-	if err := s.Lib.ClearEmbeddings(ctx); err != nil {
+	if err := s.Lib.DeleteVectorsExcept(ctx, *id); err != nil {
 		return s.fail(err)
 	}
-	if err := s.Registry.SetSetting(ctx, embed.InstanceKey, strconv.FormatInt(*id, 10)); err != nil {
-		return s.fail(err)
-	}
-	embed.Enqueue(ctx, s.Queue, s.Log)
-	return nil
+	return s.fail(s.Registry.SetSetting(ctx, plugins.VectorInstanceKey, strconv.FormatInt(*id, 10)))
 }
 
 // fileRoutes serve theme stylesheets and plugin icons. They're public: the

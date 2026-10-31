@@ -94,3 +94,29 @@ func TestEnrichedRevisionsCountsAStoredVector(t *testing.T) {
 		t.Fatalf("enriched = %v, %v; want [%d]", got, err, rev)
 	}
 }
+
+func TestDeleteVectorsExceptKeepsOnlyThatInstance(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	keep := newInstanceRow(t, lib)
+	var drop int64
+	if err := lib.pool.QueryRow(ctx, `INSERT INTO plugin_instance (plugin, name, config) VALUES ('fake', 'Other', '{}') RETURNING id`).Scan(&drop); err != nil {
+		t.Fatal(err)
+	}
+	id, rev := newCard(t, lib, "brakka", `{"name": "Brakka"}`)
+	for _, inst := range []int64{keep, drop} {
+		if err := lib.SaveVectors(ctx, inst, []NewVector{{CardID: id, RevisionID: rev, Space: "s1", Vector: []float32{1, 0}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := lib.DeleteVectorsExcept(ctx, keep); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := lib.pool.QueryRow(ctx, `SELECT count(*) FROM card_embedding WHERE instance_id = $1`, keep).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("kept = %d, %v", n, err)
+	}
+	if err := lib.pool.QueryRow(ctx, `SELECT count(*) FROM card_embedding WHERE instance_id = $1`, drop).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("dropped = %d, %v", n, err)
+	}
+}

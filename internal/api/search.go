@@ -11,7 +11,6 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/inkandale/innkeeper/internal/embed"
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/tier"
 	"github.com/inkandale/innkeeper/protocol"
@@ -19,25 +18,28 @@ import (
 
 type searchIn struct{ Body library.Query }
 
-// withEmbedding embeds q's text with the embed instance when q is a
+// withEmbedding asks the vector instance for q's vector when q is a
 // semantic card search, for Search to rank by. Anything else is left for
 // Search to refuse with a 400.
 func (s *Server) withEmbedding(ctx context.Context, k *library.Kind, q *library.Query) error {
 	if !q.Semantic || q.Text == "" || k != library.Card {
 		return nil
 	}
-	inst, err := embed.Instance(ctx, s.Registry)
+	if ok, err := s.Lib.HasVectors(ctx); err != nil || !ok {
+		return cmp.Or(err, library.ErrNoVectors)
+	}
+	inst, err := s.Registry.VectorInstance(ctx)
 	if err != nil {
 		return err
 	}
 	if inst == 0 {
-		return library.ErrNoEmbedInstance
+		return library.ErrNoVectorInstance
 	}
-	vectors, err := s.Registry.Embed(ctx, s.Plugins, inst, []string{q.Text})
+	v, err := s.Registry.VectorQuery(ctx, s.Plugins, inst, q.Text)
 	if err != nil {
 		return err
 	}
-	q.Embedding, q.EmbedInstance = vectors[0], inst
+	q.Embedding, q.EmbedInstance, q.EmbedSpace = v.Vector, inst, v.Space
 	return nil
 }
 

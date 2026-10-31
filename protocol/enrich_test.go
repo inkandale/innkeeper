@@ -84,6 +84,8 @@ func TestVectorEnrichmentCheck(t *testing.T) {
 		`{"space": "m1"}`:                      false,
 		`[1, 2]`:                               false,
 		`"text"`:                               false,
+		`{"space": "m1", "vector": null}`:      false,
+		`{"space": "m1", "vector": [1e39]}`:    false,
 	} {
 		if err := d.Check(json.RawMessage(value)); (err == nil) != ok {
 			t.Errorf("Check(%s) = %v, want ok %v", value, err, ok)

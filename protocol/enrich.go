@@ -14,7 +14,7 @@ import (
 // scores, for the keys the manifest's [enrichments] declares.
 const MethodEnrichRun = "enrich.run"
 
-// MaxSpace is the longest vector space name.
+// MaxSpace is the longest vector space name, in bytes.
 const MaxSpace = 200
 
 // VectorValue is a vector enrichment's value and vector.query's result.
@@ -29,7 +29,7 @@ type VectorValue struct {
 func (v VectorValue) Validate() error {
 	switch {
 	case v.Space == "" || len(v.Space) > MaxSpace:
-		return fmt.Errorf("space must be 1 to %d characters", MaxSpace)
+		return fmt.Errorf("space must be 1 to %d bytes", MaxSpace)
 	case len(v.Vector) == 0:
 		return errors.New("vector is empty")
 	}
@@ -132,8 +132,9 @@ func CheckMeta(meta json.RawMessage) error {
 }
 
 // Check reports whether v is a valid value for e: a string for text, a
-// number within the range for score, an array of strings for list, a VectorValue for vector, at
-// most MaxEnrichValue bytes, that PostgreSQL can store.
+// number within the range for score, an array of strings for list, or a
+// VectorValue for vector, at most MaxEnrichValue bytes, that PostgreSQL can
+// store. That limit holds a vector of about 4,000 dimensions.
 func (e Enrichment) Check(v json.RawMessage) error {
 	if err := storable(v, MaxEnrichValue); err != nil {
 		return err

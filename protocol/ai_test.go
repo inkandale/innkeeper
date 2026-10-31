@@ -58,6 +58,9 @@ func TestServiceSamplesCheckTheReplyShape(t *testing.T) {
 		{MethodAIDecide, `{"answers": {"greeting": {"type": "score"}}}`, false},
 		{MethodAIDecide, `{"answers": {"greeting": {"type": "noul"}}}`, false},
 		{MethodAIDecide, `{"answers": {"greeting": {"type": "noul", "noul": 1}}}`, true},
+		{MethodVectorQuery, `{"space": "m1", "vector": [0.1, 0.2]}`, true},
+		{MethodVectorQuery, `{}`, false},
+		{MethodVectorQuery, `null`, false},
 	}
 	for _, tt := range tests {
 		err := ServiceSamples[tt.method].Check(json.RawMessage(tt.reply))

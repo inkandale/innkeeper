@@ -59,10 +59,9 @@ func checkUses(ctx context.Context, m *protocol.Manifest, params protocol.Initia
 		if first == nil && model.requestCount() > before {
 			first = drive
 		}
-		// Stop once every feature the plugin used has what it needs; a plugin
-		// that never streams or offers tools stops after its first reply.
-		if h.calls.err() == nil && (!h.calls.streamed() || h.deltas.Load() >= 2) &&
-			(!model.offeredTools() || model.toolRoundTrip() == nil) {
+		// Stop early only once both streaming and tools are proven; otherwise a
+		// later drive that streams or offers tools could go unchecked.
+		if h.calls.err() == nil && h.deltas.Load() >= 2 && model.offeredTools() && model.toolRoundTrip() == nil {
 			break
 		}
 	}

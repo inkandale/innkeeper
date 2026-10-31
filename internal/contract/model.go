@@ -75,11 +75,14 @@ type modelServer struct {
 func newModelServer() *modelServer {
 	s := &modelServer{holding: make(chan struct{}), ended: make(chan struct{}), stop: make(chan struct{})}
 	s.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/chat/completions") {
+		switch {
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/chat/completions"):
+			s.chat(w, r)
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/embeddings"):
+			s.embed(w, r)
+		default:
 			http.NotFound(w, r)
-			return
 		}
-		s.chat(w, r)
 	}))
 	return s
 }
@@ -198,4 +201,27 @@ func writeChunk(w http.ResponseWriter, d oaiDelta, finishReason *string) {
 func finish(w http.ResponseWriter, reason string) {
 	writeChunk(w, oaiDelta{}, &reason)
 	fmt.Fprint(w, "data: [DONE]\n\n")
+}
+
+// embed answers an OpenAI embeddings request with [length, 1] per input.
+func (s *modelServer) embed(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Model string   `json:"model"`
+		Input []string `json:"input"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	type datum struct {
+		Object    string    `json:"object"`
+		Index     int       `json:"index"`
+		Embedding []float32 `json:"embedding"`
+	}
+	data := make([]datum, len(req.Input))
+	for i, in := range req.Input {
+		data[i] = datum{Object: "embedding", Index: i, Embedding: []float32{float32(len(in)), 1}}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"object": "list", "data": data, "model": req.Model})
 }

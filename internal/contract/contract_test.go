@@ -2,9 +2,11 @@ package contract
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -578,5 +580,58 @@ func TestUsesWithoutAProviderFails(t *testing.T) {
 	err = failed(results)[checkProviderName]
 	if err == nil || !strings.Contains(err.Error(), "INNKEEPER_PROVIDER_PLUGIN") {
 		t.Fatalf("got %v, want INNKEEPER_PROVIDER_PLUGIN named", err)
+	}
+}
+
+func TestModelServerEmbeds(t *testing.T) {
+	s := newModelServer()
+	defer s.Close()
+	resp, err := http.Post(s.URL+"/v1/embeddings", "application/json", strings.NewReader(`{"model": "contract", "input": ["a", "bc"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Data []struct {
+			Index     int       `json:"index"`
+			Embedding []float32 `json:"embedding"`
+		} `json:"data"`
+		Model string `json:"model"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil || len(out.Data) != 2 || out.Data[1].Index != 1 || len(out.Data[1].Embedding) != 2 {
+		t.Fatalf("reply %+v, %v", out, err)
+	}
+}
+
+func TestEnrichPluginAnswersVectorQuery(t *testing.T) {
+	opts := Options{Config: map[string]any{"services": []any{"vector.query"}}}
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"enrich"}), opts, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := slices.IndexFunc(results, func(r Result) bool { return r.Name == checkServicesName })
+	if i < 0 || results[i].Err != nil {
+		t.Fatalf("got %v, want a passing services check", results)
+	}
+}
+
+func TestEnrichPluginWithoutServicesGainsNoServicesCheck(t *testing.T) {
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"enrich"}), Options{}, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.ContainsFunc(results, func(r Result) bool { return r.Name == checkServicesName }) {
+		t.Errorf("services check ran for a plugin with no services: %v", results)
+	}
+}
+
+func TestBadVectorQueryFails(t *testing.T) {
+	opts := Options{Config: map[string]any{"services": []any{"vector.query"}}}
+	results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"enrich"}, "-mode=bad-vector"), opts, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := failed(results)[checkServicesName]; err == nil || !strings.Contains(err.Error(), protocol.MethodVectorQuery) {
+		t.Fatalf("got %v, want vector.query named", err)
 	}
 }

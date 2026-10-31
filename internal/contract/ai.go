@@ -10,12 +10,15 @@ import (
 	"github.com/inkandale/innkeeper/protocol"
 )
 
-const checkServicesName = "an ai plugin answers each service it offers with a valid reply or a plugin error"
+const checkServicesName = "a plugin answers each service it offers with a valid reply or a plugin error"
 
 // checkServices sends each service the plugin offers its sample request. A
 // provider checked without its connection can only fail, so an error other
 // than -32601 counts as an answer.
-func checkServices(ctx context.Context, p *pluginhost.Process) error {
+func checkServices(ctx context.Context, p *pluginhost.Process) []Result {
+	if len(p.Info.Services) == 0 {
+		return nil
+	}
 	var errs []error
 	for _, s := range p.Info.Services {
 		sample := protocol.ServiceSamples[s]
@@ -31,5 +34,5 @@ func checkServices(ctx context.Context, p *pluginhost.Process) error {
 			}
 		}
 	}
-	return errors.Join(errs...)
+	return []Result{{checkServicesName, errors.Join(errs...)}}
 }

@@ -21,7 +21,7 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-tools | bad-actions | bad-records | bad-enrich | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code | database | bad-list | bad-setup | bad-catalog | catalog-repeat | catalog-lax | catalog-no-notfound | catalog-wrong-hash | catalog-sourceless | sites-noisy | sites-lax-data | sites-claims | sites-lax-params | sites-bad-source | no-delete | bad-put | no-tool-call | no-import | settings-no-defaults | settings-defaults-error | no-settings-run | bad-records-import | bad-decide | drop-tool-call")
+	mode := flag.String("mode", "", "bad-protocol | wrong-caps | wrong-version | slow-init | bad-errors | silent | crash-unknown | no-shutdown | bad-describe | bad-tools | bad-actions | bad-records | bad-enrich | bad-codec | codec-hard-link | codec-no-avatar | codec-wrong-code | database | bad-list | bad-setup | bad-catalog | catalog-repeat | catalog-lax | catalog-no-notfound | catalog-wrong-hash | catalog-sourceless | sites-noisy | sites-lax-data | sites-claims | sites-lax-params | sites-bad-source | no-delete | bad-put | no-tool-call | no-import | settings-no-defaults | settings-defaults-error | no-settings-run | bad-records-import | bad-decide | bad-vector | drop-tool-call")
 	caps := flag.String("caps", "push,pull", "comma-separated capabilities to report")
 	name := flag.String("name", "fake", "the plugin name to report")
 	flag.Parse()
@@ -252,6 +252,9 @@ func main() {
 			var p protocol.VectorQueryParams
 			if err := json.Unmarshal(params, &p); err != nil {
 				return nil, protocol.InvalidParams(err)
+			}
+			if *mode == "bad-vector" {
+				return protocol.VectorValue{Vector: []float32{1}}, nil
 			}
 			return protocol.VectorValue{Space: "fake", Vector: []float32{float32(len(p.Text)), 1}}, nil
 		case protocol.MethodAIDecide:

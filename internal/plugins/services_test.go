@@ -18,18 +18,7 @@ import (
 
 func TestInstancesOfferingListsOnlyInstancesThatOfferTheService(t *testing.T) {
 	ctx := context.Background()
-	m, err := protocol.LoadManifest(testutil.FakePluginWith(t, []string{"ai"}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	box, err := secrets.New(make([]byte, 32))
-	if err != nil {
-		t.Fatal(err)
-	}
-	reg := New(testdb.New(t), map[string]*protocol.Manifest{"fake": m},
-		&blobstore.Store{Name: "library", Root: t.TempDir()}, box)
-	mgr := pluginhost.NewManager(nil, time.Minute, quiet)
-	t.Cleanup(mgr.Close)
+	reg, mgr, chat := newServiceInstance(t, []string{"ai"}, protocol.MethodAIChat)
 	create := func(name string, services ...string) int64 {
 		id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: new(name),
 			Config: map[string]any{"services": services}})
@@ -38,7 +27,6 @@ func TestInstancesOfferingListsOnlyInstancesThatOfferTheService(t *testing.T) {
 		}
 		return id
 	}
-	chat := create("Chat", protocol.MethodAIChat)
 	create("Embed", protocol.MethodAIEmbed)
 	off := create("Off", protocol.MethodAIChat)
 	disabled := true
@@ -60,18 +48,7 @@ func TestInstancesOfferingListsOnlyInstancesThatOfferTheService(t *testing.T) {
 
 func TestDecideRefusesAnAIInstanceWithoutAIDecide(t *testing.T) {
 	ctx := context.Background()
-	m, err := protocol.LoadManifest(testutil.FakePluginWith(t, []string{"ai"}))
-	if err != nil {
-		t.Fatal(err)
-	}
-	box, err := secrets.New(make([]byte, 32))
-	if err != nil {
-		t.Fatal(err)
-	}
-	reg := New(testdb.New(t), map[string]*protocol.Manifest{"fake": m},
-		&blobstore.Store{Name: "library", Root: t.TempDir()}, box)
-	mgr := pluginhost.NewManager(nil, time.Minute, quiet)
-	t.Cleanup(mgr.Close)
+	reg, mgr, chat := newServiceInstance(t, []string{"ai"}, protocol.MethodAIChat)
 	create := func(name string, services ...string) int64 {
 		id, err := reg.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: new(name),
 			Config: map[string]any{"services": services}})
@@ -83,8 +60,7 @@ func TestDecideRefusesAnAIInstanceWithoutAIDecide(t *testing.T) {
 	p := protocol.AIDecideParams{State: []byte(`"Hello."`),
 		Questions: map[string]protocol.DecideQuestion{"greeting": {Type: "noul", Instructions: "The state is a greeting."}}}
 
-	chat := create("Chat", protocol.MethodAIChat)
-	_, err = reg.Decide(ctx, mgr, chat, p)
+	_, err := reg.Decide(ctx, mgr, chat, p)
 	if !errors.Is(err, ErrIncapable) || !strings.Contains(err.Error(), "doesn't offer ai.decide") {
 		t.Fatalf("Decide on an instance without ai.decide: %v, want ErrIncapable naming ai.decide", err)
 	}
@@ -141,4 +117,49 @@ func TestVectorInstanceIgnoresAMissingOrDisabledInstance(t *testing.T) {
 	if got, err := r.VectorInstance(ctx); err != nil || got != 0 {
 		t.Fatalf("disabled: %d, %v", got, err)
 	}
+	disabled = false
+	if err := r.UpdateInstance(ctx, id, InstanceEdit{Disabled: &disabled}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.DeleteInstance(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := r.VectorInstance(ctx); err != nil || got != 0 {
+		t.Fatalf("deleted: %d, %v", got, err)
+	}
+}
+
+func TestVectorInstanceWithNoSettingPicksTheOnlyWorkingVectorInstance(t *testing.T) {
+	r, _, first := newServiceInstance(t, []string{"enrich"}, protocol.MethodVectorQuery)
+	ctx := context.Background()
+	// The fake's enrichments have no vector key; declare one.
+	r.manifests["fake"].Enrichments["embedding"] = protocol.Enrichment{Type: "vector", Label: "Embedding"}
+	want := func(step string, id int64) {
+		t.Helper()
+		if got, err := r.VectorInstance(ctx); err != nil || got != id {
+			t.Fatalf("%s: %d, %v; want %d", step, got, err, id)
+		}
+	}
+	want("one instance", first)
+
+	second, err := r.CreateInstance(ctx, NewInstance{Plugin: "fake", Name: new("Second")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want("two instances", 0)
+
+	disabled := true
+	if err := r.UpdateInstance(ctx, second, InstanceEdit{Disabled: &disabled}); err != nil {
+		t.Fatal(err)
+	}
+	want("second disabled", first)
+
+	disabled = false
+	if err := r.UpdateInstance(ctx, second, InstanceEdit{Disabled: &disabled}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.pool.Exec(ctx, `UPDATE plugin_instance SET broken_error = 'boom' WHERE id = $1`, second); err != nil {
+		t.Fatal(err)
+	}
+	want("second broken", first)
 }

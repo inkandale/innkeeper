@@ -124,6 +124,11 @@ type Registry struct {
 	log    *slog.Logger
 	client *http.Client
 
+	// featuresMu guards features and featuresDone.
+	featuresMu   sync.Mutex
+	featureList  []string
+	featuresDone bool
+
 	// mu guards the fields below, which a reload replaces.
 	mu        sync.RWMutex
 	manifests map[string]*protocol.Manifest
@@ -708,6 +713,10 @@ func (r *Registry) load(ctx context.Context, id int64) (inst pluginhost.Instance
 	if err := os.MkdirAll(r.blobs.TmpDir(), 0o755); err != nil {
 		return inst, st, err
 	}
+	features, err := r.features(ctx)
+	if err != nil {
+		return inst, st, err
+	}
 	return pluginhost.Instance{
 		ID:       strconv.FormatInt(id, 10),
 		Version:  strconv.FormatInt(updated.UnixMicro(), 10),
@@ -718,7 +727,7 @@ func (r *Registry) load(ctx context.Context, id int64) (inst pluginhost.Instance
 			BlobStores:  map[string]string{r.blobs.Name: r.blobs.Root},
 			BlobTmp:     r.blobs.TmpDir(),
 			DatabaseURL: r.dsn(plugin),
-			Features:    r.features(ctx),
+			Features:    features,
 		},
 	}, st, nil
 }
@@ -916,7 +925,7 @@ func (r *Registry) VectorInstance(ctx context.Context) (int64, error) {
 	return id, err
 }
 
-// onlyVectorInstance is the one enabled instance whose plugin declares a
+// onlyVectorInstance is the one working instance whose plugin declares a
 // vector enrichment, or 0 when there are none or several.
 func (r *Registry) onlyVectorInstance(ctx context.Context) (int64, error) {
 	insts, err := r.InstancesWith(ctx, protocol.CapabilityEnrich)
@@ -927,8 +936,7 @@ func (r *Registry) onlyVectorInstance(ctx context.Context) (int64, error) {
 	var found []int64
 	for _, inst := range insts {
 		m := manifests[inst.Plugin]
-		if inst.Disabled || m == nil || !slices.ContainsFunc(slices.Collect(maps.Values(m.Enrichments)),
-			func(e protocol.Enrichment) bool { return e.Type == "vector" }) {
+		if !inst.Usable() || !declaresVector(m) {
 			continue
 		}
 		found = append(found, inst.ID)
@@ -937,6 +945,19 @@ func (r *Registry) onlyVectorInstance(ctx context.Context) (int64, error) {
 		return 0, nil
 	}
 	return found[0], nil
+}
+
+// declaresVector reports whether m has a vector enrichment.
+func declaresVector(m *protocol.Manifest) bool {
+	if m == nil {
+		return false
+	}
+	for _, e := range m.Enrichments {
+		if e.Type == "vector" {
+			return true
+		}
+	}
+	return false
 }
 
 // VectorQuery returns instance id's vector for a search query. The
@@ -952,13 +973,24 @@ func (r *Registry) VectorQuery(ctx context.Context, mgr *pluginhost.Manager, id 
 	return res, nil
 }
 
-// features are the optional core features plugins are told about.
-func (r *Registry) features(ctx context.Context) []string {
-	// ponytail: asks once per instance load; cache on the Registry if loads get hot.
-	if ok, err := db.VectorsAvailable(ctx, r.pool); err == nil && ok {
-		return []string{protocol.FeatureVectors}
+// features are the optional core features plugins are told about. A
+// successful read is kept: enabling pgvector takes a restart. An error is
+// not, so the next load retries rather than starting plugins without vectors.
+func (r *Registry) features(ctx context.Context) ([]string, error) {
+	r.featuresMu.Lock()
+	defer r.featuresMu.Unlock()
+	if r.featuresDone {
+		return r.featureList, nil
 	}
-	return nil
+	ok, err := db.VectorsAvailable(ctx, r.pool)
+	if err != nil {
+		return nil, fmt.Errorf("check vectors: %w", err)
+	}
+	if ok {
+		r.featureList = []string{protocol.FeatureVectors}
+	}
+	r.featuresDone = true
+	return r.featureList, nil
 }
 
 // Retryable reports whether a failed plugin call may work later: the plugin

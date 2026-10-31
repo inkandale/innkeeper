@@ -586,20 +586,47 @@ func TestUsesWithoutAProviderFails(t *testing.T) {
 func TestModelServerEmbeds(t *testing.T) {
 	s := newModelServer()
 	defer s.Close()
-	resp, err := http.Post(s.URL+"/v1/embeddings", "application/json", strings.NewReader(`{"model": "contract", "input": ["a", "bc"]}`))
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct {
+		name, body string
+		status     int
+		want       [][]float32
+	}{
+		{"list", `{"model": "contract", "input": ["a", "bc"]}`, 200, [][]float32{{1, 1}, {2, 1}}},
+		{"string", `{"model": "contract", "input": "abc"}`, 200, [][]float32{{3, 1}}},
+		{"malformed", `{`, 400, nil},
 	}
-	defer resp.Body.Close()
-	var out struct {
-		Data []struct {
-			Index     int       `json:"index"`
-			Embedding []float32 `json:"embedding"`
-		} `json:"data"`
-		Model string `json:"model"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil || len(out.Data) != 2 || out.Data[1].Index != 1 || len(out.Data[1].Embedding) != 2 {
-		t.Fatalf("reply %+v, %v", out, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := http.Post(s.URL+"/v1/embeddings", "application/json", strings.NewReader(tt.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != tt.status {
+				t.Fatalf("status %d, want %d", resp.StatusCode, tt.status)
+			}
+			if tt.want == nil {
+				return
+			}
+			var out struct {
+				Data []struct {
+					Index     int       `json:"index"`
+					Embedding []float32 `json:"embedding"`
+				} `json:"data"`
+				Model string `json:"model"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+				t.Fatal(err)
+			}
+			if out.Model != "contract" || len(out.Data) != len(tt.want) {
+				t.Fatalf("reply %+v, want %v", out, tt.want)
+			}
+			for i, d := range out.Data {
+				if d.Index != i || !slices.Equal(d.Embedding, tt.want[i]) {
+					t.Errorf("data[%d] = %+v, want index %d vector %v", i, d, i, tt.want[i])
+				}
+			}
+		})
 	}
 }
 

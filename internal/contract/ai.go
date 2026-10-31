@@ -14,7 +14,8 @@ const checkServicesName = "a plugin answers each service it offers with a valid 
 
 // checkServices sends each service the plugin offers its sample request. A
 // provider checked without its connection can only fail, so an error other
-// than -32601 counts as an answer.
+// than -32601 counts as an answer. It adds no result when the instance
+// reports no services.
 func checkServices(ctx context.Context, p *pluginhost.Process) []Result {
 	if len(p.Info.Services) == 0 {
 		return nil

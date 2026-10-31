@@ -53,10 +53,11 @@ type oaiChunk struct {
 	Choices []oaiChoice `json:"choices"`
 }
 
-// modelServer is a fake OpenAI-compatible chat API. It streams each reply in
-// two chunks, calls the first tool of the first request that offers tools,
-// and checks the first request that answers that call. After holdNext, the
-// next request gets one chunk, then waits for its client to go away.
+// modelServer is a fake OpenAI-compatible chat and embeddings API. It streams
+// each chat reply in two chunks, calls the first tool of the first request that
+// offers tools, and checks the first request that answers that call. After
+// holdNext, the next chat request gets one chunk, then waits for its client to
+// go away. Embeddings are [length, 1] per input.
 type modelServer struct {
 	*httptest.Server
 	// holding is closed when the held request has had its chunk; ended
@@ -206,11 +207,20 @@ func finish(w http.ResponseWriter, reason string) {
 // embed answers an OpenAI embeddings request with [length, 1] per input.
 func (s *modelServer) embed(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Model string   `json:"model"`
-		Input []string `json:"input"`
+		Model string          `json:"model"`
+		Input json.RawMessage `json:"input"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	// OpenAI accepts a single string or a list.
+	var inputs []string
+	var one string
+	if json.Unmarshal(req.Input, &one) == nil {
+		inputs = []string{one}
+	} else if err := json.Unmarshal(req.Input, &inputs); err != nil {
+		http.Error(w, "input must be a string or a list of strings", http.StatusBadRequest)
 		return
 	}
 	type datum struct {
@@ -218,8 +228,8 @@ func (s *modelServer) embed(w http.ResponseWriter, r *http.Request) {
 		Index     int       `json:"index"`
 		Embedding []float32 `json:"embedding"`
 	}
-	data := make([]datum, len(req.Input))
-	for i, in := range req.Input {
+	data := make([]datum, len(inputs))
+	for i, in := range inputs {
 		data[i] = datum{Object: "embedding", Index: i, Embedding: []float32{float32(len(in)), 1}}
 	}
 	w.Header().Set("Content-Type", "application/json")

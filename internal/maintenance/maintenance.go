@@ -5,12 +5,14 @@ package maintenance
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
 )
 
@@ -171,4 +173,68 @@ func (m *Maintenance) Purge(ctx context.Context, days int, done func(int)) (int,
 		return total, err
 	}
 	return total, m.lib.DeleteLorebooks(ctx, lorebooks)
+}
+
+// Kind is the maintenance job kind. Its payload names the action.
+const Kind = "maintenance"
+
+// Actions are the cleanups a Payload can name.
+var Actions = []string{"trim-history", "stale-vectors", "clear-failures", "vacuum", "purge"}
+
+// Payload is a maintenance job's input.
+type Payload struct {
+	Action string `json:"action"`
+	Keep   int    `json:"keep,omitempty"`
+	Days   int    `json:"days,omitempty"`
+}
+
+// Progress is a maintenance job's progress: rows or cards removed, and the
+// database size after a vacuum.
+type Progress struct {
+	Removed       int64 `json:"removed"`
+	DatabaseBytes int64 `json:"database_bytes,omitempty"`
+}
+
+// VectorSpace returns the vector instance and the space of its current
+// vectors, or 0 when there is none.
+type VectorSpace func(ctx context.Context) (int64, string, error)
+
+// Runner is the jobs.Handler for Kind.
+type Runner struct {
+	M     *Maintenance
+	Space VectorSpace
+}
+
+func (rn *Runner) Run(ctx context.Context, r *jobs.Run) error {
+	var p Payload
+	if err := json.Unmarshal(r.Payload, &p); err != nil {
+		return fmt.Errorf("read maintenance payload: %w", err)
+	}
+	var prog Progress
+	publish := func() { raw, _ := json.Marshal(prog); r.SetProgress(raw) }
+	var err error
+	switch p.Action {
+	case "trim-history":
+		prog.Removed, err = rn.M.TrimHistory(ctx, p.Keep)
+	case "stale-vectors":
+		inst, space, serr := rn.Space(ctx)
+		if serr != nil {
+			return serr
+		}
+		prog.Removed, err = rn.M.RemoveStaleVectors(ctx, inst, space)
+	case "clear-failures":
+		prog.Removed, err = rn.M.ClearFailures(ctx)
+	case "vacuum":
+		prog.DatabaseBytes, err = rn.M.Vacuum(ctx)
+	case "purge":
+		_, err = rn.M.Purge(ctx, p.Days, func(n int) {
+			prog.Removed += int64(n)
+			r.AddCardsChanged(n)
+			publish()
+		})
+	default:
+		return fmt.Errorf("unknown maintenance action %q", p.Action)
+	}
+	publish()
+	return err
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/inkandale/innkeeper/internal/importer"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
+	"github.com/inkandale/innkeeper/internal/maintenance"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
 	"github.com/inkandale/innkeeper/internal/targets"
 	"github.com/inkandale/innkeeper/internal/tier"
@@ -82,6 +83,7 @@ var kindLabels = map[string]string{
 	backup.RestoreKind:         "Restore backup",
 	library.GarbageKind:        "Clean up unused files",
 	jobs.PruneKind:             "Clean up old jobs",
+	maintenance.Kind:           "Maintenance",
 }
 
 // bulkLabels name a bulk job by its action, the kind of its children.

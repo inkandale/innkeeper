@@ -21,6 +21,7 @@ import (
 	"github.com/inkandale/innkeeper/internal/importer"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
+	"github.com/inkandale/innkeeper/internal/maintenance"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
 	iservices "github.com/inkandale/innkeeper/internal/services"
 	"github.com/inkandale/innkeeper/internal/targets"
@@ -88,6 +89,15 @@ func worker() error {
 	enricher := &enrich.Runner{Lib: svc.lib, Registry: svc.registry, Plugins: mgr, Runs: runs}
 	sweeper := &enrich.Sweeper{Lib: svc.lib, Registry: svc.registry, Queue: q}
 	ex := &exporter.Exporter{Lib: svc.lib, Registry: svc.registry, Plugins: mgr, Log: log}
+	maint := &maintenance.Runner{M: maintenance.New(svc.pool, svc.lib), Space: func(ctx context.Context) (int64, string, error) {
+		inst, err := svc.registry.VectorInstance(ctx)
+		if err != nil || inst == 0 {
+			return 0, "", err
+		}
+		// The space vector.query answers in is the one current vectors use.
+		v, err := svc.registry.VectorQuery(ctx, mgr, inst, "space probe")
+		return inst, v.Space, err
+	}}
 	dbURL := os.Getenv("INNKEEPER_DATABASE_URL")
 	backupOpts := backup.Options{DatabaseURL: dbURL, Store: svc.store, Box: svc.box, Log: log}
 	restoreOpts := backup.RestoreOptions{Conn: svc.pool.Config().ConnConfig, Store: svc.store, Box: svc.box, Log: log}
@@ -111,6 +121,7 @@ func worker() error {
 			bulk.ExportKind:          bulk.Export(ex),
 			bulk.DeleteLibraryKind:   bulk.DeleteLibrary(svc.lib),
 			bulk.PurgeKind:           bulk.Purge(svc.lib),
+			maintenance.Kind:         maint.Run,
 			bulk.HideKind: bulk.Hide(svc.lib, func(ctx context.Context, id int64, p protocol.AIDecideParams) (protocol.AIDecideResult, error) {
 				return svc.registry.Decide(ctx, mgr, id, p)
 			}),

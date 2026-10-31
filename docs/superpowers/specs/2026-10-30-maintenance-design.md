@@ -77,11 +77,19 @@ What happens to everything that points at a purged card:
 | A binding to an app it was pushed to | Deleted. The app's copy is left alone; archiving's "unpublish" option removes copies |
 | Its blobs, such as avatars | Left to the daily blob garbage job, which deletes those no remaining revision uses |
 
-Revisions are immutable: `forbid_revision_change` rejects every update and
-delete. Purge is the one exception. A migration changes the trigger
-function to allow a `DELETE` when the transaction has set
-`innkeeper.purge` to `on` with `SET LOCAL`. Only the purge job sets it.
-Updates stay forbidden.
+Purge reuses core's delete code: `Entities.deleteIn`, which already sets
+`innkeeper.delete` to get past the revision trigger and deletes what hangs
+off each card, and `Library.DeleteCards`, which `POST /cards/purge` uses.
+Two changes to that shared code make every delete path, including library
+deletion, follow the rules above:
+
+- `DeleteCards` stops keeping cards bound to an app: it deletes the
+  binding like library deletion does. `POST /cards/purge` and its job lose
+  their "refused" list.
+- `deletes()` re-links live variants to their nearest surviving ancestor
+  instead of making them roots.
+
+Lorebooks are deleted through the same `deleteIn`.
 
 The job purges in batches of 1,000 cards, one transaction each, so it
 holds no long lock and reports progress.
@@ -97,9 +105,9 @@ set. The button stays disabled until the owner types `purge`.
 | `GET /maintenance?keep=N&days=D` | Previews every action: rows and bytes per table, what each action would remove for N and D, and the last backup time |
 | `POST /maintenance/runs` | Body `{"action": "trim-history" \| "stale-vectors" \| "clear-failures" \| "vacuum" \| "purge", "keep": N, "days": D}`. Starts the action's job and returns it |
 
-Job kinds: `maintenance.trim-history`, `maintenance.stale-vectors`,
-`maintenance.clear-failures`, `maintenance.vacuum`, `maintenance.purge`.
-At most one maintenance job runs at a time.
+One job kind, `maintenance`, whose payload names the action. At most one
+runs at a time: starting another while one is queued or running returns
+that one.
 
 ## Testing
 
@@ -114,6 +122,7 @@ At most one maintenance job runs at a time.
     including when the grandparent is purged in the same batch;
   - deletes a binding and leaves its target untouched;
   - keeps an archived lorebook a live card links to;
-  - an ordinary `DELETE FROM card_revision` still fails.
+  - an ordinary `DELETE FROM card_revision` still fails;
+  - `POST /cards/purge` deletes a pushed card's binding too.
 - Vacuum without table ownership fails the job with a message that says so.
 - Every route refuses a `write` token.

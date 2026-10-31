@@ -269,21 +269,21 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 // the instance is skipped.
 func (rn *Runner) batch(ctx context.Context, r *jobs.Run, inst pluginhost.Instance, token string, ids []int64, p Payload) (Checked, error) {
 	instanceID := *r.InstanceID
-	revs, missing := rn.heads(ctx, ids)
-	if len(revs) == 0 {
+	revs, missing, archived := rn.heads(ctx, ids)
+	if len(revs) == 0 && archived == 0 {
 		return Checked{}, errors.New("none of its cards exist")
 	}
-	skipped := 0
+	skipped := archived
 	if !p.Rescore {
 		all := len(revs)
 		var err error
 		if revs, err = rn.unscored(ctx, instanceID, revs); err != nil {
 			return Checked{}, err
 		}
-		skipped = all - len(revs)
-		if len(revs) == 0 {
-			return Checked{Failed: len(missing), Skipped: skipped, Warnings: missing}, nil
-		}
+		skipped += all - len(revs)
+	}
+	if len(revs) == 0 {
+		return Checked{Failed: len(missing), Skipped: skipped, Warnings: missing}, nil
 	}
 	names := make([]string, len(revs))
 	for i, rev := range revs {
@@ -349,13 +349,16 @@ func (rn *Runner) scoreLine(ctx context.Context, decl map[string]protocol.Enrich
 	return line, nil
 }
 
-// heads returns the head revision of each card in ids, and a warning for
-// each one that doesn't exist.
-func (rn *Runner) heads(ctx context.Context, ids []int64) ([]protocol.EnrichRevision, []string) {
-	var revs []protocol.EnrichRevision
-	var missing []string
+// heads returns the head revision of each live card in ids, a warning for
+// each one that doesn't exist, and how many were archived. Archived cards
+// are never sent: archiving means the owner is done with the card.
+func (rn *Runner) heads(ctx context.Context, ids []int64) (revs []protocol.EnrichRevision, missing []string, archived int) {
 	for _, id := range ids {
 		c, err := rn.Lib.Cards.Get(ctx, id)
+		if err == nil && c.ArchivedAt != nil {
+			archived++
+			continue
+		}
 		var rev library.Revision
 		if err == nil {
 			rev, err = rn.Lib.Cards.Revision(ctx, c.HeadRevisionID)
@@ -366,7 +369,7 @@ func (rn *Runner) heads(ctx context.Context, ids []int64) ([]protocol.EnrichRevi
 		}
 		revs = append(revs, protocol.EnrichRevision{CardID: id, RevisionID: rev.ID, Data: rev.Data})
 	}
-	return revs, missing
+	return revs, missing, archived
 }
 
 // unscored keeps the revisions in revs that hold no value from instanceID.

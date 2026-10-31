@@ -229,6 +229,33 @@ func TestEnrichRunSkipsCardsScoredOnTheirHead(t *testing.T) {
 	}
 }
 
+func TestEnrichRunSkipsArchivedCards(t *testing.T) {
+	e := newEnrichEnv(t)
+	live, archived := e.card("Live", "xx"), e.card("Archived", "xx")
+	e.call("PUT", fmt.Sprintf("/cards/%d/archived", archived), map[string]any{"archived": true}, 204, nil)
+
+	j, p := e.evaluate(e.instID, live, archived)
+	if j.Status != jobs.StatusSucceeded || p.Done != 1 || p.Skipped != 1 || p.Failed != 0 {
+		t.Fatalf("job %s, progress %+v", j.Status, p)
+	}
+	var vals []enrichmentValue
+	e.call("GET", fmt.Sprintf("/cards/%d/enrichments", archived), nil, 200, &vals)
+	if len(vals) != 0 {
+		t.Fatalf("archived card got values %+v", vals)
+	}
+
+	// A run of only archived cards succeeds with nothing sent, and so does a
+	// query that asks for archived cards.
+	j, p = e.evaluate(e.instID, archived)
+	if j.Status != jobs.StatusSucceeded || p.Done != 0 || p.Skipped != 1 {
+		t.Fatalf("only archived: job %s, progress %+v", j.Status, p)
+	}
+	j, p = e.startRun(map[string]any{"instance_id": e.instID, "query": map[string]any{"filter": map[string]any{"archived": true}}})
+	if j.Status != jobs.StatusSucceeded || p.Done != 0 {
+		t.Fatalf("archived query: job %s, progress %+v", j.Status, p)
+	}
+}
+
 func TestEnrichRunKeepsABatchWithAValueTheDatabaseRefuses(t *testing.T) {
 	e := newEnrichEnv(t)
 	nul, good := e.card("Nul", "xx"), e.card("Good", "xxx")

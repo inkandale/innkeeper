@@ -251,8 +251,12 @@ func TestEnrichRunSkipsArchivedCards(t *testing.T) {
 		t.Fatalf("only archived: job %s, progress %+v", j.Status, p)
 	}
 	j, p = e.startRun(map[string]any{"instance_id": e.instID, "query": map[string]any{"filter": map[string]any{"archived": true}}})
-	if j.Status != jobs.StatusSucceeded || p.Done != 0 {
+	if j.Status != jobs.StatusSucceeded || p.Done != 0 || p.Total != 1 || p.Skipped != 1 {
 		t.Fatalf("archived query: job %s, progress %+v", j.Status, p)
+	}
+	j, p = e.startRun(map[string]any{"instance_id": e.instID, "card_ids": []int64{archived}, "rescore": true})
+	if j.Status != jobs.StatusSucceeded || p.Done != 0 || p.Skipped != 1 {
+		t.Fatalf("archived rescore: job %s, progress %+v", j.Status, p)
 	}
 }
 

@@ -578,3 +578,79 @@ func TestEditQueuesEnrichForInstancesThatUpdateOnChange(t *testing.T) {
 		t.Fatal("unarchiving queued no run")
 	}
 }
+
+// sweepPayloads sweeps and returns the payloads of the instance's enrich jobs.
+func (e *enrichEnv) sweepPayloads() []string {
+	e.t.Helper()
+	ctx := context.Background()
+	sw := &enrich.Sweeper{Lib: e.s.Lib, Registry: e.s.Registry, Queue: e.s.Queue}
+	for range 2 {
+		if err := sw.Sweep(ctx); err != nil {
+			e.t.Fatal(err)
+		}
+	}
+	rows, err := e.pool.Query(ctx, `SELECT payload::text FROM job WHERE kind = $1 AND instance_id = $2`, enrich.Kind, e.instID)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	defer rows.Close()
+	var payloads []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			e.t.Fatal(err)
+		}
+		payloads = append(payloads, p)
+	}
+	return payloads
+}
+
+// turnOnChange turns updates on change off and on, so since is now.
+func (e *enrichEnv) turnOnChange() {
+	e.t.Helper()
+	path := fmt.Sprintf("/instances/%d", e.instID)
+	e.call("PATCH", path, map[string]any{"enrich_on_change": false}, 200, nil)
+	e.call("PATCH", path, map[string]any{"enrich_on_change": true}, 200, nil)
+}
+
+func (e *enrichEnv) clearEnrichJobs() {
+	e.t.Helper()
+	if _, err := e.pool.Exec(context.Background(), `DELETE FROM job WHERE kind = $1`, enrich.Kind); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+func TestSweepQueuesChangedCardsOncePerInstance(t *testing.T) {
+	e := newEnrichEnv(t)
+	e.card("Before", "x")
+	e.turnOnChange()
+	// Created through POST /cards, which queues nothing: only the sweep finds it.
+	after := e.card("After", "x")
+	e.clearEnrichJobs()
+
+	payloads := e.sweepPayloads()
+	if len(payloads) != 1 || !strings.Contains(payloads[0], fmt.Sprint(after)) {
+		t.Fatalf("payloads = %v", payloads)
+	}
+}
+
+func TestSweepLeavesOutACardThePluginFailedOn(t *testing.T) {
+	e := newEnrichEnv(t)
+	e.turnOnChange()
+	fail := e.card("Fail", "x")
+	e.clearEnrichJobs()
+	e.evaluate(e.instID, fail)
+	var recorded int
+	if err := e.pool.QueryRow(context.Background(), `SELECT count(*) FROM enrich_failure f
+		JOIN card c ON c.id = f.card_id AND c.head_revision_id = f.revision_id
+		WHERE f.instance_id = $1 AND f.card_id = $2`, e.instID, fail).Scan(&recorded); err != nil || recorded != 1 {
+		t.Fatalf("failures recorded for the head revision = %d, %v", recorded, err)
+	}
+	good := e.card("Good", "x")
+	e.clearEnrichJobs()
+
+	payloads := e.sweepPayloads()
+	if len(payloads) != 1 || !strings.Contains(payloads[0], fmt.Sprint(good)) || strings.Contains(payloads[0], fmt.Sprint(fail)) {
+		t.Fatalf("payloads = %v; want a run for card %d only", payloads, good)
+	}
+}

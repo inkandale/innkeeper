@@ -145,6 +145,12 @@ func (q *Queue) EnqueueOnce(ctx context.Context, s Spec) (Job, error) {
 	return q.enqueueUnless(ctx, s, `kind = $1 AND status IN ('queued', 'running')`, s.Kind)
 }
 
+// EnqueueOnceForInstance returns the queued or running top-level job of
+// s's kind on s's instance, or enqueues s when there is none.
+func (q *Queue) EnqueueOnceForInstance(ctx context.Context, s Spec) (Job, error) {
+	return q.enqueueUnless(ctx, s, `kind = $1 AND instance_id IS NOT DISTINCT FROM $2 AND status IN ('queued', 'running')`, s.Kind, s.InstanceID)
+}
+
 // EnqueueUnlessQueued returns the queued top-level job matching s's kind,
 // instance, and payload, or enqueues s. It skips running jobs, which may
 // predate the change.

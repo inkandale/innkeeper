@@ -62,6 +62,7 @@ var kindLabels = map[string]string{
 	importer.DetectKind:        "Find sources",
 	actions.Kind:               "Run action",
 	enrich.Kind:                "Score cards",
+	enrich.SweepKind:           "Catch up changed cards",
 	bulk.ArchiveKind:           "Archive card",
 	bulk.LorebookArchiveKind:   "Archive lorebook",
 	bulk.TagKind:               "Tag card",

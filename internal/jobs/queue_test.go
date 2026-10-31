@@ -536,3 +536,27 @@ func TestChildrenForSumsChildMetrics(t *testing.T) {
 		t.Fatalf("children = %+v", got)
 	}
 }
+
+func TestEnqueueOnceForInstanceIsPerInstance(t *testing.T) {
+	q := newQueue(t)
+	ctx := context.Background()
+	var x, y int64
+	if err := q.pool.QueryRow(ctx, `INSERT INTO plugin_instance (plugin, name) VALUES ('fake', 'x'), ('fake', 'y') RETURNING id`).Scan(&x); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.pool.QueryRow(ctx, `SELECT id FROM plugin_instance WHERE name = 'y'`).Scan(&y); err != nil {
+		t.Fatal(err)
+	}
+	a, err := q.EnqueueOnceForInstance(ctx, Spec{Kind: "t.once4", InstanceID: &x})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.pool.Exec(ctx, `UPDATE job SET status = 'running' WHERE id = $1`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	again, _ := q.EnqueueOnceForInstance(ctx, Spec{Kind: "t.once4", InstanceID: &x, Payload: map[string]int{"n": 2}})
+	other, _ := q.EnqueueOnceForInstance(ctx, Spec{Kind: "t.once4", InstanceID: &y})
+	if again.ID != a.ID || other.ID == a.ID {
+		t.Fatalf("jobs %d %d %d: want a running job to hold its instance only", a.ID, again.ID, other.ID)
+	}
+}

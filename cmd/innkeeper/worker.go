@@ -86,6 +86,7 @@ func worker() error {
 	tools := &api.Server{Lib: svc.lib, Queue: q, Registry: svc.registry, Auth: auth.New(svc.pool), Targets: tg, Plugins: mgr, Log: log}
 	runner := &actions.Runner{Lib: svc.lib, Registry: svc.registry, Plugins: mgr, Runs: runs, API: tools.APIHandler()}
 	enricher := &enrich.Runner{Lib: svc.lib, Registry: svc.registry, Plugins: mgr, Runs: runs}
+	sweeper := &enrich.Sweeper{Lib: svc.lib, Registry: svc.registry, Queue: q}
 	ex := &exporter.Exporter{Lib: svc.lib, Registry: svc.registry, Plugins: mgr, Log: log}
 	dbURL := os.Getenv("INNKEEPER_DATABASE_URL")
 	backupOpts := backup.Options{DatabaseURL: dbURL, Store: svc.store, Box: svc.box, Log: log}
@@ -102,6 +103,7 @@ func worker() error {
 			importer.DetectKind:      im.RunDetect,
 			actions.Kind:             runner.Run,
 			enrich.Kind:              enricher.Run,
+			enrich.SweepKind:         sweeper.Run,
 			bulk.ArchiveKind:         bulk.Archive(svc.lib, tg),
 			bulk.LorebookArchiveKind: bulk.ArchiveLorebook(svc.lib, tg),
 			bulk.TagKind:             bulk.Tag(svc.lib),
@@ -140,6 +142,7 @@ func worker() error {
 		Schedules: []jobs.Schedule{
 			{Kind: library.GarbageKind, Every: 24 * time.Hour},
 			{Kind: targets.ScanKind, Every: time.Hour},
+			{Kind: enrich.SweepKind, Every: time.Hour},
 			// ponytail: catches entities queued while a detect job was finishing, and enqueues that failed; hourly is the delay then.
 			{Kind: importer.DetectKind, Every: time.Hour},
 		},

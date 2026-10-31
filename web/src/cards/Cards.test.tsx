@@ -42,6 +42,7 @@ let puts: { path: string; body: unknown }[];
 let gets: string[];
 let judgeMax: number | undefined;
 let vectorInstance: number | null;
+let vectorsAvailable: boolean;
 let settingsGate: Promise<void> | undefined;
 let resultsGate: Promise<void> | undefined;
 let libraryIds: number[];
@@ -55,6 +56,7 @@ beforeEach(() => {
   keys = { scorers: [], instances: [] };
   judgeMax = undefined;
   vectorInstance = null;
+  vectorsAvailable = true;
   settingsGate = undefined;
   resultsGate = undefined;
   searches = [];
@@ -127,7 +129,7 @@ beforeEach(() => {
       if (path === "/api/collections") return json([{ id: 4, name: "Elves", cards: 0 }]);
       if (path === "/api/enrichments/keys") return json(keys);
       if (path === "/api/settings") await settingsGate;
-      if (path === "/api/settings") return json({ theme: "", onboarding_done: true, vector_instance: vectorInstance });
+      if (path === "/api/settings") return json({ theme: "", onboarding_done: true, vector_instance: vectorInstance, vectors_available: vectorsAvailable });
       return json([]);
     }),
   );
@@ -1016,6 +1018,14 @@ test("the Semantic checkbox searches by meaning and sorts by relevance", async (
 });
 
 test("without a vector source there is no Semantic checkbox", async () => {
+  renderCards("/cards?q=dwarf&library=1");
+  await screen.findByText("Brakka");
+  expect(screen.queryByRole("checkbox", { name: "Semantic" })).toBeNull();
+});
+
+test("without pgvector there is no Semantic checkbox even with a vector instance", async () => {
+  vectorInstance = 5;
+  vectorsAvailable = false;
   renderCards("/cards?q=dwarf&library=1");
   await screen.findByText("Brakka");
   expect(screen.queryByRole("checkbox", { name: "Semantic" })).toBeNull();

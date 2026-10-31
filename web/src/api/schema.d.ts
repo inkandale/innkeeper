@@ -1630,7 +1630,7 @@ export interface paths {
         put?: never;
         /**
          * Retry a failed job
-         * @description Queues a failed job again with all its attempts. An import picks up from its last checkpoint. A bulk job and its children can't be retried this way.
+         * @description Queues a failed job again with all its attempts. An import picks up from its last checkpoint. A bulk job, its children, and a maintenance run can't be retried this way.
          */
         post: operations["retry-job"];
         delete?: never;

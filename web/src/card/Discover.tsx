@@ -2,7 +2,7 @@ import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-qu
 import { useState } from "react";
 import { Link } from "react-router";
 import { api, must, thumb } from "../api/client";
-import { librariesQuery } from "../api/queries";
+import { librariesQuery, settingsQuery } from "../api/queries";
 import type { components } from "../api/schema";
 import { parseQuery, toParams, type Term } from "../cards/query";
 import type { Entity } from "./Card";
@@ -61,6 +61,7 @@ function CardList({ items, library }: { items: Found[]; library: number }) {
 /** Similar lists the cards that read like this one, in its library or all of them. */
 export function Similar({ id, library }: { id: number; library: number }) {
   const [scope, setScope] = useState<Scope>("library");
+  const settings = useQuery(settingsQuery);
   const pages = useInfiniteQuery({
     queryKey: ["card", id, "similar", scope],
     queryFn: async ({ pageParam }) =>
@@ -84,7 +85,14 @@ export function Similar({ id, library }: { id: number; library: number }) {
       {pages.isError && <p className="error">{pages.error.message}</p>}
       {basis === "tags" && (
         <p className="muted">
-          Ranked by shared tags until this card has an embedding. <Link to="/settings/plugins">Embed instance</Link>
+          Ranked by shared tags.{" "}
+          {settings.data?.vectors_available === false ? (
+            "Similar by meaning needs pgvector."
+          ) : (
+            <>
+              Similar by meaning needs vectors: choose <Link to="/settings/general">Vectors from</Link> in Settings.
+            </>
+          )}
         </p>
       )}
       {pages.isSuccess && !pages.isPlaceholderData && !items.length && <p className="muted">None in {scope === "all" ? "any library" : "this library"}.</p>}

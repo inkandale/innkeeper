@@ -30,7 +30,7 @@ export type Sort = (typeof sorts)[number] | `enrichment:${string}`;
 export type CardQuery = {
   library: number;
   text: string;
-  /** semantic ranks by meaning instead of matching words. It needs text and an embed instance. */
+  /** semantic ranks by meaning instead of matching words. It needs text and a vector instance. */
   semantic: boolean;
   terms: Term[];
   sort: Sort;

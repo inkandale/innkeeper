@@ -68,11 +68,20 @@ test("Similar links each card and shows more on demand", async () => {
   expect(screen.queryByRole("button", { name: "Show more" })).not.toBeInTheDocument();
 });
 
-test("Similar ranked by tags points to the embed setting", async () => {
+test("Similar ranked by tags points to Vectors from in Settings", async () => {
   routes["/api/cards/7/similar"] = { basis: "tags", items: [{ card_id: 8, library_id: 1, name: "Dorna" }] };
+  routes["/api/settings"] = { vectors_available: true, vector_instance: null };
   renderIt(<Similar id={7} library={1} />);
-  expect(await screen.findByText(/Ranked by shared tags until this card has an embedding\./)).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Embed instance" })).toHaveAttribute("href", "/settings/plugins");
+  expect(await screen.findByText(/Ranked by shared tags\./)).toBeInTheDocument();
+  expect(await screen.findByRole("link", { name: "Vectors from" })).toHaveAttribute("href", "/settings/general");
+});
+
+test("Similar ranked by tags says it needs pgvector when there is none", async () => {
+  routes["/api/cards/7/similar"] = { basis: "tags", items: [{ card_id: 8, library_id: 1, name: "Dorna" }] };
+  routes["/api/settings"] = { vectors_available: false, vector_instance: null };
+  renderIt(<Similar id={7} library={1} />);
+  expect(await screen.findByText(/Similar by meaning needs pgvector\./)).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Vectors from" })).not.toBeInTheDocument();
 });
 
 test("Similar across all libraries names the other library", async () => {

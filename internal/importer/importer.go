@@ -15,7 +15,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/inkandale/innkeeper/internal/embed"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/libsettings"
@@ -138,7 +137,6 @@ func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
 	if !s.bulk {
 		EnqueueDetect(ctx, im.Queue, im.Log)
 	}
-	embed.Enqueue(ctx, im.Queue, im.Log)
 	settings := libsettings.New(im.Lib, im.Registry)
 	// Even when this attempt failed: a retry counts the cards it stored as skipped, so it won't queue them.
 	if len(s.changed) > 0 {

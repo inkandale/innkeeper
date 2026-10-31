@@ -80,3 +80,17 @@ func TestHasVectorsDoesNotCacheAnError(t *testing.T) {
 		t.Fatalf("retry = %v, %v", ok, err)
 	}
 }
+
+func TestEnrichedRevisionsCountsAStoredVector(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	inst := newInstanceRow(t, lib)
+	id, rev := newCard(t, lib, "brakka", `{"name": "Brakka"}`)
+	if err := lib.SaveVectors(ctx, inst, []NewVector{{CardID: id, RevisionID: rev, Space: "s1", Vector: []float32{1, 0}}}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := lib.EnrichedRevisions(ctx, inst, []int64{id}, []int64{rev})
+	if err != nil || len(got) != 1 || got[0] != rev {
+		t.Fatalf("enriched = %v, %v; want [%d]", got, err, rev)
+	}
+}

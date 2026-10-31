@@ -75,12 +75,19 @@ func (l *Library) HasEnrichments(ctx context.Context, instanceID int64) (bool, e
 	return has, err
 }
 
-// EnrichedRevisions returns the revisions in revIDs, of the cards in cardIDs,
-// that hold at least one value from instanceID.
+// EnrichedRevisions returns which of revIDs hold a value or a vector from
+// instanceID.
 func (l *Library) EnrichedRevisions(ctx context.Context, instanceID int64, cardIDs, revIDs []int64) ([]int64, error) {
+	vectors, err := l.HasVectors(ctx)
+	if err != nil {
+		return nil, err
+	}
 	// card_id leads the index; revision_id alone would scan the table.
-	rows, err := l.pool.Query(ctx, `SELECT DISTINCT revision_id FROM enrichment
-		WHERE card_id = ANY($2) AND instance_id = $1 AND revision_id = ANY($3)`, instanceID, cardIDs, revIDs)
+	sql := `SELECT revision_id FROM enrichment WHERE card_id = ANY($2) AND instance_id = $1 AND revision_id = ANY($3)`
+	if vectors {
+		sql += ` UNION SELECT revision_id FROM card_embedding WHERE card_id = ANY($2) AND instance_id = $1 AND revision_id = ANY($3)`
+	}
+	rows, err := l.pool.Query(ctx, sql, instanceID, cardIDs, revIDs)
 	if err != nil {
 		return nil, err
 	}

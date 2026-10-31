@@ -16,7 +16,6 @@ import (
 	"github.com/inkandale/innkeeper/internal/actions"
 	"github.com/inkandale/innkeeper/internal/backup"
 	"github.com/inkandale/innkeeper/internal/bulk"
-	"github.com/inkandale/innkeeper/internal/embed"
 	"github.com/inkandale/innkeeper/internal/enrich"
 	"github.com/inkandale/innkeeper/internal/importer"
 	"github.com/inkandale/innkeeper/internal/jobs"
@@ -62,7 +61,6 @@ var kindLabels = map[string]string{
 	importer.Kind:              "Import",
 	importer.DetectKind:        "Find sources",
 	actions.Kind:               "Run action",
-	embed.Kind:                 "Index for search by meaning",
 	enrich.Kind:                "Score cards",
 	bulk.ArchiveKind:           "Archive card",
 	bulk.LorebookArchiveKind:   "Archive lorebook",

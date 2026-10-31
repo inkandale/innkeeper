@@ -12,7 +12,6 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/inkandale/innkeeper/internal/embed"
 	"github.com/inkandale/innkeeper/internal/enrich"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
@@ -29,24 +28,39 @@ type enrichEnv struct {
 	instID int64
 }
 
-func newEnrichEnv(t *testing.T) *enrichEnv {
+// newEnrichEnv gives the instance config when one is passed.
+func newEnrichEnv(t *testing.T, config ...map[string]any) *enrichEnv {
+	t.Helper()
+	return newEnrichEnvWith(t, nil, config...)
+}
+
+// newEnrichEnvWith runs setup on the env before the runner and worker exist,
+// so a change to the database is seen by the library they use.
+func newEnrichEnvWith(t *testing.T, setup func(*testEnv), config ...map[string]any) *enrichEnv {
 	t.Helper()
 	e := newEnv(t)
+	if setup != nil {
+		setup(e)
+	}
 	judge := *e.manifests["fake"]
 	judge.Name, judge.Capabilities = "judge", []string{"enrich"}
 	judge.Command = []string{judge.Command[0], "-caps=enrich", "-name=judge"}
-	if _, err := toml.Decode(testutil.FakeEnrichments, &judge); err != nil {
+	if _, err := toml.Decode(testutil.FakeEnrichments+testutil.FakeVectorEnrichment, &judge); err != nil {
 		t.Fatal(err)
 	}
 	e.manifests["judge"] = &judge
-	id, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "judge", Name: new("Judge")})
+	inst := plugins.NewInstance{Plugin: "judge", Name: new("Judge")}
+	if len(config) > 0 {
+		inst.Config = config[0]
+	}
+	id, err := e.s.Registry.CreateInstance(context.Background(), inst)
 	if err != nil {
 		t.Fatal(err)
 	}
 	runs := pluginhost.NewRuns(quiet)
 	mgr := pluginhost.NewManager(runs.Handle, time.Minute, quiet)
 	t.Cleanup(mgr.Close)
-	rn := &enrich.Runner{Lib: e.s.Lib, Registry: e.s.Registry, Plugins: mgr, Runs: runs, Queue: e.s.Queue, Log: quiet}
+	rn := &enrich.Runner{Lib: e.s.Lib, Registry: e.s.Registry, Plugins: mgr, Runs: runs}
 	w := &jobs.Worker{Queue: e.s.Queue, Log: quiet, Poll: 50 * time.Millisecond, Lease: 600 * time.Millisecond,
 		Handlers: map[string]jobs.Handler{enrich.Kind: rn.Run}}
 	wctx, cancel := context.WithCancel(context.Background())
@@ -107,24 +121,47 @@ func (e *enrichEnv) search(q map[string]any, status int) library.Results {
 	return res
 }
 
-func TestEnrichRunQueuesEmbedOnlyForEmbedKeys(t *testing.T) {
-	e := newEnrichEnv(t)
-	queued := func() int {
-		var n int
-		if err := e.pool.QueryRow(context.Background(), `SELECT count(*) FROM job WHERE kind = $1 AND status = 'queued'`, embed.Kind).Scan(&n); err != nil {
+func TestEnrichRunStoresVectors(t *testing.T) {
+	for _, config := range []map[string]any{{"vectors": true}, {"vectors": true, "vectors_only": true}} {
+		e := newEnrichEnv(t, config)
+		id := e.card("Brakka", "abc")
+		j, p := e.evaluate(e.instID, id)
+		if j.Status != jobs.StatusSucceeded || p.Done != 1 {
+			t.Fatalf("%v: job %s, progress %+v", config, j.Status, p)
+		}
+		var space, vec string
+		if err := e.pool.QueryRow(context.Background(), `SELECT space, embedding::text FROM card_embedding WHERE card_id = $1 AND instance_id = $2`,
+			id, e.instID).Scan(&space, &vec); err != nil {
 			t.Fatal(err)
 		}
-		return n
+		if space != "fake" || vec != "[3,1]" {
+			t.Fatalf("stored %s %s", space, vec)
+		}
+		var vals []enrichmentValue
+		e.call("GET", fmt.Sprintf("/cards/%d/enrichments", id), nil, 200, &vals)
+		for _, v := range vals {
+			if v.Key == "embedding" {
+				t.Fatal("a vector was stored as an enrichment value too")
+			}
+		}
+		j, p = e.evaluate(e.instID, id)
+		if j.Status != jobs.StatusSucceeded || p.Skipped != 1 {
+			t.Fatalf("%v: second run: job %s, progress %+v", config, j.Status, p)
+		}
 	}
-	card := e.card("Brakka", "A dwarf smith.")
-	if e.evaluate(e.instID, card); queued() != 0 {
-		t.Fatal("a run with no embed key queued an embed job")
+}
+
+func TestEnrichRunDropsVectorsWithoutPgvector(t *testing.T) {
+	drop := func(e *testEnv) {
+		if _, err := e.pool.Exec(context.Background(), `DROP TABLE card_embedding`); err != nil {
+			t.Fatal(err)
+		}
 	}
-	summary := e.manifests["judge"].Enrichments["summary"]
-	summary.Embed = true
-	e.manifests["judge"].Enrichments["summary"] = summary
-	if e.startRun(map[string]any{"instance_id": e.instID, "card_ids": []int64{card}, "rescore": true}); queued() != 1 {
-		t.Fatal("a run that stored an embed key's value queued no embed job")
+	e := newEnrichEnvWith(t, drop, map[string]any{"vectors": true})
+	id := e.card("Brakka", "abc")
+	j, p := e.evaluate(e.instID, id)
+	if j.Status != jobs.StatusSucceeded || p.Done != 1 || !slices.ContainsFunc(p.Warnings, func(w string) bool { return strings.Contains(w, "pgvector") }) {
+		t.Fatalf("job %s, progress %+v", j.Status, p)
 	}
 }
 

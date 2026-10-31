@@ -16,7 +16,6 @@ import (
 	"github.com/inkandale/innkeeper/internal/auth"
 	"github.com/inkandale/innkeeper/internal/backup"
 	"github.com/inkandale/innkeeper/internal/bulk"
-	"github.com/inkandale/innkeeper/internal/embed"
 	"github.com/inkandale/innkeeper/internal/enrich"
 	exporter "github.com/inkandale/innkeeper/internal/export"
 	"github.com/inkandale/innkeeper/internal/importer"
@@ -86,8 +85,7 @@ func worker() error {
 	// Serves library.call's tools in process; nothing listens on it.
 	tools := &api.Server{Lib: svc.lib, Queue: q, Registry: svc.registry, Auth: auth.New(svc.pool), Targets: tg, Plugins: mgr, Log: log}
 	runner := &actions.Runner{Lib: svc.lib, Registry: svc.registry, Plugins: mgr, Runs: runs, API: tools.APIHandler()}
-	enricher := &enrich.Runner{Lib: svc.lib, Registry: svc.registry, Plugins: mgr, Runs: runs, Queue: q, Log: log}
-	embedder := &embed.Runner{Lib: svc.lib, Registry: svc.registry, Plugins: mgr}
+	enricher := &enrich.Runner{Lib: svc.lib, Registry: svc.registry, Plugins: mgr, Runs: runs}
 	ex := &exporter.Exporter{Lib: svc.lib, Registry: svc.registry, Plugins: mgr, Log: log}
 	dbURL := os.Getenv("INNKEEPER_DATABASE_URL")
 	backupOpts := backup.Options{DatabaseURL: dbURL, Store: svc.store, Box: svc.box, Log: log}
@@ -103,7 +101,6 @@ func worker() error {
 			importer.Kind:            im.Run,
 			importer.DetectKind:      im.RunDetect,
 			actions.Kind:             runner.Run,
-			embed.Kind:               embedder.Run,
 			enrich.Kind:              enricher.Run,
 			bulk.ArchiveKind:         bulk.Archive(svc.lib, tg),
 			bulk.LorebookArchiveKind: bulk.ArchiveLorebook(svc.lib, tg),
@@ -145,8 +142,6 @@ func worker() error {
 			{Kind: targets.ScanKind, Every: time.Hour},
 			// ponytail: catches entities queued while a detect job was finishing, and enqueues that failed; hourly is the delay then.
 			{Kind: importer.DetectKind, Every: time.Hour},
-			// Catches edits, restores, and pulls; imports and the setting queue it at once.
-			{Kind: embed.Kind, Every: time.Hour},
 		},
 	}
 	if syncEvery > 0 {

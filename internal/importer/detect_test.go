@@ -5,7 +5,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/inkandale/innkeeper/internal/embed"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/plugins"
@@ -34,10 +33,6 @@ func TestImportDetectsThroughTheImportingPlugin(t *testing.T) {
 	}
 	if j := e.wait(t, detect); j.Status != jobs.StatusSucceeded {
 		t.Fatalf("detect job %s: %s", j.Status, errText(j))
-	}
-	var queued int64
-	if err := e.pool.QueryRow(context.Background(), `SELECT id FROM job WHERE kind = $1`, embed.Kind).Scan(&queued); err != nil {
-		t.Fatalf("no embed job after the import: %v", err)
 	}
 	got := e.sources(t, e.slugID(t, "card", "fake-1"))
 	if len(got) != 1 || got[0].Kind != "fake" || got[0].Ref != "u/card-1" || got[0].LinkedBy != "auto" {

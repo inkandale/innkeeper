@@ -6,9 +6,9 @@ package enrich
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"maps"
 	"math"
 	"slices"
@@ -16,7 +16,6 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	"github.com/inkandale/innkeeper/internal/embed"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
@@ -188,10 +187,6 @@ func Check(decl map[string]protocol.Enrichment, sent []protocol.EnrichRevision, 
 type Runner struct {
 	plugins.JobRunner
 	Lib *library.Library
-	// Queue and Log queue an embed job after a run stores values of a key
-	// that declares embed, so vectors follow the new text.
-	Queue *jobs.Queue
-	Log   *slog.Logger
 }
 
 // Run is the jobs.Handler for Kind. It runs once: each call costs the owner
@@ -254,9 +249,6 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 		pr.Publish(prog)
 		mu.Unlock()
 	}
-	if prog.Done > 0 && slices.ContainsFunc(slices.Collect(maps.Values(inst.Manifest.Enrichments)), func(e protocol.Enrichment) bool { return e.Embed }) {
-		embed.Enqueue(ctx, rn.Queue, rn.Log)
-	}
 	if batches > 0 && failedBatches == batches {
 		return fmt.Errorf("every batch failed: %w", lastErr)
 	}
@@ -299,6 +291,15 @@ func (rn *Runner) batch(ctx context.Context, r *jobs.Run, inst pluginhost.Instan
 	checked.Failed += len(missing)
 	checked.Skipped = skipped
 	checked.Warnings = append(missing, checked.Warnings...)
+	vectors, err := rn.vectors(ctx, inst.Manifest.Enrichments, &checked)
+	if err != nil {
+		return Checked{}, err
+	}
+	if len(vectors) > 0 {
+		if err := rn.Lib.SaveVectors(ctx, instanceID, vectors); err != nil {
+			return Checked{}, err
+		}
+	}
 	// One insert per revision, so a row the database refuses loses only its own revision's values.
 	for _, rev := range revs {
 		vals := slices.DeleteFunc(slices.Clone(checked.Values), func(v library.NewEnrichment) bool { return v.RevisionID != rev.RevisionID })
@@ -321,6 +322,37 @@ func (rn *Runner) batch(ctx context.Context, r *jobs.Run, inst pluginhost.Instan
 		r.Log("info", line)
 	}
 	return checked, nil
+}
+
+// vectors takes checked's vector values out of its Values, as NewVectors to
+// store, or drops them with a warning when this install has no pgvector.
+func (rn *Runner) vectors(ctx context.Context, decl map[string]protocol.Enrichment, checked *Checked) ([]library.NewVector, error) {
+	var out []library.NewVector
+	kept := checked.Values[:0]
+	for _, v := range checked.Values {
+		if decl[v.Key].Type != "vector" {
+			kept = append(kept, v)
+			continue
+		}
+		var vv protocol.VectorValue
+		if err := json.Unmarshal(v.Value, &vv); err != nil {
+			return nil, fmt.Errorf("read checked vector: %w", err)
+		}
+		out = append(out, library.NewVector{CardID: v.CardID, RevisionID: v.RevisionID, Space: vv.Space, Vector: vv.Vector})
+	}
+	checked.Values = kept
+	if len(out) == 0 {
+		return nil, nil
+	}
+	ok, err := rn.Lib.HasVectors(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		checked.Warnings = append(checked.Warnings, fmt.Sprintf("dropped %d vectors: this install has no pgvector", len(out)))
+		return nil, nil
+	}
+	return out, nil
 }
 
 // scoreLine says rev's card was scored and, when the plugin declares a grid

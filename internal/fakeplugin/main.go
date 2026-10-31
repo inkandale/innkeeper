@@ -144,7 +144,7 @@ func main() {
 		case protocol.MethodActionRun:
 			return actionRun(ctx, conn, params, config, *mode)
 		case protocol.MethodEnrichRun:
-			return enrichRun(ctx, conn, params, *mode)
+			return enrichRun(ctx, conn, params, *mode, config)
 		case protocol.MethodRecordsList, protocol.MethodRecordsGet, protocol.MethodRecordsPut,
 			protocol.MethodRecordsDelete, protocol.MethodRecordsImport:
 			return recordsCall(method, params, *mode)

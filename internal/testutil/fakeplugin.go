@@ -21,6 +21,11 @@ voice = { type = "score", range = [0, 100], label = "Voice" }
 summary = { type = "text", label = "Summary" }
 `
 
+// FakeVectorEnrichment is the vector key the fake plugin writes when its
+// config sets vectors.
+const FakeVectorEnrichment = `embedding = { type = "vector", label = "Embedding" }
+`
+
 // FakePlugin builds internal/fakeplugin into a temp plugin folder and writes
 // a manifest that runs it with args. It returns the folder.
 func FakePlugin(t *testing.T, args ...string) string {

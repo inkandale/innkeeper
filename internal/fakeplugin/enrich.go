@@ -15,8 +15,9 @@ import (
 // "fail" gets an error, "skip" is left out of the reply, "bad" gets an
 // undeclared key, a string voice, and quality 150, "nul" gets a NUL in its
 // summary and meta, and "slow" takes a second. A thorough run's meta names
-// model fake-thorough.
-func enrichRun(ctx context.Context, conn *protocol.Conn, params json.RawMessage, mode string) (any, error) {
+// model fake-thorough. With config vectors, embedding is
+// [description length, 1] in space fake; with vectors_only it is the only value.
+func enrichRun(ctx context.Context, conn *protocol.Conn, params json.RawMessage, mode string, config map[string]any) (any, error) {
 	var p protocol.EnrichRunParams
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, protocol.InvalidParams(err)
@@ -36,6 +37,12 @@ func enrichRun(ctx context.Context, conn *protocol.Conn, params json.RawMessage,
 			"quality": json.RawMessage(fmt.Sprint(quality)),
 			"voice":   json.RawMessage("50"),
 			"summary": json.RawMessage(fmt.Sprintf("%q", "About "+data.Name)),
+		}
+		if config["vectors"] == true {
+			r.Values["embedding"] = json.RawMessage(fmt.Sprintf(`{"space": "fake", "vector": [%d, 1]}`, len(data.Description)))
+			if config["vectors_only"] == true {
+				r.Values = map[string]json.RawMessage{"embedding": r.Values["embedding"]}
+			}
 		}
 		switch {
 		case mode == "bad-enrich":

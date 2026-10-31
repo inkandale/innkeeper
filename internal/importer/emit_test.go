@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/inkandale/innkeeper/internal/embed"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
 )
@@ -89,17 +88,6 @@ func TestBulkImportResumesWithoutDuplicates(t *testing.T) {
 	}
 	if n := e.count(t, "source_detect"); n != 0 {
 		t.Fatalf("bulk import queued %d entities for detection", n)
-	}
-}
-
-func TestBulkImportQueuesTheEmbedJob(t *testing.T) {
-	e := setup(t, "-mode=bulk")
-	if j, _ := e.run(t, `{"cards": 2}`); j.Status != jobs.StatusSucceeded {
-		t.Fatalf("job %s: %s", j.Status, errText(j))
-	}
-	var n int
-	if err := e.pool.QueryRow(context.Background(), `SELECT count(*) FROM job WHERE kind = $1`, embed.Kind).Scan(&n); err != nil || n != 1 {
-		t.Fatalf("%d embed jobs after a bulk import, %v; want 1", n, err)
 	}
 }
 

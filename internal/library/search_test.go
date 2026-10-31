@@ -1219,6 +1219,20 @@ func TestSemanticSearchSkipsVectorsOfAnotherSpace(t *testing.T) {
 	}
 }
 
+func TestSemanticSearchSkipsVectorsOfAnotherLengthInTheSameSpace(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	inst := newInstanceRow(t, lib)
+	two, _ := newCard(t, lib, "two", `{"name": "Brakka"}`)
+	three, _ := newCard(t, lib, "three", `{"name": "Dorna"}`)
+	embedCards(t, lib, inst, map[int64][]float32{two: {1, 0}, three: {1, 0, 0}})
+
+	res, err := lib.Search(ctx, Card, Query{Text: "smith", Semantic: true, Embedding: []float32{1, 0}, EmbedInstance: inst, EmbedSpace: "s1"})
+	if err != nil || !slices.Equal(hitIDs(res), []int64{two}) {
+		t.Fatalf("results = %+v, %v", res, err)
+	}
+}
+
 func TestSemanticSearchPagesPastVectorsOfAnotherSpace(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()

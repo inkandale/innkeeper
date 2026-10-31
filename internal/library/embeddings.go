@@ -37,11 +37,21 @@ func (l *Library) SaveVectors(ctx context.Context, instance int64, vals []NewVec
 	return nil
 }
 
-// HasVectors reports whether this install stores vectors. It is read once:
-// enabling pgvector takes a restart.
+// HasVectors reports whether this install stores vectors. A successful read
+// is kept: enabling pgvector takes a restart. An error is not, so a cancelled
+// first call doesn't fail every later one.
 func (l *Library) HasVectors(ctx context.Context) (bool, error) {
-	l.vectorsOnce.Do(func() { l.vectors, l.vectorsErr = db.VectorsAvailable(ctx, l.pool) })
-	return l.vectors, l.vectorsErr
+	l.vectorsMu.Lock()
+	defer l.vectorsMu.Unlock()
+	if l.vectorsDone {
+		return l.vectors, nil
+	}
+	ok, err := db.VectorsAvailable(ctx, l.pool)
+	if err != nil {
+		return false, err
+	}
+	l.vectors, l.vectorsDone = ok, true
+	return ok, nil
 }
 
 // vectorText writes v in pgvector's text form, so no pgvector Go package is needed.

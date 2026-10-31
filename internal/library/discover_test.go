@@ -304,3 +304,16 @@ func TestSimilarComparesOnlyWithinASpace(t *testing.T) {
 		t.Fatalf("similar = %+v", got)
 	}
 }
+
+func TestSimilarSkipsAVectorOfAnotherLengthInTheSameSpace(t *testing.T) {
+	lib := newLibrary(t)
+	inst := newInstanceRow(t, lib)
+	me, _ := newCard(t, lib, "me", `{"name": "Brakka"}`)
+	same, _ := newCard(t, lib, "same", `{"name": "Dorna"}`)
+	odd, _ := newCard(t, lib, "odd", `{"name": "Odd"}`)
+	embedCards(t, lib, inst, map[int64][]float32{me: {1, 0}, same: {1, 0.1}, odd: {1, 0, 0}})
+	got, err := lib.SimilarCards(context.Background(), me, SimilarOptions{Instance: inst})
+	if err != nil || got.Basis != "embedding" || !slices.Equal(ids(got.Items), []int64{same}) {
+		t.Fatalf("similar = %+v, %v", got, err)
+	}
+}

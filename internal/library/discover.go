@@ -92,7 +92,7 @@ func (l *Library) SimilarCards(ctx context.Context, cardID int64, o SimilarOptio
 	sql := discoverWith + `, q AS (SELECT embedding, space FROM card_embedding WHERE instance_id = $2 AND card_id = $1)
 		SELECT c.id, c.library_id, coalesce(r.data->>'name', ''), coalesce(r.avatar_blob, ''), coalesce(r.tags, '{}'), greatest(0, 1 - (e.embedding <=> q.embedding))
 		FROM self CROSS JOIN q
-		JOIN card_embedding e ON e.instance_id = $2 AND e.space = q.space
+		JOIN card_embedding e ON e.instance_id = $2 AND e.space = q.space AND vector_dims(e.embedding) = vector_dims(q.embedding)
 		JOIN card c ON c.id = e.card_id
 		JOIN card_revision r ON r.id = c.head_revision_id
 		WHERE ` + discoverWhere + ` AND r.content_hash <> self.content_hash AND ($3 OR c.library_id = self.library_id)

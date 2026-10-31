@@ -50,3 +50,33 @@ func TestDeleteCardsDropsItsEmbeddings(t *testing.T) {
 		t.Fatalf("embeddings left = %d, %v", n, err)
 	}
 }
+
+func TestHasVectorsReadsOnceOnSuccess(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	if ok, err := lib.HasVectors(ctx); err != nil || !ok {
+		t.Fatalf("HasVectors = %v, %v", ok, err)
+	}
+	if _, err := lib.pool.Exec(ctx, `DROP TABLE card_embedding CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := lib.HasVectors(ctx); err != nil || !ok {
+		t.Fatalf("cached HasVectors = %v, %v", ok, err)
+	}
+	fresh := New(lib.pool, lib.blobs)
+	if ok, err := fresh.HasVectors(ctx); err != nil || ok {
+		t.Fatalf("HasVectors without the table = %v, %v", ok, err)
+	}
+}
+
+func TestHasVectorsDoesNotCacheAnError(t *testing.T) {
+	lib := newLibrary(t)
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := lib.HasVectors(cancelled); err == nil {
+		t.Fatal("cancelled context: want an error")
+	}
+	if ok, err := lib.HasVectors(context.Background()); err != nil || !ok {
+		t.Fatalf("retry = %v, %v", ok, err)
+	}
+}

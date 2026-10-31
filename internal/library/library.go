@@ -44,9 +44,9 @@ type Library struct {
 	pool  *pgxpool.Pool
 	blobs *blobstore.Store
 
-	vectorsOnce sync.Once
+	vectorsMu   sync.Mutex
+	vectorsDone bool
 	vectors     bool
-	vectorsErr  error
 }
 
 // New returns a Library that writes new blobs to blobs.

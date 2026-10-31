@@ -675,7 +675,7 @@ func compile(k *Kind, q Query) (string, *where, string, error) {
 }
 
 // semantic is the condition that a card has a vector from q's vector
-// instance in q's space.
+// instance in q's space and length; <=> errors on mixed lengths and space is plugin-supplied.
 func (w *where) semantic(q Query) (string, error) {
 	switch {
 	case w.k != Card:
@@ -687,15 +687,16 @@ func (w *where) semantic(q Query) (string, error) {
 		return "", fmt.Errorf("%w: semantic search lists cards but can't select them for an action", ErrInvalid)
 	}
 	return `EXISTS (SELECT 1 FROM card_embedding e WHERE e.card_id = c.id AND e.instance_id = ` + w.arg(q.EmbedInstance) +
-		` AND e.space = ` + w.arg(q.EmbedSpace) + `)`, nil
+		` AND e.space = ` + w.arg(q.EmbedSpace) + ` AND vector_dims(e.embedding) = ` + w.arg(len(q.Embedding)) + `)`, nil
 }
 
 // similarity is a card's cosine similarity to q's vector, as a real so a
-// cursor holds it exactly, or null for a vector in another space.
+// cursor holds it exactly, or null for a vector in another space or length
+// (the same test as semantic, as the cursor predicate can run before it).
 func (w *where) similarity(q Query) string {
 	return `(SELECT (1 - (e.embedding <=> ` + w.arg(vectorText(q.Embedding)) + `::vector))::real
 		FROM card_embedding e WHERE e.card_id = c.id AND e.instance_id = ` + w.arg(q.EmbedInstance) +
-		` AND e.space = ` + w.arg(q.EmbedSpace) + `)`
+		` AND e.space = ` + w.arg(q.EmbedSpace) + ` AND vector_dims(e.embedding) = ` + w.arg(len(q.Embedding)) + `)`
 }
 
 // familyWalk is a WITH clause whose m holds the matches of cond, with cols,

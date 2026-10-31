@@ -89,8 +89,11 @@ type Manifest struct {
 	// or 0 for the core's default. A plugin whose calls cost nothing can raise it.
 	EnrichMaxCards int `toml:"enrich_max_cards"`
 
-	// EnrichOnImport makes the core score each import's new and revised cards
-	// with the plugin's enabled instances. Only a plugin whose calls cost nothing should set it.
+	// EnrichOnChange is the default for whether each instance runs on the
+	// cards an import or an edit changes. The owner can change it per
+	// instance, so set it when the plugin is worth running on every change.
+	EnrichOnChange bool `toml:"enrich_on_change"`
+	// EnrichOnImport is enrich_on_change's retired name.
 	EnrichOnImport bool `toml:"enrich_on_import"`
 
 	// SourceKinds are the site source kinds a pull-only plugin follows: the
@@ -184,6 +187,7 @@ func LoadManifest(dir string) (*Manifest, error) {
 	orderProperties(m.Config, md.Keys())
 	m.Dir = abs
 	m.Capabilities = WithoutRetired(m.Capabilities)
+	m.EnrichOnChange = m.EnrichOnChange || m.EnrichOnImport
 	if err := m.Validate(); err != nil {
 		return nil, fmt.Errorf("manifest %s: %w", abs, err)
 	}
@@ -371,7 +375,7 @@ var capabilityKeys = []struct {
 	{CapabilityTheme, "stylesheet", true, false, func(m *Manifest) bool { return m.Stylesheet != "" }},
 	{CapabilityEnrich, "enrichments", false, true, func(m *Manifest) bool { return len(m.Enrichments) > 0 }},
 	{CapabilityEnrich, "enrich_max_cards", true, false, func(m *Manifest) bool { return m.EnrichMaxCards != 0 }},
-	{CapabilityEnrich, "enrich_on_import", true, false, func(m *Manifest) bool { return m.EnrichOnImport }},
+	{CapabilityEnrich, "enrich_on_change", true, false, func(m *Manifest) bool { return m.EnrichOnChange }},
 	{CapabilityCodec, "formats", true, true, func(m *Manifest) bool { return len(m.Formats) > 0 }},
 	{CapabilityImport, "bulk", true, false, func(m *Manifest) bool { return m.Bulk }},
 	{CapabilityImport, "inputs", true, false, func(m *Manifest) bool { return len(m.Inputs) > 0 }},

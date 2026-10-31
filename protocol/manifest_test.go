@@ -591,7 +591,7 @@ func TestManifestCapabilityKeys(t *testing.T) {
 		{"stylesheet without theme", []string{"push"}, func(m *Manifest) { m.Stylesheet = "a.css" }, "stylesheet needs the theme capability"},
 		{"enrich without enrichments", []string{"enrich"}, func(*Manifest) {}, "an enrich plugin must declare enrichments"},
 		{"enrich_max_cards without enrich", []string{"push"}, func(m *Manifest) { m.EnrichMaxCards = 5 }, "enrich_max_cards needs the enrich capability"},
-		{"enrich_on_import without enrich", []string{"push"}, func(m *Manifest) { m.EnrichOnImport = true }, "enrich_on_import needs the enrich capability"},
+		{"enrich_on_change without enrich", []string{"push"}, func(m *Manifest) { m.EnrichOnChange = true }, "enrich_on_change needs the enrich capability"},
 		{"codec without formats", []string{"codec"}, func(*Manifest) {}, "a codec plugin must declare formats"},
 		{"formats without codec", []string{"push"}, func(m *Manifest) { m.Formats = []string{"png"} }, "formats needs the codec capability"},
 		{"bulk without import", []string{"push"}, func(m *Manifest) { m.Bulk = true }, "bulk needs the import capability"},
@@ -617,5 +617,25 @@ func TestManifestCapabilityKeys(t *testing.T) {
 				t.Fatalf("Validate = %v, want %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestEnrichOnImportStillMeansEnrichOnChange(t *testing.T) {
+	const enrichTOML = `
+name = "judge"
+version = "1"
+protocol = 1
+command = ["./judge"]
+capabilities = ["enrich"]
+
+[enrichments]
+quality = { type = "score", range = [1, 5], label = "Quality" }
+`
+	for _, key := range []string{"enrich_on_change", "enrich_on_import"} {
+		// Keys go before the first table, so prepend them.
+		m, err := LoadManifest(writeManifest(t, key+" = true\n"+enrichTOML))
+		if err != nil || !m.EnrichOnChange {
+			t.Errorf("%s: err = %v, EnrichOnChange = %v", key, err, m != nil && m.EnrichOnChange)
+		}
 	}
 }

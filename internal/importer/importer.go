@@ -96,7 +96,7 @@ type session struct {
 	// returns: applying one waits for a running sync, which must not stall
 	// reading the plugin's notifications.
 	autosync []int64
-	// changed are the cards this attempt created or revised, for enrich_on_import plugins to score.
+	// changed are the cards this attempt created or revised, for enrich_on_change plugins to score.
 	changed []int64
 	// decl is the plugin's [enrichments], which values must match.
 	decl map[string]protocol.Enrichment

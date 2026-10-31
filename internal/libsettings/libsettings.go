@@ -194,7 +194,7 @@ func (s *Settings) EnqueueHide(ctx context.Context, q *jobs.Queue, lib int64) er
 
 // EnqueueEnrichOnImport queues one enrich job for cardIDs, which an import
 // just created or revised, on each enabled instance whose plugin sets
-// enrich_on_import. A job takes at most enrich.MaxCards of them.
+// enrich_on_change. A job takes at most enrich.MaxCards of them.
 func (s *Settings) EnqueueEnrichOnImport(ctx context.Context, q *jobs.Queue, cardIDs []int64) error {
 	ctx = context.WithoutCancel(ctx)
 	insts, err := s.Enrichers(ctx)
@@ -206,7 +206,7 @@ func (s *Settings) EnqueueEnrichOnImport(ctx context.Context, q *jobs.Queue, car
 	var errs []error
 	for _, inst := range insts {
 		m := manifests[inst.Plugin]
-		if !m.EnrichOnImport {
+		if !m.EnrichOnChange {
 			continue
 		}
 		p := enrich.Payload{CardIDs: ids[:min(len(ids), enrich.MaxCards(m))]}

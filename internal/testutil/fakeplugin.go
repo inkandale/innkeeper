@@ -67,7 +67,7 @@ multiple_instances = true
 		manifest += "bulk = true\n"
 	}
 	if slices.Contains(args, "-mode=enrich-on-import") {
-		manifest += "enrich_on_import = true\n"
+		manifest += "enrich_on_change = true\n"
 	}
 	// Tables go last; keys after one would belong to it. An importer declares
 	// enrichments too, for emit.card's values.

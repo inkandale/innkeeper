@@ -1537,7 +1537,8 @@ and:
   `{"space": "...", "vector": [numbers]}`. Core stores it as the card's
   vector, not as a value. `space` (1–200 characters) names what made the
   vector; core compares only vectors in one space. At most one vector key
-  per plugin, and its plugin must offer `vector.query`.
+  per plugin, and its plugin must offer `vector.query`. A value is at most
+  64 KiB of JSON, which holds about 4,000 dimensions.
 - Remove the `embed` key's description, and add one line: "`embed` is
   retired and ignored."
 - In `initialize`'s params, add `features`: the optional core features the
@@ -1646,12 +1647,24 @@ func (s *modelServer) embed(w http.ResponseWriter, r *http.Request) {
 If the server counts requests for the chat checks, count embeddings in the
 same counter only if a check relies on the total; otherwise leave it.
 
+- [ ] **Step 3b: Check enrich plugins' services too**
+
+`internal/contract/contract.go` runs `checkServices` only for the `ai`
+capability (around line 110), so a plugin offering `vector.query` never has
+its `ServiceSamples` entry exercised. Run it for `enrich` as well, and make
+`checkServices` add no result when the instance reports no services, so
+existing enrich plugins don't gain an empty passing check. Rename its
+result's text from "an ai plugin answers…" to cover both. Add a contract
+test with the fake plugin in enrich mode and config
+`{"services": ["vector.query"]}` that passes, and one whose
+`vector.query` reply has an empty space that fails.
+
 - [ ] **Step 4: Run and commit**
 
 ```bash
 go test ./internal/contract -count=1
 git add internal/contract
-git commit -m "test(contract): serve embeddings from the kit's fake model"
+git commit -m "test(contract): serve embeddings and check enrich plugins' services"
 ```
 
 ---

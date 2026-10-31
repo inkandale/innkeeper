@@ -24,10 +24,12 @@ each action and sees what it will remove first.
 
 ### Trim enrichment history
 
-Keeps the newest N values, by `created_at` then `id`, for each instance,
-card and key, and deletes older ones. N defaults to 3 and ranges from 1 to
-100. A card's current value is its newest, so the action never changes
-what search, facets or the grid show.
+Keeps the newest N values, by revision, then `created_at`, then `id`, for
+each instance, card and key, and deletes older ones. That is the order
+search, facets and the grid pick a card's current value by, so the action
+never changes what they show. N defaults to 3 and must be 1 to 100; the
+job refuses any other N. It deletes 10,000 rows per statement, with no
+statement timeout.
 
 Preview: the number of rows and roughly how many bytes it would delete
 for the chosen N.
@@ -42,8 +44,8 @@ search can't read:
   learns that space by sending the vector instance one `vector.query` for
   a fixed text.
 
-With no vector instance set, every vector is stale. The cards whose vectors
-go fall back to similar-by-tags until their plugin runs on them again.
+With no vector instance, nothing is removed: a disabled instance's vectors
+are kept for when it's back. The cards whose vectors go fall back to similar-by-tags until their plugin runs on them again.
 
 Shown only when vectors are available.
 
@@ -56,7 +58,7 @@ example after a prompt is fixed or a model is changed.
 
 Runs `VACUUM (ANALYZE)` on the database, which makes space freed by
 deletes reusable and refreshes query plans. It doesn't shrink the files on
-disk. It needs the database user to own the tables; if it doesn't, the job
+disk. It runs with no statement timeout. It needs the database user to own the tables; if it doesn't, the job
 fails and says so.
 
 Preview: database size and the five largest tables. The job's progress
@@ -65,7 +67,7 @@ shows the size after.
 ### Purge archived cards
 
 Permanently deletes cards and lorebooks archived at least D days ago. D
-defaults to 30 and must be at least 1. A lorebook is purged only if no
+defaults to 30 and must be at least 1; the job refuses any other D. A lorebook is purged only if no
 live card links to it.
 
 What happens to everything that points at a purged card:
@@ -91,8 +93,10 @@ deletion, follow the rules above:
 
 Lorebooks are deleted through the same `deleteIn`.
 
-The job purges in batches of 1,000 cards, one transaction each, so it
-holds no long lock and reports progress.
+The job purges in batches of 500, one transaction each, so it holds no
+long lock and reports progress. Each batch selects and locks its rows with
+the purge rule applied, so a card unarchived or a lorebook linked after the
+preview is kept.
 
 The tab shows the number of cards and lorebooks that qualify, roughly how
 much space they take, and when the last backup ran if a backup schedule is
@@ -113,8 +117,10 @@ that one.
 
 - Trim keeps exactly N newest values per instance, card and key, and the
   current value of each is unchanged.
+- Trim keeps the head revision's value over a newer row on an older revision.
+- Trim refuses N outside 1 to 100, and purge refuses D below 1, deleting nothing.
 - Stale vectors deletes other instances' rows and other spaces' rows, and
-  nothing in the current space.
+  nothing in the current space; with no vector instance it deletes nothing.
 - Purge:
   - deletes a card archived D+1 days ago with all its rows, and keeps one
     archived D−1 days ago;
@@ -122,6 +128,7 @@ that one.
     including when the grandparent is purged in the same batch;
   - deletes a binding and leaves its target untouched;
   - keeps an archived lorebook a live card links to;
+  - keeps a card unarchived after the preview;
   - an ordinary `DELETE FROM card_revision` still fails;
   - `POST /cards/purge` deletes a pushed card's binding too.
 - Vacuum without table ownership fails the job with a message that says so.

@@ -85,7 +85,7 @@ func (l *Library) RenameLibrary(ctx context.Context, id int64, name string) (Lib
 }
 
 // deleteBatch is how many cards or lorebooks one transaction of
-// DeleteLibrary deletes.
+// DeleteLibrary or PurgeArchived deletes.
 const deleteBatch = 500
 
 // DeleteLibrary deletes a library with its cards, lorebooks, and
@@ -101,7 +101,7 @@ func (l *Library) DeleteLibrary(ctx context.Context, id int64, progress func(k *
 	for range 3 {
 		for _, s := range []*Entities{l.Cards, l.Lorebooks} {
 			for {
-				n, err := s.deleteSome(ctx, id)
+				n, err := s.deleteSome(ctx, `t.library_id = $1`, id)
 				if err != nil {
 					return fmt.Errorf("delete %s of library %d: %w", s.k.Plural, id, err)
 				}
@@ -133,13 +133,13 @@ func (l *Library) DeleteLibrary(ctx context.Context, id int64, progress func(k *
 	return fmt.Errorf("library %d keeps gaining cards or lorebooks; stop what writes to it and delete it again", id)
 }
 
-// deleteSome deletes up to deleteBatch entities of library and what hangs off
-// them, and returns how many it deleted.
-func (s *Entities) deleteSome(ctx context.Context, library int64) (int, error) {
+// deleteSome deletes up to deleteBatch entities that match where, with arg
+// as $1, and what hangs off them, and returns how many it deleted.
+func (s *Entities) deleteSome(ctx context.Context, where string, arg any) (int, error) {
 	var n int
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-		// The lock waits out a move, then rechecks that the entity is still in library.
-		rows, err := tx.Query(ctx, `SELECT id FROM `+s.k.Table+` WHERE library_id = $1 ORDER BY id LIMIT $2 FOR UPDATE`, library, deleteBatch)
+		// The lock waits out a concurrent change, then rechecks where on the row as it now is.
+		rows, err := tx.Query(ctx, `SELECT id FROM `+s.k.Table+` t WHERE `+where+` ORDER BY id LIMIT $2 FOR UPDATE`, arg, deleteBatch)
 		if err != nil {
 			return err
 		}
@@ -188,9 +188,47 @@ func (l *Library) DeleteCards(ctx context.Context, ids []int64) (int, error) {
 	return deleted, err
 }
 
-// DeleteLorebooks deletes the lorebooks ids with their revisions and links.
-func (l *Library) DeleteLorebooks(ctx context.Context, ids []int64) error {
-	return pgx.BeginFunc(ctx, l.pool, func(tx pgx.Tx) error { return l.Lorebooks.deleteIn(ctx, tx, ids) })
+// Purge predicates, with $1 the days: cards archived more than that long
+// ago, and such lorebooks that no live card links to.
+const (
+	purgeableCards     = `t.archived_at < now() - make_interval(days => $1)`
+	purgeableLorebooks = `t.archived_at < now() - make_interval(days => $1)
+		AND NOT EXISTS (SELECT 1 FROM card_lorebook cl JOIN card c ON c.id = cl.card_id
+			WHERE cl.lorebook_id = t.id AND c.archived_at IS NULL)`
+)
+
+// Purgeable counts the cards and lorebooks PurgeArchived would delete for days.
+func (l *Library) Purgeable(ctx context.Context, days int) (cards, lorebooks int64, err error) {
+	err = l.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM card t WHERE `+purgeableCards+`),
+		(SELECT count(*) FROM lorebook t WHERE `+purgeableLorebooks+`)`, days).Scan(&cards, &lorebooks)
+	return cards, lorebooks, err
+}
+
+// PurgeArchived deletes the cards archived more than days ago, then the
+// archived lorebooks no live card links to. Each batch locks and rechecks
+// its rows, so one unarchived or linked meanwhile stays. progress hears each
+// batch's kind and size.
+func (l *Library) PurgeArchived(ctx context.Context, days int, progress func(k *Kind, n int)) error {
+	if days < 1 {
+		return fmt.Errorf("%w: purge days must be at least 1", ErrInvalid)
+	}
+	// Cards first, so a lorebook only they linked to qualifies too.
+	for _, p := range []struct {
+		s     *Entities
+		where string
+	}{{l.Cards, purgeableCards}, {l.Lorebooks, purgeableLorebooks}} {
+		for {
+			n, err := p.s.deleteSome(ctx, p.where, days)
+			if err != nil {
+				return fmt.Errorf("purge archived %s: %w", p.s.k.Plural, err)
+			}
+			if n == 0 {
+				break
+			}
+			progress(p.s.k, n)
+		}
+	}
+	return nil
 }
 
 // deletes are the statements that delete the entities $1 of kind k, and

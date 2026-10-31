@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/inkandale/innkeeper/internal/blobstore"
+	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/maintenance"
 	"github.com/inkandale/innkeeper/internal/testdb"
@@ -38,6 +39,66 @@ func TestTrimHistoryKeepsTheNewestValues(t *testing.T) {
 	if len(vals) != 1 || string(vals[0].Value) != "4" {
 		t.Fatalf("current values = %+v", vals)
 	}
+	if rows := enrichmentRows(t, pool); rows != 2 {
+		t.Fatalf("%d rows left, want 2", rows)
+	}
+}
+
+func TestTrimHistoryKeepsTheHeadRevisionsValue(t *testing.T) {
+	m, lib, pool := newMaintenance(t)
+	ctx := context.Background()
+	inst := instanceRow(t, pool)
+	card, old := cardRow(t, lib)
+	head, err := lib.Cards.Update(ctx, card, old, library.Edit{Data: json.RawMessage(`{"name": "Card 2"}`), Source: "ui"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range []library.NewEnrichment{{CardID: card, RevisionID: head.ID, Key: "q", Value: json.RawMessage(`"head"`)},
+		{CardID: card, RevisionID: old, Key: "q", Value: json.RawMessage(`"old"`)}} {
+		if err := lib.AddEnrichments(ctx, inst, []library.NewEnrichment{e}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := pool.Exec(ctx, `UPDATE enrichment SET created_at = now() + interval '1 hour' WHERE revision_id = $1`, old); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := m.TrimHistory(ctx, 1); err != nil || n != 1 {
+		t.Fatalf("trimmed %d, %v", n, err)
+	}
+	vals, err := lib.Enrichments(ctx, card, false)
+	if err != nil || len(vals) != 1 || string(vals[0].Value) != `"head"` {
+		t.Fatalf("current values = %+v, %v", vals, err)
+	}
+}
+
+func TestTrimHistoryRefusesKeepOutsideOneToAHundred(t *testing.T) {
+	m, lib, pool := newMaintenance(t)
+	ctx := context.Background()
+	inst := instanceRow(t, pool)
+	card, rev := cardRow(t, lib)
+	for i := range 2 {
+		if err := lib.AddEnrichments(ctx, inst, []library.NewEnrichment{{CardID: card, RevisionID: rev, Key: "q",
+			Value: json.RawMessage(strconv.Itoa(i))}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, keep := range []int{-1, 0, 101} {
+		if _, err := m.TrimHistory(ctx, keep); !errors.Is(err, library.ErrInvalid) {
+			t.Errorf("keep %d: %v", keep, err)
+		}
+	}
+	if rows := enrichmentRows(t, pool); rows != 2 {
+		t.Fatalf("%d rows left, want 2", rows)
+	}
+}
+
+func TestRunnerFailsAPayloadWithoutKeep(t *testing.T) {
+	m, _, _ := newMaintenance(t)
+	rn := &maintenance.Runner{M: m}
+	err := rn.Run(context.Background(), &jobs.Run{Job: jobs.Job{Payload: json.RawMessage(`{"action": "trim-history"}`)}})
+	if !errors.Is(err, library.ErrInvalid) {
+		t.Fatalf("run = %v", err)
+	}
 }
 
 func TestRemoveStaleVectorsKeepsOnlyTheCurrentSpace(t *testing.T) {
@@ -61,6 +122,22 @@ func TestRemoveStaleVectorsKeepsOnlyTheCurrentSpace(t *testing.T) {
 	}
 }
 
+func TestRemoveStaleVectorsWithoutAVectorInstanceRemovesNothing(t *testing.T) {
+	m, lib, pool := newMaintenance(t)
+	ctx := context.Background()
+	card, rev := cardRow(t, lib)
+	if err := lib.SaveVectors(ctx, instanceRow(t, pool), []library.NewVector{{CardID: card, RevisionID: rev, Space: "s", Vector: []float32{1, 0}}}); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := m.RemoveStaleVectors(ctx, 0, ""); err != nil || n != 0 {
+		t.Fatalf("removed %d, %v", n, err)
+	}
+	var left int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM card_embedding`).Scan(&left); err != nil || left != 1 {
+		t.Fatalf("%d vectors left, %v", left, err)
+	}
+}
+
 func TestPurgeDeletesOnlyCardsArchivedLongEnoughAgo(t *testing.T) {
 	m, lib, pool := newMaintenance(t)
 	ctx := context.Background()
@@ -75,7 +152,7 @@ func TestPurgeDeletesOnlyCardsArchivedLongEnoughAgo(t *testing.T) {
 	if p.Purge.Cards != 1 {
 		t.Fatalf("preview %+v", p.Purge)
 	}
-	if _, err := m.Purge(ctx, 30, func(int) {}); err != nil {
+	if err := m.Purge(ctx, 30, func(*library.Kind, int) {}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := lib.Cards.Get(ctx, old); !errors.Is(err, library.ErrNotFound) {
@@ -83,6 +160,44 @@ func TestPurgeDeletesOnlyCardsArchivedLongEnoughAgo(t *testing.T) {
 	}
 	if _, err := lib.Cards.Get(ctx, recent); err != nil {
 		t.Fatalf("recent card: %v", err)
+	}
+}
+
+func TestPurgeKeepsACardUnarchivedAfterThePreview(t *testing.T) {
+	m, lib, pool := newMaintenance(t)
+	ctx := context.Background()
+	card, _ := cardRow(t, lib)
+	if _, err := pool.Exec(ctx, `UPDATE card SET archived_at = now() - interval '40 days' WHERE id = $1`, card); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := m.Preview(ctx, 3, 30); p.Purge.Cards != 1 {
+		t.Fatalf("preview %+v", p.Purge)
+	}
+	if err := lib.Cards.SetArchived(ctx, card, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Purge(ctx, 30, func(*library.Kind, int) {}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lib.Cards.Get(ctx, card); err != nil {
+		t.Fatalf("unarchived card: %v", err)
+	}
+}
+
+func TestPurgeRefusesDaysBelowOne(t *testing.T) {
+	m, lib, pool := newMaintenance(t)
+	ctx := context.Background()
+	card, _ := cardRow(t, lib)
+	if _, err := pool.Exec(ctx, `UPDATE card SET archived_at = now() - interval '40 days' WHERE id = $1`, card); err != nil {
+		t.Fatal(err)
+	}
+	for _, days := range []int{-1, 0} {
+		if err := m.Purge(ctx, days, func(*library.Kind, int) {}); !errors.Is(err, library.ErrInvalid) {
+			t.Errorf("days %d: %v", days, err)
+		}
+	}
+	if _, err := lib.Cards.Get(ctx, card); err != nil {
+		t.Fatalf("archived card: %v", err)
 	}
 }
 
@@ -98,7 +213,7 @@ func TestPurgeKeepsALorebookALiveCardLinks(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE lorebook SET archived_at = now() - interval '40 days'`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.Purge(ctx, 30, func(int) {}); err != nil {
+	if err := m.Purge(ctx, 30, func(*library.Kind, int) {}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := lib.Lorebooks.Get(ctx, linked); err != nil {
@@ -129,6 +244,15 @@ func newMaintenance(t *testing.T) (*maintenance.Maintenance, *library.Library, *
 	pool := testdb.New(t)
 	lib := library.New(pool, &blobstore.Store{Name: "library", Root: t.TempDir()})
 	return maintenance.New(pool, lib), lib, pool
+}
+
+func enrichmentRows(t *testing.T, pool *pgxpool.Pool) int {
+	t.Helper()
+	var n int
+	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM enrichment`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
 }
 
 func instanceRow(t *testing.T, pool *pgxpool.Pool) int64 {

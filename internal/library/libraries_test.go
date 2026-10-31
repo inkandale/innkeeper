@@ -498,7 +498,7 @@ func TestDeleteCardsRelinksVariantsToTheNearestSurvivor(t *testing.T) {
 	}
 }
 
-func TestDeleteLorebooksDeletesThemAndTheirLinks(t *testing.T) {
+func TestPurgeArchivedDeletesALorebookOnlyPurgedCardsLinked(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
 	card, _ := newCard(t, lib, "card", `{"name": "Card"}`)
@@ -509,13 +509,19 @@ func TestDeleteLorebooksDeletesThemAndTheirLinks(t *testing.T) {
 	if err := lib.LinkLorebook(ctx, card, lore.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := lib.DeleteLorebooks(ctx, []int64{lore.ID}); err != nil {
+	for _, table := range []string{"card", "lorebook"} {
+		if _, err := lib.pool.Exec(ctx, `UPDATE `+table+` SET archived_at = now() - interval '40 days'`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	purged := map[string]int{}
+	if err := lib.PurgeArchived(ctx, 30, func(k *Kind, n int) { purged[k.Plural] += n }); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := lib.Lorebooks.Get(ctx, lore.ID); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("Get after delete: %v", err)
+	if purged["cards"] != 1 || purged["lorebooks"] != 1 {
+		t.Fatalf("purged %v", purged)
 	}
-	if _, err := lib.Cards.Get(ctx, card); err != nil {
-		t.Errorf("the linked card: %v", err)
+	if _, err := lib.Lorebooks.Get(ctx, lore.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Get after purge: %v", err)
 	}
 }

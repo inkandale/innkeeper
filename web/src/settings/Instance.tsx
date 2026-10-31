@@ -196,7 +196,6 @@ export function InstanceForm({
               secrets: hasSecrets ? (secrets as Record<string, string>) : undefined,
               owner_subject: trimmedOwner || undefined,
               library_access: libraryAccess || undefined,
-              enrich_on_change: enrichOnChange || undefined,
             },
           }),
         );
@@ -380,7 +379,8 @@ export function InstanceForm({
               <small className="muted">Lets actions that ask for it read your cards and lorebooks while they run.</small>
             </div>
           )}
-          {caps.includes("enrich") && (
+          {/* An existing instance shows its effective setting; a new one starts with the plugin's default. */}
+          {instance && caps.includes("enrich") && (
             <div className="form-field">
               <label className="check">
                 <span>Update cards as they change</span>

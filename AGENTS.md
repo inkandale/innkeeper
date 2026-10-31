@@ -27,6 +27,16 @@ TypeScript (`web/src`). Setup and tests are in [CONTRIBUTING.md](CONTRIBUTING.md
   branch on a plugin's name.
 - Behavior specific to one app or one site belongs in its plugin.
 
+## The live instance
+
+The API token for https://innkeeper.pureroot.com is in `.innkeeper-token`
+at the root of the main checkout, which git ignores. From any worktree:
+
+```bash
+export INNKEEPER_URL=https://innkeeper.pureroot.com
+export INNKEEPER_TOKEN=$(cat "$(git rev-parse --git-common-dir)/../.innkeeper-token")
+```
+
 ## SOLID, applied to Go
 
 | Principle | What it means here |

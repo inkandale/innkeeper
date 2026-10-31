@@ -412,7 +412,7 @@ export interface paths {
         put?: never;
         /**
          * Delete the cards a query matches, for good
-         * @description Queues a job that deletes the matching cards with their history, sources, and collection places. This can't be undone. A card bound to a target app is kept, and the job's progress lists it. Lorebooks stay. The next blob cleanup removes images nothing else uses.
+         * @description Queues a job that deletes the matching cards with their history, sources, and collection places. This can't be undone. A card pushed to an app loses its link; the app's copy stays, so archive with unpublish first to remove it. Lorebooks stay. The next blob cleanup removes images nothing else uses.
          */
         post: operations["purge-cards"];
         delete?: never;

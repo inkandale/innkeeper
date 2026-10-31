@@ -209,13 +209,10 @@ type PurgePayload struct {
 	CardIDs []int64 `json:"card_ids"`
 }
 
-// PurgeProgress is a PurgeKind job's progress. Done counts the cards deleted;
-// Refused lists the cards a target app's binding kept, and Skipped counts them.
+// PurgeProgress is a PurgeKind job's progress. Done counts the cards deleted.
 type PurgeProgress struct {
-	Done    int     `json:"done"`
-	Total   int     `json:"total"`
-	Skipped int     `json:"skipped,omitempty"`
-	Refused []int64 `json:"refused,omitempty"`
+	Done  int `json:"done"`
+	Total int `json:"total"`
 }
 
 // purgeBatch is how many cards one transaction deletes.
@@ -231,14 +228,12 @@ func Purge(lib *library.Library) jobs.Handler {
 		}
 		prog := PurgeProgress{Total: len(p.CardIDs)}
 		for batch := range slices.Chunk(p.CardIDs, purgeBatch) {
-			n, refused, err := lib.DeleteCards(ctx, batch)
+			n, err := lib.DeleteCards(ctx, batch)
 			if err != nil {
 				return err
 			}
 			prog.Done += n
 			r.AddCardsChanged(n)
-			prog.Refused = append(prog.Refused, refused...)
-			prog.Skipped = len(prog.Refused)
 			raw, _ := json.Marshal(prog)
 			r.SetProgress(raw)
 		}

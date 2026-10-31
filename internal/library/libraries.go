@@ -168,38 +168,29 @@ func (s *Entities) deleteIn(ctx context.Context, tx pgx.Tx, ids []int64) error {
 }
 
 // DeleteCards deletes the cards ids with their revisions and what hangs off
-// them, except those bound to a target app, whose IDs it returns. Import
-// bindings only record an importer and don't keep a card. IDs that don't
-// exist are skipped. It returns how many it deleted.
-func (l *Library) DeleteCards(ctx context.Context, ids []int64) (int, []int64, error) {
+// them, including bindings: an app's copy stays in the app, and archiving
+// with unpublish is how to remove it first. IDs that don't exist are
+// skipped. It returns how many it deleted.
+func (l *Library) DeleteCards(ctx context.Context, ids []int64) (int, error) {
 	var deleted int
-	var refused []int64
 	err := pgx.BeginFunc(ctx, l.pool, func(tx pgx.Tx) error {
-		rows, err := tx.Query(ctx, `SELECT id, EXISTS (SELECT 1 FROM binding b WHERE b.card_id = c.id AND NOT b.imported)
-			FROM card c WHERE id = ANY($1) ORDER BY id FOR UPDATE`, ids)
+		rows, err := tx.Query(ctx, `SELECT id FROM card WHERE id = ANY($1) ORDER BY id FOR UPDATE`, ids)
 		if err != nil {
 			return err
 		}
-		var free []int64
-		var id int64
-		var bound bool
-		if _, err := pgx.ForEachRow(rows, []any{&id, &bound}, func() error {
-			if bound {
-				refused = append(refused, id)
-			} else {
-				free = append(free, id)
-			}
-			return nil
-		}); err != nil {
+		found, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+		if err != nil || len(found) == 0 {
 			return err
 		}
-		deleted = len(free)
-		if deleted == 0 {
-			return nil
-		}
-		return l.Cards.deleteIn(ctx, tx, free)
+		deleted = len(found)
+		return l.Cards.deleteIn(ctx, tx, found)
 	})
-	return deleted, refused, err
+	return deleted, err
+}
+
+// DeleteLorebooks deletes the lorebooks ids with their revisions and links.
+func (l *Library) DeleteLorebooks(ctx context.Context, ids []int64) error {
+	return pgx.BeginFunc(ctx, l.pool, func(tx pgx.Tx) error { return l.Lorebooks.deleteIn(ctx, tx, ids) })
 }
 
 // deletes are the statements that delete the entities $1 of kind k, and
@@ -210,7 +201,15 @@ func (k *Kind) deletes() []string {
 		`DELETE FROM ` + k.SourceTable + ` WHERE ` + k.FK + ` = ANY($1)`,
 		`DELETE FROM card_lorebook WHERE ` + k.FK + ` = ANY($1)`,
 		`DELETE FROM source_detect WHERE kind = '` + k.Name + `' AND entity_id = ANY($1)`,
-		`UPDATE ` + k.Table + ` SET variant_of_id = NULL WHERE variant_of_id = ANY($1)`,
+		// A live variant moves up to its nearest ancestor that survives, so its family stays connected.
+		`WITH RECURSIVE up AS (
+			SELECT t.id AS child, t.variant_of_id AS anc FROM ` + k.Table + ` t
+			WHERE t.variant_of_id = ANY($1) AND NOT t.id = ANY($1)
+			UNION ALL
+			SELECT up.child, p.variant_of_id FROM up JOIN ` + k.Table + ` p ON p.id = up.anc WHERE up.anc = ANY($1)
+		)
+		UPDATE ` + k.Table + ` t SET variant_of_id = up.anc
+		FROM up WHERE up.child = t.id AND (up.anc IS NULL OR NOT up.anc = ANY($1))`,
 		`DELETE FROM ` + k.RevTable + ` WHERE ` + k.FK + ` = ANY($1)`,
 		`DELETE FROM ` + k.Table + ` WHERE id = ANY($1)`,
 	}

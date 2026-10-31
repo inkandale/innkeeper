@@ -431,7 +431,7 @@ func TestLibrarySettingOverrides(t *testing.T) {
 	}
 }
 
-func TestDeleteCardsRefusesCardsBoundToAnApp(t *testing.T) {
+func TestDeleteCardsDeletesAPushedCardsBinding(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
 	plain, _ := newCard(t, lib, "plain", `{"name": "Plain"}`)
@@ -452,22 +452,70 @@ func TestDeleteCardsRefusesCardsBoundToAnApp(t *testing.T) {
 		VALUES ($1, $2, 'r1', 'unchanged', '{}', 'h', false), ($1, $3, 'r2', 'unchanged', '{}', 'h', true)`, inst, pushed, imported); err != nil {
 		t.Fatal(err)
 	}
-	deleted, refused, err := lib.DeleteCards(ctx, []int64{plain, pushed, imported, 999999})
+	deleted, err := lib.DeleteCards(ctx, []int64{plain, pushed, imported, 999999})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if deleted != 2 || !slices.Equal(refused, []int64{pushed}) {
-		t.Fatalf("deleted %d, refused %v", deleted, refused)
+	if deleted != 3 {
+		t.Fatalf("deleted %d", deleted)
 	}
-	for _, id := range []int64{plain, imported} {
-		if _, err := lib.Cards.Get(ctx, id); !errors.Is(err, ErrNotFound) {
-			t.Errorf("card %d: %v, want deleted", id, err)
-		}
-	}
-	if _, err := lib.Cards.Get(ctx, pushed); err != nil {
-		t.Errorf("pushed card: %v", err)
+	var bindings int
+	if err := lib.pool.QueryRow(ctx, `SELECT count(*) FROM binding`).Scan(&bindings); err != nil || bindings != 0 {
+		t.Fatalf("bindings left: %d, %v", bindings, err)
 	}
 	if _, err := lib.Lorebooks.Get(ctx, lore.ID); err != nil {
 		t.Errorf("a deleted card's lorebook: %v", err)
+	}
+}
+
+func TestDeleteCardsRelinksVariantsToTheNearestSurvivor(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	root, _ := newCard(t, lib, "root", `{"name": "Root"}`)
+	mid, _ := newCard(t, lib, "mid", `{"name": "Mid"}`)
+	low, _ := newCard(t, lib, "low", `{"name": "Low"}`)
+	leaf, _ := newCard(t, lib, "leaf", `{"name": "Leaf"}`)
+	orphan, _ := newCard(t, lib, "orphan", `{"name": "Orphan"}`)
+	for child, parent := range map[int64]int64{mid: root, low: mid, leaf: low, orphan: root} {
+		if err := lib.Cards.SetVariantOf(ctx, child, &parent); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Purging mid and low together leaves leaf two levels from a survivor.
+	if _, err := lib.DeleteCards(ctx, []int64{mid, low}); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := lib.Cards.Parent(ctx, leaf); p == nil || p.ID != root {
+		t.Fatalf("leaf's parent = %v, want %d", p, root)
+	}
+	if _, err := lib.DeleteCards(ctx, []int64{root}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []int64{leaf, orphan} {
+		if p, _ := lib.Cards.Parent(ctx, id); p != nil {
+			t.Fatalf("card %d's parent = %v, want none", id, p)
+		}
+	}
+}
+
+func TestDeleteLorebooksDeletesThemAndTheirLinks(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	card, _ := newCard(t, lib, "card", `{"name": "Card"}`)
+	lore, _, err := lib.Lorebooks.Create(ctx, DefaultLibrary, "lore", "upload", edit(`{"name": "Lore", "entries": []}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.LinkLorebook(ctx, card, lore.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.DeleteLorebooks(ctx, []int64{lore.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lib.Lorebooks.Get(ctx, lore.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Get after delete: %v", err)
+	}
+	if _, err := lib.Cards.Get(ctx, card); err != nil {
+		t.Errorf("the linked card: %v", err)
 	}
 }

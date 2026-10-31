@@ -43,7 +43,7 @@ func TestPurgeCards(t *testing.T) {
 		t.Fatalf("purge = %+v\n%s", last, resp.Body)
 	}
 	var p bulk.PurgeProgress
-	if err := json.Unmarshal(last.Progress, &p); err != nil || p.Done != 2 || p.Total != 2 || len(p.Refused) != 0 {
+	if err := json.Unmarshal(last.Progress, &p); err != nil || p.Done != 2 || p.Total != 2 {
 		t.Fatalf("progress %s: %v", last.Progress, err)
 	}
 	for _, id := range []int64{gone1.ID, gone2.ID} {

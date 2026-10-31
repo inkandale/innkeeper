@@ -42,7 +42,7 @@ func TestDeleteCardsDropsItsEmbeddings(t *testing.T) {
 	inst := newInstanceRow(t, lib)
 	card, _ := newCard(t, lib, "brakka", `{"name": "Brakka"}`)
 	embedCards(t, lib, inst, map[int64][]float32{card: {1, 2}})
-	if _, _, err := lib.DeleteCards(ctx, []int64{card}); err != nil {
+	if _, err := lib.DeleteCards(ctx, []int64{card}); err != nil {
 		t.Fatalf("delete card: %v", err)
 	}
 	var n int

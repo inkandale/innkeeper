@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/plugins"
+	"github.com/inkandale/innkeeper/internal/tier"
 	"github.com/inkandale/innkeeper/protocol"
 )
 
@@ -298,5 +300,37 @@ func TestTheOnlyVectorInstanceNeedsNoSetting(t *testing.T) {
 	e.call("GET", "/settings", nil, 200, &s)
 	if s.VectorInstance == nil || *s.VectorInstance != e.instID {
 		t.Fatalf("settings = %+v", s)
+	}
+}
+
+func TestSettingVectorInstanceNeedsDestructive(t *testing.T) {
+	e := newEnrichEnv(t, vectorCfg)
+	body := map[string]any{"vector_instance": e.instID}
+	if r := e.send("PATCH", "/settings", body, "Authorization", "Bearer "+e.tokenWith(tier.Write)); r.Status != http.StatusForbidden {
+		t.Fatalf("write token choosing a vector instance: %s", r)
+	}
+	// Clearing deletes nothing, so a write token may.
+	if r := e.send("PATCH", "/settings", map[string]any{"vector_instance": nil}, "Authorization", "Bearer "+e.tokenWith(tier.Write)); r.Status != http.StatusOK {
+		t.Fatalf("write token clearing the vector instance: %s", r)
+	}
+	if r := e.send("PATCH", "/settings", body, "Authorization", "Bearer "+e.tokenWith(tier.Destructive)); r.Status != http.StatusOK {
+		t.Fatalf("destructive token choosing a vector instance: %s", r)
+	}
+}
+
+func TestSettingsHideTheVectorInstanceWithoutPgvector(t *testing.T) {
+	e := newEnrichEnv(t, vectorCfg)
+	var s settings
+	e.call("PATCH", "/settings", map[string]any{"vector_instance": e.instID}, 200, &s)
+	if s.VectorInstance == nil {
+		t.Fatalf("with pgvector: %+v", s)
+	}
+	if _, err := e.pool.Exec(context.Background(), `DROP TABLE card_embedding CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+	e.s.Lib = library.New(e.pool, nil)
+	e.call("GET", "/settings", nil, 200, &s)
+	if s.VectorsAvailable || s.VectorInstance != nil {
+		t.Fatalf("without pgvector: %+v", s)
 	}
 }

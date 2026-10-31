@@ -70,6 +70,10 @@ func (s *Server) settings(ctx context.Context) (*settingsOut, error) {
 	if out.Body.VectorsAvailable, err = s.Lib.HasVectors(ctx); err != nil {
 		return nil, s.fail(err)
 	}
+	// Without pgvector nothing reads the vector instance, so don't offer it.
+	if !out.Body.VectorsAvailable {
+		out.Body.VectorInstance = nil
+	}
 	b := &out.Body
 	dups, err := libsettings.Duplicates.Core(ctx, s.libSettings())
 	if err != nil {
@@ -142,6 +146,10 @@ func (s *Server) settingsRoutes(api huma.API) {
 func (s *Server) setVectorInstance(ctx context.Context, id *int64) error {
 	if id == nil {
 		return s.fail(s.Registry.SetSetting(ctx, plugins.VectorInstanceKey, ""))
+	}
+	// Choosing an instance deletes the others' vectors, which a write token may not do.
+	if !callerTier(ctx).Allows(tier.Destructive) {
+		return huma.Error403Forbidden("choosing a vector instance deletes the other instances' vectors and needs a destructive credential")
 	}
 	if _, err := s.Registry.InstanceOffering(ctx, s.Plugins, *id, protocol.MethodVectorQuery); err != nil {
 		return s.fail(err)

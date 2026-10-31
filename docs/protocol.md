@@ -100,7 +100,7 @@ Each plugin folder has a `plugin.toml`:
 | `secrets` | no | Names of secrets the owner enters for each instance, in lowercase `snake_case` |
 | `config` | no | JSON Schema with `type = "object"` for instance settings; the UI renders a form from it. See [The config form](#the-config-form) |
 | `enrichments` | for `enrich` | Keys the plugin writes, in lowercase `snake_case`; see [`enrich`](#enrich), and `emit.card`'s `values` under [`import`](#import). Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list`. `grid = true` shows the key on the library grid, for at most one key. The grid key's `priority`, an integer, orders plugins: a tile shows the highest-priority score a card has, and the top three wear gold, silver, and bronze. Space priorities apart, such as by 100, so other plugins fit between. `embed` is retired and ignored. An `enrich` plugin must declare at least one |
-| `enrich_on_import` | no; only for `enrich` | `true` makes the core score the cards each import creates or revises, with one run per enabled instance of the plugin, up to the plugin's card cap. Set it only when your calls cost the owner nothing, since the owner didn't ask for the run |
+| `enrich_on_change` | no; only for `enrich` | The default for each new instance's **Update cards as they change** setting; the owner can turn it on or off per instance (`PATCH /instances/{id}` with `enrich_on_change`). Set it only when your calls cost the owner nothing, since the owner didn't ask for the runs. See [`enrich`](#enrich) for what the setting does. `enrich_on_import` is the retired name and still works |
 | `formats` | only for `codec` | What `codec.encode` writes, each listed once: lowercase words of letters and digits joined by single hyphens, such as `png`. A codec plugin must list at least one. `json` is taken: the core exports CCv3 JSON itself |
 | `bulk` | no; only for `import` | `true` for imports of large sources, such as a site dump. The core stores the cards sent between two checkpoints, about 1,000, in one transaction with the second checkpoint, and doesn't queue them for source detection |
 | `inputs` | no; only for `import` | What the web UI may send to `import.run`, each listed once: `file` sends params `blob` and `name`, `url` sends `url`, and `folder` sends no params, for an import of the folder the instance's config names. Leave it out and the UI's upload, page URL, and folder controls don't use the plugin |
@@ -1010,8 +1010,24 @@ An `enrich` plugin computes values about a card revision, such as an AI's
 quality score. The core stores every result, and filters and sort can use
 any instance's values. A card's **grid score**, on its tile, is its value of
 the grid key from the highest-priority instance that has one. The core sends
-revisions only when the owner asks, never on save, except to a plugin
-that sets `enrich_on_import`, which also gets each import's new cards.
+revisions when the owner asks, and for an instance with **Update cards as
+they change** on (default: the manifest's `enrich_on_change`), as cards
+change:
+
+- The core queues a run for a card when an import creates or revises it,
+  when the owner edits it or restores a revision through the API, or when
+  the owner unarchives it by itself. Quick repeated saves join the run
+  still queued.
+- Hourly, a "Catch up changed cards" job queues the cards changed or
+  restored since the setting was turned on that hold no value or vector
+  from the instance at their head revision and haven't failed on it. It
+  sends at most the plugin's card cap per run, and none while another
+  enrich run for that instance is queued or running.
+- Turning the setting on doesn't score older cards; a run the owner starts
+  does.
+- A plugin's failure on a card is remembered, so the job doesn't resend it.
+  Storage failures are retried.
+- Archived cards are never sent, whatever started the run.
 
 Declare each key in the manifest:
 

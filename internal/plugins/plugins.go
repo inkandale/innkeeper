@@ -419,8 +419,8 @@ func (r *Registry) CreateInstance(ctx context.Context, n NewInstance) (int64, er
 		}
 	}
 	var id int64
-	err = tx.QueryRow(ctx, `INSERT INTO plugin_instance (plugin, name, config, secrets, owner_subject, library_access, default_hashes)
-		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`, n.Plugin, n.Name, n.Config, sealed, n.OwnerSubject, n.LibraryAccess, hashes).Scan(&id)
+	err = tx.QueryRow(ctx, `INSERT INTO plugin_instance (plugin, name, config, secrets, owner_subject, library_access, default_hashes, enrich_on_change)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`, n.Plugin, n.Name, n.Config, sealed, n.OwnerSubject, n.LibraryAccess, hashes, m.EnrichOnChange).Scan(&id)
 	if err != nil {
 		return 0, writeErr(err)
 	}
@@ -515,11 +515,11 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 			secrets = $4, owner_subject = CASE WHEN $5 THEN nullif($6::text, '') ELSE owner_subject END,
 			library_access = coalesce($7, library_access), default_hashes = coalesce($8, default_hashes),
 			disabled = coalesce($9, disabled), sync_library = coalesce($11, sync_library),
-			enrich_on_change_since = CASE WHEN $12 AND enrich_on_change IS DISTINCT FROM true
+			enrich_on_change_since = CASE WHEN $12 AND NOT coalesce(enrich_on_change, $13)
 				THEN now() ELSE enrich_on_change_since END,
 			enrich_on_change = coalesce($12, enrich_on_change),
 			broken_error = NULL, broken_at = NULL, updated_at = now()
-		WHERE id = $1`, id, e.Name, config, sealed, e.OwnerSubject != nil, owner, e.LibraryAccess, newHashes, e.Disabled, single, e.SyncLibrary, e.EnrichOnChange)
+		WHERE id = $1`, id, e.Name, config, sealed, e.OwnerSubject != nil, owner, e.LibraryAccess, newHashes, e.Disabled, single, e.SyncLibrary, e.EnrichOnChange, ok && m.EnrichOnChange)
 	if err != nil {
 		return writeErr(err)
 	}

@@ -379,7 +379,7 @@ export function InstanceForm({
               <small className="muted">Lets actions that ask for it read your cards and lorebooks while they run.</small>
             </div>
           )}
-          {/* An existing instance shows its effective setting; a new one starts with the plugin's default. */}
+          {/* An existing instance shows its effective setting; new instances take the plugin's default. */}
           {instance && caps.includes("enrich") && (
             <div className="form-field">
               <label className="check">

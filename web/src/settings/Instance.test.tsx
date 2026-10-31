@@ -102,6 +102,7 @@ beforeEach(() => {
         if (req.method === "PATCH") sent.push({ method: req.method, path: u.pathname, body: await req.json() });
         return json(judgeInst);
       }
+      if (req.method === "GET" && u.pathname === "/api/instances/8") return json({ ...judgeInst, id: 8, enrich_on_change: true });
       if (req.method === "GET" && u.pathname === "/api/instances/5") return json(forge);
       if (req.method === "GET" && u.pathname === "/api/instances/5/records/skills") return json([{ id: "noir", name: "noir" }]);
       if (u.pathname === "/api/instances/3/check") {
@@ -360,7 +361,21 @@ test("an enrich plugin's instance turns on Update cards as they change", async (
   await user.click(box);
   await user.click(screen.getByRole("button", { name: "Save" }));
   await vi.waitFor(() => expect(sent).toHaveLength(1));
-  expect(sent[0]?.body).toMatchObject({ enrich_on_change: true });
+  expect(sent[0]?.body).toEqual({ name: "judge", enrich_on_change: true });
+});
+
+test("an untouched enrich instance sends no enrich_on_change", async () => {
+  const user = userEvent.setup();
+  renderAt("/settings/instances/7");
+  await user.type(await screen.findByLabelText("Name"), "x");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await vi.waitFor(() => expect(sent).toHaveLength(1));
+  expect(sent[0]?.body).toEqual({ name: "judgex" });
+});
+
+test("an enrich instance that is on renders checked", async () => {
+  renderAt("/settings/instances/8");
+  expect(await screen.findByLabelText("Update cards as they change")).toBeChecked();
 });
 
 test("other plugins have no Update cards as they change setting", async () => {

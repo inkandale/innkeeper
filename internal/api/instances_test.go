@@ -246,3 +246,29 @@ func TestInstanceEnrichOnChangeFollowsThePluginUntilSet(t *testing.T) {
 		t.Fatal("turned off, still on")
 	}
 }
+
+func TestInstanceCreatedOnStaysPutWhenPatchedOn(t *testing.T) {
+	e := newEnv(t)
+	scorer := &protocol.Manifest{Name: "scorer", Version: "1.0.0", Protocol: protocol.Version, Command: []string{"./scorer"},
+		Capabilities: []string{"enrich"}, EnrichOnChange: true,
+		Enrichments: map[string]protocol.Enrichment{"quality": {Type: "score", Range: []float64{0, 100}, Label: "Quality"}}}
+	e.manifests["scorer"] = scorer
+	id, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "scorer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A later manifest flip must not change this instance.
+	scorer.EnrichOnChange = false
+	var inst plugins.InstanceInfo
+	path := fmt.Sprintf("/instances/%d", id)
+	e.call("GET", path, nil, 200, &inst)
+	if !inst.EnrichOnChange {
+		t.Fatal("created on, but reads off after the manifest default flipped")
+	}
+	since := inst.EnrichOnChangeSince
+	time.Sleep(10 * time.Millisecond)
+	e.call("PATCH", path, map[string]any{"enrich_on_change": true}, 200, &inst)
+	if !inst.EnrichOnChangeSince.Equal(since) {
+		t.Fatal("PATCH true on an instance created on moved since")
+	}
+}

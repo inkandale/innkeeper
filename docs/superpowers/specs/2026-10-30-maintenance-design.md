@@ -31,8 +31,7 @@ never changes what they show. N defaults to 3 and must be 1 to 100; the
 job refuses any other N. It deletes 10,000 rows per statement, with no
 statement timeout.
 
-Preview: the number of rows and roughly how many bytes it would delete
-for the chosen N.
+Preview: the number of rows it would delete for the chosen N.
 
 ### Remove stale vectors
 
@@ -106,12 +105,13 @@ set. The button stays disabled until the owner types `purge`.
 
 | Route | Does |
 |---|---|
-| `GET /maintenance?keep=N&days=D` | Previews every action: rows and bytes per table, what each action would remove for N and D, and the last backup time |
+| `GET /maintenance?keep=N&days=D` | Previews every action: row and card counts for N and D, the database size and five largest tables, and the last backup time |
 | `POST /maintenance/runs` | Body `{"action": "trim-history" \| "stale-vectors" \| "clear-failures" \| "vacuum" \| "purge", "keep": N, "days": D}`. Starts the action's job and returns it |
 
 One job kind, `maintenance`, whose payload names the action. At most one
 runs at a time: starting another while one is queued or running returns
-that one.
+that one. A failed run can't be retried: the owner starts a new one after
+reading the preview.
 
 ## Testing
 

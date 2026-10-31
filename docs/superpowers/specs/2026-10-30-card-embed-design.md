@@ -26,7 +26,7 @@ Core keeps storing vectors and ranking by them.
 | Vector values | A new enrichment type, `vector`. Core's enrich job writes `vector` values to `card_embedding`, not `enrichment`. |
 | Vector source | The install-wide setting `embed_instance` becomes `vector_instance`: the enrich instance whose vectors Similar and search read. One instance, since vectors from different models can't be compared. A plugin with a `vector` enrichment can't set `multiple_instances`, so each has at most one instance. With the setting unset and exactly one enabled vector instance, core uses that one; the picker shows only when there are several. Setting it deletes the other instances' vectors, so an install holds one set. |
 | Query embedding | Semantic search embeds the query through the vector instance, with the new method `vector.query`, so query and cards share a model. |
-| Vector space | `card-embed` reports a `space` string from its embed model, its summary model and its prompt version. Core compares only rows from the current space. |
+| Vector space | `card-embed` reports a `space` string from its embed model, its summary model and its prompt version. Similar ranks a card among vectors in that card's own space. Semantic search ranks in the vector instance's current space. |
 | pgvector | Optional. Core detects it at startup. Without it, vector features are off and everything else works. |
 | When | An enrich instance can update cards as they change: on import, on edit, and on unarchive. An hourly sweep catches changes it missed. Backfill is a bulk enrich the owner starts. |
 | Archived cards | Never sent to any enrich plugin, whatever started the run. |
@@ -63,9 +63,11 @@ For each card:
 
 `space` is the embed connection's model name, plus the summary model name
 and a hash of the summary prompt when a summary connection is set. A
-setting change that changes `space` leaves the old vectors unread; the
-owner re-embeds with a bulk enrich. Until then those cards fall back to
-tag-based Similar.
+setting change that changes `space` leaves the cards in two groups: ones
+re-embedded in the new space, and ones not yet re-embedded in the old.
+Similar compares each card only with others in its own space, and semantic
+search finds only the new group. The owner re-embeds with a bulk enrich; the
+groups merge once a rescore finishes or Remove stale vectors runs.
 
 `vector.query` takes `{"text": "..."}` and returns the embed connection's
 vector for it, with `space`. Queries are embedded as written: a search
@@ -115,8 +117,9 @@ already have the table.
 - Turning the setting on never starts a backfill: older cards get values
   only from a bulk enrich the owner starts.
 
-`internal/embed`, its hourly schedule, `Unembedded`, and the manifest's
-`embed = true` flag are removed.
+`internal/embed`, its hourly schedule, and `Unembedded` are removed. The
+manifest's `embed` flag and `enrich_on_import` are retired: still accepted,
+but they do nothing.
 
 ### Archived cards
 

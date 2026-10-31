@@ -304,6 +304,7 @@ func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
 			if _, err := ents.Update(ctx, in.ID, base.ID, e); err != nil {
 				return nil, s.fail(err)
 			}
+			s.cardChanged(ctx, k, in.ID)
 			return s.entity(ctx, ents, in.ID)
 		})
 
@@ -380,6 +381,7 @@ func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
 			if _, err := ents.Update(ctx, in.ID, in.Body.BaseRevisionID, e); err != nil {
 				return nil, s.fail(err)
 			}
+			s.cardChanged(ctx, k, in.ID)
 			return s.entity(ctx, ents, in.ID)
 		})
 
@@ -434,7 +436,13 @@ func (s *Server) entityRoutes(api huma.API, k *library.Kind, tag string) {
 			if in.Body.Unpublish && !in.Body.Archived {
 				return nil, huma.Error422UnprocessableEntity("unpublish only goes with archived: true")
 			}
-			return nil, s.fail(bulk.SetArchived(ctx, s.Lib, s.Targets, k, in.ID, in.Body.Archived, in.Body.Unpublish))
+			if err := bulk.SetArchived(ctx, s.Lib, s.Targets, k, in.ID, in.Body.Archived, in.Body.Unpublish); err != nil {
+				return nil, s.fail(err)
+			}
+			if !in.Body.Archived {
+				s.cardChanged(ctx, k, in.ID)
+			}
+			return nil, nil
 		})
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "fork-" + singular, Method: http.MethodPost,
@@ -565,4 +573,15 @@ func (s *Server) cardRoutes(api huma.API) {
 			return &exportOut{ContentDisposition: fmt.Sprintf(`attachment; filename="%s"`, f.Name),
 				ContentType: exportType(f.Type), NoSniff: "nosniff", CSP: "sandbox", Body: f.Body}, nil
 		})
+}
+
+// cardChanged queues enrich runs for a card an edit or a restore changed.
+// A failure is only logged: the hourly sweep catches the card.
+func (s *Server) cardChanged(ctx context.Context, k *library.Kind, id int64) {
+	if k != library.Card {
+		return
+	}
+	if err := s.libSettings().EnqueueEnrichOnChange(ctx, s.Queue, []int64{id}); err != nil {
+		s.Log.Error("queue enrich on change", "card", id, "err", err)
+	}
 }

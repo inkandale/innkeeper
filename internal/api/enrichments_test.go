@@ -538,3 +538,37 @@ func TestMCPStartJobEvaluates(t *testing.T) {
 		t.Fatalf("rescore run: %+v", p)
 	}
 }
+
+func TestEditQueuesEnrichForInstancesThatUpdateOnChange(t *testing.T) {
+	e := newEnrichEnv(t)
+	id := e.card("Brakka", "x")
+	edit := func(desc string) {
+		var c entityOut
+		e.call("GET", fmt.Sprintf("/cards/%d", id), nil, 200, &c)
+		e.call("PUT", fmt.Sprintf("/cards/%d", id), map[string]any{"base_revision_id": c.Revision.ID,
+			"data": map[string]any{"name": "Brakka", "description": desc}}, 200, nil)
+	}
+	queued := func() int {
+		var n int
+		if err := e.pool.QueryRow(context.Background(), `SELECT count(*) FROM job WHERE kind = $1 AND instance_id = $2`,
+			enrich.Kind, e.instID).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	edit("xx")
+	if queued() != 0 {
+		t.Fatal("queued with updates off")
+	}
+	e.call("PATCH", fmt.Sprintf("/instances/%d", e.instID), map[string]any{"enrich_on_change": true}, 200, nil)
+	edit("xxx")
+	if queued() != 1 {
+		t.Fatal("an edit queued no run")
+	}
+	e.call("PUT", fmt.Sprintf("/cards/%d/archived", id), map[string]any{"archived": true}, 204, nil)
+	e.call("PUT", fmt.Sprintf("/cards/%d/archived", id), map[string]any{"archived": false}, 204, nil)
+	if queued() != 2 {
+		t.Fatal("unarchiving queued no run")
+	}
+}

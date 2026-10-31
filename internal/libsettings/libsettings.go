@@ -192,10 +192,11 @@ func (s *Settings) EnqueueHide(ctx context.Context, q *jobs.Queue, lib int64) er
 	return err
 }
 
-// EnqueueEnrichOnImport queues one enrich job for cardIDs, which an import
-// just created or revised, on each enabled instance whose plugin sets
-// enrich_on_change. A job takes at most enrich.MaxCards of them.
-func (s *Settings) EnqueueEnrichOnImport(ctx context.Context, q *jobs.Queue, cardIDs []int64) error {
+// EnqueueEnrichOnChange queues one enrich job for cardIDs, which an import
+// or an edit just changed, on each enabled instance that updates cards as
+// they change. A job takes at most enrich.MaxCards of them; the sweep picks
+// up the rest.
+func (s *Settings) EnqueueEnrichOnChange(ctx context.Context, q *jobs.Queue, cardIDs []int64) error {
 	ctx = context.WithoutCancel(ctx)
 	insts, err := s.Enrichers(ctx)
 	if err != nil {
@@ -205,11 +206,10 @@ func (s *Settings) EnqueueEnrichOnImport(ctx context.Context, q *jobs.Queue, car
 	manifests := s.reg.Manifests()
 	var errs []error
 	for _, inst := range insts {
-		m := manifests[inst.Plugin]
-		if !m.EnrichOnChange {
+		if !inst.EnrichOnChange {
 			continue
 		}
-		p := enrich.Payload{CardIDs: ids[:min(len(ids), enrich.MaxCards(m))]}
+		p := enrich.Payload{CardIDs: ids[:min(len(ids), enrich.MaxCards(manifests[inst.Plugin]))]}
 		if _, err := q.Enqueue(ctx, jobs.Spec{Kind: enrich.Kind, InstanceID: &inst.ID, Payload: p}); err != nil {
 			errs = append(errs, fmt.Errorf("queue enrich on instance %d: %w", inst.ID, err))
 		}

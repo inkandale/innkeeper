@@ -140,7 +140,7 @@ func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
 	settings := libsettings.New(im.Lib, im.Registry)
 	// Even when this attempt failed: a retry counts the cards it stored as skipped, so it won't queue them.
 	if len(s.changed) > 0 {
-		if err := settings.EnqueueEnrichOnImport(ctx, im.Queue, s.changed); err != nil {
+		if err := settings.EnqueueEnrichOnChange(ctx, im.Queue, s.changed); err != nil {
 			r.Log("warn", fmt.Sprintf("new cards weren't queued for scoring: %v", err))
 		}
 	}

@@ -8,7 +8,6 @@ import { useConfirm } from "../shell/ConfirmDialog";
 import { count } from "../shell/count";
 import { JobLine } from "../cards/ImportForm";
 import { rememberedLibrary, rememberLibrary } from "../shell/library";
-import { EmbedNow } from "./EmbedFrom";
 import { Hiding } from "./Hiding";
 
 function nameFrom(e: FormEvent<HTMLFormElement>): string {
@@ -88,7 +87,6 @@ export function Library() {
         <>
           <LibraryName library={l} />
           <Hiding library={l.id} />
-          <EmbedNow library={l.id} />
         </>
       ) : (
         <p className="error">No library {id}.</p>

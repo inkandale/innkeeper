@@ -59,7 +59,10 @@ func checkUses(ctx context.Context, m *protocol.Manifest, params protocol.Initia
 		if first == nil && model.requestCount() > before {
 			first = drive
 		}
-		if h.calls.err() == nil && h.deltas.Load() >= 2 && model.toolRoundTrip() == nil {
+		// Stop once every feature the plugin used has what it needs; a plugin
+		// that never streams or offers tools stops after its first reply.
+		if h.calls.err() == nil && (!h.calls.streamed() || h.deltas.Load() >= 2) &&
+			(!model.offeredTools() || model.toolRoundTrip() == nil) {
 			break
 		}
 	}
@@ -68,19 +71,28 @@ func checkUses(ctx context.Context, m *protocol.Manifest, params protocol.Initia
 	if replyErr == nil && model.requestCount() == 0 {
 		replyErr = errors.New("the provider answered without a request to the model server")
 	}
-	var deltaErr error
-	if n := h.deltas.Load(); n < 2 {
-		deltaErr = fmt.Errorf("%d ai.delta reached the consumer; the model streamed 2", n)
-	}
 	cancelErr := errors.New("no consumer call reached the model server")
 	if first != nil {
 		cancelErr = checkCancel(ctx, model, first)
 	}
-	return append(results,
-		Result{checkReplyName, replyErr},
-		Result{checkDeltasName, deltaErr},
-		Result{checkToolsName, model.toolRoundTrip()},
-		Result{checkCancelName, cancelErr})
+	results = append(results, Result{checkReplyName, replyErr})
+	// Skipped unless the consumer passed a Run: without one it didn't ask to stream.
+	if h.calls.streamed() {
+		results = append(results, Result{checkDeltasName, deltasErr(h.deltas.Load())})
+	}
+	// Skipped unless a request to the model offered tools: a consumer that offers none has no round trip.
+	if model.offeredTools() {
+		results = append(results, Result{checkToolsName, model.toolRoundTrip()})
+	}
+	return append(results, Result{checkCancelName, cancelErr})
+}
+
+// deltasErr is nil once n ai.delta, the 2 the model streamed, reached the consumer.
+func deltasErr(n int64) error {
+	if n < 2 {
+		return fmt.Errorf("%d ai.delta reached the consumer; the model streamed 2", n)
+	}
+	return nil
 }
 
 // checkCancel holds the model's next reply open, cancels the consumer's call
@@ -193,6 +205,7 @@ func (h *harness) call(ctx context.Context, method string, params, result any) e
 type serviceLog struct {
 	mu      sync.Mutex
 	replied bool
+	runs    bool // an ai.chat call carried a Run token
 	last    error
 }
 
@@ -200,7 +213,10 @@ func (l *serviceLog) record(next protocol.Handler) protocol.Handler {
 	return func(ctx context.Context, method string, params json.RawMessage) (any, error) {
 		res, err := next(ctx, method, params)
 		if _, ok := protocol.Services[method]; ok {
+			var head protocol.ServiceCall
+			_ = json.Unmarshal(params, &head)
 			l.mu.Lock()
+			l.runs = l.runs || method == protocol.MethodAIChat && head.Run != ""
 			if err == nil {
 				l.replied = true
 			} else {
@@ -210,6 +226,13 @@ func (l *serviceLog) record(next protocol.Handler) protocol.Handler {
 		}
 		return res, err
 	}
+}
+
+// streamed reports whether the consumer passed a Run on an ai.chat call.
+func (l *serviceLog) streamed() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.runs
 }
 
 // err is nil once a service call got a reply.

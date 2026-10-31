@@ -202,11 +202,16 @@ func openAIChat(ctx context.Context, conn *protocol.Conn, base string, params js
 
 // chatWithTool sends ai.chat through the core with one tool, answers each
 // tool call, and asks again, as a real consumer does. The drop-tool-call
-// mode leaves the call out of the assistant message it sends back.
+// mode leaves the call out of the assistant message it sends back. The
+// plain-chat mode sends one chat with no Run and no tools, as a consumer that
+// neither streams nor uses tools does.
 func chatWithTool(ctx context.Context, conn *protocol.Conn, run string, instance int64, mode string) error {
 	params := protocol.AIChatParams{ServiceCall: protocol.ServiceCall{Instance: instance, Run: run + "/chat"},
 		Messages: []protocol.ChatMessage{{Role: "user", Content: "Say OK."}},
 		Tools:    []protocol.ChatTool{{Name: "lookup", Parameters: json.RawMessage(`{"type": "object"}`)}}}
+	if mode == "plain-chat" {
+		params.Run, params.Tools = "", nil
+	}
 	for {
 		var res protocol.AIChatResult
 		if err := conn.Call(ctx, protocol.MethodAIChat, params, &res); err != nil {

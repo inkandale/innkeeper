@@ -2,7 +2,6 @@ package contract
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -106,14 +105,19 @@ func (s *modelServer) requestCount() int {
 	return s.requests
 }
 
+// offeredTools reports whether any chat request offered tools.
+func (s *modelServer) offeredTools() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.toolName != ""
+}
+
 // toolRoundTrip reports why the model's tool call didn't come back with its
 // result, or nil once it did.
 func (s *modelServer) toolRoundTrip() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	switch {
-	case s.toolName == "":
-		return errors.New("no request to the model offered tools")
 	case !s.answered:
 		return fmt.Errorf("the model called %s, but no later request answered the call", s.toolName)
 	}

@@ -561,6 +561,27 @@ func TestConsumerCallsAProviderFromEachDrivenCapability(t *testing.T) {
 	}
 }
 
+func TestPlainConsumerGainsNoDeltasOrToolsChecks(t *testing.T) {
+	results, err := Check(context.Background(), testutil.FakeConsumer(t, []string{"action"}, "-mode=plain-chat"), provide(t), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := failed(results); len(f) > 0 {
+		t.Fatalf("checks failed: %v", f)
+	}
+	for _, name := range []string{checkDeltasName, checkToolsName} {
+		if slices.ContainsFunc(results, func(r Result) bool { return r.Name == name }) {
+			t.Errorf("check %q ran for a consumer that neither streams nor offers tools", name)
+		}
+	}
+}
+
+func TestStreamingConsumerNeedsTwoDeltas(t *testing.T) {
+	if deltasErr(1) == nil || deltasErr(0) == nil || deltasErr(2) != nil {
+		t.Fatal("want fewer than 2 deltas to fail and 2 to pass")
+	}
+}
+
 func TestConsumerThatDropsTheToolCallFails(t *testing.T) {
 	results, err := Check(context.Background(), testutil.FakeConsumer(t, []string{"action"}, "-mode=drop-tool-call"), provide(t), quiet)
 	if err != nil {

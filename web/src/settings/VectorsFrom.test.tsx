@@ -54,8 +54,12 @@ test("picking an instance saves it", async () => {
 test("renders nothing with a single vector source, which core picks itself", async () => {
   instances = [{ id: 5, label: "Embedder", plugin: "brain" }];
   const { container } = renderIt();
-  await waitFor(() => expect(fetch).toHaveBeenCalled());
-  await new Promise((r) => setTimeout(r, 50));
+  // Wait until both answers are in, so an empty render isn't just "still loading".
+  await waitFor(() => {
+    const urls = vi.mocked(fetch).mock.calls.map(([req]) => new URL((req as Request).url).pathname);
+    expect(urls).toEqual(expect.arrayContaining(["/api/settings", "/api/instances"]));
+  });
+  await new Promise((r) => setTimeout(r, 0));
   expect(container).toBeEmptyDOMElement();
 });
 

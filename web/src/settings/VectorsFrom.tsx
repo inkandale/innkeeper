@@ -21,7 +21,7 @@ export function VectorsFrom() {
     return (
       <p className="muted">
         Similar cards by meaning and semantic search need pgvector.{" "}
-        <a href="https://github.com/inkandale/innkeeper/blob/main/docs/running.md">How to enable it</a>
+        <a href="https://github.com/inkandale/innkeeper/blob/main/docs/running.md" target="_blank" rel="noreferrer">How to enable it</a>
       </p>
     );
   }
@@ -29,7 +29,7 @@ export function VectorsFrom() {
   if (!sources.data || sources.data.length < 2) return null;
   const saved = settings.data?.vector_instance;
   return (
-    <section className="scores-from">
+    <section>
       <label title="The plugin instance whose card vectors find similar cards and rank semantic search.">
         Vectors from{" "}
         <select

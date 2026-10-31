@@ -365,8 +365,13 @@ func (s *Server) jobRoutes(api huma.API) {
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "retry-job", Method: http.MethodPost, Path: "/jobs/{id}/retry",
 		Summary: "Retry a failed job", Description: "Queues a failed job again with all its attempts. An import picks up from its last checkpoint. " +
-			"A bulk job and its children can't be retried this way.", Tags: tags},
+			"A bulk job, its children, and a maintenance run can't be retried this way.", Tags: tags},
 		func(ctx context.Context, in *idIn) (*jobResp, error) {
+			if j, err := s.Queue.Get(ctx, in.ID); err != nil {
+				return nil, s.fail(err)
+			} else if j.Kind == maintenance.Kind {
+				return nil, huma.Error409Conflict("a maintenance run can't be retried; start a new run after checking the preview")
+			}
 			if err := s.Queue.Retry(ctx, in.ID); err != nil {
 				return nil, s.fail(err)
 			}

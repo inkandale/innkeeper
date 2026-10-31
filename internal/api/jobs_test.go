@@ -13,9 +13,26 @@ import (
 	"github.com/inkandale/innkeeper/internal/bulk"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
+	"github.com/inkandale/innkeeper/internal/maintenance"
 	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/internal/targets"
 )
+
+func TestMaintenanceJobCantBeRetried(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	j, err := e.s.Queue.Enqueue(ctx, jobs.Spec{Kind: maintenance.Kind})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := fmt.Sprintf("/jobs/%d", j.ID)
+	e.call("POST", path+"/cancel", nil, 200, nil)
+	e.call("POST", path+"/retry", nil, 409, nil)
+	got, err := e.s.Queue.Get(ctx, j.ID)
+	if err != nil || got.Status != jobs.StatusFailed {
+		t.Fatalf("job after refused retry = %+v, %v", got, err)
+	}
+}
 
 func TestImportAndCancel(t *testing.T) {
 	e := newEnv(t)

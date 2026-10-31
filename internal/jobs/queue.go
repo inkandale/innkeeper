@@ -145,14 +145,16 @@ func (q *Queue) EnqueueOnce(ctx context.Context, s Spec) (Job, error) {
 	return q.enqueueUnless(ctx, s, `kind = $1 AND status IN ('queued', 'running')`, s.Kind)
 }
 
-// EnqueueUnlessQueued returns the queued top-level job matching s's kind and
-// payload, or enqueues s. It skips running jobs, which may predate the change.
+// EnqueueUnlessQueued returns the queued top-level job matching s's kind,
+// instance, and payload, or enqueues s. It skips running jobs, which may
+// predate the change.
 func (q *Queue) EnqueueUnlessQueued(ctx context.Context, s Spec) (Job, error) {
 	payload, err := payloadOf(s)
 	if err != nil {
 		return Job{}, err
 	}
-	return q.enqueueUnless(ctx, s, `kind = $1 AND payload = $2::jsonb AND status = 'queued'`, s.Kind, payload)
+	return q.enqueueUnless(ctx, s, `kind = $1 AND payload = $2::jsonb AND instance_id IS NOT DISTINCT FROM $3 AND status = 'queued'`,
+		s.Kind, payload, s.InstanceID)
 }
 
 // enqueueUnless returns the oldest top-level job matching the where clause,

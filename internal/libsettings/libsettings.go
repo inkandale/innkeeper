@@ -210,7 +210,8 @@ func (s *Settings) EnqueueEnrichOnChange(ctx context.Context, q *jobs.Queue, car
 			continue
 		}
 		p := enrich.Payload{CardIDs: ids[:min(len(ids), enrich.MaxCards(manifests[inst.Plugin]))]}
-		if _, err := q.Enqueue(ctx, jobs.Spec{Kind: enrich.Kind, InstanceID: &inst.ID, Payload: p}); err != nil {
+		// Joins a run still queued for the same cards, so quick repeated saves cost one call; it reads the newest revision when it runs.
+		if _, err := q.EnqueueUnlessQueued(ctx, jobs.Spec{Kind: enrich.Kind, InstanceID: &inst.ID, Payload: p}); err != nil {
 			errs = append(errs, fmt.Errorf("queue enrich on instance %d: %w", inst.ID, err))
 		}
 	}

@@ -442,6 +442,28 @@ func TestEnqueueUnlessQueuedJoinsOnlyAQueuedJobWithTheSamePayload(t *testing.T) 
 	}
 }
 
+func TestEnqueueUnlessQueuedKeepsInstancesApart(t *testing.T) {
+	q := newQueue(t)
+	ctx := context.Background()
+	var x, y int64
+	if err := q.pool.QueryRow(ctx, `INSERT INTO plugin_instance (plugin, name) VALUES ('fake', 'x'), ('fake', 'y') RETURNING id`).Scan(&x); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.pool.QueryRow(ctx, `SELECT id FROM plugin_instance WHERE name = 'y'`).Scan(&y); err != nil {
+		t.Fatal(err)
+	}
+	cards := map[string][]int64{"card_ids": {1}}
+	a, err := q.EnqueueUnlessQueued(ctx, Spec{Kind: "t.unless", InstanceID: &x, Payload: cards})
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, _ := q.EnqueueUnlessQueued(ctx, Spec{Kind: "t.unless", InstanceID: &x, Payload: cards})
+	other, _ := q.EnqueueUnlessQueued(ctx, Spec{Kind: "t.unless", InstanceID: &y, Payload: cards})
+	if again.ID != a.ID || other.ID == a.ID {
+		t.Fatalf("jobs %d %d %d: want the same instance to join and another to get its own", a.ID, again.ID, other.ID)
+	}
+}
+
 func TestRecord(t *testing.T) {
 	q := newQueue(t)
 	ctx := context.Background()

@@ -566,6 +566,12 @@ func TestEditQueuesEnrichForInstancesThatUpdateOnChange(t *testing.T) {
 	if queued() != 1 {
 		t.Fatal("an edit queued no run")
 	}
+	// A run still queued for the card would absorb the next one, so let this one finish first.
+	var first int64
+	if err := e.pool.QueryRow(context.Background(), `SELECT id FROM job WHERE kind = $1 AND instance_id = $2`, enrich.Kind, e.instID).Scan(&first); err != nil {
+		t.Fatal(err)
+	}
+	e.waitRun(first)
 	e.call("PUT", fmt.Sprintf("/cards/%d/archived", id), map[string]any{"archived": true}, 204, nil)
 	e.call("PUT", fmt.Sprintf("/cards/%d/archived", id), map[string]any{"archived": false}, 204, nil)
 	if queued() != 2 {

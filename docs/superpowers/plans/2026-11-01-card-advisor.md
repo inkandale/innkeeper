@@ -1494,7 +1494,7 @@ import { PushDialog } from "./PushDialog";
 import { parseSSE } from "./sse";
 import "./pluginui.css";
 
-const themeTokens = ["--bg", "--fg", "--muted", "--accent", "--border", "--surface"];
+const themeTokens = ["--bg", "--surface", "--text", "--text-muted", "--accent", "--border", "--radius", "--font", "--font-size"];
 
 async function uiCall(instance: number, method: string, params: unknown, signal: AbortSignal, onEvent: (data: unknown) => void) {
   const res = await fetch(`/api/instances/${instance}/ui/call`, {
@@ -1569,8 +1569,6 @@ export function PluginPanel(props: { instance: number; title: string; src: strin
   );
 }
 ```
-
-Replace `themeTokens` with the real custom property names from `web/src/shell/Shell.css` and the theme's root stylesheet.
 
 `web/src/pluginui/PushDialog.tsx`:
 
@@ -1697,7 +1695,7 @@ export function Launchers() {
 .plugin-panel iframe { flex: 1; border: 0; }
 ```
 
-Match the surface colors to the tokens used in `Shell.css`.
+Give `.plugin-panel` and `.plugin-bubble` `background: var(--surface); color: var(--text); border: 1px solid var(--border);`.
 
 In `web/src/shell/Shell.tsx`, render `<Launchers />` inside `<Toasts>`, after `<Outlet />`, so dialogs can show toasts. `Shell.test.tsx` stubs fetch; `/api/instances` responses without a `grants` field don't affect it because no panel opens.
 
@@ -1757,84 +1755,7 @@ go mod tidy
 
 If Part 1 isn't pushed yet, add a temporary `replace github.com/inkandale/innkeeper => ../innkeeper-card-advisor-spec` line, and remove it before Task 17's commit.
 
-### Task 13: Ship `ui` folders
-
-**Files:**
-- Modify: `Makefile`, `internal/publish/main.go`, `internal/publish/main_test.go`
-
-- [ ] **Step 1: Write the failing test**
-
-Add to `internal/publish/main_test.go`, reading how its existing tests build a plugin folder and call `tarball`:
-
-```go
-func TestTarballIncludesTheUIFolder(t *testing.T) {
-	root, folder, m := publishFixture(t) // the file's existing fixture
-	dir := filepath.Join(root, folder, "ui")
-	if err := os.MkdirAll(filepath.Join(dir, "lib"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range []string{"index.html", "lib/app.js"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	m.UI = &protocol.UI{Entry: "ui/index.html", Slot: protocol.SlotCorner}
-	tgz, err := tarball(root, folder, m, runtime.GOOS, runtime.GOARCH)
-	if err != nil {
-		t.Fatal(err)
-	}
-	names := tarNames(t, tgz) // list entry names with archive/tar and compress/gzip
-	for _, want := range []string{"ui/index.html", "ui/lib/app.js"} {
-		if !slices.Contains(names, want) {
-			t.Errorf("tarball lacks %s: %v", want, names)
-		}
-	}
-}
-```
-
-- [ ] **Step 2: Run to verify failure**
-
-Run: `go test ./internal/publish -run UIFolder`
-Expected: FAIL, tarball lacks `ui/index.html`.
-
-- [ ] **Step 3: Implement**
-
-In `tarball`, after the icon entry:
-
-```go
-	if m.UI != nil {
-		bundle := filepath.Dir(m.UI.Entry)
-		err := filepath.WalkDir(filepath.Join(root, folder, bundle), func(p string, d fs.DirEntry, err error) error {
-			if err != nil || !d.Type().IsRegular() {
-				return err
-			}
-			rel, err := filepath.Rel(filepath.Join(root, folder), p)
-			files[filepath.ToSlash(rel)] = p
-			return err
-		})
-		if err != nil {
-			return nil, err
-		}
-	}
-```
-
-In the `Makefile`'s `install` recipe, copy a plugin's `ui` folder when present:
-
-```make
-	for p in $(PLUGINS); do mkdir -p "$(DEST)/$$p" && cp $$p/$$p $$p/plugin.toml $$(ls $$p/icon.* 2>/dev/null) "$(DEST)/$$p/" && if [ -d $$p/ui ]; then cp -R $$p/ui "$(DEST)/$$p/"; fi || exit 1; done
-```
-
-- [ ] **Step 4: Run tests and commit**
-
-Run: `go test ./internal/publish`
-Expected: PASS.
-
-```bash
-git add Makefile internal/publish
-git commit -m "feat(publish): ship a plugin's ui folder"
-```
-
-### Task 14: Plugin skeleton and store
+### Task 13: Plugin skeleton and store
 
 **Files:**
 - Create: `card-advisor/plugin.toml`, `card-advisor/main.go`, `card-advisor/store.go`, `card-advisor/store_test.go`, `card-advisor/README.md`
@@ -2288,6 +2209,82 @@ Expected: PASS.
 ```bash
 git add card-advisor index.toml go.mod go.sum
 git commit -m "feat(card-advisor): add the plugin and its conversation store"
+```
+
+### Task 14: Ship `ui` folders
+
+**Files:**
+- Modify: `Makefile`, `internal/publish/main.go`, `internal/publish/main_test.go`
+
+- [ ] **Step 1: Write the failing test**
+
+Add to `internal/publish/main_test.go`:
+
+```go
+func TestTarballCarriesTheUIFolder(t *testing.T) {
+	m, err := protocol.LoadManifest("../../card-advisor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := tarball("../..", "card-advisor", m, "linux", "amd64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gz, err := gzip.NewReader(bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	tr := tar.NewReader(gz)
+	for h, err := tr.Next(); err == nil; h, err = tr.Next() {
+		names = append(names, h.Name)
+	}
+	if !slices.Contains(names, "ui/index.html") {
+		t.Fatalf("tarball holds %v", names)
+	}
+}
+```
+
+- [ ] **Step 2: Run to verify failure**
+
+Run: `go test ./internal/publish -run TestTarballCarriesTheUIFolder`
+Expected: FAIL, tarball lacks `ui/index.html`.
+
+- [ ] **Step 3: Implement**
+
+In `tarball`, after the icon entry:
+
+```go
+	if m.UI != nil {
+		bundle := filepath.Dir(m.UI.Entry)
+		err := filepath.WalkDir(filepath.Join(root, folder, bundle), func(p string, d fs.DirEntry, err error) error {
+			if err != nil || !d.Type().IsRegular() {
+				return err
+			}
+			rel, err := filepath.Rel(filepath.Join(root, folder), p)
+			files[filepath.ToSlash(rel)] = p
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+```
+
+In the `Makefile`'s `install` recipe, copy a plugin's `ui` folder when present:
+
+```make
+	for p in $(PLUGINS); do mkdir -p "$(DEST)/$$p" && cp $$p/$$p $$p/plugin.toml $$(ls $$p/icon.* 2>/dev/null) "$(DEST)/$$p/" && if [ -d $$p/ui ]; then cp -R $$p/ui "$(DEST)/$$p/"; fi || exit 1; done
+```
+
+- [ ] **Step 4: Run tests and commit**
+
+Run: `go test ./internal/publish`
+Expected: PASS.
+
+```bash
+git add Makefile internal/publish
+git commit -m "feat(publish): ship a plugin's ui folder"
 ```
 
 ### Task 15: The turn
@@ -2939,7 +2936,7 @@ export function blocks(markdown) {
 
 ```css
 html, body { height: 100%; margin: 0; }
-body { display: flex; flex-direction: column; font: 14px system-ui, sans-serif; background: var(--bg, #fff); color: var(--fg, #111); }
+body { display: flex; flex-direction: column; font: 14px system-ui, sans-serif; background: var(--bg, #fff); color: var(--text, #111); }
 #bar, #ask { display: flex; gap: 6px; padding: 8px; align-items: center; }
 #history { flex: 1; min-width: 0; }
 #log { flex: 1; overflow-y: auto; padding: 8px; }
@@ -2948,7 +2945,7 @@ body { display: flex; flex-direction: column; font: 14px system-ui, sans-serif; 
 .message.user { font-weight: 600; }
 .pick { border: 1px solid var(--border, #ccc); border-radius: 6px; padding: 8px; margin-top: 8px; }
 .pick button { margin-right: 6px; }
-.notice { color: var(--muted, #666); }
+.notice { color: var(--text-muted, #666); }
 ```
 
 `card-advisor/ui/app.js`:

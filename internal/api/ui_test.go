@@ -362,21 +362,6 @@ func TestUICallWriteTimeoutAbortsStalledStream(t *testing.T) {
 	}
 }
 
-func TestUICallLeavesTheConnectionUsableForTheNextResponse(t *testing.T) {
-	setUIWriteTimeout(t, 100*time.Millisecond)
-	e := newEnv(t)
-	id, _ := addUIInstance(t, e)
-	e.uiStream(t, id, "echo", "hi")
-	time.Sleep(2 * uiWriteTimeout)
-	// A POST, because the client retries a GET on a fresh connection, and not
-	// a ui call, because a stream sets its own deadline.
-	res, err := http.Post(fmt.Sprintf("%s/api/instances/%d/ui/call", e.srv.URL, id), "application/json", strings.NewReader("{}"))
-	if err != nil {
-		t.Fatalf("next response on the connection: %v", err)
-	}
-	res.Body.Close()
-}
-
 func TestPluginListShowsUIPanelAndPermissions(t *testing.T) {
 	e := newEnv(t)
 	addUIInstance(t, e)

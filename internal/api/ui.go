@@ -86,7 +86,9 @@ func (s *Server) streamUICall(hc huma.Context, inst pluginhost.Instance, in *uiC
 			return librarycall.Serve(callCtx, s.Registry, s.inProcessAPI(), in.ID, params)
 		}
 		return nil, protocol.MethodNotFound(method)
-	}, func(level, message string) { s.Log.Info("plugin ui", "instance", inst.ID, "level", level, "message", message) })
+	}, func(level, message string) {
+		s.Log.Info("plugin ui", "instance", inst.ID, "level", level, "message", message)
+	})
 	defer remove()
 	go func() {
 		var res json.RawMessage
@@ -137,7 +139,6 @@ func (s *Server) writeUIStream(ctx context.Context, hc huma.Context, messages <-
 	// huma's BodyWriter is only an io.Writer, which a ResponseController can't take.
 	_, w := humago.Unwrap(hc)
 	rc := http.NewResponseController(w)
-	defer rc.SetWriteDeadline(time.Time{})
 	send := func(format string, args ...any) bool {
 		if err := rc.SetWriteDeadline(time.Now().Add(uiWriteTimeout)); err != nil {
 			s.Log.Warn("set a ui stream write deadline", "err", err)

@@ -53,8 +53,8 @@ permissions = ["library.read", "cards.push", "cards.collect"]
 | `cards.push` | Open core's push dialog with `host.request` |
 | `cards.collect` | Open core's add-to-collection dialog with `host.request` |
 
-A manifest with `[ui]` must declare the `ui` capability and an `entry` inside
-the plugin folder. An unknown slot or permission fails validation.
+A manifest with `[ui]` must declare the `ui` capability and an `entry` in a
+subfolder of the plugin folder, since core serves that whole folder. An unknown slot or permission fails validation.
 
 ### Grants
 
@@ -75,10 +75,12 @@ response sets:
 - `X-Content-Type-Options: nosniff`
 - `Cache-Control: no-cache`
 - `Access-Control-Allow-Origin: *`
-- `Content-Security-Policy: sandbox allow-scripts; default-src 'none'; script-src <origin>; style-src <origin> 'unsafe-inline'; img-src <origin> data:; font-src <origin>; connect-src 'none'; frame-ancestors 'self'`
+- `Content-Security-Policy: sandbox allow-scripts; default-src 'none'; script-src <base>; style-src <base> 'unsafe-inline'; img-src <base> data:; font-src <base>; connect-src 'none'; frame-ancestors 'self'`
 
-`<origin>` is the request's own scheme and host. `'self'` can't be relied on in
-a sandboxed frame, whose origin is opaque.
+`<base>` is the request's scheme and host plus `/api/plugin-ui/<name>/`, so a
+bundle loads only its own files. `'self'` can't be relied on in a sandboxed
+frame, whose origin is opaque, and a bare origin would let the bundle load the
+app's other scripts.
 
 The route is public, like theme stylesheets and icons, and a bundle must hold
 nothing secret. It can't need a session: requests from an opaque origin don't
@@ -100,13 +102,14 @@ other server. Its only way out is the bridge.
 
 ### Bridge
 
-The Shell handles `postMessage` requests from the panel's iframe. It compares
+The Shell handles `postMessage` requests from the panel's iframe, at most 4
+`ui.call`s at once. It compares
 `event.source` with that iframe's `contentWindow` and ignores anything else.
 
 | Call | Does | Needs |
 |---|---|---|
 | `ui.call(method, params)` | Calls the plugin's backend and streams events back to the iframe | Nothing |
-| `host.context()` | Returns the current library ID, the card on screen if any, and theme tokens | Nothing |
+| `host.context()` | Returns the current library ID, the card on screen if any, theme tokens, and the instance's grants | Nothing |
 | `host.openCard(id)` | Opens the card page in the parent | Nothing |
 | `host.request("push", cardId)` | Opens core's push dialog | `cards.push` |
 | `host.request("add-to-collection", cardId)` | Opens a new core dialog listing the library's collections | `cards.collect` |

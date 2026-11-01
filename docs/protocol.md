@@ -52,7 +52,7 @@ Exceptions:
 - `mcp.tools`, `settings.defaults`, `settings.options`, and the `ai.delta`
   notification name a noun, not a verb.
 - `target.list_lorebooks` uses the plural kind.
-- `library.call` belongs to `action`, and the plugin sends it to the core.
+- `library.call` belongs to `action` and `ui`, and the plugin sends it to the core.
 - `initialize`, `shutdown`, and the notifications `emit.card`,
   `emit.lorebook`, `progress`, `checkpoint`, `log`, and `cancel` aren't
   named after a capability.
@@ -96,7 +96,7 @@ Each plugin folder has a `plugin.toml`:
 | `version` | yes | The plugin's own version |
 | `protocol` | yes | Protocol version; must be `1` |
 | `command` | yes, except for themes | Program and arguments. Use `./name` for a program in the plugin folder: a relative path containing `/` is inside the folder and can't leave it, an absolute path is used as-is, and a bare name is found on `PATH` |
-| `capabilities` | yes | Any of `import`, `push`, `pull`, `action`, `records`, `enrich`, `codec`, `auth`, `mcp`, `catalog`, `sites`, `ai`, `settings`, or `theme`. A theme lists no other capability |
+| `capabilities` | yes | Any of `import`, `push`, `pull`, `action`, `records`, `enrich`, `codec`, `auth`, `mcp`, `catalog`, `sites`, `ai`, `settings`, `ui`, or `theme`. A theme lists no other capability |
 | `secrets` | no | Names of secrets the owner enters for each instance, in lowercase `snake_case` |
 | `config` | no | JSON Schema with `type = "object"` for instance settings; the UI renders a form from it. See [The config form](#the-config-form) |
 | `enrichments` | for `enrich` | Keys the plugin writes, in lowercase `snake_case`; see [`enrich`](#enrich), and `emit.card`'s `values` under [`import`](#import). Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list`. `grid = true` shows the key on the library grid, for at most one key. The grid key's `priority`, an integer, orders plugins: a tile shows the highest-priority score a card has, and the top three wear gold, silver, and bronze. Space priorities apart, such as by 100, so other plugins fit between. `embed` is retired and ignored. An `enrich` plugin must declare at least one |
@@ -114,6 +114,7 @@ Each plugin folder has a `plugin.toml`:
 | `description` | no | One line saying what the plugin does, shown on the Plugins page |
 | `category` | no | The group the Plugins page shows the plugin under, such as `Apps`. Without one, it shows under Other |
 | `uses` | no | Service methods the plugin calls on other instances, each listed once, such as `["ai.chat"]`; see [`ai`](#ai) |
+| `ui` | only for `ui` | The plugin's web panel, under `[ui]`; see [`ui`](#ui) |
 | `settings` | no; only for `settings` | Buttons on the instance form, under `[settings.actions]`, each keyed by an ID matching `^[a-z][a-z0-9_]*$` with a required `label`; see [`settings`](#settings) |
 
 Unknown keys are errors.
@@ -898,7 +899,7 @@ core while it answers `action.run`:
 | Param | Meaning |
 |---|---|
 | `run` | The run's token |
-| `name` | `search_cards`, `get_card`, `get_lorebook`, or `get_history` |
+| `name` | `search_cards`, `find_similar_cards`, `find_related_cards`, `get_card`, `get_lorebook`, or `get_history` |
 | `arguments` | The tool's arguments, as Innkeeper's MCP server takes them |
 
 The reply has `content` and `is_error`, as `mcp.call`'s does. A failure the
@@ -906,8 +907,9 @@ model should see, such as an unknown card ID, comes back with
 `is_error: true`.
 
 The core refuses with error `-32003` when the action doesn't declare
-`library`, when the owner hasn't turned on **Library access** for the
-instance (it's off by default), or for any other tool. Access ends with the
+`library`, when the owner hasn't given the instance the `library.read`
+grant (off by default; **Library access** on the instance form), or for any
+other tool. Access ends with the
 run: once the owner stops it, calls get `-32003` within a few seconds, and a
 call with the token of a run that has finished gets `-32602`.
 
@@ -1177,6 +1179,95 @@ When the caller cancels a call, the core cancels the provider's.
 {"jsonrpc": "2.0", "id": "c4", "result": {"text": "Hello", "model": "gpt-4o-mini"}}
 ```
 
+### `ui`
+
+A `ui` plugin shows a web panel in the owner's browser. The panel talks to
+the plugin's process through core. Core has no knowledge of what the panel
+does.
+
+```toml
+capabilities = ["ui"]
+
+[ui]
+entry = "ui/index.html"
+slot = "corner"
+permissions = ["library.read", "cards.push", "cards.collect"]
+```
+
+| Key | Meaning |
+|---|---|
+| `entry` | The panel's HTML file, inside a subfolder of the plugin folder. Core serves that whole folder |
+| `slot` | Where the panel opens. Only `corner`: a chat-sized panel opened from a bubble in the page's corner |
+| `permissions` | What the owner may grant an instance, each listed once |
+
+#### Permissions
+
+A permission does nothing until the owner grants it on the instance (all are
+off by default). `PATCH /instances/{id}` takes `grants`, which replaces the
+instance's grants.
+
+| Permission | Lets the plugin |
+|---|---|
+| `library.read` | Send `library.call` during a run |
+| `cards.push` | Open core's push dialog with `host.request` |
+| `cards.collect` | Open core's add-to-collection dialog with `host.request` |
+
+An `action` plugin can always be granted `library.read`.
+
+#### The bundle and its sandbox
+
+Core serves the folder holding `entry` at `/api/plugin-ui/<name>/` to anyone,
+with no login. **Put nothing secret in that folder.**
+
+The panel runs in an iframe with `sandbox="allow-scripts"`. It has an opaque
+origin, so it can't read the owner's session or call the API. Core's
+Content-Security-Policy lets it load scripts, styles, images, and fonts only
+from `<origin>/api/plugin-ui/<name>/`, its own files, and sets
+`connect-src 'none'`. The panel has no network; the bridge below is its only
+way out.
+
+#### The bridge
+
+The panel sends `window.parent.postMessage` messages; core replies to the
+panel's window. Each message is `{"id", "call", ...}`, where `id` is a safe
+integer the panel chooses. A panel runs at most 4 `ui.call`s at once.
+
+| `call` | Fields | Reply |
+|---|---|---|
+| `ui.call` | `method`, `params` | Any number of `{id, event}`, then one `{id, result}` or `{id, error}` |
+| `ui.abort` | none | None; cancels the `ui.call` with that `id` |
+| `host.context` | none | `{id, result}` with `library` (the ID), `card` (the card on screen, if any), `theme` (CSS token values), and `grants` |
+| `host.openCard` | `card` | Opens the card page |
+| `host.request` | `request`: `push` or `add-to-collection`, and `card` | Opens core's dialog; needs `cards.push` or `cards.collect`. The owner confirms in the dialog. A request while a dialog is open is ignored |
+
+A failed call replies `{id, error}` with a message.
+
+#### `ui.call`
+
+Core sends **`ui.call`** when the panel does and waits for the reply, which
+ends the call.
+
+| Param | Meaning |
+|---|---|
+| `run` | Token for this call. Put it in every notification and `library.call` you send for it |
+| `method` | The panel's method name, chosen by the plugin |
+| `params` | The panel's params |
+
+The plugin may send these while it answers:
+
+- **`ui.event`** with `run` and `data`, any JSON, which reaches the panel as an
+  `{id, event}`. Core drops one over 64 KiB. If the browser falls 256 events
+  behind, core ends the stream.
+- `library.call` with the `library.read` grant, as under
+  [Reading the library](#reading-the-library).
+- Service calls, such as `ai.chat`, as the manifest's `uses` allows.
+
+The reply becomes the panel's `result`. Answer an unknown method with
+`-32601`. An error with a code other than `-32603` shows the panel its
+message, so return `protocol.Fail` for text the owner should see. An untyped
+Go error, which is `-32603`, shows the panel only "the plugin failed". When
+the panel leaves, core sends `cancel`.
+
 ### `settings`
 
 A `settings` plugin helps the owner fill in its [config form](#the-config-form):
@@ -1286,6 +1377,7 @@ It loads the manifest, then checks that:
   and `action.run` of each, on a sample card or lorebook with the action's
   first field and empty inputs, returns a valid reply or an error other than
   `-32601` within 5 seconds. The check answers `library.call` with `-32601`
+- a `ui` plugin's `ui.call` of an unknown method returns `-32601`
 - an `action` plugin's `skills`, if any, are valid with unique names
 - a `records` plugin's `records.list` for each type returns valid summaries with
   unique IDs, or an error other than `-32601`. When it answers with records,

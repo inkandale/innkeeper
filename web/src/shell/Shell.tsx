@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { api } from "../api/client";
 import { librariesQuery } from "../api/queries";
+import { Launchers } from "../pluginui/Launchers";
 import { rememberLibrary, useLibrary, withLibrary } from "./library";
 import { Icon } from "./Icon";
 import { Mark } from "./Mark";
@@ -119,6 +120,7 @@ export function Shell() {
       <main className="main">
         <Toasts>
           <Outlet />
+          <Launchers />
         </Toasts>
       </main>
     </div>

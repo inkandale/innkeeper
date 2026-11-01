@@ -45,6 +45,13 @@ export function useFollowers() {
   return followers(instances.data, plugins.data);
 }
 
+/** entityQuery is one card or lorebook, as its page shows it. */
+export const entityQuery = (kind: Kind, id: number) =>
+  queryOptions({
+    queryKey: [kind, id],
+    queryFn: async () => must(await api.GET(route(kind, "/cards/{id}"), { params: { path: { id } } })),
+  });
+
 /** bindingsQuery is a card's or lorebook's bindings: the apps it is pushed to and the site sources it follows. */
 export const bindingsQuery = (kind: Kind, id: number) =>
   queryOptions({

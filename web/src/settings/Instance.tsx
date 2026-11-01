@@ -34,7 +34,6 @@ export function Instance() {
   );
 }
 
-/** canon is v as JSON with object keys sorted, so edits that move a key don't count as changes. */
 const permissionLabels: Record<string, { label: string; hint: string }> = {
   "library.read": { label: "Library access", hint: "Lets this plugin read your cards and lorebooks while it runs." },
   "cards.push": { label: "Offer push", hint: "Lets this plugin open the push dialog. You still confirm each push." },
@@ -43,6 +42,7 @@ const permissionLabels: Record<string, { label: string; hint: string }> = {
 
 const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
 
+/** canon is v as JSON with object keys sorted, so edits that move a key don't count as changes. */
 function canon(v: unknown): string {
   return JSON.stringify(v, (_, x) =>
     x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1))) : x,

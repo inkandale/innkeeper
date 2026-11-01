@@ -683,3 +683,19 @@ func TestBadVectorQueryFails(t *testing.T) {
 		t.Fatalf("got %v, want vector.query named", err)
 	}
 }
+
+func TestCheckUIRequiresMethodNotFoundForUnknownMethods(t *testing.T) {
+	check := func(args ...string) error {
+		results, err := Check(context.Background(), testutil.FakePluginWith(t, []string{"ui"}, args...), Options{}, quiet)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return failed(results)[checkUIName]
+	}
+	if err := check(); err != nil {
+		t.Fatalf("well-behaved ui plugin failed: %v", err)
+	}
+	if err := check("-mode=ui-accepts-all"); err == nil || !strings.Contains(err.Error(), "-32601") {
+		t.Fatalf("got %v, want a -32601 failure", err)
+	}
+}

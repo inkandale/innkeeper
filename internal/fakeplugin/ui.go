@@ -13,8 +13,11 @@ import (
 // uiCall answers the methods the ui tests drive: echo sends one event and
 // replies, huge sends an oversized event, flood outruns any reader, slow
 // waits to be cancelled and leaves a file saying so, library sends params as
-// a library.call, empty replies null, fail is a plugin error, and die exits.
-func uiCall(ctx context.Context, conn *protocol.Conn, params json.RawMessage) (any, error) {
+// a library.call, empty replies null, fail is a plugin error, and die exits. Mode ui-accepts-all answers every method with null.
+func uiCall(ctx context.Context, conn *protocol.Conn, params json.RawMessage, mode string) (any, error) {
+	if mode == "ui-accepts-all" {
+		return nil, nil
+	}
 	var p protocol.UICallParams
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, protocol.InvalidParams(err)

@@ -110,6 +110,7 @@ func Check(ctx context.Context, dir string, opts Options, log *slog.Logger) ([]R
 		{[]string{protocol.CapabilityAI, protocol.CapabilityEnrich}, func() []Result { return checkServices(ctx, p) }, nil},
 		{[]string{protocol.CapabilityCatalog}, func() []Result { return checkCatalog(ctx, p, tmp, len(opts.Config) > 0) }, nil},
 		{[]string{protocol.CapabilitySites}, func() []Result { return checkSites(ctx, p) }, nil},
+		{[]string{protocol.CapabilityUI}, func() []Result { return []Result{{checkUIName, checkUI(ctx, p)}} }, nil},
 		{[]string{protocol.CapabilityCodec}, func() []Result {
 			return runChecks(ctx, p, []check{
 				{checkRoundTripName, func(ctx context.Context) error { return checkRoundTrip(ctx, p, m, tmp) }},

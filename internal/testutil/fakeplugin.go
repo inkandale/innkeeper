@@ -86,6 +86,15 @@ schema = {type = "object", required = ["title"], properties = {title = {type = "
 test = { label = "Test connection" }
 `
 	}
+	if slices.Contains(caps, protocol.CapabilityUI) {
+		manifest += "[ui]\nentry = \"ui/index.html\"\nslot = \"corner\"\n"
+		if err := os.MkdirAll(filepath.Join(dir, "ui"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "ui", "index.html"), []byte("<p>panel"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := os.WriteFile(filepath.Join(dir, "plugin.toml"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}

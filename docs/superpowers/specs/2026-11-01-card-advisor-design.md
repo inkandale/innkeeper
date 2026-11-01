@@ -68,7 +68,7 @@ access** switch, which now sets the `library.read` grant.
 
 ### Serving the bundle
 
-`GET /plugin-ui/{name}/{path...}` serves files from the folder holding `entry`
+`GET /api/plugin-ui/{name}/{path...}` serves files from the folder holding `entry`
 with `servePluginFile`, so symlinks can't escape the plugin folder. Each
 response sets:
 
@@ -91,7 +91,7 @@ The Shell shows one bubble per enabled `ui` instance with slot `corner`, using
 the plugin's title and icon. Clicking it opens a panel with the iframe:
 
 ```html
-<iframe sandbox="allow-scripts" src="/plugin-ui/card-advisor/index.html"></iframe>
+<iframe sandbox="allow-scripts" src="/api/plugin-ui/card-advisor/index.html"></iframe>
 ```
 
 Without `allow-same-origin`, the iframe has an opaque origin. It can't read the
@@ -109,7 +109,7 @@ The Shell handles `postMessage` requests from the panel's iframe. It compares
 | `host.context()` | Returns the current library ID, the card on screen if any, and theme tokens | Nothing |
 | `host.openCard(id)` | Opens the card page in the parent | Nothing |
 | `host.request("push", cardId)` | Opens core's push dialog | `cards.push` |
-| `host.request("add-to-collection", cardId)` | Opens core's collection dialog | `cards.collect` |
+| `host.request("add-to-collection", cardId)` | Opens a new core dialog listing the library's collections | `cards.collect` |
 
 ### Protocol
 
@@ -128,6 +128,18 @@ behalf. Core starts a run, then calls the plugin:
 
 A `ui.event` is limited to 64 KiB. The `-32601` reply for an unknown method and
 any other plugin error become a final `error` SSE event.
+
+### Plugin calls in the API process
+
+The API process refuses plugin calls today, through `api.NoCore`. It now runs
+the same `pluginhost.Runs` and `services.Broker` as the worker, so a `ui` run can
+use `ai.chat` and `library.call`. Plugin calls outside a run are refused, as
+`Runs.Handle` already does.
+
+### Packaging
+
+`make install` and `internal/publish` in `innkeeper-plugins` copy only the
+binary, manifest, and icon. Both also copy the folder holding `[ui].entry`.
 
 ### Shared run plumbing
 
@@ -148,6 +160,7 @@ The plugin's schema holds:
 ```sql
 CREATE TABLE conversation (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    instance text NOT NULL,
     title text NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
@@ -222,7 +235,7 @@ data to another server.
 - **Protocol:** manifest validation for `[ui]`, slots, and permissions.
 - **Core, against real PostgreSQL:** the grants migration; `ui.call` routing,
   streaming, and cancel through `fakeplugin`; `library.call` refused without the
-  grant and after the run ends; `/plugin-ui` headers, path escapes, and 404s.
+  grant and after the run ends; `/api/plugin-ui` headers, path escapes, and 404s.
 - **Browser:** before building the rest, prove in Chrome and Firefox that a
   sandboxed bundle with a module script, stylesheet, and font loads under these
   headers.

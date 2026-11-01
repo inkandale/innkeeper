@@ -269,8 +269,8 @@ type InstanceInfo struct {
 	Config       map[string]any `json:"config"`
 	Secrets      []string       `json:"secrets"`
 	OwnerSubject *string        `json:"owner_subject,omitempty"`
-	// LibraryAccess lets an action plugin read the library with library.call.
-	LibraryAccess bool `json:"library_access"`
+	// Grants are the permissions the owner gave the instance.
+	Grants []string `json:"grants"`
 	// SyncLibrary is the library a target app's syncs match against and import into.
 	SyncLibrary int64      `json:"sync_library"`
 	BrokenError *string    `json:"broken_error,omitempty"`
@@ -314,12 +314,12 @@ func Status(m *protocol.Manifest, instances []InstanceInfo) string {
 
 // NewInstance is a new instance's settings.
 type NewInstance struct {
-	Plugin        string
-	Name          *string
-	Config        map[string]any
-	Secrets       map[string]string
-	OwnerSubject  *string
-	LibraryAccess bool
+	Plugin       string
+	Name         *string
+	Config       map[string]any
+	Secrets      map[string]string
+	OwnerSubject *string
+	Grants       []string
 	// DefaultBases maps a JSON pointer the owner just overrode to the default it replaced.
 	DefaultBases map[string]any
 }
@@ -327,12 +327,12 @@ type NewInstance struct {
 // InstanceEdit changes an instance. Nil fields stay as they are. A nil value
 // in Secrets removes that secret, and an empty Name or OwnerSubject clears it.
 type InstanceEdit struct {
-	Name          *string
-	Config        map[string]any
-	Secrets       map[string]*string
-	OwnerSubject  *string
-	LibraryAccess *bool
-	Disabled      *bool
+	Name         *string
+	Config       map[string]any
+	Secrets      map[string]*string
+	OwnerSubject *string
+	Grants       *[]string
+	Disabled     *bool
 	// EnrichOnChange sets whether an enrich instance runs on cards as they change.
 	EnrichOnChange *bool
 	// SyncLibrary is the library a target app syncs with.
@@ -391,6 +391,9 @@ func (r *Registry) CreateInstance(ctx context.Context, n NewInstance) (int64, er
 	if err := checkBases(n.DefaultBases); err != nil {
 		return 0, err
 	}
+	if err := r.checkGrants(n.Plugin, n.Grants); err != nil {
+		return 0, err
+	}
 	sealed, err := r.box.Seal(n.Secrets)
 	if err != nil {
 		return 0, err
@@ -419,8 +422,8 @@ func (r *Registry) CreateInstance(ctx context.Context, n NewInstance) (int64, er
 		}
 	}
 	var id int64
-	err = tx.QueryRow(ctx, `INSERT INTO plugin_instance (plugin, name, config, secrets, owner_subject, library_access, default_hashes, enrich_on_change)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`, n.Plugin, n.Name, n.Config, sealed, n.OwnerSubject, n.LibraryAccess, hashes, m.EnrichOnChange).Scan(&id)
+	err = tx.QueryRow(ctx, `INSERT INTO plugin_instance (plugin, name, config, secrets, owner_subject, grants, default_hashes, enrich_on_change)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`, n.Plugin, n.Name, n.Config, sealed, n.OwnerSubject, orEmptyGrants(n.Grants), hashes, m.EnrichOnChange).Scan(&id)
 	if err != nil {
 		return 0, writeErr(err)
 	}
@@ -477,6 +480,11 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 			return err
 		}
 	}
+	if e.Grants != nil {
+		if err := r.checkGrants(plugin, *e.Grants); err != nil {
+			return err
+		}
+	}
 	if e.SyncLibrary != nil && !(ok && m.IsTarget()) {
 		return fmt.Errorf("%w: plugin %s doesn't sync, so it has no sync library", ErrInvalid, plugin)
 	}
@@ -513,13 +521,13 @@ func (r *Registry) UpdateInstance(ctx context.Context, id int64, e InstanceEdit)
 	_, err = tx.Exec(ctx, `UPDATE plugin_instance SET
 			name = CASE WHEN $10 THEN NULL WHEN $2::text IS NULL THEN name ELSE nullif($2, '') END, config = coalesce($3, config),
 			secrets = $4, owner_subject = CASE WHEN $5 THEN nullif($6::text, '') ELSE owner_subject END,
-			library_access = coalesce($7, library_access), default_hashes = coalesce($8, default_hashes),
+			grants = coalesce($7, grants), default_hashes = coalesce($8, default_hashes),
 			disabled = coalesce($9, disabled), sync_library = coalesce($11, sync_library),
 			enrich_on_change_since = CASE WHEN $12 AND NOT coalesce(enrich_on_change, $13)
 				THEN now() ELSE enrich_on_change_since END,
 			enrich_on_change = coalesce($12, enrich_on_change),
 			broken_error = NULL, broken_at = NULL, updated_at = now()
-		WHERE id = $1`, id, e.Name, config, sealed, e.OwnerSubject != nil, owner, e.LibraryAccess, newHashes, e.Disabled, single, e.SyncLibrary, e.EnrichOnChange, ok && m.EnrichOnChange)
+		WHERE id = $1`, id, e.Name, config, sealed, e.OwnerSubject != nil, owner, e.Grants, newHashes, e.Disabled, single, e.SyncLibrary, e.EnrichOnChange, ok && m.EnrichOnChange)
 	if err != nil {
 		return writeErr(err)
 	}
@@ -558,14 +566,14 @@ func deleteInstances(ctx context.Context, db interface {
 	return tag.RowsAffected(), err
 }
 
-const infoCols = `id, plugin, name, config, secrets, owner_subject, library_access, broken_error, broken_at,
+const infoCols = `id, plugin, name, config, secrets, owner_subject, grants, broken_error, broken_at,
 	created_at, updated_at, disabled, coalesce(sync_library, 1), enrich_on_change, enrich_on_change_since`
 
 func (r *Registry) scanInfo(row pgx.Row) (InstanceInfo, error) {
 	var i InstanceInfo
 	var sealed []byte
 	var onChange *bool
-	err := row.Scan(&i.ID, &i.Plugin, &i.Name, &i.Config, &sealed, &i.OwnerSubject, &i.LibraryAccess,
+	err := row.Scan(&i.ID, &i.Plugin, &i.Name, &i.Config, &sealed, &i.OwnerSubject, &i.Grants,
 		&i.BrokenError, &i.BrokenAt, &i.CreatedAt, &i.UpdatedAt, &i.Disabled, &i.SyncLibrary, &onChange, &i.EnrichOnChangeSince)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return i, ErrNotFound
@@ -1058,4 +1066,34 @@ func (r *Registry) SetTheme(ctx context.Context, name string) error {
 		}
 	}
 	return r.SetSetting(ctx, "theme", name)
+}
+
+func orEmptyGrants(grants []string) []string {
+	if grants == nil {
+		return []string{}
+	}
+	return grants
+}
+
+// checkGrants refuses a permission the plugin doesn't declare.
+func (r *Registry) checkGrants(plugin string, grants []string) error {
+	m, ok := r.manifest(plugin)
+	if !ok {
+		return nil
+	}
+	for _, g := range grants {
+		if !slices.Contains(m.Permissions(), g) {
+			return fmt.Errorf("%w: plugin %s has no permission %q", ErrInvalid, plugin, g)
+		}
+	}
+	return nil
+}
+
+// HasGrant reports whether the owner gave instance id the permission.
+func (r *Registry) HasGrant(ctx context.Context, id int64, permission string) (bool, error) {
+	info, err := r.GetInstance(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	return slices.Contains(info.Grants, permission), nil
 }

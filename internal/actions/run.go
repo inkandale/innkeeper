@@ -228,7 +228,7 @@ func (s *session) libraryCall(params json.RawMessage) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !info.LibraryAccess {
+	if !slices.Contains(info.Grants, protocol.PermissionLibraryRead) {
 		return nil, forbidden("Library access is off for this instance; the owner can turn it on in its settings")
 	}
 	return mcp.Call(s.ctx, s.rn.API, tier.Read, c.Name, c.Arguments)

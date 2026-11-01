@@ -146,26 +146,26 @@ func TestOAuthClientsCantChangeLogins(t *testing.T) {
 	}
 }
 
-func TestInstanceLibraryAccess(t *testing.T) {
+func TestInstanceGrants(t *testing.T) {
 	e := newEnv(t)
+	reader := *e.manifests["fake"]
+	reader.Name, reader.Capabilities = "reader", []string{"action"}
+	e.manifests["reader"] = &reader
 	var inst plugins.InstanceInfo
-	e.call("POST", "/instances", map[string]any{"plugin": "vault", "name": "Vault", "config": map[string]any{"url": "http://v"}}, 201, &inst)
-	if inst.LibraryAccess {
-		t.Fatal("a new instance has library access")
+	e.call("POST", "/instances", map[string]any{"plugin": "reader", "name": "Reader"}, 201, &inst)
+	if len(inst.Grants) != 0 {
+		t.Fatalf("a new instance has grants: %v", inst.Grants)
 	}
 	path := fmt.Sprintf("/instances/%d", inst.ID)
-	e.call("PATCH", path, map[string]any{"library_access": true}, 200, &inst)
-	if !inst.LibraryAccess || inst.Config["url"] != "http://v" {
-		t.Fatalf("after turning it on: %+v", inst)
+	e.call("PATCH", path, map[string]any{"grants": []string{"library.read"}}, 200, &inst)
+	if !slices.Equal(inst.Grants, []string{"library.read"}) {
+		t.Fatalf("after PATCH: %v", inst.Grants)
 	}
-	e.call("PATCH", path, map[string]any{"name": "Vault 2"}, 200, &inst)
-	if !inst.LibraryAccess {
-		t.Fatal("renaming turned library access off")
+	e.call("PATCH", path, map[string]any{"name": "Renamed"}, 200, &inst)
+	if !slices.Equal(inst.Grants, []string{"library.read"}) {
+		t.Fatalf("an unrelated PATCH changed grants: %v", inst.Grants)
 	}
-	e.call("POST", "/instances", map[string]any{"plugin": "vault", "name": "Open", "library_access": true}, 201, &inst)
-	if !inst.LibraryAccess {
-		t.Fatal("created with library_access true, got false")
-	}
+	e.call("PATCH", path, map[string]any{"grants": []string{"cards.push"}}, 400, nil)
 }
 
 func TestDisableRefusesLastLogin(t *testing.T) {

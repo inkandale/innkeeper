@@ -258,7 +258,7 @@ func TestLibraryCallRefusals(t *testing.T) {
 		res, _ := e.succeeded(e.start(action, map[string]any{"inputs": map[string]any{"call": call}}).ID)
 		return res.Raw
 	}
-	e.call("PATCH", fmt.Sprintf("/instances/%d", e.instID), map[string]any{"library_access": true}, 200, nil)
+	e.call("PATCH", fmt.Sprintf("/instances/%d", e.instID), map[string]any{"grants": []string{"library.read"}}, 200, nil)
 	if got := raw("reforge", getCard); !strings.HasPrefix(got, "error -32003") {
 		t.Errorf("without the declaration: %s", got)
 	}
@@ -268,7 +268,7 @@ func TestLibraryCallRefusals(t *testing.T) {
 	if got := raw("lookup", map[string]any{"name": "create_card", "arguments": map[string]any{"data": map[string]any{"name": "X"}}}); !strings.HasPrefix(got, "error -32003") {
 		t.Errorf("a write tool: %s", got)
 	}
-	e.call("PATCH", fmt.Sprintf("/instances/%d", e.instID), map[string]any{"library_access": false}, 200, nil)
+	e.call("PATCH", fmt.Sprintf("/instances/%d", e.instID), map[string]any{"grants": []string{}}, 200, nil)
 	if got := raw("lookup", getCard); !strings.HasPrefix(got, "error -32003") || !strings.Contains(got, "Library access") {
 		t.Errorf("without access: %s", got)
 	}

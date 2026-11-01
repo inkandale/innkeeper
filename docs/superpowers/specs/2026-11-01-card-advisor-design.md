@@ -28,7 +28,7 @@ parts:
 | Slots | `corner` only. Add others when a plugin needs one. |
 | Writes | The plugin never writes to the library. Its buttons open core's own dialogs, and the owner confirms there. Plugin code can't prove a click was real, so one click plus a confirm is the limit. |
 | Memory | Conversations are saved and can be reopened. Each new chat starts fresh; there is no taste profile. |
-| Scope | The current library by default, with an "all libraries" toggle in the panel. Archived cards stay out, as they do in search. |
+| Scope | The current library. A "Look across libraries" toggle in the panel widens similar and related cards; search stays in one library, because core's search has no all-libraries scope. Archived cards stay out, as they do in search. |
 | Turn execution | In the API process, not as a job. Job streams poll the database, which is too coarse for text as it's written. |
 | Taste signals | Out of scope. Innkeeper has no ratings, favorites, or chat history to learn from. |
 
@@ -203,8 +203,9 @@ Uninstalling leaves this data until the owner uses **Remove data**.
    | `read_card` | `get_card` |
    | `recommend` | Ends the turn |
 
-3. Search results reach the model as names, premises, themes, and scores. Only
-   `read_card` sends a whole card.
+3. Search results reach the model as names, tags, scores, and the first 300
+   characters of the description; `library.call` can't reach card-embed's
+   premises and themes. Only `read_card` sends a whole card.
 4. The loop stops after 8 rounds. On the last round the plugin offers only
    `recommend`, so the turn still ends with an answer.
 5. `recommend` takes up to 6 `{card_id, reason}` picks. The plugin drops any ID

@@ -24,6 +24,7 @@ import (
 	"github.com/inkandale/innkeeper/internal/pluginhost"
 	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/internal/secrets"
+	"github.com/inkandale/innkeeper/internal/services"
 	"github.com/inkandale/innkeeper/internal/targets"
 	"github.com/inkandale/innkeeper/internal/testdb"
 	"github.com/inkandale/innkeeper/internal/testutil"
@@ -72,11 +73,14 @@ func newEnv(t *testing.T) *testEnv {
 	target.Command = []string{fake.Command[0], "-caps=push,pull", "-name=target"}
 	manifests := map[string]*protocol.Manifest{"fake": fake, "vault": vault, "target": &target}
 	reg := plugins.New(pool, manifests, store, box)
-	mgr := pluginhost.NewManager(NoCore, time.Minute, quiet)
+	runs := pluginhost.NewRuns(quiet)
+	broker := &services.Broker{Registry: reg, Runs: runs}
+	mgr := pluginhost.NewManager(broker.Handle(runs.Handle), time.Minute, quiet)
+	broker.Plugins = mgr
 	t.Cleanup(mgr.Close)
 	lib := library.New(pool, store)
 	e := &testEnv{t: t, pool: pool, manifests: manifests, s: &Server{Lib: lib, Queue: jobs.New(pool), Maintenance: maintenance.New(pool, lib), Registry: reg, Auth: auth.New(pool),
-		Targets: targets.New(pool, lib, reg, mgr, quiet), Plugins: mgr, Log: quiet}}
+		Targets: targets.New(pool, lib, reg, mgr, quiet), Plugins: mgr, Runs: runs, Log: quiet}}
 	// Keeps tests offline: the default source is on GitHub.
 	if _, err := pool.Exec(ctx, `DELETE FROM plugin_source`); err != nil {
 		t.Fatal(err)

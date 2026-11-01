@@ -12,6 +12,7 @@ import (
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/maintenance"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
+	iservices "github.com/inkandale/innkeeper/internal/services"
 	"github.com/inkandale/innkeeper/internal/targets"
 	"github.com/inkandale/innkeeper/web"
 )
@@ -32,14 +33,17 @@ func apiServer() error {
 	if err := svc.ensureSingletons(ctx, log); err != nil {
 		return err
 	}
-	mgr := pluginhost.NewManager(api.NoCore, 5*time.Minute, log)
+	runs := pluginhost.NewRuns(log)
+	broker := &iservices.Broker{Registry: svc.registry, Runs: runs}
+	mgr := pluginhost.NewManager(broker.Handle(runs.Handle), 5*time.Minute, log)
+	broker.Plugins = mgr
 	defer mgr.Close()
 	go stopIdlePlugins(ctx, mgr)
 
 	stopping := make(chan struct{})
 	s := &api.Server{Lib: svc.lib, Queue: jobs.New(svc.pool), Maintenance: maintenance.New(svc.pool, svc.lib),
 		Registry: svc.registry, Auth: auth.New(svc.pool),
-		Targets: targets.New(svc.pool, svc.lib, svc.registry, mgr, log), Plugins: mgr, Log: log,
+		Targets: targets.New(svc.pool, svc.lib, svc.registry, mgr, log), Plugins: mgr, Runs: runs, Log: log,
 		PublicURL: os.Getenv("INNKEEPER_PUBLIC_URL"), Stopping: stopping, Backups: svc.backups,
 		UI: web.Handler(web.Dist()), Version: buildVersion()}
 	if err := s.Bootstrap(ctx, os.Getenv("INNKEEPER_OWNER_PASSWORD_HASH")); err != nil {

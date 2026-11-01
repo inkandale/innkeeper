@@ -44,10 +44,11 @@ type Server struct {
 	Auth        *auth.Auth
 	// Targets must use Plugins.
 	Targets *targets.Service
-	// Plugins runs plugins for interactive calls, such as logins. Its core
-	// handler should be NoCore.
+	// Plugins runs plugins for interactive calls, such as logins.
 	Plugins *pluginhost.Manager
-	Log     *slog.Logger
+	// Runs carries plugins' calls during a ui.call. Plugins' core handler must use it.
+	Runs *pluginhost.Runs
+	Log  *slog.Logger
 	// PublicURL is where browsers reach the API, such as
 	// https://innkeeper.example.com. Optional. Redirect logins need it, and
 	// an http:// URL sends cookies without Secure.
@@ -78,11 +79,15 @@ type Server struct {
 	tools, actions, catalogInfo sync.Map
 	// lastPrune is when OAuth clients were last pruned, in Unix seconds.
 	lastPrune atomic.Int64
+	// inProcess is APIHandler's handler, built once.
+	inProcessOnce sync.Once
+	inProcess     http.Handler
 }
 
-// NoCore answers plugin callbacks. The API offers plugins none yet.
-func NoCore(_ context.Context, method string, _ json.RawMessage) (any, error) {
-	return nil, protocol.MethodNotFound(method)
+// inProcessAPI serves library.call's tools. Routes register only once per mux.
+func (s *Server) inProcessAPI() http.Handler {
+	s.inProcessOnce.Do(func() { s.inProcess = s.APIHandler() })
+	return s.inProcess
 }
 
 // public marks an operation that needs no credentials.

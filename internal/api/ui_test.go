@@ -18,7 +18,7 @@ func addPanel(t *testing.T, e *testEnv) string {
 	if err := os.MkdirAll(filepath.Join(dir, "ui"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for name, body := range map[string]string{"ui/index.html": "<p>panel", "ui/app.js": "1", "secret.txt": "no"} {
+	for name, body := range map[string]string{"ui/index.html": "<p>panel", "ui/app.js": "1", "ui/app.css": "p{}", "secret.txt": "no"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -40,13 +40,28 @@ func TestPluginUIServesBundleWithSandboxHeaders(t *testing.T) {
 		t.Fatalf("status %d", res.StatusCode)
 	}
 	csp := res.Header.Get("Content-Security-Policy")
-	for _, want := range []string{"sandbox allow-scripts", "connect-src 'none'", "script-src http://" + res.Request.Host, "frame-ancestors 'self'"} {
+	for _, want := range []string{"sandbox allow-scripts", "connect-src 'none'", "script-src http://" + res.Request.Host + "/api/plugin-ui/panel/", "frame-ancestors 'self'"} {
 		if !strings.Contains(csp, want) {
 			t.Errorf("CSP %q lacks %q", csp, want)
 		}
 	}
 	if res.Header.Get("X-Content-Type-Options") != "nosniff" || res.Header.Get("Access-Control-Allow-Origin") != "*" {
 		t.Errorf("headers %v", res.Header)
+	}
+}
+
+func TestPluginUITypesBundleFiles(t *testing.T) {
+	e := newEnv(t)
+	addPanel(t, e)
+	for file, want := range map[string]string{"app.js": "text/javascript", "app.css": "text/css"} {
+		res, err := http.Get(e.srv.URL + "/api/plugin-ui/panel/" + file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if got := res.Header.Get("Content-Type"); !strings.HasPrefix(got, want) {
+			t.Errorf("%s: Content-Type %q, want %q", file, got, want)
+		}
 	}
 }
 

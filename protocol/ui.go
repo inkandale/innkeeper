@@ -33,7 +33,8 @@ var uiPermissions = []string{PermissionLibraryRead, PermissionCardsPush, Permiss
 
 // UI is a plugin's [ui] table.
 type UI struct {
-	// Entry is the bundle's HTML file. Core serves the folder holding it, publicly.
+	// Entry is the bundle's HTML file. Core serves the folder holding it to
+	// anyone without a login, so the folder must hold nothing else.
 	Entry       string   `toml:"entry" json:"-"`
 	Slot        string   `toml:"slot" json:"slot"`
 	Permissions []string `toml:"permissions" json:"permissions"`
@@ -68,6 +69,8 @@ func (m *Manifest) validateUI() []error {
 		errs = append(errs, errors.New("ui needs an entry"))
 	case !filepath.IsLocal(m.UI.Entry):
 		errs = append(errs, fmt.Errorf("entry %q is outside the plugin folder", m.UI.Entry))
+	case filepath.Dir(m.UI.Entry) == ".":
+		errs = append(errs, fmt.Errorf("entry %q must be in a subfolder, since that whole folder is served", m.UI.Entry))
 	}
 	if m.UI.Slot != SlotCorner {
 		errs = append(errs, fmt.Errorf("slot %q must be %s", m.UI.Slot, SlotCorner))

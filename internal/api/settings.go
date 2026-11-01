@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -257,7 +258,8 @@ func servePluginFile(w http.ResponseWriter, r *http.Request, dir, rel string) er
 }
 
 // serveUIFile writes a file of the plugin's ui bundle. The CSP names the
-// request's origin since 'self' can't be relied on in an opaque-origin frame.
+// bundle's own URL since 'self' can't be relied on in an opaque-origin frame,
+// and a bare origin would let the bundle load the app's other scripts.
 func (s *Server) serveUIFile(w http.ResponseWriter, r *http.Request) {
 	m := s.Registry.Manifests()[r.PathValue("name")]
 	rel := r.PathValue("path")
@@ -274,9 +276,15 @@ func (s *Server) serveUIFile(w http.ResponseWriter, r *http.Request) {
 	if s.secureCookies(r.Context()) {
 		scheme = "https"
 	}
-	origin := scheme + "://" + r.Host
+	base := scheme + "://" + r.Host + "/api/plugin-ui/" + m.Name + "/"
 	w.Header().Set("Content-Security-Policy", fmt.Sprintf("sandbox allow-scripts; default-src 'none'; script-src %[1]s; "+
-		"style-src %[1]s 'unsafe-inline'; img-src %[1]s data:; font-src %[1]s; connect-src 'none'; frame-ancestors 'self'", origin))
+		"style-src %[1]s 'unsafe-inline'; img-src %[1]s data:; font-src %[1]s; connect-src 'none'; frame-ancestors 'self'", base))
+	// Without a type, nosniff makes browsers refuse scripts and styles; octet-stream keeps sniffing out of it.
+	contentType := mime.TypeByExtension(filepath.Ext(rel))
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Content-Type-Options", "nosniff")

@@ -28,6 +28,7 @@ func TestManifestRejectsBadUI(t *testing.T) {
 		"no entry":       {uiManifest(&UI{Slot: SlotCorner}, CapabilityUI), "ui needs an entry"},
 		"entry escapes":  {uiManifest(&UI{Entry: "../x.html", Slot: SlotCorner}, CapabilityUI), "outside the plugin folder"},
 		"entry absolute": {uiManifest(&UI{Entry: "/x.html", Slot: SlotCorner}, CapabilityUI), "outside the plugin folder"},
+		"entry in root":  {uiManifest(&UI{Entry: "index.html", Slot: SlotCorner}, CapabilityUI), `entry "index.html" must be in a subfolder, since that whole folder is served`},
 		"unknown slot":   {uiManifest(&UI{Entry: "a.html", Slot: "side"}, CapabilityUI), `slot "side"`},
 		"unknown grant":  {uiManifest(&UI{Entry: "a.html", Slot: SlotCorner, Permissions: []string{"root"}}, CapabilityUI), `permission "root"`},
 		"repeated grant": {uiManifest(&UI{Entry: "a.html", Slot: SlotCorner, Permissions: []string{PermissionCardsPush, PermissionCardsPush}}, CapabilityUI), "listed twice"},

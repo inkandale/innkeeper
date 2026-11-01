@@ -51,23 +51,23 @@ func (b *Broker) call(ctx context.Context, method string, params json.RawMessage
 		return nil, protocol.NewError(protocol.CodeInvalidParams, "a service call's params must be an object", false)
 	}
 	if pluginhost.CallerStarting(ctx) {
-		return nil, forbidden("a plugin can't call a service during initialize")
+		return nil, protocol.Forbidden("a plugin can't call a service during initialize")
 	}
 	callerID, err := strconv.ParseInt(pluginhost.CallerInstance(ctx), 10, 64)
 	if err != nil {
-		return nil, forbidden("only a plugin instance can call a service")
+		return nil, protocol.Forbidden("only a plugin instance can call a service")
 	}
 	caller, err := b.Registry.Instance(ctx, callerID)
 	if err != nil {
 		return nil, err
 	}
 	if !slices.Contains(caller.Manifest.Uses, method) {
-		return nil, forbidden(fmt.Sprintf("plugin %s doesn't declare %s in uses", caller.Manifest.Name, method))
+		return nil, protocol.Forbidden(fmt.Sprintf("plugin %s doesn't declare %s in uses", caller.Manifest.Name, method))
 	}
 	provider, err := b.Registry.InstanceWith(ctx, head.Instance, protocol.Services[method])
 	if errors.Is(err, plugins.ErrIncapable) || errors.Is(err, plugins.ErrNotFound) ||
 		errors.Is(err, plugins.ErrBroken) || errors.Is(err, plugins.ErrDisabled) || errors.Is(err, plugins.ErrUnknownPlugin) {
-		return nil, forbidden(fmt.Sprintf("instance %d doesn't offer %s", head.Instance, method))
+		return nil, protocol.Forbidden(fmt.Sprintf("instance %d doesn't offer %s", head.Instance, method))
 	}
 	if err != nil {
 		return nil, err
@@ -77,7 +77,7 @@ func (b *Broker) call(ctx context.Context, method string, params json.RawMessage
 		return nil, err
 	}
 	if !slices.Contains(offered, method) {
-		return nil, forbidden(fmt.Sprintf("instance %d doesn't offer %s", head.Instance, method))
+		return nil, protocol.Forbidden(fmt.Sprintf("instance %d doesn't offer %s", head.Instance, method))
 	}
 	delete(fwd, "instance")
 	if head.Run != "" {
@@ -106,8 +106,4 @@ func relay(caller *protocol.Conn, run string) protocol.Handler {
 		d.Run = run
 		return nil, caller.Notify(method, d)
 	}
-}
-
-func forbidden(msg string) *protocol.Error {
-	return &protocol.Error{Code: protocol.CodeForbidden, Message: msg}
 }

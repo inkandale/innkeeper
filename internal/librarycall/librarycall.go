@@ -25,18 +25,14 @@ func Serve(ctx context.Context, reg *plugins.Registry, api http.Handler, instanc
 		return nil, protocol.InvalidParams(err)
 	}
 	if !slices.Contains(tools, c.Name) {
-		return nil, forbidden(fmt.Sprintf("library.call runs only %v, not %q", tools, c.Name))
+		return nil, protocol.Forbidden(fmt.Sprintf("library.call runs only %v, not %q", tools, c.Name))
 	}
 	granted, err := reg.HasGrant(ctx, instance, protocol.PermissionLibraryRead)
 	if err != nil {
 		return nil, err
 	}
 	if !granted {
-		return nil, forbidden("Library access is off for this instance; the owner can turn it on in its settings")
+		return nil, protocol.Forbidden("Library access is off for this instance; the owner can turn it on in its settings")
 	}
 	return mcp.Call(ctx, api, tier.Read, c.Name, c.Arguments)
-}
-
-func forbidden(msg string) *protocol.Error {
-	return &protocol.Error{Code: protocol.CodeForbidden, Message: msg}
 }

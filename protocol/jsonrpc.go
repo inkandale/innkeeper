@@ -91,6 +91,9 @@ func MethodNotFound(method string) *Error {
 	return &Error{Code: CodeMethodNotFound, Message: "method not found: " + method}
 }
 
+// Forbidden is the error for a call the caller isn't allowed to make.
+func Forbidden(msg string) *Error { return &Error{Code: CodeForbidden, Message: msg} }
+
 // Handler answers requests and notifications from the other side. For a
 // notification the result is discarded. Notification handlers run on the
 // reading goroutine, so they must not call Call on the same Conn.

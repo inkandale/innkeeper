@@ -205,17 +205,13 @@ func (s *session) publish() {
 // library and the run is still going.
 func (s *session) libraryCall(params json.RawMessage) (any, error) {
 	if !s.action.Library {
-		return nil, forbidden(fmt.Sprintf("action %s doesn't declare library", s.action.ID))
+		return nil, protocol.Forbidden(fmt.Sprintf("action %s doesn't declare library", s.action.ID))
 	}
 	// Stopping a run cancels its context before the token is removed.
 	if s.ctx.Err() != nil {
-		return nil, forbidden("the run has ended")
+		return nil, protocol.Forbidden("the run has ended")
 	}
 	return librarycall.Serve(s.ctx, s.rn.Registry, s.rn.API, s.instanceID, params)
-}
-
-func forbidden(msg string) *protocol.Error {
-	return &protocol.Error{Code: protocol.CodeForbidden, Message: msg}
 }
 
 // orEmpty makes a nil slice encode as [] instead of null.

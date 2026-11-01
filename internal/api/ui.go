@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
 	"github.com/inkandale/innkeeper/internal/librarycall"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
@@ -17,9 +18,13 @@ import (
 	"github.com/inkandale/innkeeper/protocol"
 )
 
-// uiEventBuffer is how many events wait for a slow browser before the
-// plugin's notifications block.
+// uiEventBuffer is how many events wait for a slow browser before its stream
+// ends.
 const uiEventBuffer = 256
+
+// uiWriteTimeout bounds each write to the browser, so a client that stopped
+// reading can't hold a stream open.
+var uiWriteTimeout = 30 * time.Second
 
 type uiCallIn struct {
 	ID   int64 `path:"id"`
@@ -50,8 +55,9 @@ func (s *Server) uiRoutes(api huma.API) {
 }
 
 // streamUICall runs the call in a goroutine and writes its messages here, so
-// a slow browser never blocks the plugin. Leaving cancels ctx, which ends the
-// goroutine and sends the plugin the cancel notification.
+// a slow browser never blocks the plugin: a full buffer ends the stream.
+// Leaving cancels ctx, which ends the goroutine and sends the plugin the
+// cancel notification.
 func (s *Server) streamUICall(hc huma.Context, inst pluginhost.Instance, in *uiCallIn) {
 	ctx, cancel := context.WithCancel(hc.Context())
 	defer cancel()
@@ -68,11 +74,12 @@ func (s *Server) streamUICall(hc huma.Context, inst pluginhost.Instance, in *uiC
 				s.Log.Warn("dropped an oversized ui event", "instance", inst.ID)
 				return nil, nil
 			}
-			// callCtx lasts as long as the plugin's connection, and a
-			// notification blocks that connection's read loop.
+			// A notification runs on the read loop of the plugin's
+			// connection, so waiting here would freeze every call to it.
 			select {
 			case messages <- uiMessage{"event", data}:
-			case <-ctx.Done():
+			default:
+				cancel()
 			}
 			return nil, nil
 		case protocol.MethodLibraryCall:
@@ -94,14 +101,15 @@ func (s *Server) streamUICall(hc huma.Context, inst pluginhost.Instance, in *uiC
 		case <-ctx.Done():
 		}
 	}()
-	s.writeUIStream(hc, messages)
+	s.writeUIStream(ctx, hc, messages)
 }
 
-// uiError is what the panel sees. Only a plugin's own message reaches it.
+// uiError is what the panel sees. CodeInternalError carries the raw text of
+// an untyped Go error or a panic, so only other codes reach it.
 func (s *Server) uiError(inst pluginhost.Instance, err error) json.RawMessage {
 	msg := "the plugin failed"
 	var rpcErr *protocol.Error
-	if errors.As(err, &rpcErr) {
+	if errors.As(err, &rpcErr) && rpcErr.Code != protocol.CodeInternalError {
 		msg = rpcErr.Message
 	} else if !errors.Is(err, context.Canceled) {
 		s.Log.Warn("plugin ui call failed", "instance", inst.ID, "err", err)
@@ -120,22 +128,25 @@ func compact(raw json.RawMessage) json.RawMessage {
 	return b.Bytes()
 }
 
-// writeUIStream writes messages until the final one, the client goes away,
+// writeUIStream writes messages until the final one, a write fails, ctx ends,
 // or the server stops.
-func (s *Server) writeUIStream(hc huma.Context, messages <-chan uiMessage) {
+func (s *Server) writeUIStream(ctx context.Context, hc huma.Context, messages <-chan uiMessage) {
 	hc.SetHeader("Content-Type", "text/event-stream")
 	hc.SetHeader("Cache-Control", "no-cache")
 	hc.SetHeader("X-Accel-Buffering", "no")
-	w := hc.BodyWriter()
-	flusher, _ := w.(http.Flusher)
+	// huma's BodyWriter is only an io.Writer, which a ResponseController can't take.
+	_, w := humago.Unwrap(hc)
+	rc := http.NewResponseController(w)
+	defer rc.SetWriteDeadline(time.Time{})
 	send := func(format string, args ...any) bool {
+		if err := rc.SetWriteDeadline(time.Now().Add(uiWriteTimeout)); err != nil {
+			s.Log.Warn("set a ui stream write deadline", "err", err)
+			return false
+		}
 		if _, err := fmt.Fprintf(w, format, args...); err != nil {
 			return false
 		}
-		if flusher != nil {
-			flusher.Flush()
-		}
-		return true
+		return rc.Flush() == nil
 	}
 	ping := time.NewTicker(pingInterval)
 	defer ping.Stop()
@@ -149,7 +160,7 @@ func (s *Server) writeUIStream(hc huma.Context, messages <-chan uiMessage) {
 			if !send(": ping\n\n") {
 				return
 			}
-		case <-hc.Context().Done():
+		case <-ctx.Done():
 			return
 		case <-s.Stopping:
 			return

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -185,16 +186,31 @@ func (e *testEnv) startSlowCall(t *testing.T, ctx context.Context, instance int6
 
 func waitForCancelled(t *testing.T, pluginDir string) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	waitForFile(t, pluginDir, "cancelled")
+}
+
+// waitForFile fails fast when the plugin never leaves name in its folder.
+func waitForFile(t *testing.T, pluginDir, name string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
 	for {
-		if _, err := os.Stat(filepath.Join(pluginDir, "cancelled")); err == nil {
+		if _, err := os.Stat(filepath.Join(pluginDir, name)); err == nil {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("the plugin was not cancelled")
+			t.Fatalf("the plugin left no %s file", name)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+// setUIWriteTimeout must run before newEnv, so the server stops before the
+// value is restored.
+func setUIWriteTimeout(t *testing.T, d time.Duration) {
+	t.Helper()
+	old := uiWriteTimeout
+	uiWriteTimeout = d
+	t.Cleanup(func() { uiWriteTimeout = old })
 }
 
 func TestUICallStreamsEventsThenResult(t *testing.T) {
@@ -228,8 +244,10 @@ func TestUICallHidesCoreErrors(t *testing.T) {
 	e := newEnv(t)
 	id, _ := addUIInstance(t, e)
 	want := "event: error\ndata: {\"message\":\"the plugin failed\"}\n\n"
-	if got := e.uiStream(t, id, "die", nil); got != want {
-		t.Fatalf("stream: %q", got)
+	for _, method := range []string{"die", "leak"} {
+		if got := e.uiStream(t, id, method, nil); got != want {
+			t.Fatalf("%s: stream: %q", method, got)
+		}
 	}
 }
 
@@ -291,20 +309,72 @@ func TestUICallServerStopEndsStreamAndCancelsPlugin(t *testing.T) {
 	waitForCancelled(t, dir)
 }
 
-// A client that stops reading fills the event buffer. Once it leaves, the
-// plugin's connection must still work, because every call shares its read loop.
-func TestUICallAbandonedStreamLeavesPluginUsable(t *testing.T) {
+func TestUICallRefusesLibraryCallAfterTheRunEnded(t *testing.T) {
 	e := newEnv(t)
 	id, _ := addUIInstance(t, e)
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	res := e.uiRequest(t, ctx, id, "flood", nil)
-	defer res.Body.Close()
-	time.Sleep(500 * time.Millisecond)
-	cancel()
-	if got := e.uiStream(t, id, "echo", "hi"); !strings.Contains(got, "event: result") {
+	e.call("PATCH", fmt.Sprintf("/instances/%d", id), map[string]any{"grants": []string{"library.read"}}, 200, nil)
+	e.uiStream(t, id, "remember", nil)
+	if got := e.uiStream(t, id, "replay", nil); !strings.Contains(got, "no active run with this token") {
 		t.Fatalf("stream: %q", got)
 	}
+}
+
+// startStalledFlood floods a stream that is never read and returns once the
+// plugin has sent every event, which needs core to keep reading them.
+func (e *testEnv) startStalledFlood(t *testing.T, ctx context.Context, instance int64, pluginDir string) *http.Response {
+	t.Helper()
+	res := e.uiRequest(t, ctx, instance, "flood", nil)
+	t.Cleanup(func() { res.Body.Close() })
+	waitForFile(t, pluginDir, "flooded")
+	return res
+}
+
+// The write timeout stays at its default here: firing during the test would
+// free a blocked read loop and hide the stall.
+func TestUICallStalledReaderLeavesPluginUsable(t *testing.T) {
+	e := newEnv(t)
+	id, dir := addUIInstance(t, e)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	e.startStalledFlood(t, ctx, id, dir)
+
+	echoCtx, echoCancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer echoCancel()
+	echo := e.uiRequest(t, echoCtx, id, "echo", "hi")
+	defer echo.Body.Close()
+	got, err := io.ReadAll(echo.Body)
+	if err != nil || !strings.Contains(string(got), "event: result") {
+		t.Fatalf("stream: %q, err %v", got, err)
+	}
+}
+
+func TestUICallWriteTimeoutAbortsStalledStream(t *testing.T) {
+	setUIWriteTimeout(t, 200*time.Millisecond)
+	e := newEnv(t)
+	id, dir := addUIInstance(t, e)
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	res := e.startStalledFlood(t, ctx, id, dir)
+	time.Sleep(2 * uiWriteTimeout)
+	// Only an aborted write leaves the chunked body without its terminator.
+	if _, err := io.Copy(io.Discard, res.Body); !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("read the stream: %v, want a truncated body", err)
+	}
+}
+
+func TestUICallLeavesTheConnectionUsableForTheNextResponse(t *testing.T) {
+	setUIWriteTimeout(t, 100*time.Millisecond)
+	e := newEnv(t)
+	id, _ := addUIInstance(t, e)
+	e.uiStream(t, id, "echo", "hi")
+	time.Sleep(2 * uiWriteTimeout)
+	// A POST, because the client retries a GET on a fresh connection, and not
+	// a ui call, because a stream sets its own deadline.
+	res, err := http.Post(fmt.Sprintf("%s/api/instances/%d/ui/call", e.srv.URL, id), "application/json", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatalf("next response on the connection: %v", err)
+	}
+	res.Body.Close()
 }
 
 func TestPluginListShowsUIPanelAndPermissions(t *testing.T) {

@@ -265,6 +265,14 @@ func TestLibraryCallRefusals(t *testing.T) {
 	if got := raw("lookup", getCard); !strings.Contains(got, "Brakka") || strings.Contains(got, "is_error") {
 		t.Errorf("with access: %s", got)
 	}
+	similar := map[string]any{"name": "find_similar_cards", "arguments": map[string]any{"card_id": e.cardID}}
+	if got := raw("lookup", similar); strings.HasPrefix(got, "error") {
+		t.Errorf("find_similar_cards: %s", got)
+	}
+	related := map[string]any{"name": "find_related_cards", "arguments": map[string]any{"card_id": e.cardID}}
+	if got := raw("lookup", related); strings.HasPrefix(got, "error") {
+		t.Errorf("find_related_cards: %s", got)
+	}
 	if got := raw("lookup", map[string]any{"name": "create_card", "arguments": map[string]any{"data": map[string]any{"name": "X"}}}); !strings.HasPrefix(got, "error -32003") {
 		t.Errorf("a write tool: %s", got)
 	}

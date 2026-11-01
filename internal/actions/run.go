@@ -5,22 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"slices"
 	"sync"
 
 	"github.com/inkandale/innkeeper/internal/enrich"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
-	"github.com/inkandale/innkeeper/internal/mcp"
+	"github.com/inkandale/innkeeper/internal/librarycall"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
 	"github.com/inkandale/innkeeper/internal/plugins"
-	"github.com/inkandale/innkeeper/internal/tier"
 	"github.com/inkandale/innkeeper/protocol"
 )
-
-// libraryTools are the MCP tools library.call serves: the read tools that
-// read the library, not apps or settings.
-var libraryTools = []string{"search_cards", "get_card", "get_lorebook", "get_history"}
 
 // Runner runs action jobs.
 type Runner struct {
@@ -208,12 +202,8 @@ func (s *session) publish() {
 }
 
 // libraryCall runs a library tool for the plugin, if its action declared
-// library and the owner turned on Library access for the instance.
+// library and the run is still going.
 func (s *session) libraryCall(params json.RawMessage) (any, error) {
-	var c protocol.LibraryCallParams
-	if err := json.Unmarshal(params, &c); err != nil {
-		return nil, protocol.InvalidParams(err)
-	}
 	if !s.action.Library {
 		return nil, forbidden(fmt.Sprintf("action %s doesn't declare library", s.action.ID))
 	}
@@ -221,17 +211,7 @@ func (s *session) libraryCall(params json.RawMessage) (any, error) {
 	if s.ctx.Err() != nil {
 		return nil, forbidden("the run has ended")
 	}
-	if !slices.Contains(libraryTools, c.Name) {
-		return nil, forbidden(fmt.Sprintf("library.call runs only %v, not %q", libraryTools, c.Name))
-	}
-	info, err := s.rn.Registry.GetInstance(s.ctx, s.instanceID)
-	if err != nil {
-		return nil, err
-	}
-	if !slices.Contains(info.Grants, protocol.PermissionLibraryRead) {
-		return nil, forbidden("Library access is off for this instance; the owner can turn it on in its settings")
-	}
-	return mcp.Call(s.ctx, s.rn.API, tier.Read, c.Name, c.Arguments)
+	return librarycall.Serve(s.ctx, s.rn.Registry, s.rn.API, s.instanceID, params)
 }
 
 func forbidden(msg string) *protocol.Error {

@@ -3,9 +3,11 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -160,10 +162,12 @@ func (s *Server) setVectorInstance(ctx context.Context, id *int64) error {
 	return s.fail(s.Lib.DeleteVectorsExcept(ctx, *id))
 }
 
-// fileRoutes serve theme stylesheets and plugin icons. They're public: the
-// login page uses themes too, and neither holds anything secret.
+// fileRoutes serve theme stylesheets, plugin icons, and plugin ui bundles.
+// They're public: the login page uses themes too, a sandboxed frame sends no
+// cookie, and none holds anything secret.
 func (s *Server) fileRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /plugins/{name}/icon", s.serveIcon)
+	mux.HandleFunc("GET /plugin-ui/{name}/{path...}", s.serveUIFile)
 	mux.HandleFunc("GET /theme.css", func(w http.ResponseWriter, r *http.Request) {
 		name, err := s.Registry.Theme(r.Context())
 		if err != nil {
@@ -250,4 +254,40 @@ func servePluginFile(w http.ResponseWriter, r *http.Request, dir, rel string) er
 	}
 	http.ServeContent(w, r, "", st.ModTime(), f)
 	return nil
+}
+
+// serveUIFile writes a file of the plugin's ui bundle. The CSP names the
+// request's origin since 'self' can't be relied on in an opaque-origin frame.
+func (s *Server) serveUIFile(w http.ResponseWriter, r *http.Request) {
+	m := s.Registry.Manifests()[r.PathValue("name")]
+	rel := r.PathValue("path")
+	if m == nil || m.UI == nil || !filepath.IsLocal(rel) {
+		http.NotFound(w, r)
+		return
+	}
+	// The host goes into a header, so only characters a host can hold get through (net/http blanks some bad ones).
+	if r.Host == "" || strings.IndexFunc(r.Host, func(c rune) bool { return !isHostChar(c) }) >= 0 {
+		http.Error(w, "bad host", http.StatusBadRequest)
+		return
+	}
+	scheme := "http"
+	if s.secureCookies(r.Context()) {
+		scheme = "https"
+	}
+	origin := scheme + "://" + r.Host
+	w.Header().Set("Content-Security-Policy", fmt.Sprintf("sandbox allow-scripts; default-src 'none'; script-src %[1]s; "+
+		"style-src %[1]s 'unsafe-inline'; img-src %[1]s data:; font-src %[1]s; connect-src 'none'; frame-ancestors 'self'", origin))
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if err := servePluginFile(w, r, filepath.Join(m.Dir, filepath.Dir(m.UI.Entry)), rel); err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			s.Log.Error("open plugin ui file", "plugin", m.Name, "err", err)
+		}
+		http.NotFound(w, r)
+	}
+}
+
+func isHostChar(c rune) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune(".-:[]", c)
 }

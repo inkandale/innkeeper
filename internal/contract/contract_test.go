@@ -593,6 +593,34 @@ func TestConsumerThatDropsTheToolCallFails(t *testing.T) {
 	}
 }
 
+func TestPanelOnlyConsumerIsCheckedOnlyForStartingBehindTheBroker(t *testing.T) {
+	results, err := Check(context.Background(), testutil.FakeConsumer(t, []string{"ui"}), provide(t), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := failed(results); len(f) > 0 {
+		t.Fatalf("checks failed: %v", f)
+	}
+	if !slices.ContainsFunc(results, func(r Result) bool { return r.Name == checkProviderName }) {
+		t.Errorf("check %q didn't run", checkProviderName)
+	}
+	for _, name := range []string{checkReplyName, checkDeltasName, checkToolsName, checkCancelName} {
+		if slices.ContainsFunc(results, func(r Result) bool { return r.Name == name }) {
+			t.Errorf("check %q ran for a consumer with no calls to drive", name)
+		}
+	}
+}
+
+func TestConsumerWithNoDrivenCapabilityAndNoPanelStillFails(t *testing.T) {
+	results, err := Check(context.Background(), testutil.FakeConsumer(t, []string{"codec"}), provide(t), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := failed(results)[checkCancelName]; err == nil {
+		t.Fatalf("got %v, want %q to fail", results, checkCancelName)
+	}
+}
+
 func TestUsesWithoutAProviderFails(t *testing.T) {
 	results, err := Check(context.Background(), testutil.FakeConsumer(t, []string{"action"}), Options{}, quiet)
 	if err != nil {

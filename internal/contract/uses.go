@@ -52,6 +52,10 @@ func checkUses(ctx context.Context, m *protocol.Manifest, params protocol.Initia
 			drives = append(drives, s.drive(ctx, h.call)...)
 		}
 	}
+	// A panel's methods are its own, so the kit can't call them; only the broker start is checkable.
+	if len(drives) == 0 && m.Has(protocol.CapabilityUI) {
+		return results
+	}
 	for _, drive := range drives {
 		before := model.requestCount()
 		// Only what reached the model server matters, not the consumer's own reply.

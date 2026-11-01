@@ -1222,7 +1222,7 @@ with no login. **Put nothing secret in that folder.**
 The panel runs in an iframe with `sandbox="allow-scripts"`. It has an opaque
 origin, so it can't read the owner's session or call the API. Core's
 Content-Security-Policy lets it load scripts, styles, images, and fonts only
-from `<origin>/api/plugin-ui/<name>/`, its own files, and sets
+from the bundle's own URL, `/api/plugin-ui/<name>/` on the page's host, and sets
 `connect-src 'none'`. The panel has no network; the bridge below is its only
 way out.
 
@@ -1377,8 +1377,8 @@ It loads the manifest, then checks that:
   and `action.run` of each, on a sample card or lorebook with the action's
   first field and empty inputs, returns a valid reply or an error other than
   `-32601` within 5 seconds. The check answers `library.call` with `-32601`
-- a `ui` plugin's `ui.call` of an unknown method returns `-32601`
 - an `action` plugin's `skills`, if any, are valid with unique names
+- a `ui` plugin's `ui.call` of an unknown method returns `-32601`
 - a `records` plugin's `records.list` for each type returns valid summaries with
   unique IDs, or an error other than `-32601`. When it answers with records,
   `records.get` of the first returns an object, and `records.put` of that object
@@ -1410,7 +1410,9 @@ It loads the manifest, then checks that:
   comes back with the same id, name, and arguments, and a `tool` message
   answering it; and cancelling the plugin's call ends the provider's request
   within 5 seconds. A tool call's `extra` isn't checked, because the OpenAI
-  format has no field for it
+  format has no field for it. A plugin whose only capability that can call a
+  service is `ui` is checked only for starting behind the broker, because the
+  kit can't call a panel's own methods, so test its service use in the plugin
 - a `catalog` plugin's `catalog.describe` reply is valid; `catalog.search`
   pages one item at a time without repeats and refuses an undeclared filter
   with `-32602`; `catalog.get` returns `-32004` for an unknown ID, and for the

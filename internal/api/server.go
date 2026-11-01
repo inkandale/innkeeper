@@ -198,6 +198,7 @@ func (s *Server) routes(api huma.API) {
 	s.reconcileRoutes(api)
 	s.toolRoutes(api)
 	s.actionRoutes(api)
+	s.uiRoutes(api)
 	s.enrichmentRoutes(api)
 	s.recordRoutes(api)
 	s.settingsRoutes(api)

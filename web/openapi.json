@@ -1496,9 +1496,15 @@
             "description": "For each JSON pointer the owner just overrode, the default it replaced, so the form can mark it once the default changes.",
             "type": "object"
           },
-          "library_access": {
-            "description": "Lets an action plugin read the library while it runs an action that asks to.",
-            "type": "boolean"
+          "grants": {
+            "description": "Permissions to give the instance, from its plugin's permissions.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "name": {
             "description": "Tells it apart from the plugin's other instances. A plugin may have one instance without a name; a singleton's is always without one.",
@@ -2780,15 +2786,21 @@
             "format": "date-time",
             "type": "string"
           },
+          "grants": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "id": {
             "format": "int64",
             "type": "integer"
           },
           "label": {
             "type": "string"
-          },
-          "library_access": {
-            "type": "boolean"
           },
           "name": {
             "type": "string"
@@ -2832,7 +2844,7 @@
           "label",
           "config",
           "secrets",
-          "library_access",
+          "grants",
           "sync_library",
           "created_at",
           "updated_at",
@@ -5660,6 +5672,30 @@
         ],
         "type": "object"
       },
+      "UiCallInBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/UiCallInBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "method": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "params": {}
+        },
+        "required": [
+          "method"
+        ],
+        "type": "object"
+      },
       "UpdateCollectionInBody": {
         "additionalProperties": false,
         "properties": {
@@ -5755,9 +5791,12 @@
             "description": "For an enrich instance: run it on the cards an import or an edit changes. Turning it on doesn't score older cards; start a run for those.",
             "type": "boolean"
           },
-          "library_access": {
-            "description": "Lets an action plugin read the library while it runs an action that asks to.",
-            "type": "boolean"
+          "grants": {
+            "description": "Replaces the instance's permissions, from its plugin's permissions. Omit to keep them.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "name": {
             "description": "Empty clears it. A singleton's instance never keeps one.",
@@ -10518,6 +10557,55 @@
         "summary": "Run a plugin instance's MCP tool",
         "tags": [
           "Plugin tools"
+        ]
+      }
+    },
+    "/instances/{id}/ui/call": {
+      "post": {
+        "description": "Server-sent events: an event per ui.event the plugin sends, then one result or error.",
+        "operationId": "call-plugin-ui",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UiCallInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {}
+            },
+            "description": "A stream of events"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Call a plugin panel's backend",
+        "tags": [
+          "Plugins"
         ]
       }
     },

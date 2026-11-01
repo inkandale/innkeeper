@@ -1522,6 +1522,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/instances/{id}/ui/call": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Call a plugin panel's backend
+         * @description Server-sent events: an event per ui.event the plugin sends, then one result or error.
+         */
+        post: operations["call-plugin-ui"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/jobs": {
         parameters: {
             query?: never;
@@ -3198,8 +3218,8 @@ export interface components {
             default_bases?: {
                 [key: string]: unknown;
             };
-            /** @description Lets an action plugin read the library while it runs an action that asks to. */
-            library_access?: boolean;
+            /** @description Permissions to give the instance, from its plugin's permissions. */
+            grants?: string[] | null;
             /** @description Tells it apart from the plugin's other instances. A plugin may have one instance without a name; a singleton's is always without one. */
             name?: string;
             /** @description For a login provider: the subject that logs in as the owner. */
@@ -3684,10 +3704,10 @@ export interface components {
             enrich_on_change: boolean;
             /** Format: date-time */
             enrich_on_change_since: string;
+            grants: string[] | null;
             /** Format: int64 */
             id: number;
             label: string;
-            library_access: boolean;
             name?: string;
             owner_subject?: string;
             plugin: string;
@@ -4765,6 +4785,16 @@ export interface components {
             last: string | null;
             ok: boolean;
         };
+        UiCallInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/UiCallInBody.json
+             */
+            readonly $schema?: string;
+            method: string;
+            params?: unknown;
+        };
         UpdateCollectionInBody: {
             /**
              * Format: uri
@@ -4818,8 +4848,8 @@ export interface components {
             disabled?: boolean;
             /** @description For an enrich instance: run it on the cards an import or an edit changes. Turning it on doesn't score older cards; start a run for those. */
             enrich_on_change?: boolean;
-            /** @description Lets an action plugin read the library while it runs an action that asks to. */
-            library_access?: boolean;
+            /** @description Replaces the instance's permissions, from its plugin's permissions. Omit to keep them. */
+            grants?: string[];
             /** @description Empty clears it. A singleton's instance never keeps one. */
             name?: string;
             /** @description Empty clears it, which logs the owner out of this provider. */
@@ -7883,6 +7913,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MCPCallResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "call-plugin-ui": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UiCallInBody"];
+            };
+        };
+        responses: {
+            /** @description A stream of events */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": unknown;
                 };
             };
             /** @description Error */

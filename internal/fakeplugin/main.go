@@ -143,6 +143,8 @@ func main() {
 			return fakeActions(*mode), nil
 		case protocol.MethodActionRun:
 			return actionRun(ctx, conn, params, config, *mode)
+		case protocol.MethodUICall:
+			return uiCall(ctx, conn, params)
 		case protocol.MethodEnrichRun:
 			return enrichRun(ctx, conn, params, *mode, config)
 		case protocol.MethodRecordsList, protocol.MethodRecordsGet, protocol.MethodRecordsPut,

@@ -1690,7 +1690,7 @@ export function Launchers() {
 .plugin-launchers { position: fixed; right: 16px; bottom: 16px; display: flex; gap: 8px; align-items: flex-end; z-index: 50; }
 .plugin-bubble { width: 48px; height: 48px; border-radius: 50%; cursor: pointer; }
 .plugin-bubble img { width: 28px; height: 28px; }
-.plugin-panel { display: flex; flex-direction: column; width: min(420px, calc(100vw - 32px)); height: min(640px, calc(100vh - 32px)); border-radius: 8px; overflow: hidden; }
+.plugin-panel { display: flex; flex-direction: column; width: min(420px, calc(100vw - 32px)); height: min(640px, calc(100dvh - 32px)); border-radius: 8px; overflow: hidden; }
 .plugin-panel header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; }
 .plugin-panel iframe { flex: 1; border: 0; }
 ```

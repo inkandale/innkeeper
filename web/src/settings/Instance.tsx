@@ -35,6 +35,14 @@ export function Instance() {
 }
 
 /** canon is v as JSON with object keys sorted, so edits that move a key don't count as changes. */
+const permissionLabels: Record<string, { label: string; hint: string }> = {
+  "library.read": { label: "Library access", hint: "Lets this plugin read your cards and lorebooks while it runs." },
+  "cards.push": { label: "Offer push", hint: "Lets this plugin open the push dialog. You still confirm each push." },
+  "cards.collect": { label: "Offer add to collection", hint: "Lets this plugin open the collection dialog. You still confirm." },
+};
+
+const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
+
 function canon(v: unknown): string {
   return JSON.stringify(v, (_, x) =>
     x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1))) : x,
@@ -96,13 +104,13 @@ export function InstanceForm({
   const stored = {
     name: instance?.name ?? "",
     owner: instance?.owner_subject ?? "",
-    libraryAccess: instance?.library_access ?? false,
+    grants: instance?.grants ?? [],
     enrichOnChange: instance?.enrich_on_change ?? false,
     syncLibrary: instance?.sync_library ?? 1,
   };
   const [name, setName] = useState(stored.name);
   const [owner, setOwner] = useState(stored.owner);
-  const [libraryAccess, setLibraryAccess] = useState(stored.libraryAccess);
+  const [grants, setGrants] = useState(stored.grants);
   const [enrichOnChange, setEnrichOnChange] = useState(stored.enrichOnChange);
   const [syncLibrary, setSyncLibrary] = useState(stored.syncLibrary);
   const [created, setCreated] = useState<number>();
@@ -121,7 +129,7 @@ export function InstanceForm({
     // Save trims these, so trailing spaces alone aren't a change.
     (named && name.trim() !== stored.name) ||
     (caps.includes("auth") && owner.trim() !== stored.owner) ||
-    libraryAccess !== stored.libraryAccess ||
+    !sameSet(grants, stored.grants) ||
     enrichOnChange !== stored.enrichOnChange ||
     syncLibrary !== stored.syncLibrary;
   const discard = () => {
@@ -129,7 +137,7 @@ export function InstanceForm({
     setSecrets({});
     setName(stored.name);
     setOwner(stored.owner);
-    setLibraryAccess(stored.libraryAccess);
+    setGrants(stored.grants);
     setEnrichOnChange(stored.enrichOnChange);
     setSyncLibrary(stored.syncLibrary);
   };
@@ -195,7 +203,7 @@ export function InstanceForm({
               default_bases,
               secrets: hasSecrets ? (secrets as Record<string, string>) : undefined,
               owner_subject: trimmedOwner || undefined,
-              library_access: libraryAccess || undefined,
+              grants: grants.length ? grants : undefined,
             },
           }),
         );
@@ -210,7 +218,7 @@ export function InstanceForm({
             default_bases: canon(cfg) !== initial ? default_bases : undefined,
             secrets: hasSecrets ? secrets : undefined,
             owner_subject: trimmedOwner !== undefined && trimmedOwner !== stored.owner ? trimmedOwner : undefined,
-            library_access: libraryAccess !== (instance.library_access ?? false) ? libraryAccess : undefined,
+            grants: sameSet(grants, stored.grants) ? undefined : grants,
             enrich_on_change: enrichOnChange !== stored.enrichOnChange ? enrichOnChange : undefined,
             sync_library: syncLibrary !== instance.sync_library ? syncLibrary : undefined,
           },
@@ -370,15 +378,19 @@ export function InstanceForm({
               <small className="muted">The library this app's syncs match its items against and import new ones into.</small>
             </div>
           )}
-          {caps.includes("action") && (
-            <div className="form-field">
+          {(plugin.permissions ?? []).map((p) => (
+            <div className="form-field" key={p}>
               <label className="check">
-                <span>Library access</span>
-                <input type="checkbox" checked={libraryAccess} onChange={(e) => setLibraryAccess(e.target.checked)} />
+                <span>{permissionLabels[p]?.label ?? p}</span>
+                <input
+                  type="checkbox"
+                  checked={grants.includes(p)}
+                  onChange={(e) => setGrants(e.target.checked ? [...grants, p] : grants.filter((g) => g !== p))}
+                />
               </label>
-              <small className="muted">Lets actions that ask for it read your cards and lorebooks while they run.</small>
+              <small className="muted">{permissionLabels[p]?.hint}</small>
             </div>
-          )}
+          ))}
           {/* An existing instance shows its effective setting; new instances take the plugin's default. */}
           {instance && caps.includes("enrich") && (
             <div className="form-field">

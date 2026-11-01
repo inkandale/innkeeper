@@ -4145,6 +4145,8 @@ export interface components {
             name: string;
             /** @description Capabilities the plugin needs another plugin to offer, such as ai */
             needs?: string[] | null;
+            /** @description What the owner can grant the plugin's instances */
+            permissions?: string[] | null;
             /** @description Source of the version a rollback returns to */
             previous_source?: string;
             /** @description Version a rollback returns to */
@@ -4167,6 +4169,10 @@ export interface components {
             status: "ready" | "needs_setup" | "broken" | "disabled";
             /** @description The name to show: the manifest's title, or name without one */
             title: string;
+            /** @description The web panel a ui plugin shows */
+            ui?: components["schemas"]["UI"];
+            /** @description The panel's page */
+            ui_url?: string;
             version: string;
         };
         PluginSkill: {
@@ -4784,6 +4790,10 @@ export interface components {
             /** Format: date-time */
             last: string | null;
             ok: boolean;
+        };
+        UI: {
+            permissions: string[] | null;
+            slot: string;
         };
         UiCallInBody: {
             /**

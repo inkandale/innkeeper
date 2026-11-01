@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -303,5 +304,24 @@ func TestUICallAbandonedStreamLeavesPluginUsable(t *testing.T) {
 	cancel()
 	if got := e.uiStream(t, id, "echo", "hi"); !strings.Contains(got, "event: result") {
 		t.Fatalf("stream: %q", got)
+	}
+}
+
+func TestPluginListShowsUIPanelAndPermissions(t *testing.T) {
+	e := newEnv(t)
+	addUIInstance(t, e)
+	var list []pluginOut
+	e.call("GET", "/plugins", nil, 200, &list)
+	byName := map[string]pluginOut{}
+	for _, p := range list {
+		byName[p.Name] = p
+	}
+	panel := byName["panelled"]
+	if panel.UIURL != "/api/plugin-ui/panelled/index.html" || panel.UI == nil || panel.UI.Slot != protocol.SlotCorner ||
+		!slices.Equal(panel.Permissions, []string{protocol.PermissionLibraryRead}) {
+		t.Fatalf("ui plugin = %+v", panel)
+	}
+	if plain := byName["vault"]; plain.UI != nil || plain.UIURL != "" || len(plain.Permissions) != 0 {
+		t.Fatalf("plain plugin = %+v", plain)
 	}
 }

@@ -36,7 +36,7 @@ const gated = {
 };
 const login = { name: "password-login", version: "0.1.0", capabilities: ["auth"], secrets: ["password_hash"], multiple_instances: true };
 const ai = {
-  name: "forge-ai", version: "0.1.0", capabilities: ["action", "records"], secrets: [],
+  name: "forge-ai", version: "0.1.0", capabilities: ["action", "records"], permissions: ["library.read"], secrets: [],
   records: { skills: { label: "Skills", schema: { type: "object", properties: { name: { type: "string" } } } } },
 };
 const broken = {
@@ -45,7 +45,7 @@ const broken = {
   sync_library: 1, enrich_on_change: false, enrich_on_change_since: now,
 };
 const owned = { ...broken, id: 4, plugin: "password-login", label: "pw", name: "pw", config: {}, secrets: [], owner_subject: "me" };
-const forge = { ...broken, id: 5, plugin: "forge-ai", label: "ai", name: "ai", config: {}, secrets: [], broken_error: undefined, library_access: false };
+const forge = { ...broken, id: 5, plugin: "forge-ai", label: "ai", name: "ai", config: {}, secrets: [], broken_error: undefined, grants: [] };
 const judge = { name: "judge", version: "0.1.0", capabilities: ["enrich"], secrets: [], multiple_instances: true, status: "ready" as const };
 const judgeInst = { ...forge, id: 7, plugin: "judge", label: "judge", name: "judge", enrich_on_change: false };
 const conf = {
@@ -350,7 +350,28 @@ test("an action plugin's instance turns on Library access", async () => {
   await user.click(access);
   await user.click(screen.getByRole("button", { name: "Save" }));
   await vi.waitFor(() => expect(sent).toHaveLength(1));
-  expect(sent[0]?.body).toEqual({ library_access: true });
+  expect(sent[0]?.body).toEqual({ grants: ["library.read"] });
+});
+
+test("turning off the last permission sends an empty grants list", async () => {
+  const user = userEvent.setup();
+  const router = createMemoryRouter(
+    [{ path: "/", element: <InstanceForm plugin={{ ...ai, title: "ai", source: "official", builtin: false, multiple_instances: false, status: "ready" } satisfies Plugin} instance={{ ...forge, grants: ["library.read"] }} /> }],
+    { initialEntries: ["/"] },
+  );
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <Toasts>
+        <RouterProvider router={router} />
+      </Toasts>
+    </QueryClientProvider>,
+  );
+  const access = await screen.findByLabelText("Library access");
+  expect(access).toBeChecked();
+  await user.click(access);
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await vi.waitFor(() => expect(sent).toHaveLength(1));
+  expect(sent[0]?.body).toEqual({ grants: [] });
 });
 
 test("an enrich plugin's instance turns on Update cards as they change", async () => {
@@ -481,7 +502,7 @@ test("saving refetches the defaults, so a saved override's update mark is curren
   const user = userEvent.setup();
   const onSaved = vi.fn();
   const router = createMemoryRouter(
-    [{ path: "/", element: <InstanceForm plugin={{ ...conf, title: "conf", source: "official", builtin: false } satisfies Plugin} instance={{ ...confInst, library_access: false, enrich_on_change: false, enrich_on_change_since: now }} onSaved={onSaved} /> }],
+    [{ path: "/", element: <InstanceForm plugin={{ ...conf, title: "conf", source: "official", builtin: false } satisfies Plugin} instance={{ ...confInst, grants: [], enrich_on_change: false, enrich_on_change_since: now }} onSaved={onSaved} /> }],
     { initialEntries: ["/"] },
   );
   render(

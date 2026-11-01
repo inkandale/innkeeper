@@ -3903,6 +3903,16 @@
               "null"
             ]
           },
+          "permissions": {
+            "description": "What the owner can grant the plugin's instances",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "previous_source": {
             "description": "Source of the version a rollback returns to",
             "type": "string"
@@ -3950,6 +3960,14 @@
           },
           "title": {
             "description": "The name to show: the manifest's title, or name without one",
+            "type": "string"
+          },
+          "ui": {
+            "$ref": "#/components/schemas/UI",
+            "description": "The web panel a ui plugin shows"
+          },
+          "ui_url": {
+            "description": "The panel's page",
             "type": "string"
           },
           "version": {
@@ -5669,6 +5687,28 @@
           "every",
           "last",
           "ok"
+        ],
+        "type": "object"
+      },
+      "UI": {
+        "additionalProperties": false,
+        "properties": {
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "slot": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot",
+          "permissions"
         ],
         "type": "object"
       },

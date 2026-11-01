@@ -15,11 +15,14 @@ const requests: Record<string, { grant: string; open: (h: Host, id: number) => v
   "add-to-collection": { grant: "cards.collect", open: (h, id) => h.openCollection(id) },
 };
 
+// Each running call holds a server stream, and a panel is untrusted.
+const maxRunning = 4;
+
 /** handleBridge answers one panel message. Panel code is untrusted, so every field is checked here. */
 export async function handleBridge(raw: unknown, host: Host, running: Map<number, AbortController>, post: (reply: unknown) => void) {
   if (typeof raw !== "object" || raw === null) return;
   const msg = raw as Message;
-  if (typeof msg.id !== "number" || typeof msg.call !== "string") return;
+  if (!Number.isSafeInteger(msg.id) || typeof msg.call !== "string") return;
   const { id } = msg;
   const card = typeof msg.card === "number" && Number.isSafeInteger(msg.card) && msg.card > 0 ? msg.card : undefined;
   switch (msg.call) {
@@ -43,6 +46,7 @@ export async function handleBridge(raw: unknown, host: Host, running: Map<number
     case "ui.call": {
       if (typeof msg.method !== "string") return post({ id, error: "bad method" });
       if (running.has(id)) return post({ id, error: "id in use" });
+      if (running.size >= maxRunning) return post({ id, error: "too many calls" });
       const controller = new AbortController();
       running.set(id, controller);
       try {

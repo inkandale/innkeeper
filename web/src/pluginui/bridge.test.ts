@@ -85,3 +85,38 @@ test("ui.abort aborts the matching call and ignores unknown ids", async () => {
   await run(host(), { id: 8, call: "ui.abort" }, running);
   expect(controller.signal.aborted).toBe(true);
 });
+
+test.each([1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1, "1"])("id %s is ignored", async (id) => {
+  const h = host();
+  expect(await run(h, { id, call: "host.context" })).toEqual([]);
+  expect(await run(h, { id, call: "ui.call", method: "send" })).toEqual([]);
+  expect(h.call).not.toHaveBeenCalled();
+});
+
+test("ui.call past the running limit is refused", async () => {
+  const running = new Map([1, 2, 3, 4].map((id) => [id, new AbortController()]));
+  const h = host();
+  expect(await run(h, { id: 5, call: "ui.call", method: "send" }, running)).toEqual([{ id: 5, error: "too many calls" }]);
+  expect(h.call).not.toHaveBeenCalled();
+  expect(running.size).toBe(4);
+});
+
+test("a finished call frees its id and its slot", async () => {
+  const running = new Map([1, 2, 3].map((id) => [id, new AbortController()]));
+  const h = host();
+  await run(h, { id: 4, call: "ui.call", method: "send" }, running);
+  expect(running.has(4)).toBe(false);
+  expect(await run(h, { id: 4, call: "ui.call", method: "send" }, running)).toContainEqual({ id: 4, result: { status: "ok" } });
+  vi.mocked(h.call).mockRejectedValueOnce(new Error("boom"));
+  await run(h, { id: 5, call: "ui.call", method: "send" }, running);
+  expect(running.size).toBe(3);
+});
+
+test.each([
+  [new Error("boom"), "boom"],
+  ["not an Error", "the call failed"],
+])("a call that throws %s replies with its error", async (thrown, error) => {
+  const h = host();
+  vi.mocked(h.call).mockRejectedValueOnce(thrown);
+  expect(await run(h, { id: 12, call: "ui.call", method: "send" })).toEqual([{ id: 12, error }]);
+});

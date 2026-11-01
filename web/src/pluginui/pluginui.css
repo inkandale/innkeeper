@@ -31,7 +31,7 @@
   display: flex;
   flex-direction: column;
   width: min(420px, calc(100vw - 32px));
-  height: min(640px, calc(100vh - 32px));
+  height: min(640px, calc(100dvh - 32px));
   overflow: hidden;
   border-radius: 8px;
 }
@@ -46,4 +46,15 @@
 .plugin-panel iframe {
   flex: 1;
   border: 0;
+}
+
+/* The rail becomes a bottom bar at this width; stay above it. */
+@media (max-width: 640px) {
+  .plugin-launchers {
+    bottom: 72px;
+  }
+
+  .plugin-panel {
+    height: min(640px, calc(100dvh - 88px));
+  }
 }

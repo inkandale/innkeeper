@@ -50,7 +50,6 @@ type pluginOut struct {
 	Builtin           bool                     `json:"builtin" doc:"The image ships this plugin, so uninstalling falls back to that copy"`
 	Icon              string                   `json:"icon,omitempty" doc:"URL of the app's logo"`
 	SettingsActions   map[string]string        `json:"settings_actions,omitempty" doc:"Buttons the instance form shows: label by action id, run with POST /plugins/{name}/settings/run"`
-	UI                *protocol.UI             `json:"ui,omitempty" doc:"The web panel a ui plugin shows"`
 	UIURL             string                   `json:"ui_url,omitempty" doc:"The panel's page"`
 	Permissions       []string                 `json:"permissions,omitempty" doc:"What the owner can grant the plugin's instances"`
 }
@@ -136,7 +135,7 @@ func (s *Server) instanceRoutes(api huma.API) {
 					Secrets: orEmpty(m.Secrets), Formats: m.Formats, Inputs: m.Inputs, Config: m.Config,
 					Source: "builtin", Builtin: s.Registry.IsBuiltin(m.Name),
 					Description: m.Description, Category: m.Category, MultipleInstances: m.AllowsManyInstances(),
-					Status: plugins.Status(m, byPlugin[m.Name]), UI: m.UI, Permissions: m.Permissions()}
+					Status: plugins.Status(m, byPlugin[m.Name]), Permissions: m.Permissions()}
 				if m.Has(protocol.CapabilityUI) {
 					p.UIURL = "/api/plugin-ui/" + m.Name + "/" + path.Base(m.UI.Entry)
 				}

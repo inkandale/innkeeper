@@ -423,7 +423,7 @@ func (r *Registry) CreateInstance(ctx context.Context, n NewInstance) (int64, er
 	}
 	var id int64
 	err = tx.QueryRow(ctx, `INSERT INTO plugin_instance (plugin, name, config, secrets, owner_subject, grants, default_hashes, enrich_on_change)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`, n.Plugin, n.Name, n.Config, sealed, n.OwnerSubject, orEmptyGrants(n.Grants), hashes, m.EnrichOnChange).Scan(&id)
+		VALUES ($1, $2, $3, $4, $5, coalesce($6::text[], '{}'), $7, $8) RETURNING id`, n.Plugin, n.Name, n.Config, sealed, n.OwnerSubject, n.Grants, hashes, m.EnrichOnChange).Scan(&id)
 	if err != nil {
 		return 0, writeErr(err)
 	}
@@ -585,6 +585,8 @@ func (r *Registry) scanInfo(row pgx.Row) (InstanceInfo, error) {
 	if m, ok := r.manifest(i.Plugin); ok {
 		i.Label = m.DisplayName()
 		i.EnrichOnChange = m.EnrichOnChange
+		// A plugin update can drop a permission; the stored grant no longer counts.
+		i.Grants = slices.DeleteFunc(i.Grants, func(g string) bool { return !slices.Contains(m.Permissions(), g) })
 	}
 	if onChange != nil {
 		i.EnrichOnChange = *onChange
@@ -1066,13 +1068,6 @@ func (r *Registry) SetTheme(ctx context.Context, name string) error {
 		}
 	}
 	return r.SetSetting(ctx, "theme", name)
-}
-
-func orEmptyGrants(grants []string) []string {
-	if grants == nil {
-		return []string{}
-	}
-	return grants
 }
 
 // checkGrants refuses a permission the plugin doesn't declare.

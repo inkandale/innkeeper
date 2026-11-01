@@ -4169,8 +4169,6 @@ export interface components {
             status: "ready" | "needs_setup" | "broken" | "disabled";
             /** @description The name to show: the manifest's title, or name without one */
             title: string;
-            /** @description The web panel a ui plugin shows */
-            ui?: components["schemas"]["UI"];
             /** @description The panel's page */
             ui_url?: string;
             version: string;
@@ -4790,10 +4788,6 @@ export interface components {
             /** Format: date-time */
             last: string | null;
             ok: boolean;
-        };
-        UI: {
-            permissions: string[] | null;
-            slot: string;
         };
         UiCallInBody: {
             /**

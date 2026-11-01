@@ -136,8 +136,9 @@ any other plugin error become a final `error` SSE event.
 
 The API process refuses plugin calls today, through `api.NoCore`. It now runs
 the same `pluginhost.Runs` and `services.Broker` as the worker, so a `ui` run can
-use `ai.chat` and `library.call`. Plugin calls outside a run are refused, as
-`Runs.Handle` already does.
+use `ai.chat` and `library.call`. `Runs.Handle` refuses a plugin's call outside
+a run, but a service call through `Broker.call` needs no active run; the
+plugin's `uses` still applies, as in the worker.
 
 ### Packaging
 

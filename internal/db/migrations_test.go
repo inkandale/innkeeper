@@ -220,3 +220,30 @@ func TestForeignKeysAreDeferrable(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestGrantsMigrationKeepsLibraryAccess(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `ALTER TABLE plugin_instance ADD COLUMN library_access boolean NOT NULL DEFAULT false;
+		INSERT INTO plugin_instance (plugin, name, library_access) VALUES ('fake', 'on', true), ('fake', 'off', false);
+		ALTER TABLE plugin_instance DROP COLUMN grants;
+		DELETE FROM schema_migration WHERE name = '0054_instance_grants.sql'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	var on, off []string
+	if err := pool.QueryRow(ctx, `SELECT (SELECT grants FROM plugin_instance WHERE name = 'on'),
+		(SELECT grants FROM plugin_instance WHERE name = 'off')`).Scan(&on, &off); err != nil {
+		t.Fatal(err)
+	}
+	if len(on) != 1 || on[0] != "library.read" || off == nil || len(off) != 0 {
+		t.Fatalf("grants = %v and %v, want {library.read} and {}", on, off)
+	}
+	var n int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns
+		WHERE table_name = 'plugin_instance' AND column_name = 'library_access'`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("library_access columns = %d, %v; want 0", n, err)
+	}
+}

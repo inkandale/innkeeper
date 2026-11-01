@@ -168,6 +168,24 @@ func TestInstanceGrants(t *testing.T) {
 	e.call("PATCH", path, map[string]any{"grants": []string{"cards.push"}}, 400, nil)
 }
 
+func TestStaleGrantIsNeitherReportedNorHonoured(t *testing.T) {
+	e := newEnv(t)
+	var inst plugins.InstanceInfo
+	e.call("POST", "/instances", map[string]any{"plugin": "fake", "name": "Plain"}, 201, &inst)
+	if _, err := e.pool.Exec(context.Background(), `UPDATE plugin_instance SET grants = '{library.read}' WHERE id = $1`, inst.ID); err != nil {
+		t.Fatal(err)
+	}
+	path := fmt.Sprintf("/instances/%d", inst.ID)
+	e.call("GET", path, nil, 200, &inst)
+	if len(inst.Grants) != 0 {
+		t.Fatalf("stale grant reported: %v", inst.Grants)
+	}
+	if ok, err := e.s.Registry.HasGrant(context.Background(), inst.ID, "library.read"); err != nil || ok {
+		t.Fatalf("HasGrant = %v, %v; want false", ok, err)
+	}
+	e.call("PATCH", path, map[string]any{"grants": []string{}}, 200, &inst)
+}
+
 func TestDisableRefusesLastLogin(t *testing.T) {
 	e := newEnv(t)
 	path := fmt.Sprintf("/instances/%d", e.loginID)

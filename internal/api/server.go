@@ -79,15 +79,8 @@ type Server struct {
 	tools, actions, catalogInfo sync.Map
 	// lastPrune is when OAuth clients were last pruned, in Unix seconds.
 	lastPrune atomic.Int64
-	// inProcess is APIHandler's handler, built once.
-	inProcessOnce sync.Once
-	inProcess     http.Handler
-}
-
-// inProcessAPI serves library.call's tools. Routes register only once per mux.
-func (s *Server) inProcessAPI() http.Handler {
-	s.inProcessOnce.Do(func() { s.inProcess = s.APIHandler() })
-	return s.inProcess
+	// inProcess serves library.call's tools. Handler sets it.
+	inProcess http.Handler
 }
 
 // public marks an operation that needs no credentials.
@@ -281,6 +274,7 @@ func bodyFields(api huma.API, op *huma.Operation) string {
 func (s *Server) Handler() http.Handler {
 	s.loginSlot = make(chan struct{}, 1)
 	apiMux, api := s.apiHandler()
+	s.inProcess = apiMux
 	mux := http.NewServeMux()
 	mux.Handle("/api/", http.StripPrefix("/api", apiMux))
 	// Browsers arrive here from a login provider; it isn't part of the API.

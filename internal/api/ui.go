@@ -83,7 +83,7 @@ func (s *Server) streamUICall(hc huma.Context, inst pluginhost.Instance, in *uiC
 			}
 			return nil, nil
 		case protocol.MethodLibraryCall:
-			return librarycall.Serve(callCtx, s.Registry, s.inProcessAPI(), in.ID, params)
+			return librarycall.Serve(callCtx, s.Registry, s.inProcess, in.ID, params)
 		}
 		return nil, protocol.MethodNotFound(method)
 	}, func(level, message string) {

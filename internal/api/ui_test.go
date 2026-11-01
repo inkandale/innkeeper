@@ -372,11 +372,11 @@ func TestPluginListShowsUIPanelAndPermissions(t *testing.T) {
 		byName[p.Name] = p
 	}
 	panel := byName["panelled"]
-	if panel.UIURL != "/api/plugin-ui/panelled/index.html" || panel.UI == nil || panel.UI.Slot != protocol.SlotCorner ||
+	if panel.UIURL != "/api/plugin-ui/panelled/index.html" ||
 		!slices.Equal(panel.Permissions, []string{protocol.PermissionLibraryRead}) {
 		t.Fatalf("ui plugin = %+v", panel)
 	}
-	if plain := byName["vault"]; plain.UI != nil || plain.UIURL != "" || len(plain.Permissions) != 0 {
+	if plain := byName["vault"]; plain.UIURL != "" || len(plain.Permissions) != 0 {
 		t.Fatalf("plain plugin = %+v", plain)
 	}
 }

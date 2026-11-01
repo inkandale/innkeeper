@@ -35,9 +35,9 @@ var uiPermissions = []string{PermissionLibraryRead, PermissionCardsPush, Permiss
 type UI struct {
 	// Entry is the bundle's HTML file. Core serves the folder holding it to
 	// anyone without a login, so the folder must hold nothing else.
-	Entry       string   `toml:"entry" json:"-"`
-	Slot        string   `toml:"slot" json:"slot"`
-	Permissions []string `toml:"permissions" json:"permissions"`
+	Entry       string   `toml:"entry"`
+	Slot        string   `toml:"slot"`
+	Permissions []string `toml:"permissions"`
 }
 
 // UICallParams is one call from a plugin's panel.

@@ -31,12 +31,13 @@ const (
 	CapabilitySites    = "sites"
 	CapabilityAI       = "ai"
 	CapabilitySettings = "settings"
+	CapabilityUI       = "ui"
 )
 
 // Capabilities lists every capability a plugin may declare.
 var Capabilities = []string{CapabilityImport, CapabilityPush, CapabilityPull, CapabilityAction, CapabilityRecords,
 	CapabilityEnrich, CapabilityCodec, CapabilityAuth, CapabilityMCP, CapabilityTheme, CapabilityCatalog,
-	CapabilitySites, CapabilityAI, CapabilitySettings}
+	CapabilitySites, CapabilityAI, CapabilitySettings, CapabilityUI}
 
 // WithoutRetired drops capabilities an older core defined, so a manifest or
 // handshake that still lists one keeps working.
@@ -133,6 +134,9 @@ type Manifest struct {
 	// one of IconTypes.
 	Icon string `toml:"icon"`
 
+	// UI is the web panel a ui plugin shows.
+	UI *UI `toml:"ui"`
+
 	// Dir is the absolute path of the plugin's folder.
 	Dir string `toml:"-"`
 }
@@ -199,6 +203,11 @@ func LoadManifest(dir string) (*Manifest, error) {
 	if m.Icon != "" {
 		if err := checkFile(m.Dir, m.Icon); err != nil {
 			return nil, fmt.Errorf("manifest %s: icon: %w", abs, err)
+		}
+	}
+	if m.UI != nil {
+		if err := checkFile(m.Dir, m.UI.Entry); err != nil {
+			return nil, fmt.Errorf("manifest %s: ui entry: %w", abs, err)
 		}
 	}
 	return &m, nil
@@ -299,6 +308,7 @@ func (m *Manifest) Validate() error {
 	}
 	errs = append(errs, unique("capability", m.Capabilities, nil)...)
 	errs = append(errs, m.checkCapabilityKeys()...)
+	errs = append(errs, m.validateUI()...)
 	errs = append(errs, unique("secret name", m.Secrets, matches(keyPattern))...)
 	for key, e := range m.Enrichments {
 		if !keyPattern.MatchString(key) {

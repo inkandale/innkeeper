@@ -193,8 +193,9 @@ export function useForgeView(props: {
       )}
     </>
   );
-  if (!on) return { tabs: [], notices, overlays };
   const reviewTab: PageTab = { id: "review", label: `Review${pending ? ` (${reviewCount})` : ""}`, disabled: !pending, panel: review };
+  // A panel's proposal needs Review even with no card action on offer.
+  if (!on) return { tabs: pending ? [reviewTab] : [], notices, overlays };
   return {
     start: isNew ? { id: "start", label: "Start", panel: <Start forge={forge} avatar={props.avatar} /> } : undefined,
     tabs: isNew ? [reviewTab] : [reviewTab, { id: "report", label: "Report", panel: report }],

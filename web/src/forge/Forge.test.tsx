@@ -55,7 +55,12 @@ let runFails: boolean;
 let detailDelay: number;
 let mentionSearches: unknown[];
 let puts: { data: Record<string, unknown> }[];
+// listDelay and revisionDelay hold back the job list and a revision fetch.
+let listDelay: number;
+let revisionDelay: number;
 beforeEach(() => {
+  listDelay = 0;
+  revisionDelay = 0;
   puts = [];
   mentionSearches = [];
   actions = allActions;
@@ -74,10 +79,13 @@ beforeEach(() => {
         if (req.method === "PUT") puts.push(await req.json());
         return json(entity);
       }
+      if (path === "/api/cards/7/revisions/10") await new Promise((r) => setTimeout(r, revisionDelay));
+      if (path === "/api/cards/7/revisions/99") return json({ detail: "revision not found" }, 404);
       if (path === "/api/cards/7/revisions/10") return json({ ...entity.revision, id: 10, data: { ...data, description: "Older." } });
       if (path === "/api/actions") return json(actions);
       if (path === "/api/actions/skills") return json(skills);
       // Like the server, the list leaves an action run's result out; GET /jobs/{id} has it.
+      if (path === "/api/jobs") await new Promise((r) => setTimeout(r, listDelay));
       if (path === "/api/jobs") return json(url.searchParams.get("card_id") === "7" ? jobs.map(listed) : []);
       const one = /^\/api\/jobs\/(\d+)$/.exec(path);
       if (one) await new Promise((r) => setTimeout(r, detailDelay));
@@ -488,7 +496,7 @@ test("the card page shares its draft, unsaved edits included", async () => {
 });
 
 describe("a panel's proposal", () => {
-  const offer = (p: Partial<Omit<PanelProposal, "key">> = {}) =>
+  const offer = (p: Partial<Omit<PanelProposal, "key" | "at">> = {}) =>
     act(async () => link.propose({ card: 7, revision: 11, start: data, proposal: { description: "A dwarf." }, label: "AI Assistant", ...p }));
 
   test("opens Review from the draft the panel read, and saving it lets it go", async () => {
@@ -538,5 +546,47 @@ describe("a panel's proposal", () => {
     await waitFor(() => expect(puts).toHaveLength(1));
     expect(puts[0]?.data).toMatchObject({ description: "A stout dwarf." });
     expect(JSON.parse(localStorage.getItem("innkeeper.forge.settled")!)).toEqual([6]);
+  });
+
+  const hourAgo = new Date(Date.now() - 3600_000).toISOString();
+
+  test("keeps Review when an older run's proposal loads after it", async () => {
+    listDelay = 300;
+    jobs = [{ ...reforged(6, "A short dwarf.", "Older ask."), finished_at: hourAgo }];
+    renderAt("/cards/7");
+    await offer();
+    await waitFor(() => expect(screen.getByText("AI Assistant proposes 1 change.")).toBeInTheDocument());
+    await new Promise((r) => setTimeout(r, 500));
+    expect(screen.queryByText("Older ask.")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Save 1 of 1 changes" }));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]?.data).toMatchObject({ description: "A dwarf." });
+    expect(JSON.parse(localStorage.getItem("innkeeper.forge.settled")!)).toEqual([6]);
+  });
+
+  test("doesn't show an older run's proposal while its revision loads", async () => {
+    jobs = [{ ...reforged(6, "A short dwarf.", "Older ask."), finished_at: hourAgo }];
+    renderAt("/cards/7");
+    await screen.findByText("Older ask.");
+    revisionDelay = 300;
+    await offer({ revision: 10, start: undefined });
+    expect(screen.queryByText("Older ask.")).not.toBeInTheDocument();
+    expect(await screen.findByText("This card has changed since the run started.")).toBeInTheDocument();
+  });
+
+  test("shows a revision that fails to load, and lets the proposal go", async () => {
+    renderAt("/cards/7");
+    await screen.findByLabelText("Description");
+    await offer({ revision: 99, start: undefined });
+    expect(await screen.findByText(/AI Assistant's proposal: revision not found/)).toBeInTheDocument();
+    expect(link.proposal).toBeUndefined();
+  });
+
+  test("shows Review without a card action", async () => {
+    actions = [];
+    renderAt("/cards/7");
+    await screen.findByLabelText("Description");
+    await offer();
+    expect(await screen.findByText("AI Assistant proposes 1 change.")).toBeInTheDocument();
   });
 });

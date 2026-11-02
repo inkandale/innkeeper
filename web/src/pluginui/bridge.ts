@@ -29,14 +29,17 @@ const requests: Record<string, { grant: string; open: (h: Host, card: number, pa
 
 // Core caps a proposal as forge-ai caps the draft it reads.
 const maxProposal = 256 << 10;
+// A card has far fewer text fields than this.
+const maxProposalKeys = 64;
 
-/** proposalOf is a propose request's revision and changed fields, if they are a positive integer and an object of strings within the cap. */
+/** proposalOf is a propose request's revision and changed fields, if they are a positive integer and an object of strings within the caps. */
 function proposalOf(params: unknown) {
   if (typeof params !== "object" || params === null) return;
   const { revision, proposal } = params as { revision?: unknown; proposal?: unknown };
   if (typeof revision !== "number" || !Number.isSafeInteger(revision) || revision <= 0) return;
   if (typeof proposal !== "object" || proposal === null || Array.isArray(proposal)) return;
-  if (!Object.values(proposal).every((v) => typeof v === "string")) return;
+  const values = Object.values(proposal);
+  if (values.length > maxProposalKeys || !values.every((v) => typeof v === "string")) return;
   if (new TextEncoder().encode(JSON.stringify(proposal)).length > maxProposal) return;
   return { revision, proposal: { ...(proposal as Record<string, string>) } };
 }

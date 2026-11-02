@@ -4,6 +4,7 @@ import { api, must, route, upload } from "../api/client";
 import type { PanelProposal } from "./panelLink";
 import type { components } from "../api/schema";
 import { same, type Data } from "../card/draft";
+import { toastError } from "../shell/Toasts";
 import { finished, type Job } from "../settings/jobUtil";
 import type { Subject } from "./subject";
 import { overlaps, readSettled, scopeOf, settle as remember, lockOf, type Action, type Payload, type Progress, type Result, type Scope } from "./actions";
@@ -46,24 +47,31 @@ export type Offered = { proposal: PanelProposal; drop: () => void };
 
 /**
  * useHeld reads a panel's proposal as a finished run's result, starting from the draft the panel read or else its
- * revision's data. Keys the subject doesn't take are dropped with a warning. It is undefined while the start loads, and
- * when Review would show no rows.
+ * revision's data. Keys the subject doesn't take are dropped with a warning. held is undefined while the start loads,
+ * and when Review would show no rows. A start that fails to load shows as a toast and lets the proposal go.
  */
-function useHeld(subject: Subject, id: number | undefined, data: Data, offered: PanelProposal | undefined): Pending | undefined {
+function useHeld(subject: Subject, id: number | undefined, data: Data, offered: Offered | undefined): { held?: Pending; loading: boolean } {
+  const p = offered?.proposal;
   const revision = useQuery({
-    queryKey: [subject.kind, id, "revision", offered?.revision],
-    enabled: !!offered && !offered.start && id !== undefined,
+    queryKey: [subject.kind, id, "revision", p?.revision],
+    enabled: !!p && !p.start && id !== undefined,
     queryFn: async () =>
-      must(await api.GET(route(subject.kind, "/cards/{id}/revisions/{revision_id}"), { params: { path: { id: id!, revision_id: offered!.revision } } })),
+      must(await api.GET(route(subject.kind, "/cards/{id}/revisions/{revision_id}"), { params: { path: { id: id!, revision_id: p!.revision } } })),
   });
-  const start = offered?.start ?? (revision.data?.data as Data | undefined);
-  if (!offered || !start) return undefined;
-  const keys = Object.keys(offered.proposal);
+  const failed = !!p && !p.start && revision.isError;
+  useEffect(() => {
+    if (!failed) return;
+    toastError(`Couldn't open ${p.label}'s proposal: ${revision.error.message}`);
+    offered!.drop();
+  }, [failed]);
+  const start = p?.start ?? (revision.data?.data as Data | undefined);
+  if (!p || !start) return { loading: !!p && !failed };
+  const keys = Object.keys(p.proposal);
   const taken = keys.filter((k) => subject.textKeys.includes(k));
-  const proposal = { ...start, ...Object.fromEntries(taken.map((k) => [k, offered.proposal[k]])) };
-  if (!subject.review(start, data, proposal).rows.length) return undefined;
+  const proposal = { ...start, ...Object.fromEntries(taken.map((k) => [k, p.proposal[k]])) };
+  if (!subject.review(start, data, proposal).rows.length) return { loading: false };
   const warnings = keys.filter((k) => !taken.includes(k)).map((k) => `dropped the change to ${k}: Review takes only text fields`);
-  return { key: `panel-${offered.key}`, label: offered.label, start, result: { proposal, warnings } };
+  return { held: { key: `panel-${p.key}`, label: p.label, start, result: { proposal, warnings } }, loading: false };
 }
 
 const instanceKey = "innkeeper.forge.instance";
@@ -155,16 +163,13 @@ export function useForge({ subject, id, data, library, offered }: { subject: Sub
   const lock = lockOf(busy);
   // A proposal opens Review only when it has rows; a lorebook's entry order isn't reviewed.
   const proposals = shown.filter((r) => r.job.status === "succeeded" && r.result?.proposal && subject.review(r.start, data, r.result.proposal).rows.length > 0);
-  const held = useHeld(subject, id, data, offered?.proposal);
-  // A panel's proposal supersedes the run proposals there when it came; a run's that comes later supersedes it.
-  const [before, setBefore] = useState<{ key: number; ids: number[] }>();
-  const offeredKey = offered?.proposal.key;
-  useEffect(() => {
-    if (offeredKey !== undefined) setBefore({ key: offeredKey, ids: proposals.map((r) => r.id) });
-  }, [offeredKey]);
-  const older = before && before.key === offeredKey ? before.ids : proposals.map((r) => r.id);
+  const { held, loading } = useHeld(subject, id, data, offered);
+  // A panel's proposal and a run's supersede each other by when they came. ponytail: compares the server's finish time
+  // with this browser's clock, so skew between them can misorder proposals that come seconds apart.
+  const at = offered?.proposal.at ?? 0;
+  const later = held || loading ? proposals.filter((r) => Date.parse(r.job.finished_at ?? "") > at) : proposals;
   // Review offers the newest proposal; settling it settles the older ones it supersedes.
-  const newest = (held ? proposals.filter((r) => !older.includes(r.id)) : proposals).at(-1);
+  const newest = later.at(-1);
   const pending: Pending | undefined = newest ? { ...newest, key: `run-${newest.id}` } : held;
   const reportRun = [...runs].reverse().find((r) => r.result?.report);
   // A finished report may have stored scores on the entity.

@@ -1245,7 +1245,7 @@ integer the panel chooses. A panel runs at most 4 `ui.call`s at once.
 | `host.context` | none | `{id, result}` with `library` (the ID), `card` (the card on screen, if any), `theme` (CSS token values), and `grants`. With `cards.edit` while a card's Forge is open, also `draft`: `card`, `revision` (the revision the draft started from), and `data`, unsaved edits included |
 | `host.openCard` | `card` | Opens the card page |
 | `host.request` | `request`: `push` or `add-to-collection`, and `card` | Opens core's dialog; needs `cards.push` or `cards.collect`. The owner confirms in the dialog. A request while a dialog is open is ignored |
-| `host.request` | `request`: `propose`, `card`, and `params`: `revision` and `proposal`, an object of field text of at most 256 KiB | Needs `cards.edit`. Opens the card's Review tab. Review compares the proposal with the draft the panel last read through `host.context` when its card and revision match, and with that revision's data otherwise. Keys other than the card's text fields are dropped with a warning, and a newer proposal replaces an unreviewed one |
+| `host.request` | `request`: `propose`, `card`, and `params`: `revision` and `proposal`, an object of field text of at most 64 keys and 256 KiB | Needs `cards.edit`. Opens the card's Review tab. Review compares the proposal with the draft the panel last read through `host.context` when its card and revision match, and with that revision's data otherwise. Keys other than the card's text fields are dropped with a warning, and a newer proposal replaces an unreviewed one |
 
 A failed call replies `{id, error}` with a message.
 

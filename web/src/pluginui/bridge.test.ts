@@ -154,6 +154,7 @@ test.each([
   ["a list", { revision: 11, proposal: ["x"] }],
   ["a value that isn't text", { revision: 11, proposal: { tags: ["x"] } }],
   ["over 256 KiB", { revision: 11, proposal: { description: "x".repeat(256 << 10) } }],
+  ["over 64 keys", { revision: 11, proposal: Object.fromEntries(Array.from({ length: 65 }, (_, i) => [`k${i}`, ""])) }],
 ])("a propose with %s is refused", async (_, params) => {
   const h = host(["cards.edit"]);
   expect(await run(h, { id: 5, call: "host.request", request: "propose", card: 7, params })).toEqual([{ id: 5, error: "bad proposal" }]);

@@ -205,7 +205,7 @@ test("a granted propose hands Review the draft the panel read, and opens the car
   await send({ id: 2, call: "host.request", request: "propose", card: 7, params: { revision: 11, proposal: { name: "Bob" } } });
   expect(post).toHaveBeenLastCalledWith({ id: 2, result: null }, "*");
   expect(router.state.location.pathname).toBe("/cards/7");
-  expect(proposed()).toEqual({ key: 1, card: 7, revision: 11, start: { name: "Alice" }, proposal: { name: "Bob" }, label: "Advisor" });
+  expect(proposed()).toEqual({ key: 1, at: expect.any(Number), card: 7, revision: 11, start: { name: "Alice" }, proposal: { name: "Bob" }, label: "Advisor" });
 });
 
 test("a proposal against another revision has no start, so Review reads that revision", async () => {

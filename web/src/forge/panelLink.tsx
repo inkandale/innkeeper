@@ -6,9 +6,9 @@ export type OpenDraft = { card: number; revision: number; data: Data };
 
 /**
  * PanelProposal is changed card fields a plugin panel sent for Review. start is the draft the panel last read, when that
- * was this card at revision. label names the panel.
+ * was this card at revision. label names the panel. at is when it arrived, in epoch milliseconds.
  */
-export type PanelProposal = { key: number; card: number; revision: number; start?: Data; proposal: Record<string, string>; label: string };
+export type PanelProposal = { key: number; at: number; card: number; revision: number; start?: Data; proposal: Record<string, string>; label: string };
 
 type PanelLink = {
   /** draft is the open Forge's draft, if a card's Forge is open. */
@@ -16,7 +16,7 @@ type PanelLink = {
   /** publish shares card's draft, or with no draft stops sharing it. */
   publish: (card: number, draft?: OpenDraft) => void;
   proposal?: PanelProposal;
-  propose: (p: Omit<PanelProposal, "key">) => void;
+  propose: (p: Omit<PanelProposal, "key" | "at">) => void;
   /** drop lets go of the proposal with key once Review settles it. */
   drop: (key: number) => void;
 };
@@ -38,7 +38,7 @@ export function PanelLinkProvider({ children }: { children: ReactNode }) {
         else if (draft.current?.card === card) draft.current = undefined;
       },
       proposal,
-      propose: (p) => setProposal({ ...p, key: ++keys.current }),
+      propose: (p) => setProposal({ ...p, key: ++keys.current, at: Date.now() }),
       drop: (key) => setProposal((p) => (p?.key === key ? undefined : p)),
     }),
     [proposal],

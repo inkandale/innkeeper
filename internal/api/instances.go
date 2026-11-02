@@ -51,6 +51,7 @@ type pluginOut struct {
 	Icon              string                   `json:"icon,omitempty" doc:"URL of the app's logo"`
 	SettingsActions   map[string]string        `json:"settings_actions,omitempty" doc:"Buttons the instance form shows: label by action id, run with POST /plugins/{name}/settings/run"`
 	UIURL             string                   `json:"ui_url,omitempty" doc:"The panel's page"`
+	UITitle           string                   `json:"ui_title,omitempty" doc:"The panel's title, such as AI Assistant"`
 	Permissions       []string                 `json:"permissions,omitempty" doc:"What the owner can grant the plugin's instances"`
 }
 
@@ -137,7 +138,7 @@ func (s *Server) instanceRoutes(api huma.API) {
 					Description: m.Description, Category: m.Category, MultipleInstances: m.AllowsManyInstances(),
 					Status: plugins.Status(m, byPlugin[m.Name]), Permissions: m.Permissions()}
 				if m.Has(protocol.CapabilityUI) {
-					p.UIURL = "/api/plugin-ui/" + m.Name + "/" + path.Base(m.UI.Entry)
+					p.UIURL, p.UITitle = "/api/plugin-ui/"+m.Name+"/"+path.Base(m.UI.Entry), m.UI.Title
 				}
 				if m.Has(protocol.CapabilityEnrich) {
 					p.EnrichMaxCards = enrich.MaxCards(m)

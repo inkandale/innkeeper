@@ -4169,6 +4169,8 @@ export interface components {
             status: "ready" | "needs_setup" | "broken" | "disabled";
             /** @description The name to show: the manifest's title, or name without one */
             title: string;
+            /** @description The panel's title, such as AI Assistant */
+            ui_title?: string;
             /** @description The panel's page */
             ui_url?: string;
             version: string;

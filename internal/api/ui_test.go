@@ -33,7 +33,7 @@ func addPanel(t *testing.T, e *testEnv) string {
 		}
 	}
 	e.manifests["panel"] = &protocol.Manifest{Name: "panel", Version: "1", Protocol: protocol.Version, Dir: dir,
-		Capabilities: []string{protocol.CapabilityUI}, UI: &protocol.UI{Entry: "ui/index.html", Slot: protocol.SlotCorner}}
+		Capabilities: []string{protocol.CapabilityUI}, UI: &protocol.UI{Title: "Panel", Entry: "ui/index.html", Slot: protocol.SlotCorner}}
 	return dir
 }
 
@@ -118,7 +118,7 @@ func addUIInstance(t *testing.T, e *testEnv) (id int64, dir string) {
 	ui := *e.manifests["fake"]
 	ui.Name, ui.Capabilities = "panelled", []string{protocol.CapabilityUI}
 	ui.Command = []string{ui.Command[0], "-caps=ui", "-name=panelled"}
-	ui.UI = &protocol.UI{Entry: "ui/index.html", Slot: protocol.SlotCorner, Permissions: []string{protocol.PermissionLibraryRead}}
+	ui.UI = &protocol.UI{Title: "Panel", Entry: "ui/index.html", Slot: protocol.SlotCorner, Permissions: []string{protocol.PermissionLibraryRead}}
 	if err := os.MkdirAll(filepath.Join(ui.Dir, "ui"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -372,11 +372,24 @@ func TestPluginListShowsUIPanelAndPermissions(t *testing.T) {
 		byName[p.Name] = p
 	}
 	panel := byName["panelled"]
-	if panel.UIURL != "/api/plugin-ui/panelled/index.html" ||
-		!slices.Equal(panel.Permissions, []string{protocol.PermissionLibraryRead}) {
+	if panel.UIURL != "/api/plugin-ui/panelled/index.html" || panel.UITitle != "Panel" ||
+		!slices.Equal(panel.Permissions, []string{protocol.PermissionPanel, protocol.PermissionLibraryRead}) {
 		t.Fatalf("ui plugin = %+v", panel)
 	}
-	if plain := byName["vault"]; plain.UIURL != "" || len(plain.Permissions) != 0 {
+	if plain := byName["vault"]; plain.UIURL != "" || plain.UITitle != "" || len(plain.Permissions) != 0 {
 		t.Fatalf("plain plugin = %+v", plain)
 	}
+}
+
+func TestUIInstanceTakesThePanelGrant(t *testing.T) {
+	e := newEnv(t)
+	id, _ := addUIInstance(t, e)
+	path := fmt.Sprintf("/instances/%d", id)
+	var inst plugins.InstanceInfo
+	e.call("PATCH", path, map[string]any{"grants": []string{protocol.PermissionPanel}}, 200, &inst)
+	if !slices.Equal(inst.Grants, []string{protocol.PermissionPanel}) {
+		t.Fatalf("grants = %v", inst.Grants)
+	}
+	// The panelled plugin doesn't declare cards.edit.
+	e.call("PATCH", path, map[string]any{"grants": []string{protocol.PermissionCardsEdit}}, 400, nil)
 }

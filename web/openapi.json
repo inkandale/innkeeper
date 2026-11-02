@@ -3962,6 +3962,10 @@
             "description": "The name to show: the manifest's title, or name without one",
             "type": "string"
           },
+          "ui_title": {
+            "description": "The panel's title, such as AI Assistant",
+            "type": "string"
+          },
           "ui_url": {
             "description": "The panel's page",
             "type": "string"

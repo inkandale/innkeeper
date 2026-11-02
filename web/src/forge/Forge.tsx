@@ -79,7 +79,7 @@ export function useForgeView(props: {
   }, [on, isNew]);
 
   // A proposal opens Review when it arrives; a report from a run started here opens Report.
-  const pendingId = forge.pending?.id;
+  const pendingId = forge.pending?.key;
   useEffect(() => {
     if (pendingId !== undefined) setTab("review");
   }, [pendingId]);
@@ -118,7 +118,7 @@ export function useForgeView(props: {
   const revise = instructionAction(forge.mine, kind);
   const review = pending && proposed && (
     <Review
-      key={pending.id}
+      key={pending.key}
       title={pending.field ? `${pending.label} on ${label(pending.field)}` : pending.label}
       proposed={proposed}
       warnings={pending.result?.warnings}

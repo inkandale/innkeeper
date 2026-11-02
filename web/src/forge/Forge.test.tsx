@@ -5,7 +5,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { Card } from "../card/Card";
 import { NewCard } from "../card/NewCard";
 import { Toasts } from "../shell/Toasts";
-import { PanelLinkProvider, usePanelLink } from "./panelLink";
+import { PanelLinkProvider, usePanelLink, type PanelProposal } from "./panelLink";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -74,6 +74,7 @@ beforeEach(() => {
         if (req.method === "PUT") puts.push(await req.json());
         return json(entity);
       }
+      if (path === "/api/cards/7/revisions/10") return json({ ...entity.revision, id: 10, data: { ...data, description: "Older." } });
       if (path === "/api/actions") return json(actions);
       if (path === "/api/actions/skills") return json(skills);
       // Like the server, the list leaves an action run's result out; GET /jobs/{id} has it.
@@ -484,4 +485,58 @@ test("the card page shares its draft, unsaved edits included", async () => {
   expect(link.draft()).toEqual({ card: 7, revision: 11, data });
   await user.type(description, " Short.");
   expect(link.draft()).toEqual({ card: 7, revision: 11, data: { ...data, description: "A grumpy dwarf. Short." } });
+});
+
+describe("a panel's proposal", () => {
+  const offer = (p: Partial<Omit<PanelProposal, "key">> = {}) =>
+    act(async () => link.propose({ card: 7, revision: 11, start: data, proposal: { description: "A dwarf." }, label: "AI Assistant", ...p }));
+
+  test("opens Review from the draft the panel read, and saving it lets it go", async () => {
+    renderAt("/cards/7");
+    await screen.findByLabelText("Description");
+    await offer();
+    expect(await screen.findByRole("tab", { name: "Review (1)" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("AI Assistant proposes 1 change.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Save 1 of 1 changes" }));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]?.data).toMatchObject({ description: "A dwarf." });
+    expect(link.proposal).toBeUndefined();
+  });
+
+  test("shows both versions of a field edited since the panel read it", async () => {
+    const user = userEvent.setup();
+    renderAt("/cards/7");
+    const description = await screen.findByLabelText("Description");
+    await user.type(description, " Tall.");
+    await offer();
+    expect(await screen.findByText("You've edited this since the run started.")).toBeInTheDocument();
+  });
+
+  test("starts from its revision when the panel read no draft of it", async () => {
+    renderAt("/cards/7");
+    await screen.findByLabelText("Description");
+    await offer({ revision: 10, start: undefined });
+    expect(await screen.findByText("This card has changed since the run started.")).toBeInTheDocument();
+  });
+
+  test("drops keys Review doesn't take, with a warning", async () => {
+    renderAt("/cards/7");
+    await screen.findByLabelText("Description");
+    await offer({ proposal: { description: "A dwarf.", tags: "orc" } });
+    expect(await screen.findByText("dropped the change to tags: Review takes only text fields")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Review (1)" })).toBeInTheDocument();
+  });
+
+  test("supersedes an unreviewed run's proposal and an older panel proposal", async () => {
+    jobs = [reforged(6, "A short dwarf.", "Older ask.")];
+    renderAt("/cards/7");
+    await screen.findByText("Older ask.");
+    await offer({ proposal: { description: "A dwarf." } });
+    await offer({ proposal: { description: "A stout dwarf." } });
+    expect(await screen.findByText("AI Assistant proposes 1 change.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Save 1 of 1 changes" }));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]?.data).toMatchObject({ description: "A stout dwarf." });
+    expect(JSON.parse(localStorage.getItem("innkeeper.forge.settled")!)).toEqual([6]);
+  });
 });

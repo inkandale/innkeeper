@@ -17,6 +17,8 @@ export type Subject = {
   kind: "card" | "lorebook";
   label: (key: string) => string;
   review: (start: Data, draft: Data, proposal: Data) => Proposed;
+  /** textKeys are the data keys a plugin panel's proposal may change: text fields, since a proposal holds only text. */
+  textKeys: string[];
   preview: (data: Data) => Shown[];
   jobFilter: (id: number | undefined) => { card_id?: number; lorebook_id?: number };
   placeholder: string;

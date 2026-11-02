@@ -19,6 +19,7 @@ export const cardSubject: Subject = {
   kind: "card",
   label: fieldLabel,
   jobFilter: (id) => ({ card_id: id }),
+  textKeys: ["name", ...[...beforeGreetings, ...afterGreetings].map(([k]) => k)],
   placeholder:
     "Describe a change to this card… e.g. make the family robots · @cards/Billy is the brother",
   review: (start, draft, proposal) => {

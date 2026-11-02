@@ -14,7 +14,7 @@ import { UpdateBanner } from "./Upstream";
 import { useEditor } from "./useEditor";
 import { useForgeView } from "../forge/Forge";
 import { useForge } from "../forge/useForge";
-import { usePublishDraft } from "../forge/panelLink";
+import { usePanelLink, usePublishDraft } from "../forge/panelLink";
 import { cardSubject } from "./subject";
 import { Discover } from "./Discover";
 import { Fields } from "./Fields";
@@ -33,7 +33,15 @@ export function Card() {
 function CardEditor({ id }: { id: number }) {
   const qc = useQueryClient();
   const ed = useEditor("card", id);
-  const forge = useForge({ subject: cardSubject, id, data: ed.data, library: ed.entity.data?.library_id ?? 1 });
+  const link = usePanelLink();
+  const proposal = link.proposal?.card === id ? link.proposal : undefined;
+  const forge = useForge({
+    subject: cardSubject,
+    id,
+    data: ed.data,
+    library: ed.entity.data?.library_id ?? 1,
+    offered: proposal && { proposal, drop: () => link.drop(proposal.key) },
+  });
   usePublishDraft(ed.entity.data && { card: id, revision: ed.draft?.baseId ?? ed.entity.data.revision.id, data: ed.data });
   useFollowLibrary(ed.entity.data?.library_id);
   const instances = useQuery(instancesQuery);

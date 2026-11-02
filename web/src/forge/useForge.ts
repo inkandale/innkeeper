@@ -1,6 +1,7 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { api, must, upload } from "../api/client";
+import { api, must, route, upload } from "../api/client";
+import type { PanelProposal } from "./panelLink";
 import type { components } from "../api/schema";
 import { same, type Data } from "../card/draft";
 import { finished, type Job } from "../settings/jobUtil";
@@ -37,6 +38,34 @@ export type Run = {
 /** Waiting is a run held in this tab until the runs its scope overlaps finish. */
 export type Waiting = { key: number; req: RunRequest; label: string; field?: string; scope: Scope; instance: string };
 
+/** Pending is the proposal Review offers: a finished run's, or a plugin panel's held in this tab. */
+export type Pending = { key: string; label: string; field?: string; start: Data; instruction?: string; result?: Result };
+
+/** Offered is a panel's proposal for this entity, and how to let it go once Review settles it. */
+export type Offered = { proposal: PanelProposal; drop: () => void };
+
+/**
+ * useHeld reads a panel's proposal as a finished run's result, starting from the draft the panel read or else its
+ * revision's data. Keys the subject doesn't take are dropped with a warning. It is undefined while the start loads, and
+ * when Review would show no rows.
+ */
+function useHeld(subject: Subject, id: number | undefined, data: Data, offered: PanelProposal | undefined): Pending | undefined {
+  const revision = useQuery({
+    queryKey: [subject.kind, id, "revision", offered?.revision],
+    enabled: !!offered && !offered.start && id !== undefined,
+    queryFn: async () =>
+      must(await api.GET(route(subject.kind, "/cards/{id}/revisions/{revision_id}"), { params: { path: { id: id!, revision_id: offered!.revision } } })),
+  });
+  const start = offered?.start ?? (revision.data?.data as Data | undefined);
+  if (!offered || !start) return undefined;
+  const keys = Object.keys(offered.proposal);
+  const taken = keys.filter((k) => subject.textKeys.includes(k));
+  const proposal = { ...start, ...Object.fromEntries(taken.map((k) => [k, offered.proposal[k]])) };
+  if (!subject.review(start, data, proposal).rows.length) return undefined;
+  const warnings = keys.filter((k) => !taken.includes(k)).map((k) => `dropped the change to ${k}: Review takes only text fields`);
+  return { key: `panel-${offered.key}`, label: offered.label, start, result: { proposal, warnings } };
+}
+
 const instanceKey = "innkeeper.forge.instance";
 
 function readInstance(): number | undefined {
@@ -66,7 +95,7 @@ let waitingKey = 0;
  * entity's runs, found from the job list so they survive a reload. data is the draft a run starts from. id is
  * undefined for a new card, whose runs live only in this tab.
  */
-export function useForge({ subject, id, data, library }: { subject: Subject; id?: number; data: Data; library: number }) {
+export function useForge({ subject, id, data, library, offered }: { subject: Subject; id?: number; data: Data; library: number; offered?: Offered }) {
   const listKey = ["jobs", "action", subject.kind, id];
   const qc = useQueryClient();
   const actionList = useQuery({ queryKey: ["actions"], queryFn: async () => must(await api.GET("/actions")) });
@@ -126,8 +155,17 @@ export function useForge({ subject, id, data, library }: { subject: Subject; id?
   const lock = lockOf(busy);
   // A proposal opens Review only when it has rows; a lorebook's entry order isn't reviewed.
   const proposals = shown.filter((r) => r.job.status === "succeeded" && r.result?.proposal && subject.review(r.start, data, r.result.proposal).rows.length > 0);
+  const held = useHeld(subject, id, data, offered?.proposal);
+  // A panel's proposal supersedes the run proposals there when it came; a run's that comes later supersedes it.
+  const [before, setBefore] = useState<{ key: number; ids: number[] }>();
+  const offeredKey = offered?.proposal.key;
+  useEffect(() => {
+    if (offeredKey !== undefined) setBefore({ key: offeredKey, ids: proposals.map((r) => r.id) });
+  }, [offeredKey]);
+  const older = before && before.key === offeredKey ? before.ids : proposals.map((r) => r.id);
   // Review offers the newest proposal; settling it settles the older ones it supersedes.
-  const pending = proposals.at(-1);
+  const newest = (held ? proposals.filter((r) => !older.includes(r.id)) : proposals).at(-1);
+  const pending: Pending | undefined = newest ? { ...newest, key: `run-${newest.id}` } : held;
   const reportRun = [...runs].reverse().find((r) => r.result?.report);
   // A finished report may have stored scores on the entity.
   const reportRunId = reportRun?.id;
@@ -167,10 +205,10 @@ export function useForge({ subject, id, data, library }: { subject: Subject; id?
   const [repeat, setRepeat] = useState<RunRequest>();
   // Context isn't compared: the server rewrites it, and its mentions are in the instruction.
   const sameSource = (req: RunRequest) => {
-    const p = pending?.job.payload as (Payload & { inputs?: unknown }) | undefined;
+    const p = newest?.job.payload as (Payload & { inputs?: unknown }) | undefined;
     return (
       !!p &&
-      pending!.job.instance_id === req.action.instance_id &&
+      newest!.job.instance_id === req.action.instance_id &&
       p.action === req.action.id &&
       p.field === req.field &&
       (p.instruction ?? "") === (req.instruction ?? "") &&
@@ -235,8 +273,11 @@ export function useForge({ subject, id, data, library }: { subject: Subject; id?
     started,
     lock,
     pending,
-    /** settlePending settles the proposal in Review and the older ones it supersedes. */
-    settlePending: () => settle(...proposals.map((r) => r.id)),
+    /** settlePending settles the proposal in Review and the older ones it supersedes, a panel's among them. */
+    settlePending: () => {
+      settle(...proposals.map((r) => r.id));
+      offered?.drop();
+    },
     /** repeat is a run held because the proposal in Review came from the same source. */
     repeat,
     /** runAgain starts repeat anyway. */

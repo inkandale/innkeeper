@@ -95,6 +95,8 @@ export const lorebookSubject: Subject = {
   kind: "lorebook",
   label,
   jobFilter: (id) => ({ lorebook_id: id }),
+  // No panel proposes lorebook changes.
+  textKeys: [],
   placeholder:
     "Describe a change to this lorebook… e.g. add entries for the northern clans · @cards/Billy is their chief",
   review: (start, draft, proposal) => {

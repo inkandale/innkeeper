@@ -11,20 +11,23 @@ func uiManifest(ui *UI, caps ...string) *Manifest {
 }
 
 func TestManifestAcceptsCornerUI(t *testing.T) {
-	m := uiManifest(&UI{Entry: "ui/index.html", Slot: SlotCorner, Permissions: []string{PermissionLibraryRead}}, CapabilityUI)
+	m := uiManifest(&UI{Title: "AI Assistant", Entry: "ui/index.html", Slot: SlotCorner,
+		Permissions: []string{PermissionLibraryRead, PermissionCardsEdit}}, CapabilityUI)
 	if err := m.Validate(); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestManifestRejectsBadUI(t *testing.T) {
-	good := UI{Entry: "ui/index.html", Slot: SlotCorner}
+	good := UI{Title: "Panel", Entry: "ui/index.html", Slot: SlotCorner}
 	for name, tt := range map[string]struct {
 		m    *Manifest
 		want string
 	}{
 		"no capability":  {uiManifest(&good, CapabilityAction), "ui needs the ui capability"},
 		"no table":       {uiManifest(nil, CapabilityUI), "the ui capability needs a [ui] table"},
+		"no title":       {uiManifest(&UI{Title: " ", Entry: "ui/index.html", Slot: SlotCorner}, CapabilityUI), "ui needs a title"},
+		"panel listed":   {uiManifest(&UI{Title: "P", Entry: "a/b.html", Slot: SlotCorner, Permissions: []string{PermissionPanel}}, CapabilityUI), `permission "panel"`},
 		"no entry":       {uiManifest(&UI{Slot: SlotCorner}, CapabilityUI), "ui needs an entry"},
 		"entry escapes":  {uiManifest(&UI{Entry: "../x.html", Slot: SlotCorner}, CapabilityUI), "outside the plugin folder"},
 		"entry absolute": {uiManifest(&UI{Entry: "/x.html", Slot: SlotCorner}, CapabilityUI), "outside the plugin folder"},
@@ -49,7 +52,7 @@ func TestManifestPermissions(t *testing.T) {
 	}
 	both := &Manifest{Capabilities: []string{CapabilityAction, CapabilityUI},
 		UI: &UI{Permissions: []string{PermissionLibraryRead, PermissionCardsPush}}}
-	if got := both.Permissions(); !reflect.DeepEqual(got, []string{PermissionLibraryRead, PermissionCardsPush}) {
+	if got := both.Permissions(); !reflect.DeepEqual(got, []string{PermissionPanel, PermissionLibraryRead, PermissionCardsPush}) {
 		t.Errorf("an action and ui plugin: %v", got)
 	}
 	if got := (&Manifest{Capabilities: []string{CapabilityPush}}).Permissions(); len(got) != 0 {

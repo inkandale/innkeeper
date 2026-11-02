@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"slices"
+	"strings"
 )
 
 // The ui capability shows a plugin's web bundle in a sandboxed panel. The
@@ -27,12 +28,19 @@ const (
 	PermissionLibraryRead  = "library.read"
 	PermissionCardsPush    = "cards.push"
 	PermissionCardsCollect = "cards.collect"
+	// PermissionCardsEdit shows the panel the open Forge's draft and lets it send changes to Review.
+	PermissionCardsEdit = "cards.edit"
+	// PermissionPanel shows the panel's bubble. Core offers it on every ui
+	// plugin, so a manifest doesn't list it.
+	PermissionPanel = "panel"
 )
 
-var uiPermissions = []string{PermissionLibraryRead, PermissionCardsPush, PermissionCardsCollect}
+var uiPermissions = []string{PermissionLibraryRead, PermissionCardsPush, PermissionCardsCollect, PermissionCardsEdit}
 
 // UI is a plugin's [ui] table.
 type UI struct {
+	// Title names the panel on its bubble, its header, and its Show switch.
+	Title string `toml:"title"`
 	// Entry is the bundle's HTML file. Core serves the folder holding it to
 	// anyone without a login, so the folder must hold nothing else.
 	Entry       string   `toml:"entry"`
@@ -64,6 +72,9 @@ func (m *Manifest) validateUI() []error {
 	if !m.Has(CapabilityUI) {
 		errs = append(errs, errors.New("ui needs the ui capability"))
 	}
+	if strings.TrimSpace(m.UI.Title) == "" {
+		errs = append(errs, errors.New("ui needs a title"))
+	}
 	switch {
 	case m.UI.Entry == "":
 		errs = append(errs, errors.New("ui needs an entry"))
@@ -83,10 +94,14 @@ func (m *Manifest) validateUI() []error {
 	return append(errs, unique("permission", m.UI.Permissions, nil)...)
 }
 
-// Permissions is what the owner can grant the plugin's instances. An action
-// plugin can always ask to read the library.
+// Permissions is what the owner can grant the plugin's instances: panel
+// first for a ui plugin, since it decides whether the panel shows at all.
+// An action plugin can always ask to read the library.
 func (m *Manifest) Permissions() []string {
 	var out []string
+	if m.UI != nil {
+		out = append(out, PermissionPanel)
+	}
 	if m.Has(CapabilityAction) {
 		out = append(out, PermissionLibraryRead)
 	}

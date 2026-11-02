@@ -87,7 +87,7 @@ test = { label = "Test connection" }
 `
 	}
 	if slices.Contains(caps, protocol.CapabilityUI) {
-		manifest += "[ui]\nentry = \"ui/index.html\"\nslot = \"corner\"\n"
+		manifest += "[ui]\ntitle = \"Panel\"\nentry = \"ui/index.html\"\nslot = \"corner\"\n"
 		if err := os.MkdirAll(filepath.Join(dir, "ui"), 0o755); err != nil {
 			t.Fatal(err)
 		}

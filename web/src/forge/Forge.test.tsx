@@ -5,6 +5,7 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { Card } from "../card/Card";
 import { NewCard } from "../card/NewCard";
 import { Toasts } from "../shell/Toasts";
+import { PanelLinkProvider, usePanelLink } from "./panelLink";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -99,6 +100,12 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
+let link: ReturnType<typeof usePanelLink>;
+function Grab() {
+  link = usePanelLink();
+  return null;
+}
+
 function renderAt(entry: string) {
   const router = createMemoryRouter(
     [
@@ -109,7 +116,10 @@ function renderAt(entry: string) {
   );
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <RouterProvider router={router} />
+      <PanelLinkProvider>
+        <Grab />
+        <RouterProvider router={router} />
+      </PanelLinkProvider>
     </QueryClientProvider>,
   );
 }
@@ -465,4 +475,13 @@ describe("refining again from the Report", () => {
     await waitFor(() => expect(runs).toEqual([expect.objectContaining({ instruction: `${asked}\n\nKeep the beard.` })]));
     expect(screen.queryByRole("button", { name: "Run again" })).not.toBeInTheDocument();
   });
+});
+
+test("the card page shares its draft, unsaved edits included", async () => {
+  const user = userEvent.setup();
+  renderAt("/cards/7");
+  const description = await screen.findByLabelText("Description");
+  expect(link.draft()).toEqual({ card: 7, revision: 11, data });
+  await user.type(description, " Short.");
+  expect(link.draft()).toEqual({ card: 7, revision: 11, data: { ...data, description: "A grumpy dwarf. Short." } });
 });

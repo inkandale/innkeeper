@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { api, must } from "../api/client";
+import { usePanelLink } from "../forge/panelLink";
 import { useLibrary, withLibrary } from "../shell/library";
 import { handleBridge, type Host } from "./bridge";
 import { CollectionDialog } from "./CollectionDialog";
@@ -34,6 +35,7 @@ export function PluginPanel(props: { instance: number; title: string; src: strin
   const navigate = useNavigate();
   const library = useLibrary();
   const { pathname } = useLocation();
+  const link = usePanelLink();
   const [dialog, setDialog] = useState<{ kind: "push" | "collection"; card: number }>();
   const running = useMemo(() => new Map<number, AbortController>(), []);
   const host = useMemo<Host>(
@@ -46,6 +48,7 @@ export function PluginPanel(props: { instance: number; title: string; src: strin
           library,
           card: card ? Number(card) : undefined,
           theme: Object.fromEntries(themeTokens.map((t) => [t, style.getPropertyValue(t)])),
+          draft: link.draft(),
         };
       },
       openCard: (id) => void navigate(withLibrary(`/cards/${id}`, library)),
@@ -54,7 +57,7 @@ export function PluginPanel(props: { instance: number; title: string; src: strin
       openCollection: (card) => setDialog((d) => d ?? { kind: "collection", card }),
       call: (method, params, signal, onEvent) => uiCall(instance, method, params, signal, onEvent),
     }),
-    [grants, pathname, library, navigate, instance],
+    [grants, pathname, library, navigate, instance, link],
   );
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {

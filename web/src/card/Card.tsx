@@ -14,6 +14,7 @@ import { UpdateBanner } from "./Upstream";
 import { useEditor } from "./useEditor";
 import { useForgeView } from "../forge/Forge";
 import { useForge } from "../forge/useForge";
+import { usePublishDraft } from "../forge/panelLink";
 import { cardSubject } from "./subject";
 import { Discover } from "./Discover";
 import { Fields } from "./Fields";
@@ -33,6 +34,7 @@ function CardEditor({ id }: { id: number }) {
   const qc = useQueryClient();
   const ed = useEditor("card", id);
   const forge = useForge({ subject: cardSubject, id, data: ed.data, library: ed.entity.data?.library_id ?? 1 });
+  usePublishDraft(ed.entity.data && { card: id, revision: ed.draft?.baseId ?? ed.entity.data.revision.id, data: ed.data });
   useFollowLibrary(ed.entity.data?.library_id);
   const instances = useQuery(instancesQuery);
   const plugins = useQuery(pluginsQuery);

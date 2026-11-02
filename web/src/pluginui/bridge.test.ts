@@ -1,9 +1,10 @@
+import type { OpenDraft } from "../forge/panelLink";
 import { handleBridge, type Host } from "./bridge";
 
-const host = (grants: string[] = []) => {
+const host = (grants: string[] = [], draft?: OpenDraft) => {
   const h: Host = {
     grants,
-    context: vi.fn(() => ({ library: 1, card: 7, theme: {} })),
+    context: vi.fn(() => ({ library: 1, card: 7, theme: {}, draft })),
     openCard: vi.fn(),
     openPush: vi.fn(),
     openCollection: vi.fn(),
@@ -24,6 +25,15 @@ test("host.context replies with the host's grants", async () => {
   expect(await run(host(["cards.push"]), { id: 1, call: "host.context" })).toEqual([
     { id: 1, result: { library: 1, card: 7, theme: {}, grants: ["cards.push"] } },
   ]);
+});
+
+const draft = { card: 7, revision: 11, data: { name: "Alice" } };
+
+test("host.context carries the open draft only with cards.edit", async () => {
+  expect(await run(host(["cards.edit"], draft), { id: 1, call: "host.context" })).toEqual([
+    { id: 1, result: { library: 1, card: 7, theme: {}, draft, grants: ["cards.edit"] } },
+  ]);
+  expect(await run(host([], draft), { id: 2, call: "host.context" })).toEqual([{ id: 2, result: { library: 1, card: 7, theme: {}, grants: [] } }]);
 });
 
 test("ui.call forwards events, then the result", async () => {

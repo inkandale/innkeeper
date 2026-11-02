@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import type { ReactNode } from "react";
+import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
+import { PanelLinkProvider, usePublishDraft, type OpenDraft } from "../forge/panelLink";
 import { PluginPanel } from "./PluginPanel";
 
 function json(body: unknown, status = 200) {
@@ -30,9 +32,28 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function renderPanel(grants: string[] = []) {
+const draft: OpenDraft = { card: 7, revision: 11, data: { name: "Alice" } };
+
+// OpenForge stands in for the card page's Forge, open only on /cards/7.
+function OpenForge() {
+  const { pathname } = useLocation();
+  return pathname === "/cards/7" ? <Publish /> : null;
+}
+function Publish() {
+  usePublishDraft(draft);
+  return null;
+}
+
+function renderPanel(grants: string[] = [], extra?: ReactNode) {
   const panel = <PluginPanel instance={3} title="Advisor" src="/api/plugin-ui/card-advisor/index.html" grants={grants} onClose={() => {}} />;
-  const router = createMemoryRouter([{ path: "*", element: panel }], { initialEntries: ["/cards/7"] });
+  const element = (
+    <PanelLinkProvider>
+      {panel}
+      <OpenForge />
+      {extra}
+    </PanelLinkProvider>
+  );
+  const router = createMemoryRouter([{ path: "*", element }], { initialEntries: ["/cards/7"] });
   const view = render(
     <QueryClientProvider client={new QueryClient()}>
       <RouterProvider router={router} />
@@ -68,6 +89,21 @@ test("host.context follows the route, on the same frame", async () => {
   await send({ id: 2, call: "host.context" });
   expect(post).toHaveBeenLastCalledWith({ id: 2, result: expect.objectContaining({ card: 9, library: 2 }) }, "*");
   expect(screen.getByTitle("Advisor")).toBe(frame);
+});
+
+test("host.context carries the open card's draft to a panel granted cards.edit, until the Forge closes", async () => {
+  const { post, send, router } = renderPanel(["cards.edit"]);
+  await send({ id: 1, call: "host.context" });
+  expect(post).toHaveBeenLastCalledWith({ id: 1, result: expect.objectContaining({ draft }) }, "*");
+  await act(() => router.navigate("/sync"));
+  await send({ id: 2, call: "host.context" });
+  expect(post).toHaveBeenLastCalledWith({ id: 2, result: expect.not.objectContaining({ draft: expect.anything() }) }, "*");
+});
+
+test("a panel without cards.edit never sees the draft", async () => {
+  const { post, send } = renderPanel();
+  await send({ id: 1, call: "host.context" });
+  expect(post).toHaveBeenLastCalledWith({ id: 1, result: expect.not.objectContaining({ draft: expect.anything() }) }, "*");
 });
 
 test("host.openCard opens any positive id", async () => {

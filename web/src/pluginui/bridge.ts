@@ -1,7 +1,9 @@
+import type { OpenDraft } from "../forge/panelLink";
+
 /** Host is what a plugin panel may ask of the page. */
 export type Host = {
   grants: string[];
-  context: () => { library: number; card?: number; theme: Record<string, string> };
+  context: () => { library: number; card?: number; theme: Record<string, string>; draft?: OpenDraft };
   openCard: (id: number) => void;
   openPush: (id: number) => void;
   openCollection: (id: number) => void;
@@ -26,8 +28,12 @@ export async function handleBridge(raw: unknown, host: Host, running: Map<number
   const { id } = msg;
   const card = typeof msg.card === "number" && Number.isSafeInteger(msg.card) && msg.card > 0 ? msg.card : undefined;
   switch (msg.call) {
-    case "host.context":
-      return post({ id, result: { ...host.context(), grants: host.grants } });
+    case "host.context": {
+      const { draft, ...context } = host.context();
+      // The open card's draft goes only to a panel the owner let edit cards.
+      const shared = draft && host.grants.includes("cards.edit") ? { draft } : {};
+      return post({ id, result: { ...context, ...shared, grants: host.grants } });
+    }
     case "host.openCard":
       if (card === undefined) return post({ id, error: "bad card" });
       host.openCard(card);

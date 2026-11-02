@@ -8,6 +8,7 @@ import { rememberLibrary, useLibrary, withLibrary } from "./library";
 import { Icon } from "./Icon";
 import { Mark } from "./Mark";
 import { Toasts } from "./Toasts";
+import { PanelLinkProvider } from "../forge/panelLink";
 import "./Shell.css";
 
 const sections = [
@@ -119,8 +120,10 @@ export function Shell() {
       </nav>
       <main className="main">
         <Toasts>
-          <Outlet />
-          <Launchers />
+          <PanelLinkProvider>
+            <Outlet />
+            <Launchers />
+          </PanelLinkProvider>
         </Toasts>
       </main>
     </div>

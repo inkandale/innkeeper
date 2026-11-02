@@ -4,15 +4,16 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { Launchers } from "./Launchers";
 
-const instance = { grants: [], disabled: false };
+const instance = { grants: ["panel"], disabled: false };
 const instances = [
   { ...instance, id: 1, plugin: "advisor" },
   { ...instance, id: 2, plugin: "off", disabled: true },
   { ...instance, id: 3, plugin: "bad", broken_error: "won't start" },
   { ...instance, id: 4, plugin: "plain" },
+  { ...instance, id: 5, plugin: "hidden", grants: [] },
 ];
-const panel = (name: string) => ({ name, title: name, ui_url: `/api/plugin-ui/${name}/index.html` });
-const plugins = [panel("advisor"), panel("off"), panel("bad"), { name: "plain", title: "plain" }];
+const panel = (name: string) => ({ name, title: name, ui_title: `${name} panel`, ui_url: `/api/plugin-ui/${name}/index.html` });
+const plugins = [panel("advisor"), panel("off"), panel("bad"), { name: "plain", title: "plain" }, panel("hidden")];
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -36,25 +37,25 @@ function renderLaunchers() {
   return router;
 }
 
-test("only an enabled, working ui instance gets a bubble", async () => {
+test("only an enabled, working ui instance with Show on gets a bubble", async () => {
   renderLaunchers();
-  expect(await screen.findByRole("button", { name: "Open advisor" })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Open advisor panel" })).toBeInTheDocument();
   expect(screen.getAllByRole("button")).toHaveLength(1);
 });
 
 test("a bubble opens its panel, which closes back to the bubble", async () => {
   renderLaunchers();
-  await userEvent.click(await screen.findByRole("button", { name: "Open advisor" }));
-  expect(screen.getByTitle("advisor")).toHaveAttribute("src", "/api/plugin-ui/advisor/index.html");
-  await userEvent.click(screen.getByRole("button", { name: "Close advisor" }));
-  expect(screen.queryByTitle("advisor")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Open advisor" })).toBeInTheDocument();
+  await userEvent.click(await screen.findByRole("button", { name: "Open advisor panel" }));
+  expect(screen.getByTitle("advisor panel")).toHaveAttribute("src", "/api/plugin-ui/advisor/index.html");
+  await userEvent.click(screen.getByRole("button", { name: "Close advisor panel" }));
+  expect(screen.queryByTitle("advisor panel")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Open advisor panel" })).toBeInTheDocument();
 });
 
 test("an open panel keeps its frame across routes", async () => {
   const router = renderLaunchers();
-  await userEvent.click(await screen.findByRole("button", { name: "Open advisor" }));
-  const frame = screen.getByTitle("advisor");
+  await userEvent.click(await screen.findByRole("button", { name: "Open advisor panel" }));
+  const frame = screen.getByTitle("advisor panel");
   await act(() => router.navigate("/sync"));
-  expect(screen.getByTitle("advisor")).toBe(frame);
+  expect(screen.getByTitle("advisor panel")).toBe(frame);
 });

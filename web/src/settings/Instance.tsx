@@ -38,7 +38,17 @@ const permissionLabels: Record<string, { label: string; hint: string }> = {
   "library.read": { label: "Library access", hint: "Lets this plugin read your cards and lorebooks while it runs." },
   "cards.push": { label: "Offer push", hint: "Lets this plugin open the push dialog. You still confirm each push." },
   "cards.collect": { label: "Offer add to collection", hint: "Lets this plugin open the collection dialog. You still confirm." },
+  "cards.edit": {
+    label: "Offer edits to the open card",
+    hint: "Lets this plugin read the card open in the Forge, unsaved changes included, and send changes to its Review tab. You take or keep each one.",
+  },
 };
+
+/** permissionLabel names a permission's switch; the panel switch is named for the plugin's panel. */
+const permissionLabel = (p: string, plugin: Plugin) =>
+  p === "panel"
+    ? { label: `Show ${plugin.ui_title ?? plugin.title}`, hint: "Adds a bubble to the corner of every page that opens this panel." }
+    : permissionLabels[p];
 
 const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
 
@@ -378,19 +388,22 @@ export function InstanceForm({
               <small className="muted">The library this app's syncs match its items against and import new ones into.</small>
             </div>
           )}
-          {(plugin.permissions ?? []).map((p) => (
-            <div className="form-field" key={p}>
-              <label className="check">
-                <span>{permissionLabels[p]?.label ?? p}</span>
-                <input
-                  type="checkbox"
-                  checked={grants.includes(p)}
-                  onChange={(e) => setGrants(e.target.checked ? [...grants, p] : grants.filter((g) => g !== p))}
-                />
-              </label>
-              <small className="muted">{permissionLabels[p]?.hint}</small>
-            </div>
-          ))}
+          {(plugin.permissions ?? []).map((p) => {
+            const named = permissionLabel(p, plugin);
+            return (
+              <div className="form-field" key={p}>
+                <label className="check">
+                  <span>{named?.label ?? p}</span>
+                  <input
+                    type="checkbox"
+                    checked={grants.includes(p)}
+                    onChange={(e) => setGrants(e.target.checked ? [...grants, p] : grants.filter((g) => g !== p))}
+                  />
+                </label>
+                <small className="muted">{named?.hint}</small>
+              </div>
+            );
+          })}
           {/* An existing instance shows its effective setting; new instances take the plugin's default. */}
           {instance && caps.includes("enrich") && (
             <div className="form-field">

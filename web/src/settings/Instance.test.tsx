@@ -374,6 +374,29 @@ test("turning off the last permission sends an empty grants list", async () => {
   expect(sent[0]?.body).toEqual({ grants: [] });
 });
 
+test("a ui plugin's Show switch comes first, named for its panel", async () => {
+  const user = userEvent.setup();
+  const assistant = { ...ai, capabilities: ["action", "records", "ui"], permissions: ["panel", "library.read", "cards.edit"], ui_title: "AI Assistant" };
+  const router = createMemoryRouter(
+    [{ path: "/", element: <InstanceForm plugin={{ ...assistant, title: "Forge", source: "official", builtin: false, multiple_instances: false, status: "ready" } satisfies Plugin} instance={forge} /> }],
+    { initialEntries: ["/"] },
+  );
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <Toasts>
+        <RouterProvider router={router} />
+      </Toasts>
+    </QueryClientProvider>,
+  );
+  const show = await screen.findByLabelText("Show AI Assistant");
+  expect(show.compareDocumentPosition(screen.getByLabelText("Library access")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  await user.click(show);
+  await user.click(screen.getByLabelText("Offer edits to the open card"));
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await vi.waitFor(() => expect(sent).toHaveLength(1));
+  expect(sent[0]?.body).toEqual({ grants: ["panel", "cards.edit"] });
+});
+
 test("an enrich plugin's instance turns on Update cards as they change", async () => {
   const user = userEvent.setup();
   renderAt("/settings/instances/7");

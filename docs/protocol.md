@@ -1189,13 +1189,15 @@ does.
 capabilities = ["ui"]
 
 [ui]
+title = "AI Assistant"
 entry = "ui/index.html"
 slot = "corner"
-permissions = ["library.read", "cards.push", "cards.collect"]
+permissions = ["library.read", "cards.push", "cards.collect", "cards.edit"]
 ```
 
 | Key | Meaning |
 |---|---|
+| `title` | The panel's name, on its bubble, its header, and its Show switch. Required |
 | `entry` | The panel's HTML file, inside a subfolder of the plugin folder. Core serves that whole folder |
 | `slot` | Where the panel opens. Only `corner`: a chat-sized panel opened from a bubble in the page's corner |
 | `permissions` | What the owner may grant an instance, each listed once |
@@ -1211,6 +1213,10 @@ instance's grants.
 | `library.read` | Send `library.call` during a run |
 | `cards.push` | Open core's push dialog with `host.request` |
 | `cards.collect` | Open core's add-to-collection dialog with `host.request` |
+| `cards.edit` | Read the open card's draft in `host.context`, and send it changes with `host.request` |
+
+Core also offers every `ui` instance the `panel` grant, shown as **Show {title}**.
+Without it the panel has no bubble. Don't list `panel` in `permissions`.
 
 An `action` plugin can always be granted `library.read`.
 
@@ -1236,9 +1242,10 @@ integer the panel chooses. A panel runs at most 4 `ui.call`s at once.
 |---|---|---|
 | `ui.call` | `method`, `params` | Any number of `{id, event}`, then one `{id, result}` or `{id, error}` |
 | `ui.abort` | none | None; cancels the `ui.call` with that `id` |
-| `host.context` | none | `{id, result}` with `library` (the ID), `card` (the card on screen, if any), `theme` (CSS token values), and `grants` |
+| `host.context` | none | `{id, result}` with `library` (the ID), `card` (the card on screen, if any), `theme` (CSS token values), and `grants`. With `cards.edit` while a card's Forge is open, also `draft`: `card`, `revision` (the revision the draft started from), and `data`, unsaved edits included |
 | `host.openCard` | `card` | Opens the card page |
 | `host.request` | `request`: `push` or `add-to-collection`, and `card` | Opens core's dialog; needs `cards.push` or `cards.collect`. The owner confirms in the dialog. A request while a dialog is open is ignored |
+| `host.request` | `request`: `propose`, `card`, and `params`: `revision` and `proposal`, an object of field text of at most 256 KiB | Needs `cards.edit`. Opens the card's Review tab. Review compares the proposal with the draft the panel last read through `host.context` when its card and revision match, and with that revision's data otherwise. Keys other than the card's text fields are dropped with a warning, and a newer proposal replaces an unreviewed one |
 
 A failed call replies `{id, error}` with a message.
 

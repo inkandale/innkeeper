@@ -7,15 +7,39 @@ export type Host = {
   openCard: (id: number) => void;
   openPush: (id: number) => void;
   openCollection: (id: number) => void;
+  propose: (card: number, revision: number, proposal: Record<string, string>) => void;
   call: (method: string, params: unknown, signal: AbortSignal, onEvent: (data: unknown) => void) => Promise<unknown>;
 };
 
 type Message = { id: number; call: string; method?: unknown; params?: unknown; card?: unknown; request?: unknown };
 
-const requests: Record<string, { grant: string; open: (h: Host, id: number) => void }> = {
-  push: { grant: "cards.push", open: (h, id) => h.openPush(id) },
-  "add-to-collection": { grant: "cards.collect", open: (h, id) => h.openCollection(id) },
+// Each request opens core's own UI; a returned string is the error to reply with.
+const requests: Record<string, { grant: string; open: (h: Host, card: number, params: unknown) => string | void }> = {
+  push: { grant: "cards.push", open: (h, card) => h.openPush(card) },
+  "add-to-collection": { grant: "cards.collect", open: (h, card) => h.openCollection(card) },
+  propose: {
+    grant: "cards.edit",
+    open: (h, card, params) => {
+      const p = proposalOf(params);
+      if (!p) return "bad proposal";
+      h.propose(card, p.revision, p.proposal);
+    },
+  },
 };
+
+// Core caps a proposal as forge-ai caps the draft it reads.
+const maxProposal = 256 << 10;
+
+/** proposalOf is a propose request's revision and changed fields, if they are a positive integer and an object of strings within the cap. */
+function proposalOf(params: unknown) {
+  if (typeof params !== "object" || params === null) return;
+  const { revision, proposal } = params as { revision?: unknown; proposal?: unknown };
+  if (typeof revision !== "number" || !Number.isSafeInteger(revision) || revision <= 0) return;
+  if (typeof proposal !== "object" || proposal === null || Array.isArray(proposal)) return;
+  if (!Object.values(proposal).every((v) => typeof v === "string")) return;
+  if (new TextEncoder().encode(JSON.stringify(proposal)).length > maxProposal) return;
+  return { revision, proposal: { ...(proposal as Record<string, string>) } };
+}
 
 // Each running call holds a server stream, and a panel is untrusted.
 const maxRunning = 4;
@@ -43,8 +67,8 @@ export async function handleBridge(raw: unknown, host: Host, running: Map<number
       if (!request) return post({ id, error: "unknown request" });
       if (card === undefined) return post({ id, error: "bad card" });
       if (!host.grants.includes(request.grant)) return post({ id, error: "not granted" });
-      request.open(host, card);
-      return post({ id, result: null });
+      const error = request.open(host, card, msg.params);
+      return post(error ? { id, error } : { id, result: null });
     }
     case "ui.abort":
       running.get(id)?.abort();

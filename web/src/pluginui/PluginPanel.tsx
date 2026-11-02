@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { api, must } from "../api/client";
-import { usePanelLink } from "../forge/panelLink";
+import { usePanelLink, type OpenDraft } from "../forge/panelLink";
 import { useLibrary, withLibrary } from "../shell/library";
 import { handleBridge, type Host } from "./bridge";
 import { CollectionDialog } from "./CollectionDialog";
@@ -38,26 +38,35 @@ export function PluginPanel(props: { instance: number; title: string; src: strin
   const link = usePanelLink();
   const [dialog, setDialog] = useState<{ kind: "push" | "collection"; card: number }>();
   const running = useMemo(() => new Map<number, AbortController>(), []);
+  // seen is the draft this panel last read, which its proposals were most likely written against.
+  const seen = useRef<OpenDraft | undefined>(undefined);
   const host = useMemo<Host>(
     () => ({
       grants,
       context: () => {
         const card = /^\/cards\/(\d+)/.exec(pathname)?.[1];
         const style = getComputedStyle(document.documentElement);
+        const draft = link.draft();
+        seen.current = draft;
         return {
           library,
           card: card ? Number(card) : undefined,
           theme: Object.fromEntries(themeTokens.map((t) => [t, style.getPropertyValue(t)])),
-          draft: link.draft(),
+          draft,
         };
       },
       openCard: (id) => void navigate(withLibrary(`/cards/${id}`, library)),
       // The first request stands, so a panel can't swap the card under an open dialog.
       openPush: (card) => setDialog((d) => d ?? { kind: "push", card }),
       openCollection: (card) => setDialog((d) => d ?? { kind: "collection", card }),
+      propose: (card, revision, proposal) => {
+        const start = seen.current?.card === card && seen.current.revision === revision ? seen.current.data : undefined;
+        link.propose({ card, revision, start, proposal, label: title });
+        void navigate(withLibrary(`/cards/${card}`, library));
+      },
       call: (method, params, signal, onEvent) => uiCall(instance, method, params, signal, onEvent),
     }),
-    [grants, pathname, library, navigate, instance, link],
+    [grants, pathname, library, navigate, instance, link, title],
   );
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {

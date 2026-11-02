@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router";
-import { PanelLinkProvider, usePublishDraft, type OpenDraft } from "../forge/panelLink";
+import { PanelLinkProvider, usePanelLink, usePublishDraft, type OpenDraft } from "../forge/panelLink";
 import { PluginPanel } from "./PluginPanel";
 
 function json(body: unknown, status = 200) {
@@ -189,4 +189,28 @@ test("the same holds for the collection dialog", async () => {
   await send({ id: 3, call: "host.request", request: "push", card: 8 });
   expect(screen.getAllByRole("dialog")).toHaveLength(1);
   expect(screen.getByRole("dialog", { name: "Add Alice to a collection" })).toBeInTheDocument();
+});
+
+// Peek shows the proposal the link holds.
+function Peek() {
+  const { proposal } = usePanelLink();
+  return <output aria-label="Proposal">{JSON.stringify(proposal ?? null)}</output>;
+}
+const proposed = () => JSON.parse(screen.getByLabelText("Proposal").textContent!);
+
+test("a granted propose hands Review the draft the panel read, and opens the card", async () => {
+  const { post, send, router } = renderPanel(["cards.edit"], <Peek />);
+  await send({ id: 1, call: "host.context" });
+  await act(() => router.navigate("/sync"));
+  await send({ id: 2, call: "host.request", request: "propose", card: 7, params: { revision: 11, proposal: { name: "Bob" } } });
+  expect(post).toHaveBeenLastCalledWith({ id: 2, result: null }, "*");
+  expect(router.state.location.pathname).toBe("/cards/7");
+  expect(proposed()).toEqual({ key: 1, card: 7, revision: 11, start: { name: "Alice" }, proposal: { name: "Bob" }, label: "Advisor" });
+});
+
+test("a proposal against another revision has no start, so Review reads that revision", async () => {
+  const { send } = renderPanel(["cards.edit"], <Peek />);
+  await send({ id: 1, call: "host.context" });
+  await send({ id: 2, call: "host.request", request: "propose", card: 7, params: { revision: 10, proposal: { name: "Bob" } } });
+  expect(proposed()).not.toHaveProperty("start");
 });

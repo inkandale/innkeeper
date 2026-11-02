@@ -8,6 +8,7 @@ const host = (grants: string[] = [], draft?: OpenDraft) => {
     openCard: vi.fn(),
     openPush: vi.fn(),
     openCollection: vi.fn(),
+    propose: vi.fn(),
     call: vi.fn(async (_m, _p, _signal, onEvent) => {
       onEvent({ text: "hi" });
       return { status: "ok" };
@@ -129,4 +130,32 @@ test.each([
   const h = host();
   vi.mocked(h.call).mockRejectedValueOnce(thrown);
   expect(await run(h, { id: 12, call: "ui.call", method: "send" })).toEqual([{ id: 12, error }]);
+});
+
+test("a propose with cards.edit hands the proposal over", async () => {
+  const h = host(["cards.edit"]);
+  const msg = { id: 3, call: "host.request", request: "propose", card: 7, params: { revision: 11, proposal: { description: "A dwarf." } } };
+  expect(await run(h, msg)).toEqual([{ id: 3, result: null }]);
+  expect(h.propose).toHaveBeenCalledWith(7, 11, { description: "A dwarf." });
+});
+
+test("a propose without cards.edit is refused", async () => {
+  const h = host();
+  expect(await run(h, { id: 4, call: "host.request", request: "propose", card: 7, params: { revision: 11, proposal: {} } })).toEqual([
+    { id: 4, error: "not granted" },
+  ]);
+  expect(h.propose).not.toHaveBeenCalled();
+});
+
+test.each([
+  ["no params", undefined],
+  ["no revision", { proposal: { name: "x" } }],
+  ["a fractional revision", { revision: 1.5, proposal: { name: "x" } }],
+  ["a list", { revision: 11, proposal: ["x"] }],
+  ["a value that isn't text", { revision: 11, proposal: { tags: ["x"] } }],
+  ["over 256 KiB", { revision: 11, proposal: { description: "x".repeat(256 << 10) } }],
+])("a propose with %s is refused", async (_, params) => {
+  const h = host(["cards.edit"]);
+  expect(await run(h, { id: 5, call: "host.request", request: "propose", card: 7, params })).toEqual([{ id: 5, error: "bad proposal" }]);
+  expect(h.propose).not.toHaveBeenCalled();
 });

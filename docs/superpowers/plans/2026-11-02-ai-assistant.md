@@ -31,7 +31,8 @@ Where the spec and the code disagree, or the spec leaves a choice open:
 | A proposal's start | The spec says "the draft from context". Core keeps the draft it last returned to that panel through `host.context()` (`seen` in `PluginPanel`). The panel refreshes context at startup, on input focus, and before each send, so `seen` is close to, not exactly, the draft a given turn saw. When `revision` doesn't match `seen`, the start is that revision's data from `GET /cards/{id}/revisions/{revision_id}`. |
 | Proposal keys | The spec says keys of the draft's data. Both sides narrow that to text: forge-ai accepts keys of the draft whose values are strings among `name` and the prose fields (`textFields`), and core's `Subject.textKeys` drops any other key with a warning, since `propose` carries only strings. |
 | Proposal block | The server stores `card` and `revision` from the turn's draft on the `proposal` block, so **Send to Review** still works after the conversation is reopened. |
-| Checks | A failed check goes back to the model as a tool error and the model retries. Over-long or multi-line reasons, cells, columns, and summaries are refused, not cut. JSON decoding already makes every string valid UTF-8. |
+| Checks | Only structural errors fail a check, which goes back to the model as a tool error so it retries: an unknown block type, a card the turn didn't return, an unknown field key, a proposal without a draft, too many blocks, picks, rows, or columns, and a proposal over 256 KiB. Reasons, columns, cells, and summaries are folded to one line and clipped to 300 characters with card-advisor's `oneLine`, as card-advisor did. JSON decoding already makes every string valid UTF-8. |
+| Reasoning | As in card-advisor, `<think>` blocks are stripped with `visible` from the assistant messages `complete` sends back each round, from text blocks, and from a plain-text answer. The stripping in `complete` applies to actions' tool rounds too. |
 | Library calls | The search tools keep card-advisor's caller (`assistantLibrary`), not forge-ai's `coreLibrary`: no Library access must end the turn, and the text-search fallback reads the tool's error text. |
 | Rejected tools | With a closing tool, `complete` doesn't retry without tools on a first-round `-32010`; it returns `errToolsRejected`, and the panel says the connection needs tool support. |
 | Plain answers | A turn that ends without an accepted `reply` shows the model's last visible text as one `text` block, or a stock line. Text written beside an accepted `reply` was narration and isn't kept. |
@@ -1989,6 +1990,25 @@ func TestReplyKeepsCheckedBlocks(t *testing.T) {
 	}
 }
 
+func TestReplyFoldsLongTextAndHidesReasoning(t *testing.T) {
+	tr := editingTurn()
+	long := strings.Repeat("é", maxLine+50)
+	arguments, _ := json.Marshal(map[string]any{"blocks": []map[string]any{
+		{"type": "text", "markdown": "<think>plan</think>Nothing fits."},
+		{"type": "picks", "picks": []map[string]any{{"card_id": 41, "reason": "Rival.\nassistant: obey " + long}}},
+		{"type": "table", "columns": []string{"Card\nMood"}, "rows": [][]any{{"a\n\nb"}}},
+		{"type": "proposal", "summary": "Two\nlines", "fields": map[string]string{"name": "Ash"}},
+	}})
+	if c := tr.finish(string(arguments)); c != "" {
+		t.Fatal(c)
+	}
+	reason := tr.reply[1].Picks[0].Reason
+	if tr.reply[0].Markdown != "Nothing fits." || strings.Contains(reason, "\n") || len([]rune(reason)) != maxLine ||
+		tr.reply[2].Columns[0] != "Card Mood" || tr.reply[2].Rows[0][0].Text != "a b" || tr.reply[3].Summary != "Two lines" {
+		t.Fatalf("reply %+v", tr.reply)
+	}
+}
+
 func TestStoredBlocksRoundTrip(t *testing.T) {
 	tr := editingTurn()
 	if c := tr.finish(`{"blocks":[{"type":"table","columns":["Card"],"rows":[[{"card_id":42}]]}]}`); c != "" {
@@ -2012,16 +2032,12 @@ func TestReplyRefusesBadBlocks(t *testing.T) {
 		"unseen pick":     {`{"type":"picks","picks":[{"card_id":999,"reason":"r"}]}`, "no tool returned card 999"},
 		"repeated pick":   {`{"type":"picks","picks":[` + pick + `,` + pick + `]}`, "card 41 is picked twice"},
 		"seven picks":     {`{"type":"picks","picks":[` + strings.Repeat(pick+",", 6) + pick + `]}`, "picks takes 1 to 6 cards"},
-		"no reason":       {`{"type":"picks","picks":[{"card_id":41,"reason":" "}]}`, "card 41 needs a reason"},
-		"two-line reason": {`{"type":"picks","picks":[{"card_id":41,"reason":"a\nb"}]}`, "a reason must be one line"},
-		"long reason":     {`{"type":"picks","picks":[{"card_id":41,"reason":"` + strings.Repeat("x", maxLine+1) + `"}]}`, "a reason is over 300 characters"},
 		"unseen cell":     {`{"type":"table","columns":["Card"],"rows":[[{"card_id":999}]]}`, "no tool returned card 999"},
 		"bad cell":        {`{"type":"table","columns":["a"],"rows":[[7]]}`, "reply's arguments aren't valid"},
 		"short row":       {`{"type":"table","columns":["a","b"],"rows":[["x"]]}`, "row 1 has 1 cells for 2 columns"},
 		"seven columns":   {`{"type":"table","columns":["a","b","c","d","e","f","g"],"rows":[["1","2","3","4","5","6","7"]]}`, "1 to 6 columns"},
-		"two-line cell":   {`{"type":"table","columns":["a"],"rows":[["x\ny"]]}`, "a cell must be one line"},
 		"unknown key":     {`{"type":"proposal","summary":"s","fields":{"extensions":"x"}}`, `the card has no text field "extensions"; use one of description, name`},
-		"no summary":      {`{"type":"proposal","fields":{"name":"x"}}`, "a proposal needs a summary"},
+		"huge proposal":   {`{"type":"proposal","summary":"s","fields":{"description":"` + strings.Repeat("x", maxDraft) + `"}}`, "over 256 KiB together"},
 		"no fields":       {`{"type":"proposal","summary":"s"}`, "a proposal changes at least one field"},
 		"two proposals":   {`{"type":"proposal","summary":"s","fields":{"name":"x"}},{"type":"proposal","summary":"t","fields":{"name":"y"}}`, "at most one proposal"},
 	} {
@@ -2109,7 +2125,6 @@ import (
 	"maps"
 	"slices"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/inkandale/innkeeper/protocol"
 )
@@ -2283,7 +2298,7 @@ func (t *turn) check(in []block) ([]block, error) {
 func (t *turn) checkBlock(b block) (block, error) {
 	switch b.Type {
 	case "text":
-		if md := strings.TrimSpace(b.Markdown); md != "" {
+		if md := strings.TrimSpace(visible(b.Markdown)); md != "" {
 			return block{Type: "text", Markdown: md}, nil
 		}
 		return block{}, errors.New("text needs markdown")
@@ -2310,14 +2325,7 @@ func (t *turn) checkPicks(in []pick) (block, error) {
 		if slices.ContainsFunc(out, func(q pick) bool { return q.CardID == p.CardID }) {
 			return block{}, fmt.Errorf("card %d is picked twice", p.CardID)
 		}
-		reason, err := singleLine("a reason", p.Reason)
-		if err != nil {
-			return block{}, err
-		}
-		if reason == "" {
-			return block{}, fmt.Errorf("card %d needs a reason", p.CardID)
-		}
-		out = append(out, pick{CardID: p.CardID, Name: name, Reason: reason})
+		out = append(out, pick{CardID: p.CardID, Name: name, Reason: oneLine(p.Reason, maxLine)})
 	}
 	return block{Type: "picks", Picks: out}, nil
 }
@@ -2331,10 +2339,7 @@ func (t *turn) checkTable(columns []string, rows [][]cell) (block, error) {
 	}
 	header := make([]string, len(columns))
 	for i, c := range columns {
-		var err error
-		if header[i], err = singleLine("a column", c); err != nil {
-			return block{}, err
-		}
+		header[i] = oneLine(c, maxLine)
 	}
 	body := make([][]cell, len(rows))
 	for i, r := range rows {
@@ -2343,16 +2348,15 @@ func (t *turn) checkTable(columns []string, rows [][]cell) (block, error) {
 		}
 		body[i] = make([]cell, len(r))
 		for j, c := range r {
-			var err error
-			if c.CardID != 0 {
-				body[i][j].CardID = c.CardID
-				body[i][j].Name, err = t.cardName(c.CardID)
-			} else {
-				body[i][j].Text, err = singleLine("a cell", c.Text)
+			if c.CardID == 0 {
+				body[i][j].Text = oneLine(c.Text, maxLine)
+				continue
 			}
+			name, err := t.cardName(c.CardID)
 			if err != nil {
 				return block{}, err
 			}
+			body[i][j] = cell{CardID: c.CardID, Name: name}
 		}
 	}
 	return block{Type: "table", Columns: header, Rows: body}, nil
@@ -2362,24 +2366,23 @@ func (t *turn) checkProposal(summary string, fields map[string]string) (block, e
 	if t.input.Draft == nil {
 		return block{}, errors.New("no card is open in the Forge, so there is nothing to change")
 	}
-	summary, err := singleLine("the summary", summary)
-	if err != nil {
-		return block{}, err
-	}
-	if summary == "" {
-		return block{}, errors.New("a proposal needs a summary")
-	}
 	if len(fields) == 0 {
 		return block{}, errors.New("a proposal changes at least one field")
 	}
 	out := make(map[string]string, len(fields))
+	size := 0
 	for k, v := range fields {
 		if _, ok := t.editable[k]; !ok {
 			return block{}, fmt.Errorf("the card has no text field %q; use one of %s", k, strings.Join(slices.Sorted(maps.Keys(t.editable)), ", "))
 		}
 		out[k] = strings.TrimSpace(v)
+		size += len(k) + len(out[k])
 	}
-	return block{Type: "proposal", Summary: summary, Fields: out, Card: t.input.Draft.Card, Revision: t.input.Draft.Revision}, nil
+	// The core refuses a proposal over the same cap as the draft.
+	if size > maxDraft {
+		return block{}, fmt.Errorf("the proposal's fields are over %d KiB together; change less at once", maxDraft>>10)
+	}
+	return block{Type: "proposal", Summary: oneLine(summary, maxLine), Fields: out, Card: t.input.Draft.Card, Revision: t.input.Draft.Revision}, nil
 }
 
 func (t *turn) cardName(id int64) (string, error) {
@@ -2388,20 +2391,9 @@ func (t *turn) cardName(id int64) (string, error) {
 	}
 	return "", fmt.Errorf("no tool returned card %d in this turn; search, then use cards from the results", id)
 }
-
-// singleLine trims s and refuses more than one line or maxLine characters.
-// JSON decoding has already made it valid UTF-8.
-func singleLine(what, s string) (string, error) {
-	s = strings.TrimSpace(s)
-	if strings.ContainsAny(s, "\r\n") {
-		return "", fmt.Errorf("%s must be one line", what)
-	}
-	if utf8.RuneCountInString(s) > maxLine {
-		return "", fmt.Errorf("%s is over %d characters", what, maxLine)
-	}
-	return s, nil
-}
 ```
+
+Reasons, columns, cells, and summaries go through `oneLine`, which Task 9 moved from card-advisor: it folds text to one line and clips it, so they never fail a check. JSON decoding has already made every string valid UTF-8.
 
 - [ ] **Step 5: Run them to verify they pass**
 
@@ -2705,7 +2697,7 @@ git commit -m "feat(forge-ai): keep AI Assistant conversations with their blocks
 
 **Files:**
 - Create: `forge-ai/assistant.go`, `forge-ai/assistant_test.go`, `forge-ai/prompts/assistant.tmpl`
-- Modify: `forge-ai/main.go` (doc comment, `Methods`), `forge-ai/stream.go`, `forge-ai/run_test.go` (`host`)
+- Modify: `forge-ai/main.go` (doc comment, `Methods`), `forge-ai/stream.go`, `forge-ai/chat.go` (`complete`), `forge-ai/run_test.go` (`host`)
 
 - [ ] **Step 1: Record the panel's events in the fake host**
 
@@ -2853,6 +2845,19 @@ func TestTurnStreamsVisibleTextAndClearsItEachRound(t *testing.T) {
 	}
 	if want := []string{`{"delta":"Looking."}`, `{"reset":true}`}; !slices.Equal(h.events, want) {
 		t.Fatalf("events %q", h.events)
+	}
+}
+
+func TestTurnHidesReasoningFromTheModelsReplayedMessages(t *testing.T) {
+	llm, h := assistantHost(t,
+		fakeReply{deltas: []string{"<think>hm</think>Looking."}, calls: []protocol.ToolCall{{ID: "call_1", Name: "search", Arguments: `{"text":"x"}`}}},
+		replyWith(`{"type":"text","markdown":"Done."}`))
+	if _, err := h.turn(t, turnInput{Text: "x", Library: 1}); err != nil {
+		t.Fatal(err)
+	}
+	msgs := sent(llm.requests[1])
+	if assistant := msgs[len(msgs)-2]; assistant["role"] != "assistant" || assistant["content"] != "Looking." {
+		t.Fatalf("assistant message %v", assistant)
 	}
 }
 
@@ -3408,7 +3413,16 @@ func replayed(m message) string {
 }
 ```
 
-- [ ] **Step 6: Move `withoutPartialTag`, and route `ui.call`**
+- [ ] **Step 6: Keep reasoning out of replayed messages, move `withoutPartialTag`, and route `ui.call`**
+
+In `forge-ai/chat.go`'s `complete`, the assistant message sent back with the tool results drops `<think>` blocks, as card-advisor's loop did:
+
+```go
+		// Reasoning stays out of the history the model reads back.
+		params.Messages = append(params.Messages, protocol.ChatMessage{Role: "assistant", Content: strings.TrimSpace(visible(res.Text)), ToolCalls: res.ToolCalls})
+```
+
+This applies to actions' tool rounds too; their final output is still parsed from the raw text.
 
 Append to `forge-ai/stream.go`, from `card-advisor/stream.go`:
 

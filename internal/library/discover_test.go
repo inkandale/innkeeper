@@ -47,7 +47,7 @@ func TestSimilarRanksByEmbeddingDistance(t *testing.T) {
 	me, _ := newCard(t, lib, "me", `{"name": "Brakka"}`)
 	near, _ := newCard(t, lib, "near", `{"name": "Dorna"}`)
 	far, _ := newCard(t, lib, "far", `{"name": "Lia"}`)
-	embedCards(t, lib, inst, map[int64][]float32{me: {1, 0}, near: {0.9, 0.1}, far: {0, 1}})
+	embedCards(t, lib, inst, map[int64][]float32{me: {1, 0}, near: {0.9, 0.1}, far: {0.6, 0.4}})
 
 	got, err := lib.SimilarCards(ctx, me, SimilarOptions{Instance: inst})
 	if err != nil {
@@ -56,6 +56,20 @@ func TestSimilarRanksByEmbeddingDistance(t *testing.T) {
 	if got.Basis != "embedding" || len(got.Items) != 2 || got.Items[0].CardID != near || got.Items[1].CardID != far ||
 		got.Items[0].Name != "Dorna" || got.Items[0].Score <= got.Items[1].Score {
 		t.Fatalf("similar = %+v", got)
+	}
+}
+
+func TestSimilarLeavesOutCardsBelowMinSimilarity(t *testing.T) {
+	lib := newLibrary(t)
+	inst := newInstanceRow(t, lib)
+	me, _ := newCard(t, lib, "me", `{"name": "Brakka"}`)
+	near, _ := newCard(t, lib, "near", `{"name": "Dorna"}`)
+	unlike, _ := newCard(t, lib, "unlike", `{"name": "Karina"}`)
+	// cos(me, unlike) is 0.5, below minSimilarity.
+	embedCards(t, lib, inst, map[int64][]float32{me: {1, 0}, near: {1, 0.1}, unlike: {1, 1.7320508}})
+	got, err := lib.SimilarCards(context.Background(), me, SimilarOptions{Instance: inst})
+	if err != nil || got.Basis != "embedding" || !slices.Equal(ids(got.Items), []int64{near}) {
+		t.Fatalf("similar = %+v, %v; want only near", got, err)
 	}
 }
 
@@ -107,7 +121,7 @@ func TestSimilarExcludesVariantFamilyDuplicatesAndArchived(t *testing.T) {
 	if err := lib.Cards.SetArchived(ctx, archived, true); err != nil {
 		t.Fatal(err)
 	}
-	embedCards(t, lib, inst, map[int64][]float32{root: {1, 0}, me: {1, 0}, sibling: {1, 0}, dup: {1, 0}, archived: {1, 0}, kept: {0, 1}})
+	embedCards(t, lib, inst, map[int64][]float32{root: {1, 0}, me: {1, 0}, sibling: {1, 0}, dup: {1, 0}, archived: {1, 0}, kept: {1, 0.1}})
 
 	got, err := lib.SimilarCards(ctx, me, SimilarOptions{Instance: inst})
 	if err != nil || !slices.Equal(ids(got.Items), []int64{kept}) {
@@ -144,7 +158,7 @@ func TestSimilarPagesByCursor(t *testing.T) {
 	var want []int64
 	for i := range 5 {
 		id, _ := newCard(t, lib, fmt.Sprintf("c%d", i), fmt.Sprintf(`{"name": "C%d"}`, i))
-		vecs[id] = []float32{1, float32(i + 1)}
+		vecs[id] = []float32{1, 0.1 * float32(i+1)}
 		want = append(want, id)
 	}
 	embedCards(t, lib, inst, vecs)
@@ -293,7 +307,7 @@ func TestSimilarComparesOnlyWithinASpace(t *testing.T) {
 	me, _ := newCard(t, lib, "me", `{"name": "Me"}`)
 	same, _ := newCard(t, lib, "same", `{"name": "Same"}`)
 	other, _ := newCard(t, lib, "other", `{"name": "Other"}`)
-	embedCardsIn(t, lib, inst, "s1", map[int64][]float32{me: {1, 0}, same: {0, 1}})
+	embedCardsIn(t, lib, inst, "s1", map[int64][]float32{me: {1, 0}, same: {1, 0.1}})
 	embedCardsIn(t, lib, inst, "s2", map[int64][]float32{other: {1, 0, 0}})
 
 	got, err := lib.SimilarCards(context.Background(), me, SimilarOptions{Instance: inst})

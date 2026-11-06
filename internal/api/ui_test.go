@@ -189,10 +189,12 @@ func waitForCancelled(t *testing.T, pluginDir string) {
 	waitForFile(t, pluginDir, "cancelled")
 }
 
-// waitForFile fails fast when the plugin never leaves name in its folder.
+// waitForFile fails when the plugin never leaves name in its folder. A flood
+// takes over 10s under -race on CI; past uiWriteTimeout's 30s default, a
+// timed-out write would free a stalled stream and hide the stall.
 func waitForFile(t *testing.T, pluginDir, name string) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(25 * time.Second)
 	for {
 		if _, err := os.Stat(filepath.Join(pluginDir, name)); err == nil {
 			return

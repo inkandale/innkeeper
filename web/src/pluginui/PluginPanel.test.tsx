@@ -228,6 +228,17 @@ test("a later read doesn't move the start of a proposal written against an earli
   expect(proposed().start).toEqual({ name: "Alice" });
 });
 
+test("a snapshot from before a remount doesn't name a draft read after it", async () => {
+  const first = renderPanel(["cards.edit"]);
+  await first.send({ id: 1, call: "host.context" });
+  const snapshot = snapshotOf(first.post);
+  first.unmount();
+  const { send } = renderPanel(["cards.edit"], <Peek />);
+  await send({ id: 1, call: "host.context" });
+  await send({ id: 2, call: "host.request", request: "propose", card: 7, params: { revision: 11, snapshot, proposal: { name: "Bob" } } });
+  expect(proposed()).not.toHaveProperty("start");
+});
+
 test.each([
   ["no snapshot", {}],
   ["an unknown snapshot", { snapshot: 999 }],

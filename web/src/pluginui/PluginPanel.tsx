@@ -11,6 +11,8 @@ import "./pluginui.css";
 
 // A proposal names one of a panel's recent draft reads; an older one falls back to its revision's saved data.
 const maxSnapshots = 32;
+// Proposals outlive the page, so snapshot ids start from the clock and never repeat after a reload or remount.
+let lastSnapshot = Date.now() * 1000;
 
 const themeTokens = ["--bg", "--surface", "--text", "--text-muted", "--accent", "--border", "--radius", "--font", "--font-size"];
 
@@ -43,7 +45,6 @@ export function PluginPanel(props: { instance: number; title: string; src: strin
   const running = useMemo(() => new Map<number, AbortController>(), []);
   // The drafts this panel read, by snapshot, so a proposal starts from the draft it was written against.
   const snapshots = useMemo(() => new Map<number, OpenDraft>(), []);
-  const lastSnapshot = useRef(0);
   const host = useMemo<Host>(
     () => ({
       grants,
@@ -51,7 +52,7 @@ export function PluginPanel(props: { instance: number; title: string; src: strin
         const card = /^\/cards\/(\d+)/.exec(pathname)?.[1];
         const style = getComputedStyle(document.documentElement);
         const open = link.draft();
-        const snapshot = ++lastSnapshot.current;
+        const snapshot = ++lastSnapshot;
         if (open) snapshots.set(snapshot, open);
         // A Map iterates in insertion order, so its first key is the oldest.
         if (snapshots.size > maxSnapshots) snapshots.delete(snapshots.keys().next().value!);

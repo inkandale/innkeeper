@@ -13,6 +13,8 @@ export type PanelProposal = { key: number; at: number; card: number; revision: n
 type PanelLink = {
   /** draft is the open Forge's draft, if a card's Forge is open. */
   draft: () => OpenDraft | undefined;
+  /** openCard is the card whose draft is shared; unlike the draft, it changes only when the Forge opens, closes or moves. */
+  openCard?: number;
   /** publish shares card's draft, or with no draft stops sharing it. */
   publish: (card: number, draft?: OpenDraft) => void;
   proposal?: PanelProposal;
@@ -29,19 +31,26 @@ export function PanelLinkProvider({ children }: { children: ReactNode }) {
   // A ref, not state: the draft changes on every keystroke, and only a panel's host.context reads it.
   const draft = useRef<OpenDraft | undefined>(undefined);
   const keys = useRef(0);
+  const [openCard, setOpenCard] = useState<number>();
   const [proposal, setProposal] = useState<PanelProposal>();
   const value = useMemo<PanelLink>(
     () => ({
       draft: () => draft.current,
       publish: (card, d) => {
-        if (d) draft.current = d;
-        else if (draft.current?.card === card) draft.current = undefined;
+        if (d) {
+          draft.current = d;
+          setOpenCard(d.card);
+        } else if (draft.current?.card === card) {
+          draft.current = undefined;
+          setOpenCard(undefined);
+        }
       },
+      openCard,
       proposal,
       propose: (p) => setProposal({ ...p, key: ++keys.current, at: Date.now() }),
       drop: (key) => setProposal((p) => (p?.key === key ? undefined : p)),
     }),
-    [proposal],
+    [openCard, proposal],
   );
   return <PanelLinkContext.Provider value={value}>{children}</PanelLinkContext.Provider>;
 }

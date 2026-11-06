@@ -1249,6 +1249,10 @@ integer the panel chooses. A panel runs at most 4 `ui.call`s at once.
 
 A failed call replies `{id, error}` with a message.
 
+Core also sends `{"notice": "context"}`, with no `id`, when the card on screen
+or the card of the open Forge changes. Call `host.context` to read the new
+context.
+
 #### `ui.call`
 
 Core sends **`ui.call`** when the panel does and waits for the reply, which

@@ -45,11 +45,11 @@ export function PluginPanel(props: { instance: number; title: string; src: strin
   const running = useMemo(() => new Map<number, AbortController>(), []);
   // The drafts this panel read, by snapshot, so a proposal starts from the draft it was written against.
   const snapshots = useMemo(() => new Map<number, OpenDraft>(), []);
+  const routeCard = /^\/cards\/(\d+)/.exec(pathname)?.[1];
   const host = useMemo<Host>(
     () => ({
       grants,
       context: () => {
-        const card = /^\/cards\/(\d+)/.exec(pathname)?.[1];
         const style = getComputedStyle(document.documentElement);
         const open = link.draft();
         const snapshot = ++lastSnapshot;
@@ -58,7 +58,7 @@ export function PluginPanel(props: { instance: number; title: string; src: strin
         if (snapshots.size > maxSnapshots) snapshots.delete(snapshots.keys().next().value!);
         return {
           library,
-          card: card ? Number(card) : undefined,
+          card: routeCard ? Number(routeCard) : undefined,
           theme: Object.fromEntries(themeTokens.map((t) => [t, style.getPropertyValue(t)])),
           draft: open && { ...open, snapshot },
         };
@@ -75,8 +75,12 @@ export function PluginPanel(props: { instance: number; title: string; src: strin
       },
       call: (method, params, signal, onEvent) => uiCall(instance, method, params, signal, onEvent),
     }),
-    [grants, pathname, library, navigate, instance, link, title, snapshots],
+    [grants, routeCard, library, navigate, instance, link, title, snapshots],
   );
+  // A notice, not the context itself, so the panel's own host.context call still applies its grants.
+  useEffect(() => {
+    frame.current?.contentWindow?.postMessage({ notice: "context" }, "*");
+  }, [routeCard, link.openCard]);
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       const target = frame.current?.contentWindow;

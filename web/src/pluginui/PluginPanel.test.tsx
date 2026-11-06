@@ -207,7 +207,7 @@ test("a granted propose hands Review the draft its snapshot names, and opens the
   const snapshot = snapshotOf(post);
   await act(() => router.navigate("/sync"));
   await send({ id: 2, call: "host.request", request: "propose", card: 7, params: { revision: 11, snapshot, proposal: { name: "Bob" } } });
-  expect(post).toHaveBeenLastCalledWith({ id: 2, result: null }, "*");
+  expect(post).toHaveBeenCalledWith({ id: 2, result: null }, "*");
   expect(router.state.location.pathname).toBe("/cards/7");
   expect(proposed()).toEqual({ key: 1, at: expect.any(Number), card: 7, revision: 11, start: { name: "Alice" }, proposal: { name: "Bob" }, label: "Advisor" });
 });
@@ -255,4 +255,44 @@ test("a proposal against another revision has no start, so Review reads that rev
   const snapshot = snapshotOf(post);
   await send({ id: 2, call: "host.request", request: "propose", card: 7, params: { revision: 10, snapshot, proposal: { name: "Bob" } } });
   expect(proposed()).not.toHaveProperty("start");
+});
+
+const notice = { notice: "context" };
+
+test("moving to another card tells the panel its context changed", async () => {
+  const { post, router } = renderPanel();
+  await act(() => router.navigate("/cards/9"));
+  expect(post).toHaveBeenCalledWith(notice, "*");
+});
+
+test("a Forge opening or closing tells the panel its context changed", async () => {
+  // Opener stands in for a Forge on card 8, off the card page, sharing and then dropping its draft.
+  function Opener() {
+    const { publish } = usePanelLink();
+    return (
+      <>
+        <button onClick={() => publish(8, { card: 8, revision: 3, data: { name: "Bob" } })}>Open</button>
+        <button onClick={() => publish(8)}>Close</button>
+      </>
+    );
+  }
+  const { post, router } = renderPanel([], <Opener />);
+  await act(() => router.navigate("/sync"));
+  post.mockClear();
+  fireEvent.click(screen.getByText("Open"));
+  await waitFor(() => expect(post).toHaveBeenCalledWith(notice, "*"));
+  post.mockClear();
+  fireEvent.click(screen.getByText("Close"));
+  await waitFor(() => expect(post).toHaveBeenCalledWith(notice, "*"));
+});
+
+test("an edit to the open card's draft doesn't tell the panel", async () => {
+  function Editor() {
+    const { publish } = usePanelLink();
+    return <button onClick={() => publish(7, { ...draft, data: { name: "Alicia" } })}>Edit</button>;
+  }
+  const { post } = renderPanel([], <Editor />);
+  fireEvent.click(screen.getByText("Edit"));
+  await act(async () => {});
+  expect(post).not.toHaveBeenCalled();
 });

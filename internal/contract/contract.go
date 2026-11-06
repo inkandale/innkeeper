@@ -424,7 +424,8 @@ const (
 	checkRejectsName   = "codec.decode rejects a file that isn't a card"
 )
 
-var sampleCard = json.RawMessage(`{"spec": "chara_card_v3", "spec_version": "3.0", "data": {"name": "Contract Check", "description": "A card for the codec check.", "first_mes": "Hello."}}`)
+// sampleCard has a sentence of text, since a plugin may refuse a near-empty card.
+var sampleCard = json.RawMessage(`{"spec": "chara_card_v3", "spec_version": "3.0", "data": {"name": "Contract Check", "description": "A retired lighthouse keeper who tells sailors' stories to anyone who visits the harbor.", "first_mes": "Hello."}}`)
 
 // checkRoundTrip encodes the sample card in each format and decodes it back.
 func checkRoundTrip(ctx context.Context, p *pluginhost.Process, m *protocol.Manifest, tmp string) error {

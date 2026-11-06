@@ -52,21 +52,23 @@ A new `[ui]` permission, `cards.edit`, off until granted, covers both parts
 below.
 
 **Draft in context.** While a card's Forge is open, the Forge publishes its
-draft to the Shell. `host.context()` adds `draft: {card, revision, data}`,
-where `revision` is the revision the draft started from. It is present only
-with the `cards.edit` grant, and only while that Forge is open.
+draft to the Shell. `host.context()` adds `draft: {card, revision, snapshot,
+data}`, where `revision` is the revision the draft started from and
+`snapshot` is an ID for this read. It is present only with the `cards.edit`
+grant, and only while that Forge is open.
 
 **`propose` request.**
 
 | Call | Does | Needs |
 |---|---|---|
-| `host.request("propose", cardId, {revision, proposal})` | Opens the card's Forge on the Review tab with `proposal` | `cards.edit` |
+| `host.request("propose", cardId, {revision, snapshot?, proposal})` | Opens the card's Forge on the Review tab with `proposal` | `cards.edit` |
 
 - The bridge refuses a `proposal` that isn't an object of strings or is over
   256 KiB.
 - The Forge treats it like a finished run held in the tab. Its start is the
-  data the chat saw: the draft from context when `revision` matches it,
-  otherwise that revision's data. Review compares start, draft, and proposal
+  data the chat saw: the draft read as `snapshot` when its card and
+  `revision` match, otherwise that revision's data. The panel host keeps the
+  last 32 reads. Review compares start, draft, and proposal
   with the card subject's `review`, so a field the owner edited since then
   shows both versions.
 - Keys the card subject doesn't review are dropped, with a warning above the
@@ -123,19 +125,21 @@ permissions = ["library.read", "cards.push", "cards.collect", "cards.edit"]
 | Block | Fields | The panel shows |
 |---|---|---|
 | `text` | `markdown` | Paragraphs, bullets, bold, and italic |
-| `picks` | `picks: [{card_id, reason}]`, at most 6 | A box per card with its avatar, name, reason, and the Open, Push, and Add to collection buttons the instance is granted |
+| `picks` | `picks: [{card_id, reason}]`, at most 6 | A box per card with its name, reason, and the Open, Push, and Add to collection buttons the instance is granted |
 | `table` | `columns: [string]`, `rows: [[cell]]`; a cell is a string or `{card_id}`; at most 6 columns and 20 rows | An HTML table; a card cell shows the card's name as a link that opens it |
-| `proposal` | `summary`, `fields: {key: text}` | The summary and, per field, its label and new text, collapsed past a few lines. **Send to Review** sends it with the draft's revision. Shown only with the `cards.edit` grant. |
+| `proposal` | `summary`, `fields: {key: text}` | The summary and, per field, its label and new text, collapsed past a few lines. **Send to Review** sends it with the draft's revision and snapshot. Shown only with the `cards.edit` grant. |
 
 The server checks every block before saving the reply:
 
-- Each `card_id` must come from a tool result in this turn.
+- Each `card_id`, an integer or a string of digits, must come from a tool
+  result in this turn.
 - A `proposal` needs a draft in this turn. Its keys must be keys of the
   draft's data, and at most one `proposal` block is allowed per reply.
 - Every string is UTF-8 and trimmed. A reason, cell, or summary is at most
   one line.
 - A check that fails is returned to the model as a tool error, as
-  `recommend`'s are today.
+  `recommend`'s are today. It names the block, and for a cell its row and
+  column.
 
 A saved message stores its blocks as JSON, which replaces the `picks` column.
 Earlier turns go back to the model as text, so it can see what it said and

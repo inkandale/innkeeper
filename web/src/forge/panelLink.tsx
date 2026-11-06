@@ -5,8 +5,8 @@ import type { Data } from "../card/draft";
 export type OpenDraft = { card: number; revision: number; data: Data };
 
 /**
- * PanelProposal is changed card fields a plugin panel sent for Review. start is the draft the panel last read, when that
- * was this card at revision. label names the panel. at is when it arrived, in epoch milliseconds.
+ * PanelProposal is changed card fields a plugin panel sent for Review. start is the draft the proposal names as its
+ * snapshot, when that was this card at revision. label names the panel. at is when it arrived, in epoch milliseconds.
  */
 export type PanelProposal = { key: number; at: number; card: number; revision: number; start?: Data; proposal: Record<string, string>; label: string };
 

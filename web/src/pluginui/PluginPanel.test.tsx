@@ -94,7 +94,7 @@ test("host.context follows the route, on the same frame", async () => {
 test("host.context carries the open card's draft to a panel granted cards.edit, until the Forge closes", async () => {
   const { post, send, router } = renderPanel(["cards.edit"]);
   await send({ id: 1, call: "host.context" });
-  expect(post).toHaveBeenLastCalledWith({ id: 1, result: expect.objectContaining({ draft }) }, "*");
+  expect(post).toHaveBeenLastCalledWith({ id: 1, result: expect.objectContaining({ draft: { ...draft, snapshot: expect.any(Number) } }) }, "*");
   await act(() => router.navigate("/sync"));
   await send({ id: 2, call: "host.context" });
   expect(post).toHaveBeenLastCalledWith({ id: 2, result: expect.not.objectContaining({ draft: expect.anything() }) }, "*");
@@ -198,19 +198,50 @@ function Peek() {
 }
 const proposed = () => JSON.parse(screen.getByLabelText("Proposal").textContent!);
 
-test("a granted propose hands Review the draft the panel read, and opens the card", async () => {
+// snapshotOf is the draft snapshot in the panel's last host.context reply.
+const snapshotOf = (post: ReturnType<typeof renderPanel>["post"]) => (post.mock.lastCall![0] as { result: { draft: { snapshot: number } } }).result.draft.snapshot;
+
+test("a granted propose hands Review the draft its snapshot names, and opens the card", async () => {
   const { post, send, router } = renderPanel(["cards.edit"], <Peek />);
   await send({ id: 1, call: "host.context" });
+  const snapshot = snapshotOf(post);
   await act(() => router.navigate("/sync"));
-  await send({ id: 2, call: "host.request", request: "propose", card: 7, params: { revision: 11, proposal: { name: "Bob" } } });
+  await send({ id: 2, call: "host.request", request: "propose", card: 7, params: { revision: 11, snapshot, proposal: { name: "Bob" } } });
   expect(post).toHaveBeenLastCalledWith({ id: 2, result: null }, "*");
   expect(router.state.location.pathname).toBe("/cards/7");
   expect(proposed()).toEqual({ key: 1, at: expect.any(Number), card: 7, revision: 11, start: { name: "Alice" }, proposal: { name: "Bob" }, label: "Advisor" });
 });
 
-test("a proposal against another revision has no start, so Review reads that revision", async () => {
+test("a later read doesn't move the start of a proposal written against an earlier one", async () => {
+  // Editor stands in for the owner's hand edit in the Forge after the proposal was written.
+  function Editor() {
+    const { publish } = usePanelLink();
+    return <button onClick={() => publish(7, { ...draft, data: { name: "Alicia" } })}>Edit</button>;
+  }
+  const { post, send } = renderPanel(["cards.edit"], <><Peek /><Editor /></>);
+  await send({ id: 1, call: "host.context" });
+  const snapshot = snapshotOf(post);
+  fireEvent.click(screen.getByText("Edit"));
+  await send({ id: 2, call: "host.context" });
+  expect(snapshotOf(post)).not.toBe(snapshot);
+  await send({ id: 3, call: "host.request", request: "propose", card: 7, params: { revision: 11, snapshot, proposal: { name: "Bob" } } });
+  expect(proposed().start).toEqual({ name: "Alice" });
+});
+
+test.each([
+  ["no snapshot", {}],
+  ["an unknown snapshot", { snapshot: 999 }],
+])("a proposal with %s has no start, so Review reads that revision", async (_, extra) => {
   const { send } = renderPanel(["cards.edit"], <Peek />);
   await send({ id: 1, call: "host.context" });
-  await send({ id: 2, call: "host.request", request: "propose", card: 7, params: { revision: 10, proposal: { name: "Bob" } } });
+  await send({ id: 2, call: "host.request", request: "propose", card: 7, params: { revision: 11, ...extra, proposal: { name: "Bob" } } });
+  expect(proposed()).not.toHaveProperty("start");
+});
+
+test("a proposal against another revision has no start, so Review reads that revision", async () => {
+  const { post, send } = renderPanel(["cards.edit"], <Peek />);
+  await send({ id: 1, call: "host.context" });
+  const snapshot = snapshotOf(post);
+  await send({ id: 2, call: "host.request", request: "propose", card: 7, params: { revision: 10, snapshot, proposal: { name: "Bob" } } });
   expect(proposed()).not.toHaveProperty("start");
 });

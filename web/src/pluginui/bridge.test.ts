@@ -1,7 +1,7 @@
 import type { OpenDraft } from "../forge/panelLink";
 import { handleBridge, type Host } from "./bridge";
 
-const host = (grants: string[] = [], draft?: OpenDraft) => {
+const host = (grants: string[] = [], draft?: OpenDraft & { snapshot: number }) => {
   const h: Host = {
     grants,
     context: vi.fn(() => ({ library: 1, card: 7, theme: {}, draft })),
@@ -28,7 +28,7 @@ test("host.context replies with the host's grants", async () => {
   ]);
 });
 
-const draft = { card: 7, revision: 11, data: { name: "Alice" } };
+const draft = { card: 7, revision: 11, snapshot: 1, data: { name: "Alice" } };
 
 test("host.context carries the open draft only with cards.edit", async () => {
   expect(await run(host(["cards.edit"], draft), { id: 1, call: "host.context" })).toEqual([
@@ -136,7 +136,14 @@ test("a propose with cards.edit hands the proposal over", async () => {
   const h = host(["cards.edit"]);
   const msg = { id: 3, call: "host.request", request: "propose", card: 7, params: { revision: 11, proposal: { description: "A dwarf." } } };
   expect(await run(h, msg)).toEqual([{ id: 3, result: null }]);
-  expect(h.propose).toHaveBeenCalledWith(7, 11, { description: "A dwarf." });
+  expect(h.propose).toHaveBeenCalledWith(7, 11, undefined, { description: "A dwarf." });
+});
+
+test("a propose hands over the snapshot it names", async () => {
+  const h = host(["cards.edit"]);
+  const msg = { id: 3, call: "host.request", request: "propose", card: 7, params: { revision: 11, snapshot: 4, proposal: { name: "x" } } };
+  expect(await run(h, msg)).toEqual([{ id: 3, result: null }]);
+  expect(h.propose).toHaveBeenCalledWith(7, 11, 4, { name: "x" });
 });
 
 test("a propose without cards.edit is refused", async () => {
@@ -151,6 +158,9 @@ test.each([
   ["no params", undefined],
   ["no revision", { proposal: { name: "x" } }],
   ["a fractional revision", { revision: 1.5, proposal: { name: "x" } }],
+  ["a zero snapshot", { revision: 11, snapshot: 0, proposal: { name: "x" } }],
+  ["a fractional snapshot", { revision: 11, snapshot: 1.5, proposal: { name: "x" } }],
+  ["a snapshot that isn't a number", { revision: 11, snapshot: "4", proposal: { name: "x" } }],
   ["a list", { revision: 11, proposal: ["x"] }],
   ["a value that isn't text", { revision: 11, proposal: { tags: ["x"] } }],
   ["over 256 KiB", { revision: 11, proposal: { description: "x".repeat(256 << 10) } }],

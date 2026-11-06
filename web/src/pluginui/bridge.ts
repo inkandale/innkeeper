@@ -3,11 +3,12 @@ import type { OpenDraft } from "../forge/panelLink";
 /** Host is what a plugin panel may ask of the page. */
 export type Host = {
   grants: string[];
-  context: () => { library: number; card?: number; theme: Record<string, string>; draft?: OpenDraft };
+  /** context's draft carries snapshot, an ID for that read, which a proposal names to start Review from it. */
+  context: () => { library: number; card?: number; theme: Record<string, string>; draft?: OpenDraft & { snapshot: number } };
   openCard: (id: number) => void;
   openPush: (id: number) => void;
   openCollection: (id: number) => void;
-  propose: (card: number, revision: number, proposal: Record<string, string>) => void;
+  propose: (card: number, revision: number, snapshot: number | undefined, proposal: Record<string, string>) => void;
   call: (method: string, params: unknown, signal: AbortSignal, onEvent: (data: unknown) => void) => Promise<unknown>;
 };
 
@@ -22,7 +23,7 @@ const requests: Record<string, { grant: string; open: (h: Host, card: number, pa
     open: (h, card, params) => {
       const p = proposalOf(params);
       if (!p) return "bad proposal";
-      h.propose(card, p.revision, p.proposal);
+      h.propose(card, p.revision, p.snapshot, p.proposal);
     },
   },
 };
@@ -32,16 +33,19 @@ const maxProposal = 256 << 10;
 // A card has far fewer text fields than this.
 const maxProposalKeys = 64;
 
-/** proposalOf is a propose request's revision and changed fields, if they are a positive integer and an object of strings within the caps. */
+const isID = (n: unknown): n is number => typeof n === "number" && Number.isSafeInteger(n) && n > 0;
+
+/** proposalOf is a propose request's revision, optional snapshot, and changed fields, if the first two are positive integers and the fields an object of strings within the caps. */
 function proposalOf(params: unknown) {
   if (typeof params !== "object" || params === null) return;
-  const { revision, proposal } = params as { revision?: unknown; proposal?: unknown };
-  if (typeof revision !== "number" || !Number.isSafeInteger(revision) || revision <= 0) return;
+  const { revision, snapshot, proposal } = params as { revision?: unknown; snapshot?: unknown; proposal?: unknown };
+  if (!isID(revision)) return;
+  if (snapshot !== undefined && !isID(snapshot)) return;
   if (typeof proposal !== "object" || proposal === null || Array.isArray(proposal)) return;
   const values = Object.values(proposal);
   if (values.length > maxProposalKeys || !values.every((v) => typeof v === "string")) return;
   if (new TextEncoder().encode(JSON.stringify(proposal)).length > maxProposal) return;
-  return { revision, proposal: { ...(proposal as Record<string, string>) } };
+  return { revision, snapshot, proposal: { ...(proposal as Record<string, string>) } };
 }
 
 // Each running call holds a server stream, and a panel is untrusted.

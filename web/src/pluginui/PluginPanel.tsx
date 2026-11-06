@@ -9,6 +9,9 @@ import { PushDialog } from "./PushDialog";
 import { parseSSE } from "./sse";
 import "./pluginui.css";
 
+// A proposal names one of a panel's recent draft reads; an older one falls back to its revision's saved data.
+const maxSnapshots = 32;
+
 const themeTokens = ["--bg", "--surface", "--text", "--text-muted", "--accent", "--border", "--radius", "--font", "--font-size"];
 
 async function uiCall(instance: number, method: string, params: unknown, signal: AbortSignal, onEvent: (data: unknown) => void) {
@@ -38,35 +41,40 @@ export function PluginPanel(props: { instance: number; title: string; src: strin
   const link = usePanelLink();
   const [dialog, setDialog] = useState<{ kind: "push" | "collection"; card: number }>();
   const running = useMemo(() => new Map<number, AbortController>(), []);
-  // seen is the draft this panel last read, which its proposals were most likely written against.
-  const seen = useRef<OpenDraft | undefined>(undefined);
+  // The drafts this panel read, by snapshot, so a proposal starts from the draft it was written against.
+  const snapshots = useMemo(() => new Map<number, OpenDraft>(), []);
+  const lastSnapshot = useRef(0);
   const host = useMemo<Host>(
     () => ({
       grants,
       context: () => {
         const card = /^\/cards\/(\d+)/.exec(pathname)?.[1];
         const style = getComputedStyle(document.documentElement);
-        const draft = link.draft();
-        seen.current = draft;
+        const open = link.draft();
+        const snapshot = ++lastSnapshot.current;
+        if (open) snapshots.set(snapshot, open);
+        // A Map iterates in insertion order, so its first key is the oldest.
+        if (snapshots.size > maxSnapshots) snapshots.delete(snapshots.keys().next().value!);
         return {
           library,
           card: card ? Number(card) : undefined,
           theme: Object.fromEntries(themeTokens.map((t) => [t, style.getPropertyValue(t)])),
-          draft,
+          draft: open && { ...open, snapshot },
         };
       },
       openCard: (id) => void navigate(withLibrary(`/cards/${id}`, library)),
       // The first request stands, so a panel can't swap the card under an open dialog.
       openPush: (card) => setDialog((d) => d ?? { kind: "push", card }),
       openCollection: (card) => setDialog((d) => d ?? { kind: "collection", card }),
-      propose: (card, revision, proposal) => {
-        const start = seen.current?.card === card && seen.current.revision === revision ? seen.current.data : undefined;
+      propose: (card, revision, snapshot, proposal) => {
+        const read = snapshot === undefined ? undefined : snapshots.get(snapshot);
+        const start = read?.card === card && read.revision === revision ? read.data : undefined;
         link.propose({ card, revision, start, proposal, label: title });
         void navigate(withLibrary(`/cards/${card}`, library));
       },
       call: (method, params, signal, onEvent) => uiCall(instance, method, params, signal, onEvent),
     }),
-    [grants, pathname, library, navigate, instance, link, title],
+    [grants, pathname, library, navigate, instance, link, title, snapshots],
   );
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {

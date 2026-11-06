@@ -184,9 +184,8 @@ func (r *Registry) download(ctx context.Context, srcURL, name, version, base, fo
 		return "", fmt.Errorf("%w: %s %s is not in %s", ErrInvalid, name, version, index.Redacted())
 	}
 	e := entries[i]
-	if e.Protocol != protocol.Version {
-		return "", fmt.Errorf("%w: %s %s speaks protocol %d; this Innkeeper speaks %d",
-			ErrInvalid, name, version, e.Protocol, protocol.Version)
+	if err := e.CheckProtocol(); err != nil {
+		return "", fmt.Errorf("%w: %s %s %w", ErrInvalid, name, version, err)
 	}
 	j := slices.IndexFunc(e.Artifacts, func(a Artifact) bool { return a.OS == runtime.GOOS && a.Arch == runtime.GOARCH })
 	if j < 0 {
@@ -222,8 +221,9 @@ func (r *Registry) download(ctx context.Context, srcURL, name, version, base, fo
 	if err != nil {
 		return "", fmt.Errorf("%w: %s: %v", ErrSource, u.Redacted(), err)
 	}
-	if m.Name != name || m.Version != version || m.Protocol != protocol.Version {
-		return "", fmt.Errorf("%w: %s holds %s %s protocol %d, not what the index lists", ErrSource, u.Redacted(), m.Name, m.Version, m.Protocol)
+	if m.Name != name || m.Version != version || m.Protocol != protocol.Version || m.ProtocolVersion != e.ProtocolVersion {
+		return "", fmt.Errorf("%w: %s holds %s %s protocol %d protocol_version %q, not what the index lists",
+			ErrSource, u.Redacted(), m.Name, m.Version, m.Protocol, m.ProtocolVersion)
 	}
 	dst := filepath.Join(base, folder)
 	if err := os.RemoveAll(dst); err != nil {

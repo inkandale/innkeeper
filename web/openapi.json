@@ -921,6 +921,9 @@
             "format": "int64",
             "type": "integer"
           },
+          "protocol_version": {
+            "type": "string"
+          },
           "recommended": {
             "type": "boolean"
           },

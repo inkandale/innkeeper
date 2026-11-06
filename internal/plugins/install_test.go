@@ -6,13 +6,16 @@ import (
 	"compress/gzip"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/inkandale/innkeeper/internal/testdb"
 	"github.com/inkandale/innkeeper/internal/testutil"
+	"github.com/inkandale/innkeeper/protocol"
 )
 
 func folders(t *testing.T, dir string) []string {
@@ -220,5 +223,38 @@ func TestUninstallKeepsInstances(t *testing.T) {
 	}
 	if err := reg.Uninstall(ctx, "never"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("uninstall unknown: %v", err)
+	}
+}
+
+func TestInstallRefusesANewerProtocolBeforeDownloading(t *testing.T) {
+	ctx := context.Background()
+	reg, _ := openRegistry(t, testdb.New(t))
+	// The wrong hash fails any download as ErrSource, so ErrInvalid shows the check came first.
+	src := testutil.PluginSource(t, testutil.PluginRelease{Name: "next", Version: "1.0.0", ProtocolVersion: "1.99", SHA256: "00"})
+	if err := reg.AddSource(ctx, PluginSource{ID: "local", URL: src}); err != nil {
+		t.Fatal(err)
+	}
+	err := reg.Install(ctx, "local", "next", "1.0.0")
+	var newer *protocol.NewerProtocolError
+	if !errors.Is(err, ErrInvalid) || !errors.As(err, &newer) || newer.Needs != "1.99" {
+		t.Fatalf("install = %v; want ErrInvalid needing protocol 1.99", err)
+	}
+}
+
+func TestInstallRefusesATarballWhoseProtocolVersionDiffers(t *testing.T) {
+	ctx := context.Background()
+	reg, _ := openRegistry(t, testdb.New(t))
+	current := fmt.Sprintf("%d.%d", protocol.Version, protocol.Minor)
+	src := testutil.PluginSource(t,
+		testutil.PluginRelease{Name: "same", Version: "1.0.0", ProtocolVersion: current},
+		testutil.PluginRelease{Name: "differs", Version: "1.0.0", ManifestProtocolVersion: current})
+	if err := reg.AddSource(ctx, PluginSource{ID: "local", URL: src}); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Install(ctx, "local", "same", "1.0.0"); err != nil {
+		t.Fatalf("matching protocol_version: %v", err)
+	}
+	if err := reg.Install(ctx, "local", "differs", "1.0.0"); !errors.Is(err, ErrSource) || !strings.Contains(err.Error(), "protocol_version") {
+		t.Fatalf("install = %v; want ErrSource naming protocol_version", err)
 	}
 }

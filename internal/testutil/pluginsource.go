@@ -22,6 +22,10 @@ type PluginRelease struct {
 	Name, Version string
 	// Protocol is the manifest's and index's protocol; 0 means protocol.Version.
 	Protocol int
+	// ProtocolVersion is the manifest's and index entry's protocol_version; "" leaves it out.
+	ProtocolVersion string
+	// ManifestProtocolVersion, if set, replaces ProtocolVersion in the manifest only.
+	ManifestProtocolVersion string
 	// SHA256 overrides the index's hash; "" lists the tarball's real one.
 	SHA256 string
 	// Uses are the service methods the plugin calls, in its manifest and index entry.
@@ -50,9 +54,9 @@ func PluginSource(t *testing.T, releases ...PluginRelease) string {
 		if r.SHA256 != "" {
 			hash = r.SHA256
 		}
-		fmt.Fprintf(&index, "[[plugin]]\nname = %q\nversion = %q\nprotocol = %d\ncapabilities = [\"import\"]\n%snotes = %q\ndescription = \"Test plugin.\"\n\n"+
+		fmt.Fprintf(&index, "[[plugin]]\nname = %q\nversion = %q\nprotocol = %d\n%scapabilities = [\"import\"]\n%snotes = %q\ndescription = \"Test plugin.\"\n\n"+
 			"[[plugin.artifact]]\nos = %q\narch = %q\nurl = %q\nsha256 = %q\n\n",
-			r.Name, r.Version, r.Protocol, usesLine(r.Uses), r.Notes, runtime.GOOS, runtime.GOARCH, file, hash)
+			r.Name, r.Version, r.Protocol, protocolVersionLine(r.ProtocolVersion), usesLine(r.Uses), r.Notes, runtime.GOOS, runtime.GOARCH, file, hash)
 	}
 	path := filepath.Join(dir, "index.toml")
 	if err := os.WriteFile(path, []byte(index.String()), 0o644); err != nil {
@@ -69,8 +73,12 @@ func PluginTarball(t *testing.T, r PluginRelease) []byte {
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
 	name := r.Name
-	manifest := fmt.Sprintf("name = %q\nversion = %q\nprotocol = %d\ncommand = [\"./%s\"]\ncapabilities = [\"import\"]\n%s",
-		name, r.Version, r.Protocol, name, usesLine(r.Uses))
+	protocolVersion := r.ProtocolVersion
+	if r.ManifestProtocolVersion != "" {
+		protocolVersion = r.ManifestProtocolVersion
+	}
+	manifest := fmt.Sprintf("name = %q\nversion = %q\nprotocol = %d\ncommand = [\"./%s\"]\ncapabilities = [\"import\"]\n%s%s",
+		name, r.Version, r.Protocol, name, usesLine(r.Uses), protocolVersionLine(protocolVersion))
 	for _, f := range []struct {
 		name string
 		mode int64
@@ -102,4 +110,12 @@ func usesLine(uses []string) string {
 		quoted[i] = strconv.Quote(u)
 	}
 	return "uses = [" + strings.Join(quoted, ", ") + "]\n"
+}
+
+// protocolVersionLine is a TOML protocol_version line, or nothing without one.
+func protocolVersionLine(v string) string {
+	if v == "" {
+		return ""
+	}
+	return fmt.Sprintf("protocol_version = %q\n", v)
 }

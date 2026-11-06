@@ -12,6 +12,8 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/inkandale/innkeeper/protocol"
 )
 
 // ErrSource means a plugin source couldn't be read, or what it served is wrong.
@@ -31,6 +33,8 @@ type Entry struct {
 	Version      string   `toml:"version" json:"version"`
 	Protocol     int      `toml:"protocol" json:"protocol"`
 	Capabilities []string `toml:"capabilities" json:"capabilities"`
+	// ProtocolVersion is the protocol major.minor the version needs; empty means <protocol>.0.
+	ProtocolVersion string `toml:"protocol_version" json:"protocol_version,omitempty"`
 	// Uses are the service methods the plugin calls; the API shows them as needs.
 	Uses        []string `toml:"uses" json:"-"`
 	Title       string   `toml:"title" json:"title,omitempty"`
@@ -53,6 +57,15 @@ type Artifact struct {
 	Arch   string `toml:"arch"`
 	URL    string `toml:"url"`
 	SHA256 string `toml:"sha256"`
+}
+
+// CheckProtocol reports why this Innkeeper can't run the entry's version, or
+// nil if it can. A *protocol.NewerProtocolError means a newer Innkeeper can.
+func (e Entry) CheckProtocol() error {
+	if e.Protocol != protocol.Version {
+		return fmt.Errorf("speaks protocol %d; this Innkeeper speaks %d", e.Protocol, protocol.Version)
+	}
+	return protocol.CheckVersion(e.Protocol, e.ProtocolVersion)
 }
 
 // Index is a source's index.toml.

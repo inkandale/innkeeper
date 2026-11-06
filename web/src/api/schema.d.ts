@@ -3014,6 +3014,7 @@ export interface components {
             };
             /** Format: int64 */
             protocol: number;
+            protocol_version?: string;
             recommended?: boolean;
             released?: string;
             title?: string;

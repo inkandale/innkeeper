@@ -76,6 +76,10 @@ type Manifest struct {
 	Config       map[string]any        `toml:"config"`
 	Enrichments  map[string]Enrichment `toml:"enrichments"`
 
+	// ProtocolVersion is the protocol major.minor the plugin needs, such as
+	// "1.1"; empty means <protocol>.0.
+	ProtocolVersion string `toml:"protocol_version"`
+
 	// Formats are what a codec plugin's codec.encode writes.
 	Formats []string `toml:"formats"`
 
@@ -177,6 +181,11 @@ func LoadManifest(dir string) (*Manifest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read manifest: %w", err)
 	}
+	// A newer minor may use keys this core doesn't know, so report what the plugin needs instead.
+	var newer *NewerProtocolError
+	if err := CheckVersion(m.Protocol, m.ProtocolVersion); errors.As(err, &newer) {
+		return nil, fmt.Errorf("manifest %s: %w", abs, err)
+	}
 	var unknown []string
 	for _, k := range md.Undecoded() {
 		// The decoder lists nested tables in a map[string]any as undecoded
@@ -267,6 +276,9 @@ func (m *Manifest) Validate() error {
 	}
 	if m.Protocol != Version {
 		errs = append(errs, fmt.Errorf("protocol %d is not supported; this core speaks %d", m.Protocol, Version))
+	}
+	if err := CheckVersion(m.Protocol, m.ProtocolVersion); err != nil {
+		errs = append(errs, err)
 	}
 	if m.IsTheme() {
 		errs = append(errs, m.validateTheme()...)

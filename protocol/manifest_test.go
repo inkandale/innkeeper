@@ -118,6 +118,8 @@ func TestManifestErrors(t *testing.T) {
 	}{
 		{"bad name", `name = "lumiverse"`, `name = "Lumi Verse"`, "name"},
 		{"wrong protocol", `protocol = 1`, `protocol = 2`, "protocol 2 is not supported"},
+		{"malformed protocol_version", `protocol = 1`, "protocol = 1\nprotocol_version = \"1\"", "must be <major>.<minor>"},
+		{"protocol_version of another major", `protocol = 1`, "protocol = 1\nprotocol_version = \"2.0\"", "doesn't match protocol 1"},
 		{"unknown capability", `"pull"]`, `"pull", "teleport"]`, `unknown capability "teleport"`},
 		{"duplicate capability", `"pull"]`, `"pull", "push"]`, "listed twice"},
 		{"score without range", `range = [1, 5], `, ``, "score needs range"},

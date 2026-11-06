@@ -131,7 +131,7 @@ export function Review(props: {
               </label>
             </div>
           </div>
-          {/* The diff runs from where the run began, so an edit made since shows only in the original. */}
+          {/* The diff runs from where the run began, so an edit made since shows only under Yours. */}
           <div
             className={
               showOriginal || r.edited
@@ -140,7 +140,10 @@ export function Review(props: {
             }
           >
             {(showOriginal || r.edited) && (
-              <div className="forge-text mine" data-label="Original">
+              <div
+                className="forge-text mine"
+                data-label={r.edited ? "Yours" : "Original"}
+              >
                 {r.mine || absent}
               </div>
             )}

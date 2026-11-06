@@ -65,7 +65,7 @@ test("a field edited since the run started defaults to Keep mine", async () => {
   expect(onApply).toHaveBeenCalledWith({ scenario: "A cold forge." });
 });
 
-test("the original shows beside a proposal only when asked, or when it changed during the run", async () => {
+test("the owner's text shows beside a proposal as Original when asked, or as Yours when they edited it during the run", async () => {
   const start = { description: "A dwarf.", scenario: "A forge." };
   render(
     <Review
@@ -91,7 +91,10 @@ test("the original shows beside a proposal only when asked, or when it changed d
   );
   expect(
     within(scenario).getByText("A forge.", { selector: ".mine" }),
-  ).toBeInTheDocument();
+  ).toHaveAttribute("data-label", "Original");
+  expect(
+    screen.getByText("A grumpy dwarf.", { selector: ".mine" }),
+  ).toHaveAttribute("data-label", "Yours");
 });
 
 test("the bar totals the lines every proposed change removes and adds", () => {

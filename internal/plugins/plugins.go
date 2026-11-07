@@ -4,6 +4,7 @@ package plugins
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -443,7 +444,72 @@ func (r *Registry) CreateInstance(ctx context.Context, n NewInstance) (int64, er
 	if err != nil {
 		return 0, writeErr(err)
 	}
+	label := m.DisplayName()
+	if n.Name != nil {
+		label = *n.Name
+	}
+	if err := createSearches(ctx, tx, id, label, m); err != nil {
+		return 0, err
+	}
 	return id, tx.Commit(ctx)
+}
+
+// createSearches saves the searches m ships, each enrichment term reading
+// instance id. A name already taken gets the instance's label appended.
+func createSearches(ctx context.Context, tx pgx.Tx, id int64, label string, m *protocol.Manifest) error {
+	for _, key := range slices.Sorted(maps.Keys(m.Searches)) {
+		s := m.Searches[key]
+		filter, err := withInstance(s.Filter, id)
+		if err != nil {
+			return fmt.Errorf("search %q: %w", key, err)
+		}
+		names := []string{s.Name, fmt.Sprintf("%s (%s)", s.Name, label), fmt.Sprintf("%s (%s %d)", s.Name, label, id)}
+		saved := false
+		for _, name := range names {
+			tag, err := tx.Exec(ctx, `INSERT INTO saved_search (name, filter, instance_id) VALUES ($1, $2, $3)
+				ON CONFLICT (name) DO NOTHING`, name, filter, id)
+			if err != nil {
+				return fmt.Errorf("save search %q: %w", key, err)
+			}
+			if saved = tag.RowsAffected() == 1; saved {
+				break
+			}
+		}
+		if !saved {
+			return fmt.Errorf("%w: search %q: saved searches %q already exist", ErrNameTaken, key, names)
+		}
+	}
+	return nil
+}
+
+// withInstance is filter as JSON with instance id on every enrichment term.
+func withInstance(filter map[string]any, id int64) ([]byte, error) {
+	raw, err := json.Marshal(filter)
+	if err != nil {
+		return nil, err
+	}
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return nil, err
+	}
+	var walk func(v any)
+	walk = func(v any) {
+		switch t := v.(type) {
+		case []any:
+			for _, x := range t {
+				walk(x)
+			}
+		case map[string]any:
+			if _, ok := t["enrichment"]; ok {
+				t["instance"] = id
+			}
+			for _, x := range t {
+				walk(x)
+			}
+		}
+	}
+	walk(v)
+	return json.Marshal(v)
 }
 
 // UpdateInstance applies e and clears the instance's broken state, so the

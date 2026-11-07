@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
 	"github.com/inkandale/innkeeper/protocol"
@@ -191,10 +193,19 @@ func (r *Registry) createSingletonOnce(ctx context.Context, plugin string) (bool
 		return false, err
 	}
 	// An owner who already has an instance needs no other.
-	tag, err = tx.Exec(ctx, `INSERT INTO plugin_instance (plugin, secrets)
-		SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM plugin_instance WHERE plugin = $1)`, plugin, sealed)
+	var id int64
+	err = tx.QueryRow(ctx, `INSERT INTO plugin_instance (plugin, secrets)
+		SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM plugin_instance WHERE plugin = $1) RETURNING id`, plugin, sealed).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, tx.Commit(ctx)
+	}
 	if err != nil {
 		return false, err
 	}
-	return tag.RowsAffected() == 1, tx.Commit(ctx)
+	if m, ok := r.manifest(plugin); ok {
+		if err := createSearches(ctx, tx, id, m.DisplayName(), m); err != nil {
+			return false, err
+		}
+	}
+	return true, tx.Commit(ctx)
 }

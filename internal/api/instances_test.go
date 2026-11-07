@@ -290,3 +290,42 @@ func TestInstanceCreatedOnStaysPutWhenPatchedOn(t *testing.T) {
 		t.Fatal("PATCH true on an instance created on moved since")
 	}
 }
+
+func TestNewInstancesSaveTheirPluginsSearches(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	linty := *e.manifests["fake"]
+	linty.Name, linty.Capabilities, linty.MultipleInstances = "linty", []string{"enrich"}, true
+	linty.Command = []string{linty.Command[0], "-caps=enrich", "-name=linty"}
+	linty.Enrichments = map[string]protocol.Enrichment{"problems": {Type: "list", Label: "Problems"}}
+	linty.Searches = map[string]protocol.Search{"junk": {Name: "Junk",
+		Filter: map[string]any{"or": []any{map[string]any{"enrichment": "problems", "is": "too_short"}}}}}
+	e.manifests["linty"] = &linty
+	a, err := e.s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: "linty", Name: new("a")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := e.s.Registry.CreateInstance(ctx, plugins.NewInstance{Plugin: "linty", Name: new("b")})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var list []savedSearchItem
+	e.call("GET", "/saved-searches", nil, 200, &list)
+	if len(list) != 2 || list[0].Name != "Junk" || list[1].Name != "Junk (b)" {
+		t.Fatalf("searches = %+v", list)
+	}
+	for i, inst := range []int64{a, b} {
+		got := list[i]
+		if got.InstanceID == nil || *got.InstanceID != inst || *got.Filter.Or[0].Instance != inst || *got.Filter.Or[0].Is != "too_short" {
+			raw, _ := json.Marshal(got)
+			t.Fatalf("search %d = %s", i, raw)
+		}
+	}
+
+	e.call("DELETE", fmt.Sprintf("/instances/%d", a), nil, 204, nil)
+	e.call("GET", "/saved-searches", nil, 200, &list)
+	if len(list) != 1 || list[0].Name != "Junk (b)" {
+		t.Fatalf("after deleting a: %+v", list)
+	}
+}

@@ -27,7 +27,7 @@ beforeEach(() => {
           { id: 1, name: "Library", cards: 12, lorebooks: 1, created_at: now },
           { id: 2, name: "Chub archive", cards: 300, lorebooks: 4, created_at: now },
         ]);
-      if (path === "/api/plugins" || path === "/api/instances") return json([]);
+      if (path === "/api/plugins" || path === "/api/instances" || path === "/api/rules") return json([]);
       if (path.endsWith("/settings")) {
         const off = { value: null, default: null, overridden: false };
         return json({ duplicates: { ...off, value: "off", default: "off" },

@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link } from "react-router";
 import { api, must } from "../api/client";
-import { librarySettingsQuery } from "../api/queries";
+import { librarySettingsQuery, rulesQuery } from "../api/queries";
 import type { components } from "../api/schema";
 import { JobLine } from "../cards/ImportForm";
 import { SaveStatus } from "./SaveStatus";
@@ -35,17 +36,18 @@ export function Hiding({ library }: { library: number }) {
     queryFn: async () => must(await api.GET("/instances", { params: { query: { offers: "ai.decide" } } })),
     enabled: near,
   });
+  const covering = useQuery(rulesQuery(library)).data ?? [];
   if (!s) return null;
   // A blank number follows the default.
   const number = (v: string) => (v.trim() === "" ? null : Number(v));
-  const nothing = s.duplicates.value === "off";
+  const nothing = s.duplicates.value === "off" && !covering.some((r) => r.enabled);
   return (
     <fieldset className="hiding" disabled={save.isPending}>
       <legend>
         Hiding <SaveStatus save={save} />
       </legend>
       <p className="muted">
-        Hide now archives extra duplicates. To bring a card back, open it and choose Unarchive.
+        Hide now archives extra duplicates and applies the rules below. To bring a card back, open it and choose Unarchive.
       </p>
       <label title="Exact copies have the same content. Near copies have text that differs by no more than Distance.">
         Duplicates{" "}
@@ -115,6 +117,16 @@ export function Hiding({ library }: { library: number }) {
             ))}
           </select>
         </label>
+      )}
+      {covering.length > 0 && (
+        <p>
+          Rules that cover this library:{" "}
+          {covering.map((r) => (
+            <Link key={r.id} className="chip" to={`/rules/${r.id}`}>
+              {r.name}
+            </Link>
+          ))}
+        </p>
       )}
       <button className="button" disabled={nothing || hide.isPending} onClick={() => hide.mutate()}>
         Hide now

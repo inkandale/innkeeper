@@ -12,9 +12,11 @@ const setting = <T,>(value: T | null, def: T | null, overridden = false) => ({ v
 let current: Record<string, unknown>;
 let calls: string[];
 let refuse: string | undefined;
+let rules: unknown[];
 beforeEach(() => {
   calls = [];
   refuse = undefined;
+  rules = [];
   current = {
     duplicates: setting("off", "off"),
     duplicate_distance: setting(3, 3),
@@ -25,6 +27,7 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (req: Request) => {
       const path = new URL(req.url).pathname;
+      if (path === "/api/rules") return json(rules);
       if (req.method !== "GET") calls.push(`${req.method} ${path} ${await req.clone().text()}`);
       if (path === "/api/libraries/2/settings" && req.method === "PATCH") {
         if (refuse) return json({ detail: refuse }, 400);
@@ -76,4 +79,11 @@ test("a refused change shows why next to the settings", async () => {
   await user.selectOptions(await screen.findByRole("combobox", { name: /Duplicates/ }), "Exact copies");
   expect(await screen.findByText("duplicates must be off, exact, or near")).toBeInTheDocument();
   expect(screen.queryByRole("status")).not.toBeInTheDocument();
+});
+
+test("rules that cover the library are listed and let Hide now run", async () => {
+  rules = [{ id: 9, name: "Hide junk", saved_search_id: 3, saved_search: "Junk", action: "archive", all_libraries: true, enabled: true, affected: [] }];
+  renderIt();
+  expect(await screen.findByRole("link", { name: "Hide junk" })).toHaveAttribute("href", "/rules/9");
+  expect(screen.getByRole("button", { name: "Hide now" })).toBeEnabled();
 });

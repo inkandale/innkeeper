@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
 import { api, must, mustOk, route, thumb, upload, type Kind } from "../api/client";
-import { bindingsQuery, instancesQuery, pluginsQuery, useInstancesWith } from "../api/queries";
+import { bindingsQuery, instancesQuery, pluginsQuery, rulesQuery, useInstancesWith } from "../api/queries";
 import { badgeClass } from "../cards/Tile";
 import { count } from "../shell/count";
 import { useConfirm } from "../shell/ConfirmDialog";
@@ -99,6 +99,9 @@ export function Archive({ kind, entity }: { kind: Kind; entity: Entity }) {
   const [unpublish, setUnpublish] = useState(false);
   const bindings = useQuery(bindingsQuery(kind, entity.id));
   const instances = useQuery(instancesQuery);
+  const reason = entity.archived_reason ?? "";
+  const rules = useQuery({ ...rulesQuery(), enabled: reason.startsWith("rule:") });
+  const ruleName = rules.data?.find((r) => `rule:${r.id}` === reason)?.name;
   const linked = (bindings.data ?? [])
     .filter((b) => b.push)
     .map((b) => instances.data?.find((i) => i.id === b.instance_id)?.label ?? `#${b.instance_id}`);
@@ -142,10 +145,10 @@ export function Archive({ kind, entity }: { kind: Kind; entity: Entity }) {
       >
         {archived ? "Unarchive" : "Archive"}
       </button>
-      {entity.archived_reason && (
+      {reason && (
         <span className="muted">
-          Hidden {entity.archived_reason === "duplicate" ? "as a duplicate" : "for a low score"}. If you unarchive it, the next
-          hide run may hide it again.
+          {reason === "duplicate" ? "Hidden as a duplicate" : `Archived by rule: ${ruleName ?? "a deleted rule"}`}. If you unarchive it,
+          the next hide run may archive it again.
         </span>
       )}
       {!archived && linked.length > 0 && (

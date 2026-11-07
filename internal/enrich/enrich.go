@@ -357,23 +357,9 @@ func (rn *Runner) batch(ctx context.Context, r *jobs.Run, inst pluginhost.Instan
 		if len(vals) == 0 && vi < 0 {
 			continue
 		}
-		// Without a vector the sweep would resend the revision every hour.
-		// Its values still count for rules and the grid, so they are stored first.
-		if vi < 0 && wantsVector {
-			if err := rn.Lib.AddEnrichments(ctx, instanceID, vals); err != nil {
-				if ctx.Err() != nil {
-					return Checked{}, err
-				}
-				if err := fail(rev, "storing its values failed: %v", err); err != nil {
-					return Checked{}, err
-				}
-				continue
-			}
-			if err := fail(rev, "no vector: this instance stores one for every card"); err != nil {
-				return Checked{}, err
-			}
-			continue
-		}
+		// Without a vector the sweep would resend the revision every hour, so it
+		// fails; its values still count for rules and the grid, so they're stored.
+		noVector := vi < 0 && wantsVector
 		if vi >= 0 && !hasVectors {
 			if len(vals) == 0 {
 				if err := fail(rev, "its vector was dropped: this install has no pgvector"); err != nil {
@@ -408,6 +394,11 @@ func (rn *Runner) batch(ctx context.Context, r *jobs.Run, inst pluginhost.Instan
 					return Checked{}, err
 				}
 				continue
+			}
+		}
+		if noVector {
+			if err := fail(rev, "no vector: this instance stores one for every card"); err != nil {
+				return Checked{}, err
 			}
 		}
 		r.Log("info", line)

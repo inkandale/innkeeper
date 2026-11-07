@@ -1128,6 +1128,7 @@ test("a saved search that won't load blocks the grid and can still be closed", a
   const user = userEvent.setup();
   const chip = await screen.findByRole("button", { name: "Close saved search #8" });
   await waitFor(() => expect(container.querySelector("p.error")?.textContent).toMatch(/^Saved search: /));
+  expect(screen.queryByRole("status", { name: "Loading cards" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Save search" })).not.toBeInTheDocument();
   expect(searches.filter((s) => !(s as { facets_only?: boolean }).facets_only)).toEqual([]);
   await user.click(chip);
@@ -1138,5 +1139,6 @@ test("a saved search that won't load blocks the grid and can still be closed", a
 test("Save search waits for the open saved search to load", async () => {
   renderCards("/cards?saved=9&f=tag:elf");
   await screen.findByRole("button", { name: "Close saved search #9" });
+  expect(screen.getByRole("status", { name: "Loading cards" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Save search" })).not.toBeInTheDocument();
 });

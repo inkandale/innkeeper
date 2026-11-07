@@ -318,7 +318,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
             No {noun} on this page. <button className="button" onClick={() => go({ ...q, page: last })}>Go to page {last}</button>
           </p>
         )}
-        {res.isPending && !blocked ? (
+        {res.isPending && !saved.isError ? (
           kind === "card" && q.view === "grid" ? (
             <div className="grid" role="status" aria-busy="true" aria-label={`Loading ${noun}`}>
               {Array.from({ length: 8 }, (_, i) => (

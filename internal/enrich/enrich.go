@@ -43,8 +43,9 @@ const (
 type Payload struct {
 	CardIDs []int64        `json:"card_ids,omitempty"`
 	Query   *library.Query `json:"query,omitempty"`
-	// Scorers are the Query's scorers, which its JSON leaves out.
-	Scorers []library.Scorer `json:"scorers,omitempty"`
+	// Scorers and Browsable are the Query's, which its JSON leaves out.
+	Scorers   []library.Scorer            `json:"scorers,omitempty"`
+	Browsable map[string][]library.Scorer `json:"browsable,omitempty"`
 	// Rescore sends cards whose head revision already holds a value from the instance.
 	Rescore bool `json:"rescore,omitempty"`
 	// Confirmed lifts the plugin's card cap: the owner agreed to the run's size.
@@ -68,7 +69,7 @@ func (p Payload) batches(ctx context.Context, lib *library.Library, max int) (ne
 		}, len(p.CardIDs), nil
 	}
 	q := *p.Query
-	q.Scorers = p.Scorers
+	q.Scorers, q.Browsable = p.Scorers, p.Browsable
 	if total, err = lib.CountMatches(ctx, library.Card, q); err != nil {
 		return nil, 0, err
 	}

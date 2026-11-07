@@ -3549,7 +3549,7 @@ export interface components {
             ids?: number[] | null;
             /**
              * Format: int64
-             * @description With enrichment: the enrich instance whose value to read, instead of the score instance.
+             * @description With enrichment: the enrich instance whose value to read. Without it, enrichment must name a browsable key, and reads the value of the highest-priority instance that declares it and has one.
              */
             instance?: number;
             /** @description With enrichment: the value is this text, or a list holding it. */
@@ -4316,7 +4316,7 @@ export interface components {
              * @example /api/schemas/Query.json
              */
             readonly $schema?: string;
-            /** @description Counts to return over every match: tags, collections, targets, sources, states (each match once per state it has on any target), or states:<instance>,<instance> for those targets only, or enrichment:<instance>:<key> for the values of a text or list key from that enrich instance. Enrichment counts are keyed by what follows enrichment:. Lorebooks take targets and sources. */
+            /** @description Counts to return over every match: tags, collections, targets, sources, states (each match once per state it has on any target), or states:<instance>,<instance> for those targets only, or enrichment:<instance>:<key> for the values of a text or list key from that enrich instance, or enrichment:<key> for a browsable key's, each card's from the highest-priority instance that has one. Enrichment counts are keyed by what follows enrichment:. Lorebooks take targets and sources. */
             facets?: string[] | null;
             /** @description Return only the facets: no hits, total, or next_cursor. */
             facets_only?: boolean;
@@ -4328,7 +4328,7 @@ export interface components {
              * @enum {string}
              */
             group?: "family";
-            /** @description Extra data per hit: tags, lorebooks, targets, score (the grid score, or under sort enrichment:<instance>:<key> the value sorted by). Lorebooks take cards and targets. */
+            /** @description Extra data per hit: tags, lorebooks, targets, score (the grid score, or under an enrichment sort the value sorted by). Lorebooks take cards and targets. */
             include?: string[] | null;
             /**
              * Format: int64
@@ -4340,7 +4340,7 @@ export interface components {
             reverse?: boolean;
             /** @description Rank cards by meaning instead of matching words. Needs text and a vector source (Settings, Plugins, Vectors from); sorts by relevance only. Cards not embedded yet are left out. */
             semantic?: boolean;
-            /** @description relevance, updated, name, created, or enrichment:<instance>:<key> for that enrich instance's value of key, highest first and cards without one last; enrichment:<key>, naming a grid key, sorts by the grid score. Default: relevance with text, newest first without. */
+            /** @description relevance, updated, name, created, or enrichment:<instance>:<key> for that enrich instance's value of key, highest first and cards without one last; enrichment:<key>, naming a browsable key, sorts by the value of the highest-priority instance that declares it and has one. Default: relevance with text, newest first without. */
             sort?: string;
             /** @description library, or catalog:<instance id> to also search a catalog by text alone. Default: library. */
             sources?: string[] | null;

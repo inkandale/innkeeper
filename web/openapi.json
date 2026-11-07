@@ -2427,7 +2427,7 @@
             ]
           },
           "instance": {
-            "description": "With enrichment: the enrich instance whose value to read, instead of the score instance.",
+            "description": "With enrichment: the enrich instance whose value to read. Without it, enrichment must name a browsable key, and reads the value of the highest-priority instance that declares it and has one.",
             "format": "int64",
             "type": "integer"
           },
@@ -4411,7 +4411,7 @@
             "type": "string"
           },
           "facets": {
-            "description": "Counts to return over every match: tags, collections, targets, sources, states (each match once per state it has on any target), or states:\u003cinstance\u003e,\u003cinstance\u003e for those targets only, or enrichment:\u003cinstance\u003e:\u003ckey\u003e for the values of a text or list key from that enrich instance. Enrichment counts are keyed by what follows enrichment:. Lorebooks take targets and sources.",
+            "description": "Counts to return over every match: tags, collections, targets, sources, states (each match once per state it has on any target), or states:\u003cinstance\u003e,\u003cinstance\u003e for those targets only, or enrichment:\u003cinstance\u003e:\u003ckey\u003e for the values of a text or list key from that enrich instance, or enrichment:\u003ckey\u003e for a browsable key's, each card's from the highest-priority instance that has one. Enrichment counts are keyed by what follows enrichment:. Lorebooks take targets and sources.",
             "items": {
               "type": "string"
             },
@@ -4445,7 +4445,7 @@
             "type": "string"
           },
           "include": {
-            "description": "Extra data per hit: tags, lorebooks, targets, score (the grid score, or under sort enrichment:\u003cinstance\u003e:\u003ckey\u003e the value sorted by). Lorebooks take cards and targets.",
+            "description": "Extra data per hit: tags, lorebooks, targets, score (the grid score, or under an enrichment sort the value sorted by). Lorebooks take cards and targets.",
             "items": {
               "type": "string"
             },
@@ -4471,7 +4471,7 @@
             "type": "boolean"
           },
           "sort": {
-            "description": "relevance, updated, name, created, or enrichment:\u003cinstance\u003e:\u003ckey\u003e for that enrich instance's value of key, highest first and cards without one last; enrichment:\u003ckey\u003e, naming a grid key, sorts by the grid score. Default: relevance with text, newest first without.",
+            "description": "relevance, updated, name, created, or enrichment:\u003cinstance\u003e:\u003ckey\u003e for that enrich instance's value of key, highest first and cards without one last; enrichment:\u003ckey\u003e, naming a browsable key, sorts by the value of the highest-priority instance that declares it and has one. Default: relevance with text, newest first without.",
             "pattern": "^(relevance|updated|name|created|enrichment:([1-9][0-9]*:)?[a-z][a-z0-9_]*)$",
             "type": "string"
           },

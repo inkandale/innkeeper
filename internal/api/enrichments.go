@@ -19,14 +19,26 @@ import (
 	"github.com/inkandale/innkeeper/protocol"
 )
 
-// withScores sets q's scorers, if q may read the grid score.
+// withScores sets q's scorers and merged browsable keys, if q may read them.
 func (s *Server) withScores(ctx context.Context, q *library.Query) error {
 	if !q.UsesScore() {
 		return nil
 	}
 	var err error
-	q.Scorers, err = s.libSettings().Scorers(ctx)
-	return err
+	if q.Scorers, err = s.libSettings().Scorers(ctx); err != nil {
+		return err
+	}
+	keys, err := s.libSettings().BrowseKeys(ctx)
+	if err != nil {
+		return err
+	}
+	q.Browsable = map[string][]library.Scorer{}
+	for _, k := range keys {
+		if k.Instance == 0 {
+			q.Browsable[k.Key] = k.Scorers
+		}
+	}
+	return nil
 }
 
 // searchIDs is library.SearchIDs with the score instance, for a bulk
@@ -66,10 +78,10 @@ type enrichmentKey struct {
 }
 
 type enrichmentInstance struct {
-	ID    int64           `json:"id"`
-	Label string          `json:"label"`
-	Keys  []enrichmentKey `json:"keys" doc:"The grid key first, then the rest by label."`
-	Scored bool `json:"scored" doc:"Whether the instance has stored a value for any card"`
+	ID     int64           `json:"id"`
+	Label  string          `json:"label"`
+	Keys   []enrichmentKey `json:"keys" doc:"The grid key first, then the rest by label."`
+	Scored bool            `json:"scored" doc:"Whether the instance has stored a value for any card"`
 }
 
 type browseKey struct {
@@ -128,7 +140,7 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 					return nil, s.fail(err)
 				}
 				q.Page = library.Page{}
-				p.Query, p.Scorers = &q, q.Scorers
+				p.Query, p.Scorers, p.Browsable = &q, q.Scorers, q.Browsable
 			} else {
 				p.CardIDs = slices.Compact(slices.Sorted(slices.Values(b.CardIDs)))
 				n = len(p.CardIDs)

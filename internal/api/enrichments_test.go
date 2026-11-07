@@ -360,6 +360,18 @@ func TestEnrichRunSkipsArchivedCards(t *testing.T) {
 	}
 }
 
+func TestEnrichRunByQueryReadsABrowsableKey(t *testing.T) {
+	e := newEnrichEnv(t)
+	high := e.card("High", strings.Repeat("x", 90))
+	low := e.card("Low", strings.Repeat("x", 20))
+	e.evaluate(e.instID, high, low)
+	j, p := e.startRun(map[string]any{"instance_id": e.instID, "rescore": true,
+		"query": map[string]any{"filter": map[string]any{"enrichment": "quality", "gte": 50}}})
+	if j.Status != jobs.StatusSucceeded || p.Total != 1 || p.Done != 1 {
+		t.Fatalf("job %s, progress %+v", j.Status, p)
+	}
+}
+
 func TestEnrichRunKeepsABatchWithAValueTheDatabaseRefuses(t *testing.T) {
 	e := newEnrichEnv(t)
 	nul, good := e.card("Nul", "xx"), e.card("Good", "xxx")
@@ -529,6 +541,46 @@ func TestEnrichmentKeysListBrowsableKeysMergedAcrossInstances(t *testing.T) {
 	check(fmt.Sprintf("quality@0|Quality||[%d]", judge), fmt.Sprintf("summary@0|Summary|kind|[%d]", judge))
 }
 
+func TestSearchReadsMergedBrowsableKeys(t *testing.T) {
+	e := newEnrichEnv(t)
+	high := e.card("High", strings.Repeat("x", 90))
+	low := e.card("Low", strings.Repeat("x", 20))
+	e.evaluate(e.instID, high, low)
+	voice := map[string]any{"enrichment": "voice", "gte": 1}
+	summary := map[string]any{"enrichment": "summary", "is": "About High"}
+	summaryFacet := map[string]any{"facets": []string{"enrichment:summary"}, "facets_only": true}
+
+	e.editManifest("judge", func(m *protocol.Manifest) {
+		editKey(m, "summary", func(d *protocol.Enrichment) { d.Browse, d.Section = true, "kind" })
+	})
+	// Once judge names its browse keys, voice needs its instance.
+	e.search(map[string]any{"filter": voice}, 400)
+	if n := e.search(map[string]any{"filter": map[string]any{"enrichment": "voice", "gte": 1, "instance": e.instID}}, 200).Total; n != 2 {
+		t.Fatalf("voice naming its instance = %d cards", n)
+	}
+	if n := e.search(map[string]any{"filter": summary}, 200).Total; n != 1 {
+		t.Fatalf("summary is About High = %d cards", n)
+	}
+	if res := e.search(summaryFacet, 200); res.Facets == nil || len(res.Facets.Enrichments["summary"]) != 2 {
+		t.Fatalf("summary facet = %+v", res.Facets)
+	}
+
+	second := e.addEnricher("critic", func(m *protocol.Manifest) {
+		editKey(m, "quality", func(d *protocol.Enrichment) { d.Priority = 200 })
+		editKey(m, "summary", func(d *protocol.Enrichment) { d.Type = "list" })
+	})
+	e.evaluate(second, low)
+	// Each card's value comes from the highest-priority instance that has one.
+	res := e.search(map[string]any{"sort": "enrichment:quality", "include": []string{"score"}}, 200)
+	if len(res.Hits) != 2 || res.Hits[0].ID != high || res.Hits[0].Score == nil || res.Hits[0].Score.Instance != e.instID ||
+		res.Hits[1].ID != low || res.Hits[1].Score == nil || res.Hits[1].Score.Instance != second {
+		t.Fatalf("merged sort = %+v", res.Hits)
+	}
+	// summary's types now differ, so it doesn't merge, and the cached counts don't answer for it.
+	e.search(map[string]any{"filter": summary}, 400)
+	e.search(summaryFacet, 400)
+}
+
 func TestGridScoreReadsTheHighestPriorityScorer(t *testing.T) {
 	e := newEnrichEnv(t)
 	high := e.card("High", strings.Repeat("x", 90))
@@ -565,8 +617,10 @@ func TestGridScoreReadsTheHighestPriorityScorer(t *testing.T) {
 	if v := res.Hits[0].Score; v == nil || v.Instance != e.instID || v.Key != "quality" || string(v.Value) != "90" || v.Stale {
 		t.Fatalf("included = %+v", v)
 	}
-	// A key naming no instance must be a grid key.
-	e.search(map[string]any{"filter": map[string]any{"enrichment": "voice", "gte": 1}}, 400)
+	// judge sets browse on no key, so voice is browsable and filters by name alone.
+	if got := ids(e.search(map[string]any{"filter": map[string]any{"enrichment": "voice", "gte": 1}}, 200)); !slices.Equal(slices.Sorted(slices.Values(got)), []int64{high, low}) {
+		t.Fatalf("voice gte 1 = %v", got)
+	}
 
 	// A higher-priority scorer goes first, and wins for the cards it scored.
 	critic := *e.manifests["judge"]

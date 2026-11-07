@@ -37,13 +37,14 @@ type facetEntry struct {
 	counted time.Time
 }
 
-// facetKey names q's counts; Scorers aren't in q's JSON but change them.
+// facetKey names q's counts; Scorers and Browsable aren't in q's JSON but change them.
 func facetKey(k *library.Kind, q library.Query) string {
 	body, _ := json.Marshal(struct {
-		Kind    string
-		Scorers []library.Scorer
-		Query   library.Query
-	}{k.Name, q.Scorers, q})
+		Kind      string
+		Scorers   []library.Scorer
+		Browsable map[string][]library.Scorer
+		Query     library.Query
+	}{k.Name, q.Scorers, q.Browsable, q})
 	return string(body)
 }
 

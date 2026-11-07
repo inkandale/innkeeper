@@ -58,7 +58,7 @@ export function SavedSearches() {
                 {renaming === s.id ? (
                   <form onSubmit={submitName(s.id, s.name)}>
                     <input className="input" name="name" aria-label="Name" defaultValue={s.name} autoFocus
-                      onKeyDown={(e) => e.key === "Escape" && setRenaming(null)} />
+                      onKeyDown={(e) => e.key === "Escape" && setRenaming(null)} onBlur={() => setRenaming(null)} />
                   </form>
                 ) : (
                   <Link to={openPath(s, library)}>{s.name}</Link>

@@ -47,6 +47,20 @@ func EnableVectors(ctx context.Context, pool *pgxpool.Pool) error {
 	)`); err != nil {
 		return fmt.Errorf("create card_embedding: %w", err)
 	}
+	// Archiving a card by any path drops its vectors; its enrichment values
+	// stay, since rules read them. The primary key leads with instance_id, so
+	// card_id needs its own index.
+	if _, err := tx.Exec(ctx, `CREATE INDEX IF NOT EXISTS card_embedding_card ON card_embedding (card_id);
+		CREATE OR REPLACE FUNCTION card_embedding_drop_archived() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN
+			DELETE FROM card_embedding WHERE card_id = NEW.id;
+			RETURN NULL;
+		END $$;
+		CREATE OR REPLACE TRIGGER card_archived_drops_vectors AFTER UPDATE OF archived_at ON card
+			FOR EACH ROW WHEN (OLD.archived_at IS NULL AND NEW.archived_at IS NOT NULL)
+			EXECUTE FUNCTION card_embedding_drop_archived()`); err != nil {
+		return fmt.Errorf("create the archived-card vector trigger: %w", err)
+	}
 	return tx.Commit(ctx)
 }
 

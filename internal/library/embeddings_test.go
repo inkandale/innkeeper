@@ -2,7 +2,11 @@ package library
 
 import (
 	"context"
+	"encoding/json"
+	"slices"
 	"testing"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // newInstanceRow inserts a plugin instance row and returns its ID.
@@ -137,5 +141,35 @@ func TestDeleteVectorsExceptKeepsOnlyThatInstance(t *testing.T) {
 	}
 	if err := lib.pool.QueryRow(ctx, `SELECT count(*) FROM card_embedding WHERE instance_id = $1`, drop).Scan(&n); err != nil || n != 0 {
 		t.Fatalf("dropped = %d, %v", n, err)
+	}
+}
+
+func TestArchivingACardDropsItsVectorsAndKeepsItsValues(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	inst := newInstanceRow(t, lib)
+	owned, ownedRev := newCard(t, lib, "owned", `{"name": "Owned"}`)
+	hidden, _ := newCard(t, lib, "hidden", `{"name": "Hidden"}`)
+	kept, _ := newCard(t, lib, "kept", `{"name": "Kept"}`)
+	embedCards(t, lib, inst, map[int64][]float32{owned: {1, 0}, hidden: {0, 1}, kept: {1, 1}})
+	if err := lib.AddEnrichments(ctx, inst, []NewEnrichment{{CardID: owned, RevisionID: ownedRev, Key: "k", Value: json.RawMessage(`1`)}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.Cards.SetArchived(ctx, owned, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := lib.SetHidden(ctx, DefaultLibrary, map[int64]string{hidden: ReasonDuplicate}, nil); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := lib.pool.Query(ctx, `SELECT card_id FROM card_embedding ORDER BY card_id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	left, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	if err != nil || !slices.Equal(left, []int64{kept}) {
+		t.Fatalf("vectors left = %v, %v", left, err)
+	}
+	if vals, err := lib.Enrichments(ctx, owned, false); err != nil || len(vals) != 1 {
+		t.Fatalf("values = %v, %v", vals, err)
 	}
 }

@@ -74,6 +74,11 @@ beforeEach(() => {
         posts.push({ path, body: await req.json() });
         return json({ id: 7, name: "Elves", filter: { tag: "elf" }, sort: "name", created_at: "" });
       }
+      if (path === "/api/saved-searches/7" && req.method === "PATCH") {
+        posts.push({ path, body: await req.json() });
+        return json({ id: 7, name: "Junk", filter: { tag: "junk" }, sort: "", created_at: "" });
+      }
+      if (path === "/api/saved-searches/8") return new Response(JSON.stringify({ title: "Not Found", status: 404 }), { status: 404, headers: { "Content-Type": "application/problem+json" } });
       if (path === "/api/saved-searches/7") return json({ id: 7, name: "Junk", filter: { tag: "junk" }, sort: "", created_at: "" });
       if (req.method === "PUT") {
         puts.push({ path, body: await req.json() });
@@ -1104,4 +1109,27 @@ test("opening a saved search ANDs its filter with the page's and shows it as a c
   await waitFor(() => expect(searches.some((s) => JSON.stringify((s as { filter?: unknown }).filter) === want)).toBe(true));
   await user.click(chip);
   expect(router.state.location.search).not.toContain("saved=");
+});
+
+test("Update folds the page's terms into the saved search and drops them from the URL", async () => {
+  const { router } = renderCards("/cards?saved=7&f=tag:elf");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Update Junk" }));
+  await waitFor(() =>
+    expect(posts).toContainEqual({ path: "/api/saved-searches/7", body: { filter: { and: [{ tag: "junk" }, { and: [{ tag: "elf" }] }] }, sort: "" } }),
+  );
+  await waitFor(() => expect(router.state.location.search).not.toContain("f="));
+  expect(router.state.location.search).toContain("saved=7");
+});
+
+test("a saved search that won't load blocks the grid and can still be closed", async () => {
+  const { router, container } = renderCards("/cards?saved=8&f=tag:elf");
+  const user = userEvent.setup();
+  const chip = await screen.findByRole("button", { name: "Close saved search #8" });
+  await waitFor(() => expect(container.querySelector("p.error")?.textContent).toMatch(/^Saved search: /));
+  expect(screen.queryByRole("button", { name: "Save search" })).not.toBeInTheDocument();
+  expect(searches.filter((s) => !(s as { facets_only?: boolean }).facets_only)).toEqual([]);
+  await user.click(chip);
+  expect(router.state.location.search).not.toContain("saved=");
+  await waitFor(() => expect(searches.filter((s) => !(s as { facets_only?: boolean }).facets_only)).not.toEqual([]));
 });

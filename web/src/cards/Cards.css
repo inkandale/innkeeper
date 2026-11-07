@@ -583,3 +583,5 @@
   color: var(--accent);
   cursor: default;
 }
+
+.save-search { display: flex; flex-wrap: wrap; gap: var(--space); align-items: center; }

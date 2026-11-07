@@ -78,6 +78,8 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const [params, setParams] = useSearchParams();
   const asked = parseQuery(params, useLibrary());
   const saved = useQuery({ ...savedSearchQuery(asked.saved ?? 0), enabled: kind === "card" && asked.saved !== undefined });
+  // Until the saved search loads, the page's own terms alone would match, and act on, more cards than asked.
+  const blocked = kind === "card" && asked.saved !== undefined && !saved.data;
   const keys = useQuery({ ...enrichmentKeysQuery, enabled: kind === "card" });
   const scored = (keys.data?.scorers?.length ?? 0) > 0;
   const browse = keys.data?.browse ?? [];
@@ -118,7 +120,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
     ...searchQuery(kind, body),
     placeholderData: keepPreviousData,
     // Waits for the keys and settings, so the grid doesn't search once without scores or by words and again with them.
-    enabled: (kind !== "card" || !(keys.isPending || settings.isPending)) && !(kind === "card" && asked.saved !== undefined && saved.isPending),
+    enabled: (kind !== "card" || !(keys.isPending || settings.isPending)) && !blocked,
   });
   const scoreSorts = browse.filter((b) => b.type === "score").map((b): [Sort, string] => [`enrichment:${keyRef(b.instance, b.key)}`, b.label]);
   const sorts: [Sort, string][] = [
@@ -146,9 +148,9 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
     go({ ...q, text, sort: q.sort === defaultSort(q.text) ? defaultSort(text) : q.sort, page: 1 });
   };
 
-  const total = res.data?.total ?? 0;
+  const total = blocked ? 0 : (res.data?.total ?? 0);
   const last = Math.max(1, Math.ceil(total / q.size));
-  const hits = res.data?.hits ?? [];
+  const hits = blocked ? [] : (res.data?.hits ?? []);
   // Linked cards' names and avatars for the lorebook rows, in one search.
   const linkedIds = kind === "lorebook" ? [...new Set(hits.flatMap((h) => h.cards ?? []))].slice(0, 500) : [];
   const linkedBody = { library: q.library, filter: { ids: linkedIds }, fields: ["name", "avatar"], page: { size: 500 } };
@@ -252,15 +254,15 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
               Import {noun}
             </button>
           )}
-          {kind === "card" && <SaveSearch q={q} saved={saved.data} />}
+          {kind === "card" && !saved.isError && <SaveSearch q={q} saved={saved.data} />}
           <div className="chips">
-            {saved.data && (
+            {asked.saved !== undefined && (
               <button
                 className="chip"
-                aria-label={`Close saved search ${saved.data.name}`}
+                aria-label={`Close saved search ${saved.data?.name ?? `#${asked.saved}`}`}
                 onClick={() => go({ ...q, saved: undefined, page: 1 })}
               >
-                Saved search: {saved.data.name}
+                Saved search: {saved.data?.name ?? `#${asked.saved}`}
                 <Icon name="close" />
               </button>
             )}

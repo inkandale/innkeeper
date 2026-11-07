@@ -14,9 +14,10 @@ import (
 // quality is the description's length, at most 100. A card whose name holds
 // "fail" gets an error, "skip" is left out of the reply, "bad" gets an
 // undeclared key, a string voice, and quality 150, "nul" gets a NUL in its
-// summary and meta, "novector" gets no embedding, and "slow" takes a second. A thorough run's meta names
-// model fake-thorough. With config vectors, embedding is
-// [description length, 1] in space fake; with vectors_only it is the only value.
+// summary and meta, "novector" gets no embedding, and "slow" takes a second.
+// A thorough run's meta names model fake-thorough. With config vectors,
+// embedding is [description length, 1] in space fake; with vectors_only it is
+// the only value.
 func enrichRun(ctx context.Context, conn *protocol.Conn, params json.RawMessage, mode string, config map[string]any) (any, error) {
 	var p protocol.EnrichRunParams
 	if err := json.Unmarshal(params, &p); err != nil {

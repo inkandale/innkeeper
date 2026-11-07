@@ -246,6 +246,24 @@ func TestEnrichRunFailsARevisionWithoutTheVectorItsInstanceStores(t *testing.T) 
 		WHERE c.id = $1 AND f.instance_id = $2`, id, e.instID).Scan(&n); err != nil || n != 1 {
 		t.Fatalf("recorded failures = %d, %v", n, err)
 	}
+	var vals []enrichmentValue
+	e.call("GET", fmt.Sprintf("/cards/%d/enrichments", id), nil, 200, &vals)
+	if len(vals) == 0 {
+		t.Fatal("the revision's values were not stored")
+	}
+}
+
+func TestEnrichRunStoresAFirstCardWithoutAVector(t *testing.T) {
+	e := newEnrichEnv(t, map[string]any{"vectors": true})
+	id := e.card("Novector", "abc")
+	if j, p := e.evaluate(e.instID, id); j.Status != jobs.StatusSucceeded || p.Done != 1 || p.Failed != 0 {
+		t.Fatalf("job %s, progress %+v", j.Status, p)
+	}
+	var vals []enrichmentValue
+	e.call("GET", fmt.Sprintf("/cards/%d/enrichments", id), nil, 200, &vals)
+	if len(vals) == 0 {
+		t.Fatal("no values stored")
+	}
 }
 
 func TestEnrichRunPassesThoroughToThePlugin(t *testing.T) {

@@ -358,7 +358,17 @@ func (rn *Runner) batch(ctx context.Context, r *jobs.Run, inst pluginhost.Instan
 			continue
 		}
 		// Without a vector the sweep would resend the revision every hour.
+		// Its values still count for rules and the grid, so they are stored first.
 		if vi < 0 && wantsVector {
+			if err := rn.Lib.AddEnrichments(ctx, instanceID, vals); err != nil {
+				if ctx.Err() != nil {
+					return Checked{}, err
+				}
+				if err := fail(rev, "storing its values failed: %v", err); err != nil {
+					return Checked{}, err
+				}
+				continue
+			}
 			if err := fail(rev, "no vector: this instance stores one for every card"); err != nil {
 				return Checked{}, err
 			}

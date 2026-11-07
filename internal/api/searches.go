@@ -4,16 +4,24 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/inkandale/innkeeper/internal/library"
 )
 
-// savedSearchItem is a saved search and how many cards it matches in the library asked about.
+// ruleRef names a rule.
+type ruleRef struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// savedSearchItem is a saved search, the rules on it, and how many cards it matches in the library asked about.
 type savedSearchItem struct {
 	library.SavedSearch
-	Cards *int `json:"cards,omitempty" doc:"How many unarchived cards it matches in the library asked about. Missing when its filter no longer reads, such as when an instance it names is gone."`
+	Rules []ruleRef `json:"rules,omitempty" doc:"The rules on it. Listing only."`
+	Cards *int      `json:"cards,omitempty" doc:"How many unarchived cards it matches in the library asked about. Missing when its filter no longer reads, such as when an instance it names is gone."`
 }
 
 type savedSearchesOut struct{ Body []savedSearchItem }
@@ -52,9 +60,18 @@ func (s *Server) savedSearchItems(ctx context.Context, lib int64, searches []lib
 	if err != nil {
 		return nil, err
 	}
+	rules, err := s.Lib.Rules(ctx)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]savedSearchItem, len(searches))
 	for i, ss := range searches {
 		out[i].SavedSearch = ss
+		for _, r := range rules {
+			if r.SavedSearchID == ss.ID {
+				out[i].Rules = append(out[i].Rules, ruleRef{r.ID, r.Name})
+			}
+		}
 		n, err := s.Lib.CountMatches(ctx, library.Card, library.Query{Library: lib, Filter: &ss.Filter, Browsable: browsable})
 		switch {
 		case errors.Is(err, library.ErrInvalid):
@@ -122,12 +139,32 @@ func (s *Server) savedSearchRoutes(api huma.API) {
 			if err != nil {
 				return nil, s.fail(err)
 			}
+			if in.Body.Filter != nil {
+				rules, err := s.Lib.RulesOn(ctx, in.ID)
+				if err != nil {
+					return nil, s.fail(err)
+				}
+				if err := s.recheckRules(ctx, rules...); err != nil {
+					return nil, s.fail(err)
+				}
+			}
 			return &savedSearchOut{Body: savedSearchItem{SavedSearch: ss}}, nil
 		})
 
 	huma.Register(api, huma.Operation{OperationID: "delete-saved-search", Method: http.MethodDelete, Path: "/saved-searches/{id}",
-		Summary: "Delete a saved search", Tags: tags, DefaultStatus: http.StatusNoContent},
+		Summary: "Delete a saved search", Description: "Refused with 409, naming them, while rules use it.", Tags: tags, DefaultStatus: http.StatusNoContent},
 		func(ctx context.Context, in *idIn) (*struct{}, error) {
+			rules, err := s.Lib.RulesOn(ctx, in.ID)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			if len(rules) > 0 {
+				names := make([]string, len(rules))
+				for i, r := range rules {
+					names[i] = r.Name
+				}
+				return nil, huma.Error409Conflict("rules use this saved search; delete them first: " + strings.Join(names, ", "))
+			}
 			return nil, s.fail(s.Lib.DeleteSavedSearch(ctx, in.ID))
 		})
 }

@@ -179,6 +179,7 @@ func (s *Server) routes(api huma.API) {
 	s.organizeRoutes(api)
 	s.searchRoutes(api)
 	s.savedSearchRoutes(api)
+	s.ruleRoutes(api)
 	s.libraryRoutes(api)
 	s.librarySettingsRoutes(api)
 	s.purgeRoutes(api)

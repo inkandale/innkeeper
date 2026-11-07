@@ -5087,6 +5087,184 @@
         ],
         "type": "object"
       },
+      "RuleCount": {
+        "additionalProperties": false,
+        "properties": {
+          "cards": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "library": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "library",
+          "cards"
+        ],
+        "type": "object"
+      },
+      "RuleItem": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/RuleItem.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "action": {
+            "description": "Can't change once the rule exists.",
+            "enum": [
+              "archive",
+              "collect"
+            ],
+            "type": "string"
+          },
+          "affected": {
+            "description": "How many cards it has archived or collected, by library.",
+            "items": {
+              "$ref": "#/components/schemas/RuleCount"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "all_libraries": {
+            "description": "Covers every library, including ones made later; otherwise only libraries.",
+            "type": "boolean"
+          },
+          "collection_id": {
+            "description": "For collect: the collection matching cards are kept in. The rule must cover that collection's library alone. Can't change once the rule exists.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "enabled": {
+            "description": "A new rule starts disabled; missing means false.",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "libraries": {
+            "description": "With all_libraries false: the libraries it covers.",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "name": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "saved_search": {
+            "description": "Its saved search's name.",
+            "type": "string"
+          },
+          "saved_search_id": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "affected",
+          "id",
+          "saved_search",
+          "name",
+          "saved_search_id",
+          "action",
+          "all_libraries"
+        ],
+        "type": "object"
+      },
+      "RuleRef": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "RuleSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/RuleSpec.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "action": {
+            "description": "Can't change once the rule exists.",
+            "enum": [
+              "archive",
+              "collect"
+            ],
+            "type": "string"
+          },
+          "all_libraries": {
+            "description": "Covers every library, including ones made later; otherwise only libraries.",
+            "type": "boolean"
+          },
+          "collection_id": {
+            "description": "For collect: the collection matching cards are kept in. The rule must cover that collection's library alone. Can't change once the rule exists.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "enabled": {
+            "description": "A new rule starts disabled; missing means false.",
+            "type": "boolean"
+          },
+          "libraries": {
+            "description": "With all_libraries false: the libraries it covers.",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "name": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "saved_search_id": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "saved_search_id",
+          "action",
+          "all_libraries"
+        ],
+        "type": "object"
+      },
       "RunSettingInBody": {
         "additionalProperties": false,
         "properties": {
@@ -5164,6 +5342,16 @@
           },
           "name": {
             "type": "string"
+          },
+          "rules": {
+            "description": "The rules on it. Listing only.",
+            "items": {
+              "$ref": "#/components/schemas/RuleRef"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "sort": {
             "description": "The sort to open it with, as search takes it; rules ignore it.",
@@ -9403,7 +9591,7 @@
     },
     "/instances/{id}": {
       "delete": {
-        "description": "Its jobs stay, logins through it end, and the saved searches its plugin shipped are deleted.",
+        "description": "Its jobs stay, logins through it end, and the saved searches its plugin shipped go, with their rules, which give back what they did.",
         "operationId": "delete-instance",
         "parameters": [
           {
@@ -13510,6 +13698,224 @@
         ]
       }
     },
+    "/rules": {
+      "get": {
+        "description": "Oldest first, each with how many cards it has archived or collected in each library.",
+        "operationId": "list-rules",
+        "parameters": [
+          {
+            "description": "Only the rules that cover this library.",
+            "explode": false,
+            "in": "query",
+            "name": "library",
+            "schema": {
+              "description": "Only the rules that cover this library.",
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RuleItem"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List rules",
+        "tags": [
+          "Rules"
+        ]
+      },
+      "post": {
+        "description": "It starts disabled. Preview it with POST /rules/preview, then enable it with PUT.",
+        "operationId": "create-rule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleSpec"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleItem"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Add a rule",
+        "tags": [
+          "Rules"
+        ]
+      }
+    },
+    "/rules/{id}": {
+      "delete": {
+        "description": "Gives back what it did: its archived cards come back, and the cards it collected leave the collection.",
+        "operationId": "delete-rule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a rule",
+        "tags": [
+          "Rules"
+        ]
+      },
+      "get": {
+        "operationId": "get-rule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleItem"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a rule",
+        "tags": [
+          "Rules"
+        ]
+      },
+      "put": {
+        "description": "Replaces the rule. Its action and collection can't change. The hide job reruns in every library it covered or covers, applying it and giving back the cards it no longer matches.",
+        "operationId": "update-rule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleSpec"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleItem"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Change a rule",
+        "tags": [
+          "Rules"
+        ]
+      }
+    },
     "/saved-searches": {
       "get": {
         "description": "By name, each with how many cards it matches in the library.",
@@ -13603,6 +14009,7 @@
     },
     "/saved-searches/{id}": {
       "delete": {
+        "description": "Refused with 409, naming them, while rules use it.",
         "operationId": "delete-saved-search",
         "parameters": [
           {

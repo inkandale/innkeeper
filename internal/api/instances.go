@@ -273,9 +273,14 @@ func (s *Server) instanceRoutes(api huma.API) {
 		})
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "delete-instance", Method: http.MethodDelete, Path: "/instances/{id}",
-		Summary: "Delete a plugin instance", Description: "Its jobs stay, logins through it end, and the saved searches its plugin shipped are deleted.", Tags: tags, DefaultStatus: http.StatusNoContent},
+		Summary: "Delete a plugin instance", Description: "Its jobs stay, logins through it end, and the saved searches its plugin shipped go, with their rules, which give back what they did.", Tags: tags, DefaultStatus: http.StatusNoContent},
 		func(ctx context.Context, in *idIn) (*struct{}, error) {
-			return nil, s.fail(s.Registry.DeleteInstance(ctx, in.ID))
+			// Read first: the instance's saved searches, and their rules, go with it.
+			rules, err := s.Lib.RulesOfInstance(ctx, in.ID)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			return nil, s.fail(s.dropRules(ctx, rules, func() error { return s.Registry.DeleteInstance(ctx, in.ID) }))
 		})
 }
 

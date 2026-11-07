@@ -1141,7 +1141,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a plugin instance
-         * @description Its jobs stay, logins through it end, and the saved searches its plugin shipped are deleted.
+         * @description Its jobs stay, logins through it end, and the saved searches its plugin shipped go, with their rules, which give back what they did.
          */
         delete: operations["delete-instance"];
         options?: never;
@@ -2488,6 +2488,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List rules
+         * @description Oldest first, each with how many cards it has archived or collected in each library.
+         */
+        get: operations["list-rules"];
+        put?: never;
+        /**
+         * Add a rule
+         * @description It starts disabled. Preview it with POST /rules/preview, then enable it with PUT.
+         */
+        post: operations["create-rule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rules/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a rule */
+        get: operations["get-rule"];
+        /**
+         * Change a rule
+         * @description Replaces the rule. Its action and collection can't change. The hide job reruns in every library it covered or covers, applying it and giving back the cards it no longer matches.
+         */
+        put: operations["update-rule"];
+        post?: never;
+        /**
+         * Delete a rule
+         * @description Gives back what it did: its archived cards come back, and the cards it collected leave the collection.
+         */
+        delete: operations["delete-rule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/saved-searches": {
         parameters: {
             query?: never;
@@ -2523,7 +2572,10 @@ export interface paths {
         get: operations["get-saved-search"];
         put?: never;
         post?: never;
-        /** Delete a saved search */
+        /**
+         * Delete a saved search
+         * @description Refused with 409, naming them, while rules use it.
+         */
         delete: operations["delete-saved-search"];
         options?: never;
         head?: never;
@@ -4617,6 +4669,77 @@ export interface components {
             parent_id?: number;
             source: string;
         };
+        RuleCount: {
+            /** Format: int64 */
+            cards: number;
+            /** Format: int64 */
+            library: number;
+        };
+        RuleItem: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/RuleItem.json
+             */
+            readonly $schema?: string;
+            /**
+             * @description Can't change once the rule exists.
+             * @enum {string}
+             */
+            action: "archive" | "collect";
+            /** @description How many cards it has archived or collected, by library. */
+            affected: components["schemas"]["RuleCount"][] | null;
+            /** @description Covers every library, including ones made later; otherwise only libraries. */
+            all_libraries: boolean;
+            /**
+             * Format: int64
+             * @description For collect: the collection matching cards are kept in. The rule must cover that collection's library alone. Can't change once the rule exists.
+             */
+            collection_id?: number;
+            /** @description A new rule starts disabled; missing means false. */
+            enabled?: boolean;
+            /** Format: int64 */
+            id: number;
+            /** @description With all_libraries false: the libraries it covers. */
+            libraries?: number[] | null;
+            name: string;
+            /** @description Its saved search's name. */
+            saved_search: string;
+            /** Format: int64 */
+            saved_search_id: number;
+        };
+        RuleRef: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
+        RuleSpec: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/RuleSpec.json
+             */
+            readonly $schema?: string;
+            /**
+             * @description Can't change once the rule exists.
+             * @enum {string}
+             */
+            action: "archive" | "collect";
+            /** @description Covers every library, including ones made later; otherwise only libraries. */
+            all_libraries: boolean;
+            /**
+             * Format: int64
+             * @description For collect: the collection matching cards are kept in. The rule must cover that collection's library alone. Can't change once the rule exists.
+             */
+            collection_id?: number;
+            /** @description A new rule starts disabled; missing means false. */
+            enabled?: boolean;
+            /** @description With all_libraries false: the libraries it covers. */
+            libraries?: number[] | null;
+            name: string;
+            /** Format: int64 */
+            saved_search_id: number;
+        };
         RunSettingInBody: {
             /**
              * Format: uri
@@ -4663,6 +4786,8 @@ export interface components {
              */
             instance_id?: number;
             name: string;
+            /** @description The rules on it. Listing only. */
+            rules?: components["schemas"]["RuleRef"][] | null;
             /** @description The sort to open it with, as search takes it; rules ignore it. */
             sort: string;
         };
@@ -9890,6 +10015,166 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["JobOut"];
                 };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-rules": {
+        parameters: {
+            query?: {
+                /** @description Only the rules that cover this library. */
+                library?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleItem"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "create-rule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuleSpec"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleItem"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-rule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleItem"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "update-rule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RuleSpec"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleItem"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-rule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Error */
             default: {

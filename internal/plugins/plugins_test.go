@@ -363,10 +363,17 @@ func TestLoadInstalled(t *testing.T) {
 	if err := os.Symlink("local@1.0.0", filepath.Join(dir, "misnamed", "current")); err != nil {
 		t.Fatal(err)
 	}
+	writeManifest(t, filepath.Join(dir, "future", "local@1.0.0"), manifestFor("future", "1.0.0")+"protocol_version = \"1.99\"\n")
+	if err := os.Symlink("local@1.0.0", filepath.Join(dir, "future", "current")); err != nil {
+		t.Fatal(err)
+	}
 
-	got, err := LoadInstalled(dir, quiet)
+	got, newer, err := LoadInstalled(dir, quiet)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(newer) != 1 || newer["future"] != "1.99" {
+		t.Fatalf("newer = %v, want only future needing 1.99", newer)
 	}
 	real, err := filepath.EvalSymlinks(dir)
 	if err != nil {
@@ -379,7 +386,7 @@ func TestLoadInstalled(t *testing.T) {
 		t.Fatalf("Dir = %s, want %s", got["good"].Dir, want)
 	}
 
-	none, err := LoadInstalled(filepath.Join(dir, "missing"), quiet)
+	none, _, err := LoadInstalled(filepath.Join(dir, "missing"), quiet)
 	if err != nil || len(none) != 0 {
 		t.Fatalf("missing dir: %v, %v", none, err)
 	}

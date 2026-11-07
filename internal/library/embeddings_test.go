@@ -173,3 +173,20 @@ func TestArchivingACardDropsItsVectorsAndKeepsItsValues(t *testing.T) {
 		t.Fatalf("values = %v, %v", vals, err)
 	}
 }
+
+func TestSaveVectorsSkipsAnArchivedCard(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	inst := newInstanceRow(t, lib)
+	archived, rev := newCard(t, lib, "archived", `{"name": "Archived"}`)
+	if err := lib.Cards.SetArchived(ctx, archived, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.SaveVectors(ctx, inst, []NewVector{{CardID: archived, RevisionID: rev, Space: "s1", Vector: []float32{1, 0}}}); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := lib.pool.QueryRow(ctx, `SELECT count(*) FROM card_embedding`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("vectors = %d, %v", n, err)
+	}
+}

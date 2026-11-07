@@ -18,7 +18,8 @@ type NewVector struct {
 	Vector     []float32
 }
 
-// SaveVectors stores each card's vector from instance, replacing the one it had.
+// SaveVectors stores each live card's vector from instance, replacing the one
+// it had. It skips an archived card, which may have been archived mid-embed.
 func (l *Library) SaveVectors(ctx context.Context, instance int64, vals []NewVector) error {
 	ids, revs, spaces, vecs := make([]int64, len(vals)), make([]int64, len(vals)), make([]string, len(vals)), make([]string, len(vals))
 	for i, v := range vals {
@@ -28,6 +29,7 @@ func (l *Library) SaveVectors(ctx context.Context, instance int64, vals []NewVec
 		INSERT INTO card_embedding (instance_id, card_id, revision_id, space, embedding)
 		SELECT $1, v.card_id, v.revision_id, v.space, v.embedding::vector
 		FROM unnest($2::bigint[], $3::bigint[], $4::text[], $5::text[]) v (card_id, revision_id, space, embedding)
+		JOIN card c ON c.id = v.card_id AND c.archived_at IS NULL
 		ON CONFLICT (instance_id, card_id) DO UPDATE
 		SET revision_id = excluded.revision_id, space = excluded.space, embedding = excluded.embedding`,
 		instance, ids, revs, spaces, vecs)

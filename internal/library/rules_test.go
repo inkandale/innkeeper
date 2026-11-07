@@ -246,6 +246,14 @@ func TestUnansweredCountsAFailureAsAnswered(t *testing.T) {
 	if err := lib.AddEnrichments(ctx, inst, []NewEnrichment{{CardID: valued, RevisionID: valuedRev, Key: "k", Value: json.RawMessage(`1`)}}); err != nil {
 		t.Fatal(err)
 	}
+	// Only the head revision counts: a value on an older one leaves the card unanswered.
+	stale, staleRev := newCard(t, lib, "stale", `{"name": "Stale"}`)
+	if err := lib.AddEnrichments(ctx, inst, []NewEnrichment{{CardID: stale, RevisionID: staleRev, Key: "k", Value: json.RawMessage(`1`)}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := lib.Cards.Update(ctx, stale, staleRev, edit(`{"name": "Stale", "description": "Edited."}`)); err != nil {
+		t.Fatal(err)
+	}
 	if err := lib.RecordEnrichFailures(ctx, inst, []RevisionRef{{CardID: failed, RevisionID: failedRev}}); err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +261,7 @@ func TestUnansweredCountsAFailureAsAnswered(t *testing.T) {
 	if _, err := lib.pool.Exec(ctx, `UPDATE enrich_failure SET failed_at = now() - interval '25 hours'`); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := lib.Unanswered(ctx, inst, []int64{valued, failed, open}); err != nil || !slices.Equal(got, []int64{open}) {
+	if got, err := lib.Unanswered(ctx, inst, []int64{valued, failed, open, stale}); err != nil || !slices.Equal(got, []int64{open, stale}) {
 		t.Fatalf("unanswered = %v, %v", got, err)
 	}
 }

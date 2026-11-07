@@ -41,7 +41,7 @@ func savedSearchErr(err error) error {
 	case db.IsCode(err, db.UniqueViolation):
 		return ErrNameTaken
 	case db.IsCode(err, db.CheckViolation):
-		return fmt.Errorf("%w: a saved search needs a name without spaces around it", ErrInvalid)
+		return fmt.Errorf("%w: a saved search needs a name, with no spaces around it", ErrInvalid)
 	}
 	return mapErr(err)
 }

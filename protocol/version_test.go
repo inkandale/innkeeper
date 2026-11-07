@@ -72,3 +72,12 @@ func TestLoadManifestReportsANewerProtocolBeforeUnknownKeys(t *testing.T) {
 		t.Fatalf("LoadManifest = %v, want a NewerProtocolError needing 1.99", err)
 	}
 }
+
+func TestLoadManifestReportsAnotherMajorAsUnsupported(t *testing.T) {
+	body := strings.Replace(validManifest, "protocol = 1", "protocol = 2\nprotocol_version = \"2.5\"", 1)
+	_, err := LoadManifest(writeManifest(t, body))
+	var newer *NewerProtocolError
+	if errors.As(err, &newer) || err == nil || !strings.Contains(err.Error(), "protocol 2 is not supported") {
+		t.Fatalf("LoadManifest = %v, want protocol 2 is not supported", err)
+	}
+}

@@ -33,7 +33,8 @@ func CheckVersion(major int, version string) error {
 	if gotMajor != major {
 		return fmt.Errorf("protocol_version %s doesn't match protocol %d", version, major)
 	}
-	if gotMinor > Minor {
+	// Another major's minors aren't ours to compare; the protocol check refuses it.
+	if major == Version && gotMinor > Minor {
 		return &NewerProtocolError{Needs: version}
 	}
 	return nil

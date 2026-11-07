@@ -42,8 +42,8 @@ func (s *Server) searchIDs(ctx context.Context, k *library.Kind, q library.Query
 	return s.Lib.SearchIDs(ctx, k, q)
 }
 
-func toEnrichmentOut(e protocol.Enrichment) EnrichmentOut {
-	return EnrichmentOut{Type: e.Type, Label: e.Label, Range: e.Range, Grid: e.Grid}
+func toEnrichmentOut(e protocol.Enrichment, browse bool) EnrichmentOut {
+	return EnrichmentOut{Type: e.Type, Label: e.Label, Range: e.Range, Grid: e.Grid, Section: e.Section, Browse: browse}
 }
 
 // enrichmentValue is a stored value with its key's declaration.
@@ -72,9 +72,17 @@ type enrichmentInstance struct {
 	Scored bool `json:"scored" doc:"Whether the instance has stored a value for any card"`
 }
 
+type browseKey struct {
+	Key      string `json:"key"`
+	Instance int64  `json:"instance,omitempty" doc:"Set when the key isn't merged, as plugins declare it with different types: a filter, sort, or facet on it then names this instance."`
+	EnrichmentOut
+	Instances []int64 `json:"instances" doc:"The enrich instances the key reads, highest priority first."`
+}
+
 type enrichmentKeysOut struct {
 	Body struct {
 		Scorers   []library.Scorer     `json:"scorers" doc:"The grid keys a card's grid score reads, highest priority first."`
+		Browse    []browseKey          `json:"browse" doc:"The filter sidebar's and sort menu's keys: each browsable key, merged across the instances that declare it with one type, labeled as the highest-priority one declares it."`
 		Instances []enrichmentInstance `json:"instances" doc:"Each enabled enrich instance, with the keys its plugin declares."`
 	}
 }
@@ -157,7 +165,7 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 					ev.InstanceName = insts[i].Label
 					if m := s.Registry.Manifests()[insts[i].Plugin]; m != nil {
 						if d, ok := m.Enrichments[v.Key]; ok {
-							ev.EnrichmentOut = toEnrichmentOut(d)
+							ev.EnrichmentOut = toEnrichmentOut(d, m.Browsable(v.Key))
 						}
 					}
 				}
@@ -168,12 +176,23 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 
 	huma.Register(api, huma.Operation{OperationID: "list-enrichment-keys", Method: http.MethodGet, Path: "/enrichments/keys",
 		Summary: "List enrichment keys", Tags: tags,
-		Description: "The scorers, and the keys each enabled enrich instance's plugin declares: those that enrichment filters and sort can use, naming the instance."},
+		Description: "The scorers, the browsable keys merged across instances, and the keys each enabled enrich instance's plugin declares: those that enrichment filters and sort can use, naming the instance."},
 		func(ctx context.Context, _ *struct{}) (*enrichmentKeysOut, error) {
 			out := &enrichmentKeysOut{}
 			var err error
 			if out.Body.Scorers, err = s.libSettings().Scorers(ctx); err != nil {
 				return nil, s.fail(err)
+			}
+			browse, err := s.libSettings().BrowseKeys(ctx)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			out.Body.Browse = make([]browseKey, len(browse))
+			for i, b := range browse {
+				out.Body.Browse[i] = browseKey{Key: b.Key, Instance: b.Instance, EnrichmentOut: toEnrichmentOut(b.Enrichment, true)}
+				for _, sc := range b.Scorers {
+					out.Body.Browse[i].Instances = append(out.Body.Browse[i].Instances, sc.Instance)
+				}
 			}
 			insts, err := s.libSettings().Enrichers(ctx)
 			if err != nil {
@@ -182,8 +201,9 @@ func (s *Server) enrichmentRoutes(api huma.API) {
 			out.Body.Instances = []enrichmentInstance{}
 			for _, inst := range insts {
 				keys := []enrichmentKey{}
-				for k, e := range s.Registry.Manifests()[inst.Plugin].Enrichments {
-					keys = append(keys, enrichmentKey{k, toEnrichmentOut(e)})
+				m := s.Registry.Manifests()[inst.Plugin]
+				for k, e := range m.Enrichments {
+					keys = append(keys, enrichmentKey{k, toEnrichmentOut(e, m.Browsable(k))})
 				}
 				slices.SortFunc(keys, func(a, b enrichmentKey) int {
 					if a.Grid != b.Grid {

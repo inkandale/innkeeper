@@ -49,31 +49,91 @@ func (s *Settings) Enrichers(ctx context.Context) ([]plugins.InstanceInfo, error
 	return slices.DeleteFunc(insts, func(i plugins.InstanceInfo) bool { return i.Disabled }), err
 }
 
-// Scorers are the enabled enrich instances' grid keys, highest priority
-// first, then oldest instance first.
-func (s *Settings) Scorers(ctx context.Context) ([]library.Scorer, error) {
+// declared is a key an enabled enrich instance's plugin declares.
+type declared struct {
+	library.Scorer
+	protocol.Enrichment
+}
+
+// declarations are the enabled enrich instances' keys that keep accepts,
+// highest priority first, then oldest instance first.
+func (s *Settings) declarations(ctx context.Context, keep func(m *protocol.Manifest, key string) bool) ([]declared, error) {
 	insts, err := s.Enrichers(ctx)
 	if err != nil {
 		return nil, err
 	}
-	type ranked struct {
-		library.Scorer
-		priority int
-	}
-	var all []ranked
+	manifests := s.reg.Manifests()
+	var all []declared
 	for _, inst := range insts {
-		for k, d := range s.reg.Manifests()[inst.Plugin].Enrichments {
-			if d.Grid {
-				all = append(all, ranked{library.Scorer{Instance: inst.ID, Key: k}, d.Priority})
+		m := manifests[inst.Plugin]
+		for k, d := range m.Enrichments {
+			if keep(m, k) {
+				all = append(all, declared{library.Scorer{Instance: inst.ID, Key: k}, d})
 			}
 		}
 	}
-	slices.SortFunc(all, func(a, b ranked) int {
-		return cmp.Or(cmp.Compare(b.priority, a.priority), cmp.Compare(a.Instance, b.Instance))
+	slices.SortFunc(all, func(a, b declared) int {
+		return cmp.Or(cmp.Compare(b.Priority, a.Priority), cmp.Compare(a.Instance, b.Instance), cmp.Compare(a.Key, b.Key))
 	})
+	return all, nil
+}
+
+// Scorers are the enabled enrich instances' grid keys, highest priority
+// first, then oldest instance first.
+func (s *Settings) Scorers(ctx context.Context) ([]library.Scorer, error) {
+	all, err := s.declarations(ctx, func(m *protocol.Manifest, key string) bool { return m.Enrichments[key].Grid })
+	if err != nil {
+		return nil, err
+	}
 	out := make([]library.Scorer, len(all))
-	for i, r := range all {
-		out[i] = r.Scorer
+	for i, d := range all {
+		out[i] = d.Scorer
+	}
+	return out, nil
+}
+
+// BrowseKey is one entry of the filter sidebar and sort menu.
+type BrowseKey struct {
+	Key string
+	// Instance is 0 for a key merged across the instances that declare it
+	// browsable. A key they declare with different types doesn't merge: it
+	// gets one BrowseKey per instance, naming it.
+	Instance int64
+	// Enrichment is the highest-priority instance's declaration.
+	protocol.Enrichment
+	// Scorers are the instances the key reads, highest priority first.
+	Scorers []library.Scorer
+}
+
+// BrowseKeys are the enabled enrich instances' browsable keys, merged by
+// name, in the order of each key's highest-priority instance.
+func (s *Settings) BrowseKeys(ctx context.Context) ([]BrowseKey, error) {
+	all, err := s.declarations(ctx, (*protocol.Manifest).Browsable)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	byName := map[string][]declared{}
+	for _, d := range all {
+		if byName[d.Key] == nil {
+			names = append(names, d.Key)
+		}
+		byName[d.Key] = append(byName[d.Key], d)
+	}
+	var out []BrowseKey
+	for _, name := range names {
+		ds := byName[name]
+		if slices.ContainsFunc(ds, func(d declared) bool { return d.Type != ds[0].Type }) {
+			for _, d := range ds {
+				out = append(out, BrowseKey{Key: name, Instance: d.Instance, Enrichment: d.Enrichment, Scorers: []library.Scorer{d.Scorer}})
+			}
+			continue
+		}
+		merged := BrowseKey{Key: name, Enrichment: ds[0].Enrichment}
+		for _, d := range ds {
+			merged.Scorers = append(merged.Scorers, d.Scorer)
+		}
+		out = append(out, merged)
 	}
 	return out, nil
 }

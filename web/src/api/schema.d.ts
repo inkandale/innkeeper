@@ -1005,7 +1005,7 @@ export interface paths {
         };
         /**
          * List enrichment keys
-         * @description The scorers, and the keys each enabled enrich instance's plugin declares: those that enrichment filters and sort can use, naming the instance.
+         * @description The scorers, the browsable keys merged across instances, and the keys each enabled enrich instance's plugin declares: those that enrichment filters and sort can use, naming the instance.
          */
         get: operations["list-enrichment-keys"];
         put?: never;
@@ -2841,6 +2841,25 @@ export interface components {
             size: number;
             store: string;
         };
+        BrowseKey: {
+            /** @description Whether the filter sidebar and sort menu list this key. */
+            browse?: boolean;
+            /** @description Whether the library grid shows this key. */
+            grid?: boolean;
+            /**
+             * Format: int64
+             * @description Set when the key isn't merged, as plugins declare it with different types: a filter, sort, or facet on it then names this instance.
+             */
+            instance?: number;
+            /** @description The enrich instances the key reads, highest priority first. */
+            instances: number[] | null;
+            key: string;
+            label: string;
+            range?: number[] | null;
+            /** @description The filter sidebar section a browsable key sits under: score, popularity, kind, warnings, or problems. Empty for Other. */
+            section?: string;
+            type: string;
+        };
         BulkInBody: {
             /**
              * Format: uri
@@ -3322,11 +3341,15 @@ export interface components {
             scored: boolean;
         };
         EnrichmentKey: {
+            /** @description Whether the filter sidebar and sort menu list this key. */
+            browse?: boolean;
             /** @description Whether the library grid shows this key. */
             grid?: boolean;
             key: string;
             label: string;
             range?: number[] | null;
+            /** @description The filter sidebar section a browsable key sits under: score, popularity, kind, warnings, or problems. Empty for Other. */
+            section?: string;
             type: string;
         };
         EnrichmentKeysOutBody: {
@@ -3336,19 +3359,27 @@ export interface components {
              * @example /api/schemas/EnrichmentKeysOutBody.json
              */
             readonly $schema?: string;
+            /** @description The filter sidebar's and sort menu's keys: each browsable key, merged across the instances that declare it with one type, labeled as the highest-priority one declares it. */
+            browse: components["schemas"]["BrowseKey"][] | null;
             /** @description Each enabled enrich instance, with the keys its plugin declares. */
             instances: components["schemas"]["EnrichmentInstance"][] | null;
             /** @description The grid keys a card's grid score reads, highest priority first. */
             scorers: components["schemas"]["Scorer"][] | null;
         };
         EnrichmentOut: {
+            /** @description Whether the filter sidebar and sort menu list this key. */
+            browse?: boolean;
             /** @description Whether the library grid shows this key. */
             grid?: boolean;
             label: string;
             range?: number[] | null;
+            /** @description The filter sidebar section a browsable key sits under: score, popularity, kind, warnings, or problems. Empty for Other. */
+            section?: string;
             type: string;
         };
         EnrichmentValue: {
+            /** @description Whether the filter sidebar and sort menu list this key. */
+            browse?: boolean;
             /** Format: date-time */
             created_at: string;
             /** @description Whether this is the newest value of its key from its instance. */
@@ -3365,6 +3396,8 @@ export interface components {
             range?: number[] | null;
             /** Format: int64 */
             revision_id: number;
+            /** @description The filter sidebar section a browsable key sits under: score, popularity, kind, warnings, or problems. Empty for Other. */
+            section?: string;
             /** @description Whether the value is about a revision that is no longer the card's head. */
             stale: boolean;
             type: string;

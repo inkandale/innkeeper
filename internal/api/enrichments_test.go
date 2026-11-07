@@ -19,6 +19,7 @@ import (
 	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/internal/testutil"
 	"github.com/inkandale/innkeeper/internal/tier"
+	"github.com/inkandale/innkeeper/protocol"
 )
 
 // enrichEnv adds the fake plugin as an enrich plugin, judge, with one
@@ -119,6 +120,37 @@ func (e *enrichEnv) search(q map[string]any, status int) library.Results {
 	var res library.Results
 	e.call("POST", "/cards/search", q, status, &res)
 	return res
+}
+
+// editManifest replaces plugin name's manifest with a copy that edit changes.
+func (e *enrichEnv) editManifest(name string, edit func(m *protocol.Manifest)) {
+	m := *e.manifests[name]
+	m.Enrichments = maps.Clone(m.Enrichments)
+	edit(&m)
+	e.manifests[name] = &m
+}
+
+// addEnricher adds a copy of judge as plugin name, changed by edit, with one
+// instance, and returns the instance's ID.
+func (e *enrichEnv) addEnricher(name string, edit func(m *protocol.Manifest)) int64 {
+	e.t.Helper()
+	m := *e.manifests["judge"]
+	m.Name, m.Command = name, []string{m.Command[0], "-caps=enrich", "-name=" + name}
+	m.Enrichments = maps.Clone(m.Enrichments)
+	edit(&m)
+	e.manifests[name] = &m
+	id, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: name, Name: new(name)})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	return id
+}
+
+// editKey changes one key of m.
+func editKey(m *protocol.Manifest, key string, edit func(d *protocol.Enrichment)) {
+	d := m.Enrichments[key]
+	edit(&d)
+	m.Enrichments[key] = d
 }
 
 func TestEnrichRunStoresVectors(t *testing.T) {
@@ -442,6 +474,59 @@ func TestEnrichmentKeysSayWhetherAnInstanceScoredAnything(t *testing.T) {
 	if !keys.Body.Instances[0].Scored {
 		t.Fatalf("after a run: %+v", keys.Body.Instances)
 	}
+}
+
+func TestEnrichmentKeysListBrowsableKeysMergedAcrossInstances(t *testing.T) {
+	e := newEnrichEnv(t)
+	judge := e.instID
+	// keys returns the browse list as key@instance|label|section|instances, and the instance keys' browse and section.
+	keys := func() ([]string, map[string]string) {
+		t.Helper()
+		var out enrichmentKeysOut
+		e.call("GET", "/enrichments/keys", nil, 200, &out.Body)
+		browse := []string{}
+		for _, b := range out.Body.Browse {
+			browse = append(browse, fmt.Sprintf("%s@%d|%s|%s|%v", b.Key, b.Instance, b.Label, b.Section, b.Instances))
+		}
+		flags := map[string]string{}
+		for _, k := range out.Body.Instances[0].Keys {
+			flags[k.Key] = fmt.Sprintf("%t|%s", k.Browse, k.Section)
+		}
+		return browse, flags
+	}
+	check := func(want ...string) map[string]string {
+		t.Helper()
+		got, flags := keys()
+		if !slices.Equal(got, want) {
+			t.Fatalf("browse = %v, want %v", got, want)
+		}
+		return flags
+	}
+
+	// judge sets browse on no key, so every key but its vector is browsable.
+	check(fmt.Sprintf("quality@0|Quality||[%d]", judge), fmt.Sprintf("summary@0|Summary||[%d]", judge), fmt.Sprintf("voice@0|Voice||[%d]", judge))
+
+	// With a browse key, only those and the grid key are browsable.
+	e.editManifest("judge", func(m *protocol.Manifest) {
+		editKey(m, "summary", func(d *protocol.Enrichment) { d.Browse, d.Section = true, "kind" })
+	})
+	flags := check(fmt.Sprintf("quality@0|Quality||[%d]", judge), fmt.Sprintf("summary@0|Summary|kind|[%d]", judge))
+	if want := map[string]string{"quality": "true|", "summary": "true|kind", "voice": "false|", "embedding": "false|"}; !maps.Equal(flags, want) {
+		t.Fatalf("instance keys = %v, want %v", flags, want)
+	}
+
+	// quality merges under the higher-priority instance's label; summary's types differ, so it doesn't merge.
+	second := e.addEnricher("critic", func(m *protocol.Manifest) {
+		editKey(m, "quality", func(d *protocol.Enrichment) { d.Priority, d.Label = 200, "Critic quality" })
+		editKey(m, "summary", func(d *protocol.Enrichment) { d.Type = "list" })
+	})
+	check(fmt.Sprintf("quality@0|Critic quality||[%d %d]", second, judge),
+		fmt.Sprintf("summary@%d|Summary|kind|[%d]", judge, judge),
+		fmt.Sprintf("summary@%d|Summary|kind|[%d]", second, second))
+
+	// A disabled instance drops out.
+	e.call("PATCH", fmt.Sprintf("/instances/%d", second), map[string]any{"disabled": true}, 200, nil)
+	check(fmt.Sprintf("quality@0|Quality||[%d]", judge), fmt.Sprintf("summary@0|Summary|kind|[%d]", judge))
 }
 
 func TestGridScoreReadsTheHighestPriorityScorer(t *testing.T) {

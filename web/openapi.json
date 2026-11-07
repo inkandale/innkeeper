@@ -406,6 +406,65 @@
         ],
         "type": "object"
       },
+      "BrowseKey": {
+        "additionalProperties": false,
+        "properties": {
+          "browse": {
+            "description": "Whether the filter sidebar and sort menu list this key.",
+            "type": "boolean"
+          },
+          "grid": {
+            "description": "Whether the library grid shows this key.",
+            "type": "boolean"
+          },
+          "instance": {
+            "description": "Set when the key isn't merged, as plugins declare it with different types: a filter, sort, or facet on it then names this instance.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "instances": {
+            "description": "The enrich instances the key reads, highest priority first.",
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "range": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "section": {
+            "description": "The filter sidebar section a browsable key sits under: score, popularity, kind, warnings, or problems. Empty for Other.",
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "instances",
+          "type",
+          "label"
+        ],
+        "type": "object"
+      },
       "BulkInBody": {
         "additionalProperties": false,
         "properties": {
@@ -1765,6 +1824,10 @@
       "EnrichmentKey": {
         "additionalProperties": false,
         "properties": {
+          "browse": {
+            "description": "Whether the filter sidebar and sort menu list this key.",
+            "type": "boolean"
+          },
           "grid": {
             "description": "Whether the library grid shows this key.",
             "type": "boolean"
@@ -1784,6 +1847,10 @@
               "array",
               "null"
             ]
+          },
+          "section": {
+            "description": "The filter sidebar section a browsable key sits under: score, popularity, kind, warnings, or problems. Empty for Other.",
+            "type": "string"
           },
           "type": {
             "type": "string"
@@ -1808,6 +1875,16 @@
             "readOnly": true,
             "type": "string"
           },
+          "browse": {
+            "description": "The filter sidebar's and sort menu's keys: each browsable key, merged across the instances that declare it with one type, labeled as the highest-priority one declares it.",
+            "items": {
+              "$ref": "#/components/schemas/BrowseKey"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "instances": {
             "description": "Each enabled enrich instance, with the keys its plugin declares.",
             "items": {
@@ -1831,6 +1908,7 @@
         },
         "required": [
           "scorers",
+          "browse",
           "instances"
         ],
         "type": "object"
@@ -1838,6 +1916,10 @@
       "EnrichmentOut": {
         "additionalProperties": false,
         "properties": {
+          "browse": {
+            "description": "Whether the filter sidebar and sort menu list this key.",
+            "type": "boolean"
+          },
           "grid": {
             "description": "Whether the library grid shows this key.",
             "type": "boolean"
@@ -1855,6 +1937,10 @@
               "null"
             ]
           },
+          "section": {
+            "description": "The filter sidebar section a browsable key sits under: score, popularity, kind, warnings, or problems. Empty for Other.",
+            "type": "string"
+          },
           "type": {
             "type": "string"
           }
@@ -1868,6 +1954,10 @@
       "EnrichmentValue": {
         "additionalProperties": false,
         "properties": {
+          "browse": {
+            "description": "Whether the filter sidebar and sort menu list this key.",
+            "type": "boolean"
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"
@@ -1908,6 +1998,10 @@
           "revision_id": {
             "format": "int64",
             "type": "integer"
+          },
+          "section": {
+            "description": "The filter sidebar section a browsable key sits under: score, popularity, kind, warnings, or problems. Empty for Other.",
+            "type": "string"
           },
           "stale": {
             "description": "Whether the value is about a revision that is no longer the card's head.",
@@ -8894,7 +8988,7 @@
     },
     "/enrichments/keys": {
       "get": {
-        "description": "The scorers, and the keys each enabled enrich instance's plugin declares: those that enrichment filters and sort can use, naming the instance.",
+        "description": "The scorers, the browsable keys merged across instances, and the keys each enabled enrich instance's plugin declares: those that enrichment filters and sort can use, naming the instance.",
         "operationId": "list-enrichment-keys",
         "responses": {
           "200": {

@@ -21,10 +21,12 @@ import (
 
 // EnrichmentOut is how a plugin declares an enrichment key.
 type EnrichmentOut struct {
-	Type  string    `json:"type"`
-	Label string    `json:"label"`
-	Range []float64 `json:"range,omitempty"`
-	Grid  bool      `json:"grid,omitempty" doc:"Whether the library grid shows this key."`
+	Type    string    `json:"type"`
+	Label   string    `json:"label"`
+	Range   []float64 `json:"range,omitempty"`
+	Grid    bool      `json:"grid,omitempty" doc:"Whether the library grid shows this key."`
+	Section string    `json:"section,omitempty" doc:"The filter sidebar section a browsable key sits under: score, popularity, kind, warnings, or problems. Empty for Other."`
+	Browse  bool      `json:"browse,omitempty" doc:"Whether the filter sidebar and sort menu list this key."`
 }
 
 type pluginOut struct {
@@ -155,7 +157,7 @@ func (s *Server) instanceRoutes(api huma.API) {
 					if p.Enrichments == nil {
 						p.Enrichments = map[string]EnrichmentOut{}
 					}
-					p.Enrichments[k] = toEnrichmentOut(e)
+					p.Enrichments[k] = toEnrichmentOut(e, m.Browsable(k))
 				}
 				for k, rt := range m.Records {
 					if p.Records == nil {

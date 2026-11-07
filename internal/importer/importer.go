@@ -150,7 +150,7 @@ func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
 	if err == nil && r.Cards() > 0 {
 		// Hiding never fails an import, so a failure only goes to the job's log.
 		if err := settings.EnqueueHide(ctx, im.Queue, s.library); err != nil {
-			r.Log("warn", fmt.Sprintf("duplicates weren't hidden: %v", err))
+			r.Log("warn", fmt.Sprintf("duplicates and rules weren't applied: %v", err))
 		}
 	}
 	return plugins.JobErr(err)

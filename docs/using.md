@@ -163,9 +163,9 @@ touches a card you archived yourself, and archiving or unarchiving a card by
 hand clears its reason. An unarchived duplicate can be hidden again by the
 next run.
 
-In a library with `duplicates` on, an import that adds or changes cards runs
-the same job when it finishes, so cards from a second source don't sit beside
-their copies. If the settings can't run, the import's log says why. Moving
+In a library with `duplicates` on or a rule with work there, an import that
+adds or changes cards runs the same job when it finishes, so cards from a
+second source don't sit beside their copies and new cards meet the rules. If the settings can't run, the import's log says why. Moving
 cards runs it in the libraries they left and the one they joined.
 
 **Purging** deletes for good. Select cards, such as archived ones scoring

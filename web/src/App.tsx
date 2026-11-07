@@ -10,6 +10,7 @@ import { Collections } from "./collections/Collections";
 import { Login } from "./login/Login";
 import { Setup } from "./login/Setup";
 import { Lorebook } from "./lorebook/Lorebook";
+import { SavedSearches } from "./rules/SavedSearches";
 import { Loading } from "./shell/Loading";
 import { Page } from "./shell/Page";
 import { Shell } from "./shell/Shell";
@@ -77,6 +78,7 @@ export const router = createBrowserRouter([
           { path: "cards/:id", element: <Card /> },
           { path: "cards/:id/history", element: <History /> },
           { path: "collections", element: <Collections /> },
+          { path: "saved-searches", element: <SavedSearches /> },
           { path: "sync", element: <Sync /> },
           { path: "sync/changes", element: <Changes /> },
           { path: "sync/reconciles/:job", element: <Queue /> },

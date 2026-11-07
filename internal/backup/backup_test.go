@@ -122,7 +122,7 @@ func TestWriteAssets(t *testing.T) {
 	}
 	want := map[string]int64{
 		"blob": 1, "library": 1, "library_setting": 1, "card": 1, "card_revision": 1, "lorebook": 1, "lorebook_revision": 1, "card_lorebook": 1,
-		"collection": 1, "collection_card": 1, "card_source": 0, "lorebook_source": 0, "enrichment": 0,
+		"collection": 1, "saved_search": 0, "collection_card": 1, "card_source": 0, "lorebook_source": 0, "enrichment": 0,
 	}
 	if len(m.Tables) != len(want) {
 		t.Fatalf("tables = %v", m.Tables)

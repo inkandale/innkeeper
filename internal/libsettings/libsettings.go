@@ -20,8 +20,8 @@ import (
 	"github.com/inkandale/innkeeper/protocol"
 )
 
-// ErrNothingToHide means a library's settings hide no cards.
-var ErrNothingToHide = errors.New("nothing to hide: set duplicates")
+// ErrNothingToHide means a library's settings hide no duplicates and no rule has work there.
+var ErrNothingToHide = errors.New("nothing to hide: set duplicates or add a rule")
 
 // Settings reads library and core settings.
 type Settings struct {
@@ -218,9 +218,23 @@ var (
 )
 
 // HidePayload is the hide job's payload for library lib from its settings.
-// It fails with ErrNothingToHide when the settings hide nothing, and with the registry's error when duplicate_decide names an instance
-// that can't decide.
+// It fails with ErrNothingToHide when the settings hide no duplicates and no
+// rule has work in lib, and with the registry's error when duplicate_decide
+// names an instance that can't decide.
 func (s *Settings) HidePayload(ctx context.Context, lib int64) (bulk.HidePayload, error) {
+	p, err := s.payload(ctx, lib)
+	if err != nil || p.Duplicates != "off" {
+		return p, err
+	}
+	work, err := s.lib.HasRuleWork(ctx, lib)
+	if err == nil && !work {
+		err = ErrNothingToHide
+	}
+	return p, err
+}
+
+// payload is the hide job's payload for library lib from its settings.
+func (s *Settings) payload(ctx context.Context, lib int64) (bulk.HidePayload, error) {
 	p := bulk.HidePayload{Library: lib}
 	var err error
 	var dups, keep *string
@@ -245,9 +259,6 @@ func (s *Settings) HidePayload(ctx context.Context, lib int64) (bulk.HidePayload
 		}
 		p.Decide = *decide
 	}
-	if p.Duplicates == "off" {
-		return p, ErrNothingToHide
-	}
 	if p.Scorers, err = s.Scorers(ctx); err != nil {
 		return p, err
 	}
@@ -265,6 +276,19 @@ func (s *Settings) EnqueueHide(ctx context.Context, q *jobs.Queue, lib int64) er
 	if errors.Is(err, ErrNothingToHide) {
 		return nil
 	}
+	if err != nil {
+		return err
+	}
+	_, err = q.EnqueueUnlessQueued(ctx, jobs.Spec{Kind: bulk.HideKind, Payload: p})
+	return err
+}
+
+// RecheckHide queues the hide job for library lib even when nothing there is
+// hidden yet, so a rule's change is applied there or undone. It joins a hide
+// job already queued.
+func (s *Settings) RecheckHide(ctx context.Context, q *jobs.Queue, lib int64) error {
+	ctx = context.WithoutCancel(ctx)
+	p, err := s.payload(ctx, lib)
 	if err != nil {
 		return err
 	}

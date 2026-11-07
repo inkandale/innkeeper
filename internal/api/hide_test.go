@@ -162,3 +162,17 @@ func TestHideAsksTheDecisionModelAboutNearPairs(t *testing.T) {
 	e.call("PATCH", "/libraries/1/settings", map[string]any{"duplicate_decide": 999999}, 200, nil)
 	e.call("POST", "/libraries/1/hide", nil, 404, nil)
 }
+
+func TestHideRunsWhereARuleHasWorkThoughDuplicatesAreOff(t *testing.T) {
+	e := newEnv(t)
+	e.call("POST", "/libraries/1/hide", nil, 400, nil)
+	var ss savedSearchItem
+	e.call("POST", "/saved-searches", map[string]any{"name": "Junk", "filter": map[string]any{"name": "junk"}}, 201, &ss)
+	var r ruleItem
+	e.call("POST", "/rules", map[string]any{"name": "Junk", "saved_search_id": ss.ID, "action": "archive", "all_libraries": true}, 201, &r)
+	e.call("POST", "/libraries/1/hide", nil, 400, nil) // disabled
+	spec := r.RuleSpec
+	spec.Enabled = true
+	e.call("PUT", fmt.Sprintf("/rules/%d", r.ID), spec, 200, nil)
+	e.call("POST", "/libraries/1/hide", nil, 202, nil)
+}

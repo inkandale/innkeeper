@@ -2512,6 +2512,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rules/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview a rule
+         * @description Returns, for each library the rule would cover or covers now, how many cards it would archive or collect and how many it would give back, with a page of each. Changes nothing. An archive count leaves out cards another archive rule or an earlier duplicate run already holds; duplicates the hide job hasn't found yet aren't predicted.
+         */
+        post: operations["preview-rule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/rules/{id}": {
         parameters: {
             query?: never;
@@ -4370,6 +4390,32 @@ export interface components {
             replaces: boolean;
             stale?: boolean;
         };
+        PreviewList: {
+            /** @description One page, newest first, with name and avatar. */
+            hits: components["schemas"]["Hit"][] | null;
+            /** Format: int64 */
+            total: number;
+        };
+        PreviewRuleInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/PreviewRuleInBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description The rule being edited, so the cards it would give back count. Leave it out for a new rule.
+             */
+            id?: number;
+            /**
+             * Format: int64
+             * @description 1-based page of every list. Default 1.
+             */
+            page?: number;
+            /** @description The rule as it would be saved. It is previewed enabled. */
+            rule: components["schemas"]["RuleSpec"];
+        };
         Provider: {
             /** Format: int64 */
             id: number;
@@ -4707,6 +4753,14 @@ export interface components {
             saved_search: string;
             /** Format: int64 */
             saved_search_id: number;
+        };
+        RulePreview: {
+            /** @description Cards it would archive or add to the collection. */
+            apply: components["schemas"]["PreviewList"];
+            /** @description Cards it would unarchive or take out of the collection. */
+            give_back: components["schemas"]["PreviewList"];
+            /** Format: int64 */
+            library: number;
         };
         RuleRef: {
             /** Format: int64 */
@@ -10079,6 +10133,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RuleItem"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "preview-rule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewRuleInBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RulePreview"][] | null;
                 };
             };
             /** @description Error */

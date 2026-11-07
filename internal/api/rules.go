@@ -26,6 +26,78 @@ type listRulesIn struct {
 	Library int64 `query:"library" doc:"Only the rules that cover this library."`
 }
 
+type previewRuleIn struct {
+	Body struct {
+		ID   int64            `json:"id,omitempty" doc:"The rule being edited, so the cards it would give back count. Leave it out for a new rule."`
+		Rule library.RuleSpec `json:"rule" doc:"The rule as it would be saved. It is previewed enabled."`
+		Page int              `json:"page,omitempty" minimum:"0" maximum:"100000" doc:"1-based page of every list. Default 1."`
+	}
+}
+
+// previewList is how many cards a rule would change one way, and one page of them.
+type previewList struct {
+	Total int           `json:"total"`
+	Hits  []library.Hit `json:"hits" doc:"One page, newest first, with name and avatar."`
+}
+
+// rulePreview is what a rule would do in one library.
+type rulePreview struct {
+	Library  int64       `json:"library"`
+	Apply    previewList `json:"apply" doc:"Cards it would archive or add to the collection."`
+	GiveBack previewList `json:"give_back" doc:"Cards it would unarchive or take out of the collection."`
+}
+
+type rulePreviewOut struct{ Body []rulePreview }
+
+// previewPage is how many cards a preview list shows at a time.
+const previewPage = 24
+
+// previewList is ids' count and the page of them as hits.
+func (s *Server) previewList(ctx context.Context, lib int64, ids []int64, page int) (previewList, error) {
+	l := previewList{Total: len(ids), Hits: []library.Hit{}}
+	start := min((page-1)*previewPage, len(ids))
+	shown := ids[start:min(start+previewPage, len(ids))]
+	if len(shown) == 0 {
+		return l, nil
+	}
+	res, err := s.Lib.Search(ctx, library.Card, library.Query{Library: lib, Filter: &library.Filter{IDs: shown}, IncludeArchived: true,
+		Fields: []string{"name", "avatar"}, Page: library.Page{Size: previewPage}})
+	l.Hits = res.Hits
+	return l, err
+}
+
+// previewChanges is RuleChanges for r in lib, less what the hide job would
+// hand to another archive rule: a card a lower-ID rule matches isn't r's to
+// archive, and one another rule matches isn't given back. Pending duplicates
+// aren't predicted; the cards already archived as duplicates never count.
+func (s *Server) previewChanges(ctx context.Context, r library.Rule, lib int64, matches []int64) (add, remove []int64, err error) {
+	if add, remove, err = s.Lib.RuleChanges(ctx, r, lib, matches, nil); err != nil || r.Action != library.RuleArchive {
+		return add, remove, err
+	}
+	browsable, err := s.libSettings().Browsable(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	others, err := s.Lib.RulesIn(ctx, lib)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, o := range others {
+		if o.ID == r.ID || o.Action != library.RuleArchive || !o.Covers(lib) {
+			continue
+		}
+		m, err := s.Lib.RuleMatches(ctx, lib, o.Filter, browsable, nil)
+		if err != nil {
+			return nil, nil, err
+		}
+		if r.ID == 0 || o.ID < r.ID { // a new rule gets the highest ID
+			add = slices.DeleteFunc(add, func(id int64) bool { return slices.Contains(m, id) })
+		}
+		remove = slices.DeleteFunc(remove, func(id int64) bool { return slices.Contains(m, id) })
+	}
+	return add, remove, nil
+}
+
 type createRuleIn struct{ Body library.RuleSpec }
 
 type updateRuleIn struct {
@@ -109,6 +181,70 @@ func (s *Server) ruleRoutes(api huma.API) {
 				return nil, s.fail(err)
 			}
 			return &rulesOut{Body: orEmpty(items)}, nil
+		})
+
+	huma.Register(api, huma.Operation{OperationID: "preview-rule", Method: http.MethodPost, Path: "/rules/preview",
+		Summary: "Preview a rule", Tags: tags,
+		Description: "Returns, for each library the rule would cover or covers now, how many cards it would archive or collect " +
+			"and how many it would give back, with a page of each. Changes nothing. An archive count leaves out cards " +
+			"another archive rule or an earlier duplicate run already holds; duplicates the hide job hasn't found yet aren't predicted."},
+		func(ctx context.Context, in *previewRuleIn) (*rulePreviewOut, error) {
+			spec := in.Body.Rule
+			spec.Enabled = true
+			if err := s.Lib.CheckRuleSpec(ctx, spec); err != nil {
+				return nil, s.fail(err)
+			}
+			search, err := s.Lib.GetSavedSearch(ctx, spec.SavedSearchID)
+			if errors.Is(err, library.ErrNotFound) {
+				return nil, huma.Error422UnprocessableEntity(fmt.Sprintf("saved search %d doesn't exist", spec.SavedSearchID))
+			}
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			r := library.Rule{ID: in.Body.ID, RuleSpec: spec, Filter: search.Filter}
+			libs, err := s.Lib.RuleScope(ctx, r)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			if in.Body.ID != 0 {
+				old, err := s.Lib.GetRule(ctx, in.Body.ID)
+				if err != nil {
+					return nil, s.fail(err)
+				}
+				was, err := s.Lib.RuleScope(ctx, old)
+				if err != nil {
+					return nil, s.fail(err)
+				}
+				libs = append(slices.Clone(libs), was...)
+			}
+			slices.Sort(libs)
+			browsable, err := s.libSettings().Browsable(ctx)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			page := max(in.Body.Page, 1)
+			out := []rulePreview{}
+			for _, lib := range slices.Compact(libs) {
+				var matches []int64
+				if r.Covers(lib) {
+					if matches, err = s.Lib.RuleMatches(ctx, lib, r.Filter, browsable, nil); err != nil {
+						return nil, s.fail(err)
+					}
+				}
+				add, remove, err := s.previewChanges(ctx, r, lib, matches)
+				if err != nil {
+					return nil, s.fail(err)
+				}
+				p := rulePreview{Library: lib}
+				if p.Apply, err = s.previewList(ctx, lib, add, page); err != nil {
+					return nil, s.fail(err)
+				}
+				if p.GiveBack, err = s.previewList(ctx, lib, remove, page); err != nil {
+					return nil, s.fail(err)
+				}
+				out = append(out, p)
+			}
+			return &rulePreviewOut{Body: out}, nil
 		})
 
 	huma.Register(api, huma.Operation{OperationID: "get-rule", Method: http.MethodGet, Path: "/rules/{id}",

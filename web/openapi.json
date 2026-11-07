@@ -4292,6 +4292,64 @@
         ],
         "type": "object"
       },
+      "PreviewList": {
+        "additionalProperties": false,
+        "properties": {
+          "hits": {
+            "description": "One page, newest first, with name and avatar.",
+            "items": {
+              "$ref": "#/components/schemas/Hit"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "total": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "hits"
+        ],
+        "type": "object"
+      },
+      "PreviewRuleInBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/PreviewRuleInBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "id": {
+            "description": "The rule being edited, so the cards it would give back count. Leave it out for a new rule.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "page": {
+            "description": "1-based page of every list. Default 1.",
+            "format": "int64",
+            "maximum": 100000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "rule": {
+            "$ref": "#/components/schemas/RuleSpec",
+            "description": "The rule as it would be saved. It is previewed enabled."
+          }
+        },
+        "required": [
+          "rule"
+        ],
+        "type": "object"
+      },
       "Provider": {
         "additionalProperties": false,
         "properties": {
@@ -5184,6 +5242,29 @@
           "saved_search_id",
           "action",
           "all_libraries"
+        ],
+        "type": "object"
+      },
+      "RulePreview": {
+        "additionalProperties": false,
+        "properties": {
+          "apply": {
+            "$ref": "#/components/schemas/PreviewList",
+            "description": "Cards it would archive or add to the collection."
+          },
+          "give_back": {
+            "$ref": "#/components/schemas/PreviewList",
+            "description": "Cards it would unarchive or take out of the collection."
+          },
+          "library": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "library",
+          "apply",
+          "give_back"
         ],
         "type": "object"
       },
@@ -13784,6 +13865,54 @@
           }
         },
         "summary": "Add a rule",
+        "tags": [
+          "Rules"
+        ]
+      }
+    },
+    "/rules/preview": {
+      "post": {
+        "description": "Returns, for each library the rule would cover or covers now, how many cards it would archive or collect and how many it would give back, with a page of each. Changes nothing. An archive count leaves out cards another archive rule or an earlier duplicate run already holds; duplicates the hide job hasn't found yet aren't predicted.",
+        "operationId": "preview-rule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewRuleInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RulePreview"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Preview a rule",
         "tags": [
           "Rules"
         ]

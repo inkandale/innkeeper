@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -136,4 +137,70 @@ func TestDeletingARuleGivesBackWhatItDid(t *testing.T) {
 	eventually(t, "archived the junk", func() bool { return e.archivedReason(junk) == r.Reason() })
 	e.call("DELETE", fmt.Sprintf("/rules/%d", r.ID), nil, 204, nil)
 	eventually(t, "gave the junk back", func() bool { return e.archivedReason(junk) == "-" })
+}
+
+func TestRulePreviewCountsWhatTheJobThenDoesAndChangesNothing(t *testing.T) {
+	e := newEnv(t)
+	startHide(e)
+	one, two := e.createCard(`{"name": "Junk one"}`).ID, e.createCard(`{"name": "Junk two"}`).ID
+	e.createCard(`{"name": "Keeper"}`)
+	owned := e.createCard(`{"name": "Junk owned"}`).ID
+	e.call("PUT", fmt.Sprintf("/cards/%d/archived", owned), map[string]any{"archived": true}, 204, nil)
+	r := e.newRule("Junk", map[string]any{"name": "junk"}, map[string]any{"action": "archive", "all_libraries": true})
+
+	preview := func(spec library.RuleSpec) rulePreview {
+		t.Helper()
+		var out []rulePreview
+		e.call("POST", "/rules/preview", map[string]any{"id": r.ID, "rule": spec}, 200, &out)
+		if len(out) != 1 || out[0].Library != 1 {
+			t.Fatalf("preview = %+v", out)
+		}
+		return out[0]
+	}
+	p := preview(r.RuleSpec)
+	if p.Apply.Total != 2 || len(p.Apply.Hits) != 2 || p.GiveBack.Total != 0 {
+		t.Fatalf("preview %+v", p)
+	}
+	if e.archivedReason(one) != "-" {
+		t.Fatal("the preview archived a card")
+	}
+
+	r = e.putRule(r, enable)
+	var prog bulk.HideProgress
+	eventually(t, "finished the hide job", func() bool {
+		var raw []byte
+		err := e.pool.QueryRow(context.Background(), `SELECT progress FROM job WHERE kind = $1 AND status = 'succeeded' ORDER BY id DESC LIMIT 1`,
+			bulk.HideKind).Scan(&raw)
+		return err == nil && json.Unmarshal(raw, &prog) == nil
+	})
+	if prog.Archived != p.Apply.Total || e.archivedReason(two) != r.Reason() {
+		t.Fatalf("the job archived %d, the preview said %d", prog.Archived, p.Apply.Total)
+	}
+
+	// A narrower search would give one back, without saving.
+	var narrow savedSearchItem
+	e.call("POST", "/saved-searches", map[string]any{"name": "Junk one", "filter": map[string]any{"name": "junk one"}}, 201, &narrow)
+	spec := r.RuleSpec
+	spec.SavedSearchID = narrow.ID
+	if p := preview(spec); p.Apply.Total != 0 || p.GiveBack.Total != 1 || p.GiveBack.Hits[0].ID != two {
+		t.Fatalf("narrower preview %+v", p)
+	}
+	if e.archivedReason(two) != r.Reason() {
+		t.Fatal("the preview gave a card back")
+	}
+}
+
+func TestRulePreviewLeavesOutCardsAnEarlierArchiveRuleTakes(t *testing.T) {
+	e := newEnv(t)
+	e.createCard(`{"name": "Junk one"}`)
+	first := e.newRule("First", map[string]any{"name": "junk"}, map[string]any{"action": "archive", "all_libraries": true})
+	e.putRule(first, enable)
+	var ss savedSearchItem
+	e.call("POST", "/saved-searches", map[string]any{"name": "Second", "filter": map[string]any{"name": "junk"}}, 201, &ss)
+	spec := library.RuleSpec{Name: "Second", SavedSearchID: ss.ID, Action: "archive", AllLibraries: true}
+	var out []rulePreview
+	e.call("POST", "/rules/preview", map[string]any{"rule": spec}, 200, &out)
+	if len(out) != 1 || out[0].Apply.Total != 0 {
+		t.Fatalf("preview %+v", out)
+	}
 }

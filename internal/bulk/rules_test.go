@@ -96,6 +96,8 @@ func TestDuplicatesAndArchiveRulesShareOneArchivedList(t *testing.T) {
 	copied := e.card("copy", `{"name": "Brakka", "description": "A dwarf smith."}`)
 	junk := e.card("junk", `{"name": "Junk"}`)
 	r := e.rule("Junk", library.Filter{Name: new("junk")}, library.RuleSpec{Action: library.RuleArchive, AllLibraries: true})
+	// Matches the copy alone, so the original stays out of the counts.
+	copyRule := e.rule("Copy", library.Filter{IDs: []int64{copied}}, library.RuleSpec{Action: library.RuleArchive, AllLibraries: true})
 
 	if p := e.hide("exact"); p.Archived != 2 || p.Duplicate != 1 {
 		t.Fatalf("first run %+v", p)
@@ -103,6 +105,7 @@ func TestDuplicatesAndArchiveRulesShareOneArchivedList(t *testing.T) {
 	if e.reason(copied) != library.ReasonDuplicate || e.reason(junk) != r.Reason() || e.reason(orig) != "-" {
 		t.Fatalf("reasons: copy %q, junk %q, orig %q", e.reason(copied), e.reason(junk), e.reason(orig))
 	}
+	e.setEnabled(copyRule, false)
 
 	// Disabling the rule gives junk back and leaves the duplicate.
 	r = e.setEnabled(r, false)
@@ -181,7 +184,7 @@ func TestCollectRuleOnATagFollowsItsSearch(t *testing.T) {
 	if err := e.lib.AddToCollection(e.ctx, col.ID, owned); err != nil {
 		t.Fatal(err)
 	}
-	e.rule("WIP", library.Filter{Tag: new("wip")},
+	r := e.rule("WIP", library.Filter{Tag: new("wip")},
 		library.RuleSpec{Action: library.RuleCollect, CollectionID: &col.ID, Libraries: []int64{library.DefaultLibrary}})
 
 	if p := e.hide("off"); p.Collected != 1 {
@@ -203,5 +206,24 @@ func TestCollectRuleOnATagFollowsItsSearch(t *testing.T) {
 	}
 	if in, _ := e.lib.CardCollections(e.ctx, owned); !slices.Equal(in, []int64{col.ID}) {
 		t.Fatalf("the owner's membership = %v", in)
+	}
+
+	// A disabled rule gives back what it collected, and still not the owner's.
+	c, _ := e.lib.Cards.Get(e.ctx, draft)
+	if _, err := e.lib.Cards.Update(e.ctx, draft, c.HeadRevisionID, library.Edit{Data: []byte(`{"name": "Draft", "tags": ["wip"]}`), Source: "ui"}); err != nil {
+		t.Fatal(err)
+	}
+	if p := e.hide("off"); p.Collected != 1 {
+		t.Fatalf("third run %+v", p)
+	}
+	e.setEnabled(r, false)
+	if p := e.hide("off"); p.Uncollected != 1 {
+		t.Fatalf("rule off %+v", p)
+	}
+	if in, _ := e.lib.CardCollections(e.ctx, draft); len(in) != 0 {
+		t.Fatalf("draft still collected by a disabled rule: %v", in)
+	}
+	if in, _ := e.lib.CardCollections(e.ctx, owned); !slices.Equal(in, []int64{col.ID}) {
+		t.Fatalf("the owner's membership after rule off = %v", in)
 	}
 }

@@ -254,7 +254,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
               Import {noun}
             </button>
           )}
-          {kind === "card" && !saved.isError && <SaveSearch q={q} saved={saved.data} />}
+          {kind === "card" && !blocked && <SaveSearch q={q} saved={saved.data} />}
           <div className="chips">
             {asked.saved !== undefined && (
               <button
@@ -311,14 +311,14 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
             </p>
           </div>
         ) : (
-          res.data && <p className="total">{total} {total === 1 ? noun.slice(0, -1) : noun}{ungrouped ? "" : ", variants grouped"}</p>
+          res.data && !blocked && <p className="total">{total} {total === 1 ? noun.slice(0, -1) : noun}{ungrouped ? "" : ", variants grouped"}</p>
         )}
-        {res.data && q.page > last && (
+        {res.data && !blocked && q.page > last && (
           <p>
             No {noun} on this page. <button className="button" onClick={() => go({ ...q, page: last })}>Go to page {last}</button>
           </p>
         )}
-        {res.isPending ? (
+        {res.isPending && !blocked ? (
           kind === "card" && q.view === "grid" ? (
             <div className="grid" role="status" aria-busy="true" aria-label={`Loading ${noun}`}>
               {Array.from({ length: 8 }, (_, i) => (

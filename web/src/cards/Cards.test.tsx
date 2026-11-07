@@ -78,6 +78,7 @@ beforeEach(() => {
         posts.push({ path, body: await req.json() });
         return json({ id: 7, name: "Junk", filter: { tag: "junk" }, sort: "", created_at: "" });
       }
+      if (path === "/api/saved-searches/9") return new Promise<Response>(() => {});
       if (path === "/api/saved-searches/8") return new Response(JSON.stringify({ title: "Not Found", status: 404 }), { status: 404, headers: { "Content-Type": "application/problem+json" } });
       if (path === "/api/saved-searches/7") return json({ id: 7, name: "Junk", filter: { tag: "junk" }, sort: "", created_at: "" });
       if (req.method === "PUT") {
@@ -1132,4 +1133,10 @@ test("a saved search that won't load blocks the grid and can still be closed", a
   await user.click(chip);
   expect(router.state.location.search).not.toContain("saved=");
   await waitFor(() => expect(searches.filter((s) => !(s as { facets_only?: boolean }).facets_only)).not.toEqual([]));
+});
+
+test("Save search waits for the open saved search to load", async () => {
+  renderCards("/cards?saved=9&f=tag:elf");
+  await screen.findByRole("button", { name: "Close saved search #9" });
+  expect(screen.queryByRole("button", { name: "Save search" })).not.toBeInTheDocument();
 });

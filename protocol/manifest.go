@@ -102,6 +102,15 @@ type Manifest struct {
 	// cards an import or an edit changes. The owner can change it per
 	// instance, so set it when the plugin is worth running on every change.
 	EnrichOnChange bool `toml:"enrich_on_change"`
+
+	// EnrichCost orders enrich instances: an instance waits for a cheaper one
+	// that an enabled archive rule reads. Space values apart, such as by 100,
+	// so later plugins fit between.
+	EnrichCost int `toml:"enrich_cost"`
+
+	// Searches are saved searches over the plugin's own keys. The core saves
+	// each when it creates an instance, reading that instance.
+	Searches map[string]Search `toml:"searches"`
 	// EnrichOnImport is enrich_on_change's retired name.
 	EnrichOnImport bool `toml:"enrich_on_import"`
 
@@ -198,6 +207,71 @@ type Enrichment struct {
 	Embed bool `toml:"embed"`
 }
 
+// Search is a saved search a plugin ships. Its filter is a search filter of
+// only searchTerms, naming the plugin's own keys and no instance.
+type Search struct {
+	Name   string         `toml:"name"`
+	Filter map[string]any `toml:"filter"`
+}
+
+// searchTerms are the filter terms a shipped search may use.
+var searchTerms = []string{"and", "or", "not", "enrichment", "gte", "lte", "missing", "is"}
+
+// validate reports each problem with search id, whose terms must name keys.
+func (s Search) validate(id string, keys map[string]Enrichment) []error {
+	var errs []error
+	if !keyPattern.MatchString(id) {
+		errs = append(errs, fmt.Errorf("search %q must match %s", id, keyPattern))
+	}
+	if strings.TrimSpace(s.Name) == "" || s.Name != strings.TrimSpace(s.Name) {
+		errs = append(errs, fmt.Errorf("search %q: name is required, without spaces around it", id))
+	}
+	if len(s.Filter) == 0 {
+		return append(errs, fmt.Errorf("search %q: filter is required", id))
+	}
+	// Through JSON, so arrays of tables read as []any whatever the decoder made of them.
+	raw, err := json.Marshal(s.Filter)
+	var filter any
+	if err == nil {
+		err = json.Unmarshal(raw, &filter)
+	}
+	if err != nil {
+		return append(errs, fmt.Errorf("search %q: filter: %w", id, err))
+	}
+	var walk func(v any)
+	walk = func(v any) {
+		switch t := v.(type) {
+		case []any:
+			for _, x := range t {
+				walk(x)
+			}
+		case map[string]any:
+			for _, k := range slices.Sorted(maps.Keys(t)) {
+				switch {
+				case k == "instance":
+					errs = append(errs, fmt.Errorf("search %q: a term names an instance; the core fills in the new instance", id))
+				case !slices.Contains(searchTerms, k):
+					errs = append(errs, fmt.Errorf("search %q: filter term %q is not one of %v", id, k, searchTerms))
+				}
+			}
+			if key, ok := t["enrichment"].(string); ok {
+				if _, declared := keys[key]; !declared {
+					errs = append(errs, fmt.Errorf("search %q: enrichment %q is not one of the plugin's keys", id, key))
+				}
+			}
+			for _, k := range []string{"and", "or", "not"} {
+				if x, ok := t[k]; ok {
+					walk(x)
+				}
+			}
+		default:
+			errs = append(errs, fmt.Errorf("search %q: each filter term must be a table", id))
+		}
+	}
+	walk(filter)
+	return errs
+}
+
 // LoadManifest reads and validates dir/plugin.toml. Unknown keys are errors,
 // so typos fail loudly.
 func LoadManifest(dir string) (*Manifest, error) {
@@ -219,7 +293,7 @@ func LoadManifest(dir string) (*Manifest, error) {
 	for _, k := range md.Undecoded() {
 		// The decoder lists nested tables in a map[string]any as undecoded
 		// though they are in the map: config and each record type's schema.
-		if k[0] != "config" && !(len(k) > 2 && k[0] == "records" && k[2] == "schema") {
+		if k[0] != "config" && !(len(k) > 2 && k[0] == "records" && k[2] == "schema") && !(len(k) > 2 && k[0] == "searches" && k[2] == "filter") {
 			unknown = append(unknown, k.String())
 		}
 	}
@@ -398,6 +472,9 @@ func (m *Manifest) Validate() error {
 	if slices.Contains(m.Formats, "json") {
 		errs = append(errs, errors.New(`format "json" is the core's own CCv3 export`))
 	}
+	if m.EnrichCost < 0 {
+		errs = append(errs, errors.New("enrich_cost can't be negative"))
+	}
 	if m.EnrichMaxCards < 0 {
 		errs = append(errs, errors.New("enrich_max_cards can't be negative"))
 	}
@@ -418,6 +495,9 @@ func (m *Manifest) Validate() error {
 			errs = append(errs, fmt.Errorf("settings action %q: label is required", id))
 		}
 	}
+	for _, id := range slices.Sorted(maps.Keys(m.Searches)) {
+		errs = append(errs, m.Searches[id].validate(id, m.Enrichments)...)
+	}
 	return errors.Join(errs...)
 }
 
@@ -433,6 +513,8 @@ var capabilityKeys = []struct {
 	{CapabilityEnrich, "enrichments", false, true, func(m *Manifest) bool { return len(m.Enrichments) > 0 }},
 	{CapabilityEnrich, "enrich_max_cards", true, false, func(m *Manifest) bool { return m.EnrichMaxCards != 0 }},
 	{CapabilityEnrich, "enrich_on_change", true, false, func(m *Manifest) bool { return m.EnrichOnChange }},
+	{CapabilityEnrich, "enrich_cost", true, false, func(m *Manifest) bool { return m.EnrichCost != 0 }},
+	{CapabilityEnrich, "searches", true, false, func(m *Manifest) bool { return len(m.Searches) > 0 }},
 	{CapabilityCodec, "formats", true, true, func(m *Manifest) bool { return len(m.Formats) > 0 }},
 	{CapabilityImport, "bulk", true, false, func(m *Manifest) bool { return m.Bulk }},
 	{CapabilityImport, "inputs", true, false, func(m *Manifest) bool { return len(m.Inputs) > 0 }},

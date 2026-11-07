@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -628,6 +629,10 @@ func TestManifestCapabilityKeys(t *testing.T) {
 		{"enrich without enrichments", []string{"enrich"}, func(*Manifest) {}, "an enrich plugin must declare enrichments"},
 		{"enrich_max_cards without enrich", []string{"push"}, func(m *Manifest) { m.EnrichMaxCards = 5 }, "enrich_max_cards needs the enrich capability"},
 		{"enrich_on_change without enrich", []string{"push"}, func(m *Manifest) { m.EnrichOnChange = true }, "enrich_on_change needs the enrich capability"},
+		{"enrich_cost without enrich", []string{"push"}, func(m *Manifest) { m.EnrichCost = 100 }, "enrich_cost needs the enrich capability"},
+		{"searches without enrich", []string{"push"}, func(m *Manifest) {
+			m.Searches = map[string]Search{"junk": {Name: "Junk", Filter: map[string]any{"enrichment": "x"}}}
+		}, "searches needs the enrich capability"},
 		{"codec without formats", []string{"codec"}, func(*Manifest) {}, "a codec plugin must declare formats"},
 		{"formats without codec", []string{"push"}, func(m *Manifest) { m.Formats = []string{"png"} }, "formats needs the codec capability"},
 		{"bulk without import", []string{"push"}, func(m *Manifest) { m.Bulk = true }, "bulk needs the import capability"},
@@ -672,6 +677,71 @@ quality = { type = "score", range = [1, 5], label = "Quality" }
 		m, err := LoadManifest(writeManifest(t, key+" = true\n"+enrichTOML))
 		if err != nil || !m.EnrichOnChange {
 			t.Errorf("%s: err = %v, EnrichOnChange = %v", key, err, m != nil && m.EnrichOnChange)
+		}
+	}
+}
+
+const searchTOML = `
+name = "lint"
+version = "1"
+protocol = 1
+command = ["./lint"]
+capabilities = ["enrich"]
+enrich_cost = 100
+
+[enrichments]
+problems = { type = "list", label = "Problems" }
+language = { type = "text", label = "Language" }
+
+[searches.junk]
+name = "Junk"
+filter = { or = [
+  { enrichment = "problems", is = "too_short" },
+  { enrichment = "problems", is = "placeholder" },
+] }
+
+[searches.foreign]
+name = "Non-English"
+filter = { and = [{ enrichment = "language", missing = false }, { not = { enrichment = "language", is = "English" } }] }
+`
+
+func TestManifestSearchesAndEnrichCost(t *testing.T) {
+	m, err := LoadManifest(writeManifest(t, searchTOML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.EnrichCost != 100 || m.Searches["junk"].Name != "Junk" || m.Searches["foreign"].Name != "Non-English" {
+		t.Fatalf("manifest %+v", m)
+	}
+	// Through JSON: the decoder may give an array of tables as []map[string]any.
+	if raw, _ := json.Marshal(m.Searches["junk"].Filter); !strings.Contains(string(raw), `"is":"placeholder"`) {
+		t.Fatalf("junk filter %s", raw)
+	}
+}
+
+func TestManifestSearchErrors(t *testing.T) {
+	tests := []struct{ name, search, wantErr string }{
+		{"undeclared key", `{ enrichment = "mood", is = "grim" }`, `enrichment "mood" is not one of the plugin's keys`},
+		{"an instance", `{ enrichment = "problems", is = "x", instance = 3 }`, `names an instance`},
+		{"another term", `{ tag = "junk" }`, `term "tag" is not one of`},
+		{"nested", `{ not = { or = [{ enrichment = "nope", is = "x" }] } }`, `enrichment "nope"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := strings.Replace(searchTOML, "[searches.foreign]", "[searches.bad]\nname = \"Bad\"\nfilter = "+tt.search+"\n\n[searches.foreign]", 1)
+			if _, err := LoadManifest(writeManifest(t, body)); err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("err = %v, want %q", err, tt.wantErr)
+			}
+		})
+	}
+	m := &Manifest{Name: "p", Version: "1", Protocol: Version, Command: []string{"p"}, Capabilities: []string{"enrich"},
+		Enrichments: map[string]Enrichment{"lint": {Type: "score", Label: "Lint", Range: []float64{0, 100}}},
+		Searches:    map[string]Search{"Bad-ID": {Name: " ", Filter: map[string]any{"enrichment": "lint", "lte": 10}}}}
+	m.EnrichCost = -1
+	err := m.Validate()
+	for _, want := range []string{"enrich_cost can't be negative", `search "Bad-ID" must match`, `search "Bad-ID": name is required`} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Validate = %v, want %q", err, want)
 		}
 	}
 }

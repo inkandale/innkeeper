@@ -1,6 +1,6 @@
 # Innkeeper plugin protocol
 
-Protocol version 1.1. The design behind it is in
+Protocol version 1.3. The design behind it is in
 [the core design spec](superpowers/specs/2026-10-03-innkeeper-core-design.md).
 
 ## Versions
@@ -17,6 +17,7 @@ version needs a newer Innkeeper.
 | 1.0 | Everything not listed below |
 | 1.1 | The `panel` grant and `[ui] title` (see [`ui`](#ui)), the `cards.edit` permission, `host.request`'s `snapshot`, and the `context` notice (see [The bridge](#the-bridge)) |
 | 1.2 | `section` and `browse` on enrichment keys (see [Browse sections](#browse-sections)) |
+| 1.3 | `enrich_cost` and `[searches]` in the manifest (see [Manifest](#manifest) and [Enrich order and saved searches](#enrich-order-and-saved-searches)) |
 
 Set `protocol_version` to the newest minor whose features the plugin uses.
 
@@ -125,6 +126,8 @@ Each plugin folder has a `plugin.toml`:
 | `config` | no | JSON Schema with `type = "object"` for instance settings; the UI renders a form from it. See [The config form](#the-config-form) |
 | `enrichments` | for `enrich` | Keys the plugin writes, in lowercase `snake_case`; see [`enrich`](#enrich), and `emit.card`'s `values` under [`import`](#import). Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list`. `grid = true` shows the key on the library grid, for at most one key. The grid key's `priority`, an integer, orders plugins: a tile shows the highest-priority score a card has, and the top three wear gold, silver, and bronze. Space priorities apart, such as by 100, so other plugins fit between. `browse` and `section` list a key in the filter sidebar and sort menu; see [Browse sections](#browse-sections). `embed` is retired and ignored. An `enrich` plugin must declare at least one |
 | `enrich_on_change` | no; only for `enrich` | The default for each new instance's **Update cards as they change** setting; the owner can turn it on or off per instance (`PATCH /instances/{id}` with `enrich_on_change`). Set it only when your calls cost the owner nothing, since the owner didn't ask for the runs. See [`enrich`](#enrich) for what the setting does. `enrich_on_import` is the retired name and still works |
+| `enrich_cost` | no; only for `enrich` | An integer, 0 by default, that orders enrich instances: an instance waits for a cheaper one that an enabled archive rule reads. Space values apart, such as by 100. See [Enrich order and saved searches](#enrich-order-and-saved-searches) |
+| `searches` | no; only for `enrich` | Saved searches over the plugin's own keys, under `[searches.<id>]`, each with a `name` and a `filter`. See [Enrich order and saved searches](#enrich-order-and-saved-searches) |
 | `formats` | only for `codec` | What `codec.encode` writes, each listed once: lowercase words of letters and digits joined by single hyphens, such as `png`. A codec plugin must list at least one. `json` is taken: the core exports CCv3 JSON itself |
 | `bulk` | no; only for `import` | `true` for imports of large sources, such as a site dump. The core stores the cards sent between two checkpoints, about 1,000, in one transaction with the second checkpoint, and doesn't queue them for source detection |
 | `inputs` | no; only for `import` | What the web UI may send to `import.run`, each listed once: `file` sends params `blob` and `name`, `url` sends `url`, and `folder` sends no params, for an import of the folder the instance's config names. Leave it out and the UI's upload, page URL, and folder controls don't use the plugin |
@@ -1155,6 +1158,38 @@ keeps what earlier calls stored.
 {"jsonrpc": "2.0", "method": "progress", "params": {"run": "Q4M6PCZTLGA7RJW2K5QXN3HBVY", "message": "Evaluating Brakka", "done": 0, "total": 2}}
 {"jsonrpc": "2.0", "id": 12, "result": {"results": [{"revision_id": 812, "values": {"quality": 78, "voice": 88}, "meta": {"model": "claude-opus-5-5", "prompt": "evaluate-2"}}, {"revision_id": 813, "error": "the model returned no JSON"}]}}
 ```
+
+#### Enrich order and saved searches
+
+The owner can make **rules**: saved searches with an action, such as
+archiving what they match, that the core keeps applied. An instance
+**gates** a library when an enabled archive rule covering it reads the
+instance and **Update cards as they change** is on for it. A card in that
+library waits, in sweep and on-change runs, while
+a gate with a lower `enrich_cost` has neither a value nor a failure for its
+head revision; the run counts it under `waiting`. Once the gate answers,
+the core applies the rules to those cards and queues the cards still
+unarchived on the costlier instances. A run the owner starts never waits.
+Give a free check a low cost and a model call a high one, so the check can
+archive a card before the model sees it.
+
+A plugin can ship saved searches over its own keys:
+
+```toml
+[searches.junk]
+name = "Junk"
+filter = { or = [
+  { enrichment = "problems", is = "too_short" },
+  { enrichment = "problems", is = "placeholder" },
+] }
+```
+
+A filter is a search filter of `and`, `or`, `not`, and `enrichment` terms
+with `gte`, `lte`, `missing`, or `is`. Each term names one of the plugin's
+keys and no instance: when the owner creates an instance, the core saves
+each search with that instance filled in. A name already taken gets the
+instance's label appended, such as "Junk (Card lint)". The core never makes
+a rule from one.
 
 ### `ai`
 

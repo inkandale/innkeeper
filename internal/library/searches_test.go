@@ -42,25 +42,6 @@ func TestSavedSearchKeepsItsFilterAndSort(t *testing.T) {
 	}
 }
 
-func TestDeleteInstanceSearchesLeavesTheOwners(t *testing.T) {
-	lib := newLibrary(t)
-	ctx := context.Background()
-	if _, err := lib.pool.Exec(ctx, `INSERT INTO saved_search (name, filter, instance_id) VALUES ('Junk', '{"tag": "x"}', 7)`); err != nil {
-		t.Fatal(err)
-	}
-	own, err := lib.CreateSavedSearch(ctx, "Mine", Filter{Tag: new("x")}, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := lib.DeleteInstanceSearches(ctx, 7); err != nil {
-		t.Fatal(err)
-	}
-	all, err := lib.SavedSearches(ctx)
-	if err != nil || len(all) != 1 || all[0].ID != own.ID {
-		t.Fatalf("left = %+v, %v", all, err)
-	}
-}
-
 func TestCheckFilterRefusesWhatSearchRefuses(t *testing.T) {
 	if err := CheckFilter(Filter{Tag: new("a"), Name: new("b")}, nil); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("two conditions: %v", err)

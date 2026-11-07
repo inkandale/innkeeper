@@ -464,20 +464,17 @@ func createSearches(ctx context.Context, tx pgx.Tx, id int64, label string, m *p
 			return fmt.Errorf("search %q: %w", key, err)
 		}
 		names := []string{s.Name, fmt.Sprintf("%s (%s)", s.Name, label), fmt.Sprintf("%s (%s %d)", s.Name, label, id)}
-		saved := false
 		for _, name := range names {
 			tag, err := tx.Exec(ctx, `INSERT INTO saved_search (name, filter, instance_id) VALUES ($1, $2, $3)
 				ON CONFLICT (name) DO NOTHING`, name, filter, id)
 			if err != nil {
 				return fmt.Errorf("save search %q: %w", key, err)
 			}
-			if saved = tag.RowsAffected() == 1; saved {
+			if tag.RowsAffected() == 1 {
 				break
 			}
 		}
-		if !saved {
-			return fmt.Errorf("%w: search %q: saved searches %q already exist", ErrNameTaken, key, names)
-		}
+		// ponytail: a search whose three names are all taken is skipped, never fails the instance; the owner can save it by hand.
 	}
 	return nil
 }
@@ -634,12 +631,13 @@ func (r *Registry) DeleteInstance(ctx context.Context, id int64) error {
 // deleteInstances deletes the instances whose column (id or plugin) is
 // value, and how many it deleted. Their import bindings go with them, since
 // those only record what an importer last sent; any other binding makes it
-// fail with ErrInUse.
+// fail with ErrInUse. So do the saved searches their plugin shipped.
 func deleteInstances(ctx context.Context, db interface {
 	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
 }, column string, value any) (int64, error) {
 	tag, err := db.Exec(ctx, `WITH b AS (DELETE FROM binding WHERE imported
-			AND instance_id IN (SELECT id FROM plugin_instance WHERE `+column+` = $1))
+			AND instance_id IN (SELECT id FROM plugin_instance WHERE `+column+` = $1)),
+		s AS (DELETE FROM saved_search WHERE instance_id IN (SELECT id FROM plugin_instance WHERE `+column+` = $1))
 		DELETE FROM plugin_instance WHERE `+column+` = $1`, value)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.ConstraintName == "binding_instance_id_fkey" {

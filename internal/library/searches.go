@@ -73,12 +73,6 @@ func (l *Library) DeleteSavedSearch(ctx context.Context, id int64) error {
 	return nil
 }
 
-// DeleteInstanceSearches deletes the saved searches instance shipped, and the rules on them.
-func (l *Library) DeleteInstanceSearches(ctx context.Context, instance int64) error {
-	_, err := l.pool.Exec(ctx, `DELETE FROM saved_search WHERE instance_id = $1`, instance)
-	return err
-}
-
 // GetSavedSearch returns one saved search.
 func (l *Library) GetSavedSearch(ctx context.Context, id int64) (SavedSearch, error) {
 	s, err := scanSavedSearch(l.pool.QueryRow(ctx, `SELECT `+savedSearchCols+` FROM saved_search WHERE id = $1`, id))

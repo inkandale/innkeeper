@@ -251,3 +251,41 @@ func TestSitesInstancesSkipsDisabledInstance(t *testing.T) {
 		t.Fatalf("SitesInstances = %+v, %v; want only instance %d", got, err, next)
 	}
 }
+
+func TestSingletonSearchesGetTheInstanceAndNeverFailIt(t *testing.T) {
+	ctx := context.Background()
+	dirs := Dirs{Builtin: t.TempDir(), Installed: t.TempDir()}
+	writeManifest(t, filepath.Join(dirs.Builtin, "solo"), "name = \"solo\"\nversion = \"1\"\nprotocol = 1\ncommand = [\"./x\"]\ncapabilities = [\"codec\"]\nformats = [\"png\"]\n")
+	pool := testdb.New(t)
+	reg := openWith(t, pool, dirs)
+	reg.manifests["solo"].Searches = map[string]protocol.Search{
+		"nested": {Name: "Nested", Filter: map[string]any{"and": []any{map[string]any{"not": map[string]any{"enrichment": "problems", "is": "x"}}}}},
+		"taken":  {Name: "Taken", Filter: map[string]any{"tag": "x"}},
+	}
+	// All three names of "taken" are in use.
+	if _, err := pool.Exec(ctx, `INSERT INTO saved_search (name, filter) VALUES ('Taken', '{"tag":"y"}'), ('Taken (solo)', '{"tag":"y"}')`); err != nil {
+		t.Fatal(err)
+	}
+	var next int64
+	if err := pool.QueryRow(ctx, `SELECT CASE WHEN is_called THEN last_value + 1 ELSE last_value END FROM plugin_instance_id_seq`).Scan(&next); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO saved_search (name, filter) VALUES ('Taken (solo ' || $1::text || ')', '{"tag":"y"}')`, strconv.FormatInt(next, 10)); err != nil {
+		t.Fatal(err)
+	}
+	if names, err := reg.EnsureSingletons(ctx); err != nil || !slices.Equal(names, []string{"solo"}) {
+		t.Fatalf("created %v, %v", names, err)
+	}
+	var id int64
+	var filter string
+	if err := pool.QueryRow(ctx, `SELECT i.id, s.filter::text FROM plugin_instance i, saved_search s WHERE s.name = 'Nested'`).Scan(&id, &filter); err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"and": [{"not": {"is": "x", "instance": ` + strconv.FormatInt(id, 10) + `, "enrichment": "problems"}}]}`; filter != want {
+		t.Fatalf("filter = %s, want %s", filter, want)
+	}
+	var skipped int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM saved_search WHERE instance_id IS NOT NULL`).Scan(&skipped); err != nil || skipped != 1 {
+		t.Fatalf("instance searches = %d, %v; want only Nested", skipped, err)
+	}
+}

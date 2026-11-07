@@ -202,6 +202,7 @@ func TestRemoveData(t *testing.T) {
 	if err := reg.ProvisionDatabases(ctx, dbURL); err != nil {
 		t.Fatal(err)
 	}
+	reg.manifests["cat-log"].Searches = map[string]protocol.Search{"s": {Name: "Cat search", Filter: map[string]any{"tag": "x"}}}
 	if _, err := reg.CreateInstance(ctx, NewInstance{Plugin: "cat-log", Name: new("Cats")}); err != nil {
 		t.Fatal(err)
 	}
@@ -212,17 +213,17 @@ func TestRemoveData(t *testing.T) {
 	if err := reg.RemoveData(ctx, "cat-log"); err != nil {
 		t.Fatal(err)
 	}
-	var instances int
+	var instances, searches int
 	var schema, role bool
 	err := pool.QueryRow(ctx, `SELECT
-		(SELECT count(*) FROM plugin_instance WHERE plugin = 'cat-log'),
+		(SELECT count(*) FROM plugin_instance WHERE plugin = 'cat-log'), (SELECT count(*) FROM saved_search),
 		EXISTS (SELECT FROM pg_namespace WHERE nspname = 'plugin_cat_log'),
-		EXISTS (SELECT FROM pg_roles WHERE rolname = current_database() || '_plugin_cat_log')`).Scan(&instances, &schema, &role)
+		EXISTS (SELECT FROM pg_roles WHERE rolname = current_database() || '_plugin_cat_log')`).Scan(&instances, &searches, &schema, &role)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if instances != 0 || schema || role {
-		t.Fatalf("left instances %d, schema %v, role %v", instances, schema, role)
+	if instances != 0 || searches != 0 || schema || role {
+		t.Fatalf("left instances %d, searches %d, schema %v, role %v", instances, searches, schema, role)
 	}
 }
 

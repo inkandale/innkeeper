@@ -73,3 +73,24 @@ export const searchQuery = (kind: Kind, body: components["schemas"]["Query"]) =>
     queryFn: async ({ signal }) => must(await api.POST(route(kind, "/cards/search"), { body, signal })),
     staleTime: 30_000,
   });
+
+/** savedSearchesQuery is every saved search, with the rules on it and its match count in library. */
+export const savedSearchesQuery = (library: number) =>
+  queryOptions({
+    queryKey: ["saved-searches", library],
+    queryFn: async () => must(await api.GET("/saved-searches", { params: { query: { library } } })),
+  });
+
+/** savedSearchQuery is one saved search, for the Cards page to open. */
+export const savedSearchQuery = (id: number) =>
+  queryOptions({
+    queryKey: ["saved-searches", "one", id],
+    queryFn: async () => must(await api.GET("/saved-searches/{id}", { params: { path: { id } } })),
+  });
+
+/** rulesQuery is every rule, or the ones that cover library, with what each has done. */
+export const rulesQuery = (library?: number) =>
+  queryOptions({
+    queryKey: ["rules", library ?? "all"],
+    queryFn: async () => must(await api.GET("/rules", { params: { query: library ? { library } : {} } })),
+  });

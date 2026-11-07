@@ -15,6 +15,8 @@ const sections = [
   { to: "/cards", label: "Cards", icon: "cards" },
   { to: "/lorebooks", label: "Lorebooks", icon: "lorebooks" },
   { to: "/collections", label: "Collections", icon: "collections" },
+  { to: "/saved-searches", label: "Saved searches", icon: "search" },
+  { to: "/rules", label: "Rules", icon: "rules" },
   { to: "/sync", label: "Sync", icon: "sync" },
   { to: "/settings", label: "Settings", icon: "settings" },
 ] as const;
@@ -30,7 +32,7 @@ async function logout() {
 }
 
 // Pages that show one library; switching keeps the page, anywhere else opens Cards.
-const listPages = ["/cards", "/lorebooks", "/collections", "/sync"];
+const listPages = ["/cards", "/lorebooks", "/collections", "/saved-searches", "/sync"];
 
 /** LibrarySwitcher picks the current library, and remembers it once the list confirms it exists. */
 function LibrarySwitcher() {

@@ -14,7 +14,7 @@ test("the rail links every section and marks the current one", () => {
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
-  for (const name of ["Cards", "Lorebooks", "Collections", "Sync", "Settings"]) {
+  for (const name of ["Cards", "Lorebooks", "Collections", "Saved searches", "Rules", "Sync", "Settings"]) {
     expect(screen.getByRole("link", { name })).toBeInTheDocument();
   }
   expect(screen.queryByRole("link", { name: "Archive" })).not.toBeInTheDocument();

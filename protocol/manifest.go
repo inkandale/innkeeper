@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -111,6 +112,7 @@ type Manifest struct {
 	// Searches are saved searches over the plugin's own keys. The core saves
 	// each when it creates an instance, reading that instance.
 	Searches map[string]Search `toml:"searches"`
+
 	// EnrichOnImport is enrich_on_change's retired name.
 	EnrichOnImport bool `toml:"enrich_on_import"`
 
@@ -214,8 +216,69 @@ type Search struct {
 	Filter map[string]any `toml:"filter"`
 }
 
-// searchTerms are the filter terms a shipped search may use.
-var searchTerms = []string{"and", "or", "not", "enrichment", "gte", "lte", "missing", "is"}
+// searchFilter is the shape the core's search filter accepts, so a shipped
+// search that decodes and passes check can't break the saved-search list.
+type searchFilter struct {
+	And        []searchFilter   `json:"and"`
+	Or         []searchFilter   `json:"or"`
+	Not        *searchFilter    `json:"not"`
+	Enrichment *string          `json:"enrichment"`
+	Gte        *float64         `json:"gte"`
+	Lte        *float64         `json:"lte"`
+	Missing    *bool            `json:"missing"`
+	Is         *string          `json:"is"`
+	Instance   *json.RawMessage `json:"instance"`
+}
+
+// check reports each way f is not a filter over keys.
+func (f searchFilter) check(id string, keys map[string]Enrichment) []error {
+	var errs []error
+	bad := func(format string, a ...any) {
+		errs = append(errs, fmt.Errorf("search %q: "+format, append([]any{id}, a...)...))
+	}
+	if f.Instance != nil {
+		bad("a term names an instance; the core fills in the new instance")
+	}
+	kinds := 0
+	for _, set := range []bool{f.And != nil, f.Or != nil, f.Not != nil, f.Enrichment != nil} {
+		if set {
+			kinds++
+		}
+	}
+	if kinds != 1 {
+		bad("each term needs exactly one of and, or, not, enrichment")
+	}
+	conds := 0
+	if f.Missing != nil {
+		conds++
+	}
+	if f.Gte != nil || f.Lte != nil {
+		conds++
+	}
+	if f.Is != nil {
+		conds++
+	}
+	if f.Enrichment == nil && conds > 0 {
+		bad("gte, lte, missing, and is go with enrichment")
+	}
+	if f.Enrichment != nil {
+		if _, ok := keys[*f.Enrichment]; !ok {
+			bad("enrichment %q is not one of the plugin's keys", *f.Enrichment)
+		}
+		if conds > 1 {
+			bad("an enrichment term takes one of missing, gte and lte, or is")
+		}
+	}
+	for _, list := range [][]searchFilter{f.And, f.Or} {
+		for _, c := range list {
+			errs = append(errs, c.check(id, keys)...)
+		}
+	}
+	if f.Not != nil {
+		errs = append(errs, f.Not.check(id, keys)...)
+	}
+	return errs
+}
 
 // validate reports each problem with search id, whose terms must name keys.
 func (s Search) validate(id string, keys map[string]Enrichment) []error {
@@ -227,49 +290,20 @@ func (s Search) validate(id string, keys map[string]Enrichment) []error {
 		errs = append(errs, fmt.Errorf("search %q: name is required, without spaces around it", id))
 	}
 	if len(s.Filter) == 0 {
-		return append(errs, fmt.Errorf("search %q: filter is required", id))
+		return append(errs, fmt.Errorf("search %q: filter is required, as a table", id))
 	}
-	// Through JSON, so arrays of tables read as []any whatever the decoder made of them.
+	// Through JSON, so arrays of tables read the same whatever the decoder made of them.
 	raw, err := json.Marshal(s.Filter)
-	var filter any
+	var f searchFilter
 	if err == nil {
-		err = json.Unmarshal(raw, &filter)
+		dec := json.NewDecoder(bytes.NewReader(raw))
+		dec.DisallowUnknownFields()
+		err = dec.Decode(&f)
 	}
 	if err != nil {
-		return append(errs, fmt.Errorf("search %q: filter: %w", id, err))
+		return append(errs, fmt.Errorf("search %q: filter: %w; terms are and, or, not, enrichment, gte, lte, missing, is", id, err))
 	}
-	var walk func(v any)
-	walk = func(v any) {
-		switch t := v.(type) {
-		case []any:
-			for _, x := range t {
-				walk(x)
-			}
-		case map[string]any:
-			for _, k := range slices.Sorted(maps.Keys(t)) {
-				switch {
-				case k == "instance":
-					errs = append(errs, fmt.Errorf("search %q: a term names an instance; the core fills in the new instance", id))
-				case !slices.Contains(searchTerms, k):
-					errs = append(errs, fmt.Errorf("search %q: filter term %q is not one of %v", id, k, searchTerms))
-				}
-			}
-			if key, ok := t["enrichment"].(string); ok {
-				if _, declared := keys[key]; !declared {
-					errs = append(errs, fmt.Errorf("search %q: enrichment %q is not one of the plugin's keys", id, key))
-				}
-			}
-			for _, k := range []string{"and", "or", "not"} {
-				if x, ok := t[k]; ok {
-					walk(x)
-				}
-			}
-		default:
-			errs = append(errs, fmt.Errorf("search %q: each filter term must be a table", id))
-		}
-	}
-	walk(filter)
-	return errs
+	return append(errs, f.check(id, keys)...)
 }
 
 // LoadManifest reads and validates dir/plugin.toml. Unknown keys are errors,

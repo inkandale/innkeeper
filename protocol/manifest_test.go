@@ -723,7 +723,12 @@ func TestManifestSearchErrors(t *testing.T) {
 	tests := []struct{ name, search, wantErr string }{
 		{"undeclared key", `{ enrichment = "mood", is = "grim" }`, `enrichment "mood" is not one of the plugin's keys`},
 		{"an instance", `{ enrichment = "problems", is = "x", instance = 3 }`, `names an instance`},
-		{"another term", `{ tag = "junk" }`, `term "tag" is not one of`},
+		{"another term", `{ tag = "junk" }`, `unknown field "tag"`},
+		{"is not a string", `{ enrichment = "problems", is = 3 }`, `filter:`},
+		{"not as a list", `{ not = [{ enrichment = "problems", is = "x" }] }`, `filter:`},
+		{"is alone", `{ is = "x" }`, `go with enrichment`},
+		{"two conditions", `{ enrichment = "problems", is = "x", gte = 1 }`, `takes one of`},
+		{"empty term", `{ and = [{}] }`, `exactly one of`},
 		{"nested", `{ not = { or = [{ enrichment = "nope", is = "x" }] } }`, `enrichment "nope"`},
 	}
 	for _, tt := range tests {
@@ -742,6 +747,15 @@ func TestManifestSearchErrors(t *testing.T) {
 	for _, want := range []string{"enrich_cost can't be negative", `search "Bad-ID" must match`, `search "Bad-ID": name is required`} {
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("Validate = %v, want %q", err, want)
+		}
+	}
+}
+
+func TestManifestSearchFilterMustBeATable(t *testing.T) {
+	for _, f := range []string{`"x"`, `3`} {
+		body := strings.Replace(searchTOML, "[searches.foreign]", "[searches.bad]\nname = \"Bad\"\nfilter = "+f+"\n\n[searches.foreign]", 1)
+		if _, err := LoadManifest(writeManifest(t, body)); err == nil || !strings.Contains(err.Error(), "filter is required, as a table") {
+			t.Errorf("filter %s: err = %v", f, err)
 		}
 	}
 }

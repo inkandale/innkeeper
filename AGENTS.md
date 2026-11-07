@@ -25,6 +25,8 @@ TypeScript (`web/src`). Setup and tests are in [CONTRIBUTING.md](CONTRIBUTING.md
   `internal/`, `web/src`, or the MCP tools; generalize the shared code.
 - Core knows plugins only through the manifest and the protocol. Never
   branch on a plugin's name.
+- Every addition to the protocol bumps `protocol.Minor` and adds a row to
+  the version table in `docs/protocol.md`.
 - Behavior specific to one app or one site belongs in its plugin.
 
 ## The live instance

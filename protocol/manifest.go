@@ -157,6 +157,25 @@ func (m *Manifest) DisplayName() string {
 	return m.Name
 }
 
+// Browsable reports whether key shows in the filter sidebar and sort menu.
+// The grid key always does; when no key sets browse, every key but a vector
+// does, so plugins from before browse keep their filters.
+func (m *Manifest) Browsable(key string) bool {
+	e, ok := m.Enrichments[key]
+	switch {
+	case !ok || e.Type == "vector":
+		return false
+	case e.Grid || e.Browse:
+		return true
+	}
+	for _, other := range m.Enrichments {
+		if other.Browse {
+			return false
+		}
+	}
+	return true
+}
+
 // Enrichment declares one enrichment key a plugin writes and how the UI
 // shows it.
 type Enrichment struct {
@@ -547,23 +566,4 @@ func (m *Manifest) validateTheme() []error {
 func inside(dir, path string) bool {
 	rel, err := filepath.Rel(dir, path)
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, "../")
-}
-
-// Browsable reports whether key shows in the filter sidebar and sort menu.
-// The grid key always does; when no key sets browse, every key but a vector
-// does, so plugins from before browse keep their filters.
-func (m *Manifest) Browsable(key string) bool {
-	e, ok := m.Enrichments[key]
-	switch {
-	case !ok || e.Type == "vector":
-		return false
-	case e.Grid || e.Browse:
-		return true
-	}
-	for _, other := range m.Enrichments {
-		if other.Browse {
-			return false
-		}
-	}
-	return true
 }

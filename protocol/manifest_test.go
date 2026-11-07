@@ -456,6 +456,16 @@ func TestManifestBrowsable(t *testing.T) {
 	}
 }
 
+func TestManifestAllowsAGridKeySectionWithoutBrowse(t *testing.T) {
+	body := strings.Replace(validManifest, `label = "AI summary" }`, `label = "AI summary", grid = true, section = "score" }`, 1)
+	if body == validManifest {
+		t.Fatal("replace target not found")
+	}
+	if _, err := LoadManifest(writeManifest(t, body)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestManifestStillLoadsTheRetiredEmbedFlag(t *testing.T) {
 	m := vectorManifest()
 	m.Enrichments = map[string]Enrichment{"quality": {Type: "score", Label: "Quality", Range: []float64{0, 100}, Embed: true}}

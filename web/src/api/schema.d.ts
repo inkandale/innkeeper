@@ -3009,6 +3009,8 @@ export interface components {
             name: string;
             /** @description Capabilities the plugin needs another plugin to offer, such as ai */
             needs?: string[] | null;
+            /** @description The newest version, when this Innkeeper can't run it */
+            newer?: components["schemas"]["NewerVersionOut"];
             notes?: {
                 [key: string]: string;
             };
@@ -4004,6 +4006,11 @@ export interface components {
             moved: number[] | null;
             /** @description Moved IDs that are no longer a variant of anything. */
             variant_links_cleared: number[] | null;
+        };
+        NewerVersionOut: {
+            /** @description The protocol_version it declares, such as 1.2 */
+            protocol_version: string;
+            version: string;
         };
         Option: {
             label?: string;

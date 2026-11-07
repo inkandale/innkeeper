@@ -911,6 +911,10 @@
               "null"
             ]
           },
+          "newer": {
+            "$ref": "#/components/schemas/NewerVersionOut",
+            "description": "The newest version, when this Innkeeper can't run it"
+          },
           "notes": {
             "additionalProperties": {
               "type": "string"
@@ -3571,6 +3575,23 @@
           "collection_memberships_dropped",
           "from_libraries",
           "bound_instances"
+        ],
+        "type": "object"
+      },
+      "NewerVersionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "protocol_version": {
+            "description": "The protocol_version it declares, such as 1.2",
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "protocol_version"
         ],
         "type": "object"
       },

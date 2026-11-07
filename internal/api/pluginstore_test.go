@@ -92,3 +92,45 @@ func TestPluginNeedsWhatItUsesOffer(t *testing.T) {
 		t.Fatalf("plugins = %+v; want writer needing [ai]", list)
 	}
 }
+
+// withInstalls gives e a registry that installs into a new folder, and returns that folder.
+func withInstalls(t *testing.T, e *testEnv) string {
+	t.Helper()
+	box, err := secrets.New(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	reg, err := plugins.Open(context.Background(), e.pool, plugins.Dirs{Installed: dir},
+		&blobstore.Store{Name: "library", Root: t.TempDir()}, box, "", quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.s.Registry = reg
+	return dir
+}
+
+func TestPluginCatalogOffersTheNewestVersionThisInnkeeperRuns(t *testing.T) {
+	e := newEnv(t)
+	withInstalls(t, e)
+	src := testutil.PluginSource(t,
+		testutil.PluginRelease{Name: "good", Version: "1.0.0"},
+		testutil.PluginRelease{Name: "good", Version: "2.0.0", ProtocolVersion: "1.99"},
+		testutil.PluginRelease{Name: "later", Version: "1.0.0", ProtocolVersion: "1.99"},
+		testutil.PluginRelease{Name: "plain", Version: "1.0.0"})
+	e.call(http.MethodPost, "/plugin-sources", map[string]string{"id": "local", "url": src}, http.StatusCreated, nil)
+
+	var catalog []catalogSourceOut
+	e.call(http.MethodGet, "/plugin-catalog", nil, http.StatusOK, &catalog)
+	got := catalog[0].Plugins
+	if len(got) != 2 || got[0].Name != "good" || got[1].Name != "plain" {
+		t.Fatalf("plugins = %+v; want good and plain, and not later, which has no version this Innkeeper runs", got)
+	}
+	if good := got[0]; good.Version != "1.0.0" || !slices.Equal(good.Versions, []string{"2.0.0", "1.0.0"}) ||
+		good.Newer == nil || *good.Newer != (newerVersionOut{Version: "2.0.0", ProtocolVersion: "1.99"}) {
+		t.Fatalf("good = %+v; want 1.0.0 offered and 2.0.0 newer", good)
+	}
+	if got[1].Newer != nil {
+		t.Fatalf("plain newer = %+v; want none", got[1].Newer)
+	}
+}

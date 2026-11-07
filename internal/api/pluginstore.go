@@ -34,8 +34,8 @@ type installIn struct {
 	}
 }
 
-// catalogPluginOut is a plugin a source offers: its newest version's details,
-// and every version it lists.
+// catalogPluginOut is a plugin a source offers: the details of the newest
+// version this Innkeeper runs, and every version it lists.
 type catalogPluginOut struct {
 	plugins.Entry
 	// Versions is newest first.
@@ -43,6 +43,13 @@ type catalogPluginOut struct {
 	// Notes maps a version to what changed in it, for versions that have notes.
 	Notes map[string]string `json:"notes,omitempty"`
 	Needs []string          `json:"needs,omitempty" doc:"Capabilities the plugin needs another plugin to offer, such as ai"`
+	Newer *newerVersionOut  `json:"newer,omitempty" doc:"The newest version, when this Innkeeper can't run it"`
+}
+
+// newerVersionOut is a plugin version that needs a newer Innkeeper.
+type newerVersionOut struct {
+	Version         string `json:"version"`
+	ProtocolVersion string `json:"protocol_version" doc:"The protocol_version it declares, such as 1.2"`
 }
 
 type catalogSourceOut struct {
@@ -139,15 +146,23 @@ func (s *Server) pluginStoreRoutes(api huma.API) {
 		})
 }
 
-// catalog groups a source's entries by plugin, newest version first.
+// catalog groups a source's entries by plugin, newest version first. Each
+// plugin offers its newest version this Innkeeper runs; a plugin with none
+// is left out.
 func catalog(entries []plugins.Entry) []catalogPluginOut {
 	byName := map[string]*catalogPluginOut{}
 	for _, e := range entries {
 		p, ok := byName[e.Name]
 		if !ok {
-			p = &catalogPluginOut{Entry: e}
+			p = &catalogPluginOut{}
 			byName[e.Name] = p
-		} else if plugins.Newer(e.Version, p.Version) {
+		}
+		switch {
+		case e.CheckProtocol() != nil:
+			if p.Newer == nil || plugins.Newer(e.Version, p.Newer.Version) {
+				p.Newer = &newerVersionOut{Version: e.Version, ProtocolVersion: e.ProtocolVersion}
+			}
+		case p.Name == "" || plugins.Newer(e.Version, p.Version):
 			p.Entry = e
 		}
 		p.Versions = append(p.Versions, e.Version)
@@ -160,6 +175,13 @@ func catalog(entries []plugins.Entry) []catalogPluginOut {
 	}
 	out := []catalogPluginOut{}
 	for _, p := range byName {
+		// No runnable entry set p.Entry.
+		if p.Name == "" {
+			continue
+		}
+		if p.Newer != nil && !plugins.Newer(p.Newer.Version, p.Version) {
+			p.Newer = nil
+		}
 		p.Needs = protocol.Needs(p.Uses)
 		slices.SortFunc(p.Versions, func(a, b string) int {
 			if plugins.Newer(a, b) {

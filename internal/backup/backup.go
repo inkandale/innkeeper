@@ -34,7 +34,7 @@ var Types = []Type{Assets, Config}
 // OAuth grants are never backed up.
 var tables = map[Type][]string{
 	Assets: {"blob", "library", "library_setting", "card", "card_revision", "lorebook", "lorebook_revision", "card_lorebook",
-		"collection", "saved_search", "collection_card", "card_source", "lorebook_source", "enrichment"},
+		"collection", "saved_search", "rule", "rule_library", "collection_card", "card_source", "lorebook_source", "enrichment"},
 	Config: {"plugin_instance", "setting", "binding", "push"},
 }
 

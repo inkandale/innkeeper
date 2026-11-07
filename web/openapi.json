@@ -2074,9 +2074,8 @@
             "type": "string"
           },
           "archived_reason": {
-            "enum": [
-              "duplicate"
-            ],
+            "description": "Why the hide job archived it: duplicate, or rule:\u003cid\u003e for an archive rule.",
+            "pattern": "^(duplicate|rule:[1-9][0-9]*)$",
             "type": "string"
           },
           "cards": {
@@ -9404,7 +9403,7 @@
     },
     "/instances/{id}": {
       "delete": {
-        "description": "Its jobs stay, and logins through it end.",
+        "description": "Its jobs stay, logins through it end, and the saved searches its plugin shipped are deleted.",
         "operationId": "delete-instance",
         "parameters": [
           {

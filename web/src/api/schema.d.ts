@@ -1141,7 +1141,7 @@ export interface paths {
         post?: never;
         /**
          * Delete a plugin instance
-         * @description Its jobs stay, and logins through it end.
+         * @description Its jobs stay, logins through it end, and the saved searches its plugin shipped are deleted.
          */
         delete: operations["delete-instance"];
         options?: never;
@@ -3467,8 +3467,8 @@ export interface components {
             readonly $schema?: string;
             /** Format: date-time */
             archived_at?: string;
-            /** @enum {string} */
-            archived_reason?: "duplicate";
+            /** @description Why the hide job archived it: duplicate, or rule:<id> for an archive rule. */
+            archived_reason?: string;
             /** @description Lorebooks only: IDs of linked cards */
             cards?: number[] | null;
             /** @description Cards only: IDs of the collections it's in */

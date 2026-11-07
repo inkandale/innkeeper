@@ -41,13 +41,12 @@ func toRevision(r library.Revision, full bool) revisionOut {
 }
 
 type entityOut struct {
-	ID         int64      `json:"id"`
-	LibraryID  int64      `json:"library_id" doc:"The library it belongs to"`
-	Slug       string     `json:"slug"`
-	Provenance string     `json:"provenance"`
-	ArchivedAt *time.Time `json:"archived_at,omitempty"`
-	// ArchivedReason is why the hide job archived it.
-	ArchivedReason string              `json:"archived_reason,omitempty" enum:"duplicate"`
+	ID             int64               `json:"id"`
+	LibraryID      int64               `json:"library_id" doc:"The library it belongs to"`
+	Slug           string              `json:"slug"`
+	Provenance     string              `json:"provenance"`
+	ArchivedAt     *time.Time          `json:"archived_at,omitempty"`
+	ArchivedReason string              `json:"archived_reason,omitempty" pattern:"^(duplicate|rule:[1-9][0-9]*)$" doc:"Why the hide job archived it: duplicate, or rule:<id> for an archive rule."`
 	CreatedAt      time.Time           `json:"created_at"`
 	Revision       revisionOut         `json:"revision" doc:"The head revision"`
 	Lorebooks      []int64             `json:"lorebooks,omitempty" doc:"Cards only: IDs of linked lorebooks"`

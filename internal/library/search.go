@@ -111,7 +111,7 @@ type Hit struct {
 	Slug       string     `json:"slug"`
 	RevisionID int64      `json:"revision_id"`
 	ArchivedAt *time.Time `json:"archived_at,omitempty"`
-	// ArchivedReason is why the hide job archived it: duplicate.
+	// ArchivedReason is why the hide job archived it: duplicate or rule:<id>.
 	ArchivedReason string         `json:"archived_reason,omitempty"`
 	Fields         map[string]any `json:"fields"`
 	Tags           []string       `json:"tags,omitempty"`

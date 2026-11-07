@@ -16,6 +16,7 @@ version needs a newer Innkeeper.
 |---|---|
 | 1.0 | Everything not listed below |
 | 1.1 | The `panel` grant and `[ui] title` (see [`ui`](#ui)), the `cards.edit` permission, `host.request`'s `snapshot`, and the `context` notice (see [The bridge](#the-bridge)) |
+| 1.2 | `section` and `browse` on enrichment keys (see [Browse sections](#browse-sections)) |
 
 Set `protocol_version` to the newest minor whose features the plugin uses.
 
@@ -122,7 +123,7 @@ Each plugin folder has a `plugin.toml`:
 | `capabilities` | yes | Any of `import`, `push`, `pull`, `action`, `records`, `enrich`, `codec`, `auth`, `mcp`, `catalog`, `sites`, `ai`, `settings`, `ui`, or `theme`. A theme lists no other capability |
 | `secrets` | no | Names of secrets the owner enters for each instance, in lowercase `snake_case` |
 | `config` | no | JSON Schema with `type = "object"` for instance settings; the UI renders a form from it. See [The config form](#the-config-form) |
-| `enrichments` | for `enrich` | Keys the plugin writes, in lowercase `snake_case`; see [`enrich`](#enrich), and `emit.card`'s `values` under [`import`](#import). Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list`. `grid = true` shows the key on the library grid, for at most one key. The grid key's `priority`, an integer, orders plugins: a tile shows the highest-priority score a card has, and the top three wear gold, silver, and bronze. Space priorities apart, such as by 100, so other plugins fit between. `embed` is retired and ignored. An `enrich` plugin must declare at least one |
+| `enrichments` | for `enrich` | Keys the plugin writes, in lowercase `snake_case`; see [`enrich`](#enrich), and `emit.card`'s `values` under [`import`](#import). Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list`. `grid = true` shows the key on the library grid, for at most one key. The grid key's `priority`, an integer, orders plugins: a tile shows the highest-priority score a card has, and the top three wear gold, silver, and bronze. Space priorities apart, such as by 100, so other plugins fit between. `browse` and `section` list a key in the filter sidebar and sort menu; see [Browse sections](#browse-sections). `embed` is retired and ignored. An `enrich` plugin must declare at least one |
 | `enrich_on_change` | no; only for `enrich` | The default for each new instance's **Update cards as they change** setting; the owner can turn it on or off per instance (`PATCH /instances/{id}` with `enrich_on_change`). Set it only when your calls cost the owner nothing, since the owner didn't ask for the runs. See [`enrich`](#enrich) for what the setting does. `enrich_on_import` is the retired name and still works |
 | `formats` | only for `codec` | What `codec.encode` writes, each listed once: lowercase words of letters and digits joined by single hyphens, such as `png`. A codec plugin must list at least one. `json` is taken: the core exports CCv3 JSON itself |
 | `bulk` | no; only for `import` | `true` for imports of large sources, such as a site dump. The core stores the cards sent between two checkpoints, about 1,000, in one transaction with the second checkpoint, and doesn't queue them for source detection |
@@ -1071,6 +1072,45 @@ summary = { type = "text", label = "Summary" }
 | `score` | A JSON number within `range`, ends included |
 | `list` | A JSON array of strings |
 | `vector` | An object `{"space": "...", "vector": [numbers]}`. Core stores it as the card's vector, not as an enrichment value. `space` (1 to 200 bytes) names what made the vector; core compares only vectors in one space. At most one `vector` key per plugin, it can't set `multiple_instances`, and the plugin must offer `vector.query`. A value is at most 64 KiB of JSON, about 4,000 dimensions |
+
+#### Browse sections
+
+The filter sidebar and sort menu list only browsable keys:
+
+- A key with `browse = true` is browsable.
+- The grid key always is.
+- In a plugin that sets `browse` on no key, every key but a `vector` one is.
+
+Other keys show only on the card page. Filters, sort, and facets can still
+use them by naming the instance.
+
+`section` puts a browsable key under a sidebar heading; a key without one
+goes under Other. `section` needs `browse` or `grid`.
+
+| Section | Holds |
+|---|---|
+| `score` | How good the card is, such as a quality score |
+| `popularity` | How the card does with readers, such as a site's rating |
+| `kind` | What the card is: type, format, point of view, language, topics |
+| `warnings` | Content ratings and content flags |
+| `problems` | Defects to fix, such as lint problems |
+
+Browsable keys with the same name and type merge across plugins into one
+entry, labeled as the highest-priority instance declares it. A filter, sort,
+or facet that names no instance, such as `{"enrichment": "quality", "gte": 70}`,
+reads each card's value from the first instance that has one: by the key's
+`priority`, highest first, then oldest instance first. Only a grid key has a
+`priority`; other keys count as 0. A key whose type differs between plugins
+doesn't merge, so filters on it name the instance.
+
+```toml
+protocol_version = "1.2"
+
+[enrichments]
+quality = { type = "score", range = [0, 100], label = "Quality", grid = true, priority = 300, browse = true, section = "score" }
+pov = { type = "text", label = "Point of view", browse = true, section = "kind" }
+voice = { type = "score", range = [0, 100], label = "Voice" }
+```
 
 **`enrich.run`** computes values for up to 20 revisions.
 

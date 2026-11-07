@@ -139,6 +139,8 @@ func TestManifestErrors(t *testing.T) {
 			`summary = { type = "text", label = "AI summary", grid = true }
 extra = { type = "text", label = "Extra", grid = true }`, "at most one enrichment can set grid"},
 		{"priority off the grid", `label = "AI summary" }`, `label = "AI summary", priority = 100 }`, "priority needs grid"},
+		{"unknown section", `label = "AI summary" }`, `label = "AI summary", browse = true, section = "mood" }`, `section "mood" must be one of`},
+		{"section without browse", `label = "AI summary" }`, `label = "AI summary", section = "kind" }`, "section needs browse"},
 		{"unknown use", `secrets = ["api_key"]`, `secrets = ["api_key"]
 uses = ["ai.draw"]`, `uses "ai.draw"`},
 		{"config not an object schema", "[config]\ntype = \"object\"", "[config]\ntype = \"string\"", "config must be a JSON Schema with type object"},
@@ -429,6 +431,28 @@ func TestVectorPluginCannotHaveMultipleInstances(t *testing.T) {
 	m.MultipleInstances = true
 	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "multiple_instances") {
 		t.Fatalf("vector plugin with multiple instances: %v", err)
+	}
+}
+
+func TestManifestBrowsable(t *testing.T) {
+	m := &Manifest{Enrichments: map[string]Enrichment{
+		"quality":   {Type: "score", Grid: true},
+		"voice":     {Type: "score"},
+		"summary":   {Type: "text"},
+		"embedding": {Type: "vector"},
+	}}
+	// A manifest that sets browse on no key lists every key but its vector.
+	for key, want := range map[string]bool{"quality": true, "voice": true, "summary": true, "embedding": false, "unknown": false} {
+		if got := m.Browsable(key); got != want {
+			t.Errorf("without browse, Browsable(%q) = %v, want %v", key, got, want)
+		}
+	}
+	m.Enrichments["summary"] = Enrichment{Type: "text", Browse: true}
+	// One that sets browse lists only those keys and its grid key.
+	for key, want := range map[string]bool{"quality": true, "voice": false, "summary": true, "embedding": false} {
+		if got := m.Browsable(key); got != want {
+			t.Errorf("with browse, Browsable(%q) = %v, want %v", key, got, want)
+		}
 	}
 }
 

@@ -48,6 +48,10 @@ func WithoutRetired(capabilities []string) []string {
 
 var enrichmentTypes = []string{"text", "score", "list", "vector"}
 
+// enrichmentSections are the filter sidebar headings a browsable key can
+// name, in sidebar order.
+var enrichmentSections = []string{"score", "popularity", "kind", "warnings", "problems"}
+
 // importInputs are the import params the UI can send: file sends blob and name, url sends url,
 // and folder sends none, importing the folder the instance's config names.
 var importInputs = []string{"file", "url", "folder"}
@@ -165,6 +169,12 @@ type Enrichment struct {
 	// highest-priority value it has. Space values apart, such as by 100, so
 	// later plugins fit between.
 	Priority int `toml:"priority"`
+	// Section is the filter sidebar heading a browsable key sits under, or
+	// empty for Other.
+	Section string `toml:"section"`
+	// Browse lists the key in the filter sidebar and sort menu; see
+	// Manifest.Browsable.
+	Browse bool `toml:"browse"`
 	// Embed is retired and ignored; kept so manifests that still set it load.
 	Embed bool `toml:"embed"`
 }
@@ -337,6 +347,12 @@ func (m *Manifest) Validate() error {
 		}
 		if e.Priority != 0 && !e.Grid {
 			errs = append(errs, fmt.Errorf("enrichment %q: priority needs grid", key))
+		}
+		if e.Section != "" && !slices.Contains(enrichmentSections, e.Section) {
+			errs = append(errs, fmt.Errorf("enrichment %q: section %q must be one of %v", key, e.Section, enrichmentSections))
+		}
+		if e.Section != "" && !e.Browse && !e.Grid {
+			errs = append(errs, fmt.Errorf("enrichment %q: section needs browse", key))
 		}
 	}
 	grids, vectors := 0, 0
@@ -531,4 +547,23 @@ func (m *Manifest) validateTheme() []error {
 func inside(dir, path string) bool {
 	rel, err := filepath.Rel(dir, path)
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, "../")
+}
+
+// Browsable reports whether key shows in the filter sidebar and sort menu.
+// The grid key always does; when no key sets browse, every key but a vector
+// does, so plugins from before browse keep their filters.
+func (m *Manifest) Browsable(key string) bool {
+	e, ok := m.Enrichments[key]
+	switch {
+	case !ok || e.Type == "vector":
+		return false
+	case e.Grid || e.Browse:
+		return true
+	}
+	for _, other := range m.Enrichments {
+		if other.Browse {
+			return false
+		}
+	}
+	return true
 }

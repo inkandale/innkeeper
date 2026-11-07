@@ -419,12 +419,9 @@
   font-weight: 400;
 }
 
-.score-instance h3 {
-  margin: calc(var(--space) * 0.5) 0 0;
-  padding: 0 var(--space);
-  font-size: 0.8em;
-  font-weight: 600;
-  color: var(--text-muted);
+.facet-group .facet-section h3 {
+  margin: calc(var(--space) * 0.75) 0 calc(var(--space) * 0.25);
+  padding-left: var(--space);
 }
 
 .score-filter {

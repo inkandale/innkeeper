@@ -136,7 +136,7 @@ export function SelectionBar(props: {
     setPanel(panel === p ? null : p);
   };
   return (
-    <div className="toolbar selection-bar">
+    <div className="toolbar selection-bar" role="group" aria-label="Selection">
       <strong>{all ? (total === undefined ? `All matching ${kind}s` : `All ${total} matching ${kind}${total === 1 ? "" : "s"}`) : `${count} selected`}</strong>
       {!all && onPage && (
         <button className="button" onClick={onPage}>

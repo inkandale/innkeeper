@@ -14,7 +14,7 @@ export type FacetKind = (typeof facetKinds)[number];
 const kinds = [...facetKinds, "creator", "lorebook", "score", "value"] as const;
 const sorts = ["relevance", "updated", "name", "created"] as const;
 const enrichmentSort = /^enrichment:(?:[1-9]\d*:)?[a-z][a-z0-9_]*$/;
-// Score and value terms name their key as instance:key; a bare grid key reads the grid score.
+// Score and value terms name their key as instance:key; a merged browsable key goes alone.
 const ref = String.raw`(?:([1-9]\d*):)?([a-z][a-z0-9_]*)`;
 // A score term's value: key:low..high, either end optional, or key:none for cards without a value.
 const num = String.raw`-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?`;
@@ -53,7 +53,7 @@ export const sectionsFor = (entity: "card" | "lorebook"): FacetKind[] =>
 /** matchesAll says whether a section can switch between any and all: a card has one state, and targets go with states. */
 export const matchesAll = (section: string) => section !== "target" && section !== "state" && section !== "score";
 
-/** keyRef names an enrichment key as terms, sorts, and facets do: instance:key, or a grid key alone for the grid score. */
+/** keyRef names an enrichment key as terms, sorts, and facets do: instance:key, or a merged browsable key alone. */
 export const keyRef = (instance: number | undefined, key: string) => (instance ? `${instance}:${key}` : key);
 
 /** Score is a score term's value: a range, or none for cards without a value. */
@@ -90,13 +90,13 @@ export function enrichmentValue(value: string): { instance?: number; key: string
 
 /**
  * withoutUnnamed drops the score and value terms and enrichment sort that name no instance, from older links,
- * unless they name one of gridKeys, which the core reads as the grid score. It returns q itself when nothing changes.
+ * unless they name one of merged, the merged browsable keys the core reads by name. It returns q itself when nothing changes.
  */
-export function withoutUnnamed(q: CardQuery, gridKeys: string[]): CardQuery {
-  const kept = (ref?: { instance?: number; key: string }) => !ref || ref.instance !== undefined || gridKeys.includes(ref.key);
+export function withoutUnnamed(q: CardQuery, merged: string[]): CardQuery {
+  const kept = (ref?: { instance?: number; key: string }) => !ref || ref.instance !== undefined || merged.includes(ref.key);
   const terms = q.terms.filter((t) => kept(t.kind === "score" ? parseScore(t.value) : t.kind === "value" ? enrichmentValue(t.value) : undefined));
   const key = q.sort.startsWith("enrichment:") ? q.sort.slice("enrichment:".length) : undefined;
-  const sort = key && !key.includes(":") && !gridKeys.includes(key) ? defaultSort(q.text) : q.sort;
+  const sort = key && !key.includes(":") && !merged.includes(key) ? defaultSort(q.text) : q.sort;
   return terms.length !== q.terms.length || sort !== q.sort ? { ...q, terms, sort } : q;
 }
 

@@ -229,7 +229,7 @@ test("setScore keeps the same key from another instance", () => {
   expect(setScore(q, { instance: 5, key: "quality", lte: 20 }).terms).toEqual([term("score", "7:quality:none"), term("score", "5:quality:..20")]);
 });
 
-test("withoutUnnamed keeps old terms and sorts naming a grid key and drops the rest", () => {
+test("withoutUnnamed keeps old terms and sorts naming a merged key and drops the rest", () => {
   const q: CardQuery = { ...base, terms: [term("tag", "a"), term("score", "quality:1.."), term("value", "language=en", true), term("score", "7:lint:none")], sort: "enrichment:quality" };
   expect(withoutUnnamed(q, ["quality", "lint"])).toEqual({ ...q, terms: [term("tag", "a"), term("score", "quality:1.."), term("score", "7:lint:none")] });
   expect(withoutUnnamed(q, [])).toEqual({ ...base, terms: [term("tag", "a"), term("score", "7:lint:none")] });

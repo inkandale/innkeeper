@@ -16,9 +16,22 @@ import { useLibrary, withLibrary } from "../shell/library";
 import { Loading } from "../shell/Loading";
 import { SelectionBar } from "./SelectionBar";
 import { LorebookRow, Row, Tile, medals, type Names } from "./Tile";
+import type { components } from "../api/schema";
 import "./Cards.css";
 
 const sortLabels: Record<string, string> = { relevance: "Best match", updated: "Updated", name: "Name", created: "Created" };
+
+type Enricher = components["schemas"]["EnrichmentInstance"];
+
+/** linkedSortLabel names an enrichment sort the menu doesn't list, from a link: the key's label and its instance's. */
+function linkedSortLabel(sort: string, enrichers: Enricher[]): string {
+  const ref = sort.slice("enrichment:".length);
+  const at = ref.indexOf(":");
+  const key = ref.slice(at + 1);
+  const e = at > 0 ? enrichers.find((x) => String(x.id) === ref.slice(0, at)) : undefined;
+  const k = e?.keys?.find((x) => x.key === key);
+  return e && k ? `${k.label} · ${e.label}` : key;
+}
 
 const ungroupedKey = "innkeeper.library.ungrouped";
 
@@ -65,8 +78,9 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const asked = parseQuery(params, useLibrary());
   const keys = useQuery({ ...enrichmentKeysQuery, enabled: kind === "card" });
   const scored = (keys.data?.scorers?.length ?? 0) > 0;
-  // The core refuses a term naming no instance unless it names a grid key.
-  const scoredQ = keys.data ? withoutUnnamed(asked, (keys.data.scorers ?? []).map((s) => s.key)) : asked;
+  const browse = keys.data?.browse ?? [];
+  // The core refuses a term naming no instance unless it names a merged browsable key.
+  const scoredQ = keys.data ? withoutUnnamed(asked, browse.filter((b) => !b.instance).map((b) => b.key)) : asked;
   const scoresOff = scoredQ !== asked;
   const settings = useQuery(settingsQuery);
   const embeds = kind === "card" && settings.data?.vector_instance != null && settings.data.vectors_available;
@@ -103,13 +117,12 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
     // Waits for the keys and settings, so the grid doesn't search once without scores or by words and again with them.
     enabled: kind !== "card" || !(keys.isPending || settings.isPending),
   });
+  const scoreSorts = browse.filter((b) => b.type === "score").map((b): [Sort, string] => [`enrichment:${keyRef(b.instance, b.key)}`, b.label]);
   const sorts: [Sort, string][] = [
     ...(Object.entries(sortLabels) as [Sort, string][]),
-    ...enrichers.flatMap((e) =>
-      (e.keys ?? [])
-        .filter((k) => k.type === "score")
-        .map((k): [Sort, string] => [`enrichment:${keyRef(e.id, k.key)}`, enrichers.length > 1 ? `${k.label} · ${e.label}` : k.label]),
-    ),
+    ...scoreSorts,
+    // A link may sort by a key the menu doesn't list, such as one that isn't browsable.
+    ...(q.sort.startsWith("enrichment:") && !scoreSorts.some(([s]) => s === q.sort) ? [[q.sort, linkedSortLabel(q.sort, enrichers)] as [Sort, string]] : []),
   ];
   const instances = useQuery(instancesQuery);
   const plugins = useQuery(pluginsQuery);
@@ -149,7 +162,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
 
   return (
     <div className={facetsOpen ? "cards" : "cards no-facets"}>
-      {facetsOpen && <Facets kind={kind} q={q} names={names} enrichers={enrichers} onChange={go} />}
+      {facetsOpen && <Facets kind={kind} q={q} names={names} browse={browse.filter((b) => b.instances?.some((id) => enrichers.some((e) => e.id === id && e.scored)))} onChange={go} />}
       {picking ? (
         <SelectionBar
           all={sel.all}

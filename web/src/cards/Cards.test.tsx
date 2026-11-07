@@ -53,7 +53,7 @@ beforeEach(() => {
   lorebookHits = [];
   libraryIds = [1, 2, 3];
   localStorage.clear();
-  keys = { scorers: [], instances: [] };
+  keys = { scorers: [], instances: [], browse: [] };
   judgeMax = undefined;
   vectorInstance = null;
   vectorsAvailable = true;
@@ -635,10 +635,14 @@ test("New card links to the new-card page", async () => {
 });
 
 const judgeKeys = [
-  { key: "quality", label: "Quality", type: "score", range: [0, 100], grid: true },
+  { key: "quality", label: "Quality", type: "score", range: [0, 100], grid: true, browse: true, section: "score" },
   { key: "summary", label: "Summary", type: "text" },
 ];
-const scored = { scorers: [{ instance: 5, key: "quality" }], instances: [{ id: 5, label: "Judge", scored: true, keys: judgeKeys }] };
+const voiceKey = { key: "voice", label: "Voice", type: "score", range: [0, 100] };
+const qualityKey = { key: "quality", label: "Quality", type: "score", range: [0, 100], grid: true, browse: true, section: "score", instances: [5] };
+const scored = { scorers: [{ instance: 5, key: "quality" }], instances: [{ id: 5, label: "Judge", scored: true, keys: judgeKeys }], browse: [qualityKey] };
+const problemsKey = { key: "problems", label: "Problems", type: "list", browse: true, section: "problems", instances: [5] };
+const languageKey = { key: "language", label: "Language", type: "text", browse: true, section: "kind", instances: [5] };
 
 test("tiles show the grid score on the top scorer's gold medal, dimmed when stale", async () => {
   keys = scored;
@@ -652,11 +656,11 @@ test("tiles show the grid score on the top scorer's gold medal, dimmed when stal
 });
 
 test("an instance that has scored nothing gets no filters, and a hint on how to run it", async () => {
-  keys = { scorers: [], instances: [{ id: 5, label: "Judge", scored: false, keys: judgeKeys }] };
+  keys = { ...scored, instances: [{ id: 5, label: "Judge", scored: false, keys: judgeKeys }] };
   renderCards("/cards");
   expect(await screen.findByText(/Judge hasn't scored any cards yet/)).toBeInTheDocument();
   expect(screen.queryByRole("slider", { name: "Quality at least" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: /^Scores/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Score" })).not.toBeInTheDocument();
 });
 
 test("without a scorer the grid asks for no scores", async () => {
@@ -673,13 +677,13 @@ test("a score range filters, and Not evaluated replaces it", async () => {
   const min = await screen.findByRole("slider", { name: "Quality at least" });
   fireEvent.change(min, { target: { value: "70" } });
   fireEvent.pointerUp(min);
-  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:5:quality:70.."]);
-  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "quality", instance: 5, gte: 70 }] } })));
+  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:quality:70.."]);
+  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "quality", gte: 70 }] } })));
   expect(screen.getByRole("button", { name: "Remove score: quality 70–…" })).toBeInTheDocument();
   await user.click(screen.getByRole("checkbox", { name: "Quality not evaluated" }));
   expect(screen.getByRole("slider", { name: "Quality at least" })).toBeDisabled();
-  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:5:quality:none"]);
-  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "quality", instance: 5, missing: true }] } })));
+  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:quality:none"]);
+  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "quality", missing: true }] } })));
   // Only score keys get a range.
   expect(screen.queryByRole("slider", { name: "Summary at least" })).not.toBeInTheDocument();
 });
@@ -703,17 +707,25 @@ test("a score slider applies its range on release", async () => {
   const max = screen.getByRole("slider", { name: "Quality at most" });
   fireEvent.change(max, { target: { value: "80" } });
   fireEvent.pointerUp(max);
-  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:5:quality:40..80"]);
+  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:quality:40..80"]);
 });
 
-test("each score key is a sort", async () => {
+test("a browsable score key is a sort, named without its instance", async () => {
   keys = scored;
   const { router } = renderCards("/cards");
   const user = userEvent.setup();
   await screen.findByRole("option", { name: "Quality" });
   await user.selectOptions(screen.getByRole("combobox", { name: "Sort" }), "Quality");
-  expect(router.state.location.search).toBe("?sort=enrichment%3A5%3Aquality&library=1");
-  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ sort: "enrichment:5:quality" })));
+  expect(router.state.location.search).toBe("?sort=enrichment%3Aquality&library=1");
+  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ sort: "enrichment:quality" })));
+});
+
+test("a link sorting by a key that isn't browsable keeps its sort, and the menu shows it", async () => {
+  keys = { ...scored, instances: [{ id: 5, label: "Judge", scored: true, keys: [...judgeKeys, voiceKey] }] };
+  renderCards("/cards?sort=enrichment:5:voice");
+  expect(await screen.findByRole("option", { name: "Voice · Judge" })).toBeInTheDocument();
+  expect(screen.getByRole("combobox", { name: "Sort" })).toHaveValue("enrichment:5:voice");
+  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ sort: "enrichment:5:voice" })));
 });
 
 test("Score starts a run on the selection", async () => {
@@ -721,7 +733,7 @@ test("Score starts a run on the selection", async () => {
   renderCards("/cards");
   const user = userEvent.setup();
   await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
-  await user.click(screen.getByRole("button", { name: "Score" }));
+  await user.click(within(screen.getByRole("group", { name: "Selection" })).getByRole("button", { name: "Score" }));
   await user.click(screen.getByRole("button", { name: "Score 1 card" }));
   await waitFor(() => expect(posts).toEqual([{ path: "/api/enrichments/runs", body: { instance_id: 5, query: { library: 1, filter: { ids: [8] } }, rescore: false } }]));
 });
@@ -731,59 +743,60 @@ test("Score re-scores cards already scored when asked", async () => {
   renderCards("/cards");
   const user = userEvent.setup();
   await user.click(await screen.findByRole("checkbox", { name: "Select Carrow" }));
-  await user.click(screen.getByRole("button", { name: "Score" }));
+  await user.click(within(screen.getByRole("group", { name: "Selection" })).getByRole("button", { name: "Score" }));
   await user.click(screen.getByRole("checkbox", { name: "Re-score cards already scored" }));
   await user.click(screen.getByRole("button", { name: "Score 1 card" }));
   await waitFor(() => expect(posts).toEqual([{ path: "/api/enrichments/runs", body: { instance_id: 5, query: { library: 1, filter: { ids: [8] } }, rescore: true } }]));
 });
 
 test("a list key's values count in the sidebar, and a click filters on one", async () => {
-  keys = { scorers: [], instances: [{ id: 5, label: "Lint", scored: true, keys: [{ key: "problems", label: "Problems", type: "list" }] }] };
+  keys = { scorers: [], instances: [{ id: 5, label: "Lint", scored: true, keys: [problemsKey] }], browse: [problemsKey] };
   const { router } = renderCards("/cards");
   const user = userEvent.setup();
   await user.click(await screen.findByRole("button", { name: /^Markup\s*3/ }));
-  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["value:5:problems=markup"]);
-  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "problems", instance: 5, is: "markup" }] } })));
+  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["value:problems=markup"]);
+  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "problems", is: "markup" }] } })));
   expect(screen.getByRole("button", { name: "Remove problems: Markup" })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Exclude Oversized" }));
   await waitFor(() =>
     expect(searches).toContainEqual(
-      expect.objectContaining({ filter: { and: [{ enrichment: "problems", instance: 5, is: "markup" }, { not: { enrichment: "problems", instance: 5, is: "oversized" } }] } }),
+      expect.objectContaining({ filter: { and: [{ enrichment: "problems", is: "markup" }, { not: { enrichment: "problems", is: "oversized" } }] } }),
     ),
   );
   // The section counts over every filter but its own.
-  const counts = searches.filter((s) => (s as { facets?: string[] }).facets?.includes("enrichment:5:problems"));
+  const counts = searches.filter((s) => (s as { facets?: string[] }).facets?.includes("enrichment:problems"));
   expect((counts.at(-1) as { filter?: unknown }).filter).toBeUndefined();
 });
 
 test("value sections with nothing picked share one count search", async () => {
-  keys = { scorers: [], instances: [{ id: 5, label: "Lint", scored: true, keys: [{ key: "problems", label: "Problems", type: "list" }, { key: "language", label: "Language", type: "text" }] }] };
+  keys = { scorers: [], instances: [{ id: 5, label: "Lint", scored: true, keys: [problemsKey, languageKey] }], browse: [problemsKey, languageKey] };
   renderCards("/cards");
   const user = userEvent.setup();
   const valueCounts = () => searches.map((s) => (s as { facets?: string[] }).facets ?? []).filter((f) => f.some((n) => n.startsWith("enrichment:")));
   await user.click(await screen.findByRole("button", { name: /^Markup\s*3/ }));
-  expect(valueCounts()[0]).toEqual(["enrichment:5:problems", "enrichment:5:language"]);
+  // In sidebar order: Kind before Problems.
+  expect(valueCounts()[0]).toEqual(["enrichment:language", "enrichment:problems"]);
   // A picked section counts without its own terms, so it leaves the shared search.
   await waitFor(() =>
-    expect(searches).toContainEqual(expect.objectContaining({ facets: ["enrichment:5:language"], filter: { and: [{ enrichment: "problems", instance: 5, is: "markup" }] } })),
+    expect(searches).toContainEqual(expect.objectContaining({ facets: ["enrichment:language"], filter: { and: [{ enrichment: "problems", is: "markup" }] } })),
   );
-  const own = searches.filter((s) => (s as { facets?: string[] }).facets?.join() === "enrichment:5:problems");
+  const own = searches.filter((s) => (s as { facets?: string[] }).facets?.join() === "enrichment:problems");
   expect(own).toHaveLength(1);
   expect((own[0] as { filter?: unknown }).filter).toBeUndefined();
 });
 
-test("each instance's value sections share their own count search", async () => {
-  keys = {
-    scorers: [],
-    instances: [
-      { id: 5, label: "Lint", scored: true, keys: [{ key: "problems", label: "Problems", type: "list" }, { key: "language", label: "Language", type: "text" }] },
-      { id: 7, label: "Judge", scored: true, keys: [{ key: "pov", label: "POV", type: "text" }] },
-    ],
-  };
+test("enrichment filters sit under section headings in section order, then Other, and each section collapses", async () => {
+  const tokensKey = { key: "tokens", label: "Tokens", type: "score", range: [0, 10000], browse: true, instances: [5] };
+  keys = { ...scored, browse: [problemsKey, tokensKey, languageKey, qualityKey] };
   renderCards("/cards");
-  expect(await screen.findByRole("button", { name: /^Markup\s*3/ })).toBeInTheDocument();
-  const valueCounts = searches.map((s) => (s as { facets?: string[] }).facets ?? []).filter((f) => f.some((n) => n.startsWith("enrichment:")));
-  expect(valueCounts).toEqual([["enrichment:5:problems", "enrichment:5:language"], ["enrichment:7:pov"]]);
+  const user = userEvent.setup();
+  await screen.findByRole("slider", { name: "Quality at least" });
+  const sections = ["Score", "Popularity", "Kind", "Content warnings", "Problems", "Other"];
+  const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent ?? "");
+  expect(headings.filter((h) => sections.includes(h))).toEqual(["Score", "Kind", "Problems", "Other"]);
+  await user.click(screen.getByRole("button", { name: "Score" }));
+  expect(screen.queryByRole("slider", { name: "Quality at least" })).not.toBeInTheDocument();
+  expect(screen.getByRole("slider", { name: "Tokens at least" })).toBeInTheDocument();
 });
 
 test("Score past the plugin's limit asks before sending confirm", async () => {
@@ -794,7 +807,7 @@ test("Score past the plugin's limit asks before sending confirm", async () => {
   const user = userEvent.setup();
   await user.click(await screen.findByRole("checkbox", { name: "Select Brakka" }));
   await user.click(screen.getByRole("button", { name: "Select all 49 matching" }));
-  await user.click(screen.getByRole("button", { name: "Score" }));
+  await user.click(within(screen.getByRole("group", { name: "Selection" })).getByRole("button", { name: "Score" }));
   const run = screen.getByRole("button", { name: "Score 49 cards" });
   expect(run).toBeDisabled();
   await user.click(screen.getByRole("checkbox", { name: "Send all 49 cards to Judge, over its usual limit of 10" }));
@@ -802,7 +815,7 @@ test("Score past the plugin's limit asks before sending confirm", async () => {
   await waitFor(() => expect(posts).toEqual([{ path: "/api/enrichments/runs", body: expect.objectContaining({ instance_id: 5, confirm: true }) }]));
 });
 
-test("a score filter and sort from an older link on a grid key read the grid score", async () => {
+test("a score filter and sort from a link naming no instance read the merged key", async () => {
   keys = scored;
   renderCards("/cards?f=score:quality:70..&sort=enrichment:quality");
   await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "quality", gte: 70 }] }, sort: "enrichment:quality" })));
@@ -816,30 +829,26 @@ test("without a scorer, score filters and sort from an older link are dropped wi
   expect(searches).not.toContainEqual(expect.objectContaining({ sort: "enrichment:quality" }));
 });
 
-const lintKeys = [
-  { key: "tokens", label: "Tokens", type: "score", range: [0, 10000] },
-  { key: "problems", label: "Problems", type: "list" },
-];
-
-test("with two instances, both instances' keys filter and sort", async () => {
-  keys = { scorers: [{ instance: 5, key: "quality" }], instances: [{ id: 5, label: "Judge", scored: true, keys: judgeKeys }, { id: 7, label: "Lint", scored: true, keys: lintKeys }] };
+test("a key two instances declare is one filter and one sort, under the merged label", async () => {
+  keys = {
+    scorers: [{ instance: 7, key: "quality" }, { instance: 5, key: "quality" }],
+    instances: [
+      { id: 5, label: "Judge", scored: true, keys: [...judgeKeys, voiceKey] },
+      { id: 7, label: "Critic", scored: true, keys: [{ ...judgeKeys[0], label: "Critic quality" }] },
+    ],
+    browse: [{ ...qualityKey, label: "Critic quality", instances: [7, 5] }],
+  };
   const { router } = renderCards("/cards");
-  expect(await screen.findByRole("heading", { name: "Judge" })).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Lint" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Problems · Lint" })).toBeInTheDocument();
-  expect(screen.getByRole("option", { name: "Tokens · Lint" })).toBeInTheDocument();
-  const lo = screen.getByRole("slider", { name: "Quality at least" });
+  const lo = await screen.findByRole("slider", { name: "Critic quality at least" });
+  expect(screen.getAllByRole("slider", { name: /quality at least/i })).toHaveLength(1);
+  expect(screen.getAllByRole("option", { name: /quality/i })).toHaveLength(1);
+  // A key that isn't browsable is neither a filter nor a sort.
+  expect(screen.queryByRole("slider", { name: "Voice at least" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: /Voice/ })).not.toBeInTheDocument();
   fireEvent.change(lo, { target: { value: "70" } });
   fireEvent.pointerUp(lo);
-  const hi = screen.getByRole("slider", { name: "Tokens at most" });
-  fireEvent.change(hi, { target: { value: "2000" } });
-  fireEvent.pointerUp(hi);
-  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:5:quality:70..", "score:7:tokens:..2000"]);
-  await waitFor(() =>
-    expect(searches).toContainEqual(
-      expect.objectContaining({ filter: { and: [{ enrichment: "quality", instance: 5, gte: 70 }, { enrichment: "tokens", instance: 7, lte: 2000 }] } }),
-    ),
-  );
+  expect(new URLSearchParams(router.state.location.search).getAll("f")).toEqual(["score:quality:70.."]);
+  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ enrichment: "quality", gte: 70 }] } })));
 });
 
 const mainSearches = () => searches.filter((s) => (s as { page?: { size?: number } }).page?.size === 48);

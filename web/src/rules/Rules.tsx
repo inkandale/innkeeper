@@ -74,7 +74,7 @@ export function Rules() {
                   <input
                     type="checkbox"
                     role="switch"
-                    aria-label={`${r.enabled ? "Turn off" : "Enable"} ${r.name}`}
+                    aria-label={`On: ${r.name}`}
                     checked={r.enabled}
                     disabled={save.isPending}
                     onChange={() => (r.enabled ? save.mutate({ ...r, enabled: false }) : setPreviewing(r))}

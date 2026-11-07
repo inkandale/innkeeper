@@ -7,6 +7,7 @@ import { collectionsQuery, librariesQuery, savedSearchesQuery } from "../api/que
 import { useConfirm } from "../shell/ConfirmDialog";
 import { useLibrary } from "../shell/library";
 import { RulePreview } from "./RulePreview";
+import "./Rules.css";
 import { specOf, type Spec } from "./Rules";
 
 /** RuleEditor adds a rule on the saved search ?search= names, or edits rule :id. */
@@ -69,13 +70,16 @@ function RuleForm({ id, initial, library }: { id?: number; initial: Spec; librar
   };
   // A rule's action and collection can't change.
   const fixed = id !== undefined;
+  const noLibrary = !spec.all_libraries && !spec.libraries?.length;
+  const title = id === undefined ? "New rule" : initial.name;
   const toggleLibrary = (lib: number, on: boolean) =>
     set({ libraries: on ? [...(spec.libraries ?? []), lib] : (spec.libraries ?? []).filter((l) => l !== lib) });
   return (
     <section className="page">
       <p className="muted">
-        <Link to="/rules">Rules</Link> / {id === undefined ? "New rule" : initial.name}
+        <Link to="/rules">Rules</Link> / {title}
       </p>
+      <h1>{title}</h1>
       <form className="rule-form" onSubmit={submit}>
         <label>
           Name <input className="input" value={spec.name} required onChange={(e) => set({ name: e.target.value })} />
@@ -143,6 +147,7 @@ function RuleForm({ id, initial, library }: { id?: number; initial: Spec; librar
                   <input type="checkbox" checked={spec.libraries?.includes(l.id) ?? false} onChange={(e) => toggleLibrary(l.id, e.target.checked)} /> {l.name}
                 </label>
               ))}
+            {noLibrary && <p className="muted">Pick at least one library.</p>}
           </fieldset>
         )}
         {fixed && (
@@ -152,7 +157,7 @@ function RuleForm({ id, initial, library }: { id?: number; initial: Spec; librar
         )}
         {save.error && <p className="error">{save.error.message}</p>}
         <div className="row">
-          <button className="button primary" disabled={save.isPending}>
+          <button className="button primary" disabled={save.isPending || noLibrary}>
             {id === undefined ? "Add rule" : "Save"}
           </button>
           {fixed && (

@@ -1,0 +1,10 @@
+.rule-form {
+  display: grid;
+  gap: calc(var(--space) * 1.5);
+  max-width: 640px;
+}
+
+.rule-form > label:not(.check) {
+  display: grid;
+  gap: calc(var(--space) * 0.5);
+}

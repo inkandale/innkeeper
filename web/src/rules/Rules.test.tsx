@@ -12,8 +12,10 @@ function json(body: unknown) {
 
 const rule = { id: 9, name: "Hide junk", saved_search_id: 3, saved_search: "Junk", action: "archive", all_libraries: true, enabled: false, affected: [] };
 let calls: { method: string; path: string; body: unknown }[];
+let current: typeof rule;
 beforeEach(() => {
   calls = [];
+  current = rule;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
@@ -24,8 +26,8 @@ beforeEach(() => {
       if (path === "/api/saved-searches") return json([{ id: 3, name: "Junk", filter: { tag: "junk" }, sort: "", created_at: "" }]);
       if (path === "/api/rules/preview")
         return json([{ library: 1, apply: { total: 2, hits: [{ id: 5, slug: "a", revision_id: 1, fields: { name: "Junk a" } }] }, give_back: { total: 0, hits: [] } }]);
-      if (path === "/api/rules" && req.method === "GET") return json([rule]);
-      if (path === "/api/rules" || path === "/api/rules/9") return json({ ...rule, ...(body as object) });
+      if (path === "/api/rules" && req.method === "GET") return json([current]);
+      if (path === "/api/rules" || path === "/api/rules/9") return json({ ...current, ...(body as object) });
       return json([]);
     }),
   );
@@ -37,6 +39,7 @@ function renderAt(entry: string) {
     [
       { path: "/rules", element: <Toasts><Rules /></Toasts> },
       { path: "/rules/new", element: <Toasts><RuleEditor /></Toasts> },
+      { path: "/rules/:id", element: <Toasts><RuleEditor /></Toasts> },
     ],
     { initialEntries: [entry] },
   );
@@ -51,7 +54,7 @@ function renderAt(entry: string) {
 test("turning a rule on previews it and saves only on confirm", async () => {
   renderAt("/rules");
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("switch", { name: "Enable Hide junk" }));
+  await user.click(await screen.findByRole("switch", { name: "On: Hide junk" }));
   expect(await screen.findByText("It would archive 2 cards and unarchive 0 cards.")).toBeInTheDocument();
   expect(screen.getByText("To archive: Junk a")).toBeInTheDocument();
   expect(calls).toEqual([
@@ -73,4 +76,28 @@ test("a new rule starts off, on the saved search it was added from", async () =>
     expect(calls).toEqual([{ method: "POST", path: "/api/rules", body: { name: "Hide junk", saved_search_id: 3, action: "archive", all_libraries: true, enabled: false } }]),
   );
   await waitFor(() => expect(router.state.location.pathname).toBe("/rules"));
+});
+
+test("saving an enabled rule previews it before the PUT", async () => {
+  current = { ...rule, enabled: true };
+  renderAt("/rules/9");
+  const user = userEvent.setup();
+  await screen.findByRole("heading", { name: "Hide junk" });
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  expect(await screen.findByText("It would archive 2 cards and unarchive 0 cards.")).toBeInTheDocument();
+  expect(calls.map((c) => c.method + " " + c.path)).toEqual(["POST /api/rules/preview"]);
+  await user.click(screen.getByRole("button", { name: "Save rule" }));
+  await waitFor(() =>
+    expect(calls.at(-1)).toEqual({ method: "PUT", path: "/api/rules/9", body: { name: "Hide junk", saved_search_id: 3, action: "archive", all_libraries: true, enabled: true } }),
+  );
+});
+
+test("a rule on no library can't be added", async () => {
+  renderAt("/rules/new?search=3");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: /All libraries/ }));
+  expect(screen.getByText("Pick at least one library.")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Add rule" })).toBeDisabled();
+  await user.click(screen.getByRole("checkbox", { name: "Main" }));
+  expect(screen.getByRole("button", { name: "Add rule" })).toBeEnabled();
 });

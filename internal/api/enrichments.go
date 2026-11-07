@@ -28,17 +28,8 @@ func (s *Server) withScores(ctx context.Context, q *library.Query) error {
 	if q.Scorers, err = s.libSettings().Scorers(ctx); err != nil {
 		return err
 	}
-	keys, err := s.libSettings().BrowseKeys(ctx)
-	if err != nil {
-		return err
-	}
-	q.Browsable = map[string][]library.Scorer{}
-	for _, k := range keys {
-		if k.Instance == 0 {
-			q.Browsable[k.Key] = k.Scorers
-		}
-	}
-	return nil
+	q.Browsable, err = s.libSettings().Browsable(ctx)
+	return err
 }
 
 // searchIDs is library.SearchIDs with the score instance, for a bulk

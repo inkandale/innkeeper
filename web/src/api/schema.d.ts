@@ -2488,6 +2488,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/saved-searches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List saved searches
+         * @description By name, each with how many cards it matches in the library.
+         */
+        get: operations["list-saved-searches"];
+        put?: never;
+        /**
+         * Save a search
+         * @description The filter is checked as search checks it.
+         */
+        post: operations["create-saved-search"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/saved-searches/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a saved search */
+        get: operations["get-saved-search"];
+        put?: never;
+        post?: never;
+        /** Delete a saved search */
+        delete: operations["delete-saved-search"];
+        options?: never;
+        head?: never;
+        /** Change a saved search */
+        patch: operations["update-saved-search"];
+        trace?: never;
+    };
     "/scans": {
         parameters: {
             query?: never;
@@ -3251,6 +3294,18 @@ export interface components {
             secrets?: {
                 [key: string]: string;
             };
+        };
+        CreateSavedSearchInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/CreateSavedSearchInBody.json
+             */
+            readonly $schema?: string;
+            filter: components["schemas"]["Filter"];
+            name: string;
+            /** @description The sort to open it with, as search takes it. */
+            sort?: string;
         };
         CreateTokenInBody: {
             /**
@@ -4585,6 +4640,32 @@ export interface components {
                 [key: string]: string | null;
             };
         };
+        SavedSearchItem: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/SavedSearchItem.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: int64
+             * @description How many unarchived cards it matches in the library asked about. Missing when its filter no longer reads, such as when an instance it names is gone.
+             */
+            cards?: number;
+            /** Format: date-time */
+            created_at: string;
+            filter: components["schemas"]["Filter"];
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int64
+             * @description The plugin instance that shipped it. Deleting the instance deletes it.
+             */
+            instance_id?: number;
+            name: string;
+            /** @description The sort to open it with, as search takes it; rules ignore it. */
+            sort: string;
+        };
         Scorer: {
             /** Format: int64 */
             instance: number;
@@ -4912,6 +4993,17 @@ export interface components {
              * @description For a target app: the library its syncs match against and import new items into.
              */
             sync_library?: number;
+        };
+        UpdateSavedSearchInBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example /api/schemas/UpdateSavedSearchInBody.json
+             */
+            readonly $schema?: string;
+            filter?: components["schemas"]["Filter"];
+            name?: string;
+            sort?: string;
         };
         ValueCount: {
             /** Format: int64 */
@@ -9797,6 +9889,166 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-saved-searches": {
+        parameters: {
+            query?: {
+                /** @description The library; default 1 */
+                library?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedSearchItem"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "create-saved-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSavedSearchInBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedSearchItem"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-saved-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedSearchItem"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-saved-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "update-saved-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSavedSearchInBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedSearchItem"];
                 };
             };
             /** @description Error */

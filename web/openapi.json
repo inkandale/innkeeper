@@ -1597,6 +1597,37 @@
         ],
         "type": "object"
       },
+      "CreateSavedSearchInBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/CreateSavedSearchInBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "filter": {
+            "$ref": "#/components/schemas/Filter"
+          },
+          "name": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "sort": {
+            "description": "The sort to open it with, as search takes it.",
+            "pattern": "^(relevance|updated|name|created|enrichment:([1-9][0-9]*:)?[a-z][a-z0-9_]*)?$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "filter"
+        ],
+        "type": "object"
+      },
       "CreateTokenInBody": {
         "additionalProperties": false,
         "properties": {
@@ -5099,6 +5130,56 @@
         ],
         "type": "object"
       },
+      "SavedSearchItem": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/SavedSearchItem.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "cards": {
+            "description": "How many unarchived cards it matches in the library asked about. Missing when its filter no longer reads, such as when an instance it names is gone.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "filter": {
+            "$ref": "#/components/schemas/Filter"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "instance_id": {
+            "description": "The plugin instance that shipped it. Deleting the instance deletes it.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sort": {
+            "description": "The sort to open it with, as search takes it; rules ignore it.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "filter",
+          "sort",
+          "created_at"
+        ],
+        "type": "object"
+      },
       "Scorer": {
         "additionalProperties": false,
         "properties": {
@@ -5960,6 +6041,32 @@
             "description": "For a target app: the library its syncs match against and import new items into.",
             "format": "int64",
             "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "UpdateSavedSearchInBody": {
+        "additionalProperties": false,
+        "properties": {
+          "$schema": {
+            "description": "A URL to the JSON Schema for this object.",
+            "examples": [
+              "/api/schemas/UpdateSavedSearchInBody.json"
+            ],
+            "format": "uri",
+            "readOnly": true,
+            "type": "string"
+          },
+          "filter": {
+            "$ref": "#/components/schemas/Filter"
+          },
+          "name": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "sort": {
+            "pattern": "^(relevance|updated|name|created|enrichment:([1-9][0-9]*:)?[a-z][a-z0-9_]*)?$",
+            "type": "string"
           }
         },
         "type": "object"
@@ -13401,6 +13508,222 @@
         "summary": "Restore a backup",
         "tags": [
           "Backups"
+        ]
+      }
+    },
+    "/saved-searches": {
+      "get": {
+        "description": "By name, each with how many cards it matches in the library.",
+        "operationId": "list-saved-searches",
+        "parameters": [
+          {
+            "description": "The library; default 1",
+            "explode": false,
+            "in": "query",
+            "name": "library",
+            "schema": {
+              "description": "The library; default 1",
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SavedSearchItem"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "List saved searches",
+        "tags": [
+          "Saved searches"
+        ]
+      },
+      "post": {
+        "description": "The filter is checked as search checks it.",
+        "operationId": "create-saved-search",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSavedSearchInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSearchItem"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Save a search",
+        "tags": [
+          "Saved searches"
+        ]
+      }
+    },
+    "/saved-searches/{id}": {
+      "delete": {
+        "operationId": "delete-saved-search",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Delete a saved search",
+        "tags": [
+          "Saved searches"
+        ]
+      },
+      "get": {
+        "operationId": "get-saved-search",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSearchItem"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get a saved search",
+        "tags": [
+          "Saved searches"
+        ]
+      },
+      "patch": {
+        "operationId": "update-saved-search",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSavedSearchInBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSearchItem"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Change a saved search",
+        "tags": [
+          "Saved searches"
         ]
       }
     },

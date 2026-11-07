@@ -138,6 +138,23 @@ func (s *Settings) BrowseKeys(ctx context.Context) ([]BrowseKey, error) {
 	return out, nil
 }
 
+// Browsable is Query.Browsable: each merged browsable key's scorers,
+// highest priority first. A key declared with two types doesn't merge, so
+// it isn't here, and a term naming it without an instance is refused.
+func (s *Settings) Browsable(ctx context.Context) (map[string][]library.Scorer, error) {
+	keys, err := s.BrowseKeys(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string][]library.Scorer{}
+	for _, k := range keys {
+		if k.Instance == 0 {
+			out[k.Key] = k.Scorers
+		}
+	}
+	return out, nil
+}
+
 // Option is a setting a library can override, stored as its JSON encoding.
 // Def is its value when neither the library nor the core sets one.
 type Option[T comparable] struct {

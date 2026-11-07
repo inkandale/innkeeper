@@ -27,7 +27,7 @@ beforeEach(() => {
           value("voice", "Voice", 40, true),
           value("contradictions", "Contradictions", ["description vs first_mes", "scenario vs mes_example"]),
           value("summary", "Summary", "A grumpy dwarf blacksmith who owes everyone in the harbor money and a favor."),
-          { ...value("consistency", "Consistency", 62), browse: false, range: [0, 100] },
+          { ...value("consistency", "Consistency", 62, true), browse: false, range: [0, 100] },
           { ...value("pov", "Point of view", "First person"), type: "text", browse: false },
           { ...value("lint", "Lint", 100), instance_id: 6, instance_name: "Card lint" },
         ]);
@@ -54,7 +54,8 @@ test("values show with stale ones marked, and Rescore reruns the full evaluation
   );
   expect(await screen.findByText("78")).toBeInTheDocument();
   expect(screen.getByText("Voice").parentElement).toHaveClass("stale");
-  expect(screen.getByText("(stale)")).toBeInTheDocument();
+  expect(within(screen.getByText("Voice").parentElement!).getByText("(stale)")).toBeInTheDocument();
+  expect(within(screen.getByText("Consistency").parentElement!).getByText("(stale)")).toBeInTheDocument();
   const judge = (await screen.findByRole("heading", { name: "Judge" })).closest(".enrichment-instance") as HTMLElement;
   await userEvent.setup().click(within(judge).getByRole("button", { name: "Rescore" }));
   await waitFor(() => expect(runs).toEqual([{ instance_id: 5, card_ids: [7], rescore: true, thorough: true }]));

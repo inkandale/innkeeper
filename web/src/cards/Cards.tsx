@@ -274,7 +274,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
           </section>
         )}
         {res.isError && <p className="error">{res.error.message}</p>}
-        {scoresOff && <p className="muted">Some score filters or the sort from this link are off: they name no instance.</p>}
+        {scoresOff && <p className="muted">Some score filters or the sort from this link are off: they name no instance or browsable key.</p>}
         {kind === "card" && total > 0 && unscored.length > 0 && (
           <p className="muted">
             {unscored.map((e) => e.label).join(", ")} {unscored.length === 1 ? "hasn't" : "haven't"} scored any cards yet. Select

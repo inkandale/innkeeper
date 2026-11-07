@@ -133,7 +133,7 @@ type Family struct {
 	Matched []int64 `json:"matched"`
 }
 
-// Scorer is an enrich instance and the grid key its plugin declares.
+// Scorer is an enrich instance and a key its plugin declares.
 type Scorer struct {
 	Instance int64  `json:"instance"`
 	Key      string `json:"key"`

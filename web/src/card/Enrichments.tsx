@@ -131,7 +131,10 @@ function Bars({ values }: { values: Value[] }) {
         <div key={v.key} className={v.stale ? "stale" : undefined} title={staleTitle(v)}>
           <span>{v.label}</span>
           <meter aria-label={v.label} min={v.range?.[0]} max={v.range?.[1]} value={Number(v.value)} />
-          <span>{enrichmentText(v.value, v.range)}</span>
+          <span>
+            {enrichmentText(v.value, v.range)}
+            {v.stale && <span className="muted"> (stale)</span>}
+          </span>
         </div>
       ))}
     </div>

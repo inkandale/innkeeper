@@ -48,7 +48,7 @@ func (sw *Sweeper) Sweep(ctx context.Context) error {
 		if len(ids) == 0 {
 			continue
 		}
-		spec := jobs.Spec{Kind: Kind, InstanceID: &inst.ID, Payload: Payload{CardIDs: ids}}
+		spec := jobs.Spec{Kind: Kind, InstanceID: &inst.ID, Payload: Payload{CardIDs: ids, Wait: true}}
 		if _, err := sw.Queue.EnqueueOnceForInstance(ctx, spec); err != nil {
 			errs = append(errs, fmt.Errorf("queue enrich on instance %d: %w", inst.ID, err))
 		}

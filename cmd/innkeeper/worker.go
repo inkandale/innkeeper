@@ -21,6 +21,7 @@ import (
 	"github.com/inkandale/innkeeper/internal/importer"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
+	"github.com/inkandale/innkeeper/internal/libsettings"
 	"github.com/inkandale/innkeeper/internal/maintenance"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
 	iservices "github.com/inkandale/innkeeper/internal/services"
@@ -86,7 +87,8 @@ func worker() error {
 	// Serves library.call's tools in process; nothing listens on it.
 	tools := &api.Server{Lib: svc.lib, Queue: q, Registry: svc.registry, Auth: auth.New(svc.pool), Targets: tg, Plugins: mgr, Log: log}
 	runner := &actions.Runner{Lib: svc.lib, Registry: svc.registry, Plugins: mgr, Runs: runs, API: tools.APIHandler()}
-	enricher := &enrich.Runner{Lib: svc.lib, Registry: svc.registry, Plugins: mgr, Runs: runs}
+	enricher := &enrich.Runner{Lib: svc.lib, Registry: svc.registry, Plugins: mgr, Runs: runs,
+		Gate: &libsettings.Gate{Settings: libsettings.New(svc.lib, svc.registry), Queue: q}}
 	sweeper := &enrich.Sweeper{Lib: svc.lib, Registry: svc.registry, Queue: q}
 	ex := &exporter.Exporter{Lib: svc.lib, Registry: svc.registry, Plugins: mgr, Log: log}
 	maint := &maintenance.Runner{M: maintenance.New(svc.pool, svc.lib), Space: func(ctx context.Context) (int64, string, error) {

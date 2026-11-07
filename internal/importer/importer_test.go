@@ -353,7 +353,7 @@ func TestImportQueuesEnrichForPluginThatScoresOnImport(t *testing.T) {
 		t.Fatal(err)
 	}
 	insts, payloads := e.enrichJobs(t)
-	want := []enrich.Payload{{CardIDs: cards}}
+	want := []enrich.Payload{{CardIDs: cards, Wait: true}}
 	if !reflect.DeepEqual(insts, []int64{e.inst}) || !reflect.DeepEqual(payloads, want) {
 		t.Fatalf("enrich jobs on %v = %+v, want one on %d with %+v", insts, payloads, e.inst, want)
 	}

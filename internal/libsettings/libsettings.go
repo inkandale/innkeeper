@@ -1,7 +1,7 @@
 // Package libsettings reads the settings a library can override: the
 // library's own value, else the core's. It also turns a library's hide
-// settings into a hide job's payload, and queues the enrich jobs an import's
-// new cards start.
+// settings into a hide job's payload, queues the enrich jobs an import's
+// new cards start, and holds back cards for a cheaper enrich instance.
 package libsettings
 
 import (
@@ -313,7 +313,7 @@ func (s *Settings) EnqueueEnrichOnChange(ctx context.Context, q *jobs.Queue, car
 		if !inst.EnrichOnChange {
 			continue
 		}
-		p := enrich.Payload{CardIDs: ids[:min(len(ids), enrich.MaxCards(manifests[inst.Plugin]))]}
+		p := enrich.Payload{CardIDs: ids[:min(len(ids), enrich.MaxCards(manifests[inst.Plugin]))], Wait: true}
 		// Joins a run still queued for the same cards, so quick repeated saves cost one call; it reads the newest revision when it runs.
 		if _, err := q.EnqueueUnlessQueued(ctx, jobs.Spec{Kind: enrich.Kind, InstanceID: &inst.ID, Payload: p}); err != nil {
 			errs = append(errs, fmt.Errorf("queue enrich on instance %d: %w", inst.ID, err))

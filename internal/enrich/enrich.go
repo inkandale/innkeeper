@@ -52,6 +52,9 @@ type Payload struct {
 	Confirmed bool `json:"confirmed,omitempty"`
 	// Thorough is sent to the plugin with each batch.
 	Thorough bool `json:"thorough,omitempty"`
+	// Wait holds back cards a cheaper instance must answer first. The sweep
+	// and on-change runs set it; a run the owner starts never waits.
+	Wait bool `json:"wait,omitempty"`
 }
 
 // batches returns the payload's cards a batch at a time, reading a query's
@@ -96,6 +99,7 @@ type Progress struct {
 	Done     int      `json:"done"`
 	Failed   int      `json:"failed"`
 	Skipped  int      `json:"skipped"`
+	Waiting  int      `json:"waiting,omitempty" doc:"Cards held back until a cheaper instance an archive rule reads has scored them."`
 	Total    int      `json:"total"`
 	Warnings []string `json:"warnings,omitempty"`
 }
@@ -126,7 +130,9 @@ type Checked struct {
 	// Done and Failed count revisions: done ones stored at least one value.
 	Done, Failed int
 	// Skipped counts revisions not sent because they already hold a value.
-	Skipped  int
+	Skipped int
+	// Waiting counts cards held back for a cheaper instance.
+	Waiting  int
 	Warnings []string
 	// FailedRevisions are the revisions the plugin answered with an error,
 	// no valid value, or nothing. A failed call records none: the plugin
@@ -191,10 +197,22 @@ func Check(decl map[string]protocol.Enrichment, sent []protocol.EnrichRevision, 
 	return out
 }
 
+// Gate holds back the cards a cheaper instance must answer first, and acts
+// on what an instance just answered. libsettings implements it; the
+// interface keeps this package from importing that one.
+type Gate interface {
+	// Waiting returns which of cardIDs instance must not be sent yet.
+	Waiting(ctx context.Context, instance int64, cardIDs []int64) ([]int64, error)
+	// Answered runs once instance has stored its values or failures for cardIDs.
+	Answered(ctx context.Context, instance int64, cardIDs []int64) error
+}
+
 // Runner runs enrich jobs.
 type Runner struct {
 	plugins.JobRunner
 	Lib *library.Library
+	// Gate is optional; without one, nothing waits.
+	Gate Gate
 }
 
 // Run is the jobs.Handler for Kind. It runs once: each call costs the owner
@@ -252,6 +270,7 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 			r.AddCardsChanged(checked.Done)
 			prog.Failed += checked.Failed
 			prog.Skipped += checked.Skipped
+			prog.Waiting += checked.Waiting
 			prog.warn(checked.Warnings...)
 		}
 		pr.Publish(prog)
@@ -274,16 +293,19 @@ func (rn *Runner) batch(ctx context.Context, r *jobs.Run, inst pluginhost.Instan
 		return Checked{}, errors.New("none of its cards exist")
 	}
 	skipped := archived
+	waiting, err := rn.hold(ctx, instanceID, p, &revs)
+	if err != nil {
+		return Checked{}, err
+	}
 	if !p.Rescore {
 		all := len(revs)
-		var err error
 		if revs, err = rn.unscored(ctx, instanceID, revs); err != nil {
 			return Checked{}, err
 		}
 		skipped += all - len(revs)
 	}
 	if len(revs) == 0 {
-		return Checked{Failed: len(missing), Skipped: skipped, Warnings: missing}, nil
+		return Checked{Failed: len(missing), Skipped: skipped, Waiting: waiting, Warnings: missing}, nil
 	}
 	names := make([]string, len(revs))
 	for i, rev := range revs {
@@ -371,7 +393,37 @@ func (rn *Runner) batch(ctx context.Context, r *jobs.Run, inst pluginhost.Instan
 	if dropped > 0 {
 		checked.Warnings = append(checked.Warnings, fmt.Sprintf("dropped %d vectors: this install has no pgvector", dropped))
 	}
+	checked.Waiting = waiting
+	if rn.Gate != nil {
+		// The values are stored, so the batch stands; the warning says what didn't follow.
+		if err := rn.Gate.Answered(ctx, instanceID, cardsOf(revs)); err != nil {
+			checked.Warnings = append(checked.Warnings, "applying rules: "+err.Error())
+		}
+	}
 	return checked, nil
+}
+
+// hold drops the cards that wait on a cheaper instance from revs, when p
+// waits, and returns how many it dropped.
+func (rn *Runner) hold(ctx context.Context, instanceID int64, p Payload, revs *[]protocol.EnrichRevision) (int, error) {
+	if !p.Wait || rn.Gate == nil || len(*revs) == 0 {
+		return 0, nil
+	}
+	held, err := rn.Gate.Waiting(ctx, instanceID, cardsOf(*revs))
+	if err != nil {
+		return 0, fmt.Errorf("find cards waiting on a cheaper instance: %w", err)
+	}
+	n := len(*revs)
+	*revs = slices.DeleteFunc(*revs, func(rev protocol.EnrichRevision) bool { return slices.Contains(held, rev.CardID) })
+	return n - len(*revs), nil
+}
+
+func cardsOf(revs []protocol.EnrichRevision) []int64 {
+	ids := make([]int64, len(revs))
+	for i, rev := range revs {
+		ids[i] = rev.CardID
+	}
+	return ids
 }
 
 // vectors takes checked's vector values out of its Values, as NewVectors to

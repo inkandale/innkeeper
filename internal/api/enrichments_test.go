@@ -15,6 +15,7 @@ import (
 	"github.com/inkandale/innkeeper/internal/enrich"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
+	"github.com/inkandale/innkeeper/internal/libsettings"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
 	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/internal/testutil"
@@ -61,7 +62,8 @@ func newEnrichEnvWith(t *testing.T, setup func(*testEnv), config ...map[string]a
 	runs := pluginhost.NewRuns(quiet)
 	mgr := pluginhost.NewManager(runs.Handle, time.Minute, quiet)
 	t.Cleanup(mgr.Close)
-	rn := &enrich.Runner{Lib: e.s.Lib, Registry: e.s.Registry, Plugins: mgr, Runs: runs}
+	rn := &enrich.Runner{Lib: e.s.Lib, Registry: e.s.Registry, Plugins: mgr, Runs: runs,
+		Gate: &libsettings.Gate{Settings: e.s.libSettings(), Queue: e.s.Queue}}
 	w := &jobs.Worker{Queue: e.s.Queue, Log: quiet, Poll: 50 * time.Millisecond, Lease: 600 * time.Millisecond,
 		Handlers: map[string]jobs.Handler{enrich.Kind: rn.Run}}
 	wctx, cancel := context.WithCancel(context.Background())

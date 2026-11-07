@@ -44,7 +44,7 @@ export function Enrichments({ id }: { id: number }) {
 
 type InstanceValuesProps = { card: number; instance: number; name: string; values: Value[]; rescore: boolean };
 
-/** InstanceValues is one instance's values: short ones in a grid, lists and long text at full width. */
+/** InstanceValues is one instance's values: its browsable keys, then its other scores as bars, then its other text and lists. */
 function InstanceValues({ card, instance, name, values, rescore }: InstanceValuesProps) {
   const qc = useQueryClient();
   const [jobId, setJobId] = useState<number>();
@@ -60,9 +60,8 @@ function InstanceValues({ card, instance, name, values, rescore }: InstanceValue
   });
   const running = start.isPending || (jobId !== undefined && !done);
   const failed = job.data?.status === "failed" ? job.data.error : undefined;
-  const short = values.filter((v) => !isLong(v));
-  const long = values.filter(isLong);
-  const staleTitle = (v: Value) => (v.stale ? "Stale: from an older revision" : undefined);
+  const other = values.filter((v) => !v.browse);
+  const bars = other.filter((v) => v.type === "score" && typeof v.value === "number");
   return (
     <div className="enrichment-instance">
       <div className="row">
@@ -73,6 +72,22 @@ function InstanceValues({ card, instance, name, values, rescore }: InstanceValue
           </button>
         )}
       </div>
+      <Values values={values.filter((v) => v.browse)} />
+      <Bars values={bars} />
+      <Values values={other.filter((v) => !bars.includes(v))} />
+      {(start.error || failed) && <p className="error">{start.error?.message ?? failed}</p>}
+    </div>
+  );
+}
+
+const staleTitle = (v: Value) => (v.stale ? "Stale: from an older revision" : undefined);
+
+/** Values shows short values in a grid, and lists and long text at full width. */
+function Values({ values }: { values: Value[] }) {
+  const short = values.filter((v) => !isLong(v));
+  const long = values.filter(isLong);
+  return (
+    <>
       {short.length > 0 && (
         <dl className="enrichment-grid">
           {short.map((v) => (
@@ -103,7 +118,22 @@ function InstanceValues({ card, instance, name, values, rescore }: InstanceValue
           )}
         </div>
       ))}
-      {(start.error || failed) && <p className="error">{start.error?.message ?? failed}</p>}
+    </>
+  );
+}
+
+/** Bars shows score values as one compact list of bars. */
+function Bars({ values }: { values: Value[] }) {
+  if (!values.length) return null;
+  return (
+    <div className="enrichment-bars">
+      {values.map((v) => (
+        <div key={v.key} className={v.stale ? "stale" : undefined} title={staleTitle(v)}>
+          <span>{v.label}</span>
+          <meter aria-label={v.label} min={v.range?.[0]} max={v.range?.[1]} value={Number(v.value)} />
+          <span>{enrichmentText(v.value, v.range)}</span>
+        </div>
+      ))}
     </div>
   );
 }

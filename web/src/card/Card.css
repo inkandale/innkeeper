@@ -547,6 +547,34 @@ fieldset.contents {
   font-weight: 400;
 }
 
+.enrichment-bars {
+  margin: 0 0 var(--space);
+  font-size: 0.9em;
+}
+
+.enrichment-bars > div {
+  display: grid;
+  grid-template-columns: minmax(0, 12em) minmax(60px, 1fr) 3em;
+  gap: var(--space);
+  align-items: center;
+}
+
+.enrichment-bars > div > span:first-child {
+  color: var(--text-muted);
+}
+
+.enrichment-bars > div > span:last-child {
+  text-align: right;
+}
+
+.enrichment-bars meter {
+  width: 100%;
+}
+
+.enrichment-bars .stale {
+  opacity: 0.55;
+}
+
 .field-outline-head {
   justify-content: flex-end;
   margin-bottom: calc(var(--space) * 0.5);

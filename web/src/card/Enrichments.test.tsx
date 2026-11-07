@@ -9,7 +9,7 @@ function json(body: unknown) {
 }
 
 const value = (key: string, label: string, v: unknown, stale = false) => ({
-  instance_id: 5, instance_name: "Judge", revision_id: 1, key, label, type: "score", value: v, meta: {}, created_at: "2026-10-15T00:00:00Z", current: true, stale,
+  instance_id: 5, instance_name: "Judge", revision_id: 1, key, label, type: "score", value: v, meta: {}, created_at: "2026-10-15T00:00:00Z", current: true, stale, browse: true,
 });
 
 let runs: unknown[];
@@ -27,6 +27,8 @@ beforeEach(() => {
           value("voice", "Voice", 40, true),
           value("contradictions", "Contradictions", ["description vs first_mes", "scenario vs mes_example"]),
           value("summary", "Summary", "A grumpy dwarf blacksmith who owes everyone in the harbor money and a favor."),
+          { ...value("consistency", "Consistency", 62), browse: false, range: [0, 100] },
+          { ...value("pov", "Point of view", "First person"), type: "text", browse: false },
           { ...value("lint", "Lint", 100), instance_id: 6, instance_name: "Card lint" },
         ]);
       if (path === "/api/enrichments/runs") {
@@ -88,4 +90,21 @@ test("a list value shows as bullets and long text at full width, each instance w
   const lint = screen.getByRole("heading", { name: "Card lint" }).closest(".enrichment-instance") as HTMLElement;
   expect(within(lint).getByText("100")).toBeInTheDocument();
   expect(within(lint).getByRole("button", { name: "Rescore" })).toBeInTheDocument();
+});
+
+test("an instance's other scores show as one bar list after its browsable keys, and its other text below", async () => {
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <Enrichments id={7} />
+    </QueryClientProvider>,
+  );
+  const judge = (await screen.findByRole("heading", { name: "Judge" })).closest(".enrichment-instance") as HTMLElement;
+  const bar = within(judge).getByLabelText("Consistency") as HTMLMeterElement;
+  expect(bar.tagName).toBe("METER");
+  expect(bar.value).toBe(62);
+  expect(bar.closest(".enrichment-bars")).not.toBeNull();
+  const quality = within(judge).getByText("78");
+  const pov = within(judge).getByText("First person");
+  expect(quality.compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(bar.compareDocumentPosition(pov) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });

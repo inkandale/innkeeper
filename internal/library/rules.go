@@ -308,3 +308,45 @@ func (l *Library) RuleChanges(ctx context.Context, r Rule, library int64, matche
 	}
 	return add, remove, err
 }
+
+// CardLibraries returns the library of each of cardIDs that exists, by card ID.
+func (l *Library) CardLibraries(ctx context.Context, cardIDs []int64) (map[int64]int64, error) {
+	rows, err := l.pool.Query(ctx, `SELECT id, library_id FROM card WHERE id = ANY($1)`, cardIDs)
+	if err != nil {
+		return nil, err
+	}
+	out := map[int64]int64{}
+	var id, lib int64
+	_, err = pgx.ForEachRow(rows, []any{&id, &lib}, func() error {
+		out[id] = lib
+		return nil
+	})
+	return out, err
+}
+
+// Unarchived returns which of cardIDs aren't archived, in ID order.
+func (l *Library) Unarchived(ctx context.Context, cardIDs []int64) ([]int64, error) {
+	rows, err := l.pool.Query(ctx, `SELECT id FROM card WHERE id = ANY($1) AND archived_at IS NULL ORDER BY id`, cardIDs)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[int64])
+}
+
+// ArchivedAs returns which of cardIDs the hide job archived with reason,
+// card ID to reason, as SetHidden takes them.
+func (l *Library) ArchivedAs(ctx context.Context, cardIDs []int64, reason string) (map[int64]string, error) {
+	rows, err := l.pool.Query(ctx, `SELECT id FROM card WHERE id = ANY($1) AND archived_reason = $2`, cardIDs, reason)
+	if err != nil {
+		return nil, err
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[int64])
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int64]string, len(ids))
+	for _, id := range ids {
+		out[id] = reason
+	}
+	return out, nil
+}

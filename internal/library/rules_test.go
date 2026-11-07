@@ -2,6 +2,7 @@ package library
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"testing"
@@ -220,5 +221,61 @@ func TestHasRuleWorkNeedsACoveringRuleOrARuleArchivedCard(t *testing.T) {
 	archiveCardForRule(t, lib, card, off)
 	if work, err := lib.HasRuleWork(ctx, busy); err != nil || !work {
 		t.Fatalf("library with a rule-archived card: work = %v, %v", work, err)
+	}
+}
+
+func TestReadInstancesFollowsMergedKeys(t *testing.T) {
+	browsable := map[string][]Scorer{"quality": {{Instance: 3, Key: "quality"}, {Instance: 5, Key: "quality"}}, "lint": {{Instance: 5, Key: "lint"}}}
+	f := Filter{And: []Filter{
+		{Enrichment: new("quality"), Gte: new(70.0)},
+		{Not: &Filter{Enrichment: new("problems"), Instance: new(int64(9)), Is: new("x")}},
+		{Or: []Filter{{Tag: new("elf")}}},
+	}}
+	if got := ReadInstances(f, browsable); !slices.Equal(got, []int64{3, 5, 9}) {
+		t.Fatalf("instances = %v", got)
+	}
+}
+
+func TestUnansweredCountsAFailureAsAnswered(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	inst := newInstanceRow(t, lib)
+	valued, valuedRev := newCard(t, lib, "valued", `{"name": "Valued"}`)
+	failed, failedRev := newCard(t, lib, "failed", `{"name": "Failed"}`)
+	open, _ := newCard(t, lib, "open", `{"name": "Open"}`)
+	if err := lib.AddEnrichments(ctx, inst, []NewEnrichment{{CardID: valued, RevisionID: valuedRev, Key: "k", Value: json.RawMessage(`1`)}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.RecordEnrichFailures(ctx, inst, []RevisionRef{{CardID: failed, RevisionID: failedRev}}); err != nil {
+		t.Fatal(err)
+	}
+	// A failure counts however old, so a broken gate can't hold cards forever.
+	if _, err := lib.pool.Exec(ctx, `UPDATE enrich_failure SET failed_at = now() - interval '25 hours'`); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := lib.Unanswered(ctx, inst, []int64{valued, failed, open}); err != nil || !slices.Equal(got, []int64{open}) {
+		t.Fatalf("unanswered = %v, %v", got, err)
+	}
+}
+
+func TestCardLookupsForTheGate(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	other := newLibraryRow(t, lib, "Other")
+	dup, _ := newCard(t, lib, "dup", `{"name": "Dup"}`)
+	live, _ := newCard(t, lib, "live", `{"name": "Live"}`)
+	moveCard(t, lib, live, other)
+	if _, _, err := lib.SetHidden(ctx, DefaultLibrary, map[int64]string{dup: ReasonDuplicate}, nil); err != nil {
+		t.Fatal(err)
+	}
+	ids := []int64{dup, live}
+	if got, err := lib.CardLibraries(ctx, ids); err != nil || got[dup] != DefaultLibrary || got[live] != other {
+		t.Fatalf("libraries = %v, %v", got, err)
+	}
+	if got, err := lib.Unarchived(ctx, ids); err != nil || !slices.Equal(got, []int64{live}) {
+		t.Fatalf("unarchived = %v, %v", got, err)
+	}
+	if got, err := lib.ArchivedAs(ctx, ids, ReasonDuplicate); err != nil || len(got) != 1 || got[dup] != ReasonDuplicate {
+		t.Fatalf("archived as duplicate = %v, %v", got, err)
 	}
 }

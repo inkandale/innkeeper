@@ -1181,6 +1181,35 @@ func filtersEnrichments(f *Filter) bool {
 		slices.ContainsFunc(f.Or, func(g Filter) bool { return filtersEnrichments(&g) })
 }
 
+// ReadInstances returns the enrich instances f reads, in ID order: each
+// enrichment term's instance or, for a term naming none, every instance its
+// key merges in browsable, as Query.Browsable.
+func ReadInstances(f Filter, browsable map[string][]Scorer) []int64 {
+	var out []int64
+	var walk func(f Filter)
+	walk = func(f Filter) {
+		switch {
+		case f.Enrichment != nil && f.Instance != nil:
+			out = append(out, *f.Instance)
+		case f.Enrichment != nil:
+			for _, s := range browsable[*f.Enrichment] {
+				out = append(out, s.Instance)
+			}
+		case f.Not != nil:
+			walk(*f.Not)
+		}
+		for _, g := range f.And {
+			walk(g)
+		}
+		for _, g := range f.Or {
+			walk(g)
+		}
+	}
+	walk(f)
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
 // SearchIDs returns the IDs of every entity of kind k that q matches,
 // ignoring its paging and output options.
 func (l *Library) SearchIDs(ctx context.Context, k *Kind, q Query) ([]int64, error) {

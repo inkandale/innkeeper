@@ -44,8 +44,9 @@ them.
 A saved search with an action, archive or collect, that the hide job
 keeps applied in the libraries the rule covers, giving back cards that stop
 matching. It never gives back a card the owner archived or collected by hand.
-It also applies when an instance it reads answers a card; a hand edit to
-tags or names waits for the next import, move, or Hide now.
+It also applies when an instance it reads answers a card. A hand edit to
+tags or names waits until an instance a rule reads answers the new revision,
+or the next import, move, or Hide now.
 _Avoid_: automation, policy
 
 **Gate**:

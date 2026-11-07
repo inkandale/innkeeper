@@ -47,7 +47,10 @@ let pngCodec: boolean;
 let followerPlugin: boolean;
 // Whether Lumiverse holds a copy of the card.
 let inLumiverse: boolean;
+// Whether GET /rules never answers.
+let rulesHang: boolean;
 beforeEach(() => {
+  rulesHang = false;
   followerPlugin = true;
   inLumiverse = true;
   followed = [];
@@ -165,7 +168,7 @@ beforeEach(() => {
           { id: 1, name: "Favorites" },
           { id: 2, name: "Pirates" },
         ]);
-      if (path === "/api/rules") return json([{ id: 5, name: "Junk" }]);
+      if (path === "/api/rules") return rulesHang ? new Promise<Response>(() => {}) : json([{ id: 5, name: "Junk" }]);
       if (path === "/api/lorebooks/3") return json({ id: 3, revision: { id: 1, data: { name: "Forge" } } });
       if (path === "/api/cards/7/related") return json(related);
       if (path === "/api/cards/7/enrichments")
@@ -368,6 +371,13 @@ test("a card a rule archived names the rule", async () => {
   head = { ...entity, archived_at: now, archived_reason: "rule:5" } as typeof entity;
   renderAt("/cards/7");
   expect(await screen.findByText(/Archived by rule: Junk\./)).toBeInTheDocument();
+});
+
+test("a rule's name shows a placeholder while the rules load", async () => {
+  rulesHang = true;
+  head = { ...entity, archived_at: now, archived_reason: "rule:5" } as typeof entity;
+  renderAt("/cards/7");
+  expect(await screen.findByText(/Archived by rule: …\./)).toBeInTheDocument();
 });
 
 test("archive that also deletes from the apps asks first, and offers no Undo", async () => {

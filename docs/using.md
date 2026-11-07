@@ -204,9 +204,9 @@ would change, library by library, and changes nothing until you confirm
 whenever a rule or its saved search changes, and after imports and moves. A
 rule's action and collection can't change; make a new rule.
 
-Rules also apply to a card when an instance a rule reads answers it. A rule
-on tags or names doesn't catch a hand edit until the next import, move, or
-Hide now.
+Rules also apply to a card when an instance a rule reads answers it. A hand
+edit to tags or names waits until an instance a rule reads answers the new
+revision, or the next import, move, or Hide now.
 
 Archive rules also order enrich plugins by their `enrich_cost` (see
 [Enrich order and saved searches](protocol.md#enrich-order-and-saved-searches)).

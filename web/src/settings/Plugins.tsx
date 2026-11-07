@@ -85,6 +85,8 @@ export function Plugins() {
   const from = (source: string) => ((sources.data?.length ?? 0) > 1 ? `${source}/` : "");
 
   const needSetup = installed.filter((p) => p.status === "needs_setup").length;
+  // Installed plugins this Innkeeper can't run get their own group, without a card's setup actions.
+  const stalled = installed.filter((p) => p.needs_protocol);
   const addURL = (p: Plugin) => `/settings/plugins/${encodeURIComponent(p.name)}/new`;
 
   const instanceActions = (i: InstanceInfo) => (
@@ -125,9 +127,43 @@ export function Plugins() {
     </ul>
   );
 
+  const rollBack = (p: Plugin) => {
+    const source = p.previous_source;
+    const version = p.previous_version;
+    if (!source || !version) return null;
+    return (
+      <button disabled={busy} onClick={() => install.mutate({ name: p.name, source, version })}>
+        Roll back to {version}
+      </button>
+    );
+  };
+
+  const uninstallButton = (p: Plugin) => (
+    <button
+      disabled={busy}
+      onClick={() =>
+        ask({
+          title: `Uninstall ${p.name}?`,
+          body: (
+            <p>
+              {p.builtin
+                ? "Innkeeper goes back to its built-in copy."
+                : "Its instances and data stay, and come back if you install it again."}
+            </p>
+          ),
+          confirmLabel: "Uninstall",
+          onConfirm: () => uninstall.mutate(p.name),
+        })
+      }
+    >
+      Uninstall
+    </button>
+  );
+
   const card = (p: Plugin) => {
     const list = all.filter((i) => i.plugin === p.name);
     const update = offers.updates.get(p.name);
+    const blocked = offers.blocked.get(p.name);
     const prevSource = p.previous_source;
     const prevVersion = p.previous_version;
     // A singleton keeps instances made before it was one; list them so they can be deleted.
@@ -142,6 +178,7 @@ export function Plugins() {
             <h3>{p.title}</h3>{" "}
             <span className="muted">{p.source === "builtin" ? `${p.version} · built in` : `${from(p.source)}${p.version}`}</span>
             {p.description && <p className="muted">{p.description}</p>}
+            {blocked && <p className="muted">{blocked} needs a newer Innkeeper</p>}
           </div>
           {!listed && <StatusText status={p.status} error={only?.broken_error} />}
           {update && (
@@ -172,33 +209,9 @@ export function Plugins() {
           {(canUninstall || only || canAdd || (prevSource && prevVersion)) && (
             <Menu label={`More for ${p.name}`}>
               {canAdd && <button onClick={() => navigate(addURL(p))}>Add instance</button>}
-              {prevSource && prevVersion && (
-                <button disabled={busy} onClick={() => install.mutate({ name: p.name, source: prevSource, version: prevVersion })}>
-                  Roll back to {prevVersion}
-                </button>
-              )}
+              {rollBack(p)}
               {only && instanceActions(only)}
-              {canUninstall && (
-                <button
-                  disabled={busy}
-                  onClick={() =>
-                    ask({
-                      title: `Uninstall ${p.name}?`,
-                      body: (
-                        <p>
-                          {p.builtin
-                            ? "Innkeeper goes back to its built-in copy."
-                            : "Its instances and data stay, and come back if you install it again."}
-                        </p>
-                      ),
-                      confirmLabel: "Uninstall",
-                      onConfirm: () => uninstall.mutate(p.name),
-                    })
-                  }
-                >
-                  Uninstall
-                </button>
-              )}
+              {canUninstall && uninstallButton(p)}
             </Menu>
           )}
         </header>
@@ -240,12 +253,35 @@ export function Plugins() {
           {catalog.isFetching ? "Checking…" : "Check for updates"}
         </button>
       </div>
-      {byCategory(installed).map(([category, list]) => (
+      {byCategory(installed.filter((p) => !p.needs_protocol)).map(([category, list]) => (
         <section key={category} className="plugin-group">
           <h2>{category}</h2>
           {list.map(card)}
         </section>
       ))}
+      {stalled.length > 0 && (
+        <section className="plugin-group">
+          <h2>Needs a newer Innkeeper</h2>
+          {stalled.map((p) => (
+            <article key={p.name} className="plugin">
+              <header>
+                <div className="about">
+                  <h3>{p.title}</h3>{" "}
+                  <span className="muted">{`${from(p.source)}${p.version}`}</span>
+                  <p className="muted">
+                    {p.version} needs a newer Innkeeper, one that speaks protocol {p.needs_protocol}. Its instances and
+                    data stay.
+                  </p>
+                </div>
+                <Menu label={`More for ${p.name}`}>
+                  {rollBack(p)}
+                  {uninstallButton(p)}
+                </Menu>
+              </header>
+            </article>
+          ))}
+        </section>
+      )}
       {orphanPlugins.length > 0 && (
         <section className="plugin-group">
           <h2>Not installed</h2>
@@ -305,6 +341,7 @@ export function Plugins() {
                           {o.source === "official" && o.recommended && " (recommended)"}
                         </span>
                         <p className="muted">{o.description}</p>
+                        {o.newer && <p className="muted">{o.newer} needs a newer Innkeeper</p>}
                       </div>
                       <button
                         className="button primary"
@@ -409,12 +446,24 @@ function byCategory<P extends { category?: string | null }>(list: P[]): [string,
 }
 
 type Update = { version: string; notes: [version: string, text: string][] };
-type Offer = { source: string; name: string; title: string; category?: string; version: string; description: string; recommended?: boolean };
+type Offer = {
+  source: string;
+  name: string;
+  title: string;
+  category?: string;
+  version: string;
+  description: string;
+  recommended?: boolean;
+  // The newest version, when this Innkeeper can't run it.
+  newer?: string;
+};
 
 /** catalogOffers splits what the sources list into updates for installed
- * plugins, from the source each came from, and plugins not installed. */
+ * plugins, from the source each came from, and plugins not installed. blocked
+ * holds an installed plugin's newest version when this Innkeeper can't run it. */
 function catalogOffers(catalog: CatalogSource[], installed: Plugin[]) {
   const updates = new Map<string, Update>();
+  const blocked = new Map<string, string>();
   const available: Offer[] = [];
   const byName = new Map(installed.map((p) => [p.name, p]));
   for (const s of catalog) {
@@ -422,17 +471,21 @@ function catalogOffers(catalog: CatalogSource[], installed: Plugin[]) {
       const have = byName.get(p.name);
       if (!have) {
         const { name, version, description, recommended, category } = p;
-        available.push({ source: s.source.id, name, title: p.title || name, category, version, description, recommended });
-      } else if (have.source === s.source.id && p.version !== have.version) {
-        // p.version is the source's newest, so anything else installed is older.
-        // versions is newest first; without the installed one listed, only the newest's notes apply.
+        available.push({
+          source: s.source.id, name, title: p.title || name, category, version, description, recommended, newer: p.newer?.version,
+        });
+      } else if (have.source === s.source.id && !have.needs_protocol) {
+        if (p.newer) blocked.set(p.name, p.newer.version);
+        if (p.version === have.version) continue;
+        // p.version is the newest this Innkeeper runs, so a running install is older.
+        // versions is newest first; without the installed one listed, only the offered one's notes apply.
         const versions = p.versions ?? [];
         const at = versions.indexOf(have.version);
-        const newer = at < 0 ? [p.version] : versions.slice(0, at);
+        const newer = at < 0 ? [p.version] : versions.slice(versions.indexOf(p.version), at);
         const notes = newer.flatMap((v): Update["notes"] => (p.notes?.[v] ? [[v, p.notes[v]]] : []));
         updates.set(p.name, { version: p.version, notes });
       }
     }
   }
-  return { updates, available };
+  return { updates, blocked, available };
 }

@@ -300,3 +300,64 @@ test("cancelling the Delete instance confirm sends no DELETE", async () => {
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(requests.filter((r) => r.startsWith("DELETE"))).toEqual([]);
 });
+
+test("says which versions need a newer Innkeeper and offers no button for them", async () => {
+  const user = userEvent.setup();
+  const fetch = globalThis.fetch;
+  vi.stubGlobal("fetch", async (req: Request) => {
+    const path = new URL(req.url).pathname;
+    if (path === "/api/plugins")
+      return json(titled([
+        { name: "forge-ai", version: "0.13.0", capabilities: ["action"], secrets: [], source: "official", builtin: false,
+          category: "AI", multiple_instances: false, status: "ready" },
+      ]));
+    if (path === "/api/plugin-catalog")
+      return json([{
+        source: { id: "official", url: "https://example.com/index.toml" },
+        plugins: [
+          { name: "forge-ai", version: "0.13.1", versions: ["0.14.1", "0.13.1", "0.13.0"],
+            notes: { "0.14.1": "Needs the new core", "0.13.1": "Fix search" },
+            newer: { version: "0.14.1", protocol_version: "1.1" }, protocol: 1, capabilities: [], description: "Forge" },
+          { name: "newbie", version: "1.0.0", versions: ["2.0.0", "1.0.0"],
+            newer: { version: "2.0.0", protocol_version: "1.1" }, protocol: 1, capabilities: [], description: "New" },
+        ],
+      }]);
+    return fetch(req);
+  });
+  renderPlugins();
+  const forge = (await screen.findByRole("heading", { name: "forge-ai" })).closest("article")!;
+  expect(await within(forge).findByText("0.14.1 needs a newer Innkeeper")).toBeInTheDocument();
+  expect(within(forge).getByRole("button", { name: "Update to 0.13.1" })).toBeInTheDocument();
+  expect(within(forge).queryByRole("button", { name: "Update to 0.14.1" })).not.toBeInTheDocument();
+  await user.click(within(forge).getByText("What's new"));
+  expect(within(forge).getByText("Fix search")).toBeVisible();
+  expect(within(forge).queryByText("Needs the new core")).not.toBeInTheDocument();
+
+  const available = screen.getByRole("region", { name: "Available" });
+  expect(within(available).getByText("2.0.0 needs a newer Innkeeper")).toBeInTheDocument();
+  expect(within(available).getByRole("button", { name: "Install newbie" })).toHaveTextContent("Install 1.0.0");
+});
+
+test("lists an installed plugin that needs a newer Innkeeper apart, with rollback and uninstall", async () => {
+  const user = userEvent.setup();
+  const fetch = globalThis.fetch;
+  vi.stubGlobal("fetch", async (req: Request) =>
+    new URL(req.url).pathname === "/api/plugins" && req.method === "GET"
+      ? json(titled([
+          { name: "stalled", version: "2.0.0", capabilities: [], secrets: [], source: "official", builtin: false,
+            previous_source: "official", previous_version: "1.0.0", multiple_instances: false, status: "broken",
+            needs_protocol: "1.9" },
+        ]))
+      : fetch(req),
+  );
+  renderPlugins();
+  const group = (await screen.findByRole("heading", { name: "Needs a newer Innkeeper" })).closest("section")!;
+  const stalled = within(group).getByRole("heading", { name: "stalled" }).closest("article")!;
+  expect(within(stalled).getByText(/2\.0\.0 needs a newer Innkeeper, one that speaks protocol 1\.9/)).toBeInTheDocument();
+  expect(within(stalled).queryByRole("link", { name: "Set up" })).not.toBeInTheDocument();
+  const menu = menuOf(stalled, "stalled");
+  expect(within(menu).getByRole("button", { name: "Roll back to 1.0.0" })).toBeInTheDocument();
+  await user.click(within(menu).getByRole("button", { name: "Uninstall" }));
+  await confirmWith("Uninstall");
+  expect(requests).toContain("DELETE /api/plugins/stalled");
+});

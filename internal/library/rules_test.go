@@ -168,3 +168,57 @@ func TestCollectRuleLeavesTheOwnersMemberships(t *testing.T) {
 		t.Fatalf("remove after the owner's add = %v, %v", remove, err)
 	}
 }
+
+func archiveCardForRule(t *testing.T, lib *Library, card int64, r Rule) {
+	t.Helper()
+	if _, err := lib.pool.Exec(context.Background(), `UPDATE card SET archived_at = now(), archived_reason = $2 WHERE id = $1`, card, r.Reason()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRuleCountsCountArchivedAndCollectedCardsByLibrary(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	other := newLibraryRow(t, lib, "Other")
+	search := newSavedSearch(t, lib, "Junk", Filter{Name: new("junk")})
+	c, err := lib.CreateCollection(ctx, DefaultLibrary, "Junk", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	collect := newRule(t, lib, RuleSpec{Name: "Collect", SavedSearchID: search, Action: RuleCollect, CollectionID: &c.ID, Libraries: []int64{DefaultLibrary}})
+	archive := newRule(t, lib, RuleSpec{Name: "Archive", SavedSearchID: search, Action: RuleArchive, AllLibraries: true})
+	card, _ := newCard(t, lib, "junk", `{"name": "Junk"}`)
+	if _, err := lib.pool.Exec(ctx, `INSERT INTO collection_card (collection_id, card_id, rule_id) VALUES ($1, $2, $3)`, c.ID, card, collect.ID); err != nil {
+		t.Fatal(err)
+	}
+	archiveCardForRule(t, lib, card, archive)
+	away, _ := newCard(t, lib, "junk-away", `{"name": "Junk"}`)
+	moveCard(t, lib, away, other)
+	archiveCardForRule(t, lib, away, archive)
+
+	got, err := lib.RuleCounts(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []RuleCount{{collect.ID, DefaultLibrary, 1}, {archive.ID, DefaultLibrary, 1}, {archive.ID, other, 1}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("counts = %+v, want %+v", got, want)
+	}
+}
+
+func TestHasRuleWorkNeedsACoveringRuleOrARuleArchivedCard(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	idle, busy := newLibraryRow(t, lib, "Idle"), newLibraryRow(t, lib, "Busy")
+	search := newSavedSearch(t, lib, "Junk", Filter{Name: new("junk")})
+	off := newRule(t, lib, RuleSpec{Name: "Off", SavedSearchID: search, Action: RuleArchive, AllLibraries: true})
+	if work, err := lib.HasRuleWork(ctx, idle); err != nil || work {
+		t.Fatalf("idle library: work = %v, %v", work, err)
+	}
+	card, _ := newCard(t, lib, "junk", `{"name": "Junk"}`)
+	moveCard(t, lib, card, busy)
+	archiveCardForRule(t, lib, card, off)
+	if work, err := lib.HasRuleWork(ctx, busy); err != nil || !work {
+		t.Fatalf("library with a rule-archived card: work = %v, %v", work, err)
+	}
+}

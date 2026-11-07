@@ -156,7 +156,8 @@ default in `PATCH /settings`. To leave weak cards out, filter by score.
 | `duplicate_decide` | For `near`: an `ai` instance offering `ai.decide`, such as a decision model, asked whether each near pair is the same card. A pair it says isn't stays apart; one it fails on counts by distance. Exact copies aren't asked |
 
 "Hide now", `POST /libraries/{id}/hide`, or the `hide_cards` MCP tool runs a
-job that archives what the settings pick and records why: `duplicate`. A later
+job that archives what the settings and the library's rules pick, and records
+why: `duplicate`, or `rule:<id>`. A later
 run unarchives the cards it hid that are no longer duplicates. It never
 touches a card you archived yourself, and archiving or unarchiving a card by
 hand clears its reason. An unarchived duplicate can be hidden again by the
@@ -172,6 +173,43 @@ under 30, and use Delete…, typing how many there are. A card pushed to an
 app is deleted too, with its link to the app; the app's copy stays there.
 Archive with unpublish first to remove it. See `POST /cards/purge`. To clear
 out old archived cards in one step, see [Maintenance](#maintenance).
+
+## Saved searches and rules
+
+A **saved search** is a named filter. On the Cards page, filter the cards
+and choose Save search; Saved searches lists them, each with how many cards
+it matches in the current library. Opening one shows its cards in any
+library, and filters you add narrow it. Update folds them in. A plugin can
+ship saved searches over its own scores, saved when you add its instance.
+See `/saved-searches`.
+
+A **rule** is a saved search with an action that Innkeeper keeps applied in
+the libraries it covers: all of them, new ones included, or a chosen list.
+
+| Action | Keeps | Gives back |
+|---|---|---|
+| Archive | matching cards archived, with the rule as the reason | cards that stop matching, which the enrich sweep then scores again |
+| Collect | matching cards in a collection of the one library it covers | cards it added that stop matching |
+
+A saved search can filter on anything search can, tags included. A rule
+never gives back what you did by hand: a card you archived, or a card you put
+in the collection, stays. A card you unarchive or take out of the collection
+that still matches comes back at the next run.
+
+A new rule starts off. Turning one on, or saving one that's on, shows what it
+would change, library by library, and changes nothing until you confirm
+(`POST /rules/preview`). The hide job then applies it, and runs again
+whenever a rule or its saved search changes, and after imports and moves. A
+rule's action and collection can't change; make a new rule.
+
+Archive rules also order enrich plugins. Each plugin has a cost, and an
+instance waits on a card while a cheaper instance that an archive rule reads,
+and that updates cards as they change, hasn't scored it. A free check can
+then archive junk before a paid model sees it. A run you start yourself never
+waits.
+
+Archiving a card, by hand, as a duplicate, or by a rule, deletes its
+vectors; its scores stay. Unarchiving it gets it embedded again.
 
 ## Maintenance
 

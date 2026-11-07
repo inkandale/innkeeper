@@ -32,3 +32,21 @@ toward the limit.
 **Built-in plugin**:
 A plugin that ships inside Innkeeper's image. Innkeeper creates its instance
 the first time it starts.
+
+## Rules
+
+**Saved search**:
+A named search filter, not owned by a library: opening one searches the
+library you're in. A plugin's saved searches name the instance that shipped
+them.
+
+**Rule**:
+A saved search with an action, archive or collect, that the hide job
+keeps applied in the libraries the rule covers, giving back cards that stop
+matching. It never gives back a card the owner archived or collected by hand.
+_Avoid_: automation, policy
+
+**Gate**:
+An enrich instance that an enabled archive rule covering a library reads,
+and that updates cards as they change. In that library, costlier instances
+wait for it on each card.

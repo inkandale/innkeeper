@@ -367,6 +367,10 @@ func TestEnrichRunByQueryReadsABrowsableKey(t *testing.T) {
 	e.evaluate(e.instID, high, low)
 	j, p := e.startRun(map[string]any{"instance_id": e.instID, "rescore": true,
 		"query": map[string]any{"filter": map[string]any{"enrichment": "quality", "gte": 50}}})
+	var payload enrich.Payload
+	if err := json.Unmarshal(j.Payload, &payload); err != nil || len(payload.Browsable["quality"]) != 1 {
+		t.Fatalf("payload = %s, %v", j.Payload, err)
+	}
 	if j.Status != jobs.StatusSucceeded || p.Total != 1 || p.Done != 1 {
 		t.Fatalf("job %s, progress %+v", j.Status, p)
 	}

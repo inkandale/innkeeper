@@ -337,6 +337,10 @@ func (rn *Runner) batch(ctx context.Context, r *jobs.Run, inst pluginhost.Instan
 			return Checked{}, err
 		}
 	}
+	wantsVector, err := rn.wantsVector(ctx, inst.Manifest.Enrichments, instanceID)
+	if err != nil {
+		return Checked{}, err
+	}
 	dropped := 0
 	// Storage failures are recorded like the plugin's, so a card that keeps
 	// failing can't fill the sweep window; the sweep retries it a day later.
@@ -351,6 +355,13 @@ func (rn *Runner) batch(ctx context.Context, r *jobs.Run, inst pluginhost.Instan
 		vals := slices.DeleteFunc(slices.Clone(checked.Values), func(v library.NewEnrichment) bool { return v.RevisionID != rev.RevisionID })
 		vi := slices.IndexFunc(vectors, func(v library.NewVector) bool { return v.RevisionID == rev.RevisionID })
 		if len(vals) == 0 && vi < 0 {
+			continue
+		}
+		// Without a vector the sweep would resend the revision every hour.
+		if vi < 0 && wantsVector {
+			if err := fail(rev, "no vector: this instance stores one for every card"); err != nil {
+				return Checked{}, err
+			}
 			continue
 		}
 		if vi >= 0 && !hasVectors {
@@ -427,6 +438,17 @@ func cardsOf(revs []protocol.EnrichRevision) []int64 {
 	return ids
 }
 
+// wantsVector reports whether every revision instanceID answers needs a
+// vector: its plugin declares a vector key and it has stored one before.
+func (rn *Runner) wantsVector(ctx context.Context, decl map[string]protocol.Enrichment, instanceID int64) (bool, error) {
+	for _, d := range decl {
+		if d.Type == "vector" {
+			return rn.Lib.StoresVectors(ctx, instanceID)
+		}
+	}
+	return false, nil
+}
+
 // vectors takes checked's vector values out of its Values, as NewVectors to
 // store.
 func (rn *Runner) vectors(decl map[string]protocol.Enrichment, checked *Checked) ([]library.NewVector, error) {
@@ -496,7 +518,8 @@ func (rn *Runner) heads(ctx context.Context, ids []int64) (revs []protocol.Enric
 	return revs, missing, archived
 }
 
-// unscored keeps the revisions in revs that hold no value from instanceID.
+// unscored keeps the revisions in revs that instanceID hasn't answered, as
+// EnrichedRevisions decides.
 func (rn *Runner) unscored(ctx context.Context, instanceID int64, revs []protocol.EnrichRevision) ([]protocol.EnrichRevision, error) {
 	cardIDs, revIDs := make([]int64, len(revs)), make([]int64, len(revs))
 	for i, rev := range revs {

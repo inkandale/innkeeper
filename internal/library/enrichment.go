@@ -76,10 +76,10 @@ func (l *Library) HasEnrichments(ctx context.Context, instanceID int64) (bool, e
 	return has, err
 }
 
-// storesVectors reports whether instance has stored a vector, so a head
+// StoresVectors reports whether instance has stored a vector, so a head
 // without one is unanswered whatever values it holds. A plugin configured
 // to write no vectors never counts.
-func (l *Library) storesVectors(ctx context.Context, instance int64) (bool, error) {
+func (l *Library) StoresVectors(ctx context.Context, instance int64) (bool, error) {
 	if ok, err := l.HasVectors(ctx); err != nil || !ok {
 		return false, err
 	}
@@ -95,7 +95,7 @@ func (l *Library) EnrichedRevisions(ctx context.Context, instanceID int64, cardI
 	if err != nil {
 		return nil, err
 	}
-	stores, err := l.storesVectors(ctx, instanceID)
+	stores, err := l.StoresVectors(ctx, instanceID)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +165,7 @@ func (l *Library) ChangedUnenriched(ctx context.Context, instance int64, since t
 	if err != nil {
 		return nil, err
 	}
-	stores, err := l.storesVectors(ctx, instance)
+	stores, err := l.StoresVectors(ctx, instance)
 	if err != nil {
 		return nil, err
 	}

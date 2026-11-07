@@ -230,6 +230,24 @@ func TestEnrichRunFailsOnlyTheRevisionWhoseVectorIsRefused(t *testing.T) {
 	}
 }
 
+func TestEnrichRunFailsARevisionWithoutTheVectorItsInstanceStores(t *testing.T) {
+	e := newEnrichEnv(t, map[string]any{"vectors": true})
+	if j, p := e.evaluate(e.instID, e.card("Brakka", "abc")); j.Status != jobs.StatusSucceeded || p.Done != 1 {
+		t.Fatalf("first card: job %s, progress %+v", j.Status, p)
+	}
+	id := e.card("Novector", "abc")
+	j, p := e.evaluate(e.instID, id)
+	if j.Status != jobs.StatusSucceeded || p.Done != 0 || p.Failed != 1 ||
+		!slices.ContainsFunc(p.Warnings, func(s string) bool { return strings.Contains(s, "no vector") }) {
+		t.Fatalf("job %s, progress %+v", j.Status, p)
+	}
+	var n int
+	if err := e.pool.QueryRow(context.Background(), `SELECT count(*) FROM enrich_failure f JOIN card c ON c.head_revision_id = f.revision_id
+		WHERE c.id = $1 AND f.instance_id = $2`, id, e.instID).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("recorded failures = %d, %v", n, err)
+	}
+}
+
 func TestEnrichRunPassesThoroughToThePlugin(t *testing.T) {
 	e := newEnrichEnv(t)
 	id := e.card("Brakka", "x")

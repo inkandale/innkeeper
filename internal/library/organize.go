@@ -191,8 +191,9 @@ func (l *Library) AddToCollection(ctx context.Context, collectionID, cardID int6
 	case !same:
 		return fmt.Errorf("%w: card %d is in another library than collection %d", ErrInvalid, cardID, collectionID)
 	}
+	// The owner's add makes a rule's membership the owner's, so the rule won't take it out.
 	_, err = l.pool.Exec(ctx, `INSERT INTO collection_card (collection_id, card_id) VALUES ($1, $2)
-		ON CONFLICT DO NOTHING`, collectionID, cardID)
+		ON CONFLICT (collection_id, card_id) DO UPDATE SET rule_id = NULL`, collectionID, cardID)
 	return mapErr(err)
 }
 
@@ -200,6 +201,17 @@ func (l *Library) AddToCollection(ctx context.Context, collectionID, cardID int6
 func (l *Library) RemoveFromCollection(ctx context.Context, collectionID, cardID int64) error {
 	_, err := l.pool.Exec(ctx, `DELETE FROM collection_card WHERE collection_id = $1 AND card_id = $2`,
 		collectionID, cardID)
+	return err
+}
+
+// CollectByRule adds cards to r's collection as r's or, with remove, takes
+// out the ones r added.
+func (l *Library) CollectByRule(ctx context.Context, r Rule, cards []int64, remove bool) error {
+	sql := `INSERT INTO collection_card (collection_id, card_id, rule_id) SELECT $1, unnest($3::bigint[]), $2 ON CONFLICT DO NOTHING`
+	if remove {
+		sql = `DELETE FROM collection_card WHERE collection_id = $1 AND rule_id = $2 AND card_id = ANY($3)`
+	}
+	_, err := l.pool.Exec(ctx, sql, *r.CollectionID, r.ID, cards)
 	return err
 }
 

@@ -212,7 +212,7 @@ func TestMoveRefusesArchivedSelection(t *testing.T) {
 	dest := newLibraryRow(t, lib, "Other")
 	live, _ := newCard(t, lib, "live", `{"name": "L"}`)
 	hidden, _ := newCard(t, lib, "hidden", `{"name": "H"}`)
-	if _, _, err := lib.SetHidden(ctx, DefaultLibrary, map[int64]string{hidden: ReasonDuplicate}); err != nil {
+	if _, _, err := lib.SetHidden(ctx, DefaultLibrary, map[int64]string{hidden: ReasonDuplicate}, nil); err != nil {
 		t.Fatal(err)
 	}
 

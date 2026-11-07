@@ -48,6 +48,8 @@ type Query struct {
 	// sample of 1 in sampleRate matches and marks them approximate. 0 counts
 	// every match.
 	SampleOver int `json:"-"`
+	// IncludeArchived matches archived cards too, as rules do, without a filter on archived.
+	IncludeArchived bool `json:"-"`
 
 	// Embedding is Text's vector from EmbedInstance, for a semantic search.
 	// The caller embeds it.
@@ -718,7 +720,7 @@ func compile(k *Kind, q Query) (string, *where, string, error) {
 		}
 		conds = append(conds, s)
 	}
-	if !mentionsArchived(q.Filter) {
+	if !q.IncludeArchived && !mentionsArchived(q.Filter) {
 		conds = append(conds, "c.archived_at IS NULL")
 	}
 	text := ""

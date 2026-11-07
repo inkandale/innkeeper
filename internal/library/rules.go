@@ -261,3 +261,50 @@ func (l *Library) RuleCounts(ctx context.Context) ([]RuleCount, error) {
 	}
 	return pgx.CollectRows(rows, pgx.RowToStructByPos[RuleCount])
 }
+
+// RuleMatches returns the IDs of library's cards that f matches, archived
+// ones included, in ID order: all of them, or those in among unless among is
+// nil. browsable, as Query.Browsable, resolves enrichment terms that name no
+// instance.
+func (l *Library) RuleMatches(ctx context.Context, library int64, f Filter, browsable map[string][]Scorer, among []int64) ([]int64, error) {
+	if among != nil {
+		f = Filter{And: []Filter{f, {IDs: among}}}
+	}
+	return l.SearchIDs(ctx, Card, Query{Library: library, Filter: &f, Browsable: browsable, IncludeArchived: true})
+}
+
+// RuleChanges returns what r would do in library given matches, the cards
+// it matches there: add are the cards to archive or collect, remove those to
+// give back. Only cards in among are considered, unless among is nil. Cards
+// the owner archived or collected never count.
+func (l *Library) RuleChanges(ctx context.Context, r Rule, library int64, matches, among []int64) (add, remove []int64, err error) {
+	if matches == nil {
+		matches = []int64{} // nil would reach SQL as NULL, and NOT (id = ANY(NULL)) matches nothing.
+	}
+	ids := func(sql string, args ...any) ([]int64, error) {
+		rows, err := l.pool.Query(ctx, sql, args...)
+		if err != nil {
+			return nil, err
+		}
+		return pgx.CollectRows(rows, pgx.RowTo[int64])
+	}
+	switch r.Action {
+	case RuleArchive:
+		if add, err = ids(`SELECT id FROM card WHERE id = ANY($1) AND archived_at IS NULL ORDER BY id`, matches); err != nil {
+			return nil, nil, err
+		}
+		remove, err = ids(`SELECT id FROM card WHERE library_id = $1 AND archived_reason = $2 AND NOT (id = ANY($3))
+			AND ($4::bigint[] IS NULL OR id = ANY($4)) ORDER BY id`, library, r.Reason(), matches, among)
+	case RuleCollect:
+		if add, err = ids(`SELECT m.id FROM unnest($1::bigint[]) m(id) WHERE NOT EXISTS
+			(SELECT 1 FROM collection_card cc WHERE cc.collection_id = $2 AND cc.card_id = m.id) ORDER BY m.id`, matches, *r.CollectionID); err != nil {
+			return nil, nil, err
+		}
+		remove, err = ids(`SELECT cc.card_id FROM collection_card cc JOIN card c ON c.id = cc.card_id
+			WHERE cc.rule_id = $1 AND c.library_id = $2 AND NOT (cc.card_id = ANY($3))
+			AND ($4::bigint[] IS NULL OR cc.card_id = ANY($4)) ORDER BY cc.card_id`, r.ID, library, matches, among)
+	default:
+		return nil, nil, fmt.Errorf("%w: rule %d has action %q", ErrInvalid, r.ID, r.Action)
+	}
+	return add, remove, err
+}

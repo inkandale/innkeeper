@@ -302,7 +302,7 @@ func Hide(lib *library.Library, decide Decider) jobs.Handler {
 		groups := library.GroupPairs(pairs)
 		hidden := library.PlanHide(cands, groups, p.Keep)
 		prog.Groups, prog.Duplicate = len(groups), len(hidden)
-		if prog.Archived, prog.Unarchived, err = lib.SetHidden(ctx, p.Library, hidden); err != nil {
+		if prog.Archived, prog.Unarchived, err = lib.SetHidden(ctx, p.Library, hidden, nil); err != nil {
 			return err
 		}
 		r.AddCardsChanged(prog.Archived + prog.Unarchived)

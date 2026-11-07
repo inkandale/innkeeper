@@ -20,18 +20,23 @@ const hideable = `(c.archived_at IS NULL OR c.archived_reason IS NOT NULL)`
 // SetHidden makes hidden, card ID to reason, the hide job's archived cards in
 // library: it archives those not archived yet, updates the reason of those it
 // already hid, and un-archives the ones it hid before that aren't in hidden.
-// The owner's archived cards stay as they are. It returns how many cards it
-// archived and un-archived.
-func (l *Library) SetHidden(ctx context.Context, library int64, hidden map[int64]string) (int, int, error) {
-	ids := slices.Sorted(maps.Keys(hidden))
+// It touches only cards in among, unless among is nil; hidden must be inside
+// among. The owner's archived cards stay as they are. An un-archived card gets
+// restored_at, so the enrich sweep counts it as changed. It returns how many
+// cards it archived and un-archived.
+func (l *Library) SetHidden(ctx context.Context, library int64, hidden map[int64]string, among []int64) (int, int, error) {
+	// Non-nil, as nil reaches SQL as NULL and NOT (id = ANY(NULL)) would un-archive nothing.
+	ids := slices.AppendSeq([]int64{}, maps.Keys(hidden))
+	slices.Sort(ids)
 	reasons := make([]string, len(ids))
 	for i, id := range ids {
 		reasons[i] = hidden[id]
 	}
 	var archived, unarchived int
 	err := pgx.BeginFunc(ctx, l.pool, func(tx pgx.Tx) error {
-		tag, err := tx.Exec(ctx, `UPDATE card SET archived_at = NULL, archived_reason = NULL
-			WHERE library_id = $1 AND archived_reason IS NOT NULL AND NOT (id = ANY($2))`, library, ids)
+		tag, err := tx.Exec(ctx, `UPDATE card SET archived_at = NULL, archived_reason = NULL, restored_at = now()
+			WHERE library_id = $1 AND archived_reason IS NOT NULL AND NOT (id = ANY($2)) AND ($3::bigint[] IS NULL OR id = ANY($3))`,
+			library, ids, among)
 		if err != nil {
 			return err
 		}

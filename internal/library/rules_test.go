@@ -100,3 +100,71 @@ func TestRulesInListsCoveringRulesAndOnesThatCollectedCardsThere(t *testing.T) {
 		}
 	}
 }
+
+func TestRuleMatchesIncludesArchivedCards(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	a, _ := newCard(t, lib, "a", `{"name": "Junk a"}`)
+	b, _ := newCard(t, lib, "b", `{"name": "Junk b"}`)
+	c, _ := newCard(t, lib, "c", `{"name": "Keeper"}`)
+	if err := lib.Cards.SetArchived(ctx, b, true); err != nil {
+		t.Fatal(err)
+	}
+	junk := Filter{Name: new("junk")}
+	if got, err := lib.RuleMatches(ctx, DefaultLibrary, junk, nil, nil); err != nil || !slices.Equal(got, []int64{a, b}) {
+		t.Fatalf("matches = %v, %v", got, err)
+	}
+	if got, err := lib.RuleMatches(ctx, DefaultLibrary, junk, nil, []int64{b, c}); err != nil || !slices.Equal(got, []int64{b}) {
+		t.Fatalf("matches among b, c = %v, %v", got, err)
+	}
+}
+
+func TestArchiveRuleOnATagFilterArchivesWhatItMatches(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	tagged, _ := newCard(t, lib, "tagged", `{"name": "A", "tags": ["NSFW"]}`)
+	newCard(t, lib, "plain", `{"name": "B", "tags": ["sfw"]}`)
+	r := newRule(t, lib, RuleSpec{Name: "Hide nsfw", SavedSearchID: newSavedSearch(t, lib, "NSFW", Filter{Tag: new("nsfw")}),
+		Action: RuleArchive, AllLibraries: true})
+	matches, err := lib.RuleMatches(ctx, DefaultLibrary, r.Filter, nil, nil)
+	if err != nil || !slices.Equal(matches, []int64{tagged}) {
+		t.Fatalf("matches = %v, %v", matches, err)
+	}
+	if add, remove, err := lib.RuleChanges(ctx, r, DefaultLibrary, matches, nil); err != nil || !slices.Equal(add, []int64{tagged}) || len(remove) != 0 {
+		t.Fatalf("changes: add %v, remove %v, %v", add, remove, err)
+	}
+}
+
+func TestCollectRuleLeavesTheOwnersMemberships(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	c, err := lib.CreateCollection(ctx, DefaultLibrary, "Drafts", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	owned, _ := newCard(t, lib, "owned", `{"name": "Draft owned"}`)
+	match, _ := newCard(t, lib, "match", `{"name": "Draft new"}`)
+	if err := lib.AddToCollection(ctx, c.ID, owned); err != nil {
+		t.Fatal(err)
+	}
+	r := newRule(t, lib, RuleSpec{Name: "Collect drafts", SavedSearchID: newSavedSearch(t, lib, "Drafts", Filter{Name: new("draft")}),
+		Action: RuleCollect, CollectionID: &c.ID, Libraries: []int64{DefaultLibrary}})
+
+	add, _, err := lib.RuleChanges(ctx, r, DefaultLibrary, []int64{owned, match}, nil)
+	if err != nil || !slices.Equal(add, []int64{match}) {
+		t.Fatalf("add = %v, %v", add, err)
+	}
+	if err := lib.CollectByRule(ctx, r, add, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, remove, err := lib.RuleChanges(ctx, r, DefaultLibrary, nil, nil); err != nil || !slices.Equal(remove, []int64{match}) {
+		t.Fatalf("remove = %v, %v", remove, err)
+	}
+	// Adding it by hand makes the membership the owner's.
+	if err := lib.AddToCollection(ctx, c.ID, match); err != nil {
+		t.Fatal(err)
+	}
+	if _, remove, err := lib.RuleChanges(ctx, r, DefaultLibrary, nil, nil); err != nil || len(remove) != 0 {
+		t.Fatalf("remove after the owner's add = %v, %v", remove, err)
+	}
+}

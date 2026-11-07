@@ -124,7 +124,7 @@ func TestSetHiddenLeavesTheOwnersArchivedCards(t *testing.T) {
 		return e.ArchivedAt != nil, e.ArchivedReason
 	}
 
-	hidden, unhidden, err := lib.SetHidden(ctx, DefaultLibrary, map[int64]string{a: ReasonDuplicate, owned: ReasonDuplicate})
+	hidden, unhidden, err := lib.SetHidden(ctx, DefaultLibrary, map[int64]string{a: ReasonDuplicate, owned: ReasonDuplicate}, nil)
 	if err != nil || hidden != 1 || unhidden != 0 {
 		t.Fatalf("first run: %d hidden, %d unhidden, %v", hidden, unhidden, err)
 	}
@@ -136,7 +136,7 @@ func TestSetHiddenLeavesTheOwnersArchivedCards(t *testing.T) {
 	}
 
 	// A new run un-hides what now passes and hides what doesn't.
-	hidden, unhidden, err = lib.SetHidden(ctx, DefaultLibrary, map[int64]string{b: ReasonDuplicate})
+	hidden, unhidden, err = lib.SetHidden(ctx, DefaultLibrary, map[int64]string{b: ReasonDuplicate}, nil)
 	if err != nil || hidden != 1 || unhidden != 1 {
 		t.Fatalf("second run: %d hidden, %d unhidden, %v", hidden, unhidden, err)
 	}
@@ -148,7 +148,7 @@ func TestSetHiddenLeavesTheOwnersArchivedCards(t *testing.T) {
 	if err := lib.Cards.SetArchived(ctx, b, true); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := lib.SetHidden(ctx, DefaultLibrary, nil); err != nil {
+	if _, _, err := lib.SetHidden(ctx, DefaultLibrary, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if archived, r := reason(b); !archived || r != "" {
@@ -227,5 +227,26 @@ func TestGroupPairsJoinsChains(t *testing.T) {
 	got := GroupPairs([]DuplicatePair{{5, 9, false}, {1, 5, false}, {2, 3, true}})
 	if len(got) != 2 || !slices.Equal(got[0], []int64{1, 5, 9}) || !slices.Equal(got[1], []int64{2, 3}) {
 		t.Fatalf("groups = %v", got)
+	}
+}
+
+func TestSetHiddenAmongTouchesOnlyThoseCardsAndMarksTheRestore(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	a, _ := newCard(t, lib, "a", `{"name": "A"}`)
+	b, _ := newCard(t, lib, "b", `{"name": "B"}`)
+	if _, _, err := lib.SetHidden(ctx, DefaultLibrary, map[int64]string{a: ReasonDuplicate, b: ReasonDuplicate}, nil); err != nil {
+		t.Fatal(err)
+	}
+	_, unhidden, err := lib.SetHidden(ctx, DefaultLibrary, nil, []int64{a})
+	if err != nil || unhidden != 1 {
+		t.Fatalf("unhidden %d, %v", unhidden, err)
+	}
+	var restored bool
+	if err := lib.pool.QueryRow(ctx, `SELECT archived_at IS NULL AND restored_at IS NOT NULL FROM card WHERE id = $1`, a).Scan(&restored); err != nil || !restored {
+		t.Fatalf("a restored = %v, %v", restored, err)
+	}
+	if e, _ := lib.Cards.Get(ctx, b); e.ArchivedAt == nil {
+		t.Fatal("b, outside among, came back")
 	}
 }

@@ -40,7 +40,7 @@ export function Hiding({ library }: { library: number }) {
   if (!s) return null;
   // A blank number follows the default.
   const number = (v: string) => (v.trim() === "" ? null : Number(v));
-  const nothing = s.duplicates.value === "off" && !covering.some((r) => r.enabled);
+  const nothing = s.duplicates.value === "off" && covering.length === 0;
   return (
     <fieldset className="hiding" disabled={save.isPending}>
       <legend>

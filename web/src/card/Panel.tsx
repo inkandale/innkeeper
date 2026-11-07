@@ -147,7 +147,7 @@ export function Archive({ kind, entity }: { kind: Kind; entity: Entity }) {
       </button>
       {reason && (
         <span className="muted">
-          {reason === "duplicate" ? "Hidden as a duplicate" : `Archived by rule: ${ruleName ?? "a deleted rule"}`}. If you unarchive it,
+          {reason === "duplicate" ? "Hidden as a duplicate" : `Archived by rule: ${ruleName ?? (rules.isPending ? "…" : "a deleted rule")}`}. If you unarchive it,
           the next hide run may archive it again.
         </span>
       )}

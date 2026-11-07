@@ -24,13 +24,7 @@ ALTER TABLE collection_card ADD COLUMN rule_id bigint REFERENCES rule ON DELETE 
 CREATE INDEX ON collection_card (rule_id) WHERE rule_id IS NOT NULL;
 
 -- rule:<id> is an archive rule's reason. low_score went with migration 0049.
--- Postgres named the 0040 inline check after no column (it spans two), so find it by definition.
-DO $$
-DECLARE c text;
-BEGIN
-    SELECT conname INTO c FROM pg_constraint
-    WHERE conrelid = 'card'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) LIKE '%archived_reason%';
-    EXECUTE format('ALTER TABLE card DROP CONSTRAINT %I', c);
-END $$;
+-- Postgres named 0040's check card_check, since it spans two columns.
+ALTER TABLE card DROP CONSTRAINT card_check;
 ALTER TABLE card ADD CONSTRAINT card_archived_reason_check CHECK (archived_reason IS NULL OR
     ((archived_reason = 'duplicate' OR archived_reason ~ '^rule:[1-9][0-9]*$') AND archived_at IS NOT NULL));

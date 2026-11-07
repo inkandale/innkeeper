@@ -75,8 +75,8 @@ func setSent[T comparable](ctx context.Context, s *Server, lib *int64, o libsett
 	return setSetting(ctx, s, o, lib, v.Value)
 }
 
-// recheckHide queues the hide job for each of libraries whose settings
-// hide duplicates, since cards moving in or out make or break duplicates.
+// recheckHide queues the hide job for each of libraries with duplicates or
+// rules to apply, since cards moving in or out change both.
 func (s *Server) recheckHide(ctx context.Context, libraries []int64) error {
 	var errs []error
 	for _, lib := range libraries {
@@ -93,9 +93,10 @@ type hideIn struct {
 
 func (s *Server) hideRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "hide-cards", Method: http.MethodPost,
-		Path: "/libraries/{id}/hide", Summary: "Archive a library's duplicate cards", Tags: []string{"Libraries"},
+		Path: "/libraries/{id}/hide", Summary: "Archive a library's duplicates and apply its rules", Tags: []string{"Libraries"},
 		Description: "Queues a job that archives, by the library's settings, every duplicate but the one duplicate_keep picks, " +
-			"and records why. Cards it archived on an earlier run that are no longer duplicates are unarchived. Cards the owner archived are left alone. Its progress counts each.",
+			"applies the rules that cover the library, and records why. Cards it archived on an earlier run that are no longer duplicates " +
+			"or no longer match their rule are unarchived. Cards the owner archived are left alone. Its progress counts each.",
 		DefaultStatus: http.StatusAccepted},
 		func(ctx context.Context, in *hideIn) (*jobResp, error) {
 			if err := s.libraryExists(ctx, in.ID); err != nil {

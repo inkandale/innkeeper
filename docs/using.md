@@ -157,16 +157,17 @@ default in `PATCH /settings`. To leave weak cards out, filter by score.
 
 "Hide now", `POST /libraries/{id}/hide`, or the `hide_cards` MCP tool runs a
 job that archives what the settings and the library's rules pick, and records
-why: `duplicate`, or `rule:<id>`. A later
-run unarchives the cards it hid that are no longer duplicates. It never
+why: `duplicate`, or `rule:<id>`. A later run unarchives the cards it hid
+that are no longer duplicates or no longer match their rule. It never
 touches a card you archived yourself, and archiving or unarchiving a card by
 hand clears its reason. An unarchived duplicate can be hidden again by the
 next run.
 
 In a library with `duplicates` on or a rule with work there, an import that
 adds or changes cards runs the same job when it finishes, so cards from a
-second source don't sit beside their copies and new cards meet the rules. If the settings can't run, the import's log says why. Moving
-cards runs it in the libraries they left and the one they joined.
+second source don't sit beside their copies and new cards meet the rules.
+If the settings can't run, the import's log says why. Moving cards runs it
+in the libraries they left and the one they joined.
 
 **Purging** deletes for good. Select cards, such as archived ones scoring
 under 30, and use Delete…, typing how many there are. A card pushed to an
@@ -188,13 +189,14 @@ the libraries it covers: all of them, new ones included, or a chosen list.
 
 | Action | Keeps | Gives back |
 |---|---|---|
-| Archive | matching cards archived, with the rule as the reason | cards that stop matching, which the enrich sweep then scores again |
+| Archive | matching cards archived, with the rule as the reason | cards that stop matching, which the enrich sweep then sends to the plugins that haven't scored them |
 | Collect | matching cards in a collection of the one library it covers | cards it added that stop matching |
 
-A saved search can filter on anything search can, tags included. A rule
-never gives back what you did by hand: a card you archived, or a card you put
-in the collection, stays. A card you unarchive or take out of the collection
-that still matches comes back at the next run.
+A saved search can filter on anything the Cards page filters on, tags
+included, but not the search text. A rule never gives back what you did by
+hand: a card you archived, or a card you put in the collection, stays. A
+card you unarchive or take out of the collection that still matches comes
+back at the next run.
 
 A new rule starts off. Turning one on, or saving one that's on, shows what it
 would change, library by library, and changes nothing until you confirm
@@ -202,10 +204,16 @@ would change, library by library, and changes nothing until you confirm
 whenever a rule or its saved search changes, and after imports and moves. A
 rule's action and collection can't change; make a new rule.
 
-Archive rules also order enrich plugins. Each plugin has a cost, and an
-instance waits on a card while a cheaper instance that an archive rule reads,
-and that updates cards as they change, hasn't scored it. A free check can
-then archive junk before a paid model sees it. A run you start yourself never
+Rules also apply to a card when an instance a rule reads answers it. A rule
+on tags or names doesn't catch a hand edit until the next import, move, or
+Hide now.
+
+Archive rules also order enrich plugins by their `enrich_cost` (see
+[Enrich order and saved searches](protocol.md#enrich-order-and-saved-searches)).
+An instance waits on a card while a cheaper instance hasn't answered it, if
+an enabled archive rule that covers the card's library reads that instance
+and it updates cards as they change. A free check can then archive junk
+before a paid model sees it. A run you start yourself never
 waits.
 
 Archiving a card, by hand, as a duplicate, or by a rule, deletes its

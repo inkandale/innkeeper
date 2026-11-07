@@ -540,8 +540,8 @@ var tools = []tool{
 		func(ctx context.Context, c caller, in updateLibrarySettingsIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "PATCH", fmt.Sprintf("/libraries/%d/settings", in.Library), in.Settings)
 		}),
-	def("hide_cards", "Archive a library's duplicates but the one duplicate_keep picks, "+
-		"recording why; cards hidden before that are no longer duplicates come back. Cards the owner archived are left alone. Starts a job.", tier.Write,
+	def("hide_cards", "Archive a library's duplicates but the one duplicate_keep picks, and the cards its archive rules match, "+
+		"recording why; cards hidden before that are no longer duplicates or no longer match their rule come back. Cards the owner archived are left alone. Starts a job.", tier.Write,
 		func(ctx context.Context, c caller, in librarySettingsIn) (*sdk.CallToolResult, error) {
 			return c.call(ctx, "POST", fmt.Sprintf("/libraries/%d/hide", in.Library), nil)
 		}),

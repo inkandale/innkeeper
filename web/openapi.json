@@ -11710,7 +11710,7 @@
     },
     "/libraries/{id}/hide": {
       "post": {
-        "description": "Queues a job that archives, by the library's settings, every duplicate but the one duplicate_keep picks, and records why. Cards it archived on an earlier run that are no longer duplicates are unarchived. Cards the owner archived are left alone. Its progress counts each.",
+        "description": "Queues a job that archives, by the library's settings, every duplicate but the one duplicate_keep picks, applies the rules that cover the library, and records why. Cards it archived on an earlier run that are no longer duplicates or no longer match their rule are unarchived. Cards the owner archived are left alone. Its progress counts each.",
         "operationId": "hide-cards",
         "parameters": [
           {
@@ -11745,7 +11745,7 @@
             "description": "Error"
           }
         },
-        "summary": "Archive a library's duplicate cards",
+        "summary": "Archive a library's duplicates and apply its rules",
         "tags": [
           "Libraries"
         ]

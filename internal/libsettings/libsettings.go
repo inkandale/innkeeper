@@ -266,8 +266,8 @@ func (s *Settings) payload(ctx context.Context, lib int64) (bulk.HidePayload, er
 	return p, err
 }
 
-// EnqueueHide queues the hide job for library lib when its settings hide
-// duplicates, so cards that just arrived don't sit beside their copies.
+// EnqueueHide queues the hide job for library lib when it hides duplicates
+// or has rule work, so cards that just arrived meet both.
 // It joins a hide job already queued, so a run of arrivals queues one.
 func (s *Settings) EnqueueHide(ctx context.Context, q *jobs.Queue, lib int64) error {
 	// The caller's change has committed, so a client leaving mustn't stop the job.

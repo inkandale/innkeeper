@@ -44,7 +44,8 @@ export function Rules() {
       <h1>Rules</h1>
       <p className="muted">
         A rule keeps a saved search's cards archived or in a collection, and gives back the ones that stop matching. It never
-        undoes what you did by hand. Add one from Saved searches.
+        gives back what you archived or collected by hand, and a card you un-hide that still matches comes back at the next run.
+        Add one from Saved searches.
       </p>
       {list.error && <p className="error">{list.error.message}</p>}
       {list.data?.length === 0 && <p>No rules yet.</p>}

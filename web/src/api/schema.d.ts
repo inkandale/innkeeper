@@ -1717,8 +1717,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Archive a library's duplicate cards
-         * @description Queues a job that archives, by the library's settings, every duplicate but the one duplicate_keep picks, and records why. Cards it archived on an earlier run that are no longer duplicates are unarchived. Cards the owner archived are left alone. Its progress counts each.
+         * Archive a library's duplicates and apply its rules
+         * @description Queues a job that archives, by the library's settings, every duplicate but the one duplicate_keep picks, applies the rules that cover the library, and records why. Cards it archived on an earlier run that are no longer duplicates or no longer match their rule are unarchived. Cards the owner archived are left alone. Its progress counts each.
          */
         post: operations["hide-cards"];
         delete?: never;

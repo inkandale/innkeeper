@@ -71,7 +71,7 @@ var kindLabels = map[string]string{
 	bulk.ExportKind:            "Export cards",
 	bulk.DeleteLibraryKind:     "Delete library",
 	bulk.PurgeKind:             "Purge cards",
-	bulk.HideKind:              "Hide duplicates",
+	bulk.HideKind:              "Hide cards",
 	targets.PushKind:           "Push to app",
 	targets.ScanKind:           "Check apps for changes",
 	targets.ReconcileKind:      "Sync app",

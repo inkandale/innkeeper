@@ -117,6 +117,17 @@ func (l *Library) RecordEnrichFailures(ctx context.Context, instance int64, revs
 	return nil
 }
 
+// noHeadVector returns a WHERE clause, empty without pgvector, that keeps
+// card c only if instance $1 has no vector for its head revision.
+func (l *Library) noHeadVector(ctx context.Context) (string, error) {
+	vectors, err := l.HasVectors(ctx)
+	if err != nil || !vectors {
+		return "", err
+	}
+	return ` AND NOT EXISTS (SELECT 1 FROM card_embedding v
+		WHERE v.card_id = c.id AND v.instance_id = $1 AND v.revision_id = c.head_revision_id)`, nil
+}
+
 // failureRetry is how long a recorded failure suppresses a card: a failing
 // card is retried once a day, so failures can't fill the sweep window forever.
 const failureRetry = 24 * time.Hour
@@ -129,14 +140,9 @@ const failureRetry = 24 * time.Hour
 // gets slow, index card_revision(created_at) and card(restored_at) and split
 // the greatest() filter into a UNION of the two indexed conditions.
 func (l *Library) ChangedUnenriched(ctx context.Context, instance int64, since time.Time, limit int) ([]int64, error) {
-	vectors, err := l.HasVectors(ctx)
+	noVector, err := l.noHeadVector(ctx)
 	if err != nil {
 		return nil, err
-	}
-	noVector := ""
-	if vectors {
-		noVector = ` AND NOT EXISTS (SELECT 1 FROM card_embedding v
-			WHERE v.card_id = c.id AND v.instance_id = $1 AND v.revision_id = c.head_revision_id)`
 	}
 	rows, err := l.pool.Query(ctx, `SELECT c.id FROM card c JOIN card_revision r ON r.id = c.head_revision_id
 		WHERE c.archived_at IS NULL AND greatest(r.created_at, c.restored_at) > $2
@@ -149,16 +155,20 @@ func (l *Library) ChangedUnenriched(ctx context.Context, instance int64, since t
 	return pgx.CollectRows(rows, pgx.RowTo[int64])
 }
 
-// Unanswered returns which of cardIDs instance has neither a value nor a
+// Unanswered returns which of cardIDs instance has no value, vector or
 // recorded failure for at their head revision, in ID order. Only cards
 // changed after since count, as ChangedUnenriched finds them, so a card the
 // instance's sweep never reaches doesn't wait for it. A failure counts
 // however old, so a card a gate keeps failing on stops waiting.
 func (l *Library) Unanswered(ctx context.Context, instance int64, since time.Time, cardIDs []int64) ([]int64, error) {
+	noVector, err := l.noHeadVector(ctx)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := l.pool.Query(ctx, `SELECT c.id FROM card c JOIN card_revision r ON r.id = c.head_revision_id
 		WHERE c.id = ANY($2) AND greatest(r.created_at, c.restored_at) > $3
 		AND NOT EXISTS (SELECT 1 FROM enrichment e WHERE e.card_id = c.id AND e.instance_id = $1 AND e.revision_id = c.head_revision_id)
-		AND NOT EXISTS (SELECT 1 FROM enrich_failure f WHERE f.instance_id = $1 AND f.revision_id = c.head_revision_id)
+		AND NOT EXISTS (SELECT 1 FROM enrich_failure f WHERE f.instance_id = $1 AND f.revision_id = c.head_revision_id)`+noVector+`
 		ORDER BY c.id`, instance, cardIDs, since)
 	if err != nil {
 		return nil, fmt.Errorf("list cards instance %d hasn't answered: %w", instance, err)

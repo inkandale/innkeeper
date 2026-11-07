@@ -271,6 +271,18 @@ func TestUnansweredCountsAFailureAsAnswered(t *testing.T) {
 	}
 }
 
+func TestUnansweredCountsAVectorAtHeadAsAnswered(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	inst := newInstanceRow(t, lib)
+	embedded, _ := newCard(t, lib, "embedded", `{"name": "Embedded"}`)
+	open, _ := newCard(t, lib, "open", `{"name": "Open"}`)
+	embedCards(t, lib, inst, map[int64][]float32{embedded: {1, 0}})
+	if got, err := lib.Unanswered(ctx, inst, time.Time{}, []int64{embedded, open}); err != nil || !slices.Equal(got, []int64{open}) {
+		t.Fatalf("unanswered = %v, %v", got, err)
+	}
+}
+
 func TestCardLookupsForTheGate(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()

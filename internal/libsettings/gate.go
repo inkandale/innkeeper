@@ -18,10 +18,9 @@ import (
 // Gate is the enrich.Gate. An instance gates a library when an enabled
 // archive rule covering it reads the instance and the instance runs as cards
 // change; a card there that the gate's sweep will reach waits for each gate
-// cheaper than the instance it's sent to, until the gate has a value or a
-// failure for its head revision. An
-// instance that runs only when the owner starts it gates nothing, so no card
-// waits for it forever.
+// cheaper than the instance it's sent to, until the gate has a value, vector
+// or failure for its head revision. An instance that runs only when the
+// owner starts it gates nothing, so no card waits for it forever.
 type Gate struct {
 	Settings *Settings
 	Queue    *jobs.Queue

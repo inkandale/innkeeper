@@ -17,6 +17,7 @@ import (
 // Operations whose tier isn't what their method suggests.
 var tierExceptions = map[string]tier.Tier{
 	"search-cards":        tier.Read,
+	"preview-rule":        tier.Read,
 	"search-lorebooks":    tier.Read,
 	"search-cards-legacy": tier.Read,
 	"check-binding":       tier.Read,

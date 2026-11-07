@@ -256,3 +256,33 @@ func TestRemovingAPluginsDataGivesBackWhatItsRulesDid(t *testing.T) {
 	e.call("DELETE", "/plugins/junky/data", nil, 204, nil)
 	eventually(t, "gave the junk back", func() bool { return e.archivedReason(card) == "-" })
 }
+
+func TestRulePreviewLeavesOutGiveBackAnotherArchiveRuleHolds(t *testing.T) {
+	e := newEnv(t)
+	startHide(e)
+	card := e.createCard(`{"name": "Junk one"}`).ID
+	first := e.putRule(e.newRule("First", map[string]any{"name": "junk"}, map[string]any{"action": "archive", "all_libraries": true, "enabled": false}), enable)
+	eventually(t, "archived the card", func() bool { return e.archivedReason(card) == first.Reason() })
+	e.putRule(e.newRule("Second", map[string]any{"name": "junk"}, map[string]any{"action": "archive", "all_libraries": true, "enabled": false}), enable)
+
+	var none savedSearchItem
+	e.call("POST", "/saved-searches", map[string]any{"name": "None", "filter": map[string]any{"name": "zzz"}}, 201, &none)
+	spec := first.RuleSpec
+	spec.SavedSearchID = none.ID
+	var out []rulePreview
+	e.call("POST", "/rules/preview", map[string]any{"id": first.ID, "rule": spec}, 200, &out)
+	if len(out) != 1 || out[0].GiveBack.Total != 0 {
+		t.Fatalf("preview %+v", out)
+	}
+}
+
+func TestRulePreviewRefusesWhatASaveRefuses(t *testing.T) {
+	e := newEnv(t)
+	r := e.newRule("Junk", map[string]any{"name": "junk"}, map[string]any{"action": "archive", "all_libraries": true, "enabled": false})
+	spec := r.RuleSpec
+	spec.AllLibraries, spec.Libraries = false, []int64{999}
+	e.call("POST", "/rules/preview", map[string]any{"rule": spec}, 422, nil)
+	spec = r.RuleSpec
+	spec.Action, spec.CollectionID = "collect", nil
+	e.call("POST", "/rules/preview", map[string]any{"id": r.ID, "rule": spec}, 422, nil)
+}

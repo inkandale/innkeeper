@@ -13,9 +13,13 @@ import (
 )
 
 // ruleItem is a rule and what it has done.
+// It copies library.Rule's fields rather than embed it: huma can't add $schema
+// beside an embedded type that has methods.
 type ruleItem struct {
-	library.Rule
-	Affected []library.RuleCount `json:"affected" doc:"How many cards it has archived or collected, by library."`
+	library.RuleSpec
+	ID          int64               `json:"id"`
+	SavedSearch string              `json:"saved_search" doc:"Its saved search's name."`
+	Affected    []library.RuleCount `json:"affected" doc:"How many cards it has archived or collected, by library."`
 }
 
 type rulesOut struct{ Body []ruleItem }
@@ -113,7 +117,7 @@ func (s *Server) ruleItems(ctx context.Context, rules []library.Rule) ([]ruleIte
 	}
 	out := make([]ruleItem, len(rules))
 	for i, r := range rules {
-		out[i] = ruleItem{Rule: r, Affected: []library.RuleCount{}}
+		out[i] = ruleItem{RuleSpec: r.RuleSpec, ID: r.ID, SavedSearch: r.SavedSearch, Affected: []library.RuleCount{}}
 		for _, c := range counts {
 			if c.Rule == r.ID {
 				out[i].Affected = append(out[i].Affected, c)

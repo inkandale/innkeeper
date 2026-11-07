@@ -12,6 +12,8 @@ import (
 	"github.com/inkandale/innkeeper/internal/bulk"
 	"github.com/inkandale/innkeeper/internal/jobs"
 	"github.com/inkandale/innkeeper/internal/library"
+	"github.com/inkandale/innkeeper/internal/plugins"
+	"github.com/inkandale/innkeeper/protocol"
 )
 
 // startHide runs the hide job until the test ends.
@@ -108,7 +110,7 @@ func TestRulesRefuseAWrongScopeOrActionAndGuardTheirSearch(t *testing.T) {
 	e.call("POST", "/collections", map[string]any{"name": "Elves"}, 201, &col)
 	var ss savedSearchItem
 	e.call("POST", "/saved-searches", map[string]any{"name": "Elves", "filter": map[string]any{"tag": "elf"}}, 201, &ss)
-	collect := map[string]any{"name": "Collect elves", "saved_search_id": ss.ID, "action": "collect", "collection_id": col.ID, "all_libraries": true}
+	collect := map[string]any{"name": "Collect elves", "saved_search_id": ss.ID, "action": "collect", "collection_id": col.ID, "all_libraries": true, "enabled": false}
 	e.call("POST", "/rules", collect, 400, nil)
 	collect["all_libraries"], collect["libraries"] = false, []int64{1}
 	var r ruleItem
@@ -117,6 +119,8 @@ func TestRulesRefuseAWrongScopeOrActionAndGuardTheirSearch(t *testing.T) {
 	spec := r.RuleSpec
 	spec.Action, spec.CollectionID, spec.AllLibraries = "archive", nil, true
 	e.call("PUT", fmt.Sprintf("/rules/%d", r.ID), spec, 400, nil)
+	e.call("PUT", fmt.Sprintf("/rules/%d", r.ID), map[string]any{"name": "Collect elves", "saved_search_id": ss.ID,
+		"action": "collect", "collection_id": col.ID, "libraries": []int64{1}, "all_libraries": false}, 422, nil)
 
 	res := e.call("DELETE", fmt.Sprintf("/saved-searches/%d", ss.ID), nil, 409, nil)
 	if !strings.Contains(string(res.Body), "Collect elves") {
@@ -133,7 +137,7 @@ func TestDeletingARuleGivesBackWhatItDid(t *testing.T) {
 	e := newEnv(t)
 	startHide(e)
 	junk := e.createCard(`{"name": "Junk", "tags": ["junk"]}`).ID
-	r := e.putRule(e.newRule("Tagged junk", map[string]any{"tag": "junk"}, map[string]any{"action": "archive", "all_libraries": true}), enable)
+	r := e.putRule(e.newRule("Tagged junk", map[string]any{"tag": "junk"}, map[string]any{"action": "archive", "all_libraries": true, "enabled": false}), enable)
 	eventually(t, "archived the junk", func() bool { return e.archivedReason(junk) == r.Reason() })
 	e.call("DELETE", fmt.Sprintf("/rules/%d", r.ID), nil, 204, nil)
 	eventually(t, "gave the junk back", func() bool { return e.archivedReason(junk) == "-" })
@@ -146,7 +150,7 @@ func TestRulePreviewCountsWhatTheJobThenDoesAndChangesNothing(t *testing.T) {
 	e.createCard(`{"name": "Keeper"}`)
 	owned := e.createCard(`{"name": "Junk owned"}`).ID
 	e.call("PUT", fmt.Sprintf("/cards/%d/archived", owned), map[string]any{"archived": true}, 204, nil)
-	r := e.newRule("Junk", map[string]any{"name": "junk"}, map[string]any{"action": "archive", "all_libraries": true})
+	r := e.newRule("Junk", map[string]any{"name": "junk"}, map[string]any{"action": "archive", "all_libraries": true, "enabled": false})
 
 	preview := func(spec library.RuleSpec) rulePreview {
 		t.Helper()
@@ -193,7 +197,7 @@ func TestRulePreviewCountsWhatTheJobThenDoesAndChangesNothing(t *testing.T) {
 func TestRulePreviewLeavesOutCardsAnEarlierArchiveRuleTakes(t *testing.T) {
 	e := newEnv(t)
 	e.createCard(`{"name": "Junk one"}`)
-	first := e.newRule("First", map[string]any{"name": "junk"}, map[string]any{"action": "archive", "all_libraries": true})
+	first := e.newRule("First", map[string]any{"name": "junk"}, map[string]any{"action": "archive", "all_libraries": true, "enabled": false})
 	e.putRule(first, enable)
 	var ss savedSearchItem
 	e.call("POST", "/saved-searches", map[string]any{"name": "Second", "filter": map[string]any{"name": "junk"}}, 201, &ss)
@@ -203,4 +207,52 @@ func TestRulePreviewLeavesOutCardsAnEarlierArchiveRuleTakes(t *testing.T) {
 	if len(out) != 1 || out[0].Apply.Total != 0 {
 		t.Fatalf("preview %+v", out)
 	}
+}
+
+// Reason is the archived_reason of the cards r archives.
+func (r ruleItem) Reason() string { return library.Rule{ID: r.ID}.Reason() }
+
+// shippedRuleArchives installs plugin "junky", which ships a search for junk,
+// puts an archive rule on its instance's copy, and returns the instance and
+// the card the rule archived.
+func shippedRuleArchives(e *testEnv) (inst, card int64) {
+	e.t.Helper()
+	junky := *e.manifests["fake"]
+	junky.Name = "junky"
+	junky.Command = []string{junky.Command[0], "-name=junky"}
+	junky.Searches = map[string]protocol.Search{"junk": {Name: "Junk", Filter: map[string]any{"name": "junk"}}}
+	e.manifests["junky"] = &junky
+	inst, err := e.s.Registry.CreateInstance(context.Background(), plugins.NewInstance{Plugin: "junky"})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	card = e.createCard(`{"name": "Junk"}`).ID
+	var searches []savedSearchItem
+	e.call("GET", "/saved-searches", nil, 200, &searches)
+	if len(searches) != 1 || searches[0].InstanceID == nil || *searches[0].InstanceID != inst {
+		e.t.Fatalf("searches = %+v", searches)
+	}
+	var r ruleItem
+	e.call("POST", "/rules", map[string]any{"name": "Junk", "saved_search_id": searches[0].ID, "action": "archive",
+		"all_libraries": true, "enabled": false}, 201, &r)
+	r = e.putRule(r, enable)
+	eventually(e.t, "archived the junk", func() bool { return e.archivedReason(card) == r.Reason() })
+	return inst, card
+}
+
+func TestDeletingAnInstanceGivesBackWhatItsRulesDid(t *testing.T) {
+	e := newEnv(t)
+	startHide(e)
+	inst, card := shippedRuleArchives(e)
+	e.call("DELETE", fmt.Sprintf("/instances/%d", inst), nil, 204, nil)
+	eventually(t, "gave the junk back", func() bool { return e.archivedReason(card) == "-" })
+}
+
+func TestRemovingAPluginsDataGivesBackWhatItsRulesDid(t *testing.T) {
+	e := newEnv(t)
+	startHide(e)
+	_, card := shippedRuleArchives(e)
+	delete(e.manifests, "junky") // uninstalled
+	e.call("DELETE", "/plugins/junky/data", nil, 204, nil)
+	eventually(t, "gave the junk back", func() bool { return e.archivedReason(card) == "-" })
 }

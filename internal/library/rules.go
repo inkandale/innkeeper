@@ -26,7 +26,7 @@ type RuleSpec struct {
 	CollectionID  *int64  `json:"collection_id,omitempty" doc:"For collect: the collection matching cards are kept in. The rule must cover that collection's library alone. Can't change once the rule exists."`
 	AllLibraries  bool    `json:"all_libraries" doc:"Covers every library, including ones made later; otherwise only libraries."`
 	Libraries     []int64 `json:"libraries,omitempty" doc:"With all_libraries false: the libraries it covers."`
-	Enabled       bool    `json:"enabled" required:"false" doc:"A new rule starts disabled; missing means false."`
+	Enabled       bool    `json:"enabled" doc:"Ignored on create; a new rule starts disabled."`
 }
 
 // Rule is a saved search with an action the hide job keeps applied.

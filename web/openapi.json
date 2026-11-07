@@ -5203,7 +5203,7 @@
             "type": "integer"
           },
           "enabled": {
-            "description": "A new rule starts disabled; missing means false.",
+            "description": "Ignored on create; a new rule starts disabled.",
             "type": "boolean"
           },
           "id": {
@@ -5235,13 +5235,14 @@
           }
         },
         "required": [
-          "affected",
           "id",
           "saved_search",
+          "affected",
           "name",
           "saved_search_id",
           "action",
-          "all_libraries"
+          "all_libraries",
+          "enabled"
         ],
         "type": "object"
       },
@@ -5315,7 +5316,7 @@
             "type": "integer"
           },
           "enabled": {
-            "description": "A new rule starts disabled; missing means false.",
+            "description": "Ignored on create; a new rule starts disabled.",
             "type": "boolean"
           },
           "libraries": {
@@ -5342,7 +5343,8 @@
           "name",
           "saved_search_id",
           "action",
-          "all_libraries"
+          "all_libraries",
+          "enabled"
         ],
         "type": "object"
       },
@@ -13313,7 +13315,7 @@
     },
     "/plugins/{name}/data": {
       "delete": {
-        "description": "Deletes the plugin's instances, database schema, and role. This can't be undone.",
+        "description": "Deletes the plugin's instances, database schema, and role, and the saved searches it shipped with their rules, which give back what they did. This can't be undone.",
         "operationId": "remove-plugin-data",
         "parameters": [
           {

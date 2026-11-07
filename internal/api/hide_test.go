@@ -169,7 +169,7 @@ func TestHideRunsWhereARuleHasWorkThoughDuplicatesAreOff(t *testing.T) {
 	var ss savedSearchItem
 	e.call("POST", "/saved-searches", map[string]any{"name": "Junk", "filter": map[string]any{"name": "junk"}}, 201, &ss)
 	var r ruleItem
-	e.call("POST", "/rules", map[string]any{"name": "Junk", "saved_search_id": ss.ID, "action": "archive", "all_libraries": true}, 201, &r)
+	e.call("POST", "/rules", map[string]any{"name": "Junk", "saved_search_id": ss.ID, "action": "archive", "all_libraries": true, "enabled": false}, 201, &r)
 	e.call("POST", "/libraries/1/hide", nil, 400, nil) // disabled
 	spec := r.RuleSpec
 	spec.Enabled = true

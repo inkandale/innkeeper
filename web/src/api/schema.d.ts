@@ -2306,7 +2306,7 @@ export interface paths {
         post?: never;
         /**
          * Remove an uninstalled plugin's data
-         * @description Deletes the plugin's instances, database schema, and role. This can't be undone.
+         * @description Deletes the plugin's instances, database schema, and role, and the saved searches it shipped with their rules, which give back what they did. This can't be undone.
          */
         delete: operations["remove-plugin-data"];
         options?: never;
@@ -4742,8 +4742,8 @@ export interface components {
              * @description For collect: the collection matching cards are kept in. The rule must cover that collection's library alone. Can't change once the rule exists.
              */
             collection_id?: number;
-            /** @description A new rule starts disabled; missing means false. */
-            enabled?: boolean;
+            /** @description Ignored on create; a new rule starts disabled. */
+            enabled: boolean;
             /** Format: int64 */
             id: number;
             /** @description With all_libraries false: the libraries it covers. */
@@ -4786,8 +4786,8 @@ export interface components {
              * @description For collect: the collection matching cards are kept in. The rule must cover that collection's library alone. Can't change once the rule exists.
              */
             collection_id?: number;
-            /** @description A new rule starts disabled; missing means false. */
-            enabled?: boolean;
+            /** @description Ignored on create; a new rule starts disabled. */
+            enabled: boolean;
             /** @description With all_libraries false: the libraries it covers. */
             libraries?: number[] | null;
             name: string;

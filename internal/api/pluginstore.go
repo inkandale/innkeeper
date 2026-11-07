@@ -9,6 +9,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/inkandale/innkeeper/internal/importer"
+	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/plugins"
 	"github.com/inkandale/innkeeper/internal/tier"
 	"github.com/inkandale/innkeeper/protocol"
@@ -140,9 +141,26 @@ func (s *Server) pluginStoreRoutes(api huma.API) {
 
 	huma.Register(api, huma.Operation{Metadata: destructive, OperationID: "remove-plugin-data", Method: http.MethodDelete,
 		Path: "/plugins/{name}/data", Summary: "Remove an uninstalled plugin's data", Tags: tags, DefaultStatus: http.StatusNoContent,
-		Description: "Deletes the plugin's instances, database schema, and role. This can't be undone."},
+		Description: "Deletes the plugin's instances, database schema, and role, and the saved searches it shipped with their rules, " +
+			"which give back what they did. This can't be undone."},
 		func(ctx context.Context, in *pluginNameIn) (*struct{}, error) {
-			return nil, s.fail(s.Registry.RemoveData(ctx, in.Name))
+			// Read first: the instances' saved searches, and their rules, go with them.
+			insts, err := s.Registry.ListInstances(ctx)
+			if err != nil {
+				return nil, s.fail(err)
+			}
+			var rules []library.Rule
+			for _, inst := range insts {
+				if inst.Plugin != in.Name {
+					continue
+				}
+				some, err := s.Lib.RulesOfInstance(ctx, inst.ID)
+				if err != nil {
+					return nil, s.fail(err)
+				}
+				rules = append(rules, some...)
+			}
+			return nil, s.fail(s.dropRules(ctx, rules, func() error { return s.Registry.RemoveData(ctx, in.Name) }))
 		})
 }
 

@@ -42,6 +42,10 @@ export type CardQuery = {
   sharesSource: boolean;
   /** all names the sections, as sectionOf names them, whose included values must all match rather than any. */
   all: string[];
+  /** saved is the saved search the page opened; its filter ANDs with the page's terms. */
+  saved?: number;
+  /** savedFilter is saved's filter once loaded. It isn't in the URL. */
+  savedFilter?: Filter;
 };
 
 export const defaultSort = (text: string): Sort => (text ? "relevance" : "updated");
@@ -137,6 +141,7 @@ export function parseQuery(p: URLSearchParams, library: number): CardQuery {
   const sort = p.get("sort") as Sort;
   const page = Number(p.get("page"));
   const size = Number(p.get("size"));
+  const saved = Number(p.get("saved"));
   return {
     library: libraryParam(p) ?? library,
     text,
@@ -149,6 +154,7 @@ export function parseQuery(p: URLSearchParams, library: number): CardQuery {
     view: p.get("view") === "list" ? "list" : "grid",
     sharesSource: p.get("shared") === "1",
     all: p.getAll("all").filter(matchesAll),
+    ...(Number.isInteger(saved) && saved > 0 && { saved }),
   };
 }
 
@@ -165,6 +171,7 @@ export function toParams(q: CardQuery): URLSearchParams {
   if (q.view !== "grid") p.set("view", q.view);
   if (q.sharesSource) p.set("shared", "1");
   for (const s of q.all) p.append("all", s);
+  if (q.saved) p.set("saved", String(q.saved));
   p.set("library", String(q.library));
   return p;
 }
@@ -229,6 +236,11 @@ export function filterFor(terms: Term[], sharesSource = false, all: string[] = [
   return parts.length ? { and: parts } : undefined;
 }
 
+/** both ANDs a saved search's filter with the page's own. */
+export function both(saved: Filter | undefined, own: Filter | undefined): Filter | undefined {
+  return saved && own ? { and: [saved, own] } : (saved ?? own);
+}
+
 /** toSearch is the POST /api/search body for the state. scores adds each card's enrichment values, which needs a score instance. */
 export function toSearch(q: CardQuery, scores = false): Search {
   return {
@@ -238,7 +250,7 @@ export function toSearch(q: CardQuery, scores = false): Search {
     // Semantic search sorts by similarity alone.
     sort: q.semantic ? "relevance" : q.sort,
     ...(q.reverse && !q.semantic && { reverse: true }),
-    filter: filterFor(q.terms, q.sharesSource, q.all),
+    filter: both(q.savedFilter, filterFor(q.terms, q.sharesSource, q.all)),
     fields: ["name", "avatar"],
     include: ["tags", "lorebooks", "targets", ...(scores ? ["score"] : [])],
     page: { size: q.size, number: q.page },
@@ -255,7 +267,7 @@ const facetOf = { target: "targets", tag: "tags", source: "sources", collection:
 /** othersFilter is q's filter without the sections' terms, but for their included values when they must all match, as each narrows the counts. */
 function othersFilter(q: CardQuery, ...sections: string[]): Filter | undefined {
   const kept = q.terms.filter((t) => !sections.includes(sectionOf(t)) || (q.all.includes(sectionOf(t)) && !t.not));
-  return filterFor(kept, q.sharesSource, q.all);
+  return both(q.savedFilter, filterFor(kept, q.sharesSource, q.all));
 }
 
 /** countText is the text facet counts search by: none for a semantic search, which would embed it once per count. */
@@ -290,7 +302,7 @@ export function stateCountSearch(q: CardQuery): Search {
     library: q.library,
     text: countText(q),
     // The states facet narrows to the selected targets itself, so they leave the filter.
-    filter: filterFor(q.terms.filter((t) => t.kind !== "state" && (t.kind !== "target" || t.not)), q.sharesSource, q.all),
+    filter: both(q.savedFilter, filterFor(q.terms.filter((t) => t.kind !== "state" && (t.kind !== "target" || t.not)), q.sharesSource, q.all)),
     facets: [targets.length ? `states:${targets.join(",")}` : "states"],
     facets_only: true,
   };

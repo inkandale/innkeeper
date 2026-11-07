@@ -309,3 +309,13 @@ test("creator and lorebook terms survive the URL and OR within their section", (
 test("a lorebook term must name an ID", () => {
   expect(parseQuery(new URLSearchParams("f=lorebook:forge"), 1).terms).toEqual([]);
 });
+
+test("a saved search rides in the URL and ANDs with the page's own filter", () => {
+  const q = parseQuery(new URLSearchParams("saved=7&f=tag:elf"), 1);
+  expect(q.saved).toBe(7);
+  expect(toParams(q).get("saved")).toBe("7");
+  expect(toSearch({ ...q, savedFilter: { tag: "junk" } }).filter).toEqual({ and: [{ tag: "junk" }, { and: [{ tag: "elf" }] }] });
+  expect(toSearch({ ...base, savedFilter: { tag: "junk" } }).filter).toEqual({ tag: "junk" });
+  expect(countSearch({ ...q, savedFilter: { tag: "junk" } }, "tag").filter).toEqual({ tag: "junk" });
+  expect(parseQuery(new URLSearchParams("saved=x"), 1).saved).toBeUndefined();
+});

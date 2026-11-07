@@ -70,6 +70,11 @@ beforeEach(() => {
     vi.fn(async (req: Request) => {
       const path = new URL(req.url).pathname;
       if (path === "/api/libraries") return new Response(JSON.stringify(libraryIds.map((id) => ({ id, name: `Library ${id}`, cards: 0, lorebooks: 0, created_at: "2026-10-01T00:00:00Z" }))), { headers: { "Content-Type": "application/json" } });
+      if (path === "/api/saved-searches" && req.method === "POST") {
+        posts.push({ path, body: await req.json() });
+        return json({ id: 7, name: "Elves", filter: { tag: "elf" }, sort: "name", created_at: "" });
+      }
+      if (path === "/api/saved-searches/7") return json({ id: 7, name: "Junk", filter: { tag: "junk" }, sort: "", created_at: "" });
       if (req.method === "PUT") {
         puts.push({ path, body: await req.json() });
         return new Response(null, { status: 204 });
@@ -1078,4 +1083,25 @@ test("a semantic link waits for settings, so it never searches by words first", 
   expect(searches.filter((s) => s.fields)).toEqual([]);
   open();
   await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ semantic: true, fields: expect.anything() })));
+});
+
+test("Save search saves the filter and sort under a name", async () => {
+  renderCards("/cards?f=tag:elf&sort=name");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Save search" }));
+  await user.type(screen.getByRole("textbox", { name: "Saved search name" }), "Elves");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() =>
+    expect(posts).toContainEqual({ path: "/api/saved-searches", body: { name: "Elves", filter: { and: [{ tag: "elf" }] }, sort: "name" } }),
+  );
+});
+
+test("opening a saved search ANDs its filter with the page's and shows it as a chip", async () => {
+  const { router } = renderCards("/cards?saved=7&f=tag:elf");
+  const user = userEvent.setup();
+  const chip = await screen.findByRole("button", { name: "Close saved search Junk" });
+  const want = JSON.stringify({ and: [{ tag: "junk" }, { and: [{ tag: "elf" }] }] });
+  await waitFor(() => expect(searches.some((s) => JSON.stringify((s as { filter?: unknown }).filter) === want)).toBe(true));
+  await user.click(chip);
+  expect(router.state.location.search).not.toContain("saved=");
 });

@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router";
-import { instancesQuery, collectionsQuery, enrichmentKeysQuery, pluginsQuery, namesQuery, searchQuery, settingsQuery } from "../api/queries";
+import { instancesQuery, collectionsQuery, enrichmentKeysQuery, pluginsQuery, namesQuery, savedSearchQuery, searchQuery, settingsQuery } from "../api/queries";
 import { text } from "../card/draft";
 import { apps } from "../sync/Logo";
 import { stateLabel } from "../sync/sync";
@@ -14,6 +14,7 @@ import { useJobEvents } from "../settings/jobUtil";
 import { Icon } from "../shell/Icon";
 import { useLibrary, withLibrary } from "../shell/library";
 import { Loading } from "../shell/Loading";
+import { SaveSearch } from "./SaveSearch";
 import { SelectionBar } from "./SelectionBar";
 import { LorebookRow, Row, Tile, medals, type Names } from "./Tile";
 import type { components } from "../api/schema";
@@ -76,6 +77,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const Noun = kind === "card" ? "Cards" : "Lorebooks";
   const [params, setParams] = useSearchParams();
   const asked = parseQuery(params, useLibrary());
+  const saved = useQuery({ ...savedSearchQuery(asked.saved ?? 0), enabled: kind === "card" && asked.saved !== undefined });
   const keys = useQuery({ ...enrichmentKeysQuery, enabled: kind === "card" });
   const scored = (keys.data?.scorers?.length ?? 0) > 0;
   const browse = keys.data?.browse ?? [];
@@ -85,9 +87,10 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const settings = useQuery(settingsQuery);
   const embeds = kind === "card" && settings.data?.vector_instance != null && settings.data.vectors_available;
   // A semantic link with no text, or opened after the vector source went away, searches by words.
-  const q = scoredQ.semantic && !(embeds && scoredQ.text) ? { ...scoredQ, semantic: false } : scoredQ;
+  const unsaved = scoredQ.semantic && !(embeds && scoredQ.text) ? { ...scoredQ, semantic: false } : scoredQ;
+  const q: CardQuery = saved.data ? { ...unsaved, savedFilter: saved.data.filter } : unsaved;
   // The selection belongs to one search: paging keeps it, a new search clears it.
-  const key = JSON.stringify([q.library, q.text, q.semantic, q.terms]);
+  const key = JSON.stringify([q.library, q.text, q.semantic, q.terms, q.saved]);
   const [stored, setSel] = useState<Selection>(() => emptySelection(key));
   // Reset rather than hide, so going back to an earlier search doesn't revive its picks.
   if (stored.key !== key) setSel(emptySelection(key));
@@ -115,7 +118,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
     ...searchQuery(kind, body),
     placeholderData: keepPreviousData,
     // Waits for the keys and settings, so the grid doesn't search once without scores or by words and again with them.
-    enabled: kind !== "card" || !(keys.isPending || settings.isPending),
+    enabled: (kind !== "card" || !(keys.isPending || settings.isPending)) && !(kind === "card" && asked.saved !== undefined && saved.isPending),
   });
   const scoreSorts = browse.filter((b) => b.type === "score").map((b): [Sort, string] => [`enrichment:${keyRef(b.instance, b.key)}`, b.label]);
   const sorts: [Sort, string][] = [
@@ -249,7 +252,18 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
               Import {noun}
             </button>
           )}
+          {kind === "card" && <SaveSearch q={q} saved={saved.data} />}
           <div className="chips">
+            {saved.data && (
+              <button
+                className="chip"
+                aria-label={`Close saved search ${saved.data.name}`}
+                onClick={() => go({ ...q, saved: undefined, page: 1 })}
+              >
+                Saved search: {saved.data.name}
+                <Icon name="close" />
+              </button>
+            )}
             {q.terms.map((t) => (
               <button
                 key={`${t.not ? "-" : ""}${t.kind}:${t.value}`}
@@ -274,6 +288,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
           </section>
         )}
         {res.isError && <p className="error">{res.error.message}</p>}
+        {saved.isError && <p className="error">Saved search: {saved.error.message}</p>}
         {scoresOff && <p className="muted">Some score filters or the sort from this link are off: they name no instance or browsable key.</p>}
         {kind === "card" && total > 0 && unscored.length > 0 && (
           <p className="muted">
@@ -281,7 +296,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
             cards, then choose Score.
           </p>
         )}
-        {res.data && total === 0 && !q.text && !q.terms.length && !q.sharesSource ? (
+        {res.data && total === 0 && !q.text && !q.terms.length && !q.sharesSource && !q.saved ? (
           <div className="empty-library">
             <p>No {noun} in this library yet.</p>
             <p>

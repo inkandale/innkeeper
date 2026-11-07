@@ -293,16 +293,17 @@ func (rn *Runner) batch(ctx context.Context, r *jobs.Run, inst pluginhost.Instan
 		return Checked{}, errors.New("none of its cards exist")
 	}
 	skipped := archived
-	waiting, err := rn.hold(ctx, instanceID, p, &revs)
-	if err != nil {
-		return Checked{}, err
-	}
 	if !p.Rescore {
 		all := len(revs)
+		var err error
 		if revs, err = rn.unscored(ctx, instanceID, revs); err != nil {
 			return Checked{}, err
 		}
 		skipped += all - len(revs)
+	}
+	waiting, err := rn.hold(ctx, instanceID, p, &revs)
+	if err != nil {
+		return Checked{}, err
 	}
 	if len(revs) == 0 {
 		return Checked{Failed: len(missing), Skipped: skipped, Waiting: waiting, Warnings: missing}, nil

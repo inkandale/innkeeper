@@ -6,6 +6,7 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 )
 
 func newSavedSearch(t *testing.T, lib *Library, name string, f Filter) int64 {
@@ -261,8 +262,12 @@ func TestUnansweredCountsAFailureAsAnswered(t *testing.T) {
 	if _, err := lib.pool.Exec(ctx, `UPDATE enrich_failure SET failed_at = now() - interval '25 hours'`); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := lib.Unanswered(ctx, inst, []int64{valued, failed, open, stale}); err != nil || !slices.Equal(got, []int64{open, stale}) {
+	if got, err := lib.Unanswered(ctx, inst, time.Time{}, []int64{valued, failed, open, stale}); err != nil || !slices.Equal(got, []int64{open, stale}) {
 		t.Fatalf("unanswered = %v, %v", got, err)
+	}
+	// A card that changed before since is one the instance's sweep never reaches.
+	if got, err := lib.Unanswered(ctx, inst, time.Now().Add(time.Hour), []int64{open}); err != nil || len(got) != 0 {
+		t.Fatalf("unanswered after since = %v, %v", got, err)
 	}
 }
 

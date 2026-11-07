@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"time"
 
 	"github.com/inkandale/innkeeper/internal/bulk"
 	"github.com/inkandale/innkeeper/internal/enrich"
@@ -16,8 +17,9 @@ import (
 
 // Gate is the enrich.Gate. An instance gates a library when an enabled
 // archive rule covering it reads the instance and the instance runs as cards
-// change; a card there waits for each gate cheaper than the instance it's
-// sent to, until the gate has a value or a failure for its head revision. An
+// change; a card there that the gate's sweep will reach waits for each gate
+// cheaper than the instance it's sent to, until the gate has a value or a
+// failure for its head revision. An
 // instance that runs only when the owner starts it gates nothing, so no card
 // waits for it forever.
 type Gate struct {
@@ -30,6 +32,7 @@ type gating struct {
 	insts     []plugins.InstanceInfo
 	cost      map[int64]int
 	auto      map[int64]bool // runs as cards change, so it can gate
+	since     map[int64]time.Time
 	browsable map[string][]library.Scorer
 	rules     []library.Rule // enabled only
 }
@@ -41,12 +44,13 @@ func (g *Gate) load(ctx context.Context) (gating, error) {
 		return gating{}, err
 	}
 	manifests := s.reg.Manifests()
-	cost, auto := map[int64]int{}, map[int64]bool{}
+	cost, auto, since := map[int64]int{}, map[int64]bool{}, map[int64]time.Time{}
 	for _, inst := range insts {
 		if m := manifests[inst.Plugin]; m != nil {
 			cost[inst.ID] = m.EnrichCost
 		}
 		auto[inst.ID] = inst.EnrichOnChange && inst.Usable()
+		since[inst.ID] = inst.EnrichOnChangeSince
 	}
 	browsable, err := s.Browsable(ctx)
 	if err != nil {
@@ -57,7 +61,7 @@ func (g *Gate) load(ctx context.Context) (gating, error) {
 		return gating{}, err
 	}
 	rules = slices.DeleteFunc(rules, func(r library.Rule) bool { return !r.Enabled })
-	return gating{insts, cost, auto, browsable, rules}, nil
+	return gating{insts, cost, auto, since, browsable, rules}, nil
 }
 
 // gates returns the instances cheaper than instance that gate libraryID.
@@ -108,7 +112,7 @@ func (g *Gate) Waiting(ctx context.Context, instance int64, cardIDs []int64) ([]
 	}
 	var waiting []int64
 	for gate, cards := range byGate {
-		pending, err := g.Settings.lib.Unanswered(ctx, gate, cards)
+		pending, err := g.Settings.lib.Unanswered(ctx, gate, gt.since[gate], cards)
 		if err != nil {
 			return nil, fmt.Errorf("find cards instance %d hasn't answered: %w", gate, err)
 		}
@@ -119,9 +123,9 @@ func (g *Gate) Waiting(ctx context.Context, instance int64, cardIDs []int64) ([]
 }
 
 // Answered applies the rules to cardIDs once instance, which an enabled rule
-// reads, has answered them. When instance is a gate, it then queues the
-// cards still unarchived on each costlier instance that runs as cards
-// change; one that didn't wait skips the cards it already scored.
+// reads, has answered them. It then queues the cards still unarchived on
+// each instance that instance gates in their library; one that didn't wait
+// skips the cards it already scored.
 func (g *Gate) Answered(ctx context.Context, instance int64, cardIDs []int64) error {
 	gt, err := g.load(ctx)
 	if err != nil || !gt.reads(instance, func(library.Rule) bool { return true }) {
@@ -149,7 +153,7 @@ func (g *Gate) Answered(ctx context.Context, instance int64, cardIDs []int64) er
 			return fmt.Errorf("apply rules in library %d: %w", l, err)
 		}
 	}
-	if !gt.auto[instance] || !gt.reads(instance, func(r library.Rule) bool { return r.Action == library.RuleArchive }) {
+	if !gt.auto[instance] {
 		return nil
 	}
 	live, err := lib.Unarchived(ctx, cardIDs)
@@ -159,10 +163,13 @@ func (g *Gate) Answered(ctx context.Context, instance int64, cardIDs []int64) er
 	manifests := g.Settings.reg.Manifests()
 	var errs []error
 	for _, x := range gt.insts {
-		if x.ID == instance || !gt.auto[x.ID] || gt.cost[x.ID] <= gt.cost[instance] {
+		gated := slices.DeleteFunc(slices.Clone(live), func(card int64) bool {
+			return !gt.auto[x.ID] || !slices.Contains(gt.gates(x.ID, libs[card]), instance)
+		})
+		if len(gated) == 0 {
 			continue
 		}
-		p := enrich.Payload{CardIDs: live[:min(len(live), enrich.MaxCards(manifests[x.Plugin]))], Wait: true}
+		p := enrich.Payload{CardIDs: gated[:min(len(gated), enrich.MaxCards(manifests[x.Plugin]))], Wait: true}
 		if _, err := g.Queue.EnqueueUnlessQueued(ctx, jobs.Spec{Kind: enrich.Kind, InstanceID: &x.ID, Payload: p}); err != nil {
 			errs = append(errs, fmt.Errorf("queue enrich on instance %d: %w", x.ID, err))
 		}

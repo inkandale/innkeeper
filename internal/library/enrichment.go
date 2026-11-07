@@ -150,13 +150,16 @@ func (l *Library) ChangedUnenriched(ctx context.Context, instance int64, since t
 }
 
 // Unanswered returns which of cardIDs instance has neither a value nor a
-// recorded failure for at their head revision, in ID order. A failure counts
+// recorded failure for at their head revision, in ID order. Only cards
+// changed after since count, as ChangedUnenriched finds them, so a card the
+// instance's sweep never reaches doesn't wait for it. A failure counts
 // however old, so a card a gate keeps failing on stops waiting.
-func (l *Library) Unanswered(ctx context.Context, instance int64, cardIDs []int64) ([]int64, error) {
-	rows, err := l.pool.Query(ctx, `SELECT c.id FROM card c WHERE c.id = ANY($2)
+func (l *Library) Unanswered(ctx context.Context, instance int64, since time.Time, cardIDs []int64) ([]int64, error) {
+	rows, err := l.pool.Query(ctx, `SELECT c.id FROM card c JOIN card_revision r ON r.id = c.head_revision_id
+		WHERE c.id = ANY($2) AND greatest(r.created_at, c.restored_at) > $3
 		AND NOT EXISTS (SELECT 1 FROM enrichment e WHERE e.card_id = c.id AND e.instance_id = $1 AND e.revision_id = c.head_revision_id)
 		AND NOT EXISTS (SELECT 1 FROM enrich_failure f WHERE f.instance_id = $1 AND f.revision_id = c.head_revision_id)
-		ORDER BY c.id`, instance, cardIDs)
+		ORDER BY c.id`, instance, cardIDs, since)
 	if err != nil {
 		return nil, fmt.Errorf("list cards instance %d hasn't answered: %w", instance, err)
 	}

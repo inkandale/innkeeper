@@ -37,9 +37,6 @@ func TestEnrichWaitsForACheaperInstanceAnArchiveRuleReads(t *testing.T) {
 	ctx := context.Background()
 	lintID := e.lint()
 	e.call("PATCH", fmt.Sprintf("/instances/%d", e.instID), map[string]any{"enrich_on_change": true}, 200, nil)
-	short := e.card("Short", "tiny")
-	long := e.card("Long", strings.Repeat("x", 90))
-	fresh := e.card("Fresh", strings.Repeat("y", 90))
 	early := e.card("Early", strings.Repeat("z", 90))
 	r := e.newRule("Lint junk", map[string]any{"enrichment": "quality", "instance": lintID, "lte": 30},
 		map[string]any{"action": "archive", "all_libraries": true, "enabled": false})
@@ -60,8 +57,11 @@ func TestEnrichWaitsForACheaperInstanceAnArchiveRuleReads(t *testing.T) {
 		t.Fatalf("judge run while lint is manual only %+v", p)
 	}
 
-	// Once lint runs as cards change, judge waits: lint has answered neither card.
+	// Once lint runs as cards change, judge waits on the cards that change after: lint has answered neither.
 	e.call("PATCH", fmt.Sprintf("/instances/%d", lintID), map[string]any{"enrich_on_change": true}, 200, nil)
+	short := e.card("Short", "tiny")
+	long := e.card("Long", strings.Repeat("x", 90))
+	fresh := e.card("Fresh", strings.Repeat("y", 90))
 	if p := waitingRun(short, long); p.Waiting != 2 || p.Done != 0 {
 		t.Fatalf("judge run before lint %+v", p)
 	}
@@ -113,5 +113,29 @@ func TestAGatesAnswerKeepsADuplicateArchived(t *testing.T) {
 	}
 	if got := e.archivedReason(dup); got != library.ReasonDuplicate {
 		t.Fatalf("dup = %q", got)
+	}
+}
+
+func TestACardLintsSweepWontReachDoesntWaitForLint(t *testing.T) {
+	e := newEnrichEnv(t)
+	lintID := e.lint()
+	e.call("PATCH", fmt.Sprintf("/instances/%d", e.instID), map[string]any{"enrich_on_change": true}, 200, nil)
+	old := e.card("Old", "tiny")
+	e.putRule(e.newRule("Lint junk", map[string]any{"enrichment": "quality", "instance": lintID, "lte": 30},
+		map[string]any{"action": "archive", "all_libraries": true, "enabled": false}), enable)
+	// Lint goes on-change after old changed, so its sweep never sends it old.
+	e.call("PATCH", fmt.Sprintf("/instances/%d", lintID), map[string]any{"enrich_on_change": true}, 200, nil)
+	sw := &enrich.Sweeper{Lib: e.s.Lib, Registry: e.s.Registry, Queue: e.s.Queue}
+	if err := sw.Sweep(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if e.lastEnrichJob(lintID) != 0 {
+		t.Fatal("lint's sweep queued a run")
+	}
+	if _, p := e.waitRun(e.lastEnrichJob(e.instID)); p.Done != 1 || p.Waiting != 0 {
+		t.Fatalf("judge's sweep run %+v", p)
+	}
+	if e.archivedReason(old) != "-" {
+		t.Fatal("old was archived")
 	}
 }

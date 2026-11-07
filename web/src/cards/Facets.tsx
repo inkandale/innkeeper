@@ -225,7 +225,8 @@ const groups = [
   ["", "Other"],
 ] as const;
 
-const groupOf = (b: BrowseKey) => `group:${b.section || "other"}`;
+/** groupOf names a group as the collapsed list stores it. */
+const groupOf = (section?: string) => `group:${section || "other"}`;
 const isValueKey = (b: BrowseKey) => b.type === "text" || b.type === "list";
 
 /** useValueCounts counts each open value section's values, ref to counts. Sections with nothing picked share one search, as their filters are the same. */
@@ -312,7 +313,7 @@ export function Facets({ kind, q, names, browse = [], onChange }: { kind: Kind; 
   const rows = useRows(kind, q, names, sections, open);
   const listed = groups.flatMap(([id]) => browse.filter((b) => (b.section ?? "") === id));
   const valueRefs = listed
-    .filter((b) => isValueKey(b) && open(groupOf(b)))
+    .filter((b) => isValueKey(b) && open(groupOf(b.section)))
     .map((b) => keyRef(b.instance, b.key))
     .filter((ref) => open(`value:${ref}`));
   const valueCounts = useValueCounts(q, valueRefs);
@@ -332,12 +333,18 @@ export function Facets({ kind, q, names, browse = [], onChange }: { kind: Kind; 
       {groups.map(([id, title]) => {
         const keys = browse.filter((b) => (b.section ?? "") === id);
         if (!keys.length) return null;
-        const group = `group:${id || "other"}`;
+        const group = groupOf(id);
+        // Counted so a collapsed group still shows it holds active filters.
+        const picked = keys.reduce(
+          (n, b) => n + q.terms.filter((t) => sectionOf(t) === `value:${keyRef(b.instance, b.key)}` || t === scoreTermOf(q, b.instance, b.key)).length,
+          0,
+        );
         return (
           <section key={group} className="facet-section facet-group">
             <h2>
               <button className="facet-head" aria-expanded={open(group)} onClick={() => flip(group)}>
                 {title}
+                {picked > 0 && ` · ${picked}`}
               </button>
             </h2>
             {open(group) &&

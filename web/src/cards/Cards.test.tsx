@@ -829,6 +829,16 @@ test("without a scorer, score filters and sort from an older link are dropped wi
   expect(searches).not.toContainEqual(expect.objectContaining({ sort: "enrichment:quality" }));
 });
 
+test("a collapsed section group counts its active filters", async () => {
+  keys = scored;
+  const user = userEvent.setup();
+  renderCards("/cards?f=score:quality:70..");
+  await screen.findByRole("slider", { name: "Quality at least" });
+  await user.click(screen.getByRole("button", { name: "Score · 1" }));
+  expect(screen.queryByRole("slider", { name: "Quality at least" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Score · 1" })).toHaveAttribute("aria-expanded", "false");
+});
+
 test("a key two instances declare is one filter and one sort, under the merged label", async () => {
   keys = {
     scorers: [{ instance: 7, key: "quality" }, { instance: 5, key: "quality" }],

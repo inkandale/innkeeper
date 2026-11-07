@@ -4153,6 +4153,8 @@ export interface components {
             name: string;
             /** @description Capabilities the plugin needs another plugin to offer, such as ai */
             needs?: string[] | null;
+            /** @description Set when this Innkeeper can't run the installed version: the protocol_version it needs. Nothing runs the plugin, and its status is broken. */
+            needs_protocol?: string;
             /** @description What the owner can grant the plugin's instances */
             permissions?: string[] | null;
             /** @description Source of the version a rollback returns to */

@@ -53,6 +53,7 @@ type pluginOut struct {
 	UIURL             string                   `json:"ui_url,omitempty" doc:"The panel's page"`
 	UITitle           string                   `json:"ui_title,omitempty" doc:"The panel's title, such as AI Assistant"`
 	Permissions       []string                 `json:"permissions,omitempty" doc:"What the owner can grant the plugin's instances"`
+	NeedsProtocol     string                   `json:"needs_protocol,omitempty" doc:"Set when this Innkeeper can't run the installed version: the protocol_version it needs. Nothing runs the plugin, and its status is broken."`
 }
 
 type recordTypeOut struct {
@@ -131,7 +132,8 @@ func (s *Server) instanceRoutes(api huma.API) {
 				byPlugin[i.Plugin] = append(byPlugin[i.Plugin], i)
 			}
 			out := &pluginsOut{Body: []pluginOut{}}
-			for _, m := range s.Registry.Manifests() {
+			manifests := s.Registry.Manifests()
+			for _, m := range manifests {
 				p := pluginOut{Name: m.Name, Title: m.DisplayName(), Version: m.Version, Capabilities: m.Capabilities, Needs: protocol.Needs(m.Uses),
 					Secrets: orEmpty(m.Secrets), Formats: m.Formats, Inputs: m.Inputs, Config: m.Config,
 					Source: "builtin", Builtin: s.Registry.IsBuiltin(m.Name),
@@ -168,6 +170,16 @@ func (s *Server) instanceRoutes(api huma.API) {
 					p.SettingsActions[id] = a.Label
 				}
 				out.Body = append(out.Body, p)
+			}
+			for name, needs := range s.Registry.NeedsNewer() {
+				// A built-in copy runs in its place.
+				if manifests[name] != nil {
+					continue
+				}
+				in := installs[name]
+				out.Body = append(out.Body, pluginOut{Name: name, Title: name, Version: in.Version, Status: "broken",
+					Capabilities: []string{}, Secrets: []string{}, Source: in.Source,
+					PreviousSource: in.PreviousSource, PreviousVersion: in.PreviousVersion, NeedsProtocol: needs})
 			}
 			slices.SortFunc(out.Body, func(a, b pluginOut) int { return strings.Compare(a.Name, b.Name) })
 			return out, nil

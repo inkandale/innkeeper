@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -132,5 +134,45 @@ func TestPluginCatalogOffersTheNewestVersionThisInnkeeperRuns(t *testing.T) {
 	}
 	if got[1].Newer != nil {
 		t.Fatalf("plain newer = %+v; want none", got[1].Newer)
+	}
+}
+
+func TestPluginsListsAnInstallThatNeedsANewerProtocol(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	installed := withInstalls(t, e)
+	src := testutil.PluginSource(t, testutil.PluginRelease{Name: "good", Version: "1.0.0"})
+	e.call(http.MethodPost, "/plugin-sources", map[string]string{"id": "local", "url": src}, http.StatusCreated, nil)
+	e.call(http.MethodPost, "/plugins/good/install", map[string]string{"source": "local", "version": "1.0.0"}, http.StatusNoContent, nil)
+
+	// As if Innkeeper were rolled back below what the installed version needs.
+	f, err := os.OpenFile(filepath.Join(installed, "good", "current", "plugin.toml"), os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("protocol_version = \"1.99\"\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.pool.Exec(ctx, `SELECT nextval('plugin_generation')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.s.Registry.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	if e.s.Registry.Manifests()["good"] != nil {
+		t.Fatal("good still runs")
+	}
+	var list []pluginOut
+	e.call(http.MethodGet, "/plugins", nil, http.StatusOK, &list)
+	i := slices.IndexFunc(list, func(p pluginOut) bool { return p.Name == "good" })
+	if i < 0 {
+		t.Fatalf("plugins = %+v; want good listed", list)
+	}
+	if p := list[i]; p.NeedsProtocol != "1.99" || p.Version != "1.0.0" || p.Source != "local" || p.Status != "broken" {
+		t.Fatalf("good = %+v; want 1.0.0 from local, broken, needing protocol 1.99", p)
 	}
 }

@@ -3927,6 +3927,10 @@
               "null"
             ]
           },
+          "needs_protocol": {
+            "description": "Set when this Innkeeper can't run the installed version: the protocol_version it needs. Nothing runs the plugin, and its status is broken.",
+            "type": "string"
+          },
           "permissions": {
             "description": "What the owner can grant the plugin's instances",
             "items": {

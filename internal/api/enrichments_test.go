@@ -804,3 +804,27 @@ func TestSweepLeavesOutACardThePluginFailedOn(t *testing.T) {
 		t.Fatalf("payloads = %v; want a run for card %d only", payloads, good)
 	}
 }
+
+func TestUnarchivingACardGetsItReEmbedded(t *testing.T) {
+	e := newEnrichEnv(t, map[string]any{"vectors": true})
+	ctx := context.Background()
+	// other keeps a vector, so the instance still stores vectors once id's is gone.
+	other := e.card("Other", "abc")
+	id := e.card("Brakka", "abc")
+	e.evaluate(e.instID, other, id)
+	e.turnOnChange()
+	vectors := func() int {
+		var n int
+		if err := e.pool.QueryRow(ctx, `SELECT count(*) FROM card_embedding WHERE card_id = $1`, id).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	e.call("PUT", fmt.Sprintf("/cards/%d/archived", id), map[string]any{"archived": true}, 204, nil)
+	if n := vectors(); n != 0 {
+		t.Fatalf("vectors after archiving = %d", n)
+	}
+	// Restoring queues an on-change run, which must send the card although it still has values.
+	e.call("PUT", fmt.Sprintf("/cards/%d/archived", id), map[string]any{"archived": false}, 204, nil)
+	eventually(t, "re-embedded the card", func() bool { return vectors() == 1 })
+}

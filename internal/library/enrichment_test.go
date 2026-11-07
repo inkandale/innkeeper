@@ -175,3 +175,27 @@ func TestChangedUnenrichedEdgeCases(t *testing.T) {
 		t.Fatalf("after the failure aged = %v", got)
 	}
 }
+
+func TestAVectorInstanceWantsAVectorEvenWithValues(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	inst := newInstanceRow(t, lib)
+	var since time.Time
+	if err := lib.pool.QueryRow(ctx, `SELECT now()`).Scan(&since); err != nil {
+		t.Fatal(err)
+	}
+	valued, valuedRev := newCard(t, lib, "valued", `{"name": "Valued"}`)
+	embedded, embeddedRev := newCard(t, lib, "embedded", `{"name": "Embedded"}`)
+	if err := lib.AddEnrichments(ctx, inst, []NewEnrichment{{CardID: valued, RevisionID: valuedRev, Key: "k", Value: json.RawMessage(`"v"`)}}); err != nil {
+		t.Fatal(err)
+	}
+	embedCards(t, lib, inst, map[int64][]float32{embedded: {1, 2}})
+
+	if got, err := lib.ChangedUnenriched(ctx, inst, since, 10); err != nil || !slices.Equal(got, []int64{valued}) {
+		t.Fatalf("changed = %v, %v; want the card with values and no vector", got, err)
+	}
+	got, err := lib.EnrichedRevisions(ctx, inst, []int64{valued, embedded}, []int64{valuedRev, embeddedRev})
+	if err != nil || !slices.Equal(got, []int64{embeddedRev}) {
+		t.Fatalf("enriched = %v, %v; want only the embedded revision", got, err)
+	}
+}

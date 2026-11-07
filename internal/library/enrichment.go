@@ -76,17 +76,38 @@ func (l *Library) HasEnrichments(ctx context.Context, instanceID int64) (bool, e
 	return has, err
 }
 
+// storesVectors reports whether instance has stored a vector, so a head
+// without one is unanswered whatever values it holds. A plugin configured
+// to write no vectors never counts.
+func (l *Library) storesVectors(ctx context.Context, instance int64) (bool, error) {
+	if ok, err := l.HasVectors(ctx); err != nil || !ok {
+		return false, err
+	}
+	var stores bool
+	err := l.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM card_embedding WHERE instance_id = $1)`, instance).Scan(&stores)
+	return stores, err
+}
+
 // EnrichedRevisions returns which of revIDs hold a value or a vector from
-// instanceID.
+// instanceID, or only a vector when it stores vectors.
 func (l *Library) EnrichedRevisions(ctx context.Context, instanceID int64, cardIDs, revIDs []int64) ([]int64, error) {
 	vectors, err := l.HasVectors(ctx)
 	if err != nil {
 		return nil, err
 	}
+	stores, err := l.storesVectors(ctx, instanceID)
+	if err != nil {
+		return nil, err
+	}
 	// card_id leads the index; revision_id alone would scan the table.
-	sql := `SELECT revision_id FROM enrichment WHERE card_id = ANY($2) AND instance_id = $1 AND revision_id = ANY($3)`
-	if vectors {
-		sql += ` UNION SELECT revision_id FROM card_embedding WHERE card_id = ANY($2) AND instance_id = $1 AND revision_id = ANY($3)`
+	values := `SELECT revision_id FROM enrichment WHERE card_id = ANY($2) AND instance_id = $1 AND revision_id = ANY($3)`
+	vecs := `SELECT revision_id FROM card_embedding WHERE card_id = ANY($2) AND instance_id = $1 AND revision_id = ANY($3)`
+	sql := values
+	switch {
+	case stores:
+		sql = vecs
+	case vectors:
+		sql += ` UNION ` + vecs
 	}
 	rows, err := l.pool.Query(ctx, sql, instanceID, cardIDs, revIDs)
 	if err != nil {
@@ -133,8 +154,8 @@ func (l *Library) noHeadVector(ctx context.Context) (string, error) {
 const failureRetry = 24 * time.Hour
 
 // ChangedUnenriched returns up to limit live cards changed after since
-// whose head holds no value or vector from instance and hasn't failed on
-// it within failureRetry, lowest ID first.
+// whose head holds no value or vector from instance, or no vector when it
+// stores vectors, and hasn't failed on it within failureRetry, lowest ID first.
 //
 // ponytail: this joins every card to its head revision each hour. If that
 // gets slow, index card_revision(created_at) and card(restored_at) and split
@@ -144,10 +165,18 @@ func (l *Library) ChangedUnenriched(ctx context.Context, instance int64, since t
 	if err != nil {
 		return nil, err
 	}
+	stores, err := l.storesVectors(ctx, instance)
+	if err != nil {
+		return nil, err
+	}
+	unanswered := `
+			AND NOT EXISTS (SELECT 1 FROM enrichment e WHERE e.card_id = c.id AND e.instance_id = $1 AND e.revision_id = c.head_revision_id)` + noVector
+	if stores {
+		unanswered = noVector
+	}
 	rows, err := l.pool.Query(ctx, `SELECT c.id FROM card c JOIN card_revision r ON r.id = c.head_revision_id
 		WHERE c.archived_at IS NULL AND greatest(r.created_at, c.restored_at) > $2
-			AND NOT EXISTS (SELECT 1 FROM enrichment e WHERE e.card_id = c.id AND e.instance_id = $1 AND e.revision_id = c.head_revision_id)
-			AND NOT EXISTS (SELECT 1 FROM enrich_failure f WHERE f.instance_id = $1 AND f.revision_id = c.head_revision_id AND f.failed_at > now() - $4::interval)`+noVector+`
+			AND NOT EXISTS (SELECT 1 FROM enrich_failure f WHERE f.instance_id = $1 AND f.revision_id = c.head_revision_id AND f.failed_at > now() - $4::interval)`+unanswered+`
 		ORDER BY c.id LIMIT $3`, instance, since, limit, failureRetry)
 	if err != nil {
 		return nil, fmt.Errorf("list changed cards for instance %d: %w", instance, err)

@@ -248,7 +248,10 @@ func (s *Settings) HidePayload(ctx context.Context, lib int64) (bulk.HidePayload
 	if p.Duplicates == "off" {
 		return p, ErrNothingToHide
 	}
-	p.Scorers, err = s.Scorers(ctx)
+	if p.Scorers, err = s.Scorers(ctx); err != nil {
+		return p, err
+	}
+	p.Browsable, err = s.Browsable(ctx)
 	return p, err
 }
 

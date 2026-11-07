@@ -241,32 +241,37 @@ func Purge(lib *library.Library) jobs.Handler {
 	}
 }
 
-// HideKind archives a library's duplicate cards.
+// HideKind archives a library's duplicate cards and applies the rules that cover it.
 const HideKind = "library.hide"
 
 // HidePayload is a HideKind job's payload: the library's settings when the
-// job was queued. Scorers give the grid score that keep best reads; Decide,
-// if set, is the ai instance that confirms near duplicates.
+// job was queued. Scorers give the grid score that keep best reads, and
+// Browsable the merged keys rules' filters read; Decide, if set, is the ai
+// instance that confirms near duplicates.
 type HidePayload struct {
-	Library    int64            `json:"library"`
-	Scorers    []library.Scorer `json:"scorers,omitempty"`
-	Duplicates string           `json:"duplicates"`
-	Distance   int              `json:"distance"`
-	Keep       string           `json:"keep"`
-	Decide     int64            `json:"decide,omitempty"`
+	Library    int64                       `json:"library"`
+	Scorers    []library.Scorer            `json:"scorers,omitempty"`
+	Browsable  map[string][]library.Scorer `json:"browsable,omitempty"`
+	Duplicates string                      `json:"duplicates"`
+	Distance   int                         `json:"distance"`
+	Keep       string                      `json:"keep"`
+	Decide     int64                       `json:"decide,omitempty"`
 }
 
 // HideProgress counts what a HideKind job did. Rejected are near pairs the
 // decision model said aren't the same card; Unchecked are those it failed
-// on, which stay duplicates as their distance says.
+// on, which stay duplicates as their distance says. Archived and Unarchived
+// count duplicates and archive rules together.
 type HideProgress struct {
-	Groups     int `json:"groups"`
-	Duplicate  int `json:"duplicate"`
-	Archived   int `json:"archived"`
-	Unarchived int `json:"unarchived"`
-	Checked    int `json:"checked,omitempty"`
-	Rejected   int `json:"rejected,omitempty"`
-	Unchecked  int `json:"unchecked,omitempty"`
+	Groups      int `json:"groups"`
+	Duplicate   int `json:"duplicate"`
+	Archived    int `json:"archived"`
+	Unarchived  int `json:"unarchived"`
+	Checked     int `json:"checked,omitempty"`
+	Rejected    int `json:"rejected,omitempty"`
+	Unchecked   int `json:"unchecked,omitempty"`
+	Collected   int `json:"collected,omitempty"`
+	Uncollected int `json:"uncollected,omitempty"`
 }
 
 // Decider sends ai.decide to the ai instance named by id.
@@ -302,10 +307,10 @@ func Hide(lib *library.Library, decide Decider) jobs.Handler {
 		groups := library.GroupPairs(pairs)
 		hidden := library.PlanHide(cands, groups, p.Keep)
 		prog.Groups, prog.Duplicate = len(groups), len(hidden)
-		if prog.Archived, prog.Unarchived, err = lib.SetHidden(ctx, p.Library, hidden, nil); err != nil {
+		if err := ApplyRules(ctx, lib, p.Library, p.Browsable, hidden, nil, &prog); err != nil {
 			return err
 		}
-		r.AddCardsChanged(prog.Archived + prog.Unarchived)
+		r.AddCardsChanged(prog.Archived + prog.Unarchived + prog.Collected + prog.Uncollected)
 		raw, _ := json.Marshal(prog)
 		r.SetProgress(raw)
 		return nil

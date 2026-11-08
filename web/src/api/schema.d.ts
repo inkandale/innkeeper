@@ -4308,6 +4308,8 @@ export interface components {
             icon?: string;
             /** @description What an import plugin takes from the UI: file (params blob and name), url (params url), or both */
             inputs?: string[] | null;
+            /** @description Set when the installed version's manifest doesn't load: why. Nothing runs the plugin, and its status is broken. */
+            load_error?: string;
             /** @description The owner may create more than one instance */
             multiple_instances: boolean;
             name: string;

@@ -81,13 +81,13 @@ func LoadDir(dir string) (map[string]*protocol.Manifest, error) {
 
 // LoadInstalled loads the plugins the owner installed into dir. Each plugin's
 // folder holds one folder per version and a current symlink to one of them.
-// A missing dir has no plugins. A plugin whose current version needs a newer
-// protocol isn't loaded; newer maps its name to the protocol_version it needs.
-func LoadInstalled(dir string, log *slog.Logger) (manifests map[string]*protocol.Manifest, newer map[string]string, err error) {
-	manifests, newer = map[string]*protocol.Manifest{}, map[string]string{}
+// A missing dir has no plugins. A plugin whose current version doesn't load
+// is in unloaded, so the owner can see why and uninstall it.
+func LoadInstalled(dir string, log *slog.Logger) (manifests map[string]*protocol.Manifest, unloaded map[string]Unloaded, err error) {
+	manifests, unloaded = map[string]*protocol.Manifest{}, map[string]Unloaded{}
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, fs.ErrNotExist) {
-		return manifests, newer, nil
+		return manifests, unloaded, nil
 	}
 	if err != nil {
 		return nil, nil, err
@@ -109,16 +109,25 @@ func LoadInstalled(dir string, log *slog.Logger) (manifests map[string]*protocol
 		var needs *protocol.NewerProtocolError
 		if errors.As(err, &needs) {
 			log.Warn("skip plugin: needs a newer Innkeeper", "dir", e.Name(), "err", err)
-			newer[e.Name()] = needs.Needs
+			unloaded[e.Name()] = Unloaded{NeedsProtocol: needs.Needs}
 			continue
 		}
 		if err != nil {
 			log.Error("skip plugin", "dir", e.Name(), "err", err)
+			unloaded[e.Name()] = Unloaded{Error: err.Error()}
 			continue
 		}
 		manifests[m.Name] = m
 	}
-	return manifests, newer, nil
+	return manifests, unloaded, nil
+}
+
+// Unloaded is an installed plugin this Innkeeper can't run.
+type Unloaded struct {
+	// NeedsProtocol is the protocol_version it needs, when a newer Innkeeper could run it.
+	NeedsProtocol string
+	// Error says why its manifest didn't load, otherwise.
+	Error string
 }
 
 // Registry resolves plugin instances to what the plugin host needs to run
@@ -141,7 +150,7 @@ type Registry struct {
 	mu        sync.RWMutex
 	manifests map[string]*protocol.Manifest
 	builtin   map[string]*protocol.Manifest
-	newer     map[string]string // by installed plugin: the protocol_version it needs
+	unloaded  map[string]Unloaded
 	dsns      map[string]string // by plugin, set by ProvisionDatabases
 	gen       int64             // plugin_generation at the last load; -1 before it
 
@@ -206,14 +215,14 @@ func (r *Registry) Sync(ctx context.Context) error {
 			return err
 		}
 	}
-	installed, newer, err := LoadInstalled(r.dirs.Installed, r.log)
+	installed, unloaded, err := LoadInstalled(r.dirs.Installed, r.log)
 	if err != nil {
 		return err
 	}
 	all := maps.Clone(builtin)
 	maps.Copy(all, installed)
 	r.mu.Lock()
-	r.manifests, r.builtin, r.newer, r.gen = all, builtin, newer, gen
+	r.manifests, r.builtin, r.unloaded, r.gen = all, builtin, unloaded, gen
 	r.mu.Unlock()
 	return r.ProvisionDatabases(ctx, r.dbURL)
 }
@@ -266,12 +275,12 @@ func (r *Registry) Manifests() map[string]*protocol.Manifest {
 	return maps.Clone(r.manifests)
 }
 
-// NeedsNewer returns the installed plugins this Innkeeper can't run, with
-// the protocol_version each needs. They aren't in Manifests.
-func (r *Registry) NeedsNewer() map[string]string {
+// Unloaded returns the installed plugins this Innkeeper can't run. They
+// aren't in Manifests.
+func (r *Registry) Unloaded() map[string]Unloaded {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return maps.Clone(r.newer)
+	return maps.Clone(r.unloaded)
 }
 
 // InstanceInfo is an instance as the owner sees it. It names the secrets

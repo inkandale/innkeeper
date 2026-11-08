@@ -377,11 +377,15 @@ func (r *Registry) Uninstall(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
+	dir := filepath.Join(r.dirs.Installed, name)
 	if tag.RowsAffected() == 0 {
-		if r.IsBuiltin(name) {
-			return fmt.Errorf("%w: %s is built in", ErrInvalid, name)
+		// A folder without an install row still holds code, which the owner must be able to remove.
+		if _, err := os.Lstat(dir); err != nil {
+			if r.IsBuiltin(name) {
+				return fmt.Errorf("%w: %s is built in", ErrInvalid, name)
+			}
+			return ErrNotFound
 		}
-		return ErrNotFound
 	}
 	if _, err := tx.Exec(ctx, `SELECT nextval('plugin_generation')`); err != nil {
 		return err
@@ -389,7 +393,7 @@ func (r *Registry) Uninstall(ctx context.Context, name string) error {
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	if err := os.RemoveAll(filepath.Join(r.dirs.Installed, name)); err != nil {
+	if err := os.RemoveAll(dir); err != nil {
 		return err
 	}
 	return r.Sync(ctx)

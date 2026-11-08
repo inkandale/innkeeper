@@ -56,6 +56,7 @@ type pluginOut struct {
 	UITitle           string                   `json:"ui_title,omitempty" doc:"The panel's title, such as AI Assistant"`
 	Permissions       []string                 `json:"permissions,omitempty" doc:"What the owner can grant the plugin's instances"`
 	NeedsProtocol     string                   `json:"needs_protocol,omitempty" doc:"Set when this Innkeeper can't run the installed version: the protocol_version it needs. Nothing runs the plugin, and its status is broken."`
+	LoadError         string                   `json:"load_error,omitempty" doc:"Set when the installed version's manifest doesn't load: why. Nothing runs the plugin, and its status is broken."`
 }
 
 type recordTypeOut struct {
@@ -173,7 +174,7 @@ func (s *Server) instanceRoutes(api huma.API) {
 				}
 				out.Body = append(out.Body, p)
 			}
-			for name, needs := range s.Registry.NeedsNewer() {
+			for name, u := range s.Registry.Unloaded() {
 				// A built-in copy runs in its place.
 				if manifests[name] != nil {
 					continue
@@ -181,7 +182,8 @@ func (s *Server) instanceRoutes(api huma.API) {
 				in := installs[name]
 				out.Body = append(out.Body, pluginOut{Name: name, Title: name, Version: in.Version, Status: "broken",
 					Capabilities: []string{}, Secrets: []string{}, Source: in.Source,
-					PreviousSource: in.PreviousSource, PreviousVersion: in.PreviousVersion, NeedsProtocol: needs})
+					PreviousSource: in.PreviousSource, PreviousVersion: in.PreviousVersion,
+					NeedsProtocol: u.NeedsProtocol, LoadError: u.Error})
 			}
 			slices.SortFunc(out.Body, func(a, b pluginOut) int { return strings.Compare(a.Name, b.Name) })
 			return out, nil

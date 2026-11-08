@@ -85,8 +85,8 @@ export function Plugins() {
   const from = (source: string) => ((sources.data?.length ?? 0) > 1 ? `${source}/` : "");
 
   const needSetup = installed.filter((p) => p.status === "needs_setup").length;
-  // Installed plugins this Innkeeper can't run get their own group, without a card's setup actions.
   const stalled = installed.filter((p) => p.needs_protocol);
+  const unloadable = installed.filter((p) => p.load_error);
   const addURL = (p: Plugin) => `/settings/plugins/${encodeURIComponent(p.name)}/new`;
 
   const instanceActions = (i: InstanceInfo) => (
@@ -159,6 +159,28 @@ export function Plugins() {
       Uninstall
     </button>
   );
+
+  // Installed plugins this Innkeeper can't run get their own group, without a card's setup actions.
+  const cantRun = (title: string, list: Plugin[], why: (p: Plugin) => string) =>
+    list.length > 0 && (
+      <section className="plugin-group">
+        <h2>{title}</h2>
+        {list.map((p) => (
+          <article key={p.name} className="plugin">
+            <header>
+              <div className="about">
+                <h3>{p.title}</h3> <span className="muted">{`${from(p.source)}${p.version}`}</span>
+                <p className="muted">{why(p)}</p>
+              </div>
+              <Menu label={`More for ${p.name}`}>
+                {rollBack(p)}
+                {uninstallButton(p)}
+              </Menu>
+            </header>
+          </article>
+        ))}
+      </section>
+    );
 
   const card = (p: Plugin) => {
     const list = all.filter((i) => i.plugin === p.name);
@@ -253,34 +275,21 @@ export function Plugins() {
           {catalog.isFetching ? "Checking…" : "Check for updates"}
         </button>
       </div>
-      {byCategory(installed.filter((p) => !p.needs_protocol)).map(([category, list]) => (
+      {byCategory(installed.filter((p) => !p.needs_protocol && !p.load_error)).map(([category, list]) => (
         <section key={category} className="plugin-group">
           <h2>{category}</h2>
           {list.map(card)}
         </section>
       ))}
-      {stalled.length > 0 && (
-        <section className="plugin-group">
-          <h2>Needs a newer Innkeeper</h2>
-          {stalled.map((p) => (
-            <article key={p.name} className="plugin">
-              <header>
-                <div className="about">
-                  <h3>{p.title}</h3>{" "}
-                  <span className="muted">{`${from(p.source)}${p.version}`}</span>
-                  <p className="muted">
-                    {p.version} needs a newer Innkeeper, one that speaks protocol {p.needs_protocol}. Its instances and
-                    data stay.
-                  </p>
-                </div>
-                <Menu label={`More for ${p.name}`}>
-                  {rollBack(p)}
-                  {uninstallButton(p)}
-                </Menu>
-              </header>
-            </article>
-          ))}
-        </section>
+      {cantRun(
+        "Needs a newer Innkeeper",
+        stalled,
+        (p) => `${p.version} needs a newer Innkeeper, one that speaks protocol ${p.needs_protocol}. Its instances and data stay.`,
+      )}
+      {cantRun(
+        "Can't load",
+        unloadable,
+        (p) => `${p.version || "Its code"} doesn't load: ${p.load_error}. Uninstall it, or install another version.`,
       )}
       {orphanPlugins.length > 0 && (
         <section className="plugin-group">

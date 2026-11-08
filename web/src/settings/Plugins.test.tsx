@@ -361,3 +361,23 @@ test("lists an installed plugin that needs a newer Innkeeper apart, with rollbac
   await confirmWith("Uninstall");
   expect(requests).toContain("DELETE /api/plugins/stalled");
 });
+
+test("lists an installed plugin that doesn't load apart, with its error and uninstall", async () => {
+  const user = userEvent.setup();
+  const fetch = globalThis.fetch;
+  vi.stubGlobal("fetch", async (req: Request) =>
+    new URL(req.url).pathname === "/api/plugins" && req.method === "GET"
+      ? json(titled([
+          { name: "stale", version: "", capabilities: [], secrets: [], source: "", builtin: false,
+            multiple_instances: false, status: "broken", load_error: "ui needs a title" },
+        ]))
+      : fetch(req),
+  );
+  renderPlugins();
+  const group = (await screen.findByRole("heading", { name: "Can't load" })).closest("section")!;
+  const stale = within(group).getByRole("heading", { name: "stale" }).closest("article")!;
+  expect(within(stale).getByText(/ui needs a title/)).toBeInTheDocument();
+  await user.click(within(menuOf(stale, "stale")).getByRole("button", { name: "Uninstall" }));
+  await confirmWith("Uninstall");
+  expect(requests).toContain("DELETE /api/plugins/stale");
+});

@@ -4034,6 +4034,10 @@
               "null"
             ]
           },
+          "load_error": {
+            "description": "Set when the installed version's manifest doesn't load: why. Nothing runs the plugin, and its status is broken.",
+            "type": "string"
+          },
           "multiple_instances": {
             "description": "The owner may create more than one instance",
             "type": "boolean"

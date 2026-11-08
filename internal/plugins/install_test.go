@@ -226,6 +226,30 @@ func TestUninstallKeepsInstances(t *testing.T) {
 	}
 }
 
+func TestUninstallRemovesAPluginThatDidntLoad(t *testing.T) {
+	ctx := context.Background()
+	dirs := Dirs{Installed: t.TempDir()}
+	// No install row and a manifest that doesn't load, as when a plugin's code outlived its row.
+	writeManifest(t, filepath.Join(dirs.Installed, "stale", "official@0.1.0"), "name = \"stale\"\n")
+	if err := os.Symlink("official@0.1.0", filepath.Join(dirs.Installed, "stale", "current")); err != nil {
+		t.Fatal(err)
+	}
+	reg := openWith(t, testdb.New(t), dirs)
+	if reg.Unloaded()["stale"].Error == "" {
+		t.Fatalf("unloaded = %v, want stale's error", reg.Unloaded())
+	}
+
+	if err := reg.Uninstall(ctx, "stale"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dirs.Installed, "stale")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("folder still there: %v", err)
+	}
+	if _, ok := reg.Unloaded()["stale"]; ok {
+		t.Fatal("still listed as unloaded")
+	}
+}
+
 func TestInstallRefusesANewerProtocolBeforeDownloading(t *testing.T) {
 	ctx := context.Background()
 	reg, _ := openRegistry(t, testdb.New(t))

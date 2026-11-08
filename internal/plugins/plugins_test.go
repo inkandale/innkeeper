@@ -368,12 +368,13 @@ func TestLoadInstalled(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, newer, err := LoadInstalled(dir, quiet)
+	got, unloaded, err := LoadInstalled(dir, quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(newer) != 1 || newer["future"] != "1.99" {
-		t.Fatalf("newer = %v, want only future needing 1.99", newer)
+	if len(unloaded) != 2 || unloaded["future"] != (Unloaded{NeedsProtocol: "1.99"}) ||
+		!strings.Contains(unloaded["misnamed"].Error, `manifest names "other"`) {
+		t.Fatalf("unloaded = %v, want future needing 1.99 and misnamed's error", unloaded)
 	}
 	real, err := filepath.EvalSymlinks(dir)
 	if err != nil {

@@ -95,6 +95,11 @@ function RuleForm({ id, initial, library }: { id?: number; initial: Spec; librar
             ))}
           </select>
         </label>
+        {searches.data?.length === 0 && (
+          <p className="muted">
+            No saved searches yet. Filter the cards on <Link to="/cards">Cards</Link>, then choose Save search.
+          </p>
+        )}
         <label>
           Action{" "}
           <select

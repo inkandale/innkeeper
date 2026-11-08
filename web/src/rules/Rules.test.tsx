@@ -101,3 +101,18 @@ test("a rule on no library can't be added", async () => {
   await user.click(screen.getByRole("checkbox", { name: "Main" }));
   expect(screen.getByRole("button", { name: "Add rule" })).toBeEnabled();
 });
+
+test("Add rule on the Rules page opens a new rule", async () => {
+  renderAt("/rules");
+  await userEvent.click(await screen.findByRole("link", { name: "Add rule" }));
+  expect(await screen.findByRole("heading", { name: "New rule" })).toBeInTheDocument();
+  expect(await screen.findByRole("option", { name: "Junk" })).toBeInTheDocument();
+});
+
+test("a new rule without saved searches says where to make one", async () => {
+  const fetch = globalThis.fetch;
+  vi.stubGlobal("fetch", async (req: Request) => (new URL(req.url).pathname === "/api/saved-searches" ? json([]) : fetch(req)));
+  renderAt("/rules/new");
+  expect(await screen.findByText(/No saved searches yet/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Cards" })).toHaveAttribute("href", "/cards");
+});

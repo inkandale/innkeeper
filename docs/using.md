@@ -186,8 +186,10 @@ See `/saved-searches`.
 
 A **rule** is a saved search with an action that Innkeeper keeps applied in
 the libraries it covers: all of them, new ones included, or a chosen list.
-Add one with Add rule on the Rules page, which can build and save its
-search there, or with Add rule on a saved search.
+Add one with Add rule on the Rules page: name it, add conditions on tags,
+sources, names, creators, and plugin scores and values, and pick what it
+does. Its conditions are saved as a saved search under the rule's name. Add
+rule on a saved search starts from that search's conditions.
 
 | Action | Keeps | Gives back |
 |---|---|---|

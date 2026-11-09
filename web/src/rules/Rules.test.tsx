@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { Toasts } from "../shell/Toasts";
 import { Rules } from "./Rules";
-import { RuleWizard } from "./RuleWizard";
+import { RuleBuilder } from "./RuleBuilder";
 
 function json(body: unknown) {
   return new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
@@ -20,7 +20,11 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (req: Request) => {
       const path = new URL(req.url).pathname;
-      if (path === "/api/cards/search") return json({ total: 2, hits: [] });
+      if (path === "/api/cards/search")
+        return (await req.json()).facets_only
+          ? json({ facets: { tags: [{ name: "junk", cards: 3 }], sources: [{ kind: "chub", cards: 2 }] } })
+          : json({ total: 2, hits: [{ id: 5, slug: "a", revision_id: 1, fields: { name: "Junk a" } }] });
+      if (path === "/api/enrichments/keys") return json({ browse: [{ key: "quality", label: "Quality", type: "score", instances: [1] }], instances: [{ id: 1, label: "Scorer", keys: [], scored: true }], scorers: [] });
       const body = req.method === "GET" || req.method === "DELETE" ? undefined : await req.json();
       if (req.method !== "GET") calls.push({ method: req.method, path, body });
       if (path === "/api/libraries") return json([{ id: 1, name: "Main", cards: 0, lorebooks: 0, created_at: "" }]);
@@ -34,7 +38,10 @@ beforeEach(() => {
           });
         return json({ id: 4, name, filter: {}, sort: "", created_at: "" });
       }
-      if (path === "/api/saved-searches") return json([{ id: 3, name: "Junk", filter: { tag: "junk" }, sort: "", created_at: "" }]);
+      const junk = { id: 3, name: "Junk", filter: { and: [{ tag: "junk" }] }, sort: "", created_at: "", rules: [{ id: 9, name: "Hide junk" }] };
+      if (path === "/api/saved-searches/4" && req.method === "DELETE") return new Response(null, { status: 204 });
+      if (path === "/api/saved-searches/3" && req.method === "PATCH") return json(junk);
+      if (path === "/api/saved-searches") return json([junk]);
       if (path === "/api/rules/preview")
         return json([{ library: 1, apply: { total: 2, hits: [{ id: 5, slug: "a", revision_id: 1, fields: { name: "Junk a" } }] }, give_back: { total: 0, hits: [] } }]);
       if (path === "/api/rules" && req.method === "GET") return json([current]);
@@ -49,8 +56,8 @@ function renderAt(entry: string) {
   const router = createMemoryRouter(
     [
       { path: "/rules", element: <Toasts><Rules /></Toasts> },
-      { path: "/rules/new", element: <Toasts><RuleWizard /></Toasts> },
-      { path: "/rules/:id", element: <Toasts><RuleWizard /></Toasts> },
+      { path: "/rules/new", element: <Toasts><RuleBuilder /></Toasts> },
+      { path: "/rules/:id", element: <Toasts><RuleBuilder /></Toasts> },
     ],
     { initialEntries: [entry] },
   );
@@ -60,14 +67,6 @@ function renderAt(entry: string) {
     </QueryClientProvider>,
   );
   return router;
-}
-
-/** noSearches makes GET /api/saved-searches answer none. */
-function noSearches() {
-  const fetch = globalThis.fetch;
-  vi.stubGlobal("fetch", async (req: Request) =>
-    new URL(req.url).pathname === "/api/saved-searches" && req.method === "GET" ? json([]) : fetch(req),
-  );
 }
 
 test("turning a rule on previews it and saves only on confirm", async () => {
@@ -98,112 +97,120 @@ test("saving an enabled rule previews it before the PUT", async () => {
     expect(calls.at(-1)).toEqual({ method: "PUT", path: "/api/rules/9", body: { name: "Hide junk", saved_search_id: 3, action: "archive", all_libraries: true, enabled: true } }),
   );
 });
-test("a new rule on a picked saved search starts off", async () => {
-  const router = renderAt("/rules/new?search=3");
+
+test("a rule built from nothing saves its search, then the rule", async () => {
+  const router = renderAt("/rules/new");
   const user = userEvent.setup();
-  await waitFor(() => expect(screen.getByRole("radio", { name: "Junk" })).toBeChecked());
-  await user.click(screen.getByRole("button", { name: "Next" }));
-  await user.click(screen.getByRole("button", { name: "Next" }));
-  await user.click(screen.getByRole("button", { name: "Next" }));
-  expect(screen.getByRole("textbox", { name: /^Name/ })).toHaveValue("Junk");
-  await user.clear(screen.getByRole("textbox", { name: /^Name/ }));
-  await user.type(screen.getByRole("textbox", { name: /^Name/ }), "Hide junk");
+  await user.type(await screen.findByRole("textbox", { name: "Rule name" }), "Hide low");
+  await user.click(screen.getByRole("button", { name: "Add condition" }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "Field 1" }), "score:quality");
+  await user.selectOptions(screen.getByRole("combobox", { name: "Operator 1" }), "at_most");
+  await user.type(screen.getByRole("spinbutton", { name: "Value 1" }), "40");
+  expect(await screen.findByText(/2 cards match in Main/)).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() =>
-    expect(calls).toEqual([{ method: "POST", path: "/api/rules", body: { name: "Hide junk", saved_search_id: 3, action: "archive", all_libraries: true, enabled: false } }]),
+    expect(calls).toEqual([
+      { method: "POST", path: "/api/saved-searches", body: { name: "Hide low", filter: { and: [{ enrichment: "quality", lte: 40 }] }, sort: "" } },
+      { method: "POST", path: "/api/rules", body: { name: "Hide low", saved_search_id: 4, action: "archive", all_libraries: true, enabled: false } },
+    ]),
   );
   await waitFor(() => expect(router.state.location.pathname).toBe("/rules"));
 });
 
-test("a built search is saved, then the rule on it", async () => {
-  noSearches();
+test("a rule that fails to save deletes the search it saved", async () => {
+  const fetch = globalThis.fetch;
+  vi.stubGlobal("fetch", async (req: Request) =>
+    new URL(req.url).pathname === "/api/rules" && req.method === "POST"
+      ? new Response(JSON.stringify({ status: 409, title: "Conflict", detail: "a rule named Hide low already exists" }), { status: 409, headers: { "Content-Type": "application/problem+json" } })
+      : fetch(req),
+  );
   renderAt("/rules/new");
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("checkbox", { name: /Shares a source/ }));
-  expect(await screen.findByText("2 cards match in this library.")).toBeInTheDocument();
-  await user.type(screen.getByRole("textbox", { name: "Search name" }), "Twins");
-  await user.click(screen.getByRole("button", { name: "Save and continue" }));
-  await user.click(await screen.findByRole("button", { name: "Next" }));
-  await user.click(screen.getByRole("button", { name: "Next" }));
-  expect(screen.getByRole("textbox", { name: /^Name/ })).toHaveValue("Twins");
+  await user.type(await screen.findByRole("textbox", { name: "Rule name" }), "Hide low");
+  await user.click(screen.getByRole("button", { name: "Add condition" }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "Field 1" }), "shares_source");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  expect(await screen.findByText(/already exists/)).toBeInTheDocument();
+  expect(calls.map((c) => c.method + " " + c.path)).toEqual(["POST /api/saved-searches", "DELETE /api/saved-searches/4"]);
+});
+
+test("Add rule on a saved search loads its conditions, and editing them patches it", async () => {
+  renderAt("/rules/new?search=3");
+  const user = userEvent.setup();
+  expect(await screen.findByDisplayValue("junk")).toBeInTheDocument();
+  expect(screen.getByText(/also changes Hide junk/)).toBeInTheDocument();
+  await user.type(screen.getByRole("textbox", { name: "Rule name" }), "More junk");
+  await user.selectOptions(screen.getByRole("combobox", { name: "Operator 1" }), "is_not");
   await user.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() =>
     expect(calls).toEqual([
-      { method: "POST", path: "/api/saved-searches", body: { name: "Twins", filter: { and: [{ shares_source: true }] }, sort: "" } },
-      { method: "POST", path: "/api/rules", body: { name: "Twins", saved_search_id: 4, action: "archive", all_libraries: true, enabled: false } },
+      { method: "PATCH", path: "/api/saved-searches/3", body: { filter: { and: [{ not: { tag: "junk" } }] } } },
+      { method: "POST", path: "/api/rules", body: { name: "More junk", saved_search_id: 3, action: "archive", all_libraries: true, enabled: false } },
     ]),
   );
 });
 
-test("a taken search name shows on step 1", async () => {
-  noSearches();
+test("Save and turn on previews the unsaved rule, then saves and turns it on", async () => {
   renderAt("/rules/new");
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("checkbox", { name: /Shares a source/ }));
-  await user.type(screen.getByRole("textbox", { name: "Search name" }), " ");
-  expect(screen.getByRole("button", { name: "Save and continue" })).toBeDisabled();
-  await user.type(screen.getByRole("textbox", { name: "Search name" }), "Taken");
-  await user.click(screen.getByRole("button", { name: "Save and continue" }));
-  expect(await screen.findByText(/already exists/)).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Save and continue" })).toBeInTheDocument();
-});
-
-test("Save and turn on previews, then adds the rule and turns it on", async () => {
-  renderAt("/rules/new?search=3");
-  const user = userEvent.setup();
-  await waitFor(() => expect(screen.getByRole("radio", { name: "Junk" })).toBeChecked());
-  for (let i = 0; i < 3; i++) await user.click(screen.getByRole("button", { name: "Next" }));
+  await user.type(await screen.findByRole("textbox", { name: "Rule name" }), "Twins");
+  await user.click(screen.getByRole("button", { name: "Add condition" }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "Field 1" }), "shares_source");
   await user.click(screen.getByRole("button", { name: "Save and turn on" }));
-  await user.click(await screen.findByRole("button", { name: "Turn on" }));
+  await screen.findByText("It would archive 2 cards and unarchive 0 cards.");
+  expect(calls).toEqual([
+    {
+      method: "POST",
+      path: "/api/rules/preview",
+      body: { rule: { name: "Twins", saved_search_id: 0, action: "archive", all_libraries: true, enabled: true }, filter: { and: [{ shares_source: true }] }, page: 1 },
+    },
+  ]);
+  await user.click(screen.getByRole("button", { name: "Turn on" }));
   await waitFor(() =>
-    expect(calls.map((c) => c.method + " " + c.path)).toEqual(["POST /api/rules/preview", "POST /api/rules", "PUT /api/rules/9"]),
+    expect(calls.map((c) => c.method + " " + c.path)).toEqual(["POST /api/rules/preview", "POST /api/saved-searches", "POST /api/rules", "PUT /api/rules/9"]),
   );
-  expect((calls.at(-1)!.body as { enabled: boolean }).enabled).toBe(true);
 });
 
-test("a collect rule skips Where", async () => {
-  renderAt("/rules/new?search=3");
-  const user = userEvent.setup();
-  await waitFor(() => expect(screen.getByRole("radio", { name: "Junk" })).toBeChecked());
-  await user.click(screen.getByRole("button", { name: "Next" }));
-  await user.selectOptions(screen.getByRole("combobox", { name: /Action/ }), "collect");
-  await user.selectOptions(await screen.findByRole("combobox", { name: /Collection/ }), "7");
-  expect(screen.queryByRole("button", { name: /Where/ })).not.toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Next" }));
-  expect(screen.getByRole("textbox", { name: /^Name/ })).toBeInTheDocument();
-});
-
-test("a rule on no library can't go on to Review", async () => {
-  renderAt("/rules/new?search=3");
-  const user = userEvent.setup();
-  await waitFor(() => expect(screen.getByRole("radio", { name: "Junk" })).toBeChecked());
-  await user.click(screen.getByRole("button", { name: "Next" }));
-  await user.click(screen.getByRole("button", { name: "Next" }));
-  await user.click(screen.getByRole("checkbox", { name: /All libraries/ }));
-  expect(screen.getByText("Pick at least one library.")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
-  await user.click(screen.getByRole("checkbox", { name: "Main" }));
-  expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
-});
-
-test("editing a rule opens at Review, with its action fixed", async () => {
+test("editing a rule that's on previews the new conditions before saving anything", async () => {
+  current = { ...rule, enabled: true };
   renderAt("/rules/9");
   const user = userEvent.setup();
-  expect(await screen.findByRole("textbox", { name: /^Name/ })).toHaveValue("Hide junk");
-  await user.click(screen.getByRole("button", { name: "2. Do" }));
-  expect(screen.getByRole("combobox", { name: /Action/ })).toBeDisabled();
+  expect(await screen.findByDisplayValue("junk")).toBeInTheDocument();
+  // A tag input has suggestions, so it's a combobox, not a textbox.
+  await user.clear(screen.getByLabelText("Value 1"));
+  await user.type(screen.getByLabelText("Value 1"), "spam");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await screen.findByText("It would archive 2 cards and unarchive 0 cards.");
+  expect(calls.map((c) => c.method + " " + c.path)).toEqual(["POST /api/rules/preview"]);
+  expect((calls[0]!.body as { filter: unknown }).filter).toEqual({ and: [{ tag: "spam" }] });
 });
 
-test("Add rule on the Rules page opens the wizard", async () => {
+test("a search rows can't show is read-only with Edit on Cards", async () => {
+  const fetch = globalThis.fetch;
+  vi.stubGlobal("fetch", async (req: Request) =>
+    new URL(req.url).pathname === "/api/saved-searches" && req.method === "GET"
+      ? json([{ id: 3, name: "Junk", filter: { and: [{ or: [{ tag: "a" }, { tag: "b" }] }] }, sort: "", created_at: "", rules: [] }])
+      : fetch(req),
+  );
+  renderAt("/rules/new?search=3");
+  expect(await screen.findByText(/Matches saved search/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Edit on Cards" })).toHaveAttribute("href", "/cards?saved=3");
+  expect(screen.queryByRole("button", { name: "Add condition" })).not.toBeInTheDocument();
+});
+
+test("a collect rule names one library and its collection", async () => {
+  renderAt("/rules/new");
+  const user = userEvent.setup();
+  await user.selectOptions(await screen.findByRole("combobox", { name: "Action" }), "collect");
+  expect(screen.getByRole("combobox", { name: "Libraries" })).toHaveValue("1");
+  await user.selectOptions(await screen.findByRole("combobox", { name: "Collection" }), "7");
+  expect(screen.getByRole("combobox", { name: "Collection" })).toHaveValue("7");
+});
+
+test("Add rule on the Rules page opens the builder", async () => {
   renderAt("/rules");
   await userEvent.click(await screen.findByRole("link", { name: "Add rule" }));
   expect(await screen.findByRole("heading", { name: "New rule" })).toBeInTheDocument();
-});
-
-test("with no saved searches, Match opens on Build", async () => {
-  noSearches();
-  renderAt("/rules/new");
-  expect(await screen.findByRole("checkbox", { name: /Shares a source/ })).toBeInTheDocument();
 });
 
 test("a rule that can't be turned on after it's added still lands on Rules", async () => {
@@ -218,66 +225,10 @@ test("a rule that can't be turned on after it's added still lands on Rules", asy
   });
   const router = renderAt("/rules/new?search=3");
   const user = userEvent.setup();
-  await waitFor(() => expect(screen.getByRole("radio", { name: "Junk" })).toBeChecked());
-  for (let i = 0; i < 3; i++) await user.click(screen.getByRole("button", { name: "Next" }));
+  await user.type(await screen.findByRole("textbox", { name: "Rule name" }), "More junk");
   await user.click(screen.getByRole("button", { name: "Save and turn on" }));
   await user.click(await screen.findByRole("button", { name: "Turn on" }));
   await waitFor(() => expect(router.state.location.pathname).toBe("/rules"));
   expect(calls.filter((c) => c.method === "POST" && c.path === "/api/rules")).toHaveLength(1);
   expect(await screen.findByText(/couldn't turn it on: boom/)).toBeInTheDocument();
-});
-
-test("picking no collection again can't go on", async () => {
-  renderAt("/rules/new?search=3");
-  const user = userEvent.setup();
-  await waitFor(() => expect(screen.getByRole("radio", { name: "Junk" })).toBeChecked());
-  await user.click(screen.getByRole("button", { name: "Next" }));
-  await user.selectOptions(screen.getByRole("combobox", { name: /Action/ }), "collect");
-  const collection = await screen.findByRole("combobox", { name: /Collection/ });
-  await user.selectOptions(collection, "7");
-  expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
-  await user.selectOptions(collection, "");
-  expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
-});
-
-test("jumping to Review names the rule after its search", async () => {
-  renderAt("/rules/new?search=3");
-  const user = userEvent.setup();
-  await waitFor(() => expect(screen.getByRole("radio", { name: "Junk" })).toBeChecked());
-  await user.click(screen.getByRole("button", { name: "4. Review" }));
-  expect(screen.getByRole("textbox", { name: /^Name/ })).toHaveValue("Junk");
-});
-
-test("the review links back to each step", async () => {
-  renderAt("/rules/9");
-  const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: "All libraries" }));
-  expect(screen.getByRole("checkbox", { name: /All libraries/ })).toBeChecked();
-  await user.click(screen.getByRole("button", { name: "4. Review" }));
-  await user.click(screen.getByRole("button", { name: "Archive" }));
-  expect(screen.getByRole("combobox", { name: /Action/ })).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "4. Review" }));
-  await user.click(screen.getByRole("button", { name: "Junk" }));
-  expect(await screen.findByRole("radio", { name: "Junk" })).toBeChecked();
-});
-
-test("a blank name can't be saved", async () => {
-  renderAt("/rules/new?search=3");
-  const user = userEvent.setup();
-  await waitFor(() => expect(screen.getByRole("radio", { name: "Junk" })).toBeChecked());
-  await user.click(screen.getByRole("button", { name: "4. Review" }));
-  await user.clear(screen.getByRole("textbox", { name: /^Name/ }));
-  await user.type(screen.getByRole("textbox", { name: /^Name/ }), "  ");
-  expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Save and turn on" })).toBeDisabled();
-});
-
-test("editing a collect rule fixes its library and collection", async () => {
-  current = { ...rule, action: "collect", collection_id: 7, all_libraries: false, libraries: [1] };
-  renderAt("/rules/9");
-  const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: "2. Do" }));
-  expect(screen.getByRole("combobox", { name: /Library/ })).toBeDisabled();
-  expect(screen.getByRole("combobox", { name: /Collection/ })).toBeDisabled();
-  expect(screen.queryByRole("button", { name: /Where/ })).not.toBeInTheDocument();
 });

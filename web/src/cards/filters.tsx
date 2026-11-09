@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { collectionsQuery, enrichmentKeysQuery, instancesQuery, namesQuery, pluginsQuery } from "../api/queries";
+import type { components } from "../api/schema";
 import { text } from "../card/draft";
 import { Icon } from "../shell/Icon";
 import { apps } from "../sync/Logo";
@@ -26,6 +27,10 @@ function termLabel(t: Term, names: Names): string {
   return `${t.not ? "not " : ""}${t.kind}: ${value}`;
 }
 
+/** sidebarKeys are the browsable keys an instance has scored a card for: those the filter sidebar lists. */
+export const sidebarKeys = (keys?: components["schemas"]["EnrichmentKeysOutBody"]) =>
+  (keys?.browse ?? []).filter((b) => b.instances?.some((id) => keys?.instances?.some((e) => e.id === id && e.scored)));
+
 /** useFilterInputs loads what the filter sidebar and its chips need for q: the enrichment keys, the names terms show, and the browsable keys a scored instance offers. */
 export function useFilterInputs(q: CardQuery, keysEnabled = true) {
   const keys = useQuery({ ...enrichmentKeysQuery, enabled: keysEnabled });
@@ -41,7 +46,7 @@ export function useFilterInputs(q: CardQuery, keysEnabled = true) {
     lorebooks: new Map((lorebooks.data?.hits ?? []).map((h) => [h.id, text(h.fields.name)])),
     logos: apps(instances.data, plugins.data),
   };
-  const browse = (keys.data?.browse ?? []).filter((b) => b.instances?.some((id) => enrichers.some((e) => e.id === id && e.scored)));
+  const browse = sidebarKeys(keys.data);
   return { keys, instances, plugins, enrichers, names, browse };
 }
 

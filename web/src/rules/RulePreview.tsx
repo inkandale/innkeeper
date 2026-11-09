@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, must } from "../api/client";
 import { librariesQuery } from "../api/queries";
+import type { components } from "../api/schema";
 import { text } from "../card/draft";
 import { count } from "../shell/count";
 import { useModal } from "../shell/useModal";
@@ -11,16 +12,17 @@ import type { Spec } from "./Rules";
 const pageSize = 24;
 const verbs = { archive: ["archive", "unarchive"], collect: ["add to the collection", "take out of the collection"] } as const;
 
-type Props = { id?: number; spec: Spec; confirmLabel: string; onConfirm: () => void; onClose: () => void };
+type Filter = components["schemas"]["Filter"];
+type Props = { id?: number; spec: Spec; filter?: Filter; confirmLabel: string; onConfirm: () => void; onClose: () => void };
 
 /** RulePreview shows what a rule would change once on, a page at a time, and runs onConfirm only when the owner confirms. */
-export function RulePreview({ id, spec, confirmLabel, onConfirm, onClose }: Props) {
+export function RulePreview({ id, spec, filter, confirmLabel, onConfirm, onClose }: Props) {
   const modal = useModal(onClose);
   const [page, setPage] = useState(1);
   const libraries = useQuery(librariesQuery);
   const preview = useQuery({
-    queryKey: ["rule-preview", id ?? 0, spec, page],
-    queryFn: async () => must(await api.POST("/rules/preview", { body: { ...(id !== undefined && { id }), rule: spec, page } })),
+    queryKey: ["rule-preview", id ?? 0, spec, filter, page],
+    queryFn: async () => must(await api.POST("/rules/preview", { body: { ...(id !== undefined && { id }), rule: spec, ...(filter && { filter }), page } })),
     placeholderData: keepPreviousData,
   });
   const [apply, giveBack] = verbs[spec.action];

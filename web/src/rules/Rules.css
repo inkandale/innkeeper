@@ -8,3 +8,28 @@
   display: grid;
   gap: calc(var(--space) * 0.5);
 }
+
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.rule-build {
+  display: grid;
+  grid-template-columns: minmax(0, 16rem) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+@media (max-width: 40rem) {
+  .rule-build {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.rule-summary {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+}

@@ -24,7 +24,17 @@ beforeEach(() => {
         return (await req.json()).facets_only
           ? json({ facets: { tags: [{ name: "junk", cards: 3 }], sources: [{ kind: "chub", cards: 2 }] } })
           : json({ total: 2, hits: [{ id: 5, slug: "a", revision_id: 1, fields: { name: "Junk a" } }] });
-      if (path === "/api/enrichments/keys") return json({ browse: [{ key: "quality", label: "Quality", type: "score", instances: [1] }], instances: [{ id: 1, label: "Scorer", keys: [], scored: true }], scorers: [] });
+      if (path === "/api/enrichments/keys") return json({
+          browse: [
+            { key: "quality", label: "Quality", type: "score", instances: [1] },
+            { key: "rating", label: "Rating", type: "score", instance: 3, instances: [3] },
+          ],
+          instances: [
+            { id: 1, label: "Scorer", keys: [], scored: true },
+            { id: 3, label: "Rater", keys: [], scored: true },
+          ],
+          scorers: [],
+        });
       const body = req.method === "GET" || req.method === "DELETE" ? undefined : await req.json();
       if (req.method !== "GET") calls.push({ method: req.method, path, body });
       if (path === "/api/libraries") return json([{ id: 1, name: "Main", cards: 0, lorebooks: 0, created_at: "" }]);
@@ -144,8 +154,8 @@ test("Add rule on a saved search loads its conditions, and editing them patches 
   await user.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() =>
     expect(calls).toEqual([
-      { method: "PATCH", path: "/api/saved-searches/3", body: { filter: { and: [{ not: { tag: "junk" } }] } } },
       { method: "POST", path: "/api/rules", body: { name: "More junk", saved_search_id: 3, action: "archive", all_libraries: true, enabled: false } },
+      { method: "PATCH", path: "/api/saved-searches/3", body: { filter: { and: [{ not: { tag: "junk" } }] } } },
     ]),
   );
 });
@@ -203,8 +213,19 @@ test("a collect rule names one library and its collection", async () => {
   const user = userEvent.setup();
   await user.selectOptions(await screen.findByRole("combobox", { name: "Action" }), "collect");
   expect(screen.getByRole("combobox", { name: "Libraries" })).toHaveValue("1");
+  expect(screen.getByText("Pick a collection.")).toBeInTheDocument();
   await user.selectOptions(await screen.findByRole("combobox", { name: "Collection" }), "7");
-  expect(screen.getByRole("combobox", { name: "Collection" })).toHaveValue("7");
+  await user.type(screen.getByRole("textbox", { name: "Rule name" }), "Faves");
+  await user.click(screen.getByRole("button", { name: "Add condition" }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "Field 1" }), "shares_source");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() =>
+    expect(calls.at(-1)).toEqual({
+      method: "POST",
+      path: "/api/rules",
+      body: { name: "Faves", saved_search_id: 4, action: "collect", collection_id: 7, all_libraries: false, libraries: [1], enabled: false },
+    }),
+  );
 });
 
 test("Add rule on the Rules page opens the builder", async () => {
@@ -231,4 +252,63 @@ test("a rule that can't be turned on after it's added still lands on Rules", asy
   await waitFor(() => expect(router.state.location.pathname).toBe("/rules"));
   expect(calls.filter((c) => c.method === "POST" && c.path === "/api/rules")).toHaveLength(1);
   expect(await screen.findByText(/couldn't turn it on: boom/)).toBeInTheDocument();
+});
+
+test("a rule on some libraries keeps every library ticked", async () => {
+  const fetch = globalThis.fetch;
+  vi.stubGlobal("fetch", async (req: Request) =>
+    new URL(req.url).pathname === "/api/libraries"
+      ? json([
+          { id: 1, name: "Main", cards: 0, lorebooks: 0, created_at: "" },
+          { id: 2, name: "Spare", cards: 0, lorebooks: 0, created_at: "" },
+        ])
+      : fetch(req),
+  );
+  renderAt("/rules/new");
+  const user = userEvent.setup();
+  await user.type(await screen.findByRole("textbox", { name: "Rule name" }), "Twins");
+  await user.click(screen.getByRole("button", { name: "Add condition" }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "Field 1" }), "shares_source");
+  await user.selectOptions(await screen.findByRole("combobox", { name: "Libraries" }), "some");
+  expect(screen.getByText("Pick at least one library.")).toBeInTheDocument();
+  await user.click(await screen.findByRole("checkbox", { name: "Main" }));
+  await user.click(screen.getByRole("checkbox", { name: "Spare" }));
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() =>
+    expect(calls.at(-1)).toEqual({
+      method: "POST",
+      path: "/api/rules",
+      body: { name: "Twins", saved_search_id: 4, action: "archive", all_libraries: false, libraries: [1, 2], enabled: false },
+    }),
+  );
+});
+
+test("a rule that fails to save leaves its shared search as it was", async () => {
+  const fetch = globalThis.fetch;
+  vi.stubGlobal("fetch", async (req: Request) =>
+    new URL(req.url).pathname === "/api/rules" && req.method === "POST"
+      ? new Response(JSON.stringify({ status: 409, title: "Conflict", detail: "a rule named More junk already exists" }), { status: 409, headers: { "Content-Type": "application/problem+json" } })
+      : fetch(req),
+  );
+  renderAt("/rules/new?search=3");
+  const user = userEvent.setup();
+  await user.type(await screen.findByRole("textbox", { name: "Rule name" }), "More junk");
+  await user.selectOptions(screen.getByRole("combobox", { name: "Operator 1" }), "is_not");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  expect(await screen.findByText(/already exists/)).toBeInTheDocument();
+  expect(calls.filter((c) => c.method === "PATCH")).toEqual([]);
+});
+
+test("saving a rule with untouched conditions leaves its search alone", async () => {
+  const fetch = globalThis.fetch;
+  vi.stubGlobal("fetch", async (req: Request) =>
+    new URL(req.url).pathname === "/api/saved-searches" && req.method === "GET"
+      ? json([{ id: 3, name: "Junk", filter: { and: [{ enrichment: "rating", gte: 2, instance: 3 }] }, sort: "", created_at: "", rules: [{ id: 9, name: "Hide junk" }] }])
+      : fetch(req),
+  );
+  renderAt("/rules/9");
+  const user = userEvent.setup();
+  expect(await screen.findByDisplayValue("2")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() => expect(calls.map((c) => c.method + " " + c.path)).toEqual(["PUT /api/rules/9"]));
 });

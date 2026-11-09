@@ -56,7 +56,7 @@ export function complete(row: Condition, field: Field | undefined): boolean {
   if (field.input === "none" || row.op === "missing") return true;
   if (field.input === "number") {
     const ok = (v?: string) => v !== undefined && v.trim() !== "" && Number.isFinite(Number(v));
-    return row.op === "between" ? ok(row.value) && ok(row.value2) : ok(row.value);
+    return row.op === "between" ? ok(row.value) && ok(row.value2) && Number(row.value) <= Number(row.value2) : ok(row.value);
   }
   return row.value.trim() !== "";
 }

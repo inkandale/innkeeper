@@ -19,6 +19,7 @@ const cases: [string, Condition, unknown][] = [
   ["shares a source", { field: "shares_source", op: "is", value: "" }, { shares_source: true }],
   ["merged score at least", { field: "score:quality", op: "at_least", value: "70" }, { enrichment: "quality", gte: 70 }],
   ["instance score at most", { field: "score:3:rating", op: "at_most", value: "2" }, { enrichment: "rating", instance: 3, lte: 2 }],
+  ["score at least zero", { field: "score:quality", op: "at_least", value: "0" }, { enrichment: "quality", gte: 0 }],
   ["score between", { field: "score:quality", op: "between", value: "10", value2: "40" }, { enrichment: "quality", gte: 10, lte: 40 }],
   ["no score", { field: "score:quality", op: "missing", value: "" }, { enrichment: "quality", missing: true }],
   ["value is not", { field: "value:language", op: "is_not", value: "English" }, { not: { enrichment: "language", is: "English" } }],
@@ -36,6 +37,7 @@ test.each(cases)("%s round-trips", (_, row, cond) => {
 test("incomplete rows are left out, and none at all is no filter", () => {
   expect(toFilter({ match: "all", rows: [{ field: "tag", op: "is", value: "" }] }, fields)).toBeUndefined();
   expect(toFilter({ match: "all", rows: [{ field: "score:quality", op: "between", value: "1", value2: "" }] }, fields)).toBeUndefined();
+  expect(toFilter({ match: "all", rows: [{ field: "score:quality", op: "between", value: "40", value2: "10" }] }, fields)).toBeUndefined();
 });
 
 test("a bare condition reads as one row", () => {

@@ -58,8 +58,10 @@ most rules cover all of them.
 - **New rule:** `POST /saved-searches` with the rule's name and the rows'
   filter, then `POST /rules` on it. If the rule fails, the page deletes the
   search it just saved. A taken name shows inline.
-- **Changed conditions:** `PATCH /saved-searches/{id}` with the new filter,
-  then `PUT /rules/{id}`.
+- **Changed conditions:** `PUT /rules/{id}` (or `POST /rules` for a new rule
+  on the search), then `PATCH /saved-searches/{id}` with the new filter, so
+  a rule that fails to save leaves the shared search as it was. If the
+  `PATCH` fails, the rule stays saved and an error toast says so.
 - **Save and turn on** on a new rule: preview the unsaved rule with
   `filter`, then on confirm save it as above and turn it on with `PUT`.
   Cancelling saves nothing. If turning it on fails, the rule stays, off, and

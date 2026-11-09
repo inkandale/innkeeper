@@ -2523,7 +2523,7 @@ export interface paths {
         put?: never;
         /**
          * Preview a rule
-         * @description Returns, for each library the rule would cover or covers now, how many cards it would archive or collect and how many it would give back, with a page of each. Changes nothing. An archive count leaves out cards another archive rule or an earlier duplicate run already holds; duplicates the hide job hasn't found yet aren't predicted.
+         * @description Returns, for each library the rule would cover or covers now, how many cards it would archive or collect and how many it would give back, with a page of each. Changes nothing. An archive count leaves out cards another archive rule or an earlier duplicate run already holds; duplicates the hide job hasn't found yet aren't predicted. With filter, it previews that filter instead of the saved search's.
          */
         post: operations["preview-rule"];
         delete?: never;
@@ -4405,6 +4405,8 @@ export interface components {
              * @example /api/schemas/PreviewRuleInBody.json
              */
             readonly $schema?: string;
+            /** @description Previews this filter in place of the rule's saved search's, so a rule can be previewed before it or its search is saved. saved_search_id may then be 0. */
+            filter?: components["schemas"]["Filter"];
             /**
              * Format: int64
              * @description The rule being edited, so the cards it would give back count. Leave it out for a new rule.

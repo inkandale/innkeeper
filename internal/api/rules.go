@@ -33,9 +33,10 @@ type listRulesIn struct {
 
 type previewRuleIn struct {
 	Body struct {
-		ID   int64            `json:"id,omitempty" doc:"The rule being edited, so the cards it would give back count. Leave it out for a new rule."`
-		Rule library.RuleSpec `json:"rule" doc:"The rule as it would be saved. It is previewed enabled."`
-		Page int              `json:"page,omitempty" minimum:"0" maximum:"100000" doc:"1-based page of every list. Default 1."`
+		ID     int64            `json:"id,omitempty" doc:"The rule being edited, so the cards it would give back count. Leave it out for a new rule."`
+		Rule   library.RuleSpec `json:"rule" doc:"The rule as it would be saved. It is previewed enabled."`
+		Filter *library.Filter  `json:"filter,omitempty" doc:"Previews this filter in place of the rule's saved search's, so a rule can be previewed before it or its search is saved. saved_search_id may then be 0."`
+		Page   int              `json:"page,omitempty" minimum:"0" maximum:"100000" doc:"1-based page of every list. Default 1."`
 	}
 }
 
@@ -203,7 +204,8 @@ func (s *Server) ruleRoutes(api huma.API) {
 		Summary: "Preview a rule", Tags: tags,
 		Description: "Returns, for each library the rule would cover or covers now, how many cards it would archive or collect " +
 			"and how many it would give back, with a page of each. Changes nothing. An archive count leaves out cards " +
-			"another archive rule or an earlier duplicate run already holds; duplicates the hide job hasn't found yet aren't predicted."},
+			"another archive rule or an earlier duplicate run already holds; duplicates the hide job hasn't found yet aren't predicted. " +
+			"With filter, it previews that filter instead of the saved search's."},
 		func(ctx context.Context, in *previewRuleIn) (*rulePreviewOut, error) {
 			spec := in.Body.Rule
 			spec.Enabled = true
@@ -225,14 +227,18 @@ func (s *Server) ruleRoutes(api huma.API) {
 					return nil, err
 				}
 			}
-			search, err := s.Lib.GetSavedSearch(ctx, spec.SavedSearchID)
-			if errors.Is(err, library.ErrNotFound) {
-				return nil, huma.Error422UnprocessableEntity(fmt.Sprintf("saved search %d doesn't exist", spec.SavedSearchID))
+			filter := in.Body.Filter
+			if filter == nil {
+				search, err := s.Lib.GetSavedSearch(ctx, spec.SavedSearchID)
+				if errors.Is(err, library.ErrNotFound) {
+					return nil, huma.Error422UnprocessableEntity(fmt.Sprintf("saved search %d doesn't exist", spec.SavedSearchID))
+				}
+				if err != nil {
+					return nil, s.fail(err)
+				}
+				filter = &search.Filter
 			}
-			if err != nil {
-				return nil, s.fail(err)
-			}
-			r := library.Rule{ID: in.Body.ID, RuleSpec: spec, Filter: search.Filter}
+			r := library.Rule{ID: in.Body.ID, RuleSpec: spec, Filter: *filter}
 			libs, err := s.Lib.RuleScope(ctx, r)
 			if err != nil {
 				return nil, s.fail(err)

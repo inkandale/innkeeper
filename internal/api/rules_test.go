@@ -194,6 +194,26 @@ func TestRulePreviewCountsWhatTheJobThenDoesAndChangesNothing(t *testing.T) {
 	}
 }
 
+func TestRulePreviewReadsAnUnsavedFilter(t *testing.T) {
+	e := newEnv(t)
+	e.createCard(`{"name": "Junk one"}`)
+	e.createCard(`{"name": "Junk two"}`)
+	e.createCard(`{"name": "Keeper"}`)
+	spec := map[string]any{"name": "Junk", "saved_search_id": 0, "action": "archive", "all_libraries": true, "enabled": false}
+
+	var out []rulePreview
+	e.call("POST", "/rules/preview", map[string]any{"rule": spec, "filter": map[string]any{"name": "junk"}}, 200, &out)
+	if len(out) != 1 || out[0].Apply.Total != 2 {
+		t.Fatalf("preview of name junk = %+v, want 2 to archive", out)
+	}
+	e.call("POST", "/rules/preview", map[string]any{"rule": spec, "filter": map[string]any{"name": "keeper"}}, 200, &out)
+	if len(out) != 1 || out[0].Apply.Total != 1 {
+		t.Fatalf("preview of name keeper = %+v, want 1 to archive", out)
+	}
+	// Without a filter, saved search 0 still has to exist.
+	e.call("POST", "/rules/preview", map[string]any{"rule": spec}, 422, nil)
+}
+
 func TestRulePreviewLeavesOutCardsAnEarlierArchiveRuleTakes(t *testing.T) {
 	e := newEnv(t)
 	e.createCard(`{"name": "Junk one"}`)

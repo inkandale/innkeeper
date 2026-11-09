@@ -50,18 +50,19 @@ function Builder({ id, initial, search, fields, library }: Props) {
   const navigate = useNavigate();
   const [ask, dialog] = useConfirm();
   const [spec, setSpec] = useState(initial);
-  const decoded = search ? fromFilter(search.filter, fields) : newGroup();
+  const [decoded] = useState(() => (search ? fromFilter(search.filter, fields) : newGroup()));
   // A search the page can't show stays as it is; the rest of the rule still edits.
   const readOnly = search !== undefined && decoded === undefined;
   const [root, setRoot] = useState<Group>(() => decoded ?? newGroup());
+  // Both sides go through toFilter, so key order and a bare condition's rewrite as and can't count as a change.
+  const [baseline] = useState(() => JSON.stringify(decoded && toFilter(decoded, fields)));
   const [previewing, setPreviewing] = useState<"save" | "turn-on">();
   const libraries = useQuery(librariesQuery);
   const ruleLibrary = spec.libraries?.[0] ?? library;
   const collections = useQuery({ ...collectionsQuery(ruleLibrary), enabled: spec.action === "collect" });
   const byId = new Map(fields.map((f) => [f.id, f]));
   const filter = readOnly ? search!.filter : toFilter(root, fields);
-  // Both sides go through toFilter, so key order and a bare condition's rewrite as and can't count as a change.
-  const changed = !readOnly && JSON.stringify(filter) !== JSON.stringify(decoded && toFilter(decoded, fields));
+  const changed = !readOnly && JSON.stringify(filter) !== baseline;
   const fixed = id !== undefined;
   const set = (change: Partial<Spec>) => setSpec({ ...spec, ...change });
   const others = (search?.rules ?? []).filter((r) => r.id !== id);
@@ -369,7 +370,7 @@ function GroupView({ group, path, level, onChange, ctx }: { group: Group; path: 
           <button type="button" className="button ghost" aria-label={`Remove ${item.kind} ${at(i)}`} onClick={() => remove(i)}>
             ✕
           </button>
-          {item.kind === "group" && <GroupView group={item} path={at(i)} level={level + 1} onChange={(g) => set(i, g)} ctx={ctx} />}
+          {item.kind === "group" && <GroupView group={item} path={at(i)} level={level + 1} onChange={(g) => (g.items.length ? set(i, g) : remove(i))} ctx={ctx} />}
         </li>
       ))}
       <li className="rule-add">

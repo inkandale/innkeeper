@@ -313,6 +313,14 @@ test("saving a rule with untouched conditions leaves its search alone", async ()
   await waitFor(() => expect(calls.map((c) => c.method + " " + c.path)).toEqual(["PUT /api/rules/9"]));
 });
 
+test("removing a group's last item removes the group", async () => {
+  renderAt("/rules/new");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Add group" }));
+  await user.click(screen.getByRole("button", { name: "Remove condition 1.1" }));
+  expect(screen.queryByRole("button", { name: "Remove group 1" })).not.toBeInTheDocument();
+});
+
 test("a group mixes or inside an and, and not negates it", async () => {
   renderAt("/rules/new");
   const user = userEvent.setup();

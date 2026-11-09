@@ -30,6 +30,7 @@ const leaves: [string, Partial<Condition>, components["schemas"]["Filter"]][] = 
   ["score between", { field: "score:quality", op: "between", value: "10", value2: "40" }, { enrichment: "quality", gte: 10, lte: 40 }],
   ["no score", { field: "score:quality", op: "missing", value: "" }, { enrichment: "quality", missing: true }],
   ["value is", { field: "value:language", op: "is", value: "English" }, { enrichment: "language", is: "English" }],
+  ["no value", { field: "value:language", op: "missing", value: "" }, { enrichment: "language", missing: true }],
 ];
 
 test.each(leaves)("%s round-trips, plain and negated", (_, c, leaf) => {

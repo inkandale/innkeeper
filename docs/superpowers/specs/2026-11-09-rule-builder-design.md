@@ -1,17 +1,23 @@
 # Rule builder
 
 Add and edit a rule on one page that reads as a sentence, the way mail
-rules do: conditions as rows of field, operator, and value, then an action.
+rules do: conditions as rows of field, operator, and value, joined by and or
+or, negated with not, and grouped, then an action.
 It replaces the four-step wizard. Builds on
 [rules](2026-11-06-rules-design.md).
 
 ```
 Name  [ Hide junk                         ]
 
-When a card in  [All libraries ▾]  matches  [all ▾]  of:
-   [Tag        ▾] [is        ▾] [nsfw      ▾]           ✕
-   [Quality    ▾] [is below  ▾] [40         ]           ✕
-   + Add condition
+When a card in  [All libraries ▾]  matches:
+   Where   [Not] [Tag ▾] is [nsfw ▾]                            ✕
+   [And ▾]       [Quality ▾] [is at most ▾] [40]                ✕
+   and     [Not] ┌──────────────────────────────────────────┐  ✕
+                 │ Where   [Language ▾] is [English ▾]      │
+                 │ [Or ▾]  [Source ▾] is [chub ▾]           │
+                 │ + Add condition   + Add group            │
+                 └──────────────────────────────────────────┘
+   + Add condition   + Add group
 
 then  [archive it ▾]                 (or: [add it to ▾] [Faves ▾])
 
@@ -28,25 +34,34 @@ then  [archive it ▾]                 (or: [add it to ▾] [Faves ▾])
 | Where rules start | Add rule on the Rules page opens `/rules/new`. Add rule on a saved search opens it with that search's conditions. |
 | What the conditions are | The rule's saved search. A new rule's is saved under the rule's name. |
 | Editing | `/rules/:id` loads the rule's conditions into rows. Action and collection stay fixed. |
-| A search rows can't show | Its filter isn't one level of conditions, as when built on Cards with any-of groups. It shows as one read-only row, "Matches saved search *name*", with Edit on Cards linking to `/cards?saved=<id>`. The rest of the page still works. |
+| A search rows can't show | Its filter has a condition no field covers, such as a collection or app. It shows as one read-only row, "Matches saved search *name*", with Edit on Cards linking to `/cards?saved=<id>`. The rest of the page still works. Any and/or/not nesting shows as groups. |
 | A search other rules use | Changing the conditions changes that search, so the page names the other rules under the conditions. |
 | Live count | How many cards match in the current library, and the first few names, refreshed as conditions change. |
 | Turning on | Save and turn on, or saving a rule that's on with changed conditions or libraries, shows the preview first. |
 
 ## Conditions
 
-A row is a field, an operator, and a value. Match all is an `and` of the
-rows, any an `or`. A negative operator wraps its condition in `not`.
+A group holds conditions and groups, joined by one connector, and or or.
+Its first item reads Where; the second shows the connector as a menu, and
+changing it changes the whole group, so mixing and with or takes a group.
+The rest show it as text. Not on a condition or a group wraps it in `not`.
+The page itself is the outermost group, which can't be negated. Add group
+works two levels deep; a deeper saved filter still shows and edits.
+
+A group is an `and` or `or` of its items. Items that aren't complete are
+left out, and a group left with none is too.
+
+A condition is a field, an operator, and a value:
 
 | Field | Operators | Value | Filter |
 |---|---|---|---|
 | Name | contains | text | `name` |
-| Creator | is, is not | text | `creator` |
-| Tag | is, is not | a tag, offered with counts as you type | `tag` |
-| Source | is, is not | a source kind from the list | `source` |
+| Creator | is | text | `creator` |
+| Tag | is | a tag, offered with counts as you type | `tag` |
+| Source | is | a source kind from the list | `source` |
 | Shares a source | (none) | (none) | `shares_source: true` |
 | A score key | is at least, is at most, is between, has no score | one or two numbers | `enrichment` with `gte`, `lte`, or `missing` |
-| A text or list key | is, is not, has no value | a value, offered with counts | `enrichment` with `is` or `missing` |
+| A text or list key | is, has no value | a value, offered with counts | `enrichment` with `is` or `missing` |
 
 Score and value fields are the browsable keys the Cards sidebar lists, with
 their labels, and carry `instance` when the key names one. Collection,
@@ -79,7 +94,7 @@ saved. Nothing else changes.
 | File | Change |
 |---|---|
 | `internal/api/rules.go` | Preview takes `filter` |
-| `web/src/rules/conditions.ts` (new) | Rows to filter and back, and which fields and operators exist |
+| `web/src/rules/conditions.ts` (new) | Groups and conditions to filter and back, and which fields and operators exist |
 | `web/src/rules/RuleBuilder.tsx` (new) | The page; replaces `RuleWizard.tsx` and `MatchStep.tsx` |
 | `web/src/rules/RulePreview.tsx` | Passes `filter` through |
 | `web/src/rules/Rules.css` | Row layout; drops the wizard's styles |
@@ -88,11 +103,14 @@ saved. Nothing else changes.
 ## Testing
 
 - Core: preview with `filter` counts by it, not by the saved search's.
-- Rows to filter and back, for every field and operator, and a filter rows
-  can't show.
+- Groups to filter and back, for every field and operator, with not on
+  conditions and groups and nesting, and a filter rows can't show.
+- Changing a group's connector changes the whole group; Add group stops two
+  levels down.
 - Build a rule from nothing and save: posts the search, then the rule; a
   failing rule deletes the search.
 - Add rule on a saved search loads its conditions; editing them patches it.
 - Editing a rule that's on with new conditions previews with `filter`
   before anything is saved.
-- A search with any-of groups shows read-only with Edit on Cards.
+- A search with a collection condition shows read-only with Edit on Cards;
+  one with any-of groups, as the Cards page saves, edits as groups.

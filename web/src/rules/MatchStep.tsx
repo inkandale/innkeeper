@@ -20,14 +20,15 @@ export function MatchStep({ library, picked, onPick, onSaved, onNext }: Props) {
   const mode = chosen ?? (searches.data.length ? "saved" : "build");
   return (
     <div className="rule-match">
-      <div className="row" role="radiogroup" aria-label="How to match">
+      <fieldset className="row">
+        <legend>How to match</legend>
         <label className="check">
           <input type="radio" name="match" checked={mode === "build"} onChange={() => setChosen("build")} /> Build a search
         </label>
         <label className="check">
           <input type="radio" name="match" checked={mode === "saved"} onChange={() => setChosen("saved")} /> Use a saved search
         </label>
-      </div>
+      </fieldset>
       {mode === "build" ? (
         <Build library={library} onSaved={onSaved} />
       ) : (
@@ -78,15 +79,17 @@ function Build({ library, onSaved }: { library: number; onSaved: (s: Picked) => 
         <p role="status">
           {!filter
             ? "Pick filters for the cards the rule acts on."
-            : matches.data
-              ? `${count(matches.data.total, "card")} match in this library.`
-              : "Counting cards…"}
+            : matches.error
+              ? matches.error.message
+              : matches.data
+                ? `${count(matches.data.total, "card")} match in this library.`
+                : "Counting cards…"}
         </p>
         <label>
           Search name <input className="input" value={name} required onChange={(e) => setName(e.target.value)} />
         </label>
         {save.error && <p className="error">{save.error.message}</p>}
-        <button className="button primary" disabled={!filter || save.isPending}>
+        <button className="button primary" disabled={!filter || !name.trim() || save.isPending}>
           Save and continue
         </button>
       </form>

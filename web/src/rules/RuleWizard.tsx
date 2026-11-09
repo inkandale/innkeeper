@@ -6,6 +6,7 @@ import { api, must, mustOk } from "../api/client";
 import { collectionsQuery, librariesQuery, savedSearchesQuery } from "../api/queries";
 import { useConfirm } from "../shell/ConfirmDialog";
 import { useLibrary } from "../shell/library";
+import { toastError } from "../shell/Toasts";
 import { MatchStep } from "./MatchStep";
 import { RulePreview } from "./RulePreview";
 import { actionLabel, specOf, type Spec } from "./Rules";
@@ -53,17 +54,17 @@ function Wizard({ id, initial, library }: { id?: number; initial: Spec; library:
   const noLibrary = !spec.all_libraries && !spec.libraries?.length;
   const done: Record<Step, boolean> = {
     match: spec.saved_search_id > 0,
-    do: spec.action === "archive" || spec.collection_id !== undefined,
+    do: spec.action === "archive" || !!spec.collection_id,
     where: !noLibrary,
     review: true,
   };
   const reachable = (s: Step) => steps.slice(0, steps.indexOf(s)).every((before) => done[before]);
-  const next = () => {
-    const to = steps[steps.indexOf(step) + 1]!;
+  const go = (to: Step) => {
     // The rule takes its search's name until the owner names it.
     if (to === "review" && !spec.name && searchName) set({ name: searchName });
     setStep(to);
   };
+  const next = () => go(steps[steps.indexOf(step) + 1]!);
   const leave = () => {
     void qc.invalidateQueries({ queryKey: ["rules"] });
     void qc.invalidateQueries({ queryKey: ["saved-searches"] });
@@ -75,9 +76,17 @@ function Wizard({ id, initial, library }: { id?: number; initial: Spec; library:
       // A new rule starts off, so turning it on is a second call.
       const added = must(await api.POST("/rules", { body: s }));
       if (!on) return added;
-      return must(await api.PUT("/rules/{id}", { params: { path: { id: added.id } }, body: { ...specOf(added), enabled: true } }));
+      try {
+        return must(await api.PUT("/rules/{id}", { params: { path: { id: added.id } }, body: { ...specOf(added), enabled: true } }));
+      } catch (e) {
+        // The rule exists now, so a retry here would add it twice.
+        toastError(`Added ${added.name}, but couldn't turn it on: ${(e as Error).message}`);
+        leave();
+        return undefined;
+      }
     },
     onSuccess: (r) => {
+      if (!r) return;
       toast.success(id !== undefined ? `Saved ${r.name}` : r.enabled ? `Added ${r.name} and turned it on` : `Added ${r.name}; it's off until you turn it on`);
       leave();
     },
@@ -98,6 +107,7 @@ function Wizard({ id, initial, library }: { id?: number; initial: Spec; library:
   const toggleLibrary = (lib: number, on: boolean) =>
     set({ libraries: on ? [...(spec.libraries ?? []), lib] : (spec.libraries ?? []).filter((l) => l !== lib) });
   const libraryName = (lib: number) => libraries.data?.find((l) => l.id === lib)?.name ?? `Library ${lib}`;
+  const where = spec.all_libraries ? "All libraries" : (spec.libraries ?? []).map(libraryName).join(", ");
   const title = id === undefined ? "New rule" : initial.name;
   const nextButton = (
     <button className="button primary" disabled={!done[step]} onClick={next}>
@@ -117,7 +127,7 @@ function Wizard({ id, initial, library }: { id?: number; initial: Spec; library:
             className={s === step ? "button primary" : "button"}
             aria-current={s === step ? "step" : undefined}
             disabled={!reachable(s)}
-            onClick={() => setStep(s)}
+            onClick={() => go(s)}
           >
             {i + 1}. {stepLabels[s]}
           </button>
@@ -167,7 +177,7 @@ function Wizard({ id, initial, library }: { id?: number; initial: Spec; library:
               </label>
               <label>
                 Collection{" "}
-                <select className="input" value={spec.collection_id ?? ""} required disabled={fixed} onChange={(e) => set({ collection_id: Number(e.target.value) })}>
+                <select className="input" value={spec.collection_id ?? ""} disabled={fixed} onChange={(e) => set({ collection_id: Number(e.target.value) || undefined })}>
                   <option value="">Pick one</option>
                   {(collections.data ?? []).map((c) => (
                     <option key={c.id} value={c.id}>
@@ -176,6 +186,7 @@ function Wizard({ id, initial, library }: { id?: number; initial: Spec; library:
                   ))}
                 </select>
               </label>
+              {collections.error && <p className="error">{collections.error.message}</p>}
             </>
           )}
           {nextButton}
@@ -206,11 +217,27 @@ function Wizard({ id, initial, library }: { id?: number; initial: Spec; library:
           </label>
           <dl className="rule-summary">
             <dt>Matches</dt>
-            <dd>{searchName ?? `Saved search ${spec.saved_search_id}`}</dd>
+            <dd>
+              <button type="button" className="link-button" onClick={() => go("match")}>
+                {searchName ?? `Saved search ${spec.saved_search_id}`}
+              </button>
+            </dd>
             <dt>Does</dt>
-            <dd>{actionLabel(spec)}</dd>
+            <dd>
+              <button type="button" className="link-button" onClick={() => go("do")}>
+                {actionLabel(spec)}
+              </button>
+            </dd>
             <dt>In</dt>
-            <dd>{spec.all_libraries ? "All libraries" : (spec.libraries ?? []).map(libraryName).join(", ")}</dd>
+            <dd>
+              {spec.action === "collect" ? (
+                where
+              ) : (
+                <button type="button" className="link-button" onClick={() => go("where")}>
+                  {where}
+                </button>
+              )}
+            </dd>
           </dl>
           {fixed && (
             <label className="check">
@@ -219,7 +246,7 @@ function Wizard({ id, initial, library }: { id?: number; initial: Spec; library:
           )}
           {save.error && <p className="error">{save.error.message}</p>}
           <div className="row">
-            <button className="button primary" disabled={save.isPending}>
+            <button className="button primary" disabled={save.isPending || !spec.name.trim()}>
               Save
             </button>
             {!fixed && (

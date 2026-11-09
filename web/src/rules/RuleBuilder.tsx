@@ -365,14 +365,11 @@ function GroupView({ group, path, level, onChange, ctx }: { group: Group; path: 
           <button type="button" className="button ghost rule-not" aria-pressed={item.not} aria-label={`Not ${at(i)}`} onClick={() => set(i, { ...item, not: !item.not })}>
             Not
           </button>
-          {item.kind === "group" ? (
-            <GroupView group={item} path={at(i)} level={level + 1} onChange={(g) => set(i, g)} ctx={ctx} />
-          ) : (
-            <ConditionView n={at(i)} row={item} onChange={(c) => set(i, c)} ctx={ctx} />
-          )}
+          {item.kind === "group" ? <span className="rule-group-label">Group</span> : <ConditionView n={at(i)} row={item} onChange={(c) => set(i, c)} ctx={ctx} />}
           <button type="button" className="button ghost" aria-label={`Remove ${item.kind} ${at(i)}`} onClick={() => remove(i)}>
             ✕
           </button>
+          {item.kind === "group" && <GroupView group={item} path={at(i)} level={level + 1} onChange={(g) => set(i, g)} ctx={ctx} />}
         </li>
       ))}
       <li className="rule-add">

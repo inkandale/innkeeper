@@ -60,14 +60,17 @@ most rules cover all of them.
   search it just saved. A taken name shows inline.
 - **Changed conditions:** `PATCH /saved-searches/{id}` with the new filter,
   then `PUT /rules/{id}`.
-- **Save and turn on** on a new rule: save it off, preview, and turn it on
-  with `PUT` when confirmed. Cancelling leaves it saved and off.
+- **Save and turn on** on a new rule: preview the unsaved rule with
+  `filter`, then on confirm save it as above and turn it on with `PUT`.
+  Cancelling saves nothing. If turning it on fails, the rule stays, off, and
+  an error toast says so.
 
 ## API
 
 `POST /rules/preview` takes an optional `filter`. With it, the preview reads
-that filter in place of the rule's saved search's, so an edit can be
-previewed before it's saved. Nothing else changes.
+that filter in place of the rule's saved search's, and `saved_search_id`
+may be 0, so a new rule or an edit can be previewed before anything is
+saved. Nothing else changes.
 
 ## Changes
 

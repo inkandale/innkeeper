@@ -4,10 +4,21 @@ import { keyRef } from "../cards/query";
 type Filter = components["schemas"]["Filter"];
 type BrowseKey = components["schemas"]["BrowseKey"];
 
-export type Op = "contains" | "is" | "is_not" | "at_least" | "at_most" | "between" | "missing";
-/** Condition is one row: a field's id, an operator, and its value, or two for between. */
-export type Condition = { field: string; op: Op; value: string; value2?: string };
-export type Conditions = { match: "all" | "any"; rows: Condition[] };
+export type Op = "contains" | "is" | "at_least" | "at_most" | "between" | "missing";
+/** Condition is one row: a field's id, an operator, and its value, or two for between. key tells rows apart while they're edited. */
+export type Condition = { kind: "condition"; key: string; not: boolean; field: string; op: Op; value: string; value2?: string };
+/** Group joins its items with one connector. The page's own group is never negated. */
+export type Group = { kind: "group"; key: string; not: boolean; op: "and" | "or"; items: Item[] };
+export type Item = Condition | Group;
+
+// A counter, as crypto.randomUUID is missing on a page served over plain http.
+let lastKey = 0;
+const nextKey = () => String(++lastKey);
+export const newCondition = (): Condition => ({ kind: "condition", key: nextKey(), not: false, field: "tag", op: "is", value: "" });
+export const newGroup = (op: Group["op"] = "and"): Group => ({ kind: "group", key: nextKey(), not: false, op, items: [] });
+
+/** conditionsOf lists every condition in item, however deep. */
+export const conditionsOf = (item: Item): Condition[] => (item.kind === "condition" ? [item] : item.items.flatMap(conditionsOf));
 /** Field is what a row can test. input says which control takes its value. */
 export type Field = {
   id: string;
@@ -21,7 +32,6 @@ export type Field = {
 const opLabels: Record<Op, string> = {
   contains: "contains",
   is: "is",
-  is_not: "is not",
   at_least: "is at least",
   at_most: "is at most",
   between: "is between",
@@ -35,9 +45,9 @@ export const opLabel = (op: Op, field: Field) => (op === "missing" && field.inpu
 export function fieldsFor(browse: BrowseKey[]): Field[] {
   const fixed: Field[] = [
     { id: "name", label: "Name", ops: ["contains"], input: "text" },
-    { id: "creator", label: "Creator", ops: ["is", "is_not"], input: "text" },
-    { id: "tag", label: "Tag", ops: ["is", "is_not"], input: "tag" },
-    { id: "source", label: "Source", ops: ["is", "is_not"], input: "source" },
+    { id: "creator", label: "Creator", ops: ["is"], input: "text" },
+    { id: "tag", label: "Tag", ops: ["is"], input: "tag" },
+    { id: "source", label: "Source", ops: ["is"], input: "source" },
     { id: "shares_source", label: "Shares a source with another card", ops: ["is"], input: "none" },
   ];
   const keys = browse.map((b): Field => {
@@ -45,7 +55,7 @@ export function fieldsFor(browse: BrowseKey[]): Field[] {
     const ref = keyRef(b.instance, b.key);
     return b.type === "score"
       ? { id: `score:${ref}`, label: b.label, ops: ["at_least", "at_most", "between", "missing"], input: "number", ...at }
-      : { id: `value:${ref}`, label: b.label, ops: ["is", "is_not", "missing"], input: "value", ...at };
+      : { id: `value:${ref}`, label: b.label, ops: ["is", "missing"], input: "value", ...at };
   });
   return [...fixed, ...keys];
 }
@@ -64,17 +74,13 @@ export function complete(row: Condition, field: Field | undefined): boolean {
 function condition(row: Condition, field: Field): Filter {
   const v = row.value.trim();
   const at = { enrichment: field.key!, ...(field.instance !== undefined && { instance: field.instance }) };
-  let c: Filter;
   switch (field.input) {
     case "text":
-      c = field.id === "name" ? { name: v } : { creator: v };
-      break;
+      return field.id === "name" ? { name: v } : { creator: v };
     case "tag":
-      c = { tag: v };
-      break;
+      return { tag: v };
     case "source":
-      c = { source: v };
-      break;
+      return { source: v };
     case "none":
       return { shares_source: true };
     case "number":
@@ -83,55 +89,74 @@ function condition(row: Condition, field: Field): Filter {
         : row.op === "at_most" ? { ...at, lte: Number(v) }
         : { ...at, gte: Number(v), lte: Number(row.value2!.trim()) };
     case "value":
-      c = row.op === "missing" ? { ...at, missing: true } : { ...at, is: v };
-      break;
+      return row.op === "missing" ? { ...at, missing: true } : { ...at, is: v };
   }
-  return row.op === "is_not" ? { not: c } : c;
 }
 
-/** toFilter is the saved search filter for the complete rows, or undefined when none are. */
-export function toFilter(c: Conditions, fields: Field[]): Filter | undefined {
-  const byId = new Map(fields.map((f) => [f.id, f]));
-  const parts = c.rows.filter((r) => complete(r, byId.get(r.field))).map((r) => condition(r, byId.get(r.field)!));
+function itemFilter(item: Item, byId: Map<string, Field>): Filter | undefined {
+  const field = item.kind === "condition" ? byId.get(item.field) : undefined;
+  const f = item.kind === "group" ? groupFilter(item, byId) : complete(item, field) ? condition(item, field!) : undefined;
+  return f && item.not ? { not: f } : f;
+}
+
+function groupFilter(g: Group, byId: Map<string, Field>): Filter | undefined {
+  const parts = g.items.map((i) => itemFilter(i, byId)).filter((f): f is Filter => f !== undefined);
   if (!parts.length) return undefined;
-  return c.match === "all" ? { and: parts } : { or: parts };
+  return g.op === "and" ? { and: parts } : { or: parts };
+}
+
+/** toFilter is the saved search filter for root's complete conditions, or undefined when it has none. */
+export function toFilter(root: Group, fields: Field[]): Filter | undefined {
+  return itemFilter(root, new Map(fields.map((f) => [f.id, f])));
 }
 
 const only = (f: object, ...keys: string[]) => Object.keys(f).every((k) => keys.includes(k));
 
-/** rowOf reads one condition back as a row, or undefined if no row makes it. */
-function rowOf(f: Filter, fields: Field[]): Condition | undefined {
-  const negated = f.not !== undefined && only(f, "not");
-  const c = negated ? f.not! : f;
-  const is: Op = negated ? "is_not" : "is";
-  if (c.name !== undefined && only(c, "name") && !negated) return { field: "name", op: "contains", value: c.name };
-  if (c.creator !== undefined && only(c, "creator")) return { field: "creator", op: is, value: c.creator };
-  if (c.tag !== undefined && only(c, "tag")) return { field: "tag", op: is, value: c.tag };
-  if (c.source !== undefined && only(c, "source")) return { field: "source", op: is, value: c.source };
-  if (c.shares_source === true && only(c, "shares_source") && !negated) return { field: "shares_source", op: "is", value: "" };
+/** conditionOf reads one plain condition back as a row, or undefined if no row makes it. */
+function conditionOf(c: Filter, fields: Field[]): Condition | undefined {
+  const row = (r: Pick<Condition, "field" | "op" | "value" | "value2">): Condition => ({ ...newCondition(), ...r });
+  if (c.name !== undefined && only(c, "name")) return row({ field: "name", op: "contains", value: c.name });
+  if (c.creator !== undefined && only(c, "creator")) return row({ field: "creator", op: "is", value: c.creator });
+  if (c.tag !== undefined && only(c, "tag")) return row({ field: "tag", op: "is", value: c.tag });
+  if (c.source !== undefined && only(c, "source")) return row({ field: "source", op: "is", value: c.source });
+  if (c.shares_source === true && only(c, "shares_source")) return row({ field: "shares_source", op: "is", value: "" });
   if (c.enrichment === undefined) return undefined;
   const ref = keyRef(c.instance, c.enrichment);
   const score = fields.find((x) => x.id === `score:${ref}`);
   const value = fields.find((x) => x.id === `value:${ref}`);
   const base = ["enrichment", "instance"];
-  if (c.missing === true && only(c, ...base, "missing") && !negated) {
+  if (c.missing === true && only(c, ...base, "missing")) {
     const field = score ?? value;
-    return field && { field: field.id, op: "missing", value: "" };
+    return field && row({ field: field.id, op: "missing", value: "" });
   }
-  if (score && !negated && only(c, ...base, "gte", "lte")) {
-    if (c.gte !== undefined && c.lte !== undefined) return { field: score.id, op: "between", value: String(c.gte), value2: String(c.lte) };
-    if (c.gte !== undefined) return { field: score.id, op: "at_least", value: String(c.gte) };
-    if (c.lte !== undefined) return { field: score.id, op: "at_most", value: String(c.lte) };
+  if (score && only(c, ...base, "gte", "lte")) {
+    if (c.gte !== undefined && c.lte !== undefined) return row({ field: score.id, op: "between", value: String(c.gte), value2: String(c.lte) });
+    if (c.gte !== undefined) return row({ field: score.id, op: "at_least", value: String(c.gte) });
+    if (c.lte !== undefined) return row({ field: score.id, op: "at_most", value: String(c.lte) });
   }
-  if (value && c.is !== undefined && only(c, ...base, "is")) return { field: value.id, op: is, value: c.is };
+  if (value && c.is !== undefined && only(c, ...base, "is")) return row({ field: value.id, op: "is", value: c.is });
   return undefined;
 }
 
-/** fromFilter reads a saved search's filter as rows, or returns undefined when rows can't show it, as with nested any-of groups. */
-export function fromFilter(f: Filter, fields: Field[]): Conditions | undefined {
-  const group = f.and && only(f, "and") ? { match: "all" as const, parts: f.and } : f.or && only(f, "or") ? { match: "any" as const, parts: f.or } : undefined;
-  const parts = group?.parts ?? [f];
-  const rows = parts.map((p) => rowOf(p, fields));
-  if (rows.some((r) => r === undefined)) return undefined;
-  return { match: group?.match ?? "all", rows: rows as Condition[] };
+function itemOf(f: Filter, fields: Field[]): Item | undefined {
+  if (f.not && only(f, "not")) {
+    const inner = itemOf(f.not, fields);
+    if (!inner) return undefined;
+    // An item holds one not, so a second one becomes a negated group around it.
+    return inner.not ? { ...newGroup(), not: true, items: [inner] } : { ...inner, not: true };
+  }
+  const parts = f.and && only(f, "and") ? f.and : f.or && only(f, "or") ? f.or : undefined;
+  if (parts) {
+    const items = parts.map((p) => itemOf(p, fields));
+    if (items.some((i) => i === undefined)) return undefined;
+    return { ...newGroup(f.and ? "and" : "or"), items: items as Item[] };
+  }
+  return conditionOf(f, fields);
+}
+
+/** fromFilter reads a saved search's filter as the page's group, or returns undefined when a condition has no field, such as a collection. */
+export function fromFilter(f: Filter, fields: Field[]): Group | undefined {
+  const item = itemOf(f, fields);
+  if (!item) return undefined;
+  return item.kind === "group" && !item.not ? item : { ...newGroup(), items: [item] };
 }

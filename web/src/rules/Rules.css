@@ -22,27 +22,50 @@
   width: auto;
 }
 
-.rule-rows {
+.rule-group {
   list-style: none;
-  padding: 0 0 0 1.5rem;
+  padding: 0;
   margin: 0;
   display: grid;
   gap: 0.5rem;
 }
 
-.rule-row {
+.rule-group.nested {
+  flex: 1 1 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.rule-item,
+.rule-add {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
 }
 
-.rule-row .input {
+.rule-connector {
+  width: 4.5rem;
+  color: var(--text-muted);
+}
+
+.rule-connector select.input {
+  width: 100%;
+  min-width: 0;
+}
+
+.button.rule-not[aria-pressed="true"] {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.rule-item .input {
   width: auto;
   min-width: 8rem;
 }
 
-.rule-row .rule-number {
+.rule-item .rule-number {
   min-width: 0;
   width: 6rem;
 }

@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { api, must, mustOk } from "../api/client";
@@ -11,14 +11,12 @@ import { useConfirm } from "../shell/ConfirmDialog";
 import { count } from "../shell/count";
 import { useLibrary } from "../shell/library";
 import { toastError } from "../shell/Toasts";
-import { complete, fieldsFor, fromFilter, opLabel, toFilter, type Condition, type Conditions, type Field } from "./conditions";
+import { complete, conditionsOf, fieldsFor, fromFilter, newCondition, newGroup, opLabel, toFilter, type Condition, type Field, type Group, type Item } from "./conditions";
 import { RulePreview } from "./RulePreview";
 import { specOf, type Spec } from "./Rules";
 import "./Rules.css";
 
 type SavedSearch = components["schemas"]["SavedSearchItem"];
-/** Row is a condition with a key that stays with it as rows above it come and go. */
-type Row = Condition & { key: number };
 
 /** RuleBuilder adds a rule, on the saved search ?search= names if any, or edits rule :id. */
 export function RuleBuilder() {
@@ -52,25 +50,20 @@ function Builder({ id, initial, search, fields, library }: Props) {
   const navigate = useNavigate();
   const [ask, dialog] = useConfirm();
   const [spec, setSpec] = useState(initial);
-  const decoded = search ? fromFilter(search.filter, fields) : { match: "all" as const, rows: [] };
-  // A search rows can't show stays as it is; the rest of the rule still edits.
+  const decoded = search ? fromFilter(search.filter, fields) : newGroup();
+  // A search the page can't show stays as it is; the rest of the rule still edits.
   const readOnly = search !== undefined && decoded === undefined;
-  const nextKey = useRef(decoded?.rows.length ?? 0);
-  const [conds, setConds] = useState<{ match: Conditions["match"]; rows: Row[] }>(() => ({
-    match: decoded?.match ?? "all",
-    rows: (decoded?.rows ?? []).map((r, i) => ({ ...r, key: i })),
-  }));
+  const [root, setRoot] = useState<Group>(() => decoded ?? newGroup());
   const [previewing, setPreviewing] = useState<"save" | "turn-on">();
   const libraries = useQuery(librariesQuery);
   const ruleLibrary = spec.libraries?.[0] ?? library;
   const collections = useQuery({ ...collectionsQuery(ruleLibrary), enabled: spec.action === "collect" });
   const byId = new Map(fields.map((f) => [f.id, f]));
-  const filter = readOnly ? search!.filter : toFilter(conds, fields);
+  const filter = readOnly ? search!.filter : toFilter(root, fields);
   // Both sides go through toFilter, so key order and a bare condition's rewrite as and can't count as a change.
   const changed = !readOnly && JSON.stringify(filter) !== JSON.stringify(decoded && toFilter(decoded, fields));
   const fixed = id !== undefined;
   const set = (change: Partial<Spec>) => setSpec({ ...spec, ...change });
-  const setRow = (key: number, row: Condition) => setConds({ ...conds, rows: conds.rows.map((r) => (r.key === key ? { ...row, key } : r)) });
   const others = (search?.rules ?? []).filter((r) => r.id !== id);
   const libraryName = (lib: number) => libraries.data?.find((l) => l.id === lib)?.name ?? `Library ${lib}`;
 
@@ -91,7 +84,8 @@ function Builder({ id, initial, search, fields, library }: Props) {
   const tags = facets.data?.facets?.tags ?? [];
   const sources = facets.data?.facets?.sources ?? [];
 
-  const incomplete = !readOnly && (conds.rows.length === 0 || conds.rows.some((r) => !complete(r, byId.get(r.field))));
+  const conditions = conditionsOf(root);
+  const incomplete = !readOnly && (conditions.length === 0 || conditions.some((c) => !complete(c, byId.get(c.field))));
   const noLibrary = !spec.all_libraries && !spec.libraries?.length;
   const noCollection = spec.action === "collect" && !spec.collection_id;
   const blocked = !spec.name.trim() || incomplete || noLibrary || noCollection;
@@ -196,12 +190,7 @@ function Builder({ id, initial, search, fields, library }: Props) {
             ))}
             {spec.action === "archive" && <option value="some">some libraries…</option>}
           </select>{" "}
-          matches{" "}
-          <select className="input" aria-label="Match" value={conds.match} disabled={readOnly} onChange={(e) => setConds({ ...conds, match: e.target.value as Conditions["match"] })}>
-            <option value="all">all</option>
-            <option value="any">any</option>
-          </select>{" "}
-          of:
+          matches:
         </p>
         {scope === "some" && (
           <fieldset className="rule-libraries">
@@ -221,57 +210,18 @@ function Builder({ id, initial, search, fields, library }: Props) {
         )}
 
         {readOnly ? (
-          <p className="rule-row">
+          <p>
             Matches saved search <strong>{search!.name}</strong>, which has conditions this page can't show.{" "}
             <Link to={`/cards?saved=${search!.id}`}>Edit on Cards</Link>
           </p>
         ) : (
-          <ol className="rule-rows">
-            {conds.rows.map((row, i) => {
-              const field = byId.get(row.field);
-              const n = i + 1;
-              return (
-                <li key={row.key} className="rule-row">
-                  <select
-                    className="input"
-                    aria-label={`Field ${n}`}
-                    value={row.field}
-                    onChange={(e) => {
-                      const next = byId.get(e.target.value)!;
-                      setRow(row.key, { field: next.id, op: next.ops[0]!, value: "" });
-                    }}
-                  >
-                    {fields.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.label}
-                      </option>
-                    ))}
-                  </select>
-                  {field && field.input !== "none" && field.ops.length === 1 && <span>{opLabel(field.ops[0]!, field)}</span>}
-                  {field && field.ops.length > 1 && (
-                    <select className="input" aria-label={`Operator ${n}`} value={row.op} onChange={(e) => setRow(row.key, { ...row, op: e.target.value as Condition["op"] })}>
-                      {field.ops.map((op) => (
-                        <option key={op} value={op}>
-                          {opLabel(op, field)}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  {field && row.op !== "missing" && (
-                    <ValueInput n={n} field={field} row={row} sources={sources} values={facets.data?.facets?.enrichments?.[row.field.slice("value:".length)] ?? []} onChange={(r) => setRow(row.key, r)} />
-                  )}
-                  <button type="button" className="button ghost" aria-label={`Remove condition ${n}`} onClick={() => setConds({ ...conds, rows: conds.rows.filter((r) => r.key !== row.key) })}>
-                    ✕
-                  </button>
-                </li>
-              );
-            })}
-            <li>
-              <button type="button" className="button" onClick={() => setConds({ ...conds, rows: [...conds.rows, { field: "tag", op: "is", value: "", key: nextKey.current++ }] })}>
-                Add condition
-              </button>
-            </li>
-          </ol>
+          <GroupView
+            group={root}
+            path=""
+            level={0}
+            onChange={setRoot}
+            ctx={{ fields, byId, sources, values: (fieldId) => facets.data?.facets?.enrichments?.[fieldId.slice("value:".length)] ?? [] }}
+          />
         )}
         <datalist id="rule-tags">
           {tags.slice(0, 200).map((t) => (
@@ -378,8 +328,110 @@ function Builder({ id, initial, search, fields, library }: Props) {
   );
 }
 
+type Ctx = {
+  fields: Field[];
+  byId: Map<string, Field>;
+  sources: { kind: string; cards: number }[];
+  values: (fieldId: string) => { value: string; cards: number }[];
+};
+
+/** GroupView is one group's items, joined by its connector, with buttons to add to it. path names it in labels, "" for the page's own. */
+function GroupView({ group, path, level, onChange, ctx }: { group: Group; path: string; level: number; onChange: (g: Group) => void; ctx: Ctx }) {
+  const at = (i: number) => (path ? `${path}.${i + 1}` : `${i + 1}`);
+  const where = path ? ` to group ${path}` : "";
+  const set = (i: number, item: Item) => onChange({ ...group, items: group.items.map((x, j) => (j === i ? item : x)) });
+  const remove = (i: number) => onChange({ ...group, items: group.items.filter((_, j) => j !== i) });
+  return (
+    <ol className={level ? "rule-group nested" : "rule-group"}>
+      {group.items.map((item, i) => (
+        <li key={item.key} className="rule-item">
+          <span className="rule-connector">
+            {i === 0 ? (
+              <span>Where</span>
+            ) : i === 1 ? (
+              <select
+                className="input"
+                aria-label={path ? `Connector in group ${path}` : "Connector"}
+                value={group.op}
+                onChange={(e) => onChange({ ...group, op: e.target.value as Group["op"] })}
+              >
+                <option value="and">and</option>
+                <option value="or">or</option>
+              </select>
+            ) : (
+              <span>{group.op}</span>
+            )}
+          </span>
+          <button type="button" className="button ghost rule-not" aria-pressed={item.not} aria-label={`Not ${at(i)}`} onClick={() => set(i, { ...item, not: !item.not })}>
+            Not
+          </button>
+          {item.kind === "group" ? (
+            <GroupView group={item} path={at(i)} level={level + 1} onChange={(g) => set(i, g)} ctx={ctx} />
+          ) : (
+            <ConditionView n={at(i)} row={item} onChange={(c) => set(i, c)} ctx={ctx} />
+          )}
+          <button type="button" className="button ghost" aria-label={`Remove ${item.kind} ${at(i)}`} onClick={() => remove(i)}>
+            ✕
+          </button>
+        </li>
+      ))}
+      <li className="rule-add">
+        <button type="button" className="button" aria-label={`Add condition${where}`} onClick={() => onChange({ ...group, items: [...group.items, newCondition()] })}>
+          + Add condition
+        </button>
+        {/* Two levels of groups cover real rules and stay readable. */}
+        {level < 2 && (
+          <button
+            type="button"
+            className="button"
+            aria-label={`Add group${where}`}
+            onClick={() => onChange({ ...group, items: [...group.items, { ...newGroup(), items: [newCondition()] }] })}
+          >
+            + Add group
+          </button>
+        )}
+      </li>
+    </ol>
+  );
+}
+
+/** ConditionView is one condition's field, operator, and value controls. */
+function ConditionView({ n, row, onChange, ctx }: { n: string; row: Condition; onChange: (row: Condition) => void; ctx: Ctx }) {
+  const field = ctx.byId.get(row.field);
+  return (
+    <>
+      <select
+        className="input"
+        aria-label={`Field ${n}`}
+        value={row.field}
+        onChange={(e) => {
+          const next = ctx.byId.get(e.target.value)!;
+          onChange({ kind: row.kind, key: row.key, not: row.not, field: next.id, op: next.ops[0]!, value: "" });
+        }}
+      >
+        {ctx.fields.map((f) => (
+          <option key={f.id} value={f.id}>
+            {f.label}
+          </option>
+        ))}
+      </select>
+      {field && field.input !== "none" && field.ops.length === 1 && <span>{opLabel(field.ops[0]!, field)}</span>}
+      {field && field.ops.length > 1 && (
+        <select className="input" aria-label={`Operator ${n}`} value={row.op} onChange={(e) => onChange({ ...row, op: e.target.value as Condition["op"] })}>
+          {field.ops.map((op) => (
+            <option key={op} value={op}>
+              {opLabel(op, field)}
+            </option>
+          ))}
+        </select>
+      )}
+      {field && row.op !== "missing" && <ValueInput n={n} field={field} row={row} sources={ctx.sources} values={ctx.values(row.field)} onChange={onChange} />}
+    </>
+  );
+}
+
 type ValueProps = {
-  n: number;
+  n: string;
   field: Field;
   row: Condition;
   sources: { kind: string; cards: number }[];

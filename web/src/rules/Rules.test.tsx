@@ -150,7 +150,7 @@ test("Add rule on a saved search loads its conditions, and editing them patches 
   expect(await screen.findByDisplayValue("junk")).toBeInTheDocument();
   expect(screen.getByText(/also changes Hide junk/)).toBeInTheDocument();
   await user.type(screen.getByRole("textbox", { name: "Rule name" }), "More junk");
-  await user.selectOptions(screen.getByRole("combobox", { name: "Operator 1" }), "is_not");
+  await user.click(screen.getByRole("button", { name: "Not 1" }));
   await user.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() =>
     expect(calls).toEqual([
@@ -195,11 +195,11 @@ test("editing a rule that's on previews the new conditions before saving anythin
   expect((calls[0]!.body as { filter: unknown }).filter).toEqual({ and: [{ tag: "spam" }] });
 });
 
-test("a search rows can't show is read-only with Edit on Cards", async () => {
+test("a search the page can't show is read-only with Edit on Cards", async () => {
   const fetch = globalThis.fetch;
   vi.stubGlobal("fetch", async (req: Request) =>
     new URL(req.url).pathname === "/api/saved-searches" && req.method === "GET"
-      ? json([{ id: 3, name: "Junk", filter: { and: [{ or: [{ tag: "a" }, { tag: "b" }] }] }, sort: "", created_at: "", rules: [] }])
+      ? json([{ id: 3, name: "Junk", filter: { and: [{ collection: 4 }] }, sort: "", created_at: "", rules: [] }])
       : fetch(req),
   );
   renderAt("/rules/new?search=3");
@@ -293,7 +293,7 @@ test("a rule that fails to save leaves its shared search as it was", async () =>
   renderAt("/rules/new?search=3");
   const user = userEvent.setup();
   await user.type(await screen.findByRole("textbox", { name: "Rule name" }), "More junk");
-  await user.selectOptions(screen.getByRole("combobox", { name: "Operator 1" }), "is_not");
+  await user.click(screen.getByRole("button", { name: "Not 1" }));
   await user.click(screen.getByRole("button", { name: "Save" }));
   expect(await screen.findByText(/already exists/)).toBeInTheDocument();
   expect(calls.filter((c) => c.method === "PATCH")).toEqual([]);
@@ -311,4 +311,57 @@ test("saving a rule with untouched conditions leaves its search alone", async ()
   expect(await screen.findByDisplayValue("2")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() => expect(calls.map((c) => c.method + " " + c.path)).toEqual(["PUT /api/rules/9"]));
+});
+
+test("a group mixes or inside an and, and not negates it", async () => {
+  renderAt("/rules/new");
+  const user = userEvent.setup();
+  await user.type(await screen.findByRole("textbox", { name: "Rule name" }), "Mixed");
+  await user.click(screen.getByRole("button", { name: "Add condition" }));
+  await user.type(screen.getByLabelText("Value 1"), "nsfw");
+  await user.click(screen.getByRole("button", { name: "Add group" }));
+  await user.type(screen.getByLabelText("Value 2.1"), "a");
+  await user.click(screen.getByRole("button", { name: "Add condition to group 2" }));
+  await user.type(screen.getByLabelText("Value 2.2"), "b");
+  await user.selectOptions(screen.getByRole("combobox", { name: "Connector in group 2" }), "or");
+  await user.click(screen.getByRole("button", { name: "Not 2" }));
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() =>
+    expect(calls[0]).toEqual({
+      method: "POST",
+      path: "/api/saved-searches",
+      body: { name: "Mixed", filter: { and: [{ tag: "nsfw" }, { not: { or: [{ tag: "a" }, { tag: "b" }] } }] }, sort: "" },
+    }),
+  );
+});
+
+test("the connector menu sits on the second item and changes the whole group", async () => {
+  renderAt("/rules/new");
+  const user = userEvent.setup();
+  for (let i = 0; i < 3; i++) await user.click(await screen.findByRole("button", { name: "Add condition" }));
+  expect(screen.getAllByRole("combobox", { name: "Connector" })).toHaveLength(1);
+  await user.selectOptions(screen.getByRole("combobox", { name: "Connector" }), "or");
+  expect(screen.getAllByText("or", { selector: ".rule-connector span" })).toHaveLength(1);
+});
+
+test("Add group stops two levels down", async () => {
+  renderAt("/rules/new");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Add group" }));
+  await user.click(screen.getByRole("button", { name: "Add group to group 1" }));
+  expect(screen.queryByRole("button", { name: "Add group to group 1.2" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Add condition to group 1.2" })).toBeInTheDocument();
+});
+
+test("a Cards search with any-of groups edits as groups", async () => {
+  const fetch = globalThis.fetch;
+  vi.stubGlobal("fetch", async (req: Request) =>
+    new URL(req.url).pathname === "/api/saved-searches" && req.method === "GET"
+      ? json([{ id: 3, name: "Junk", filter: { and: [{ or: [{ tag: "a" }, { tag: "b" }] }] }, sort: "", created_at: "", rules: [] }])
+      : fetch(req),
+  );
+  renderAt("/rules/new?search=3");
+  expect(await screen.findByDisplayValue("a")).toBeInTheDocument();
+  expect(screen.getByLabelText("Value 1.2")).toHaveValue("b");
+  expect(screen.queryByText(/can't show/)).not.toBeInTheDocument();
 });

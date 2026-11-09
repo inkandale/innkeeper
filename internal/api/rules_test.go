@@ -214,6 +214,15 @@ func TestRulePreviewReadsAnUnsavedFilter(t *testing.T) {
 	e.call("POST", "/rules/preview", map[string]any{"rule": spec}, 422, nil)
 }
 
+func TestRulePreviewRefusesAFilterASavedSearchRefuses(t *testing.T) {
+	e := newEnv(t)
+	bad := map[string]any{"enrichment": "nope", "gte": 1}
+	e.call("POST", "/saved-searches", map[string]any{"name": "Bad", "filter": bad}, 400, nil)
+	// Covering no library, the preview never searches, so only a check up front refuses it.
+	spec := map[string]any{"name": "Bad", "saved_search_id": 0, "action": "archive", "all_libraries": false, "libraries": []int64{}, "enabled": false}
+	e.call("POST", "/rules/preview", map[string]any{"rule": spec, "filter": bad}, 400, nil)
+}
+
 func TestRulePreviewLeavesOutCardsAnEarlierArchiveRuleTakes(t *testing.T) {
 	e := newEnv(t)
 	e.createCard(`{"name": "Junk one"}`)

@@ -228,7 +228,11 @@ func (s *Server) ruleRoutes(api huma.API) {
 				}
 			}
 			filter := in.Body.Filter
-			if filter == nil {
+			if filter != nil {
+				if err := s.checkFilter(ctx, *filter); err != nil {
+					return nil, s.fail(err)
+				}
+			} else {
 				search, err := s.Lib.GetSavedSearch(ctx, spec.SavedSearchID)
 				if errors.Is(err, library.ErrNotFound) {
 					return nil, huma.Error422UnprocessableEntity(fmt.Sprintf("saved search %d doesn't exist", spec.SavedSearchID))

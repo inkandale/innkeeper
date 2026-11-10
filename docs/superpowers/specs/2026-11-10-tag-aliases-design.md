@@ -31,7 +31,7 @@ which suggests tags for cards from this cleaned list.
 | Scope | One alias table for the whole install, as rules and searches span libraries. |
 | Depth | One level. A primary tag is never an alias of another key. Merging into a tag that is an alias merges into its primary tag. Merging a tag that has aliases moves them to the new primary tag. |
 | Rename | Merging into a name no card has yet. |
-| Make primary | Merging two spellings of one key records which one is primary, as a row mapping the key to that spelling: `scifi` → `Sci-Fi`. This is how the owner fixes a name's case or punctuation. A key that is an alias of another tag can't pick a spelling, as that tag's name shows instead. Without such a row, a tag shows the first of its spellings in sort order. |
+| Make primary | Merging two spellings of one key records which one is primary, as a row mapping the key to that spelling: `scifi` → `Sci-Fi`. This is how the owner fixes a name's case or punctuation. Without such a row, a tag shows the first of its spellings in sort order. |
 | Split | Deleting an alias row. |
 | What leaves Innkeeper | Raw tags. Apps, exports, and card data see what the card holds. |
 | Duplicate suggestions | Plurals and near spellings, computed in Go over the tag list. No `pg_trgm`, so no extension to enable. Tags with similar meaning, such as `female` and `woman`, wait for crucible's tag head. |

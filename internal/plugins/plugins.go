@@ -93,7 +93,8 @@ func LoadInstalled(dir string, log *slog.Logger) (manifests map[string]*protocol
 		return nil, nil, err
 	}
 	for _, e := range entries {
-		if !e.IsDir() {
+		// lost+found is the filesystem's own folder when dir is a volume's root.
+		if !e.IsDir() || e.Name() == "lost+found" {
 			continue
 		}
 		// Resolved, so a running process keeps its own version's folder after current moves.

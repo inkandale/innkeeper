@@ -1,6 +1,7 @@
 package plugins
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -390,6 +391,18 @@ func TestLoadInstalled(t *testing.T) {
 	none, _, err := LoadInstalled(filepath.Join(dir, "missing"), quiet)
 	if err != nil || len(none) != 0 {
 		t.Fatalf("missing dir: %v, %v", none, err)
+	}
+}
+
+func TestLoadInstalledIgnoresLostAndFound(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "lost+found"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var logs bytes.Buffer
+	got, unloaded, err := LoadInstalled(dir, slog.New(slog.NewTextHandler(&logs, nil)))
+	if err != nil || len(got) != 0 || len(unloaded) != 0 || logs.Len() != 0 {
+		t.Fatalf("got %v, unloaded %v, err %v, logs %q; want nothing", got, unloaded, err, logs.String())
 	}
 }
 

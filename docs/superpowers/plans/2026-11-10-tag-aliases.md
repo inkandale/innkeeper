@@ -282,6 +282,11 @@ func TestMergeTagIntoItsOwnKeyChoosesItsSpelling(t *testing.T) {
 		"fantasyworld": "Fantasy", "fantasy": "Fantasy"})
 	mergeTag(t, lib, "Fantasy", "Fantasy World", map[string]string{"scifi": "speculative", "sciencefiction": "speculative",
 		"fantasy": "Fantasy World"})
+
+	// A key that is an alias of another tag has no spelling of its own to choose.
+	if err := lib.MergeTag(context.Background(), "SCI FI", "sci-fi"); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("choosing a spelling of an alias: %v, want ErrInvalid", err)
+	}
 }
 
 func TestMarkTagsDistinctStoresOneOrderedPair(t *testing.T) {
@@ -335,6 +340,8 @@ func (l *Library) MergeTag(ctx context.Context, from, into string) error {
 		switch {
 		case fromKey == "" || intoKey == "":
 			return fmt.Errorf("%w: a tag needs a character other than spaces, - and _", ErrInvalid)
+		case fromKey == intoKey && intoPrimaryKey != nil && *intoPrimaryKey != intoKey:
+			return fmt.Errorf("%w: %q is an alias of %q", ErrInvalid, into, *intoPrimary)
 		case intoPrimaryKey != nil && *intoPrimaryKey == fromKey:
 			// into is an alias of from, or from's own self row: into becomes the primary tag.
 			if _, err := tx.Exec(ctx, `DELETE FROM tag_alias WHERE key = $1`, intoKey); err != nil {

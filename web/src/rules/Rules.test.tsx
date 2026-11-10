@@ -84,7 +84,7 @@ test("turning a rule on previews it and saves only on confirm", async () => {
   const user = userEvent.setup();
   await user.click(await screen.findByRole("switch", { name: "On: Hide junk" }));
   expect(await screen.findByText("It would archive 2 cards and unarchive 0 cards.")).toBeInTheDocument();
-  expect(screen.getByText("To archive: Junk a")).toBeInTheDocument();
+  expect(screen.getByText("To archive: Junk a, and 1 more")).toBeInTheDocument();
   expect(calls).toEqual([
     { method: "POST", path: "/api/rules/preview", body: { id: 9, rule: { name: "Hide junk", saved_search_id: 3, action: "archive", all_libraries: true, enabled: true }, page: 1 } },
   ]);
@@ -116,7 +116,7 @@ test("a rule built from nothing saves its search, then the rule", async () => {
   await user.selectOptions(screen.getByRole("combobox", { name: "Field 1" }), "score:quality");
   await user.selectOptions(screen.getByRole("combobox", { name: "Operator 1" }), "at_most");
   await user.type(screen.getByRole("spinbutton", { name: "Value 1" }), "40");
-  expect(await screen.findByText(/2 cards match in Main/)).toBeInTheDocument();
+  expect(await screen.findByText(/2 cards match in all libraries/)).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() =>
     expect(calls).toEqual([
@@ -168,6 +168,8 @@ test("Save and turn on previews the unsaved rule, then saves and turns it on", a
   await user.selectOptions(screen.getByRole("combobox", { name: "Field 1" }), "shares_source");
   await user.click(screen.getByRole("button", { name: "Save and turn on" }));
   await screen.findByText("It would archive 2 cards and unarchive 0 cards.");
+  expect(screen.getByText("To archive: Junk a, and 1 more")).toBeInTheDocument();
+  expect(screen.queryByText(/Page 1 of/)).not.toBeInTheDocument();
   expect(calls).toEqual([
     {
       method: "POST",
@@ -193,6 +195,25 @@ test("editing a rule that's on previews the new conditions before saving anythin
   await screen.findByText("It would archive 2 cards and unarchive 0 cards.");
   expect(calls.map((c) => c.method + " " + c.path)).toEqual(["POST /api/rules/preview"]);
   expect((calls[0]!.body as { filter: unknown }).filter).toEqual({ and: [{ tag: "spam" }] });
+});
+
+test("the live count adds up every library the rule covers", async () => {
+  const fetch = globalThis.fetch;
+  vi.stubGlobal("fetch", async (req: Request) =>
+    new URL(req.url).pathname === "/api/libraries"
+      ? json([
+          { id: 1, name: "Main", cards: 0, lorebooks: 0, created_at: "" },
+          { id: 2, name: "Chub", cards: 0, lorebooks: 0, created_at: "" },
+        ])
+      : fetch(req),
+  );
+  renderAt("/rules/new");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Add condition" }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "Field 1" }), "shares_source");
+  expect(await screen.findByText(/^4 cards match in all libraries: Junk a, Junk a, …$/)).toBeInTheDocument();
+  await user.selectOptions(screen.getByRole("combobox", { name: "Libraries" }), "2");
+  expect(await screen.findByText(/^2 cards match in Chub: Junk a, …$/)).toBeInTheDocument();
 });
 
 test("a search the page can't show is read-only with Edit on Cards", async () => {

@@ -1,4 +1,4 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
@@ -75,11 +75,20 @@ function Builder({ id, initial, search, fields, library }: Props) {
     const t = setTimeout(() => setCounted(filter), 300);
     return () => clearTimeout(t);
   }, [filterKey]);
-  const matches = useQuery({
-    ...searchQuery("card", { library, filter: counted, fields: ["name"], page: { size: 5, number: 1 } }),
-    enabled: counted !== undefined,
-    placeholderData: keepPreviousData,
+  // The count covers the rule's libraries, not just the one being browsed.
+  const counting = spec.all_libraries ? (libraries.data ?? []).map((l) => l.id) : (spec.libraries ?? []);
+  const perLibrary = useQueries({
+    queries: counting.map((lib) => ({
+      ...searchQuery("card", { library: lib, filter: counted, fields: ["name"], page: { size: 5, number: 1 } }),
+      enabled: counted !== undefined,
+      placeholderData: keepPreviousData,
+    })),
   });
+  const matchError = perLibrary.find((q) => q.error)?.error;
+  const matched = perLibrary.length > 0 && perLibrary.every((q) => q.data) ? perLibrary.map((q) => q.data!) : undefined;
+  const matchTotal = (matched ?? []).reduce((n, m) => n + m.total, 0);
+  const matchNames = (matched ?? []).flatMap((m) => m.hits ?? []).slice(0, 5);
+  const matchWhere = spec.all_libraries ? "all libraries" : counting.length === 1 ? libraryName(counting[0]!) : `${counting.length} libraries`;
   const valueRefs = fields.filter((f) => f.input === "value").map((f) => f.id.slice("value:".length));
   const facets = useQuery(searchQuery("card", { library, facets: ["tags", "sources", ...valueRefs.map((r) => `enrichment:${r}`)], facets_only: true }));
   const tags = facets.data?.facets?.tags ?? [];
@@ -270,11 +279,11 @@ function Builder({ id, initial, search, fields, library }: Props) {
         <p role="status" className="muted">
           {filter === undefined
             ? "Add a condition to see which cards match."
-            : matches.error
-              ? matches.error.message
-              : matches.data
-                ? `${count(matches.data.total, "card")} match in ${libraryName(library)}${matches.data.hits?.length ? ": " + matches.data.hits.map((h) => text(h.fields.name) || `#${h.id}`).join(", ") : ""}${matches.data.total > (matches.data.hits?.length ?? 0) ? ", …" : ""}`
-                : "Counting cards…"}
+            : matchError
+              ? matchError.message
+              : matched
+                ? `${count(matchTotal, "card")} match in ${matchWhere}${matchNames.length ? ": " + matchNames.map((h) => text(h.fields.name) || `#${h.id}`).join(", ") : ""}${matchTotal > matchNames.length ? ", …" : ""}`
+                : counting.length === 0 ? "Pick a library to see which cards match." : "Counting cards…"}
         </p>
 
         {fixed && (

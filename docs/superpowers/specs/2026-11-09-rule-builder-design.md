@@ -21,7 +21,7 @@ When a card in  [All libraries ▾]  matches:
 
 then  [archive it ▾]                 (or: [add it to ▾] [Faves ▾])
 
-   1,234 cards match in Main · Aria, Bob, Cass, …
+   1,234 cards match in all libraries: Aria, Bob, Cass, …
 
                       [Cancel]  [Save]  [Save and turn on…]
 ```
@@ -36,7 +36,8 @@ then  [archive it ▾]                 (or: [add it to ▾] [Faves ▾])
 | Editing | `/rules/:id` loads the rule's conditions into rows. Action and collection stay fixed. |
 | A search rows can't show | Its filter has a condition no field covers, such as a collection or app. It shows as one read-only row, "Matches saved search *name*", with Edit on Cards linking to `/cards?saved=<id>`. The rest of the page still works. Any and/or/not nesting shows as groups. |
 | A search other rules use | Changing the conditions changes that search, so the page names the other rules under the conditions. |
-| Live count | How many cards match in the current library, and the first few names, refreshed as conditions change. |
+| Live count | How many cards match across the rule's libraries, and the first few names, refreshed as conditions change. |
+| Preview | Each library's totals and its first few names, with how many more. No paging. |
 | Turning on | Save and turn on, or saving a rule that's on with changed conditions or libraries, shows the preview first. |
 
 ## Conditions

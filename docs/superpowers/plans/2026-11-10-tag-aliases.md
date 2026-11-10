@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Treat a library's many spellings of one tag as one tag: spellings that differ only in case, spaces, `-`, or `_` match automatically, and the owner merges the rest on a Tags page that suggests likely duplicates. Cards don't change.
+**Goal:** Treat a library's many spellings of one tag as one tag: spellings that differ only in case, spaces, `-`, or `_` match automatically, and the owner merges the rest, and picks each tag's spelling, on a Tags page that suggests likely duplicates. Cards don't change.
 
-**Architecture:** A migration makes `tag_keys` return tag keys and adds `tag_alias` and `tag_distinct`. Two STABLE SQL functions, `canonical_tag_keys` and `tag_match_keys`, resolve aliases inside the SQL that the tag filter, the tag facet, and similar cards already run. The GIN index still serves the filter, because Postgres evaluates a STABLE argument once, when the scan starts. Merges, splits, the tag list, and suggestions live in `internal/library/tags.go`. Owner edits (the bulk Tag job, and an editor save with source `ui` that changes tags) write canonical names. Imports, pulls from apps, plugin writes, and MCP writes keep their tags as they come.
+**Architecture:** A migration makes `tag_keys` return tag keys and adds `tag_alias` and `tag_distinct`. Two STABLE SQL functions, `primary_tag_keys` and `tag_match_keys`, resolve aliases inside the SQL that the tag filter, the tag facet, and similar cards already run. The GIN index still serves the filter, because Postgres evaluates a STABLE argument once, when the scan starts. Merges, splits, the tag list, and suggestions live in `internal/library/tags.go`. Owner edits (the bulk Tag job, and an editor save with source `ui` that changes tags) write primary names. Imports, pulls from apps, plugin writes, and MCP writes keep their tags as they come.
 
 **Tech Stack:** Go (Huma, pgx), PostgreSQL, React 19, TypeScript, TanStack Query, react-router, Vitest with Testing Library.
 
@@ -14,19 +14,19 @@ Spec: `docs/superpowers/specs/2026-11-10-tag-aliases-design.md`.
 
 | File | Responsibility |
 |---|---|
-| `internal/db/migrations/0058_tag_aliases.sql` (new) | `tag_key`, `tag_keys` and its index, `tag_alias`, `tag_distinct`, `canonical_tag_keys`, `tag_match_keys` |
-| `internal/library/tags.go` (new) | Tag key, merge, split, not the same, list, suggestions, canonical names for owner edits |
+| `internal/db/migrations/0058_tag_aliases.sql` (new) | `tag_key`, `tag_keys` and its index, `tag_alias`, `tag_distinct`, `primary_tag_keys`, `tag_match_keys` |
+| `internal/library/tags.go` (new) | Tag key, merge, split, not the same, list, suggestions, primary names for owner edits |
 | `internal/library/tags_test.go` (new) | Its tests |
-| `internal/library/search.go` | Tag filter and facet read aliases; `canonicalTagsOf` replaces `tagsOf` |
-| `internal/library/discover.go` | Similar cards compare canonical keys |
-| `internal/library/organize.go` | `EditCardTags` canonicalizes; `editTags` matches by key; `Tags` goes |
+| `internal/library/search.go` | Tag filter and facet read aliases; `primaryTagsOf` replaces `tagsOf` |
+| `internal/library/discover.go` | Similar cards compare primary keys |
+| `internal/library/organize.go` | `EditCardTags` writes primary names; `editTags` matches by key; `Tags` goes |
 | `internal/library/scale_test.go` | Times tag queries on 200k cards |
 | `internal/api/tags.go` (new) | The endpoints; `tagsChanged` |
 | `internal/api/tags_test.go` (new) | Their tests |
 | `internal/api/organize.go` | The old per-library `GET /tags` goes |
 | `internal/api/facetcache.go` | `clear`, and a generation so a count from before a clear isn't cached |
 | `internal/api/facetcache_test.go` (new) | Its test |
-| `internal/api/entities.go` | The editor's save canonicalizes changed tags |
+| `internal/api/entities.go` | The editor's save writes primary names for changed tags |
 | `internal/api/server.go` | Registers `tagRoutes` |
 | `internal/backup/backup.go` | Backs up `tag_alias` and `tag_distinct` |
 | `web/src/tags/Tags.tsx`, `Tags.css`, `Tags.test.tsx` (new) | The page |
@@ -39,12 +39,13 @@ Checks: Go DB tests with `INNKEEPER_TEST_DATABASE_URL=postgres://postgres:postgr
 
 | Question | Choice | Why |
 |---|---|---|
-| How the tag filter gets alias keys | `tag_keys(r.tags) && tag_match_keys(canonical_tag_keys(ARRAY[$n::text]))` | `where.filter` builds SQL without a context or a connection, and rules, saved searches, and previews all run that SQL. A STABLE function in an index qual runs once when the scan starts, so the GIN index still serves `&&`; Task 3 proves it with `EXPLAIN`. |
+| How the tag filter gets alias keys | `tag_keys(r.tags) && tag_match_keys(primary_tag_keys(ARRAY[$n::text]))` | `where.filter` builds SQL without a context or a connection, and rules, saved searches, and previews all run that SQL. A STABLE function in an index qual runs once when the scan starts, so the GIN index still serves `&&`; Task 3 proves it with `EXPLAIN`. |
 | Tag key | `translate(lower(t), ' -_', '')` in SQL, `tagKey` in Go, a test that they agree | Keys that are stored or compared in SQL are always computed in SQL. Go's `tagKey` only matches tags in memory and reads `q`, so a locale where the two `lower`s differ can't corrupt stored aliases. |
-| `tag_alias` columns | The spec's, plus `canonical_key`, generated from `canonical` | Facets, filters, and merges look aliases up by canonical key; a generated column keeps it indexed and in step. |
+| `tag_alias` columns | `key`, `primary_tag`, `created_at`, plus `primary_tag_key`, generated from `primary_tag` | `primary` is reserved in SQL, so the column is `primary_tag`. Facets, filters, and merges look aliases up by primary key; a generated column keeps it indexed and in step. |
+| A tag's chosen spelling | A self row in `tag_alias`: the key → that spelling, e.g. `scifi` → `Sci-Fi`. Merging two spellings of one key writes it. | Facets, the list, filters, and backups already read `tag_alias`, so the name needs no new table or column. |
 | `tag_distinct` ordering | Columns `COLLATE "C"`, `CHECK (a < b)` | Go orders the pair by bytes, which is `"C"` order, so Go's lookup map and the check agree. |
-| Facet grouping and name | One row per card and canonical key (`canonicalTagsOf`), then grouped by key. Name: the alias rows' canonical name, else `min` of the spellings. | Counts each card once without `count(DISTINCT)`; `min` is what the facet shows today. |
-| Merge | One transaction under `LOCK TABLE tag_alias IN EXCLUSIVE MODE`. Into an alias goes to its canonical tag. Aliases of `from` move. Merging a tag into its own alias swaps them. Same key is `ErrInvalid` (400). | Keeps one level, and the lock stops two merges from each making the other's tag an alias. |
+| Facet grouping and name | One row per card and primary key (`primaryTagsOf`), then grouped by key. Name: the primary name on the key's `tag_alias` rows, self row included, else `min` of the spellings. | Counts each card once without `count(DISTINCT)`; `min` is what the facet shows today. |
+| Merge | One transaction under `LOCK TABLE tag_alias IN EXCLUSIVE MODE`. Into an alias, or a key with a self row, goes to its primary name. Aliases of `from` move. Merging a tag into its own alias swaps them. Two spellings of one key write a self row. An empty key is `ErrInvalid` (400). | Keeps one level, and the lock stops two merges from each making the other's tag an alias. |
 | Editor save | In the `PUT /cards/{id}` handler, for source `ui`, and only when the tags differ from the base revision's | `prepare` has no connection and no base revision, and source `ui` there also covers create, restore, and every library test. The handler is the editor's save (`useEditor.ts`); MCP sends `mcp` through it. Imports and pulls write through `ImportItem`, `ImportCardTx`, and reconcile's `UpdateTx`, which never reach the handler. An avatar change (`Card.tsx`) sends unchanged tags, so it keeps them. |
 | Facet cache | `tagsChanged` clears it on merge and split. A generation counter drops a recount that started before the clear. | Otherwise the cache serves pre-merge counts as fresh for up to a minute. |
 | Rules | `tagsChanged` reruns the hide job for every enabled rule | A merge changes what a tag rule matches, as a saved-search edit does. |
@@ -122,16 +123,17 @@ LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
 $$;
 CREATE INDEX card_revision_tag_keys_of_tags ON card_revision USING gin (tag_keys(tags));
 
--- An alias: tag key `key` stands for the canonical tag named canonical. One
--- level: no row's key is another row's canonical_key.
+-- An alias: tag key `key` stands for the primary tag named primary_tag. A self
+-- row (key = primary_tag_key) instead names its own key's tag. One level: a
+-- primary tag is never an alias of another key.
 CREATE TABLE tag_alias (
     key text PRIMARY KEY,
-    canonical text NOT NULL,
-    canonical_key text NOT NULL GENERATED ALWAYS AS (tag_key(canonical)) STORED,
+    primary_tag text NOT NULL,
+    primary_tag_key text NOT NULL GENERATED ALWAYS AS (tag_key(primary_tag)) STORED,
     created_at timestamptz NOT NULL DEFAULT now(),
-    CHECK (canonical_key <> '' AND canonical_key <> key)
+    CHECK (primary_tag_key <> '')
 );
-CREATE INDEX ON tag_alias (canonical_key);
+CREATE INDEX ON tag_alias (primary_tag_key);
 
 -- Pairs of tag keys the owner said aren't one tag. "C" ordering is Go's, so
 -- library code orders a pair the way the check does.
@@ -142,17 +144,18 @@ CREATE TABLE tag_distinct (
     CHECK (a < b)
 );
 
--- tags' keys, each alias replaced by its canonical tag's key.
-CREATE FUNCTION canonical_tag_keys(tags text[]) RETURNS text[]
+-- tags' keys, each alias replaced by its primary tag's key.
+CREATE FUNCTION primary_tag_keys(tags text[]) RETURNS text[]
 LANGUAGE sql STABLE PARALLEL SAFE AS $$
-    SELECT coalesce(array_agg(DISTINCT coalesce(a.canonical_key, k)), '{}')
+    SELECT coalesce(array_agg(DISTINCT coalesce(a.primary_tag_key, k)), '{}')
     FROM unnest(tag_keys(tags)) k LEFT JOIN tag_alias a ON a.key = k
 $$;
 
--- keys, which are canonical, and every alias key that stands for one of them.
+-- keys, which are primary, and every alias key that stands for one of them.
+-- A self row repeats its key, which && ignores.
 CREATE FUNCTION tag_match_keys(keys text[]) RETURNS text[]
 LANGUAGE sql STABLE PARALLEL SAFE AS $$
-    SELECT keys || coalesce(array_agg(a.key), '{}') FROM tag_alias a WHERE a.canonical_key = ANY(keys)
+    SELECT keys || coalesce(array_agg(a.key), '{}') FROM tag_alias a WHERE a.primary_tag_key = ANY(keys)
 $$;
 ```
 
@@ -202,21 +205,21 @@ git commit -m "feat(library): tag keys ignore case, spaces, hyphens, and undersc
 Add to `internal/library/tags_test.go`; its imports become `context`, `errors`, `maps`, `slices`, `testing`:
 
 ```go
-// aliases is every tag_alias row as key → canonical.
+// aliases is every tag_alias row as key → primary tag.
 func aliases(t *testing.T, lib *Library) map[string]string {
 	t.Helper()
-	rows, err := lib.pool.Query(context.Background(), `SELECT key, canonical FROM tag_alias`)
+	rows, err := lib.pool.Query(context.Background(), `SELECT key, primary_tag FROM tag_alias`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer rows.Close()
 	got := map[string]string{}
 	for rows.Next() {
-		var key, canonical string
-		if err := rows.Scan(&key, &canonical); err != nil {
+		var key, primary string
+		if err := rows.Scan(&key, &primary); err != nil {
 			t.Fatal(err)
 		}
-		got[key] = canonical
+		got[key] = primary
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
@@ -224,29 +227,28 @@ func aliases(t *testing.T, lib *Library) map[string]string {
 	return got
 }
 
+// mergeTag merges from into into, then checks every tag_alias row against want.
+func mergeTag(t *testing.T, lib *Library, from, into string, want map[string]string) {
+	t.Helper()
+	if err := lib.MergeTag(context.Background(), from, into); err != nil {
+		t.Fatalf("merge %q into %q: %v", from, into, err)
+	}
+	if got := aliases(t, lib); !maps.Equal(got, want) {
+		t.Fatalf("after merging %q into %q: aliases = %v, want %v", from, into, got, want)
+	}
+}
+
 func TestMergeTagKeepsOneLevel(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
-	merge := func(from, into string, want map[string]string) {
-		t.Helper()
-		if err := lib.MergeTag(ctx, from, into); err != nil {
-			t.Fatalf("merge %q into %q: %v", from, into, err)
-		}
-		if got := aliases(t, lib); !maps.Equal(got, want) {
-			t.Fatalf("after merging %q into %q: aliases = %v, want %v", from, into, got, want)
-		}
-	}
-	merge("fantasy world", "fantasy", map[string]string{"fantasyworld": "fantasy"})
-	// Into an alias: into its canonical tag.
-	merge("high fantasy", "Fantasy World", map[string]string{"fantasyworld": "fantasy", "highfantasy": "fantasy"})
+	mergeTag(t, lib, "fantasy world", "fantasy", map[string]string{"fantasyworld": "fantasy"})
+	// Into an alias: into its primary tag.
+	mergeTag(t, lib, "high fantasy", "Fantasy World", map[string]string{"fantasyworld": "fantasy", "highfantasy": "fantasy"})
 	// A tag with aliases: they move with it.
-	merge("fantasy", "Fantasy Fiction", map[string]string{"fantasyworld": "Fantasy Fiction", "highfantasy": "Fantasy Fiction", "fantasy": "Fantasy Fiction"})
+	mergeTag(t, lib, "fantasy", "Fantasy Fiction", map[string]string{"fantasyworld": "Fantasy Fiction", "highfantasy": "Fantasy Fiction", "fantasy": "Fantasy Fiction"})
 	// A tag into its own alias: they swap.
-	merge("fantasy fiction", "fantasy", map[string]string{"fantasyworld": "fantasy", "highfantasy": "fantasy", "fantasyfiction": "fantasy"})
+	mergeTag(t, lib, "fantasy fiction", "fantasy", map[string]string{"fantasyworld": "fantasy", "highfantasy": "fantasy", "fantasyfiction": "fantasy"})
 
-	if err := lib.MergeTag(ctx, "Sci-Fi", "scifi"); !errors.Is(err, ErrInvalid) {
-		t.Fatalf("merging one key into itself: %v, want ErrInvalid", err)
-	}
 	if err := lib.MergeTag(ctx, " - ", "x"); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("merging an empty key: %v, want ErrInvalid", err)
 	}
@@ -260,6 +262,26 @@ func TestMergeTagKeepsOneLevel(t *testing.T) {
 	if err := lib.SplitTag(ctx, "high fantasy"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("splitting a tag that isn't an alias: %v, want ErrNotFound", err)
 	}
+}
+
+func TestMergeTagIntoItsOwnKeyChoosesItsSpelling(t *testing.T) {
+	lib := newLibrary(t)
+	// Two spellings of one key: a self row names the tag.
+	mergeTag(t, lib, "Sci-Fi", "sci fi", map[string]string{"scifi": "sci fi"})
+	// Into a key with a self row: into its chosen spelling.
+	mergeTag(t, lib, "science fiction", "SCIFI", map[string]string{"scifi": "sci fi", "sciencefiction": "sci fi"})
+	// Another spelling of a key with a self row and aliases: they follow it.
+	mergeTag(t, lib, "sci fi", "SciFi", map[string]string{"scifi": "SciFi", "sciencefiction": "SciFi"})
+	// A key with a self row and aliases into another tag: the self row becomes an ordinary alias.
+	mergeTag(t, lib, "SCIFI", "speculative", map[string]string{"scifi": "speculative", "sciencefiction": "speculative"})
+
+	// A tag with a self row into its own alias: they swap, and the self row becomes an alias.
+	mergeTag(t, lib, "fantasy world", "fantasy", map[string]string{"scifi": "speculative", "sciencefiction": "speculative",
+		"fantasyworld": "fantasy"})
+	mergeTag(t, lib, "fantasy", "Fantasy", map[string]string{"scifi": "speculative", "sciencefiction": "speculative",
+		"fantasyworld": "Fantasy", "fantasy": "Fantasy"})
+	mergeTag(t, lib, "Fantasy", "Fantasy World", map[string]string{"scifi": "speculative", "sciencefiction": "speculative",
+		"fantasy": "Fantasy World"})
 }
 
 func TestMarkTagsDistinctStoresOneOrderedPair(t *testing.T) {
@@ -293,8 +315,9 @@ In `internal/library/tags.go`, imports become `context`, `fmt`, `strings`, `gith
 
 ```go
 // MergeTag makes from an alias of into, keeping one level: an alias given as
-// into stands for its canonical tag, and from's own aliases move to into.
-// Into a tag no card has, it renames from. No card changes.
+// into stands for its primary tag, and from's own aliases move to into.
+// Into a tag no card has, it renames from. Two spellings of one key write a
+// self row, which makes into the tag's name. No card changes.
 func (l *Library) MergeTag(ctx context.Context, from, into string) error {
 	from, into = strings.TrimSpace(from), strings.TrimSpace(into)
 	return pgx.BeginFunc(ctx, l.pool, func(tx pgx.Tx) error {
@@ -303,36 +326,38 @@ func (l *Library) MergeTag(ctx context.Context, from, into string) error {
 			return err
 		}
 		var fromKey, intoKey string
-		var intoCanonical, intoCanonicalKey *string
-		if err := tx.QueryRow(ctx, `SELECT tag_key($1), tag_key($2), a.canonical, a.canonical_key
+		var intoPrimary, intoPrimaryKey *string
+		if err := tx.QueryRow(ctx, `SELECT tag_key($1), tag_key($2), a.primary_tag, a.primary_tag_key
 			FROM (SELECT 1) one LEFT JOIN tag_alias a ON a.key = tag_key($2)`, from, into).
-			Scan(&fromKey, &intoKey, &intoCanonical, &intoCanonicalKey); err != nil {
+			Scan(&fromKey, &intoKey, &intoPrimary, &intoPrimaryKey); err != nil {
 			return err
 		}
 		switch {
 		case fromKey == "" || intoKey == "":
 			return fmt.Errorf("%w: a tag needs a character other than spaces, - and _", ErrInvalid)
-		case fromKey == intoKey:
-			return fmt.Errorf("%w: %q and %q are already one tag", ErrInvalid, from, into)
-		case intoCanonicalKey != nil && *intoCanonicalKey == fromKey:
-			// into is an alias of from: into becomes the canonical tag.
+		case intoPrimaryKey != nil && *intoPrimaryKey == fromKey:
+			// into is an alias of from, or from's own self row: into becomes the primary tag.
 			if _, err := tx.Exec(ctx, `DELETE FROM tag_alias WHERE key = $1`, intoKey); err != nil {
 				return err
 			}
-		case intoCanonicalKey != nil:
-			into, intoKey = *intoCanonical, *intoCanonicalKey
+		case intoPrimaryKey != nil:
+			// into is an alias, or a key with a self row: use its primary name.
+			into, intoKey = *intoPrimary, *intoPrimaryKey
 		}
 		// Every alias of either tag names into, so a key's rows agree on its name.
-		if _, err := tx.Exec(ctx, `UPDATE tag_alias SET canonical = $1 WHERE canonical_key IN ($2, $3)`, into, fromKey, intoKey); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE tag_alias SET primary_tag = $1 WHERE primary_tag_key IN ($2, $3)`, into, fromKey, intoKey); err != nil {
 			return err
 		}
-		_, err := tx.Exec(ctx, `INSERT INTO tag_alias (key, canonical) VALUES ($1, $2)
-			ON CONFLICT (key) DO UPDATE SET canonical = excluded.canonical, created_at = now()`, fromKey, into)
+		// When fromKey is intoKey, this is the self row that names the tag.
+		_, err := tx.Exec(ctx, `INSERT INTO tag_alias (key, primary_tag) VALUES ($1, $2)
+			ON CONFLICT (key) DO UPDATE SET primary_tag = excluded.primary_tag, created_at = now()`, fromKey, into)
 		return err
 	})
 }
 
-// SplitTag deletes the alias with tag's key, so it's a tag of its own again.
+// SplitTag deletes the row with tag's key: an alias becomes a tag of its own
+// again. On a self row, a tag without aliases goes back to its lowest-sorting
+// spelling; its aliases' rows still carry the chosen name.
 func (l *Library) SplitTag(ctx context.Context, tag string) error {
 	res, err := l.pool.Exec(ctx, `DELETE FROM tag_alias WHERE key = tag_key($1)`, tag)
 	if err != nil {
@@ -487,30 +512,30 @@ In `Filter`, replace the `Tag` field's doc:
 Replace `tagsOf` and its comment with:
 
 ```go
-// canonicalTagsOf is r's tags as rows x, one per canonical tag key (x.key),
+// primaryTagsOf is r's tags as rows x, one per primary tag key (x.key),
 // with the card's lowest-sorting spelling of it (x.name).
-const canonicalTagsOf = `LATERAL (SELECT coalesce(a.canonical_key, tag_key(t)) AS key, min(t) AS name
+const primaryTagsOf = `LATERAL (SELECT coalesce(a.primary_tag_key, tag_key(t)) AS key, min(t) AS name
 	FROM unnest(r.tags) t LEFT JOIN tag_alias a ON a.key = tag_key(t) GROUP BY 1) x`
 
 // tagFilter matches revisions r with the tag in arg, any spelling of its key,
 // or a tag merged with it. STABLE functions run once per scan, so the
 // card_revision_tag_keys_of_tags index serves it.
 func tagFilter(arg string) string {
-	return `tag_keys(r.tags) && tag_match_keys(canonical_tag_keys(ARRAY[` + arg + `::text]))`
+	return `tag_keys(r.tags) && tag_match_keys(primary_tag_keys(ARRAY[` + arg + `::text]))`
 }
 ```
 
 Replace the `"tags"` entry of `facetSQL`, with its comment, by:
 
 ```go
-	// canonicalTagsOf has one row per card and canonical tag, so count(*)
-	// counts cards. A merge gives all of a key's alias rows one canonical
-	// name, so any row names the tag.
+	// primaryTagsOf has one row per card and primary tag, so count(*) counts
+	// cards. A merge gives all of a key's rows, self row included, one
+	// primary name, so any row names the tag.
 	"tags": func(k *Kind, cond string) string {
-		return `SELECT coalesce(n.canonical, g.name), g.cards FROM (
-				SELECT x.key, min(x.name) AS name, count(*)::int AS cards FROM ` + from(k) + `, ` + canonicalTagsOf + `
+		return `SELECT coalesce(n.primary_tag, g.name), g.cards FROM (
+				SELECT x.key, min(x.name) AS name, count(*)::int AS cards FROM ` + from(k) + `, ` + primaryTagsOf + `
 				WHERE ` + cond + ` GROUP BY x.key) g
-			LEFT JOIN LATERAL (SELECT canonical FROM tag_alias WHERE canonical_key = g.key LIMIT 1) n ON TRUE
+			LEFT JOIN LATERAL (SELECT primary_tag FROM tag_alias WHERE primary_tag_key = g.key LIMIT 1) n ON TRUE
 			ORDER BY g.cards DESC, g.key`
 	},
 ```
@@ -548,7 +573,7 @@ git commit -m "feat(library): tag filter and facet read tag keys and aliases"
 
 ---
 
-### Task 4: Similar cards compare canonical keys
+### Task 4: Similar cards compare primary keys
 
 **Files:**
 - Modify: `internal/library/discover.go` (`discoverWith` near line 70; the tags query near line 113)
@@ -589,7 +614,7 @@ Replace `discoverWith`'s comment and `self`:
 ```go
 // discoverWith is the WITH clause discovery queries share: fam holds every
 // card in $1's variant family, and self is $1's head, materialized so its
-// canonical tag keys (tags) and the keys that match them (match) are
+// primary tag keys (tags) and the keys that match them (match) are
 // computed once rather than per candidate.
 const discoverWith = `WITH RECURSIVE up AS (
 		SELECT id, variant_of_id FROM card WHERE id = $1
@@ -600,7 +625,7 @@ const discoverWith = `WITH RECURSIVE up AS (
 	), self AS MATERIALIZED (
 		SELECT c.library_id, r.content_hash, k.tags, tag_match_keys(k.tags) AS match, lower(btrim(r.data->>'creator')) AS creator
 		FROM card c JOIN card_revision r ON r.id = c.head_revision_id
-		CROSS JOIN LATERAL (SELECT canonical_tag_keys(r.tags) AS tags) k
+		CROSS JOIN LATERAL (SELECT primary_tag_keys(r.tags) AS tags) k
 		WHERE c.id = $1
 	)`
 ```
@@ -611,7 +636,7 @@ In the `basis == "tags"` query, replace the join and the lateral count:
 		JOIN card_revision r ON tag_keys(r.tags) && self.match
 		JOIN card c ON c.head_revision_id = r.id
 		CROSS JOIN LATERAL (SELECT count(*) FILTER (WHERE t = ANY(self.tags)) AS shared, count(*) AS n
-			FROM unnest(canonical_tag_keys(r.tags)) t) x
+			FROM unnest(primary_tag_keys(r.tags)) t) x
 ```
 
 - [ ] **Step 4: Run the tests**
@@ -628,7 +653,7 @@ git commit -m "feat(library): similar cards match tags through aliases"
 
 ---
 
-### Task 5: Bulk tag edits write canonical names
+### Task 5: Bulk tag edits write primary names
 
 **Files:**
 - Modify: `internal/library/organize.go` (`EditCardTags` near line 27; `editTags` and `containsFold` near line 76)
@@ -642,7 +667,7 @@ git commit -m "feat(library): similar cards match tags through aliases"
 Add to `internal/library/organize_test.go`, after `TestEditCardTagsRejectsNonStringTags`:
 
 ```go
-func TestEditCardTagsWritesCanonicalNamesAndImportsKeepRawTags(t *testing.T) {
+func TestEditCardTagsWritesPrimaryNamesAndImportsKeepRawTags(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
 	world, _ := newCard(t, lib, "world", `{"name": "W", "tags": ["Fantasy World", "pirate"]}`)
@@ -651,14 +676,14 @@ func TestEditCardTagsWritesCanonicalNamesAndImportsKeepRawTags(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Removing the canonical tag takes out its alias too.
+	// Removing the primary tag takes out its alias too.
 	if err := lib.EditCardTags(ctx, world, nil, []string{"fantasy"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := headTags(t, lib, world); !slices.Equal(got, []string{"pirate"}) {
 		t.Fatalf("after removing fantasy: %v, want [pirate]", got)
 	}
-	// Adding an alias writes its canonical name; a spelling of a key already there adds nothing.
+	// Adding an alias writes its primary name; a spelling of a key already there adds nothing.
 	if err := lib.EditCardTags(ctx, plain, []string{"fantasy world", "scifi"}, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -676,20 +701,21 @@ func TestEditCardTagsWritesCanonicalNamesAndImportsKeepRawTags(t *testing.T) {
 
 - [ ] **Step 2: Run it to see it fail**
 
-Run: `INNKEEPER_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:55432/postgres go test ./internal/library -run TestEditCardTagsWritesCanonicalNames`
+Run: `INNKEEPER_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:55432/postgres go test ./internal/library -run TestEditCardTagsWritesPrimaryNames`
 Expected: FAIL, "after removing fantasy: [Fantasy World pirate], want [pirate]".
 
-- [ ] **Step 3: Add canonical names to `tags.go`**
+- [ ] **Step 3: Add primary names to `tags.go`**
 
 Imports become `context`, `fmt`, `slices`, `strings`, `github.com/jackc/pgx/v5`. Add:
 
 ```go
-// tagRename is a tag a card holds and the canonical name it merged into.
-type tagRename struct{ Name, Canonical string }
+// tagRename is a tag a card holds and the primary name it merged into.
+type tagRename struct{ Name, Primary string }
 
-// canonicalNames maps each of names that is an alias to its canonical tag's name.
-func (l *Library) canonicalNames(ctx context.Context, names []string) (map[string]string, error) {
-	rows, err := l.pool.Query(ctx, `SELECT t, a.canonical FROM unnest($1::text[]) t JOIN tag_alias a ON a.key = tag_key(t)`, names)
+// primaryNames maps each of names whose key has a tag_alias row, an alias's
+// or a self row, to its primary tag's name.
+func (l *Library) primaryNames(ctx context.Context, names []string) (map[string]string, error) {
+	rows, err := l.pool.Query(ctx, `SELECT t, a.primary_tag FROM unnest($1::text[]) t JOIN tag_alias a ON a.key = tag_key(t)`, names)
 	if err != nil {
 		return nil, err
 	}
@@ -699,18 +725,18 @@ func (l *Library) canonicalNames(ctx context.Context, names []string) (map[strin
 	}
 	out := make(map[string]string, len(renames))
 	for _, r := range renames {
-		out[r.Name] = r.Canonical
+		out[r.Name] = r.Primary
 	}
 	return out, nil
 }
 
-// canonicalTags replaces each alias in tags with its canonical name, keeping
-// the first spelling of each key.
-func canonicalTags(tags []string, canonical map[string]string) []string {
+// primaryTags replaces each tag in tags that primary maps with its primary
+// name, keeping the first spelling of each key.
+func primaryTags(tags []string, primary map[string]string) []string {
 	out := make([]string, 0, len(tags))
 	for _, t := range tags {
-		if c, ok := canonical[t]; ok {
-			t = c
+		if p, ok := primary[t]; ok {
+			t = p
 		}
 		if !containsKey(out, t) {
 			out = append(out, t)
@@ -727,7 +753,7 @@ Replace `EditCardTags`'s doc comment:
 ```go
 // EditCardTags adds and removes names in a card's data.tags as a new
 // revision. Names are trimmed and match by tag key. The card's tags and the
-// names are first replaced by their canonical names, so removing a tag also
+// names are first replaced by their primary names, so removing a tag also
 // removes the aliases merged into it. An edit that changes nothing adds no
 // revision.
 ```
@@ -735,11 +761,11 @@ Replace `EditCardTags`'s doc comment:
 Replace `tags := editTags(old, add, remove)` with:
 
 ```go
-		canonical, err := l.canonicalNames(ctx, slices.Concat(old, add, remove))
+		primary, err := l.primaryNames(ctx, slices.Concat(old, add, remove))
 		if err != nil {
 			return err
 		}
-		tags := editTags(canonicalTags(old, canonical), canonicalTags(add, canonical), canonicalTags(remove, canonical))
+		tags := editTags(primaryTags(old, primary), primaryTags(add, primary), primaryTags(remove, primary))
 ```
 
 Replace `editTags` and `containsFold` with:
@@ -772,7 +798,7 @@ Expected: PASS, including `TestEditCardTagsAddsARevision` and `TestReimportingAC
 
 ```bash
 git add internal/library/organize.go internal/library/organize_test.go internal/library/tags.go
-git commit -m "feat(library): bulk tag edits write merged tags under their canonical names"
+git commit -m "feat(library): bulk tag edits write merged tags under their primary names"
 ```
 
 ---
@@ -788,7 +814,7 @@ git commit -m "feat(library): bulk tag edits write merged tags under their canon
 Add to `internal/library/tags_test.go`; its imports gain `reflect`:
 
 ```go
-func TestTagListGroupsAliasesUnderTheirCanonicalTag(t *testing.T) {
+func TestTagListGroupsAliasesUnderTheirPrimaryTag(t *testing.T) {
 	lib := newLibrary(t)
 	ctx := context.Background()
 	newCard(t, lib, "a", `{"name": "A", "tags": ["fantasy", "fantasy world"]}`)
@@ -824,6 +850,45 @@ func TestTagListGroupsAliasesUnderTheirCanonicalTag(t *testing.T) {
 	}
 }
 
+func TestMergingASpellingIntoItsOwnKeyNamesTheTag(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	a, _ := newCard(t, lib, "a", `{"name": "A", "tags": ["Sci-Fi"]}`)
+	b, _ := newCard(t, lib, "b", `{"name": "B", "tags": ["Sci-Fi"]}`)
+	// check expects one tag, key scifi, named name: in the facet, in the list,
+	// and on hits, which a filter on scifi finds.
+	check := func(name string, hits []int64, wantAliases []TagAlias) {
+		t.Helper()
+		got, err := lib.Search(ctx, Card, Query{Filter: &Filter{Tag: ptr("scifi")}, Facets: []string{"tags"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ids := sortedHits(got); !slices.Equal(ids, hits) {
+			t.Fatalf("hits = %v, want %v", ids, hits)
+		}
+		if want := []TagCount{{name, len(hits)}}; !slices.Equal(got.Facets.Tags, want) {
+			t.Fatalf("facet = %+v, want %+v", got.Facets.Tags, want)
+		}
+		page, err := lib.TagList(ctx, "", 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []Tag{{Name: name, Key: "scifi", Cards: len(hits), Spellings: []string{"Sci-Fi"}, Aliases: wantAliases}}
+		if !reflect.DeepEqual(page.Tags, want) {
+			t.Fatalf("tags = %+v, want %+v", page.Tags, want)
+		}
+	}
+
+	mergeTag(t, lib, "Sci-Fi", "sci fi", map[string]string{"scifi": "sci fi"})
+	check("sci fi", []int64{a, b}, []TagAlias{})
+
+	// The key's aliases follow its new spelling.
+	c, _ := newCard(t, lib, "c", `{"name": "C", "tags": ["science fiction"]}`)
+	mergeTag(t, lib, "science fiction", "scifi", map[string]string{"scifi": "sci fi", "sciencefiction": "sci fi"})
+	mergeTag(t, lib, "sci fi", "SciFi", map[string]string{"scifi": "SciFi", "sciencefiction": "SciFi"})
+	check("SciFi", []int64{a, b, c}, []TagAlias{{Key: "sciencefiction", Spellings: []string{"science fiction"}}})
+}
+
 func TestSuggestTagsPairsPluralsAndNearSpellings(t *testing.T) {
 	tag := func(key string, cards int) Tag { return Tag{Name: key, Key: key, Cards: cards} }
 	tags := []Tag{tag("dragon", 9), tag("wizard", 7), tag("season1", 5), tag("season2", 4), tag("boxes", 3), tag("elf", 3),
@@ -841,11 +906,11 @@ func TestSuggestTagsPairsPluralsAndNearSpellings(t *testing.T) {
 }
 ```
 
-On a tie in cards, `into` is the singular, or the tag earlier in the list: `swords` comes before `words`.
+On a tie in cards, `into` is the singular, or the tag earlier in the list: `swords` comes before `words`. Without Step 3's self-row check in `allTags`, `TestMergingASpellingIntoItsOwnKeyNamesTheTag` fails: the list shows `scifi` as an alias of itself.
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `INNKEEPER_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:55432/postgres go test ./internal/library -run 'TestTagList|TestSuggestTags'`
+Run: `INNKEEPER_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:55432/postgres go test ./internal/library -run 'TestTagList|TestSuggestTags|TestMergingASpelling'`
 Expected: FAIL to build, `undefined: Tag`.
 
 - [ ] **Step 3: Implement**
@@ -864,16 +929,16 @@ const (
 	maxTagSuggestions = 100
 )
 
-// Tag is a canonical tag across all libraries.
+// Tag is a primary tag across all libraries.
 type Tag struct {
-	Name      string     `json:"name" doc:"The name it was merged under, else its lowest-sorting spelling."`
+	Name      string     `json:"name" doc:"The name it was merged or renamed to, else its lowest-sorting spelling."`
 	Key       string     `json:"key"`
 	Cards     int        `json:"cards" doc:"Active cards with it or one of its aliases, each counted once."`
 	Spellings []string   `json:"spellings" doc:"How cards spell its own key."`
 	Aliases   []TagAlias `json:"aliases"`
 }
 
-// TagAlias is a tag key merged into a canonical tag.
+// TagAlias is a tag key merged into a primary tag.
 type TagAlias struct {
 	Key       string   `json:"key"`
 	Spellings []string `json:"spellings" doc:"How active cards spell it; empty when none has it."`
@@ -910,13 +975,13 @@ type tagSpellings struct {
 	Spellings []string
 }
 
-type tagAliasRow struct{ Key, Canonical, CanonicalKey string }
+type tagAliasRow struct{ Key, PrimaryTag, PrimaryTagKey string }
 
-// allTags returns every canonical tag on an active card, most cards first.
+// allTags returns every primary tag on an active card, most cards first.
 //
 // ponytail: three scans of every active card per call; cache the result if the Tags page gets slow.
 func (l *Library) allTags(ctx context.Context) ([]Tag, error) {
-	rows, err := l.pool.Query(ctx, `SELECT x.key, count(*)::int FROM `+from(Card)+`, `+canonicalTagsOf+`
+	rows, err := l.pool.Query(ctx, `SELECT x.key, count(*)::int FROM `+from(Card)+`, `+primaryTagsOf+`
 		WHERE c.archived_at IS NULL GROUP BY x.key`)
 	if err != nil {
 		return nil, err
@@ -934,7 +999,7 @@ func (l *Library) allTags(ctx context.Context) ([]Tag, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err = l.pool.Query(ctx, `SELECT key, canonical, canonical_key FROM tag_alias ORDER BY key`)
+	rows, err = l.pool.Query(ctx, `SELECT key, primary_tag, primary_tag_key FROM tag_alias ORDER BY key`)
 	if err != nil {
 		return nil, err
 	}
@@ -954,12 +1019,15 @@ func (l *Library) allTags(ctx context.Context) ([]Tag, error) {
 		at[c.Key] = i
 	}
 	for _, a := range aliases {
-		i, ok := at[a.CanonicalKey]
+		i, ok := at[a.PrimaryTagKey]
 		if !ok {
 			continue // No active card has the tag or any of its aliases.
 		}
-		tags[i].Name = a.Canonical
-		tags[i].Aliases = append(tags[i].Aliases, TagAlias{Key: a.Key, Spellings: append([]string{}, spellings[a.Key]...)})
+		tags[i].Name = a.PrimaryTag
+		// A self row names its tag; it isn't an alias of it.
+		if a.Key != a.PrimaryTagKey {
+			tags[i].Aliases = append(tags[i].Aliases, TagAlias{Key: a.Key, Spellings: append([]string{}, spellings[a.Key]...)})
+		}
 	}
 	for i := range tags {
 		// A tag without alias rows comes from a card's own spelling.
@@ -971,7 +1039,7 @@ func (l *Library) allTags(ctx context.Context) ([]Tag, error) {
 	return tags, nil
 }
 
-// TagList returns page (1-based) of the canonical tags whose key, or one of
+// TagList returns page (1-based) of the primary tags whose key, or one of
 // whose aliases' keys, contains q's key; most cards first.
 func (l *Library) TagList(ctx context.Context, q string, page int) (TagPage, error) {
 	tags, err := l.allTags(ctx)
@@ -987,7 +1055,7 @@ func (l *Library) TagList(ctx context.Context, q string, page int) (TagPage, err
 	return TagPage{Tags: tags[lo:min(lo+tagPageSize, len(tags))], Total: len(tags), Pages: (len(tags) + tagPageSize - 1) / tagPageSize}, nil
 }
 
-// TagSuggestions returns pairs of canonical tags that may be one, leaving out
+// TagSuggestions returns pairs of primary tags that may be one, leaving out
 // pairs marked distinct; the pairs with most cards first.
 func (l *Library) TagSuggestions(ctx context.Context) ([]TagSuggestion, error) {
 	tags, err := l.allTags(ctx)
@@ -1114,7 +1182,7 @@ Expected: PASS.
 
 ```bash
 git add internal/library/tags.go internal/library/tags_test.go
-git commit -m "feat(library): list canonical tags and suggest likely duplicates"
+git commit -m "feat(library): list primary tags and suggest likely duplicates"
 ```
 
 ---
@@ -1154,7 +1222,7 @@ func TestScaleTagQueries(t *testing.T) {
 		`UPDATE card_revision SET data = jsonb_set(data, '{tags}', (
 			SELECT coalesce(jsonb_agg(DISTINCT CASE WHEN random() < 0.08 THEN 'Tag-' || n ELSE 'tag' || n END), '[]')
 			FROM (SELECT floor(power(random(), 4) * 23000)::int AS n FROM generate_series(1, 3 + id % 8) WHERE id > 0) x))`,
-		`INSERT INTO tag_alias (key, canonical) SELECT 'tag' || (2 * g + 1), 'tag' || (2 * g) FROM generate_series(0, 999) g`,
+		`INSERT INTO tag_alias (key, primary_tag) SELECT 'tag' || (2 * g + 1), 'tag' || (2 * g) FROM generate_series(0, 999) g`,
 		`ANALYZE`,
 	} {
 		if _, err := pool.Exec(ctx, sql); err != nil {
@@ -1282,7 +1350,7 @@ func TestTagRoutes(t *testing.T) {
 	e.call("POST", "/tags/distinct", map[string]string{"a": "Pirates", "b": "pirate"}, 204, nil)
 	e.call("POST", "/tags/distinct", map[string]string{"a": "pirate", "b": "PIRATE"}, 400, nil)
 	e.call("POST", "/tags/merge", map[string]string{"from": "Dragons", "into": "dragon"}, 204, nil)
-	e.call("POST", "/tags/merge", map[string]string{"from": "Sci-Fi", "into": "scifi"}, 400, nil)
+	e.call("POST", "/tags/merge", map[string]string{"from": " - ", "into": "dragon"}, 400, nil)
 	e.call("GET", "/tags/suggestions", nil, 200, &suggestions)
 	if len(suggestions) != 0 {
 		t.Fatalf("after merging and marking distinct, suggestions = %+v", suggestions)
@@ -1381,7 +1449,7 @@ type distinctTagsIn struct {
 func (s *Server) tagRoutes(api huma.API) {
 	tags := []string{"Tags"}
 	huma.Register(api, huma.Operation{OperationID: "list-tags", Method: http.MethodGet, Path: "/tags",
-		Summary: "List tags", Description: "Canonical tags across all libraries, most cards first, each with its card count and aliases. Archived cards aren't counted.", Tags: tags},
+		Summary: "List tags", Description: "Primary tags across all libraries, most cards first, each with its card count and aliases. Archived cards aren't counted.", Tags: tags},
 		func(ctx context.Context, in *tagListIn) (*tagPageOut, error) {
 			page, err := s.Lib.TagList(ctx, in.Q, in.Page)
 			if err != nil {
@@ -1402,8 +1470,8 @@ func (s *Server) tagRoutes(api huma.API) {
 		})
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Write), OperationID: "merge-tags", Method: http.MethodPost, Path: "/tags/merge",
-		Summary: "Merge a tag into another", Description: "Makes from an alias of into; no card changes. An alias given as into stands for its canonical tag, " +
-			"and from's aliases move to into. 400 when from and into differ only in case, spaces, - or _.", Tags: tags, DefaultStatus: http.StatusNoContent},
+		Summary: "Merge a tag into another", Description: "Makes from an alias of into; no card changes. An alias given as into stands for its primary tag, " +
+			"and from's aliases move to into. When from and into differ only in case, spaces, - or _, into becomes the tag's name.", Tags: tags, DefaultStatus: http.StatusNoContent},
 		func(ctx context.Context, in *mergeTagsIn) (*struct{}, error) {
 			return nil, s.fail(s.Lib.MergeTag(ctx, in.Body.From, in.Body.Into))
 		})
@@ -1439,7 +1507,7 @@ Expected: `schema.d.ts` gains `Tag`, `TagAlias`, `TagPage`, `TagRef`, and `TagSu
 ```bash
 git add internal/api/tags.go internal/api/tags_test.go internal/api/organize.go internal/api/organize_test.go internal/api/libraries_test.go internal/api/server.go \
   internal/library/organize.go internal/library/libraries_test.go internal/library/search_test.go web/openapi.json web/src/api/schema.d.ts
-git commit -m "feat(api): list, merge, split, and suggest tags across all libraries" -m "GET /tags lists canonical tags across all libraries and no longer takes library."
+git commit -m "feat(api): list, merge, split, and suggest tags across all libraries" -m "GET /tags lists primary tags across all libraries and no longer takes library."
 ```
 
 ---
@@ -1664,7 +1732,7 @@ git commit -m "feat(api): drop cached facet counts and rerun rules after a tag m
 
 ---
 
-### Task 10: The editor's save writes canonical tags
+### Task 10: The editor's save writes primary tags
 
 **Files:**
 - Modify: `internal/library/tags.go`
@@ -1672,14 +1740,14 @@ git commit -m "feat(api): drop cached facet counts and rerun rules after a tag m
 - Test: `internal/api/tags_test.go`
 - Regenerate: `web/openapi.json`, `web/src/api/schema.d.ts`
 
-The editor shows a card's raw tags as chips, so its save canonicalizes the list it sends rather than replaying a remove the way the bulk Tag job does. Removing `fantasy world` while `fantasy` stays keeps the tag. A save whose tags equal the base revision's keeps them as they are, so an avatar change doesn't rewrite them.
+The editor shows a card's raw tags as chips, so its save replaces aliases in the list it sends with their primary names rather than replaying a remove the way the bulk Tag job does. Removing `fantasy world` while `fantasy` stays keeps the tag. A save whose tags equal the base revision's keeps them as they are, so an avatar change doesn't rewrite them.
 
 - [ ] **Step 1: Write the failing test**
 
 Add to `internal/api/tags_test.go`; its imports gain `encoding/json`, `fmt`, and `slices`:
 
 ```go
-func TestEditorSaveWritesCanonicalTagsAndMCPDoesNot(t *testing.T) {
+func TestEditorSaveWritesPrimaryTagsAndMCPDoesNot(t *testing.T) {
 	e := newEnv(t)
 	c := e.createCard(`{"name": "A", "tags": ["pirate"]}`)
 	e.call("POST", "/tags/merge", map[string]string{"from": "fantasy world", "into": "fantasy"}, 204, nil)
@@ -1711,28 +1779,28 @@ func TestEditorSaveWritesCanonicalTagsAndMCPDoesNot(t *testing.T) {
 
 - [ ] **Step 2: Run it to see it fail**
 
-Run: `INNKEEPER_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:55432/postgres go test ./internal/api -run TestEditorSaveWritesCanonicalTags`
+Run: `INNKEEPER_TEST_DATABASE_URL=postgres://postgres:postgres@localhost:55432/postgres go test ./internal/api -run TestEditorSaveWritesPrimaryTags`
 Expected: FAIL, "editor save with a tag change = [pirate fantasy world Fantasy smith]".
 
-- [ ] **Step 3: Add `CanonicalizeEditedTags`**
+- [ ] **Step 3: Add `WithPrimaryTags`**
 
 In `internal/library/tags.go`, imports gain `encoding/json`. Add:
 
 ```go
-// CanonicalizeEditedTags returns edited with each alias in its tags replaced
-// by its canonical name, when its tags differ from base's. Data whose tags
-// aren't a list of strings comes back as is, for prepare to store.
-func (l *Library) CanonicalizeEditedTags(ctx context.Context, base, edited json.RawMessage) (json.RawMessage, error) {
+// WithPrimaryTags returns edited with each alias in its tags replaced by its
+// primary name, when its tags differ from base's. Data whose tags aren't a
+// list of strings comes back as is, for prepare to store.
+func (l *Library) WithPrimaryTags(ctx context.Context, base, edited json.RawMessage) (json.RawMessage, error) {
 	before, _ := stringTags(base)
 	after, ok := stringTags(edited)
 	if !ok || slices.Equal(before, after) {
 		return edited, nil
 	}
-	canonical, err := l.canonicalNames(ctx, after)
+	primary, err := l.primaryNames(ctx, after)
 	if err != nil {
 		return nil, err
 	}
-	tags := canonicalTags(after, canonical)
+	tags := primaryTags(after, primary)
 	if slices.Equal(tags, after) {
 		return edited, nil
 	}
@@ -1770,14 +1838,14 @@ In `internal/api/entities.go`, in the `update-` handler, after the `e := library
 
 ```go
 			if k == library.Card && e.Source == "ui" {
-				// The owner's save writes merged tags under their canonical names; mcp keeps what it sends.
-				if e.Data, err = s.Lib.CanonicalizeEditedTags(ctx, base.Data, e.Data); err != nil {
+				// The owner's save writes merged tags under their primary names; mcp keeps what it sends.
+				if e.Data, err = s.Lib.WithPrimaryTags(ctx, base.Data, e.Data); err != nil {
 					return nil, s.fail(err)
 				}
 			}
 ```
 
-Change the operation's `Description` to `"Adds a revision on top of base_revision_id. With source ui, a card whose tags changed is saved with merged tags under their canonical names."`.
+Change the operation's `Description` to `"Adds a revision on top of base_revision_id. With source ui, a card whose tags changed is saved with merged tags under their primary names."`.
 
 - [ ] **Step 5: Run the tests**
 
@@ -1791,7 +1859,7 @@ Expected: only the update operations' description changes; typecheck clean.
 
 ```bash
 git add internal/library/tags.go internal/api/entities.go internal/api/tags_test.go web/openapi.json web/src/api/schema.d.ts
-git commit -m "feat(api): the card editor saves merged tags under their canonical names"
+git commit -m "feat(api): the card editor saves merged tags under their primary names"
 ```
 
 ---
@@ -1802,7 +1870,7 @@ git commit -m "feat(api): the card editor saves merged tags under their canonica
 - Modify: `internal/backup/backup.go` (`tables` near line 35)
 - Test: `internal/backup/backup_test.go` (`TestWriteAssets` near line 102)
 
-Merges are the owner's work, like collections and rules, so an assets backup keeps them. `copyTable` already leaves out generated columns such as `canonical_key`.
+Merges are the owner's work, like collections and rules, so an assets backup keeps them, self rows included as ordinary rows. `copyTable` already leaves out generated columns such as `primary_tag_key`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1929,6 +1997,19 @@ test("rename and merge into send a merge, and split deletes the alias", async ()
   );
 });
 
+test("make primary merges the tag into another spelling or into an alias", async () => {
+  renderPage();
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Make Fantasy primary" }));
+  await user.click(screen.getByRole("button", { name: "Make fantasy world primary" }));
+  await waitFor(() =>
+    expect(calls).toEqual([
+      { method: "POST", path: "/api/tags/merge", body: { from: "fantasy", into: "Fantasy" } },
+      { method: "POST", path: "/api/tags/merge", body: { from: "fantasy", into: "fantasy world" } },
+    ]),
+  );
+});
+
 test("a suggestion merges into the tag with more cards, the other way after Swap, or is dismissed", async () => {
   renderPage();
   const user = userEvent.setup();
@@ -1969,7 +2050,7 @@ type Tag = components["schemas"]["Tag"];
 /** cardsWith is the Cards page of library filtered to tag. */
 const cardsWith = (tag: string, library: number) => withLibrary(`/cards?${new URLSearchParams({ f: `tag:${tag}` })}`, library);
 
-/** Tags lists the canonical tags across all libraries, with their aliases, and suggests likely duplicates to merge. */
+/** Tags lists the primary tags across all libraries, with their aliases, and suggests likely duplicates to merge. */
 export function Tags() {
   const qc = useQueryClient();
   const library = useLibrary();
@@ -2092,14 +2173,23 @@ export function Tags() {
               .filter((s) => s !== t.name)
               .map((s) => (
                 <span key={s} className="chip">
-                  {s}
+                  {s}{" "}
+                  <button className="button" aria-label={`Make ${s} primary`} onClick={() => merge.mutate({ from: t.name, into: s })}>
+                    Make primary
+                  </button>
                 </span>
               ))}
             {t.aliases.map((a) => {
               const name = a.spellings.join(", ") || a.key;
+              const spelling = a.spellings[0] ?? a.key;
               return (
                 <span key={a.key} className="chip">
                   {name}{" "}
+                  {/* Merging a tag into its own alias swaps them. */}
+                  <button className="button" aria-label={`Make ${spelling} primary`}
+                    onClick={() => merge.mutate({ from: t.name, into: spelling })}>
+                    Make primary
+                  </button>{" "}
                   <button className="button" aria-label={`Split ${name} from ${t.name}`} onClick={() => split.mutate(a.key)}>
                     Split
                   </button>
@@ -2192,7 +2282,7 @@ export function Tags() {
 - [ ] **Step 5: Run the tests**
 
 Run: `cd web && npm run typecheck && npx vitest run src/tags/Tags.test.tsx`
-Expected: typecheck clean; three tests pass.
+Expected: typecheck clean; four tests pass.
 
 - [ ] **Step 6: Commit**
 
@@ -2277,7 +2367,9 @@ tag: `Sci-Fi`, `sci fi`, and `scifi` filter and count together.
 
 The Tags page lists every tag across all libraries, most used first. Merge
 into… makes one tag an alias of another; Rename merges a tag into a name no
-card has yet; Split undoes a merge for one alias. A merge changes no card:
+card has yet, or into another spelling of it, such as `Sci-Fi` for `scifi`;
+Make primary on an alias or a spelling makes it the tag's name; Split undoes
+a merge for one alias. A merge changes no card:
 search, counts, rules, and similar cards read the two as one, and apps and
 exports still get each card's tags as the card holds them.
 
@@ -2321,9 +2413,9 @@ Expected: no output.
 
 - [ ] **Step 3: Check the page in a browser**
 
-Start the stack from the checkout with `docker compose up -d --build`, which builds the local source. Then, in `web/`, run `npm run dev`. Tag a few cards `Dragon`, `dragons`, and `fantasy world` so the page has content. Open `http://localhost:5173/tags`:
+Start the stack from the checkout with `docker compose up -d --build`, which builds the local source. Then, in `web/`, run `npm run dev`. Tag a few cards `Dragon`, `dragon`, `dragons`, and `fantasy world` so the page has content. Open `http://localhost:5173/tags`:
 
-1. At 1200 px wide: the suggestions list shows dragons and dragon; Merge, Swap, and Not the same work; the tag list shows counts, alias chips with Split, and Rename and Merge into… on each row.
+1. At 1200 px wide: the suggestions list shows dragons and dragon; Merge, Swap, and Not the same work; the tag list shows counts, spelling chips with Make primary, alias chips with Make primary and Split, and Rename and Merge into… on each row. The tag shows as `Dragon` with a `dragon` chip; Make primary on the chip renames the tag `dragon`.
 2. At 375 px wide: rows wrap, buttons stay reachable, and `document.documentElement.scrollWidth <= window.innerWidth` is `true` in the console.
 3. Merge `fantasy world` into `fantasy`, then open Cards: the Tags facet shows `fantasy` once, and filtering on it shows both cards.
 

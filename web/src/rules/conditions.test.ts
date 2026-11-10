@@ -1,5 +1,5 @@
 import type { components } from "../api/schema";
-import { fieldsFor, fromFilter, newCondition, newGroup, toFilter, type Condition, type Group, type Item } from "./conditions";
+import { fieldsFor, fromFilter, newCondition, newGroup, noValue, toFilter, type Condition, type Group, type Item } from "./conditions";
 
 const fields = fieldsFor([
   { key: "quality", label: "Quality", type: "score", instances: [1] },
@@ -47,6 +47,13 @@ test.each(leaves)("%s round-trips", (_, c, leaf) => {
   const root = group("and", [cond(c)]);
   expect(toFilter(root, fields)).toEqual({ and: [leaf] });
   expect(bare(fromFilter({ and: [leaf] }, fields)!)).toEqual(bare(root));
+});
+
+test("No value in a list is the key's has no value test", () => {
+  const root = group("and", [cond({ field: "value:language", op: "not_in", value: "", values: ["English", noValue] })]);
+  const want = { and: [{ not: { or: [{ enrichment: "language", is: "English" }, { enrichment: "language", missing: true }] } }] };
+  expect(toFilter(root, fields)).toEqual(want);
+  expect(bare(fromFilter(want, fields)!)).toEqual(bare(root));
 });
 
 test("is in counts the value being typed", () => {

@@ -54,6 +54,9 @@ export function opLabel(op: Op, field: Field): string {
   return opLabels[op];
 }
 
+/** noValue stands for "no value" among a value key's values, so is in and is not in can name cards without one. */
+export const noValue = "\u2205";
+
 /** isList says whether op takes a list of values. */
 export const isList = (op: Op) => op === "in" || op === "not_in";
 
@@ -112,7 +115,7 @@ function leaf(field: Field, op: Op, v: string, v2?: string): Filter {
         : op === "at_most" ? { ...at, lte: Number(v) }
         : { ...at, gte: Number(v), lte: Number(v2!.trim()) };
     case "value":
-      return op === "missing" ? { ...at, missing: true } : { ...at, is: v };
+      return op === "missing" || v === noValue ? { ...at, missing: true } : { ...at, is: v };
   }
 }
 
@@ -182,7 +185,8 @@ function conditionOf(c: Filter, fields: Field[]): Condition | undefined {
 
 /** listOf reads an or of one field's is tests, as the Cards page saves any-of, as one is in row. */
 function listOf(parts: Filter[], fields: Field[]): Condition | undefined {
-  const rows = parts.map((p) => conditionOf(p, fields));
+  // A value key's has no value reads as its No value entry.
+  const rows = parts.map((p) => conditionOf(p, fields)).map((r) => (r?.op === "missing" && r.field.startsWith("value:") ? { ...r, op: "is" as const, value: noValue } : r));
   const first = rows[0];
   if (!first || rows.some((r) => !r || r.op !== "is" || r.field !== first.field || first.field === "shares_source")) return undefined;
   return { ...first, op: "in", value: "", values: rows.map((r) => r!.value) };

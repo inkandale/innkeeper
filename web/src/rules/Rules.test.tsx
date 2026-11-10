@@ -28,6 +28,7 @@ beforeEach(() => {
           browse: [
             { key: "quality", label: "Quality", type: "score", instances: [1] },
             { key: "rating", label: "Rating", type: "score", instance: 3, instances: [3] },
+            { key: "language", label: "Language", type: "text", instances: [1] },
           ],
           instances: [
             { id: 1, label: "Scorer", keys: [], scored: true },
@@ -378,6 +379,25 @@ test("is in takes a list: Enter adds a typed value, and a chip removes it", asyn
   await user.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() =>
     expect(calls[0]).toEqual({ method: "POST", path: "/api/saved-searches", body: { name: "Listed", filter: { and: [{ not: { or: [{ tag: "a" }, { tag: "c" }] } }] }, sort: "" } }),
+  );
+});
+
+test("a value key's list offers No value, which saves as has no value", async () => {
+  renderAt("/rules/new");
+  const user = userEvent.setup();
+  await user.type(await screen.findByRole("textbox", { name: "Rule name" }), "Foreign");
+  await user.click(screen.getByRole("button", { name: "Add condition" }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "Field 1" }), "value:language");
+  await user.selectOptions(screen.getByRole("combobox", { name: "Operator 1" }), "not_in");
+  await user.selectOptions(screen.getByRole("combobox", { name: "Add value 1" }), "No value");
+  expect(screen.getByRole("button", { name: "Remove No value from 1" })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() =>
+    expect(calls[0]).toEqual({
+      method: "POST",
+      path: "/api/saved-searches",
+      body: { name: "Foreign", filter: { and: [{ not: { or: [{ enrichment: "language", missing: true }] } }] }, sort: "" },
+    }),
   );
 });
 

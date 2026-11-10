@@ -64,7 +64,12 @@ A condition is a field, an operator, and a value:
 | Source | is, is not, is in, is not in | a source kind from the list | `source` |
 | Shares a source | yes, no | (none) | `shares_source: true` |
 | A score key | is at least, is at most, is between, has no score, has a score | one or two numbers | `enrichment` with `gte`, `lte`, or `missing` |
-| A text or list key | is, is not, is in, is not in, has no value, has a value | a value, offered with counts | `enrichment` with `is` or `missing` |
+| A text or list key | is, is not, is in, is not in, has no value, has a value | a value, offered with counts, or No value | `enrichment` with `is` or `missing` |
+
+Operators keep plain logic: *is not in* English matches a card with no
+value. The value menu offers No value, saved as `missing`, so a list can
+name cards without one: *is not in* English, No value matches only cards
+that have a language.
 
 A negative operator wraps its test in `not`. *Is in* is an `or` of one *is*
 test per value, and *is not in* a `not` around that. Picking from a menu

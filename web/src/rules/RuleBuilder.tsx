@@ -12,7 +12,7 @@ import { count } from "../shell/count";
 import { Icon } from "../shell/Icon";
 import { useLibrary } from "../shell/library";
 import { toastError } from "../shell/Toasts";
-import { complete, conditionsOf, fieldsFor, fromFilter, isList, newCondition, newGroup, opLabel, toFilter, valuesOf, type Condition, type Field, type Group, type Item, type Op } from "./conditions";
+import { complete, conditionsOf, fieldsFor, fromFilter, isList, newCondition, newGroup, opLabel, noValue, toFilter, valuesOf, type Condition, type Field, type Group, type Item, type Op } from "./conditions";
 import { RulePreview } from "./RulePreview";
 import { specOf, type Spec } from "./Rules";
 import "./Rules.css";
@@ -482,10 +482,11 @@ function ValueInput({ n, field, row, sources, values, onChange }: ValueProps) {
         <select className="input" aria-label={label} value={row.value} onChange={(e) => pick(e.target.value)}>
           <option value="">{list ? "Add one" : "Pick one"}</option>
           {/* A value no card has now still shows, so an older rule reads true. */}
-          {row.value && !options.some((o) => o.value === row.value) && <option value={row.value}>{row.value}</option>}
+          {row.value && row.value !== noValue && !options.some((o) => o.value === row.value) && <option value={row.value}>{row.value}</option>}
           {options.filter((o) => !list || !row.values.includes(o.value)).map((o) => (
             <option key={o.value} value={o.value}>{`${o.value} (${o.cards})`}</option>
           ))}
+          {field.input === "value" && !(list && row.values.includes(noValue)) && <option value={noValue}>No value</option>}
         </select>
       );
     }
@@ -507,8 +508,8 @@ function ValueInput({ n, field, row, sources, values, onChange }: ValueProps) {
 /** ListChips shows an is in row's values as chips that remove themselves. */
 function ListChips({ n, row, onChange }: { n: string; row: Condition; onChange: (row: Condition) => void }) {
   return row.values.map((v) => (
-    <button key={v} type="button" className="chip" aria-label={`Remove ${v} from ${n}`} onClick={() => onChange({ ...row, values: row.values.filter((x) => x !== v) })}>
-      {v}
+    <button key={v} type="button" className="chip" aria-label={`Remove ${v === noValue ? "No value" : v} from ${n}`} onClick={() => onChange({ ...row, values: row.values.filter((x) => x !== v) })}>
+      {v === noValue ? "No value" : v}
       <Icon name="close" />
     </button>
   ));

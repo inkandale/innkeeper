@@ -27,7 +27,7 @@ which suggests tags for cards from this cleaned list.
 | Question | Decision |
 |---|---|
 | Rewrite cards on merge | No. A merge adds alias rows. |
-| When a card's tags change | When the owner edits them: a bulk Tag job, or saving the card editor. That write first replaces each tag with its canonical name, then applies the edit, so removing `fantasy` also removes `fantasy world`. Imports, pulls from apps, and plugin writes keep tags as they come. |
+| When a card's tags change | When the owner edits them. A bulk Tag job first replaces each tag with its canonical name, then applies the edit, so removing `fantasy` also removes `fantasy world`. Saving the card editor, when its tags changed, saves the list it shows with each tag replaced by its canonical name. Imports, pulls from apps, MCP, and plugin writes keep tags as they come. |
 | Scope | One alias table for the whole install, as rules and searches span libraries. |
 | Depth | One level. A canonical tag is never an alias. Merging into a tag that is an alias merges into its canonical tag. Merging a tag that has aliases moves them to the new canonical tag. |
 | Rename | Merging into a name no card has yet. |
@@ -57,8 +57,8 @@ change card hashes.
   GIN index serves `&&`. Saved searches and rules naming an alias keep
   working.
 - **Tag facet:** each tag maps to `coalesce(canonical key, key)`, counted
-  once per card. It shows the canonical tag's name, or the most common
-  spelling for a tag with no alias. Measure it against the live tag
+  once per card. It shows the canonical tag's name, or for a tag with no
+  alias, the first of its spellings in sort order, as today. Measure it against the live tag
   distribution before building on it.
 - **Similar cards** (`discover.go`) compare canonical keys, so a card
   tagged `fantasy world` matches one tagged `fantasy`.
@@ -82,7 +82,7 @@ change card hashes.
 
 | Endpoint | Does |
 |---|---|
-| `GET /tags?q=&page=` | Canonical tags with counts and aliases |
+| `GET /tags?q=&page=` | Canonical tags with counts and aliases, across all libraries. Replaces the per-library alphabetical list, which only tests call. |
 | `GET /tags/suggestions` | Likely duplicate pairs with counts |
 | `POST /tags/merge {from, into}` | Adds alias rows. 400 if `from` and `into` have one key |
 | `DELETE /tags/aliases/{key}` | Splits an alias out |

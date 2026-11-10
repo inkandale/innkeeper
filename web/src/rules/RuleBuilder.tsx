@@ -9,9 +9,10 @@ import { text } from "../card/draft";
 import { sidebarKeys } from "../cards/filters";
 import { useConfirm } from "../shell/ConfirmDialog";
 import { count } from "../shell/count";
+import { Icon } from "../shell/Icon";
 import { useLibrary } from "../shell/library";
 import { toastError } from "../shell/Toasts";
-import { complete, conditionsOf, fieldsFor, fromFilter, newCondition, newGroup, opLabel, toFilter, type Condition, type Field, type Group, type Item } from "./conditions";
+import { complete, conditionsOf, fieldsFor, fromFilter, isList, newCondition, newGroup, opLabel, toFilter, valuesOf, type Condition, type Field, type Group, type Item, type Op } from "./conditions";
 import { RulePreview } from "./RulePreview";
 import { specOf, type Spec } from "./Rules";
 import "./Rules.css";
@@ -372,10 +373,14 @@ function GroupView({ group, path, level, onChange, ctx }: { group: Group; path: 
               <span>{group.op}</span>
             )}
           </span>
-          <button type="button" className="button ghost rule-not" aria-pressed={item.not} aria-label={`Not ${at(i)}`} onClick={() => set(i, { ...item, not: !item.not })}>
-            Not
-          </button>
-          {item.kind === "group" ? <span className="rule-group-label">Group</span> : <ConditionView n={at(i)} row={item} onChange={(c) => set(i, c)} ctx={ctx} />}
+          {item.kind === "group" ? (
+            <select className="input rule-group-match" aria-label={`Group ${at(i)}`} value={item.not ? "not" : "is"} onChange={(e) => set(i, { ...item, not: e.target.value === "not" })}>
+              <option value="is">matches</option>
+              <option value="not">doesn't match</option>
+            </select>
+          ) : (
+            <ConditionView n={at(i)} row={item} onChange={(c) => set(i, c)} ctx={ctx} />
+          )}
           <button type="button" className="button ghost" aria-label={`Remove ${item.kind} ${at(i)}`} onClick={() => remove(i)}>
             ✕
           </button>
@@ -402,6 +407,12 @@ function GroupView({ group, path, level, onChange, ctx }: { group: Group; path: 
   );
 }
 
+/** withOp switches row to op, carrying what's typed into or out of a list. */
+function withOp(row: Condition, op: Op): Condition {
+  if (isList(op) === isList(row.op)) return { ...row, op };
+  return isList(op) ? { ...row, op, values: valuesOf(row), value: "" } : { ...row, op, value: row.values[0] ?? row.value, values: [] };
+}
+
 /** ConditionView is one condition's field, operator, and value controls. */
 function ConditionView({ n, row, onChange, ctx }: { n: string; row: Condition; onChange: (row: Condition) => void; ctx: Ctx }) {
   const field = ctx.byId.get(row.field);
@@ -413,7 +424,7 @@ function ConditionView({ n, row, onChange, ctx }: { n: string; row: Condition; o
         value={row.field}
         onChange={(e) => {
           const next = ctx.byId.get(e.target.value)!;
-          onChange({ kind: row.kind, key: row.key, not: row.not, field: next.id, op: next.ops[0]!, value: "" });
+          onChange({ kind: row.kind, key: row.key, field: next.id, op: next.ops[0]!, value: "", values: [] });
         }}
       >
         {ctx.fields.map((f) => (
@@ -422,9 +433,8 @@ function ConditionView({ n, row, onChange, ctx }: { n: string; row: Condition; o
           </option>
         ))}
       </select>
-      {field && field.input !== "none" && field.ops.length === 1 && <span>{opLabel(field.ops[0]!, field)}</span>}
       {field && field.ops.length > 1 && (
-        <select className="input" aria-label={`Operator ${n}`} value={row.op} onChange={(e) => onChange({ ...row, op: e.target.value as Condition["op"] })}>
+        <select className="input" aria-label={`Operator ${n}`} value={row.op} onChange={(e) => onChange(withOp(row, e.target.value as Op))}>
           {field.ops.map((op) => (
             <option key={op} value={op}>
               {opLabel(op, field)}
@@ -432,7 +442,8 @@ function ConditionView({ n, row, onChange, ctx }: { n: string; row: Condition; o
           ))}
         </select>
       )}
-      {field && row.op !== "missing" && <ValueInput n={n} field={field} row={row} sources={ctx.sources} values={ctx.values(row.field)} onChange={onChange} />}
+      {field && isList(row.op) && <ListChips n={n} row={row} onChange={onChange} />}
+      {field && row.op !== "missing" && row.op !== "present" && <ValueInput n={n} field={field} row={row} sources={ctx.sources} values={ctx.values(row.field)} onChange={onChange} />}
     </>
   );
 }
@@ -448,23 +459,31 @@ type ValueProps = {
 
 /** ValueInput is the control a field's value takes: text, a tag with suggestions, a choice, or numbers. */
 function ValueInput({ n, field, row, sources, values, onChange }: ValueProps) {
-  const label = `Value ${n}`;
+  const list = isList(row.op);
+  const label = list ? `Add value ${n}` : `Value ${n}`;
+  // In a list, Enter adds what's typed; a pick from a menu adds at once.
+  const enter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!list || e.key !== "Enter") return;
+    e.preventDefault();
+    onChange({ ...row, values: valuesOf(row), value: "" });
+  };
+  const pick = (v: string) => onChange(list ? { ...row, values: valuesOf({ ...row, value: v }), value: "" } : { ...row, value: v });
   switch (field.input) {
     case "none":
       return null;
     case "text":
-      return <input className="input" aria-label={label} value={row.value} onChange={(e) => onChange({ ...row, value: e.target.value })} />;
+      return <input className="input" aria-label={label} value={row.value} onKeyDown={enter} onChange={(e) => onChange({ ...row, value: e.target.value })} />;
     case "tag":
-      return <input className="input" aria-label={label} list="rule-tags" value={row.value} onChange={(e) => onChange({ ...row, value: e.target.value })} />;
+      return <input className="input" aria-label={label} list="rule-tags" value={row.value} onKeyDown={enter} onChange={(e) => onChange({ ...row, value: e.target.value })} />;
     case "source":
     case "value": {
       const options = field.input === "source" ? sources.map((s) => ({ value: s.kind, cards: s.cards })) : values;
       return (
-        <select className="input" aria-label={label} value={row.value} onChange={(e) => onChange({ ...row, value: e.target.value })}>
-          <option value="">Pick one</option>
+        <select className="input" aria-label={label} value={row.value} onChange={(e) => pick(e.target.value)}>
+          <option value="">{list ? "Add one" : "Pick one"}</option>
           {/* A value no card has now still shows, so an older rule reads true. */}
           {row.value && !options.some((o) => o.value === row.value) && <option value={row.value}>{row.value}</option>}
-          {options.map((o) => (
+          {options.filter((o) => !list || !row.values.includes(o.value)).map((o) => (
             <option key={o.value} value={o.value}>{`${o.value} (${o.cards})`}</option>
           ))}
         </select>
@@ -483,4 +502,14 @@ function ValueInput({ n, field, row, sources, values, onChange }: ValueProps) {
         </>
       );
   }
+}
+
+/** ListChips shows an is in row's values as chips that remove themselves. */
+function ListChips({ n, row, onChange }: { n: string; row: Condition; onChange: (row: Condition) => void }) {
+  return row.values.map((v) => (
+    <button key={v} type="button" className="chip" aria-label={`Remove ${v} from ${n}`} onClick={() => onChange({ ...row, values: row.values.filter((x) => x !== v) })}>
+      {v}
+      <Icon name="close" />
+    </button>
+  ));
 }

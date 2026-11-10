@@ -150,7 +150,7 @@ test("Add rule on a saved search loads its conditions, and editing them patches 
   expect(await screen.findByDisplayValue("junk")).toBeInTheDocument();
   expect(screen.getByText(/also changes Hide junk/)).toBeInTheDocument();
   await user.type(screen.getByRole("textbox", { name: "Rule name" }), "More junk");
-  await user.click(screen.getByRole("button", { name: "Not 1" }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "Operator 1" }), "is_not");
   await user.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() =>
     expect(calls).toEqual([
@@ -314,7 +314,7 @@ test("a rule that fails to save leaves its shared search as it was", async () =>
   renderAt("/rules/new?search=3");
   const user = userEvent.setup();
   await user.type(await screen.findByRole("textbox", { name: "Rule name" }), "More junk");
-  await user.click(screen.getByRole("button", { name: "Not 1" }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "Operator 1" }), "is_not");
   await user.click(screen.getByRole("button", { name: "Save" }));
   expect(await screen.findByText(/already exists/)).toBeInTheDocument();
   expect(calls.filter((c) => c.method === "PATCH")).toEqual([]);
@@ -342,7 +342,7 @@ test("removing a group's last item removes the group", async () => {
   expect(screen.queryByRole("button", { name: "Remove group 1" })).not.toBeInTheDocument();
 });
 
-test("a group mixes or inside an and, and not negates it", async () => {
+test("a group mixes or inside an and, and doesn't match negates it", async () => {
   renderAt("/rules/new");
   const user = userEvent.setup();
   await user.type(await screen.findByRole("textbox", { name: "Rule name" }), "Mixed");
@@ -353,7 +353,7 @@ test("a group mixes or inside an and, and not negates it", async () => {
   await user.click(screen.getByRole("button", { name: "Add condition to group 2" }));
   await user.type(screen.getByLabelText("Value 2.2"), "b");
   await user.selectOptions(screen.getByRole("combobox", { name: "Connector in group 2" }), "or");
-  await user.click(screen.getByRole("button", { name: "Not 2" }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "Group 2" }), "not");
   await user.click(screen.getByRole("button", { name: "Save" }));
   await waitFor(() =>
     expect(calls[0]).toEqual({
@@ -361,6 +361,23 @@ test("a group mixes or inside an and, and not negates it", async () => {
       path: "/api/saved-searches",
       body: { name: "Mixed", filter: { and: [{ tag: "nsfw" }, { not: { or: [{ tag: "a" }, { tag: "b" }] } }] }, sort: "" },
     }),
+  );
+});
+
+test("is in takes a list: Enter adds a typed value, and a chip removes it", async () => {
+  renderAt("/rules/new");
+  const user = userEvent.setup();
+  await user.type(await screen.findByRole("textbox", { name: "Rule name" }), "Listed");
+  await user.click(screen.getByRole("button", { name: "Add condition" }));
+  await user.type(screen.getByLabelText("Value 1"), "a");
+  await user.selectOptions(screen.getByRole("combobox", { name: "Operator 1" }), "not_in");
+  expect(screen.getByRole("button", { name: "Remove a from 1" })).toBeInTheDocument();
+  await user.type(screen.getByLabelText("Add value 1"), "b{Enter}");
+  await user.type(screen.getByLabelText("Add value 1"), "c{Enter}");
+  await user.click(screen.getByRole("button", { name: "Remove b from 1" }));
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() =>
+    expect(calls[0]).toEqual({ method: "POST", path: "/api/saved-searches", body: { name: "Listed", filter: { and: [{ not: { or: [{ tag: "a" }, { tag: "c" }] } }] }, sort: "" } }),
   );
 });
 
@@ -382,7 +399,7 @@ test("Add group stops two levels down", async () => {
   expect(screen.getByRole("button", { name: "Add condition to group 1.2" })).toBeInTheDocument();
 });
 
-test("a Cards search with any-of groups edits as groups", async () => {
+test("a Cards search with any-of tags edits as tag is in", async () => {
   const fetch = globalThis.fetch;
   vi.stubGlobal("fetch", async (req: Request) =>
     new URL(req.url).pathname === "/api/saved-searches" && req.method === "GET"
@@ -390,7 +407,8 @@ test("a Cards search with any-of groups edits as groups", async () => {
       : fetch(req),
   );
   renderAt("/rules/new?search=3");
-  expect(await screen.findByDisplayValue("a")).toBeInTheDocument();
-  expect(screen.getByLabelText("Value 1.2")).toHaveValue("b");
+  expect(await screen.findByRole("button", { name: "Remove a from 1" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Remove b from 1" })).toBeInTheDocument();
+  expect(screen.getByRole("combobox", { name: "Operator 1" })).toHaveValue("in");
   expect(screen.queryByText(/can't show/)).not.toBeInTheDocument();
 });

@@ -188,8 +188,9 @@ A **rule** is a saved search with an action that Innkeeper keeps applied in
 the libraries it covers: all of them, new ones included, or a chosen list.
 Add one with Add rule on the Rules page: name it, add conditions on tags,
 sources, names, creators, and plugin scores and values, and pick what it
-does. Join conditions with *and* or *or*, negate a condition or a whole
-group with Not, and nest groups to mix the two. Its conditions are saved
+does. Operators include *is not*, *is in* and *is not in* a list, and
+*doesn't contain*. Join conditions with *and* or *or*, and nest groups to
+mix the two; a group can also be set to *doesn't match*. Its conditions are saved
 as a saved search under the rule's name. Add rule on a saved search
 starts from that search's conditions.
 

@@ -24,6 +24,16 @@ const leaves: [string, Partial<Condition>, components["schemas"]["Filter"]][] = 
   ["tag is", { field: "tag", op: "is", value: "nsfw" }, { tag: "nsfw" }],
   ["source is", { field: "source", op: "is", value: "chub" }, { source: "chub" }],
   ["shares a source", { field: "shares_source", op: "is", value: "" }, { shares_source: true }],
+  ["shares no source", { field: "shares_source", op: "is_not", value: "" }, { not: { shares_source: true } }],
+  ["name doesn't contain", { field: "name", op: "not_contains", value: "junk" }, { not: { name: "junk" } }],
+  ["creator is not", { field: "creator", op: "is_not", value: "bob" }, { not: { creator: "bob" } }],
+  ["tag is not", { field: "tag", op: "is_not", value: "nsfw" }, { not: { tag: "nsfw" } }],
+  ["tag is in", { field: "tag", op: "in", value: "", values: ["a", "b"] }, { or: [{ tag: "a" }, { tag: "b" }] }],
+  ["source is not in", { field: "source", op: "not_in", value: "", values: ["chub"] }, { not: { or: [{ source: "chub" }] } }],
+  ["value is not", { field: "value:language", op: "is_not", value: "English" }, { not: { enrichment: "language", is: "English" } }],
+  ["value is in", { field: "value:language", op: "in", value: "", values: ["English", "French"] }, { or: [{ enrichment: "language", is: "English" }, { enrichment: "language", is: "French" }] }],
+  ["has a value", { field: "value:language", op: "present", value: "" }, { not: { enrichment: "language", missing: true } }],
+  ["has a score", { field: "score:quality", op: "present", value: "" }, { not: { enrichment: "quality", missing: true } }],
   ["merged score at least", { field: "score:quality", op: "at_least", value: "70" }, { enrichment: "quality", gte: 70 }],
   ["score at least 0", { field: "score:quality", op: "at_least", value: "0" }, { enrichment: "quality", gte: 0 }],
   ["instance score at most", { field: "score:3:rating", op: "at_most", value: "2" }, { enrichment: "rating", instance: 3, lte: 2 }],
@@ -33,13 +43,21 @@ const leaves: [string, Partial<Condition>, components["schemas"]["Filter"]][] = 
   ["no value", { field: "value:language", op: "missing", value: "" }, { enrichment: "language", missing: true }],
 ];
 
-test.each(leaves)("%s round-trips, plain and negated", (_, c, leaf) => {
-  for (const not of [false, true]) {
-    const root = group("and", [cond({ ...c, not })]);
-    const want = { and: [not ? { not: leaf } : leaf] };
-    expect(toFilter(root, fields)).toEqual(want);
-    expect(bare(fromFilter(want, fields)!)).toEqual(bare(root));
-  }
+test.each(leaves)("%s round-trips", (_, c, leaf) => {
+  const root = group("and", [cond(c)]);
+  expect(toFilter(root, fields)).toEqual({ and: [leaf] });
+  expect(bare(fromFilter({ and: [leaf] }, fields)!)).toEqual(bare(root));
+});
+
+test("is in counts the value being typed", () => {
+  expect(toFilter(group("and", [cond({ field: "tag", op: "in", value: "c ", values: ["a"] })]), fields)).toEqual({ and: [{ or: [{ tag: "a" }, { tag: "c" }] }] });
+  expect(toFilter(group("and", [cond({ field: "tag", op: "in", value: "", values: [] })]), fields)).toBeUndefined();
+});
+
+test("a negated test with no opposite operator reads as a negated group", () => {
+  const f = { and: [{ not: { enrichment: "quality", gte: 70 } }] };
+  expect(fromFilter(f, fields)!.items[0]).toMatchObject({ kind: "group", not: true, items: [{ field: "score:quality", op: "at_least" }] });
+  expect(toFilter(fromFilter(f, fields)!, fields)).toEqual({ and: [{ not: { and: [{ enrichment: "quality", gte: 70 }] } }] });
 });
 
 test("groups nest, each with its own connector and not", () => {
@@ -62,7 +80,8 @@ test("incomplete items and emptied groups are left out", () => {
 
 test("a bare condition, an or at the top, and a negated top read as the page's group", () => {
   expect(bare(fromFilter({ tag: "a" }, fields)!)).toEqual(bare(group("and", [cond({ field: "tag", op: "is", value: "a" })])));
-  expect(fromFilter({ or: [{ tag: "a" }, { tag: "b" }] }, fields)!.op).toBe("or");
+  expect(fromFilter({ or: [{ tag: "a" }, { source: "chub" }] }, fields)!.op).toBe("or");
+  expect(fromFilter({ or: [{ tag: "a" }, { tag: "b" }] }, fields)!.items[0]).toMatchObject({ field: "tag", op: "in", values: ["a", "b"] });
   // The page's group can't be negated, so a negated top goes inside it.
   const top = fromFilter({ not: { and: [{ tag: "a" }] } }, fields)!;
   expect(top.not).toBe(false);
@@ -75,7 +94,7 @@ test("a not of a not keeps both", () => {
   expect(toFilter(fromFilter(f, fields)!, fields)).toEqual({ and: [{ not: { and: [{ not: { tag: "a" } }] } }] });
 });
 
-test("a Cards-page filter with any-of groups reads as groups", () => {
+test("a Cards-page filter with any-of reads as is in, and a none-of as is not", () => {
   const f = { and: [{ or: [{ tag: "a" }, { tag: "b" }] }, { not: { tag: "c" } }] };
   expect(toFilter(fromFilter(f, fields)!, fields)).toEqual(f);
 });

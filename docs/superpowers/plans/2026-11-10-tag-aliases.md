@@ -282,6 +282,10 @@ func TestMergeTagIntoItsOwnKeyChoosesItsSpelling(t *testing.T) {
 		"fantasyworld": "Fantasy", "fantasy": "Fantasy"})
 	mergeTag(t, lib, "Fantasy", "Fantasy World", map[string]string{"scifi": "speculative", "sciencefiction": "speculative",
 		"fantasy": "Fantasy World"})
+
+	// Into an alias's own key: into that alias's group, which from is already in.
+	mergeTag(t, lib, "SCI FI", "sci-fi", map[string]string{"scifi": "speculative", "sciencefiction": "speculative",
+		"fantasy": "Fantasy World"})
 }
 
 func TestMarkTagsDistinctStoresOneOrderedPair(t *testing.T) {

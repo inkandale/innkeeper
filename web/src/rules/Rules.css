@@ -45,9 +45,24 @@
   gap: 0.5rem;
 }
 
+/* Baseline keeps the connector and ✕ on a wrapped condition's first line. */
+.rule-item {
+  align-items: baseline;
+}
+
 /* Pushes a group's ✕ to the end of its header line, above the group's box. */
 .rule-item .rule-group-match {
   margin-right: auto;
+}
+
+/* A condition's controls wrap inside their own box, so a wrapped line stays under the field and the ✕ stays at the end. */
+.rule-condition {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .rule-connector {

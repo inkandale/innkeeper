@@ -417,7 +417,7 @@ function withOp(row: Condition, op: Op): Condition {
 function ConditionView({ n, row, onChange, ctx }: { n: string; row: Condition; onChange: (row: Condition) => void; ctx: Ctx }) {
   const field = ctx.byId.get(row.field);
   return (
-    <>
+    <span className="rule-condition">
       <select
         className="input"
         aria-label={`Field ${n}`}
@@ -444,7 +444,7 @@ function ConditionView({ n, row, onChange, ctx }: { n: string; row: Condition; o
       )}
       {field && isList(row.op) && <ListChips n={n} row={row} onChange={onChange} />}
       {field && row.op !== "missing" && row.op !== "present" && <ValueInput n={n} field={field} row={row} sources={ctx.sources} values={ctx.values(row.field)} onChange={onChange} />}
-    </>
+    </span>
   );
 }
 

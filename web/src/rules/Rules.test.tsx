@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { Toasts } from "../shell/Toasts";
@@ -399,6 +399,27 @@ test("a value key's list offers No value, which saves as has no value", async ()
       body: { name: "Foreign", filter: { and: [{ not: { or: [{ enrichment: "language", missing: true }] } }] }, sort: "" },
     }),
   );
+});
+
+test("value suggestions add up every library the rule covers", async () => {
+  const fetch = globalThis.fetch;
+  vi.stubGlobal("fetch", async (req: Request) => {
+    const path = new URL(req.url).pathname;
+    if (path === "/api/libraries")
+      return json([
+        { id: 1, name: "Main", cards: 0, lorebooks: 0, created_at: "" },
+        { id: 2, name: "Chub", cards: 0, lorebooks: 0, created_at: "" },
+      ]);
+    const body = path === "/api/cards/search" ? await req.clone().json() : undefined;
+    if (body?.facets_only)
+      return json({ facets: { tags: [], sources: [], enrichments: { language: body.library === 2 ? [{ value: "Spanish", cards: 3 }, { value: "English", cards: 1 }] : [{ value: "English", cards: 5 }] } } });
+    return fetch(req);
+  });
+  renderAt("/rules/new");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Add condition" }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "Field 1" }), "value:language");
+  await waitFor(() => expect(within(screen.getByRole("combobox", { name: "Value 1" })).getAllByRole("option").map((o) => o.textContent)).toEqual(["Pick one", "English (6)", "Spanish (3)", "No value"]));
 });
 
 test("the connector menu sits on the second item and changes the whole group", async () => {

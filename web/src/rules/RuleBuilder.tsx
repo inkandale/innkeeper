@@ -91,9 +91,13 @@ function Builder({ id, initial, search, fields, library }: Props) {
   const matchNames = (matched ?? []).flatMap((m) => m.hits ?? []).slice(0, 5);
   const matchWhere = spec.all_libraries ? "all libraries" : counting.length === 1 ? libraryName(counting[0]!) : `${counting.length} libraries`;
   const valueRefs = fields.filter((f) => f.input === "value").map((f) => f.id.slice("value:".length));
-  const facets = useQuery(searchQuery("card", { library, facets: ["tags", "sources", ...valueRefs.map((r) => `enrichment:${r}`)], facets_only: true }));
-  const tags = facets.data?.facets?.tags ?? [];
-  const sources = facets.data?.facets?.sources ?? [];
+  // Suggestions come from every library the rule covers, so a value only another library has is still offered.
+  const facets = useQueries({
+    queries: counting.map((lib) => searchQuery("card", { library: lib, facets: ["tags", "sources", ...valueRefs.map((r) => `enrichment:${r}`)], facets_only: true })),
+  }).map((q) => q.data?.facets);
+  const tags = merged(facets.map((f) => f?.tags), (t) => t.name);
+  const sources = merged(facets.map((f) => f?.sources), (t) => t.kind);
+  const values = (ref: string) => merged(facets.map((f) => f?.enrichments?.[ref]), (v) => v.value);
 
   const conditions = conditionsOf(root);
   const incomplete = !readOnly && (conditions.length === 0 || conditions.some((c) => !complete(c, byId.get(c.field))));
@@ -231,7 +235,7 @@ function Builder({ id, initial, search, fields, library }: Props) {
             path=""
             level={0}
             onChange={setRoot}
-            ctx={{ fields, byId, sources, values: (fieldId) => facets.data?.facets?.enrichments?.[fieldId.slice("value:".length)] ?? [] }}
+            ctx={{ fields, byId, sources, values: (fieldId) => values(fieldId.slice("value:".length)) }}
           />
         )}
         <datalist id="rule-tags">
@@ -405,6 +409,16 @@ function GroupView({ group, path, level, onChange, ctx }: { group: Group; path: 
       </li>
     </ol>
   );
+}
+
+/** merged adds up each library's facet counts by key, most cards first. */
+function merged<T extends { cards: number }>(lists: (T[] | null | undefined)[], key: (t: T) => string): T[] {
+  const sum = new Map<string, T>();
+  for (const t of lists.flatMap((l) => l ?? [])) {
+    const had = sum.get(key(t));
+    sum.set(key(t), had ? { ...had, cards: had.cards + t.cards } : t);
+  }
+  return [...sum.values()].sort((a, b) => b.cards - a.cards);
 }
 
 /** withOp switches row to op, carrying what's typed into or out of a list. */

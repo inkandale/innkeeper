@@ -630,6 +630,7 @@ func TestManifestCapabilityKeys(t *testing.T) {
 		{"enrich_max_cards without enrich", []string{"push"}, func(m *Manifest) { m.EnrichMaxCards = 5 }, "enrich_max_cards needs the enrich capability"},
 		{"enrich_on_change without enrich", []string{"push"}, func(m *Manifest) { m.EnrichOnChange = true }, "enrich_on_change needs the enrich capability"},
 		{"enrich_cost without enrich", []string{"push"}, func(m *Manifest) { m.EnrichCost = 100 }, "enrich_cost needs the enrich capability"},
+		{"enrich_version without enrich", []string{"push"}, func(m *Manifest) { m.EnrichVersion = 2 }, "enrich_version needs the enrich capability"},
 		{"searches without enrich", []string{"push"}, func(m *Manifest) {
 			m.Searches = map[string]Search{"junk": {Name: "Junk", Filter: map[string]any{"enrichment": "x"}}}
 		}, "searches needs the enrich capability"},
@@ -688,6 +689,7 @@ protocol = 1
 command = ["./lint"]
 capabilities = ["enrich"]
 enrich_cost = 100
+enrich_version = 2
 
 [enrichments]
 problems = { type = "list", label = "Problems" }
@@ -703,6 +705,10 @@ filter = { or = [
 [searches.foreign]
 name = "Non-English"
 filter = { and = [{ enrichment = "language", missing = false }, { not = { enrichment = "language", is = "English" } }] }
+
+[searches.rescore]
+name = "Outdated problems"
+filter = { enrichment = "problems", outdated = true }
 `
 
 func TestManifestSearchesAndEnrichCost(t *testing.T) {
@@ -710,7 +716,7 @@ func TestManifestSearchesAndEnrichCost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.EnrichCost != 100 || m.Searches["junk"].Name != "Junk" || m.Searches["foreign"].Name != "Non-English" {
+	if m.EnrichCost != 100 || m.EnrichVersion != 2 || m.Searches["rescore"].Name != "Outdated problems" || m.Searches["junk"].Name != "Junk" || m.Searches["foreign"].Name != "Non-English" {
 		t.Fatalf("manifest %+v", m)
 	}
 	// Through JSON: the decoder may give an array of tables as []map[string]any.
@@ -728,6 +734,7 @@ func TestManifestSearchErrors(t *testing.T) {
 		{"not as a list", `{ not = [{ enrichment = "problems", is = "x" }] }`, `filter:`},
 		{"is alone", `{ is = "x" }`, `go with enrichment`},
 		{"two conditions", `{ enrichment = "problems", is = "x", gte = 1 }`, `takes one of`},
+		{"outdated and missing", `{ enrichment = "problems", outdated = true, missing = true }`, `takes one of`},
 		{"empty term", `{ and = [{}] }`, `exactly one of`},
 		{"nested", `{ not = { or = [{ enrichment = "nope", is = "x" }] } }`, `enrichment "nope"`},
 	}
@@ -742,9 +749,9 @@ func TestManifestSearchErrors(t *testing.T) {
 	m := &Manifest{Name: "p", Version: "1", Protocol: Version, Command: []string{"p"}, Capabilities: []string{"enrich"},
 		Enrichments: map[string]Enrichment{"lint": {Type: "score", Label: "Lint", Range: []float64{0, 100}}},
 		Searches:    map[string]Search{"Bad-ID": {Name: " ", Filter: map[string]any{"enrichment": "lint", "lte": 10}}}}
-	m.EnrichCost = -1
+	m.EnrichCost, m.EnrichVersion = -1, -1
 	err := m.Validate()
-	for _, want := range []string{"enrich_cost can't be negative", `search "Bad-ID" must match`, `search "Bad-ID": name is required`} {
+	for _, want := range []string{"enrich_cost can't be negative", "enrich_version can't be negative", `search "Bad-ID" must match`, `search "Bad-ID": name is required`} {
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("Validate = %v, want %q", err, want)
 		}

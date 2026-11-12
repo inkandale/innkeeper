@@ -1,6 +1,6 @@
 # Innkeeper plugin protocol
 
-Protocol version 1.3. The design behind it is in
+Protocol version 1.4. The design behind it is in
 [the core design spec](superpowers/specs/2026-10-03-innkeeper-core-design.md).
 
 ## Versions
@@ -18,6 +18,7 @@ version needs a newer Innkeeper.
 | 1.1 | The `panel` grant and `[ui] title` (see [`ui`](#ui)), the `cards.edit` permission, `host.request`'s `snapshot`, and the `context` notice (see [The bridge](#the-bridge)) |
 | 1.2 | `section` and `browse` on enrichment keys (see [Browse sections](#browse-sections)) |
 | 1.3 | `enrich_cost` and `[searches]` in the manifest (see [Manifest](#manifest) and [Enrich order and saved searches](#enrich-order-and-saved-searches)) |
+| 1.4 | `enrich_version` in the manifest and the `outdated` search term (see [Rescoring after a change](#rescoring-after-a-change)) |
 
 Set `protocol_version` to the newest minor whose features the plugin uses.
 
@@ -127,6 +128,7 @@ Each plugin folder has a `plugin.toml`:
 | `enrichments` | for `enrich` | Keys the plugin writes, in lowercase `snake_case`; see [`enrich`](#enrich), and `emit.card`'s `values` under [`import`](#import). Each has a `label` for the UI and a `type`: `text`, `score` (needs `range = [low, high]`), or `list`. `grid = true` shows the key on the library grid, for at most one key. The grid key's `priority`, an integer, orders plugins: a tile shows the highest-priority score a card has, and the top three wear gold, silver, and bronze. Space priorities apart, such as by 100, so other plugins fit between. `browse` and `section` list a key in the filter sidebar and sort menu; see [Browse sections](#browse-sections). `embed` is retired and ignored. An `enrich` plugin must declare at least one |
 | `enrich_on_change` | no; only for `enrich` | The default for each new instance's **Update cards as they change** setting; the owner can turn it on or off per instance (`PATCH /instances/{id}` with `enrich_on_change`). Set it only when your calls cost the owner nothing, since the owner didn't ask for the runs. See [`enrich`](#enrich) for what the setting does. `enrich_on_import` is the retired name and still works |
 | `enrich_cost` | no; only for `enrich` | An integer, 0 by default, that orders enrich instances: an instance waits for a cheaper one that an enabled archive rule reads. Space values apart, such as by 100. See [Enrich order and saved searches](#enrich-order-and-saved-searches) |
+| `enrich_version` | no; only for `enrich` | An integer, 0 by default, for what the plugin's values mean. Raise it only when they change meaning, such as after a new prompt or model, not with every release. See [Rescoring after a change](#rescoring-after-a-change) |
 | `searches` | no; only for `enrich` | Saved searches over the plugin's own keys, under `[searches.<id>]`, each with a `name` and a `filter`. See [Enrich order and saved searches](#enrich-order-and-saved-searches) |
 | `formats` | only for `codec` | What `codec.encode` writes, each listed once: lowercase words of letters and digits joined by single hyphens, such as `png`. A codec plugin must list at least one. `json` is taken: the core exports CCv3 JSON itself |
 | `bulk` | no; only for `import` | `true` for imports of large sources, such as a site dump. The core stores the cards sent between two checkpoints, about 1,000, in one transaction with the second checkpoint, and doesn't queue them for source detection |
@@ -1153,6 +1155,25 @@ The plugin offers it by listing it in `initialize`'s `services`.
 A run isn't retried. When the owner stops one, the core sends `cancel` and
 keeps what earlier calls stored.
 
+#### Rescoring after a change
+
+The core stores each value and vector with the manifest's `enrich_version`.
+When your values change meaning, such as after a new prompt or model, raise
+it:
+
+```toml
+protocol_version = "1.4"
+enrich_version = 2
+```
+
+A run the owner starts without rescore then sends a card again when its
+head's value from the instance has an older `enrich_version`. The hourly
+sweep still sends only cards with no value at their head, so raising the
+version never starts a run over the whole library. To see those cards
+first, the owner searches with the `outdated` term, such as
+`{"enrichment": "quality", "outdated": true}`: it matches cards whose
+current value of the key is from an older `enrich_version`.
+
 ```json
 {"jsonrpc": "2.0", "id": 12, "method": "enrich.run", "params": {"run": "Q4M6PCZTLGA7RJW2K5QXN3HBVY", "revisions": [{"card_id": 4, "revision_id": 812, "data": {"name": "Brakka", "description": "A towering orc."}}, {"card_id": 5, "revision_id": 813, "data": {"name": "Mira"}}]}}
 {"jsonrpc": "2.0", "method": "progress", "params": {"run": "Q4M6PCZTLGA7RJW2K5QXN3HBVY", "message": "Evaluating Brakka", "done": 0, "total": 2}}
@@ -1185,7 +1206,7 @@ filter = { or = [
 ```
 
 A filter is a search filter of `and`, `or`, `not`, and `enrichment` terms
-with `gte`, `lte`, `missing`, or `is`. Each term names one of the plugin's
+with `gte`, `lte`, `missing`, `is`, or `outdated`. Each term names one of the plugin's
 keys and no instance: when the owner creates an instance, the core saves
 each search with that instance filled in. A name already taken gets the
 instance's label appended, such as "Junk (Card lint)". The core never makes

@@ -42,6 +42,7 @@ func EnableVectors(ctx context.Context, pool *pgxpool.Pool) error {
 		revision_id bigint NOT NULL,
 		space text NOT NULL,
 		embedding vector NOT NULL,
+		enrich_version int NOT NULL DEFAULT 0,
 		PRIMARY KEY (instance_id, card_id),
 		FOREIGN KEY (revision_id, card_id) REFERENCES card_revision (id, card_id) ON DELETE CASCADE DEFERRABLE INITIALLY IMMEDIATE
 	)`); err != nil {

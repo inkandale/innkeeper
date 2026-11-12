@@ -46,7 +46,8 @@ type Payload struct {
 	// Scorers and Browsable are the Query's, which its JSON leaves out.
 	Scorers   []library.Scorer            `json:"scorers,omitempty"`
 	Browsable map[string][]library.Scorer `json:"browsable,omitempty"`
-	// Rescore sends cards whose head revision already holds a value from the instance.
+	// Rescore sends cards whose head revision already holds a value from the
+	// instance under its plugin's current enrich_version.
 	Rescore bool `json:"rescore,omitempty"`
 	// Confirmed lifts the plugin's card cap: the owner agreed to the run's size.
 	Confirmed bool `json:"confirmed,omitempty"`
@@ -285,7 +286,7 @@ func (rn *Runner) run(ctx context.Context, r *jobs.Run) error {
 // batch sends the head revisions of ids to the plugin, stores the values
 // that pass Check, and logs each scored card. A card that doesn't exist
 // counts as failed. Without rescore, a head that already holds a value from
-// the instance is skipped.
+// the instance under its plugin's current enrich_version is skipped.
 func (rn *Runner) batch(ctx context.Context, r *jobs.Run, inst pluginhost.Instance, token string, ids []int64, p Payload) (Checked, error) {
 	instanceID := *r.InstanceID
 	revs, missing, archived := rn.heads(ctx, ids)
@@ -296,7 +297,7 @@ func (rn *Runner) batch(ctx context.Context, r *jobs.Run, inst pluginhost.Instan
 	if !p.Rescore {
 		all := len(revs)
 		var err error
-		if revs, err = rn.unscored(ctx, instanceID, revs); err != nil {
+		if revs, err = rn.unscored(ctx, instanceID, inst.Manifest.EnrichVersion, revs); err != nil {
 			return Checked{}, err
 		}
 		skipped += all - len(revs)
@@ -375,7 +376,7 @@ func (rn *Runner) batch(ctx context.Context, r *jobs.Run, inst pluginhost.Instan
 			return Checked{}, err
 		}
 		if len(vals) > 0 {
-			if err := rn.Lib.AddEnrichments(ctx, instanceID, vals); err != nil {
+			if err := rn.Lib.AddEnrichments(ctx, instanceID, inst.Manifest.EnrichVersion, vals); err != nil {
 				if ctx.Err() != nil {
 					return Checked{}, err
 				}
@@ -386,7 +387,7 @@ func (rn *Runner) batch(ctx context.Context, r *jobs.Run, inst pluginhost.Instan
 			}
 		}
 		if vi >= 0 {
-			if err := rn.Lib.SaveVectors(ctx, instanceID, vectors[vi:vi+1]); err != nil {
+			if err := rn.Lib.SaveVectors(ctx, instanceID, inst.Manifest.EnrichVersion, vectors[vi:vi+1]); err != nil {
 				if ctx.Err() != nil {
 					return Checked{}, err
 				}
@@ -519,14 +520,14 @@ func (rn *Runner) heads(ctx context.Context, ids []int64) (revs []protocol.Enric
 	return revs, missing, archived
 }
 
-// unscored keeps the revisions in revs that instanceID hasn't answered, as
-// EnrichedRevisions decides.
-func (rn *Runner) unscored(ctx context.Context, instanceID int64, revs []protocol.EnrichRevision) ([]protocol.EnrichRevision, error) {
+// unscored keeps the revisions in revs that instanceID hasn't answered under
+// version, as EnrichedRevisions decides.
+func (rn *Runner) unscored(ctx context.Context, instanceID int64, version int, revs []protocol.EnrichRevision) ([]protocol.EnrichRevision, error) {
 	cardIDs, revIDs := make([]int64, len(revs)), make([]int64, len(revs))
 	for i, rev := range revs {
 		cardIDs[i], revIDs[i] = rev.CardID, rev.RevisionID
 	}
-	scored, err := rn.Lib.EnrichedRevisions(ctx, instanceID, cardIDs, revIDs)
+	scored, err := rn.Lib.EnrichedRevisions(ctx, instanceID, version, cardIDs, revIDs)
 	if err != nil {
 		return nil, fmt.Errorf("find scored revisions: %w", err)
 	}

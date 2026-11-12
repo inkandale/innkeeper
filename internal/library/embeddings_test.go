@@ -26,7 +26,7 @@ func TestSaveVectorsReplacesACardsVector(t *testing.T) {
 	inst := newInstanceRow(t, lib)
 	id, rev := newCard(t, lib, "brakka", `{"name": "Brakka"}`)
 	for _, v := range [][]float32{{1, 0}, {0, 1}} {
-		if err := lib.SaveVectors(ctx, inst, []NewVector{{CardID: id, RevisionID: rev, Space: "s1", Vector: v}}); err != nil {
+		if err := lib.SaveVectors(ctx, inst, 0, []NewVector{{CardID: id, RevisionID: rev, Space: "s1", Vector: v}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -90,10 +90,10 @@ func TestEnrichedRevisionsCountsAStoredVector(t *testing.T) {
 	ctx := context.Background()
 	inst := newInstanceRow(t, lib)
 	id, rev := newCard(t, lib, "brakka", `{"name": "Brakka"}`)
-	if err := lib.SaveVectors(ctx, inst, []NewVector{{CardID: id, RevisionID: rev, Space: "s1", Vector: []float32{1, 0}}}); err != nil {
+	if err := lib.SaveVectors(ctx, inst, 0, []NewVector{{CardID: id, RevisionID: rev, Space: "s1", Vector: []float32{1, 0}}}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := lib.EnrichedRevisions(ctx, inst, []int64{id}, []int64{rev})
+	got, err := lib.EnrichedRevisions(ctx, inst, 0, []int64{id}, []int64{rev})
 	if err != nil || len(got) != 1 || got[0] != rev {
 		t.Fatalf("enriched = %v, %v; want [%d]", got, err, rev)
 	}
@@ -104,7 +104,7 @@ func TestEnrichedRevisionsIgnoresAnOldRevisionsVector(t *testing.T) {
 	ctx := context.Background()
 	inst := newInstanceRow(t, lib)
 	id, rev := newCard(t, lib, "brakka", `{"name": "Brakka"}`)
-	if err := lib.SaveVectors(ctx, inst, []NewVector{{CardID: id, RevisionID: rev, Space: "s1", Vector: []float32{1, 0}}}); err != nil {
+	if err := lib.SaveVectors(ctx, inst, 0, []NewVector{{CardID: id, RevisionID: rev, Space: "s1", Vector: []float32{1, 0}}}); err != nil {
 		t.Fatal(err)
 	}
 	next, err := lib.Cards.Update(ctx, id, rev, edit(`{"name": "Brakka", "description": "Edited."}`))
@@ -112,7 +112,7 @@ func TestEnrichedRevisionsIgnoresAnOldRevisionsVector(t *testing.T) {
 		t.Fatal(err)
 	}
 	head := next.ID
-	got, err := lib.EnrichedRevisions(ctx, inst, []int64{id}, []int64{head})
+	got, err := lib.EnrichedRevisions(ctx, inst, 0, []int64{id}, []int64{head})
 	if err != nil || len(got) != 0 {
 		t.Fatalf("enriched = %v, %v; want none", got, err)
 	}
@@ -128,7 +128,7 @@ func TestDeleteVectorsExceptKeepsOnlyThatInstance(t *testing.T) {
 	}
 	id, rev := newCard(t, lib, "brakka", `{"name": "Brakka"}`)
 	for _, inst := range []int64{keep, drop} {
-		if err := lib.SaveVectors(ctx, inst, []NewVector{{CardID: id, RevisionID: rev, Space: "s1", Vector: []float32{1, 0}}}); err != nil {
+		if err := lib.SaveVectors(ctx, inst, 0, []NewVector{{CardID: id, RevisionID: rev, Space: "s1", Vector: []float32{1, 0}}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -152,7 +152,7 @@ func TestArchivingACardDropsItsVectorsAndKeepsItsValues(t *testing.T) {
 	hidden, _ := newCard(t, lib, "hidden", `{"name": "Hidden"}`)
 	kept, _ := newCard(t, lib, "kept", `{"name": "Kept"}`)
 	embedCards(t, lib, inst, map[int64][]float32{owned: {1, 0}, hidden: {0, 1}, kept: {1, 1}})
-	if err := lib.AddEnrichments(ctx, inst, []NewEnrichment{{CardID: owned, RevisionID: ownedRev, Key: "k", Value: json.RawMessage(`1`)}}); err != nil {
+	if err := lib.AddEnrichments(ctx, inst, 0, []NewEnrichment{{CardID: owned, RevisionID: ownedRev, Key: "k", Value: json.RawMessage(`1`)}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := lib.Cards.SetArchived(ctx, owned, true); err != nil {
@@ -182,7 +182,7 @@ func TestSaveVectorsSkipsAnArchivedCard(t *testing.T) {
 	if err := lib.Cards.SetArchived(ctx, archived, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := lib.SaveVectors(ctx, inst, []NewVector{{CardID: archived, RevisionID: rev, Space: "s1", Vector: []float32{1, 0}}}); err != nil {
+	if err := lib.SaveVectors(ctx, inst, 0, []NewVector{{CardID: archived, RevisionID: rev, Space: "s1", Vector: []float32{1, 0}}}); err != nil {
 		t.Fatal(err)
 	}
 	var n int

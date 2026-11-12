@@ -199,15 +199,15 @@ func TestHideCandidatesReadTheHighestPriorityScore(t *testing.T) {
 	if err := lib.pool.QueryRow(ctx, `INSERT INTO plugin_instance (plugin, name) VALUES ('fake', 'lint') RETURNING id`).Scan(&lint); err != nil {
 		t.Fatal(err)
 	}
-	if err := lib.AddEnrichments(ctx, eval, []NewEnrichment{{CardID: both, RevisionID: bothRev, Key: "quality", Value: []byte(`72`)},
+	if err := lib.AddEnrichments(ctx, eval, 0, []NewEnrichment{{CardID: both, RevisionID: bothRev, Key: "quality", Value: []byte(`72`)},
 		{CardID: both, RevisionID: bothRev, Key: "voice", Value: []byte(`5`)}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := lib.AddEnrichments(ctx, lint, []NewEnrichment{{CardID: both, RevisionID: bothRev, Key: "lint", Value: []byte(`99`)},
+	if err := lib.AddEnrichments(ctx, lint, 0, []NewEnrichment{{CardID: both, RevisionID: bothRev, Key: "lint", Value: []byte(`99`)},
 		{CardID: linted, RevisionID: lintedRev, Key: "lint", Value: []byte(`30`)}}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := lib.HideCandidates(ctx, DefaultLibrary, []Scorer{{eval, "quality"}, {lint, "lint"}})
+	got, err := lib.HideCandidates(ctx, DefaultLibrary, []Scorer{{Instance: eval, Key: "quality"}, {Instance: lint, Key: "lint"}})
 	if err != nil {
 		t.Fatal(err)
 	}

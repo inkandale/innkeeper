@@ -23,7 +23,7 @@ func TestTrimHistoryKeepsTheNewestValues(t *testing.T) {
 	inst := instanceRow(t, pool)
 	card, rev := cardRow(t, lib)
 	for i := range 5 {
-		if err := lib.AddEnrichments(ctx, inst, []library.NewEnrichment{{CardID: card, RevisionID: rev, Key: "q",
+		if err := lib.AddEnrichments(ctx, inst, 0, []library.NewEnrichment{{CardID: card, RevisionID: rev, Key: "q",
 			Value: json.RawMessage(strconv.Itoa(i))}}); err != nil {
 			t.Fatal(err)
 		}
@@ -56,7 +56,7 @@ func TestTrimHistoryKeepsTheHeadRevisionsValue(t *testing.T) {
 	}
 	for _, e := range []library.NewEnrichment{{CardID: card, RevisionID: head.ID, Key: "q", Value: json.RawMessage(`"head"`)},
 		{CardID: card, RevisionID: old, Key: "q", Value: json.RawMessage(`"old"`)}} {
-		if err := lib.AddEnrichments(ctx, inst, []library.NewEnrichment{e}); err != nil {
+		if err := lib.AddEnrichments(ctx, inst, 0, []library.NewEnrichment{e}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -78,7 +78,7 @@ func TestTrimHistoryRefusesKeepOutsideOneToAHundred(t *testing.T) {
 	inst := instanceRow(t, pool)
 	card, rev := cardRow(t, lib)
 	for i := range 2 {
-		if err := lib.AddEnrichments(ctx, inst, []library.NewEnrichment{{CardID: card, RevisionID: rev, Key: "q",
+		if err := lib.AddEnrichments(ctx, inst, 0, []library.NewEnrichment{{CardID: card, RevisionID: rev, Key: "q",
 			Value: json.RawMessage(strconv.Itoa(i))}}); err != nil {
 			t.Fatal(err)
 		}
@@ -110,7 +110,7 @@ func TestRemoveStaleVectorsKeepsOnlyTheCurrentSpace(t *testing.T) {
 	b, rb := cardRow(t, lib)
 	c, rc := cardRow(t, lib)
 	save := func(inst, card, rev int64, space string) {
-		if err := lib.SaveVectors(ctx, inst, []library.NewVector{{CardID: card, RevisionID: rev, Space: space, Vector: []float32{1, 0}}}); err != nil {
+		if err := lib.SaveVectors(ctx, inst, 0, []library.NewVector{{CardID: card, RevisionID: rev, Space: space, Vector: []float32{1, 0}}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -127,7 +127,7 @@ func TestRemoveStaleVectorsWithoutAVectorInstanceRemovesNothing(t *testing.T) {
 	m, lib, pool := newMaintenance(t)
 	ctx := context.Background()
 	card, rev := cardRow(t, lib)
-	if err := lib.SaveVectors(ctx, instanceRow(t, pool), []library.NewVector{{CardID: card, RevisionID: rev, Space: "s", Vector: []float32{1, 0}}}); err != nil {
+	if err := lib.SaveVectors(ctx, instanceRow(t, pool), 0, []library.NewVector{{CardID: card, RevisionID: rev, Space: "s", Vector: []float32{1, 0}}}); err != nil {
 		t.Fatal(err)
 	}
 	if n, err := m.RemoveStaleVectors(ctx, 0, ""); err != nil || n != 0 {

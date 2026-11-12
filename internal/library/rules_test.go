@@ -244,12 +244,12 @@ func TestUnansweredCountsAFailureAsAnswered(t *testing.T) {
 	valued, valuedRev := newCard(t, lib, "valued", `{"name": "Valued"}`)
 	failed, failedRev := newCard(t, lib, "failed", `{"name": "Failed"}`)
 	open, _ := newCard(t, lib, "open", `{"name": "Open"}`)
-	if err := lib.AddEnrichments(ctx, inst, []NewEnrichment{{CardID: valued, RevisionID: valuedRev, Key: "k", Value: json.RawMessage(`1`)}}); err != nil {
+	if err := lib.AddEnrichments(ctx, inst, 0, []NewEnrichment{{CardID: valued, RevisionID: valuedRev, Key: "k", Value: json.RawMessage(`1`)}}); err != nil {
 		t.Fatal(err)
 	}
 	// Only the head revision counts: a value on an older one leaves the card unanswered.
 	stale, staleRev := newCard(t, lib, "stale", `{"name": "Stale"}`)
-	if err := lib.AddEnrichments(ctx, inst, []NewEnrichment{{CardID: stale, RevisionID: staleRev, Key: "k", Value: json.RawMessage(`1`)}}); err != nil {
+	if err := lib.AddEnrichments(ctx, inst, 0, []NewEnrichment{{CardID: stale, RevisionID: staleRev, Key: "k", Value: json.RawMessage(`1`)}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := lib.Cards.Update(ctx, stale, staleRev, edit(`{"name": "Stale", "description": "Edited."}`)); err != nil {

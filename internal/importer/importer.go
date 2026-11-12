@@ -100,6 +100,8 @@ type session struct {
 	changed []int64
 	// decl is the plugin's [enrichments], which values must match.
 	decl map[string]protocol.Enrichment
+	// enrichVersion is the plugin's enrich_version, stored with the values.
+	enrichVersion int
 
 	mu  sync.Mutex
 	p   progress
@@ -119,7 +121,7 @@ func (im *Importer) Run(ctx context.Context, r *jobs.Run) error {
 	defer cancel(nil)
 	s := &session{im: im, run: r, plugin: inst.Manifest.Name, ctx: ctx, cancel: cancel,
 		library: cmp.Or(payload.Library, library.DefaultLibrary), instance: *r.InstanceID, bulk: inst.Manifest.Bulk,
-		decl: inst.Manifest.Enrichments}
+		decl: inst.Manifest.Enrichments, enrichVersion: inst.Manifest.EnrichVersion}
 	// ponytail: items re-sent after a resume count as skipped a second time.
 	_ = json.Unmarshal(r.Progress, &s.p)
 
@@ -200,7 +202,7 @@ func (s *session) handle(method string, params json.RawMessage) {
 		}
 		values, problems := protocol.CheckValues(s.decl, e.Values)
 		s.store(e.Item, library.PluginItem{Kind: library.Card, Data: e.Card, Avatar: e.Avatar, Version: e.Version,
-			Created: e.Created, Values: values}, problems...)
+			Created: e.Created, Values: values, EnrichVersion: s.enrichVersion}, problems...)
 	case protocol.NotifyEmitLorebook:
 		var e protocol.EmitLorebook
 		if err := json.Unmarshal(params, &e); err != nil {

@@ -2496,6 +2496,10 @@
               "null"
             ]
           },
+          "outdated": {
+            "description": "With enrichment: true matches cards whose current value is from an older enrich_version than its plugin's, so a run without rescore would score them again.",
+            "type": "boolean"
+          },
           "shares_source": {
             "description": "Has a source, by kind and ref, that another card or lorebook of the same kind also has. A fork's link to its original doesn't count.",
             "type": "boolean"
@@ -5467,6 +5471,11 @@
           },
           "key": {
             "type": "string"
+          },
+          "version": {
+            "description": "The plugin's enrich_version.",
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [

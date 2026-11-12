@@ -88,6 +88,7 @@ type Filter struct {
 	Lte           *float64      `json:"lte,omitempty" doc:"With enrichment: the value is at most this."`
 	Missing       *bool         `json:"missing,omitempty" doc:"With enrichment: true matches cards without a value."`
 	Is            *string       `json:"is,omitempty" doc:"With enrichment: the value is this text, or a list holding it."`
+	Outdated      *bool         `json:"outdated,omitempty" doc:"With enrichment: true matches cards whose current value is from an older enrich_version than its plugin's, so a run without rescore would score them again."`
 	Instance      *int64        `json:"instance,omitempty" doc:"With enrichment: the enrich instance whose value to read. Without it, enrichment must name a browsable key, and reads the value of the highest-priority instance that declares it and has one."`
 }
 
@@ -139,6 +140,8 @@ type Family struct {
 type Scorer struct {
 	Instance int64  `json:"instance"`
 	Key      string `json:"key"`
+	// Version is the plugin's enrich_version; an outdated term compares values against it.
+	Version int `json:"version,omitempty" doc:"The plugin's enrich_version."`
 }
 
 // HitScore is a card's grid score and the scorer it came from.
@@ -257,7 +260,7 @@ func gridSQL(cols, instances, keys string) string {
 // for card c, dropping scorers without one.
 func scorerValuesSQL(instances, keys string) string {
 	return `unnest(` + instances + `::bigint[], ` + keys + `::text[]) WITH ORDINALITY s(instance, key, ord)
-		CROSS JOIN LATERAL (SELECT e.value, e.revision_id FROM enrichment e
+		CROSS JOIN LATERAL (SELECT e.value, e.revision_id, e.enrich_version FROM enrichment e
 			WHERE e.card_id = c.id AND e.instance_id = s.instance AND e.key = s.key
 			ORDER BY e.revision_id DESC, e.created_at DESC, e.id DESC LIMIT 1) e`
 }
@@ -288,7 +291,7 @@ func shownScorers(q Query) []Scorer {
 	case err != nil:
 		return q.Scorers
 	case inst != 0:
-		return []Scorer{{inst, key}}
+		return []Scorer{{Instance: inst, Key: key}}
 	case len(q.Browsable[key]) > 0:
 		return q.Browsable[key]
 	}
@@ -336,20 +339,62 @@ func enrichmentRef(ref string) (int64, string, error) {
 	return inst, key, nil
 }
 
+// outdatedSQL matches card c when any of scorers' current value is from an
+// older enrich_version than the scorer's.
+func (w *where) outdatedSQL(scorers []Scorer) string {
+	instances, keys := scorerArgs(scorers)
+	versions := make([]int, len(scorers))
+	for i, s := range scorers {
+		versions[i] = s.Version
+	}
+	return `EXISTS (SELECT 1 FROM ` + scorerValuesSQL(w.arg(instances), w.arg(keys)) + `
+		JOIN unnest(` + w.arg(instances) + `::bigint[], ` + w.arg(versions) + `::int[]) cur(instance, version) ON cur.instance = s.instance
+		WHERE e.enrich_version < cur.version)`
+}
+
+// outdatedScorers are the scorers an outdated term on key reads: inst's, or
+// for instance 0 every instance the browsable key merges.
+func (w *where) outdatedScorers(key string, inst int64) ([]Scorer, error) {
+	if inst == 0 {
+		return browsableScorers(w.browsable, key)
+	}
+	// ponytail: an instance with no merged browsable key reads as version 0, so
+	// nothing of it is outdated; resolve versions per instance if that matters.
+	for _, scorers := range w.browsable {
+		if i := slices.IndexFunc(scorers, func(s Scorer) bool { return s.Instance == inst }); i >= 0 {
+			return []Scorer{{Instance: inst, Key: key, Version: scorers[i].Version}}, nil
+		}
+	}
+	return []Scorer{{Instance: inst, Key: key}}, nil
+}
+
 // enrichmentFilter is f's condition on its enrichment key.
 func (w *where) enrichmentFilter(f Filter) (string, error) {
 	set := 0
-	for _, ok := range []bool{f.Missing != nil, f.Gte != nil || f.Lte != nil, f.Is != nil} {
+	for _, ok := range []bool{f.Missing != nil, f.Gte != nil || f.Lte != nil, f.Is != nil, f.Outdated != nil} {
 		if ok {
 			set++
 		}
 	}
 	if set > 1 {
-		return "", fmt.Errorf("%w: an enrichment filter takes one of missing, a range, or is", ErrInvalid)
+		return "", fmt.Errorf("%w: an enrichment filter takes one of missing, a range, is, or outdated", ErrInvalid)
 	}
 	var inst int64
 	if f.Instance != nil {
 		inst = *f.Instance
+	}
+	if f.Outdated != nil {
+		if w.k != Card {
+			return "", fmt.Errorf("%w: lorebooks have no enrichments", ErrInvalid)
+		}
+		scorers, err := w.outdatedScorers(*f.Enrichment, inst)
+		if err != nil {
+			return "", err
+		}
+		if *f.Outdated {
+			return w.outdatedSQL(scorers), nil
+		}
+		return `NOT ` + w.outdatedSQL(scorers), nil
 	}
 	cur, err := w.enrichmentSQL(*f.Enrichment, inst)
 	if err != nil {
@@ -613,8 +658,8 @@ func (w *where) filter(f Filter) (string, error) {
 	if set != 1 {
 		return "", fmt.Errorf("%w: each filter needs exactly one condition", ErrInvalid)
 	}
-	if f.Enrichment == nil && (f.Gte != nil || f.Lte != nil || f.Missing != nil || f.Is != nil || f.Instance != nil) {
-		return "", fmt.Errorf("%w: gte, lte, missing, is, and instance go with enrichment", ErrInvalid)
+	if f.Enrichment == nil && (f.Gte != nil || f.Lte != nil || f.Missing != nil || f.Is != nil || f.Outdated != nil || f.Instance != nil) {
+		return "", fmt.Errorf("%w: gte, lte, missing, is, outdated, and instance go with enrichment", ErrInvalid)
 	}
 	if w.k != Card && (f.Tag != nil || f.Collection != nil || f.Creator != nil || f.Lorebook != nil) {
 		return "", fmt.Errorf("%w: tag, collection, creator, and lorebook filter cards only", ErrInvalid)

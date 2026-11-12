@@ -11,7 +11,7 @@ const Version = 1
 
 // Minor is the protocol minor version this core speaks. Bump it with each
 // addition to the protocol, and add a row to docs/protocol.md's version table.
-const Minor = 3
+const Minor = 4
 
 // Methods every plugin implements.
 const (

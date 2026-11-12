@@ -68,7 +68,7 @@ func (s *Settings) declarations(ctx context.Context, keep func(m *protocol.Manif
 		m := manifests[inst.Plugin]
 		for k, d := range m.Enrichments {
 			if keep(m, k) {
-				all = append(all, declared{library.Scorer{Instance: inst.ID, Key: k}, d})
+				all = append(all, declared{library.Scorer{Instance: inst.ID, Key: k, Version: m.EnrichVersion}, d})
 			}
 		}
 	}

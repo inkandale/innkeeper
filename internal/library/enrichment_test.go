@@ -14,7 +14,7 @@ func TestEnrichmentCurrentAndStale(t *testing.T) {
 	card, first := newCard(t, lib, "brakka", `{"name": "Brakka"}`)
 	add := func(inst, rev int64, value string) {
 		t.Helper()
-		err := lib.AddEnrichments(ctx, inst, []NewEnrichment{{CardID: card, RevisionID: rev, Key: "quality", Value: json.RawMessage(value),
+		err := lib.AddEnrichments(ctx, inst, 0, []NewEnrichment{{CardID: card, RevisionID: rev, Key: "quality", Value: json.RawMessage(value),
 			Meta: json.RawMessage(`{"model": "m"}`)}})
 		if err != nil {
 			t.Fatal(err)
@@ -56,7 +56,7 @@ func TestEnrichmentCurrentAndStale(t *testing.T) {
 	}
 
 	other, _ := newCard(t, lib, "carrow", `{"name": "Carrow"}`)
-	if err := lib.AddEnrichments(ctx, 1, []NewEnrichment{{CardID: other, RevisionID: first, Key: "quality", Value: json.RawMessage("1")}}); err != nil {
+	if err := lib.AddEnrichments(ctx, 1, 0, []NewEnrichment{{CardID: other, RevisionID: first, Key: "quality", Value: json.RawMessage("1")}}); err != nil {
 		t.Fatal(err)
 	}
 	if list, _ := lib.Enrichments(ctx, other, true); len(list) != 0 {
@@ -74,7 +74,7 @@ func TestEnrichmentOnAnOlderRevisionDoesNotReplaceANewerOne(t *testing.T) {
 	}
 	add := func(rev int64, value string) {
 		t.Helper()
-		if err := lib.AddEnrichments(ctx, 1, []NewEnrichment{{CardID: card, RevisionID: rev, Key: "quality", Value: json.RawMessage(value)}}); err != nil {
+		if err := lib.AddEnrichments(ctx, 1, 0, []NewEnrichment{{CardID: card, RevisionID: rev, Key: "quality", Value: json.RawMessage(value)}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -89,7 +89,7 @@ func TestEnrichmentOnAnOlderRevisionDoesNotReplaceANewerOne(t *testing.T) {
 	if len(list) != 2 || string(list[0].Value) != "80" || !list[0].Current || list[0].Stale || list[1].Current {
 		t.Fatalf("values = %+v", list)
 	}
-	res, err := lib.Search(ctx, Card, Query{Scorers: []Scorer{{1, "quality"}}, Browsable: browsable(Scorer{1, "quality"}), Include: []string{"score"}, Filter: &Filter{Enrichment: ptr("quality"), Gte: ptr(70.0)}})
+	res, err := lib.Search(ctx, Card, Query{Scorers: []Scorer{{Instance: 1, Key: "quality"}}, Browsable: browsable(Scorer{Instance: 1, Key: "quality"}), Include: []string{"score"}, Filter: &Filter{Enrichment: ptr("quality"), Gte: ptr(70.0)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestChangedUnenrichedListsOnlyNewUnscoredUnfailedCards(t *testing.T) {
 	scored, scoredRev := newCard(t, lib, "scored", `{"name": "Scored"}`)
 	failed, failedRev := newCard(t, lib, "failed", `{"name": "Failed"}`)
 	archived, _ := newCard(t, lib, "archived", `{"name": "Archived"}`)
-	if err := lib.AddEnrichments(ctx, inst, []NewEnrichment{{CardID: scored, RevisionID: scoredRev, Key: "k", Value: json.RawMessage(`"v"`)}}); err != nil {
+	if err := lib.AddEnrichments(ctx, inst, 0, []NewEnrichment{{CardID: scored, RevisionID: scoredRev, Key: "k", Value: json.RawMessage(`"v"`)}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := lib.RecordEnrichFailures(ctx, inst, []RevisionRef{{CardID: failed, RevisionID: failedRev}}); err != nil {
@@ -144,7 +144,7 @@ func TestChangedUnenrichedEdgeCases(t *testing.T) {
 	ctx := context.Background()
 	inst := newInstanceRow(t, lib)
 	rescored, oldRev := newCard(t, lib, "rescored", `{"name": "Rescored"}`)
-	if err := lib.AddEnrichments(ctx, inst, []NewEnrichment{{CardID: rescored, RevisionID: oldRev, Key: "k", Value: json.RawMessage(`"v"`)}}); err != nil {
+	if err := lib.AddEnrichments(ctx, inst, 0, []NewEnrichment{{CardID: rescored, RevisionID: oldRev, Key: "k", Value: json.RawMessage(`"v"`)}}); err != nil {
 		t.Fatal(err)
 	}
 	var since time.Time
@@ -186,7 +186,7 @@ func TestAVectorInstanceWantsAVectorEvenWithValues(t *testing.T) {
 	}
 	valued, valuedRev := newCard(t, lib, "valued", `{"name": "Valued"}`)
 	embedded, embeddedRev := newCard(t, lib, "embedded", `{"name": "Embedded"}`)
-	if err := lib.AddEnrichments(ctx, inst, []NewEnrichment{{CardID: valued, RevisionID: valuedRev, Key: "k", Value: json.RawMessage(`"v"`)}}); err != nil {
+	if err := lib.AddEnrichments(ctx, inst, 0, []NewEnrichment{{CardID: valued, RevisionID: valuedRev, Key: "k", Value: json.RawMessage(`"v"`)}}); err != nil {
 		t.Fatal(err)
 	}
 	embedCards(t, lib, inst, map[int64][]float32{embedded: {1, 2}})
@@ -194,8 +194,69 @@ func TestAVectorInstanceWantsAVectorEvenWithValues(t *testing.T) {
 	if got, err := lib.ChangedUnenriched(ctx, inst, since, 10); err != nil || !slices.Equal(got, []int64{valued}) {
 		t.Fatalf("changed = %v, %v; want the card with values and no vector", got, err)
 	}
-	got, err := lib.EnrichedRevisions(ctx, inst, []int64{valued, embedded}, []int64{valuedRev, embeddedRev})
+	got, err := lib.EnrichedRevisions(ctx, inst, 0, []int64{valued, embedded}, []int64{valuedRev, embeddedRev})
 	if err != nil || !slices.Equal(got, []int64{embeddedRev}) {
 		t.Fatalf("enriched = %v, %v; want only the embedded revision", got, err)
+	}
+}
+
+func TestEnrichedRevisionsLeavesAnOlderEnrichVersionToRescore(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	inst := newInstanceRow(t, lib)
+	old, oldRev := newCard(t, lib, "old", `{"name": "Old"}`)
+	cur, curRev := newCard(t, lib, "cur", `{"name": "Cur"}`)
+	if err := lib.AddEnrichments(ctx, inst, 1, []NewEnrichment{{CardID: old, RevisionID: oldRev, Key: "k", Value: json.RawMessage(`1`)}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := lib.AddEnrichments(ctx, inst, 2, []NewEnrichment{{CardID: cur, RevisionID: curRev, Key: "k", Value: json.RawMessage(`1`)}}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := lib.EnrichedRevisions(ctx, inst, 2, []int64{old, cur}, []int64{oldRev, curRev})
+	if err != nil || !slices.Equal(got, []int64{curRev}) {
+		t.Fatalf("enriched at version 2 = %v, %v; want only the revision scored at 2", got, err)
+	}
+	got, err = lib.EnrichedRevisions(ctx, inst, 0, []int64{old, cur}, []int64{oldRev, curRev})
+	if slices.Sort(got); err != nil || !slices.Equal(got, []int64{oldRev, curRev}) {
+		t.Fatalf("enriched at version 0 = %v, %v; want both", got, err)
+	}
+}
+
+func TestEnrichedRevisionsLeavesAnOlderEnrichVersionsVector(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	inst := newInstanceRow(t, lib)
+	id, rev := newCard(t, lib, "vec", `{"name": "Vec"}`)
+	if err := lib.SaveVectors(ctx, inst, 1, []NewVector{{CardID: id, RevisionID: rev, Space: "s1", Vector: []float32{1, 0}}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := lib.EnrichedRevisions(ctx, inst, 2, []int64{id}, []int64{rev}); err != nil || len(got) != 0 {
+		t.Fatalf("enriched at version 2 = %v, %v; want none", got, err)
+	}
+	if err := lib.SaveVectors(ctx, inst, 2, []NewVector{{CardID: id, RevisionID: rev, Space: "s1", Vector: []float32{1, 0}}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := lib.EnrichedRevisions(ctx, inst, 2, []int64{id}, []int64{rev}); err != nil || !slices.Equal(got, []int64{rev}) {
+		t.Fatalf("after rescoring = %v, %v", got, err)
+	}
+}
+
+// Raising enrich_version on a costly plugin must not start a run over every card it scored.
+func TestChangedUnenrichedIgnoresAnOlderEnrichVersion(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	inst := newInstanceRow(t, lib)
+	var since time.Time
+	if err := lib.pool.QueryRow(ctx, `SELECT now()`).Scan(&since); err != nil {
+		t.Fatal(err)
+	}
+	scored, scoredRev := newCard(t, lib, "scored", `{"name": "Scored"}`)
+	fresh, _ := newCard(t, lib, "fresh", `{"name": "Fresh"}`)
+	if err := lib.AddEnrichments(ctx, inst, 0, []NewEnrichment{{CardID: scored, RevisionID: scoredRev, Key: "k", Value: json.RawMessage(`1`)}}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := lib.ChangedUnenriched(ctx, inst, since, 10)
+	if err != nil || !slices.Equal(got, []int64{fresh}) {
+		t.Fatalf("changed = %v, %v; want only the card with no value", got, err)
 	}
 }

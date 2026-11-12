@@ -219,7 +219,7 @@ func TestSettingVectorInstance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := e.s.Lib.SaveVectors(ctx, other, []library.NewVector{{CardID: card, RevisionID: c.HeadRevisionID, Space: "fake", Vector: []float32{1, 2}}}); err != nil {
+	if err := e.s.Lib.SaveVectors(ctx, other, 0, []library.NewVector{{CardID: card, RevisionID: c.HeadRevisionID, Space: "fake", Vector: []float32{1, 2}}}); err != nil {
 		t.Fatal(err)
 	}
 

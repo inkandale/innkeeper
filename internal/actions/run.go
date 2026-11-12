@@ -98,7 +98,7 @@ func (rn *Runner) storeValues(ctx context.Context, inst pluginhost.Instance, ins
 	if len(checked.Values) == 0 {
 		return checked.Warnings
 	}
-	if err := rn.Lib.AddEnrichments(ctx, instanceID, checked.Values); err != nil {
+	if err := rn.Lib.AddEnrichments(ctx, instanceID, inst.Manifest.EnrichVersion, checked.Values); err != nil {
 		return append(checked.Warnings, fmt.Sprintf("storing the scores failed: %v", err))
 	}
 	return checked.Warnings

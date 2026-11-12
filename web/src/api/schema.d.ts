@@ -3697,6 +3697,8 @@ export interface components {
             name?: string;
             not?: components["schemas"]["Filter"];
             or?: components["schemas"]["Filter"][] | null;
+            /** @description With enrichment: true matches cards whose current value is from an older enrich_version than its plugin's, so a run without rescore would score them again. */
+            outdated?: boolean;
             /** @description Has a source, by kind and ref, that another card or lorebook of the same kind also has. A fork's link to its original doesn't count. */
             shares_source?: boolean;
             /** @description Has a source of this kind, such as chub. */
@@ -4853,6 +4855,11 @@ export interface components {
             /** Format: int64 */
             instance: number;
             key: string;
+            /**
+             * Format: int64
+             * @description The plugin's enrich_version.
+             */
+            version?: number;
         };
         SearchResults: {
             /**

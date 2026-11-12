@@ -534,7 +534,7 @@ func TestSearchEnrichments(t *testing.T) {
 	ctx := context.Background()
 	s := seedSearch(t, lib)
 	const score, other = 7, 8
-	scorers := []Scorer{{score, "quality"}}
+	scorers := []Scorer{{Instance: score, Key: "quality"}}
 	heads := map[int64]int64{}
 	for _, id := range []int64{s.brakka, s.carrow} {
 		c, err := lib.Cards.Get(ctx, id)
@@ -545,7 +545,7 @@ func TestSearchEnrichments(t *testing.T) {
 	}
 	add := func(inst, card int64, value string) {
 		t.Helper()
-		if err := lib.AddEnrichments(ctx, inst, []NewEnrichment{{CardID: card, RevisionID: heads[card], Key: "quality", Value: json.RawMessage(value)}}); err != nil {
+		if err := lib.AddEnrichments(ctx, inst, 0, []NewEnrichment{{CardID: card, RevisionID: heads[card], Key: "quality", Value: json.RawMessage(value)}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -600,7 +600,7 @@ func TestSearchEnrichments(t *testing.T) {
 	}
 
 	// Each card's grid score comes from the first scorer that has a value for it.
-	ranked := []Scorer{{other, "quality"}, {score, "quality"}}
+	ranked := []Scorer{{Instance: other, Key: "quality"}, {Instance: score, Key: "quality"}}
 	got, err = lib.Search(ctx, Card, Query{Include: []string{"score"}, Sort: "enrichment:quality", Scorers: ranked, Browsable: browsable(ranked...)})
 	if err != nil || !slices.Equal(hitIDs(got), []int64{s.carrow, s.brakka}) {
 		t.Fatalf("ranked sort = %v, %v", hitIDs(got), err)
@@ -682,7 +682,7 @@ func TestSearchEnrichmentValues(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := lib.AddEnrichments(ctx, lint, []NewEnrichment{{CardID: card, RevisionID: c.HeadRevisionID, Key: key, Value: json.RawMessage(value)}}); err != nil {
+		if err := lib.AddEnrichments(ctx, lint, 0, []NewEnrichment{{CardID: card, RevisionID: c.HeadRevisionID, Key: key, Value: json.RawMessage(value)}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -765,7 +765,7 @@ func TestSearchMergedKeyReadsTheFirstInstanceWithAValue(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := lib.AddEnrichments(ctx, inst, []NewEnrichment{{CardID: card, RevisionID: c.HeadRevisionID, Key: key, Value: json.RawMessage(value)}}); err != nil {
+		if err := lib.AddEnrichments(ctx, inst, 0, []NewEnrichment{{CardID: card, RevisionID: c.HeadRevisionID, Key: key, Value: json.RawMessage(value)}}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -776,7 +776,7 @@ func TestSearchMergedKeyReadsTheFirstInstanceWithAValue(t *testing.T) {
 	add(second, s.brakka, "pov", `"third"`)
 	add(second, s.carrow, "quality", "60")
 	add(second, s.carrow, "pov", `"second"`)
-	keys := browsable(Scorer{first, "quality"}, Scorer{second, "quality"}, Scorer{first, "pov"}, Scorer{second, "pov"})
+	keys := browsable(Scorer{Instance: first, Key: "quality"}, Scorer{Instance: second, Key: "quality"}, Scorer{Instance: first, Key: "pov"}, Scorer{Instance: second, Key: "pov"})
 
 	for name, tc := range map[string]struct {
 		f    Filter
@@ -956,14 +956,14 @@ func TestSearchGroupsFamilies(t *testing.T) {
 
 	// An enrichment sort places the family by its best match, grand, though the face is child.
 	const score = 7
-	if err := lib.AddEnrichments(ctx, score, []NewEnrichment{
+	if err := lib.AddEnrichments(ctx, score, 0, []NewEnrichment{
 		{CardID: grand, RevisionID: grandRev, Key: "quality", Value: json.RawMessage("90")},
 		{CardID: solo, RevisionID: soloRev, Key: "quality", Value: json.RawMessage("40")},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	sorted, err := lib.Search(ctx, Card, Query{Group: "family", Sort: "enrichment:quality", Include: []string{"score"},
-		Filter: &Filter{Enrichment: ptr("quality")}, Facets: []string{"tags"}, Scorers: []Scorer{{score, "quality"}}, Browsable: browsable(Scorer{score, "quality"})})
+		Filter: &Filter{Enrichment: ptr("quality")}, Facets: []string{"tags"}, Scorers: []Scorer{{Instance: score, Key: "quality"}}, Browsable: browsable(Scorer{Instance: score, Key: "quality"})})
 	if err != nil || !slices.Equal(hitIDs(sorted), []int64{child, solo}) || sorted.Hits[0].Score != nil || string(sorted.Hits[1].Score.Value) != "40" {
 		t.Fatalf("enrichment sort: hits = %v, %v", hitIDs(sorted), err)
 	}
@@ -1164,10 +1164,10 @@ func TestCursorPagesEnrichmentSort(t *testing.T) {
 			values = append(values, NewEnrichment{CardID: ids[i], RevisionID: rev, Key: "quality", Value: json.RawMessage(v)})
 		}
 	}
-	if err := lib.AddEnrichments(ctx, score, values); err != nil {
+	if err := lib.AddEnrichments(ctx, score, 0, values); err != nil {
 		t.Fatal(err)
 	}
-	q := Query{Sort: "enrichment:quality", Browsable: browsable(Scorer{score, "quality"}), Page: Page{Size: 2}}
+	q := Query{Sort: "enrichment:quality", Browsable: browsable(Scorer{Instance: score, Key: "quality"}), Page: Page{Size: 2}}
 	got := []int64{}
 	for {
 		page, err := lib.Search(ctx, Card, q)
@@ -1405,5 +1405,47 @@ func TestSearchFiltersByLorebook(t *testing.T) {
 	}
 	if _, err := lib.Search(ctx, Lorebook, Query{Filter: &Filter{Lorebook: &one}}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("lorebook search by lorebook: err = %v, want ErrInvalid", err)
+	}
+}
+
+func TestOutdatedMatchesValuesFromAnOlderEnrichVersion(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	const first, second = 7, 8
+	old, oldRev := newCard(t, lib, "old", `{"name": "Old"}`)
+	cur, curRev := newCard(t, lib, "cur", `{"name": "Cur"}`)
+	newCard(t, lib, "none", `{"name": "None"}`)
+	otherOld, otherRev := newCard(t, lib, "other", `{"name": "Other"}`)
+	add := func(inst int64, version int, card, rev int64) {
+		t.Helper()
+		if err := lib.AddEnrichments(ctx, inst, version, []NewEnrichment{{CardID: card, RevisionID: rev, Key: "quality", Value: json.RawMessage(`5`)}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add(first, 1, old, oldRev)
+	add(first, 2, cur, curRev)
+	add(second, 0, otherOld, otherRev)
+	keys := browsable(Scorer{Instance: first, Key: "quality", Version: 2}, Scorer{Instance: second, Key: "quality", Version: 1})
+	ids := func(f Filter) []int64 {
+		t.Helper()
+		got, err := lib.SearchIDs(ctx, Card, Query{Filter: &f, Browsable: keys})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+
+	if got := ids(Filter{Enrichment: ptr("quality"), Outdated: ptr(true)}); !slices.Equal(got, []int64{old, otherOld}) {
+		t.Fatalf("merged key outdated = %v, want %v", got, []int64{old, otherOld})
+	}
+	if got := ids(Filter{Enrichment: ptr("quality"), Instance: ptr(int64(first)), Outdated: ptr(true)}); !slices.Equal(got, []int64{old}) {
+		t.Fatalf("first instance outdated = %v, want %v", got, []int64{old})
+	}
+	if got := ids(Filter{And: []Filter{{Enrichment: ptr("quality"), Instance: ptr(int64(first))},
+		{Enrichment: ptr("quality"), Instance: ptr(int64(first)), Outdated: ptr(false)}}}); !slices.Equal(got, []int64{cur}) {
+		t.Fatalf("first instance current = %v, want %v", got, []int64{cur})
+	}
+	if _, err := lib.SearchIDs(ctx, Card, Query{Filter: &Filter{Enrichment: ptr("quality"), Outdated: ptr(true), Missing: ptr(true)}, Browsable: keys}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("outdated with missing: %v, want ErrInvalid", err)
 	}
 }

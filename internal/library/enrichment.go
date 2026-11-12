@@ -31,13 +31,13 @@ type Enrichment struct {
 	Stale      bool            `json:"stale" doc:"Whether the value is about a revision that is no longer the card's head."`
 }
 
-// AddEnrichments stores values from instanceID. A value whose revision isn't
-// one of its card's is left out.
-func (l *Library) AddEnrichments(ctx context.Context, instanceID int64, vals []NewEnrichment) error {
-	return addEnrichments(ctx, l.pool, instanceID, vals)
+// AddEnrichments stores values from instanceID, scored under its plugin's
+// enrich_version. A value whose revision isn't one of its card's is left out.
+func (l *Library) AddEnrichments(ctx context.Context, instanceID int64, version int, vals []NewEnrichment) error {
+	return addEnrichments(ctx, l.pool, instanceID, version, vals)
 }
 
-func addEnrichments(ctx context.Context, q execer, instanceID int64, vals []NewEnrichment) error {
+func addEnrichments(ctx context.Context, q execer, instanceID int64, version int, vals []NewEnrichment) error {
 	cards, revs, keys, values, metas := make([]int64, len(vals)), make([]int64, len(vals)),
 		make([]string, len(vals)), make([]string, len(vals)), make([]string, len(vals))
 	for i, v := range vals {
@@ -46,11 +46,11 @@ func addEnrichments(ctx context.Context, q execer, instanceID int64, vals []NewE
 			metas[i] = "{}"
 		}
 	}
-	_, err := q.Exec(ctx, `INSERT INTO enrichment (card_id, revision_id, instance_id, key, value, meta)
-		SELECT v.card_id, v.revision_id, $1, v.key, v.value::jsonb, v.meta::jsonb
+	_, err := q.Exec(ctx, `INSERT INTO enrichment (card_id, revision_id, instance_id, key, value, meta, enrich_version)
+		SELECT v.card_id, v.revision_id, $1, v.key, v.value::jsonb, v.meta::jsonb, $7
 		FROM unnest($2::bigint[], $3::bigint[], $4::text[], $5::text[], $6::text[]) WITH ORDINALITY v(card_id, revision_id, key, value, meta, ord)
 		JOIN card_revision r ON r.id = v.revision_id AND r.card_id = v.card_id
-		ORDER BY v.ord`, instanceID, cards, revs, keys, values, metas)
+		ORDER BY v.ord`, instanceID, cards, revs, keys, values, metas, version)
 	return err
 }
 
@@ -89,8 +89,9 @@ func (l *Library) StoresVectors(ctx context.Context, instance int64) (bool, erro
 }
 
 // EnrichedRevisions returns which of revIDs hold a value or a vector from
-// instanceID, or only a vector when it stores vectors.
-func (l *Library) EnrichedRevisions(ctx context.Context, instanceID int64, cardIDs, revIDs []int64) ([]int64, error) {
+// instanceID, or only a vector when it stores vectors, scored under version
+// or later. An older value leaves its revision for a run to rescore.
+func (l *Library) EnrichedRevisions(ctx context.Context, instanceID int64, version int, cardIDs, revIDs []int64) ([]int64, error) {
 	vectors, err := l.HasVectors(ctx)
 	if err != nil {
 		return nil, err
@@ -100,8 +101,8 @@ func (l *Library) EnrichedRevisions(ctx context.Context, instanceID int64, cardI
 		return nil, err
 	}
 	// card_id leads the index; revision_id alone would scan the table.
-	values := `SELECT revision_id FROM enrichment WHERE card_id = ANY($2) AND instance_id = $1 AND revision_id = ANY($3)`
-	vecs := `SELECT revision_id FROM card_embedding WHERE card_id = ANY($2) AND instance_id = $1 AND revision_id = ANY($3)`
+	values := `SELECT revision_id FROM enrichment WHERE card_id = ANY($2) AND instance_id = $1 AND revision_id = ANY($3) AND enrich_version >= $4`
+	vecs := `SELECT revision_id FROM card_embedding WHERE card_id = ANY($2) AND instance_id = $1 AND revision_id = ANY($3) AND enrich_version >= $4`
 	sql := values
 	switch {
 	case stores:
@@ -109,7 +110,7 @@ func (l *Library) EnrichedRevisions(ctx context.Context, instanceID int64, cardI
 	case vectors:
 		sql += ` UNION ` + vecs
 	}
-	rows, err := l.pool.Query(ctx, sql, instanceID, cardIDs, revIDs)
+	rows, err := l.pool.Query(ctx, sql, instanceID, cardIDs, revIDs, version)
 	if err != nil {
 		return nil, err
 	}
@@ -156,6 +157,8 @@ const failureRetry = 24 * time.Hour
 // ChangedUnenriched returns up to limit live cards changed after since
 // whose head holds no value or vector from instance, or no vector when it
 // stores vectors, and hasn't failed on it within failureRetry, lowest ID first.
+// A value from an older enrich_version still counts, so raising it never
+// starts a run over the whole library.
 //
 // ponytail: this joins every card to its head revision each hour. If that
 // gets slow, index card_revision(created_at) and card(restored_at) and split

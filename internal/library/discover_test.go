@@ -27,7 +27,7 @@ func embedCardsIn(t *testing.T, lib *Library, instance int64, space string, vecs
 		}
 		vals = append(vals, NewVector{CardID: id, RevisionID: c.HeadRevisionID, Space: space, Vector: v})
 	}
-	if err := lib.SaveVectors(ctx, instance, vals); err != nil {
+	if err := lib.SaveVectors(ctx, instance, 0, vals); err != nil {
 		t.Fatal(err)
 	}
 }

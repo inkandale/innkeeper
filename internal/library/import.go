@@ -148,8 +148,9 @@ type PluginItem struct {
 	// Created is a new revision's created_at; zero means now.
 	Created time.Time
 	// Values are a card's enrichment values from InstanceID, already checked
-	// against its manifest.
-	Values map[string]json.RawMessage
+	// against its manifest, scored under its EnrichVersion.
+	Values        map[string]json.RawMessage
+	EnrichVersion int
 	// SkipDetect leaves the entity off the source detection queue.
 	SkipDetect bool
 }
@@ -246,7 +247,7 @@ func (l *Library) importItemTx(ctx context.Context, tx pgx.Tx, it PluginItem) (I
 		for _, key := range slices.Sorted(maps.Keys(it.Values)) {
 			vals = append(vals, NewEnrichment{CardID: card.ID, RevisionID: card.RevisionID, Key: key, Value: it.Values[key]})
 		}
-		if err := addEnrichments(ctx, tx, it.InstanceID, vals); err != nil {
+		if err := addEnrichments(ctx, tx, it.InstanceID, it.EnrichVersion, vals); err != nil {
 			return Imported{}, err
 		}
 	}

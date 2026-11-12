@@ -109,6 +109,11 @@ type Manifest struct {
 	// so later plugins fit between.
 	EnrichCost int `toml:"enrich_cost"`
 
+	// EnrichVersion is the version of what the plugin's scores mean. Raise it
+	// when they change meaning, such as a new prompt or model, so a run
+	// rescores values from an older one.
+	EnrichVersion int `toml:"enrich_version"`
+
 	// Searches are saved searches over the plugin's own keys. The core saves
 	// each when it creates an instance, reading that instance.
 	Searches map[string]Search `toml:"searches"`
@@ -227,6 +232,7 @@ type searchFilter struct {
 	Lte        *float64         `json:"lte"`
 	Missing    *bool            `json:"missing"`
 	Is         *string          `json:"is"`
+	Outdated   *bool            `json:"outdated"`
 	Instance   *json.RawMessage `json:"instance"`
 }
 
@@ -258,15 +264,18 @@ func (f searchFilter) check(id string, keys map[string]Enrichment) []error {
 	if f.Is != nil {
 		conds++
 	}
+	if f.Outdated != nil {
+		conds++
+	}
 	if f.Enrichment == nil && conds > 0 {
-		bad("gte, lte, missing, and is go with enrichment")
+		bad("gte, lte, missing, is, and outdated go with enrichment")
 	}
 	if f.Enrichment != nil {
 		if _, ok := keys[*f.Enrichment]; !ok {
 			bad("enrichment %q is not one of the plugin's keys", *f.Enrichment)
 		}
 		if conds > 1 {
-			bad("an enrichment term takes one of missing, gte and lte, or is")
+			bad("an enrichment term takes one of missing, gte and lte, is, or outdated")
 		}
 	}
 	for _, list := range [][]searchFilter{f.And, f.Or} {
@@ -301,7 +310,7 @@ func (s Search) validate(id string, keys map[string]Enrichment) []error {
 		err = dec.Decode(&f)
 	}
 	if err != nil {
-		return append(errs, fmt.Errorf("search %q: filter: %w; terms are and, or, not, enrichment, gte, lte, missing, is", id, err))
+		return append(errs, fmt.Errorf("search %q: filter: %w; terms are and, or, not, enrichment, gte, lte, missing, is, outdated", id, err))
 	}
 	return append(errs, f.check(id, keys)...)
 }
@@ -512,6 +521,9 @@ func (m *Manifest) Validate() error {
 	if m.EnrichMaxCards < 0 {
 		errs = append(errs, errors.New("enrich_max_cards can't be negative"))
 	}
+	if m.EnrichVersion < 0 {
+		errs = append(errs, errors.New("enrich_version can't be negative"))
+	}
 	errs = append(errs, unique("input", m.Inputs, oneOf(importInputs))...)
 	for _, key := range slices.Sorted(maps.Keys(m.Records)) {
 		errs = append(errs, m.Records[key].validate(key)...)
@@ -548,6 +560,7 @@ var capabilityKeys = []struct {
 	{CapabilityEnrich, "enrich_max_cards", true, false, func(m *Manifest) bool { return m.EnrichMaxCards != 0 }},
 	{CapabilityEnrich, "enrich_on_change", true, false, func(m *Manifest) bool { return m.EnrichOnChange }},
 	{CapabilityEnrich, "enrich_cost", true, false, func(m *Manifest) bool { return m.EnrichCost != 0 }},
+	{CapabilityEnrich, "enrich_version", true, false, func(m *Manifest) bool { return m.EnrichVersion != 0 }},
 	{CapabilityEnrich, "searches", true, false, func(m *Manifest) bool { return len(m.Searches) > 0 }},
 	{CapabilityCodec, "formats", true, true, func(m *Manifest) bool { return len(m.Formats) > 0 }},
 	{CapabilityImport, "bulk", true, false, func(m *Manifest) bool { return m.Bulk }},

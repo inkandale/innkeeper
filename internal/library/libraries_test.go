@@ -117,7 +117,7 @@ func TestDeleteLibraryRemovesItsCardsAndBlobs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := lib.AddEnrichments(ctx, inst, []NewEnrichment{{CardID: gone.ID, RevisionID: head.HeadRevisionID, Key: "quality", Value: []byte(`5`)}}); err != nil {
+	if err := lib.AddEnrichments(ctx, inst, 0, []NewEnrichment{{CardID: gone.ID, RevisionID: head.HeadRevisionID, Key: "quality", Value: []byte(`5`)}}); err != nil {
 		t.Fatal(err)
 	}
 

@@ -367,6 +367,40 @@ func TestEnrichRunSkipsCardsScoredOnTheirHead(t *testing.T) {
 	}
 }
 
+func TestRaisingEnrichVersionMakesARunRescoreOlderValues(t *testing.T) {
+	e := newEnrichEnv(t)
+	scored, fresh := e.card("Scored", "xx"), e.card("Fresh", "xx")
+	e.evaluate(e.instID, scored)
+	outdated := func() []int64 {
+		e.t.Helper()
+		res := e.search(map[string]any{"filter": map[string]any{"enrichment": "quality", "outdated": true}}, 200)
+		ids := []int64{}
+		for _, h := range res.Hits {
+			ids = append(ids, h.ID)
+		}
+		return ids
+	}
+	if got := outdated(); len(got) != 0 {
+		t.Fatalf("outdated before the bump = %v", got)
+	}
+
+	e.editManifest("judge", func(m *protocol.Manifest) { m.EnrichVersion = 2 })
+	if got := outdated(); !slices.Equal(got, []int64{scored}) {
+		t.Fatalf("outdated after the bump = %v, want [%d]", got, scored)
+	}
+	j, p := e.evaluate(e.instID, scored, fresh)
+	if j.Status != jobs.StatusSucceeded || p.Done != 2 || p.Skipped != 0 {
+		t.Fatalf("after the bump: job %s, progress %+v", j.Status, p)
+	}
+	if got := outdated(); len(got) != 0 {
+		t.Fatalf("outdated after rescoring = %v", got)
+	}
+	j, p = e.evaluate(e.instID, scored, fresh)
+	if j.Status != jobs.StatusSucceeded || p.Done != 0 || p.Skipped != 2 {
+		t.Fatalf("at the current version: job %s, progress %+v", j.Status, p)
+	}
+}
+
 func TestEnrichRunSkipsArchivedCards(t *testing.T) {
 	e := newEnrichEnv(t)
 	live, archived := e.card("Live", "xx"), e.card("Archived", "xx")

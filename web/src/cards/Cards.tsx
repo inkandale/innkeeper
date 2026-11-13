@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useState, type FormEvent } from "react";
+import { Fragment, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router";
 import { savedSearchQuery, searchQuery, settingsQuery } from "../api/queries";
 import { text } from "../card/draft";
@@ -15,6 +15,7 @@ import { useLibrary, withLibrary } from "../shell/library";
 import { Loading } from "../shell/Loading";
 import { SaveSearch } from "./SaveSearch";
 import { SelectionBar } from "./SelectionBar";
+import { Preview } from "./Preview";
 import { LorebookRow, Row, Tile, medals } from "./Tile";
 import type { components } from "../api/schema";
 import "./Cards.css";
@@ -79,6 +80,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   if (stored.key !== key) setSel(emptySelection(key));
   const sel = stored.key === key ? stored : emptySelection(key);
   const [facetsOpen, setFacetsOpen] = useState(true);
+  const [previewed, setPreviewed] = useState<number>();
   const [importOpen, setImportOpen] = useState(false);
   const [ungrouped, setUngrouped] = useState(readUngrouped);
   // The bar unmounts once its job starts, so the page follows the job and reloads when it ends.
@@ -299,10 +301,17 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
             </tbody>
           </table>
         ) : q.view === "grid" ? (
-          <div className="grid">
-            {hits.map((h) => (
-              <Tile key={h.id} hit={h} names={names} pick={pickFor(h.id)} scorers={scorers} />
-            ))}
+          <div className="grid gallery">
+            {hits.map((h, i) => {
+              const open = h.id === previewed;
+              const step = (by: number) => (hits[i + by] ? () => setPreviewed(hits[i + by]!.id) : undefined);
+              return (
+                <Fragment key={h.id}>
+                  <Tile hit={h} names={names} pick={pickFor(h.id)} scorers={scorers} open={open} onOpen={() => setPreviewed(open ? undefined : h.id)} />
+                  {open && <Preview id={h.id} onPrev={step(-1)} onNext={step(1)} onClose={() => setPreviewed(undefined)} />}
+                </Fragment>
+              );
+            })}
           </div>
         ) : (
           <table className="list">

@@ -975,7 +975,7 @@ test("without ?library= the page opens the last library used", async () => {
   localStorage.setItem("innkeeper.library", "3");
   renderCards("/cards");
   await screen.findByText("Brakka");
-  expect(searches).toContainEqual(expect.objectContaining({ library: 3, fields: ["name", "avatar"] }));
+  expect(searches).toContainEqual(expect.objectContaining({ library: 3, fields: ["name", "avatar", "creator"] }));
 });
 
 test("switching library clears a select-all, so a bulk action can't hit the new library", async () => {
@@ -1141,4 +1141,32 @@ test("Save search waits for the open saved search to load", async () => {
   await screen.findByRole("button", { name: "Close saved search #9" });
   expect(screen.getByRole("status", { name: "Loading cards" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Save search" })).not.toBeInTheDocument();
+});
+
+test("clicking a tile previews it below, with its blurb, tags, and contents, and next steps to the following card", async () => {
+  answer("/api/cards/7", async () =>
+    json({
+      id: 7,
+      library_id: 1,
+      slug: "brakka",
+      revision: {
+        id: 1,
+        avatar: "ab".repeat(32),
+        data: { name: "Brakka", creator: "smithy", creator_notes: "A grumpy dwarf smith.", description: "x", alternate_greetings: ["a", "b"], tags: ["fantasy", "dwarf"] },
+      },
+    }),
+  );
+  answer("/api/cards/8", async () => json({ id: 8, library_id: 1, slug: "carrow", revision: { id: 2, data: { name: "Carrow" } } }));
+  renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("link", { name: "Brakka" }));
+  const preview = await screen.findByRole("region", { name: "Preview of Brakka" });
+  expect(await within(preview).findByText("A grumpy dwarf smith.")).toBeInTheDocument();
+  expect(within(preview).getByText("#dwarf")).toBeInTheDocument();
+  expect(within(preview).getByRole("link", { name: "Open the page →" })).toHaveAttribute("href", "/cards/7");
+  expect(within(preview).getByText("Greetings")).toHaveTextContent("Greetings2");
+  await user.click(within(preview).getByRole("button", { name: "Next card" }));
+  expect(await screen.findByRole("region", { name: "Preview of Carrow" })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Close preview" }));
+  expect(screen.queryByRole("region", { name: /^Preview of/ })).not.toBeInTheDocument();
 });

@@ -251,7 +251,7 @@ export function toSearch(q: CardQuery, scores = false): Search {
     sort: q.semantic ? "relevance" : q.sort,
     ...(q.reverse && !q.semantic && { reverse: true }),
     filter: both(q.savedFilter, filterFor(q.terms, q.sharesSource, q.all)),
-    fields: ["name", "avatar"],
+    fields: ["name", "avatar", "creator"],
     include: ["tags", "lorebooks", "targets", ...(scores ? ["score"] : [])],
     page: { size: q.size, number: q.page },
   };

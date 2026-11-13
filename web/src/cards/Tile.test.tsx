@@ -19,7 +19,7 @@ function renderTile(targets: Hit["targets"]) {
   const hit: Hit = { id: 7, slug: "brakka", revision_id: 1, fields: { name: "Brakka" }, targets };
   render(
     <MemoryRouter>
-      <Tile hit={hit} names={names} pick={{ selected: false, locked: false, onPick: () => {} }} scorers={new Map()} />
+      <Tile hit={hit} names={names} pick={{ selected: false, locked: false, onPick: () => {} }} scorers={new Map()} open={false} onOpen={() => {}} />
     </MemoryRouter>,
   );
 }
@@ -62,7 +62,7 @@ test("a text grid key shows truncated, with the whole value in its title", () =>
   const scorers = new Map<number, Scorer>([[4, { keys: [{ key: "summary", label: "Summary", type: "text" }] }]]);
   render(
     <MemoryRouter>
-      <Tile hit={hit} names={names} pick={{ selected: false, locked: false, onPick: () => {} }} scorers={scorers} />
+      <Tile hit={hit} names={names} pick={{ selected: false, locked: false, onPick: () => {} }} scorers={scorers} open={false} onOpen={() => {}} />
     </MemoryRouter>,
   );
   expect(screen.getByRole("img", { name: `Summary ${long}` })).toHaveClass("score", "text");
@@ -79,7 +79,7 @@ function renderScore(instance: number, key: string, value: number, stale = false
   const hit: Hit = { id: 7, slug: "brakka", revision_id: 1, fields: { name: "Brakka" }, score: { instance, key, value, stale } };
   render(
     <MemoryRouter>
-      <Tile hit={hit} names={names} pick={{ selected: false, locked: false, onPick: () => {} }} scorers={ranked} />
+      <Tile hit={hit} names={names} pick={{ selected: false, locked: false, onPick: () => {} }} scorers={ranked} open={false} onOpen={() => {}} />
     </MemoryRouter>,
   );
 }
@@ -130,7 +130,7 @@ test("a score badge's title lists every scored rank, the shown one first", () =>
   };
   render(
     <MemoryRouter>
-      <Tile hit={hit} names={names} pick={{ selected: false, locked: false, onPick: () => {} }} scorers={ranked} />
+      <Tile hit={hit} names={names} pick={{ selected: false, locked: false, onPick: () => {} }} scorers={ranked} open={false} onOpen={() => {}} />
     </MemoryRouter>,
   );
   expect(screen.getByRole("img", { name: "Voice 70" })).toHaveAttribute(
@@ -143,7 +143,7 @@ test("a card tagged NSFW in any case marks its image for blurring", () => {
   const hit: Hit = { id: 7, slug: "brakka", revision_id: 1, fields: { name: "Brakka", avatar: "ab".repeat(32) }, tags: ["Fantasy", "NSFW"] };
   const { container } = render(
     <MemoryRouter>
-      <Tile hit={hit} names={names} pick={{ selected: false, locked: false, onPick: () => {} }} scorers={new Map()} />
+      <Tile hit={hit} names={names} pick={{ selected: false, locked: false, onPick: () => {} }} scorers={new Map()} open={false} onOpen={() => {}} />
     </MemoryRouter>,
   );
   expect(container.querySelector("img.avatar")).toHaveClass("nsfw");

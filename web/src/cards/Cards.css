@@ -585,3 +585,121 @@
 }
 
 .save-search { display: flex; flex-wrap: wrap; gap: var(--space); align-items: center; }
+
+/* Gallery tiles are framed cards; dense flow lets the tiles after an open preview fill the rest of its row. */
+.gallery {
+  grid-auto-flow: dense;
+}
+
+.gallery .tile {
+  padding: var(--space);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 1.5);
+}
+
+.gallery .tile.open {
+  border-color: var(--accent);
+}
+
+.gallery .tile .select {
+  top: calc(var(--space) * 1.75);
+  left: calc(var(--space) * 1.75);
+}
+
+.tile-creator {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.85em;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.gallery .tag {
+  background: none;
+  padding: 0;
+  color: var(--text-muted);
+}
+
+.preview {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) minmax(220px, 1.5fr);
+  gap: calc(var(--space) * 2);
+  padding: calc(var(--space) * 1.5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) * 1.5);
+}
+
+.preview > .avatar {
+  width: 100%;
+  aspect-ratio: var(--tile-aspect);
+  object-fit: cover;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.preview-body h2 {
+  margin: 0;
+}
+
+.preview-body .muted {
+  margin: 0 0 var(--space);
+}
+
+.preview-blurb {
+  white-space: pre-line;
+  line-height: 1.6;
+  max-height: 16em;
+  overflow: auto;
+}
+
+.preview-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px calc(var(--space) * 1.25);
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+.preview-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space);
+}
+
+.preview-nav {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.preview-side h3 {
+  margin: var(--space) 0 0;
+  font-size: 0.85em;
+  font-weight: normal;
+}
+
+.preview-contents {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.preview-contents li {
+  display: flex;
+  justify-content: space-between;
+  padding: calc(var(--space) * 0.5) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+@media (max-width: 900px) {
+  .preview {
+    grid-template-columns: 1fr;
+  }
+
+  .preview > .avatar {
+    max-width: 320px;
+  }
+}

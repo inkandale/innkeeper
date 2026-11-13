@@ -1,3 +1,4 @@
+import type { MouseEvent as ClickEvent } from "react";
 import { Link } from "react-router";
 import { thumb } from "../api/client";
 import type { components } from "../api/schema";
@@ -106,13 +107,22 @@ function Score({ hit, scorers }: { hit: Hit; scorers: Map<number, Scorer> }) {
   );
 }
 
-export function Tile({ hit, names, pick, scorers }: { hit: Hit; names: Names; pick: PickProps; scorers: Map<number, Scorer> }) {
+type TileProps = { hit: Hit; names: Names; pick: PickProps; scorers: Map<number, Scorer>; open: boolean; onOpen: () => void };
+
+/** Tile is one card in the grid. A plain click opens its preview; a modified click keeps the link's own behavior, such as a new tab. */
+export function Tile({ hit, names, pick, scorers, open, onOpen }: TileProps) {
   const tags = hit.tags ?? [];
   const books = hit.lorebooks?.length ?? 0;
+  const creator = text(hit.fields.creator);
+  const preview = (e: ClickEvent) => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    onOpen();
+  };
   return (
-    <article className={pick.selected ? "tile selected" : "tile"}>
+    <article className={["tile", pick.selected && "selected", open && "open"].filter(Boolean).join(" ")}>
       <SelectBox hit={hit} pick={pick} />
-      <Link to={`/cards/${hit.id}`} className="tile-image">
+      <Link to={`/cards/${hit.id}`} className="tile-image" onClick={preview} aria-expanded={open}>
         <Avatar hit={hit} w={320} />
         <Badges hit={hit} names={names} />
         <Score hit={hit} scorers={scorers} />
@@ -120,14 +130,15 @@ export function Tile({ hit, names, pick, scorers }: { hit: Hit; names: Names; pi
             <span aria-hidden="true">📖</span> {books}
           </span>}
       </Link>
-      <Link to={`/cards/${hit.id}`} className="tile-name">
+      <Link to={`/cards/${hit.id}`} className="tile-name" onClick={preview} aria-expanded={open}>
         {text(hit.fields.name)}
       </Link>
+      {creator && <p className="tile-creator">@{creator}</p>}
       <Family kind="card" hit={hit} />
       <p className="tile-tags">
         {tags.slice(0, 3).map((t) => (
           <span key={t} className="tag">
-            {t}
+            #{t}
           </span>
         ))}
         {tags.length > 3 && <span className="tag more">+{tags.length - 3}</span>}

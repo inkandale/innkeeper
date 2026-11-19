@@ -10,11 +10,11 @@ export function SaveSearch({ q, saved }: { q: CardQuery; saved?: { id: number; n
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [naming, setNaming] = useState(false);
-  const own = filterFor(q.terms, q.sharesSource, q.all);
+  const own = filterFor(q.terms, q);
   const filter = both(q.savedFilter, own);
   const sort = q.sort === defaultSort(q.text) ? "" : q.sort;
   // The saved search alone, now that its filter holds the page's terms.
-  const open = (id: number) => navigate(`/cards?${toParams({ ...q, terms: [], all: [], sharesSource: false, saved: id, page: 1 })}`);
+  const open = (id: number) => navigate(`/cards?${toParams({ ...q, terms: [], all: [], sharesSource: false, archived: false, saved: id, page: 1 })}`);
   const done = () => qc.invalidateQueries({ queryKey: ["saved-searches"] });
   const create = useMutation({
     mutationFn: async (name: string) => must(await api.POST("/saved-searches", { body: { name, filter: filter!, sort } })),

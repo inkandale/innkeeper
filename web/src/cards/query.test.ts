@@ -18,7 +18,7 @@ import {
   valueLabel,
 } from "./query";
 
-const base: CardQuery = { library: 1, text: "", semantic: false, terms: [], sort: "updated", reverse: false, page: 1, size: 48, view: "grid", sharesSource: false, all: [] };
+const base: CardQuery = { library: 1, text: "", semantic: false, terms: [], sort: "updated", reverse: false, page: 1, size: 48, view: "grid", sharesSource: false, archived: false, all: [] };
 const term = (kind: Term["kind"], value: string, not = false): Term => ({ kind, value, not });
 
 test("an empty URL is the default query", () => {
@@ -37,6 +37,7 @@ test("a query round-trips through the URL", () => {
     size: 96,
     view: "list",
     sharesSource: true,
+    archived: true,
     all: ["tag"],
   };
   expect(parseQuery(toParams(q), 1)).toEqual(q);
@@ -244,6 +245,14 @@ test("Shares a source is shared=1 in the URL and a shares_source filter", () => 
   expect(countSearch(q, "tag").filter).toEqual({ and: [{ shares_source: true }] });
 });
 
+test("Archived is archived=1 in the URL and an archived filter, counts included", () => {
+  const q = { ...base, archived: true };
+  expect(toParams(q).toString()).toBe("archived=1&library=1");
+  expect(toSearch(q).filter).toEqual({ and: [{ archived: true }] });
+  expect(countSearch(q, "tag").filter).toEqual({ and: [{ archived: true }] });
+  expect(stateCountSearch(q).filter).toEqual({ and: [{ archived: true }] });
+});
+
 test("value terms OR within a key, AND across keys, and only clears its own key", () => {
   const q: CardQuery = {
     ...base,
@@ -274,7 +283,7 @@ test("valueLabel turns a plugin's code into words and leaves other values alone"
 
 test("a section that matches all ANDs its included values and keeps them in its counts", () => {
   const q = { ...base, terms: [term("tag", "a"), term("tag", "b"), term("tag", "c", true), term("value", "3:genre=x"), term("value", "3:genre=y")], all: ["tag"] };
-  expect(filterFor(q.terms, false, q.all)).toEqual({
+  expect(filterFor(q.terms, q)).toEqual({
     and: [{ tag: "a" }, { tag: "b" }, { or: [{ enrichment: "genre", instance: 3, is: "x" }, { enrichment: "genre", instance: 3, is: "y" }] }, { not: { tag: "c" } }],
   });
   expect(countSearch(q, "tag").filter).toEqual({ and: [{ tag: "a" }, { tag: "b" }, { or: [{ enrichment: "genre", instance: 3, is: "x" }, { enrichment: "genre", instance: 3, is: "y" }] }] });

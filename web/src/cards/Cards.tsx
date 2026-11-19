@@ -74,7 +74,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const unsaved = scoredQ.semantic && !(embeds && scoredQ.text) ? { ...scoredQ, semantic: false } : scoredQ;
   const q: CardQuery = saved.data ? { ...unsaved, savedFilter: saved.data.filter } : unsaved;
   // The selection belongs to one search: paging keeps it, a new search clears it.
-  const key = JSON.stringify([q.library, q.text, q.semantic, q.terms, q.saved]);
+  const key = JSON.stringify([q.library, q.text, q.semantic, q.terms, q.saved, q.archived]);
   const [stored, setSel] = useState<Selection>(() => emptySelection(key));
   // Reset rather than hide, so going back to an earlier search doesn't revive its picks.
   if (stored.key !== key) setSel(emptySelection(key));
@@ -97,7 +97,9 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
       return [e.id, { keys: e.keys ?? [], ...(place >= 0 && { medal: medals[place] }) }] as const;
     }),
   );
-  const body = { ...(kind === "card" ? toSearch(q, scored) : toLorebookSearch(q)), ...(ungrouped ? {} : { group: "family" as const }) };
+  // A family's tile is its live face, which would stand in for its archived members, so archived lists ungrouped.
+  const flat = ungrouped || q.archived;
+  const body = { ...(kind === "card" ? toSearch(q, scored) : toLorebookSearch(q)), ...(flat ? {} : { group: "family" as const }) };
   const res = useQuery({
     ...searchQuery(kind, body),
     placeholderData: keepPreviousData,
@@ -142,8 +144,9 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
       {picking ? (
         <SelectionBar
           all={sel.all}
-          total={ungrouped ? total : undefined}
+          total={flat ? total : undefined}
           kind={kind}
+          archived={q.archived}
           library={q.library}
           query={target(sel, body)}
           ids={sel.ids}
@@ -206,7 +209,8 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
           <label title="Shows a card and its variants, such as forks and alternate versions, as one tile.">
             <input
               type="checkbox"
-              checked={!ungrouped}
+              checked={!flat}
+              disabled={q.archived}
               onChange={(e) => {
                 setUngrouped(!e.target.checked);
                 saveUngrouped(!e.target.checked);
@@ -272,7 +276,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
             </p>
           </div>
         ) : (
-          res.data && !blocked && <p className="total">{total} {total === 1 ? noun.slice(0, -1) : noun}{ungrouped ? "" : ", variants grouped"}</p>
+          res.data && !blocked && <p className="total">{total} {total === 1 ? noun.slice(0, -1) : noun}{flat ? "" : ", variants grouped"}</p>
         )}
         {res.data && !blocked && q.page > last && (
           <p>

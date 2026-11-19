@@ -12,13 +12,14 @@ import { toastJob } from "../shell/Toasts";
 type Search = components["schemas"]["Query"];
 type Bulk = components["schemas"]["BulkInBody"];
 type Job = components["schemas"]["JobOut"];
-type Panel = "tag" | "collection" | "push" | "archive" | "export" | "evaluate" | "delete" | "parent" | "move" | null;
+type Panel = "tag" | "collection" | "push" | "archive" | "unarchive" | "export" | "evaluate" | "delete" | "parent" | "move" | null;
 
 const labels = {
   tag: "Tag",
   collection: "Collection",
   push: "Push",
   archive: "Archive",
+  unarchive: "Unarchive",
   export: "Export",
   evaluate: "Score",
   delete: "Delete…",
@@ -43,8 +44,10 @@ export function SelectionBar(props: {
   onClear: () => void;
   onStarted?: (job: number) => void;
   kind?: "card" | "lorebook";
+  /** archived says the picks are archived, so the bar offers only Unarchive. */
+  archived?: boolean;
 }) {
-  const { all, total, query, library, ids, shown, onAll, onPage, onClear, onStarted, kind = "card" } = props;
+  const { all, total, query, library, ids, shown, onAll, onPage, onClear, onStarted, kind = "card", archived = false } = props;
   const plural = (n?: number) => (n === undefined ? `all matching ${kind}s` : `${n} ${kind}${n === 1 ? "" : "s"}`);
   const enrichers = useInstancesWith("enrich");
   const keys = useQuery({ ...enrichmentKeysQuery, enabled: kind === "card" });
@@ -56,7 +59,12 @@ export function SelectionBar(props: {
   const libraries = useQuery(librariesQuery);
   // Set parent and Move send the picked IDs, which "Select all matching" doesn't have. Move needs somewhere to go.
   const canMove = (libraries.data?.length ?? 0) > 1;
-  const actions = all ? base : canMove ? ([...base, "parent", "move"] as const) : ([...base, "parent"] as const);
+  // The other actions search without the archived filter, so they wouldn't find archived picks.
+  const actions =
+    archived ? (["unarchive"] as const)
+    : all ? base
+    : canMove ? ([...base, "parent", "move"] as const)
+    : ([...base, "parent"] as const);
   // Card calls leave kind out, as they did before it existed.
   const kindField = kind === "lorebook" ? { kind } : {};
   const [panel, setPanel] = useState<Panel>(null);
@@ -226,6 +234,11 @@ export function SelectionBar(props: {
                 Archive {plural(n)}
               </button>
             </>
+          )}
+          {panel === "unarchive" && (
+            <button className="button primary" disabled={busy} onClick={() => bulk({ action: "unarchive" })}>
+              Unarchive {plural(n)}
+            </button>
           )}
           {panel === "evaluate" && (
             <>

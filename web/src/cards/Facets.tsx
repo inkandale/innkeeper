@@ -327,6 +327,9 @@ export function Facets({ kind, q, names, browse = [], onChange }: { kind: Kind; 
       <label className="check" title="Shows only cards or lorebooks with a source another one also has, such as the same page imported twice. A fork doesn't count.">
         <input type="checkbox" checked={q.sharesSource} onChange={(e) => onChange({ ...q, sharesSource: e.target.checked, page: 1 })} /> Shares a source
       </label>
+      <label className="check" title="Shows archived cards or lorebooks instead of live ones.">
+        <input type="checkbox" checked={q.archived} onChange={(e) => onChange({ ...q, archived: e.target.checked, page: 1 })} /> Archived
+      </label>
       {sections.map((s) => (
         <Section key={s} kind={s} rows={rows[s]} q={q} open={open(s)} onOpen={() => flip(s)} onChange={onChange} />
       ))}

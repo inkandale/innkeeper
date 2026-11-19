@@ -361,6 +361,22 @@ test("select all matching archives the search", async () => {
   expect(posts[0]!.body).not.toHaveProperty("kind");
 });
 
+test("the Archived filter lists archived cards and offers only Unarchive", async () => {
+  const { router } = renderCards("/cards");
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("checkbox", { name: "Archived" }));
+  expect(router.state.location.search).toBe("?archived=1&library=1");
+  await waitFor(() => expect(searches).toContainEqual(expect.objectContaining({ filter: { and: [{ archived: true }] }, page: { size: 48, number: 1 } })));
+  expect(searches).not.toContainEqual(expect.objectContaining({ filter: { and: [{ archived: true }] }, group: "family" }));
+  await user.click(await screen.findByRole("checkbox", { name: "Select Brakka" }));
+  const bar = screen.getByRole("group", { name: "Selection" });
+  expect(within(bar).queryByRole("button", { name: "Archive" })).not.toBeInTheDocument();
+  expect(within(bar).queryByRole("button", { name: "Tag" })).not.toBeInTheDocument();
+  await user.click(within(bar).getByRole("button", { name: "Unarchive" }));
+  await user.click(screen.getByRole("button", { name: "Unarchive 1 card" }));
+  await waitFor(() => expect(posts).toEqual([{ path: "/api/bulk", body: { query: { library: 1, filter: { ids: [7] } }, action: "unarchive" } }]));
+});
+
 test("delete needs the count typed before it purges", async () => {
   renderCards("/cards");
   const user = userEvent.setup();

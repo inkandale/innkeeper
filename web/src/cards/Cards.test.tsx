@@ -164,11 +164,20 @@ test("an empty library points to importing and the setup wizard", async () => {
   expect(screen.getByRole("link", { name: "Run the setup wizard" })).toHaveAttribute("href", "/welcome");
 });
 
-test("a search that matches nothing doesn't offer the setup wizard", async () => {
+test("a search that matches nothing offers to clear its filters, not the setup wizard", async () => {
   emptyResults = true;
-  renderCards("/cards?q=brakka");
-  expect(await screen.findByText("0 cards, variants grouped")).toBeInTheDocument();
+  const { router } = renderCards("/cards?q=brakka&f=tag:elf&shared=1&archived=1&view=list");
+  expect(await screen.findByText("Nothing matches.")).toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "Run the setup wizard" })).not.toBeInTheDocument();
+  await userEvent.setup().click(screen.getByRole("button", { name: "Clear filters" }));
+  expect(router.state.location.search).toBe("?view=list&library=1");
+});
+
+test("an empty archive is not an empty library", async () => {
+  emptyResults = true;
+  renderCards("/cards?archived=1");
+  expect(await screen.findByText("Nothing matches.")).toBeInTheDocument();
+  expect(screen.queryByText("No cards in this library yet.")).not.toBeInTheDocument();
 });
 
 test("the URL becomes the search, and hits become tiles", async () => {

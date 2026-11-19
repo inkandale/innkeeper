@@ -53,6 +53,12 @@ function saveUngrouped(v: boolean) {
   }
 }
 
+/** cleared is q with its search text and every filter dropped, keeping the view, size, and a chosen sort. */
+function cleared(q: CardQuery): CardQuery {
+  const sort = q.sort === defaultSort(q.text) ? defaultSort("") : q.sort;
+  return { ...q, text: "", semantic: false, sort, terms: [], all: [], sharesSource: false, archived: false, saved: undefined, savedFilter: undefined, page: 1 };
+}
+
 export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
   const noun = kind === "card" ? "cards" : "lorebooks";
   const Noun = kind === "card" ? "Cards" : "Lorebooks";
@@ -263,7 +269,7 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
             cards, then choose Score.
           </p>
         )}
-        {res.data && total === 0 && !q.text && !q.terms.length && !q.sharesSource && !q.saved ? (
+        {res.data && total === 0 && !q.text && !q.terms.length && !q.sharesSource && !q.archived && !q.saved ? (
           <div className="empty-library">
             <p>No {noun} in this library yet.</p>
             <p>
@@ -273,6 +279,15 @@ export function Cards({ kind = "card" }: { kind?: "card" | "lorebook" }) {
                 </button>
               )}{" "}
               <Link to="/welcome">Run the setup wizard</Link>
+            </p>
+          </div>
+        ) : res.data && !blocked && total === 0 ? (
+          <div className="empty-library">
+            <p>Nothing matches.</p>
+            <p>
+              <button className="button" onClick={() => go(cleared(q))}>
+                Clear filters
+              </button>
             </p>
           </div>
         ) : (

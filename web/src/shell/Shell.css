@@ -51,6 +51,18 @@
   color: var(--text);
 }
 
+.rail-count {
+  margin-left: auto;
+  min-width: 1.5em;
+  padding: 0 0.4em;
+  border-radius: 999px;
+  background: var(--drift);
+  color: var(--bg);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: center;
+}
+
 .rail-bottom {
   margin-top: auto;
 }

@@ -235,6 +235,17 @@ export const changePath = (c: QueueChange, f: ChangesFilter = {}) => {
 /** needsYou counts an app's changes that need a decision, from GET /sync/changes counts. */
 export const needsYou = (c: Record<string, number> = {}) => (c.differs ?? 0) + (c.both_changed ?? 0) + (c.remote_changed ?? 0) + (c.error ?? 0) + (c.new ?? 0);
 
+/** sourceChanges counts a followed site source's changes, from GET /sync/changes counts. */
+export const sourceChanges = (c: Record<string, number> = {}) => (c.update ?? 0) + (c.missing ?? 0) + (c.error ?? 0);
+
+/** waitingOnYou sums what the Sync page asks about: needsYou over the target apps, sourceChanges over the followed sources. */
+export function waitingOnYou(counts: Record<string, Record<string, number>>, targets: number[], follows: Iterable<number>): number {
+  let n = 0;
+  for (const i of targets) n += needsYou(counts[String(i)]);
+  for (const i of follows) n += sourceChanges(counts[String(i)]);
+  return n;
+}
+
 export type Counts = Record<"in_sync" | "ahead" | "drifted" | "missing" | "cant_check" | "bound", number>;
 
 /** stateCounts reads one instance's cards by status from a target facet. Drifted is remote_changed plus diverged. */

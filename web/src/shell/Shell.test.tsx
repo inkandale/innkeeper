@@ -142,3 +142,30 @@ test("the eye button blurs NSFW card images and remembers it", async () => {
   view();
   expect(screen.getByAltText("art").closest(".blur-nsfw")).not.toBeNull();
 });
+
+test("Sync shows how many changes need you, from apps and followed sources", async () => {
+  const body: Record<string, unknown> = {
+    "/api/instances": [
+      { id: 2, label: "Lumiverse", plugin: "lumiverse" },
+      { id: 3, label: "Chub", plugin: "chub" },
+    ],
+    "/api/plugins": [
+      { name: "lumiverse", capabilities: ["push", "pull"] },
+      { name: "chub", capabilities: ["pull"] },
+    ],
+    // ahead and in_sync need nothing from you, so they don't count.
+    "/api/sync/changes": { changes: [], counts: { "2": { differs: 2, new: 1, ahead: 5 }, "3": { update: 1, in_sync: 4 } } },
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (req: Request) => Response.json(body[new URL(req.url).pathname] ?? [])),
+  );
+  const router = createMemoryRouter([{ path: "/", element: <Shell /> }]);
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByRole("link", { name: "Sync, 4 changes need you" })).toHaveTextContent("4");
+  vi.unstubAllGlobals();
+});

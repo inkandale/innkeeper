@@ -28,6 +28,9 @@ export const librarySettingsQuery = (id: number) =>
     queryFn: async () => must(await api.GET("/libraries/{id}/settings", { params: { path: { id } } })),
   });
 
+/** changeCountsQuery is GET /sync/changes for its counts, by instance and state; the Sync page and the rail read them. */
+export const changeCountsQuery = queryOptions({ queryKey: ["sync", "changes", "counts"], queryFn: async () => must(await api.GET("/sync/changes")) });
+
 export const settingsQuery = queryOptions({ queryKey: ["settings"], queryFn: async () => must(await api.GET("/settings")) });
 
 /** useInstancesWith returns the instances whose plugin offers any of caps, empty until both lists load. */

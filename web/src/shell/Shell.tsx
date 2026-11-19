@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
-import { api } from "../api/client";
-import { librariesQuery } from "../api/queries";
+import { api, followers, withCapability } from "../api/client";
+import { changeCountsQuery, instancesQuery, librariesQuery, pluginsQuery } from "../api/queries";
+import { waitingOnYou } from "../sync/sync";
 import { Launchers } from "../pluginui/Launchers";
 import { rememberLibrary, useLibrary, withLibrary } from "./library";
 import { Icon } from "./Icon";
@@ -76,6 +77,15 @@ function readBlur() {
   }
 }
 
+/** useWaiting counts the changes that need the owner, polled so the hourly sync and source checks show up without a visit. */
+function useWaiting(): number {
+  const changes = useQuery({ ...changeCountsQuery, refetchInterval: 60_000 });
+  const instances = useQuery(instancesQuery);
+  const plugins = useQuery(pluginsQuery);
+  const targets = withCapability(instances.data, plugins.data, "push").map((i) => i.id);
+  return changes.data ? waitingOnYou(changes.data.counts, targets, followers(instances.data, plugins.data)) : 0;
+}
+
 export function Shell() {
   const [collapsed, setCollapsed] = useState(false);
   const [blur, setBlur] = useState(readBlur);
@@ -88,6 +98,7 @@ export function Shell() {
     }
   };
   const library = useLibrary();
+  const waiting = useWaiting();
   return (
     <div className={["shell", collapsed && "collapsed", blur && "blur-nsfw"].filter(Boolean).join(" ")}>
       <nav className="rail" aria-label="Sections">
@@ -100,9 +111,18 @@ export function Shell() {
         </div>
         <LibrarySwitcher />
         {sections.map((s) => (
-          <NavLink key={s.to} to={withLibrary(s.to, library)} aria-label={s.label}>
+          <NavLink
+            key={s.to}
+            to={withLibrary(s.to, library)}
+            aria-label={s.to === "/sync" && waiting ? `${s.label}, ${waiting} ${waiting === 1 ? "change needs" : "changes need"} you` : s.label}
+          >
             <Icon name={s.icon} />
             <span className="rail-label">{s.label}</span>
+            {s.to === "/sync" && waiting > 0 && (
+              <span className="rail-count" aria-hidden="true">
+                {waiting > 99 ? "99+" : waiting}
+              </span>
+            )}
           </NavLink>
         ))}
         <div className="rail-bottom">

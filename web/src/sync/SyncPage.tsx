@@ -2,10 +2,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { api, followers, must, withCapability } from "../api/client";
-import { instancesQuery, librariesQuery, pluginsQuery } from "../api/queries";
+import { changeCountsQuery, instancesQuery, librariesQuery, pluginsQuery } from "../api/queries";
 import { age, finished, useJob, type Job } from "../settings/jobUtil";
 import { useLibrary } from "../shell/library";
-import { needsYou, stateCounts } from "./sync";
+import { needsYou, sourceChanges, stateCounts } from "./sync";
 import "./Sync.css";
 import { toastJob } from "../shell/Toasts";
 
@@ -54,16 +54,10 @@ export function Sync() {
     // ponytail: the newest 200 runs across all instances; an instance not run in that window shows Never.
     queryFn: async () => must(await api.GET("/jobs", { params: { query: { kind: "target.reconcile", limit: 200 } } })),
   });
-  const changes = useQuery({
-    queryKey: ["sync", "changes", "counts"],
-    queryFn: async () => must(await api.GET("/sync/changes")),
-  });
+  const changes = useQuery(changeCountsQuery);
   const targets = withCapability(instances.data, plugins.data, "push");
   const follows = followers(instances.data, plugins.data);
-  const sourceChanges = [...follows].reduce((n, i) => {
-    const c = changes.data?.counts[String(i)] ?? {};
-    return n + (c.update ?? 0) + (c.missing ?? 0) + (c.error ?? 0);
-  }, 0);
+  const sourceCount = [...follows].reduce((n, i) => n + sourceChanges(changes.data?.counts[String(i)]), 0);
   // Changes filters to one instance, so several sources link to every change.
   const sourcesLink = follows.size === 1 ? `/sync/changes?instance_id=${[...follows][0]}` : "/sync/changes";
   const cantCheck = targets.some((i) => stateCounts(facets.data?.facets?.targets, i.id).cant_check > 0);
@@ -173,7 +167,7 @@ export function Sync() {
           <h2>Sources</h2>
           <div className="toolbar">
             <Link to={sourcesLink}>
-              {sourceChanges} {sourceChanges === 1 ? "change" : "changes"} on their sites
+              {sourceCount} {sourceCount === 1 ? "change" : "changes"} on their sites
             </Link>
             <button className="button" disabled={checkSources.busy} onClick={checkSources.start}>
               Check for updates

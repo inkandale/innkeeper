@@ -6,13 +6,15 @@ TypeScript (`web/src`). Setup and tests are in [CONTRIBUTING.md](CONTRIBUTING.md
 
 ## Before you write code
 
-1. Read the code the change touches and trace the real flow end to end.
-2. Search for an existing helper, type, or pattern before writing a new one.
+1. Read and branch from `origin/develop`, where work lands. `main` holds the
+   last release and lags far behind, so code read there is out of date.
+2. Read the code the change touches and trace the real flow end to end.
+3. Search for an existing helper, type, or pattern before writing a new one.
    Re-implementing something a few files over is the most common AI mistake
    here.
-3. Ask whether the change solves a real problem now. Don't build for a
+4. Ask whether the change solves a real problem now. Don't build for a
    hypothetical later.
-4. Decide which test will prove the change, and write it first when you can.
+5. Decide which test will prove the change, and write it first when you can.
 
 ## Plugins
 

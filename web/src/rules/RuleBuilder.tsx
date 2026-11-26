@@ -3,7 +3,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import { api, must, mustOk } from "../api/client";
-import { collectionsQuery, enrichmentKeysQuery, librariesQuery, savedSearchesQuery, searchQuery } from "../api/queries";
+import { collectionsQuery, enrichmentKeysQuery, librariesQuery, savedSearchesQuery, searchQuery, useInstancesWith } from "../api/queries";
 import type { components } from "../api/schema";
 import { text } from "../card/draft";
 import { sidebarKeys } from "../cards/filters";
@@ -61,6 +61,7 @@ function Builder({ id, initial, search, fields, library }: Props) {
   const libraries = useQuery(librariesQuery);
   const ruleLibrary = spec.libraries?.[0] ?? library;
   const collections = useQuery({ ...collectionsQuery(ruleLibrary), enabled: spec.action === "collect" });
+  const pushTargets = useInstancesWith("push");
   const byId = new Map(fields.map((f) => [f.id, f]));
   const filter = readOnly ? search!.filter : toFilter(root, fields);
   const changed = !readOnly && JSON.stringify(filter) !== baseline;
@@ -103,7 +104,8 @@ function Builder({ id, initial, search, fields, library }: Props) {
   const incomplete = !readOnly && (conditions.length === 0 || conditions.some((c) => !complete(c, byId.get(c.field))));
   const noLibrary = !spec.all_libraries && !spec.libraries?.length;
   const noCollection = spec.action === "collect" && !spec.collection_id;
-  const blocked = !spec.name.trim() || incomplete || noLibrary || noCollection;
+  const noInstance = spec.action === "push" && !spec.instance_id;
+  const blocked = !spec.name.trim() || incomplete || noLibrary || noCollection || noInstance;
 
   const leave = () => {
     void qc.invalidateQueries({ queryKey: ["rules"] });
@@ -197,13 +199,13 @@ function Builder({ id, initial, search, fields, library }: Props) {
         <p className="rule-sentence">
           When a card in{" "}
           <select className="input" aria-label="Libraries" value={scope} disabled={fixed && spec.action === "collect"} onChange={(e) => setScope(e.target.value)}>
-            {spec.action === "archive" && <option value="all">all libraries</option>}
+            {spec.action !== "collect" && <option value="all">all libraries</option>}
             {(libraries.data ?? []).map((l) => (
               <option key={l.id} value={l.id}>
                 {l.name}
               </option>
             ))}
-            {spec.action === "archive" && <option value="some">some libraries…</option>}
+            {spec.action !== "collect" && <option value="some">some libraries…</option>}
           </select>{" "}
           matches:
         </p>
@@ -256,13 +258,27 @@ function Builder({ id, initial, search, fields, library }: Props) {
             disabled={fixed}
             onChange={(e) => {
               const action = e.target.value as Spec["action"];
-              setSpec({ ...spec, action, collection_id: undefined, ...(action === "collect" ? { all_libraries: false, libraries: [ruleLibrary] } : { all_libraries: true, libraries: undefined }) });
+              setSpec({ ...spec, action, collection_id: undefined, instance_id: undefined, ...(action === "collect" ? { all_libraries: false, libraries: [ruleLibrary] } : { all_libraries: true, libraries: undefined }) });
               setScopeChoice(action === "collect" ? String(ruleLibrary) : "all");
             }}
           >
             <option value="archive">archive it</option>
             <option value="collect">add it to</option>
+            {pushTargets.length > 0 && <option value="push">push it to</option>}
           </select>
+          {spec.action === "push" && (
+            <>
+              {" "}
+              <select className="input" aria-label="App" value={spec.instance_id ?? ""} disabled={fixed} onChange={(e) => set({ instance_id: Number(e.target.value) || undefined })}>
+                <option value="">an app…</option>
+                {pushTargets.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
           {spec.action === "collect" && (
             <>
               {" "}
@@ -279,6 +295,10 @@ function Builder({ id, initial, search, fields, library }: Props) {
           .
         </p>
         {noCollection && <p className="muted">Pick a collection.</p>}
+        {noInstance && <p className="muted">Pick an app.</p>}
+        {spec.action === "push" && (
+          <p className="muted">Each sync pushes the matching cards and replaces their copies in the app. A card that stops matching keeps its copy there.</p>
+        )}
         {collections.error && <p className="error">{collections.error.message}</p>}
 
         <p role="status" className="muted">
@@ -316,7 +336,12 @@ function Builder({ id, initial, search, fields, library }: Props) {
               onClick={() =>
                 ask({
                   title: `Delete ${initial.name}?`,
-                  body: <p>Its archived cards come back, and the cards it collected leave the collection.</p>,
+                  body:
+                    initial.action === "push" ? (
+                      <p>The copies it pushed stay in the app.</p>
+                    ) : (
+                      <p>Its archived cards come back, and the cards it collected leave the collection.</p>
+                    ),
                   confirmLabel: "Delete rule",
                   danger: true,
                   onConfirm: () => remove.mutate(),

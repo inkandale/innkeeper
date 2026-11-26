@@ -2523,7 +2523,7 @@ export interface paths {
         put?: never;
         /**
          * Preview a rule
-         * @description Returns, for each library the rule would cover or covers now, how many cards it would archive or collect and how many it would give back, with a page of each. Changes nothing. An archive count leaves out cards another archive rule or an earlier duplicate run already holds; duplicates the hide job hasn't found yet aren't predicted. With filter, it previews that filter instead of the saved search's.
+         * @description Returns, for each library the rule would cover or covers now, how many cards it would archive, collect, or push and how many it would give back, with a page of each. Changes nothing. An archive count leaves out cards another archive rule or an earlier duplicate run already holds; duplicates the hide job hasn't found yet aren't predicted. With filter, it previews that filter instead of the saved search's.
          */
         post: operations["preview-rule"];
         delete?: never;
@@ -2543,13 +2543,13 @@ export interface paths {
         get: operations["get-rule"];
         /**
          * Change a rule
-         * @description Replaces the rule. Its action and collection can't change. The hide job reruns in every library it covered or covers, applying it and giving back the cards it no longer matches.
+         * @description Replaces the rule. Its action, collection, and instance can't change. The hide job reruns in every library it covered or covers, applying it and giving back the cards it no longer matches. A push rule that's on instead queues a sync of its instance, which pushes the cards it matches. A card it no longer matches keeps its copy.
          */
         put: operations["update-rule"];
         post?: never;
         /**
          * Delete a rule
-         * @description Gives back what it did: its archived cards come back, and the cards it collected leave the collection.
+         * @description Gives back what it did: its archived cards come back, and the cards it collected leave the collection. The copies a push rule pushed stay in their app.
          */
         delete: operations["delete-rule"];
         options?: never;
@@ -4738,7 +4738,7 @@ export interface components {
              * @description Can't change once the rule exists.
              * @enum {string}
              */
-            action: "archive" | "collect";
+            action: "archive" | "collect" | "push";
             /** @description How many cards it has archived or collected, by library. */
             affected: components["schemas"]["RuleCount"][] | null;
             /** @description Covers every library, including ones made later; otherwise only libraries. */
@@ -4752,6 +4752,11 @@ export interface components {
             enabled: boolean;
             /** Format: int64 */
             id: number;
+            /**
+             * Format: int64
+             * @description For push: the target instance matching cards are pushed to. A card that stops matching keeps its copy there. Can't change once the rule exists.
+             */
+            instance_id?: number;
             /** @description With all_libraries false: the libraries it covers. */
             libraries?: number[] | null;
             name: string;
@@ -4761,9 +4766,9 @@ export interface components {
             saved_search_id: number;
         };
         RulePreview: {
-            /** @description Cards it would archive or add to the collection. */
+            /** @description Cards it would archive, add to the collection, or push to an instance that has no copy. */
             apply: components["schemas"]["PreviewList"];
-            /** @description Cards it would unarchive or take out of the collection. */
+            /** @description Cards it would unarchive or take out of the collection. Always empty for push. */
             give_back: components["schemas"]["PreviewList"];
             /** Format: int64 */
             library: number;
@@ -4784,7 +4789,7 @@ export interface components {
              * @description Can't change once the rule exists.
              * @enum {string}
              */
-            action: "archive" | "collect";
+            action: "archive" | "collect" | "push";
             /** @description Covers every library, including ones made later; otherwise only libraries. */
             all_libraries: boolean;
             /**
@@ -4794,6 +4799,11 @@ export interface components {
             collection_id?: number;
             /** @description Ignored on create; a new rule starts disabled. */
             enabled: boolean;
+            /**
+             * Format: int64
+             * @description For push: the target instance matching cards are pushed to. A card that stops matching keeps its copy there. Can't change once the rule exists.
+             */
+            instance_id?: number;
             /** @description With all_libraries false: the libraries it covers. */
             libraries?: number[] | null;
             name: string;

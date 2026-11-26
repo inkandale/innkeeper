@@ -304,3 +304,33 @@ func TestCardLookupsForTheGate(t *testing.T) {
 		t.Fatalf("archived as duplicate = %v, %v", got, err)
 	}
 }
+
+func TestPushRuleNeedsAnInstanceAndIsLeftToTheSync(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	spec := RuleSpec{Name: "Push elves", SavedSearchID: newSavedSearch(t, lib, "Elves", Filter{Tag: new("elf")}),
+		Action: RulePush, AllLibraries: true}
+	if _, err := lib.CreateRule(ctx, spec); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("no instance: %v", err)
+	}
+	instance := int64(7)
+	spec.InstanceID = &instance
+	r := enableRule(t, lib, newRule(t, lib, spec))
+	if *r.InstanceID != instance {
+		t.Fatalf("rule = %+v", r)
+	}
+	other := int64(8)
+	spec.InstanceID, spec.Enabled = &other, true
+	if _, _, err := lib.UpdateRule(ctx, r.ID, spec); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("changed instance: %v", err)
+	}
+	if in, err := lib.RulesIn(ctx, DefaultLibrary); err != nil || len(in) != 0 {
+		t.Fatalf("hide job rules = %+v, %v", in, err)
+	}
+	if push, err := lib.PushRules(ctx, instance); err != nil || len(push) != 1 || push[0].ID != r.ID {
+		t.Fatalf("push rules = %+v, %v", push, err)
+	}
+	if gone, err := lib.RulesOfInstance(ctx, instance); err != nil || len(gone) != 1 {
+		t.Fatalf("rules of instance = %+v, %v", gone, err)
+	}
+}

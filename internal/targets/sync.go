@@ -111,6 +111,8 @@ func (s *Service) Sync(ctx context.Context, p SyncParams, progress func(SyncResu
 	}
 	defer release()
 	q := jobs.New(s.pool)
+	// review holds, by instance, the cards an app item left for review may be a copy of.
+	review := map[int64][]int64{}
 	for _, id := range ids {
 		params := ReconcileParams{InstanceID: id, Apply: cmp.Or(p.Apply, ApplyObvious)}
 		snap, err := s.Reconcile(ctx, params, nil)
@@ -126,6 +128,7 @@ func (s *Service) Sync(ctx context.Context, p SyncParams, progress func(SyncResu
 		} else {
 			app.Totals, params = snap.Totals, snap.Params
 			cards = cardsChanged(snap)
+			review[id] = reviewCandidates(snap)
 			if raw, err = json.Marshal(snap); err != nil {
 				return res, err
 			}
@@ -144,7 +147,11 @@ func (s *Service) Sync(ctx context.Context, p SyncParams, progress func(SyncResu
 	// Pass 2 runs after every app's pass 1, so an edit pulled from one app reaches the others.
 	for i := range res.Apps {
 		if res.Apps[i].Error == "" {
-			res.CardsChanged += s.autosync(ctx, &res.Apps[i])
+			if res.Apps[i].Totals == nil {
+				res.Apps[i].Totals = map[string]int{}
+			}
+			matched, created := s.pushRules(ctx, &res.Apps[i], review[res.Apps[i].InstanceID])
+			res.CardsChanged += created + s.autosync(ctx, &res.Apps[i], matched)
 		}
 		if ctx.Err() != nil {
 			return res, ctx.Err()
@@ -175,17 +182,15 @@ func (s *Service) syncApps(ctx context.Context, only int64) ([]int64, error) {
 	return ids, nil
 }
 
-// autosync pushes the app's bindings that have autosync on and are ahead.
+// autosync pushes the app's bindings that are ahead and have autosync on or
+// are for one of ruleCards, the cards a push rule matches.
 // Each push expects the app to hold the copy the library last agreed with,
 // so one that changed in the app is left for the owner and counted as
 // autosync_changed. It returns how many cards it pushed.
 //
 // ponytail: the check compares the card's stored fields, not its avatar, so
 // an avatar changed only in the app is overwritten, as a manual push would.
-func (s *Service) autosync(ctx context.Context, app *SyncApp) (cards int) {
-	if app.Totals == nil {
-		app.Totals = map[string]int{}
-	}
+func (s *Service) autosync(ctx context.Context, app *SyncApp, ruleCards []int64) (cards int) {
 	failed := func(binding int64, err error) {
 		app.Totals["autosync_failed"]++
 		s.log.Warn("sync: autosync push failed", "instance", app.InstanceID, "binding", binding, "err", err)
@@ -194,8 +199,8 @@ func (s *Service) autosync(ctx context.Context, app *SyncApp) (cards int) {
 	rows, err := s.pool.Query(ctx, `SELECT b.id, coalesce(b.card_id, 0), coalesce(b.lorebook_id, 0), b.accepted_hash, p.id
 		FROM binding b JOIN binding_status st ON st.binding_id = b.id
 		JOIN LATERAL (SELECT id FROM push WHERE binding_id = b.id ORDER BY id DESC LIMIT 1) p ON TRUE
-		WHERE b.instance_id = $1 AND b.autosync AND st.status = 'ahead' AND b.accepted_hash <> ''
-		ORDER BY b.id`, app.InstanceID)
+		WHERE b.instance_id = $1 AND (b.autosync OR b.card_id = ANY($2)) AND st.status = 'ahead' AND b.accepted_hash <> ''
+		ORDER BY b.id`, app.InstanceID, ruleCards)
 	if err != nil {
 		failed(0, err)
 		return

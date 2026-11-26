@@ -5191,7 +5191,8 @@
             "description": "Can't change once the rule exists.",
             "enum": [
               "archive",
-              "collect"
+              "collect",
+              "push"
             ],
             "type": "string"
           },
@@ -5219,6 +5220,11 @@
             "type": "boolean"
           },
           "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "instance_id": {
+            "description": "For push: the target instance matching cards are pushed to. A card that stops matching keeps its copy there. Can't change once the rule exists.",
             "format": "int64",
             "type": "integer"
           },
@@ -5263,11 +5269,11 @@
         "properties": {
           "apply": {
             "$ref": "#/components/schemas/PreviewList",
-            "description": "Cards it would archive or add to the collection."
+            "description": "Cards it would archive, add to the collection, or push to an instance that has no copy."
           },
           "give_back": {
             "$ref": "#/components/schemas/PreviewList",
-            "description": "Cards it would unarchive or take out of the collection."
+            "description": "Cards it would unarchive or take out of the collection. Always empty for push."
           },
           "library": {
             "format": "int64",
@@ -5314,7 +5320,8 @@
             "description": "Can't change once the rule exists.",
             "enum": [
               "archive",
-              "collect"
+              "collect",
+              "push"
             ],
             "type": "string"
           },
@@ -5330,6 +5337,11 @@
           "enabled": {
             "description": "Ignored on create; a new rule starts disabled.",
             "type": "boolean"
+          },
+          "instance_id": {
+            "description": "For push: the target instance matching cards are pushed to. A card that stops matching keeps its copy there. Can't change once the rule exists.",
+            "format": "int64",
+            "type": "integer"
           },
           "libraries": {
             "description": "With all_libraries false: the libraries it covers.",
@@ -13891,7 +13903,7 @@
     },
     "/rules/preview": {
       "post": {
-        "description": "Returns, for each library the rule would cover or covers now, how many cards it would archive or collect and how many it would give back, with a page of each. Changes nothing. An archive count leaves out cards another archive rule or an earlier duplicate run already holds; duplicates the hide job hasn't found yet aren't predicted. With filter, it previews that filter instead of the saved search's.",
+        "description": "Returns, for each library the rule would cover or covers now, how many cards it would archive, collect, or push and how many it would give back, with a page of each. Changes nothing. An archive count leaves out cards another archive rule or an earlier duplicate run already holds; duplicates the hide job hasn't found yet aren't predicted. With filter, it previews that filter instead of the saved search's.",
         "operationId": "preview-rule",
         "requestBody": {
           "content": {
@@ -13939,7 +13951,7 @@
     },
     "/rules/{id}": {
       "delete": {
-        "description": "Gives back what it did: its archived cards come back, and the cards it collected leave the collection.",
+        "description": "Gives back what it did: its archived cards come back, and the cards it collected leave the collection. The copies a push rule pushed stay in their app.",
         "operationId": "delete-rule",
         "parameters": [
           {
@@ -14013,7 +14025,7 @@
         ]
       },
       "put": {
-        "description": "Replaces the rule. Its action and collection can't change. The hide job reruns in every library it covered or covers, applying it and giving back the cards it no longer matches.",
+        "description": "Replaces the rule. Its action, collection, and instance can't change. The hide job reruns in every library it covered or covers, applying it and giving back the cards it no longer matches. A push rule that's on instead queues a sync of its instance, which pushes the cards it matches. A card it no longer matches keeps its copy.",
         "operationId": "update-rule",
         "parameters": [
           {

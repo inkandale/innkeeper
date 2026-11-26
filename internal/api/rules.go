@@ -10,7 +10,9 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/inkandale/innkeeper/internal/library"
+	"github.com/inkandale/innkeeper/internal/targets"
 	"github.com/inkandale/innkeeper/internal/tier"
+	"github.com/inkandale/innkeeper/protocol"
 )
 
 // ruleItem is a rule and what it has done.
@@ -49,8 +51,8 @@ type previewList struct {
 // rulePreview is what a rule would do in one library.
 type rulePreview struct {
 	Library  int64       `json:"library"`
-	Apply    previewList `json:"apply" doc:"Cards it would archive or add to the collection."`
-	GiveBack previewList `json:"give_back" doc:"Cards it would unarchive or take out of the collection."`
+	Apply    previewList `json:"apply" doc:"Cards it would archive, add to the collection, or push to an instance that has no copy."`
+	GiveBack previewList `json:"give_back" doc:"Cards it would unarchive or take out of the collection. Always empty for push."`
 }
 
 type rulePreviewOut struct{ Body []rulePreview }
@@ -148,12 +150,22 @@ func (s *Server) ruleItem(ctx context.Context, r library.Rule) (*ruleOut, error)
 	return &ruleOut{Body: items[0]}, nil
 }
 
+// checkPushRule refuses a push rule whose instance can't push.
+func (s *Server) checkPushRule(ctx context.Context, spec library.RuleSpec) error {
+	if spec.InstanceID == nil {
+		return nil
+	}
+	_, err := s.usable(ctx, *spec.InstanceID, protocol.CapabilityPush)
+	return err
+}
+
 // recheckRules reruns the hide job in every library an enabled one of rules
-// names, so their change is applied or undone there.
+// names, so their change is applied or undone there. Push rules are the
+// sync's, and give nothing back.
 func (s *Server) recheckRules(ctx context.Context, rules ...library.Rule) error {
 	var libs []int64
 	for _, r := range rules {
-		if !r.Enabled {
+		if !r.Enabled || r.Action == library.RulePush {
 			continue
 		}
 		scope, err := s.Lib.RuleScope(ctx, r)
@@ -202,7 +214,7 @@ func (s *Server) ruleRoutes(api huma.API) {
 
 	huma.Register(api, huma.Operation{Metadata: needs(tier.Read), OperationID: "preview-rule", Method: http.MethodPost, Path: "/rules/preview",
 		Summary: "Preview a rule", Tags: tags,
-		Description: "Returns, for each library the rule would cover or covers now, how many cards it would archive or collect " +
+		Description: "Returns, for each library the rule would cover or covers now, how many cards it would archive, collect, or push " +
 			"and how many it would give back, with a page of each. Changes nothing. An archive count leaves out cards " +
 			"another archive rule or an earlier duplicate run already holds; duplicates the hide job hasn't found yet aren't predicted. " +
 			"With filter, it previews that filter instead of the saved search's."},
@@ -215,12 +227,16 @@ func (s *Server) ruleRoutes(api huma.API) {
 				if old, err = s.Lib.GetRule(ctx, in.Body.ID); err != nil {
 					return nil, s.fail(err)
 				}
-				if spec.Action != old.Action || !slices.Equal(ptrSlice(spec.CollectionID), ptrSlice(old.CollectionID)) {
-					return nil, huma.Error422UnprocessableEntity("a rule's action and collection can't change; make a new rule")
+				if spec.Action != old.Action || !slices.Equal(ptrSlice(spec.CollectionID), ptrSlice(old.CollectionID)) ||
+					!slices.Equal(ptrSlice(spec.InstanceID), ptrSlice(old.InstanceID)) {
+					return nil, huma.Error422UnprocessableEntity("a rule's action, collection, and instance can't change; make a new rule")
 				}
 			}
 			if err := s.Lib.CheckRuleSpec(ctx, spec); err != nil {
 				return nil, s.fail(err)
+			}
+			if err := s.checkPushRule(ctx, spec); err != nil {
+				return nil, err
 			}
 			for _, id := range spec.Libraries {
 				if _, err := s.checkLibrary(ctx, id); err != nil {
@@ -298,6 +314,9 @@ func (s *Server) ruleRoutes(api huma.API) {
 		Summary: "Add a rule", Description: "It starts disabled. Preview it with POST /rules/preview, then enable it with PUT.",
 		Tags: tags, DefaultStatus: http.StatusCreated},
 		func(ctx context.Context, in *createRuleIn) (*ruleOut, error) {
+			if err := s.checkPushRule(ctx, in.Body); err != nil {
+				return nil, err
+			}
 			r, err := s.Lib.CreateRule(ctx, in.Body)
 			if err != nil {
 				return nil, s.fail(err)
@@ -307,8 +326,9 @@ func (s *Server) ruleRoutes(api huma.API) {
 
 	huma.Register(api, huma.Operation{OperationID: "update-rule", Method: http.MethodPut, Path: "/rules/{id}",
 		Summary: "Change a rule", Tags: tags,
-		Description: "Replaces the rule. Its action and collection can't change. The hide job reruns in every library it covered or covers, " +
-			"applying it and giving back the cards it no longer matches."},
+		Description: "Replaces the rule. Its action, collection, and instance can't change. The hide job reruns in every library it covered or covers, " +
+			"applying it and giving back the cards it no longer matches. A push rule that's on instead queues a sync of its instance, " +
+			"which pushes the cards it matches. A card it no longer matches keeps its copy."},
 		func(ctx context.Context, in *updateRuleIn) (*ruleOut, error) {
 			before, after, err := s.Lib.UpdateRule(ctx, in.ID, in.Body)
 			if err != nil {
@@ -317,12 +337,18 @@ func (s *Server) ruleRoutes(api huma.API) {
 			if err := s.recheckRules(ctx, before, after); err != nil {
 				return nil, s.fail(err)
 			}
+			if after.Action == library.RulePush && after.Enabled {
+				if _, err := s.Targets.EnqueueSync(ctx, s.Queue, targets.SyncParams{InstanceID: *after.InstanceID}); err != nil {
+					return nil, s.fail(fmt.Errorf("queue sync for instance %d: %w", *after.InstanceID, err))
+				}
+			}
 			return s.ruleItem(ctx, after)
 		})
 
 	huma.Register(api, huma.Operation{OperationID: "delete-rule", Method: http.MethodDelete, Path: "/rules/{id}",
 		Summary: "Delete a rule", Tags: tags, DefaultStatus: http.StatusNoContent,
-		Description: "Gives back what it did: its archived cards come back, and the cards it collected leave the collection."},
+		Description: "Gives back what it did: its archived cards come back, and the cards it collected leave the collection. " +
+			"The copies a push rule pushed stay in their app."},
 		func(ctx context.Context, in *idIn) (*struct{}, error) {
 			r, err := s.Lib.GetRule(ctx, in.ID)
 			if err != nil {

@@ -40,6 +40,8 @@ beforeEach(() => {
       if (req.method !== "GET") calls.push({ method: req.method, path, body });
       if (path === "/api/libraries") return json([{ id: 1, name: "Main", cards: 0, lorebooks: 0, created_at: "" }]);
       if (path === "/api/collections") return json([{ id: 7, name: "Faves", description: "", cards: 0, created_at: "" }]);
+      if (path === "/api/instances") return json([{ id: 2, label: "SillyTavern", name: "SillyTavern", plugin: "sillytavern" }]);
+      if (path === "/api/plugins") return json([{ name: "sillytavern", capabilities: ["push", "pull"] }]);
       if (path === "/api/saved-searches" && req.method === "POST") {
         const { name } = body as { name: string };
         if (name === "Taken")
@@ -246,6 +248,26 @@ test("a collect rule names one library and its collection", async () => {
       method: "POST",
       path: "/api/rules",
       body: { name: "Faves", saved_search_id: 4, action: "collect", collection_id: 7, all_libraries: false, libraries: [1], enabled: false },
+    }),
+  );
+});
+
+test("a push rule names its app", async () => {
+  renderAt("/rules/new");
+  const user = userEvent.setup();
+  await screen.findByRole("option", { name: "push it to" });
+  await user.selectOptions(screen.getByRole("combobox", { name: "Action" }), "push");
+  expect(screen.getByText("Pick an app.")).toBeInTheDocument();
+  await user.selectOptions(screen.getByRole("combobox", { name: "App" }), "2");
+  await user.type(screen.getByRole("textbox", { name: "Rule name" }), "Wholesome");
+  await user.click(screen.getByRole("button", { name: "Add condition" }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "Field 1" }), "shares_source");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() =>
+    expect(calls.at(-1)).toEqual({
+      method: "POST",
+      path: "/api/rules",
+      body: { name: "Wholesome", saved_search_id: 4, action: "push", instance_id: 2, all_libraries: true, enabled: false },
     }),
   );
 });

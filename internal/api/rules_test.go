@@ -315,3 +315,28 @@ func TestRulePreviewRefusesWhatASaveRefuses(t *testing.T) {
 	spec.Action, spec.CollectionID = "collect", nil
 	e.call("POST", "/rules/preview", map[string]any{"id": r.ID, "rule": spec}, 422, nil)
 }
+
+func TestTurningOnAPushRuleSyncsItsApp(t *testing.T) {
+	e := newEnv(t)
+	e.work()
+	inst, _ := e.target()
+	var c entityOut
+	e.call("POST", "/cards", map[string]any{"data": map[string]any{"name": "Brakka", "first_mes": "Hail.", "tags": []string{"wholesome"}}}, 201, &c)
+	var missing map[string]any
+	e.call("POST", "/rules", map[string]any{"name": "Nowhere", "saved_search_id": 1, "action": "push", "instance_id": 999999, "all_libraries": true, "enabled": false}, 404, &missing)
+	r := e.newRule("Wholesome", map[string]any{"tag": "wholesome"}, map[string]any{"action": "push", "instance_id": inst, "all_libraries": true, "enabled": false})
+	spec := r.RuleSpec
+	spec.Enabled = true
+	e.call("PUT", fmt.Sprintf("/rules/%d", r.ID), spec, 200, &r)
+	eventually(t, "pushed the matching card", func() bool {
+		var list []map[string]any
+		e.call("GET", fmt.Sprintf("/cards/%d/bindings", c.ID), nil, 200, &list)
+		return len(list) == 1
+	})
+	// The app breaking doesn't stop the owner turning the rule off.
+	if _, err := e.pool.Exec(context.Background(), `UPDATE plugin_instance SET broken_error = 'gone', broken_at = now() WHERE id = $1`, inst); err != nil {
+		t.Fatal(err)
+	}
+	spec.Enabled = false
+	e.call("PUT", fmt.Sprintf("/rules/%d", r.ID), spec, 200, &r)
+}

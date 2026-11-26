@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 import { api, must } from "../api/client";
-import { librariesQuery, rulesQuery } from "../api/queries";
+import { librariesQuery, rulesQuery, useInstancesWith } from "../api/queries";
 import type { components } from "../api/schema";
 import { count } from "../shell/count";
 import { RulePreview } from "./RulePreview";
@@ -12,18 +12,20 @@ export type Rule = components["schemas"]["RuleItem"];
 export type Spec = components["schemas"]["RuleSpec"];
 
 /** specOf is the part of a rule that PUT /rules/{id} takes. */
-export const specOf = ({ name, saved_search_id, action, collection_id, all_libraries, libraries, enabled }: Spec): Spec => ({
+export const specOf = ({ name, saved_search_id, action, collection_id, instance_id, all_libraries, libraries, enabled }: Spec): Spec => ({
   name,
   saved_search_id,
   action,
   collection_id,
+  instance_id,
   all_libraries,
   libraries,
   enabled,
 });
 
-/** actionLabel says what a rule does to the cards it matches. */
-export const actionLabel = (r: Spec) => (r.action === "collect" ? "Add to a collection" : "Archive");
+/** actionLabel says what a rule does to the cards it matches; appName names a push rule's app. */
+export const actionLabel = (r: Spec, appName: (id: number) => string) =>
+  r.action === "push" ? `Push to ${appName(r.instance_id!)}` : r.action === "collect" ? "Add to a collection" : "Archive";
 
 /** Rules lists the rules, and turns one on only after previewing what it would change. */
 export function Rules() {
@@ -32,6 +34,8 @@ export function Rules() {
   const libraries = useQuery(librariesQuery);
   const [previewing, setPreviewing] = useState<Rule>();
   const libraryName = (id: number) => libraries.data?.find((l) => l.id === id)?.name ?? `Library ${id}`;
+  const apps = useInstancesWith("push");
+  const appName = (id: number) => apps.find((a) => a.id === id)?.label ?? `App ${id}`;
   const save = useMutation({
     mutationFn: async (r: Rule) => must(await api.PUT("/rules/{id}", { params: { path: { id: r.id } }, body: specOf(r) })),
     onSuccess: (r) => {
@@ -45,6 +49,7 @@ export function Rules() {
       <p className="muted">
         A rule keeps a saved search's cards archived or in a collection, and gives back the ones that stop matching. It never
         gives back what you archived or collected by hand, and a card you unarchive or take out of the collection that still matches comes back at the next run.
+        A push rule pushes its cards to an app at each sync, and leaves a card's copy there when it stops matching.
       </p>
       <p>
         <Link className="button primary" to="/rules/new">
@@ -72,7 +77,7 @@ export function Rules() {
                   <Link to={`/rules/${r.id}`}>{r.name}</Link>
                 </td>
                 <td>{r.saved_search}</td>
-                <td>{actionLabel(r)}</td>
+                <td>{actionLabel(r, appName)}</td>
                 <td>{r.all_libraries ? "All libraries" : (r.libraries ?? []).map(libraryName).join(", ")}</td>
                 <td>{(r.affected ?? []).map((a) => `${libraryName(a.library)}: ${count(a.cards, "card")}`).join("; ") || "None"}</td>
                 <td>

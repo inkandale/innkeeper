@@ -199,6 +199,7 @@ starts from that search's conditions.
 | Archive | matching cards archived, with the rule as the reason | cards that stop matching, which the enrich sweep then sends to the plugins that haven't scored them |
 | Collect | matching cards in a collection of the one library it covers | cards it added that stop matching |
 | Push | matching cards on one target app: each sync creates a copy of a card the app doesn't have, and updates a copy that's behind and unchanged in the app | nothing: a card that stops matching keeps its copy, and a copy you delete in the app isn't made again |
+| Block | matching cards off one target app: every push of one there is refused, from a push rule, autosync, or by hand, and a block rule wins over a push rule | nothing: copies already in the app stay, and turning the rule off lets its cards be pushed again |
 
 A saved search can filter on anything the Cards page filters on, tags
 included, but not the search text. A rule never gives back what you did by
@@ -211,7 +212,7 @@ would change, library by library, and changes nothing until you confirm
 (`POST /rules/preview`). The hide job then applies it, and runs again
 whenever a rule or its saved search changes, and after imports and moves. A
 push rule applies at each sync instead, and turning one on or editing it
-queues a sync of its app. A rule's action, collection, and app can't change;
+queues a sync of its app. A block rule applies at each push. A rule's action, collection, and app can't change;
 make a new rule.
 
 Rules also apply to a card when an instance a rule reads answers it. A hand

@@ -5192,7 +5192,8 @@
             "enum": [
               "archive",
               "collect",
-              "push"
+              "push",
+              "block"
             ],
             "type": "string"
           },
@@ -5224,7 +5225,7 @@
             "type": "integer"
           },
           "instance_id": {
-            "description": "For push: the target instance matching cards are pushed to. A card that stops matching keeps its copy there. Can't change once the rule exists.",
+            "description": "For push: the target instance matching cards are pushed to. A card that stops matching keeps its copy there. For block: the instance matching cards are never pushed to, by anything; copies already there stay. Can't change once the rule exists.",
             "format": "int64",
             "type": "integer"
           },
@@ -5269,11 +5270,11 @@
         "properties": {
           "apply": {
             "$ref": "#/components/schemas/PreviewList",
-            "description": "Cards it would archive, add to the collection, or push to an instance that has no copy."
+            "description": "Cards it would archive, add to the collection, push to an instance that has no copy, or keep off an instance."
           },
           "give_back": {
             "$ref": "#/components/schemas/PreviewList",
-            "description": "Cards it would unarchive or take out of the collection. Always empty for push."
+            "description": "Cards it would unarchive or take out of the collection. Always empty for push and block."
           },
           "library": {
             "format": "int64",
@@ -5321,7 +5322,8 @@
             "enum": [
               "archive",
               "collect",
-              "push"
+              "push",
+              "block"
             ],
             "type": "string"
           },
@@ -5339,7 +5341,7 @@
             "type": "boolean"
           },
           "instance_id": {
-            "description": "For push: the target instance matching cards are pushed to. A card that stops matching keeps its copy there. Can't change once the rule exists.",
+            "description": "For push: the target instance matching cards are pushed to. A card that stops matching keeps its copy there. For block: the instance matching cards are never pushed to, by anything; copies already there stay. Can't change once the rule exists.",
             "format": "int64",
             "type": "integer"
           },
@@ -14025,7 +14027,7 @@
         ]
       },
       "put": {
-        "description": "Replaces the rule. Its action, collection, and instance can't change. The hide job reruns in every library it covered or covers, applying it and giving back the cards it no longer matches. A push rule that's on instead queues a sync of its instance, which pushes the cards it matches. A card it no longer matches keeps its copy.",
+        "description": "Replaces the rule. Its action, collection, and instance can't change. The hide job reruns in every library it covered or covers, applying it and giving back the cards it no longer matches. A push rule that's on instead queues a sync of its instance, which pushes the cards it matches. A card it no longer matches keeps its copy. A block rule that's on refuses every push of a card it matches to its instance.",
         "operationId": "update-rule",
         "parameters": [
           {

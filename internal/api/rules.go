@@ -51,8 +51,8 @@ type previewList struct {
 // rulePreview is what a rule would do in one library.
 type rulePreview struct {
 	Library  int64       `json:"library"`
-	Apply    previewList `json:"apply" doc:"Cards it would archive, add to the collection, or push to an instance that has no copy."`
-	GiveBack previewList `json:"give_back" doc:"Cards it would unarchive or take out of the collection. Always empty for push."`
+	Apply    previewList `json:"apply" doc:"Cards it would archive, add to the collection, push to an instance that has no copy, or keep off an instance."`
+	GiveBack previewList `json:"give_back" doc:"Cards it would unarchive or take out of the collection. Always empty for push and block."`
 }
 
 type rulePreviewOut struct{ Body []rulePreview }
@@ -150,7 +150,7 @@ func (s *Server) ruleItem(ctx context.Context, r library.Rule) (*ruleOut, error)
 	return &ruleOut{Body: items[0]}, nil
 }
 
-// checkPushRule refuses a push rule whose instance can't push.
+// checkPushRule refuses a push or block rule whose instance can't push.
 func (s *Server) checkPushRule(ctx context.Context, spec library.RuleSpec) error {
 	if spec.InstanceID == nil {
 		return nil
@@ -160,12 +160,12 @@ func (s *Server) checkPushRule(ctx context.Context, spec library.RuleSpec) error
 }
 
 // recheckRules reruns the hide job in every library an enabled one of rules
-// names, so their change is applied or undone there. Push rules are the
-// sync's, and give nothing back.
+// names, so their change is applied or undone there. Push and block rules
+// act on pushes, and give nothing back.
 func (s *Server) recheckRules(ctx context.Context, rules ...library.Rule) error {
 	var libs []int64
 	for _, r := range rules {
-		if !r.Enabled || r.Action == library.RulePush {
+		if !r.Enabled || r.OnInstance() {
 			continue
 		}
 		scope, err := s.Lib.RuleScope(ctx, r)
@@ -328,7 +328,7 @@ func (s *Server) ruleRoutes(api huma.API) {
 		Summary: "Change a rule", Tags: tags,
 		Description: "Replaces the rule. Its action, collection, and instance can't change. The hide job reruns in every library it covered or covers, " +
 			"applying it and giving back the cards it no longer matches. A push rule that's on instead queues a sync of its instance, " +
-			"which pushes the cards it matches. A card it no longer matches keeps its copy."},
+			"which pushes the cards it matches. A card it no longer matches keeps its copy. A block rule that's on refuses every push of a card it matches to its instance."},
 		func(ctx context.Context, in *updateRuleIn) (*ruleOut, error) {
 			before, after, err := s.Lib.UpdateRule(ctx, in.ID, in.Body)
 			if err != nil {

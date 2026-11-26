@@ -327,10 +327,32 @@ func TestPushRuleNeedsAnInstanceAndIsLeftToTheSync(t *testing.T) {
 	if in, err := lib.RulesIn(ctx, DefaultLibrary); err != nil || len(in) != 0 {
 		t.Fatalf("hide job rules = %+v, %v", in, err)
 	}
-	if push, err := lib.PushRules(ctx, instance); err != nil || len(push) != 1 || push[0].ID != r.ID {
+	if push, err := lib.RulesTo(ctx, RulePush, instance); err != nil || len(push) != 1 || push[0].ID != r.ID {
 		t.Fatalf("push rules = %+v, %v", push, err)
 	}
 	if gone, err := lib.RulesOfInstance(ctx, instance); err != nil || len(gone) != 1 {
 		t.Fatalf("rules of instance = %+v, %v", gone, err)
+	}
+}
+
+func TestBlockRuleNeedsAnInstanceAndIsLeftToThePushes(t *testing.T) {
+	lib := newLibrary(t)
+	ctx := context.Background()
+	spec := RuleSpec{Name: "Block nsfw", SavedSearchID: newSavedSearch(t, lib, "NSFW", Filter{Tag: new("nsfw")}),
+		Action: RuleBlock, AllLibraries: true}
+	if _, err := lib.CreateRule(ctx, spec); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("no instance: %v", err)
+	}
+	instance := int64(7)
+	spec.InstanceID = &instance
+	r := enableRule(t, lib, newRule(t, lib, spec))
+	if in, err := lib.RulesIn(ctx, DefaultLibrary); err != nil || len(in) != 0 {
+		t.Fatalf("hide job rules = %+v, %v", in, err)
+	}
+	if block, err := lib.RulesTo(ctx, RuleBlock, instance); err != nil || len(block) != 1 || block[0].ID != r.ID {
+		t.Fatalf("block rules = %+v, %v", block, err)
+	}
+	if push, err := lib.RulesTo(ctx, RulePush, instance); err != nil || len(push) != 0 {
+		t.Fatalf("push rules = %+v, %v", push, err)
 	}
 }

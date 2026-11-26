@@ -35,6 +35,8 @@ var (
 	// ErrUncertain means a create failed in a way that may have made the
 	// card in the app. Pushing again could make a duplicate.
 	ErrUncertain = errors.New("the app may have the card; check it before pushing again")
+	// ErrBlocked means an enabled block rule keeps the card off the instance.
+	ErrBlocked = errors.New("a block rule keeps this card off this app")
 )
 
 // Remote states: what the last check found in the app.

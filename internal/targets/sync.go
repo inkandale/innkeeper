@@ -239,6 +239,8 @@ func (s *Service) autosync(ctx context.Context, app *SyncApp, ruleCards []int64)
 		case errors.Is(err, ErrNewCopy):
 			// The app can't update its copy, and autosync never makes another.
 			app.Totals["autosync_skipped"]++
+		case errors.Is(err, ErrBlocked):
+			app.Totals["autosync_blocked"]++
 		default:
 			failed(d.binding, err)
 		}

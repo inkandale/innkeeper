@@ -1,6 +1,7 @@
 package targets
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,13 +12,19 @@ import (
 // pushRule adds a push rule to e's app for the cards tagged tag, enabled
 // unless off.
 func (e *env) pushRule(tag string, off bool) library.Rule {
+	return e.instanceRule(library.RulePush, tag, off)
+}
+
+// instanceRule adds a rule with action to e's app for the cards tagged tag,
+// enabled unless off.
+func (e *env) instanceRule(action, tag string, off bool) library.Rule {
 	e.t.Helper()
-	search, err := e.lib.CreateSavedSearch(e.ctx, "Tagged "+tag, library.Filter{Tag: &tag}, "")
+	search, err := e.lib.CreateSavedSearch(e.ctx, action+" "+tag, library.Filter{Tag: &tag}, "")
 	if err != nil {
 		e.t.Fatal(err)
 	}
-	r, err := e.lib.CreateRule(e.ctx, library.RuleSpec{Name: "Push " + tag, SavedSearchID: search.ID,
-		Action: library.RulePush, InstanceID: &e.inst, AllLibraries: true})
+	r, err := e.lib.CreateRule(e.ctx, library.RuleSpec{Name: action + " " + tag, SavedSearchID: search.ID,
+		Action: action, InstanceID: &e.inst, AllLibraries: true})
 	if err != nil {
 		e.t.Fatal(err)
 	}
@@ -145,5 +152,58 @@ func TestPushRuleWaitsForAnAppCopyInReview(t *testing.T) {
 	}
 	if b := e.bindings(e.card); len(b) != 0 {
 		t.Fatalf("pushed a second copy beside one in review: %+v", b)
+	}
+}
+
+func TestBlockRuleRefusesPush(t *testing.T) {
+	e := setup(t, nil)
+	e.tag(e.card, []string{"nsfw"}, nil)
+	e.instanceRule(library.RuleBlock, "nsfw", false)
+	if _, err := e.s.Push(e.ctx, library.Card, e.inst, e.card, false); !errors.Is(err, ErrBlocked) {
+		t.Fatalf("push = %v, want ErrBlocked", err)
+	}
+	if b := e.bindings(e.card); len(b) != 0 {
+		t.Fatalf("blocked card was pushed: %+v", b)
+	}
+	other := e.newCard("Carrow")
+	if _, err := e.s.Push(e.ctx, library.Card, e.inst, other, false); err != nil {
+		t.Fatalf("card the block rule doesn't match: %v", err)
+	}
+}
+
+func TestBlockRuleBeatsPushRule(t *testing.T) {
+	e := setup(t, nil)
+	e.tag(e.card, []string{"wholesome", "nsfw"}, nil)
+	e.pushRule("wholesome", false)
+	e.instanceRule(library.RuleBlock, "nsfw", false)
+	if app := e.syncApp(); app.Totals["rule_blocked"] != 1 || app.Totals["rule_pushed"] != 0 || app.Totals["rule_failed"] != 0 {
+		t.Fatalf("totals = %v", app.Totals)
+	}
+	if b := e.bindings(e.card); len(b) != 0 {
+		t.Fatalf("blocked card was pushed: %+v", b)
+	}
+}
+
+func TestBlockRuleStopsAutosyncAndKeepsTheCopy(t *testing.T) {
+	e := setup(t, nil)
+	e.tag(e.card, []string{"wholesome"}, nil)
+	e.pushRule("wholesome", false)
+	e.syncApp()
+	e.tag(e.card, []string{"nsfw"}, nil)
+	e.instanceRule(library.RuleBlock, "nsfw", false)
+	if app := e.syncApp(); app.Totals["autosync_blocked"] != 1 || app.Totals["autosync_pushed"] != 0 {
+		t.Fatalf("totals = %v", app.Totals)
+	}
+	if s := e.status(e.card); s != "ahead" {
+		t.Fatalf("card is %s, want its copy left in the app", s)
+	}
+}
+
+func TestDisabledBlockRuleAllowsPush(t *testing.T) {
+	e := setup(t, nil)
+	e.tag(e.card, []string{"nsfw"}, nil)
+	e.instanceRule(library.RuleBlock, "nsfw", true)
+	if _, err := e.s.Push(e.ctx, library.Card, e.inst, e.card, false); err != nil {
+		t.Fatal(err)
 	}
 }

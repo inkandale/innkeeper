@@ -272,6 +272,25 @@ test("a push rule names its app", async () => {
   );
 });
 
+test("a block rule names its app", async () => {
+  renderAt("/rules/new");
+  const user = userEvent.setup();
+  await screen.findByRole("option", { name: "never push it to" });
+  await user.selectOptions(screen.getByRole("combobox", { name: "Action" }), "block");
+  await user.selectOptions(screen.getByRole("combobox", { name: "App" }), "2");
+  await user.type(screen.getByRole("textbox", { name: "Rule name" }), "No NSFW");
+  await user.click(screen.getByRole("button", { name: "Add condition" }));
+  await user.selectOptions(screen.getByRole("combobox", { name: "Field 1" }), "shares_source");
+  await user.click(screen.getByRole("button", { name: "Save" }));
+  await waitFor(() =>
+    expect(calls.at(-1)).toEqual({
+      method: "POST",
+      path: "/api/rules",
+      body: { name: "No NSFW", saved_search_id: 4, action: "block", instance_id: 2, all_libraries: true, enabled: false },
+    }),
+  );
+});
+
 test("Add rule on the Rules page opens the builder", async () => {
   renderAt("/rules");
   await userEvent.click(await screen.findByRole("link", { name: "Add rule" }));

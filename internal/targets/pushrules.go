@@ -3,9 +3,11 @@ package targets
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"slices"
 
+	"github.com/inkandale/innkeeper/internal/library"
 	"github.com/inkandale/innkeeper/internal/libsettings"
 )
 
@@ -34,7 +36,12 @@ func (s *Service) pushRules(ctx context.Context, app *SyncApp, review []int64) (
 			app.Totals["rule_review"]++
 			continue
 		}
-		if _, err := s.push(ctx, cardKind, app.InstanceID, id, false, rand.Text(), nil); err != nil {
+		_, err := s.push(ctx, cardKind, app.InstanceID, id, false, rand.Text(), nil)
+		if errors.Is(err, ErrBlocked) {
+			app.Totals["rule_blocked"]++
+			continue
+		}
+		if err != nil {
 			failed(id, err)
 			continue
 		}
@@ -47,7 +54,7 @@ func (s *Service) pushRules(ctx context.Context, app *SyncApp, review []int64) (
 // pushRuleCards returns the cards instance's push rules would create there,
 // and every unarchived card they match.
 func (s *Service) pushRuleCards(ctx context.Context, instance int64) (create, matched []int64, err error) {
-	rules, err := s.lib.PushRules(ctx, instance)
+	rules, err := s.lib.RulesTo(ctx, library.RulePush, instance)
 	if err != nil || len(rules) == 0 {
 		return nil, nil, err
 	}
@@ -98,4 +105,34 @@ func reviewCandidates(snap Snapshot) []int64 {
 		}
 	}
 	return ids
+}
+
+// checkBlocked returns ErrBlocked, naming the rule, if an enabled block rule
+// to instance matches card.
+func (s *Service) checkBlocked(ctx context.Context, instance, card int64) error {
+	rules, err := s.lib.RulesTo(ctx, library.RuleBlock, instance)
+	if err != nil || len(rules) == 0 {
+		return err
+	}
+	libs, err := s.lib.CardLibraries(ctx, []int64{card})
+	if err != nil {
+		return err
+	}
+	browsable, err := libsettings.New(s.lib, s.reg).Browsable(ctx)
+	if err != nil {
+		return err
+	}
+	for _, r := range rules {
+		if !r.Covers(libs[card]) {
+			continue
+		}
+		m, err := s.lib.RuleMatches(ctx, libs[card], r.Filter, browsable, []int64{card})
+		if err != nil {
+			return fmt.Errorf("rule %q: %w", r.Name, err)
+		}
+		if len(m) > 0 {
+			return fmt.Errorf("%w: rule %q", ErrBlocked, r.Name)
+		}
+	}
+	return nil
 }

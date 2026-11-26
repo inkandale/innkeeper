@@ -17,15 +17,16 @@ const (
 	RuleArchive = "archive"
 	RuleCollect = "collect"
 	RulePush    = "push"
+	RuleBlock   = "block"
 )
 
 // RuleSpec is a rule as the owner writes it.
 type RuleSpec struct {
 	Name          string  `json:"name" minLength:"1"`
 	SavedSearchID int64   `json:"saved_search_id"`
-	Action        string  `json:"action" enum:"archive,collect,push" doc:"Can't change once the rule exists."`
+	Action        string  `json:"action" enum:"archive,collect,push,block" doc:"Can't change once the rule exists."`
 	CollectionID  *int64  `json:"collection_id,omitempty" doc:"For collect: the collection matching cards are kept in. The rule must cover that collection's library alone. Can't change once the rule exists."`
-	InstanceID    *int64  `json:"instance_id,omitempty" doc:"For push: the target instance matching cards are pushed to. A card that stops matching keeps its copy there. Can't change once the rule exists."`
+	InstanceID    *int64  `json:"instance_id,omitempty" doc:"For push: the target instance matching cards are pushed to. A card that stops matching keeps its copy there. For block: the instance matching cards are never pushed to, by anything; copies already there stay. Can't change once the rule exists."`
 	AllLibraries  bool    `json:"all_libraries" doc:"Covers every library, including ones made later; otherwise only libraries."`
 	Libraries     []int64 `json:"libraries,omitempty" doc:"With all_libraries false: the libraries it covers."`
 	Enabled       bool    `json:"enabled" doc:"Ignored on create; a new rule starts disabled."`
@@ -40,6 +41,9 @@ type Rule struct {
 	Filter Filter `json:"-"`
 }
 
+// OnInstance reports whether the spec's action is about one target instance.
+func (s RuleSpec) OnInstance() bool { return s.Action == RulePush || s.Action == RuleBlock }
+
 // Covers reports whether r applies in library.
 func (r Rule) Covers(library int64) bool {
 	return r.Enabled && (r.AllLibraries || slices.Contains(r.Libraries, library))
@@ -50,15 +54,15 @@ func (r Rule) Reason() string { return "rule:" + strconv.FormatInt(r.ID, 10) }
 
 // CheckRuleSpec refuses a spec whose action doesn't go with its collection
 // or instance, and a collect rule whose scope isn't its collection's library.
-// Whether a push rule's instance can push is the caller's to check.
+// Whether a push or block rule's instance can push is the caller's to check.
 func (l *Library) CheckRuleSpec(ctx context.Context, spec RuleSpec) error {
 	switch {
-	case !slices.Contains([]string{RuleArchive, RuleCollect, RulePush}, spec.Action):
-		return fmt.Errorf("%w: a rule's action is archive, collect, or push", ErrInvalid)
+	case !slices.Contains([]string{RuleArchive, RuleCollect, RulePush, RuleBlock}, spec.Action):
+		return fmt.Errorf("%w: a rule's action is archive, collect, push, or block", ErrInvalid)
 	case (spec.Action == RuleCollect) != (spec.CollectionID != nil):
 		return fmt.Errorf("%w: a collect rule needs a collection, and only a collect rule takes one", ErrInvalid)
-	case (spec.Action == RulePush) != (spec.InstanceID != nil):
-		return fmt.Errorf("%w: a push rule needs an instance, and only a push rule takes one", ErrInvalid)
+	case spec.OnInstance() != (spec.InstanceID != nil):
+		return fmt.Errorf("%w: a push or block rule needs an instance, and only those take one", ErrInvalid)
 	case spec.Action != RuleCollect:
 		return nil
 	}
@@ -198,19 +202,19 @@ func (l *Library) RulesOn(ctx context.Context, savedSearch int64) ([]Rule, error
 }
 
 // RulesOfInstance returns the rules that go when instance is deleted: those
-// on the saved searches it shipped, and those that push to it.
+// on the saved searches it shipped, and the push and block rules to it.
 func (l *Library) RulesOfInstance(ctx context.Context, instance int64) ([]Rule, error) {
 	return l.rulesWhere(ctx, `s.instance_id = $1 OR r.instance_id = $1`, instance)
 }
 
-// PushRules returns the enabled push rules to instance, oldest first.
-func (l *Library) PushRules(ctx context.Context, instance int64) ([]Rule, error) {
-	return l.rulesWhere(ctx, `r.enabled AND r.instance_id = $1`, instance)
+// RulesTo returns the enabled rules with action to instance, oldest first.
+func (l *Library) RulesTo(ctx context.Context, action string, instance int64) ([]Rule, error) {
+	return l.rulesWhere(ctx, `r.enabled AND r.action = $1 AND r.instance_id = $2`, action, instance)
 }
 
 // RulesIn returns the rules the hide job applies in library, oldest first:
 // those that cover it, and those that collected cards there before they
-// stopped covering it. Push rules are the sync's, so they're left out.
+// stopped covering it. Push and block rules are the pushes', so they're left out.
 func (l *Library) RulesIn(ctx context.Context, library int64) ([]Rule, error) {
 	all, err := l.Rules(ctx)
 	if err != nil {
@@ -226,7 +230,7 @@ func (l *Library) RulesIn(ctx context.Context, library int64) ([]Rule, error) {
 		return nil, err
 	}
 	return slices.DeleteFunc(all, func(r Rule) bool {
-		return r.Action == RulePush || !r.Covers(library) && !slices.Contains(applied, r.ID)
+		return r.OnInstance() || !r.Covers(library) && !slices.Contains(applied, r.ID)
 	}), nil
 }
 
@@ -322,6 +326,9 @@ func (l *Library) RuleChanges(ctx context.Context, r Rule, library int64, matche
 		// deleted. A card that stops matching keeps its copy: nothing to give back.
 		add, err = ids(`SELECT id FROM card c WHERE id = ANY($1) AND archived_at IS NULL
 			AND NOT EXISTS (SELECT 1 FROM binding b WHERE b.card_id = c.id AND b.instance_id = $2) ORDER BY id`, matches, *r.InstanceID)
+	case RuleBlock:
+		// The cards it keeps off the instance.
+		add, err = ids(`SELECT id FROM card WHERE id = ANY($1) AND archived_at IS NULL ORDER BY id`, matches)
 	default:
 		return nil, nil, fmt.Errorf("%w: rule %d has action %q", ErrInvalid, r.ID, r.Action)
 	}

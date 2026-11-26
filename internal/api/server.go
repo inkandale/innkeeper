@@ -370,7 +370,7 @@ func (s *Server) failAs(who string, err error) error {
 		errors.Is(err, library.ErrVariantCycle),
 		errors.Is(err, library.ErrNoVectorInstance), errors.Is(err, library.ErrNoVectors),
 		errors.Is(err, plugins.ErrNameTaken), errors.Is(err, plugins.ErrNeedsName), errors.Is(err, plugins.ErrSingleton), errors.Is(err, jobs.ErrFinished), errors.Is(err, jobs.ErrNotRetryable), errors.Is(err, plugins.ErrInUse), errors.Is(err, plugins.ErrLastLogin), errors.Is(err, plugins.ErrSourceInUse),
-		errors.Is(err, targets.ErrNewCopy),
+		errors.Is(err, targets.ErrNewCopy), errors.Is(err, targets.ErrBlocked),
 		errors.Is(err, targets.ErrBound):
 		return huma.Error409Conflict(err.Error())
 	case errors.Is(err, plugins.ErrDisabled):

@@ -7,7 +7,7 @@ import { count } from "../shell/count";
 import { useModal } from "../shell/useModal";
 import type { Spec } from "./Rules";
 
-const verbs = { archive: ["archive", "unarchive"], collect: ["add to the collection", "take out of the collection"], push: ["push", ""] } as const;
+const verbs = { archive: ["archive", "unarchive"], collect: ["add to the collection", "take out of the collection"], push: ["push", ""], block: ["keep off the app", ""] } as const;
 
 type Filter = components["schemas"]["Filter"];
 type Props = { id?: number; spec: Spec; filter?: Filter; confirmLabel: string; onConfirm: () => void; onClose: () => void };
@@ -33,7 +33,7 @@ export function RulePreview({ id, spec, filter, confirmLabel, onConfirm, onClose
           <h3>{libraries.data?.find((l) => l.id === p.library)?.name ?? `Library ${p.library}`}</h3>
           <p>
             It would {apply} {count(p.apply.total, "card")}
-            {giveBack ? ` and ${giveBack} ${count(p.give_back.total, "card")}` : " the app has no copy of yet"}.
+            {giveBack ? ` and ${giveBack} ${count(p.give_back.total, "card")}` : spec.action === "push" ? " the app has no copy of yet" : ""}.
           </p>
           {(p.apply.hits ?? []).length > 0 && <p className="muted">To {apply}: {names(p.apply)}</p>}
           {(p.give_back.hits ?? []).length > 0 && <p className="muted">To {giveBack}: {names(p.give_back)}</p>}

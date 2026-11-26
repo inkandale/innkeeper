@@ -104,7 +104,8 @@ function Builder({ id, initial, search, fields, library }: Props) {
   const incomplete = !readOnly && (conditions.length === 0 || conditions.some((c) => !complete(c, byId.get(c.field))));
   const noLibrary = !spec.all_libraries && !spec.libraries?.length;
   const noCollection = spec.action === "collect" && !spec.collection_id;
-  const noInstance = spec.action === "push" && !spec.instance_id;
+  const onApp = spec.action === "push" || spec.action === "block";
+  const noInstance = onApp && !spec.instance_id;
   const blocked = !spec.name.trim() || incomplete || noLibrary || noCollection || noInstance;
 
   const leave = () => {
@@ -265,8 +266,9 @@ function Builder({ id, initial, search, fields, library }: Props) {
             <option value="archive">archive it</option>
             <option value="collect">add it to</option>
             {pushTargets.length > 0 && <option value="push">push it to</option>}
+            {pushTargets.length > 0 && <option value="block">never push it to</option>}
           </select>
-          {spec.action === "push" && (
+          {onApp && (
             <>
               {" "}
               <select className="input" aria-label="App" value={spec.instance_id ?? ""} disabled={fixed} onChange={(e) => set({ instance_id: Number(e.target.value) || undefined })}>
@@ -298,6 +300,9 @@ function Builder({ id, initial, search, fields, library }: Props) {
         {noInstance && <p className="muted">Pick an app.</p>}
         {spec.action === "push" && (
           <p className="muted">Each sync pushes the matching cards and replaces their copies in the app. A card that stops matching keeps its copy there.</p>
+        )}
+        {spec.action === "block" && (
+          <p className="muted">Nothing pushes a matching card to the app: not a push rule, autosync, or you. Copies already there stay.</p>
         )}
         {collections.error && <p className="error">{collections.error.message}</p>}
 
@@ -339,6 +344,8 @@ function Builder({ id, initial, search, fields, library }: Props) {
                   body:
                     initial.action === "push" ? (
                       <p>The copies it pushed stay in the app.</p>
+                    ) : initial.action === "block" ? (
+                      <p>Its cards can be pushed to the app again.</p>
                     ) : (
                       <p>Its archived cards come back, and the cards it collected leave the collection.</p>
                     ),

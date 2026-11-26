@@ -23,9 +23,9 @@ export const specOf = ({ name, saved_search_id, action, collection_id, instance_
   enabled,
 });
 
-/** actionLabel says what a rule does to the cards it matches; appName names a push rule's app. */
+/** actionLabel says what a rule does to the cards it matches; appName names a push or block rule's app. */
 export const actionLabel = (r: Spec, appName: (id: number) => string) =>
-  r.action === "push" ? `Push to ${appName(r.instance_id!)}` : r.action === "collect" ? "Add to a collection" : "Archive";
+  ({ push: `Push to ${appName(r.instance_id!)}`, block: `Never push to ${appName(r.instance_id!)}`, collect: "Add to a collection", archive: "Archive" })[r.action];
 
 /** Rules lists the rules, and turns one on only after previewing what it would change. */
 export function Rules() {
@@ -49,7 +49,8 @@ export function Rules() {
       <p className="muted">
         A rule keeps a saved search's cards archived or in a collection, and gives back the ones that stop matching. It never
         gives back what you archived or collected by hand, and a card you unarchive or take out of the collection that still matches comes back at the next run.
-        A push rule pushes its cards to an app at each sync, and leaves a card's copy there when it stops matching.
+        A push rule pushes its cards to an app at each sync, and leaves a card's copy there when it stops matching. A block rule
+        keeps its cards from being pushed to an app at all, and wins over a push rule.
       </p>
       <p>
         <Link className="button primary" to="/rules/new">

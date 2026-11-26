@@ -2543,7 +2543,7 @@ export interface paths {
         get: operations["get-rule"];
         /**
          * Change a rule
-         * @description Replaces the rule. Its action, collection, and instance can't change. The hide job reruns in every library it covered or covers, applying it and giving back the cards it no longer matches. A push rule that's on instead queues a sync of its instance, which pushes the cards it matches. A card it no longer matches keeps its copy.
+         * @description Replaces the rule. Its action, collection, and instance can't change. The hide job reruns in every library it covered or covers, applying it and giving back the cards it no longer matches. A push rule that's on instead queues a sync of its instance, which pushes the cards it matches. A card it no longer matches keeps its copy. A block rule that's on refuses every push of a card it matches to its instance.
          */
         put: operations["update-rule"];
         post?: never;
@@ -4738,7 +4738,7 @@ export interface components {
              * @description Can't change once the rule exists.
              * @enum {string}
              */
-            action: "archive" | "collect" | "push";
+            action: "archive" | "collect" | "push" | "block";
             /** @description How many cards it has archived or collected, by library. */
             affected: components["schemas"]["RuleCount"][] | null;
             /** @description Covers every library, including ones made later; otherwise only libraries. */
@@ -4754,7 +4754,7 @@ export interface components {
             id: number;
             /**
              * Format: int64
-             * @description For push: the target instance matching cards are pushed to. A card that stops matching keeps its copy there. Can't change once the rule exists.
+             * @description For push: the target instance matching cards are pushed to. A card that stops matching keeps its copy there. For block: the instance matching cards are never pushed to, by anything; copies already there stay. Can't change once the rule exists.
              */
             instance_id?: number;
             /** @description With all_libraries false: the libraries it covers. */
@@ -4766,9 +4766,9 @@ export interface components {
             saved_search_id: number;
         };
         RulePreview: {
-            /** @description Cards it would archive, add to the collection, or push to an instance that has no copy. */
+            /** @description Cards it would archive, add to the collection, push to an instance that has no copy, or keep off an instance. */
             apply: components["schemas"]["PreviewList"];
-            /** @description Cards it would unarchive or take out of the collection. Always empty for push. */
+            /** @description Cards it would unarchive or take out of the collection. Always empty for push and block. */
             give_back: components["schemas"]["PreviewList"];
             /** Format: int64 */
             library: number;
@@ -4789,7 +4789,7 @@ export interface components {
              * @description Can't change once the rule exists.
              * @enum {string}
              */
-            action: "archive" | "collect" | "push";
+            action: "archive" | "collect" | "push" | "block";
             /** @description Covers every library, including ones made later; otherwise only libraries. */
             all_libraries: boolean;
             /**
@@ -4801,7 +4801,7 @@ export interface components {
             enabled: boolean;
             /**
              * Format: int64
-             * @description For push: the target instance matching cards are pushed to. A card that stops matching keeps its copy there. Can't change once the rule exists.
+             * @description For push: the target instance matching cards are pushed to. A card that stops matching keeps its copy there. For block: the instance matching cards are never pushed to, by anything; copies already there stay. Can't change once the rule exists.
              */
             instance_id?: number;
             /** @description With all_libraries false: the libraries it covers. */

@@ -35,6 +35,7 @@ export function RulePreview({ id, spec, filter, confirmLabel, onConfirm, onClose
             It would {apply} {count(p.apply.total, "card")}
             {giveBack ? ` and ${giveBack} ${count(p.give_back.total, "card")}` : spec.action === "push" ? " the app has no copy of yet" : ""}.
           </p>
+          {p.blocked > 0 && <p>{count(p.blocked, "card")} blocked by rules won't be pushed.</p>}
           {(p.apply.hits ?? []).length > 0 && <p className="muted">To {apply}: {names(p.apply)}</p>}
           {(p.give_back.hits ?? []).length > 0 && <p className="muted">To {giveBack}: {names(p.give_back)}</p>}
         </section>

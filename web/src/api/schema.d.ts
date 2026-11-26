@@ -3013,6 +3013,8 @@ export interface components {
             /** Format: int64 */
             ahead: number;
             /** Format: int64 */
+            blocked: number;
+            /** Format: int64 */
             cant_check: number;
             confirm: string;
             /** Format: int64 */
@@ -4768,6 +4770,11 @@ export interface components {
         RulePreview: {
             /** @description Cards it would archive, add to the collection, push to an instance that has no copy, or keep off an instance. */
             apply: components["schemas"]["PreviewList"];
+            /**
+             * Format: int64
+             * @description For push: matching cards a block rule keeps off the app, which apply leaves out.
+             */
+            blocked: number;
             /** @description Cards it would unarchive or take out of the collection. Always empty for push and block. */
             give_back: components["schemas"]["PreviewList"];
             /** Format: int64 */

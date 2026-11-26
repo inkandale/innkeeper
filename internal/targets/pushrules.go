@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/inkandale/innkeeper/internal/library"
@@ -110,29 +111,55 @@ func reviewCandidates(snap Snapshot) []int64 {
 // checkBlocked returns ErrBlocked, naming the rule, if an enabled block rule
 // to instance matches card.
 func (s *Service) checkBlocked(ctx context.Context, instance, card int64) error {
-	rules, err := s.lib.RulesTo(ctx, library.RuleBlock, instance)
-	if err != nil || len(rules) == 0 {
+	by, err := s.blockedBy(ctx, instance, []int64{card})
+	if err != nil || by[card] == "" {
 		return err
 	}
-	libs, err := s.lib.CardLibraries(ctx, []int64{card})
+	return fmt.Errorf("%w: rule %q", ErrBlocked, by[card])
+}
+
+// Blocked returns, in ID order, the cards an enabled block rule keeps off
+// instance.
+func (s *Service) Blocked(ctx context.Context, instance int64, cards []int64) ([]int64, error) {
+	by, err := s.blockedBy(ctx, instance, cards)
+	return slices.Sorted(maps.Keys(by)), err
+}
+
+// blockedBy maps each of cards an enabled block rule to instance matches to
+// the first such rule's name.
+func (s *Service) blockedBy(ctx context.Context, instance int64, cards []int64) (map[int64]string, error) {
+	by := map[int64]string{}
+	rules, err := s.lib.RulesTo(ctx, library.RuleBlock, instance)
+	if err != nil || len(rules) == 0 || len(cards) == 0 {
+		return by, err
+	}
+	libOf, err := s.lib.CardLibraries(ctx, cards)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	inLib := map[int64][]int64{}
+	for card, lib := range libOf {
+		inLib[lib] = append(inLib[lib], card)
 	}
 	browsable, err := libsettings.New(s.lib, s.reg).Browsable(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for _, r := range rules {
-		if !r.Covers(libs[card]) {
-			continue
-		}
-		m, err := s.lib.RuleMatches(ctx, libs[card], r.Filter, browsable, []int64{card})
-		if err != nil {
-			return fmt.Errorf("rule %q: %w", r.Name, err)
-		}
-		if len(m) > 0 {
-			return fmt.Errorf("%w: rule %q", ErrBlocked, r.Name)
+		for lib, among := range inLib {
+			if !r.Covers(lib) {
+				continue
+			}
+			m, err := s.lib.RuleMatches(ctx, lib, r.Filter, browsable, among)
+			if err != nil {
+				return nil, fmt.Errorf("rule %q: %w", r.Name, err)
+			}
+			for _, id := range m {
+				if by[id] == "" {
+					by[id] = r.Name
+				}
+			}
 		}
 	}
-	return nil
+	return by, nil
 }

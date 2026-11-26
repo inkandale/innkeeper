@@ -33,7 +33,7 @@ func (e *StalePreviewError) Error() string {
 // PreviewBulkPush counts how the cards or lorebooks stand on the target, for
 // the owner to confirm a query push.
 func (s *Service) PreviewBulkPush(ctx context.Context, k *library.Kind, instanceID int64, ids []int64) (BulkPreview, error) {
-	p, _, err := s.bulkPreview(ctx, targetKind(k), instanceID, ids)
+	p, _, _, err := s.bulkPreview(ctx, targetKind(k), instanceID, ids)
 	return p, err
 }
 
@@ -50,19 +50,28 @@ type bulkTarget struct {
 	lastPush int64
 }
 
-// bulkPreview returns the preview and the bound entities by ID.
-func (s *Service) bulkPreview(ctx context.Context, k kind, instanceID int64, ids []int64) (BulkPreview, map[int64]bulkTarget, error) {
+// bulkPreview returns the preview, the bound entities by ID, and the IDs
+// to push: ids less the cards a block rule keeps off the app.
+func (s *Service) bulkPreview(ctx context.Context, k kind, instanceID int64, ids []int64) (BulkPreview, map[int64]bulkTarget, []int64, error) {
 	ids = slices.Clone(ids)
 	slices.Sort(ids)
 	ids = slices.Compact(ids)
+	p := BulkPreview{Total: len(ids)}
+	if !k.isLorebook() {
+		blocked, err := s.Blocked(ctx, instanceID, ids)
+		if err != nil {
+			return BulkPreview{}, nil, nil, err
+		}
+		p.Blocked = len(blocked)
+		ids = slices.DeleteFunc(ids, func(id int64) bool { _, found := slices.BinarySearch(blocked, id); return found })
+	}
 	rows, err := s.pool.Query(ctx, `SELECT b.`+k.FK+`, b.version, b.remote_state, b.accepted_hash, b.seen_data, s.status,
 			(SELECT max(id) FROM push WHERE binding_id = b.id)
 		FROM binding b JOIN binding_status s ON s.binding_id = b.id
 		WHERE b.instance_id = $1 AND b.`+k.FK+` = ANY($2) ORDER BY b.`+k.FK, instanceID, ids)
 	if err != nil {
-		return BulkPreview{}, nil, err
+		return BulkPreview{}, nil, nil, err
 	}
-	p := BulkPreview{Total: len(ids)}
 	bound := map[int64]bulkTarget{}
 	var list []bulkTarget
 	var t bulkTarget
@@ -96,14 +105,14 @@ func (s *Service) bulkPreview(ctx context.Context, k kind, instanceID int64, ids
 		list = append(list, t)
 		return nil
 	}); err != nil {
-		return BulkPreview{}, nil, err
+		return BulkPreview{}, nil, nil, err
 	}
 	p.New += len(ids) - len(bound)
 	raw, err := json.Marshal(map[string]any{"instance": instanceID, "kind": k.Name, "ids": ids, "bound": list})
 	if err != nil {
-		return BulkPreview{}, nil, err
+		return BulkPreview{}, nil, nil, err
 	}
 	sum := sha256.Sum256(raw)
 	p.Confirm = hex.EncodeToString(sum[:])
-	return p, bound, nil
+	return p, bound, ids, nil
 }

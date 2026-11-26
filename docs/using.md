@@ -212,7 +212,8 @@ would change, library by library, and changes nothing until you confirm
 (`POST /rules/preview`). The hide job then applies it, and runs again
 whenever a rule or its saved search changes, and after imports and moves. A
 push rule applies at each sync instead, and turning one on or editing it
-queues a sync of its app. A block rule applies at each push. A rule's action, collection, and app can't change;
+queues a sync of its app; its preview counts the matching cards a block
+rule keeps off the app as `blocked`. A block rule applies at each push. A rule's action, collection, and app can't change;
 make a new rule.
 
 Rules also apply to a card when an instance a rule reads answers it. A hand
@@ -325,7 +326,8 @@ shows what the push would do. `ink sync push` shows it too, and sends its
 A query push has its own preview, `POST /pushes/preview`, which takes the
 `instance_id`, `query`, and `kind` of `POST /pushes`. It counts the matching cards that are `new`, `ahead`,
 `in_sync`, `cant_check`, or `drifted` on the target, as of their last check,
-and returns a `confirm`. `ink sync push` with a query and the web's bulk push
+and returns a `confirm`. Cards a block rule keeps off the target count as
+`blocked` instead, and the push skips them. `ink sync push` with a query and the web's bulk push
 both ask from it and send its `confirm`:
 
 - If a new preview would differ, because the matching cards changed or a

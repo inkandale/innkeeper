@@ -549,6 +549,10 @@
             "format": "int64",
             "type": "integer"
           },
+          "blocked": {
+            "format": "int64",
+            "type": "integer"
+          },
           "cant_check": {
             "format": "int64",
             "type": "integer"
@@ -580,6 +584,7 @@
           "in_sync",
           "cant_check",
           "drifted",
+          "blocked",
           "confirm"
         ],
         "type": "object"
@@ -5272,6 +5277,11 @@
             "$ref": "#/components/schemas/PreviewList",
             "description": "Cards it would archive, add to the collection, push to an instance that has no copy, or keep off an instance."
           },
+          "blocked": {
+            "description": "For push: matching cards a block rule keeps off the app, which apply leaves out.",
+            "format": "int64",
+            "type": "integer"
+          },
           "give_back": {
             "$ref": "#/components/schemas/PreviewList",
             "description": "Cards it would unarchive or take out of the collection. Always empty for push and block."
@@ -5284,7 +5294,8 @@
         "required": [
           "library",
           "apply",
-          "give_back"
+          "give_back",
+          "blocked"
         ],
         "type": "object"
       },

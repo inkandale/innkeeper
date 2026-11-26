@@ -268,6 +268,7 @@ export function pushSummary(c: BulkPreview): string {
     [c.in_sync, "in sync"],
     [c.cant_check, "can't check"],
     [c.drifted, "drifted (pushing overwrites their app edits)"],
+    [c.blocked, "blocked by rules (not pushed)"],
   ];
   return parts
     .filter(([n]) => n > 0)

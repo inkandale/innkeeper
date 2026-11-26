@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/inkandale/innkeeper/internal/bulk"
 	"github.com/inkandale/innkeeper/internal/jobs"
@@ -58,13 +57,10 @@ func (s *Service) EnqueuePush(ctx context.Context, q *jobs.Queue, k *library.Kin
 // preview would differ now, and each push may replace the app copy the
 // preview counted. Without it, each may replace only a copy unchanged since
 // its last push or resolve. A push whose app copy differs fails with
-// ErrAppChanged.
+// ErrAppChanged. Cards a block rule keeps off the app are left out.
 func (s *Service) EnqueueBulkPush(ctx context.Context, q *jobs.Queue, lk *library.Kind, instanceID int64, ids []int64, newCopy bool, confirm string) (jobs.Job, error) {
 	k := targetKind(lk)
-	ids = slices.Clone(ids)
-	slices.Sort(ids)
-	ids = slices.Compact(ids)
-	preview, bound, err := s.bulkPreview(ctx, k, instanceID, ids)
+	preview, bound, ids, err := s.bulkPreview(ctx, k, instanceID, ids)
 	if err != nil {
 		return jobs.Job{}, err
 	}

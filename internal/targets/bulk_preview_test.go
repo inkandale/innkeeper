@@ -165,3 +165,30 @@ func TestBulkPushAfterAnotherPush(t *testing.T) {
 		t.Fatalf("app first_mes = %v", got)
 	}
 }
+
+func TestBulkPushSkipsBlockedCards(t *testing.T) {
+	e := setup(t, nil)
+	other := e.newCard("Carrow")
+	e.tag(e.card, []string{"nsfw"}, nil)
+	e.instanceRule(library.RuleBlock, "nsfw", false)
+	q := jobs.New(e.pool)
+	ids := []int64{e.card, other}
+	p, err := e.s.PreviewBulkPush(e.ctx, library.Card, e.inst, ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Total != 2 || p.Blocked != 1 || p.New != 1 {
+		t.Fatalf("preview = %+v", p)
+	}
+	parent, err := e.s.EnqueueBulkPush(e.ctx, q, library.Card, e.inst, ids, false, p.Confirm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j := e.startWorker(q)(parent.ID); j.Status != jobs.StatusSucceeded {
+		t.Fatalf("bulk push %s, want succeeded", j.Status)
+	}
+	if b := e.bindings(e.card); len(b) != 0 {
+		t.Fatalf("blocked card was pushed: %+v", b)
+	}
+	e.binding(other)
+}

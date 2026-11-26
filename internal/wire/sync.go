@@ -104,6 +104,9 @@ type BulkPreview struct {
 	CantCheck int `json:"cant_check"`
 	// Drifted were changed in the app; the push overwrites those changes.
 	Drifted int `json:"drifted"`
+	// Blocked are cards a block rule keeps off the app; the push skips them,
+	// and the other counts leave them out.
+	Blocked int `json:"blocked"`
 	// Confirm identifies this preview. A push that sends it is refused if a
 	// new preview would differ, and replaces only the app copies it counted.
 	Confirm string `json:"confirm"`

@@ -340,3 +340,20 @@ func TestTurningOnAPushRuleSyncsItsApp(t *testing.T) {
 	spec.Enabled = false
 	e.call("PUT", fmt.Sprintf("/rules/%d", r.ID), spec, 200, &r)
 }
+
+func TestPushRulePreviewCountsBlockedCards(t *testing.T) {
+	e := newEnv(t)
+	inst, _ := e.target()
+	e.call("POST", "/cards", map[string]any{"data": map[string]any{"name": "Brakka", "tags": []string{"wholesome", "nsfw"}}}, 201, nil)
+	e.call("POST", "/cards", map[string]any{"data": map[string]any{"name": "Carrow", "tags": []string{"wholesome"}}}, 201, nil)
+	block := e.newRule("No NSFW", map[string]any{"tag": "nsfw"}, map[string]any{"action": "block", "instance_id": inst, "all_libraries": true, "enabled": false})
+	spec := block.RuleSpec
+	spec.Enabled = true
+	e.call("PUT", fmt.Sprintf("/rules/%d", block.ID), spec, 200, nil)
+	push := e.newRule("Wholesome", map[string]any{"tag": "wholesome"}, map[string]any{"action": "push", "instance_id": inst, "all_libraries": true, "enabled": false})
+	var out []rulePreview
+	e.call("POST", "/rules/preview", map[string]any{"id": push.ID, "rule": push.RuleSpec}, 200, &out)
+	if len(out) != 1 || out[0].Apply.Total != 1 || out[0].Blocked != 1 {
+		t.Fatalf("preview = %+v", out)
+	}
+}

@@ -53,6 +53,7 @@ type rulePreview struct {
 	Library  int64       `json:"library"`
 	Apply    previewList `json:"apply" doc:"Cards it would archive, add to the collection, push to an instance that has no copy, or keep off an instance."`
 	GiveBack previewList `json:"give_back" doc:"Cards it would unarchive or take out of the collection. Always empty for push and block."`
+	Blocked  int         `json:"blocked" doc:"For push: matching cards a block rule keeps off the app, which apply leaves out."`
 }
 
 type rulePreviewOut struct{ Body []rulePreview }
@@ -289,6 +290,14 @@ func (s *Server) ruleRoutes(api huma.API) {
 					return nil, s.fail(err)
 				}
 				p := rulePreview{Library: lib}
+				if r.Action == library.RulePush {
+					blocked, err := s.Targets.Blocked(ctx, *r.InstanceID, add)
+					if err != nil {
+						return nil, s.fail(err)
+					}
+					p.Blocked = len(blocked)
+					add = slices.DeleteFunc(add, func(id int64) bool { _, found := slices.BinarySearch(blocked, id); return found })
+				}
 				if p.Apply, err = s.previewList(ctx, lib, add, page); err != nil {
 					return nil, s.fail(err)
 				}

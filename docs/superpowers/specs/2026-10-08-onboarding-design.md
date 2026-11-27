@@ -200,4 +200,4 @@ stays in Settings.
 - **Web:** the claim page; the wizard's steps, skipping, and the redirect
   while `onboarding_done` is unset.
 - **End to end:** a fresh `docker compose up`, claim with the logged code,
-  install lumiverse, import. The env var path against innkeeper.pureroot.com.
+  install lumiverse, import. The env var path against a live deployment.

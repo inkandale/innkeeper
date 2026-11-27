@@ -19,7 +19,7 @@ services:
       retries: 30
 
   api:
-    image: ghcr.io/inkandale/innkeeper:1.0.0 # x-release-please-version
+    image: ghcr.io/inkandale/innkeeper:1.1.0 # x-release-please-version
     command: ["serve"]
     environment:
       INNKEEPER_DATABASE_URL: postgres://innkeeper:innkeeper@db:5432/innkeeper?sslmode=disable

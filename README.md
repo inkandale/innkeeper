@@ -57,3 +57,9 @@ If an app runs on the same machine as Innkeeper, give its address as
   connecting Claude, and access tiers.
 - [Plugin protocol](docs/protocol.md): for writing plugins.
 - [Contributing](CONTRIBUTING.md): working on Innkeeper itself.
+
+## License
+
+Innkeeper is licensed under the [GNU AGPL v3.0 or later](LICENSE). The
+[`protocol`](protocol) package, which plugins import, is
+[MIT](protocol/LICENSE), so plugins can use any license.

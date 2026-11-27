@@ -178,6 +178,27 @@ ink plugins sources add mine https://example.com/index.toml
 database, which come back if you install it again. To delete those too, run
 `ink plugins purge <name>` afterwards. That can't be undone.
 
+## Upgrading
+
+1. Back up both types; see [Backing up now](#backing-up-now-and-downloading).
+2. With Compose, set the new version in `compose.yaml`'s image tag, or
+   download that release's `compose.yaml`, then:
+
+   ```bash
+   docker compose pull && docker compose up -d
+   ```
+
+   With the chart:
+
+   ```bash
+   helm upgrade innkeeper oci://ghcr.io/inkandale/charts/innkeeper --version <version> --reuse-values
+   ```
+
+Innkeeper migrates the database when it starts. An upgrade can't be undone in
+place: an older version refuses to start against a database a newer one
+migrated. To go back, run the older version against an empty database and
+restore a backup made before the upgrade.
+
 ## Backup and restore
 
 Innkeeper backs up two types separately, each with its own schedule and
@@ -263,7 +284,9 @@ left behind when a restore job is cancelled before it runs.
 Replacing config deletes the existing plugin instances, so queued and
 finished jobs that named one lose the link: their `instance_id` becomes null.
 
-A backup restores only into the Innkeeper version that made it. A plugin
+A backup restores only into the Innkeeper version that made it, and the error
+names that version. To restore an older backup after an upgrade, run that
+version against an empty database, restore, then upgrade again. A plugin
 database restores only where that plugin is installed with a database; others
 are skipped and reported.
 

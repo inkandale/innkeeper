@@ -53,6 +53,8 @@ TypeScript (`web/src`). Setup and tests are in [CONTRIBUTING.md](CONTRIBUTING.md
   the report names. Grep all callers first.
 - The API schema is generated: edit Go, then run `npm run gen` in `web/`.
   Never hand-edit `web/openapi.json` or `web/src/api/schema.d.ts`.
+- Released migrations in `internal/db/migrations` are append-only. A
+  database that already ran one never sees an edit to it; add a new one.
 
 ## Clean code
 

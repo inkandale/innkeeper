@@ -103,6 +103,7 @@ func TestWriteAssets(t *testing.T) {
 	pool, lib, o := setup(t)
 	ctx := context.Background()
 	avatar, unused := seed(t, lib)
+	o.Version = "1.2.3"
 
 	info, err := Write(ctx, pool, Assets, o)
 	if err != nil {
@@ -114,7 +115,7 @@ func TestWriteAssets(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT max(name) FROM schema_migration`).Scan(&schema); err != nil {
 		t.Fatal(err)
 	}
-	if m.Format != 1 || m.Type != Assets || m.Schema != schema || m.SecretsCheck != "" || len(m.PluginSchemas) != 0 {
+	if m.Format != 1 || m.Type != Assets || m.Schema != schema || m.Version != "1.2.3" || m.SecretsCheck != "" || len(m.PluginSchemas) != 0 {
 		t.Fatalf("manifest = %+v", m)
 	}
 	if !slices.Equal(m.Blobs, []string{avatar}) {

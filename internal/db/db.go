@@ -4,6 +4,7 @@ package db
 import (
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"path"
@@ -13,6 +14,10 @@ import (
 
 //go:embed migrations/*.sql
 var migrations embed.FS
+
+// ErrNewerSchema means a newer Innkeeper has migrated the database, so this
+// one would run against a schema it doesn't know.
+var ErrNewerSchema = errors.New("the database was migrated by a newer Innkeeper; run that version or a later one")
 
 // Migrate applies every migration not yet recorded in schema_migration, in
 // file name order, in one transaction.
@@ -39,6 +44,15 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 		applied_at timestamptz NOT NULL DEFAULT now()
 	)`); err != nil {
 		return err
+	}
+	// Only names after the newest file count: a renamed old migration can
+	// leave a stale lower name behind.
+	var newer string
+	if err := tx.QueryRow(ctx, `SELECT coalesce(max(name), '') FROM schema_migration WHERE name > $1`, path.Base(files[len(files)-1])).Scan(&newer); err != nil {
+		return err
+	}
+	if newer != "" {
+		return fmt.Errorf("%w (it has migration %s)", ErrNewerSchema, newer)
 	}
 	for _, f := range files {
 		name := path.Base(f)

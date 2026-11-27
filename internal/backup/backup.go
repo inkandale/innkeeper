@@ -50,8 +50,9 @@ type Manifest struct {
 	Format        int              `json:"format"`
 	Type          Type             `json:"type"`
 	CreatedAt     time.Time        `json:"created_at"`
-	Schema        string           `json:"schema"` // latest applied migration
-	Tables        map[string]int64 `json:"tables"` // rows per table
+	Schema        string           `json:"schema"`            // latest applied migration
+	Version       string           `json:"version,omitempty"` // the Innkeeper release that wrote it
+	Tables        map[string]int64 `json:"tables"`            // rows per table
 	Blobs         []string         `json:"blobs,omitempty"`
 	PluginSchemas []string         `json:"plugin_schemas,omitempty"`
 	SecretsCheck  string           `json:"secrets_check,omitempty"`
@@ -63,6 +64,7 @@ type Options struct {
 	Store       *blobstore.Store
 	Box         *secrets.Box // nil skips secrets_check
 	Keep        int          // backups of the type to keep; 0 doesn't prune
+	Version     string       // the running Innkeeper's version, recorded in the manifest
 	Log         *slog.Logger // BackupHandler's; nil logs to slog.Default
 }
 
@@ -102,7 +104,7 @@ func Write(ctx context.Context, pool *pgxpool.Pool, t Type, o Options) (Info, er
 	if err := removeParts(typeDir); err != nil {
 		return Info{}, err
 	}
-	m := Manifest{Format: 1, Type: t, CreatedAt: time.Now().UTC(), Tables: map[string]int64{}}
+	m := Manifest{Format: 1, Type: t, CreatedAt: time.Now().UTC(), Version: o.Version, Tables: map[string]int64{}}
 	name := string(t) + "-" + m.CreatedAt.Format(timeFormat)
 	final := filepath.Join(typeDir, name)
 	part := final + ".part"

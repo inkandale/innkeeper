@@ -56,7 +56,7 @@ func backupCmd(args []string) error {
 	}
 	defer pool.Close()
 	for _, t := range types {
-		info, err := backup.Write(ctx, pool, t, backup.Options{Dir: args[0], DatabaseURL: dbURL, Store: store, Box: box})
+		info, err := backup.Write(ctx, pool, t, backup.Options{Dir: args[0], DatabaseURL: dbURL, Store: store, Box: box, Version: buildVersion()})
 		if err != nil {
 			return fmt.Errorf("back up %s: %w", t, err)
 		}

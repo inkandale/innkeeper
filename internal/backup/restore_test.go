@@ -382,11 +382,11 @@ func TestRestoreSecretsKeyMismatch(t *testing.T) {
 func TestRestoreRefusesOtherSchema(t *testing.T) {
 	assets, _, _ := source(t)
 	other := rebuild(t, assets, func(bodies map[string]string) {
-		editManifest(t, bodies, func(m *Manifest) { m.Schema = "9999_future.sql" })
+		editManifest(t, bodies, func(m *Manifest) { m.Schema, m.Version = "9999_future.sql", "1.4.0" })
 	})
 	tg := newTarget(t)
 	_, err := tg.restore(other, nil, false)
-	if err == nil || !strings.Contains(err.Error(), "another Innkeeper version") {
+	if err == nil || !strings.Contains(err.Error(), "made by Innkeeper 1.4.0") {
 		t.Fatalf("err = %v", err)
 	}
 	if tg.count(t, `SELECT count(*) FROM card`) != 0 {

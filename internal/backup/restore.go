@@ -143,7 +143,11 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (res Result, er
 		return Result{}, err
 	}
 	if m.Schema != schema {
-		return Result{}, fmt.Errorf("backup was made by another Innkeeper version (schema %s, this database %s)", m.Schema, schema)
+		made := "another Innkeeper version"
+		if m.Version != "" {
+			made = "Innkeeper " + m.Version
+		}
+		return Result{}, fmt.Errorf("backup was made by %s (schema %s, this database %s); restore it with that version into an empty database, then upgrade", made, m.Schema, schema)
 	}
 	// Deferred: card and card_revision reference each other, and a replace
 	// briefly removes rows the other type's tables point to. innkeeper.restore

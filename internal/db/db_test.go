@@ -2,6 +2,7 @@ package db_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -55,5 +56,27 @@ func TestCardRejectsEmbeddedLorebook(t *testing.T) {
 		SELECT id, '{"character_book": {}}', 'x', 'ui' FROM c`)
 	if err == nil || !strings.Contains(err.Error(), "card_revision_data_check") {
 		t.Fatalf("got %v, want card_revision_data_check violation", err)
+	}
+}
+
+func TestMigrateRefusesANewerDatabase(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `INSERT INTO schema_migration (name) VALUES ('9999_from_a_newer_release.sql')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Migrate(ctx, pool); !errors.Is(err, db.ErrNewerSchema) {
+		t.Fatalf("migrate = %v, want ErrNewerSchema", err)
+	}
+}
+
+func TestMigrateIgnoresARenamedOldMigration(t *testing.T) {
+	pool := testdb.New(t)
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `INSERT INTO schema_migration (name) VALUES ('0032_scoping.sql')`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Migrate(ctx, pool); err != nil {
+		t.Fatalf("migrate: %v", err)
 	}
 }

@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
 import { api, ApiError, must } from "../api/client";
 import { formFields } from "./fields";
+import { Loading } from "../shell/Loading";
 import { Mark } from "../shell/Mark";
 import "./Login.css";
 
@@ -14,7 +15,7 @@ export function Setup() {
   const plugin = list.find((p) => p.plugin === chosen) ?? (list.length === 1 ? list[0] : undefined);
 
   let body;
-  if (setup.isPending) body = null;
+  if (setup.isPending) body = <Loading />;
   else if (setup.error instanceof ApiError && setup.error.status === 404)
     body = (
       <p>
@@ -23,13 +24,25 @@ export function Setup() {
     );
   else if (setup.isError) body = <p className="error">{setup.error.message}</p>;
   else if (list.length === 0)
-    body = <p>No installed login plugin can claim a server. "First login" in docs/running.md explains how to add one.</p>;
+    body = (
+      <p>
+        No installed login plugin can claim a server.{" "}
+        <a href="https://github.com/inkandale/innkeeper/blob/main/docs/running.md#first-login" target="_blank" rel="noreferrer">
+          How to add one
+        </a>
+      </p>
+    );
   else if (!plugin)
-    body = list.map((p) => (
-      <button key={p.plugin} className="button" onClick={() => setChosen(p.plugin)}>
-        {p.plugin}
-      </button>
-    ));
+    body = (
+      <>
+        <p>Choose how you'll log in:</p>
+        {list.map((p) => (
+          <button key={p.plugin} className="button" onClick={() => setChosen(p.plugin)}>
+            {p.title}
+          </button>
+        ))}
+      </>
+    );
   else body = <ClaimForm plugin={plugin.plugin} form={plugin.form} />;
 
   return (
@@ -44,18 +57,26 @@ export function Setup() {
 function ClaimForm({ plugin, form }: { plugin: string; form: unknown }) {
   const navigate = useNavigate();
   const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
   const fields = formFields(form);
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
     const params = Object.fromEntries(fields.map((f) => [f.name, String(data.get(f.name) ?? "")]));
-    const res = await api.POST("/setup", { body: { code: String(data.get("code") ?? ""), plugin, params } });
-    if (!res.response.ok) {
-      setError((res.error as { detail?: string } | undefined)?.detail ?? res.response.statusText);
-      return;
+    setPending(true);
+    try {
+      const res = await api.POST("/setup", { body: { code: String(data.get("code") ?? ""), plugin, params } });
+      if (!res.response.ok) {
+        setError((res.error as { detail?: string } | undefined)?.detail ?? res.response.statusText);
+        return;
+      }
+      navigate("/", { replace: true });
+    } catch {
+      setError("Can't reach the server. Check that it's running, then try again.");
+    } finally {
+      setPending(false);
     }
-    navigate("/", { replace: true });
   }
 
   return (
@@ -82,7 +103,7 @@ function ClaimForm({ plugin, form }: { plugin: string; form: unknown }) {
         </label>
       ))}
       {error && <p className="error">{error}</p>}
-      <button className="button primary" type="submit">
+      <button className="button primary" type="submit" disabled={pending}>
         Claim this server
       </button>
       <p className="hint">

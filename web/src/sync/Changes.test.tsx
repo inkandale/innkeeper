@@ -256,6 +256,7 @@ test("a followed source's entries offer review, ignoring, and removing the sourc
   await click(vyr, "Ignore this change");
   await click(vyr, "Ignore all");
   await click(forge, "Remove source");
+  await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Remove source" }));
   await waitFor(() =>
     expect(sent).toEqual([
       { method: "POST", path: "/api/bindings/21/dismiss", body: { app_hash: "hv" } },

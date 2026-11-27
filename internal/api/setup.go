@@ -134,6 +134,7 @@ func codeMatches(want, got string) bool {
 
 type setupPlugin struct {
 	Plugin string          `json:"plugin"`
+	Title  string          `json:"title" doc:"The plugin's display name."`
 	Form   json.RawMessage `json:"form" doc:"JSON Schema of the fields to ask for."`
 }
 
@@ -186,7 +187,7 @@ func (s *Server) setupRoutes(api huma.API) {
 					s.Log.Warn("auth.setup failed", "plugin", name, "err", err)
 					continue
 				}
-				out.Body = append(out.Body, setupPlugin{Plugin: name, Form: res.Form})
+				out.Body = append(out.Body, setupPlugin{Plugin: name, Title: m.DisplayName(), Form: res.Form})
 			}
 			return out, nil
 		})

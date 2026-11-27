@@ -77,3 +77,34 @@ test("a claimed server links to login", async () => {
   expect(await screen.findByText(/already set up/)).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Log in" })).toHaveAttribute("href", "/login");
 });
+
+test("a claim that can't reach the server says so and can be retried", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (req: Request) => {
+      if (req.method === "GET") return json([{ plugin: "password-login", title: "Password", form }]);
+      throw new TypeError("Failed to fetch");
+    }),
+  );
+  renderSetup();
+  await userEvent.type(await screen.findByLabelText("Setup code"), "ABCD-EFGH");
+  await userEvent.type(screen.getByLabelText("Password"), "x");
+  await userEvent.type(screen.getByLabelText("Confirm password"), "x");
+  await userEvent.click(screen.getByRole("button", { name: "Claim this server" }));
+  expect(await screen.findByText(/Can't reach the server/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Claim this server" })).toBeEnabled();
+});
+
+test("several login plugins are offered by title", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      json([
+        { plugin: "password-login", title: "Password", form },
+        { plugin: "oidc-login", title: "OpenID Connect", form },
+      ]),
+    ),
+  );
+  renderSetup();
+  expect(await screen.findByRole("button", { name: "OpenID Connect" })).toBeInTheDocument();
+});

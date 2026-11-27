@@ -4956,6 +4956,8 @@ export interface components {
             /** @description JSON Schema of the fields to ask for. */
             form: unknown;
             plugin: string;
+            /** @description The plugin's display name. */
+            title: string;
         };
         SimilarPage: {
             /**

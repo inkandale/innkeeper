@@ -5728,10 +5728,15 @@
           },
           "plugin": {
             "type": "string"
+          },
+          "title": {
+            "description": "The plugin's display name.",
+            "type": "string"
           }
         },
         "required": [
           "plugin",
+          "title",
           "form"
         ],
         "type": "object"

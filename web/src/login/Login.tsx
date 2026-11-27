@@ -35,7 +35,12 @@ export function Login() {
     body = setup.isPending ? <Loading /> : setup.isSuccess ? (
       <Navigate to="/setup" replace />
     ) : (
-      <p>No login provider is set up. "First login" in docs/running.md explains how to add one.</p>
+      <p>
+        No login provider is set up.{" "}
+        <a href="https://github.com/inkandale/innkeeper/blob/main/docs/running.md#first-login" target="_blank" rel="noreferrer">
+          How to add one
+        </a>
+      </p>
     );
   else if (!provider)
     body = list.map((p) => (
@@ -58,6 +63,7 @@ function ProviderLogin({ provider }: { provider: Provider }) {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
   const begin = useQuery({
     queryKey: ["login-begin", provider.id],
     queryFn: async () => must(await api.POST("/auth/{id}/begin", { params: { path: { id: provider.id } } })),
@@ -88,15 +94,22 @@ function ProviderLogin({ provider }: { provider: Provider }) {
     const values = Object.fromEntries(
       fields.map((f) => [f.name, String(new FormData(e.currentTarget).get(f.name) ?? "")]),
     );
-    const res = await api.POST("/auth/{id}/complete", {
-      params: { path: { id: provider.id } },
-      body: { params: values },
-    });
-    if (!res.response.ok) {
-      setError((res.error as { detail?: string } | undefined)?.detail ?? res.response.statusText);
-      return;
+    setPending(true);
+    try {
+      const res = await api.POST("/auth/{id}/complete", {
+        params: { path: { id: provider.id } },
+        body: { params: values },
+      });
+      if (!res.response.ok) {
+        setError((res.error as { detail?: string } | undefined)?.detail ?? res.response.statusText);
+        return;
+      }
+      navigate(safeNext(params.get("next")), { replace: true });
+    } catch {
+      setError("Can't reach the server. Check that it's running, then try again.");
+    } finally {
+      setPending(false);
     }
-    navigate(safeNext(params.get("next")), { replace: true });
   }
 
   return (
@@ -114,7 +127,7 @@ function ProviderLogin({ provider }: { provider: Provider }) {
         </label>
       ))}
       {error && <p className="error">{error}</p>}
-      <button className="button primary" type="submit">
+      <button className="button primary" type="submit" disabled={pending}>
         Log in
       </button>
     </form>

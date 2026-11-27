@@ -171,7 +171,21 @@ export function Changes() {
 
   const sourceActions = (r: ChangeRow, c: AppChange) => {
     const button = (text: string, act: "dismiss" | "pause" | "remove") => (
-      <button className="button" disabled={source.isPending} onClick={() => source.mutate({ r, c, act })}>
+      <button
+        className="button"
+        disabled={source.isPending}
+        onClick={() =>
+          act === "remove"
+            ? ask({
+                title: `Stop following ${r.name} on ${siteOf(c.remote_id ?? "")}?`,
+                body: <p>The {r.kind} stays in the library, but Innkeeper stops checking the site for updates.</p>,
+                confirmLabel: "Remove source",
+                danger: true,
+                onConfirm: () => source.mutate({ r, c, act }),
+              })
+            : source.mutate({ r, c, act })
+        }
+      >
         {text}
       </button>
     );

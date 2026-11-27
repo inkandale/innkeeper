@@ -6,6 +6,7 @@ import { pluginsQuery } from "../api/queries";
 import { useModal } from "../shell/useModal";
 import { Diff } from "../sync/Diff";
 import "./Card.css";
+import { Loading } from "../shell/Loading";
 import { toastError } from "../shell/Toasts";
 import { toast } from "sonner";
 
@@ -109,6 +110,7 @@ export function History({ kind = "card" }: { kind?: Kind }) {
   const set = (next: Record<string, string>) => setParams({ ...Object.fromEntries(params), ...next });
   const changes = (diff.data?.fields ?? []).filter((f) => (f.hunks ?? []).some((h) => h.status !== "same"));
 
+  if (revs.isPending) return <Loading />;
   if (revs.isError) return <p className="error page">{revs.error.message}</p>;
   return (
     <div className="history">

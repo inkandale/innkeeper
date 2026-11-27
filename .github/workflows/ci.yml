@@ -1,9 +1,9 @@
 name: ci
 
+# Pushes to main and develop run this through release.yml, which waits for it.
 on:
-  push:
-    branches: [main, develop]
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read

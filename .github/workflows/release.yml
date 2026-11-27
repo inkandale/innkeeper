@@ -9,7 +9,11 @@ permissions:
   contents: read
 
 jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
   release-please:
+    needs: ci
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -26,8 +30,8 @@ jobs:
   # Runs here rather than on the tag: a tag pushed with GITHUB_TOKEN starts no workflows.
   # develop builds :latest; main builds only a release.
   image:
-    needs: release-please
-    if: ${{ !cancelled() && (github.ref == 'refs/heads/develop' || needs.release-please.outputs.created == 'true') }}
+    needs: [ci, release-please]
+    if: ${{ !cancelled() && needs.ci.result == 'success' && (github.ref == 'refs/heads/develop' || needs.release-please.outputs.created == 'true') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -42,22 +46,24 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/develop' }}
-            type=sha,prefix=sha-
-            type=semver,pattern={{version}},value=${{ needs.release-please.outputs.version }},enable=${{ needs.release-please.outputs.created == 'true' }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-please.outputs.version }},enable=${{ needs.release-please.outputs.created == 'true' }}
       # Building the plugins' main commit rather than "main" keeps the layer
-      # cache from reusing an older clone.
+      # cache from reusing an older clone; the label records it for a rebuild.
       - id: plugins
         run: |
           ref=$(git ls-remote https://github.com/inkandale/innkeeper-plugins.git refs/heads/main | cut -f1)
           test -n "$ref"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          labels: |
+            io.github.inkandale.innkeeper.plugins-ref=${{ steps.plugins.outputs.ref }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/develop' }}
+            type=sha,prefix=sha-
+            type=semver,pattern={{version}},value=${{ needs.release-please.outputs.version }},enable=${{ needs.release-please.outputs.created == 'true' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-please.outputs.version }},enable=${{ needs.release-please.outputs.created == 'true' }}
       - id: version
         run: echo "version=${RELEASE:-develop-${GITHUB_SHA::7}}" >> "$GITHUB_OUTPUT"
         env:

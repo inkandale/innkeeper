@@ -6,8 +6,9 @@ TypeScript (`web/src`). Setup and tests are in [CONTRIBUTING.md](CONTRIBUTING.md
 
 ## Before you write code
 
-1. Read and branch from `origin/develop`, where work lands. `main` holds the
-   last release and lags far behind, so code read there is out of date.
+1. Base every change and every review on the latest `origin/develop`, where
+   work lands. `main` is only for releases: it holds the last release and
+   lags far behind, so code read or reviewed there is out of date.
 2. Read the code the change touches and trace the real flow end to end.
 3. Search for an existing helper, type, or pattern before writing a new one.
    Re-implementing something a few files over is the most common AI mistake

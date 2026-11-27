@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -157,12 +158,72 @@ func TestProvisionDatabasesOptIn(t *testing.T) {
 	}
 }
 
+// A plugin whose database can't be made is unloaded with the reason; the
+// others still get theirs.
+func TestProvisionDatabasesUnloadsOnlyTheFailingPlugin(t *testing.T) {
+	ctx := context.Background()
+	reg, _, dbURL := newDBRegistry(t)
+	long := strings.Repeat("a", 41) // its role passes PostgreSQL's 63 bytes
+	reg.manifests[long] = &protocol.Manifest{Name: long, Version: "0.0.1", Database: true}
+	if err := reg.ProvisionDatabases(ctx, dbURL); err != nil {
+		t.Fatal(err)
+	}
+	if u := reg.Unloaded()[long]; !strings.Contains(u.Error, "63 bytes") {
+		t.Errorf("unloaded = %+v, want the role-length error", reg.Unloaded())
+	}
+	if _, ok := reg.Manifests()[long]; ok {
+		t.Error("the failing plugin is still loaded")
+	}
+	if reg.dsn("cat-log") == "" {
+		t.Error("cat-log got no database")
+	}
+}
+
+// A sync whose provisioning failed provisions again on the next sync.
+func TestSyncRetriesFailedProvisioning(t *testing.T) {
+	ctx := context.Background()
+	_, pool, dbURL := newDBRegistry(t)
+	dirs := Dirs{Builtin: t.TempDir(), Installed: t.TempDir()}
+	writeManifest(t, filepath.Join(dirs.Builtin, "cat-log"), manifestFor("cat-log", "1.0.0")+"database = true\n")
+	box, err := secrets.New(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Holding the provisioning lock makes the first sync time out.
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('innkeeper-plugin-db'))`); err != nil {
+		t.Fatal(err)
+	}
+	short, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+	reg, err := Open(short, pool, dirs, &blobstore.Store{Name: "library", Root: t.TempDir()}, box, dbURL, quiet)
+	if err == nil {
+		t.Fatal("Open succeeded while the lock was held")
+	}
+	if err := tx.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Sync(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if reg.dsn("cat-log") == "" {
+		t.Error("cat-log got no database after the retry")
+	}
+}
+
 func TestProvisionDatabasesKeyValueURL(t *testing.T) {
 	ctx := context.Background()
 	reg, _, _ := newDBRegistry(t)
-	if err := reg.ProvisionDatabases(ctx, "host=localhost dbname=innkeeper"); err == nil || !strings.Contains(err.Error(), "postgres://") {
-		t.Errorf("key-value URL with an opted-in plugin: %v", err)
+	if err := reg.ProvisionDatabases(ctx, "host=localhost dbname=innkeeper"); err != nil {
+		t.Fatal(err)
 	}
+	if u := reg.Unloaded()["cat-log"]; !strings.Contains(u.Error, "postgres://") {
+		t.Errorf("key-value URL with an opted-in plugin: unloaded = %+v", reg.Unloaded())
+	}
+	reg, _, _ = newDBRegistry(t)
 	delete(reg.manifests, "cat-log")
 	if err := reg.ProvisionDatabases(ctx, "host=localhost dbname=innkeeper"); err != nil {
 		t.Errorf("key-value URL without opted-in plugins: %v", err)

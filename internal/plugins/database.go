@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
 	"strings"
 
@@ -13,6 +14,8 @@ import (
 // ProvisionDatabases gives each plugin that sets database = true its own
 // schema and login role, and keeps the role's URL for Instance. Every step is
 // idempotent and runs at each start, which also repairs a restored database.
+// A plugin whose database can't be made is unloaded with the reason, so one
+// plugin can't keep the core from starting; the error is for the database.
 func (r *Registry) ProvisionDatabases(ctx context.Context, dbURL string) error {
 	var names []string
 	for name, m := range r.Manifests() {
@@ -23,53 +26,96 @@ func (r *Registry) ProvisionDatabases(ctx context.Context, dbURL string) error {
 	if len(names) == 0 {
 		return nil
 	}
+	dsns, failed, err := r.provisionAll(ctx, dbURL, names)
+	if err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(failed) > 0 {
+		r.manifests, r.unloaded = maps.Clone(r.manifests), maps.Clone(r.unloaded)
+		if r.unloaded == nil {
+			r.unloaded = map[string]Unloaded{}
+		}
+	}
+	for name, ferr := range failed {
+		r.log.Error("plugin database", "plugin", name, "err", ferr)
+		delete(r.manifests, name)
+		r.unloaded[name] = Unloaded{Error: ferr.Error()}
+	}
+	r.dsns = dsns
+	return nil
+}
+
+// provisionAll provisions names in one transaction, returning each one's URL
+// or why it failed.
+func (r *Registry) provisionAll(ctx context.Context, dbURL string, names []string) (dsns map[string]string, failed map[string]error, err error) {
+	dsns, failed = map[string]string{}, map[string]error{}
+	failAll := func(err error) (map[string]string, map[string]error, error) {
+		for _, name := range names {
+			failed[name] = err
+		}
+		return dsns, failed, nil
+	}
 	u, err := url.Parse(dbURL)
 	if err != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") {
-		return errors.New("plugin databases need INNKEEPER_DATABASE_URL as a postgres:// URL")
+		return failAll(errors.New("plugin databases need INNKEEPER_DATABASE_URL as a postgres:// URL"))
 	}
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	defer tx.Rollback(ctx)
 	// The API and worker can start together.
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('innkeeper-plugin-db'))`); err != nil {
-		return err
+		return nil, nil, err
 	}
 	var database string
 	var createRole, createSchema bool
 	err = tx.QueryRow(ctx, `SELECT current_database(), rolsuper OR rolcreaterole, has_database_privilege(current_database(), 'CREATE')
 		FROM pg_roles WHERE rolname = current_user`).Scan(&database, &createRole, &createSchema)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 	if !createRole {
-		return errors.New("plugin databases need the database user to have CREATEROLE")
+		return failAll(errors.New("plugin databases need the database user to have CREATEROLE"))
 	}
 	if !createSchema {
-		return fmt.Errorf("plugin databases need the database user to have CREATE on database %s", database)
+		return failAll(fmt.Errorf("plugin databases need the database user to have CREATE on database %s", database))
 	}
-	dsns := map[string]string{}
 	for _, name := range names {
 		schema, role := dbNames(database, name)
 		if len(role) > 63 {
-			return fmt.Errorf("plugin %s: role name %s is longer than PostgreSQL's 63 bytes", name, role)
+			failed[name] = fmt.Errorf("role name %s is longer than PostgreSQL's 63 bytes", role)
+			continue
 		}
 		pw := r.box.Derive("plugin-database:" + role)
-		if err := provision(ctx, tx, database, schema, role, pw); err != nil {
-			return fmt.Errorf("plugin %s database: %w", name, err)
+		// A savepoint keeps one plugin's failure from aborting the others.
+		sp, err := tx.Begin(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		if err := provision(ctx, sp, database, schema, role, pw); err != nil {
+			if ctx.Err() != nil {
+				return nil, nil, ctx.Err()
+			}
+			if rerr := sp.Rollback(ctx); rerr != nil {
+				return nil, nil, rerr
+			}
+			failed[name] = fmt.Errorf("database: %w", err)
+			continue
+		}
+		if err := sp.Commit(ctx); err != nil {
+			return nil, nil, err
 		}
 		pu := *u
 		pu.User = url.UserPassword(role, pw)
 		dsns[name] = pu.String()
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return err
+		return nil, nil, err
 	}
-	r.mu.Lock()
-	r.dsns = dsns
-	r.mu.Unlock()
-	return nil
+	return dsns, failed, nil
 }
 
 func provision(ctx context.Context, tx pgx.Tx, database, schema, role, pw string) error {

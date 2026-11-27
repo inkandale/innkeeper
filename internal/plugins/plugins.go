@@ -225,7 +225,14 @@ func (r *Registry) Sync(ctx context.Context) error {
 	r.mu.Lock()
 	r.manifests, r.builtin, r.unloaded, r.gen = all, builtin, unloaded, gen
 	r.mu.Unlock()
-	return r.ProvisionDatabases(ctx, r.dbURL)
+	if err := r.ProvisionDatabases(ctx, r.dbURL); err != nil {
+		// Forget the load, so the next Sync provisions again.
+		r.mu.Lock()
+		r.gen = -1
+		r.mu.Unlock()
+		return err
+	}
+	return nil
 }
 
 func (r *Registry) manifest(name string) (*protocol.Manifest, bool) {

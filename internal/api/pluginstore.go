@@ -79,7 +79,7 @@ func (s *Server) pluginStoreRoutes(api huma.API) {
 			return &pluginSourcesOut{Body: orEmpty(list)}, nil
 		})
 
-	huma.Register(api, huma.Operation{Metadata: destructive, OperationID: "add-plugin-source", Method: http.MethodPost,
+	huma.Register(api, huma.Operation{Metadata: ownerOnly(), OperationID: "add-plugin-source", Method: http.MethodPost,
 		Path: "/plugin-sources", Summary: "Add a plugin source", Tags: tags, DefaultStatus: http.StatusCreated,
 		Description: "A source is the https:// or file:// URL of an index.toml. Its plugins run as code inside " +
 			"Innkeeper with their own database role, so add only sources you trust."},
@@ -114,7 +114,7 @@ func (s *Server) pluginStoreRoutes(api huma.API) {
 			return out, nil
 		})
 
-	huma.Register(api, huma.Operation{Metadata: destructive, OperationID: "install-plugin", Method: http.MethodPost,
+	huma.Register(api, huma.Operation{Metadata: ownerOnly(), OperationID: "install-plugin", Method: http.MethodPost,
 		Path: "/plugins/{name}/install", Summary: "Install or update a plugin", Tags: tags, DefaultStatus: http.StatusNoContent,
 		Description: "Installs a version from a source and makes it current. Running jobs finish on the old version. " +
 			"Installing the previous version rolls back without a download. " +
@@ -132,14 +132,14 @@ func (s *Server) pluginStoreRoutes(api huma.API) {
 			return nil, nil
 		})
 
-	huma.Register(api, huma.Operation{Metadata: destructive, OperationID: "uninstall-plugin", Method: http.MethodDelete,
+	huma.Register(api, huma.Operation{Metadata: ownerOnly(), OperationID: "uninstall-plugin", Method: http.MethodDelete,
 		Path: "/plugins/{name}", Summary: "Uninstall a plugin", Tags: tags, DefaultStatus: http.StatusNoContent,
 		Description: "Removes the plugin's code. Its instances and data stay, and come back if it's installed again."},
 		func(ctx context.Context, in *pluginNameIn) (*struct{}, error) {
 			return nil, s.fail(s.Registry.Uninstall(ctx, in.Name))
 		})
 
-	huma.Register(api, huma.Operation{Metadata: destructive, OperationID: "remove-plugin-data", Method: http.MethodDelete,
+	huma.Register(api, huma.Operation{Metadata: ownerOnly(), OperationID: "remove-plugin-data", Method: http.MethodDelete,
 		Path: "/plugins/{name}/data", Summary: "Remove an uninstalled plugin's data", Tags: tags, DefaultStatus: http.StatusNoContent,
 		Description: "Deletes the plugin's instances, database schema, and role, and the saved searches it shipped with their rules, " +
 			"which give back what they did. This can't be undone."},

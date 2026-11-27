@@ -329,3 +329,26 @@ func TestNewInstancesSaveTheirPluginsSearches(t *testing.T) {
 		t.Fatalf("after deleting a: %+v", list)
 	}
 }
+
+// A client could also give itself a lasting way in, or run code on the host,
+// through tokens, plugins, or a restore, so those refuse OAuth clients too.
+func TestOAuthClientsCantMintTokensOrInstallCode(t *testing.T) {
+	e := newEnv(t)
+	oauth, token := "Bearer "+e.oauthToken(tier.Destructive), "Bearer "+e.tokenWith(tier.Destructive)
+	calls := []struct{ method, path string }{
+		{"POST", "/tokens"},
+		{"POST", "/plugin-sources"},
+		{"POST", "/plugins/fake/install"},
+		{"DELETE", "/plugins/fake"},
+		{"DELETE", "/plugins/fake/data"},
+		{"POST", "/restores"},
+	}
+	for _, c := range calls {
+		if r := e.send(c.method, c.path, map[string]any{}, "Authorization", oauth); r.Status != http.StatusForbidden {
+			t.Errorf("OAuth client %s %s: %s", c.method, c.path, r)
+		}
+	}
+	if r := e.send("POST", "/tokens", map[string]any{"name": "t", "tier": "destructive"}, "Authorization", token); r.Status != http.StatusCreated {
+		t.Errorf("API token creating a token: %s", r)
+	}
+}

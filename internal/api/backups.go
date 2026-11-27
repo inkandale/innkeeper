@@ -276,7 +276,7 @@ func (s *Server) backupRoutes(api huma.API) {
 			}}, nil
 		})
 
-	huma.Register(api, huma.Operation{Metadata: destructive, OperationID: "start-restore", Method: http.MethodPost, Path: "/restores",
+	huma.Register(api, huma.Operation{Metadata: ownerOnly(), OperationID: "start-restore", Method: http.MethodPost, Path: "/restores",
 		Summary: "Restore a backup",
 		Description: "Uploads a backup archive and queues a job that restores it. Without replace, the job fails if the " +
 			"database already has data of the archive's type.",

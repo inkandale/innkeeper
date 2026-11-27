@@ -10,7 +10,6 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/inkandale/innkeeper/internal/auth"
 	"github.com/inkandale/innkeeper/internal/enrich"
 	"github.com/inkandale/innkeeper/internal/importer"
 	"github.com/inkandale/innkeeper/internal/pluginhost"
@@ -290,8 +289,7 @@ func (s *Server) instanceRoutes(api huma.API) {
 // provider's owner, config, and secrets decide who logs in with every tier,
 // so a client that could change them could make itself the owner.
 func (s *Server) loginGuard(ctx context.Context, plugin string, owner bool) error {
-	client := auth.FromMCP(ctx) || ctx.Value(oauthKey{}) == true
-	if client && (owner || s.Registry.HasCapability(plugin, protocol.CapabilityAuth)) {
+	if fromClient(ctx) && (owner || s.Registry.HasCapability(plugin, protocol.CapabilityAuth)) {
 		return huma.Error403Forbidden("login providers and owners can't be changed by an OAuth or MCP client; use an API token or the web UI")
 	}
 	return nil

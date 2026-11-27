@@ -99,6 +99,10 @@ func (s *Server) resourceMetadataURL() string {
 // and HEAD, and write for anything else.
 func needs(t tier.Tier) map[string]any { return map[string]any{"tier": t} }
 
+// ownerOnly is a destructive operation that OAuth and MCP clients can't call,
+// because it would let one outlast its grant or run code on the host.
+func ownerOnly() map[string]any { return map[string]any{"tier": tier.Destructive, "clients": false} }
+
 // registerMoved registers op, and again at old, the path it had before, for
 // clients that still call that one.
 func registerMoved[I, O any](api huma.API, op huma.Operation, old string, h func(context.Context, *I) (*O, error)) {
@@ -137,6 +141,12 @@ func callerTier(ctx context.Context) tier.Tier {
 
 // oauthKey marks a request whose credentials are an OAuth access token.
 type oauthKey struct{}
+
+// fromClient reports whether the request came from an OAuth or MCP client
+// rather than the owner's browser or an API token.
+func fromClient(ctx context.Context) bool {
+	return auth.FromMCP(ctx) || ctx.Value(oauthKey{}) == true
+}
 
 // noAuth shows a public operation in the spec with no security requirement.
 var noAuth = []map[string][]string{}

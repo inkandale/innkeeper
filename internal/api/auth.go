@@ -57,6 +57,11 @@ func (s *Server) authenticate(api huma.API) func(huma.Context, func(huma.Context
 		if oauth {
 			ctx = huma.WithValue(ctx, oauthKey{}, true)
 		}
+		if op.Metadata["clients"] == false && fromClient(ctx.Context()) {
+			_ = huma.WriteErr(api, ctx, http.StatusForbidden,
+				op.OperationID+" can't be called by an OAuth or MCP client; use an API token or the web UI")
+			return
+		}
 		next(ctx)
 	}
 }
@@ -373,7 +378,7 @@ func (s *Server) authRoutes(api huma.API) {
 			return &tokensOut{Body: orEmpty(list)}, nil
 		})
 
-	huma.Register(api, huma.Operation{Metadata: needs(tier.Destructive), OperationID: "create-token", Method: http.MethodPost, Path: "/tokens",
+	huma.Register(api, huma.Operation{Metadata: ownerOnly(), OperationID: "create-token", Method: http.MethodPost, Path: "/tokens",
 		Summary: "Create an API token", Tags: tags, DefaultStatus: http.StatusCreated},
 		func(ctx context.Context, in *createTokenIn) (*createTokenOut, error) {
 			want, err := tier.Parse(cmp.Or(in.Body.Tier, "read"))

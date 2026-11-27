@@ -50,6 +50,7 @@ var (
 <label><input type="radio" name="tier" value="write"> <b>Write</b>: also edit the library, which revision history can undo</label>
 <label><input type="radio" name="tier" value="destructive"> <b>Destructive</b>: also push to apps, overwriting their copies, and change plugin settings and secrets</label>
 </fieldset>
+<p>No app connected this way can create API tokens, install plugins, or restore backups.</p>
 <button class="primary" name="decision" value="approve">Approve</button><button name="decision" value="deny">Deny</button>
 </form>` + pageFoot))
 )

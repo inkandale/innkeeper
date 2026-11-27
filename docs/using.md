@@ -36,9 +36,10 @@ A theme's CSS runs on the UI's origin, so install only themes you trust.
 
 ## Importing
 
-The `card-import` plugin, which the setup wizard installs, reads CCv3, V2,
-and V1 cards as PNG or JSON, and lorebooks as CCv3 or SillyTavern world info
-JSON. Importing the same file again adds nothing.
+The `card-import` plugin reads CCv3, V2, and V1 cards as PNG or JSON, and
+lorebooks as CCv3 or SillyTavern world info JSON. It isn't built in: pick it
+in the setup wizard, or run `ink plugins install card-import`. Importing the
+same file again adds nothing.
 
 To import a folder, put it under `./import`, or set `INNKEEPER_IMPORT_DIR`
 in `.env`. Compose mounts it read-only at `/import`, the folder `card-import`
@@ -263,6 +264,10 @@ need an owner login or a `destructive` token.
   back.
 
 ## Sync
+
+Target plugins aren't built in. Install the one for your app from the setup
+wizard or with `ink plugins install lumiverse` or
+`ink plugins install sillytavern`.
 
 The `lumiverse` plugin is a target for
 [Lumiverse](https://github.com/prolix-oc/Lumiverse). Add one instance per

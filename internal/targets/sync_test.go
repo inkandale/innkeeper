@@ -256,6 +256,26 @@ func TestSyncAutosyncPushes(t *testing.T) {
 	}
 }
 
+// A preview sync (apply none) pushes nothing, even to a binding with autosync on.
+func TestSyncPreviewSkipsAutosync(t *testing.T) {
+	e := setup(t, nil)
+	dir2, b2 := twoApps(e)
+	if _, err := e.s.SetAutosync(e.ctx, b2.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	e.update(e.card, func(ed *library.Edit) { ed.Data = setField(ed.Data, "description", "Edited in the library.") })
+	res, err := e.s.Sync(e.ctx, SyncParams{Apply: ApplyNone}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := appData(t, dir2, b2.RemoteID)["description"]; got == "Edited in the library." {
+		t.Error("a preview sync pushed to the app")
+	}
+	if pushed := res.Apps[1].Totals["autosync_pushed"]; pushed != 0 {
+		t.Errorf("autosync_pushed = %d, want 0", pushed)
+	}
+}
+
 // Autosync doesn't overwrite an app copy that changed; the item waits for review.
 func TestSyncAutosyncLeavesChangedApp(t *testing.T) {
 	e := setup(t, nil)

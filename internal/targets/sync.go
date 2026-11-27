@@ -145,8 +145,9 @@ func (s *Service) Sync(ctx context.Context, p SyncParams, progress func(SyncResu
 		}
 	}
 	// Pass 2 runs after every app's pass 1, so an edit pulled from one app reaches the others.
+	// A preview writes nothing, so it skips pass 2's pushes.
 	for i := range res.Apps {
-		if res.Apps[i].Error == "" {
+		if res.Apps[i].Error == "" && p.Apply != ApplyNone {
 			if res.Apps[i].Totals == nil {
 				res.Apps[i].Totals = map[string]int{}
 			}

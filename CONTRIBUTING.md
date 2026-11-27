@@ -59,5 +59,11 @@ commit, not a squash, to keep each commit's type. Merging the release PR tags
 `compose.yaml` and the `ink` binaries to the GitHub release. release-please
 sets the version in `chart/Chart.yaml` and in `compose.yaml`'s image tag.
 
+`develop` images build the built-in plugins from `innkeeper-plugins` `main`;
+a release builds the commit in the `Dockerfile`'s `PLUGINS_REF`. Move that pin
+when a release should ship newer built-in plugins.
+
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/):
-`feat:` and `fix:` decide the next version, and `feat!:` marks a breaking change.
+`feat:` and `fix:` decide the next version. Don't mark commits as breaking
+(`feat!:` or a `BREAKING CHANGE:` footer); Innkeeper doesn't make major
+version bumps.

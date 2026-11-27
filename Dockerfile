@@ -25,8 +25,8 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=$VERSION" -
 # The built-in plugins, built against this core's protocol package. Owners
 # install the rest at runtime.
 FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS plugins
-# A branch or commit. CI passes main's commit, so a new one skips the cached clone.
-ARG PLUGINS_REF=main
+# Releases build this commit; develop builds pass the plugins' main.
+ARG PLUGINS_REF=38e8bab741612a2eff3c3aa9785b09f4f1ceb935
 RUN apk add --no-cache git make
 RUN git clone https://github.com/inkandale/innkeeper-plugins.git /plugins-src \
     && git -C /plugins-src checkout --detach "$PLUGINS_REF"

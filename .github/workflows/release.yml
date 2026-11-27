@@ -26,6 +26,8 @@ jobs:
     steps:
       - id: rp
         uses: googleapis/release-please-action@v5
+        with:
+          target-branch: main
 
   # Runs here rather than on the tag: a tag pushed with GITHUB_TOKEN starts no workflows.
   # develop builds :latest; main builds only a release.
@@ -46,11 +48,15 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # Building the plugins' main commit rather than "main" keeps the layer
-      # cache from reusing an older clone; the label records it for a rebuild.
+      # A release builds the Dockerfile's pinned plugins; develop builds main's
+      # newest commit, by hash so the layer cache can't reuse an older clone.
       - id: plugins
         run: |
-          ref=$(git ls-remote https://github.com/inkandale/innkeeper-plugins.git refs/heads/main | cut -f1)
+          if [ "$GITHUB_REF" = refs/heads/develop ]; then
+            ref=$(git ls-remote https://github.com/inkandale/innkeeper-plugins.git refs/heads/main | cut -f1)
+          else
+            ref=$(sed -n 's/^ARG PLUGINS_REF=//p' Dockerfile)
+          fi
           test -n "$ref"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
       - id: meta
@@ -81,8 +87,9 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # The chart and compose.yaml name the release's image, so they wait for it.
   chart:
-    needs: release-please
+    needs: [release-please, image]
     if: needs.release-please.outputs.created == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -103,7 +110,7 @@ jobs:
           OWNER: ${{ github.repository_owner }}
 
   ink:
-    needs: release-please
+    needs: [release-please, image]
     if: needs.release-please.outputs.created == 'true'
     runs-on: ubuntu-latest
     permissions:

@@ -1,5 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "aacfb82a5a915427dc87e5dc0a6df12b5e634b9a",
   "include-component-in-tag": false,
   "packages": {
     ".": {
@@ -17,7 +18,8 @@
           "path": "chart/Chart.yaml",
           "jsonpath": "$.appVersion"
         }
-      ]
+      ],
+      "release-as": "1.0.0"
     }
   }
 }

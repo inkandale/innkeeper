@@ -149,8 +149,8 @@ func restoreCmd(args []string) error {
 		}
 	}
 	if config {
-		// Restored plugin instances may name plugins whose databases need repair.
-		return svc.registry.ProvisionDatabases(ctx, os.Getenv("INNKEEPER_DATABASE_URL"))
+		// Restored installs may be missing here, and their databases need repair.
+		return svc.registry.RestoreInstalls(ctx)
 	}
 	return nil
 }

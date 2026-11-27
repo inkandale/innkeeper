@@ -89,6 +89,8 @@ var hasData = map[Type]string{
 	Assets: `SELECT EXISTS (SELECT FROM public.card) OR EXISTS (SELECT FROM public.lorebook)
 		OR EXISTS (SELECT FROM public.collection) OR EXISTS (SELECT FROM public.saved_search)`,
 	Config: `SELECT EXISTS (SELECT FROM public.plugin_instance) OR EXISTS (SELECT FROM public.setting)
+		OR EXISTS (SELECT FROM public.plugin_install WHERE version IS NOT NULL)
+		OR EXISTS (SELECT FROM public.plugin_source WHERE id <> 'official')
 		OR EXISTS (SELECT FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 			WHERE n.nspname = ANY($1) AND c.relkind IN ('r', 'p'))`,
 }
@@ -161,9 +163,11 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (res Result, er
 	if exists && !o.Replace {
 		return Result{}, ErrHasData
 	}
-	// An empty database still has library 1, which the archive's library rows replace.
-	if exists || m.Type == Assets {
-		if err := clearType(ctx, tx, m.Type); err != nil {
+	// An empty database still has library 1 and the official plugin source,
+	// which the archive's rows replace.
+	_, hasSources := m.Tables["plugin_source"]
+	if exists || m.Type == Assets || hasSources {
+		if err := clearType(ctx, tx, m.Type, hasSources); err != nil {
 			return Result{}, fmt.Errorf("clear %s: %w", m.Type, err)
 		}
 	}
@@ -273,8 +277,10 @@ func Restore(ctx context.Context, r io.Reader, o RestoreOptions) (res Result, er
 		}
 	}
 	if m.Type == Config {
-		// Running plugin processes restart with the restored settings.
-		if _, err := tx.Exec(ctx, `UPDATE public.plugin_instance SET updated_at = now()`); err != nil {
+		// Running plugin processes restart with the restored settings, and
+		// every process reloads the restored installs.
+		if _, err := tx.Exec(ctx, `UPDATE public.plugin_instance SET updated_at = now();
+			SELECT nextval('public.plugin_generation')`); err != nil {
 			return res, err
 		}
 		res.SecretsKeyMismatch = m.SecretsCheck != "" && o.Box != nil && m.SecretsCheck != o.Box.Derive("backup-check")
@@ -347,8 +353,9 @@ func fkError(err error) error {
 }
 
 // clearType deletes type t's rows, leaving the other type's tables alone.
-// Plugin schemas are replaced one by one in loadPlugin.
-func clearType(ctx context.Context, tx pgx.Tx, t Type) error {
+// Plugin schemas are replaced one by one in loadPlugin. plugins says whether
+// the archive holds plugin installs and sources; older backups don't.
+func clearType(ctx context.Context, tx pgx.Tx, t Type, plugins bool) error {
 	var stmts []string
 	switch t {
 	case Assets:
@@ -361,6 +368,9 @@ func clearType(ctx context.Context, tx pgx.Tx, t Type) error {
 		}
 	case Config:
 		stmts = []string{`DELETE FROM public.push`, `DELETE FROM public.binding`, `DELETE FROM public.setting`, `DELETE FROM public.plugin_instance`}
+		if plugins {
+			stmts = append(stmts, `DELETE FROM public.plugin_install`, `DELETE FROM public.plugin_source`)
+		}
 	}
 	for _, q := range stmts {
 		if _, err := tx.Exec(ctx, q); err != nil {

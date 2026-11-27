@@ -187,7 +187,7 @@ retention:
 | Type | Holds |
 |---|---|
 | `assets` | Libraries and their setting overrides; cards, lorebooks, and their revisions; avatars; collections, sources, and lorebook links |
-| `config` | Plugin instances with their settings and encrypted secrets; plugin databases; bindings and push history; core settings |
+| `config` | Installed plugins and plugin sources; plugin instances with their settings and encrypted secrets; plugin databases; bindings and push history; core settings |
 
 Jobs, API tokens, logins, and OAuth grants aren't backed up. After a restore,
 make a new token with `innkeeper token create`.
@@ -267,6 +267,12 @@ finished jobs that named one lose the link: their `instance_id` becomes null.
 A backup restores only into the Innkeeper version that made it. A plugin
 database restores only where that plugin is installed with a database; others
 are skipped and reported.
+
+A config backup records which plugins were installed, not the plugins
+themselves. After a config restore, Innkeeper downloads any that are missing
+from their sources. On a new host their databases are skipped the first time,
+because the plugins weren't installed yet: restore the config archive again
+with `--replace` to bring the databases back.
 
 Removing a plugin from the image leaves its schema and role. To delete them,
 and the plugin's data with them, run this in the Innkeeper database, with

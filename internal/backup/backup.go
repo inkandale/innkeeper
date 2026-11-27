@@ -35,7 +35,7 @@ var Types = []Type{Assets, Config}
 var tables = map[Type][]string{
 	Assets: {"blob", "library", "library_setting", "card", "card_revision", "lorebook", "lorebook_revision", "card_lorebook",
 		"collection", "saved_search", "rule", "rule_library", "collection_card", "card_source", "lorebook_source", "enrichment"},
-	Config: {"plugin_instance", "setting", "binding", "push"},
+	Config: {"plugin_source", "plugin_install", "plugin_instance", "setting", "binding", "push"},
 }
 
 // referencedBlobs limits the blob copy to avatars of revisions. Deleting a

@@ -70,6 +70,8 @@ func source(t *testing.T) (assets, config []byte, box *secrets.Box) {
 			SELECT i.id, c.id, 'r1', 'unchanged', '{}', 'h' FROM plugin_instance i, card c;
 		INSERT INTO push (binding_id, revision_id, pushed_hash, remote_id)
 			SELECT b.id, c.head_revision_id, 'h', 'r1' FROM binding b JOIN card c ON c.id = b.card_id;
+		INSERT INTO plugin_source (id, url) VALUES ('mine', 'https://example.com/index.toml');
+		INSERT INTO plugin_install (name, source, version, sha256) VALUES ('fake', 'mine', '1.2.3', 'abc');
 		CREATE SCHEMA plugin_fake;
 		CREATE TABLE plugin_fake.note (body text);
 		INSERT INTO plugin_fake.note VALUES ('remember the forge')`); err != nil {
@@ -256,6 +258,11 @@ func TestRestoreConfig(t *testing.T) {
 	}
 	if s, err := box.Open(sealed); err != nil || s["token"] != "s3cret" {
 		t.Fatalf("secrets = %v, %v", s, err)
+	}
+	var source, version string
+	if err := tg.pool.QueryRow(ctx, `SELECT i.source, i.version FROM plugin_install i JOIN plugin_source s ON s.id = i.source
+		WHERE i.name = 'fake'`).Scan(&source, &version); err != nil || source != "mine" || version != "1.2.3" {
+		t.Fatalf("plugin install = %s %s, %v", source, version, err)
 	}
 	var body string
 	if err := tg.pool.QueryRow(ctx, `SELECT body FROM plugin_fake.note`).Scan(&body); err != nil || body != "remember the forge" {

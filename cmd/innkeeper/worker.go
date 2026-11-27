@@ -103,8 +103,8 @@ func worker() error {
 	dbURL := os.Getenv("INNKEEPER_DATABASE_URL")
 	backupOpts := backup.Options{DatabaseURL: dbURL, Store: svc.store, Box: svc.box, Log: log}
 	restoreOpts := backup.RestoreOptions{Conn: svc.pool.Config().ConnConfig, Store: svc.store, Box: svc.box, Log: log}
-	// A restored config brings back plugin instances whose databases must exist.
-	afterConfig := func(ctx context.Context) error { return svc.registry.ProvisionDatabases(ctx, dbURL) }
+	// A restored config brings back plugin installs and the databases their instances need.
+	afterConfig := svc.registry.RestoreInstalls
 	w := &jobs.Worker{
 		Queue:       q,
 		Log:         log,

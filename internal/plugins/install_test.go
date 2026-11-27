@@ -282,3 +282,26 @@ func TestInstallRefusesATarballWhoseProtocolVersionDiffers(t *testing.T) {
 		t.Fatalf("install = %v; want ErrSource naming protocol_version", err)
 	}
 }
+
+// A config restore onto a new host brings back install rows without the
+// plugins' folders; RestoreInstalls downloads them again.
+func TestRestoreInstallsDownloadsMissingPlugins(t *testing.T) {
+	ctx := context.Background()
+	reg, dirs := openRegistry(t, testdb.New(t))
+	src := testutil.PluginSource(t, testutil.PluginRelease{Name: "good", Version: "1.0.0"})
+	if err := reg.AddSource(ctx, PluginSource{ID: "local", URL: src}); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Install(ctx, "local", "good", "1.0.0"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(dirs.Installed, "good")); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.RestoreInstalls(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if m := reg.Manifests()["good"]; m == nil || m.Version != "1.0.0" {
+		t.Fatalf("after restore: %+v", m)
+	}
+}

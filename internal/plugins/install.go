@@ -99,6 +99,33 @@ func (r *Registry) Installs(ctx context.Context) (map[string]Installed, error) {
 	return out, nil
 }
 
+// RestoreInstalls installs again each recorded plugin whose version isn't
+// current on disk, as after a config restore onto another host, then
+// provisions plugin databases. One plugin failing doesn't stop the rest.
+func (r *Registry) RestoreInstalls(ctx context.Context) error {
+	if err := r.Sync(ctx); err != nil {
+		return err
+	}
+	installs, err := r.Installs(ctx)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for name, in := range installs {
+		current, _ := os.Readlink(filepath.Join(r.dirs.Installed, name, "current"))
+		if current == in.Source+"@"+in.Version {
+			continue
+		}
+		if err := r.Install(ctx, in.Source, name, in.Version); err != nil {
+			errs = append(errs, fmt.Errorf("reinstall %s %s: %w", name, in.Version, err))
+		}
+	}
+	if err := r.ProvisionDatabases(ctx, r.dbURL); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
+}
+
 // Install installs version of plugin name from source and makes it current.
 // The current and previous versions stay on disk, and installing one of them
 // again reuses its folder, so a rollback needs no download.

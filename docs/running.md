@@ -149,6 +149,11 @@ To claim with another login provider, create its instance with an API token
 identity it reports for you; its README says what that is. Changing or
 clearing `owner_subject` logs that identity out.
 
+Innkeeper handles one login at a time and waits a second after each failure,
+so a flood of failed logins can delay yours. On a server open to the internet,
+rate-limit `/api/auth/`, `/api/setup`, and `/oauth/` per client at your
+reverse proxy.
+
 ## Plugins
 
 Innkeeper ships `password-login`, `card-codec`, and `url-import`. Install other plugins
@@ -166,8 +171,8 @@ on the old one. Innkeeper keeps the previous version, so installing it again
 rolls back without a download.
 
 Add another source by its `https://` or `file://` URL. Its plugins run as
-code inside Innkeeper with their own database role, so add only sources you
-trust. To publish one, see
+code inside Innkeeper, as the same user, so they can read its secrets key and
+database URL; add only sources you trust. To publish one, see
 [Publishing a source](protocol.md#publishing-a-source).
 
 ```bash

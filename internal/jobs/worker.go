@@ -313,11 +313,23 @@ func (w *Worker) execute(ctx context.Context, j *Job) {
 	default:
 		o = outcome{status: StatusFailed, err: err.Error()}
 	}
-	// ctx may already be cancelled, and the job must still be released.
-	fctx, fcancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	// ctx may already be cancelled, and the job must still be released. Until
+	// the lease runs out no other worker takes the job, so retry until then
+	// rather than let it run again.
+	// ponytail: a database down for longer than the lease still reruns the job.
+	fctx, fcancel := context.WithTimeout(context.WithoutCancel(ctx), w.Lease)
 	defer fcancel()
 	st := run.current()
-	if err := w.Queue.finish(fctx, j, w.id, st, o); err != nil {
+	err = w.Queue.finish(fctx, j, w.id, st, o)
+	for err != nil && !errors.Is(err, ErrLeaseLost) && fctx.Err() == nil {
+		log.Warn("finish job, retrying", "err", err)
+		select {
+		case <-fctx.Done():
+		case <-time.After(time.Second):
+			err = w.Queue.finish(fctx, j, w.id, st, o)
+		}
+	}
+	if err != nil {
 		if errors.Is(err, ErrLeaseLost) {
 			log.Warn("job lease lost: cancelled or taken by another worker", "err", err)
 			return

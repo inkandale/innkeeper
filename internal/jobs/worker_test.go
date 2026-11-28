@@ -461,3 +461,35 @@ func TestTriggerTellsScheduledManualAndAutomaticJobsApart(t *testing.T) {
 		t.Fatalf("manual and scheduled jobs = %+v; want the tick (scheduled) and the manual child, not the automatic bulk", top)
 	}
 }
+
+// A failed finish is retried, so the job isn't left running for another worker to repeat.
+func TestFailedFinishIsRetriedNotRunAgain(t *testing.T) {
+	q := newQueue(t)
+	ctx := context.Background()
+	if _, err := q.pool.Exec(ctx, `CREATE SEQUENCE fail_once;
+		CREATE FUNCTION fail_first_finish() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN
+			IF NEW.status = 'succeeded' AND nextval('fail_once') = 1 THEN
+				RAISE EXCEPTION 'database hiccup';
+			END IF;
+			RETURN NEW;
+		END $$;
+		CREATE TRIGGER fail_first_finish BEFORE UPDATE ON job FOR EACH ROW EXECUTE FUNCTION fail_first_finish();`); err != nil {
+		t.Fatal(err)
+	}
+	runs := make(chan struct{}, 2)
+	startWorker(t, &Worker{Queue: q, Poll: 50 * time.Millisecond, Lease: 3 * time.Second, Handlers: map[string]Handler{
+		"test": func(context.Context, *Run) error {
+			runs <- struct{}{}
+			return nil
+		},
+	}})
+	j, err := q.Enqueue(ctx, Spec{Kind: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitStatus(t, q, j.ID, StatusSucceeded)
+	if len(runs) != 1 {
+		t.Errorf("handler ran %d times, want 1", len(runs))
+	}
+}

@@ -151,6 +151,12 @@ func (q *Queue) EnqueueOnceForInstance(ctx context.Context, s Spec) (Job, error)
 	return q.enqueueUnless(ctx, s, `kind = $1 AND instance_id IS NOT DISTINCT FROM $2 AND status IN ('queued', 'running')`, s.Kind, s.InstanceID)
 }
 
+// EnqueueOnceCovering is EnqueueOnceForInstance, but a job of s's kind on no
+// instance covers every instance, so s joins it too.
+func (q *Queue) EnqueueOnceCovering(ctx context.Context, s Spec) (Job, error) {
+	return q.enqueueUnless(ctx, s, `kind = $1 AND (instance_id IS NULL OR instance_id = $2) AND status IN ('queued', 'running')`, s.Kind, s.InstanceID)
+}
+
 // EnqueueUnlessQueued returns the queued top-level job matching s's kind,
 // instance, and payload, or enqueues s. It skips running jobs, which may
 // predate the change.

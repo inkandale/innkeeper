@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Build stages run on the builder's platform and cross-compile, which beats
 # emulating the target.
-FROM --platform=$BUILDPLATFORM node:24-alpine AS web
+FROM --platform=$BUILDPLATFORM node:26-alpine AS web
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci

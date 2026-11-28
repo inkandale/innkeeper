@@ -60,19 +60,20 @@ func waitForSync(ctx context.Context, tx pgx.Tx) error {
 	return err
 }
 
-// EnqueueSync queues a sync, or returns the one already queued or running.
+// EnqueueSync queues a sync, or returns a queued or running one that covers its app.
 func (s *Service) EnqueueSync(ctx context.Context, q *jobs.Queue, p SyncParams) (jobs.Job, error) {
 	p.Apply = cmp.Or(p.Apply, ApplyObvious)
 	if p.Apply != ApplyObvious && p.Apply != ApplyNone {
 		return jobs.Job{}, fmt.Errorf("%w: apply must be obvious or none", library.ErrInvalid)
 	}
+	spec := jobs.Spec{Kind: SyncKind, Payload: p}
 	if p.InstanceID != 0 {
 		if _, _, err := s.describeApp(ctx, p.InstanceID); err != nil {
 			return jobs.Job{}, err
 		}
+		spec.InstanceID = &p.InstanceID
 	}
-	// ponytail: a start joins any running sync, even one limited to another app.
-	return q.EnqueueOnce(ctx, jobs.Spec{Kind: SyncKind, Payload: p})
+	return q.EnqueueOnceCovering(ctx, spec)
 }
 
 // RunSync is the jobs.Handler for SyncKind.

@@ -145,16 +145,20 @@ func TestSyncAppFails(t *testing.T) {
 	}
 }
 
-// Starting a sync while one is queued returns that one.
-func TestEnqueueSyncJoins(t *testing.T) {
+// Starting a sync joins a queued one that covers its app, and only that.
+func TestEnqueueSyncJoinsOnlyASyncCoveringItsApp(t *testing.T) {
 	e := setup(t, nil)
 	q := jobs.New(e.pool)
-	a, err := e.s.EnqueueSync(e.ctx, q, SyncParams{})
+	one, err := e.s.EnqueueSync(e.ctx, q, SyncParams{InstanceID: e.inst})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b, err := e.s.EnqueueSync(e.ctx, q, SyncParams{InstanceID: e.inst}); err != nil || b.ID != a.ID {
-		t.Errorf("second start = %d, %v; want %d", b.ID, err, a.ID)
+	all, err := e.s.EnqueueSync(e.ctx, q, SyncParams{})
+	if err != nil || all.ID == one.ID {
+		t.Fatalf("every-app start = %d, %v; joined the one-app sync %d", all.ID, err, one.ID)
+	}
+	if again, err := e.s.EnqueueSync(e.ctx, q, SyncParams{InstanceID: e.inst}); err != nil || again.ID != one.ID {
+		t.Errorf("same-app start = %d, %v; want %d", again.ID, err, one.ID)
 	}
 	if _, err := e.s.EnqueueSync(e.ctx, q, SyncParams{Apply: "all"}); !errors.Is(err, library.ErrInvalid) {
 		t.Errorf("bad apply: %v", err)

@@ -15,7 +15,7 @@ export function useEditor(kind: Kind, id: number) {
   const [stale, setStale] = useState(false);
   const [comparing, setComparing] = useState(false);
   const dirty = changed(draft);
-  useLeaveGuard(dirty.size > 0);
+  const leaveGuard = useLeaveGuard(dirty.size > 0);
 
   const save = useMutation({
     mutationFn: async (d: Draft) =>
@@ -76,7 +76,7 @@ export function useEditor(kind: Kind, id: number) {
   };
   const use = (key: string) => setDraft((cur) => cur && { ...cur, data: { ...cur.data, [key]: headData[key] } });
 
-  return { entity, headData, data: draft?.data ?? headData, draft, setDraft, dirty, edit, save, saveWith, stale, comparing, reload, compare, keep, use };
+  return { entity, leaveGuard, headData, data: draft?.data ?? headData, draft, setDraft, dirty, edit, save, saveWith, stale, comparing, reload, compare, keep, use };
 }
 
 export type Editor = ReturnType<typeof useEditor>;

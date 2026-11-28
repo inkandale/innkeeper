@@ -298,13 +298,11 @@ test("macros in a field get a highlight behind the text", async () => {
 });
 
 test("leaving with unsaved edits asks first", async () => {
-  const ask = vi.spyOn(window, "confirm").mockReturnValue(false);
   const router = renderAt("/cards/7");
   await userEvent.type(await screen.findByLabelText("Description"), "!");
   await userEvent.click(screen.getByRole("link", { name: /revision/ }));
-  await waitFor(() => expect(ask).toHaveBeenCalled());
+  await userEvent.click(await screen.findByRole("button", { name: "Stay" }));
   expect(router.state.location.pathname).toBe("/cards/7");
-  ask.mockRestore();
 });
 
 test("after a stale save, compare and keep my version", async () => {

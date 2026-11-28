@@ -150,7 +150,7 @@ export function ChoosePlugins() {
       <div className="toolbar">
         {!empty && (
           <button className="button primary" disabled={locked} onClick={() => install.mutate(pending)}>
-            {install.isPending ? "Installing…" : "Install and continue"}
+            {install.isPending ? "Installing…" : pending.length ? "Install and continue" : "Continue"}
           </button>
         )}
         {/* A pending install navigates when it ends, so leaving first would be undone. */}

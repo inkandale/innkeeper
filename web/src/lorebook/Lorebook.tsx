@@ -41,6 +41,7 @@ function LorebookEditor({ id }: { id: number }) {
   const head = ed.entity.data;
   return (
     <div className="card-page">
+      {ed.leaveGuard}
       <aside className="card-aside">
         <Group title="Links">
           <Sources kind="lorebook" id={id} />

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { NavLink, Outlet, useNavigate } from "react-router";
+import { NavLink, Outlet, useMatch, useNavigate } from "react-router";
 import { api, must } from "../api/client";
 import { instancesQuery, pluginsQuery, settingsQuery } from "../api/queries";
 import { setupPlugins } from "./wizard";
@@ -26,6 +26,8 @@ export function Welcome() {
   const setUp = new Set((instances.data ?? []).map((i) => i.plugin));
   const finish = useFinish();
   const chosen = setupPlugins(plugins.data ?? []);
+  // The last step has its own Finish button.
+  const last = useMatch("/welcome/cards");
   return (
     <div className="welcome">
       <nav className="welcome-rail" aria-label="Setup steps">
@@ -39,9 +41,11 @@ export function Welcome() {
           </NavLink>
         ))}
         <NavLink to="/welcome/cards">Bring in cards</NavLink>
-        <button className="button" disabled={finish.isPending} onClick={() => finish.mutate()}>
-          Finish later
-        </button>
+        {!last && (
+          <button className="button" disabled={finish.isPending} onClick={() => finish.mutate()}>
+            Finish later
+          </button>
+        )}
         {finish.error && <p className="error">{finish.error.message}</p>}
       </nav>
       <section className="welcome-step">

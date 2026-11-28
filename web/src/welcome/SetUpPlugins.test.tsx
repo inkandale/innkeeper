@@ -25,11 +25,13 @@ const bare = plugin("hello", ["push"]);
 let installed: unknown[];
 let instances: unknown[];
 let itemsStatus: number;
+let createStatus: number;
 let sent: { method: string; path: string; body?: unknown }[];
 beforeEach(() => {
   sent = [];
   instances = [];
   itemsStatus = 200;
+  createStatus = 200;
   vi.stubGlobal(
     "fetch",
     vi.fn(async (req: Request) => {
@@ -38,6 +40,7 @@ beforeEach(() => {
       if (req.method === "POST" && u.pathname === "/api/instances") {
         const body = (await req.json()) as { plugin: string };
         sent.push({ method: "POST", path: u.pathname, body });
+        if (createStatus !== 200) return json({ title: "Bad Gateway", status: createStatus, detail: "plugin didn't start" }, createStatus);
         return json({ id: 9, config: {}, secrets: [], label: body.plugin, ...body });
       }
       if (req.method === "PATCH" && u.pathname === "/api/instances/9") {
@@ -135,6 +138,18 @@ test("a plugin with nothing to configure is created without a click", async () =
   renderAt("/welcome/setup/hello");
   expect(await screen.findByText("cards step")).toBeInTheDocument();
   expect(sent).toEqual([{ method: "POST", path: "/api/instances", body: { plugin: "hello" } }]);
+});
+
+test("a plugin with nothing to configure that fails to set up can be retried", async () => {
+  installed = [bare];
+  createStatus = 502;
+  const user = userEvent.setup();
+  renderAt("/welcome/setup/hello");
+  expect(await screen.findByText(/plugin didn't start/)).toBeInTheDocument();
+  createStatus = 200;
+  await user.click(screen.getByRole("button", { name: "Retry" }));
+  expect(await screen.findByText("cards step")).toBeInTheDocument();
+  expect(sent).toHaveLength(2);
 });
 
 test("with nothing to set up, moves on to bringing in cards", async () => {

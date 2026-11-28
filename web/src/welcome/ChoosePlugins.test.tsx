@@ -153,7 +153,7 @@ test("nothing can be chosen until the installed plugins load", async () => {
   pluginsHang = true;
   renderStep();
   expect(await screen.findByRole("checkbox", { name: "lumiverse" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Install and continue" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Continue" })).toBeDisabled();
 });
 
 test("an empty catalog says so and offers only Skip", async () => {

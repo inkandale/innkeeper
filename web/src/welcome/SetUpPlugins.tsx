@@ -130,9 +130,14 @@ function PluginStep({ plugin, done, next, skip }: { plugin: Plugin; done: Instan
         <h2>{plugin.title}</h2>
         {create.error ? <p className="error">{create.error.message}</p> : <p className="muted">Setting up…</p>}
         {create.error && (
-          <Link className="button" to={skip}>
-            Skip this plugin
-          </Link>
+          <div className="toolbar">
+            <button className="button" disabled={create.isPending} onClick={() => create.mutate()}>
+              Retry
+            </button>
+            <Link className="button" to={skip}>
+              Skip this plugin
+            </Link>
+          </div>
         )}
       </div>
     );

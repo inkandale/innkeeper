@@ -333,13 +333,14 @@ test("discard puts back the saved values", async () => {
 
 test("leaving with unsaved edits asks first", async () => {
   const user = userEvent.setup();
-  const ask = vi.fn(() => false);
-  vi.stubGlobal("confirm", ask);
   const router = renderAt("/settings/instances/3");
   await user.type(await screen.findByLabelText("Name"), "x");
   await act(() => router.navigate("/settings/plugins"));
-  expect(ask).toHaveBeenCalledOnce();
+  await user.click(await screen.findByRole("button", { name: "Stay" }));
   expect(router.state.location.pathname).toBe("/settings/instances/3");
+  await act(() => router.navigate("/settings/plugins"));
+  await user.click(await screen.findByRole("button", { name: "Leave" }));
+  expect(router.state.location.pathname).toBe("/settings/plugins");
 });
 
 test("an action plugin's instance turns on Library access", async () => {

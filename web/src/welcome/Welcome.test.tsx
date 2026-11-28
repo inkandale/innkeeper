@@ -34,13 +34,13 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function renderWizard() {
+function renderWizard(at = "/welcome/plugins") {
   const router = createMemoryRouter(
     [
       { path: "/welcome/*", element: <Welcome /> },
       { path: "/cards", element: <p>cards page</p> },
     ],
-    { initialEntries: ["/welcome/plugins"] },
+    { initialEntries: [at] },
   );
   render(
     <QueryClientProvider client={new QueryClient()}>
@@ -58,6 +58,12 @@ test("the rail lists chosen plugins and Finish later ends the wizard", async () 
   await user.click(screen.getByRole("button", { name: "Finish later" }));
   expect(await screen.findByText("cards page")).toBeInTheDocument();
   expect(sent).toEqual([{ method: "PATCH", path: "/api/settings", body: { onboarding_done: true } }]);
+});
+
+test("the last step, which has its own Finish, drops Finish later from the rail", async () => {
+  renderWizard("/welcome/cards");
+  expect(await screen.findByRole("link", { name: "lumiverse" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Finish later" })).not.toBeInTheDocument();
 });
 
 test("the rail ticks off plugins that are set up", async () => {

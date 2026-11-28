@@ -81,6 +81,7 @@ function CardEditor({ id }: { id: number }) {
 
   return (
     <div className="card-page">
+      {ed.leaveGuard}
       <Panel
         card={head}
         data={ed.data}

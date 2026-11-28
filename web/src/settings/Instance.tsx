@@ -249,7 +249,7 @@ export function InstanceForm({
     meta: { toast: false },
   });
 
-  useLeaveGuard(dirty && created === undefined);
+  const leaveGuard = useLeaveGuard(dirty && created === undefined);
   // Opening the new instance waits for the render that lifts the guard.
   useEffect(() => {
     if (created !== undefined) navigate(`/settings/instances/${created}`);
@@ -266,6 +266,8 @@ export function InstanceForm({
   });
 
   return (
+    <>
+    {leaveGuard}
     <form
       className="instance-form"
       onSubmit={(e) => {
@@ -485,6 +487,7 @@ export function InstanceForm({
         )}
       </div>
     </form>
+    </>
   );
 }
 

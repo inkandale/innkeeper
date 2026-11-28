@@ -39,7 +39,7 @@ ENV GOOS=$TARGETOS GOARCH=$TARGETARCH
 RUN go mod edit -replace github.com/inkandale/innkeeper=/core \
     && make install DEST=/plugins PLUGINS="password-login card-codec url-import"
 
-FROM alpine:3.23
+FROM alpine:3.24
 # pg_dump for `innkeeper backup`; tini reaps plugin processes whose groups the host kills.
 RUN apk add --no-cache postgresql18-client tini \
     && adduser -D -u 10001 innkeeper \
